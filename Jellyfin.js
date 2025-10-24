@@ -31,10 +31,6 @@
       // Подменяем onSelect
       params.onSelect = function (selected) {
         if (selected.jellyfin) {
-          // В оригинале `element` и `item` доступны через замыкание,
-          // но у нас их нет. Однако в Lampac они передаются в `menu` через `Lampa.Listener.send('torrent', ...)`
-          // и сохраняются в глобальный контекст (мы его сохраним отдельно)
-
           if (window.__lampac_torrent_element) {
             addToJellyfin(window.__lampac_torrent_element);
           } else {
@@ -102,7 +98,7 @@
   })
     .then(function (response) {
       if (response.ok) {
-        Lampa.Noty.show('Торрент добавлен в TorrServer (Jellyfin)');
+        Lampa.Noty.show('Торрент добавлен в Jellyfin');
       } else {
         throw new Error('HTTP ' + response.status);
       }
