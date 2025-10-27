@@ -1,1 +1,218 @@
-# cash94.github.io
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Доступ запрещён! 🚫</title>
+    <style>
+        body {
+            background: #000;
+            color: #ff0;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            text-align: center;
+            padding: 40px;
+            margin: 0;
+            overflow: hidden;
+            animation: glitch-effect 3s infinite linear;
+        }
+
+        @keyframes glitch-effect {
+            0% { transform: translate(0); text-shadow: none; }
+            2% { transform: translate(-2px, 2px); text-shadow: -1px 1px red; }
+            4% { transform: translate(2px, -2px); text-shadow: 2px -1px blue; }
+            6% { transform: translate(-1px, 1px); text-shadow: -1px 1px green; }
+            8% { transform: translate(1px, -1px); text-shadow: 1px -1px yellow; }
+            10% { transform: translate(0); text-shadow: none; }
+            100% { transform: translate(0); text-shadow: none; }
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        h1 {
+            font-size: 3em;
+            animation: pulse 2s infinite;
+            background: linear-gradient(to right, #ff0000, #ffcc00);
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+
+        @keyframes pulse {
+            0% {transform: scale(1);}
+            50% {transform: scale(1.05);}
+            100% {transform: scale(1);}
+        }
+
+        img {
+            width: 200px;
+            margin: 20px 0;
+            animation: shake 3s infinite;
+        }
+
+        @keyframes shake {
+            0% {transform: rotate(-5deg);}
+            10% {transform: rotate(5deg);}
+            20% {transform: rotate(-5deg);}
+            30% {transform: rotate(5deg);}
+            40% {transform: rotate(-5deg);}
+            50% {transform: rotate(5deg);}
+            60% {transform: rotate(0deg);}
+        }
+
+        .warning {
+            background: #333;
+            border: 2px dashed #ff0;
+            padding: 20px;
+            margin: 30px 0;
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% {opacity: 1;}
+            50% {opacity: 0.3;}
+        }
+
+        .button {
+            display: inline-block;
+            padding: 15px 30px;
+            background: #f00;
+            color: #fff;
+            text-decoration: none;
+            font-weight: bold;
+            margin-top: 30px;
+            animation: pulse 2s infinite;
+            border-radius: 5px;
+            box-shadow: 0 0 20px #f00;
+            cursor: pointer;
+        }
+
+        .button:hover {
+            box-shadow: 0 0 30px #f0f000;
+            transform: scale(1.1);
+        }
+
+        /* Стили для страшного экрана */
+        .scary-overlay {
+    	    position: fixed;
+    	    top: 0;
+    	    left: 0;
+    	    width: 100vw;
+    	    height: 100vh;
+    	    background: black;
+	    display: none; /* 👈 ВАЖНО: по умолчанию скрыто */
+	    justify-content: center;
+	    align-items: center;
+	    z-index: 9999;
+	}
+        .scary-image {
+    	    width: 100%;
+    	    height: 100%;
+    	    object-fit: cover; /* Растягиваем изображение на весь экран */
+    	    animation: jumpscare 0.5s ease-out;
+	}
+        @keyframes jumpscare {
+            0% {transform: scale(0.5); opacity: 0;}
+            100% {transform: scale(1); opacity: 1;}
+        }
+
+        .flash {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            opacity: 0;
+            z-index: 9998;
+            pointer-events: none;
+        }
+
+        @keyframes flash-effect {
+            0% {opacity: 0;}
+            50% {opacity: 1;}
+            100% {opacity: 0;}
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>ОСТОРОЖНО! ЗОНА ВЫСОКОЙ СТЕПЕНИ ЗАЩИТЫ 🔥</h1>
+    
+    <img src="./images1.jpg" alt="Опасный скелет">
+    
+    <div class="warning">
+        <p>Вы пытаетесь проникнуть в зону:</p>
+        <ul style="list-style: none; padding: 0;">
+            <li>🚫 Сверхсекретных котиков</li>
+            <li>💣 Эксплодирующих пончиков</li>
+            <li>💥 Квантово-механической кофеварки</li>
+            <li>🤖 Бунтующего ИИ (версия 0.1.7)</li>
+        </ul>
+    </div>
+
+    <p>Если вы продолжите, <span style="color:red; font-weight:bold;">ваш браузер будет проклят</span> анимацией бесконечного гиф-танца!</p>
+
+    <img src="./images.jpg" alt="Предупреждающий знак">
+
+    <p style="margin-top:30px;">Нажмите сюда, если вы <em>действительно</em> хотите рисковать:</p>
+    <a href="/" class="button" onclick="triggerJumpscare(event)">ВЕРНУТЬСЯ НАЗАД (НА СВОЙ СТРАХ И РИСК)</a>
+</div>
+
+<!-- Страшный экран -->
+<div class="scary-overlay" id="scaryOverlay">
+    <img src="./a63bcc28949f4cddbf116076dded.jpg" 
+         alt="Страшное лицо!" 
+         class="scary-image">
+</div>
+
+<!-- Вспышка света -->
+<div class="flash" id="flash"></div>
+
+<!-- Аудио -->
+<audio id="glitchSound" src="./strashnye-zvuki-2.mp3"></audio>
+<audio id="screamSound" src="./strashnye-zvuki-dyavolskiy-smeh.mp3"></audio>
+
+<script>
+    let glitchPlayed = false;
+
+    // Запуск фонового звука при первом клике на страницу
+    document.addEventListener('click', function playGlitchSound() {
+        const glitch = document.getElementById('glitchSound');
+        if (!glitchPlayed) {
+            glitch.loop = true;
+            glitch.volume = 0.2;
+            glitch.play().catch(() => {});
+            glitchPlayed = true;
+        }
+        document.removeEventListener('click', playGlitchSound);
+    });
+
+    function triggerJumpscare(event) {
+    event.preventDefault(); // 🔥 Основная строчка, которая останавливает переход
+
+    const glitch = document.getElementById('glitchSound');
+    glitch.pause(); // Останавливаем фоновый глюк-звук
+
+    document.querySelector('.container').style.display = 'none'; // Скрываем основной контент
+    const overlay = document.getElementById('scaryOverlay');
+    overlay.style.display = 'flex'; // Показываем страшный экран
+
+    const flash = document.getElementById('flash');
+    flash.style.animation = 'flash-effect 0.5s'; // Включаем вспышку
+
+    const scream = document.getElementById('screamSound');
+    scream.play(); // Проигрываем крик
+
+    // Через 3 секунды перезагружаем страницу
+    setTimeout(() => {
+        location.reload();
+    }, 5000);
+  }
+</script>
+
+</body>
+</html>
