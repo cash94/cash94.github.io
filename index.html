@@ -135,12 +135,35 @@
             50% {opacity: 1;}
             100% {opacity: 0;}
         }
+
+        /* Стили для блока сбора средств */
+        .donation-section {
+            margin: 40px 0;
+            padding: 20px;
+            background: rgba(255, 255, 0, 0.1);
+            border-radius: 10px;
+            border: 2px solid #ff0;
+        }
+
+        .donation-title {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            color: #ffcc00;
+            text-shadow: 0 0 10px #ff0;
+        }
+
+        .donation-iframe {
+            margin: 0 auto;
+            display: block;
+            border-radius: 5px;
+            box-shadow: 0 0 15px #ff0;
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>ОСТОРОЖНО! ЗОНА ВЫСОКОЙ СТЕПЕНИ ЗАЩИТЫ 🔥</h1>
+    <h1>ОСТОРОЖНО! ЗОНА ВЫСОКОЙ СТЕПЕНИ ЗАЩИТЫ 🔥 ЕСЛИ ВЫ ВИДИТЕ ЭТУ СТРАНИЦУ, ТО ВСЕ У ВАС ХОРОШО И ДОСТУП К РЕСУРСУ ИМЕЕТСЯ!</h1>
     
     <img src="./web/images1.jpg" alt="Опасный скелет">
     
@@ -157,6 +180,18 @@
     <p>Если вы продолжите, <span style="color:red; font-weight:bold;">ваш браузер будет проклят</span> анимацией бесконечного гиф-танца!</p>
 
     <img src="./web/images.jpg" alt="Предупреждающий знак">
+
+    <!-- Блок сбора средств -->
+    <div class="donation-section">
+        <div class="donation-title">СБОР СРЕДСТВ ДЛЯ ПОДДЕРЖАНИЯ СЕРВЕРОВ, ВОЗМОЖНО ИМЕЕННО ВАШ ДОНАТ ПРОДЛИТ НА МЕСЯЦ ИЛИ БОЛЕЕ</div>
+        <iframe src="https://yoomoney.ru/quickpay/fundraise/widget?billNumber=1DI4CHGIO40.251022&" 
+                width="500" height="480" 
+                frameborder="0" 
+                allowtransparency="true" 
+                scrolling="no"
+                class="donation-iframe">
+        </iframe>
+    </div>
 
     <p style="margin-top:30px;">Нажмите сюда, если вы <em>действительно</em> хотите рисковать:</p>
     <a href="/" class="button" onclick="triggerJumpscare(event)">ВЕРНУТЬСЯ НАЗАД (НА СВОЙ СТРАХ И РИСК)</a>
