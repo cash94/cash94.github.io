@@ -308,6 +308,14 @@
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-ldapauth.png",
         "versions": [
             {
+                "version": "22.0.0.0",
+                "changelog": "- Fix 10.11.2 support (#195) @crobibero",
+                "targetAbi": "10.11.2.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/ldap-authentication/ldap-authentication_22.0.0.0.zip",
+                "checksum": "2ee66432cb59540b537bdad3a1162e99",
+                "timestamp": "2025-11-03T02:58:12Z"
+            },
+            {
                 "version": "21.0.0.0",
                 "changelog": "- Jellyfin 10.11 support (#182) @crobibero\n- Improve binary/uri ProfileImage handling (#183) @dshoreman\n- Fixed ProfileImage ServiceTask and Format Sync (#177) @CEbbinghaus",
                 "targetAbi": "10.11.0.0",
