@@ -2109,6 +2109,14 @@
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-subtitleextract.png",
         "versions": [
             {
+                "version": "7.0.0.0",
+                "changelog": "- Fix HasChanged checks (#57) @Shadowghost",
+                "targetAbi": "10.11.2.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/subtitle-extract/subtitle-extract_7.0.0.0.zip",
+                "checksum": "363e440d8107e7d22b575630a9e96487",
+                "timestamp": "2025-11-08T17:15:54Z"
+            },
+            {
                 "version": "6.0.0.0",
                 "changelog": "- Add libraries selector (#53) @Gorgorot38",
                 "targetAbi": "10.11.2.0",
