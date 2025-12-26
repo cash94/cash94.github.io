@@ -1,1182 +1,2699 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Кот-сфинкс - Вопрос по проблемам NUM</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        body {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            color: #fff;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            overflow-x: hidden;
-        }
-        
-        .container {
-            max-width: 1000px;
-            width: 100%;
-            text-align: center;
-            padding: 30px;
-            background-color: rgba(0, 0, 0, 0.5);
-            border-radius: 20px;
-            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
-            border: 1px solid #333;
-        }
-        
-        h1 {
-            color: #ff9a3c;
-            margin-bottom: 30px;
-            font-size: 2.5rem;
-            text-shadow: 0 2px 10px rgba(255, 154, 60, 0.5);
-        }
-        
-        .sphinx-container {
-            position: relative;
-            height: 400px;
-            margin: 30px auto;
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        
-        .sphinx-cat {
-            position: relative;
-            width: 300px;
-            height: 300px;
-            margin-right: 50px;
-        }
-        
-        .cat-body {
-            position: absolute;
-            width: 200px;
-            height: 120px;
-            background: #222;
-            border-radius: 50% 50% 40% 40%;
-            top: 150px;
-            left: 50px;
-            box-shadow: inset 0 -10px 0 rgba(0, 0, 0, 0.1);
-        }
-        
-        .cat-head {
-            position: absolute;
-            width: 160px;
-            height: 140px;
-            background: #222;
-            border-radius: 45% 45% 40% 40%;
-            top: 80px;
-            left: 70px;
-            box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.1);
-        }
-        
-        .ear-left, .ear-right {
-            position: absolute;
-            width: 0;
-            height: 0;
-            border-left: 20px solid transparent;
-            border-right: 20px solid transparent;
-            border-bottom: 40px solid #ffb7a0;
-            top: 50px;
-        }
-        
-        .ear-left {
-            left: 65px;
-            transform: rotate(-15deg);
-        }
-        
-        .ear-right {
-            left: 115px;
-            transform: rotate(15deg);
-        }
-        
-        .eye-left, .eye-right {
-            position: absolute;
-            width: 25px;
-            height: 35px;
-            background: #fff;
-            border-radius: 50%;
-            top: 100px;
-            overflow: hidden;
-        }
-        
-        .eye-left {
-            left: 85px;
-        }
-        
-        .eye-right {
-            left: 135px;
-        }
-        
-        .pupil {
-            position: absolute;
-            width: 15px;
-            height: 15px;
-            background: #16213e;
-            border-radius: 50%;
-            top: 10px;
-            left: 5px;
-            animation: blink 3s infinite;
-        }
-        
-        .nose {
-            position: absolute;
-            width: 20px;
-            height: 10px;
-            background: #ffb7a0;
-            border-radius: 40% 40% 50% 50%;
-            top: 140px;
-            left: 120px;
-        }
-        
-        .mouth {
-            position: absolute;
-            width: 30px;
-            height: 10px;
-            border-bottom: 3px solid #ffb7a0;
-            border-radius: 0 0 50% 50%;
-            top: 155px;
-            left: 115px;
-        }
-        
-        .tail {
-            position: absolute;
-            width: 150px;
-            height: 15px;
-            background: #222;
-            border-radius: 10px;
-            top: 180px;
-            left: 190px;
-            transform-origin: left center;
-            animation: tailMove 3s infinite alternate;
-        }
-        
-        .speech-bubble {
-            position: absolute;
-            background: rgba(255, 255, 255, 0.95);
-            color: #333;
-            padding: 20px;
-            border-radius: 20px;
-            width: 350px;
-            left: 3px;
-            top: 145px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-            text-align: center;
-            font-size: 1.2rem;
-            font-weight: bold;
-            z-index: 10;
-        }
-        
-        .speech-bubble:after {
-            content: '';
-            position: absolute;
-            width: 0;
-            height: 0;
-            border-top: 15px solid transparent;
-            border-bottom: 15px solid transparent;
-            border-left: 20px solid rgba(255, 255, 255, 0.95);
-            right: -15px;
-            top: 40%;
-            left: auto;
-        }
-        
-        .question {
-            margin: 30px 0;
-            font-size: 1.5rem;
-            color: #ff9a3c;
-            min-height: 70px;
-        }
-        
-        .buttons {
-            display: flex;
-            justify-content: center;
-            gap: 30px;
-            margin-top: 20px;
-            flex-wrap: wrap;
-        }
-        
-        button {
-            padding: 15px 20px;
-            font-size: 1.1rem;
-            border: none;
-            border-radius: 50px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: bold;
-            min-width: 200px;
-        }
-        
-        .yes-btn {
-            background: linear-gradient(to right, #4CAF50, #2E7D32);
-            color: white;
-            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
-        }
-        
-        .yes-btn:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(76, 175, 80, 0.6);
-        }
-        
-        .no-btn {
-            background: linear-gradient(to right, #f44336, #c62828);
-            color: white;
-            box-shadow: 0 5px 15px rgba(244, 67, 54, 0.4);
-        }
-        
-        .no-btn:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(244, 67, 54, 0.6);
-        }
-        
-        .problem-buttons {
-            display: none;
-            flex-direction: column;
-            gap: 15px;
-            margin-top: 30px;
-            animation: fadeIn 1s forwards;
-        }
-        
-        .problem-btn {
-            background: linear-gradient(to right, #3498db, #2980b9);
-            color: white;
-            text-align: left;
-            padding: 18px 25px;
-            border-radius: 15px;
-            font-size: 1rem;
-            min-width: 100%;
-            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
-            transition: all 0.3s ease;
-        }
-        
-        .problem-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(52, 152, 219, 0.5);
-            background: linear-gradient(to right, #2980b9, #1c5a7a);
-        }
-        
-        .solution {
-            display: none;
-            margin-top: 30px;
-            text-align: left;
-            animation: fadeIn 1s forwards;
-            background-color: rgba(255, 255, 255, 0.1);
-            border-radius: 15px;
-            padding: 25px;
-        }
-        
-        .solution h3 {
-            color: #4CAF50;
-            margin-bottom: 20px;
-            font-size: 1.8rem;
-            text-align: center;
-        }
-        
-        .solution h4 {
-            color: #ff9a3c;
-            margin: 20px 0 10px 0;
-            font-size: 1.3rem;
-        }
-        
-        .solution p {
-            font-size: 1.1rem;
-            line-height: 1.6;
-            margin-bottom: 15px;
-        }
-        
-        .solution ul {
-            margin-left: 20px;
-            margin-bottom: 20px;
-        }
-        
-        .solution li {
-            font-size: 1.1rem;
-            line-height: 1.6;
-            margin-bottom: 10px;
-        }
-        
-        .solution .config-option {
-            background-color: rgba(255, 255, 255, 0.15);
-            padding: 12px 15px;
-            border-radius: 10px;
-            margin: 10px 0;
-            font-family: 'Courier New', monospace;
-            font-size: 1.1rem;
-            color: #ffcc00;
-            border-left: 4px solid #ff9a3c;
-        }
-        
-        .solution .proxy-list, 
-        .solution .jackett-list,
-        .solution .nmprs-list {
-            background-color: rgba(0, 0, 0, 0.3);
-            padding: 15px;
-            border-radius: 10px;
-            margin-top: 15px;
-            font-family: 'Courier New', monospace;
-            font-size: 1rem;
-            line-height: 1.8;
-        }
-        
-        .solution .proxy-item, 
-        .solution .jackett-item,
-        .solution .nmprs-item {
-            padding: 5px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-        
-        .solution .proxy-item:last-child, 
-        .solution .jackett-item:last-child,
-        .solution .nmprs-item:last-child {
-            border-bottom: none;
-        }
-        
-        .loading {
-            color: #ff9a3c;
-            font-style: italic;
-            text-align: center;
-            padding: 10px;
-        }
-        
-        .solution-btn {
-            display: block;
-            margin: 25px auto 10px;
-            background: linear-gradient(to right, #9b59b6, #8e44ad);
-            color: white;
-            padding: 12px 30px;
-            border-radius: 50px;
-            font-size: 1.1rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: none;
-        }
-        
-        .solution-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 20px rgba(155, 89, 182, 0.5);
-        }
-        
-        .feedback-buttons {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            margin-top: 30px;
-            flex-wrap: wrap;
-        }
-        
-        .feedback-btn {
-            padding: 15px 30px;
-            font-size: 1.1rem;
-            border: none;
-            border-radius: 50px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: bold;
-            min-width: 180px;
-        }
-        
-        .solved-btn {
-            background: linear-gradient(to right, #4CAF50, #2E7D32);
-            color: white;
-            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
-        }
-        
-        .solved-btn:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(76, 175, 80, 0.6);
-        }
-        
-        .notsolved-btn {
-            background: linear-gradient(to right, #FF9800, #F57C00);
-            color: white;
-            box-shadow: 0 5px 15px rgba(255, 152, 0, 0.4);
-        }
-        
-        .notsolved-btn:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 20px rgba(255, 152, 0, 0.6);
-        }
-        
-        .feedback-message {
-            display: none;
-            margin-top: 30px;
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            font-size: 1.2rem;
-            animation: fadeIn 1s forwards;
-        }
-        
-        .success-message {
-            background-color: rgba(76, 175, 80, 0.2);
-            border: 2px solid #4CAF50;
-            color: #4CAF50;
-        }
-        
-        .help-message {
-            background-color: rgba(255, 152, 0, 0.2);
-            border: 2px solid #FF9800;
-            color: #FF9800;
-        }
-        
-        .chat-link {
-            color: #3498db;
-            text-decoration: underline;
-            font-weight: bold;
-            cursor: pointer;
-            transition: color 0.3s ease;
-        }
-        
-        .chat-link:hover {
-            color: #2980b9;
-        }
-        
-        .warning {
-            color: #ff9a3c;
-            font-weight: bold;
-            margin-top: 20px;
-            font-size: 1.1rem;
-            animation: pulse 2s infinite;
-        }
-        
-        .exit-message {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.95);
-            z-index: 100;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            animation: fadeIn 0.5s forwards;
-        }
-        
-        .exit-message h2 {
-            color: #f44336;
-            font-size: 3rem;
-            margin-bottom: 30px;
-            text-align: center;
-        }
-        
-        .exit-message p {
-            font-size: 1.5rem;
-            margin-bottom: 20px;
-            text-align: center;
-            max-width: 80%;
-        }
-        
-        .counter {
-            font-size: 5rem;
-            color: #ff9a3c;
-            margin: 20px 0;
-            font-weight: bold;
-        }
-        
-        @keyframes blink {
-            0%, 45%, 55%, 100% {
-                height: 15px;
-                top: 10px;
-            }
-            50% {
-                height: 3px;
-                top: 20px;
-            }
-        }
-        
-        @keyframes tailMove {
-            0% {
-                transform: rotate(0deg);
-            }
-            100% {
-                transform: rotate(20deg);
-            }
-        }
-        
-        @keyframes pulse {
-            0% {
-                opacity: 0.7;
-            }
-            50% {
-                opacity: 1;
-            }
-            100% {
-                opacity: 0.7;
-            }
-        }
-        
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-            to {
-                opacity: 1;
-            }
-        }
-        
-        @media (max-width: 900px) {
-            .sphinx-container {
-                height: 500px;
-                flex-direction: column;
-            }
-            
-            .sphinx-cat {
-                margin-right: 0;
-                margin-bottom: 20px;
-            }
-            
-            .speech-bubble {
-                position: relative;
-                left: 0;
-                top: 0;
-                margin-top: 20px;
-                width: 100%;
-            }
-            
-            .speech-bubble:after {
-                border-top: 15px solid rgba(255, 255, 255, 0.95);
-                border-left: 15px solid transparent;
-                border-right: 15px solid transparent;
-                border-bottom: none;
-                left: 50%;
-                top: -15px;
-                transform: translateX(-50%);
-                right: auto;
-            }
-            
-            h1 {
-                font-size: 2rem;
-            }
-            
-            button {
-                min-width: 150px;
-            }
-            
-            .feedback-buttons {
-                flex-direction: column;
-                align-items: center;
-            }
-        }
-        
-        @media (max-width: 480px) {
-            .container {
-                padding: 20px 15px;
-            }
-            
-            h1 {
-                font-size: 1.7rem;
-            }
-            
-            .speech-bubble {
-                font-size: 1rem;
-                padding: 15px;
-            }
-            
-            .question {
-                font-size: 1.2rem;
-            }
-            
-            .solution {
-                padding: 15px;
-            }
-            
-            .solution .config-option {
-                font-size: 0.9rem;
-                padding: 10px;
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>Кот-сфинкс - Вопрос по проблемам NUM</title>
+  <style>
+    :root {
+      --color-primary: #ff9a3c;
+      --color-primary-glow: rgba(255, 154, 60, 0.4);
+      --color-success: #4CAF50;
+      --color-success-dark: #2E7D32;
+      --color-success-glow: rgba(76, 175, 80, 0.4);
+      --color-danger: #f44336;
+      --color-danger-dark: #c62828;
+      --color-danger-glow: rgba(244, 67, 54, 0.4);
+      --color-info: #3498db;
+      --color-info-dark: #2980b9;
+      --color-info-glow: rgba(52, 152, 219, 0.4);
+      --color-warning: #FF9800;
+      --color-warning-dark: #F57C00;
+      --color-warning-glow: rgba(255, 152, 0, 0.4);
+      --color-purple: #9b59b6;
+      --color-purple-dark: #8e44ad;
+      --color-purple-glow: rgba(155, 89, 182, 0.4);
+      --color-bg-dark: #1a1a2e;
+      --color-bg-darker: #16213e;
+      --color-bg-glass: rgba(255, 255, 255, 0.05);
+      --color-text: #fff;
+      --color-text-dark: #333;
+      --color-cat: #222;
+      --color-cat-skin: #ffb7a0;
+      --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      --shadow-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      --shadow-glow: 0 0 20px;
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      --border-radius-sm: 8px;
+      --border-radius-md: 12px;
+      --border-radius-lg: 16px;
+      --border-radius-xl: 24px;
+      --border-radius-full: 9999px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: linear-gradient(135deg, var(--color-bg-dark) 0%, var(--color-bg-darker) 50%, #0f1624 100%);
+      background-attachment: fixed;
+      color: var(--color-text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow-x: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background:
+        radial-gradient(circle at 20% 50%, rgba(255, 154, 60, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(52, 152, 219, 0.1) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 1000px;
+      width: 100%;
+      text-align: center;
+      padding: 40px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border-radius: var(--border-radius-xl);
+      box-shadow: var(--shadow-xl), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      position: relative;
+      z-index: 1;
+      animation: containerFadeIn 0.6s ease-out;
+    }
+
+    @keyframes containerFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    h1 {
+      background: linear-gradient(135deg, var(--color-primary) 0%, #ffb347 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 30px;
+      font-size: clamp(2rem, 5vw, 2.5rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      text-shadow: 0 0 30px var(--color-primary-glow);
+      animation: titleGlow 3s ease-in-out infinite;
+      position: relative;
+    }
+
+    @keyframes titleGlow {
+
+      0%,
+      100% {
+        filter: drop-shadow(0 0 10px var(--color-primary-glow));
+      }
+
+      50% {
+        filter: drop-shadow(0 0 20px var(--color-primary-glow));
+      }
+    }
+
+    .sphinx-container {
+      position: relative;
+      height: 400px;
+      margin: 30px auto;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .sphinx-cat {
+      position: relative;
+      width: 300px;
+      height: 300px;
+      margin-right: 50px;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .sphinx-cat:hover {
+      transform: scale(1.05);
+    }
+
+    .sphinx-cat:active {
+      transform: scale(0.95);
+    }
+
+    .sphinx-cat.clicked {
+      animation: catClickAnimation 0.6s ease;
+    }
+
+    @keyframes catClickAnimation {
+      0% {
+        transform: scale(1) rotate(0deg);
+      }
+
+      25% {
+        transform: scale(1.15) rotate(-5deg);
+      }
+
+      50% {
+        transform: scale(1.1) rotate(5deg);
+      }
+
+      75% {
+        transform: scale(1.05) rotate(-2deg);
+      }
+
+      100% {
+        transform: scale(1) rotate(0deg);
+      }
+    }
+
+    .cat-body {
+      position: absolute;
+      width: 200px;
+      height: 120px;
+      background: var(--color-cat);
+      border-radius: 50% 50% 40% 40%;
+      top: 150px;
+      left: 50px;
+      box-shadow: inset 0 -10px 0 rgba(0, 0, 0, 0.1);
+    }
+
+    .cat-head {
+      position: absolute;
+      width: 160px;
+      height: 140px;
+      background: var(--color-cat);
+      border-radius: 45% 45% 40% 40%;
+      top: 80px;
+      left: 70px;
+      box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.1);
+    }
+
+    .ear-left,
+    .ear-right {
+      position: absolute;
+      width: 0;
+      height: 0;
+      border-left: 20px solid transparent;
+      border-right: 20px solid transparent;
+      border-bottom: 40px solid var(--color-cat-skin);
+      top: 50px;
+    }
+
+    .ear-left {
+      left: 65px;
+      transform: rotate(-15deg);
+    }
+
+    .ear-right {
+      left: 115px;
+      transform: rotate(15deg);
+    }
+
+    .eye-left,
+    .eye-right {
+      position: absolute;
+      width: 25px;
+      height: 35px;
+      background: #fff;
+      border-radius: 50%;
+      top: 100px;
+      overflow: hidden;
+    }
+
+    .eye-left {
+      left: 85px;
+    }
+
+    .eye-right {
+      left: 135px;
+    }
+
+    .pupil {
+      position: absolute;
+      width: 15px;
+      height: 15px;
+      background: var(--color-bg-darker);
+      border-radius: 50%;
+      top: 10px;
+      left: 5px;
+      animation: blink 3s infinite;
+      transition: background-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .nose {
+      position: absolute;
+      width: 20px;
+      height: 10px;
+      background: var(--color-cat-skin);
+      border-radius: 40% 40% 50% 50%;
+      top: 140px;
+      left: 120px;
+    }
+
+    .mouth {
+      position: absolute;
+      width: 30px;
+      height: 10px;
+      border-bottom: 3px solid var(--color-cat-skin);
+      border-radius: 0 0 50% 50%;
+      top: 155px;
+      left: 115px;
+    }
+
+    .tail {
+      position: absolute;
+      width: 150px;
+      height: 15px;
+      background: var(--color-cat);
+      border-radius: 10px;
+      top: 180px;
+      left: 190px;
+      transform-origin: left center;
+      animation: tailMove 3s infinite alternate;
+    }
+
+    .speech-bubble {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.98);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: var(--color-text-dark);
+      padding: 24px;
+      border-radius: var(--border-radius-lg);
+      width: 350px;
+      left: 3px;
+      top: 145px;
+      box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0, 0, 0, 0.05);
+      text-align: center;
+      font-size: 1.2rem;
+      font-weight: 600;
+      z-index: 10;
+      animation: bubbleFloat 3s ease-in-out infinite;
+      transition: box-shadow var(--transition);
+    }
+
+    @keyframes bubbleFloat {
+
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-5px);
+      }
+    }
+
+    .speech-bubble:hover {
+      animation-play-state: paused;
+      transform: translateY(-7px) scale(1.02);
+      box-shadow: var(--shadow-xl), 0 0 0 1px rgba(0, 0, 0, 0.05);
+    }
+
+    .speech-bubble:after {
+      content: '';
+      position: absolute;
+      width: 0;
+      height: 0;
+      border-top: 15px solid transparent;
+      border-bottom: 15px solid transparent;
+      border-left: 20px solid rgba(255, 255, 255, 0.95);
+      right: -15px;
+      top: 40%;
+      left: auto;
+    }
+
+    .question {
+      margin: 30px 0;
+      font-size: 1.5rem;
+      color: var(--color-primary);
+      min-height: 70px;
+    }
+
+    .buttons {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 16px 32px;
+      font-size: 1.1rem;
+      border: none;
+      border-radius: var(--border-radius-full);
+      cursor: pointer;
+      transition: var(--transition);
+      font-weight: 600;
+      min-width: 200px;
+      font-family: inherit;
+      position: relative;
+      overflow: hidden;
+      text-transform: none;
+      letter-spacing: 0.01em;
+    }
+
+    button::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      transform: translate(-50%, -50%);
+      transition: width 0.6s, height 0.6s;
+    }
+
+    button:hover::before {
+      width: 300px;
+      height: 300px;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    button:focus-visible {
+      outline: 3px solid var(--color-primary);
+      outline-offset: 3px;
+      box-shadow: 0 0 0 3px var(--color-primary-glow);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    .yes-btn {
+      background: linear-gradient(135deg, var(--color-success) 0%, var(--color-success-dark) 100%);
+      color: white;
+      box-shadow: var(--shadow-md), var(--shadow-glow) var(--color-success-glow);
+    }
+
+    .yes-btn:hover:not(:disabled) {
+      transform: translateY(-4px) scale(1.02);
+      box-shadow: var(--shadow-lg), var(--shadow-glow) var(--color-success-glow);
+      background: linear-gradient(135deg, #5CBF60 0%, var(--color-success-dark) 100%);
+    }
+
+    .no-btn {
+      background: linear-gradient(135deg, var(--color-danger) 0%, var(--color-danger-dark) 100%);
+      color: white;
+      box-shadow: var(--shadow-md), var(--shadow-glow) var(--color-danger-glow);
+    }
+
+    .no-btn:hover:not(:disabled) {
+      transform: translateY(-4px) scale(1.02);
+      box-shadow: var(--shadow-lg), var(--shadow-glow) var(--color-danger-glow);
+      background: linear-gradient(135deg, #FF5252 0%, var(--color-danger-dark) 100%);
+    }
+
+    .problem-buttons {
+      display: none;
+      flex-direction: column;
+      gap: 15px;
+      margin-top: 30px;
+      animation: fadeIn 1s forwards;
+    }
+
+    .problem-btn {
+      background: linear-gradient(135deg, var(--color-info) 0%, var(--color-info-dark) 100%);
+      color: white;
+      text-align: left;
+      padding: 20px 28px;
+      border-radius: var(--border-radius-md);
+      font-size: 1rem;
+      min-width: 100%;
+      box-shadow: var(--shadow-md), var(--shadow-glow) var(--color-info-glow);
+      transition: var(--transition);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .problem-btn::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transition: left 0.5s;
+    }
+
+    .problem-btn:hover:not(:disabled) {
+      transform: translateY(-4px) scale(1.01);
+      box-shadow: var(--shadow-lg), var(--shadow-glow) var(--color-info-glow);
+      background: linear-gradient(135deg, #4AABF5 0%, var(--color-info-dark) 100%);
+    }
+
+    .problem-btn:hover:not(:disabled)::after {
+      left: 100%;
+    }
+
+    .solution {
+      display: none;
+      margin-top: 30px;
+      text-align: left;
+      animation: slideInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-radius: var(--border-radius-lg);
+      padding: 32px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    @keyframes slideInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .solution h3 {
+      background: linear-gradient(135deg, var(--color-success) 0%, #66BB6A 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 24px;
+      font-size: clamp(1.5rem, 4vw, 1.8rem);
+      text-align: center;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .solution h4 {
+      color: var(--color-primary);
+      margin: 24px 0 12px 0;
+      font-size: clamp(1.1rem, 3vw, 1.3rem);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .solution h4::before {
+      content: '▶';
+      font-size: 0.8em;
+      color: var(--color-primary);
+    }
+
+    .solution p {
+      font-size: 1.1rem;
+      line-height: 1.6;
+      margin-bottom: 15px;
+    }
+
+    .solution ul {
+      margin-left: 20px;
+      margin-bottom: 20px;
+    }
+
+    .solution li {
+      font-size: 1.1rem;
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+
+    .solution .config-option {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+      padding: 14px 18px;
+      border-radius: var(--border-radius-sm);
+      margin: 12px 0;
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Courier New', monospace;
+      font-size: 1rem;
+      color: #ffcc00;
+      border-left: 3px solid var(--color-primary);
+      box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      transition: var(--transition-fast);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .solution .config-option::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 154, 60, 0.1), transparent);
+      transition: left 0.5s;
+    }
+
+    .solution .config-option:hover {
+      transform: translateX(4px);
+      border-left-color: #ffb347;
+      box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .solution .config-option:hover::before {
+      left: 100%;
+    }
+
+    .solution .proxy-list,
+    .solution .jackett-list,
+    .solution .nmprs-list {
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      padding: 20px;
+      border-radius: var(--border-radius-md);
+      margin-top: 20px;
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Courier New', monospace;
+      font-size: 0.95rem;
+      line-height: 1.8;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+      max-height: 400px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-primary) rgba(255, 255, 255, 0.1);
+    }
+
+    .solution .proxy-list::-webkit-scrollbar,
+    .solution .jackett-list::-webkit-scrollbar,
+    .solution .nmprs-list::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .solution .proxy-list::-webkit-scrollbar-track,
+    .solution .jackett-list::-webkit-scrollbar-track,
+    .solution .nmprs-list::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+    }
+
+    .solution .proxy-list::-webkit-scrollbar-thumb,
+    .solution .jackett-list::-webkit-scrollbar-thumb,
+    .solution .nmprs-list::-webkit-scrollbar-thumb {
+      background: var(--color-primary);
+      border-radius: 4px;
+    }
+
+    .solution .proxy-item,
+    .solution .jackett-item,
+    .solution .nmprs-item {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      white-space: pre-wrap;
+      word-break: break-word;
+      transition: var(--transition-fast);
+      border-radius: var(--border-radius-sm);
+      margin: 2px 0;
+    }
+
+    .solution .proxy-item:hover,
+    .solution .jackett-item:hover,
+    .solution .nmprs-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+      transform: translateX(4px);
+      border-left: 2px solid var(--color-primary);
+      padding-left: 14px;
+    }
+
+    .solution .proxy-item:last-child,
+    .solution .jackett-item:last-child,
+    .solution .nmprs-item:last-child {
+      border-bottom: none;
+    }
+
+    .loading {
+      color: var(--color-primary);
+      font-style: italic;
+      text-align: center;
+      padding: 20px;
+      position: relative;
+      display: inline-block;
+      width: 100%;
+    }
+
+    .loading::after {
+      content: '...';
+      animation: loadingDots 1.5s steps(4, end) infinite;
+      display: inline-block;
+      width: 20px;
+      text-align: left;
+    }
+
+    @keyframes loadingDots {
+
+      0%,
+      20% {
+        content: '.';
+      }
+
+      40% {
+        content: '..';
+      }
+
+      60%,
+      100% {
+        content: '...';
+      }
+    }
+
+    .solution-btn {
+      display: block;
+      margin: 30px auto 15px;
+      background: linear-gradient(135deg, var(--color-purple) 0%, var(--color-purple-dark) 100%);
+      color: white;
+      padding: 14px 36px;
+      border-radius: var(--border-radius-full);
+      font-size: 1.1rem;
+      cursor: pointer;
+      transition: var(--transition);
+      border: none;
+      box-shadow: var(--shadow-md), var(--shadow-glow) var(--color-purple-glow);
+    }
+
+    .solution-btn:hover:not(:disabled) {
+      transform: translateY(-3px) scale(1.03);
+      box-shadow: var(--shadow-lg), var(--shadow-glow) var(--color-purple-glow);
+      background: linear-gradient(135deg, #AB6BCF 0%, var(--color-purple-dark) 100%);
+    }
+
+    .feedback-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 30px;
+      flex-wrap: wrap;
+    }
+
+    .feedback-btn {
+      padding: 15px 30px;
+      font-size: 1.1rem;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-weight: bold;
+      min-width: 180px;
+    }
+
+    .solved-btn {
+      background: linear-gradient(135deg, var(--color-success) 0%, var(--color-success-dark) 100%);
+      color: white;
+      box-shadow: var(--shadow-md), var(--shadow-glow) var(--color-success-glow);
+    }
+
+    .solved-btn:hover:not(:disabled) {
+      transform: translateY(-4px) scale(1.02);
+      box-shadow: var(--shadow-lg), var(--shadow-glow) var(--color-success-glow);
+      background: linear-gradient(135deg, #5CBF60 0%, var(--color-success-dark) 100%);
+    }
+
+    .notsolved-btn {
+      background: linear-gradient(135deg, var(--color-warning) 0%, var(--color-warning-dark) 100%);
+      color: white;
+      box-shadow: var(--shadow-md), var(--shadow-glow) var(--color-warning-glow);
+    }
+
+    .notsolved-btn:hover:not(:disabled) {
+      transform: translateY(-4px) scale(1.02);
+      box-shadow: var(--shadow-lg), var(--shadow-glow) var(--color-warning-glow);
+      background: linear-gradient(135deg, #FFB74D 0%, var(--color-warning-dark) 100%);
+    }
+
+    .feedback-message {
+      display: none;
+      margin-top: 30px;
+      padding: 24px;
+      border-radius: var(--border-radius-lg);
+      text-align: center;
+      font-size: 1.2rem;
+      animation: slideInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .success-message {
+      background: linear-gradient(135deg, rgba(76, 175, 80, 0.2) 0%, rgba(76, 175, 80, 0.1) 100%);
+      border: 2px solid var(--color-success);
+      color: var(--color-success);
+      box-shadow: var(--shadow-md), 0 0 20px rgba(76, 175, 80, 0.3);
+    }
+
+    .help-message {
+      background: linear-gradient(135deg, rgba(255, 152, 0, 0.2) 0%, rgba(255, 152, 0, 0.1) 100%);
+      border: 2px solid var(--color-warning);
+      color: var(--color-warning);
+      box-shadow: var(--shadow-md), 0 0 20px rgba(255, 152, 0, 0.3);
+    }
+
+    .chat-link {
+      color: var(--color-info);
+      text-decoration: underline;
+      font-weight: bold;
+      cursor: pointer;
+      transition: color 0.3s ease;
+    }
+
+    .chat-link:hover {
+      color: var(--color-info-dark);
+    }
+
+    .warning {
+      color: var(--color-primary);
+      font-weight: bold;
+      margin-top: 20px;
+      font-size: 1.1rem;
+      animation: pulse 2s infinite;
+      opacity: 1;
+    }
+
+    .exit-message {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at center, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.98) 100%);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      animation: fadeInScale 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    @keyframes fadeInScale {
+      from {
+        opacity: 0;
+        transform: scale(0.9);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .exit-message h2 {
+      color: var(--color-danger);
+      font-size: 3rem;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .exit-message p {
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+      text-align: center;
+      max-width: 80%;
+    }
+
+    .counter {
+      font-size: clamp(3rem, 8vw, 5rem);
+      background: linear-gradient(135deg, var(--color-primary) 0%, #ffb347 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 20px 0;
+      font-weight: 700;
+      animation: counterPulse 1s ease-in-out infinite;
+      text-shadow: 0 0 30px var(--color-primary-glow);
+      filter: drop-shadow(0 0 20px var(--color-primary-glow));
+    }
+
+    @keyframes counterPulse {
+
+      0%,
+      100% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.1);
+      }
+    }
+
+    @keyframes blink {
+
+      0%,
+      45%,
+      55%,
+      100% {
+        height: 15px;
+        top: 10px;
+      }
+
+      50% {
+        height: 3px;
+        top: 20px;
+      }
+    }
+
+    @keyframes tailMove {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(20deg);
+      }
+    }
+
+    @keyframes pulse {
+      0% {
+        opacity: 0.7;
+      }
+
+      50% {
+        opacity: 1;
+      }
+
+      100% {
+        opacity: 0.7;
+      }
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    /* Улучшенные анимации */
+    @keyframes shimmer {
+      0% {
+        background-position: -1000px 0;
+      }
+
+      100% {
+        background-position: 1000px 0;
+      }
+    }
+
+    /* Плавные переходы для интерактивных элементов */
+    button,
+    .problem-btn,
+    .solution-btn,
+    .feedback-btn,
+    .solution .config-option,
+    .solution .proxy-item,
+    .solution .jackett-item,
+    .solution .nmprs-item,
+    .speech-bubble {
+      transition-property: transform, opacity, box-shadow, background-color, border-color;
+      transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Планшеты и маленькие десктопы */
+    @media (max-width: 1024px) {
+      .container {
+        padding: 35px 25px;
+      }
+
+      .sphinx-container {
+        height: auto;
+        min-height: 350px;
+      }
+
+      .sphinx-cat {
+        transform: scale(0.85);
+      }
+
+      .speech-bubble {
+        width: 320px;
+        font-size: 1.1rem;
+        padding: 20px;
+      }
+    }
+
+    /* Планшеты в портретной ориентации */
+    @media (max-width: 900px) {
+      body {
+        padding: 15px;
+      }
+
+      .container {
+        padding: 30px 20px;
+        border-radius: var(--border-radius-lg);
+      }
+
+      .sphinx-container {
+        height: auto;
+        min-height: 380px;
+        flex-direction: column;
+        margin: 20px auto;
+      }
+
+      .sphinx-cat {
+        margin-right: 0;
+        margin-bottom: 20px;
+        transform: scale(0.8);
+        width: 250px;
+        height: 250px;
+      }
+
+      .speech-bubble {
+        position: relative;
+        left: 0;
+        top: 0;
+        margin-top: 20px;
+        width: 100%;
+        max-width: 100%;
+        animation: none;
+        font-size: 1.05rem;
+        padding: 20px;
+      }
+
+      .speech-bubble:hover {
+        animation-play-state: paused;
+        transform: none;
+      }
+
+      .speech-bubble:after {
+        border-top: 15px solid rgba(255, 255, 255, 0.98);
+        border-left: 15px solid transparent;
+        border-right: 15px solid transparent;
+        border-bottom: none;
+        left: 50%;
+        top: -15px;
+        transform: translateX(-50%);
+        right: auto;
+      }
+
+      h1 {
+        font-size: clamp(1.8rem, 6vw, 2.2rem);
+        margin-bottom: 24px;
+      }
+
+      button {
+        min-width: 100%;
+        padding: 16px 24px;
+        font-size: 1.05rem;
+        min-height: 48px;
+        /* Минимальный размер для touch */
+      }
+
+      .buttons {
+        flex-direction: column;
+        gap: 15px;
+      }
+
+      .problem-btn {
+        padding: 18px 20px;
+        font-size: 0.95rem;
+        min-height: 56px;
+        /* Увеличенный размер для touch */
+        line-height: 1.4;
+      }
+
+      .feedback-buttons {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+      }
+
+      .feedback-btn {
+        min-width: 100%;
+        min-height: 48px;
+      }
+
+      .solution {
+        padding: 24px 20px;
+      }
+
+      .solution-btn {
+        min-height: 48px;
+        width: 100%;
+        max-width: 100%;
+      }
+    }
+
+    /* Мобильные устройства */
+    @media (max-width: 768px) {
+      body {
+        padding: 12px;
+        justify-content: flex-start;
+        min-height: 100vh;
+      }
+
+      body::before {
+        display: none;
+        /* Отключаем декоративный фон на мобильных для производительности */
+      }
+
+      .container {
+        padding: 20px 16px;
+        border-radius: var(--border-radius-md);
+        margin-top: 0;
+        margin-bottom: 20px;
+      }
+
+      .sphinx-container {
+        min-height: 320px;
+        margin: 15px auto;
+      }
+
+      .sphinx-cat {
+        transform: scale(0.7);
+        width: 200px;
+        height: 200px;
+        margin-bottom: 15px;
+      }
+
+      .sphinx-cat.clicked {
+        animation: catClickAnimationMobile 0.6s ease;
+      }
+
+      @keyframes catClickAnimationMobile {
+        0% {
+          transform: scale(0.7) rotate(0deg);
+        }
+
+        25% {
+          transform: scale(0.8) rotate(-5deg);
+        }
+
+        50% {
+          transform: scale(0.75) rotate(5deg);
+        }
+
+        75% {
+          transform: scale(0.72) rotate(-2deg);
+        }
+
+        100% {
+          transform: scale(0.7) rotate(0deg);
+        }
+      }
+
+      /* Уменьшаем размеры частей кота на мобильных */
+      .cat-body {
+        width: 160px;
+        height: 96px;
+        top: 120px;
+        left: 40px;
+      }
+
+      .cat-head {
+        width: 128px;
+        height: 112px;
+        top: 64px;
+        left: 56px;
+      }
+
+      .ear-left,
+      .ear-right {
+        border-left: 16px solid transparent;
+        border-right: 16px solid transparent;
+        border-bottom: 32px solid var(--color-cat-skin);
+        top: 40px;
+      }
+
+      .ear-left {
+        left: 52px;
+      }
+
+      .ear-right {
+        left: 92px;
+      }
+
+      .eye-left,
+      .eye-right {
+        width: 20px;
+        height: 28px;
+        top: 80px;
+      }
+
+      .eye-left {
+        left: 68px;
+      }
+
+      .eye-right {
+        left: 108px;
+      }
+
+      .pupil {
+        width: 12px;
+        height: 12px;
+        top: 8px;
+        left: 4px;
+      }
+
+      .nose {
+        width: 16px;
+        height: 8px;
+        top: 112px;
+        left: 96px;
+      }
+
+      .mouth {
+        width: 24px;
+        height: 8px;
+        top: 124px;
+        left: 92px;
+      }
+
+      .tail {
+        width: 120px;
+        height: 12px;
+        top: 144px;
+        left: 152px;
+      }
+
+      h1 {
+        font-size: clamp(1.6rem, 7vw, 2rem);
+        margin-bottom: 20px;
+        line-height: 1.2;
+      }
+
+      .speech-bubble {
+        font-size: 0.95rem;
+        padding: 16px;
+        border-radius: var(--border-radius-md);
+        margin-top: 15px;
+      }
+
+      .question {
+        font-size: clamp(1.1rem, 4.5vw, 1.3rem);
+        margin: 20px 0;
+        min-height: 50px;
+        line-height: 1.4;
+      }
+
+      button {
+        font-size: 1rem;
+        padding: 14px 20px;
+        min-height: 48px;
+        border-radius: var(--border-radius-md);
+      }
+
+      .problem-btn {
+        padding: 16px 16px;
+        font-size: 0.9rem;
+        min-height: 60px;
+        line-height: 1.4;
+        text-align: left;
+      }
+
+      .solution {
+        padding: 20px 16px;
+        border-radius: var(--border-radius-md);
+        margin-top: 20px;
+      }
+
+      .solution h3 {
+        font-size: clamp(1.3rem, 5vw, 1.6rem);
+        margin-bottom: 20px;
+        line-height: 1.3;
+      }
+
+      .solution h4 {
+        font-size: clamp(1rem, 4vw, 1.2rem);
+        margin: 20px 0 10px 0;
+        line-height: 1.4;
+      }
+
+      .solution p {
+        font-size: 0.95rem;
+        line-height: 1.6;
+        margin-bottom: 12px;
+      }
+
+      .solution ul {
+        margin-left: 16px;
+        margin-bottom: 16px;
+      }
+
+      .solution li {
+        font-size: 0.95rem;
+        line-height: 1.6;
+        margin-bottom: 8px;
+      }
+
+      .solution .config-option {
+        font-size: 0.85rem;
+        padding: 12px 14px;
+        margin: 10px 0;
+        line-height: 1.5;
+        word-break: break-all;
+      }
+
+      .solution .proxy-list,
+      .solution .jackett-list,
+      .solution .nmprs-list {
+        padding: 14px;
+        font-size: 0.85rem;
+        max-height: 250px;
+        line-height: 1.6;
+      }
+
+      .solution .proxy-item,
+      .solution .jackett-item,
+      .solution .nmprs-item {
+        padding: 10px 10px;
+        font-size: 0.85rem;
+        word-break: break-all;
+      }
+
+      .solution-btn {
+        padding: 14px 24px;
+        font-size: 1rem;
+        margin: 20px auto 12px;
+        width: 100%;
+        max-width: 100%;
+        min-height: 48px;
+      }
+
+      .feedback-buttons {
+        gap: 12px;
+        margin-top: 24px;
+      }
+
+      .feedback-btn {
+        min-height: 48px;
+        padding: 14px 24px;
+        font-size: 1rem;
+      }
+
+      .feedback-message {
+        padding: 18px;
+        font-size: 1rem;
+        line-height: 1.5;
+      }
+
+      .warning {
+        font-size: 1rem;
+        margin-top: 15px;
+        padding: 0 10px;
+        text-align: center;
+      }
+
+      .exit-message {
+        padding: 20px;
+      }
+
+      .exit-message h2 {
+        font-size: clamp(1.8rem, 8vw, 2.5rem);
+        margin-bottom: 20px;
+        line-height: 1.2;
+      }
+
+      .exit-message p {
+        font-size: clamp(1rem, 4vw, 1.3rem);
+        margin-bottom: 15px;
+        line-height: 1.4;
+      }
+
+      .counter {
+        font-size: clamp(2.5rem, 15vw, 4rem);
+        margin: 15px 0;
+      }
+    }
+
+    /* Очень маленькие мобильные устройства */
+    @media (max-width: 480px) {
+      body {
+        padding: 8px;
+      }
+
+      .container {
+        padding: 18px 12px;
+        border-radius: var(--border-radius-sm);
+      }
+
+      .sphinx-container {
+        min-height: 280px;
+        margin: 10px auto;
+      }
+
+      .sphinx-cat {
+        transform: scale(0.6);
+        width: 180px;
+        height: 180px;
+        margin-bottom: 10px;
+      }
+
+      .sphinx-cat.clicked {
+        animation: catClickAnimationSmallMobile 0.6s ease;
+      }
+
+      @keyframes catClickAnimationSmallMobile {
+        0% {
+          transform: scale(0.6) rotate(0deg);
+        }
+
+        25% {
+          transform: scale(0.7) rotate(-5deg);
+        }
+
+        50% {
+          transform: scale(0.65) rotate(5deg);
+        }
+
+        75% {
+          transform: scale(0.62) rotate(-2deg);
+        }
+
+        100% {
+          transform: scale(0.6) rotate(0deg);
+        }
+      }
+
+      h1 {
+        font-size: clamp(1.4rem, 8vw, 1.8rem);
+        margin-bottom: 16px;
+      }
+
+      .speech-bubble {
+        font-size: 0.9rem;
+        padding: 14px;
+        margin-top: 10px;
+      }
+
+      .question {
+        font-size: clamp(1rem, 5vw, 1.2rem);
+        margin: 16px 0;
+        min-height: 45px;
+      }
+
+      button {
+        font-size: 0.95rem;
+        padding: 12px 18px;
+        min-height: 44px;
+      }
+
+      .problem-btn {
+        padding: 14px 14px;
+        font-size: 0.85rem;
+        min-height: 56px;
+      }
+
+      .solution {
+        padding: 16px 12px;
+        margin-top: 16px;
+      }
+
+      .solution h3 {
+        font-size: clamp(1.2rem, 6vw, 1.5rem);
+        margin-bottom: 16px;
+      }
+
+      .solution h4 {
+        font-size: clamp(0.95rem, 4.5vw, 1.1rem);
+        margin: 16px 0 8px 0;
+      }
+
+      .solution p {
+        font-size: 0.9rem;
+        margin-bottom: 10px;
+      }
+
+      .solution .config-option {
+        font-size: 0.8rem;
+        padding: 10px 12px;
+        margin: 8px 0;
+      }
+
+      .solution .proxy-list,
+      .solution .jackett-list,
+      .solution .nmprs-list {
+        padding: 12px;
+        font-size: 0.8rem;
+        max-height: 200px;
+      }
+
+      .solution-btn {
+        padding: 12px 20px;
+        font-size: 0.95rem;
+        margin: 16px auto 10px;
+      }
+
+      .feedback-btn {
+        font-size: 0.95rem;
+        padding: 12px 20px;
+      }
+
+      .feedback-message {
+        padding: 16px;
+        font-size: 0.95rem;
+      }
+
+      .exit-message h2 {
+        font-size: clamp(1.6rem, 10vw, 2.2rem);
+      }
+
+      .exit-message p {
+        font-size: clamp(0.95rem, 4.5vw, 1.2rem);
+      }
+
+      .counter {
+        font-size: clamp(2rem, 18vw, 3.5rem);
+      }
+    }
+
+    /* Ландшафтная ориентация на мобильных */
+    @media (max-width: 900px) and (orientation: landscape) {
+      .sphinx-container {
+        flex-direction: row;
+        min-height: 250px;
+      }
+
+      .sphinx-cat {
+        transform: scale(0.65);
+        margin-right: 20px;
+        margin-bottom: 0;
+      }
+
+      .speech-bubble {
+        position: absolute;
+        width: 280px;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        margin-top: 0;
+      }
+
+      .speech-bubble:after {
+        border-top: 15px solid transparent;
+        border-bottom: 15px solid transparent;
+        border-left: 20px solid rgba(255, 255, 255, 0.98);
+        border-right: none;
+        left: auto;
+        right: -15px;
+        top: 40%;
+        transform: translateY(-50%);
+      }
+    }
+
+    /* Поддержка темной темы системы */
+    @media (prefers-color-scheme: dark) {
+      /* Стили уже оптимизированы для темной темы */
+    }
+
+    /* Улучшенная поддержка touch устройств */
+    @media (hover: none) and (pointer: coarse) {
+
+      /* Отключаем hover эффекты на touch устройствах */
+      button:hover,
+      .problem-btn:hover,
+      .solution-btn:hover,
+      .feedback-btn:hover,
+      .solution .config-option:hover,
+      .solution .proxy-item:hover,
+      .solution .jackett-item:hover,
+      .solution .nmprs-item:hover {
+        transform: none;
+        box-shadow: var(--shadow-md);
+      }
+
+      /* Улучшенные active состояния для touch */
+      button:active,
+      .problem-btn:active,
+      .solution-btn:active,
+      .feedback-btn:active {
+        transform: scale(0.96);
+        transition: transform 0.1s ease;
+      }
+
+      /* Увеличиваем размеры touch targets */
+      button,
+      .problem-btn,
+      .solution-btn,
+      .feedback-btn {
+        min-height: 44px;
+        -webkit-tap-highlight-color: rgba(255, 255, 255, 0.2);
+      }
+
+      /* Улучшаем прокрутку на touch устройствах */
+      .solution .proxy-list,
+      .solution .jackett-list,
+      .solution .nmprs-list {
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+
+    /* Оптимизация для очень маленьких экранов */
+    @media (max-width: 360px) {
+      .container {
+        padding: 16px 10px;
+      }
+
+      h1 {
+        font-size: clamp(1.3rem, 9vw, 1.6rem);
+      }
+
+      .speech-bubble {
+        font-size: 0.85rem;
+        padding: 12px;
+      }
+
+      button {
+        font-size: 0.9rem;
+        padding: 10px 16px;
+      }
+
+      .problem-btn {
+        font-size: 0.8rem;
+        padding: 12px 12px;
+      }
+    }
+
+    /* Улучшенная производительность анимаций */
+    @media (prefers-reduced-motion: reduce) {
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
 </head>
+
 <body>
-    <div class="container">
-        <h1>Кот-сфинкс NUM: помощник по проблемам</h1>
-        
-        <div class="sphinx-container">
-            <div class="speech-bubble" id="catSpeech">
-                Здравствуйте, Вы наблюдаете проблемы с NUM?
-            </div>
-            
-            <div class="sphinx-cat">
-                <div class="cat-body"></div>
-                <div class="cat-head"></div>
-                <div class="ear-left"></div>
-                <div class="ear-right"></div>
-                <div class="eye-left">
-                    <div class="pupil"></div>
-                </div>
-                <div class="eye-right">
-                    <div class="pupil"></div>
-                </div>
-                <div class="nose"></div>
-                <div class="mouth"></div>
-                <div class="tail"></div>
-            </div>
+  <div class="container" role="main">
+    <h1>Кот-сфинкс NUM: помощник по проблемам</h1>
+
+    <div class="sphinx-container" aria-label="Интерактивный кот-сфинкс">
+      <div class="speech-bubble" id="catSpeech" role="status" aria-live="polite" aria-atomic="true">
+        Здравствуйте, Вы наблюдаете проблемы с NUM?
+      </div>
+
+      <div class="sphinx-cat">
+        <div class="cat-body"></div>
+        <div class="cat-head"></div>
+        <div class="ear-left"></div>
+        <div class="ear-right"></div>
+        <div class="eye-left">
+          <div class="pupil"></div>
         </div>
-        
-        <div class="question" id="question">
-            Пожалуйста, выберите ответ на вопрос кота-сфинкса
+        <div class="eye-right">
+          <div class="pupil"></div>
         </div>
-        
-        <div class="buttons" id="initialButtons">
-            <button class="yes-btn" id="yesBtn">Да, наблюдаю проблемы</button>
-            <button class="no-btn" id="noBtn">Нет, проблем не наблюдается</button>
-        </div>
-        
-        <div class="problem-buttons" id="problemButtons">
-            <button class="problem-btn" id="problem1Btn">У меня не отображаются постеры в приложении или каналах android</button>
-            <button class="problem-btn" id="problem2Btn">У меня не работает или долго осуществляется поиск торрентов</button>
-            <button class="problem-btn" id="problem3Btn">У меня не отображаются названия фильмов, сериалов и т.д или не актуальная дата обновления фильмов, сериалов и т.д.</button>
-        </div>
-        
-        <!-- Решение для проблемы с постерами -->
-        <div class="solution" id="solutionPosters">
-            <h3>Решение проблемы с отображением постеров</h3>
-            
-            <h4>Способ 1: Изменение настроек</h4>
-            <p>Перейдите в <strong>Настройки → Информация о видео</strong> и установите одну из следующих комбинаций:</p>
-            
-            <div class="config-option">torrs, torrs, num dns</div>
-            <div class="config-option">tmdb, tmdb, quad9 doh</div>
-            <div class="config-option">tmdb, Johnny, num dns</div>
-            <div class="config-option">tmdb, Johnny, quad9 doh</div>
-            <div class="config-option">tmdb, Alt.Source, num dns</div>
-            <div class="config-option">tmdb, Alt.Source, quad9 doh</div>
-            
-            <h4>Способ 2: Использование прокси-серверов</h4>
-            <p>Для отображения постеров можно использовать прокси:</p>
-            <ul>
-                <li><strong>Сервер Api Tmdb</strong> - Tmdb</li>
-                <li><strong>Сервер изображений</strong> - Tmdb</li>
-                <li><strong>Доступ к Tmdb</strong> - использовать прокси-сервер</li>
-            </ul>
-            
-            <h4>Список доступных прокси-серверов:</h4>
-            <div class="proxy-list" id="proxyListPosters">
-                <div class="loading">Загрузка списка прокси-серверов...</div>
-            </div>
-            
-            <p><strong>Примечание:</strong> Список прокси-серверов может изменяться. Для обновления страницы нажмите F5.</p>
-            
-            <button class="solution-btn" id="backFromPostersBtn">Вернуться к выбору проблемы</button>
-            
-            <div class="feedback-buttons" id="feedbackPosters">
-                <button class="feedback-btn solved-btn" id="solvedPostersBtn">Проблема решена</button>
-                <button class="feedback-btn notsolved-btn" id="notsolvedPostersBtn">Проблема осталась</button>
-            </div>
-            
-            <div class="feedback-message success-message" id="successMessagePosters">
-                <p>🎉 Отлично! Кот-сфинкс рад, что смог помочь! Желаем приятного времяпрепровождения с NUM! 🐱</p>
-            </div>
-            
-            <div class="feedback-message help-message" id="helpMessagePosters">
-                <p>😿 Жаль, что проблема осталась. Кот-сфинкс рекомендует переместиться в чат приложения NUM и задать свой уточняющий вопрос уже непосредственно там. Наши специалисты помогут вам разобраться с проблемой! 💬</p>
-            </div>
-        </div>
-        
-        <!-- Решение для проблемы с поиском торрентов -->
-        <div class="solution" id="solutionTorrents">
-            <h3>Решение проблемы с поиском торрентов</h3>
-            
-            <h4>Настройка торрент-трекеров:</h4>
-            <p>1. Зайдите в <strong>Настройки → Настройки торрентов → Настройки торрент-трекеров</strong></p>
-            <p>2. Отключите все галочки</p>
-            <p>3. Включите только <strong>torrs</strong> и <strong>jackett</strong></p>
-            <p>4. Адреса torrs и jackett оставьте пустыми</p>
-            
-            <h4>Если поиск не работает:</h4>
-            <p>1. Отключите torrs</p>
-            <p>2. Воспользуйтесь любым доступным jackett из списка ниже</p>
-            <p>3. Проверить доступен ли jackett можно перейдя по его ссылке</p>
-            
-            <h4>Список доступных Jackett серверов:</h4>
-            <div class="jackett-list" id="jackettList">
-                <div class="loading">Загрузка списка Jackett серверов...</div>
-            </div>
-            
-            <p><strong>Примечание:</strong> Список Jackett серверов может изменяться. Для обновления страницы нажмите F5.</p>
-            
-            <button class="solution-btn" id="backFromTorrentsBtn">Вернуться к выбору проблемы</button>
-            
-            <div class="feedback-buttons" id="feedbackTorrents">
-                <button class="feedback-btn solved-btn" id="solvedTorrentsBtn">Проблема решена</button>
-                <button class="feedback-btn notsolved-btn" id="notsolvedTorrentsBtn">Проблема осталась</button>
-            </div>
-            
-            <div class="feedback-message success-message" id="successMessageTorrents">
-                <p>🎉 Отлично! Кот-сфинкс рад, что смог помочь! Желаем приятного времяпрепровождения с NUM! 🐱</p>
-            </div>
-            
-            <div class="feedback-message help-message" id="helpMessageTorrents">
-                <p>😿 Жаль, что проблема осталась. Кот-сфинкс рекомендует переместиться в чат приложения NUM и задать свой уточняющий вопрос уже непосредственно там. Наши специалисты помогут вам разобраться с проблемой! 💬</p>
-            </div>
-        </div>
-        
-        <!-- Решение для проблемы с названиями фильмов -->
-        <div class="solution" id="solutionTitles">
-            <h3>Решение проблемы с отображением названий фильмов и сериалов</h3>
-            
-            <h4>Настройка источника данных:</h4>
-            <p>1. Зайдите в <strong>Настройки → Управление данными → Источник данных</strong></p>
-            <p>2. Установите источник данных: <strong>"Yourok"</strong></p>
-            <p>3. Поле <strong>"Ссылка на свой источник данных"</strong> оставьте пустым</p>
-            <p>4. Или укажите любой доступный вам источник данных из списка ниже</p>
-            
-            <h4>Список доступных источников данных:</h4>
-            <div class="nmprs-list" id="nmprsList">
-                <div class="loading">Загрузка списка источников данных...</div>
-            </div>
-            
-            <p><strong>Примечание:</strong> Список источников данных может изменяться. Для обновления страницы нажмите F5.</p>
-            
-            <button class="solution-btn" id="backFromTitlesBtn">Вернуться к выбору проблемы</button>
-            
-            <div class="feedback-buttons" id="feedbackTitles">
-                <button class="feedback-btn solved-btn" id="solvedTitlesBtn">Проблема решена</button>
-                <button class="feedback-btn notsolved-btn" id="notsolvedTitlesBtn">Проблема осталась</button>
-            </div>
-            
-            <div class="feedback-message success-message" id="successMessageTitles">
-                <p>🎉 Отлично! Кот-сфинкс рад, что смог помочь! Желаем приятного времяпрепровождения с NUM! 🐱</p>
-            </div>
-            
-            <div class="feedback-message help-message" id="helpMessageTitles">
-                <p>😿 Жаль, что проблема осталась. Кот-сфинкс рекомендует переместиться в чат приложения NUM и задать свой уточняющий вопрос уже непосредственно там. Наши специалисты помогут вам разобраться с проблемой! 💬</p>
-            </div>
-        </div>
-        
-        <div class="warning" id="warning">
-            Внимание: ответ "Нет" приведет к немедленному закрытию сайта
-        </div>
-    </div>
-    
-    <div class="exit-message" id="exitMessage">
-        <h2>Покидание сайта</h2>
-        <p>Вы выбрали "Нет", поэтому должны немедленно покинуть сайт</p>
-        <p>Автоматический выход через:</p>
-        <div class="counter" id="counter">5</div>
-        <p>До свидания!</p>
+        <div class="nose"></div>
+        <div class="mouth"></div>
+        <div class="tail"></div>
+      </div>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const yesBtn = document.getElementById('yesBtn');
-            const noBtn = document.getElementById('noBtn');
-            const problemButtons = document.getElementById('problemButtons');
-            const initialButtons = document.getElementById('initialButtons');
-            const exitMessage = document.getElementById('exitMessage');
-            const question = document.getElementById('question');
-            const warning = document.getElementById('warning');
-            const counter = document.getElementById('counter');
-            const catSpeech = document.getElementById('catSpeech');
-            
-            // Решения
-            const solutionPosters = document.getElementById('solutionPosters');
-            const solutionTorrents = document.getElementById('solutionTorrents');
-            const solutionTitles = document.getElementById('solutionTitles');
-            
-            // Кнопки проблем
-            const problem1Btn = document.getElementById('problem1Btn');
-            const problem2Btn = document.getElementById('problem2Btn');
-            const problem3Btn = document.getElementById('problem3Btn');
-            
-            // Кнопки возврата
-            const backFromPostersBtn = document.getElementById('backFromPostersBtn');
-            const backFromTorrentsBtn = document.getElementById('backFromTorrentsBtn');
-            const backFromTitlesBtn = document.getElementById('backFromTitlesBtn');
-            
-            // Кнопки обратной связи для каждой проблемы
-            const solvedPostersBtn = document.getElementById('solvedPostersBtn');
-            const notsolvedPostersBtn = document.getElementById('notsolvedPostersBtn');
-            const solvedTorrentsBtn = document.getElementById('solvedTorrentsBtn');
-            const notsolvedTorrentsBtn = document.getElementById('notsolvedTorrentsBtn');
-            const solvedTitlesBtn = document.getElementById('solvedTitlesBtn');
-            const notsolvedTitlesBtn = document.getElementById('notsolvedTitlesBtn');
-            
-            // Сообщения обратной связи
-            const successMessagePosters = document.getElementById('successMessagePosters');
-            const helpMessagePosters = document.getElementById('helpMessagePosters');
-            const successMessageTorrents = document.getElementById('successMessageTorrents');
-            const helpMessageTorrents = document.getElementById('helpMessageTorrents');
-            const successMessageTitles = document.getElementById('successMessageTitles');
-            const helpMessageTitles = document.getElementById('helpMessageTitles');
-            
-            // Кнопки обратной связи
-            const feedbackPosters = document.getElementById('feedbackPosters');
-            const feedbackTorrents = document.getElementById('feedbackTorrents');
-            const feedbackTitles = document.getElementById('feedbackTitles');
-            
-            // Списки для динамической загрузки
-            const proxyListPosters = document.getElementById('proxyListPosters');
-            const jackettList = document.getElementById('jackettList');
-            const nmprsList = document.getElementById('nmprsList');
-            
-            // Загружаем данные при загрузке страницы
-            loadProxyList();
-            loadJackettList();
-            loadNmprsList();
-            
-            // Обработка нажатия "Да"
-            yesBtn.addEventListener('click', function() {
-                question.innerHTML = '<span style="color:#4CAF50;">Кот-сфинкс готов помочь вам с проблемой.</span>';
-                catSpeech.textContent = 'Выберите, какая проблема вас интересует:';
-                
-                // Скрываем начальные кнопки и показываем кнопки проблем
-                initialButtons.style.display = 'none';
-                problemButtons.style.display = 'flex';
-                warning.style.display = 'none';
-                
-                // Скрываем все решения
-                hideAllSolutions();
-                
-                // Анимация для кота
-                animateCatHappy();
-            });
-            
-            // Обработка нажатия "Нет"
-            noBtn.addEventListener('click', function() {
-                question.innerHTML = '<span style="color:#f44336;">Вы выбрали "Нет". Кот-сфинкс недоволен!</span>';
-                catSpeech.textContent = 'Вы должны покинуть сайт немедленно!';
-                exitMessage.style.display = 'flex';
-                warning.style.display = 'none';
-                
-                // Скрываем все элементы
-                initialButtons.style.display = 'none';
-                problemButtons.style.display = 'none';
-                hideAllSolutions();
-                
-                // Анимация для кота
-                animateCatAngry();
-                
-                // Запуск отсчета до закрытия
-                let count = 5;
-                const countdown = setInterval(() => {
-                    count--;
-                    counter.textContent = count;
-                    
-                    if (count <= 0) {
-                        clearInterval(countdown);
-                        // Перенаправление на главную страницу Google
-                        window.location.href = 'https://www.google.com';
-                    }
-                }, 1000);
-            });
-            
-            // Обработка выбора проблемы с постерами
-            problem1Btn.addEventListener('click', function() {
-                showProblemSolution('проблему с отображением постеров в приложении или каналах android', solutionPosters);
-            });
-            
-            // Обработка проблемы с поиском торрентов
-            problem2Btn.addEventListener('click', function() {
-                showProblemSolution('проблему с поиском торрентов', solutionTorrents);
-            });
-            
-            // Обработка проблемы с названиями фильмов
-            problem3Btn.addEventListener('click', function() {
-                showProblemSolution('проблему с отображением названий или актуальностью дат обновления', solutionTitles);
-            });
-            
-            // Кнопки возврата
-            backFromPostersBtn.addEventListener('click', function() {
-                returnToProblemSelection();
-            });
-            
-            backFromTorrentsBtn.addEventListener('click', function() {
-                returnToProblemSelection();
-            });
-            
-            backFromTitlesBtn.addEventListener('click', function() {
-                returnToProblemSelection();
-            });
-            
-            // Обработка обратной связи для проблемы с постерами
-            solvedPostersBtn.addEventListener('click', function() {
-                handleFeedback(true, 'posters');
-            });
-            
-            notsolvedPostersBtn.addEventListener('click', function() {
-                handleFeedback(false, 'posters');
-            });
-            
-            // Обработка обратной связи для проблемы с торрентами
-            solvedTorrentsBtn.addEventListener('click', function() {
-                handleFeedback(true, 'torrents');
-            });
-            
-            notsolvedTorrentsBtn.addEventListener('click', function() {
-                handleFeedback(false, 'torrents');
-            });
-            
-            // Обработка обратной связи для проблемы с названиями
-            solvedTitlesBtn.addEventListener('click', function() {
-                handleFeedback(true, 'titles');
-            });
-            
-            notsolvedTitlesBtn.addEventListener('click', function() {
-                handleFeedback(false, 'titles');
-            });
-            
-            // Функции загрузки данных
-            function loadProxyList() {
-                fetch('https://cash94.github.io/numproxy.txt')
-                    .then(response => response.text())
-                    .then(data => {
-                        displayList(data, proxyListPosters, 'proxy-item', 'Нет доступных прокси-серверов');
-                    })
-                    .catch(error => {
-                        proxyListPosters.innerHTML = '<div class="loading">Ошибка загрузки списка прокси</div>';
-                        console.error('Error loading proxy list:', error);
-                    });
+    <div class="question" id="question" role="status" aria-live="polite" aria-atomic="true">
+      Пожалуйста, выберите ответ на вопрос кота-сфинкса
+    </div>
+
+    <div class="buttons" id="initialButtons" role="group" aria-label="Выбор ответа">
+      <button class="yes-btn" id="yesBtn" type="button" aria-label="Да, наблюдаю проблемы">Да, наблюдаю
+        проблемы</button>
+      <button class="no-btn" id="noBtn" type="button" aria-label="Нет, проблем не наблюдается">Нет, проблем не
+        наблюдается</button>
+    </div>
+
+    <div class="problem-buttons" id="problemButtons" role="group" aria-label="Выбор проблемы">
+      <button class="problem-btn" id="problem1Btn" type="button" aria-label="Проблема с отображением постеров">У меня не
+        отображаются постеры в приложении или каналах
+        android</button>
+      <button class="problem-btn" id="problem2Btn" type="button" aria-label="Проблема с поиском торрентов">У меня не
+        работает или долго осуществляется поиск торрентов</button>
+      <button class="problem-btn" id="problem3Btn" type="button" aria-label="Проблема с отображением названий">У меня не
+        отображаются названия фильмов, сериалов и т.д или не
+        актуальная дата обновления фильмов, сериалов и т.д.</button>
+      <button class="problem-btn" id="problem4Btn" type="button"
+        aria-label="Проблема с зависанием на стадии Аунтификация">У меня зависает на стадии "Аунтификация"</button>
+    </div>
+
+    <!-- Решение для проблемы с постерами -->
+    <section class="solution" id="solutionPosters" aria-labelledby="solutionPostersTitle">
+      <h3 id="solutionPostersTitle">Решение проблемы с отображением постеров</h3>
+
+      <h4>Способ 1: Изменение настроек</h4>
+      <p>Перейдите в <strong>Настройки → Информация о видео</strong> и установите одну из следующих комбинаций:</p>
+
+      <div class="config-option">torrs, torrs, num dns</div>
+      <div class="config-option">tmdb, tmdb, quad9 doh</div>
+      <div class="config-option">tmdb, Johnny, num dns</div>
+      <div class="config-option">tmdb, Johnny, quad9 doh</div>
+      <div class="config-option">tmdb, Alt.Source, num dns</div>
+      <div class="config-option">tmdb, Alt.Source, quad9 doh</div>
+
+      <h4>Способ 2: Использование прокси-серверов</h4>
+      <p>Для отображения постеров можно использовать прокси:</p>
+      <ul>
+        <li><strong>Сервер Api Tmdb</strong> - Tmdb</li>
+        <li><strong>Сервер изображений</strong> - Tmdb</li>
+        <li><strong>Доступ к Tmdb</strong> - использовать прокси-сервер</li>
+      </ul>
+
+      <h4>Список доступных прокси-серверов:</h4>
+      <div class="proxy-list" id="proxyListPosters">
+        <div class="loading">Загрузка списка прокси-серверов...</div>
+      </div>
+
+      <p><strong>Примечание:</strong> Список прокси-серверов может изменяться. Для обновления страницы нажмите F5.</p>
+
+      <button class="solution-btn" id="backFromPostersBtn" type="button"
+        aria-label="Вернуться к выбору проблемы">Вернуться к выбору проблемы</button>
+
+      <div class="feedback-buttons" id="feedbackPosters" role="group" aria-label="Обратная связь">
+        <button class="feedback-btn solved-btn" id="solvedPostersBtn" type="button"
+          aria-label="Проблема решена">Проблема решена</button>
+        <button class="feedback-btn notsolved-btn" id="notsolvedPostersBtn" type="button"
+          aria-label="Проблема осталась">Проблема осталась</button>
+      </div>
+
+      <div class="feedback-message success-message" id="successMessagePosters">
+        <p>🎉 Отлично! Кот-сфинкс рад, что смог помочь! Желаем приятного времяпрепровождения с NUM! 🐱</p>
+      </div>
+
+      <div class="feedback-message help-message" id="helpMessagePosters" role="alert" aria-live="polite">
+        <p>😿 Жаль, что проблема осталась. Кот-сфинкс рекомендует переместиться в чат приложения NUM и задать свой
+          уточняющий вопрос уже непосредственно там. Наши специалисты помогут вам разобраться с проблемой! 💬</p>
+      </div>
+    </section>
+
+    <!-- Решение для проблемы с поиском торрентов -->
+    <section class="solution" id="solutionTorrents" aria-labelledby="solutionTorrentsTitle">
+      <h3 id="solutionTorrentsTitle">Решение проблемы с поиском торрентов</h3>
+
+      <h4>Настройка торрент-трекеров:</h4>
+      <p>1. Зайдите в <strong>Настройки → Настройки торрентов → Настройки торрент-трекеров</strong></p>
+      <p>2. Отключите все галочки</p>
+      <p>3. Включите только <strong>torrs</strong> и <strong>jackett</strong></p>
+      <p>4. Адреса torrs и jackett оставьте пустыми</p>
+
+      <h4>Если поиск не работает:</h4>
+      <p>1. Отключите torrs</p>
+      <p>2. Воспользуйтесь любым доступным jackett из списка ниже</p>
+      <p>3. Проверить доступен ли jackett можно перейдя по его ссылке</p>
+
+      <h4>Список доступных Jackett серверов:</h4>
+      <div class="jackett-list" id="jackettList">
+        <div class="loading">Загрузка списка Jackett серверов...</div>
+      </div>
+
+      <p><strong>Примечание:</strong> Список Jackett серверов может изменяться. Для обновления страницы нажмите F5.</p>
+
+      <button class="solution-btn" id="backFromTorrentsBtn" type="button"
+        aria-label="Вернуться к выбору проблемы">Вернуться к выбору проблемы</button>
+
+      <div class="feedback-buttons" id="feedbackTorrents" role="group" aria-label="Обратная связь">
+        <button class="feedback-btn solved-btn" id="solvedTorrentsBtn" type="button"
+          aria-label="Проблема решена">Проблема решена</button>
+        <button class="feedback-btn notsolved-btn" id="notsolvedTorrentsBtn" type="button"
+          aria-label="Проблема осталась">Проблема осталась</button>
+      </div>
+
+      <div class="feedback-message success-message" id="successMessageTorrents" role="alert" aria-live="polite">
+        <p>🎉 Отлично! Кот-сфинкс рад, что смог помочь! Желаем приятного времяпрепровождения с NUM! 🐱</p>
+      </div>
+
+      <div class="feedback-message help-message" id="helpMessageTorrents" role="alert" aria-live="polite">
+        <p>😿 Жаль, что проблема осталась. Кот-сфинкс рекомендует переместиться в чат приложения NUM и задать свой
+          уточняющий вопрос уже непосредственно там. Наши специалисты помогут вам разобраться с проблемой! 💬</p>
+      </div>
+    </section>
+
+    <!-- Решение для проблемы с названиями фильмов -->
+    <section class="solution" id="solutionTitles" aria-labelledby="solutionTitlesTitle">
+      <h3 id="solutionTitlesTitle">Решение проблемы с отображением названий фильмов и сериалов</h3>
+
+      <h4>Настройка источника данных:</h4>
+      <p>1. Зайдите в <strong>Настройки → Управление данными → Источник данных</strong></p>
+      <p>2. Установите источник данных: <strong>"Yourok"</strong></p>
+      <p>3. Поле <strong>"Ссылка на свой источник данных"</strong> оставьте пустым</p>
+      <p>4. Или укажите любой доступный вам источник данных из списка ниже</p>
+
+      <h4>Список доступных источников данных:</h4>
+      <div class="nmprs-list" id="nmprsList">
+        <div class="loading">Загрузка списка источников данных...</div>
+      </div>
+
+      <p><strong>Примечание:</strong> Список источников данных может изменяться. Для обновления страницы нажмите F5.</p>
+
+      <button class="solution-btn" id="backFromTitlesBtn" type="button"
+        aria-label="Вернуться к выбору проблемы">Вернуться к выбору проблемы</button>
+
+      <div class="feedback-buttons" id="feedbackTitles" role="group" aria-label="Обратная связь">
+        <button class="feedback-btn solved-btn" id="solvedTitlesBtn" type="button" aria-label="Проблема решена">Проблема
+          решена</button>
+        <button class="feedback-btn notsolved-btn" id="notsolvedTitlesBtn" type="button"
+          aria-label="Проблема осталась">Проблема осталась</button>
+      </div>
+
+      <div class="feedback-message success-message" id="successMessageTitles" role="alert" aria-live="polite">
+        <p>🎉 Отлично! Кот-сфинкс рад, что смог помочь! Желаем приятного времяпрепровождения с NUM! 🐱</p>
+      </div>
+
+      <div class="feedback-message help-message" id="helpMessageTitles" role="alert" aria-live="polite">
+        <p>😿 Жаль, что проблема осталась. Кот-сфинкс рекомендует переместиться в чат приложения NUM и задать свой
+          уточняющий вопрос уже непосредственно там. Наши специалисты помогут вам разобраться с проблемой! 💬</p>
+      </div>
+    </section>
+
+    <!-- Решение для проблемы с зависанием на стадии Аунтификация -->
+    <section class="solution" id="solutionAuth" aria-labelledby="solutionAuthTitle">
+      <h3 id="solutionAuthTitle">Решение проблемы с зависанием на стадии "Аунтификация"</h3>
+
+      <p>Если у вас зависает на стадии "Аунтификация", то ваш провайдер заблокировал конфигурацию "антизапрет". Пройдите
+        по всем пунктам из инструкции, чтобы сделать доступ к приложению без использования ВПН.</p>
+
+      <button class="solution-btn" id="backFromAuthBtn" type="button" aria-label="Вернуться к выбору проблемы">Вернуться
+        к выбору проблемы</button>
+
+      <div class="feedback-buttons" id="feedbackAuth" role="group" aria-label="Обратная связь">
+        <button class="feedback-btn solved-btn" id="solvedAuthBtn" type="button" aria-label="Проблема решена">Проблема
+          решена</button>
+        <button class="feedback-btn notsolved-btn" id="notsolvedAuthBtn" type="button"
+          aria-label="Проблема осталась">Проблема осталась</button>
+      </div>
+
+      <div class="feedback-message success-message" id="successMessageAuth" role="alert" aria-live="polite">
+        <p>🎉 Отлично! Кот-сфинкс рад, что смог помочь! Желаем приятного времяпрепровождения с NUM! 🐱</p>
+      </div>
+
+      <div class="feedback-message help-message" id="helpMessageAuth" role="alert" aria-live="polite">
+        <p>😿 Жаль, что проблема осталась. Кот-сфинкс рекомендует переместиться в чат приложения NUM и задать свой
+          уточняющий вопрос уже непосредственно там. Наши специалисты помогут вам разобраться с проблемой! 💬</p>
+      </div>
+    </section>
+
+    <div class="warning" id="warning" role="alert" aria-live="polite">
+      Внимание: ответ "Нет" приведет к немедленному закрытию сайта
+    </div>
+  </div>
+
+  <div class="exit-message" id="exitMessage" role="dialog" aria-labelledby="exitTitle" aria-modal="true">
+    <h2 id="exitTitle">Покидание сайта</h2>
+    <p>Вы выбрали "Нет", поэтому должны немедленно покинуть сайт</p>
+    <p>Автоматический выход через:</p>
+    <div class="counter" id="counter" aria-live="polite" aria-atomic="true">5</div>
+    <p>До свидания!</p>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // ============================================================================
+      // КОНФИГУРАЦИЯ И КОНСТАНТЫ
+      // ============================================================================
+
+      const CONFIG = {
+        urls: {
+          proxy: 'https://cash94.github.io/numproxy.txt',
+          jackett: 'https://cash94.github.io/jackett.txt',
+          nmprs: 'https://cash94.github.io/nmprs.txt'
+        },
+        countdown: {
+          initial: 5,
+          interval: 1000,
+          redirectUrl: 'https://www.google.com'
+        },
+        animations: {
+          tailFast: 'tailMove 0.3s infinite alternate',
+          tailNormal: 'tailMove 0.5s infinite alternate',
+          tailSlow: 'tailMove 2s infinite alternate',
+          tailVerySlow: 'tailMove 3s infinite alternate'
+        },
+        audio: {
+          clickCooldown: 500,
+          // URL реальных звуков мурчанья кота
+          // ИНСТРУКЦИЯ: Добавьте пути к вашим реальным аудиофайлам мурчанья кота
+          // Формат: .mp3, .wav, .ogg
+          // Примеры:
+          // purrUrls: ['sounds/cat-purr-1.mp3', 'sounds/cat-purr-2.wav']
+          // или используйте полные URL: ['https://example.com/sounds/cat-purr.mp3']
+          purrUrls: [
+            // Добавьте здесь пути к вашим аудиофайлам
+            // Если массив пустой, будет использован реалистичный синтез
+          ],
+          useSynthesis: true // Использовать синтез если файлы недоступны
+        },
+        messages: {
+          purr: [
+            'Муррр... 🐱',
+            'Мяу! Муррр... 😸',
+            'Мур-мур-мур... 🐾',
+            'Мурррр... Приятно! 😻',
+            'Мррр... Мяу! 🐈',
+            'Мур-мур... Как приятно! 😊'
+          ],
+          problems: {
+            posters: {
+              name: 'проблему с отображением постеров в приложении или каналах android',
+              speech: 'Вот решение вашей проблемы с постерами:'
+            },
+            torrents: {
+              name: 'проблему с поиском торрентов',
+              speech: 'Вот решение проблемы с поиском торрентов:'
+            },
+            titles: {
+              name: 'проблему с отображением названий или актуальностью дат обновления',
+              speech: 'Вот решение проблемы с отображением названий:'
+            },
+            auth: {
+              name: 'проблему с зависанием на стадии "Аунтификация"',
+              speech: 'Вот решение проблемы с зависанием на стадии "Аунтификация":'
             }
-            
-            function loadJackettList() {
-                fetch('https://cash94.github.io/jackett.txt')
-                    .then(response => response.text())
-                    .then(data => {
-                        displayList(data, jackettList, 'jackett-item', 'Нет доступных Jackett серверов');
-                    })
-                    .catch(error => {
-                        jackettList.innerHTML = '<div class="loading">Ошибка загрузки списка Jackett</div>';
-                        console.error('Error loading jackett list:', error);
-                    });
+          },
+          ui: {
+            ready: '<span style="color:#4CAF50;">Кот-сфинкс готов помочь вам с проблемой.</span>',
+            selectProblem: 'Выберите, какая проблема вас интересует:',
+            problemSelected: (name) => `<span style="color:#3498db;">Вы выбрали: ${name}</span>`,
+            noSelected: '<span style="color:#f44336;">Вы выбрали "Нет". Кот-сфинкс недоволен!</span>',
+            mustLeave: 'Вы должны покинуть сайт немедленно!',
+            success: '🎉 Отлично! Приятного времяпрепровождения! 🐱',
+            help: '😿 Перейдите в чат приложения для уточняющих вопросов'
+          }
+        }
+      };
+
+      // ============================================================================
+      // КЛАССЫ И МОДУЛИ
+      // ============================================================================
+
+      /**
+       * Менеджер DOM элементов
+       */
+      class DOMManager {
+        constructor() {
+          this.elements = {};
+          this.init();
+        }
+
+        init() {
+          const selectors = {
+            yesBtn: '#yesBtn',
+            noBtn: '#noBtn',
+            problemButtons: '#problemButtons',
+            initialButtons: '#initialButtons',
+            exitMessage: '#exitMessage',
+            question: '#question',
+            warning: '#warning',
+            counter: '#counter',
+            catSpeech: '#catSpeech',
+            solutions: {
+              posters: '#solutionPosters',
+              torrents: '#solutionTorrents',
+              titles: '#solutionTitles',
+              auth: '#solutionAuth'
+            },
+            problemBtns: {
+              problem1: '#problem1Btn',
+              problem2: '#problem2Btn',
+              problem3: '#problem3Btn',
+              problem4: '#problem4Btn'
+            },
+            backBtns: {
+              posters: '#backFromPostersBtn',
+              torrents: '#backFromTorrentsBtn',
+              titles: '#backFromTitlesBtn',
+              auth: '#backFromAuthBtn'
+            },
+            feedback: {
+              posters: {
+                solved: '#solvedPostersBtn',
+                notsolved: '#notsolvedPostersBtn',
+                successMsg: '#successMessagePosters',
+                helpMsg: '#helpMessagePosters',
+                container: '#feedbackPosters'
+              },
+              torrents: {
+                solved: '#solvedTorrentsBtn',
+                notsolved: '#notsolvedTorrentsBtn',
+                successMsg: '#successMessageTorrents',
+                helpMsg: '#helpMessageTorrents',
+                container: '#feedbackTorrents'
+              },
+              titles: {
+                solved: '#solvedTitlesBtn',
+                notsolved: '#notsolvedTitlesBtn',
+                successMsg: '#successMessageTitles',
+                helpMsg: '#helpMessageTitles',
+                container: '#feedbackTitles'
+              },
+              auth: {
+                solved: '#solvedAuthBtn',
+                notsolved: '#notsolvedAuthBtn',
+                successMsg: '#successMessageAuth',
+                helpMsg: '#helpMessageAuth',
+                container: '#feedbackAuth'
+              }
+            },
+            lists: {
+              proxy: '#proxyListPosters',
+              jackett: '#jackettList',
+              nmprs: '#nmprsList'
             }
-            
-            function loadNmprsList() {
-                fetch('https://cash94.github.io/nmprs.txt')
-                    .then(response => response.text())
-                    .then(data => {
-                        displayList(data, nmprsList, 'nmprs-item', 'Нет доступных источников данных');
-                    })
-                    .catch(error => {
-                        nmprsList.innerHTML = '<div class="loading">Ошибка загрузки списка источников данных</div>';
-                        console.error('Error loading nmprs list:', error);
-                    });
+          };
+
+          this.elements = this._querySelectors(selectors);
+        }
+
+        _querySelectors(obj) {
+          const result = {};
+          for (const [key, value] of Object.entries(obj)) {
+            if (typeof value === 'string') {
+              result[key] = document.querySelector(value);
+            } else if (typeof value === 'object') {
+              result[key] = this._querySelectors(value);
             }
-            
-            // Общая функция для отображения списка
-            function displayList(data, containerElement, itemClass, emptyMessage) {
-                const lines = data.split('\n');
-                let html = '';
-                
-                lines.forEach(line => {
-                    const trimmedLine = line.trim();
-                    if (trimmedLine !== '') {
-                        html += `<div class="${itemClass}">${trimmedLine}</div>`;
-                    }
-                });
-                
-                if (html === '') {
-                    html = `<div class="loading">${emptyMessage}</div>`;
-                }
-                
-                containerElement.innerHTML = html;
+          }
+          return result;
+        }
+
+        validate() {
+          const required = [
+            this.elements.yesBtn,
+            this.elements.noBtn,
+            this.elements.problemButtons,
+            this.elements.initialButtons,
+            this.elements.question,
+            this.elements.catSpeech
+          ];
+          const missing = required.filter(el => !el);
+          if (missing.length > 0) {
+            console.error('Missing required elements:', missing);
+            return false;
+          }
+          return true;
+        }
+      }
+
+      /**
+       * Менеджер состояния приложения
+       */
+      class AppState {
+        constructor() {
+          this.countdownInterval = null;
+          this.lastCatClickTime = 0;
+        }
+
+        clearCountdown() {
+          if (this.countdownInterval) {
+            clearInterval(this.countdownInterval);
+            this.countdownInterval = null;
+          }
+        }
+      }
+
+      /**
+       * Менеджер анимаций кота
+       */
+      class CatAnimator {
+        constructor() {
+          this._cacheElements();
+        }
+
+        _cacheElements() {
+          this.cat = document.querySelector('.sphinx-cat');
+          this.tail = document.querySelector('.tail');
+          this.pupils = document.querySelectorAll('.pupil');
+        }
+
+        _updatePupils(color, shadow = '') {
+          if (this.pupils && this.pupils.length > 0) {
+            this.pupils.forEach(pupil => {
+              if (pupil) {
+                pupil.style.background = color;
+                pupil.style.boxShadow = shadow;
+              }
+            });
+          }
+        }
+
+        happy() {
+          if (this.cat) this.cat.style.filter = 'brightness(1.2)';
+          if (this.tail) this.tail.style.animation = CONFIG.animations.tailNormal;
+          this._updatePupils('#2E7D32');
+        }
+
+        veryHappy() {
+          if (this.cat) this.cat.style.filter = 'brightness(1.4) hue-rotate(10deg)';
+          if (this.tail) this.tail.style.animation = CONFIG.animations.tailFast;
+          this._updatePupils('#00FF00', '0 0 10px #00FF00');
+        }
+
+        thinking() {
+          if (this.cat) this.cat.style.filter = 'brightness(1)';
+          if (this.tail) this.tail.style.animation = CONFIG.animations.tailSlow;
+          this._updatePupils('#2980b9');
+        }
+
+        concerned() {
+          if (this.cat) this.cat.style.filter = 'brightness(0.9) hue-rotate(-10deg)';
+          if (this.tail) this.tail.style.animation = CONFIG.animations.tailVerySlow;
+          this._updatePupils('#FF9800');
+        }
+
+        angry() {
+          if (this.cat) this.cat.style.filter = 'brightness(0.8) hue-rotate(-30deg)';
+          if (this.pupils && this.pupils.length > 0) {
+            this.pupils.forEach(pupil => {
+              if (pupil) {
+                pupil.style.background = '#c62828';
+                pupil.style.animation = 'none';
+                pupil.style.boxShadow = '';
+              }
+            });
+          }
+        }
+      }
+
+      /**
+       * Менеджер аудио с реальными звуками кота
+       */
+      class AudioManager {
+        constructor() {
+          this.isPurring = false;
+          this.lastClickTime = 0;
+          this.audioElements = [];
+          this.currentAudioIndex = 0;
+        }
+
+        async init() {
+          // Создаем несколько HTML5 Audio элементов для воспроизведения реальных звуков
+          // Это позволяет воспроизводить звуки параллельно без задержек
+          for (let i = 0; i < 2; i++) {
+            const audio = new Audio();
+            audio.preload = 'auto';
+            audio.volume = 0.7;
+            audio.addEventListener('ended', () => {
+              this.isPurring = false;
+            });
+            audio.addEventListener('error', () => {
+              // Если файл не загрузился, используем синтез
+              console.warn('Audio file failed to load, using synthesis');
+            });
+            this.audioElements.push(audio);
+          }
+        }
+
+        canPlay() {
+          return !this.isPurring;
+        }
+
+        async playPurr() {
+          if (this.isPurring) return;
+
+          this.isPurring = true;
+
+          try {
+            // Если есть URL реальных файлов, пробуем их использовать
+            if (CONFIG.audio.purrUrls && CONFIG.audio.purrUrls.length > 0) {
+              await this._playRealAudioFile();
+              return;
             }
-            
-            // Функция показа решения проблемы
-            function showProblemSolution(problemName, solutionElement) {
-                question.innerHTML = `<span style="color:#3498db;">Вы выбрали: ${problemName}</span>`;
-                
-                if (solutionElement === solutionPosters) {
-                    catSpeech.textContent = 'Вот решение вашей проблемы с постерами:';
-                    // Скрываем сообщения обратной связи
-                    hideFeedbackMessages('posters');
-                } else if (solutionElement === solutionTorrents) {
-                    catSpeech.textContent = 'Вот решение проблемы с поиском торрентов:';
-                    // Скрываем сообщения обратной связи
-                    hideFeedbackMessages('torrents');
-                } else {
-                    catSpeech.textContent = 'Вот решение проблемы с отображением названий:';
-                    // Скрываем сообщения обратной связи
-                    hideFeedbackMessages('titles');
-                }
-                
-                // Скрываем кнопки проблем и показываем нужное решение
-                problemButtons.style.display = 'none';
-                hideAllSolutions();
-                solutionElement.style.display = 'block';
-                
-                // Анимация для кота - задумчивый вид
-                animateCatThinking();
+          } catch (error) {
+            console.warn('Real audio file not available:', error);
+          }
+
+          // Используем реалистичный синтез
+          if (CONFIG.audio.useSynthesis) {
+            await this._playRealisticSynthesis();
+          } else {
+            this.isPurring = false;
+          }
+        }
+
+        async _playRealAudioFile() {
+          // Пробуем загрузить реальный аудиофайл
+          const urls = CONFIG.audio.purrUrls;
+          if (!urls || urls.length === 0) {
+            throw new Error('No audio URLs configured');
+          }
+
+          const audioUrl = urls[Math.floor(Math.random() * urls.length)];
+          const audio = this.audioElements[this.currentAudioIndex];
+
+          if (!audio) {
+            throw new Error('Audio element not available');
+          }
+
+          return new Promise((resolve, reject) => {
+            // Обработчики событий
+            const handleCanPlay = async () => {
+              try {
+                audio.removeEventListener('canplay', handleCanPlay);
+                audio.removeEventListener('error', handleError);
+                await audio.play();
+                this.currentAudioIndex = (this.currentAudioIndex + 1) % this.audioElements.length;
+                resolve();
+              } catch (playError) {
+                reject(playError);
+              }
+            };
+
+            const handleError = () => {
+              audio.removeEventListener('canplay', handleCanPlay);
+              audio.removeEventListener('error', handleError);
+              reject(new Error('Audio file failed to load'));
+            };
+
+            audio.addEventListener('canplay', handleCanPlay, { once: true });
+            audio.addEventListener('error', handleError, { once: true });
+
+            // Устанавливаем источник
+            audio.src = audioUrl;
+            audio.volume = 0.7;
+            audio.load();
+
+            // Таймаут на случай долгой загрузки
+            setTimeout(() => {
+              if (audio.readyState < 2) {
+                audio.removeEventListener('canplay', handleCanPlay);
+                audio.removeEventListener('error', handleError);
+                reject(new Error('Audio loading timeout'));
+              }
+            }, 3000);
+          });
+        }
+
+        async _playRealisticSynthesis() {
+          // Создаем аудио контекст для синтеза
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) {
+            this.isPurring = false;
+            return;
+          }
+
+          const audioContext = new AudioContext();
+          if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+          }
+
+          const duration = 2.5;
+          const sampleRate = audioContext.sampleRate;
+          const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+          const data = buffer.getChannelData(0);
+
+          // Параметры реального мурчанья кота (на основе анализа записей)
+          const baseFreq = 24.5; // Основная частота мурчанья
+          const purrRate = 24.5; // Частота пульсации
+
+          // Предгенерируем шум для более реалистичной текстуры
+          const noiseBuffer = new Float32Array(buffer.length);
+          let noiseAccumulator = 0;
+          for (let i = 0; i < noiseBuffer.length; i++) {
+            noiseAccumulator = noiseAccumulator * 0.95 + (Math.random() - 0.5) * 0.1;
+            noiseBuffer[i] = noiseAccumulator;
+          }
+
+          for (let i = 0; i < buffer.length; i++) {
+            const t = i / sampleRate;
+
+            // Основная пульсация мурчанья
+            const pulse1 = Math.sin(t * purrRate * 2 * Math.PI);
+            const pulse2 = Math.sin(t * purrRate * 1.3 * 2 * Math.PI) * 0.4;
+            const pulse = (pulse1 + pulse2) / 1.4;
+
+            // Вариация частоты
+            const frequency = baseFreq + pulse * 2.2 + Math.sin(t * 0.5) * 0.8;
+
+            // Модуляция дыхания
+            const breath = 0.72 + 0.28 * Math.sin(t * 0.58);
+
+            // Плавное нарастание и затухание
+            const fadeIn = Math.pow(Math.min(1, t * 3.5), 1.2);
+            const fadeOut = Math.pow(Math.exp(-t * 0.4), 0.9);
+            const amplitude = fadeIn * fadeOut * 0.6 * breath;
+
+            // Основной тон
+            const mainTone = Math.sin(2 * Math.PI * frequency * t);
+
+            // Гармоники
+            const harmonic2 = Math.sin(2 * Math.PI * frequency * 2 * t) * 0.28;
+            const harmonic3 = Math.sin(2 * Math.PI * frequency * 3 * t) * 0.14;
+            const harmonic4 = Math.sin(2 * Math.PI * frequency * 4 * t) * 0.07;
+
+            // Субгармоника для глубины
+            const subharmonic = Math.sin(2 * Math.PI * frequency * 0.5 * t) * 0.12;
+
+            // Вибрация тела
+            const vibration = Math.sin(2 * Math.PI * (38 + Math.sin(t * 0.3) * 4) * t) * 0.05;
+
+            // Используем предгенерированный шум
+            const noise = noiseBuffer[i] * 0.12;
+
+            // Комбинируем компоненты
+            let sample = (mainTone + harmonic2 + harmonic3 + harmonic4 + subharmonic) * amplitude;
+            sample += vibration * amplitude;
+            sample += noise * amplitude * (0.4 + Math.abs(pulse) * 0.6);
+
+            // Мягкое ограничение
+            data[i] = Math.tanh(sample * 0.7);
+          }
+
+          // Создаем цепочку обработки
+          const source = audioContext.createBufferSource();
+          const gainNode = audioContext.createGain();
+          const lowpassFilter = audioContext.createBiquadFilter();
+          const compressor = audioContext.createDynamicsCompressor();
+
+          // Низкочастотный фильтр
+          lowpassFilter.type = 'lowpass';
+          lowpassFilter.frequency.value = 130;
+          lowpassFilter.Q.value = 0.5;
+
+          // Компрессор для естественности
+          compressor.threshold.value = -20;
+          compressor.knee.value = 20;
+          compressor.ratio.value = 8;
+          compressor.attack.value = 0.001;
+          compressor.release.value = 0.2;
+
+          const now = audioContext.currentTime;
+          gainNode.gain.setValueAtTime(0, now);
+          gainNode.gain.linearRampToValueAtTime(0.9, now + 0.3);
+          gainNode.gain.setValueAtTime(0.9, now + duration * 0.4);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+          source.buffer = buffer;
+          source.connect(lowpassFilter);
+          lowpassFilter.connect(compressor);
+          compressor.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+
+          source.start(now);
+          source.onended = () => {
+            this.isPurring = false;
+            setTimeout(() => audioContext.close(), 100);
+          };
+        }
+
+        canClick() {
+          const now = Date.now();
+          if (now - this.lastClickTime < CONFIG.audio.clickCooldown) {
+            return false;
+          }
+          this.lastClickTime = now;
+          return true;
+        }
+      }
+
+      /**
+       * Менеджер загрузки данных
+       */
+      class DataLoader {
+        constructor(domManager) {
+          this.dom = domManager;
+        }
+
+        async loadList(url, container, itemClass, emptyMessage, errorMessage) {
+          if (!container) {
+            console.error('Container element not found');
+            return;
+          }
+
+          try {
+            const response = await fetch(url, {
+              method: 'GET',
+              headers: { 'Accept': 'text/plain' },
+              cache: 'no-cache'
+            });
+
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
             }
-            
-            // Функция возврата к выбору проблемы
-            function returnToProblemSelection() {
-                hideAllSolutions();
-                problemButtons.style.display = 'flex';
-                question.innerHTML = '<span style="color:#4CAF50;">Кот-сфинкс готов помочь вам с проблемой.</span>';
-                catSpeech.textContent = 'Выберите, какая проблема вас интересует:';
+
+            const data = await response.text();
+            this.displayList(data, container, itemClass, emptyMessage);
+          } catch (error) {
+            console.error(`Error loading list from ${url}:`, error);
+            if (container) {
+              container.innerHTML = `<div class="loading">${errorMessage}</div>`;
             }
-            
-            // Функция скрытия всех решений
-            function hideAllSolutions() {
-                solutionPosters.style.display = 'none';
-                solutionTorrents.style.display = 'none';
-                solutionTitles.style.display = 'none';
+          }
+        }
+
+        displayList(data, containerElement, itemClass, emptyMessage) {
+          if (!containerElement || !data || typeof data !== 'string') {
+            console.error('Invalid parameters for displayList');
+            if (containerElement) {
+              containerElement.innerHTML = `<div class="loading">${emptyMessage}</div>`;
             }
-            
-            // Функция скрытия сообщений обратной связи
-            function hideFeedbackMessages(problemType) {
-                if (problemType === 'posters') {
-                    successMessagePosters.style.display = 'none';
-                    helpMessagePosters.style.display = 'none';
-                    feedbackPosters.style.display = 'flex';
-                } else if (problemType === 'torrents') {
-                    successMessageTorrents.style.display = 'none';
-                    helpMessageTorrents.style.display = 'none';
-                    feedbackTorrents.style.display = 'flex';
-                } else if (problemType === 'titles') {
-                    successMessageTitles.style.display = 'none';
-                    helpMessageTitles.style.display = 'none';
-                    feedbackTitles.style.display = 'flex';
-                }
+            return;
+          }
+
+          const lines = data.split('\n').filter(line => line.trim() !== '');
+          if (lines.length === 0) {
+            containerElement.innerHTML = `<div class="loading">${emptyMessage}</div>`;
+            return;
+          }
+
+          const fragment = document.createDocumentFragment();
+          lines.forEach(line => {
+            const trimmedLine = line.trim();
+            if (trimmedLine) {
+              const div = document.createElement('div');
+              div.className = itemClass;
+              div.textContent = trimmedLine;
+              fragment.appendChild(div);
             }
-            
-            // Обработка обратной связи
-            function handleFeedback(isSolved, problemType) {
-                if (isSolved) {
-                    // Проблема решена
-                    catSpeech.textContent = '🎉 Отлично! Приятного времяпрепровождения! 🐱';
-                    animateCatVeryHappy();
-                    
-                    if (problemType === 'posters') {
-                        feedbackPosters.style.display = 'none';
-                        successMessagePosters.style.display = 'block';
-                    } else if (problemType === 'torrents') {
-                        feedbackTorrents.style.display = 'none';
-                        successMessageTorrents.style.display = 'block';
-                    } else if (problemType === 'titles') {
-                        feedbackTitles.style.display = 'none';
-                        successMessageTitles.style.display = 'block';
-                    }
-                } else {
-                    // Проблема осталась
-                    catSpeech.textContent = '😿 Перейдите в чат приложения для уточняющих вопросов';
-                    animateCatConcerned();
-                    
-                    if (problemType === 'posters') {
-                        feedbackPosters.style.display = 'none';
-                        helpMessagePosters.style.display = 'block';
-                    } else if (problemType === 'torrents') {
-                        feedbackTorrents.style.display = 'none';
-                        helpMessageTorrents.style.display = 'block';
-                    } else if (problemType === 'titles') {
-                        feedbackTitles.style.display = 'none';
-                        helpMessageTitles.style.display = 'block';
-                    }
-                }
+          });
+
+          containerElement.innerHTML = '';
+          containerElement.appendChild(fragment);
+        }
+
+        loadAll() {
+          const { lists } = this.dom.elements;
+          this.loadList(CONFIG.urls.proxy, lists.proxy, 'proxy-item',
+            'Нет доступных прокси-серверов', 'Ошибка загрузки списка прокси');
+          this.loadList(CONFIG.urls.jackett, lists.jackett, 'jackett-item',
+            'Нет доступных Jackett серверов', 'Ошибка загрузки списка Jackett');
+          this.loadList(CONFIG.urls.nmprs, lists.nmprs, 'nmprs-item',
+            'Нет доступных источников данных', 'Ошибка загрузки списка источников данных');
+        }
+      }
+
+      /**
+       * Менеджер пользовательского интерфейса
+       */
+      class UIManager {
+        constructor(domManager, catAnimator, audioManager, appState) {
+          this.dom = domManager;
+          this.catAnimator = catAnimator;
+          this.audioManager = audioManager;
+          this.appState = appState;
+        }
+
+        handleYesClick() {
+          const { question, catSpeech, initialButtons, problemButtons, warning } = this.dom.elements;
+          if (!question || !catSpeech) return;
+
+          question.innerHTML = CONFIG.messages.ui.ready;
+          catSpeech.textContent = CONFIG.messages.ui.selectProblem;
+          initialButtons.style.display = 'none';
+          problemButtons.style.display = 'flex';
+          if (warning) warning.style.display = 'none';
+
+          this.hideAllSolutions();
+          this.catAnimator.happy();
+        }
+
+        handleNoClick() {
+          const { question, catSpeech, exitMessage, counter, initialButtons, problemButtons, warning } = this.dom.elements;
+          if (!question || !catSpeech || !exitMessage || !counter) return;
+
+          question.innerHTML = CONFIG.messages.ui.noSelected;
+          catSpeech.textContent = CONFIG.messages.ui.mustLeave;
+          exitMessage.style.display = 'flex';
+          if (warning) warning.style.display = 'none';
+          initialButtons.style.display = 'none';
+          problemButtons.style.display = 'none';
+
+          this.hideAllSolutions();
+          this.catAnimator.angry();
+          this.startCountdown();
+        }
+
+        startCountdown() {
+          this.appState.clearCountdown();
+          const { counter } = this.dom.elements;
+          let count = CONFIG.countdown.initial;
+          if (counter) counter.textContent = count;
+
+          this.appState.countdownInterval = setInterval(() => {
+            count--;
+            if (counter) counter.textContent = count;
+            if (count <= 0) {
+              this.appState.clearCountdown();
+              window.location.href = CONFIG.countdown.redirectUrl;
             }
-            
-            // Анимация довольного кота
-            function animateCatHappy() {
-                const cat = document.querySelector('.sphinx-cat');
-                const tail = document.querySelector('.tail');
-                
-                // Меняем цвет кота (немного светлее)
-                cat.style.filter = 'brightness(1.2)';
-                
-                // Добавляем анимацию виляния хвостом быстрее
-                tail.style.animation = 'tailMove 0.5s infinite alternate';
-                
-                // Добавляем анимацию глаз (они становятся зелеными)
-                const pupils = document.querySelectorAll('.pupil');
-                pupils.forEach(pupil => {
-                    pupil.style.background = '#2E7D32';
-                });
+          }, CONFIG.countdown.interval);
+        }
+
+        handleProblemClick(problemType) {
+          const problem = CONFIG.messages.problems[problemType];
+          const solution = this.dom.elements.solutions[problemType];
+          if (!problem || !solution) return;
+
+          const safeName = this._escapeHtml(problem.name);
+          this.showProblemSolution(safeName, solution, problem.speech, problemType);
+        }
+
+        showProblemSolution(problemName, solutionElement, speechText, problemType) {
+          const { question, catSpeech, problemButtons } = this.dom.elements;
+          if (!question || !catSpeech || !solutionElement) return;
+
+          question.innerHTML = CONFIG.messages.ui.problemSelected(problemName);
+          catSpeech.textContent = speechText || 'Вот решение вашей проблемы:';
+          problemButtons.style.display = 'none';
+          this.hideAllSolutions();
+          solutionElement.style.display = 'block';
+          if (problemType) this.hideFeedbackMessages(problemType);
+          this.catAnimator.thinking();
+        }
+
+        returnToProblemSelection() {
+          const { problemButtons, question, catSpeech } = this.dom.elements;
+          this.hideAllSolutions();
+          if (problemButtons) problemButtons.style.display = 'flex';
+          if (question) question.innerHTML = CONFIG.messages.ui.ready;
+          if (catSpeech) catSpeech.textContent = CONFIG.messages.ui.selectProblem;
+          this.catAnimator.happy();
+        }
+
+        hideAllSolutions() {
+          Object.values(this.dom.elements.solutions).forEach(solution => {
+            if (solution) solution.style.display = 'none';
+          });
+        }
+
+        hideFeedbackMessages(problemType) {
+          const feedback = this.dom.elements.feedback[problemType];
+          if (!feedback) return;
+          if (feedback.successMsg) feedback.successMsg.style.display = 'none';
+          if (feedback.helpMsg) feedback.helpMsg.style.display = 'none';
+          if (feedback.container) feedback.container.style.display = 'flex';
+        }
+
+        handleFeedback(isSolved, problemType) {
+          const feedback = this.dom.elements.feedback[problemType];
+          const { catSpeech } = this.dom.elements;
+          if (!feedback || !catSpeech) return;
+
+          if (isSolved) {
+            catSpeech.textContent = CONFIG.messages.ui.success;
+            this.catAnimator.veryHappy();
+            if (feedback.container) feedback.container.style.display = 'none';
+            if (feedback.successMsg) feedback.successMsg.style.display = 'block';
+          } else {
+            catSpeech.textContent = CONFIG.messages.ui.help;
+            this.catAnimator.concerned();
+            if (feedback.container) feedback.container.style.display = 'none';
+            if (feedback.helpMsg) feedback.helpMsg.style.display = 'block';
+          }
+        }
+
+        async handleCatClick(event) {
+          event.preventDefault();
+          event.stopPropagation();
+
+          const cat = document.querySelector('.sphinx-cat');
+          if (!cat || !this.audioManager.canClick()) return;
+
+          cat.classList.add('clicked');
+          setTimeout(() => cat.classList.remove('clicked'), 600);
+
+          this.audioManager.playPurr().catch(err => console.error('Failed to play purr:', err));
+
+          const { catSpeech } = this.dom.elements;
+          if (catSpeech) {
+            const originalText = catSpeech.textContent;
+            const randomMessage = CONFIG.messages.purr[
+              Math.floor(Math.random() * CONFIG.messages.purr.length)
+            ];
+            catSpeech.textContent = randomMessage;
+            setTimeout(() => {
+              if (catSpeech && catSpeech.textContent === randomMessage) {
+                catSpeech.textContent = originalText;
+              }
+            }, 2000);
+          }
+
+          this.catAnimator.happy();
+        }
+
+        handleEscapeKey() {
+          const { exitMessage, question, catSpeech, problemButtons, initialButtons } = this.dom.elements;
+          if (!exitMessage || exitMessage.style.display !== 'flex') return;
+
+          exitMessage.style.display = 'none';
+          this.appState.clearCountdown();
+          if (question) question.innerHTML = CONFIG.messages.ui.ready;
+          if (catSpeech) catSpeech.textContent = CONFIG.messages.ui.selectProblem;
+          if (problemButtons) problemButtons.style.display = 'flex';
+          if (initialButtons) initialButtons.style.display = 'none';
+          this.catAnimator.happy();
+        }
+
+        _escapeHtml(text) {
+          return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+      }
+
+      // ============================================================================
+      // ИНИЦИАЛИЗАЦИЯ И ОБРАБОТЧИКИ СОБЫТИЙ
+      // ============================================================================
+
+      /**
+       * Главный класс приложения
+       */
+      class App {
+        constructor() {
+          this.domManager = new DOMManager();
+          this.appState = new AppState();
+          this.catAnimator = new CatAnimator();
+          this.audioManager = new AudioManager();
+          this.dataLoader = new DataLoader(this.domManager);
+          this.uiManager = new UIManager(
+            this.domManager,
+            this.catAnimator,
+            this.audioManager,
+            this.appState
+          );
+        }
+
+        init() {
+          if (!this.domManager.validate()) {
+            console.error('Failed to initialize: missing required elements');
+            return;
+          }
+
+          this._initAudioOnFirstClick();
+          this._initEventListeners();
+          this.dataLoader.loadAll();
+          this._initCleanup();
+        }
+
+        _initAudioOnFirstClick() {
+          const initAudio = async () => {
+            await this.audioManager.init();
+            document.removeEventListener('click', initAudio);
+          };
+          document.addEventListener('click', initAudio, { once: true });
+        }
+
+        _initEventListeners() {
+          const { elements } = this.domManager;
+          const { uiManager } = this;
+
+          // Кот
+          const cat = document.querySelector('.sphinx-cat');
+          if (cat) {
+            cat.addEventListener('click', (e) => uiManager.handleCatClick(e));
+            cat.style.cursor = 'pointer';
+            cat.setAttribute('title', 'Кликните на кота, чтобы услышать мурчанье! 🐱');
+          }
+
+          // Основные кнопки
+          if (elements.yesBtn) {
+            elements.yesBtn.addEventListener('click', () => uiManager.handleYesClick());
+          }
+          if (elements.noBtn) {
+            elements.noBtn.addEventListener('click', () => uiManager.handleNoClick());
+          }
+
+          // Кнопки проблем
+          const problemTypes = ['posters', 'torrents', 'titles', 'auth'];
+          problemTypes.forEach((type, index) => {
+            const btn = elements.problemBtns[`problem${index + 1}`];
+            if (btn) {
+              btn.addEventListener('click', () => uiManager.handleProblemClick(type));
             }
-            
-            // Анимация очень довольного кота (проблема решена)
-            function animateCatVeryHappy() {
-                const cat = document.querySelector('.sphinx-cat');
-                const tail = document.querySelector('.tail');
-                
-                // Яркий и радостный цвет
-                cat.style.filter = 'brightness(1.4) hue-rotate(10deg)';
-                
-                // Быстрая анимация хвоста
-                tail.style.animation = 'tailMove 0.3s infinite alternate';
-                
-                // Глаза становятся ярко-зелеными
-                const pupils = document.querySelectorAll('.pupil');
-                pupils.forEach(pupil => {
-                    pupil.style.background = '#00FF00';
-                    pupil.style.boxShadow = '0 0 10px #00FF00';
-                });
+          });
+
+          // Кнопки возврата
+          problemTypes.forEach(type => {
+            const btn = elements.backBtns[type];
+            if (btn) {
+              btn.addEventListener('click', () => uiManager.returnToProblemSelection());
             }
-            
-            // Анимация задумчивого кота
-            function animateCatThinking() {
-                const cat = document.querySelector('.sphinx-cat');
-                
-                // Нормальный цвет кота
-                cat.style.filter = 'brightness(1)';
-                
-                // Медленная анимация хвоста
-                const tail = document.querySelector('.tail');
-                tail.style.animation = 'tailMove 2s infinite alternate';
-                
-                // Глаза становятся синими (цвет размышлений)
-                const pupils = document.querySelectorAll('.pupil');
-                pupils.forEach(pupil => {
-                    pupil.style.background = '#2980b9';
-                });
+          });
+
+          // Кнопки обратной связи
+          problemTypes.forEach(type => {
+            const feedback = elements.feedback[type];
+            if (feedback?.solved) {
+              feedback.solved.addEventListener('click', () => uiManager.handleFeedback(true, type));
             }
-            
-            // Анимация озабоченного кота (проблема не решена)
-            function animateCatConcerned() {
-                const cat = document.querySelector('.sphinx-cat');
-                
-                // Немного темнее цвет
-                cat.style.filter = 'brightness(0.9) hue-rotate(-10deg)';
-                
-                // Очень медленная анимация хвоста
-                const tail = document.querySelector('.tail');
-                tail.style.animation = 'tailMove 3s infinite alternate';
-                
-                // Глаза становятся оранжевыми (озабоченность)
-                const pupils = document.querySelectorAll('.pupil');
-                pupils.forEach(pupil => {
-                    pupil.style.background = '#FF9800';
-                });
+            if (feedback?.notsolved) {
+              feedback.notsolved.addEventListener('click', () => uiManager.handleFeedback(false, type));
             }
-            
-            // Анимация сердитого кота
-            function animateCatAngry() {
-                const cat = document.querySelector('.sphinx-cat');
-                
-                // Меняем цвет кота (темнее и красный оттенок)
-                cat.style.filter = 'brightness(0.8) hue-rotate(-30deg)';
-                
-                // Анимация глаз (они становятся красными)
-                const pupils = document.querySelectorAll('.pupil');
-                pupils.forEach(pupil => {
-                    pupil.style.background = '#c62828';
-                    pupil.style.animation = 'none';
-                });
+          });
+
+          // Клавиатура
+          document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              uiManager.handleEscapeKey();
             }
-            
-            // Добавляем мигание предупреждения
-            setInterval(() => {
-                if (warning.style.opacity === '0.7' || warning.style.opacity === '') {
-                    warning.style.opacity = '1';
-                } else {
-                    warning.style.opacity = '0.7';
-                }
-            }, 1000);
-        });
-    </script>
+          });
+        }
+
+        _initCleanup() {
+          window.addEventListener('beforeunload', () => {
+            this.appState.clearCountdown();
+          });
+        }
+      }
+
+      // ============================================================================
+      // ЗАПУСК ПРИЛОЖЕНИЯ
+      // ============================================================================
+
+      const app = new App();
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => app.init());
+      } else {
+        app.init();
+      }
+    })();
+  </script>
 </body>
+
 </html>
