@@ -829,7 +829,7 @@
             
             // Обработка нажатия "Да"
             yesBtn.addEventListener('click', function() {
-                question.innerHTML = '<span style="color:#4CAF50;">Вы выбрали "Да". Кот-сфинкс готов помочь вам с проблемой.</span>';
+                question.innerHTML = '<span style="color:#4CAF50;">Кот-сфинкс готов помочь вам с проблемой.</span>';
                 catSpeech.textContent = 'Выберите, какая проблема вас интересует:';
                 
                 // Скрываем начальные кнопки и показываем кнопки проблем
@@ -1015,7 +1015,7 @@
             function returnToProblemSelection() {
                 hideAllSolutions();
                 problemButtons.style.display = 'flex';
-                question.innerHTML = '<span style="color:#4CAF50;">Вы выбрали "Да". Кот-сфинкс готов помочь вам с проблемой.</span>';
+                question.innerHTML = '<span style="color:#4CAF50;">Кот-сфинкс готов помочь вам с проблемой.</span>';
                 catSpeech.textContent = 'Выберите, какая проблема вас интересует:';
             }
             
