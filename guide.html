@@ -370,6 +370,23 @@
       flex-wrap: wrap;
     }
 
+    .buttons-row {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
+    .support-buttons-row {
+      margin-top: 15px;
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
     button {
       padding: 16px 32px;
       font-size: 1.1rem;
@@ -1085,6 +1102,12 @@
         gap: 15px;
       }
 
+      .buttons-row,
+      .support-buttons-row {
+        flex-direction: column;
+        gap: 15px;
+      }
+
       .problem-btn {
         padding: 18px 20px;
         font-size: 0.95rem;
@@ -1700,16 +1723,18 @@
     </div>
 
     <div class="buttons" id="initialButtons" role="group" aria-label="Выбор ответа">
-      <button class="yes-btn" id="yesBtn" type="button" aria-label="Да, наблюдаю проблемы">Да, наблюдаю
-        проблемы</button>
-      <button class="no-btn" id="noBtn" type="button" aria-label="Нет, проблем не наблюдается">Нет, проблем не
-        наблюдается</button>
-    </div>
-    <div class="buttons" id="initialButtons" role="group" aria-label="Выбор ответа">
-      <button class="support-btn" id="supportBtn" type="button" aria-label="Поддержка для автора">Поддержка для
-        автора</button>
-      <button class="other-support-btn" id="otherSupportBtn" type="button"
-        aria-label="Поддержка сторонних источников">Поддержка сторонних источников, прокси, жакетов</button>
+      <div class="buttons-row">
+        <button class="yes-btn" id="yesBtn" type="button" aria-label="Да, наблюдаю проблемы">Да, наблюдаю
+          проблемы</button>
+        <button class="no-btn" id="noBtn" type="button" aria-label="Нет, проблем не наблюдается">Нет, проблем не
+          наблюдается</button>
+      </div>
+      <div class="support-buttons-row">
+        <button class="support-btn" id="supportBtn" type="button" aria-label="Поддержка для автора">Поддержка для
+          автора</button>
+        <button class="other-support-btn" id="otherSupportBtn" type="button"
+          aria-label="Поддержка сторонних источников">Поддержка сторонних источников, прокси, жакетов</button>
+      </div>
     </div>
 
     <div class="problem-buttons" id="problemButtons" role="group" aria-label="Выбор проблемы">
@@ -2548,6 +2573,21 @@
           this.appState = appState;
         }
 
+        resetToMainScreen() {
+          const { question, catSpeech, initialButtons, problemButtons, warning } = this.dom.elements;
+          if (!question || !catSpeech) return;
+
+          question.innerHTML = 'Пожалуйста, выберите ответ на вопрос кота-сфинкса';
+          catSpeech.textContent = 'Здравствуйте, Вы наблюдаете проблемы с NUM?';
+          initialButtons.style.display = 'flex';
+          problemButtons.style.display = 'none';
+          if (warning) warning.style.display = 'block';
+
+          this.hideAllSolutions();
+          this.hideAllFeedbackMessages();
+          this.catAnimator.happy();
+        }
+
         handleYesClick() {
           const { question, catSpeech, initialButtons, problemButtons, warning } = this.dom.elements;
           if (!question || !catSpeech) return;
@@ -2559,6 +2599,7 @@
           if (warning) warning.style.display = 'none';
 
           this.hideAllSolutions();
+          this.hideAllFeedbackMessages();
           this.catAnimator.happy();
         }
 
@@ -2574,6 +2615,7 @@
           problemButtons.style.display = 'none';
 
           this.hideAllSolutions();
+          this.hideAllFeedbackMessages();
           this.catAnimator.angry();
           this.startCountdown();
         }
@@ -2624,11 +2666,12 @@
         }
 
         showProblemSolution(problemName, solutionElement, speechText, problemType) {
-          const { question, catSpeech, problemButtons } = this.dom.elements;
+          const { question, catSpeech, problemButtons, initialButtons } = this.dom.elements;
           if (!question || !catSpeech || !solutionElement) return;
 
           question.innerHTML = CONFIG.messages.ui.problemSelected(problemName);
           catSpeech.textContent = speechText || 'Вот решение вашей проблемы:';
+          initialButtons.style.display = 'none';
           problemButtons.style.display = 'none';
           this.hideAllSolutions();
           solutionElement.style.display = 'block';
@@ -2637,9 +2680,11 @@
         }
 
         returnToProblemSelection() {
-          const { problemButtons, question, catSpeech } = this.dom.elements;
+          const { problemButtons, question, catSpeech, initialButtons } = this.dom.elements;
           this.hideAllSolutions();
+          this.hideAllFeedbackMessages();
           if (problemButtons) problemButtons.style.display = 'flex';
+          if (initialButtons) initialButtons.style.display = 'none';
           if (question) question.innerHTML = CONFIG.messages.ui.ready;
           if (catSpeech) catSpeech.textContent = CONFIG.messages.ui.selectProblem;
           this.catAnimator.happy();
@@ -2648,6 +2693,17 @@
         hideAllSolutions() {
           Object.values(this.dom.elements.solutions).forEach(solution => {
             if (solution) solution.style.display = 'none';
+          });
+        }
+
+        hideAllFeedbackMessages() {
+          const feedbackTypes = ['posters', 'torrents', 'titles', 'auth', 'support', 'otherSupport'];
+          feedbackTypes.forEach(type => {
+            const feedback = this.dom.elements.feedback[type];
+            if (!feedback) return;
+            if (feedback.successMsg) feedback.successMsg.style.display = 'none';
+            if (feedback.helpMsg) feedback.helpMsg.style.display = 'none';
+            if (feedback.container) feedback.container.style.display = 'flex';
           });
         }
 
@@ -2670,10 +2726,15 @@
             if (feedback.container) feedback.container.style.display = 'none';
             if (feedback.successMsg) feedback.successMsg.style.display = 'block';
           } else {
-            catSpeech.textContent = CONFIG.messages.ui.help;
-            this.catAnimator.concerned();
-            if (feedback.container) feedback.container.style.display = 'none';
-            if (feedback.helpMsg) feedback.helpMsg.style.display = 'block';
+            // При нажатии "Вернуться позже" возвращаем на главную страницу
+            if (problemType === 'support' || problemType === 'otherSupport') {
+              this.resetToMainScreen();
+            } else {
+              catSpeech.textContent = CONFIG.messages.ui.help;
+              this.catAnimator.concerned();
+              if (feedback.container) feedback.container.style.display = 'none';
+              if (feedback.helpMsg) feedback.helpMsg.style.display = 'block';
+            }
           }
         }
 
