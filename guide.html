@@ -24,6 +24,12 @@
       --color-purple: #9b59b6;
       --color-purple-dark: #8e44ad;
       --color-purple-glow: rgba(155, 89, 182, 0.4);
+      --color-pink: #e84393;
+      --color-pink-dark: #fd79a8;
+      --color-pink-glow: rgba(232, 67, 147, 0.4);
+      --color-teal: #00cec9;
+      --color-teal-dark: #00b894;
+      --color-teal-glow: rgba(0, 206, 201, 0.4);
       --color-bg-dark: #1a1a2e;
       --color-bg-darker: #16213e;
       --color-bg-glass: rgba(255, 255, 255, 0.05);
@@ -438,6 +444,30 @@
       background: linear-gradient(135deg, #FF5252 0%, var(--color-danger-dark) 100%);
     }
 
+    .support-btn {
+      background: linear-gradient(135deg, var(--color-pink) 0%, var(--color-pink-dark) 100%);
+      color: white;
+      box-shadow: var(--shadow-md), var(--shadow-glow) var(--color-pink-glow);
+    }
+
+    .support-btn:hover:not(:disabled) {
+      transform: translateY(-4px) scale(1.02);
+      box-shadow: var(--shadow-lg), var(--shadow-glow) var(--color-pink-glow);
+      background: linear-gradient(135deg, #FF7AA2 0%, var(--color-pink-dark) 100%);
+    }
+
+    .other-support-btn {
+      background: linear-gradient(135deg, var(--color-teal) 0%, var(--color-teal-dark) 100%);
+      color: white;
+      box-shadow: var(--shadow-md), var(--shadow-glow) var(--color-teal-glow);
+    }
+
+    .other-support-btn:hover:not(:disabled) {
+      transform: translateY(-4px) scale(1.02);
+      box-shadow: var(--shadow-lg), var(--shadow-glow) var(--color-teal-glow);
+      background: linear-gradient(135deg, #55E6E1 0%, var(--color-teal-dark) 100%);
+    }
+
     .problem-buttons {
       display: none;
       flex-direction: column;
@@ -591,7 +621,9 @@
 
     .solution .proxy-list,
     .solution .jackett-list,
-    .solution .nmprs-list {
+    .solution .nmprs-list,
+    .solution .support-list,
+    .solution .other-support-list {
       background: rgba(0, 0, 0, 0.4);
       backdrop-filter: blur(5px);
       -webkit-backdrop-filter: blur(5px);
@@ -611,27 +643,35 @@
 
     .solution .proxy-list::-webkit-scrollbar,
     .solution .jackett-list::-webkit-scrollbar,
-    .solution .nmprs-list::-webkit-scrollbar {
+    .solution .nmprs-list::-webkit-scrollbar,
+    .solution .support-list::-webkit-scrollbar,
+    .solution .other-support-list::-webkit-scrollbar {
       width: 8px;
     }
 
     .solution .proxy-list::-webkit-scrollbar-track,
     .solution .jackett-list::-webkit-scrollbar-track,
-    .solution .nmprs-list::-webkit-scrollbar-track {
+    .solution .nmprs-list::-webkit-scrollbar-track,
+    .solution .support-list::-webkit-scrollbar-track,
+    .solution .other-support-list::-webkit-scrollbar-track {
       background: rgba(255, 255, 255, 0.05);
       border-radius: 4px;
     }
 
     .solution .proxy-list::-webkit-scrollbar-thumb,
     .solution .jackett-list::-webkit-scrollbar-thumb,
-    .solution .nmprs-list::-webkit-scrollbar-thumb {
+    .solution .nmprs-list::-webkit-scrollbar-thumb,
+    .solution .support-list::-webkit-scrollbar-thumb,
+    .solution .other-support-list::-webkit-scrollbar-thumb {
       background: var(--color-primary);
       border-radius: 4px;
     }
 
     .solution .proxy-item,
     .solution .jackett-item,
-    .solution .nmprs-item {
+    .solution .nmprs-item,
+    .solution .support-item,
+    .solution .other-support-item {
       padding: 10px 12px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       white-space: pre-wrap;
@@ -643,7 +683,9 @@
 
     .solution .proxy-item:hover,
     .solution .jackett-item:hover,
-    .solution .nmprs-item:hover {
+    .solution .nmprs-item:hover,
+    .solution .support-item:hover,
+    .solution .other-support-item:hover {
       background: rgba(255, 255, 255, 0.05);
       transform: translateX(4px);
       border-left: 2px solid var(--color-primary);
@@ -652,7 +694,9 @@
 
     .solution .proxy-item:last-child,
     .solution .jackett-item:last-child,
-    .solution .nmprs-item:last-child {
+    .solution .nmprs-item:last-child,
+    .solution .support-item:last-child,
+    .solution .other-support-item:last-child {
       border-bottom: none;
     }
 
@@ -940,6 +984,8 @@
     .solution .proxy-item,
     .solution .jackett-item,
     .solution .nmprs-item,
+    .solution .support-item,
+    .solution .other-support-item,
     .speech-bubble {
       transition-property: transform, opacity, box-shadow, background-color, border-color;
       transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -1281,7 +1327,9 @@
 
       .solution .proxy-list,
       .solution .jackett-list,
-      .solution .nmprs-list {
+      .solution .nmprs-list,
+      .solution .support-list,
+      .solution .other-support-list {
         padding: 14px;
         font-size: 0.85rem;
         max-height: 250px;
@@ -1290,7 +1338,9 @@
 
       .solution .proxy-item,
       .solution .jackett-item,
-      .solution .nmprs-item {
+      .solution .nmprs-item,
+      .solution .support-item,
+      .solution .other-support-item {
         padding: 10px 10px;
         font-size: 0.85rem;
         word-break: break-all;
@@ -1457,7 +1507,9 @@
 
       .solution .proxy-list,
       .solution .jackett-list,
-      .solution .nmprs-list {
+      .solution .nmprs-list,
+      .solution .support-list,
+      .solution .other-support-list {
         padding: 12px;
         font-size: 0.8rem;
         max-height: 200px;
@@ -1542,7 +1594,9 @@
       .solution .config-option:hover,
       .solution .proxy-item:hover,
       .solution .jackett-item:hover,
-      .solution .nmprs-item:hover {
+      .solution .nmprs-item:hover,
+      .solution .support-item:hover,
+      .solution .other-support-item:hover {
         transform: none;
         box-shadow: var(--shadow-md);
       }
@@ -1568,7 +1622,9 @@
       /* Улучшаем прокрутку на touch устройствах */
       .solution .proxy-list,
       .solution .jackett-list,
-      .solution .nmprs-list {
+      .solution .nmprs-list,
+      .solution .support-list,
+      .solution .other-support-list {
         -webkit-overflow-scrolling: touch;
       }
     }
@@ -1648,6 +1704,10 @@
         проблемы</button>
       <button class="no-btn" id="noBtn" type="button" aria-label="Нет, проблем не наблюдается">Нет, проблем не
         наблюдается</button>
+      <button class="support-btn" id="supportBtn" type="button" aria-label="Поддержка для автора">Поддержка для
+        автора</button>
+      <button class="other-support-btn" id="otherSupportBtn" type="button"
+        aria-label="Поддержка сторонних источников">Поддержка сторонних источников, прокси, жакетов</button>
     </div>
 
     <div class="problem-buttons" id="problemButtons" role="group" aria-label="Выбор проблемы">
@@ -1818,6 +1878,69 @@
       </div>
     </section>
 
+    <!-- Поддержка для автора -->
+    <section class="solution" id="solutionSupport" aria-labelledby="solutionSupportTitle">
+      <h3 id="solutionSupportTitle">Поддержка для автора</h3>
+
+      <p>Если вы хотите поддержать развитие проекта и работу автора, вы можете воспользоваться следующими способами:</p>
+
+      <div class="support-list" id="supportList">
+        <div class="loading">Загрузка информации о поддержке...</div>
+      </div>
+
+      <p><strong>Спасибо за вашу поддержку!</strong></p>
+
+      <button class="solution-btn" id="backFromSupportBtn" type="button"
+        aria-label="Вернуться к выбору проблемы">Вернуться к выбору проблемы</button>
+
+      <div class="feedback-buttons" id="feedbackSupport" role="group" aria-label="Обратная связь">
+        <button class="feedback-btn solved-btn" id="solvedSupportBtn" type="button"
+          aria-label="Я поддержал автора">Я поддержал автора</button>
+        <button class="feedback-btn notsolved-btn" id="notsolvedSupportBtn" type="button"
+          aria-label="Вернуться позже">Вернуться позже</button>
+      </div>
+
+      <div class="feedback-message success-message" id="successMessageSupport" role="alert" aria-live="polite">
+        <p>🎉 Благодарим за вашу поддержку! Кот-сфинкс очень рад! 🐱💖</p>
+      </div>
+
+      <div class="feedback-message help-message" id="helpMessageSupport" role="alert" aria-live="polite">
+        <p>😺 Хорошо, надеемся увидеть вас снова! Кот-сфинкс будет ждать! 🐾</p>
+      </div>
+    </section>
+
+    <!-- Поддержка сторонних источников, прокси, жакетов -->
+    <section class="solution" id="solutionOtherSupport" aria-labelledby="solutionOtherSupportTitle">
+      <h3 id="solutionOtherSupportTitle">Поддержка сторонних источников, прокси, жакетов</h3>
+
+      <p>Если вы хотите поддержать сторонние источники данных, прокси и жакет-серверы, вы можете воспользоваться
+        следующими способами:</p>
+
+      <div class="other-support-list" id="otherSupportList">
+        <div class="loading">Загрузка информации о поддержке сторонних источников...</div>
+      </div>
+
+      <p><strong>Спасибо за вашу поддержку сторонних сервисов!</strong></p>
+
+      <button class="solution-btn" id="backFromOtherSupportBtn" type="button"
+        aria-label="Вернуться к выбору проблемы">Вернуться к выбору проблемы</button>
+
+      <div class="feedback-buttons" id="feedbackOtherSupport" role="group" aria-label="Обратная связь">
+        <button class="feedback-btn solved-btn" id="solvedOtherSupportBtn" type="button"
+          aria-label="Я поддержал сторонние сервисы">Я поддержал сторонние сервисы</button>
+        <button class="feedback-btn notsolved-btn" id="notsolvedOtherSupportBtn" type="button"
+          aria-label="Вернуться позже">Вернуться позже</button>
+      </div>
+
+      <div class="feedback-message success-message" id="successMessageOtherSupport" role="alert" aria-live="polite">
+        <p>🎉 Благодарим за вашу поддержку сторонних сервисов! Кот-сфинкс очень доволен! 🐱🌟</p>
+      </div>
+
+      <div class="feedback-message help-message" id="helpMessageOtherSupport" role="alert" aria-live="polite">
+        <p>😺 Хорошо, надеемся увидеть вас снова! Кот-сфинкс будет ждать! 🐾</p>
+      </div>
+    </section>
+
     <div class="warning" id="warning" role="alert" aria-live="polite">
       Внимание: ответ "Нет" приведет к немедленному закрытию сайта
     </div>
@@ -1843,7 +1966,9 @@
         urls: {
           proxy: 'https://cash94.github.io/numproxy.txt',
           jackett: 'https://cash94.github.io/jackett.txt',
-          nmprs: 'https://cash94.github.io/nmprs.txt'
+          nmprs: 'https://cash94.github.io/nmprs.txt',
+          support: 'https://cash94.github.io/support.txt',
+          otherSupport: 'https://cash94.github.io/OtherSupport.txt'
         },
         countdown: {
           initial: 5,
@@ -1859,15 +1984,7 @@
         audio: {
           clickCooldown: 500,
           // URL реальных звуков мурчанья кота
-          // ИНСТРУКЦИЯ: Добавьте пути к вашим реальным аудиофайлам мурчанья кота
-          // Формат: .mp3, .wav, .ogg
-          // Примеры:
-          // purrUrls: ['sounds/cat-purr-1.mp3', 'sounds/cat-purr-2.wav']
-          // или используйте полные URL: ['https://example.com/sounds/cat-purr.mp3']
-          purrUrls: [
-            // Добавьте здесь пути к вашим аудиофайлам
-            // Если массив пустой, будет использован реалистичный синтез
-          ],
+          purrUrls: [],
           useSynthesis: true // Использовать синтез если файлы недоступны
         },
         messages: {
@@ -1895,6 +2012,14 @@
             auth: {
               name: 'проблему с зависанием на стадии "Аунтификация"',
               speech: 'Вот решение проблемы с зависанием на стадии "Аунтификация":'
+            },
+            support: {
+              name: 'поддержку для автора',
+              speech: 'Способы поддержки автора проекта:'
+            },
+            otherSupport: {
+              name: 'поддержку сторонних источников, прокси, жакетов',
+              speech: 'Способы поддержки сторонних источников, прокси и жакетов:'
             }
           },
           ui: {
@@ -1926,6 +2051,8 @@
           const selectors = {
             yesBtn: '#yesBtn',
             noBtn: '#noBtn',
+            supportBtn: '#supportBtn',
+            otherSupportBtn: '#otherSupportBtn',
             problemButtons: '#problemButtons',
             initialButtons: '#initialButtons',
             exitMessage: '#exitMessage',
@@ -1937,7 +2064,9 @@
               posters: '#solutionPosters',
               torrents: '#solutionTorrents',
               titles: '#solutionTitles',
-              auth: '#solutionAuth'
+              auth: '#solutionAuth',
+              support: '#solutionSupport',
+              otherSupport: '#solutionOtherSupport'
             },
             problemBtns: {
               problem1: '#problem1Btn',
@@ -1949,7 +2078,9 @@
               posters: '#backFromPostersBtn',
               torrents: '#backFromTorrentsBtn',
               titles: '#backFromTitlesBtn',
-              auth: '#backFromAuthBtn'
+              auth: '#backFromAuthBtn',
+              support: '#backFromSupportBtn',
+              otherSupport: '#backFromOtherSupportBtn'
             },
             feedback: {
               posters: {
@@ -1979,12 +2110,28 @@
                 successMsg: '#successMessageAuth',
                 helpMsg: '#helpMessageAuth',
                 container: '#feedbackAuth'
+              },
+              support: {
+                solved: '#solvedSupportBtn',
+                notsolved: '#notsolvedSupportBtn',
+                successMsg: '#successMessageSupport',
+                helpMsg: '#helpMessageSupport',
+                container: '#feedbackSupport'
+              },
+              otherSupport: {
+                solved: '#solvedOtherSupportBtn',
+                notsolved: '#notsolvedOtherSupportBtn',
+                successMsg: '#successMessageOtherSupport',
+                helpMsg: '#helpMessageOtherSupport',
+                container: '#feedbackOtherSupport'
               }
             },
             lists: {
               proxy: '#proxyListPosters',
               jackett: '#jackettList',
-              nmprs: '#nmprsList'
+              nmprs: '#nmprsList',
+              support: '#supportList',
+              otherSupport: '#otherSupportList'
             }
           };
 
@@ -2007,6 +2154,8 @@
           const required = [
             this.elements.yesBtn,
             this.elements.noBtn,
+            this.elements.supportBtn,
+            this.elements.otherSupportBtn,
             this.elements.problemButtons,
             this.elements.initialButtons,
             this.elements.question,
@@ -2113,8 +2262,6 @@
         }
 
         async init() {
-          // Создаем несколько HTML5 Audio элементов для воспроизведения реальных звуков
-          // Это позволяет воспроизводить звуки параллельно без задержек
           for (let i = 0; i < 2; i++) {
             const audio = new Audio();
             audio.preload = 'auto';
@@ -2123,7 +2270,6 @@
               this.isPurring = false;
             });
             audio.addEventListener('error', () => {
-              // Если файл не загрузился, используем синтез
               console.warn('Audio file failed to load, using synthesis');
             });
             this.audioElements.push(audio);
@@ -2140,7 +2286,6 @@
           this.isPurring = true;
 
           try {
-            // Если есть URL реальных файлов, пробуем их использовать
             if (CONFIG.audio.purrUrls && CONFIG.audio.purrUrls.length > 0) {
               await this._playRealAudioFile();
               return;
@@ -2149,7 +2294,6 @@
             console.warn('Real audio file not available:', error);
           }
 
-          // Используем реалистичный синтез
           if (CONFIG.audio.useSynthesis) {
             await this._playRealisticSynthesis();
           } else {
@@ -2158,7 +2302,6 @@
         }
 
         async _playRealAudioFile() {
-          // Пробуем загрузить реальный аудиофайл
           const urls = CONFIG.audio.purrUrls;
           if (!urls || urls.length === 0) {
             throw new Error('No audio URLs configured');
@@ -2172,7 +2315,6 @@
           }
 
           return new Promise((resolve, reject) => {
-            // Обработчики событий
             const handleCanPlay = async () => {
               try {
                 audio.removeEventListener('canplay', handleCanPlay);
@@ -2194,12 +2336,10 @@
             audio.addEventListener('canplay', handleCanPlay, { once: true });
             audio.addEventListener('error', handleError, { once: true });
 
-            // Устанавливаем источник
             audio.src = audioUrl;
             audio.volume = 0.7;
             audio.load();
 
-            // Таймаут на случай долгой загрузки
             setTimeout(() => {
               if (audio.readyState < 2) {
                 audio.removeEventListener('canplay', handleCanPlay);
@@ -2211,7 +2351,6 @@
         }
 
         async _playRealisticSynthesis() {
-          // Создаем аудио контекст для синтеза
           const AudioContext = window.AudioContext || window.webkitAudioContext;
           if (!AudioContext) {
             this.isPurring = false;
@@ -2228,11 +2367,9 @@
           const buffer = audioContext.createBuffer(1, sampleRate * duration, sampleRate);
           const data = buffer.getChannelData(0);
 
-          // Параметры реального мурчанья кота (на основе анализа записей)
-          const baseFreq = 24.5; // Основная частота мурчанья
-          const purrRate = 24.5; // Частота пульсации
+          const baseFreq = 24.5;
+          const purrRate = 24.5;
 
-          // Предгенерируем шум для более реалистичной текстуры
           const noiseBuffer = new Float32Array(buffer.length);
           let noiseAccumulator = 0;
           for (let i = 0; i < noiseBuffer.length; i++) {
@@ -2243,60 +2380,46 @@
           for (let i = 0; i < buffer.length; i++) {
             const t = i / sampleRate;
 
-            // Основная пульсация мурчанья
             const pulse1 = Math.sin(t * purrRate * 2 * Math.PI);
             const pulse2 = Math.sin(t * purrRate * 1.3 * 2 * Math.PI) * 0.4;
             const pulse = (pulse1 + pulse2) / 1.4;
 
-            // Вариация частоты
             const frequency = baseFreq + pulse * 2.2 + Math.sin(t * 0.5) * 0.8;
 
-            // Модуляция дыхания
             const breath = 0.72 + 0.28 * Math.sin(t * 0.58);
 
-            // Плавное нарастание и затухание
             const fadeIn = Math.pow(Math.min(1, t * 3.5), 1.2);
             const fadeOut = Math.pow(Math.exp(-t * 0.4), 0.9);
             const amplitude = fadeIn * fadeOut * 0.6 * breath;
 
-            // Основной тон
             const mainTone = Math.sin(2 * Math.PI * frequency * t);
 
-            // Гармоники
             const harmonic2 = Math.sin(2 * Math.PI * frequency * 2 * t) * 0.28;
             const harmonic3 = Math.sin(2 * Math.PI * frequency * 3 * t) * 0.14;
             const harmonic4 = Math.sin(2 * Math.PI * frequency * 4 * t) * 0.07;
 
-            // Субгармоника для глубины
             const subharmonic = Math.sin(2 * Math.PI * frequency * 0.5 * t) * 0.12;
 
-            // Вибрация тела
             const vibration = Math.sin(2 * Math.PI * (38 + Math.sin(t * 0.3) * 4) * t) * 0.05;
 
-            // Используем предгенерированный шум
             const noise = noiseBuffer[i] * 0.12;
 
-            // Комбинируем компоненты
             let sample = (mainTone + harmonic2 + harmonic3 + harmonic4 + subharmonic) * amplitude;
             sample += vibration * amplitude;
             sample += noise * amplitude * (0.4 + Math.abs(pulse) * 0.6);
 
-            // Мягкое ограничение
             data[i] = Math.tanh(sample * 0.7);
           }
 
-          // Создаем цепочку обработки
           const source = audioContext.createBufferSource();
           const gainNode = audioContext.createGain();
           const lowpassFilter = audioContext.createBiquadFilter();
           const compressor = audioContext.createDynamicsCompressor();
 
-          // Низкочастотный фильтр
           lowpassFilter.type = 'lowpass';
           lowpassFilter.frequency.value = 130;
           lowpassFilter.Q.value = 0.5;
 
-          // Компрессор для естественности
           compressor.threshold.value = -20;
           compressor.knee.value = 20;
           compressor.ratio.value = 8;
@@ -2405,6 +2528,10 @@
             'Нет доступных Jackett серверов', 'Ошибка загрузки списка Jackett');
           this.loadList(CONFIG.urls.nmprs, lists.nmprs, 'nmprs-item',
             'Нет доступных источников данных', 'Ошибка загрузки списка источников данных');
+          this.loadList(CONFIG.urls.support, lists.support, 'support-item',
+            'Нет информации о поддержке автора', 'Ошибка загрузки информации о поддержке автора');
+          this.loadList(CONFIG.urls.otherSupport, lists.otherSupport, 'other-support-item',
+            'Нет информации о поддержке сторонних источников', 'Ошибка загрузки информации о поддержке сторонних источников');
         }
       }
 
@@ -2447,6 +2574,26 @@
           this.hideAllSolutions();
           this.catAnimator.angry();
           this.startCountdown();
+        }
+
+        handleSupportClick() {
+          const problemType = 'support';
+          const problem = CONFIG.messages.problems[problemType];
+          const solution = this.dom.elements.solutions[problemType];
+          if (!problem || !solution) return;
+
+          const safeName = this._escapeHtml(problem.name);
+          this.showProblemSolution(safeName, solution, problem.speech, problemType);
+        }
+
+        handleOtherSupportClick() {
+          const problemType = 'otherSupport';
+          const problem = CONFIG.messages.problems[problemType];
+          const solution = this.dom.elements.solutions[problemType];
+          if (!problem || !solution) return;
+
+          const safeName = this._escapeHtml(problem.name);
+          this.showProblemSolution(safeName, solution, problem.speech, problemType);
         }
 
         startCountdown() {
@@ -2636,9 +2783,15 @@
           if (elements.noBtn) {
             elements.noBtn.addEventListener('click', () => uiManager.handleNoClick());
           }
+          if (elements.supportBtn) {
+            elements.supportBtn.addEventListener('click', () => uiManager.handleSupportClick());
+          }
+          if (elements.otherSupportBtn) {
+            elements.otherSupportBtn.addEventListener('click', () => uiManager.handleOtherSupportClick());
+          }
 
           // Кнопки проблем
-          const problemTypes = ['posters', 'torrents', 'titles', 'auth'];
+          const problemTypes = ['posters', 'torrents', 'titles', 'auth', 'support', 'otherSupport'];
           problemTypes.forEach((type, index) => {
             const btn = elements.problemBtns[`problem${index + 1}`];
             if (btn) {
