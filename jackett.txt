@@ -1,6 +1,5 @@
 http://nmjc.duckdns.org
 https://nmjc.duckdns.org
-jacred.pro
 http://jr.maxvol.pro
 https://jr.maxvol.pro
 http://jac-red.ru
