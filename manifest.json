@@ -2455,5 +2455,23 @@
                 "timestamp": "2026-01-25T15:06:31Z"
             }
         ]
+    },
+    {
+        "guid": "309ec7e5-4981-4e8c-992f-8e4dde9591e0",
+        "name": "Comic Vine",
+        "description": "Pulls comic metadata and cover images from Comic Vine.\n",
+        "overview": "Comic Vine Metadata Provider",
+        "owner": "jellyfin",
+        "category": "Books",
+        "versions": [
+            {
+                "version": "1.0.0.0",
+                "changelog": "Initial Release",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/comic-vine/comic-vine_1.0.0.0.zip",
+                "checksum": "d84b4958da5325fd35b2298c11264bdf",
+                "timestamp": "2026-01-26T01:27:36Z"
+            }
+        ]
     }
 ]
