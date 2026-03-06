@@ -1175,46 +1175,78 @@
     return 0;
   }
 
-  // -- Очистка буфера при превышении лимита памяти --
-  function cleanupMemory() {
-    if (state.segments.cleanupInProgress) return;
+  // -- Функция очистки буфера (как при перемотке) --
+  function cleanupBuffer(segmentToClean) {
+    if (!videoPlayer || state.segments.cleanupInProgress) return;
     
     state.segments.cleanupInProgress = true;
     
-    var currentSegment = state.segments.current;
-    var otherSegment = currentSegment === 0 ? 1 : 0;
+    var wasPaused = videoPlayer.paused;
+    var url = videoPlayer.src;
+    var currentTime = videoPlayer.currentTime;
     
-    // Очищаем неактивный сегмент
-    state.segments.positions[otherSegment] = {
+    // Показываем предупреждение
+    memoryWarning.style.display = 'block';
+    bufferMode.textContent = '🧹 Очистка памяти...';
+    
+    // Визуальный эффект на очищаемом сегменте
+    if (segmentToClean === 0) {
+      segment1.classList.add('clearing');
+    } else {
+      segment2.classList.add('clearing');
+    }
+    
+    // Останавливаем мониторинг
+    stopBufferMonitoring();
+    
+    // Очищаем буфер (как при перемотке)
+    videoPlayer.pause();
+    videoPlayer.removeAttribute('src');
+    videoPlayer.load();
+    
+    // Восстанавливаем с той же позицией
+    videoPlayer.src = url;
+    videoPlayer.load();
+    videoPlayer.currentTime = currentTime;
+    
+    if (!wasPaused) {
+      var playPromise = videoPlayer.play();
+      if (playPromise && playPromise.catch) {
+        playPromise.catch(function() {
+          videoPlayer.muted = true;
+          videoPlayer.play().catch(function(){});
+        });
+      }
+    }
+    
+    // Очищаем информацию о сегменте
+    state.segments.positions[segmentToClean] = {
       start: 0,
       end: 0,
       size: 0
     };
     
-    // Визуальный эффект
-    if (otherSegment === 0) {
-      segment1.classList.add('clearing');
-      setTimeout(() => segment1.classList.remove('clearing'), 500);
-    } else {
-      segment2.classList.add('clearing');
-      setTimeout(() => segment2.classList.remove('clearing'), 500);
-    }
-    
-    memoryWarning.style.display = 'block';
-    bufferMode.textContent = '🧹 Очистка памяти...';
-    
+    // Убираем визуальный эффект
     setTimeout(() => {
-      memoryWarning.style.display = 'none';
-      bufferMode.textContent = 'Активен сегмент ' + (currentSegment + 1);
-      state.segments.cleanupInProgress = false;
-    }, 2000);
+      if (segmentToClean === 0) {
+        segment1.classList.remove('clearing');
+      } else {
+        segment2.classList.remove('clearing');
+      }
+    }, 500);
     
-    updateSegmentsDisplay();
+    // Перезапускаем мониторинг
+    setTimeout(function() {
+      initBufferMonitoring();
+      memoryWarning.style.display = 'none';
+      state.segments.cleanupInProgress = false;
+      bufferMode.textContent = 'Активен сегмент ' + (state.segments.current + 1);
+    }, 1000);
   }
 
   // -- Обновление сегментов --
   function updateSegments() {
-    if (!videoPlayer || state.screen !== 'player' || state.isSeeking) return;
+    if (!videoPlayer || state.screen !== 'player' || state.isSeeking || state.segments.cleanupInProgress) return;
     
     try {
       var buffered = videoPlayer.buffered;
@@ -1249,10 +1281,13 @@
       // Проверяем лимит памяти
       var totalMemory = estimateBufferSize();
       if (totalMemory > state.segments.maxMemory && !state.segments.cleanupInProgress) {
-        cleanupMemory();
+        // Очищаем неактивный сегмент
+        var otherSegment = activeSegmentIndex === 0 ? 1 : 0;
+        cleanupBuffer(otherSegment);
+        return;
       }
       
-      // Логика переключения сегментов
+      // Логика переключения сегментов при достижении 30 секунд
       if (currentBufferedDuration >= state.segments.targetSize && 
           !state.segments.switching &&
           !state.segments.cleanupInProgress) {
@@ -1346,7 +1381,7 @@
     };
     
     state.bufferCheckInterval = setInterval(function() {
-      if (!videoPlayer || state.screen !== 'player' || state.isSeeking) return;
+      if (!videoPlayer || state.screen !== 'player') return;
       
       try {
         var buffered = videoPlayer.buffered;
