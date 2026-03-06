@@ -375,19 +375,47 @@
     flex-direction: column;
     gap: 8px;
     min-width: 250px;
-    transition: opacity 0.3s;
+    transition: opacity 0.3s, transform 0.3s;
     box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    pointer-events: auto;
+  }
+
+  #buffer-indicator.hidden {
+    opacity: 0;
+    transform: translateX(100%);
     pointer-events: none;
   }
 
-  #touch-area {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 5;
-    background: transparent;
+  .buffer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+  }
+
+  .buffer-header h4 {
+    color: #fff;
+    font-size: 14px;
+  }
+
+  .buffer-hide-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: #aaa;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .buffer-hide-btn:active {
+    background: rgba(255,80,80,0.8);
+    color: white;
   }
 
   .buffer-row {
@@ -435,6 +463,10 @@
     background: linear-gradient(90deg, #ffaa4a, #ffbb6a);
   }
 
+  .segment.clearing .segment-fill {
+    background: linear-gradient(90deg, #ff4a4a, #ff6a6a);
+  }
+
   .segment-label {
     font-size: 10px;
     text-align: center;
@@ -477,6 +509,16 @@
     font-size: 12px;
     border: 1px solid rgba(74,158,255,0.3);
     backdrop-filter: blur(5px);
+  }
+
+  #touch-area {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    background: transparent;
   }
 
   /* ── Экран конфигурации ── */
@@ -730,8 +772,8 @@
   
   <!-- Индикаторы дорожек -->
   <div class="track-indicator" id="track-indicator" style="display: none;">
-    <span id="audio-track-indicator">🔊 Аудио 1</span>
-    <span id="subtitle-track-indicator">📄 Субтитры выкл</span>
+    <span id="audio-track-indicator">🔊</span>
+    <span id="subtitle-track-indicator">📄</span>
   </div>
   
   <div id="player-hint">Нажмите "Назад" для настройки</div>
@@ -778,8 +820,13 @@
   </div>
   
   <!-- Индикатор буфера -->
-  <div id="buffer-indicator" style="display: none;">
-    <div class="buffer-mode" id="buffer-mode">Сегментированный буфер</div>
+  <div id="buffer-indicator">
+    <div class="buffer-header">
+      <h4>Мониторинг буфера</h4>
+      <button class="buffer-hide-btn" id="buffer-hide-btn">✕</button>
+    </div>
+    
+    <div class="buffer-mode" id="buffer-mode">Кольцевой буфер</div>
     
     <div class="buffer-row">
       <span class="buffer-label">Буфер всего</span>
@@ -843,6 +890,7 @@
   
   // Элементы буфера
   var bufferIndicator = document.getElementById('buffer-indicator');
+  var bufferHideBtn = document.getElementById('buffer-hide-btn');
   var bufferPercent = document.getElementById('buffer-percent');
   var bufferSize = document.getElementById('buffer-size');
   var bufferTime = document.getElementById('buffer-time');
@@ -902,22 +950,24 @@
     isSeeking: false,
     menuActive: false,
     menuType: 'audio',
+    bufferHidden: false,
     
     // Аудиодорожки и субтитры
     audioTracks: [],
     currentAudioTrack: 0,
     subtitleTracks: [],
-    currentSubtitleTrack: -1, // -1 = выключено
+    currentSubtitleTrack: -1,
     textTracksInitialized: false,
     
-    // Управление сегментированным буфером
+    // Управление сегментированным буфером - НОВАЯ ЛОГИКА
     segments: {
-      current: 0,
+      current: 0,           // Активный сегмент (0 или 1)
       positions: [
-        { start: 0, end: 0, loaded: false, size: 0 },
-        { start: 0, end: 0, loaded: false, size: 0 }
+        { start: 0, end: 0, loaded: false, size: 0, cleared: false }, // Сегмент 0
+        { start: 0, end: 0, loaded: false, size: 0, cleared: false }  // Сегмент 1
       ],
-      targetSize: 60,
+      targetSize: 60,        // 60 секунд для полной загрузки
+      cleanupThreshold: 20,   // 20 секунд для очистки другого сегмента
       switching: false,
       lastSwitchTime: 0
     }
@@ -1018,13 +1068,227 @@
     return 0;
   }
 
+  // -- НОВАЯ ЛОГИКА УПРАВЛЕНИЯ СЕГМЕНТАМИ --
+  function updateSegments() {
+    if (!videoPlayer || state.screen !== 'player' || state.isSeeking) return;
+    
+    try {
+      var buffered = videoPlayer.buffered;
+      var currentTime = videoPlayer.currentTime;
+      var duration = videoPlayer.duration;
+      
+      if (buffered.length === 0 || duration <= 0) return;
+      
+      // Находим сегмент, содержащий текущую позицию
+      var currentSegmentIndex = -1;
+      for (var i = 0; i < buffered.length; i++) {
+        if (currentTime >= buffered.start(i) && currentTime <= buffered.end(i)) {
+          currentSegmentIndex = i;
+          break;
+        }
+      }
+      
+      if (currentSegmentIndex === -1) return;
+      
+      var currentBufferedStart = buffered.start(currentSegmentIndex);
+      var currentBufferedEnd = buffered.end(currentSegmentIndex);
+      var currentBufferedDuration = currentBufferedEnd - currentBufferedStart;
+      
+      // Определяем, какой сегмент активен (0 или 1)
+      var activeSegmentIndex = state.segments.current;
+      var otherSegmentIndex = activeSegmentIndex === 0 ? 1 : 0;
+      
+      // Обновляем активный сегмент
+      state.segments.positions[activeSegmentIndex] = {
+        start: currentBufferedStart,
+        end: currentBufferedEnd,
+        loaded: currentBufferedDuration >= state.segments.targetSize,
+        size: Math.min(currentBufferedDuration, state.segments.targetSize),
+        cleared: false
+      };
+      
+      // ЛОГИКА 1: Если активный сегмент достиг 60 секунд, переключаемся на другой
+      if (state.segments.positions[activeSegmentIndex].loaded && 
+          !state.segments.switching) {
+        
+        state.segments.switching = true;
+        state.segments.lastSwitchTime = Date.now();
+        
+        // Переключаем активный сегмент
+        state.segments.current = otherSegmentIndex;
+        activeSegment.textContent = 'Сегмент ' + (otherSegmentIndex + 1);
+        
+        // Показываем сообщение о переключении
+        bufferMode.textContent = '🔄 Переключение на сегмент ' + (otherSegmentIndex + 1);
+        
+        setTimeout(function() {
+          state.segments.switching = false;
+        }, 1000);
+      }
+      
+      // ЛОГИКА 2: Если неактивный сегмент достиг 20 секунд, очищаем его
+      var otherSegmentSize = state.segments.positions[otherSegmentIndex].size;
+      
+      if (otherSegmentSize >= state.segments.cleanupThreshold && 
+          !state.segments.positions[otherSegmentIndex].cleared) {
+        
+        // Помечаем как очищенный
+        state.segments.positions[otherSegmentIndex].cleared = true;
+        
+        // Визуально показываем очистку
+        if (otherSegmentIndex === 0) {
+          segment1.classList.add('clearing');
+          setTimeout(function() {
+            segment1.classList.remove('clearing');
+          }, 500);
+        } else {
+          segment2.classList.add('clearing');
+          setTimeout(function() {
+            segment2.classList.remove('clearing');
+          }, 500);
+        }
+        
+        // Очищаем данные сегмента
+        state.segments.positions[otherSegmentIndex] = {
+          start: 0,
+          end: 0,
+          loaded: false,
+          size: 0,
+          cleared: true
+        };
+        
+        bufferMode.textContent = '🧹 Очистка сегмента ' + (otherSegmentIndex + 1);
+        
+        // Здесь можно добавить реальную очистку буфера через перезагрузку
+        // но это может вызвать рывки, поэтому пока только визуально
+      }
+      
+      // ЛОГИКА 3: Сбрасываем флаг cleared когда сегмент начинает заполняться заново
+      if (otherSegmentSize === 0 && state.segments.positions[otherSegmentIndex].cleared) {
+        state.segments.positions[otherSegmentIndex].cleared = false;
+      }
+      
+      updateSegmentsDisplay();
+      
+    } catch(e) {
+      console.log('Segment update error:', e);
+    }
+  }
+
+  function updateSegmentsDisplay() {
+    // Обновляем отображение сегментов
+    var seg1 = state.segments.positions[0];
+    var seg2 = state.segments.positions[1];
+    
+    // Сегмент 1
+    var seg1Percent = (seg1.size / state.segments.targetSize) * 100;
+    segment1Fill.style.width = Math.min(seg1Percent, 100) + '%';
+    segment1.classList.toggle('active', state.segments.current === 0);
+    segment1.classList.toggle('standby', state.segments.current === 1 && seg1.size > 0);
+    segment1Label.textContent = 'С1: ' + Math.round(seg1.size) + 'с';
+    
+    // Сегмент 2
+    var seg2Percent = (seg2.size / state.segments.targetSize) * 100;
+    segment2Fill.style.width = Math.min(seg2Percent, 100) + '%';
+    segment2.classList.toggle('active', state.segments.current === 1);
+    segment2.classList.toggle('standby', state.segments.current === 0 && seg2.size > 0);
+    segment2Label.textContent = 'С2: ' + Math.round(seg2.size) + 'с';
+    
+    // Общий процент буфера
+    var totalSize = seg1.size + seg2.size;
+    var totalPercent = (totalSize / (state.segments.targetSize * 2)) * 100;
+    bufferPercent.textContent = Math.min(Math.round(totalPercent), 100) + '%';
+    
+    activeSegment.textContent = 'Сегмент ' + (state.segments.current + 1);
+    
+    if (!state.segments.switching) {
+      bufferMode.textContent = state.segments.positions[state.segments.current === 0 ? 1 : 0].size > 0 
+        ? '⚡ Двойной буфер' 
+        : '📥 Загрузка...';
+    }
+  }
+
+  // -- Мониторинг буфера --
+  function initBufferMonitoring() {
+    bufferIndicator.classList.remove('hidden');
+    
+    if (state.bufferCheckInterval) {
+      clearInterval(state.bufferCheckInterval);
+    }
+    
+    state.lastBytesLoaded = 0;
+    state.lastCheckTime = Date.now();
+    state.currentBitrate = 0;
+    
+    // Инициализация сегментов
+    state.segments = {
+      current: 0,
+      positions: [
+        { start: 0, end: 0, loaded: false, size: 0, cleared: false },
+        { start: 0, end: 0, loaded: false, size: 0, cleared: false }
+      ],
+      targetSize: 60,
+      cleanupThreshold: 20,
+      switching: false,
+      lastSwitchTime: 0
+    };
+    
+    state.bufferCheckInterval = setInterval(function() {
+      if (!videoPlayer || state.screen !== 'player' || state.isSeeking) return;
+      
+      try {
+        var buffered = videoPlayer.buffered;
+        var currentTime = videoPlayer.currentTime;
+        var duration = videoPlayer.duration;
+        
+        if (buffered.length > 0 && duration > 0) {
+          // Расчет битрейта
+          if (videoPlayer.webkitVideoDecodedByteCount) {
+            var now = Date.now();
+            var bytesLoaded = videoPlayer.webkitVideoDecodedByteCount || 0;
+            var timeDiff = (now - state.lastCheckTime) / 1000;
+            
+            if (timeDiff > 1 && state.lastBytesLoaded > 0) {
+              var bytesDiff = bytesLoaded - state.lastBytesLoaded;
+              var bitrateMbps = (bytesDiff * 8) / (timeDiff * 1024 * 1024);
+              state.currentBitrate = Math.round(bitrateMbps * 10) / 10;
+            }
+            
+            state.lastBytesLoaded = bytesLoaded;
+            state.lastCheckTime = now;
+          }
+          
+          // Обновляем сегменты
+          updateSegments();
+          updateSeekBar();
+          
+          // Обновляем статистику
+          var totalBufferedDuration = 0;
+          for (var i = 0; i < buffered.length; i++) {
+            totalBufferedDuration += buffered.end(i) - buffered.start(i);
+          }
+          
+          bufferTime.textContent = Math.round(totalBufferedDuration) + ' сек';
+          bufferSize.textContent = estimateBufferSize() + ' MB';
+          bufferPosition.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
+          bufferBitrate.textContent = (state.currentBitrate || '?') + ' Мбит/с';
+        }
+      } catch(e) {}
+    }, 500);
+  }
+
+  function stopBufferMonitoring() {
+    if (state.bufferCheckInterval) {
+      clearInterval(state.bufferCheckInterval);
+      state.bufferCheckInterval = null;
+    }
+  }
+
   // -- Управление аудиодорожками --
   function initAudioTracks() {
     var tracks = videoPlayer.audioTracks;
     if (!tracks || tracks.length === 0) {
-      state.audioTracks = [{ label: 'Аудиодорожка по умолчанию', language: 'unknown', enabled: true }];
-      state.currentAudioTrack = 0;
-      updateAudioIndicator();
+      state.audioTracks = [];
       return;
     }
     
@@ -1060,9 +1324,7 @@
 
   function updateAudioIndicator() {
     if (state.audioTracks.length > 0) {
-      var track = state.audioTracks[state.currentAudioTrack];
-      var lang = track.language || 'Аудио';
-      audioTrackIndicator.textContent = '🔊 ' + (track.label || `Дорожка ${state.currentAudioTrack + 1}`);
+      audioTrackIndicator.textContent = '🔊 ' + (state.currentAudioTrack + 1);
       trackIndicator.style.display = 'flex';
     }
   }
@@ -1082,7 +1344,7 @@
     
     // Добавляем пункт "Выключено"
     state.subtitleTracks.push({
-      label: 'Выключено',
+      label: 'Выкл',
       language: 'off',
       mode: 'disabled'
     });
@@ -1090,16 +1352,14 @@
     for (var i = 0; i < tracks.length; i++) {
       var track = tracks[i];
       state.subtitleTracks.push({
-        label: track.label || `Субтитры ${i + 1}`,
+        label: track.label || `${i + 1}`,
         language: track.language || 'unknown',
         mode: track.mode,
         track: track
       });
       
-      // Отключаем все по умолчанию
       track.mode = 'disabled';
       
-      // Слушаем события cue для отображения текста
       if (!state.textTracksInitialized) {
         track.oncuechange = function() {
           displaySubtitle(this);
@@ -1107,7 +1367,7 @@
       }
     }
     
-    state.currentSubtitleTrack = 0; // Выключено
+    state.currentSubtitleTrack = 0;
     state.textTracksInitialized = true;
     
     updateSubtitleIndicator();
@@ -1120,7 +1380,6 @@
     var tracks = videoPlayer.textTracks;
     if (!tracks) return;
     
-    // Отключаем все
     for (var i = 0; i < tracks.length; i++) {
       tracks[i].mode = 'disabled';
     }
@@ -1128,7 +1387,6 @@
     state.currentSubtitleTrack = index;
     
     if (index > 0) {
-      // Включаем выбранную дорожку
       var selectedTrack = state.subtitleTracks[index];
       if (selectedTrack.track) {
         selectedTrack.track.mode = 'showing';
@@ -1161,7 +1419,7 @@
   function updateSubtitleIndicator() {
     if (state.subtitleTracks.length > 0) {
       var track = state.subtitleTracks[state.currentSubtitleTrack];
-      subtitleTrackIndicator.textContent = '📄 ' + track.label;
+      subtitleTrackIndicator.textContent = '📄 ' + (state.currentSubtitleTrack === 0 ? 'Выкл' : track.label);
       trackIndicator.style.display = 'flex';
     }
   }
@@ -1169,17 +1427,16 @@
   // -- Рендеринг меню --
   function renderAudioMenu() {
     if (state.audioTracks.length === 0) {
-      menuAudio.innerHTML = '<div class="no-items">Нет аудиодорожек</div>';
+      menuAudio.innerHTML = '<div class="no-items"></div>';
       return;
     }
     
     var html = '';
     state.audioTracks.forEach(function(track, index) {
       var isActive = (index === state.currentAudioTrack);
-      var lang = track.language ? track.language.toUpperCase() : '??';
       html += `
         <div class="menu-item ${isActive ? 'active' : ''}" data-audio-index="${index}">
-          <span>${track.label}</span>
+          <span>${track.label || index + 1}</span>
           <span class="check">${isActive ? '✓' : ''}</span>
         </div>
       `;
@@ -1187,7 +1444,6 @@
     
     menuAudio.innerHTML = html;
     
-    // Добавляем обработчики
     menuAudio.querySelectorAll('.menu-item').forEach(function(item) {
       item.addEventListener('click', function() {
         var index = parseInt(this.dataset.audioIndex);
@@ -1199,7 +1455,7 @@
 
   function renderSubtitleMenu() {
     if (state.subtitleTracks.length === 0) {
-      menuSubtitle.innerHTML = '<div class="no-items">Нет субтитров</div>';
+      menuSubtitle.innerHTML = '<div class="no-items"></div>';
       return;
     }
     
@@ -1216,7 +1472,6 @@
     
     menuSubtitle.innerHTML = html;
     
-    // Добавляем обработчики
     menuSubtitle.querySelectorAll('.menu-item').forEach(function(item) {
       item.addEventListener('click', function() {
         var index = parseInt(this.dataset.subtitleIndex);
@@ -1232,20 +1487,16 @@
     state.menuType = type;
     playerScreen.classList.add('menu-active');
     
-    // Обновляем заголовок
     menuTitle.textContent = type === 'audio' ? 'Выбор аудиодорожки' : 'Выбор субтитров';
     
-    // Обновляем табы
     menuTabs.forEach(function(tab) {
       var tabType = tab.dataset.tab;
       tab.classList.toggle('active', tabType === type);
     });
     
-    // Обновляем контент
     menuAudio.classList.toggle('active', type === 'audio');
     menuSubtitle.classList.toggle('active', type === 'subtitle');
     
-    // Скрываем кнопки
     playerScreen.classList.add('touch-active');
     if (state.touchTimer) {
       clearTimeout(state.touchTimer);
@@ -1370,197 +1621,6 @@
     document.addEventListener('mouseup', handleSeekEnd);
     document.addEventListener('touchmove', handleSeekMove, { passive: false });
     document.addEventListener('touchend', handleSeekEnd);
-  }
-
-  // -- Обновление сегментов буфера --
-  function updateSegments() {
-    if (!videoPlayer || state.screen !== 'player') return;
-    
-    try {
-      var buffered = videoPlayer.buffered;
-      var currentTime = videoPlayer.currentTime;
-      var duration = videoPlayer.duration;
-      
-      if (buffered.length === 0 || duration <= 0) return;
-      
-      var currentSegmentFound = false;
-      var currentSegmentIndex = -1;
-      
-      for (var i = 0; i < buffered.length; i++) {
-        if (currentTime >= buffered.start(i) && currentTime <= buffered.end(i)) {
-          currentSegmentFound = true;
-          currentSegmentIndex = i;
-          break;
-        }
-      }
-      
-      if (!currentSegmentFound) return;
-      
-      var currentBufferedStart = buffered.start(currentSegmentIndex);
-      var currentBufferedEnd = buffered.end(currentSegmentIndex);
-      var currentBufferedDuration = currentBufferedEnd - currentBufferedStart;
-      
-      if (currentBufferedDuration < state.segments.targetSize) {
-        state.segments.positions[0] = {
-          start: currentBufferedStart,
-          end: currentBufferedEnd,
-          loaded: false,
-          size: currentBufferedDuration
-        };
-        
-        state.segments.positions[1] = {
-          start: 0,
-          end: 0,
-          loaded: false,
-          size: 0
-        };
-        
-        state.segments.current = 0;
-        
-      } else {
-        state.segments.positions[0] = {
-          start: currentBufferedStart,
-          end: currentBufferedStart + state.segments.targetSize,
-          loaded: true,
-          size: state.segments.targetSize
-        };
-        
-        var nextSegmentStart = currentBufferedStart + state.segments.targetSize;
-        var nextSegmentEnd = Math.min(nextSegmentStart + state.segments.targetSize, currentBufferedEnd);
-        
-        if (nextSegmentEnd > nextSegmentStart) {
-          state.segments.positions[1] = {
-            start: nextSegmentStart,
-            end: nextSegmentEnd,
-            loaded: nextSegmentEnd >= currentBufferedEnd - 5,
-            size: nextSegmentEnd - nextSegmentStart
-          };
-          
-          var timeToEndOfSegment = (currentBufferedStart + state.segments.targetSize) - currentTime;
-          
-          if (timeToEndOfSegment < 10 && !state.segments.switching && 
-              state.segments.positions[1].loaded && 
-              Date.now() - state.segments.lastSwitchTime > 30000) {
-            
-            state.segments.switching = true;
-            state.segments.lastSwitchTime = Date.now();
-            
-            setTimeout(function() {
-              if (state.screen === 'player') {
-                state.segments.current = 1;
-                state.segments.switching = false;
-                
-                var temp = state.segments.positions[0];
-                state.segments.positions[0] = state.segments.positions[1];
-                state.segments.positions[1] = temp;
-              }
-            }, timeToEndOfSegment * 900);
-          }
-        }
-      }
-      
-      updateSegmentsDisplay();
-      
-    } catch(e) {}
-  }
-
-  function updateSegmentsDisplay() {
-    var totalSize = state.segments.positions[0].size + state.segments.positions[1].size;
-    var totalPercent = (totalSize / (state.segments.targetSize * 2)) * 100;
-    
-    bufferPercent.textContent = Math.min(Math.round(totalPercent), 100) + '%';
-    
-    var seg1Percent = (state.segments.positions[0].size / state.segments.targetSize) * 100;
-    segment1Fill.style.width = Math.min(seg1Percent, 100) + '%';
-    segment1.classList.toggle('active', state.segments.current === 0);
-    segment1.classList.toggle('standby', state.segments.current === 1 && state.segments.positions[0].loaded);
-    segment1Label.textContent = 'С1: ' + Math.round(state.segments.positions[0].size) + 'с';
-    
-    var seg2Percent = (state.segments.positions[1].size / state.segments.targetSize) * 100;
-    segment2Fill.style.width = Math.min(seg2Percent, 100) + '%';
-    segment2.classList.toggle('active', state.segments.current === 1);
-    segment2.classList.toggle('standby', state.segments.current === 0 && state.segments.positions[1].loaded);
-    segment2Label.textContent = 'С2: ' + Math.round(state.segments.positions[1].size) + 'с';
-    
-    activeSegment.textContent = 'Сегмент ' + (state.segments.current + 1);
-    
-    if (state.segments.switching) {
-      bufferMode.textContent = '🔄 Переключение';
-    } else {
-      bufferMode.textContent = state.segments.positions[1].loaded ? '⚡ Двойной буфер' : '📥 Загрузка...';
-    }
-  }
-
-  // -- Мониторинг буфера --
-  function initBufferMonitoring() {
-    bufferIndicator.style.display = 'flex';
-    
-    if (state.bufferCheckInterval) {
-      clearInterval(state.bufferCheckInterval);
-    }
-    
-    state.lastBytesLoaded = 0;
-    state.lastCheckTime = Date.now();
-    state.currentBitrate = 0;
-    
-    state.segments = {
-      current: 0,
-      positions: [
-        { start: 0, end: 0, loaded: false, size: 0 },
-        { start: 0, end: 0, loaded: false, size: 0 }
-      ],
-      targetSize: 60,
-      switching: false,
-      lastSwitchTime: 0
-    };
-    
-    state.bufferCheckInterval = setInterval(function() {
-      if (!videoPlayer || state.screen !== 'player' || state.isSeeking) return;
-      
-      try {
-        var buffered = videoPlayer.buffered;
-        var currentTime = videoPlayer.currentTime;
-        var duration = videoPlayer.duration;
-        
-        if (buffered.length > 0 && duration > 0) {
-          if (videoPlayer.webkitVideoDecodedByteCount) {
-            var now = Date.now();
-            var bytesLoaded = videoPlayer.webkitVideoDecodedByteCount || 0;
-            var timeDiff = (now - state.lastCheckTime) / 1000;
-            
-            if (timeDiff > 1 && state.lastBytesLoaded > 0) {
-              var bytesDiff = bytesLoaded - state.lastBytesLoaded;
-              var bitrateMbps = (bytesDiff * 8) / (timeDiff * 1024 * 1024);
-              state.currentBitrate = Math.round(bitrateMbps * 10) / 10;
-            }
-            
-            state.lastBytesLoaded = bytesLoaded;
-            state.lastCheckTime = now;
-          }
-          
-          updateSegments();
-          updateSeekBar();
-          
-          var totalBufferedDuration = 0;
-          for (var i = 0; i < buffered.length; i++) {
-            totalBufferedDuration += buffered.end(i) - buffered.start(i);
-          }
-          
-          bufferTime.textContent = Math.round(totalBufferedDuration) + ' сек';
-          bufferSize.textContent = estimateBufferSize() + ' MB';
-          bufferPosition.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
-          bufferBitrate.textContent = (state.currentBitrate || '?') + ' Мбит/с';
-        }
-      } catch(e) {}
-    }, 500);
-  }
-
-  function stopBufferMonitoring() {
-    if (state.bufferCheckInterval) {
-      clearInterval(state.bufferCheckInterval);
-      state.bufferCheckInterval = null;
-    }
-    bufferIndicator.style.display = 'none';
   }
 
   // -- Воспроизведение --
@@ -1734,6 +1794,12 @@
   seekWrapper.addEventListener('touchstart', function(e) {
     e.preventDefault();
     initSeeking(e);
+  });
+
+  // -- Кнопка скрытия буфера --
+  bufferHideBtn.addEventListener('click', function() {
+    bufferIndicator.classList.add('hidden');
+    state.bufferHidden = true;
   });
 
   // -- Действия --
