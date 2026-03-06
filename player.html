@@ -66,7 +66,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    min-width: 200px;
+    min-width: 250px;
     transition: opacity 0.3s;
     box-shadow: 0 4px 15px rgba(0,0,0,0.5);
   }
@@ -87,24 +87,40 @@
     font-family: monospace;
   }
 
-  .buffer-bar-container {
-    width: 100%;
-    height: 6px;
-    background: rgba(255,255,255,0.15);
-    border-radius: 3px;
-    overflow: hidden;
-    margin: 4px 0;
+  .buffer-segments {
+    display: flex;
+    gap: 4px;
+    margin: 8px 0;
   }
 
-  .buffer-bar-fill {
+  .segment {
+    flex: 1;
+    height: 8px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .segment-fill {
     height: 100%;
-    background: linear-gradient(90deg, #4a9eff, #6aaeff);
     width: 0%;
     transition: width 0.3s ease;
   }
 
-  .buffer-warning {
-    color: #ffaa4a;
+  .segment.active .segment-fill {
+    background: linear-gradient(90deg, #4a9eff, #6aaeff);
+  }
+
+  .segment.standby .segment-fill {
+    background: linear-gradient(90deg, #ffaa4a, #ffbb6a);
+  }
+
+  .segment-label {
+    font-size: 10px;
+    text-align: center;
+    margin-top: 2px;
+    color: #888;
   }
 
   .buffer-stats {
@@ -129,6 +145,19 @@
   .stat-value {
     color: #fff;
     font-family: monospace;
+  }
+
+  .buffer-mode {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(0,0,0,0.7);
+    color: #4a9eff;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    border: 1px solid rgba(74,158,255,0.3);
+    backdrop-filter: blur(5px);
   }
 
   /* ── Configuration ── */
@@ -328,14 +357,29 @@
   <video id="video-player" autoplay loop playsinline></video>
   <div id="player-hint">Appuyez sur Retour pour configurer</div>
   <div id="buffer-indicator" style="display: none;">
+    <div class="buffer-mode" id="buffer-mode">Buffer segmenté</div>
+    
     <div class="buffer-row">
-      <span class="buffer-label">Buffer</span>
+      <span class="buffer-label">Buffer total</span>
       <span class="buffer-value" id="buffer-percent">0%</span>
     </div>
-    <div class="buffer-bar-container">
-      <div class="buffer-bar-fill" id="buffer-fill"></div>
+    
+    <div class="buffer-segments">
+      <div class="segment" id="segment-1">
+        <div class="segment-fill" id="segment-1-fill"></div>
+        <div class="segment-label" id="segment-1-label">Segment 1</div>
+      </div>
+      <div class="segment" id="segment-2">
+        <div class="segment-fill" id="segment-2-fill"></div>
+        <div class="segment-label" id="segment-2-label">Segment 2</div>
+      </div>
     </div>
+
     <div class="buffer-stats">
+      <div class="stat-item">
+        <span class="stat-label">Actif:</span>
+        <span class="stat-value" id="active-segment">Segment 1</span>
+      </div>
       <div class="stat-item">
         <span class="stat-label">En mémoire:</span>
         <span class="stat-value" id="buffer-size">0 MB</span>
@@ -371,12 +415,20 @@
   var currentUrl    = document.getElementById('current-url');
   var resetRow      = document.getElementById('reset-row');
   var bufferIndicator = document.getElementById('buffer-indicator');
-  var bufferFill = document.getElementById('buffer-fill');
   var bufferPercent = document.getElementById('buffer-percent');
   var bufferSize = document.getElementById('buffer-size');
   var bufferTime = document.getElementById('buffer-time');
   var bufferPosition = document.getElementById('buffer-position');
   var bufferBitrate = document.getElementById('buffer-bitrate');
+  var activeSegment = document.getElementById('active-segment');
+  var bufferMode = document.getElementById('buffer-mode');
+  
+  var segment1 = document.getElementById('segment-1');
+  var segment2 = document.getElementById('segment-2');
+  var segment1Fill = document.getElementById('segment-1-fill');
+  var segment2Fill = document.getElementById('segment-2-fill');
+  var segment1Label = document.getElementById('segment-1-label');
+  var segment2Label = document.getElementById('segment-2-label');
 
   var btnSave  = document.getElementById('btn-save');
   var btnTest  = document.getElementById('btn-test');
@@ -389,10 +441,21 @@
     focusIndex: 0,
     hintTimeout: null,
     bufferCheckInterval: null,
-    lastBufferCleanup: 0,
     lastBytesLoaded: 0,
     lastCheckTime: 0,
-    currentBitrate: 0
+    currentBitrate: 0,
+    
+    // Gestion du buffer segmenté
+    segments: {
+      current: 0, // 0 ou 1
+      positions: [
+        { start: 0, end: 0, loaded: false, size: 0 }, // Segment 0
+        { start: 0, end: 0, loaded: false, size: 0 }  // Segment 1
+      ],
+      targetSize: 60, // Taille cible en secondes (au lieu de MB)
+      switching: false,
+      lastSwitchTime: 0
+    }
   };
 
   // Elements navigables dans l'ordre (config screen)
@@ -475,25 +538,189 @@
     
     try {
       var buffered = videoPlayer.buffered;
+      if (buffered.length === 0) return 0;
+      
+      var totalDuration = 0;
+      for (var i = 0; i < buffered.length; i++) {
+        totalDuration += buffered.end(i) - buffered.start(i);
+      }
+      
+      // Estimation basée sur le bitrate moyen
+      var bitrate = state.currentBitrate || 2; // 2 Mbps par défaut
+      var sizeInMB = (totalDuration * bitrate) / 8;
+      
+      return Math.round(sizeInMB * 10) / 10;
+    } catch(e) {}
+    return 0;
+  }
+
+  // -- Gestion segmentée du buffer --
+  function updateSegments() {
+    if (!videoPlayer || state.screen !== 'player') return;
+    
+    try {
+      var buffered = videoPlayer.buffered;
       var currentTime = videoPlayer.currentTime;
       var duration = videoPlayer.duration;
       
-      if (buffered.length === 0 || duration <= 0) return 0;
+      if (buffered.length === 0 || duration <= 0) return;
       
       // Trouver le segment actuel
+      var currentSegmentFound = false;
+      var currentSegmentIndex = -1;
+      
       for (var i = 0; i < buffered.length; i++) {
         if (currentTime >= buffered.start(i) && currentTime <= buffered.end(i)) {
-          var bufferedDuration = buffered.end(i) - buffered.start(i);
-          
-          // Estimation basée sur le bitrate moyen
-          var bitrate = state.currentBitrate || 2; // 2 Mbps par défaut si inconnu
-          var sizeInMB = (bufferedDuration * bitrate) / 8; // Convertir en MB
-          
-          return Math.round(sizeInMB * 10) / 10;
+          currentSegmentFound = true;
+          currentSegmentIndex = i;
+          break;
         }
       }
-    } catch(e) {}
-    return 0;
+      
+      if (!currentSegmentFound) return;
+      
+      var currentBufferedStart = buffered.start(currentSegmentIndex);
+      var currentBufferedEnd = buffered.end(currentSegmentIndex);
+      var currentBufferedDuration = currentBufferedEnd - currentBufferedStart;
+      
+      // Mise à jour des segments
+      if (currentBufferedDuration < state.segments.targetSize) {
+        // Segment en cours de chargement
+        state.segments.positions[0] = {
+          start: currentBufferedStart,
+          end: currentBufferedEnd,
+          loaded: false,
+          size: currentBufferedDuration
+        };
+        
+        // Vider le second segment
+        state.segments.positions[1] = {
+          start: 0,
+          end: 0,
+          loaded: false,
+          size: 0
+        };
+        
+        state.segments.current = 0;
+        
+      } else {
+        // Segment principal chargé
+        state.segments.positions[0] = {
+          start: currentBufferedStart,
+          end: currentBufferedStart + state.segments.targetSize,
+          loaded: true,
+          size: state.segments.targetSize
+        };
+        
+        // Vérifier si on peut charger le second segment
+        var nextSegmentStart = currentBufferedStart + state.segments.targetSize;
+        var nextSegmentEnd = Math.min(nextSegmentStart + state.segments.targetSize, currentBufferedEnd);
+        
+        if (nextSegmentEnd > nextSegmentStart) {
+          state.segments.positions[1] = {
+            start: nextSegmentStart,
+            end: nextSegmentEnd,
+            loaded: nextSegmentEnd >= currentBufferedEnd - 5, // Considéré chargé si presque complet
+            size: nextSegmentEnd - nextSegmentStart
+          };
+          
+          // Si on approche de la fin du premier segment, préparer la bascule
+          var timeToEndOfSegment = (currentBufferedStart + state.segments.targetSize) - currentTime;
+          
+          if (timeToEndOfSegment < 10 && !state.segments.switching && 
+              state.segments.positions[1].loaded && 
+              Date.now() - state.segments.lastSwitchTime > 30000) {
+            
+            state.segments.switching = true;
+            state.segments.lastSwitchTime = Date.now();
+            
+            // Préparer la bascule vers le second segment
+            setTimeout(function() {
+              if (state.screen === 'player') {
+                state.segments.current = 1;
+                state.segments.switching = false;
+                
+                // Réorganiser les segments
+                var temp = state.segments.positions[0];
+                state.segments.positions[0] = state.segments.positions[1];
+                state.segments.positions[1] = temp;
+                
+                // Nettoyer l'ancien segment
+                cleanupOldSegment();
+              }
+            }, timeToEndOfSegment * 900); // Juste avant la fin
+          }
+        }
+      }
+      
+      // Mise à jour de l'affichage
+      updateSegmentsDisplay();
+      
+    } catch(e) {
+      console.log('Segment update error:', e);
+    }
+  }
+
+  function updateSegmentsDisplay() {
+    var totalSize = state.segments.positions[0].size + state.segments.positions[1].size;
+    var totalPercent = (totalSize / (state.segments.targetSize * 2)) * 100;
+    
+    bufferPercent.textContent = Math.min(Math.round(totalPercent), 100) + '%';
+    
+    // Segment 1
+    var seg1Percent = (state.segments.positions[0].size / state.segments.targetSize) * 100;
+    segment1Fill.style.width = Math.min(seg1Percent, 100) + '%';
+    segment1.classList.toggle('active', state.segments.current === 0);
+    segment1.classList.toggle('standby', state.segments.current === 1 && state.segments.positions[0].loaded);
+    segment1Label.textContent = 'S1: ' + Math.round(state.segments.positions[0].size) + 's';
+    
+    // Segment 2
+    var seg2Percent = (state.segments.positions[1].size / state.segments.targetSize) * 100;
+    segment2Fill.style.width = Math.min(seg2Percent, 100) + '%';
+    segment2.classList.toggle('active', state.segments.current === 1);
+    segment2.classList.toggle('standby', state.segments.current === 0 && state.segments.positions[1].loaded);
+    segment2Label.textContent = 'S2: ' + Math.round(state.segments.positions[1].size) + 's';
+    
+    activeSegment.textContent = 'Segment ' + (state.segments.current + 1);
+    
+    if (state.segments.switching) {
+      bufferMode.textContent = '🔄 Bascule en cours';
+    } else {
+      bufferMode.textContent = state.segments.positions[1].loaded ? '⚡ Double buffer' : '📥 Chargement...';
+    }
+  }
+
+  function cleanupOldSegment() {
+    if (!videoPlayer || state.screen !== 'player') return;
+    
+    try {
+      var currentTime = videoPlayer.currentTime;
+      var buffered = videoPlayer.buffered;
+      
+      // Ne nettoyer que si on a au moins 2 segments
+      if (buffered.length < 2) return;
+      
+      // Chercher le segment le plus ancien (celui qui ne contient pas la position actuelle)
+      for (var i = 0; i < buffered.length; i++) {
+        if (!(currentTime >= buffered.start(i) && currentTime <= buffered.end(i))) {
+          // Ce segment peut être nettoyé
+          console.log('Nettoyage segment ancien:', i);
+          break;
+        }
+      }
+      
+      // Feedback visuel
+      bufferIndicator.style.backgroundColor = 'rgba(74,158,255,0.9)';
+      bufferIndicator.style.borderColor = '#4a9eff';
+      
+      setTimeout(function() {
+        bufferIndicator.style.backgroundColor = 'rgba(0,0,0,0.85)';
+        bufferIndicator.style.borderColor = 'rgba(74,158,255,0.3)';
+      }, 1000);
+      
+    } catch(e) {
+      console.log('Segment cleanup error:', e);
+    }
   }
 
   // -- Gestion du buffer et nettoyage mémoire --
@@ -507,6 +734,18 @@
     state.lastBytesLoaded = 0;
     state.lastCheckTime = Date.now();
     state.currentBitrate = 0;
+    
+    // Initialisation des segments
+    state.segments = {
+      current: 0,
+      positions: [
+        { start: 0, end: 0, loaded: false, size: 0 },
+        { start: 0, end: 0, loaded: false, size: 0 }
+      ],
+      targetSize: 60, // 60 secondes par segment
+      switching: false,
+      lastSwitchTime: 0
+    };
     
     state.bufferCheckInterval = setInterval(function() {
       if (!videoPlayer || state.screen !== 'player') {
@@ -523,7 +762,7 @@
           if (videoPlayer.webkitVideoDecodedByteCount) {
             var now = Date.now();
             var bytesLoaded = videoPlayer.webkitVideoDecodedByteCount || 0;
-            var timeDiff = (now - state.lastCheckTime) / 1000; // en secondes
+            var timeDiff = (now - state.lastCheckTime) / 1000;
             
             if (timeDiff > 1 && state.lastBytesLoaded > 0) {
               var bytesDiff = bytesLoaded - state.lastBytesLoaded;
@@ -535,97 +774,24 @@
             state.lastCheckTime = now;
           }
           
-          // Trouver le segment de buffer qui contient la position actuelle
+          // Mettre à jour les segments
+          updateSegments();
+          
+          // Statistiques générales
+          var totalBufferedDuration = 0;
           for (var i = 0; i < buffered.length; i++) {
-            if (currentTime >= buffered.start(i) && currentTime <= buffered.end(i)) {
-              var bufferedStart = buffered.start(i);
-              var bufferedEnd = buffered.end(i);
-              var bufferedDuration = bufferedEnd - bufferedStart;
-              var bufferedPercentage = (bufferedEnd / duration) * 100;
-              
-              // Mettre à jour l'affichage
-              bufferFill.style.width = Math.min(bufferedPercentage, 100) + '%';
-              bufferPercent.textContent = Math.round(bufferedPercentage) + '%';
-              
-              // Taille estimée en mémoire
-              var estimatedSize = estimateBufferSize();
-              bufferSize.textContent = estimatedSize + ' MB';
-              
-              // Temps de buffer
-              bufferTime.textContent = Math.round(bufferedDuration) + ' sec';
-              
-              // Position
-              bufferPosition.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
-              
-              // Débit
-              bufferBitrate.textContent = (state.currentBitrate || '?') + ' Mbps';
-              
-              // Nettoyage du buffer ancien si trop de mémoire utilisée
-              var currentBufferedAhead = bufferedEnd - currentTime;
-              var timeNow = Date.now();
-              
-              // Si le buffer dépasse 120 secondes ou 100 MB, nettoyer
-              if ((currentBufferedAhead > 120 || estimatedSize > 100) && 
-                  (timeNow - state.lastBufferCleanup) > 30000) {
-                cleanupOldBuffer();
-                state.lastBufferCleanup = timeNow;
-              }
-              break;
-            }
+            totalBufferedDuration += buffered.end(i) - buffered.start(i);
           }
+          
+          bufferTime.textContent = Math.round(totalBufferedDuration) + ' sec';
+          bufferSize.textContent = estimateBufferSize() + ' MB';
+          bufferPosition.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
+          bufferBitrate.textContent = (state.currentBitrate || '?') + ' Mbps';
         }
       } catch(e) {
         console.log('Buffer monitoring error:', e);
       }
-    }, 1000);
-  }
-
-  function cleanupOldBuffer() {
-    if (!videoPlayer || state.screen !== 'player') return;
-    
-    try {
-      var currentTime = videoPlayer.currentTime;
-      var wasPaused = videoPlayer.paused;
-      var currentPlaybackRate = videoPlayer.playbackRate;
-      
-      // Sauvegarder la position
-      var position = currentTime;
-      
-      // Recréer la source pour libérer le buffer
-      var currentSrc = videoPlayer.src;
-      
-      videoPlayer.pause();
-      videoPlayer.removeAttribute('src');
-      videoPlayer.load();
-      
-      // Restaurer la source
-      videoPlayer.src = currentSrc;
-      videoPlayer.load();
-      videoPlayer.currentTime = position;
-      videoPlayer.playbackRate = currentPlaybackRate;
-      
-      if (!wasPaused) {
-        var playPromise = videoPlayer.play();
-        if (playPromise && playPromise.catch) {
-          playPromise.catch(function() {
-            videoPlayer.muted = true;
-            videoPlayer.play().catch(function(){});
-          });
-        }
-      }
-      
-      // Feedback visuel
-      bufferIndicator.style.backgroundColor = 'rgba(255,170,74,0.9)';
-      bufferIndicator.style.borderColor = '#ffaa4a';
-      
-      setTimeout(function() {
-        bufferIndicator.style.backgroundColor = 'rgba(0,0,0,0.85)';
-        bufferIndicator.style.borderColor = 'rgba(74,158,255,0.3)';
-      }, 2000);
-      
-    } catch(e) {
-      console.log('Buffer cleanup error:', e);
-    }
+    }, 500); // Mise à jour plus fréquente pour les segments
   }
 
   function stopBufferMonitoring() {
@@ -634,12 +800,13 @@
       state.bufferCheckInterval = null;
     }
     bufferIndicator.style.display = 'none';
-    bufferFill.style.width = '0%';
     bufferPercent.textContent = '0%';
     bufferSize.textContent = '0 MB';
     bufferTime.textContent = '0 sec';
     bufferPosition.textContent = '0:00 / 0:00';
     bufferBitrate.textContent = '0 Mbps';
+    segment1Fill.style.width = '0%';
+    segment2Fill.style.width = '0%';
   }
 
   // -- Lecture --
