@@ -1,14 +1,15 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>VideoLoop - Vidaa</title>
 <style>
   * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
@@ -18,6 +19,7 @@
     overflow: hidden;
     width: 100vw;
     height: 100vh;
+    touch-action: none; /* Предотвращает прокрутку на сенсорных устройствах */
   }
 
   /* ── Player (plein écran) ── */
@@ -49,6 +51,52 @@
     z-index: 10;
     transition: opacity .6s;
     pointer-events: none;
+    backdrop-filter: blur(5px);
+    white-space: nowrap;
+  }
+
+  /* Сенсорные кнопки для плеера */
+  #touch-controls {
+    position: fixed;
+    bottom: 80px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    z-index: 15;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+
+  #player-screen.touch-active #touch-controls {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .touch-btn {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.6);
+    border: 2px solid rgba(255,255,255,0.2);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s;
+    -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  }
+
+  .touch-btn:active {
+    transform: scale(0.9);
+    background: rgba(74,158,255,0.8);
+    border-color: #4a9eff;
   }
 
   #buffer-indicator {
@@ -69,6 +117,18 @@
     min-width: 250px;
     transition: opacity 0.3s;
     box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    pointer-events: none;
+  }
+
+  /* Сенсорная область для показа кнопок */
+  #touch-area {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    background: transparent;
   }
 
   .buffer-row {
@@ -160,7 +220,7 @@
     backdrop-filter: blur(5px);
   }
 
-  /* ── Configuration ── */
+  /* ── Экран конфигурации ── */
   #config-screen {
     display: flex;
     align-items: center;
@@ -168,29 +228,35 @@
     width: 100vw;
     height: 100vh;
     background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 50%, #16213e 100%);
+    padding: 20px;
+    overflow-y: auto;
+    touch-action: pan-y; /* Разрешает прокрутку если контент не помещается */
   }
 
   .config-card {
     background: rgba(255,255,255,.06);
     border: 1px solid rgba(255,255,255,.1);
     border-radius: 20px;
-    padding: 50px 60px;
+    padding: 40px 30px;
     width: 720px;
-    max-width: 90vw;
+    max-width: 100%;
     backdrop-filter: blur(10px);
+    margin: auto;
   }
 
   .config-card h1 {
-    font-size: 38px;
+    font-size: clamp(28px, 8vw, 38px);
     font-weight: 700;
     margin-bottom: 8px;
     color: #fff;
+    text-align: center;
   }
 
   .config-card .subtitle {
-    font-size: 18px;
+    font-size: clamp(14px, 4vw, 18px);
     color: #888;
     margin-bottom: 40px;
+    text-align: center;
   }
 
   .field-label {
@@ -208,13 +274,14 @@
   .text-input {
     width: 100%;
     padding: 16px 20px;
-    font-size: 22px;
+    font-size: clamp(16px, 5vw, 22px);
     background: rgba(255,255,255,.08);
     border: 2px solid rgba(255,255,255,.15);
     border-radius: 12px;
     color: #fff;
     outline: none;
     transition: border-color .2s, box-shadow .2s;
+    -webkit-appearance: none;
   }
 
   .text-input:focus,
@@ -227,18 +294,25 @@
     display: flex;
     gap: 16px;
     margin-top: 36px;
+    flex-wrap: wrap;
   }
 
   .btn {
-    flex: 1;
+    flex: 1 1 200px;
     padding: 16px;
-    font-size: 20px;
+    font-size: clamp(16px, 5vw, 20px);
     font-weight: 600;
     border: 2px solid transparent;
     border-radius: 12px;
     cursor: pointer;
     transition: all .2s;
     text-align: center;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .btn:active {
+    transform: scale(0.98);
   }
 
   .btn-primary {
@@ -246,10 +320,13 @@
     color: #fff;
   }
 
+  .btn-primary:active {
+    background: #3a8eef;
+  }
+
   .btn-primary.focused {
     background: #3a8eef;
     box-shadow: 0 0 0 3px rgba(74,158,255,.4);
-    transform: scale(1.02);
   }
 
   .btn-secondary {
@@ -258,10 +335,13 @@
     border-color: rgba(255,255,255,.12);
   }
 
+  .btn-secondary:active {
+    background: rgba(255,255,255,.14);
+  }
+
   .btn-secondary.focused {
     background: rgba(255,255,255,.14);
     box-shadow: 0 0 0 3px rgba(255,255,255,.2);
-    transform: scale(1.02);
   }
 
   .btn-danger {
@@ -270,10 +350,13 @@
     border-color: rgba(220,50,50,.25);
   }
 
+  .btn-danger:active {
+    background: rgba(220,50,50,.25);
+  }
+
   .btn-danger.focused {
     background: rgba(220,50,50,.25);
     box-shadow: 0 0 0 3px rgba(220,50,50,.3);
-    transform: scale(1.02);
   }
 
   .error-msg {
@@ -300,14 +383,14 @@
   }
 
   .current-config .value {
-    font-size: 16px;
+    font-size: clamp(14px, 4vw, 16px);
     color: #4a9eff;
     word-break: break-all;
   }
 
   .help-text {
     margin-top: 30px;
-    font-size: 14px;
+    font-size: clamp(12px, 3.5vw, 14px);
     color: #555;
     text-align: center;
     line-height: 1.6;
@@ -316,85 +399,96 @@
 </head>
 <body>
 
-<!-- ECRAN CONFIGURATION -->
+<!-- ЭКРАН КОНФИГУРАЦИИ -->
 <div id="config-screen">
   <div class="config-card">
     <h1>VideoLoop</h1>
-    <p class="subtitle">Lecture en boucle, plein écran, automatique</p>
+    <p class="subtitle">Зацикленное видео, полный экран, автоматически</p>
 
     <div class="field-group">
-      <div class="field-label">URL de la vidéo</div>
+      <div class="field-label">URL видео</div>
       <input type="text" class="text-input" id="video-url"
                          value="https://trs.hnar.online/stream/From.Dusk.Till.Dawn.1996.1080p.BluRay.7xRus.Ukr.Eng.HDCLUB-DON.mkv?link=d12b051b0d623541e7349e1e8f06de9d52c26838&index=1&play"
-             placeholder="https://exemple.com/video.mp4"
-             autocomplete="off" spellcheck="false">
+             placeholder="https://example.com/video.mp4"
+             autocomplete="off" spellcheck="false" inputmode="url">
       <div class="error-msg" id="error-msg"></div>
     </div>
 
     <div class="action-row">
-      <div class="btn btn-primary" id="btn-save">Lancer la lecture</div>
-      <div class="btn btn-secondary" id="btn-test">Tester</div>
+      <div class="btn btn-primary" id="btn-save">Запустить видео</div>
+      <div class="btn btn-secondary" id="btn-test">Тест</div>
     </div>
 
     <div class="action-row" id="reset-row" style="display:none">
-      <div class="btn btn-danger" id="btn-reset">Effacer la configuration</div>
+      <div class="btn btn-danger" id="btn-reset">Очистить настройки</div>
     </div>
 
     <div class="current-config" id="current-config" style="display:none">
-      <div class="label">Configuration actuelle</div>
+      <div class="label">Текущая конфигурация</div>
       <div class="value" id="current-url"></div>
     </div>
 
     <div class="help-text">
-      Naviguez avec les flèches et OK sur la télécommande<br>
-      Appuyez sur Retour pendant la lecture pour revenir ici
+      Навигация с помощью стрелок и OK на пульте<br>
+      Нажмите "Назад" во время видео для возврата<br>
+      На сенсорных экранах коснитесь экрана для показа кнопок
     </div>
   </div>
 </div>
 
-<!-- ECRAN LECTEUR -->
+<!-- ЭКРАН ПЛЕЕРА -->
 <div id="player-screen">
+  <div id="touch-area"></div>
+  
   <video id="video-player" autoplay loop playsinline></video>
-  <div id="player-hint">Appuyez sur Retour pour configurer</div>
+  
+  <div id="player-hint">Нажмите "Назад" для настройки</div>
+  
+  <div id="touch-controls">
+    <div class="touch-btn" id="touch-back" title="Назад">←</div>
+    <div class="touch-btn" id="touch-play" title="Пауза/Воспр.">⏸️</div>
+    <div class="touch-btn" id="touch-config" title="Настройки">⚙️</div>
+  </div>
+  
   <div id="buffer-indicator" style="display: none;">
-    <div class="buffer-mode" id="buffer-mode">Buffer segmenté</div>
+    <div class="buffer-mode" id="buffer-mode">Сегментированный буфер</div>
     
     <div class="buffer-row">
-      <span class="buffer-label">Buffer total</span>
+      <span class="buffer-label">Буфер всего</span>
       <span class="buffer-value" id="buffer-percent">0%</span>
     </div>
     
     <div class="buffer-segments">
       <div class="segment" id="segment-1">
         <div class="segment-fill" id="segment-1-fill"></div>
-        <div class="segment-label" id="segment-1-label">Segment 1</div>
+        <div class="segment-label" id="segment-1-label">Сегмент 1</div>
       </div>
       <div class="segment" id="segment-2">
         <div class="segment-fill" id="segment-2-fill"></div>
-        <div class="segment-label" id="segment-2-label">Segment 2</div>
+        <div class="segment-label" id="segment-2-label">Сегмент 2</div>
       </div>
     </div>
 
     <div class="buffer-stats">
       <div class="stat-item">
-        <span class="stat-label">Actif:</span>
-        <span class="stat-value" id="active-segment">Segment 1</span>
+        <span class="stat-label">Активный:</span>
+        <span class="stat-value" id="active-segment">Сегмент 1</span>
       </div>
       <div class="stat-item">
-        <span class="stat-label">En mémoire:</span>
+        <span class="stat-label">В памяти:</span>
         <span class="stat-value" id="buffer-size">0 MB</span>
       </div>
       <div class="stat-item">
-        <span class="stat-label">Temps buffer:</span>
-        <span class="stat-value" id="buffer-time">0 sec</span>
+        <span class="stat-label">Время буфера:</span>
+        <span class="stat-value" id="buffer-time">0 сек</span>
       </div>
       <div class="stat-item">
-        <span class="stat-label">Position:</span>
+        <span class="stat-label">Позиция:</span>
         <span class="stat-value" id="buffer-position">0:00 / 0:00</span>
       </div>
       <div class="stat-item">
-        <span class="stat-label">Débit:</span>
-        <span class="stat-value" id="buffer-bitrate">0 Mbps</span>
+        <span class="stat-label">Битрейт:</span>
+        <span class="stat-value" id="buffer-bitrate">0 Мбит/с</span>
       </div>
     </div>
   </div>
@@ -404,7 +498,7 @@
 (function() {
   'use strict';
 
-  // -- Elements DOM --
+  // -- Элементы DOM --
   var configScreen  = document.getElementById('config-screen');
   var playerScreen  = document.getElementById('player-screen');
   var videoPlayer   = document.getElementById('video-player');
@@ -422,6 +516,10 @@
   var bufferBitrate = document.getElementById('buffer-bitrate');
   var activeSegment = document.getElementById('active-segment');
   var bufferMode = document.getElementById('buffer-mode');
+  var touchArea = document.getElementById('touch-area');
+  var touchBack = document.getElementById('touch-back');
+  var touchPlay = document.getElementById('touch-play');
+  var touchConfig = document.getElementById('touch-config');
   
   var segment1 = document.getElementById('segment-1');
   var segment2 = document.getElementById('segment-2');
@@ -434,7 +532,7 @@
   var btnTest  = document.getElementById('btn-test');
   var btnReset = document.getElementById('btn-reset');
 
-  // -- Etat --
+  // -- Состояние --
   var state = {
     screen: 'config',
     videoUrl: '',
@@ -444,29 +542,31 @@
     lastBytesLoaded: 0,
     lastCheckTime: 0,
     currentBitrate: 0,
+    touchTimer: null,
+    isPlaying: true,
     
-    // Gestion du buffer segmenté
+    // Управление сегментированным буфером
     segments: {
-      current: 0, // 0 ou 1
+      current: 0,
       positions: [
-        { start: 0, end: 0, loaded: false, size: 0 }, // Segment 0
-        { start: 0, end: 0, loaded: false, size: 0 }  // Segment 1
+        { start: 0, end: 0, loaded: false, size: 0 },
+        { start: 0, end: 0, loaded: false, size: 0 }
       ],
-      targetSize: 60, // Taille cible en secondes (au lieu de MB)
+      targetSize: 60,
       switching: false,
       lastSwitchTime: 0
     }
   };
 
-  // Elements navigables dans l'ordre (config screen)
+  // Элементы для навигации (экран конфигурации)
   var focusableEls = [
-    urlInput,         // 0
-    btnSave,          // 1
-    btnTest,          // 2
-    btnReset          // 3
+    urlInput,
+    btnSave,
+    btnTest,
+    btnReset
   ];
 
-  // -- Stockage local --
+  // -- Локальное хранилище --
   var STORAGE_KEY = 'videoloop_config';
 
   function saveConfig(url) {
@@ -490,17 +590,17 @@
     } catch(e) {}
   }
 
-  // -- Validation --
+  // -- Валидация --
   function validateUrl(url) {
-    if (!url || !url.trim()) return 'Veuillez entrer une URL';
+    if (!url || !url.trim()) return 'Пожалуйста, введите URL';
     url = url.trim();
 
-    if (!/^https?:\/\//i.test(url)) return "L'URL doit commencer par http:// ou https://";
+    if (!/^https?:\/\//i.test(url)) return "URL должен начинаться с http:// или https://";
 
     return null;
   }
 
-  // -- Navigation (focus) --
+  // -- Навигация (фокус) --
   function updateFocus(newIndex) {
     var visibleEls = focusableEls.slice(0, 3);
     var savedConfig = loadConfig();
@@ -524,7 +624,7 @@
     }
   }
 
-  // -- Helper temps --
+  // -- Форматирование времени --
   function formatTime(seconds) {
     if (isNaN(seconds) || seconds < 0) return '0:00';
     var mins = Math.floor(seconds / 60);
@@ -532,7 +632,7 @@
     return mins + ':' + (secs < 10 ? '0' : '') + secs;
   }
 
-  // -- Calcul taille buffer en mémoire --
+  // -- Оценка размера буфера в памяти --
   function estimateBufferSize() {
     if (!videoPlayer || state.screen !== 'player') return 0;
     
@@ -545,8 +645,7 @@
         totalDuration += buffered.end(i) - buffered.start(i);
       }
       
-      // Estimation basée sur le bitrate moyen
-      var bitrate = state.currentBitrate || 2; // 2 Mbps par défaut
+      var bitrate = state.currentBitrate || 2;
       var sizeInMB = (totalDuration * bitrate) / 8;
       
       return Math.round(sizeInMB * 10) / 10;
@@ -554,7 +653,7 @@
     return 0;
   }
 
-  // -- Gestion segmentée du buffer --
+  // -- Обновление сегментов буфера --
   function updateSegments() {
     if (!videoPlayer || state.screen !== 'player') return;
     
@@ -565,7 +664,6 @@
       
       if (buffered.length === 0 || duration <= 0) return;
       
-      // Trouver le segment actuel
       var currentSegmentFound = false;
       var currentSegmentIndex = -1;
       
@@ -583,9 +681,7 @@
       var currentBufferedEnd = buffered.end(currentSegmentIndex);
       var currentBufferedDuration = currentBufferedEnd - currentBufferedStart;
       
-      // Mise à jour des segments
       if (currentBufferedDuration < state.segments.targetSize) {
-        // Segment en cours de chargement
         state.segments.positions[0] = {
           start: currentBufferedStart,
           end: currentBufferedEnd,
@@ -593,7 +689,6 @@
           size: currentBufferedDuration
         };
         
-        // Vider le second segment
         state.segments.positions[1] = {
           start: 0,
           end: 0,
@@ -604,7 +699,6 @@
         state.segments.current = 0;
         
       } else {
-        // Segment principal chargé
         state.segments.positions[0] = {
           start: currentBufferedStart,
           end: currentBufferedStart + state.segments.targetSize,
@@ -612,7 +706,6 @@
           size: state.segments.targetSize
         };
         
-        // Vérifier si on peut charger le second segment
         var nextSegmentStart = currentBufferedStart + state.segments.targetSize;
         var nextSegmentEnd = Math.min(nextSegmentStart + state.segments.targetSize, currentBufferedEnd);
         
@@ -620,11 +713,10 @@
           state.segments.positions[1] = {
             start: nextSegmentStart,
             end: nextSegmentEnd,
-            loaded: nextSegmentEnd >= currentBufferedEnd - 5, // Considéré chargé si presque complet
+            loaded: nextSegmentEnd >= currentBufferedEnd - 5,
             size: nextSegmentEnd - nextSegmentStart
           };
           
-          // Si on approche de la fin du premier segment, préparer la bascule
           var timeToEndOfSegment = (currentBufferedStart + state.segments.targetSize) - currentTime;
           
           if (timeToEndOfSegment < 10 && !state.segments.switching && 
@@ -634,26 +726,20 @@
             state.segments.switching = true;
             state.segments.lastSwitchTime = Date.now();
             
-            // Préparer la bascule vers le second segment
             setTimeout(function() {
               if (state.screen === 'player') {
                 state.segments.current = 1;
                 state.segments.switching = false;
                 
-                // Réorganiser les segments
                 var temp = state.segments.positions[0];
                 state.segments.positions[0] = state.segments.positions[1];
                 state.segments.positions[1] = temp;
-                
-                // Nettoyer l'ancien segment
-                cleanupOldSegment();
               }
-            }, timeToEndOfSegment * 900); // Juste avant la fin
+            }, timeToEndOfSegment * 900);
           }
         }
       }
       
-      // Mise à jour de l'affichage
       updateSegmentsDisplay();
       
     } catch(e) {
@@ -667,63 +753,28 @@
     
     bufferPercent.textContent = Math.min(Math.round(totalPercent), 100) + '%';
     
-    // Segment 1
     var seg1Percent = (state.segments.positions[0].size / state.segments.targetSize) * 100;
     segment1Fill.style.width = Math.min(seg1Percent, 100) + '%';
     segment1.classList.toggle('active', state.segments.current === 0);
     segment1.classList.toggle('standby', state.segments.current === 1 && state.segments.positions[0].loaded);
-    segment1Label.textContent = 'S1: ' + Math.round(state.segments.positions[0].size) + 's';
+    segment1Label.textContent = 'С1: ' + Math.round(state.segments.positions[0].size) + 'с';
     
-    // Segment 2
     var seg2Percent = (state.segments.positions[1].size / state.segments.targetSize) * 100;
     segment2Fill.style.width = Math.min(seg2Percent, 100) + '%';
     segment2.classList.toggle('active', state.segments.current === 1);
     segment2.classList.toggle('standby', state.segments.current === 0 && state.segments.positions[1].loaded);
-    segment2Label.textContent = 'S2: ' + Math.round(state.segments.positions[1].size) + 's';
+    segment2Label.textContent = 'С2: ' + Math.round(state.segments.positions[1].size) + 'с';
     
-    activeSegment.textContent = 'Segment ' + (state.segments.current + 1);
+    activeSegment.textContent = 'Сегмент ' + (state.segments.current + 1);
     
     if (state.segments.switching) {
-      bufferMode.textContent = '🔄 Bascule en cours';
+      bufferMode.textContent = '🔄 Переключение';
     } else {
-      bufferMode.textContent = state.segments.positions[1].loaded ? '⚡ Double buffer' : '📥 Chargement...';
+      bufferMode.textContent = state.segments.positions[1].loaded ? '⚡ Двойной буфер' : '📥 Загрузка...';
     }
   }
 
-  function cleanupOldSegment() {
-    if (!videoPlayer || state.screen !== 'player') return;
-    
-    try {
-      var currentTime = videoPlayer.currentTime;
-      var buffered = videoPlayer.buffered;
-      
-      // Ne nettoyer que si on a au moins 2 segments
-      if (buffered.length < 2) return;
-      
-      // Chercher le segment le plus ancien (celui qui ne contient pas la position actuelle)
-      for (var i = 0; i < buffered.length; i++) {
-        if (!(currentTime >= buffered.start(i) && currentTime <= buffered.end(i))) {
-          // Ce segment peut être nettoyé
-          console.log('Nettoyage segment ancien:', i);
-          break;
-        }
-      }
-      
-      // Feedback visuel
-      bufferIndicator.style.backgroundColor = 'rgba(74,158,255,0.9)';
-      bufferIndicator.style.borderColor = '#4a9eff';
-      
-      setTimeout(function() {
-        bufferIndicator.style.backgroundColor = 'rgba(0,0,0,0.85)';
-        bufferIndicator.style.borderColor = 'rgba(74,158,255,0.3)';
-      }, 1000);
-      
-    } catch(e) {
-      console.log('Segment cleanup error:', e);
-    }
-  }
-
-  // -- Gestion du buffer et nettoyage mémoire --
+  // -- Мониторинг буфера --
   function initBufferMonitoring() {
     bufferIndicator.style.display = 'flex';
     
@@ -735,22 +786,19 @@
     state.lastCheckTime = Date.now();
     state.currentBitrate = 0;
     
-    // Initialisation des segments
     state.segments = {
       current: 0,
       positions: [
         { start: 0, end: 0, loaded: false, size: 0 },
         { start: 0, end: 0, loaded: false, size: 0 }
       ],
-      targetSize: 60, // 60 secondes par segment
+      targetSize: 60,
       switching: false,
       lastSwitchTime: 0
     };
     
     state.bufferCheckInterval = setInterval(function() {
-      if (!videoPlayer || state.screen !== 'player') {
-        return;
-      }
+      if (!videoPlayer || state.screen !== 'player') return;
       
       try {
         var buffered = videoPlayer.buffered;
@@ -758,7 +806,6 @@
         var duration = videoPlayer.duration;
         
         if (buffered.length > 0 && duration > 0) {
-          // Mettre à jour le débit
           if (videoPlayer.webkitVideoDecodedByteCount) {
             var now = Date.now();
             var bytesLoaded = videoPlayer.webkitVideoDecodedByteCount || 0;
@@ -774,24 +821,22 @@
             state.lastCheckTime = now;
           }
           
-          // Mettre à jour les segments
           updateSegments();
           
-          // Statistiques générales
           var totalBufferedDuration = 0;
           for (var i = 0; i < buffered.length; i++) {
             totalBufferedDuration += buffered.end(i) - buffered.start(i);
           }
           
-          bufferTime.textContent = Math.round(totalBufferedDuration) + ' sec';
+          bufferTime.textContent = Math.round(totalBufferedDuration) + ' сек';
           bufferSize.textContent = estimateBufferSize() + ' MB';
           bufferPosition.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
-          bufferBitrate.textContent = (state.currentBitrate || '?') + ' Mbps';
+          bufferBitrate.textContent = (state.currentBitrate || '?') + ' Мбит/с';
         }
       } catch(e) {
         console.log('Buffer monitoring error:', e);
       }
-    }, 500); // Mise à jour plus fréquente pour les segments
+    }, 500);
   }
 
   function stopBufferMonitoring() {
@@ -800,16 +845,9 @@
       state.bufferCheckInterval = null;
     }
     bufferIndicator.style.display = 'none';
-    bufferPercent.textContent = '0%';
-    bufferSize.textContent = '0 MB';
-    bufferTime.textContent = '0 sec';
-    bufferPosition.textContent = '0:00 / 0:00';
-    bufferBitrate.textContent = '0 Mbps';
-    segment1Fill.style.width = '0%';
-    segment2Fill.style.width = '0%';
   }
 
-  // -- Lecture --
+  // -- Воспроизведение --
   function startPlayback(url) {
     errorMsg.textContent = '';
     var err = validateUrl(url);
@@ -820,6 +858,9 @@
 
     state.screen = 'player';
     state.videoUrl = url;
+    state.isPlaying = true;
+    touchPlay.textContent = '⏸️';
+    
     configScreen.style.display = 'none';
     playerScreen.style.display = 'block';
 
@@ -852,7 +893,7 @@
 
     videoPlayer.onerror = function() {
       showConfigScreen();
-      errorMsg.textContent = 'Impossible de lire cette vidéo. Vérifiez le lien.';
+      errorMsg.textContent = 'Невозможно воспроизвести видео. Проверьте ссылку.';
     };
 
     videoPlayer.onloadedmetadata = function() {
@@ -860,7 +901,7 @@
     };
   }
 
-  // -- Indice visuel --
+  // -- Показ подсказки --
   function showHint() {
     playerHint.style.opacity = '1';
     if (state.hintTimeout) clearTimeout(state.hintTimeout);
@@ -869,7 +910,7 @@
     }, 4000);
   }
 
-  // -- Retour a la config --
+  // -- Возврат к конфигурации --
   function showConfigScreen() {
     state.screen = 'config';
     stopAllPlayback();
@@ -889,7 +930,55 @@
     updateFocus(0);
   }
 
-  // -- Actions --
+  // -- Сенсорное управление --
+  function showTouchControls() {
+    playerScreen.classList.add('touch-active');
+    
+    if (state.touchTimer) {
+      clearTimeout(state.touchTimer);
+    }
+    
+    state.touchTimer = setTimeout(function() {
+      playerScreen.classList.remove('touch-active');
+    }, 3000);
+  }
+
+  function togglePlay() {
+    if (videoPlayer.paused) {
+      videoPlayer.play();
+      state.isPlaying = true;
+      touchPlay.textContent = '⏸️';
+    } else {
+      videoPlayer.pause();
+      state.isPlaying = false;
+      touchPlay.textContent = '▶️';
+    }
+    showTouchControls();
+  }
+
+  // -- Обработчики сенсорных событий --
+  touchArea.addEventListener('click', showTouchControls);
+  touchArea.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    showTouchControls();
+  });
+
+  touchBack.addEventListener('click', function(e) {
+    e.stopPropagation();
+    showConfigScreen();
+  });
+
+  touchPlay.addEventListener('click', function(e) {
+    e.stopPropagation();
+    togglePlay();
+  });
+
+  touchConfig.addEventListener('click', function(e) {
+    e.stopPropagation();
+    showConfigScreen();
+  });
+
+  // -- Действия --
   function handleSave() {
     var url = urlInput.value.trim();
     if (startPlayback(url)) {
@@ -923,7 +1012,7 @@
     else if (el === btnReset) handleReset();
   }
 
-  // -- Gestion des touches (telecommande + clavier) --
+  // -- Обработка клавиш --
   document.addEventListener('keydown', function(e) {
     var key = e.keyCode;
 
@@ -951,7 +1040,6 @@
       return;
     }
 
-    // -- Ecran de configuration --
     if (document.activeElement === urlInput) {
       if (key === KEY_ENTER) {
         e.preventDefault();
@@ -999,25 +1087,25 @@
     }
   });
 
-  // -- Clics souris (pour test sur PC) --
+  // -- Клики мыши --
   btnSave.addEventListener('click', handleSave);
   btnTest.addEventListener('click', handleTest);
   btnReset.addEventListener('click', handleReset);
 
-  // -- Video HTML5 : boucle de securite --
+  // -- Видео HTML5 --
   videoPlayer.addEventListener('ended', function() {
     videoPlayer.currentTime = 0;
     videoPlayer.play().catch(function(){});
   });
 
-  // -- Nettoyage quand on quitte la page --
+  // -- Очистка при выходе --
   window.addEventListener('beforeunload', function() {
     if (state.bufferCheckInterval) {
       clearInterval(state.bufferCheckInterval);
     }
   });
 
-  // -- Demarrage --
+  // -- Запуск --
   function init() {
     var saved = loadConfig();
     if (saved) {
