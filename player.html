@@ -398,7 +398,12 @@
     font-size: 14px;
   }
 
-  .buffer-hide-btn {
+  .buffer-controls {
+    display: flex;
+    gap: 5px;
+  }
+
+  .buffer-control-btn {
     width: 30px;
     height: 30px;
     border-radius: 50%;
@@ -413,9 +418,42 @@
     transition: all 0.2s;
   }
 
-  .buffer-hide-btn:active {
-    background: rgba(255,80,80,0.8);
+  .buffer-control-btn:hover {
+    background: rgba(74,158,255,0.3);
     color: white;
+  }
+
+  .buffer-control-btn:active {
+    transform: scale(0.9);
+  }
+
+  #buffer-show-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.7);
+    border: 1px solid rgba(74,158,255,0.3);
+    color: #4a9eff;
+    font-size: 20px;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 19;
+    backdrop-filter: blur(5px);
+    transition: all 0.2s;
+  }
+
+  #buffer-show-btn:hover {
+    background: rgba(74,158,255,0.3);
+    transform: scale(1.1);
+  }
+
+  #buffer-show-btn:active {
+    transform: scale(0.9);
   }
 
   .buffer-row {
@@ -465,6 +503,13 @@
 
   .segment.clearing .segment-fill {
     background: linear-gradient(90deg, #ff4a4a, #ff6a6a);
+    animation: pulse 0.5s ease;
+  }
+
+  @keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
   }
 
   .segment-label {
@@ -499,16 +544,13 @@
   }
 
   .buffer-mode {
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    background: rgba(0,0,0,0.7);
-    color: #4a9eff;
-    padding: 6px 12px;
-    border-radius: 16px;
+    margin-top: 5px;
+    padding: 4px 8px;
+    background: rgba(74,158,255,0.1);
+    border-radius: 4px;
+    text-align: center;
     font-size: 12px;
-    border: 1px solid rgba(74,158,255,0.3);
-    backdrop-filter: blur(5px);
+    color: #4a9eff;
   }
 
   #touch-area {
@@ -819,28 +861,34 @@
     </div>
   </div>
   
+  <!-- Кнопка показа буфера -->
+  <div id="buffer-show-btn" title="Показать буфер">📊</div>
+  
   <!-- Индикатор буфера -->
   <div id="buffer-indicator">
     <div class="buffer-header">
       <h4>Мониторинг буфера</h4>
-      <button class="buffer-hide-btn" id="buffer-hide-btn">✕</button>
+      <div class="buffer-controls">
+        <button class="buffer-control-btn" id="buffer-refresh-btn" title="Обновить">↻</button>
+        <button class="buffer-control-btn" id="buffer-hide-btn" title="Скрыть">✕</button>
+      </div>
     </div>
     
-    <div class="buffer-mode" id="buffer-mode">Кольцевой буфер</div>
+    <div class="buffer-mode" id="buffer-mode">Ожидание загрузки...</div>
     
     <div class="buffer-row">
-      <span class="buffer-label">Буфер всего</span>
-      <span class="buffer-value" id="buffer-percent">0%</span>
+      <span class="buffer-label">Всего в буфере:</span>
+      <span class="buffer-value" id="buffer-total">0 сек</span>
     </div>
     
     <div class="buffer-segments">
       <div class="segment" id="segment-1">
         <div class="segment-fill" id="segment-1-fill"></div>
-        <div class="segment-label" id="segment-1-label">Сегмент 1</div>
+        <div class="segment-label" id="segment-1-label">С1: 0с</div>
       </div>
       <div class="segment" id="segment-2">
         <div class="segment-fill" id="segment-2-fill"></div>
-        <div class="segment-label" id="segment-2-label">Сегмент 2</div>
+        <div class="segment-label" id="segment-2-label">С2: 0с</div>
       </div>
     </div>
 
@@ -852,10 +900,6 @@
       <div class="stat-item">
         <span class="stat-label">В памяти:</span>
         <span class="stat-value" id="buffer-size">0 MB</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">Время буфера:</span>
-        <span class="stat-value" id="buffer-time">0 сек</span>
       </div>
       <div class="stat-item">
         <span class="stat-label">Позиция:</span>
@@ -890,10 +934,11 @@
   
   // Элементы буфера
   var bufferIndicator = document.getElementById('buffer-indicator');
+  var bufferShowBtn = document.getElementById('buffer-show-btn');
   var bufferHideBtn = document.getElementById('buffer-hide-btn');
-  var bufferPercent = document.getElementById('buffer-percent');
+  var bufferRefreshBtn = document.getElementById('buffer-refresh-btn');
+  var bufferTotal = document.getElementById('buffer-total');
   var bufferSize = document.getElementById('buffer-size');
-  var bufferTime = document.getElementById('buffer-time');
   var bufferPosition = document.getElementById('buffer-position');
   var bufferBitrate = document.getElementById('buffer-bitrate');
   var activeSegment = document.getElementById('active-segment');
@@ -963,13 +1008,11 @@
     segments: {
       current: 0,           // Активный сегмент (0 или 1)
       positions: [
-        { start: 0, end: 0, loaded: false, size: 0, cleared: false }, // Сегмент 0
-        { start: 0, end: 0, loaded: false, size: 0, cleared: false }  // Сегмент 1
+        { start: 0, end: 0, loaded: false, size: 0 }, // Сегмент 0
+        { start: 0, end: 0, loaded: false, size: 0 }  // Сегмент 1
       ],
-      targetSize: 60,        // 60 секунд для полной загрузки
-      cleanupThreshold: 20,   // 20 секунд для очистки другого сегмента
-      switching: false,
-      lastSwitchTime: 0
+      targetSize: 60,        // 60 секунд максимум
+      switching: false
     }
   };
 
@@ -1103,70 +1146,48 @@
         start: currentBufferedStart,
         end: currentBufferedEnd,
         loaded: currentBufferedDuration >= state.segments.targetSize,
-        size: Math.min(currentBufferedDuration, state.segments.targetSize),
-        cleared: false
+        size: currentBufferedDuration
       };
       
-      // ЛОГИКА 1: Если активный сегмент достиг 60 секунд, переключаемся на другой
+      // ОБНОВЛЕННАЯ ЛОГИКА: Если активный сегмент достиг 60 секунд
       if (state.segments.positions[activeSegmentIndex].loaded && 
           !state.segments.switching) {
         
         state.segments.switching = true;
-        state.segments.lastSwitchTime = Date.now();
         
-        // Переключаем активный сегмент
+        // 1. Переключаемся на другой сегмент
         state.segments.current = otherSegmentIndex;
-        activeSegment.textContent = 'Сегмент ' + (otherSegmentIndex + 1);
         
-        // Показываем сообщение о переключении
-        bufferMode.textContent = '🔄 Переключение на сегмент ' + (otherSegmentIndex + 1);
-        
-        setTimeout(function() {
-          state.segments.switching = false;
-        }, 1000);
-      }
-      
-      // ЛОГИКА 2: Если неактивный сегмент достиг 20 секунд, очищаем его
-      var otherSegmentSize = state.segments.positions[otherSegmentIndex].size;
-      
-      if (otherSegmentSize >= state.segments.cleanupThreshold && 
-          !state.segments.positions[otherSegmentIndex].cleared) {
-        
-        // Помечаем как очищенный
-        state.segments.positions[otherSegmentIndex].cleared = true;
-        
-        // Визуально показываем очистку
-        if (otherSegmentIndex === 0) {
-          segment1.classList.add('clearing');
-          setTimeout(function() {
-            segment1.classList.remove('clearing');
-          }, 500);
-        } else {
-          segment2.classList.add('clearing');
-          setTimeout(function() {
-            segment2.classList.remove('clearing');
-          }, 500);
-        }
-        
-        // Очищаем данные сегмента
-        state.segments.positions[otherSegmentIndex] = {
+        // 2. Очищаем предыдущий сегмент (устанавливаем его размер в 0)
+        state.segments.positions[activeSegmentIndex] = {
           start: 0,
           end: 0,
           loaded: false,
-          size: 0,
-          cleared: true
+          size: 0
         };
         
-        bufferMode.textContent = '🧹 Очистка сегмента ' + (otherSegmentIndex + 1);
+        // Визуальный эффект очистки
+        if (activeSegmentIndex === 0) {
+          segment1.classList.add('clearing');
+          setTimeout(() => segment1.classList.remove('clearing'), 500);
+        } else {
+          segment2.classList.add('clearing');
+          setTimeout(() => segment2.classList.remove('clearing'), 500);
+        }
         
-        // Здесь можно добавить реальную очистку буфера через перезагрузку
-        // но это может вызвать рывки, поэтому пока только визуально
+        // Обновляем отображение
+        activeSegment.textContent = 'Сегмент ' + (otherSegmentIndex + 1);
+        bufferMode.textContent = '🔄 Переключение на сегмент ' + (otherSegmentIndex + 1);
+        
+        // Сбрасываем флаг переключения через секунду
+        setTimeout(() => {
+          state.segments.switching = false;
+          bufferMode.textContent = 'Активен сегмент ' + (otherSegmentIndex + 1);
+        }, 1000);
       }
       
-      // ЛОГИКА 3: Сбрасываем флаг cleared когда сегмент начинает заполняться заново
-      if (otherSegmentSize === 0 && state.segments.positions[otherSegmentIndex].cleared) {
-        state.segments.positions[otherSegmentIndex].cleared = false;
-      }
+      // Обновляем другой сегмент (он может быть пустым или частично загруженным)
+      // В реальности браузер сам управляет буфером, мы только отслеживаем
       
       updateSegmentsDisplay();
       
@@ -1176,7 +1197,6 @@
   }
 
   function updateSegmentsDisplay() {
-    // Обновляем отображение сегментов
     var seg1 = state.segments.positions[0];
     var seg2 = state.segments.positions[1];
     
@@ -1194,23 +1214,18 @@
     segment2.classList.toggle('standby', state.segments.current === 0 && seg2.size > 0);
     segment2Label.textContent = 'С2: ' + Math.round(seg2.size) + 'с';
     
-    // Общий процент буфера
-    var totalSize = seg1.size + seg2.size;
-    var totalPercent = (totalSize / (state.segments.targetSize * 2)) * 100;
-    bufferPercent.textContent = Math.min(Math.round(totalPercent), 100) + '%';
+    // Общее время в буфере (не больше 60 секунд)
+    var totalSize = Math.min(seg1.size + seg2.size, state.segments.targetSize);
+    bufferTotal.textContent = Math.round(totalSize) + ' сек';
     
     activeSegment.textContent = 'Сегмент ' + (state.segments.current + 1);
-    
-    if (!state.segments.switching) {
-      bufferMode.textContent = state.segments.positions[state.segments.current === 0 ? 1 : 0].size > 0 
-        ? '⚡ Двойной буфер' 
-        : '📥 Загрузка...';
-    }
   }
 
   // -- Мониторинг буфера --
   function initBufferMonitoring() {
     bufferIndicator.classList.remove('hidden');
+    bufferShowBtn.style.display = 'none';
+    state.bufferHidden = false;
     
     if (state.bufferCheckInterval) {
       clearInterval(state.bufferCheckInterval);
@@ -1224,13 +1239,11 @@
     state.segments = {
       current: 0,
       positions: [
-        { start: 0, end: 0, loaded: false, size: 0, cleared: false },
-        { start: 0, end: 0, loaded: false, size: 0, cleared: false }
+        { start: 0, end: 0, loaded: false, size: 0 },
+        { start: 0, end: 0, loaded: false, size: 0 }
       ],
       targetSize: 60,
-      cleanupThreshold: 20,
-      switching: false,
-      lastSwitchTime: 0
+      switching: false
     };
     
     state.bufferCheckInterval = setInterval(function() {
@@ -1263,15 +1276,9 @@
           updateSeekBar();
           
           // Обновляем статистику
-          var totalBufferedDuration = 0;
-          for (var i = 0; i < buffered.length; i++) {
-            totalBufferedDuration += buffered.end(i) - buffered.start(i);
-          }
-          
-          bufferTime.textContent = Math.round(totalBufferedDuration) + ' сек';
-          bufferSize.textContent = estimateBufferSize() + ' MB';
           bufferPosition.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
           bufferBitrate.textContent = (state.currentBitrate || '?') + ' Мбит/с';
+          bufferSize.textContent = estimateBufferSize() + ' MB';
         }
       } catch(e) {}
     }, 500);
@@ -1796,10 +1803,26 @@
     initSeeking(e);
   });
 
-  // -- Кнопка скрытия буфера --
+  // -- Управление буфером --
   bufferHideBtn.addEventListener('click', function() {
     bufferIndicator.classList.add('hidden');
+    bufferShowBtn.style.display = 'flex';
     state.bufferHidden = true;
+  });
+
+  bufferShowBtn.addEventListener('click', function() {
+    bufferIndicator.classList.remove('hidden');
+    bufferShowBtn.style.display = 'none';
+    state.bufferHidden = false;
+  });
+
+  bufferRefreshBtn.addEventListener('click', function() {
+    // Принудительное обновление отображения
+    updateSegmentsDisplay();
+    bufferMode.textContent = 'Обновлено';
+    setTimeout(() => {
+      bufferMode.textContent = 'Активен сегмент ' + (state.segments.current + 1);
+    }, 1000);
   });
 
   // -- Действия --
