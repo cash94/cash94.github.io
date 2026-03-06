@@ -19,10 +19,10 @@
     overflow: hidden;
     width: 100vw;
     height: 100vh;
-    touch-action: none; /* Предотвращает прокрутку на сенсорных устройствах */
+    touch-action: none;
   }
 
-  /* ── Player (plein écran) ── */
+  /* ── Player ── */
   #player-screen {
     position: fixed;
     inset: 0;
@@ -40,7 +40,7 @@
 
   #player-hint {
     position: fixed;
-    bottom: 30px;
+    bottom: 100px;
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0,0,0,.75);
@@ -55,10 +55,108 @@
     white-space: nowrap;
   }
 
-  /* Сенсорные кнопки для плеера */
+  /* ── Полоса перемотки ── */
+  #seek-bar-container {
+    position: fixed;
+    bottom: 140px;
+    left: 40px;
+    right: 40px;
+    height: 60px;
+    z-index: 15;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  #player-screen.touch-active #seek-bar-container {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  #seek-time {
+    color: white;
+    font-size: 16px;
+    font-family: monospace;
+    background: rgba(0,0,0,0.6);
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.2);
+    backdrop-filter: blur(5px);
+    white-space: nowrap;
+    min-width: 100px;
+    text-align: center;
+  }
+
+  #seek-bar-wrapper {
+    flex: 1;
+    height: 40px;
+    position: relative;
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  #seek-bar-bg {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 3px;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  #seek-bar-buffer {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    height: 6px;
+    background: rgba(74,158,255,0.3);
+    border-radius: 3px;
+    transform: translateY(-50%);
+    pointer-events: none;
+    width: 0%;
+  }
+
+  #seek-bar-progress {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    height: 6px;
+    background: linear-gradient(90deg, #4a9eff, #6aaeff);
+    border-radius: 3px;
+    transform: translateY(-50%);
+    pointer-events: none;
+    width: 0%;
+  }
+
+  #seek-bar-thumb {
+    position: absolute;
+    top: 50%;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border: 2px solid #4a9eff;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    transition: transform 0.1s;
+  }
+
+  #seek-bar-wrapper.seeking #seek-bar-thumb {
+    transform: translate(-50%, -50%) scale(1.3);
+    background: #4a9eff;
+  }
+
+  /* ── Сенсорные кнопки ── */
   #touch-controls {
     position: fixed;
-    bottom: 80px;
+    bottom: 220px;
     left: 0;
     right: 0;
     display: flex;
@@ -120,7 +218,6 @@
     pointer-events: none;
   }
 
-  /* Сенсорная область для показа кнопок */
   #touch-area {
     position: fixed;
     top: 0;
@@ -230,7 +327,7 @@
     background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 50%, #16213e 100%);
     padding: 20px;
     overflow-y: auto;
-    touch-action: pan-y; /* Разрешает прокрутку если контент не помещается */
+    touch-action: pan-y;
   }
 
   .config-card {
@@ -444,12 +541,25 @@
   
   <div id="player-hint">Нажмите "Назад" для настройки</div>
   
+  <!-- Полоса перемотки -->
+  <div id="seek-bar-container">
+    <div id="seek-time">0:00 / 0:00</div>
+    <div id="seek-bar-wrapper">
+      <div id="seek-bar-bg"></div>
+      <div id="seek-bar-buffer"></div>
+      <div id="seek-bar-progress"></div>
+      <div id="seek-bar-thumb"></div>
+    </div>
+  </div>
+  
+  <!-- Сенсорные кнопки -->
   <div id="touch-controls">
     <div class="touch-btn" id="touch-back" title="Назад">←</div>
     <div class="touch-btn" id="touch-play" title="Пауза/Воспр.">⏸️</div>
     <div class="touch-btn" id="touch-config" title="Настройки">⚙️</div>
   </div>
   
+  <!-- Индикатор буфера -->
   <div id="buffer-indicator" style="display: none;">
     <div class="buffer-mode" id="buffer-mode">Сегментированный буфер</div>
     
@@ -508,6 +618,8 @@
   var currentConfig = document.getElementById('current-config');
   var currentUrl    = document.getElementById('current-url');
   var resetRow      = document.getElementById('reset-row');
+  
+  // Элементы буфера
   var bufferIndicator = document.getElementById('buffer-indicator');
   var bufferPercent = document.getElementById('buffer-percent');
   var bufferSize = document.getElementById('buffer-size');
@@ -516,11 +628,22 @@
   var bufferBitrate = document.getElementById('buffer-bitrate');
   var activeSegment = document.getElementById('active-segment');
   var bufferMode = document.getElementById('buffer-mode');
+  
+  // Элементы перемотки
+  var seekContainer = document.getElementById('seek-bar-container');
+  var seekWrapper = document.getElementById('seek-bar-wrapper');
+  var seekTime = document.getElementById('seek-time');
+  var seekBuffer = document.getElementById('seek-bar-buffer');
+  var seekProgress = document.getElementById('seek-bar-progress');
+  var seekThumb = document.getElementById('seek-bar-thumb');
+  
+  // Сенсорные элементы
   var touchArea = document.getElementById('touch-area');
   var touchBack = document.getElementById('touch-back');
   var touchPlay = document.getElementById('touch-play');
   var touchConfig = document.getElementById('touch-config');
   
+  // Сегменты буфера
   var segment1 = document.getElementById('segment-1');
   var segment2 = document.getElementById('segment-2');
   var segment1Fill = document.getElementById('segment-1-fill');
@@ -544,6 +667,7 @@
     currentBitrate: 0,
     touchTimer: null,
     isPlaying: true,
+    isSeeking: false,
     
     // Управление сегментированным буфером
     segments: {
@@ -632,7 +756,7 @@
     return mins + ':' + (secs < 10 ? '0' : '') + secs;
   }
 
-  // -- Оценка размера буфера в памяти --
+  // -- Оценка размера буфера --
   function estimateBufferSize() {
     if (!videoPlayer || state.screen !== 'player') return 0;
     
@@ -651,6 +775,126 @@
       return Math.round(sizeInMB * 10) / 10;
     } catch(e) {}
     return 0;
+  }
+
+  // -- Обновление полосы перемотки --
+  function updateSeekBar() {
+    if (!videoPlayer || state.screen !== 'player') return;
+    
+    var duration = videoPlayer.duration;
+    var currentTime = videoPlayer.currentTime;
+    
+    if (duration > 0) {
+      var progressPercent = (currentTime / duration) * 100;
+      seekProgress.style.width = progressPercent + '%';
+      seekThumb.style.left = progressPercent + '%';
+      seekTime.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
+      
+      // Обновление буфера на полосе
+      try {
+        var buffered = videoPlayer.buffered;
+        var bufferEnd = 0;
+        for (var i = 0; i < buffered.length; i++) {
+          if (currentTime >= buffered.start(i) && currentTime <= buffered.end(i)) {
+            bufferEnd = buffered.end(i);
+            break;
+          }
+        }
+        if (bufferEnd > 0) {
+          var bufferPercent = (bufferEnd / duration) * 100;
+          seekBuffer.style.width = bufferPercent + '%';
+        }
+      } catch(e) {}
+    }
+  }
+
+  // -- Очистка буфера при перемотке --
+  function clearBufferAndSeek(newTime) {
+    if (!videoPlayer) return;
+    
+    // Сохраняем состояние
+    var wasPaused = videoPlayer.paused;
+    var url = videoPlayer.src;
+    
+    // Останавливаем мониторинг
+    stopBufferMonitoring();
+    
+    // Очищаем буфер
+    videoPlayer.pause();
+    videoPlayer.removeAttribute('src');
+    videoPlayer.load();
+    
+    // Восстанавливаем с новой позицией
+    videoPlayer.src = url;
+    videoPlayer.load();
+    videoPlayer.currentTime = newTime;
+    
+    // Запускаем воспроизведение если было
+    if (!wasPaused) {
+      var playPromise = videoPlayer.play();
+      if (playPromise && playPromise.catch) {
+        playPromise.catch(function() {
+          videoPlayer.muted = true;
+          videoPlayer.play().catch(function(){});
+        });
+      }
+    }
+    
+    // Перезапускаем мониторинг
+    setTimeout(function() {
+      initBufferMonitoring();
+    }, 100);
+    
+    // Визуальный фидбек
+    bufferIndicator.style.backgroundColor = 'rgba(255,170,74,0.9)';
+    setTimeout(function() {
+      bufferIndicator.style.backgroundColor = 'rgba(0,0,0,0.85)';
+    }, 500);
+  }
+
+  // -- Обработка перемотки --
+  function initSeeking() {
+    if (!videoPlayer || !videoPlayer.duration) return;
+    
+    state.isSeeking = true;
+    seekWrapper.classList.add('seeking');
+    
+    function handleSeekMove(e) {
+      e.preventDefault();
+      
+      var rect = seekWrapper.getBoundingClientRect();
+      var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      var pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      var newTime = pos * videoPlayer.duration;
+      
+      seekProgress.style.width = (pos * 100) + '%';
+      seekThumb.style.left = (pos * 100) + '%';
+      seekTime.textContent = formatTime(newTime) + ' / ' + formatTime(videoPlayer.duration);
+    }
+    
+    function handleSeekEnd(e) {
+      e.preventDefault();
+      
+      var rect = seekWrapper.getBoundingClientRect();
+      var clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+      var pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      var newTime = pos * videoPlayer.duration;
+      
+      clearBufferAndSeek(newTime);
+      
+      state.isSeeking = false;
+      seekWrapper.classList.remove('seeking');
+      
+      document.removeEventListener('mousemove', handleSeekMove);
+      document.removeEventListener('mouseup', handleSeekEnd);
+      document.removeEventListener('touchmove', handleSeekMove);
+      document.removeEventListener('touchend', handleSeekEnd);
+    }
+    
+    document.addEventListener('mousemove', handleSeekMove);
+    document.addEventListener('mouseup', handleSeekEnd);
+    document.addEventListener('touchmove', handleSeekMove, { passive: false });
+    document.addEventListener('touchend', handleSeekEnd);
   }
 
   // -- Обновление сегментов буфера --
@@ -742,9 +986,7 @@
       
       updateSegmentsDisplay();
       
-    } catch(e) {
-      console.log('Segment update error:', e);
-    }
+    } catch(e) {}
   }
 
   function updateSegmentsDisplay() {
@@ -798,7 +1040,7 @@
     };
     
     state.bufferCheckInterval = setInterval(function() {
-      if (!videoPlayer || state.screen !== 'player') return;
+      if (!videoPlayer || state.screen !== 'player' || state.isSeeking) return;
       
       try {
         var buffered = videoPlayer.buffered;
@@ -822,6 +1064,7 @@
           }
           
           updateSegments();
+          updateSeekBar();
           
           var totalBufferedDuration = 0;
           for (var i = 0; i < buffered.length; i++) {
@@ -833,9 +1076,7 @@
           bufferPosition.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
           bufferBitrate.textContent = (state.currentBitrate || '?') + ' Мбит/с';
         }
-      } catch(e) {
-        console.log('Buffer monitoring error:', e);
-      }
+      } catch(e) {}
     }, 500);
   }
 
@@ -978,6 +1219,13 @@
     showConfigScreen();
   });
 
+  // -- Обработчики перемотки --
+  seekWrapper.addEventListener('mousedown', initSeeking);
+  seekWrapper.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    initSeeking(e);
+  });
+
   // -- Действия --
   function handleSave() {
     var url = urlInput.value.trim();
@@ -1096,6 +1344,12 @@
   videoPlayer.addEventListener('ended', function() {
     videoPlayer.currentTime = 0;
     videoPlayer.play().catch(function(){});
+  });
+
+  videoPlayer.addEventListener('timeupdate', function() {
+    if (!state.isSeeking) {
+      updateSeekBar();
+    }
   });
 
   // -- Очистка при выходе --
