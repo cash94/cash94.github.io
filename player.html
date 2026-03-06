@@ -29,8 +29,7 @@
     display: none;
   }
 
-  #player-screen video,
-  #player-screen iframe {
+  #player-screen video {
     width: 100%;
     height: 100%;
     object-fit: contain;
@@ -50,6 +49,86 @@
     z-index: 10;
     transition: opacity .6s;
     pointer-events: none;
+  }
+
+  #buffer-indicator {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(0,0,0,0.85);
+    color: #4a9eff;
+    padding: 12px 20px;
+    border-radius: 12px;
+    font-size: 14px;
+    z-index: 20;
+    border: 1px solid rgba(74,158,255,0.3);
+    backdrop-filter: blur(5px);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 200px;
+    transition: opacity 0.3s;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  }
+
+  .buffer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .buffer-label {
+    color: #aaa;
+  }
+
+  .buffer-value {
+    color: #4a9eff;
+    font-weight: 600;
+    font-family: monospace;
+  }
+
+  .buffer-bar-container {
+    width: 100%;
+    height: 6px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 4px 0;
+  }
+
+  .buffer-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4a9eff, #6aaeff);
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+
+  .buffer-warning {
+    color: #ffaa4a;
+  }
+
+  .buffer-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .stat-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+  }
+
+  .stat-label {
+    color: #888;
+  }
+
+  .stat-value {
+    color: #fff;
+    font-family: monospace;
   }
 
   /* ── Configuration ── */
@@ -113,34 +192,6 @@
   .text-input.focused {
     border-color: #4a9eff;
     box-shadow: 0 0 0 3px rgba(74,158,255,.25);
-  }
-
-  .type-selector {
-    display: flex;
-    gap: 12px;
-  }
-
-  .type-btn {
-    flex: 1;
-    padding: 14px;
-    font-size: 18px;
-    background: rgba(255,255,255,.06);
-    border: 2px solid rgba(255,255,255,.12);
-    border-radius: 12px;
-    color: #aaa;
-    cursor: pointer;
-    text-align: center;
-    transition: all .2s;
-  }
-
-  .type-btn.active {
-    background: rgba(74,158,255,.15);
-    border-color: #4a9eff;
-    color: #fff;
-  }
-
-  .type-btn.focused {
-    box-shadow: 0 0 0 3px rgba(74,158,255,.35);
   }
 
   .action-row {
@@ -243,21 +294,9 @@
     <p class="subtitle">Lecture en boucle, plein écran, automatique</p>
 
     <div class="field-group">
-      <div class="field-label">Type de source</div>
-      <div class="type-selector">
-        <div class="type-btn active" data-type="direct" id="type-direct">
-          Lien direct (MP4, etc.)
-        </div>
-        <div class="type-btn" data-type="youtube" id="type-youtube">
-          YouTube
-        </div>
-      </div>
-    </div>
-
-    <div class="field-group">
       <div class="field-label">URL de la vidéo</div>
       <input type="text" class="text-input" id="video-url"
-			 value="https://trs.hnar.online/stream/From.Dusk.Till.Dawn.1996.1080p.BluRay.7xRus.Ukr.Eng.HDCLUB-DON.mkv?link=d12b051b0d623541e7349e1e8f06de9d52c26838&index=1&play"
+                         value="https://trs.hnar.online/stream/From.Dusk.Till.Dawn.1996.1080p.BluRay.7xRus.Ukr.Eng.HDCLUB-DON.mkv?link=d12b051b0d623541e7349e1e8f06de9d52c26838&index=1&play"
              placeholder="https://exemple.com/video.mp4"
              autocomplete="off" spellcheck="false">
       <div class="error-msg" id="error-msg"></div>
@@ -287,23 +326,35 @@
 <!-- ECRAN LECTEUR -->
 <div id="player-screen">
   <video id="video-player" autoplay loop playsinline></video>
-  <div id="youtube-container"></div>
   <div id="player-hint">Appuyez sur Retour pour configurer</div>
+  <div id="buffer-indicator" style="display: none;">
+    <div class="buffer-row">
+      <span class="buffer-label">Buffer</span>
+      <span class="buffer-value" id="buffer-percent">0%</span>
+    </div>
+    <div class="buffer-bar-container">
+      <div class="buffer-bar-fill" id="buffer-fill"></div>
+    </div>
+    <div class="buffer-stats">
+      <div class="stat-item">
+        <span class="stat-label">En mémoire:</span>
+        <span class="stat-value" id="buffer-size">0 MB</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Temps buffer:</span>
+        <span class="stat-value" id="buffer-time">0 sec</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Position:</span>
+        <span class="stat-value" id="buffer-position">0:00 / 0:00</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Débit:</span>
+        <span class="stat-value" id="buffer-bitrate">0 Mbps</span>
+      </div>
+    </div>
+  </div>
 </div>
-
-<!-- YouTube IFrame API -->
-<script>
-  var tag = document.createElement('script');
-  tag.src = 'https://www.youtube.com/iframe_api';
-  document.head.appendChild(tag);
-
-  var ytPlayer = null;
-  var ytReady = false;
-
-  function onYouTubeIframeAPIReady() {
-    ytReady = true;
-  }
-</script>
 
 <script>
 (function() {
@@ -313,45 +364,51 @@
   var configScreen  = document.getElementById('config-screen');
   var playerScreen  = document.getElementById('player-screen');
   var videoPlayer   = document.getElementById('video-player');
-  var ytContainer   = document.getElementById('youtube-container');
   var urlInput      = document.getElementById('video-url');
   var errorMsg      = document.getElementById('error-msg');
   var playerHint    = document.getElementById('player-hint');
   var currentConfig = document.getElementById('current-config');
   var currentUrl    = document.getElementById('current-url');
   var resetRow      = document.getElementById('reset-row');
+  var bufferIndicator = document.getElementById('buffer-indicator');
+  var bufferFill = document.getElementById('buffer-fill');
+  var bufferPercent = document.getElementById('buffer-percent');
+  var bufferSize = document.getElementById('buffer-size');
+  var bufferTime = document.getElementById('buffer-time');
+  var bufferPosition = document.getElementById('buffer-position');
+  var bufferBitrate = document.getElementById('buffer-bitrate');
 
   var btnSave  = document.getElementById('btn-save');
   var btnTest  = document.getElementById('btn-test');
   var btnReset = document.getElementById('btn-reset');
-  var typeDirectBtn  = document.getElementById('type-direct');
-  var typeYoutubeBtn = document.getElementById('type-youtube');
 
   // -- Etat --
   var state = {
     screen: 'config',
-    videoType: 'direct',
     videoUrl: '',
     focusIndex: 0,
-    hintTimeout: null
+    hintTimeout: null,
+    bufferCheckInterval: null,
+    lastBufferCleanup: 0,
+    lastBytesLoaded: 0,
+    lastCheckTime: 0,
+    currentBitrate: 0
   };
 
   // Elements navigables dans l'ordre (config screen)
   var focusableEls = [
-    typeDirectBtn,    // 0
-    typeYoutubeBtn,   // 1
-    urlInput,         // 2
-    btnSave,          // 3
-    btnTest,          // 4
-    btnReset          // 5
+    urlInput,         // 0
+    btnSave,          // 1
+    btnTest,          // 2
+    btnReset          // 3
   ];
 
   // -- Stockage local --
   var STORAGE_KEY = 'videoloop_config';
 
-  function saveConfig(type, url) {
+  function saveConfig(url) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ type: type, url: url }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ url: url }));
     } catch(e) {}
   }
 
@@ -370,42 +427,21 @@
     } catch(e) {}
   }
 
-  // -- YouTube --
-  function extractYouTubeId(url) {
-    var patterns = [
-      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
-      /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/
-    ];
-    for (var i = 0; i < patterns.length; i++) {
-      var match = url.match(patterns[i]);
-      if (match) return match[1];
-    }
-    return null;
-  }
-
-  function isYouTubeUrl(url) {
-    return extractYouTubeId(url) !== null;
-  }
-
   // -- Validation --
-  function validateUrl(url, type) {
+  function validateUrl(url) {
     if (!url || !url.trim()) return 'Veuillez entrer une URL';
     url = url.trim();
 
     if (!/^https?:\/\//i.test(url)) return "L'URL doit commencer par http:// ou https://";
-
-    if (type === 'youtube') {
-      if (!isYouTubeUrl(url)) return "URL YouTube invalide. Formats : youtube.com/watch?v=... ou youtu.be/...";
-    }
 
     return null;
   }
 
   // -- Navigation (focus) --
   function updateFocus(newIndex) {
-    var visibleEls = focusableEls.slice(0, 5);
+    var visibleEls = focusableEls.slice(0, 3);
     var savedConfig = loadConfig();
-    if (savedConfig) visibleEls.push(focusableEls[5]);
+    if (savedConfig) visibleEls.push(focusableEls[3]);
 
     if (newIndex < 0) newIndex = 0;
     if (newIndex >= visibleEls.length) newIndex = visibleEls.length - 1;
@@ -425,38 +461,191 @@
     }
   }
 
-  // -- Selection du type --
-  function setType(type) {
-    state.videoType = type;
-    typeDirectBtn.classList.toggle('active', type === 'direct');
-    typeYoutubeBtn.classList.toggle('active', type === 'youtube');
+  // -- Helper temps --
+  function formatTime(seconds) {
+    if (isNaN(seconds) || seconds < 0) return '0:00';
+    var mins = Math.floor(seconds / 60);
+    var secs = Math.floor(seconds % 60);
+    return mins + ':' + (secs < 10 ? '0' : '') + secs;
+  }
 
-    if (type === 'youtube') {
-      urlInput.placeholder = 'https://www.youtube.com/watch?v=...';
-    } else {
-      urlInput.placeholder = 'https://exemple.com/video.mp4';
+  // -- Calcul taille buffer en mémoire --
+  function estimateBufferSize() {
+    if (!videoPlayer || state.screen !== 'player') return 0;
+    
+    try {
+      var buffered = videoPlayer.buffered;
+      var currentTime = videoPlayer.currentTime;
+      var duration = videoPlayer.duration;
+      
+      if (buffered.length === 0 || duration <= 0) return 0;
+      
+      // Trouver le segment actuel
+      for (var i = 0; i < buffered.length; i++) {
+        if (currentTime >= buffered.start(i) && currentTime <= buffered.end(i)) {
+          var bufferedDuration = buffered.end(i) - buffered.start(i);
+          
+          // Estimation basée sur le bitrate moyen
+          var bitrate = state.currentBitrate || 2; // 2 Mbps par défaut si inconnu
+          var sizeInMB = (bufferedDuration * bitrate) / 8; // Convertir en MB
+          
+          return Math.round(sizeInMB * 10) / 10;
+        }
+      }
+    } catch(e) {}
+    return 0;
+  }
+
+  // -- Gestion du buffer et nettoyage mémoire --
+  function initBufferMonitoring() {
+    bufferIndicator.style.display = 'flex';
+    
+    if (state.bufferCheckInterval) {
+      clearInterval(state.bufferCheckInterval);
+    }
+    
+    state.lastBytesLoaded = 0;
+    state.lastCheckTime = Date.now();
+    state.currentBitrate = 0;
+    
+    state.bufferCheckInterval = setInterval(function() {
+      if (!videoPlayer || state.screen !== 'player') {
+        return;
+      }
+      
+      try {
+        var buffered = videoPlayer.buffered;
+        var currentTime = videoPlayer.currentTime;
+        var duration = videoPlayer.duration;
+        
+        if (buffered.length > 0 && duration > 0) {
+          // Mettre à jour le débit
+          if (videoPlayer.webkitVideoDecodedByteCount) {
+            var now = Date.now();
+            var bytesLoaded = videoPlayer.webkitVideoDecodedByteCount || 0;
+            var timeDiff = (now - state.lastCheckTime) / 1000; // en secondes
+            
+            if (timeDiff > 1 && state.lastBytesLoaded > 0) {
+              var bytesDiff = bytesLoaded - state.lastBytesLoaded;
+              var bitrateMbps = (bytesDiff * 8) / (timeDiff * 1024 * 1024);
+              state.currentBitrate = Math.round(bitrateMbps * 10) / 10;
+            }
+            
+            state.lastBytesLoaded = bytesLoaded;
+            state.lastCheckTime = now;
+          }
+          
+          // Trouver le segment de buffer qui contient la position actuelle
+          for (var i = 0; i < buffered.length; i++) {
+            if (currentTime >= buffered.start(i) && currentTime <= buffered.end(i)) {
+              var bufferedStart = buffered.start(i);
+              var bufferedEnd = buffered.end(i);
+              var bufferedDuration = bufferedEnd - bufferedStart;
+              var bufferedPercentage = (bufferedEnd / duration) * 100;
+              
+              // Mettre à jour l'affichage
+              bufferFill.style.width = Math.min(bufferedPercentage, 100) + '%';
+              bufferPercent.textContent = Math.round(bufferedPercentage) + '%';
+              
+              // Taille estimée en mémoire
+              var estimatedSize = estimateBufferSize();
+              bufferSize.textContent = estimatedSize + ' MB';
+              
+              // Temps de buffer
+              bufferTime.textContent = Math.round(bufferedDuration) + ' sec';
+              
+              // Position
+              bufferPosition.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
+              
+              // Débit
+              bufferBitrate.textContent = (state.currentBitrate || '?') + ' Mbps';
+              
+              // Nettoyage du buffer ancien si trop de mémoire utilisée
+              var currentBufferedAhead = bufferedEnd - currentTime;
+              var timeNow = Date.now();
+              
+              // Si le buffer dépasse 120 secondes ou 100 MB, nettoyer
+              if ((currentBufferedAhead > 120 || estimatedSize > 100) && 
+                  (timeNow - state.lastBufferCleanup) > 30000) {
+                cleanupOldBuffer();
+                state.lastBufferCleanup = timeNow;
+              }
+              break;
+            }
+          }
+        }
+      } catch(e) {
+        console.log('Buffer monitoring error:', e);
+      }
+    }, 1000);
+  }
+
+  function cleanupOldBuffer() {
+    if (!videoPlayer || state.screen !== 'player') return;
+    
+    try {
+      var currentTime = videoPlayer.currentTime;
+      var wasPaused = videoPlayer.paused;
+      var currentPlaybackRate = videoPlayer.playbackRate;
+      
+      // Sauvegarder la position
+      var position = currentTime;
+      
+      // Recréer la source pour libérer le buffer
+      var currentSrc = videoPlayer.src;
+      
+      videoPlayer.pause();
+      videoPlayer.removeAttribute('src');
+      videoPlayer.load();
+      
+      // Restaurer la source
+      videoPlayer.src = currentSrc;
+      videoPlayer.load();
+      videoPlayer.currentTime = position;
+      videoPlayer.playbackRate = currentPlaybackRate;
+      
+      if (!wasPaused) {
+        var playPromise = videoPlayer.play();
+        if (playPromise && playPromise.catch) {
+          playPromise.catch(function() {
+            videoPlayer.muted = true;
+            videoPlayer.play().catch(function(){});
+          });
+        }
+      }
+      
+      // Feedback visuel
+      bufferIndicator.style.backgroundColor = 'rgba(255,170,74,0.9)';
+      bufferIndicator.style.borderColor = '#ffaa4a';
+      
+      setTimeout(function() {
+        bufferIndicator.style.backgroundColor = 'rgba(0,0,0,0.85)';
+        bufferIndicator.style.borderColor = 'rgba(74,158,255,0.3)';
+      }, 2000);
+      
+    } catch(e) {
+      console.log('Buffer cleanup error:', e);
     }
   }
 
-  // -- Detection automatique du type --
-  function autoDetectType() {
-    var url = urlInput.value.trim();
-    if (isYouTubeUrl(url)) {
-      setType('youtube');
+  function stopBufferMonitoring() {
+    if (state.bufferCheckInterval) {
+      clearInterval(state.bufferCheckInterval);
+      state.bufferCheckInterval = null;
     }
-  }
-
-  // -- Helpers DOM surs --
-  function clearChildren(el) {
-    while (el.firstChild) {
-      el.removeChild(el.firstChild);
-    }
+    bufferIndicator.style.display = 'none';
+    bufferFill.style.width = '0%';
+    bufferPercent.textContent = '0%';
+    bufferSize.textContent = '0 MB';
+    bufferTime.textContent = '0 sec';
+    bufferPosition.textContent = '0:00 / 0:00';
+    bufferBitrate.textContent = '0 Mbps';
   }
 
   // -- Lecture --
-  function startPlayback(type, url) {
+  function startPlayback(url) {
     errorMsg.textContent = '';
-    var err = validateUrl(url, type);
+    var err = validateUrl(url);
     if (err) {
       errorMsg.textContent = err;
       return false;
@@ -464,37 +653,25 @@
 
     state.screen = 'player';
     state.videoUrl = url;
-    state.videoType = type;
     configScreen.style.display = 'none';
     playerScreen.style.display = 'block';
 
     stopAllPlayback();
-
-    if (type === 'youtube') {
-      startYouTube(url);
-    } else {
-      startDirectVideo(url);
-    }
-
+    startDirectVideo(url);
     showHint();
+    
     return true;
   }
 
   function stopAllPlayback() {
+    stopBufferMonitoring();
+    
     videoPlayer.pause();
     videoPlayer.removeAttribute('src');
-    videoPlayer.style.display = 'none';
-
-    if (ytPlayer) {
-      try { ytPlayer.destroy(); } catch(e) {}
-      ytPlayer = null;
-    }
-    clearChildren(ytContainer);
-    ytContainer.style.display = 'none';
+    videoPlayer.load();
   }
 
   function startDirectVideo(url) {
-    videoPlayer.style.display = 'block';
     videoPlayer.src = url;
     videoPlayer.load();
 
@@ -510,77 +687,10 @@
       showConfigScreen();
       errorMsg.textContent = 'Impossible de lire cette vidéo. Vérifiez le lien.';
     };
-  }
 
-  function startYouTube(url) {
-    var videoId = extractYouTubeId(url);
-    if (!videoId) {
-      showConfigScreen();
-      errorMsg.textContent = "Impossible d'extraire l'ID YouTube.";
-      return;
-    }
-
-    ytContainer.style.display = 'block';
-    clearChildren(ytContainer);
-    var playerDiv = document.createElement('div');
-    playerDiv.id = 'yt-player';
-    ytContainer.appendChild(playerDiv);
-
-    function createPlayer() {
-      ytPlayer = new YT.Player('yt-player', {
-        width: '100%',
-        height: '100%',
-        videoId: videoId,
-        playerVars: {
-          autoplay: 1,
-          controls: 0,
-          disablekb: 1,
-          fs: 0,
-          loop: 1,
-          playlist: videoId,
-          modestbranding: 1,
-          rel: 0,
-          showinfo: 0,
-          iv_load_policy: 3,
-          playsinline: 1
-        },
-        events: {
-          onReady: function(e) {
-            e.target.playVideo();
-          },
-          onStateChange: function(e) {
-            if (e.data === YT.PlayerState.ENDED) {
-              e.target.seekTo(0);
-              e.target.playVideo();
-            }
-          },
-          onError: function() {
-            showConfigScreen();
-            errorMsg.textContent = 'Erreur de lecture YouTube. Vérifiez le lien.';
-          }
-        }
-      });
-
-      var iframe = ytContainer.querySelector('iframe');
-      if (iframe) {
-        iframe.style.width = '100vw';
-        iframe.style.height = '100vh';
-        iframe.style.position = 'fixed';
-        iframe.style.top = '0';
-        iframe.style.left = '0';
-      }
-    }
-
-    if (ytReady) {
-      createPlayer();
-    } else {
-      var checkInterval = setInterval(function() {
-        if (ytReady) {
-          clearInterval(checkInterval);
-          createPlayer();
-        }
-      }, 200);
-    }
+    videoPlayer.onloadedmetadata = function() {
+      initBufferMonitoring();
+    };
   }
 
   // -- Indice visuel --
@@ -602,29 +712,27 @@
     var saved = loadConfig();
     if (saved) {
       currentConfig.style.display = 'block';
-      currentUrl.textContent = '[' + saved.type.toUpperCase() + '] ' + saved.url;
+      currentUrl.textContent = saved.url;
       resetRow.style.display = 'flex';
     } else {
       currentConfig.style.display = 'none';
       resetRow.style.display = 'none';
     }
 
-    updateFocus(2);
+    updateFocus(0);
   }
 
   // -- Actions --
   function handleSave() {
     var url = urlInput.value.trim();
-    autoDetectType();
-    if (startPlayback(state.videoType, url)) {
-      saveConfig(state.videoType, url);
+    if (startPlayback(url)) {
+      saveConfig(url);
     }
   }
 
   function handleTest() {
     var url = urlInput.value.trim();
-    autoDetectType();
-    startPlayback(state.videoType, url);
+    startPlayback(url);
   }
 
   function handleReset() {
@@ -633,19 +741,16 @@
     currentConfig.style.display = 'none';
     resetRow.style.display = 'none';
     errorMsg.textContent = '';
-    setType('direct');
-    updateFocus(2);
+    updateFocus(0);
   }
 
   function activateFocused() {
-    var visibleEls = focusableEls.slice(0, 5);
-    if (loadConfig()) visibleEls.push(focusableEls[5]);
+    var visibleEls = focusableEls.slice(0, 3);
+    if (loadConfig()) visibleEls.push(focusableEls[3]);
 
     var el = visibleEls[state.focusIndex];
 
-    if (el === typeDirectBtn) setType('direct');
-    else if (el === typeYoutubeBtn) setType('youtube');
-    else if (el === urlInput) urlInput.focus();
+    if (el === urlInput) urlInput.focus();
     else if (el === btnSave) handleSave();
     else if (el === btnTest) handleTest();
     else if (el === btnReset) handleReset();
@@ -683,12 +788,12 @@
     if (document.activeElement === urlInput) {
       if (key === KEY_ENTER) {
         e.preventDefault();
-        updateFocus(3);
+        updateFocus(1);
         return;
       }
       if (key === KEY_DOWN) {
         e.preventDefault();
-        updateFocus(3);
+        updateFocus(1);
         return;
       }
       if (key === KEY_UP) {
@@ -721,12 +826,6 @@
       case KEY_DOWN:
         updateFocus(state.focusIndex + 1);
         break;
-      case KEY_LEFT:
-        if (state.focusIndex <= 1) updateFocus(0);
-        break;
-      case KEY_RIGHT:
-        if (state.focusIndex <= 1) updateFocus(1);
-        break;
       case KEY_ENTER:
         activateFocused();
         break;
@@ -734,12 +833,9 @@
   });
 
   // -- Clics souris (pour test sur PC) --
-  typeDirectBtn.addEventListener('click', function() { setType('direct'); });
-  typeYoutubeBtn.addEventListener('click', function() { setType('youtube'); });
   btnSave.addEventListener('click', handleSave);
   btnTest.addEventListener('click', handleTest);
   btnReset.addEventListener('click', handleReset);
-  urlInput.addEventListener('input', autoDetectType);
 
   // -- Video HTML5 : boucle de securite --
   videoPlayer.addEventListener('ended', function() {
@@ -747,13 +843,19 @@
     videoPlayer.play().catch(function(){});
   });
 
+  // -- Nettoyage quand on quitte la page --
+  window.addEventListener('beforeunload', function() {
+    if (state.bufferCheckInterval) {
+      clearInterval(state.bufferCheckInterval);
+    }
+  });
+
   // -- Demarrage --
   function init() {
     var saved = loadConfig();
     if (saved) {
-      setType(saved.type);
       urlInput.value = saved.url;
-      startPlayback(saved.type, saved.url);
+      startPlayback(saved.url);
     } else {
       showConfigScreen();
     }
