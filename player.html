@@ -475,6 +475,16 @@
     color: #4a9eff;
   }
 
+  .buffer-warning {
+    background: rgba(255,170,74,0.2);
+    border-left: 3px solid #ffaa4a;
+    padding: 8px;
+    margin-top: 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: #ffaa4a;
+  }
+
   .buffer-row {
     display: flex;
     align-items: center;
@@ -531,16 +541,6 @@
     100% { background: rgba(255,80,80,0.3); }
   }
 
-  .segment-clear-marker {
-    position: absolute;
-    top: -2px;
-    right: 20%;
-    width: 2px;
-    height: 16px;
-    background: #ff5050;
-    z-index: 2;
-  }
-
   .segment-label {
     font-size: 10px;
     text-align: center;
@@ -580,6 +580,30 @@
     text-align: center;
     font-size: 12px;
     color: #4a9eff;
+  }
+
+  .memory-bar {
+    width: 100%;
+    height: 6px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 8px 0;
+  }
+
+  .memory-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #4a9eff, #6aaeff);
+    transition: width 0.3s ease;
+  }
+
+  .memory-fill.warning {
+    background: linear-gradient(90deg, #ffaa4a, #ffbb6a);
+  }
+
+  .memory-fill.critical {
+    background: linear-gradient(90deg, #ff4a4a, #ff6a6a);
   }
 
   #touch-area {
@@ -904,7 +928,10 @@
     </div>
     
     <div class="buffer-info">
-      <p><strong>📊 В памяти:</strong> это реальный объем видеоданных, загруженных в оперативную память. Рассчитывается по формуле: <strong>(время буфера × битрейт) / 8</strong>. Например, 60 сек × 2 Мбит/с = 15 MB.</p>
+      <p><strong>📊 В памяти:</strong> <span id="memory-usage">0</span> MB / 64 MB</p>
+      <div class="memory-bar">
+        <div class="memory-fill" id="memory-fill" style="width: 0%;"></div>
+      </div>
     </div>
     
     <div class="buffer-mode" id="buffer-mode">Ожидание загрузки...</div>
@@ -917,11 +944,11 @@
     <div class="buffer-segments">
       <div class="segment" id="segment-1">
         <div class="segment-fill" id="segment-1-fill"></div>
-        <div class="segment-label" id="segment-1-label">С1: 0с</div>
+        <div class="segment-label" id="segment-1-label">С1: 0/30с</div>
       </div>
       <div class="segment" id="segment-2">
         <div class="segment-fill" id="segment-2-fill"></div>
-        <div class="segment-label" id="segment-2-label">С2: 0с</div>
+        <div class="segment-label" id="segment-2-label">С2: 0/30с</div>
       </div>
     </div>
 
@@ -931,21 +958,17 @@
         <span class="stat-value" id="active-segment">Сегмент 1</span>
       </div>
       <div class="stat-item">
-        <span class="stat-label">В памяти:</span>
-        <span class="stat-value" id="buffer-size">0 MB</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">Очищается:</span>
-        <span class="stat-value" id="clear-amount">40 сек</span>
+        <span class="stat-label">Битрейт:</span>
+        <span class="stat-value" id="buffer-bitrate">0 Мбит/с</span>
       </div>
       <div class="stat-item">
         <span class="stat-label">Позиция:</span>
         <span class="stat-value" id="buffer-position">0:00 / 0:00</span>
       </div>
-      <div class="stat-item">
-        <span class="stat-label">Битрейт:</span>
-        <span class="stat-value" id="buffer-bitrate">0 Мбит/с</span>
-      </div>
+    </div>
+
+    <div class="buffer-warning" id="memory-warning" style="display: none;">
+      ⚠️ Превышен лимит памяти 64 MB! Выполняется очистка...
     </div>
   </div>
 </div>
@@ -975,12 +998,13 @@
   var bufferHideBtn = document.getElementById('buffer-hide-btn');
   var bufferRefreshBtn = document.getElementById('buffer-refresh-btn');
   var bufferTotal = document.getElementById('buffer-total');
-  var bufferSize = document.getElementById('buffer-size');
   var bufferPosition = document.getElementById('buffer-position');
   var bufferBitrate = document.getElementById('buffer-bitrate');
   var activeSegment = document.getElementById('active-segment');
   var bufferMode = document.getElementById('buffer-mode');
-  var clearAmount = document.getElementById('clear-amount');
+  var memoryUsage = document.getElementById('memory-usage');
+  var memoryFill = document.getElementById('memory-fill');
+  var memoryWarning = document.getElementById('memory-warning');
   
   // Элементы перемотки
   var seekContainer = document.getElementById('seek-bar-container');
@@ -1042,16 +1066,17 @@
     currentSubtitleTrack: -1,
     textTracksInitialized: false,
     
-    // Управление сегментированным буфером
+    // Управление сегментами (по 30 секунд)
     segments: {
       current: 0,           // Активный сегмент (0 или 1)
       positions: [
-        { start: 0, end: 0, loaded: false, size: 0, keepFrom: 20 }, // Сегмент 0 (оставляем последние 20с)
-        { start: 0, end: 0, loaded: false, size: 0, keepFrom: 20 }  // Сегмент 1 (оставляем последние 20с)
+        { start: 0, end: 0, size: 0 }, // Сегмент 0
+        { start: 0, end: 0, size: 0 }  // Сегмент 1
       ],
-      targetSize: 60,        // 60 секунд максимум
-      cleanupSize: 40,       // Очищаем 40 секунд (оставляем 20)
-      switching: false
+      targetSize: 30,        // 30 секунд на сегмент
+      maxMemory: 64,         // Максимум 64 МБ
+      switching: false,
+      cleanupInProgress: false
     }
   };
 
@@ -1142,8 +1167,7 @@
         totalDuration += buffered.end(i) - buffered.start(i);
       }
       
-      // Битрейт в Мбит/с, переводим в MB: (Мбит/с * секунды) / 8 = MB
-      var bitrate = state.currentBitrate || 2; // если битрейт неизвестен, берем 2 Мбит/с
+      var bitrate = state.currentBitrate || 2;
       var sizeInMB = (totalDuration * bitrate) / 8;
       
       return Math.round(sizeInMB * 10) / 10;
@@ -1151,7 +1175,44 @@
     return 0;
   }
 
-  // -- НОВАЯ ЛОГИКА УПРАВЛЕНИЯ СЕГМЕНТАМИ --
+  // -- Очистка буфера при превышении лимита памяти --
+  function cleanupMemory() {
+    if (state.segments.cleanupInProgress) return;
+    
+    state.segments.cleanupInProgress = true;
+    
+    var currentSegment = state.segments.current;
+    var otherSegment = currentSegment === 0 ? 1 : 0;
+    
+    // Очищаем неактивный сегмент
+    state.segments.positions[otherSegment] = {
+      start: 0,
+      end: 0,
+      size: 0
+    };
+    
+    // Визуальный эффект
+    if (otherSegment === 0) {
+      segment1.classList.add('clearing');
+      setTimeout(() => segment1.classList.remove('clearing'), 500);
+    } else {
+      segment2.classList.add('clearing');
+      setTimeout(() => segment2.classList.remove('clearing'), 500);
+    }
+    
+    memoryWarning.style.display = 'block';
+    bufferMode.textContent = '🧹 Очистка памяти...';
+    
+    setTimeout(() => {
+      memoryWarning.style.display = 'none';
+      bufferMode.textContent = 'Активен сегмент ' + (currentSegment + 1);
+      state.segments.cleanupInProgress = false;
+    }, 2000);
+    
+    updateSegmentsDisplay();
+  }
+
+  // -- Обновление сегментов --
   function updateSegments() {
     if (!videoPlayer || state.screen !== 'player' || state.isSeeking) return;
     
@@ -1177,57 +1238,39 @@
       var currentBufferedEnd = buffered.end(currentSegmentIndex);
       var currentBufferedDuration = currentBufferedEnd - currentBufferedStart;
       
-      // Определяем, какой сегмент активен (0 или 1)
-      var activeSegmentIndex = state.segments.current;
-      var otherSegmentIndex = activeSegmentIndex === 0 ? 1 : 0;
-      
       // Обновляем активный сегмент
+      var activeSegmentIndex = state.segments.current;
       state.segments.positions[activeSegmentIndex] = {
         start: currentBufferedStart,
         end: currentBufferedEnd,
-        loaded: currentBufferedDuration >= state.segments.targetSize,
-        size: currentBufferedDuration,
-        keepFrom: 20 // оставляем последние 20 секунд при очистке
+        size: currentBufferedDuration
       };
       
-      // ЛОГИКА: Если активный сегмент достиг 60 секунд
-      if (state.segments.positions[activeSegmentIndex].loaded && 
-          !state.segments.switching) {
+      // Проверяем лимит памяти
+      var totalMemory = estimateBufferSize();
+      if (totalMemory > state.segments.maxMemory && !state.segments.cleanupInProgress) {
+        cleanupMemory();
+      }
+      
+      // Логика переключения сегментов
+      if (currentBufferedDuration >= state.segments.targetSize && 
+          !state.segments.switching &&
+          !state.segments.cleanupInProgress) {
         
         state.segments.switching = true;
         
-        // 1. Переключаемся на другой сегмент
-        state.segments.current = otherSegmentIndex;
-        
-        // 2. Очищаем предыдущий сегмент, но оставляем последние 20 секунд
-        var oldSegment = state.segments.positions[activeSegmentIndex];
-        var newSize = Math.max(20, oldSegment.size - state.segments.cleanupSize);
-        
-        state.segments.positions[activeSegmentIndex] = {
-          start: oldSegment.end - 20, // оставляем последние 20 секунд
-          end: oldSegment.end,
-          loaded: false,
-          size: 20, // всегда 20 секунд остается
-          keepFrom: 20
-        };
-        
-        // Визуальный эффект очистки (красная вспышка)
-        if (activeSegmentIndex === 0) {
-          segment1.classList.add('clearing');
-          setTimeout(() => segment1.classList.remove('clearing'), 500);
-        } else {
-          segment2.classList.add('clearing');
-          setTimeout(() => segment2.classList.remove('clearing'), 500);
-        }
+        // Переключаемся на другой сегмент
+        var nextSegment = activeSegmentIndex === 0 ? 1 : 0;
+        state.segments.current = nextSegment;
         
         // Обновляем отображение
-        activeSegment.textContent = 'Сегмент ' + (otherSegmentIndex + 1);
-        bufferMode.textContent = '🔄 Очищено 40с, осталось 20с';
+        activeSegment.textContent = 'Сегмент ' + (nextSegment + 1);
+        bufferMode.textContent = '🔄 Переключение на сегмент ' + (nextSegment + 1);
         
-        // Сбрасываем флаг переключения через секунду
+        // Сбрасываем флаг через секунду
         setTimeout(() => {
           state.segments.switching = false;
-          bufferMode.textContent = 'Активен сегмент ' + (otherSegmentIndex + 1);
+          bufferMode.textContent = 'Активен сегмент ' + (nextSegment + 1);
         }, 1000);
       }
       
@@ -1247,20 +1290,32 @@
     segment1Fill.style.width = Math.min(seg1Percent, 100) + '%';
     segment1.classList.toggle('active', state.segments.current === 0);
     segment1.classList.toggle('standby', state.segments.current === 1 && seg1.size > 0);
-    segment1Label.textContent = 'С1: ' + Math.round(seg1.size) + 'с';
+    segment1Label.textContent = 'С1: ' + Math.round(seg1.size) + '/30с';
     
     // Сегмент 2
     var seg2Percent = (seg2.size / state.segments.targetSize) * 100;
     segment2Fill.style.width = Math.min(seg2Percent, 100) + '%';
     segment2.classList.toggle('active', state.segments.current === 1);
     segment2.classList.toggle('standby', state.segments.current === 0 && seg2.size > 0);
-    segment2Label.textContent = 'С2: ' + Math.round(seg2.size) + 'с';
+    segment2Label.textContent = 'С2: ' + Math.round(seg2.size) + '/30с';
     
     // Общее время в буфере
     var totalSize = seg1.size + seg2.size;
     bufferTotal.textContent = Math.round(totalSize) + ' сек';
     
-    activeSegment.textContent = 'Сегмент ' + (state.segments.current + 1);
+    // Обновляем информацию о памяти
+    var totalMemory = estimateBufferSize();
+    memoryUsage.textContent = totalMemory;
+    var memoryPercent = (totalMemory / state.segments.maxMemory) * 100;
+    memoryFill.style.width = Math.min(memoryPercent, 100) + '%';
+    
+    // Меняем цвет в зависимости от заполнения памяти
+    memoryFill.classList.remove('warning', 'critical');
+    if (memoryPercent > 90) {
+      memoryFill.classList.add('critical');
+    } else if (memoryPercent > 70) {
+      memoryFill.classList.add('warning');
+    }
   }
 
   // -- Мониторинг буфера --
@@ -1281,16 +1336,14 @@
     state.segments = {
       current: 0,
       positions: [
-        { start: 0, end: 0, loaded: false, size: 0, keepFrom: 20 },
-        { start: 0, end: 0, loaded: false, size: 0, keepFrom: 20 }
+        { start: 0, end: 0, size: 0 },
+        { start: 0, end: 0, size: 0 }
       ],
-      targetSize: 60,
-      cleanupSize: 40,
-      switching: false
+      targetSize: 30,
+      maxMemory: 64,
+      switching: false,
+      cleanupInProgress: false
     };
-    
-    // Показываем сколько очищается
-    clearAmount.textContent = state.segments.cleanupSize + ' сек';
     
     state.bufferCheckInterval = setInterval(function() {
       if (!videoPlayer || state.screen !== 'player' || state.isSeeking) return;
@@ -1309,7 +1362,6 @@
             
             if (timeDiff > 1 && state.lastBytesLoaded > 0) {
               var bytesDiff = bytesLoaded - state.lastBytesLoaded;
-              // (bytes * 8) / (time * 1024 * 1024) = Мбит/с
               var bitrateMbps = (bytesDiff * 8) / (timeDiff * 1024 * 1024);
               state.currentBitrate = Math.round(bitrateMbps * 10) / 10;
             }
@@ -1325,10 +1377,6 @@
           // Обновляем статистику
           bufferPosition.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
           bufferBitrate.textContent = (state.currentBitrate || '?') + ' Мбит/с';
-          
-          // Рассчитываем реальный размер в памяти
-          var estimatedSize = estimateBufferSize();
-          bufferSize.textContent = estimatedSize + ' MB';
         }
       } catch(e) {}
     }, 500);
@@ -1867,7 +1915,6 @@
   });
 
   bufferRefreshBtn.addEventListener('click', function() {
-    // Принудительное обновление отображения
     updateSegmentsDisplay();
     bufferMode.textContent = 'Обновлено';
     setTimeout(() => {
