@@ -968,7 +968,7 @@
     </div>
 
     <div class="buffer-warning" id="memory-warning" style="display: none;">
-      ⚠️ Превышен лимит памяти 64 MB! Выполняется очистка...
+      ⚠️ Превышен лимит памяти 64 MB! Очищается 32 MB...
     </div>
   </div>
 </div>
@@ -1075,6 +1075,7 @@
       ],
       targetSize: 30,        // 30 секунд на сегмент
       maxMemory: 64,         // Максимум 64 МБ
+      cleanupAmount: 32,     // Очищаем 32 МБ
       switching: false,
       cleanupInProgress: false
     }
@@ -1175,7 +1176,7 @@
     return 0;
   }
 
-  // -- Функция очистки буфера (как при перемотке) --
+  // -- Функция очистки буфера (очищает 32 МБ) --
   function cleanupBuffer(segmentToClean) {
     if (!videoPlayer || state.segments.cleanupInProgress) return;
     
@@ -1187,7 +1188,7 @@
     
     // Показываем предупреждение
     memoryWarning.style.display = 'block';
-    bufferMode.textContent = '🧹 Очистка памяти...';
+    bufferMode.textContent = '🧹 Очистка 32 MB...';
     
     // Визуальный эффект на очищаемом сегменте
     if (segmentToClean === 0) {
@@ -1275,10 +1276,10 @@
       state.segments.positions[activeSegmentIndex] = {
         start: currentBufferedStart,
         end: currentBufferedEnd,
-        size: currentBufferedDuration
+        size: Math.min(currentBufferedDuration, state.segments.targetSize) // Не больше 30 секунд
       };
       
-      // Проверяем лимит памяти
+      // Проверяем лимит памяти (64 МБ)
       var totalMemory = estimateBufferSize();
       if (totalMemory > state.segments.maxMemory && !state.segments.cleanupInProgress) {
         // Очищаем неактивный сегмент
@@ -1320,22 +1321,26 @@
     var seg1 = state.segments.positions[0];
     var seg2 = state.segments.positions[1];
     
+    // Ограничиваем отображение максимум 30 секундами на сегмент
+    var seg1Display = Math.min(seg1.size, state.segments.targetSize);
+    var seg2Display = Math.min(seg2.size, state.segments.targetSize);
+    
     // Сегмент 1
-    var seg1Percent = (seg1.size / state.segments.targetSize) * 100;
+    var seg1Percent = (seg1Display / state.segments.targetSize) * 100;
     segment1Fill.style.width = Math.min(seg1Percent, 100) + '%';
     segment1.classList.toggle('active', state.segments.current === 0);
-    segment1.classList.toggle('standby', state.segments.current === 1 && seg1.size > 0);
-    segment1Label.textContent = 'С1: ' + Math.round(seg1.size) + '/30с';
+    segment1.classList.toggle('standby', state.segments.current === 1 && seg1Display > 0);
+    segment1Label.textContent = 'С1: ' + Math.round(seg1Display) + '/30с';
     
     // Сегмент 2
-    var seg2Percent = (seg2.size / state.segments.targetSize) * 100;
+    var seg2Percent = (seg2Display / state.segments.targetSize) * 100;
     segment2Fill.style.width = Math.min(seg2Percent, 100) + '%';
     segment2.classList.toggle('active', state.segments.current === 1);
-    segment2.classList.toggle('standby', state.segments.current === 0 && seg2.size > 0);
-    segment2Label.textContent = 'С2: ' + Math.round(seg2.size) + '/30с';
+    segment2.classList.toggle('standby', state.segments.current === 0 && seg2Display > 0);
+    segment2Label.textContent = 'С2: ' + Math.round(seg2Display) + '/30с';
     
-    // Общее время в буфере
-    var totalSize = seg1.size + seg2.size;
+    // Общее время в буфере (максимум 60 секунд)
+    var totalSize = Math.min(seg1Display + seg2Display, 60);
     bufferTotal.textContent = Math.round(totalSize) + ' сек';
     
     // Обновляем информацию о памяти
@@ -1376,6 +1381,7 @@
       ],
       targetSize: 30,
       maxMemory: 64,
+      cleanupAmount: 32,
       switching: false,
       cleanupInProgress: false
     };
