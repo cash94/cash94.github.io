@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VideoLoop - Vidaa</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    background: #0a0a0a;
+    color: #e0e0e0;
+    font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* ── Player (plein écran) ── */
+  #player-screen {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 1;
+    display: none;
+  }
+
+  #player-screen video,
+  #player-screen iframe {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border: none;
+  }
+
+  #player-hint {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,.75);
+    color: #aaa;
+    padding: 10px 28px;
+    border-radius: 8px;
+    font-size: 18px;
+    z-index: 10;
+    transition: opacity .6s;
+    pointer-events: none;
+  }
+
+  /* ── Configuration ── */
+  #config-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 50%, #16213e 100%);
+  }
+
+  .config-card {
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 20px;
+    padding: 50px 60px;
+    width: 720px;
+    max-width: 90vw;
+    backdrop-filter: blur(10px);
+  }
+
+  .config-card h1 {
+    font-size: 38px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #fff;
+  }
+
+  .config-card .subtitle {
+    font-size: 18px;
+    color: #888;
+    margin-bottom: 40px;
+  }
+
+  .field-label {
+    font-size: 16px;
+    color: #aaa;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .field-group {
+    margin-bottom: 30px;
+  }
+
+  .text-input {
+    width: 100%;
+    padding: 16px 20px;
+    font-size: 22px;
+    background: rgba(255,255,255,.08);
+    border: 2px solid rgba(255,255,255,.15);
+    border-radius: 12px;
+    color: #fff;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+  }
+
+  .text-input:focus,
+  .text-input.focused {
+    border-color: #4a9eff;
+    box-shadow: 0 0 0 3px rgba(74,158,255,.25);
+  }
+
+  .type-selector {
+    display: flex;
+    gap: 12px;
+  }
+
+  .type-btn {
+    flex: 1;
+    padding: 14px;
+    font-size: 18px;
+    background: rgba(255,255,255,.06);
+    border: 2px solid rgba(255,255,255,.12);
+    border-radius: 12px;
+    color: #aaa;
+    cursor: pointer;
+    text-align: center;
+    transition: all .2s;
+  }
+
+  .type-btn.active {
+    background: rgba(74,158,255,.15);
+    border-color: #4a9eff;
+    color: #fff;
+  }
+
+  .type-btn.focused {
+    box-shadow: 0 0 0 3px rgba(74,158,255,.35);
+  }
+
+  .action-row {
+    display: flex;
+    gap: 16px;
+    margin-top: 36px;
+  }
+
+  .btn {
+    flex: 1;
+    padding: 16px;
+    font-size: 20px;
+    font-weight: 600;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all .2s;
+    text-align: center;
+  }
+
+  .btn-primary {
+    background: #4a9eff;
+    color: #fff;
+  }
+
+  .btn-primary.focused {
+    background: #3a8eef;
+    box-shadow: 0 0 0 3px rgba(74,158,255,.4);
+    transform: scale(1.02);
+  }
+
+  .btn-secondary {
+    background: rgba(255,255,255,.08);
+    color: #ccc;
+    border-color: rgba(255,255,255,.12);
+  }
+
+  .btn-secondary.focused {
+    background: rgba(255,255,255,.14);
+    box-shadow: 0 0 0 3px rgba(255,255,255,.2);
+    transform: scale(1.02);
+  }
+
+  .btn-danger {
+    background: rgba(220,50,50,.15);
+    color: #e55;
+    border-color: rgba(220,50,50,.25);
+  }
+
+  .btn-danger.focused {
+    background: rgba(220,50,50,.25);
+    box-shadow: 0 0 0 3px rgba(220,50,50,.3);
+    transform: scale(1.02);
+  }
+
+  .error-msg {
+    color: #e55;
+    font-size: 16px;
+    margin-top: 10px;
+    min-height: 22px;
+  }
+
+  .current-config {
+    margin-top: 24px;
+    padding: 16px 20px;
+    background: rgba(74,158,255,.08);
+    border-radius: 10px;
+    border: 1px solid rgba(74,158,255,.15);
+  }
+
+  .current-config .label {
+    font-size: 13px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+
+  .current-config .value {
+    font-size: 16px;
+    color: #4a9eff;
+    word-break: break-all;
+  }
+
+  .help-text {
+    margin-top: 30px;
+    font-size: 14px;
+    color: #555;
+    text-align: center;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<!-- ECRAN CONFIGURATION -->
+<div id="config-screen">
+  <div class="config-card">
+    <h1>VideoLoop</h1>
+    <p class="subtitle">Lecture en boucle, plein écran, automatique</p>
+
+    <div class="field-group">
+      <div class="field-label">Type de source</div>
+      <div class="type-selector">
+        <div class="type-btn active" data-type="direct" id="type-direct">
+          Lien direct (MP4, etc.)
+        </div>
+        <div class="type-btn" data-type="youtube" id="type-youtube">
+          YouTube
+        </div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <div class="field-label">URL de la vidéo</div>
+      <input type="text" class="text-input" id="video-url"
+			 value="https://trs.hnar.online/stream/From.Dusk.Till.Dawn.1996.1080p.BluRay.7xRus.Ukr.Eng.HDCLUB-DON.mkv?link=d12b051b0d623541e7349e1e8f06de9d52c26838&index=1&play"
+             placeholder="https://exemple.com/video.mp4"
+             autocomplete="off" spellcheck="false">
+      <div class="error-msg" id="error-msg"></div>
+    </div>
+
+    <div class="action-row">
+      <div class="btn btn-primary" id="btn-save">Lancer la lecture</div>
+      <div class="btn btn-secondary" id="btn-test">Tester</div>
+    </div>
+
+    <div class="action-row" id="reset-row" style="display:none">
+      <div class="btn btn-danger" id="btn-reset">Effacer la configuration</div>
+    </div>
+
+    <div class="current-config" id="current-config" style="display:none">
+      <div class="label">Configuration actuelle</div>
+      <div class="value" id="current-url"></div>
+    </div>
+
+    <div class="help-text">
+      Naviguez avec les flèches et OK sur la télécommande<br>
+      Appuyez sur Retour pendant la lecture pour revenir ici
+    </div>
+  </div>
+</div>
+
+<!-- ECRAN LECTEUR -->
+<div id="player-screen">
+  <video id="video-player" autoplay loop playsinline></video>
+  <div id="youtube-container"></div>
+  <div id="player-hint">Appuyez sur Retour pour configurer</div>
+</div>
+
+<!-- YouTube IFrame API -->
+<script>
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+
+  var ytPlayer = null;
+  var ytReady = false;
+
+  function onYouTubeIframeAPIReady() {
+    ytReady = true;
+  }
+</script>
+
+<script>
+(function() {
+  'use strict';
+
+  // -- Elements DOM --
+  var configScreen  = document.getElementById('config-screen');
+  var playerScreen  = document.getElementById('player-screen');
+  var videoPlayer   = document.getElementById('video-player');
+  var ytContainer   = document.getElementById('youtube-container');
+  var urlInput      = document.getElementById('video-url');
+  var errorMsg      = document.getElementById('error-msg');
+  var playerHint    = document.getElementById('player-hint');
+  var currentConfig = document.getElementById('current-config');
+  var currentUrl    = document.getElementById('current-url');
+  var resetRow      = document.getElementById('reset-row');
+
+  var btnSave  = document.getElementById('btn-save');
+  var btnTest  = document.getElementById('btn-test');
+  var btnReset = document.getElementById('btn-reset');
+  var typeDirectBtn  = document.getElementById('type-direct');
+  var typeYoutubeBtn = document.getElementById('type-youtube');
+
+  // -- Etat --
+  var state = {
+    screen: 'config',
+    videoType: 'direct',
+    videoUrl: '',
+    focusIndex: 0,
+    hintTimeout: null
+  };
+
+  // Elements navigables dans l'ordre (config screen)
+  var focusableEls = [
+    typeDirectBtn,    // 0
+    typeYoutubeBtn,   // 1
+    urlInput,         // 2
+    btnSave,          // 3
+    btnTest,          // 4
+    btnReset          // 5
+  ];
+
+  // -- Stockage local --
+  var STORAGE_KEY = 'videoloop_config';
+
+  function saveConfig(type, url) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ type: type, url: url }));
+    } catch(e) {}
+  }
+
+  function loadConfig() {
+    try {
+      var data = localStorage.getItem(STORAGE_KEY);
+      return data ? JSON.parse(data) : null;
+    } catch(e) {
+      return null;
+    }
+  }
+
+  function clearConfig() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch(e) {}
+  }
+
+  // -- YouTube --
+  function extractYouTubeId(url) {
+    var patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+      /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var match = url.match(patterns[i]);
+      if (match) return match[1];
+    }
+    return null;
+  }
+
+  function isYouTubeUrl(url) {
+    return extractYouTubeId(url) !== null;
+  }
+
+  // -- Validation --
+  function validateUrl(url, type) {
+    if (!url || !url.trim()) return 'Veuillez entrer une URL';
+    url = url.trim();
+
+    if (!/^https?:\/\//i.test(url)) return "L'URL doit commencer par http:// ou https://";
+
+    if (type === 'youtube') {
+      if (!isYouTubeUrl(url)) return "URL YouTube invalide. Formats : youtube.com/watch?v=... ou youtu.be/...";
+    }
+
+    return null;
+  }
+
+  // -- Navigation (focus) --
+  function updateFocus(newIndex) {
+    var visibleEls = focusableEls.slice(0, 5);
+    var savedConfig = loadConfig();
+    if (savedConfig) visibleEls.push(focusableEls[5]);
+
+    if (newIndex < 0) newIndex = 0;
+    if (newIndex >= visibleEls.length) newIndex = visibleEls.length - 1;
+
+    for (var i = 0; i < focusableEls.length; i++) {
+      focusableEls[i].classList.remove('focused');
+    }
+
+    state.focusIndex = newIndex;
+    var el = visibleEls[newIndex];
+    el.classList.add('focused');
+
+    if (el === urlInput) {
+      urlInput.focus();
+    } else {
+      urlInput.blur();
+    }
+  }
+
+  // -- Selection du type --
+  function setType(type) {
+    state.videoType = type;
+    typeDirectBtn.classList.toggle('active', type === 'direct');
+    typeYoutubeBtn.classList.toggle('active', type === 'youtube');
+
+    if (type === 'youtube') {
+      urlInput.placeholder = 'https://www.youtube.com/watch?v=...';
+    } else {
+      urlInput.placeholder = 'https://exemple.com/video.mp4';
+    }
+  }
+
+  // -- Detection automatique du type --
+  function autoDetectType() {
+    var url = urlInput.value.trim();
+    if (isYouTubeUrl(url)) {
+      setType('youtube');
+    }
+  }
+
+  // -- Helpers DOM surs --
+  function clearChildren(el) {
+    while (el.firstChild) {
+      el.removeChild(el.firstChild);
+    }
+  }
+
+  // -- Lecture --
+  function startPlayback(type, url) {
+    errorMsg.textContent = '';
+    var err = validateUrl(url, type);
+    if (err) {
+      errorMsg.textContent = err;
+      return false;
+    }
+
+    state.screen = 'player';
+    state.videoUrl = url;
+    state.videoType = type;
+    configScreen.style.display = 'none';
+    playerScreen.style.display = 'block';
+
+    stopAllPlayback();
+
+    if (type === 'youtube') {
+      startYouTube(url);
+    } else {
+      startDirectVideo(url);
+    }
+
+    showHint();
+    return true;
+  }
+
+  function stopAllPlayback() {
+    videoPlayer.pause();
+    videoPlayer.removeAttribute('src');
+    videoPlayer.style.display = 'none';
+
+    if (ytPlayer) {
+      try { ytPlayer.destroy(); } catch(e) {}
+      ytPlayer = null;
+    }
+    clearChildren(ytContainer);
+    ytContainer.style.display = 'none';
+  }
+
+  function startDirectVideo(url) {
+    videoPlayer.style.display = 'block';
+    videoPlayer.src = url;
+    videoPlayer.load();
+
+    var playPromise = videoPlayer.play();
+    if (playPromise && playPromise.catch) {
+      playPromise.catch(function() {
+        videoPlayer.muted = true;
+        videoPlayer.play().catch(function(){});
+      });
+    }
+
+    videoPlayer.onerror = function() {
+      showConfigScreen();
+      errorMsg.textContent = 'Impossible de lire cette vidéo. Vérifiez le lien.';
+    };
+  }
+
+  function startYouTube(url) {
+    var videoId = extractYouTubeId(url);
+    if (!videoId) {
+      showConfigScreen();
+      errorMsg.textContent = "Impossible d'extraire l'ID YouTube.";
+      return;
+    }
+
+    ytContainer.style.display = 'block';
+    clearChildren(ytContainer);
+    var playerDiv = document.createElement('div');
+    playerDiv.id = 'yt-player';
+    ytContainer.appendChild(playerDiv);
+
+    function createPlayer() {
+      ytPlayer = new YT.Player('yt-player', {
+        width: '100%',
+        height: '100%',
+        videoId: videoId,
+        playerVars: {
+          autoplay: 1,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          loop: 1,
+          playlist: videoId,
+          modestbranding: 1,
+          rel: 0,
+          showinfo: 0,
+          iv_load_policy: 3,
+          playsinline: 1
+        },
+        events: {
+          onReady: function(e) {
+            e.target.playVideo();
+          },
+          onStateChange: function(e) {
+            if (e.data === YT.PlayerState.ENDED) {
+              e.target.seekTo(0);
+              e.target.playVideo();
+            }
+          },
+          onError: function() {
+            showConfigScreen();
+            errorMsg.textContent = 'Erreur de lecture YouTube. Vérifiez le lien.';
+          }
+        }
+      });
+
+      var iframe = ytContainer.querySelector('iframe');
+      if (iframe) {
+        iframe.style.width = '100vw';
+        iframe.style.height = '100vh';
+        iframe.style.position = 'fixed';
+        iframe.style.top = '0';
+        iframe.style.left = '0';
+      }
+    }
+
+    if (ytReady) {
+      createPlayer();
+    } else {
+      var checkInterval = setInterval(function() {
+        if (ytReady) {
+          clearInterval(checkInterval);
+          createPlayer();
+        }
+      }, 200);
+    }
+  }
+
+  // -- Indice visuel --
+  function showHint() {
+    playerHint.style.opacity = '1';
+    if (state.hintTimeout) clearTimeout(state.hintTimeout);
+    state.hintTimeout = setTimeout(function() {
+      playerHint.style.opacity = '0';
+    }, 4000);
+  }
+
+  // -- Retour a la config --
+  function showConfigScreen() {
+    state.screen = 'config';
+    stopAllPlayback();
+    playerScreen.style.display = 'none';
+    configScreen.style.display = 'flex';
+
+    var saved = loadConfig();
+    if (saved) {
+      currentConfig.style.display = 'block';
+      currentUrl.textContent = '[' + saved.type.toUpperCase() + '] ' + saved.url;
+      resetRow.style.display = 'flex';
+    } else {
+      currentConfig.style.display = 'none';
+      resetRow.style.display = 'none';
+    }
+
+    updateFocus(2);
+  }
+
+  // -- Actions --
+  function handleSave() {
+    var url = urlInput.value.trim();
+    autoDetectType();
+    if (startPlayback(state.videoType, url)) {
+      saveConfig(state.videoType, url);
+    }
+  }
+
+  function handleTest() {
+    var url = urlInput.value.trim();
+    autoDetectType();
+    startPlayback(state.videoType, url);
+  }
+
+  function handleReset() {
+    clearConfig();
+    urlInput.value = '';
+    currentConfig.style.display = 'none';
+    resetRow.style.display = 'none';
+    errorMsg.textContent = '';
+    setType('direct');
+    updateFocus(2);
+  }
+
+  function activateFocused() {
+    var visibleEls = focusableEls.slice(0, 5);
+    if (loadConfig()) visibleEls.push(focusableEls[5]);
+
+    var el = visibleEls[state.focusIndex];
+
+    if (el === typeDirectBtn) setType('direct');
+    else if (el === typeYoutubeBtn) setType('youtube');
+    else if (el === urlInput) urlInput.focus();
+    else if (el === btnSave) handleSave();
+    else if (el === btnTest) handleTest();
+    else if (el === btnReset) handleReset();
+  }
+
+  // -- Gestion des touches (telecommande + clavier) --
+  document.addEventListener('keydown', function(e) {
+    var key = e.keyCode;
+
+    var KEY_UP     = 38;
+    var KEY_DOWN   = 40;
+    var KEY_LEFT   = 37;
+    var KEY_RIGHT  = 39;
+    var KEY_ENTER  = 13;
+    var KEY_BACK   = 8;
+    var KEY_ESCAPE = 27;
+    var KEY_BACK_TV  = 461;
+    var KEY_BACK_TV2 = 10009;
+    var KEY_BACK_TV3 = 166;
+
+    var isBack = (key === KEY_BACK || key === KEY_ESCAPE ||
+                  key === KEY_BACK_TV || key === KEY_BACK_TV2 || key === KEY_BACK_TV3);
+
+    if (state.screen === 'player') {
+      if (isBack) {
+        e.preventDefault();
+        showConfigScreen();
+        return;
+      }
+      showHint();
+      return;
+    }
+
+    // -- Ecran de configuration --
+    if (document.activeElement === urlInput) {
+      if (key === KEY_ENTER) {
+        e.preventDefault();
+        updateFocus(3);
+        return;
+      }
+      if (key === KEY_DOWN) {
+        e.preventDefault();
+        updateFocus(3);
+        return;
+      }
+      if (key === KEY_UP) {
+        e.preventDefault();
+        updateFocus(0);
+        return;
+      }
+      if (isBack) {
+        e.preventDefault();
+        urlInput.blur();
+        if (!loadConfig()) {
+          try { window.close(); } catch(err) {}
+        }
+        return;
+      }
+      return;
+    }
+
+    e.preventDefault();
+
+    if (isBack) {
+      try { window.close(); } catch(err) {}
+      return;
+    }
+
+    switch(key) {
+      case KEY_UP:
+        updateFocus(state.focusIndex - 1);
+        break;
+      case KEY_DOWN:
+        updateFocus(state.focusIndex + 1);
+        break;
+      case KEY_LEFT:
+        if (state.focusIndex <= 1) updateFocus(0);
+        break;
+      case KEY_RIGHT:
+        if (state.focusIndex <= 1) updateFocus(1);
+        break;
+      case KEY_ENTER:
+        activateFocused();
+        break;
+    }
+  });
+
+  // -- Clics souris (pour test sur PC) --
+  typeDirectBtn.addEventListener('click', function() { setType('direct'); });
+  typeYoutubeBtn.addEventListener('click', function() { setType('youtube'); });
+  btnSave.addEventListener('click', handleSave);
+  btnTest.addEventListener('click', handleTest);
+  btnReset.addEventListener('click', handleReset);
+  urlInput.addEventListener('input', autoDetectType);
+
+  // -- Video HTML5 : boucle de securite --
+  videoPlayer.addEventListener('ended', function() {
+    videoPlayer.currentTime = 0;
+    videoPlayer.play().catch(function(){});
+  });
+
+  // -- Demarrage --
+  function init() {
+    var saved = loadConfig();
+    if (saved) {
+      setType(saved.type);
+      urlInput.value = saved.url;
+      startPlayback(saved.type, saved.url);
+    } else {
+      showConfigScreen();
+    }
+  }
+
+  init();
+})();
+</script>
+
+</body>
+</html>
