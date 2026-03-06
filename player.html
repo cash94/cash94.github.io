@@ -38,9 +38,33 @@
     border: none;
   }
 
+  /* Контейнер для субтитров */
+  #subtitle-container {
+    position: fixed;
+    bottom: 200px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    z-index: 25;
+    pointer-events: none;
+    color: white;
+    font-size: 24px;
+    text-shadow: 2px 2px 4px black;
+    background: rgba(0,0,0,0.5);
+    padding: 10px;
+    margin: 0 auto;
+    max-width: 80%;
+    border-radius: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: pre-wrap;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
   #player-hint {
     position: fixed;
-    bottom: 100px;
+    bottom: 260px;
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0,0,0,.75);
@@ -156,16 +180,18 @@
   /* ── Сенсорные кнопки ── */
   #touch-controls {
     position: fixed;
-    bottom: 220px;
+    bottom: 280px;
     left: 0;
     right: 0;
     display: flex;
     justify-content: center;
-    gap: 40px;
+    gap: 20px;
     z-index: 15;
     opacity: 0;
     transition: opacity 0.3s;
     pointer-events: none;
+    flex-wrap: wrap;
+    padding: 0 20px;
   }
 
   #player-screen.touch-active #touch-controls {
@@ -174,8 +200,8 @@
   }
 
   .touch-btn {
-    width: 70px;
-    height: 70px;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
     background: rgba(0,0,0,0.6);
     border: 2px solid rgba(255,255,255,0.2);
@@ -183,7 +209,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 30px;
+    font-size: 24px;
     color: white;
     cursor: pointer;
     transition: all 0.2s;
@@ -197,6 +223,142 @@
     border-color: #4a9eff;
   }
 
+  .touch-btn.active {
+    background: rgba(74,158,255,0.8);
+    border-color: #4a9eff;
+  }
+
+  /* ── Меню выбора ── */
+  #selection-menu {
+    position: fixed;
+    bottom: 360px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.9);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 20px;
+    z-index: 30;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    min-width: 300px;
+    max-width: 90%;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  #player-screen.menu-active #selection-menu {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .menu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .menu-header h3 {
+    color: #4a9eff;
+    font-size: 18px;
+  }
+
+  .menu-close {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .menu-close:active {
+    background: rgba(255,80,80,0.8);
+    transform: scale(0.9);
+  }
+
+  .menu-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+  }
+
+  .menu-tab {
+    flex: 1;
+    padding: 10px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    color: #aaa;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .menu-tab.active {
+    background: rgba(74,158,255,0.2);
+    border-color: #4a9eff;
+    color: white;
+  }
+
+  .menu-content {
+    display: none;
+  }
+
+  .menu-content.active {
+    display: block;
+  }
+
+  .menu-item {
+    padding: 12px 16px;
+    margin: 4px 0;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    color: #ccc;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .menu-item.active {
+    background: rgba(74,158,255,0.2);
+    border-color: #4a9eff;
+    color: white;
+  }
+
+  .menu-item:active {
+    background: rgba(74,158,255,0.3);
+    transform: scale(0.98);
+  }
+
+  .menu-item .check {
+    margin-left: auto;
+    color: #4a9eff;
+    font-weight: bold;
+  }
+
+  .no-items {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    font-style: italic;
+  }
+
+  /* ── Индикатор буфера ── */
   #buffer-indicator {
     position: fixed;
     top: 20px;
@@ -492,6 +654,30 @@
     text-align: center;
     line-height: 1.6;
   }
+
+  /* Индикаторы дорожек */
+  .track-indicator {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    background: rgba(0,0,0,0.7);
+    color: #4a9eff;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    border: 1px solid rgba(74,158,255,0.3);
+    backdrop-filter: blur(5px);
+    z-index: 21;
+    display: flex;
+    gap: 10px;
+  }
+
+  .track-badge {
+    background: rgba(74,158,255,0.2);
+    padding: 2px 8px;
+    border-radius: 12px;
+    color: white;
+  }
 </style>
 </head>
 <body>
@@ -539,6 +725,15 @@
   
   <video id="video-player" autoplay loop playsinline></video>
   
+  <!-- Контейнер для субтитров -->
+  <div id="subtitle-container" style="display: none;"></div>
+  
+  <!-- Индикаторы дорожек -->
+  <div class="track-indicator" id="track-indicator" style="display: none;">
+    <span id="audio-track-indicator">🔊 Аудио 1</span>
+    <span id="subtitle-track-indicator">📄 Субтитры выкл</span>
+  </div>
+  
   <div id="player-hint">Нажмите "Назад" для настройки</div>
   
   <!-- Полоса перемотки -->
@@ -556,7 +751,30 @@
   <div id="touch-controls">
     <div class="touch-btn" id="touch-back" title="Назад">←</div>
     <div class="touch-btn" id="touch-play" title="Пауза/Воспр.">⏸️</div>
+    <div class="touch-btn" id="touch-audio" title="Аудиодорожки">🔊</div>
+    <div class="touch-btn" id="touch-subtitle" title="Субтитры">📄</div>
     <div class="touch-btn" id="touch-config" title="Настройки">⚙️</div>
+  </div>
+  
+  <!-- Меню выбора -->
+  <div id="selection-menu">
+    <div class="menu-header">
+      <h3 id="menu-title">Выбор дорожек</h3>
+      <button class="menu-close" id="menu-close">✕</button>
+    </div>
+    
+    <div class="menu-tabs">
+      <div class="menu-tab active" data-tab="audio">Аудио</div>
+      <div class="menu-tab" data-tab="subtitle">Субтитры</div>
+    </div>
+    
+    <div id="menu-audio" class="menu-content active">
+      <!-- Аудиодорожки будут добавляться сюда динамически -->
+    </div>
+    
+    <div id="menu-subtitle" class="menu-content">
+      <!-- Субтитры будут добавляться сюда динамически -->
+    </div>
   </div>
   
   <!-- Индикатор буфера -->
@@ -618,6 +836,10 @@
   var currentConfig = document.getElementById('current-config');
   var currentUrl    = document.getElementById('current-url');
   var resetRow      = document.getElementById('reset-row');
+  var subtitleContainer = document.getElementById('subtitle-container');
+  var trackIndicator = document.getElementById('track-indicator');
+  var audioTrackIndicator = document.getElementById('audio-track-indicator');
+  var subtitleTrackIndicator = document.getElementById('subtitle-track-indicator');
   
   // Элементы буфера
   var bufferIndicator = document.getElementById('buffer-indicator');
@@ -641,7 +863,17 @@
   var touchArea = document.getElementById('touch-area');
   var touchBack = document.getElementById('touch-back');
   var touchPlay = document.getElementById('touch-play');
+  var touchAudio = document.getElementById('touch-audio');
+  var touchSubtitle = document.getElementById('touch-subtitle');
   var touchConfig = document.getElementById('touch-config');
+  
+  // Меню выбора
+  var selectionMenu = document.getElementById('selection-menu');
+  var menuTitle = document.getElementById('menu-title');
+  var menuClose = document.getElementById('menu-close');
+  var menuTabs = document.querySelectorAll('.menu-tab');
+  var menuAudio = document.getElementById('menu-audio');
+  var menuSubtitle = document.getElementById('menu-subtitle');
   
   // Сегменты буфера
   var segment1 = document.getElementById('segment-1');
@@ -668,6 +900,15 @@
     touchTimer: null,
     isPlaying: true,
     isSeeking: false,
+    menuActive: false,
+    menuType: 'audio',
+    
+    // Аудиодорожки и субтитры
+    audioTracks: [],
+    currentAudioTrack: 0,
+    subtitleTracks: [],
+    currentSubtitleTrack: -1, // -1 = выключено
+    textTracksInitialized: false,
     
     // Управление сегментированным буфером
     segments: {
@@ -777,6 +1018,246 @@
     return 0;
   }
 
+  // -- Управление аудиодорожками --
+  function initAudioTracks() {
+    var tracks = videoPlayer.audioTracks;
+    if (!tracks || tracks.length === 0) {
+      state.audioTracks = [{ label: 'Аудиодорожка по умолчанию', language: 'unknown', enabled: true }];
+      state.currentAudioTrack = 0;
+      updateAudioIndicator();
+      return;
+    }
+    
+    state.audioTracks = [];
+    for (var i = 0; i < tracks.length; i++) {
+      var track = tracks[i];
+      state.audioTracks.push({
+        label: track.label || `Дорожка ${i + 1}`,
+        language: track.language || 'unknown',
+        enabled: track.enabled
+      });
+      if (track.enabled) {
+        state.currentAudioTrack = i;
+      }
+    }
+    
+    updateAudioIndicator();
+    renderAudioMenu();
+  }
+
+  function setAudioTrack(index) {
+    var tracks = videoPlayer.audioTracks;
+    if (!tracks || tracks.length === 0) return;
+    
+    for (var i = 0; i < tracks.length; i++) {
+      tracks[i].enabled = (i === index);
+    }
+    
+    state.currentAudioTrack = index;
+    updateAudioIndicator();
+    renderAudioMenu();
+  }
+
+  function updateAudioIndicator() {
+    if (state.audioTracks.length > 0) {
+      var track = state.audioTracks[state.currentAudioTrack];
+      var lang = track.language || 'Аудио';
+      audioTrackIndicator.textContent = '🔊 ' + (track.label || `Дорожка ${state.currentAudioTrack + 1}`);
+      trackIndicator.style.display = 'flex';
+    }
+  }
+
+  // -- Управление субтитрами --
+  function initTextTracks() {
+    var tracks = videoPlayer.textTracks;
+    if (!tracks || tracks.length === 0) {
+      state.subtitleTracks = [];
+      state.currentSubtitleTrack = -1;
+      updateSubtitleIndicator();
+      renderSubtitleMenu();
+      return;
+    }
+    
+    state.subtitleTracks = [];
+    
+    // Добавляем пункт "Выключено"
+    state.subtitleTracks.push({
+      label: 'Выключено',
+      language: 'off',
+      mode: 'disabled'
+    });
+    
+    for (var i = 0; i < tracks.length; i++) {
+      var track = tracks[i];
+      state.subtitleTracks.push({
+        label: track.label || `Субтитры ${i + 1}`,
+        language: track.language || 'unknown',
+        mode: track.mode,
+        track: track
+      });
+      
+      // Отключаем все по умолчанию
+      track.mode = 'disabled';
+      
+      // Слушаем события cue для отображения текста
+      if (!state.textTracksInitialized) {
+        track.oncuechange = function() {
+          displaySubtitle(this);
+        };
+      }
+    }
+    
+    state.currentSubtitleTrack = 0; // Выключено
+    state.textTracksInitialized = true;
+    
+    updateSubtitleIndicator();
+    renderSubtitleMenu();
+  }
+
+  function setSubtitleTrack(index) {
+    if (index < 0 || index >= state.subtitleTracks.length) return;
+    
+    var tracks = videoPlayer.textTracks;
+    if (!tracks) return;
+    
+    // Отключаем все
+    for (var i = 0; i < tracks.length; i++) {
+      tracks[i].mode = 'disabled';
+    }
+    
+    state.currentSubtitleTrack = index;
+    
+    if (index > 0) {
+      // Включаем выбранную дорожку
+      var selectedTrack = state.subtitleTracks[index];
+      if (selectedTrack.track) {
+        selectedTrack.track.mode = 'showing';
+        subtitleContainer.style.display = 'block';
+      }
+    } else {
+      subtitleContainer.style.display = 'none';
+    }
+    
+    updateSubtitleIndicator();
+    renderSubtitleMenu();
+  }
+
+  function displaySubtitle(track) {
+    if (track.mode !== 'showing') return;
+    
+    var cues = track.activeCues;
+    if (cues && cues.length > 0) {
+      var text = [];
+      for (var i = 0; i < cues.length; i++) {
+        text.push(cues[i].text);
+      }
+      subtitleContainer.textContent = text.join('\n');
+      subtitleContainer.style.display = 'block';
+    } else {
+      subtitleContainer.style.display = 'none';
+    }
+  }
+
+  function updateSubtitleIndicator() {
+    if (state.subtitleTracks.length > 0) {
+      var track = state.subtitleTracks[state.currentSubtitleTrack];
+      subtitleTrackIndicator.textContent = '📄 ' + track.label;
+      trackIndicator.style.display = 'flex';
+    }
+  }
+
+  // -- Рендеринг меню --
+  function renderAudioMenu() {
+    if (state.audioTracks.length === 0) {
+      menuAudio.innerHTML = '<div class="no-items">Нет аудиодорожек</div>';
+      return;
+    }
+    
+    var html = '';
+    state.audioTracks.forEach(function(track, index) {
+      var isActive = (index === state.currentAudioTrack);
+      var lang = track.language ? track.language.toUpperCase() : '??';
+      html += `
+        <div class="menu-item ${isActive ? 'active' : ''}" data-audio-index="${index}">
+          <span>${track.label}</span>
+          <span class="check">${isActive ? '✓' : ''}</span>
+        </div>
+      `;
+    });
+    
+    menuAudio.innerHTML = html;
+    
+    // Добавляем обработчики
+    menuAudio.querySelectorAll('.menu-item').forEach(function(item) {
+      item.addEventListener('click', function() {
+        var index = parseInt(this.dataset.audioIndex);
+        setAudioTrack(index);
+        hideMenu();
+      });
+    });
+  }
+
+  function renderSubtitleMenu() {
+    if (state.subtitleTracks.length === 0) {
+      menuSubtitle.innerHTML = '<div class="no-items">Нет субтитров</div>';
+      return;
+    }
+    
+    var html = '';
+    state.subtitleTracks.forEach(function(track, index) {
+      var isActive = (index === state.currentSubtitleTrack);
+      html += `
+        <div class="menu-item ${isActive ? 'active' : ''}" data-subtitle-index="${index}">
+          <span>${track.label}</span>
+          <span class="check">${isActive ? '✓' : ''}</span>
+        </div>
+      `;
+    });
+    
+    menuSubtitle.innerHTML = html;
+    
+    // Добавляем обработчики
+    menuSubtitle.querySelectorAll('.menu-item').forEach(function(item) {
+      item.addEventListener('click', function() {
+        var index = parseInt(this.dataset.subtitleIndex);
+        setSubtitleTrack(index);
+        hideMenu();
+      });
+    });
+  }
+
+  // -- Управление меню --
+  function showMenu(type) {
+    state.menuActive = true;
+    state.menuType = type;
+    playerScreen.classList.add('menu-active');
+    
+    // Обновляем заголовок
+    menuTitle.textContent = type === 'audio' ? 'Выбор аудиодорожки' : 'Выбор субтитров';
+    
+    // Обновляем табы
+    menuTabs.forEach(function(tab) {
+      var tabType = tab.dataset.tab;
+      tab.classList.toggle('active', tabType === type);
+    });
+    
+    // Обновляем контент
+    menuAudio.classList.toggle('active', type === 'audio');
+    menuSubtitle.classList.toggle('active', type === 'subtitle');
+    
+    // Скрываем кнопки
+    playerScreen.classList.add('touch-active');
+    if (state.touchTimer) {
+      clearTimeout(state.touchTimer);
+    }
+  }
+
+  function hideMenu() {
+    state.menuActive = false;
+    playerScreen.classList.remove('menu-active');
+    showTouchControls();
+  }
+
   // -- Обновление полосы перемотки --
   function updateSeekBar() {
     if (!videoPlayer || state.screen !== 'player') return;
@@ -790,7 +1271,6 @@
       seekThumb.style.left = progressPercent + '%';
       seekTime.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
       
-      // Обновление буфера на полосе
       try {
         var buffered = videoPlayer.buffered;
         var bufferEnd = 0;
@@ -812,24 +1292,19 @@
   function clearBufferAndSeek(newTime) {
     if (!videoPlayer) return;
     
-    // Сохраняем состояние
     var wasPaused = videoPlayer.paused;
     var url = videoPlayer.src;
     
-    // Останавливаем мониторинг
     stopBufferMonitoring();
     
-    // Очищаем буфер
     videoPlayer.pause();
     videoPlayer.removeAttribute('src');
     videoPlayer.load();
     
-    // Восстанавливаем с новой позицией
     videoPlayer.src = url;
     videoPlayer.load();
     videoPlayer.currentTime = newTime;
     
-    // Запускаем воспроизведение если было
     if (!wasPaused) {
       var playPromise = videoPlayer.play();
       if (playPromise && playPromise.catch) {
@@ -840,12 +1315,10 @@
       }
     }
     
-    // Перезапускаем мониторинг
     setTimeout(function() {
       initBufferMonitoring();
     }, 100);
     
-    // Визуальный фидбек
     bufferIndicator.style.backgroundColor = 'rgba(255,170,74,0.9)';
     setTimeout(function() {
       bufferIndicator.style.backgroundColor = 'rgba(0,0,0,0.85)';
@@ -853,8 +1326,10 @@
   }
 
   // -- Обработка перемотки --
-  function initSeeking() {
+  function initSeeking(e) {
     if (!videoPlayer || !videoPlayer.duration) return;
+    
+    e.preventDefault();
     
     state.isSeeking = true;
     seekWrapper.classList.add('seeking');
@@ -1118,6 +1593,7 @@
     videoPlayer.pause();
     videoPlayer.removeAttribute('src');
     videoPlayer.load();
+    subtitleContainer.style.display = 'none';
   }
 
   function startDirectVideo(url) {
@@ -1138,6 +1614,8 @@
     };
 
     videoPlayer.onloadedmetadata = function() {
+      initAudioTracks();
+      initTextTracks();
       initBufferMonitoring();
     };
   }
@@ -1157,6 +1635,7 @@
     stopAllPlayback();
     playerScreen.style.display = 'none';
     configScreen.style.display = 'flex';
+    trackIndicator.style.display = 'none';
 
     var saved = loadConfig();
     if (saved) {
@@ -1173,6 +1652,8 @@
 
   // -- Сенсорное управление --
   function showTouchControls() {
+    if (state.menuActive) return;
+    
     playerScreen.classList.add('touch-active');
     
     if (state.touchTimer) {
@@ -1180,7 +1661,9 @@
     }
     
     state.touchTimer = setTimeout(function() {
-      playerScreen.classList.remove('touch-active');
+      if (!state.menuActive) {
+        playerScreen.classList.remove('touch-active');
+      }
     }, 3000);
   }
 
@@ -1214,9 +1697,36 @@
     togglePlay();
   });
 
+  touchAudio.addEventListener('click', function(e) {
+    e.stopPropagation();
+    showMenu('audio');
+  });
+
+  touchSubtitle.addEventListener('click', function(e) {
+    e.stopPropagation();
+    showMenu('subtitle');
+  });
+
   touchConfig.addEventListener('click', function(e) {
     e.stopPropagation();
     showConfigScreen();
+  });
+
+  menuClose.addEventListener('click', function() {
+    hideMenu();
+  });
+
+  menuTabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      var type = this.dataset.tab;
+      menuTabs.forEach(t => t.classList.remove('active'));
+      this.classList.add('active');
+      
+      menuAudio.classList.toggle('active', type === 'audio');
+      menuSubtitle.classList.toggle('active', type === 'subtitle');
+      
+      menuTitle.textContent = type === 'audio' ? 'Выбор аудиодорожки' : 'Выбор субтитров';
+    });
   });
 
   // -- Обработчики перемотки --
@@ -1281,7 +1791,11 @@
     if (state.screen === 'player') {
       if (isBack) {
         e.preventDefault();
-        showConfigScreen();
+        if (state.menuActive) {
+          hideMenu();
+        } else {
+          showConfigScreen();
+        }
         return;
       }
       showHint();
