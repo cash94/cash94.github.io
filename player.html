@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>VideoLoop - Vidaa</title>
+<title>VideoLoop - Vidaa (с поддержкой AC3)</title>
 <style>
   * {
     margin: 0;
@@ -616,6 +616,89 @@
     background: transparent;
   }
 
+  /* ── Индикатор AC3 ── */
+  #ac3-indicator {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.7);
+    color: #ffaa4a;
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    border: 1px solid #ffaa4a;
+    backdrop-filter: blur(5px);
+    z-index: 22;
+    display: none;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .ac3-active {
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0% { opacity: 0.7; }
+    50% { opacity: 1; }
+    100% { opacity: 0.7; }
+  }
+
+  /* Стили для треков в меню */
+  .track-item {
+    padding: 12px 16px;
+    margin: 4px 0;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    color: #ccc;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .track-item.active {
+    background: rgba(74,158,255,0.2);
+    border-color: #4a9eff;
+    color: white;
+  }
+
+  .track-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .track-name {
+    font-weight: 600;
+  }
+
+  .track-details {
+    display: flex;
+    gap: 8px;
+    font-size: 11px;
+    color: #888;
+  }
+
+  .track-codec {
+    background: rgba(255,255,255,0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #ffaa4a;
+  }
+
+  .track-channels {
+    color: #4a9eff;
+  }
+
+  .track-language {
+    color: #aaa;
+    text-transform: uppercase;
+  }
+
   /* ── Экран конфигурации ── */
   #config-screen {
     display: flex;
@@ -828,6 +911,7 @@
     <div class="field-group">
       <div class="field-label">URL видео</div>
       <input type="text" class="text-input" id="video-url"
+                         value="https://trs.hnar.online/stream/From.Dusk.Till.Dawn.1996.1080p.BluRay.7xRus.Ukr.Eng.HDCLUB-DON.mkv?link=d12b051b0d623541e7349e1e8f06de9d52c26838&index=1&play"
              placeholder="https://example.com/video.mp4"
              autocomplete="off" spellcheck="false" inputmode="url">
       <div class="error-msg" id="error-msg"></div>
@@ -868,6 +952,12 @@
   <div class="track-indicator" id="track-indicator" style="display: none;">
     <span id="audio-track-indicator">🔊</span>
     <span id="subtitle-track-indicator">📄</span>
+  </div>
+  
+  <!-- Индикатор AC3 -->
+  <div id="ac3-indicator">
+    <span>🔊 Dolby Digital</span>
+    <span id="ac3-channels">5.1</span>
   </div>
   
   <div id="player-hint">Нажмите "Назад" для настройки</div>
@@ -1005,6 +1095,10 @@
   var memoryFill = document.getElementById('memory-fill');
   var memoryWarning = document.getElementById('memory-warning');
   
+  // Элементы AC3
+  var ac3Indicator = document.getElementById('ac3-indicator');
+  var ac3Channels = document.getElementById('ac3-channels');
+  
   // Элементы перемотки
   var seekContainer = document.getElementById('seek-bar-container');
   var seekWrapper = document.getElementById('seek-bar-wrapper');
@@ -1065,16 +1159,33 @@
     currentSubtitleTrack: -1,
     textTracksInitialized: false,
     
-    // Управление сегментами (по 30 секунд)
+    // AC3 поддержка
+    ac3Support: {
+      available: false,
+      codec: null,
+      channels: 0,
+      sampleRate: 0,
+      bitrate: 0,
+      decoderReady: false
+    },
+    
+    // AudioContext для AC3
+    audioContext: null,
+    mediaSource: null,
+    
+    // Флаг использования AC3
+    usingAC3: false,
+    
+    // Управление сегментами
     segments: {
-      current: 0,           // Активный сегмент (0 или 1)
+      current: 0,
       positions: [
-        { start: 0, end: 0, size: 0 }, // Сегмент 0
-        { start: 0, end: 0, size: 0 }  // Сегмент 1
+        { start: 0, end: 0, size: 0 },
+        { start: 0, end: 0, size: 0 }
       ],
-      targetSize: 30,        // 30 секунд на сегмент
-      maxMemory: 64,         // Максимум 64 МБ
-      cleanupAmount: 32,     // Очищаем 32 МБ
+      targetSize: 30,
+      maxMemory: 64,
+      cleanupAmount: 32,
       switching: false,
       cleanupInProgress: false
     }
@@ -1175,278 +1286,102 @@
     return 0;
   }
 
-  // -- Функция очистки буфера (очищает 32 МБ) --
-  function cleanupBuffer(segmentToClean) {
-    if (!videoPlayer || state.segments.cleanupInProgress) return;
+  // -- Проверка поддержки AC3 --
+  function checkAC3Support() {
+    var video = document.createElement('video');
     
-    state.segments.cleanupInProgress = true;
+    var ac3Tests = [
+      'audio/ac3',
+      'audio/eac3',
+      'audio/ac3; codecs="ac-3"',
+      'audio/eac3; codecs="ec-3"',
+      'audio/mp4; codecs="ac-3"',
+      'audio/mp4; codecs="ec-3"'
+    ];
     
-    var wasPaused = videoPlayer.paused;
-    var url = videoPlayer.src;
-    var currentTime = videoPlayer.currentTime;
-    
-    // Показываем предупреждение
-    memoryWarning.style.display = 'block';
-    bufferMode.textContent = '🧹 Очистка 32 MB...';
-    
-    // Визуальный эффект на очищаемом сегменте
-    if (segmentToClean === 0) {
-      segment1.classList.add('clearing');
-    } else {
-      segment2.classList.add('clearing');
-    }
-    
-    // Останавливаем мониторинг
-    stopBufferMonitoring();
-    
-    // Очищаем буфер (как при перемотке)
-    videoPlayer.pause();
-    videoPlayer.removeAttribute('src');
-    videoPlayer.load();
-    
-    // Восстанавливаем с той же позицией
-    videoPlayer.src = url;
-    videoPlayer.load();
-    videoPlayer.currentTime = currentTime;
-    
-    if (!wasPaused) {
-      var playPromise = videoPlayer.play();
-      if (playPromise && playPromise.catch) {
-        playPromise.catch(function() {
-          videoPlayer.muted = true;
-          videoPlayer.play().catch(function(){});
-        });
+    for (var i = 0; i < ac3Tests.length; i++) {
+      var support = video.canPlayType(ac3Tests[i]);
+      if (support === 'probably' || support === 'maybe') {
+        console.log('AC3 поддержка:', ac3Tests[i], support);
+        state.ac3Support.available = true;
+        state.ac3Support.codec = ac3Tests[i];
+        return true;
       }
     }
     
-    // Очищаем информацию о сегменте
-    state.segments.positions[segmentToClean] = {
-      start: 0,
-      end: 0,
-      size: 0
-    };
-    
-    // Убираем визуальный эффект
-    setTimeout(() => {
-      if (segmentToClean === 0) {
-        segment1.classList.remove('clearing');
-      } else {
-        segment2.classList.remove('clearing');
+    // Проверяем через MediaSource
+    if (window.MediaSource) {
+      if (MediaSource.isTypeSupported('audio/mp4; codecs="ac-3"')) {
+        console.log('AC3 поддержка через MediaSource');
+        state.ac3Support.available = true;
+        state.ac3Support.codec = 'audio/mp4; codecs="ac-3"';
+        return true;
       }
-    }, 500);
+      if (MediaSource.isTypeSupported('audio/mp4; codecs="ec-3"')) {
+        console.log('EAC3 поддержка через MediaSource');
+        state.ac3Support.available = true;
+        state.ac3Support.codec = 'audio/mp4; codecs="ec-3"';
+        return true;
+      }
+    }
     
-    // Перезапускаем мониторинг
-    setTimeout(function() {
-      initBufferMonitoring();
-      memoryWarning.style.display = 'none';
-      state.segments.cleanupInProgress = false;
-      bufferMode.textContent = 'Активен сегмент ' + (state.segments.current + 1);
-    }, 1000);
+    console.log('AC3 не поддерживается браузером');
+    return false;
   }
 
-  // -- Обновление сегментов --
-  function updateSegments() {
-    if (!videoPlayer || state.screen !== 'player' || state.isSeeking || state.segments.cleanupInProgress) return;
-    
+  // -- Инициализация AudioContext --
+  function initAudioContext() {
     try {
-      var buffered = videoPlayer.buffered;
-      var currentTime = videoPlayer.currentTime;
-      var duration = videoPlayer.duration;
-      
-      if (buffered.length === 0 || duration <= 0) return;
-      
-      // Находим сегмент, содержащий текущую позицию
-      var currentSegmentIndex = -1;
-      for (var i = 0; i < buffered.length; i++) {
-        if (currentTime >= buffered.start(i) && currentTime <= buffered.end(i)) {
-          currentSegmentIndex = i;
-          break;
-        }
-      }
-      
-      if (currentSegmentIndex === -1) return;
-      
-      var currentBufferedStart = buffered.start(currentSegmentIndex);
-      var currentBufferedEnd = buffered.end(currentSegmentIndex);
-      var currentBufferedDuration = currentBufferedEnd - currentBufferedStart;
-      
-      // Обновляем активный сегмент
-      var activeSegmentIndex = state.segments.current;
-      state.segments.positions[activeSegmentIndex] = {
-        start: currentBufferedStart,
-        end: currentBufferedEnd,
-        size: Math.min(currentBufferedDuration, state.segments.targetSize) // Не больше 30 секунд
-      };
-      
-      // Проверяем лимит памяти (64 МБ)
-      var totalMemory = estimateBufferSize();
-      if (totalMemory > state.segments.maxMemory && !state.segments.cleanupInProgress) {
-        // Очищаем неактивный сегмент
-        var otherSegment = activeSegmentIndex === 0 ? 1 : 0;
-        cleanupBuffer(otherSegment);
-        return;
-      }
-      
-      // Логика переключения сегментов при достижении 30 секунд
-      if (currentBufferedDuration >= state.segments.targetSize && 
-          !state.segments.switching &&
-          !state.segments.cleanupInProgress) {
-        
-        state.segments.switching = true;
-        
-        // Переключаемся на другой сегмент
-        var nextSegment = activeSegmentIndex === 0 ? 1 : 0;
-        state.segments.current = nextSegment;
-        
-        // Обновляем отображение
-        activeSegment.textContent = 'Сегмент ' + (nextSegment + 1);
-        bufferMode.textContent = '🔄 Переключение на сегмент ' + (nextSegment + 1);
-        
-        // Сбрасываем флаг через секунду
-        setTimeout(() => {
-          state.segments.switching = false;
-          bufferMode.textContent = 'Активен сегмент ' + (nextSegment + 1);
-        }, 1000);
-      }
-      
-      updateSegmentsDisplay();
-      
+      window.AudioContext = window.AudioContext || window.webkitAudioContext;
+      state.audioContext = new AudioContext();
+      console.log('AudioContext инициализирован');
     } catch(e) {
-      console.log('Segment update error:', e);
+      console.log('AudioContext не поддерживается');
     }
   }
 
-  function updateSegmentsDisplay() {
-    var seg1 = state.segments.positions[0];
-    var seg2 = state.segments.positions[1];
-    
-    // Ограничиваем отображение максимум 30 секундами на сегмент
-    var seg1Display = Math.min(seg1.size, state.segments.targetSize);
-    var seg2Display = Math.min(seg2.size, state.segments.targetSize);
-    
-    // Сегмент 1
-    var seg1Percent = (seg1Display / state.segments.targetSize) * 100;
-    segment1Fill.style.width = Math.min(seg1Percent, 100) + '%';
-    segment1.classList.toggle('active', state.segments.current === 0);
-    segment1.classList.toggle('standby', state.segments.current === 1 && seg1Display > 0);
-    segment1Label.textContent = 'С1: ' + Math.round(seg1Display) + '/30с';
-    
-    // Сегмент 2
-    var seg2Percent = (seg2Display / state.segments.targetSize) * 100;
-    segment2Fill.style.width = Math.min(seg2Percent, 100) + '%';
-    segment2.classList.toggle('active', state.segments.current === 1);
-    segment2.classList.toggle('standby', state.segments.current === 0 && seg2Display > 0);
-    segment2Label.textContent = 'С2: ' + Math.round(seg2Display) + '/30с';
-    
-    // Общее время в буфере (максимум 60 секунд)
-    var totalSize = Math.min(seg1Display + seg2Display, 60);
-    bufferTotal.textContent = Math.round(totalSize) + ' сек';
-    
-    // Обновляем информацию о памяти
-    var totalMemory = estimateBufferSize();
-    memoryUsage.textContent = totalMemory;
-    var memoryPercent = (totalMemory / state.segments.maxMemory) * 100;
-    memoryFill.style.width = Math.min(memoryPercent, 100) + '%';
-    
-    // Меняем цвет в зависимости от заполнения памяти
-    memoryFill.classList.remove('warning', 'critical');
-    if (memoryPercent > 90) {
-      memoryFill.classList.add('critical');
-    } else if (memoryPercent > 70) {
-      memoryFill.classList.add('warning');
-    }
-  }
-
-  // -- Мониторинг буфера --
-  function initBufferMonitoring() {
-    bufferIndicator.classList.remove('hidden');
-    bufferShowBtn.style.display = 'none';
-    state.bufferHidden = false;
-    
-    if (state.bufferCheckInterval) {
-      clearInterval(state.bufferCheckInterval);
-    }
-    
-    state.lastBytesLoaded = 0;
-    state.lastCheckTime = Date.now();
-    state.currentBitrate = 0;
-    
-    // Инициализация сегментов
-    state.segments = {
-      current: 0,
-      positions: [
-        { start: 0, end: 0, size: 0 },
-        { start: 0, end: 0, size: 0 }
-      ],
-      targetSize: 30,
-      maxMemory: 64,
-      cleanupAmount: 32,
-      switching: false,
-      cleanupInProgress: false
-    };
-    
-    state.bufferCheckInterval = setInterval(function() {
-      if (!videoPlayer || state.screen !== 'player') return;
-      
-      try {
-        var buffered = videoPlayer.buffered;
-        var currentTime = videoPlayer.currentTime;
-        var duration = videoPlayer.duration;
-        
-        if (buffered.length > 0 && duration > 0) {
-          // Расчет битрейта
-          if (videoPlayer.webkitVideoDecodedByteCount) {
-            var now = Date.now();
-            var bytesLoaded = videoPlayer.webkitVideoDecodedByteCount || 0;
-            var timeDiff = (now - state.lastCheckTime) / 1000;
-            
-            if (timeDiff > 1 && state.lastBytesLoaded > 0) {
-              var bytesDiff = bytesLoaded - state.lastBytesLoaded;
-              var bitrateMbps = (bytesDiff * 8) / (timeDiff * 1024 * 1024);
-              state.currentBitrate = Math.round(bitrateMbps * 10) / 10;
-            }
-            
-            state.lastBytesLoaded = bytesLoaded;
-            state.lastCheckTime = now;
-          }
-          
-          // Обновляем сегменты
-          updateSegments();
-          updateSeekBar();
-          
-          // Обновляем статистику
-          bufferPosition.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
-          bufferBitrate.textContent = (state.currentBitrate || '?') + ' Мбит/с';
-        }
-      } catch(e) {}
-    }, 500);
-  }
-
-  function stopBufferMonitoring() {
-    if (state.bufferCheckInterval) {
-      clearInterval(state.bufferCheckInterval);
-      state.bufferCheckInterval = null;
-    }
-  }
-
-  // -- Управление аудиодорожками --
+  // -- Детектирование аудиодорожек с AC3 --
   function initAudioTracks() {
     var tracks = videoPlayer.audioTracks;
+    
     if (!tracks || tracks.length === 0) {
-      state.audioTracks = [];
+      detectAudioTracksViaMediaSource();
       return;
     }
     
     state.audioTracks = [];
+    
     for (var i = 0; i < tracks.length; i++) {
       var track = tracks[i];
-      state.audioTracks.push({
+      
+      var codec = detectAudioCodec(track);
+      var isAC3 = codec && (codec.toLowerCase().includes('ac3') || 
+                           codec.toLowerCase().includes('ac-3') || 
+                           codec.toLowerCase().includes('eac3') ||
+                           codec.toLowerCase().includes('dolby'));
+      
+      var channels = detectAudioChannels(track);
+      
+      var trackInfo = {
+        id: i,
         label: track.label || `Дорожка ${i + 1}`,
         language: track.language || 'unknown',
-        enabled: track.enabled
-      });
+        enabled: track.enabled,
+        codec: codec || 'unknown',
+        isAC3: isAC3,
+        channels: channels,
+        sampleRate: detectSampleRate(track),
+        bitrate: state.currentBitrate || (isAC3 ? 384 : 128) // AC3 обычно 384 kbps
+      };
+      
+      state.audioTracks.push(trackInfo);
+      
       if (track.enabled) {
         state.currentAudioTrack = i;
+        if (isAC3) {
+          state.usingAC3 = true;
+          updateAC3Indicator(trackInfo);
+        }
       }
     }
     
@@ -1454,27 +1389,198 @@
     renderAudioMenu();
   }
 
+  // -- Детектирование через MediaSource --
+  function detectAudioTracksViaMediaSource() {
+    if (!videoPlayer || !videoPlayer.src) return;
+    
+    // Пробуем получить информацию из медиа-файла
+    if (videoPlayer.webkitAudioDecodedByteCount !== undefined) {
+      state.ac3Support.available = true;
+      
+      // Пытаемся определить по расширению файла или заголовкам
+      var isAC3 = false;
+      var url = videoPlayer.src.toLowerCase();
+      
+      if (url.includes('ac3') || url.includes('.ac3') || 
+          url.includes('eac3') || url.includes('.eac3') ||
+          url.includes('dolby')) {
+        isAC3 = true;
+      }
+      
+      state.audioTracks = [{
+        id: 0,
+        label: 'Аудиодорожка',
+        language: 'unknown',
+        enabled: true,
+        codec: isAC3 ? 'ac3' : 'aac',
+        isAC3: isAC3,
+        channels: isAC3 ? 6 : 2,
+        sampleRate: 48000,
+        bitrate: isAC3 ? 384 : 128
+      }];
+      
+      state.currentAudioTrack = 0;
+      state.usingAC3 = isAC3;
+      updateAC3Indicator(state.audioTracks[0]);
+    }
+  }
+
+  // -- Детектирование кодека --
+  function detectAudioCodec(track) {
+    if (track.label) {
+      var label = track.label.toLowerCase();
+      if (label.includes('ac3') || label.includes('dolby')) return 'ac3';
+      if (label.includes('eac3')) return 'eac3';
+      if (label.includes('aac')) return 'aac';
+      if (label.includes('mp3')) return 'mp3';
+      if (label.includes('pcm')) return 'pcm';
+    }
+    
+    if (track.codec) return track.codec;
+    
+    return 'unknown';
+  }
+
+  // -- Детектирование количества каналов --
+  function detectAudioChannels(track) {
+    if (track.label) {
+      var label = track.label.toLowerCase();
+      if (label.includes('5.1') || label.includes('51')) return 6;
+      if (label.includes('2.0') || label.includes('stereo')) return 2;
+      if (label.includes('mono')) return 1;
+      if (label.includes('7.1') || label.includes('71')) return 8;
+    }
+    
+    // Для AC3 по умолчанию 5.1
+    if (track.codec && track.codec.toLowerCase().includes('ac3')) return 6;
+    
+    return 2;
+  }
+
+  // -- Детектирование частоты дискретизации --
+  function detectSampleRate(track) {
+    // AC3 обычно 48kHz
+    return 48000;
+  }
+
+  // -- Обновление индикатора AC3 --
+  function updateAC3Indicator(track) {
+    if (track && track.isAC3) {
+      ac3Indicator.style.display = 'flex';
+      
+      var channelsText = '';
+      switch(track.channels) {
+        case 1: channelsText = '1.0'; break;
+        case 2: channelsText = '2.0'; break;
+        case 6: channelsText = '5.1'; break;
+        case 8: channelsText = '7.1'; break;
+        default: channelsText = track.channels + ' ch';
+      }
+      
+      ac3Channels.textContent = channelsText;
+      ac3Indicator.classList.add('ac3-active');
+    } else {
+      ac3Indicator.style.display = 'none';
+      ac3Indicator.classList.remove('ac3-active');
+    }
+  }
+
+  // -- Рендеринг меню аудио с информацией о AC3 --
+  function renderAudioMenu() {
+    if (state.audioTracks.length === 0) {
+      menuAudio.innerHTML = '<div class="no-items">Нет аудиодорожек</div>';
+      return;
+    }
+    
+    var html = '';
+    state.audioTracks.forEach(function(track, index) {
+      var isActive = (index === state.currentAudioTrack);
+      var channelsText = '';
+      
+      switch(track.channels) {
+        case 1: channelsText = 'Mono'; break;
+        case 2: channelsText = 'Stereo'; break;
+        case 6: channelsText = '5.1'; break;
+        case 8: channelsText = '7.1'; break;
+        default: channelsText = track.channels + ' ch';
+      }
+      
+      var codecText = track.isAC3 ? 'Dolby Digital' : (track.codec || 'AAC').toUpperCase();
+      var bitrateText = track.bitrate ? track.bitrate + ' kbps' : '';
+      
+      html += `
+        <div class="track-item ${isActive ? 'active' : ''}" data-audio-index="${index}">
+          <div class="track-info">
+            <span class="track-name">${track.label || 'Дорожка ' + (index + 1)}</span>
+            <div class="track-details">
+              <span class="track-codec">${codecText}</span>
+              <span class="track-channels">${channelsText}</span>
+              ${bitrateText ? '<span class="track-bitrate">' + bitrateText + '</span>' : ''}
+              ${track.language !== 'unknown' ? '<span class="track-language">' + track.language.toUpperCase() + '</span>' : ''}
+            </div>
+          </div>
+          <span class="check">${isActive ? '✓' : ''}</span>
+        </div>
+      `;
+    });
+    
+    menuAudio.innerHTML = html;
+    
+    menuAudio.querySelectorAll('.track-item').forEach(function(item) {
+      item.addEventListener('click', function() {
+        var index = parseInt(this.dataset.audioIndex);
+        setAudioTrack(index);
+        hideMenu();
+      });
+    });
+  }
+
+  // -- Установка аудиодорожки --
   function setAudioTrack(index) {
     var tracks = videoPlayer.audioTracks;
-    if (!tracks || tracks.length === 0) return;
     
-    for (var i = 0; i < tracks.length; i++) {
-      tracks[i].enabled = (i === index);
+    if (tracks && tracks.length > 0) {
+      for (var i = 0; i < tracks.length; i++) {
+        tracks[i].enabled = (i === index);
+      }
+    } else {
+      var currentTime = videoPlayer.currentTime;
+      var wasPaused = videoPlayer.paused;
+      var url = videoPlayer.src;
+      
+      var separator = url.includes('?') ? '&' : '?';
+      var newUrl = url + separator + 'audio_track=' + index;
+      
+      videoPlayer.src = newUrl;
+      videoPlayer.load();
+      videoPlayer.currentTime = currentTime;
+      
+      if (!wasPaused) {
+        videoPlayer.play();
+      }
     }
     
     state.currentAudioTrack = index;
+    var selectedTrack = state.audioTracks[index];
+    
+    state.usingAC3 = selectedTrack.isAC3;
+    updateAC3Indicator(selectedTrack);
+    
     updateAudioIndicator();
     renderAudioMenu();
   }
 
+  // -- Обновление аудиоиндикатора --
   function updateAudioIndicator() {
     if (state.audioTracks.length > 0) {
-      audioTrackIndicator.textContent = '🔊 ' + (state.currentAudioTrack + 1);
+      var track = state.audioTracks[state.currentAudioTrack];
+      var ac3marker = track.isAC3 ? '🎬' : '';
+      audioTrackIndicator.textContent = '🔊 ' + ac3marker + (state.currentAudioTrack + 1);
       trackIndicator.style.display = 'flex';
     }
   }
 
-  // -- Управление субтитрами --
+  // -- Инициализация субтитров --
   function initTextTracks() {
     var tracks = videoPlayer.textTracks;
     if (!tracks || tracks.length === 0) {
@@ -1487,7 +1593,6 @@
     
     state.subtitleTracks = [];
     
-    // Добавляем пункт "Выключено"
     state.subtitleTracks.push({
       label: 'Выкл',
       language: 'off',
@@ -1569,35 +1674,6 @@
     }
   }
 
-  // -- Рендеринг меню --
-  function renderAudioMenu() {
-    if (state.audioTracks.length === 0) {
-      menuAudio.innerHTML = '<div class="no-items"></div>';
-      return;
-    }
-    
-    var html = '';
-    state.audioTracks.forEach(function(track, index) {
-      var isActive = (index === state.currentAudioTrack);
-      html += `
-        <div class="menu-item ${isActive ? 'active' : ''}" data-audio-index="${index}">
-          <span>${track.label || index + 1}</span>
-          <span class="check">${isActive ? '✓' : ''}</span>
-        </div>
-      `;
-    });
-    
-    menuAudio.innerHTML = html;
-    
-    menuAudio.querySelectorAll('.menu-item').forEach(function(item) {
-      item.addEventListener('click', function() {
-        var index = parseInt(this.dataset.audioIndex);
-        setAudioTrack(index);
-        hideMenu();
-      });
-    });
-  }
-
   function renderSubtitleMenu() {
     if (state.subtitleTracks.length === 0) {
       menuSubtitle.innerHTML = '<div class="no-items"></div>';
@@ -1626,32 +1702,272 @@
     });
   }
 
-  // -- Управление меню --
-  function showMenu(type) {
-    state.menuActive = true;
-    state.menuType = type;
-    playerScreen.classList.add('menu-active');
+  // -- Очистка буфера --
+  function cleanupBuffer(segmentToClean) {
+    if (!videoPlayer || state.segments.cleanupInProgress) return;
     
-    menuTitle.textContent = type === 'audio' ? 'Выбор аудиодорожки' : 'Выбор субтитров';
+    state.segments.cleanupInProgress = true;
     
-    menuTabs.forEach(function(tab) {
-      var tabType = tab.dataset.tab;
-      tab.classList.toggle('active', tabType === type);
-    });
+    var wasPaused = videoPlayer.paused;
+    var url = videoPlayer.src;
+    var currentTime = videoPlayer.currentTime;
     
-    menuAudio.classList.toggle('active', type === 'audio');
-    menuSubtitle.classList.toggle('active', type === 'subtitle');
+    memoryWarning.style.display = 'block';
+    bufferMode.textContent = '🧹 Очистка 32 MB...';
     
-    playerScreen.classList.add('touch-active');
-    if (state.touchTimer) {
-      clearTimeout(state.touchTimer);
+    if (segmentToClean === 0) {
+      segment1.classList.add('clearing');
+    } else {
+      segment2.classList.add('clearing');
+    }
+    
+    stopBufferMonitoring();
+    
+    videoPlayer.pause();
+    videoPlayer.removeAttribute('src');
+    videoPlayer.load();
+    
+    videoPlayer.src = url;
+    videoPlayer.load();
+    videoPlayer.currentTime = currentTime;
+    
+    if (!wasPaused) {
+      var playPromise = videoPlayer.play();
+      if (playPromise && playPromise.catch) {
+        playPromise.catch(function() {
+          videoPlayer.muted = true;
+          videoPlayer.play().catch(function(){});
+        });
+      }
+    }
+    
+    state.segments.positions[segmentToClean] = {
+      start: 0,
+      end: 0,
+      size: 0
+    };
+    
+    setTimeout(() => {
+      if (segmentToClean === 0) {
+        segment1.classList.remove('clearing');
+      } else {
+        segment2.classList.remove('clearing');
+      }
+    }, 500);
+    
+    setTimeout(function() {
+      initBufferMonitoring();
+      memoryWarning.style.display = 'none';
+      state.segments.cleanupInProgress = false;
+      bufferMode.textContent = 'Активен сегмент ' + (state.segments.current + 1);
+    }, 1000);
+  }
+
+  // -- Обновление сегментов --
+  function updateSegments() {
+    if (!videoPlayer || state.screen !== 'player' || state.isSeeking || state.segments.cleanupInProgress) return;
+    
+    try {
+      var buffered = videoPlayer.buffered;
+      var currentTime = videoPlayer.currentTime;
+      var duration = videoPlayer.duration;
+      
+      if (buffered.length === 0 || duration <= 0) return;
+      
+      var currentSegmentIndex = -1;
+      for (var i = 0; i < buffered.length; i++) {
+        if (currentTime >= buffered.start(i) && currentTime <= buffered.end(i)) {
+          currentSegmentIndex = i;
+          break;
+        }
+      }
+      
+      if (currentSegmentIndex === -1) return;
+      
+      var currentBufferedStart = buffered.start(currentSegmentIndex);
+      var currentBufferedEnd = buffered.end(currentSegmentIndex);
+      var currentBufferedDuration = currentBufferedEnd - currentBufferedStart;
+      
+      var activeSegmentIndex = state.segments.current;
+      state.segments.positions[activeSegmentIndex] = {
+        start: currentBufferedStart,
+        end: currentBufferedEnd,
+        size: Math.min(currentBufferedDuration, state.segments.targetSize)
+      };
+      
+      var totalMemory = estimateBufferSize();
+      if (totalMemory > state.segments.maxMemory && !state.segments.cleanupInProgress) {
+        var otherSegment = activeSegmentIndex === 0 ? 1 : 0;
+        cleanupBuffer(otherSegment);
+        return;
+      }
+      
+      if (currentBufferedDuration >= state.segments.targetSize && 
+          !state.segments.switching &&
+          !state.segments.cleanupInProgress) {
+        
+        state.segments.switching = true;
+        
+        var nextSegment = activeSegmentIndex === 0 ? 1 : 0;
+        state.segments.current = nextSegment;
+        
+        activeSegment.textContent = 'Сегмент ' + (nextSegment + 1);
+        bufferMode.textContent = '🔄 Переключение на сегмент ' + (nextSegment + 1);
+        
+        setTimeout(() => {
+          state.segments.switching = false;
+          bufferMode.textContent = 'Активен сегмент ' + (nextSegment + 1);
+        }, 1000);
+      }
+      
+      updateSegmentsDisplay();
+      
+    } catch(e) {
+      console.log('Segment update error:', e);
     }
   }
 
-  function hideMenu() {
-    state.menuActive = false;
-    playerScreen.classList.remove('menu-active');
-    showTouchControls();
+  function updateSegmentsDisplay() {
+    var seg1 = state.segments.positions[0];
+    var seg2 = state.segments.positions[1];
+    
+    var seg1Display = Math.min(seg1.size, state.segments.targetSize);
+    var seg2Display = Math.min(seg2.size, state.segments.targetSize);
+    
+    var seg1Percent = (seg1Display / state.segments.targetSize) * 100;
+    segment1Fill.style.width = Math.min(seg1Percent, 100) + '%';
+    segment1.classList.toggle('active', state.segments.current === 0);
+    segment1.classList.toggle('standby', state.segments.current === 1 && seg1Display > 0);
+    segment1Label.textContent = 'С1: ' + Math.round(seg1Display) + '/30с';
+    
+    var seg2Percent = (seg2Display / state.segments.targetSize) * 100;
+    segment2Fill.style.width = Math.min(seg2Percent, 100) + '%';
+    segment2.classList.toggle('active', state.segments.current === 1);
+    segment2.classList.toggle('standby', state.segments.current === 0 && seg2Display > 0);
+    segment2Label.textContent = 'С2: ' + Math.round(seg2Display) + '/30с';
+    
+    var totalSize = Math.min(seg1Display + seg2Display, 60);
+    bufferTotal.textContent = Math.round(totalSize) + ' сек';
+    
+    var totalMemory = estimateBufferSize();
+    memoryUsage.textContent = totalMemory;
+    var memoryPercent = (totalMemory / state.segments.maxMemory) * 100;
+    memoryFill.style.width = Math.min(memoryPercent, 100) + '%';
+    
+    memoryFill.classList.remove('warning', 'critical');
+    if (memoryPercent > 90) {
+      memoryFill.classList.add('critical');
+    } else if (memoryPercent > 70) {
+      memoryFill.classList.add('warning');
+    }
+  }
+
+  // -- Мониторинг буфера --
+  function initBufferMonitoring() {
+    bufferIndicator.classList.remove('hidden');
+    bufferShowBtn.style.display = 'none';
+    state.bufferHidden = false;
+    
+    if (state.bufferCheckInterval) {
+      clearInterval(state.bufferCheckInterval);
+    }
+    
+    state.lastBytesLoaded = 0;
+    state.lastCheckTime = Date.now();
+    state.currentBitrate = 0;
+    
+    state.segments = {
+      current: 0,
+      positions: [
+        { start: 0, end: 0, size: 0 },
+        { start: 0, end: 0, size: 0 }
+      ],
+      targetSize: 30,
+      maxMemory: 64,
+      cleanupAmount: 32,
+      switching: false,
+      cleanupInProgress: false
+    };
+    
+    state.bufferCheckInterval = setInterval(function() {
+      if (!videoPlayer || state.screen !== 'player') return;
+      
+      try {
+        var buffered = videoPlayer.buffered;
+        var currentTime = videoPlayer.currentTime;
+        var duration = videoPlayer.duration;
+        
+        if (buffered.length > 0 && duration > 0) {
+          if (videoPlayer.webkitVideoDecodedByteCount) {
+            var now = Date.now();
+            var bytesLoaded = videoPlayer.webkitVideoDecodedByteCount || 0;
+            var timeDiff = (now - state.lastCheckTime) / 1000;
+            
+            if (timeDiff > 1 && state.lastBytesLoaded > 0) {
+              var bytesDiff = bytesLoaded - state.lastBytesLoaded;
+              var bitrateMbps = (bytesDiff * 8) / (timeDiff * 1024 * 1024);
+              state.currentBitrate = Math.round(bitrateMbps * 10) / 10;
+            }
+            
+            state.lastBytesLoaded = bytesLoaded;
+            state.lastCheckTime = now;
+          }
+          
+          updateSegments();
+          updateSeekBar();
+          
+          bufferPosition.textContent = formatTime(currentTime) + ' / ' + formatTime(duration);
+          bufferBitrate.textContent = (state.currentBitrate || '?') + ' Мбит/с';
+        }
+      } catch(e) {}
+    }, 500);
+  }
+
+  function stopBufferMonitoring() {
+    if (state.bufferCheckInterval) {
+      clearInterval(state.bufferCheckInterval);
+      state.bufferCheckInterval = null;
+    }
+  }
+
+  // -- Альтернативный метод для AC3 --
+  function tryAC3Fallback() {
+    console.log('Попытка использовать альтернативный метод для AC3');
+    
+    if (window.MediaSource && MediaSource.isTypeSupported('audio/mp4; codecs="ac-3"')) {
+      setupMediaSourceForAC3();
+    } else {
+      bufferMode.textContent = '⚠️ AC3 может не поддерживаться';
+      setTimeout(() => {
+        bufferMode.textContent = 'Активен сегмент ' + (state.segments.current + 1);
+      }, 3000);
+    }
+  }
+
+  function setupMediaSourceForAC3() {
+    if (!window.MediaSource) return;
+    
+    state.mediaSource = new MediaSource();
+    videoPlayer.src = URL.createObjectURL(state.mediaSource);
+    
+    state.mediaSource.addEventListener('sourceopen', function() {
+      var sourceBuffer = state.mediaSource.addSourceBuffer('audio/mp4; codecs="ac-3"');
+      console.log('MediaSource для AC3 готов');
+    });
+  }
+
+  function cleanupAC3() {
+    if (state.audioContext) {
+      state.audioContext.close();
+      state.audioContext = null;
+    }
+    
+    if (state.mediaSource) {
+      URL.revokeObjectURL(videoPlayer.src);
+      state.mediaSource = null;
+    }
+    
+    ac3Indicator.style.display = 'none';
   }
 
   // -- Обновление полосы перемотки --
@@ -1794,6 +2110,7 @@
 
   function stopAllPlayback() {
     stopBufferMonitoring();
+    cleanupAC3();
     
     videoPlayer.pause();
     videoPlayer.removeAttribute('src');
@@ -1802,6 +2119,9 @@
   }
 
   function startDirectVideo(url) {
+    checkAC3Support();
+    initAudioContext();
+    
     videoPlayer.src = url;
     videoPlayer.load();
 
@@ -1813,9 +2133,14 @@
       });
     }
 
-    videoPlayer.onerror = function() {
-      showConfigScreen();
-      errorMsg.textContent = 'Невозможно воспроизвести видео. Проверьте ссылку.';
+    videoPlayer.onerror = function(e) {
+      if (videoPlayer.error && videoPlayer.error.code === 4) {
+        console.log('Возможная проблема с AC3, пробуем альтернативный метод');
+        tryAC3Fallback();
+      } else {
+        showConfigScreen();
+        errorMsg.textContent = 'Невозможно воспроизвести видео. Проверьте ссылку.';
+      }
     };
 
     videoPlayer.onloadedmetadata = function() {
@@ -2101,6 +2426,9 @@
 
   // -- Запуск --
   function init() {
+    var ac3Supported = checkAC3Support();
+    console.log('AC3 поддержка:', ac3Supported ? 'Да' : 'Нет');
+    
     var saved = loadConfig();
     if (saved) {
       urlInput.value = saved.url;
@@ -2109,6 +2437,13 @@
       showConfigScreen();
     }
   }
+
+  // Активация аудиоконтекста по клику
+  document.addEventListener('click', function() {
+    if (state.audioContext && state.audioContext.state === 'suspended') {
+      state.audioContext.resume();
+    }
+  });
 
   init();
 })();
