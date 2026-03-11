@@ -1,0 +1,60 @@
+ДЛЯ WINDOWS!!!!
+
+1) Скачиваем ffmpeg https://github.com/jellyfin/jellyfin-ffmpeg/releases/
+   jellyfin-ffmpeg_7.1.3-3_portable_win64-clang-gpl.zip последняя версия на момент написания инструкции.
+2) Распаковываем содержимое в диск "C:\ffmpeg"
+3) Жмем на "Этот компьютер" кнопку "Свойства".
+4) "Дополнительные параметры системы".
+5) Во вкладке "дополнительно" жмем "переменные среды".
+6) Переменные среды пользователя находим "Path", жмем "изменить", потом "создать" и вставляем "C:\ffmpeg".
+7) Тоже самое делаем с "системные переменные". 
+8) Жмем "ОК", "Применить", "ОК".
+9) Скачиваем архив https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/Vidaa.zip
+10) Распаковать в "C:\Vidaa".
+11) Запустить myapp-windows-x64.exe
+12) Готово, на тв открываем http://ip адрес вашего ПК:3000
+13) В поле Torrserver пишем свой Torrserver, жмем "Загрузить торренты", выбираем заранее добавленный торрент и возможно наслаждаемся просмотром)
+Внимание если torrserver размещен локально, а данная программа на VPS, то данная связка работать не будет.
+
+ДЛЯ Linux Debian/Ubuntu!!!!
+
+1) apt update, apt install ffmpeg, apt install nano
+2) cd /opt
+4) wget https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/Vidaa.zip
+5) unzip Vidaa.zip
+6) rm -rf /opt/Vidaa.zip
+7) chmod o+x /opt/Vidaa/myapp-linux-x64
+8) nano /etc/systemd/system/vidaa.service
+   Вставляем следующий текст:
+	[Unit]
+	Description=VidaaVideo HLS Server
+	After=network.target
+	Wants=network.target
+
+	[Service]
+	Type=simple
+	User=root
+	WorkingDirectory=/opt/Vidaa/
+	Environment=NODE_ENV=production
+	Environment=PORT=Любой свободный порт
+	Environment=HOST=0.0.0.0
+	ExecStart=/opt/Vidaa/myapp-linux-x64
+	Restart=always
+	RestartSec=10
+	StandardOutput=journal
+	StandardError=journal
+	SyslogIdentifier=Vidaa
+	LimitNOFILE=65536
+
+	[Install]
+	WantedBy=multi-user.target
+
+9) жмем ctrl+S, ctrl+X
+10) systemctl start vidaa
+11) Проверяем что запуск успешный systemctl status vidaa
+12) Если запуск успешный, то systemctl enable vidaa
+13) Готово, идем в браузер и открываем http://ip вашего пк или VPS:port из пункта 8.
+14) В поле Torrserver пишем свой Torrserver, жмем "Загрузить торренты", выбираем заранее добавленный торрент и возможно наслаждаемся просмотром)
+Внимание если torrserver размещен локально, а данная программа на VPS, то данная связка работать не будет.
+
+	
