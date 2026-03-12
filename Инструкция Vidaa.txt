@@ -18,12 +18,13 @@
 
 ДЛЯ Linux Debian/Ubuntu!!!!
 
-1) cd /opt
-2) wget https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/Vidaa.zip
-3) unzip Vidaa.zip
-4) rm -rf /opt/Vidaa.zip
-5) chmod o+x /opt/Vidaa/myapp-linux-x64
-6) nano /etc/systemd/system/vidaa.service
+1) mkdir /opt/Vidaa/
+2) cd /opt/Vidaa/
+3) wget https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/Vidaa.zip
+4) unzip Vidaa.zip
+5) rm -rf /opt/Vidaa.zip
+6) chmod o+x /opt/Vidaa/myapp-linux-x64
+7) nano /etc/systemd/system/vidaa.service
    Вставляем следующий текст:
 	[Unit]
 	Description=VidaaVideo HLS Server
@@ -48,12 +49,12 @@
 	[Install]
 	WantedBy=multi-user.target
 
-7) жмем ctrl+S, ctrl+X
-8) systemctl start vidaa
-9) Проверяем что запуск успешный systemctl status vidaa
-10) Если запуск успешный, то systemctl enable vidaa
-11) Готово, идем в браузер и открываем http://ip вашего пк или VPS:port из пункта 8.
-12) В поле Torrserver пишем свой Torrserver, жмем "Загрузить торренты", выбираем заранее добавленный торрент и возможно наслаждаемся просмотром)
+8) жмем ctrl+S, ctrl+X
+9) systemctl start vidaa
+10) Проверяем что запуск успешный systemctl status vidaa
+11) Если запуск успешный, то systemctl enable vidaa
+12) Готово, идем в браузер и открываем http://ip вашего пк или VPS:port из пункта 8.
+13) В поле Torrserver пишем свой Torrserver, жмем "Загрузить торренты", выбираем заранее добавленный торрент и возможно наслаждаемся просмотром)
 Внимание если torrserver размещен локально, а данная программа на VPS, то данная связка работать не будет.
 
 Баги
@@ -64,6 +65,7 @@
 4) Иногда при перемотки может завершиться с ошибкой ffmpeg, потребуется перезапуск программы.
 
 	
+
 
 
 
