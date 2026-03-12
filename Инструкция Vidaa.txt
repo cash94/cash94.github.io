@@ -24,7 +24,9 @@
 4) unzip Vidaa.zip
 5) rm -rf /opt/Vidaa/Vidaa.zip
 6) chmod o+x /opt/Vidaa/myapp-linux-x64
-7) nano /etc/systemd/system/vidaa.service
+7) chmod o+x /opt/Vidaa/ffmpeg/ffmpeg
+8) chmod o+x /opt/Vidaa/ffmpeg/ffprobe
+9) nano /etc/systemd/system/vidaa.service
    Вставляем следующий текст:
 	[Unit]
 	Description=VidaaVideo HLS Server
@@ -49,12 +51,12 @@
 	[Install]
 	WantedBy=multi-user.target
 
-8) жмем ctrl+S, ctrl+X
-9) systemctl start vidaa
-10) Проверяем что запуск успешный systemctl status vidaa
-11) Если запуск успешный, то systemctl enable vidaa
-12) Готово, идем в браузер и открываем http://ip вашего пк или VPS:port из пункта 8.
-13) В поле Torrserver пишем свой Torrserver, жмем "Загрузить торренты", выбираем заранее добавленный торрент и возможно наслаждаемся просмотром)
+10) жмем ctrl+S, ctrl+X
+11) systemctl start vidaa
+12) Проверяем что запуск успешный systemctl status vidaa
+13) Если запуск успешный, то systemctl enable vidaa
+14) Готово, идем в браузер и открываем http://ip вашего пк или VPS:port из пункта 8.
+15) В поле Torrserver пишем свой Torrserver, жмем "Загрузить торренты", выбираем заранее добавленный торрент и возможно наслаждаемся просмотром)
 Внимание если torrserver размещен локально, а данная программа на VPS, то данная связка работать не будет.
 
 Баги
@@ -65,6 +67,7 @@
 4) Иногда при перемотки может завершиться с ошибкой ffmpeg, потребуется перезапуск программы.
 
 	
+
 
 
 
