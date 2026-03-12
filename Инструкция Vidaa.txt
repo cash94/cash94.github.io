@@ -22,7 +22,7 @@
 2) cd /opt/Vidaa/
 3) wget https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/Vidaa.zip
 4) unzip Vidaa.zip
-5) rm -rf /opt/Vidaa.zip
+5) rm -rf /opt/Vidaa/Vidaa.zip
 6) chmod o+x /opt/Vidaa/myapp-linux-x64
 7) nano /etc/systemd/system/vidaa.service
    Вставляем следующий текст:
@@ -65,6 +65,7 @@
 4) Иногда при перемотки может завершиться с ошибкой ffmpeg, потребуется перезапуск программы.
 
 	
+
 
 
 
