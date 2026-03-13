@@ -194,6 +194,66 @@ update_vidaa() {
     fi
 }
 
+# Функция для удаления
+uninstall_vidaa() {
+    echo -e "${YELLOW}Начинаем удаление Vidaa...${NC}"
+    
+    # Запрашиваем подтверждение
+    echo -e "${RED}ВНИМАНИЕ: Это действие полностью удалит Vidaa и все его данные!${NC}"
+    echo -n "Вы уверены, что хотите продолжить? (y/n): "
+    read -r confirm
+    
+    if [[ ! "$confirm" =~ ^[YyДд]$ ]]; then
+        echo -e "${YELLOW}Удаление отменено.${NC}"
+        return 0
+    fi
+    
+    # Останавливаем и отключаем сервис
+    echo "Остановка сервиса vidaa..."
+    systemctl stop vidaa 2>/dev/null
+    
+    echo "Отключение сервиса vidaa..."
+    systemctl disable vidaa 2>/dev/null
+    
+    # Удаляем файл сервиса
+    echo "Удаление файла сервиса..."
+    rm -f /etc/systemd/system/vidaa.service
+    
+    # Перезагружаем systemd
+    systemctl daemon-reload
+    
+    # Удаляем директорию установки
+    if [ -d "/opt/Vidaa/" ]; then
+        echo "Удаление /opt/Vidaa/..."
+        rm -rf /opt/Vidaa/
+    else
+        echo -e "${YELLOW}Директория /opt/Vidaa/ не найдена${NC}"
+    fi
+    
+    # Определяем домашнюю директорию пользователя
+    local home_dir=""
+    if [ -n "$SUDO_USER" ]; then
+        # Если запущено через sudo
+        home_dir=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    else
+        # Если запущено от root напрямую
+        home_dir="$HOME"
+    fi
+    
+    # Удаляем конфигурационную директорию в домашнем каталоге
+    local config_dir="$home_dir/.videoloop-server"
+    if [ -d "$config_dir" ]; then
+        echo "Удаление $config_dir..."
+        rm -rf "$config_dir"
+    else
+        echo -e "${YELLOW}Директория $config_dir не найдена${NC}"
+    fi
+    
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}Удаление Vidaa завершено успешно!${NC}"
+    echo -e "${GREEN}========================================${NC}"
+}
+
 # Проверка прав root
 if [ "$EUID" -ne 0 ]; then 
     echo -e "${RED}Пожалуйста, запустите скрипт с правами root (sudo)${NC}"
@@ -212,7 +272,8 @@ done
 echo "Выберите действие:"
 echo "1) Установка"
 echo "2) Обновление"
-echo -n "Введите номер (1 или 2): "
+echo "3) Удаление"
+echo -n "Введите номер (1, 2 или 3): "
 read -r choice
 
 case $choice in
@@ -221,6 +282,9 @@ case $choice in
         ;;
     2)
         update_vidaa
+        ;;
+    3)
+        uninstall_vidaa
         ;;
     *)
         echo -e "${RED}Неверный выбор. Пожалуйста, запустите скрипт снова.${NC}"
