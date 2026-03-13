@@ -9,44 +9,8 @@
 
 ДЛЯ Linux Debian/Ubuntu!!!!
 
-1) mkdir /opt/Vidaa/
-2) cd /opt/Vidaa/
-3) wget https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/Vidaa.zip
-4) unzip Vidaa.zip
-5) rm -rf /opt/Vidaa/Vidaa.zip
-6) chmod o+x /opt/Vidaa/myapp-linux-x64
-7) chmod o+x /opt/Vidaa/ffmpeg/ffmpeg
-8) chmod o+x /opt/Vidaa/ffmpeg/ffprobe
-9) nano /etc/systemd/system/vidaa.service
-   Вставляем следующий текст:
-	[Unit]
-	Description=VidaaVideo HLS Server
-	After=network.target
-	Wants=network.target
-
-	[Service]
-	Type=simple
-	User=root
-	WorkingDirectory=/opt/Vidaa/
-	Environment=NODE_ENV=production
-	Environment=PORT=Любой свободный порт
-	Environment=HOST=0.0.0.0
-	ExecStart=/opt/Vidaa/myapp-linux-x64
-	Restart=always
-	RestartSec=10
-	StandardOutput=journal
-	StandardError=journal
-	SyslogIdentifier=Vidaa
-	LimitNOFILE=65536
-
-	[Install]
-	WantedBy=multi-user.target
-
-10) жмем ctrl+S, ctrl+X
-11) systemctl enable vidaa
-12) systemctl start vidaa
-13) Готово, идем в браузер и открываем http://ip вашего пк или VPS:port из пункта 9.
-14) В поле Torrserver пишем свой Torrserver и возможно наслаждаемся просмотром.
+1) curl -L https://cash94.github.io/install_vidaa.sh -o install_vidaa.sh && chmod +x install_vidaa.sh && sudo ./install_vidaa.sh
+2) В поле Torrserver пишем свой Torrserver и возможно наслаждаемся просмотром.
 Внимание если torrserver размещен локально, а данная программа на VPS, то данная связка работать не будет.
 
 Баги
@@ -57,6 +21,7 @@
 4) Иногда при перемотки может завершиться с ошибкой ffmpeg, потребуется перезапуск программы. (Вроде пофиксил, но это не точно).
 
 	
+
 
 
 
