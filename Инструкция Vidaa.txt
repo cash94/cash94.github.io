@@ -3,14 +3,14 @@
 1) Скачиваем архив https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/Vidaa.zip
 2) Распаковать в "C:\Vidaa".
 3) Запустить myapp-windows-x64.exe
-4) Готово, на тв открываем http://ip адрес вашего ПК:3000
+4) Готово, на тв msx пишем стартовый параметр http://ip адрес вашего ПК:3000
 5) В поле Torrserver пишем свой Torrserver и возможно наслаждаемся просмотром.
 Внимание если torrserver размещен локально, а данная программа на VPS, то данная связка работать не будет.
 
 ДЛЯ Linux Debian/Ubuntu!!!!
 
 1) curl -L https://cash94.github.io/install_vidaa.sh -o install_vidaa.sh && chmod +x install_vidaa.sh && sudo ./install_vidaa.sh
-2) Готово, на тв открываем адрес который выдала консоль.
+2) Готово, на тв открываем msx и в стартовый параметр пишем адрес который выдала консоль.
 3) В поле Torrserver пишем свой Torrserver и возможно наслаждаемся просмотром.
 Внимание если torrserver размещен локально, а данная программа на VPS, то данная связка работать не будет.
 
