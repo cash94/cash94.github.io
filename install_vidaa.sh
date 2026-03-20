@@ -59,10 +59,10 @@ install_vidaa() {
     rm -rf /opt/Vidaa/Vidaa.zip
     
     # Устанавливаем права
-    chmod o+x /opt/Vidaa/myapp-linux-x64
-    chmod o+x /opt/Vidaa/ffmpeg/ffmpeg
-    chmod o+x /opt/Vidaa/ffmpeg/ffprobe
-    chmod o+x /opt/Vidaa/ffmpeg/yt-dlp
+    chmod 775 /opt/Vidaa/myapp-linux-x64
+    chmod 775 /opt/Vidaa/ffmpeg/ffmpeg
+    chmod 775 /opt/Vidaa/ffmpeg/ffprobe
+    chmod 775 /opt/Vidaa/ffmpeg/yt-dlp
     
     # Запрос порта
     local selected_port=""
