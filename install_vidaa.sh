@@ -62,6 +62,7 @@ install_vidaa() {
     chmod o+x /opt/Vidaa/myapp-linux-x64
     chmod o+x /opt/Vidaa/ffmpeg/ffmpeg
     chmod o+x /opt/Vidaa/ffmpeg/ffprobe
+    chmod o+x /opt/Vidaa/ffmpeg/yt-dlp
     
     # Запрос порта
     local selected_port=""
