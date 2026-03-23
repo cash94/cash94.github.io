@@ -1,6 +1,6 @@
 {
   "name": "TorrStream",
-  "type": "pages",
+  "type": "list",
   "headline": "TorrStream",
   "version": "1.0.0",
   "parameter": "content:http://cash94.github.io/msx/start.json",
