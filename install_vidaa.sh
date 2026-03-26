@@ -58,6 +58,27 @@ install_vidaa() {
     # Удаляем архив
     rm -rf /opt/Vidaa/Vidaa.zip
     
+    mkdir -p /opt/Vidaa/ffmpeg
+    cd /opt/Vidaa/ffmpeg || exit 1
+    
+    # Скачиваем архив
+    echo "Скачивание архива..."
+    wget -q --show-progress https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/ffmpeg.zip
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ошибка при скачивании архива${NC}"
+        exit 1
+    fi
+    
+    # Распаковываем
+    echo "Распаковка архива..."
+    unzip -q ffmpeg.zip
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ошибка при распаковке архива${NC}"
+        exit 1
+    fi
+
     # Устанавливаем права
     chmod 775 /opt/Vidaa/myapp-linux-x64
     chmod 775 /opt/Vidaa/ffmpeg/ffmpeg
@@ -162,6 +183,7 @@ update_vidaa() {
     
     # Распаковываем с заменой файлов
     echo "Распаковка обновления..."
+    rm -rf /opt/Vidaa/public
     unzip -q -o Vidaa.zip
     
     if [ $? -ne 0 ]; then
@@ -173,9 +195,10 @@ update_vidaa() {
     rm -rf /opt/Vidaa/Vidaa.zip
     
     # Обновляем права
-    chmod o+x /opt/Vidaa/myapp-linux-x64
-    chmod o+x /opt/Vidaa/ffmpeg/ffmpeg
-    chmod o+x /opt/Vidaa/ffmpeg/ffprobe
+    chmod 775 /opt/Vidaa/myapp-linux-x64
+    chmod 775 /opt/Vidaa/ffmpeg/ffmpeg
+    chmod 775 /opt/Vidaa/ffmpeg/ffprobe
+    chmod 775 /opt/Vidaa/ffmpeg/yt-dlp
     
     # Перезапускаем сервис
     echo "Перезапуск сервиса..."
