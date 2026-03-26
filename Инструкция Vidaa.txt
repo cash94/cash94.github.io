@@ -1,5 +1,12 @@
 ДЛЯ WINDOWS!!!!
-
+Если Вы устанавливаете программу впервые, то сначала нужно загрузить вот этот архив https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/ffmpeg.zip и распаковать его в C:\Vidaa чтобы получилось C:\Vidaa\ffmpeg\
+внутри должны быть исполняемые файлы
+	--ffmpeg.exe
+	--ffprobe.exe
+	--ffmpeg
+	--ffprobe
+	--yt-dlp
+	--yt-dlp.exe
 1) Скачиваем архив https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/Vidaa.zip
 2) Распаковать в "C:\Vidaa".
 3) Запустить myapp-windows-x64.exe
