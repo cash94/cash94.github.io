@@ -1953,7 +1953,8 @@ async function searchTMDB(query) {
     // Параллельный поиск фильмов и сериалов для лучших результатов
     const [moviesResponse, tvResponse] = await Promise.allSettled([
       fetch(`/api/tmdb/search?query=${encodedQuery}&type=movie&year=`),
-      fetch(`/api/tmdb/search?query=${encodedQuery}&type=tv&year=`)
+      fetch(`/api/tmdb/search?query=${encodedQuery}&type=tv&year=`),
+      fetch(`/api/tmdb/search?query=${encodedQuery}&type=person&year=`)
     ]);
 
     let allResults = [];
