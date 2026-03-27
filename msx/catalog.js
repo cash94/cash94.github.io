@@ -823,7 +823,7 @@ function createCatalogCard(item, index) {
                     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
                     backdrop-filter: blur(2px);
                 ">
-                    ⭐ ${rating}
+                    ${rating}
                 </div>
             ` : ''}
             ${cachedPoster
@@ -1125,7 +1125,7 @@ async function loadCatalogPoster(card, title, mediaType, tmdbId, index) {
                         box-shadow: 0 2px 8px rgba(0,0,0,0.3);
                         backdrop-filter: blur(2px);
                     ">
-                        ⭐ ${rating}
+                        ${rating}
                     </div>
                 `;
             } else {
@@ -1224,7 +1224,7 @@ async function loadCatalogPoster(card, title, mediaType, tmdbId, index) {
                     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
                     backdrop-filter: blur(2px);
                 ">
-                    ⭐ ${rating}
+                    ${rating}
                 </div>
             `;
         } else {
@@ -1380,13 +1380,13 @@ async function showCatalogDetail(item, index, posterUrl = null) {
 
     const chips = [];
     const releaseYear = getCatalogItemYear(source);
-    if (releaseYear) chips.push(`<span class="catalog-meta-chip">📅 ${escapeHtml(releaseYear)}</span>`);
+    if (releaseYear) chips.push(`<span class="catalog-meta-chip">${escapeHtml(releaseYear)}</span>`);
     const safeRating = getSafeCatalogRating(source);
-    if (safeRating !== null) chips.push(`<span class="catalog-meta-chip">⭐ ${escapeHtml(String(safeRating))}</span>`);
-    if (source.source_name) chips.push(`<span class="catalog-meta-chip">ℹ️ ${escapeHtml(String(source.source_name))}</span>`);
+    if (safeRating !== null) chips.push(`<span class="catalog-meta-chip">${escapeHtml(String(safeRating))}</span>`);
+    if (source.source_name) chips.push(`<span class="catalog-meta-chip">ℹ${escapeHtml(String(source.source_name))}</span>`);
     const genres = getNormalizedCatalogGenres(source).slice(0, 4);
     genres.forEach(g => chips.push(`<span class="catalog-meta-chip">${escapeHtml(g)}</span>`));
-    metaEl.innerHTML = chips.join('') || '<span class="catalog-meta-chip">📚 Каталог</span>';
+    metaEl.innerHTML = chips.join('') || '<span class="catalog-meta-chip">Каталог</span>';
 
     const overview = source.overview || item.overview || 'Описание пока недоступно';
     overviewEl.textContent = overview;
@@ -1454,7 +1454,7 @@ async function showCatalogDetail(item, index, posterUrl = null) {
                     ? `<img src="${recPosterUrl}" alt="${escapeHtml(recTitle)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'catalog-recommendation-no-poster\\'>🎬</div>'">`
                     : '<div class="catalog-recommendation-no-poster">🎬</div>'
                 }
-                        ${recRating ? `<div class="catalog-recommendation-rating">⭐ ${recRating}</div>` : ''}
+                        ${recRating ? `<div class="catalog-recommendation-rating">${recRating}</div>` : ''}
                     </div>
                     <div class="catalog-recommendation-info">
                         <div class="catalog-recommendation-title">${escapeHtml(recTitle)}</div>
