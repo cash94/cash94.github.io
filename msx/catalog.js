@@ -835,7 +835,7 @@ function createCatalogCard(item, index) {
             <div class="torrent-title">${escapeHtml(title.substring(0, 60))}${title.length > 60 ? '...' : ''}</div>
             <div class="torrent-meta">
                 <span>${mediaType === 'tv' ? 'Сериал' : 'Фильм'}</span>
-                <span class="torrent-badge catalog-badge">📚 Каталог</span>
+                <span class="torrent-badge catalog-badge">Каталог</span>
             </div>
         </div>
     `;
@@ -902,7 +902,7 @@ function showEmptyCatalog() {
 
     torrentsGrid.innerHTML = `
         <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">
-            <div style="font-size: 48px; margin-bottom: 20px;">📚</div>
+            <div style="font-size: 48px; margin-bottom: 20px;"></div>
             <div style="font-size: 18px; color: #aaa;">Каталог пуст</div>
         </div>
     `;
@@ -2145,8 +2145,8 @@ function createCatalogFolderCard(key, config) {
         <div class="torrent-info">
             <div class="torrent-title">${config.name}</div>
             <div class="torrent-meta">
-                <span>Каталог</span>
-                <span class="torrent-badge catalog-badge">📁</span>
+                <span></span>
+                <span class="torrent-badge catalog-badge"></span>
             </div>
         </div>
     `;
@@ -2176,7 +2176,7 @@ function showCatalogError(message) {
     if (torrentsGrid) {
         torrentsGrid.innerHTML = `
             <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">
-                <div style="font-size: 48px; margin-bottom: 20px;">❌</div>
+                <div style="font-size: 48px; margin-bottom: 20px;"></div>
                 <div style="font-size: 16px; color: #ff6a6a;">${message}</div>
                 <button class="btn" style="margin-top: 20px;" onclick="window.loadCatalogList()">Попробовать снова</button>
             </div>
@@ -2187,7 +2187,7 @@ function showCatalogError(message) {
 function hideCatalogLoading() { }
 
 function backToCatalogList() {
-    console.log('📚 Возврат к списку каталогов');
+    console.log('Возврат к списку каталогов');
 
     abortCatalogRequests();
 
@@ -2227,7 +2227,7 @@ function backToCatalogList() {
 window.loadMoreAndFocus = async function (currentIndex, cols) {
     if (!catalogState.currentCatalog || catalogState.isLoadingMore) return;
 
-    console.log('📦 Подгрузка следующей страницы с автофокусом');
+    console.log('Подгрузка следующей страницы с автофокусом');
 
     const trigger = document.getElementById('load-more-trigger');
     if (trigger) {
@@ -2257,7 +2257,7 @@ window.loadMoreAndFocus = async function (currentIndex, cols) {
                     const globalIndex = focusableElements.indexOf(targetCard);
                     if (globalIndex !== -1) {
                         setFocus(globalIndex);
-                        console.log(`🎯 Автофокус на карточку ${newIndex + 1}`);
+                        console.log(`Автофокус на карточку ${newIndex + 1}`);
                     }
                 }
             }, 100);
@@ -2314,7 +2314,7 @@ window.focusCatalogCardByIndex = function (targetNumIndex) {
         targetIndex = targetNumIndex;
     }
 
-    console.log(`🎯 Возвращаем индекс ${targetIndex} для num_index ${targetNumIndex}`);
+    console.log(`Возвращаем индекс ${targetIndex} для num_index ${targetNumIndex}`);
     return targetIndex;
 };
 
@@ -2331,21 +2331,21 @@ function startTmdbCacheCleanup() {
         cleanOldTmdbCache();
     }, TMDB_CACHE_CONFIG.cleanupInterval);
 
-    console.log(`🧹 Запущена периодическая очистка TMDB кэша (каждые ${TMDB_CACHE_CONFIG.cleanupInterval / 1000} сек)`);
+    console.log(`Запущена периодическая очистка TMDB кэша (каждые ${TMDB_CACHE_CONFIG.cleanupInterval / 1000} сек)`);
 }
 
 function stopTmdbCacheCleanup() {
     if (tmdbCacheCleanupInterval) {
         clearInterval(tmdbCacheCleanupInterval);
         tmdbCacheCleanupInterval = null;
-        console.log('🧹 Остановлена периодическая очистка TMDB кэша');
+        console.log('Остановлена периодическая очистка TMDB кэша');
     }
 }
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
 function initCatalog() {
-    console.log('📚 Модуль каталогов инициализирован с поддержкой пагинации и TMDB кэша');
+    console.log('Модуль каталогов инициализирован с поддержкой пагинации и TMDB кэша');
     startTmdbCacheCleanup();
 
     window.tmdbCache = {
