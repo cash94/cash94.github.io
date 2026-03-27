@@ -1384,9 +1384,9 @@ function showSearchResults(options = {}) {
 
   //const previousScreen = AppState.currentScreen;
   //if (previousScreen === 'catalog') {
-    //AppState.searchReturnTo = 'catalog';
+  //AppState.searchReturnTo = 'catalog';
   //} else if (previousScreen !== 'search') {
-   // AppState.searchReturnTo = 'catalog';
+  // AppState.searchReturnTo = 'catalog';
   //}
 
   if (searchInput && document.activeElement === searchInput) {
@@ -2063,346 +2063,6 @@ function showGlobalSearchResults() {
     return;
   }
 
-  // Вычисляем оптимальное количество колонок (максимум 8)
-  const containerWidth = searchResultsDiv.clientWidth;
-  const cardMinWidth = 200;
-  let columns = Math.floor(containerWidth / cardMinWidth);
-  columns = Math.min(columns, 8); // Ограничиваем максимум 8 колонками
-  columns = Math.max(columns, 8); // Минимум 8 колонка
-
-  // Используем CSS Grid с фиксированным количеством колонок
-  const gridTemplateColumns = `repeat(${columns}, minmax(${cardMinWidth}px, 1fr))`;
-
-  let html = `<div class="filter-stats">Найдено в TMDB: <span>${globalSearchResults.length}</span></div>`;
-  html += `<div class="global-search-grid" style="display: grid; grid-template-columns: ${gridTemplateColumns}; gap: 20px; padding: 20px 0;">`;
-
-  globalSearchResults.forEach((result, index) => {
-    const title = result.title || result.name || 'Без названия';
-    const year = result.release_date || result.first_air_date;
-    const yearStr = year ? new Date(year).getFullYear() : 'N/A';
-    const mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
-    const rating = result.vote_average ? result.vote_average.toFixed(1) : null;
-    const posterUrl = result.poster_path
-      ? `https://nmtmdb.duckdns.org/t/p/w342${result.poster_path}`
-      : null;
-
-    html += `
-            <div class="global-search-card" data-index="${index}" data-tmdb-id="${result.id}" data-media-type="${result.media_type}" style="
-                background: rgba(30, 30, 40, 0.9);
-                border-radius: 12px;
-                overflow: hidden;
-                cursor: pointer;
-                transition: transform 0.2s, box-shadow 0.2s;
-                border: 1px solid rgba(74, 158, 255, 0.3);
-            ">
-                <div class="global-search-poster" style="
-                    position: relative;
-                    aspect-ratio: 2/3;
-                    overflow: hidden;
-                    background: linear-gradient(135deg, #1a1a2e, #16213e);
-                ">
-                    ${posterUrl ? `
-                        <img src="${posterUrl}" alt="${escapeHtml(title)}" style="
-                            width: 100%;
-                            height: 100%;
-                            object-fit: cover;
-                        " onerror="this.parentElement.innerHTML='<div style=\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\'>🎬</div>'">
-                    ` : `
-                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">
-                            ${mediaType === 'Сериал' ? '📺' : '🎬'}
-                        </div>
-                    `}
-                    ${rating ? `
-                        <div style="
-                            position: absolute;
-                            top: 8px;
-                            right: 8px;
-                            background: rgba(0, 0, 0, 0.8);
-                            color: ${getRatingColor(parseFloat(rating))};
-                            font-weight: bold;
-                            font-size: 12px;
-                            padding: 4px 8px;
-                            border-radius: 12px;
-                            border: 1px solid ${getRatingColor(parseFloat(rating))};
-                        ">
-                            ⭐ ${rating}
-                        </div>
-                    ` : ''}
-                </div>
-                <div class="global-search-info" style="padding: 12px;">
-                    <div class="global-search-title" style="
-                        font-weight: 600;
-                        font-size: 14px;
-                        margin-bottom: 6px;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        white-space: nowrap;
-                    ">${escapeHtml(title)}</div>
-                    <div style="
-                        display: flex;
-                        justify-content: space-between;
-                        font-size: 12px;
-                        color: #aaa;
-                    ">
-                        <span>${mediaType}</span>
-                        <span>${yearStr}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-  });
-
-  html += `</div>`;
-  searchResultsDiv.innerHTML = html;
-
-  // Добавляем обработчики кликов на карточки
-  document.querySelectorAll('.global-search-card').forEach(card => {
-    card.addEventListener('click', async () => {
-      const tmdbId = card.dataset.tmdbId;
-      const mediaType = card.dataset.mediaType;
-      const index = parseInt(card.dataset.index);
-      const result = globalSearchResults[index];
-
-      if (result) {
-        await showGlobalSearchDetail(result);
-      }
-    });
-  });
-}
-
-function renderFilteredGlobalResults(results) {
-  const searchResultsDiv = document.getElementById('search-results');
-  if (!searchResultsDiv) return;
-
-  if (results.length === 0) {
-    searchResultsDiv.innerHTML = `
-            <div class="filter-stats">Всего найдено: <span>0</span></div>
-            <div class="search-result-empty">
-                Нет результатов для выбранного типа контента
-            </div>
-        `;
-    return;
-  }
-
-  // Вычисляем оптимальное количество колонок (максимум 8)
-  const containerWidth = searchResultsDiv.clientWidth;
-  const cardMinWidth = 200;
-  let columns = Math.floor(containerWidth / cardMinWidth);
-  columns = Math.min(columns, 8); // Ограничиваем максимум 8 колонками
-  columns = Math.max(columns, 8); // Минимум 1 колонка
-
-  // Используем CSS Grid с фиксированным количеством колонок
-  const gridTemplateColumns = `repeat(${columns}, minmax(${cardMinWidth}px, 1fr))`;
-
-  let html = `<div class="filter-stats">Найдено в TMDB: <span>${results.length}</span></div>`;
-  html += `<div class="global-search-grid" style="display: grid; grid-template-columns: ${gridTemplateColumns}; gap: 20px; padding: 20px 0;">`;
-
-  results.forEach((result, idx) => {
-    const title = result.title || result.name || 'Без названия';
-    const year = result.release_date || result.first_air_date;
-    const yearStr = year ? new Date(year).getFullYear() : 'N/A';
-    const mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
-    const rating = result.vote_average ? result.vote_average.toFixed(1) : null;
-    const posterUrl = result.poster_path
-      ? `https://nmtmdb.duckdns.org/t/p/w342${result.poster_path}`
-      : null;
-
-    html += `
-            <div class="global-search-card" data-tmdb-id="${result.id}" data-media-type="${result.media_type}" style="
-                background: rgba(30, 30, 40, 0.9);
-                border-radius: 12px;
-                overflow: hidden;
-                cursor: pointer;
-                transition: transform 0.2s, box-shadow 0.2s;
-                border: 1px solid rgba(74, 158, 255, 0.3);
-            ">
-                <div class="global-search-poster" style="
-                    position: relative;
-                    aspect-ratio: 2/3;
-                    overflow: hidden;
-                    background: linear-gradient(135deg, #1a1a2e, #16213e);
-                ">
-                    ${posterUrl ? `
-                        <img src="${posterUrl}" alt="${escapeHtml(title)}" style="
-                            width: 100%;
-                            height: 100%;
-                            object-fit: cover;
-                        " onerror="this.parentElement.innerHTML='<div style=\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\'>🎬</div>'">
-                    ` : `
-                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">
-                            ${mediaType === 'Сериал' ? '📺' : '🎬'}
-                        </div>
-                    `}
-                    ${rating ? `
-                        <div style="
-                            position: absolute;
-                            top: 8px;
-                            right: 8px;
-                            background: rgba(0, 0, 0, 0.8);
-                            color: ${getRatingColor(parseFloat(rating))};
-                            font-weight: bold;
-                            font-size: 12px;
-                            padding: 4px 8px;
-                            border-radius: 12px;
-                            border: 1px solid ${getRatingColor(parseFloat(rating))};
-                        ">
-                            ⭐ ${rating}
-                        </div>
-                    ` : ''}
-                </div>
-                <div class="global-search-info" style="padding: 12px;">
-                    <div class="global-search-title" style="
-                        font-weight: 600;
-                        font-size: 14px;
-                        margin-bottom: 6px;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        white-space: nowrap;
-                    ">${escapeHtml(title)}</div>
-                    <div style="
-                        display: flex;
-                        justify-content: space-between;
-                        font-size: 12px;
-                        color: #aaa;
-                    ">
-                        <span>${mediaType}</span>
-                        <span>${yearStr}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-  });
-
-  html += `</div>`;
-  searchResultsDiv.innerHTML = html;
-
-  // Добавляем обработчики
-  document.querySelectorAll('.global-search-card').forEach(card => {
-    card.addEventListener('click', async () => {
-      const tmdbId = card.dataset.tmdbId;
-      const mediaType = card.dataset.mediaType;
-      const result = results.find(r => String(r.id) === tmdbId);
-      if (result) {
-        await showGlobalSearchDetail(result);
-      }
-    });
-  });
-}
-
-// НОВАЯ ФУНКЦИЯ: Показать детали элемента из глобального поиска
-async function showGlobalSearchDetail(item) {
-  console.log('📺 Открываем детали из глобального поиска:', item.title || item.name);
-
-  // Формируем объект, совместимый с catalog.js
-  const catalogItem = {
-    id: item.id,
-    media_type: item.media_type,
-    title: item.title || item.name,
-    name: item.name || item.title,
-    overview: item.overview,
-    poster_path: item.poster_path,
-    backdrop_path: item.backdrop_path,
-    vote_average: item.vote_average,
-    release_date: item.release_date,
-    first_air_date: item.first_air_date,
-    // Добавляем торрент информацию для поиска
-    torrent: [{
-      name: item.title || item.name
-    }]
-  };
-
-  // Получаем URL постера
-  const posterUrl = item.poster_path
-    ? `https://nmtmdb.duckdns.org/t/p/w342${item.poster_path}`
-    : null;
-
-  // Используем catalog.js для показа деталей
-  if (typeof window.showCatalogDetail === 'function') {
-    // Сохраняем контекст для возврата
-    AppState.searchReturnTo = 'search';
-    AppState.currentScreen = 'detail';
-
-    // Показываем детали
-    await window.showCatalogDetail(catalogItem, 0, posterUrl);
-
-    // Скрываем поиск
-    const searchOverlay = document.getElementById('search-overlay');
-    if (searchOverlay) {
-      searchOverlay.classList.add('hidden');
-    }
-  } else {
-    console.error('showCatalogDetail не доступен');
-  }
-}
-
-// НОВАЯ ФУНКЦИЯ: Показать фильтр по типу контента
-function showContentTypeFilter() {
-  const filterGroup = document.querySelector('.filter-group:has(#filter-quality)');
-  if (!filterGroup) return;
-
-  // Проверяем, есть ли уже фильтр по типу
-  let contentTypeFilter = document.getElementById('filter-content-type');
-  if (!contentTypeFilter) {
-    const newFilter = document.createElement('div');
-    newFilter.className = 'filter-group';
-    newFilter.innerHTML = `
-            <label class="filter-label" for="filter-content-type">Тип контента</label>
-            <select id="filter-content-type" class="filter-select">
-                <option value="all">Все</option>
-                <option value="movie">Фильмы</option>
-                <option value="tv">Сериалы</option>
-            </select>
-        `;
-
-    // Вставляем после фильтра качества
-    filterGroup.parentNode.insertBefore(newFilter, filterGroup.nextSibling);
-
-    // Добавляем обработчик
-    document.getElementById('filter-content-type').addEventListener('change', (e) => {
-      filterGlobalSearchByType(e.target.value);
-    });
-  }
-}
-
-// НОВАЯ ФУНКЦИЯ: Фильтрация глобального поиска по типу
-function filterGlobalSearchByType(type) {
-  if (!globalSearchResults.length) return;
-
-  let filtered = globalSearchResults;
-  if (type !== 'all') {
-    filtered = globalSearchResults.filter(item => item.media_type === type);
-  }
-
-  // Перерисовываем с фильтрацией
-  renderFilteredGlobalResults(filtered);
-}
-
-function showGlobalSearchResults() {
-  const searchResultsDiv = document.getElementById('search-results');
-  const searchOverlay = document.getElementById('search-overlay');
-
-  if (!searchResultsDiv) return;
-
-  // Убеждаемся, что overlay виден
-  if (searchOverlay) {
-    searchOverlay.classList.remove('hidden');
-  }
-
-  if (globalSearchResults.length === 0) {
-    searchResultsDiv.innerHTML = `
-            <div class="filter-stats">Всего найдено: <span>0</span></div>
-            <div class="search-result-empty">
-                ${currentSearchQuery ? `Ничего не найдено для "${escapeHtml(currentSearchQuery)}" в TMDB` : 'Введите запрос для поиска'}
-            </div>
-        `;
-    return;
-  }
-
-  // Вычисляем оптимальное количество колонок (максимум 8)
-  const columns = 8;
-  const cardMinWidth = 200;
-  // Используем CSS Grid с фиксированным количеством колонок
-  //const gridTemplateColumns = `repeat(${columns}, minmax(${cardMinWidth}px, 1fr))`;
   const gridTemplateColumns = `repeat(8, 1fr)`;
 
   let html = `<div class="filter-stats">Найдено в TMDB: <span>${globalSearchResults.length}</span></div>`;
@@ -2503,6 +2163,94 @@ function showGlobalSearchResults() {
   });
 }
 
+// НОВАЯ ФУНКЦИЯ: Показать детали элемента из глобального поиска
+async function showGlobalSearchDetail(item) {
+  console.log('📺 Открываем детали из глобального поиска:', item.title || item.name);
+
+  // Формируем объект, совместимый с catalog.js
+  const catalogItem = {
+    id: item.id,
+    media_type: item.media_type,
+    title: item.title || item.name,
+    name: item.name || item.title,
+    overview: item.overview,
+    poster_path: item.poster_path,
+    backdrop_path: item.backdrop_path,
+    vote_average: item.vote_average,
+    release_date: item.release_date,
+    first_air_date: item.first_air_date,
+    // Добавляем торрент информацию для поиска
+    torrent: [{
+      name: item.title || item.name
+    }]
+  };
+
+  // Получаем URL постера
+  const posterUrl = item.poster_path
+    ? `https://nmtmdb.duckdns.org/t/p/w342${item.poster_path}`
+    : null;
+
+  // Используем catalog.js для показа деталей
+  if (typeof window.showCatalogDetail === 'function') {
+    // Сохраняем контекст для возврата
+    AppState.searchReturnTo = 'search';
+    AppState.currentScreen = 'detail';
+
+    // Показываем детали
+    await window.showCatalogDetail(catalogItem, 0, posterUrl);
+
+    // Скрываем поиск
+    const searchOverlay = document.getElementById('search-overlay');
+    if (searchOverlay) {
+      searchOverlay.classList.add('hidden');
+    }
+  } else {
+    console.error('showCatalogDetail не доступен');
+  }
+}
+
+// НОВАЯ ФУНКЦИЯ: Показать фильтр по типу контента
+function showContentTypeFilter() {
+  const filterGroup = document.querySelector('.filter-group:has(#filter-quality)');
+  if (!filterGroup) return;
+
+  // Проверяем, есть ли уже фильтр по типу
+  let contentTypeFilter = document.getElementById('filter-content-type');
+  if (!contentTypeFilter) {
+    const newFilter = document.createElement('div');
+    newFilter.className = 'filter-group';
+    newFilter.innerHTML = `
+            <label class="filter-label" for="filter-content-type">Тип контента</label>
+            <select id="filter-content-type" class="filter-select">
+                <option value="all">Все</option>
+                <option value="movie">Фильмы</option>
+                <option value="tv">Сериалы</option>
+            </select>
+        `;
+
+    // Вставляем после фильтра качества
+    filterGroup.parentNode.insertBefore(newFilter, filterGroup.nextSibling);
+
+    // Добавляем обработчик
+    document.getElementById('filter-content-type').addEventListener('change', (e) => {
+      filterGlobalSearchByType(e.target.value);
+    });
+  }
+}
+
+// НОВАЯ ФУНКЦИЯ: Фильтрация глобального поиска по типу
+function filterGlobalSearchByType(type) {
+  if (!globalSearchResults.length) return;
+
+  let filtered = globalSearchResults;
+  if (type !== 'all') {
+    filtered = globalSearchResults.filter(item => item.media_type === type);
+  }
+
+  // Перерисовываем с фильтрацией
+  renderFilteredGlobalResults(filtered);
+}
+
 function renderFilteredGlobalResults(results) {
   const searchResultsDiv = document.getElementById('search-results');
   if (!searchResultsDiv) return;
@@ -2517,11 +2265,6 @@ function renderFilteredGlobalResults(results) {
     return;
   }
 
-  // Вычисляем оптимальное количество колонок (максимум 8)
-  const columns = 8;
-  const cardMinWidth = 200;
-  // Используем CSS Grid с фиксированным количеством колонок
-  //const gridTemplateColumns = `repeat(${columns}, minmax(${cardMinWidth}px, 1fr))`;
   const gridTemplateColumns = `repeat(8, 1fr)`;
 
   let html = `<div class="filter-stats">Найдено в TMDB: <span>${results.length}</span></div>`;
@@ -2543,7 +2286,6 @@ function renderFilteredGlobalResults(results) {
                 border-radius: 12px;
                 overflow: hidden;
                 cursor: pointer;
-                transition: transform 0.2s, box-shadow 0.2s;
                 border: 1px solid rgba(74, 158, 255, 0.3);
             ">
                 <div class="global-search-poster" style="
@@ -2609,6 +2351,7 @@ function renderFilteredGlobalResults(results) {
   // Добавляем обработчики
   document.querySelectorAll('.global-search-card').forEach(card => {
     card.addEventListener('click', async () => {
+      AppState.isSearch = true;
       const tmdbId = card.dataset.tmdbId;
       const mediaType = card.dataset.mediaType;
       const result = results.find(r => String(r.id) === tmdbId);
