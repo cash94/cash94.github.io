@@ -2454,7 +2454,7 @@ body {
   }
 }
 /* Анимация применяется только если текст не влезает */
-.catalog-recommendation-card.focused .catalog-recommendation-title.marquee {
+.catalog-recommendation-card.focused .catalog-recommendation-title {
   overflow: visible;
   text-overflow: clip;
   animation: marquee 10s linear infinite;
