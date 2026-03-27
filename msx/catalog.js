@@ -13,7 +13,7 @@ const CATALOG_CONFIG = {
         mediaType: 'movie'
     },
     legends: {
-        name: 'Легендарные фильмы',
+        name: 'Лучшие фильмы',
         url: `${SERVER_URL}/api/catalog/legends`,
         mediaType: 'movie'
     },
