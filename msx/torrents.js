@@ -57,7 +57,7 @@ function getTrackerFilterOptions() {
     { value: 'all', label: 'Все трекеры' },
     ...availableTrackers.map(tracker => ({
       value: tracker,
-      label: `📁 ${tracker.charAt(0).toUpperCase() + tracker.slice(1)}`
+      label: `${tracker.charAt(0).toUpperCase() + tracker.slice(1)}`
     }))
   ];
 }
@@ -1465,7 +1465,7 @@ function hideSearchResults() {
 
     // Восстанавливаем детальный просмотр
     if (AppState.pendingDetailItem) {
-      console.log('📺 Возврат к детальному просмотру:',
+      console.log('Возврат к детальному просмотру:',
         AppState.pendingDetailItem.torrent?.[0]?.name || 'Фильм');
 
       showCatalogDetail(
@@ -1586,19 +1586,19 @@ async function addTorrentToServer(magnet, hash, searchResult = null) {
   // Сначала проверяем, есть ли сохраненный постер из каталога
   if (window.pendingCatalogPoster) {
     poster = window.pendingCatalogPoster;
-    console.log('🖼️ Используем постер из каталога:', poster);
+    console.log('Используем постер из каталога:', poster);
   }
   // Если нет, ищем через TMDB
   else if (searchResult) {
-    console.log('🖼️ Поиск постера через TMDB для:', searchResult.title || searchResult.name);
+    console.log('Поиск постера через TMDB для:', searchResult.title || searchResult.name);
     poster = await tmdb.findPosterFromSearchResult(searchResult);
     if (poster) {
-      console.log('✅ Постер найден через TMDB:', poster);
+      console.log('Постер найден через TMDB:', poster);
     }
   }
 
   try {
-    console.log('➕ Добавление торрента в TorrServer:', magnet);
+    console.log('Добавление торрента в TorrServer:', magnet);
 
     const requestBody = {
       action: 'add',
@@ -1609,7 +1609,7 @@ async function addTorrentToServer(magnet, hash, searchResult = null) {
     // Добавляем постер, если нашли
     if (poster) {
       requestBody.poster = poster;
-      console.log('🖼️ Добавляем постер в запрос');
+      console.log('Добавляем постер в запрос');
     }
 
     const response = await fetch(`${AppState.currentTorrserverUrl}/torrents`, {
@@ -1626,7 +1626,7 @@ async function addTorrentToServer(magnet, hash, searchResult = null) {
     }
 
     const data = await response.json();
-    console.log('✅ Торрент добавлен:', data);
+    console.log('Торрент добавлен:', data);
 
     // Очищаем временные данные
     window.pendingCatalogPoster = null;
@@ -1707,9 +1707,9 @@ async function refreshTorrentsList() {
 
 // Воспроизведение по hash
 async function playFromHash(hash, magnet, searchResult = null) {
-  console.log('🎬 playFromHash вызван:');
-  console.log('   Hash:', hash);
-  console.log('   SearchResult:', searchResult ? searchResult.title || searchResult.name : 'null');
+  console.log('playFromHash вызван:');
+  console.log('Hash:', hash);
+  console.log('SearchResult:', searchResult ? searchResult.title || searchResult.name : 'null');
 
   if (!hash) {
     alert('Ошибка: hash не найден');
@@ -1815,22 +1815,22 @@ function renderSearchResults() {
           
           <div class="search-result-meta">
             <div class="search-result-meta-item">
-              <span>📁</span> ${escapeHtml(trackerDisplay)}
+              <span></span> ${escapeHtml(trackerDisplay)}
             </div>
             <div class="search-result-meta-item">
-              <span>📏</span> ${escapeHtml(size)}
+              <span></span> ${escapeHtml(size)}
             </div>
             <div class="search-result-meta-item">
-              <span>📅</span> ${year} (${date})
+              <span></span> ${year} (${date})
             </div>
             <div class="search-result-meta-item">
-              <span>🎬</span> ${type} / ${quality}p
+              <span></span> ${type} / ${quality}p
             </div>
             <div class="search-result-meta-item">
-              <span>🆔</span> сиды: ${sid}
+              <span></span> сиды: ${sid}
             </div>
             <div class="search-result-meta-item">
-              <span>📊</span> пиры: ${pir}
+              <span></span> пиры: ${pir}
             </div>
           </div>
           
@@ -1869,10 +1869,10 @@ function renderSearchResults() {
       const magnet = btn.dataset.magnet;
       const resultJson = btn.dataset.result;
 
-      console.log('▶️ Нажата кнопка PLAY');
-      console.log('   Hash:', hash);
-      console.log('   Magnet:', magnet);
-      console.log('   Есть постер из каталога:', !!window.pendingCatalogPoster);
+      console.log('Нажата кнопка PLAY');
+      console.log('Hash:', hash);
+      console.log('Magnet:', magnet);
+      console.log('Есть постер из каталога:', !!window.pendingCatalogPoster);
 
       if (hash) {
         let searchResult = null;
@@ -2015,7 +2015,7 @@ async function searchTMDB(query) {
     globalSearchResults = allResults;
     currentSearchQuery = query;
 
-    console.log(`✅ Найдено ${globalSearchResults.length} результатов в TMDB`);
+    console.log(`Найдено ${globalSearchResults.length} результатов в TMDB`);
 
     // Очищаем фильтры для глобального поиска
     if (currentSearchMode === 'globalsearch') {
@@ -2099,7 +2099,7 @@ function showGlobalSearchResults() {
                         " onerror="this.parentElement.innerHTML='<div style=\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\'>🎬</div>'">
                     ` : `
                         <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">
-                            ${mediaType === 'Сериал' ? '📺' : '🎬'}
+                            ${mediaType === 'Сериал' ? 'Сериал' : 'Фильм'}
                         </div>
                     `}
                     ${rating ? `
@@ -2115,7 +2115,7 @@ function showGlobalSearchResults() {
                             border-radius: 12px;
                             border: 1px solid ${getRatingColor(parseFloat(rating))};
                         ">
-                            ⭐ ${rating}
+                            ${rating}
                         </div>
                     ` : ''}
                 </div>
@@ -2212,7 +2212,7 @@ function renderFilteredGlobalResults(results) {
                         " onerror="this.parentElement.innerHTML='<div style=\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\'>🎬</div>'">
                     ` : `
                         <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">
-                            ${mediaType === 'Сериал' ? '📺' : '🎬'}
+                            ${mediaType === 'Сериал' ? 'Сериал' : 'Фильм'}
                         </div>
                     `}
                     ${rating ? `
@@ -2228,7 +2228,7 @@ function renderFilteredGlobalResults(results) {
                             border-radius: 12px;
                             border: 1px solid ${getRatingColor(parseFloat(rating))};
                         ">
-                            ⭐ ${rating}
+                            ${rating}
                         </div>
                     ` : ''}
                 </div>
