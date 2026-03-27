@@ -2084,7 +2084,6 @@ function showGlobalSearchResults() {
                 border-radius: 12px;
                 overflow: hidden;
                 cursor: pointer;
-                transition: transform 0.2s, box-shadow 0.2s;
                 border: 1px solid rgba(74, 158, 255, 0.3);
             ">
                 <div class="global-search-poster" style="
