@@ -33,31 +33,31 @@ let progressCache = new Map();
 
 
 const SORT_OPTIONS = [
-  { value: 'date-desc', label: '📅 Сначала новые' },
-  { value: 'date-asc', label: '📅 Сначала старые' },
-  { value: 'size-desc', label: '📏 Размер ↓' },
-  { value: 'size-asc', label: '📏 Размер ↑' },
-  { value: 'sid-desc', label: '🆔 Сиды ↓' },
-  { value: 'sid-asc', label: '🆔 Сиды ↑' },
-  { value: 'pir-desc', label: '📊 Пиры ↓' },
-  { value: 'pir-asc', label: '📊 Пиры ↑' }
+  { value: 'date-desc', label: 'Сначала новые' },
+  { value: 'date-asc', label: 'Сначала старые' },
+  { value: 'size-desc', label: 'Размер ↓' },
+  { value: 'size-asc', label: 'Размер ↑' },
+  { value: 'sid-desc', label: 'Сиды ↓' },
+  { value: 'sid-asc', label: 'Сиды ↑' },
+  { value: 'pir-desc', label: 'Пиры ↓' },
+  { value: 'pir-asc', label: 'Пиры ↑' }
 ];
 
 const QUALITY_OPTIONS = [
-  { value: 'all', label: '🎬 Все качества' },
-  { value: '2160', label: '🎬 4K (2160p)' },
-  { value: '1080', label: '🎬 Full HD (1080p)' },
-  { value: '720', label: '🎬 HD (720p)' },
-  { value: '480', label: '🎬 SD (480p)' },
-  { value: '360', label: '🎬 360p' }
+  { value: 'all', label: 'Все качества' },
+  { value: '2160', label: '4K (2160p)' },
+  { value: '1080', label: 'Full HD (1080p)' },
+  { value: '720', label: 'HD (720p)' },
+  { value: '480', label: 'SD (480p)' },
+  { value: '360', label: '360p' }
 ];
 
 function getTrackerFilterOptions() {
   return [
-    { value: 'all', label: '📁 Все трекеры' },
+    { value: 'all', label: 'Все трекеры' },
     ...availableTrackers.map(tracker => ({
       value: tracker,
-      label: `📁 ${tracker.charAt(0).toUpperCase() + tracker.slice(1)}`
+      label: `${tracker.charAt(0).toUpperCase() + tracker.slice(1)}`
     }))
   ];
 }
