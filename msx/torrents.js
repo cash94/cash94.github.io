@@ -2399,12 +2399,8 @@ function showGlobalSearchResults() {
   }
 
   // Вычисляем оптимальное количество колонок (максимум 8)
-  const containerWidth = searchResultsDiv.clientWidth;
+  const columns = 8;
   const cardMinWidth = 200;
-  let columns = Math.floor(containerWidth / cardMinWidth);
-  columns = Math.min(columns, 8); // Ограничиваем максимум 8 колонками
-  columns = Math.max(columns, 1); // Минимум 1 колонка
-
   // Используем CSS Grid с фиксированным количеством колонок
   const gridTemplateColumns = `repeat(${columns}, minmax(${cardMinWidth}px, 1fr))`;
 
@@ -2521,12 +2517,8 @@ function renderFilteredGlobalResults(results) {
   }
 
   // Вычисляем оптимальное количество колонок (максимум 8)
-  const containerWidth = searchResultsDiv.clientWidth;
+  const columns = 8;
   const cardMinWidth = 200;
-  let columns = Math.floor(containerWidth / cardMinWidth);
-  columns = Math.min(columns, 8); // Ограничиваем максимум 8 колонками
-  columns = Math.max(columns, 8); // Минимум 1 колонка
-
   // Используем CSS Grid с фиксированным количеством колонок
   const gridTemplateColumns = `repeat(${columns}, minmax(${cardMinWidth}px, 1fr))`;
 
