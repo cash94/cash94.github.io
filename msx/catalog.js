@@ -1278,7 +1278,7 @@ async function showCatalogDetail(item, index, posterUrl = null) {
             actorsContainer.id = 'catalog-detail-actors-wrap';
             actorsContainer.className = 'catalog-detail-actors-wrap';
             actorsContainer.innerHTML = `
-                <div class="catalog-detail-section-title">🎭 В главных ролях</div>
+                <div class="catalog-detail-section-title">В главных ролях</div>
                 <div id="catalog-detail-actors" class="catalog-detail-actors-grid"></div>
             `;
             overviewContainer.insertAdjacentElement('afterend', actorsContainer);
@@ -1417,8 +1417,8 @@ async function showCatalogDetail(item, index, posterUrl = null) {
                     <div class="catalog-actor-card" data-actor-id="${actor.id}">
                         <div class="catalog-actor-photo">
                             ${profileUrl
-                        ? `<img src="${profileUrl}" alt="${escapeHtml(actor.name)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'catalog-actor-no-photo\\'>🎭</div>'">`
-                        : '<div class="catalog-actor-no-photo">🎭</div>'
+                        ? `<img src="${profileUrl}" alt="${escapeHtml(actor.name)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'catalog-actor-no-photo\\'>Нет фото</div>'">`
+                        : '<div class="catalog-actor-no-photo">Нет фото</div>'
                     }
                         </div>
                         <div class="catalog-actor-info">
