@@ -1746,7 +1746,7 @@ async function playFromHash(hash, magnet, searchResult = null) {
       : 'Воспроизведение...';
 
     const playUrl = `${AppState.currentTorrserverUrl}/play/${hash}/${fileId}`;
-    console.log('🎬 URL воспроизведения:', playUrl, 'isSeries:', playbackTarget.isSeries, 'episodeIndex:', playbackTarget.episodeIndex);
+    console.log('URL воспроизведения:', playUrl, 'isSeries:', playbackTarget.isSeries, 'episodeIndex:', playbackTarget.episodeIndex);
 
     await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
 
@@ -2096,7 +2096,7 @@ function showGlobalSearchResults() {
                             width: 100%;
                             height: 100%;
                             object-fit: cover;
-                        " onerror="this.parentElement.innerHTML='<div style=\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\'>🎬</div>'">
+                        " onerror="this.parentElement.innerHTML='<div style=\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\'></div>'">
                     ` : `
                         <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">
                             ${mediaType === 'Сериал' ? 'Сериал' : 'Фильм'}
@@ -2209,7 +2209,7 @@ function renderFilteredGlobalResults(results) {
                             width: 100%;
                             height: 100%;
                             object-fit: cover;
-                        " onerror="this.parentElement.innerHTML='<div style=\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\'>🎬</div>'">
+                        " onerror="this.parentElement.innerHTML='<div style=\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\'></div>'">
                     ` : `
                         <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">
                             ${mediaType === 'Сериал' ? 'Сериал' : 'Фильм'}
