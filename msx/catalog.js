@@ -1297,7 +1297,7 @@ async function showCatalogDetail(item, index, posterUrl = null) {
             recContainer.id = 'catalog-detail-recommendations-wrap';
             recContainer.className = 'catalog-detail-recommendations-wrap';
             recContainer.innerHTML = `
-                <div class="catalog-detail-section-title">🎬 Похожие фильмы</div>
+                <div class="catalog-detail-section-title">Похожие фильмы</div>
                 <div id="catalog-detail-recommendations" class="catalog-detail-recommendations-grid"></div>
             `;
             actorsContainer.insertAdjacentElement('afterend', recContainer);
@@ -1451,8 +1451,8 @@ async function showCatalogDetail(item, index, posterUrl = null) {
                 <div class="catalog-recommendation-card" data-tmdb-id="${rec.id}" data-media-type="${mediaType}" data-title="${escapeHtml(recTitle)}">
                     <div class="catalog-recommendation-poster">
                         ${recPosterUrl
-                    ? `<img src="${recPosterUrl}" alt="${escapeHtml(recTitle)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'catalog-recommendation-no-poster\\'>🎬</div>'">`
-                    : '<div class="catalog-recommendation-no-poster">🎬</div>'
+                    ? `<img src="${recPosterUrl}" alt="${escapeHtml(recTitle)}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'catalog-recommendation-no-poster\\'></div>'">`
+                    : '<div class="catalog-recommendation-no-poster"></div>'
                 }
                         ${recRating ? `<div class="catalog-recommendation-rating">${recRating}</div>` : ''}
                     </div>
@@ -1540,7 +1540,7 @@ async function showCatalogDetail(item, index, posterUrl = null) {
             return `
                 <div class="catalog-trailer-card-item" data-video-id="${escapeHtml(video.key)}" data-video-url="https://www.youtube.com/watch?v=${video.key}" data-video-title="${escapeHtml(videoTitle)}">
                     <div class="catalog-trailer-poster" style="position: relative; aspect-ratio: 16/9; overflow: hidden; border-radius: 12px; background: linear-gradient(135deg, #1a1a2e, #16213e);">
-                        <img src="${thumbUrl}" alt="${escapeHtml(videoTitle)}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.innerHTML='<div class=\\'no-poster\\' style=\\'display: flex; align-items: center; justify-content: center; height: 100%;\\'>🎬</div>'">
+                        <img src="${thumbUrl}" alt="${escapeHtml(videoTitle)}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.innerHTML='<div class=\\'no-poster\\' style=\\'display: flex; align-items: center; justify-content: center; height: 100%;\\'></div>'">
                         <div class="catalog-trailer-play-overlay" style="
                             position: absolute;
                             top: 0;
@@ -1597,7 +1597,7 @@ async function showCatalogDetail(item, index, posterUrl = null) {
                             font-size: 12px;
                             color: #aaa;
                         ">
-                            <span>🎬 Трейлер</span>
+                            <span>Трейлер</span>
                             ${formattedDuration ? `<span>⏱️ ${formattedDuration}</span>` : ''}
                         </div>
                     </div>
@@ -1657,10 +1657,10 @@ function updateCatalogWatchButton(title) {
     const watchBtn = document.getElementById('catalog-watch-btn');
     if (watchBtn) {
         if (title) {
-            watchBtn.textContent = `🎬 Найти торренты для "${title}"`;
+            watchBtn.textContent = `Найти торренты для "${title}"`;
             watchBtn.dataset.searchTitle = title;
         } else {
-            watchBtn.textContent = `🎬 Найти торренты`;
+            watchBtn.textContent = `Найти торренты`;
         }
     }
 }
@@ -1740,7 +1740,7 @@ function showCatalogSearch(query, posterUrl = null, catalogItem = null) {
 // ==================== YOUTUBE ПЛЕЕР ====================
 
 async function openYoutubeInPlayer(youtubeUrl, videoTitle) {
-    console.log('🎬 Открываем YouTube в плеере:', youtubeUrl);
+    console.log('Открываем YouTube в плеере:', youtubeUrl);
 
     const currentDetailItem = AppState.currentDetailItem;
     const catalogName = catalogState.currentCatalog;
@@ -1859,7 +1859,7 @@ async function openYoutubeInPlayer(youtubeUrl, videoTitle) {
                 console.log('📜 YouTube манифест распарсен');
 
                 if (typeof window.updatePlayerTitle === 'function') {
-                    window.updatePlayerTitle(`🎬 Трейлер: ${videoTitle}`);
+                    window.updatePlayerTitle(`Трейлер: ${videoTitle}`);
                 }
 
                 videoPlayer.currentTime = 0;
@@ -1926,7 +1926,7 @@ async function openYoutubeInPlayer(youtubeUrl, videoTitle) {
 
             videoPlayer.addEventListener('loadedmetadata', () => {
                 if (typeof window.updatePlayerTitle === 'function') {
-                    window.updatePlayerTitle(`🎬 Трейлер: ${videoTitle}`);
+                    window.updatePlayerTitle(`Трейлер: ${videoTitle}`);
                 }
 
                 if (playbackOverlay) playbackOverlay.classList.remove('active');
@@ -1955,7 +1955,7 @@ async function openYoutubeInPlayer(youtubeUrl, videoTitle) {
 }
 
 function exitYoutubePlayer() {
-    console.log('🎬 Выход из YouTube плеера');
+    console.log('Выход из YouTube плеера');
 
     if (AppState.currentStreamId) {
         fetch(`${SERVER_URL}/hls/stop/${AppState.currentStreamId}`, { method: 'POST' }).catch(() => { });
@@ -1972,7 +1972,7 @@ function exitYoutubePlayer() {
     const context = AppState.youtubeContext;
 
     if (context && context.currentDetailItem && context.currentDetailItem.id) {
-        console.log('🎬 Возвращаемся к детальному просмотру:', context.currentDetailItem.title);
+        console.log('Возвращаемся к детальному просмотру:', context.currentDetailItem.title);
 
         AppState.currentScreen = 'detail';
         document.getElementById('player-screen').style.display = 'none';
