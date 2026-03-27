@@ -2438,4 +2438,15 @@ body {
     font-size: 12px !important;
   }
 }
+#close-search,
+#filter-toggle {
+    cursor: pointer;
+    touch-action: manipulation; /* Улучшает touch-отклик */
+    -webkit-tap-highlight-color: transparent;
+}
 
+#close-search.touch-active,
+#filter-toggle.touch-active {
+    opacity: 0.7;
+    transform: scale(0.95);
+}
