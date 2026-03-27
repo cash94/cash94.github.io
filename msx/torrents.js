@@ -33,28 +33,28 @@ let progressCache = new Map();
 
 
 const SORT_OPTIONS = [
-  { value: 'date-desc', label: '📅 Сначала новые' },
-  { value: 'date-asc', label: '📅 Сначала старые' },
-  { value: 'size-desc', label: '📏 Размер ↓' },
-  { value: 'size-asc', label: '📏 Размер ↑' },
-  { value: 'sid-desc', label: '🆔 Сиды ↓' },
-  { value: 'sid-asc', label: '🆔 Сиды ↑' },
-  { value: 'pir-desc', label: '📊 Пиры ↓' },
-  { value: 'pir-asc', label: '📊 Пиры ↑' }
+  { value: 'date-desc', label: 'Сначала новые' },
+  { value: 'date-asc', label: 'Сначала старые' },
+  { value: 'size-desc', label: 'Размер ↓' },
+  { value: 'size-asc', label: 'Размер ↑' },
+  { value: 'sid-desc', label: 'Сиды ↓' },
+  { value: 'sid-asc', label: 'Сиды ↑' },
+  { value: 'pir-desc', label: 'Пиры ↓' },
+  { value: 'pir-asc', label: 'Пиры ↑' }
 ];
 
 const QUALITY_OPTIONS = [
-  { value: 'all', label: '🎬 Все качества' },
-  { value: '2160', label: '🎬 4K (2160p)' },
-  { value: '1080', label: '🎬 Full HD (1080p)' },
-  { value: '720', label: '🎬 HD (720p)' },
-  { value: '480', label: '🎬 SD (480p)' },
-  { value: '360', label: '🎬 360p' }
+  { value: 'all', label: 'Все качества' },
+  { value: '2160', label: '4K (2160p)' },
+  { value: '1080', label: 'Full HD (1080p)' },
+  { value: '720', label: 'HD (720p)' },
+  { value: '480', label: 'SD (480p)' },
+  { value: '360', label: '360p' }
 ];
 
 function getTrackerFilterOptions() {
   return [
-    { value: 'all', label: '📁 Все трекеры' },
+    { value: 'all', label: 'Все трекеры' },
     ...availableTrackers.map(tracker => ({
       value: tracker,
       label: `📁 ${tracker.charAt(0).toUpperCase() + tracker.slice(1)}`
@@ -124,7 +124,7 @@ function toggleSearchFiltersPanel(forceOpen = null) {
   panel.classList.toggle('collapsed', !shouldOpen);
   if (toggleBtn) {
     toggleBtn.classList.toggle('active', shouldOpen);
-    toggleBtn.textContent = shouldOpen ? '🛠️' : '⚙️';
+    //toggleBtn.textContent = shouldOpen ? '🛠️' : '⚙️';
   }
   return shouldOpen;
 }
@@ -347,7 +347,7 @@ async function loadClientConfig() {
           }
         }
 
-        console.log('✅ Загружена конфигурация клиента:', data.clientId);
+        console.log('Загружена конфигурация клиента:', data.clientId);
       }
 
       return data;
@@ -571,8 +571,8 @@ function renderProgressBadge(card, progress) {
     progressBadge.innerHTML = `
       <div class="progress-content" data-hash="${progress.hash}" data-file-id="${progress.fileId}" data-timecode="${progress.timecode}" data-episode-index="${progress.episodeIndex}">
         <div class="progress-info">
-          <span class="progress-episode">📺 Серия ${episodeNum}</span>
-          <span class="progress-time">⏱️ ${timeStr} / ${totalStr}</span>
+          <span class="progress-episode">Серия ${episodeNum}</span>
+          <span class="progress-time">${timeStr} / ${totalStr}</span>
         </div>
         <button class="progress-continue-btn">▶ Продолжить</button>
       </div>
@@ -582,7 +582,7 @@ function renderProgressBadge(card, progress) {
     progressBadge.innerHTML = `
       <div class="progress-content" data-hash="${progress.hash}" data-file-id="${progress.fileId}" data-timecode="${progress.timecode}" data-episode-index="0">
         <div class="progress-info">
-          <span class="progress-time">⏱️ ${timeStr} / ${totalStr}</span>
+          <span class="progress-time"> ${timeStr} / ${totalStr}</span>
         </div>
         <button class="progress-continue-btn">▶ Продолжить</button>
       </div>
@@ -592,7 +592,7 @@ function renderProgressBadge(card, progress) {
     progressBadge.innerHTML = `
       <div class="progress-content" data-hash="${progress.hash}" data-file-id="${progress.fileId}" data-timecode="${progress.timecode}" data-episode-index="0">
         <div class="progress-info">
-          <span class="progress-time">⏱️ ${timeStr} / ${totalStr}</span>
+          <span class="progress-time">${timeStr} / ${totalStr}</span>
         </div>
         <button class="progress-continue-btn">▶ Продолжить</button>
       </div>
@@ -653,8 +653,8 @@ async function addProgressToDetail(torrent) {
       <div class="detail-progress-content">
         <div class="detail-progress-info">
           <span class="detail-progress-label">Продолжить просмотр:</span>
-          <span class="detail-progress-episode">📺 Серия ${episodeNum}</span>
-          <span class="detail-progress-time">⏱️ ${timeStr} / ${totalStr}</span>
+          <span class="detail-progress-episode">Серия ${episodeNum}</span>
+          <span class="detail-progress-time">${timeStr} / ${totalStr}</span>
         </div>
         <button class="detail-progress-btn" data-hash="${progress.hash}" data-file-id="${progress.fileId}" data-timecode="${progress.timecode}" data-episode-index="${progress.episodeIndex}">
           ▶ Продолжить с ${timeStr}
@@ -666,7 +666,7 @@ async function addProgressToDetail(torrent) {
       <div class="detail-progress-content">
         <div class="detail-progress-info">
           <span class="detail-progress-label">Продолжить просмотр:</span>
-          <span class="detail-progress-time">⏱️ ${timeStr} / ${totalStr}</span>
+          <span class="detail-progress-time">${timeStr} / ${totalStr}</span>
         </div>
         <button class="detail-progress-btn" data-hash="${progress.hash}" data-file-id="${progress.fileId}" data-timecode="${progress.timecode}" data-episode-index="0">
           ▶ Продолжить с ${timeStr}
@@ -794,7 +794,7 @@ async function loadTorrents(silent = false) {
     }
 
     const data = await response.json();
-    console.log('📦 Получены данные торрентов:', Array.isArray(data) ? `${data.length} шт.` : data);
+    console.log('Получены данные торрентов:', Array.isArray(data) ? `${data.length} шт.` : data);
 
     AppState.torrents = Array.isArray(data) ? data : [];
 
@@ -809,13 +809,13 @@ async function loadTorrents(silent = false) {
     return true;
 
   } catch (error) {
-    console.error('❌ Ошибка загрузки торрентов:', error);
+    console.error('Ошибка загрузки торрентов:', error);
 
     if (!silent) {
       if (torrentsGrid) {
         torrentsGrid.innerHTML = `
           <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">
-            <div style="font-size: 48px; margin-bottom: 20px;">❌</div>
+            <div style="font-size: 48px; margin-bottom: 20px;"></div>
             <div style="font-size: 16px; color: #ff6a6a;">Ошибка: ${error.message}</div>
             <button class="btn" style="margin-top: 20px;" onclick="loadTorrents()">Попробовать снова</button>
           </div>
@@ -833,7 +833,7 @@ async function loadTorrents(silent = false) {
 
 // Принудительное обновление списка торрентов (с очисткой кэша)
 async function refreshTorrents(showLoading = true) {
-  console.log('🔄 Принудительное обновление списка торрентов');
+  console.log('Принудительное обновление списка торрентов');
 
   // Очищаем кэш прогресса
   if (typeof progressCache !== 'undefined') {
@@ -856,7 +856,7 @@ function renderTorrents() {
     // Показываем сообщение о пустом списке
     torrentsGrid.innerHTML = `
       <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">
-        <div style="font-size: 48px; margin-bottom: 20px;">📁</div>
+        <div style="font-size: 48px; margin-bottom: 20px;"></div>
         <div style="font-size: 18px; color: #aaa; margin-bottom: 10px;">Нет торрентов</div>
         <div style="font-size: 14px; color: #666;">Используйте поиск выше, чтобы найти и добавить торренты</div>
       </div>
@@ -986,12 +986,12 @@ async function showDetail(torrent) {
   // Сохраняем hash и индекс перед открытием
   if (torrent && torrent.hash) {
     lastSelectedTorrentHash = torrent.hash;
-    console.log('💾 Сохранен hash перед открытием деталей:', lastSelectedTorrentHash);
+    console.log('Сохранен hash перед открытием деталей:', lastSelectedTorrentHash);
   }
 
   if (typeof currentFocusIndex !== 'undefined') {
     lastSelectedTorrentIndex = currentFocusIndex;
-    console.log('💾 Сохранен индекс перед открытием:', currentFocusIndex);
+    console.log('Сохранен индекс перед открытием:', currentFocusIndex);
   }
 
   AppState.currentDetailItem = torrent;
@@ -1094,7 +1094,7 @@ async function showDetail(torrent) {
 
         if (targetIndex !== -1) {
           setFocus(targetIndex);
-          console.log('🎯 Фокус в детальном просмотре на первый файл');
+          console.log('Фокус в детальном просмотре на первый файл');
           return;
         }
       }
@@ -1108,7 +1108,7 @@ async function showDetail(torrent) {
 
         if (targetIndex !== -1) {
           setFocus(targetIndex);
-          console.log('🎯 Фокус в детальном просмотре на кнопке "Продолжить"');
+          console.log('Фокус в детальном просмотре на кнопке "Продолжить"');
           return;
         }
       }
@@ -1119,13 +1119,13 @@ async function showDetail(torrent) {
         targetIndex = focusableElements.findIndex(el => el.classList.contains('back-btn'));
         if (targetIndex !== -1) {
           setFocus(targetIndex);
-          console.log('🎯 Фокус в детальном просмотре на кнопке "Назад"');
+          console.log('Фокус в детальном просмотре на кнопке "Назад"');
           return;
         }
       }
 
       setFocus(0);
-      console.log('🎯 Фокус в детальном просмотре на первый элемент');
+      console.log('Фокус в детальном просмотре на первый элемент');
     }
   }, 300);
 }
