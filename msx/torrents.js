@@ -124,7 +124,8 @@ function toggleSearchFiltersPanel(forceOpen = null) {
   panel.classList.toggle('collapsed', !shouldOpen);
   if (toggleBtn) {
     toggleBtn.classList.toggle('active', shouldOpen);
-    toggleBtn.textContent = shouldOpen ? '🛠️' : '⚙️';
+    // Очищаем содержимое кнопки и добавляем иконку
+    toggleBtn.innerHTML = shouldOpen ? '<i class="fi fi-tr-customization-cogwheel"></i>' : '<i class="fi fi-tr-customization-cogwheel"></i>';
   }
   return shouldOpen;
 }
