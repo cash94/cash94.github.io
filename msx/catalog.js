@@ -2130,12 +2130,12 @@ function createCatalogFolderCard(key, config) {
 
     let posterHtml = '';
     if (key.includes('movie')) posterHtml = '<img src="https://cash94.github.io/msx/img/Films.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
-    else if (key.includes('quadhd')) posterHtml = '<img src="https://cash94.github.io/msx/img/Films.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
+    else if (key.includes('quadhd')) posterHtml = '<img src="https://cash94.github.io/msx/img/Films4k.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
     else if (key.includes('legends')) posterHtml = '<img src="https://cash94.github.io/msx/img/BestFilms.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
     else if (key.includes('tv')) posterHtml = '<img src="https://cash94.github.io/msx/img/Serials.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
     else if (key.includes('cartoons')) posterHtml = '<img src="https://cash94.github.io/msx/img/Anime.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
     else if (key.includes('anime')) posterHtml = '<img src="https://cash94.github.io/msx/img/Anime.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
-    else posterHtml = '<div style="font-size: 64px; display: flex; align-items: center; justify-content: center; height: 100%;">📁</div>';
+    else posterHtml = '<div style="font-size: 64px; display: flex; align-items: center; justify-content: center; height: 100%;"></div>';
 
     card.innerHTML = `
         <div class="torrent-poster catalog-folder-poster">
