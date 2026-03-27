@@ -211,7 +211,7 @@ async function findPosterFromSearchResult(result) {
   // Определяем тип из выбранного элемента
   const mediaType = result.types && result.types.includes('tv') ? 'tv' : 'movie';
 
-  console.log('🎬 Поиск постера для выбранного:');
+  console.log('Поиск постера для выбранного:');
   console.log('   Название:', displayTitle);
   console.log('   Год из результата:', year);
   console.log('   Тип:', mediaType);
