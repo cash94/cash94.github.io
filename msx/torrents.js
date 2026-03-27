@@ -2402,7 +2402,8 @@ function showGlobalSearchResults() {
   const columns = 8;
   const cardMinWidth = 200;
   // Используем CSS Grid с фиксированным количеством колонок
-  const gridTemplateColumns = `repeat(${columns}, minmax(${cardMinWidth}px, 1fr))`;
+  //const gridTemplateColumns = `repeat(${columns}, minmax(${cardMinWidth}px, 1fr))`;
+  const gridTemplateColumns = `repeat(8, 1fr)`;
 
   let html = `<div class="filter-stats">Найдено в TMDB: <span>${globalSearchResults.length}</span></div>`;
   html += `<div class="global-search-grid" style="display: grid; grid-template-columns: ${gridTemplateColumns}; gap: 20px; padding: 20px 0;">`;
@@ -2520,7 +2521,8 @@ function renderFilteredGlobalResults(results) {
   const columns = 8;
   const cardMinWidth = 200;
   // Используем CSS Grid с фиксированным количеством колонок
-  const gridTemplateColumns = `repeat(${columns}, minmax(${cardMinWidth}px, 1fr))`;
+  //const gridTemplateColumns = `repeat(${columns}, minmax(${cardMinWidth}px, 1fr))`;
+  const gridTemplateColumns = `repeat(8, 1fr)`;
 
   let html = `<div class="filter-stats">Найдено в TMDB: <span>${results.length}</span></div>`;
   html += `<div class="global-search-grid" style="display: grid; grid-template-columns: ${gridTemplateColumns}; gap: 20px; padding: 20px 0;">`;
