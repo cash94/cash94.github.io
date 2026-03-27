@@ -2453,3 +2453,26 @@ body {
     font-size: 12px !important;
   }
 }
+/* Когда карточка в фокусе — включаем бегущую строку */
+.catalog-recommendation-card.focused .catalog-recommendation-title {
+  overflow: visible;
+  text-overflow: clip;
+  animation: marquee 8s linear infinite;
+  white-space: nowrap;
+}
+
+/* Анимация прокрутки */
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* Если нужно, чтобы текст не выходил за пределы контейнера */
+.catalog-recommendation-card.focused {
+  overflow: hidden;
+  position: relative;
+}
