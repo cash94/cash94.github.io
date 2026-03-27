@@ -1953,8 +1953,7 @@ async function searchTMDB(query) {
     // Параллельный поиск фильмов и сериалов для лучших результатов
     const [moviesResponse, tvResponse] = await Promise.allSettled([
       fetch(`/api/tmdb/search?query=${encodedQuery}&type=movie&year=`),
-      fetch(`/api/tmdb/search?query=${encodedQuery}&type=tv&year=`),
-      fetch(`/api/tmdb/search?query=${encodedQuery}&type=person&year=`)
+      fetch(`/api/tmdb/search?query=${encodedQuery}&type=tv&year=`)
     ]);
 
     let allResults = [];
@@ -2068,7 +2067,7 @@ function showGlobalSearchResults() {
   const cardMinWidth = 200;
   let columns = Math.floor(containerWidth / cardMinWidth);
   columns = Math.min(columns, 8); // Ограничиваем максимум 8 колонками
-  columns = Math.max(columns, 1); // Минимум 1 колонка
+  columns = Math.max(columns, 8); // Минимум 8 колонка
 
   // Используем CSS Grid с фиксированным количеством колонок
   const gridTemplateColumns = `repeat(${columns}, minmax(${cardMinWidth}px, 1fr))`;
