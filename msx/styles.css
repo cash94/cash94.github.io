@@ -2453,21 +2453,21 @@ body {
     font-size: 12px !important;
   }
 }
-/* Когда карточка в фокусе — включаем бегущую строку */
-.catalog-recommendation-card.focused .catalog-recommendation-title {
+/* Анимация применяется только если текст не влезает */
+.catalog-recommendation-card.focused .catalog-recommendation-title.marquee {
   overflow: visible;
   text-overflow: clip;
-  animation: marquee 8s linear infinite;
-  white-space: nowrap;
+  animation: marquee 10s linear infinite;
+  display: inline-block;
+  padding-right: 2rem; /* отступ перед повтором */
 }
 
-/* Анимация прокрутки */
 @keyframes marquee {
   0% {
     transform: translateX(0);
   }
   100% {
-    transform: translateX(-50%);
+    transform: translateX(-100%);
   }
 }
 
