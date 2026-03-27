@@ -937,7 +937,7 @@ async function loadEpisodesInfo(hash, currentFileId = null) {
 
     const videoFiles = extractVideoFiles(files);
 
-    console.log('🎬 Видеофайлов найдено:', videoFiles.length);
+    console.log('Видеофайлов найдено:', videoFiles.length);
 
     if (videoFiles.length > 0) {
       currentEpisodeFiles = videoFiles;
@@ -1219,11 +1219,11 @@ async function startHLSPlayback(originalUrl, initialSeek = null, fromSearch = fa
     return false;
   }
 
-  console.log('🎬 Запуск HLS для URL:', originalUrl);
-  console.log('🔍 Из поиска:', fromSearch);
-  console.log('📺 Индекс серии:', episodeIndex);
-  console.log('🎵 Аудиодорожка:', audioTrack);
-  console.log('⏱️ Начальная позиция (initialSeek):', initialSeek !== null ? formatTime(initialSeek) : 'не указана');
+  console.log('Запуск HLS для URL:', originalUrl);
+  console.log('Из поиска:', fromSearch);
+  console.log('Индекс серии:', episodeIndex);
+  console.log('Аудиодорожка:', audioTrack);
+  console.log('Начальная позиция (initialSeek):', initialSeek !== null ? formatTime(initialSeek) : 'не указана');
 
   // Устанавливаем флаг, откуда было начато воспроизведение
   lastPlaybackFromSearch = fromSearch;
@@ -1476,11 +1476,11 @@ async function startHLSPlayback(originalUrl, initialSeek = null, fromSearch = fa
             if (currentPlayingSegment !== segmentNumber) {
               currentPlayingSegment = segmentNumber;
               const startTimeFormatted = formatTime(segmentStart);
-              console.log(`🎬 ВОСПРОИЗВЕДЕНИЕ: Сегмент #${segmentNumber} | Начало: ${startTimeFormatted} | Длительность: ${segmentDuration.toFixed(2)}с | Уровень: ${frag.level}`);
+              console.log(`ВОСПРОИЗВЕДЕНИЕ: Сегмент #${segmentNumber} | Начало: ${startTimeFormatted} | Длительность: ${segmentDuration.toFixed(2)}с | Уровень: ${frag.level}`);
 
               if (frag.programDateTime) {
                 const date = new Date(frag.programDateTime);
-                console.log(`   📅 Время сегмента: ${date.toLocaleTimeString()}`);
+                console.log(`Время сегмента: ${date.toLocaleTimeString()}`);
               }
 
               const segmentToDelete = segmentNumber - 3;
@@ -1498,14 +1498,14 @@ async function startHLSPlayback(originalUrl, initialSeek = null, fromSearch = fa
                   .then(response => response.json())
                   .then(data => {
                     if (data.success) {
-                      console.log(`✅ Очистка выполнена: удалено ${data.deleted} сегментов`);
+                      console.log(`Очистка выполнена: удалено ${data.deleted} сегментов`);
                       lastCleanedSegment = segmentNumber - 3;
                     } else {
-                      console.error('❌ Ошибка очистки:', data.error);
+                      console.error('Ошибка очистки:', data.error);
                     }
                   })
                   .catch(error => {
-                    console.error('❌ Ошибка при вызове cleanup:', error);
+                    console.error('Ошибка при вызове cleanup:', error);
                   });
               }
             }
@@ -1649,15 +1649,15 @@ async function startHLSPlayback(originalUrl, initialSeek = null, fromSearch = fa
 
         switch (data.type) {
           case Hls.ErrorTypes.NETWORK_ERROR:
-            console.log('🌐 Сетевая ошибка, пробуем восстановить...');
+            console.log('Сетевая ошибка, пробуем восстановить...');
             AppState.hls.startLoad();
             break;
           case Hls.ErrorTypes.MEDIA_ERROR:
-            console.log('🎬 Медиа ошибка, пробуем восстановить...');
+            console.log('Медиа ошибка, пробуем восстановить...');
             AppState.hls.recoverMediaError();
             break;
           default:
-            console.log('❌ Неизвестная фатальная ошибка');
+            console.log('Неизвестная фатальная ошибка');
             showPlayerLoading('Ошибка воспроизведения, перезагрузка...');
             setTimeout(() => {
               if (AppState.currentStreamId) {
@@ -1782,7 +1782,7 @@ async function startHLSPlayback(originalUrl, initialSeek = null, fromSearch = fa
 function showDetailView() {
   // Проверяем, не является ли текущее воспроизведение YouTube
   if (AppState.isYoutubePlayback) {
-    console.log('🎬 Выход из YouTube плеера');
+    console.log('Выход из YouTube плеера');
 
     if (typeof window.exitYoutubePlayer === 'function') {
       window.exitYoutubePlayer();
@@ -2319,7 +2319,7 @@ async function handleVideoEnded() {
     }
   } else {
     // Если серий больше нет или сериальный режим не активен, закрываем плеер
-    console.log('🎬 Серии закончились или сериальный режим не активен, закрываем плеер');
+    console.log('Серии закончились или сериальный режим не активен, закрываем плеер');
 
     // Показываем сообщение перед закрытием
     const overlay = document.getElementById('playback-overlay');
