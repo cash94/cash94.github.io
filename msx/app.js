@@ -704,7 +704,9 @@ async function init() {
         touchTarget.closest('.file-item') ||
         touchTarget.closest('.search-result-item') ||
         touchTarget.closest('.episode-item') ||
-        touchTarget.closest('.audio-item')
+        touchTarget.closest('.audio-item') ||
+        touchTarget.id === 'close-search' ||
+        touchTarget.id === 'filter-toggle'
       )) {
         e.preventDefault();
         touchTarget.click();
