@@ -13,14 +13,14 @@ function initDonateOverlay() {
         <div class="donate-overlay-backdrop"></div>
         <div class="donate-overlay-panel">
             <div class="donate-overlay-header">
-                <h3>❤️ Поддержать проект</h3>
+                <h3>Поддержать проект</h3>
                 <button class="donate-close-btn" id="donate-close-btn">✕</button>
             </div>
             <div class="donate-overlay-content">
                 <div class="donate-qr-container">
                     <img src="https://cash94.github.io/msx/qr-code.png" alt="QR Code for donation" class="donate-qr-image" onerror="this.style.display='none'; document.getElementById('donate-qr-error').style.display='block'">
                     <div id="donate-qr-error" class="donate-qr-error" style="display: none;">
-                        <span>⚠️ QR-код не найден</span><br>
+                        <span>QR-код не найден</span><br>
                         <span style="font-size: 12px; margin-top: 10px;">Пожалуйста, убедитесь, что файл qr-code.png находится в корневой папке приложения</span>
                     </div>
                 </div>
@@ -61,7 +61,7 @@ function initDonateOverlay() {
                         btn.style.backgroundColor = '';
                     }, 2000);
                 }).catch(() => {
-                    btn.textContent = '❌ Ошибка';
+                    btn.textContent = 'Ошибка';
                     setTimeout(() => {
                         btn.textContent = originalText;
                     }, 2000);
@@ -121,18 +121,18 @@ function toggleDonateOverlay() {
 function setupDonateButton() {
     const donateTab = document.getElementById('tab-donate');
     if (!donateTab) {
-        console.warn('⚠️ Кнопка tab-donate не найдена');
+        console.warn('Кнопка tab-donate не найдена');
         return;
     }
 
     donateTab.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        console.log('❤️ Открытие окна доната');
+        console.log('Открытие окна доната');
         showDonateOverlay();
     });
 
-    console.log('✅ Кнопка доната настроена');
+    console.log('Кнопка доната настроена');
 }
 
 // Добавляем CSS для оверлея доната
@@ -336,7 +336,7 @@ function addDonateStyles() {
 
 // Инициализация модуля
 function initDonate() {
-    console.log('❤️ Модуль доната инициализирован');
+    console.log('Модуль доната инициализирован');
     addDonateStyles();
     setupDonateButton();
 
