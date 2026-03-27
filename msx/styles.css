@@ -2453,26 +2453,4 @@ body {
     font-size: 12px !important;
   }
 }
-/* Анимация применяется только если текст не влезает */
-.catalog-recommendation-card.focused .catalog-recommendation-title {
-  overflow: visible;
-  text-overflow: clip;
-  animation: marquee 10s linear infinite;
-  display: inline-block;
-  padding-right: 2rem; /* отступ перед повтором */
-}
 
-@keyframes marquee {
-  0% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(-100%);
-  }
-}
-
-/* Если нужно, чтобы текст не выходил за пределы контейнера */
-.catalog-recommendation-card.focused {
-  overflow: hidden;
-  position: relative;
-}
