@@ -124,8 +124,7 @@ function toggleSearchFiltersPanel(forceOpen = null) {
   panel.classList.toggle('collapsed', !shouldOpen);
   if (toggleBtn) {
     toggleBtn.classList.toggle('active', shouldOpen);
-    // Очищаем содержимое кнопки и добавляем иконку
-    toggleBtn.innerHTML = shouldOpen ? '<i class="fi fi-tr-customization-cogwheel"></i>' : '<i class="fi fi-tr-customization-cogwheel"></i>';
+    toggleBtn.textContent = shouldOpen ? '🛠️' : '⚙️';
   }
   return shouldOpen;
 }
@@ -2084,6 +2083,7 @@ function showGlobalSearchResults() {
                 border-radius: 12px;
                 overflow: hidden;
                 cursor: pointer;
+                transition: transform 0.2s, box-shadow 0.2s;
                 border: 1px solid rgba(74, 158, 255, 0.3);
             ">
                 <div class="global-search-poster" style="
@@ -2155,6 +2155,118 @@ function showGlobalSearchResults() {
       const index = parseInt(card.dataset.index);
       const result = globalSearchResults[index];
 
+      if (result) {
+        await showGlobalSearchDetail(result);
+      }
+    });
+  });
+}
+
+function renderFilteredGlobalResults(results) {
+  const searchResultsDiv = document.getElementById('search-results');
+  if (!searchResultsDiv) return;
+
+  if (results.length === 0) {
+    searchResultsDiv.innerHTML = `
+            <div class="filter-stats">Всего найдено: <span>0</span></div>
+            <div class="search-result-empty">
+                Нет результатов для выбранного типа контента
+            </div>
+        `;
+    return;
+  }
+
+  const gridTemplateColumns = `repeat(8, 1fr)`;
+
+  let html = `<div class="filter-stats">Найдено в TMDB: <span>${results.length}</span></div>`;
+  html += `<div class="global-search-grid" style="display: grid; grid-template-columns: ${gridTemplateColumns}; gap: 20px; padding: 20px 0;">`;
+
+  results.forEach((result, idx) => {
+    const title = result.title || result.name || 'Без названия';
+    const year = result.release_date || result.first_air_date;
+    const yearStr = year ? new Date(year).getFullYear() : 'N/A';
+    const mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
+    const rating = result.vote_average ? result.vote_average.toFixed(1) : null;
+    const posterUrl = result.poster_path
+      ? `https://nmtmdb.duckdns.org/t/p/w342${result.poster_path}`
+      : null;
+
+    html += `
+            <div class="global-search-card" data-tmdb-id="${result.id}" data-media-type="${result.media_type}" style="
+                background: rgba(30, 30, 40, 0.9);
+                border-radius: 12px;
+                overflow: hidden;
+                cursor: pointer;
+                transition: transform 0.2s, box-shadow 0.2s;
+                border: 1px solid rgba(74, 158, 255, 0.3);
+            ">
+                <div class="global-search-poster" style="
+                    position: relative;
+                    aspect-ratio: 2/3;
+                    overflow: hidden;
+                    background: linear-gradient(135deg, #1a1a2e, #16213e);
+                ">
+                    ${posterUrl ? `
+                        <img src="${posterUrl}" alt="${escapeHtml(title)}" style="
+                            width: 100%;
+                            height: 100%;
+                            object-fit: cover;
+                        " onerror="this.parentElement.innerHTML='<div style=\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\'>🎬</div>'">
+                    ` : `
+                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">
+                            ${mediaType === 'Сериал' ? '📺' : '🎬'}
+                        </div>
+                    `}
+                    ${rating ? `
+                        <div style="
+                            position: absolute;
+                            top: 8px;
+                            right: 8px;
+                            background: rgba(0, 0, 0, 0.8);
+                            color: ${getRatingColor(parseFloat(rating))};
+                            font-weight: bold;
+                            font-size: 12px;
+                            padding: 4px 8px;
+                            border-radius: 12px;
+                            border: 1px solid ${getRatingColor(parseFloat(rating))};
+                        ">
+                            ⭐ ${rating}
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="global-search-info" style="padding: 12px;">
+                    <div class="global-search-title" style="
+                        font-weight: 600;
+                        font-size: 14px;
+                        margin-bottom: 6px;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                    ">${escapeHtml(title)}</div>
+                    <div style="
+                        display: flex;
+                        justify-content: space-between;
+                        font-size: 12px;
+                        color: #aaa;
+                    ">
+                        <span>${mediaType}</span>
+                        <span>${yearStr}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+  });
+
+  html += `</div>`;
+  searchResultsDiv.innerHTML = html;
+
+  // Добавляем обработчики
+  document.querySelectorAll('.global-search-card').forEach(card => {
+    card.addEventListener('click', async () => {
+      AppState.isSearch = true;
+      const tmdbId = card.dataset.tmdbId;
+      const mediaType = card.dataset.mediaType;
+      const result = results.find(r => String(r.id) === tmdbId);
       if (result) {
         await showGlobalSearchDetail(result);
       }
@@ -2250,6 +2362,127 @@ function filterGlobalSearchByType(type) {
   renderFilteredGlobalResults(filtered);
 }
 
+function showGlobalSearchResults() {
+  const searchResultsDiv = document.getElementById('search-results');
+  const searchOverlay = document.getElementById('search-overlay');
+
+  if (!searchResultsDiv) return;
+
+  // Убеждаемся, что overlay виден
+  if (searchOverlay) {
+    searchOverlay.classList.remove('hidden');
+  }
+
+  if (globalSearchResults.length === 0) {
+    searchResultsDiv.innerHTML = `
+            <div class="filter-stats">Всего найдено: <span>0</span></div>
+            <div class="search-result-empty">
+                ${currentSearchQuery ? `Ничего не найдено для "${escapeHtml(currentSearchQuery)}" в TMDB` : 'Введите запрос для поиска'}
+            </div>
+        `;
+    return;
+  }
+
+  const gridTemplateColumns = `repeat(8, 1fr)`;
+
+  let html = `<div class="filter-stats">Найдено в TMDB: <span>${globalSearchResults.length}</span></div>`;
+  html += `<div class="global-search-grid" style="display: grid; grid-template-columns: ${gridTemplateColumns}; gap: 20px; padding: 20px 0;">`;
+
+  globalSearchResults.forEach((result, index) => {
+    const title = result.title || result.name || 'Без названия';
+    const year = result.release_date || result.first_air_date;
+    const yearStr = year ? new Date(year).getFullYear() : 'N/A';
+    const mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
+    const rating = result.vote_average ? result.vote_average.toFixed(1) : null;
+    const posterUrl = result.poster_path
+      ? `https://nmtmdb.duckdns.org/t/p/w342${result.poster_path}`
+      : null;
+
+    html += `
+            <div class="global-search-card" data-index="${index}" data-tmdb-id="${result.id}" data-media-type="${result.media_type}" style="
+                background: rgba(30, 30, 40, 0.9);
+                border-radius: 12px;
+                overflow: hidden;
+                cursor: pointer;
+                transition: transform 0.2s, box-shadow 0.2s;
+                border: 1px solid rgba(74, 158, 255, 0.3);
+            ">
+                <div class="global-search-poster" style="
+                    position: relative;
+                    aspect-ratio: 2/3;
+                    overflow: hidden;
+                    background: linear-gradient(135deg, #1a1a2e, #16213e);
+                ">
+                    ${posterUrl ? `
+                        <img src="${posterUrl}" alt="${escapeHtml(title)}" style="
+                            width: 100%;
+                            height: 100%;
+                            object-fit: cover;
+                        " onerror="this.parentElement.innerHTML='<div style=\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\'>🎬</div>'">
+                    ` : `
+                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">
+                            ${mediaType === 'Сериал' ? '📺' : '🎬'}
+                        </div>
+                    `}
+                    ${rating ? `
+                        <div style="
+                            position: absolute;
+                            top: 8px;
+                            right: 8px;
+                            background: rgba(0, 0, 0, 0.8);
+                            color: ${getRatingColor(parseFloat(rating))};
+                            font-weight: bold;
+                            font-size: 12px;
+                            padding: 4px 8px;
+                            border-radius: 12px;
+                            border: 1px solid ${getRatingColor(parseFloat(rating))};
+                        ">
+                            ⭐ ${rating}
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="global-search-info" style="padding: 12px;">
+                    <div class="global-search-title" style="
+                        font-weight: 600;
+                        font-size: 14px;
+                        margin-bottom: 6px;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                    ">${escapeHtml(title)}</div>
+                    <div style="
+                        display: flex;
+                        justify-content: space-between;
+                        font-size: 12px;
+                        color: #aaa;
+                    ">
+                        <span>${mediaType}</span>
+                        <span>${yearStr}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+  });
+
+  html += `</div>`;
+  searchResultsDiv.innerHTML = html;
+
+  // Добавляем обработчики кликов на карточки
+  document.querySelectorAll('.global-search-card').forEach(card => {
+    card.addEventListener('click', async () => {
+      AppState.isSearch = true;
+      const tmdbId = card.dataset.tmdbId;
+      const mediaType = card.dataset.mediaType;
+      const index = parseInt(card.dataset.index);
+      const result = globalSearchResults[index];
+
+      if (result) {
+        await showGlobalSearchDetail(result);
+      }
+    });
+  });
+}
+
 function renderFilteredGlobalResults(results) {
   const searchResultsDiv = document.getElementById('search-results');
   if (!searchResultsDiv) return;
@@ -2285,6 +2518,7 @@ function renderFilteredGlobalResults(results) {
                 border-radius: 12px;
                 overflow: hidden;
                 cursor: pointer;
+                transition: transform 0.2s, box-shadow 0.2s;
                 border: 1px solid rgba(74, 158, 255, 0.3);
             ">
                 <div class="global-search-poster" style="
