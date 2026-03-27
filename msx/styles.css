@@ -2416,21 +2416,6 @@ body {
   transition: opacity 0.2s ease;
 }
 
-/* Стили для глобального поиска */
-.global-search-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(74, 158, 255, 0.2);
-  border-color: rgba(74, 158, 255, 0.6);
-}
-
-.global-search-poster img {
-  transition: transform 0.3s;
-}
-
-.global-search-card:hover .global-search-poster img {
-  transform: scale(1.05);
-}
-
 /* Адаптивная сетка */
 @media (max-width: 768px) {
   .global-search-grid {
