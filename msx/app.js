@@ -660,7 +660,7 @@ async function init() {
       '#play-pause-btn, #mute-btn, #prev-episode-btn, #next-episode-btn, ' +
       '#episodes-btn, #audio-btn, #exit-player-btn, #toggle-buffer-btn, ' +
       '.episode-item, .audio-item, .close-panel-btn, .filter-select, ' +
-      '.filter-reset-btn, .progress-continue-btn, .detail-progress-btn'+
+      '.filter-reset-btn, .progress-continue-btn, .detail-progress-btn,'+
       '#close-search', '#filter-toggle'
     );
     clickableElements.forEach(el => {
