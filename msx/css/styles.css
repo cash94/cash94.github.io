@@ -1759,7 +1759,7 @@ body {
   margin-top: 16px;
 }
 
-@media screen and (min-width: 1200px) and (max-width: 1399px) {
+@media screen and (min-width: 960px) and (max-width: 1399px) {
 
   /* Увеличение detail-view на 3% */
   #detail-view {
