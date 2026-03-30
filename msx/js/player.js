@@ -704,8 +704,10 @@ async function seekStream(absoluteSeekTime, source = 'user') {
       }
 
       // Показываем оверлей загрузки и блокируем интерфейс
-      document.getElementById('playback-overlay').classList.add('active');
-      document.querySelector('.playback-text').textContent = `Перемотка на ${formatTime(targetTime)}...`;
+      const playbackOverlay = document.getElementById('playback-overlay');
+      const playbackText = document.querySelector('.playback-text');
+      playbackOverlay.classList.add('active');
+      playbackText.textContent = `Перемотка на ${formatTime(targetTime)}...`;
 
       // Блокируем кнопки управления
       const controlBtns = document.querySelectorAll('.control-btn');
@@ -719,109 +721,151 @@ async function seekStream(absoluteSeekTime, source = 'user') {
         updatePlayPauseButton();
       }
 
-      try {
-        const seekResponse = await fetch(`${SERVER_URL}/hls/stream/seek`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            streamId: AppState.currentStreamId,
-            seekTime: targetTime
-          })
-        });
-
-        if (!seekResponse.ok) {
-          throw new Error(`HTTP ${seekResponse.status}`);
-        }
-
-        const seekData = await seekResponse.json();
-
-        if (!seekData.success) {
-          throw new Error(seekData.error || 'Ошибка перемотки');
-        }
-
-        console.log('✅ Ответ сервера:', seekData);
-
-        AppState.expectedDuration = seekData.duration;
-        AppState.originalDuration = seekData.originalDuration;
-        AppState.seekOffset = seekData.seekOffset;
-        AppState.currentStreamId = seekData.streamId;
-        AppState.lastSuccessfulSeek = targetTime;
-
-        videoPlayer.dataset.expectedDuration = AppState.expectedDuration;
-        videoPlayer.dataset.originalDuration = AppState.originalDuration;
-        videoPlayer.dataset.seekOffset = AppState.seekOffset;
-
-        document.querySelector('.playback-text').textContent = 'Загрузка потока...';
-
-        const playlistReady = await checkPlaylistExists(seekData.playlistUrl, 60);
-
-        if (!playlistReady) {
-          throw new Error('Таймаут ожидания плейлиста');
-        }
-
-        document.querySelector('.playback-text').textContent = 'Загрузка видео...';
-
-        await reloadHlsPlaylist(seekData.playlistUrl);
-
-        const onMetaData = () => {
-          console.log(`📦 Метаданные загружены`);
-          videoPlayer.currentTime = 0;
-
-          if (wasPlaying) {
-            videoPlayer.play().catch(err => {
-              console.log('🔇 Автоплей после перемотки заблокирован');
-              videoPlayer.muted = true;
-              videoPlayer.play().catch(() => { });
-              updateMuteButton();
-            });
-          }
-
-          forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
-          updatePlayPauseButton();
-          const seekSlider = document.getElementById('seek-slider');
-          if (seekSlider) {
-            seekSlider.value = Math.min(targetTime, parseFloat(seekSlider.max) || targetTime);
-          }
-          AppState.previewTime = null;
-          AppState.suppressTimeUpdate = false;
-
-          // Скрываем оверлей и разблокируем интерфейс
-          document.getElementById('playback-overlay').classList.remove('active');
-          document.querySelector('.playback-text').textContent = 'Воспроизведение...';
-
-          controlBtns.forEach(btn => {
-            btn.style.pointerEvents = 'auto';
-            btn.style.opacity = '1';
+      // Функция для повторной попытки
+      const retrySeek = async (retryCount = 0, maxRetries = 2) => {
+        try {
+          const seekResponse = await fetch(`${SERVER_URL}/hls/stream/seek`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              streamId: AppState.currentStreamId,
+              seekTime: targetTime
+            })
           });
 
-          hidePlayerLoading();
-
-          videoPlayer.removeEventListener('loadedmetadata', onMetaData);
-        };
-
-        videoPlayer.addEventListener('loadedmetadata', onMetaData, { once: true });
-
-        setTimeout(() => {
-          if (document.getElementById('loading-player-overlay').classList.contains('active')) {
-            console.log('⚠️ Таймаут загрузки метаданных');
-            hidePlayerLoading();
-            if (wasPlaying) {
-              videoPlayer.play().catch(() => { });
-            }
+          if (!seekResponse.ok) {
+            throw new Error(`HTTP ${seekResponse.status}`);
           }
-        }, 10000);
 
-        resolve(true);
+          const seekData = await seekResponse.json();
+
+          if (!seekData.success) {
+            throw new Error(seekData.error || 'Ошибка перемотки');
+          }
+
+          console.log('✅ Ответ сервера:', seekData);
+
+          AppState.expectedDuration = seekData.duration;
+          AppState.originalDuration = seekData.originalDuration;
+          AppState.seekOffset = seekData.seekOffset;
+          AppState.currentStreamId = seekData.streamId;
+          AppState.lastSuccessfulSeek = targetTime;
+
+          videoPlayer.dataset.expectedDuration = AppState.expectedDuration;
+          videoPlayer.dataset.originalDuration = AppState.originalDuration;
+          videoPlayer.dataset.seekOffset = AppState.seekOffset;
+
+          playbackText.textContent = 'Загрузка потока...';
+
+          const playlistReady = await checkPlaylistExists(seekData.playlistUrl, 60);
+
+          if (!playlistReady) {
+            throw new Error('Таймаут ожидания плейлиста');
+          }
+
+          playbackText.textContent = 'Загрузка видео...';
+
+          await reloadHlsPlaylist(seekData.playlistUrl);
+
+          const onMetaData = () => {
+            console.log(`📦 Метаданные загружены`);
+            videoPlayer.currentTime = 0;
+
+            if (wasPlaying) {
+              videoPlayer.play().catch(err => {
+                console.log('🔇 Автоплей после перемотки заблокирован');
+                videoPlayer.muted = true;
+                videoPlayer.play().catch(() => { });
+                updateMuteButton();
+              });
+            }
+
+            forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
+            updatePlayPauseButton();
+            const seekSlider = document.getElementById('seek-slider');
+            if (seekSlider) {
+              seekSlider.value = Math.min(targetTime, parseFloat(seekSlider.max) || targetTime);
+            }
+            AppState.previewTime = null;
+            AppState.suppressTimeUpdate = false;
+
+            // Скрываем оверлей и разблокируем интерфейс
+            playbackOverlay.classList.remove('active');
+            playbackText.textContent = 'Воспроизведение...';
+
+            controlBtns.forEach(btn => {
+              btn.style.pointerEvents = 'auto';
+              btn.style.opacity = '1';
+            });
+
+            hidePlayerLoading();
+
+            videoPlayer.removeEventListener('loadedmetadata', onMetaData);
+          };
+
+          videoPlayer.addEventListener('loadedmetadata', onMetaData, { once: true });
+
+          setTimeout(() => {
+            if (document.getElementById('loading-player-overlay').classList.contains('active')) {
+              console.log('⚠️ Таймаут загрузки метаданных');
+              hidePlayerLoading();
+              if (wasPlaying) {
+                videoPlayer.play().catch(() => { });
+              }
+            }
+          }, 10000);
+
+          return true;
+
+        } catch (error) {
+          console.error(`❌ Ошибка перемотки (попытка ${retryCount + 1}/${maxRetries + 1}):`, error);
+
+          // Если это не последняя попытка и ошибка связана с сервером/таймаутом
+          //&&
+          //(error.message.includes('не найден') ||
+          //error.message.includes('404') ||
+          //error.message.includes('Таймаут') ||
+          //error.message.includes('Network') ||
+          //error.message.includes('Failed to fetch'))) 
+          if (retryCount < maxRetries) {
+
+            // Обновляем сообщение о повторной попытке
+            playbackText.textContent = `⚠️ Ошибка перемотки. Попытка ${retryCount + 1}/${maxRetries + 1}...`;
+
+            // Небольшая задержка перед повторной попыткой
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Пробуем создать поток заново
+            //console.log(`🔄 Попытка ${retryCount + 1}: создаем поток заново...`);
+            //const success = await startHLSPlayback(AppState.videoUrl, targetTime, false);
+
+            //if (success) {
+            ///return true;
+            //}
+
+            // Если startHLSPlayback не сработал, продолжаем цикл
+            return retrySeek(retryCount + 1, maxRetries);
+          }
+
+          // Если это последняя попытка или другая ошибка
+          throw error;
+        }
+      };
+
+      try {
+        // Выполняем перемотку с возможностью повторных попыток
+        const success = await retrySeek(0, 2);
+        resolve(success);
 
       } catch (error) {
-        console.error('❌ Ошибка перемотки:', error);
+        console.error('❌ Финальная ошибка перемотки:', error);
 
-        document.querySelector('.playback-text').textContent = 'Ошибка перемотки!';
+        playbackText.textContent = '❌ Ошибка перемотки!';
 
         setTimeout(() => {
           // Скрываем оверлей и разблокируем интерфейс
-          document.getElementById('playback-overlay').classList.remove('active');
-          document.querySelector('.playback-text').textContent = 'Воспроизведение...';
+          playbackOverlay.classList.remove('active');
+          playbackText.textContent = 'Воспроизведение...';
 
           controlBtns.forEach(btn => {
             btn.style.pointerEvents = 'auto';
@@ -833,11 +877,6 @@ async function seekStream(absoluteSeekTime, source = 'user') {
           setTimeout(() => {
             videoPlayer.play().catch(() => { });
           }, 1000);
-        }
-
-        if (error.message.includes('не найден') || error.message.includes('404') || error.message.includes('Таймаут')) {
-          console.log('🔄 Пробуем создать поток заново...');
-          await startHLSPlayback(AppState.videoUrl, targetTime, false);
         }
 
         AppState.previewTime = null;
