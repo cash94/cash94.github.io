@@ -1,8 +1,8 @@
 // Глобальные константы и утилиты
-const SERVER_URL = window.location.origin;
+var SERVER_URL = window.location.origin;
 
 // Состояние приложения
-const AppState = {
+var AppState = {
   // Настройки сервера
   currentTorrserverUrl: '',
   authEnabled: false,
@@ -50,34 +50,34 @@ const AppState = {
 // Вспомогательные функции
 function escapeHtml(text) {
   if (!text) return '';
-  const div = document.createElement('div');
+  var div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
 }
 
 function formatBytes(bytes) {
   if (bytes === 0 || !bytes) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  var k = 1024;
+  var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  var i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 function formatTime(seconds) {
   if (!isFinite(seconds) || seconds < 0) return '00:00';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  var h = Math.floor(seconds / 3600);
+  var m = Math.floor((seconds % 3600) / 60);
+  var s = Math.floor(seconds % 60);
+  if (h > 0) return h + ':' + m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0');
+  return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0');
 }
 
 // Получение заголовков аутентификации
 function getAuthHeaders() {
-  const headers = {};
+  var headers = {};
   if (AppState.authEnabled) {
-    const login = document.getElementById('auth-login').value.trim();
-    const password = document.getElementById('auth-password').value.trim();
+    var login = document.getElementById('auth-login').value.trim();
+    var password = document.getElementById('auth-password').value.trim();
     if (login && password) {
       headers['Authorization'] = 'Basic ' + btoa(login + ':' + password);
     }
@@ -87,9 +87,9 @@ function getAuthHeaders() {
 
 // Показать/скрыть загрузочный оверлей
 function showLoading(message) {
-  const overlay = document.getElementById('loading-overlay');
+  var overlay = document.getElementById('loading-overlay');
   overlay.classList.add('active');
-  const textEl = document.querySelector('.loading-text');
+  var textEl = document.querySelector('.loading-text');
   if (textEl) textEl.textContent = message || 'Загрузка...';
 }
 
@@ -99,21 +99,21 @@ function hideLoading() {
 
 // НОВАЯ ФУНКЦИЯ: Определение платформы
 function detectPlatform() {
-  const ua = navigator.userAgent.toLowerCase();
+  var ua = navigator.userAgent.toLowerCase();
 
-  if (ua.includes('vidaa')) {
+  if (ua.indexOf('vidaa') !== -1) {
     return 'vidaa';
-  } else if (ua.includes('android') && ua.includes('tv')) {
+  } else if (ua.indexOf('android') !== -1 && ua.indexOf('tv') !== -1) {
     return 'androidtv';
-  } else if (ua.includes('webos')) {
+  } else if (ua.indexOf('webos') !== -1) {
     return 'webos';
-  } else if (ua.includes('tizen')) {
+  } else if (ua.indexOf('tizen') !== -1) {
     return 'tizen';
-  } else if (ua.includes('smart-tv') || ua.includes('smarttv')) {
+  } else if (ua.indexOf('smart-tv') !== -1 || ua.indexOf('smarttv') !== -1) {
     return 'smarttv';
-  } else if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ipod')) {
+  } else if (ua.indexOf('iphone') !== -1 || ua.indexOf('ipad') !== -1 || ua.indexOf('ipod') !== -1) {
     return 'ios';
-  } else if (ua.includes('android')) {
+  } else if (ua.indexOf('android') !== -1) {
     return 'android';
   }
 
@@ -176,10 +176,17 @@ function getKeyMap() {
 
 // НОВАЯ ФУНКЦИЯ: Проверка клавиши
 function isKeyPressed(keyName, keyCode) {
-  const keyMap = getKeyMap();
-  return keyMap[keyName]?.includes(keyCode) || false;
+  var keyMap = getKeyMap();
+  var keyCodes = keyMap[keyName];
+
+  if (!keyCodes) return false;
+
+  for (var i = 0; i < keyCodes.length; i++) {
+    if (keyCodes[i] === keyCode) return true;
+  }
+  return false;
 }
 
 // Определяем платформу при загрузке
 AppState.platform = detectPlatform();
-console.log(`📱 Платформа: ${AppState.platform}`);
+console.log('📱 Платформа: ' + AppState.platform);
