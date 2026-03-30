@@ -2,138 +2,175 @@
 
 // ==================== ПЕРЕМЕННЫЕ ====================
 
-let focusableElements = [];
-let currentFocusIndex = 0;
-let lastSelectedTorrentHash = null;
-let lastSelectedTorrentIndex = 0;
-let lastPlayerBackPressAt = 0;
+var focusableElements = [];
+var currentFocusIndex = 0;
+var lastSelectedTorrentHash = null;
+var lastSelectedTorrentIndex = 0;
+var lastPlayerBackPressAt = 0;
 
 // Переменные для удержания клавиш перемотки
-let seekHoldInterval = null;
-let seekHoldStep = 5;
-let seekHoldDelay = 150;
-let isSeekHoldActive = false;
+var seekHoldInterval = null;
+var seekHoldStep = 5;
+var seekHoldDelay = 150;
+var isSeekHoldActive = false;
 
 // Переменные для long press удаления торрентов
-let okHoldTimer = null;
-let okHoldHandled = false;
-let okHoldFocused = null;
+var okHoldTimer = null;
+var okHoldHandled = false;
+var okHoldFocused = null;
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
 function isPlayerControlsVisible() {
-    const controlsContainer = document.getElementById('controls-container');
+    var controlsContainer = document.getElementById('controls-container');
     return !!controlsContainer && !controlsContainer.classList.contains('idle-hidden');
 }
 
 function getTorrentGridColumns() {
-    const grid = document.getElementById('torrents-grid');
+    var grid = document.getElementById('torrents-grid');
     if (!grid) return 8;
-    const style = window.getComputedStyle(grid);
-    const cols = style.gridTemplateColumns ? style.gridTemplateColumns.split(' ').filter(Boolean).length : 0;
+    var style = window.getComputedStyle(grid);
+    var cols = style.gridTemplateColumns ? style.gridTemplateColumns.split(' ').filter(function (b) { return b; }).length : 0;
     return cols || 8;
 }
 
 // ==================== УПРАВЛЕНИЕ ФОКУСОМ ====================
 
 function updateFocusableElements() {
-    const screen = AppState.currentScreen;
+    var screen = AppState.currentScreen;
 
-    const episodesPanel = document.getElementById('episodes-panel');
-    const audioPanel = document.getElementById('audio-panel');
-    const isEpisodesOpen = episodesPanel && !episodesPanel.classList.contains('hidden');
-    const isAudioOpen = audioPanel && !audioPanel.classList.contains('hidden');
+    var episodesPanel = document.getElementById('episodes-panel');
+    var audioPanel = document.getElementById('audio-panel');
+    var isEpisodesOpen = episodesPanel && !episodesPanel.classList.contains('hidden');
+    var isAudioOpen = audioPanel && !audioPanel.classList.contains('hidden');
 
     if (isEpisodesOpen) {
-        focusableElements = Array.from(document.querySelectorAll('.episode-item, .close-panel-btn'))
-            .filter(el => el && el.offsetParent !== null);
+        focusableElements = [];
+        var episodeItems = document.querySelectorAll('.episode-item, .close-panel-btn');
+        for (var i = 0; i < episodeItems.length; i++) {
+            var el = episodeItems[i];
+            if (el && el.offsetParent !== null) focusableElements.push(el);
+        }
         console.log('🎯 Фокус на панели серий');
         return;
     }
 
     if (isAudioOpen) {
-        focusableElements = Array.from(document.querySelectorAll('.audio-item, .close-panel-btn'))
-            .filter(el => el && el.offsetParent !== null);
+        focusableElements = [];
+        var audioItems = document.querySelectorAll('.audio-item, .close-panel-btn');
+        for (var j = 0; j < audioItems.length; j++) {
+            var el = audioItems[j];
+            if (el && el.offsetParent !== null) focusableElements.push(el);
+        }
         console.log('🎯 Фокус на панели аудио');
         return;
     }
 
     if (screen === 'player') {
-        const controlsContainer = document.getElementById('controls-container');
-        const controlsVisible = !!controlsContainer && !controlsContainer.classList.contains('idle-hidden');
+        var controlsContainer = document.getElementById('controls-container');
+        var controlsVisible = !!controlsContainer && !controlsContainer.classList.contains('idle-hidden');
 
         if (controlsVisible) {
-            const seekSliderEl = document.getElementById('seek-slider');
-            const buttons = Array.from(document.querySelectorAll(
-                '#prev-episode-btn, #play-pause-btn, #next-episode-btn, #audio-btn, #episodes-btn, #mute-btn'
-            )).filter(el => el && el.offsetParent !== null);
-
-            focusableElements = [seekSliderEl, ...buttons].filter(el => el && el.offsetParent !== null);
+            var seekSliderEl = document.getElementById('seek-slider');
+            var buttons = document.querySelectorAll('#prev-episode-btn, #play-pause-btn, #next-episode-btn, #audio-btn, #episodes-btn, #mute-btn');
+            var buttonList = [];
+            for (var k = 0; k < buttons.length; k++) {
+                var btn = buttons[k];
+                if (btn && btn.offsetParent !== null) buttonList.push(btn);
+            }
+            focusableElements = [seekSliderEl].concat(buttonList).filter(function (el) { return el && el.offsetParent !== null; });
         } else {
             focusableElements = [];
         }
     } else if (screen === 'detail') {
-        const progressElements = Array.from(document.querySelectorAll('.detail-progress-btn'));
-        const fileElements = Array.from(document.querySelectorAll('.file-item'));
-        const backButton = Array.from(document.querySelectorAll('.back-btn'));
-        focusableElements = [...progressElements, ...fileElements, ...backButton];
+        var progressElements = document.querySelectorAll('.detail-progress-btn');
+        var fileElements = document.querySelectorAll('.file-item');
+        var backButton = document.querySelectorAll('.back-btn');
+        var allElements = [];
+        for (var l = 0; l < progressElements.length; l++) allElements.push(progressElements[l]);
+        for (var m = 0; m < fileElements.length; m++) allElements.push(fileElements[m]);
+        for (var n = 0; n < backButton.length; n++) allElements.push(backButton[n]);
+        focusableElements = allElements;
     } else if (screen === 'torrents') {
-        const searchInputEl = document.getElementById('search-query');
-        const searchBtnEl = document.getElementById('search-btn');
-        const settingsBtnEl = document.getElementById('settings-btn');
-        const tabTorrentsEl = document.getElementById('tab-torrents');
-        const tabSearchEl = document.getElementById('tab-search');
-        const tabCatalogEl = document.getElementById('tab-catalog');
-        const cards = Array.from(document.querySelectorAll('.torrent-card')).filter(el => el && el.offsetParent !== null);
-        const cardsPerRow = getTorrentGridColumns();
+        var searchInputEl = document.getElementById('search-query');
+        var searchBtnEl = document.getElementById('search-btn');
+        var settingsBtnEl = document.getElementById('settings-btn');
+        var tabTorrentsEl = document.getElementById('tab-torrents');
+        var tabSearchEl = document.getElementById('tab-search');
+        var tabCatalogEl = document.getElementById('tab-catalog');
+        var cards = [];
+        var allCards = document.querySelectorAll('.torrent-card');
+        for (var o = 0; o < allCards.length; o++) {
+            var card = allCards[o];
+            if (card && card.offsetParent !== null) cards.push(card);
+        }
+        var cardsPerRow = getTorrentGridColumns();
 
-        const rows = [];
-        for (let i = 0; i < cards.length; i += cardsPerRow) {
-            rows.push(cards.slice(i, i + cardsPerRow));
+        var rows = [];
+        for (var p = 0; p < cards.length; p += cardsPerRow) {
+            rows.push(cards.slice(p, p + cardsPerRow));
         }
 
         window.torrentRows = {
-            row1: [searchInputEl, searchBtnEl, settingsBtnEl].filter(Boolean),
-            row2: [tabTorrentsEl, tabSearchEl, tabCatalogEl].filter(Boolean),
+            row1: [searchInputEl, searchBtnEl, settingsBtnEl].filter(function (el) { return el; }),
+            row2: [tabTorrentsEl, tabSearchEl, tabCatalogEl].filter(function (el) { return el; }),
             cardRows: rows,
             allCards: cards
         };
 
-        focusableElements = [
-            ...cards,
-            searchInputEl,
-            searchBtnEl,
-            tabTorrentsEl,
-            tabSearchEl,
-            tabCatalogEl,
-            settingsBtnEl
-        ].filter(el => el && el.offsetParent !== null);
+        var focusList = cards.slice();
+        if (searchInputEl && searchInputEl.offsetParent !== null) focusList.push(searchInputEl);
+        if (searchBtnEl && searchBtnEl.offsetParent !== null) focusList.push(searchBtnEl);
+        if (tabTorrentsEl && tabTorrentsEl.offsetParent !== null) focusList.push(tabTorrentsEl);
+        if (tabSearchEl && tabSearchEl.offsetParent !== null) focusList.push(tabSearchEl);
+        if (tabCatalogEl && tabCatalogEl.offsetParent !== null) focusList.push(tabCatalogEl);
+        if (settingsBtnEl && settingsBtnEl.offsetParent !== null) focusList.push(settingsBtnEl);
+        focusableElements = focusList.filter(function (el) { return el && el.offsetParent !== null; });
     } else if (screen === 'catalog') {
-        const cards = Array.from(document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card'))
-            .filter(el => el && el.offsetParent !== null);
-        focusableElements = cards;
-        window.catalogCards = cards;
+        var catalogCards = [];
+        var allCatalogCards = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+        for (var q = 0; q < allCatalogCards.length; q++) {
+            var catCard = allCatalogCards[q];
+            if (catCard && catCard.offsetParent !== null) catalogCards.push(catCard);
+        }
+        focusableElements = catalogCards;
+        window.catalogCards = catalogCards;
     } else if (screen === 'search') {
-        const searchInputEl = document.getElementById('search-query');
-        const filterToggleEl = document.getElementById('filter-toggle');
-        const searchBtnEl = document.getElementById('search-btn');
-        const closeSearchEl = document.getElementById('close-search');
-        const filterControls = Array.from(document.querySelectorAll(
-            '#torrent-movie, #sort-by, #filter-quality, #filter-tracker, #filter-year, #reset-filters'
-        )).filter(el => el && el.offsetParent !== null);
-        const resultItems = Array.from(document.querySelectorAll('.search-result-item')).filter(el => el && el.offsetParent !== null);
-        focusableElements = [searchInputEl, filterToggleEl, searchBtnEl, closeSearchEl, ...filterControls, ...resultItems].filter(Boolean);
+        var searchInputEl = document.getElementById('search-query');
+        var filterToggleEl = document.getElementById('filter-toggle');
+        var searchBtnEl = document.getElementById('search-btn');
+        var closeSearchEl = document.getElementById('close-search');
+        var filterControlsList = document.querySelectorAll('#torrent-movie, #sort-by, #filter-quality, #filter-tracker, #filter-year, #reset-filters');
+        var filterControls = [];
+        for (var r = 0; r < filterControlsList.length; r++) {
+            var fc = filterControlsList[r];
+            if (fc && fc.offsetParent !== null) filterControls.push(fc);
+        }
+        var resultItemsList = document.querySelectorAll('.search-result-item');
+        var resultItems = [];
+        for (var s = 0; s < resultItemsList.length; s++) {
+            var ri = resultItemsList[s];
+            if (ri && ri.offsetParent !== null) resultItems.push(ri);
+        }
+        var focusList = [searchInputEl, filterToggleEl, searchBtnEl, closeSearchEl];
+        for (var t = 0; t < filterControls.length; t++) focusList.push(filterControls[t]);
+        for (var u = 0; u < resultItems.length; u++) focusList.push(resultItems[u]);
+        focusableElements = focusList.filter(function (el) { return el; });
     } else if (screen === 'config') {
-        focusableElements = Array.from(document.querySelectorAll(
-            '#torrserver-url, #auth-checkbox, #auth-login, #auth-password, .settings-btn'
-        ));
+        var configItems = document.querySelectorAll('#torrserver-url, #auth-checkbox, #auth-login, #auth-password, .settings-btn');
+        var configList = [];
+        for (var v = 0; v < configItems.length; v++) {
+            var ci = configItems[v];
+            if (ci && ci.offsetParent !== null) configList.push(ci);
+        }
+        focusableElements = configList;
     } else {
         focusableElements = [];
     }
 
-    focusableElements = focusableElements.filter(el => {
+    focusableElements = focusableElements.filter(function (el) {
         if (!el) return false;
-        const style = window.getComputedStyle(el);
+        var style = window.getComputedStyle(el);
         return style.display !== 'none' &&
             style.visibility !== 'hidden' &&
             style.opacity !== '0' &&
@@ -144,24 +181,25 @@ function updateFocusableElements() {
         currentFocusIndex = 0;
     }
 
-    console.log(`🎯 Найдено ${focusableElements.length} фокусируемых элементов на экране ${screen}`);
+    console.log('🎯 Найдено ' + focusableElements.length + ' фокусируемых элементов на экране ' + screen);
 }
 
 function setFocus(index) {
-    document.querySelectorAll('.focused').forEach(el => {
-        el.classList.remove('focused');
-    });
+    var focusedElements = document.querySelectorAll('.focused');
+    for (var i = 0; i < focusedElements.length; i++) {
+        focusedElements[i].classList.remove('focused');
+    }
     if (focusableElements.length === 0) return;
 
     if (index < 0) index = focusableElements.length - 1;
     if (index >= focusableElements.length) index = 0;
 
     currentFocusIndex = index;
-    const element = focusableElements[currentFocusIndex];
+    var element = focusableElements[currentFocusIndex];
 
     if (AppState.currentScreen === 'torrents') {
         if (element && element.classList.contains('torrent-card')) {
-            const torrentIndex = currentFocusIndex - ((window.torrentRows?.row1?.length || 0) + (window.torrentRows?.row2?.length || 0));
+            var torrentIndex = currentFocusIndex - ((window.torrentRows && window.torrentRows.row1 ? window.torrentRows.row1.length : 0) + (window.torrentRows && window.torrentRows.row2 ? window.torrentRows.row2.length : 0));
 
             if (AppState.torrents[torrentIndex] && AppState.torrents[torrentIndex].hash) {
                 lastSelectedTorrentHash = AppState.torrents[torrentIndex].hash;
@@ -196,73 +234,105 @@ function setFocus(index) {
             block: 'center',
             inline: 'center'
         });
-        console.log(`🎯 Фокус на элементе:`, element);
+        console.log('🎯 Фокус на элементе:', element);
     }
 }
 
-function focusFirstTorrentCard(retries = 6, delay = 120) {
+function focusFirstTorrentCard(retries, delay) {
+    if (retries === undefined) retries = 6;
+    if (delay === undefined) delay = 120;
     if (AppState.currentScreen !== 'torrents') return false;
     updateFocusableElements();
-    const firstCardIndex = focusableElements.findIndex(el => el.classList && el.classList.contains('torrent-card'));
+    var firstCardIndex = -1;
+    for (var i = 0; i < focusableElements.length; i++) {
+        if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) {
+            firstCardIndex = i;
+            break;
+        }
+    }
     if (firstCardIndex !== -1) {
         setFocus(firstCardIndex);
         return true;
     }
     if (retries > 0) {
-        setTimeout(() => focusFirstTorrentCard(retries - 1, delay), delay);
+        setTimeout(function () { focusFirstTorrentCard(retries - 1, delay); }, delay);
     }
     return false;
 }
 
-function focusSearchHome(preferQuery = true) {
+function focusSearchHome(preferQuery) {
+    if (preferQuery === undefined) preferQuery = true;
     updateFocusableElements();
-    const queryIndex = focusableElements.findIndex(el => el.id === 'search-query');
-    const searchBtnIndex = focusableElements.findIndex(el => el.id === 'search-btn');
-    const filterIndex = focusableElements.findIndex(el => ['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].includes(el.id));
-    const targetIndex = preferQuery && queryIndex !== -1
+    var queryIndex = -1;
+    var searchBtnIndex = -1;
+    var filterIndex = -1;
+    for (var i = 0; i < focusableElements.length; i++) {
+        var el = focusableElements[i];
+        if (el.id === 'search-query') queryIndex = i;
+        if (el.id === 'search-btn') searchBtnIndex = i;
+        if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && filterIndex === -1) {
+            filterIndex = i;
+        }
+    }
+    var targetIndex = preferQuery && queryIndex !== -1
         ? queryIndex
         : (searchBtnIndex !== -1 ? searchBtnIndex : (filterIndex !== -1 ? filterIndex : 0));
     setFocus(targetIndex);
 }
 
-function showPlayerControls(preferredFocusId = 'play-pause-btn') {
-    const ids = [
+function showPlayerControls(preferredFocusId) {
+    if (preferredFocusId === undefined) preferredFocusId = 'play-pause-btn';
+    var ids = [
         'controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn',
         'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn',
         'audio-btn', 'player-title'
     ];
-    ids.forEach(id => document.getElementById(id)?.classList.remove('idle-hidden'));
+    for (var i = 0; i < ids.length; i++) {
+        var el = document.getElementById(ids[i]);
+        if (el) el.classList.remove('idle-hidden');
+    }
     if (typeof window.syncPlayerTitleVisibility === 'function') {
         window.syncPlayerTitleVisibility(true);
     }
-    document.getElementById('player-title')?.classList.remove('hidden');
+    var playerTitle = document.getElementById('player-title');
+    if (playerTitle) playerTitle.classList.remove('hidden');
     if (typeof window.resetMouseIdleTimer === 'function') {
         window.resetMouseIdleTimer();
     }
-    setTimeout(() => {
+    setTimeout(function () {
         updateFocusableElements();
-        const targetIndex = focusableElements.findIndex(el => el.id === preferredFocusId);
+        var targetIndex = -1;
+        for (var j = 0; j < focusableElements.length; j++) {
+            if (focusableElements[j].id === preferredFocusId) {
+                targetIndex = j;
+                break;
+            }
+        }
         setFocus(targetIndex !== -1 ? targetIndex : 0);
     }, 60);
 }
 
 function hidePlayerControls() {
-    const ids = [
+    var ids = [
         'controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn',
         'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn',
         'audio-btn', 'player-title'
     ];
-    ids.forEach(id => {
-        const element = document.getElementById(id);
+    for (var i = 0; i < ids.length; i++) {
+        var element = document.getElementById(ids[i]);
         if (element) {
             element.classList.add('idle-hidden');
         }
-    });
+    }
     if (typeof window.syncPlayerTitleVisibility === 'function') {
         window.syncPlayerTitleVisibility(false);
     }
-    document.getElementById('player-title')?.classList.add('hidden');
-    document.querySelectorAll('.focused').forEach(el => el.classList.remove('focused'));
+    var playerTitle = document.getElementById('player-title');
+    if (playerTitle) playerTitle.classList.add('hidden');
+    var focusedElements = document.querySelectorAll('.focused');
+    for (var j = 0; j < focusedElements.length; j++) {
+        focusedElements[j].classList.remove('focused');
+    }
     currentFocusIndex = 0;
     if (window.mouseIdleTimer) {
         clearTimeout(window.mouseIdleTimer);
@@ -271,30 +341,33 @@ function hidePlayerControls() {
 }
 
 function hidePlayerPanelsOnly() {
-    let hidden = false;
-    const episodesPanel = document.getElementById('episodes-panel');
-    const audioPanel = document.getElementById('audio-panel');
+    var hidden = false;
+    var episodesPanel = document.getElementById('episodes-panel');
+    var audioPanel = document.getElementById('audio-panel');
     if (episodesPanel && !episodesPanel.classList.contains('hidden')) {
         episodesPanel.classList.add('hidden');
-        document.getElementById('episodes-btn')?.classList.remove('active');
+        var episodesBtn = document.getElementById('episodes-btn');
+        if (episodesBtn) episodesBtn.classList.remove('active');
         hidden = true;
     }
     if (audioPanel && !audioPanel.classList.contains('hidden')) {
         audioPanel.classList.add('hidden');
-        document.getElementById('audio-btn')?.classList.remove('active');
+        var audioBtn = document.getElementById('audio-btn');
+        if (audioBtn) audioBtn.classList.remove('active');
         hidden = true;
     }
     return hidden;
 }
 
 function hidePlayerUi() {
-    const panelsHidden = hidePlayerPanelsOnly();
-    const controlsWereVisible = isPlayerControlsVisible();
+    var panelsHidden = hidePlayerPanelsOnly();
+    var controlsWereVisible = isPlayerControlsVisible();
     if (controlsWereVisible) {
         hidePlayerControls();
     }
     if (panelsHidden || controlsWereVisible) {
-        document.getElementById('player-title')?.classList.add('hidden');
+        var playerTitle = document.getElementById('player-title');
+        if (playerTitle) playerTitle.classList.add('hidden');
     }
     return panelsHidden || controlsWereVisible;
 }
@@ -302,15 +375,22 @@ function hidePlayerUi() {
 // ==================== НАВИГАЦИЯ ====================
 
 function navigate(direction) {
-    const activeElement = document.activeElement;
+    var activeElement = document.activeElement;
     if (activeElement && activeElement.id === 'search-query') {
         activeElement.blur();
         updateFocusableElements();
         if (AppState.currentScreen === 'search') {
-            const firstFilterIndex = focusableElements.findIndex(el =>
-                ['filter-toggle', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].includes(el.id)
-            );
-            const firstResultIndex = focusableElements.findIndex(el => el.classList.contains('search-result-item'));
+            var firstFilterIndex = -1;
+            var firstResultIndex = -1;
+            for (var i = 0; i < focusableElements.length; i++) {
+                var el = focusableElements[i];
+                if (['filter-toggle', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) {
+                    firstFilterIndex = i;
+                }
+                if (el.classList && el.classList.contains('search-result-item') && firstResultIndex === -1) {
+                    firstResultIndex = i;
+                }
+            }
             if (direction === 'down' && firstResultIndex !== -1) {
                 setFocus(firstResultIndex);
             } else {
@@ -318,9 +398,13 @@ function navigate(direction) {
             }
             return;
         }
-        const firstCardIndex = focusableElements.findIndex(el =>
-            el.classList.contains('torrent-card')
-        );
+        var firstCardIndex = -1;
+        for (var j = 0; j < focusableElements.length; j++) {
+            if (focusableElements[j].classList && focusableElements[j].classList.contains('torrent-card')) {
+                firstCardIndex = j;
+                break;
+            }
+        }
         setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
         return;
     }
@@ -328,43 +412,75 @@ function navigate(direction) {
         updateFocusableElements();
         if (focusableElements.length === 0) return;
         if (AppState.currentScreen === 'torrents') {
-            const firstCardIndex = focusableElements.findIndex(el => el.classList.contains('torrent-card'));
+            var firstCardIndex = -1;
+            for (var k = 0; k < focusableElements.length; k++) {
+                if (focusableElements[k].classList && focusableElements[k].classList.contains('torrent-card')) {
+                    firstCardIndex = k;
+                    break;
+                }
+            }
             setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
         } else if (AppState.currentScreen === 'search') {
-            const firstFilterIndex = focusableElements.findIndex(el => ['filter-toggle', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].includes(el.id));
+            var firstFilterIndex = -1;
+            for (var l = 0; l < focusableElements.length; l++) {
+                if (['filter-toggle', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].indexOf(focusableElements[l].id) !== -1) {
+                    firstFilterIndex = l;
+                    break;
+                }
+            }
             setFocus(firstFilterIndex !== -1 ? firstFilterIndex : 0);
         }
         return;
     }
 
-    const currentElement = focusableElements[currentFocusIndex];
+    var currentElement = focusableElements[currentFocusIndex];
 
     // ===== НАВИГАЦИЯ ДЛЯ ТОРРЕНТОВ =====
     if (AppState.currentScreen === 'torrents') {
-        const settingsBtnEl = document.getElementById('settings-btn');
-        const tabTorrentsEl = document.getElementById('tab-torrents');
-        const tabSearchEl = document.getElementById('tab-search');
-        const tabCatalogEl = document.getElementById('tab-catalog');
-        const cards = window.torrentRows?.allCards || [];
+        var settingsBtnEl = document.getElementById('settings-btn');
+        var tabTorrentsEl = document.getElementById('tab-torrents');
+        var tabSearchEl = document.getElementById('tab-search');
+        var tabCatalogEl = document.getElementById('tab-catalog');
+        var cards = window.torrentRows && window.torrentRows.allCards ? window.torrentRows.allCards : [];
 
         if (!currentElement) {
             if (cards.length > 0) {
                 setFocus(focusableElements.indexOf(cards[0]));
             } else {
-                const fallbackIndex = focusableElements.findIndex(el => el.id === 'tab-torrents');
+                var fallbackIndex = -1;
+                for (var m = 0; m < focusableElements.length; m++) {
+                    if (focusableElements[m].id === 'tab-torrents') {
+                        fallbackIndex = m;
+                        break;
+                    }
+                }
                 setFocus(fallbackIndex !== -1 ? fallbackIndex : 0);
             }
             return;
         }
 
-        const isSettings = currentElement === settingsBtnEl;
-        const isTabTorrents = currentElement === tabTorrentsEl;
-        const isTabSearch = currentElement === tabSearchEl;
-        const isTabCatalog = currentElement === tabCatalogEl;
-        const isCard = cards.includes(currentElement);
+        var isSettings = currentElement === settingsBtnEl;
+        var isTabTorrents = currentElement === tabTorrentsEl;
+        var isTabSearch = currentElement === tabSearchEl;
+        var isTabCatalog = currentElement === tabCatalogEl;
+        var isCard = false;
+        for (var n = 0; n < cards.length; n++) {
+            if (currentElement === cards[n]) {
+                isCard = true;
+                break;
+            }
+        }
 
-        const cardIndex = isCard ? cards.indexOf(currentElement) : -1;
-        const cardsPerRow = getTorrentGridColumns();
+        var cardIndex = -1;
+        if (isCard) {
+            for (var o = 0; o < cards.length; o++) {
+                if (currentElement === cards[o]) {
+                    cardIndex = o;
+                    break;
+                }
+            }
+        }
+        var cardsPerRow = getTorrentGridColumns();
 
         switch (direction) {
             case 'up':
@@ -372,7 +488,7 @@ function navigate(direction) {
                     if (cardIndex < cardsPerRow) {
                         setFocus(focusableElements.indexOf(tabTorrentsEl));
                     } else {
-                        const newIndex = cardIndex - cardsPerRow;
+                        var newIndex = cardIndex - cardsPerRow;
                         setFocus(focusableElements.indexOf(cards[newIndex]));
                     }
                 } else if (isTabTorrents || isTabSearch || isTabCatalog) {
@@ -391,7 +507,7 @@ function navigate(direction) {
                     }
                 } else if (isCard) {
                     if (cardIndex + cardsPerRow < cards.length) {
-                        const newIndex = cardIndex + cardsPerRow;
+                        var newIndex = cardIndex + cardsPerRow;
                         setFocus(focusableElements.indexOf(cards[newIndex]));
                     }
                 }
@@ -424,11 +540,17 @@ function navigate(direction) {
 
     // ===== НАВИГАЦИЯ ДЛЯ КАТАЛОГА =====
     if (AppState.currentScreen === 'catalog') {
-        const cards = window.catalogCards || [];
+        var cards = window.catalogCards || [];
         if (cards.length === 0) return;
 
-        const currentIndex = cards.indexOf(currentElement);
-        const cardsPerRow = getTorrentGridColumns();
+        var currentIndex = -1;
+        for (var p = 0; p < cards.length; p++) {
+            if (currentElement === cards[p]) {
+                currentIndex = p;
+                break;
+            }
+        }
+        var cardsPerRow = getTorrentGridColumns();
 
         switch (direction) {
             case 'left':
@@ -465,19 +587,19 @@ function navigate(direction) {
 
     // ===== НАВИГАЦИЯ ДЛЯ ПЛЕЕРА И ПАНЕЛЕЙ =====
     if (AppState.currentScreen === 'player') {
-        const controlsContainer = document.getElementById('controls-container');
-        const controlsVisible = !controlsContainer.classList.contains('idle-hidden');
+        var controlsContainer = document.getElementById('controls-container');
+        var controlsVisible = !controlsContainer.classList.contains('idle-hidden');
 
         if (!controlsVisible) {
             return;
         }
 
-        const playerCurrentElement = focusableElements[currentFocusIndex];
-        const isSeekSliderFocused = playerCurrentElement && playerCurrentElement.id === 'seek-slider';
+        var playerCurrentElement = focusableElements[currentFocusIndex];
+        var isSeekSliderFocused = playerCurrentElement && playerCurrentElement.id === 'seek-slider';
 
-        const episodesPanel = document.getElementById('episodes-panel');
-        const audioPanel = document.getElementById('audio-panel');
-        const isPanelOpen = (episodesPanel && !episodesPanel.classList.contains('hidden')) ||
+        var episodesPanel = document.getElementById('episodes-panel');
+        var audioPanel = document.getElementById('audio-panel');
+        var isPanelOpen = (episodesPanel && !episodesPanel.classList.contains('hidden')) ||
             (audioPanel && !audioPanel.classList.contains('hidden'));
 
         if (isPanelOpen) {
@@ -507,8 +629,8 @@ function navigate(direction) {
             }
             return;
         } else {
-            const isFirstButton = currentFocusIndex === 1;
-            const isLastButton = currentFocusIndex === focusableElements.length - 1;
+            var isFirstButton = currentFocusIndex === 1;
+            var isLastButton = currentFocusIndex === focusableElements.length - 1;
 
             if (direction === 'up') {
                 setFocus(0);
@@ -537,19 +659,38 @@ function navigate(direction) {
     }
 
     if (AppState.currentScreen === 'search') {
-        const searchInputEl = document.getElementById('search-query');
-        const filters = focusableElements.filter(el =>
-            el.id === 'sort-by' || el.id === 'filter-quality' || el.id === 'filter-tracker' ||
-            el.id === 'filter-year' || el.id === 'reset-filters' || el.id === 'close-search'
-        );
-        const results = focusableElements.filter(el => el.classList.contains('search-result-item'));
-        const current = focusableElements[currentFocusIndex];
-        const filterIndex = filters.indexOf(current);
-        const resultIndex = results.indexOf(current);
-        const isSearchInput = current === searchInputEl;
+        var searchInputEl = document.getElementById('search-query');
+        var filters = [];
+        var results = [];
+        for (var q = 0; q < focusableElements.length; q++) {
+            var el = focusableElements[q];
+            if (el.id === 'sort-by' || el.id === 'filter-quality' || el.id === 'filter-tracker' ||
+                el.id === 'filter-year' || el.id === 'reset-filters' || el.id === 'close-search') {
+                filters.push(el);
+            }
+            if (el.classList && el.classList.contains('search-result-item')) {
+                results.push(el);
+            }
+        }
+        var current = focusableElements[currentFocusIndex];
+        var filterIndex = -1;
+        for (var r = 0; r < filters.length; r++) {
+            if (current === filters[r]) {
+                filterIndex = r;
+                break;
+            }
+        }
+        var resultIndex = -1;
+        for (var s = 0; s < results.length; s++) {
+            if (current === results[s]) {
+                resultIndex = s;
+                break;
+            }
+        }
+        var isSearchInput = current === searchInputEl;
 
         if (!current) {
-            if (searchInputEl && focusableElements.includes(searchInputEl)) {
+            if (searchInputEl && focusableElements.indexOf(searchInputEl) !== -1) {
                 setFocus(focusableElements.indexOf(searchInputEl));
             } else if (filters.length > 0) {
                 setFocus(focusableElements.indexOf(filters[0]));
@@ -588,7 +729,7 @@ function navigate(direction) {
                 return;
             }
             if (direction === 'up') {
-                if (searchInputEl && focusableElements.includes(searchInputEl)) {
+                if (searchInputEl && focusableElements.indexOf(searchInputEl) !== -1) {
                     setFocus(focusableElements.indexOf(searchInputEl));
                 } else {
                     setFocus(focusableElements.indexOf(filters[Math.max(0, filterIndex - 1)]));
@@ -617,7 +758,7 @@ function navigate(direction) {
         }
     }
 
-    const columns = 1;
+    var columns = 1;
     switch (direction) {
         case 'up': setFocus(currentFocusIndex - columns); break;
         case 'down': setFocus(currentFocusIndex + columns); break;
@@ -646,8 +787,8 @@ function stopSeeking() {
 // ==================== ОБРАБОТЧИКИ КЛАВИШ ====================
 
 function setupKeyboardHandlers() {
-    document.addEventListener('keyup', (e) => {
-        const key = e.keyCode;
+    document.addEventListener('keyup', function (e) {
+        var key = e.keyCode;
         if (isKeyPressed('LEFT', key) || isKeyPressed('RIGHT', key)) {
             if (seekHoldInterval) {
                 clearInterval(seekHoldInterval);
@@ -658,14 +799,16 @@ function setupKeyboardHandlers() {
                     accelerationTimer = null;
                 }
 
-                const slider = document.getElementById('seek-slider');
+                var slider = document.getElementById('seek-slider');
                 if (slider) {
-                    slider.dispatchEvent(new Event('change', { bubbles: true }));
+                    var event = document.createEvent('Event');
+                    event.initEvent('change', true, true);
+                    slider.dispatchEvent(event);
                 }
 
                 console.log('⏹️ Удержание прекращено, инициирована перемотка');
 
-                setTimeout(() => {
+                setTimeout(function () {
                     isSeekHoldActive = false;
                 }, 500);
             }
@@ -674,9 +817,9 @@ function setupKeyboardHandlers() {
         }
     });
 
-    document.addEventListener('keydown', (e) => {
-        const key = e.keyCode;
-        const activeElement = document.activeElement;
+    document.addEventListener('keydown', function (e) {
+        var key = e.keyCode;
+        var activeElement = document.activeElement;
 
         if (AppState.currentScreen === 'torrents') {
             if (isKeyPressed('UP', key) || isKeyPressed('DOWN', key) ||
@@ -695,7 +838,7 @@ function setupKeyboardHandlers() {
                 if (e.repeat) {
                     return;
                 }
-                const focused = document.querySelector('.focused');
+                var focused = document.querySelector('.focused');
                 if (!focused) {
                     focusFirstTorrentCard();
                     return;
@@ -724,7 +867,7 @@ function setupKeyboardHandlers() {
                 if (focused.classList.contains('torrent-card')) {
                     return;
                 }
-                focused.click?.();
+                if (focused.click) focused.click();
                 return;
             }
             return;
@@ -735,23 +878,44 @@ function setupKeyboardHandlers() {
                 e.preventDefault();
                 activeElement.blur();
                 updateFocusableElements();
-                const searchIndex = focusableElements.findIndex(el => el.id === 'search-query');
+                var searchIndex = -1;
+                for (var i = 0; i < focusableElements.length; i++) {
+                    if (focusableElements[i].id === 'search-query') {
+                        searchIndex = i;
+                        break;
+                    }
+                }
                 setFocus(searchIndex !== -1 ? searchIndex : 0);
                 return;
             }
             if (isKeyPressed('DOWN', key) || isKeyPressed('UP', key) || isKeyPressed('LEFT', key) || isKeyPressed('RIGHT', key)) {
                 e.preventDefault();
-                const direction = keyToDirection(key);
+                var direction = keyToDirection(key);
                 activeElement.blur();
                 updateFocusableElements();
 
                 if (AppState.currentScreen === 'search') {
                     if (direction === 'right') {
-                        const searchBtnIndex = focusableElements.findIndex(el => el.id === 'search-btn');
+                        var searchBtnIndex = -1;
+                        for (var j = 0; j < focusableElements.length; j++) {
+                            if (focusableElements[j].id === 'search-btn') {
+                                searchBtnIndex = j;
+                                break;
+                            }
+                        }
                         setFocus(searchBtnIndex !== -1 ? searchBtnIndex : 0);
                     } else {
-                        const firstFilterIndex = focusableElements.findIndex(el => ['filter-toggle', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].includes(el.id));
-                        const firstResultIndex = focusableElements.findIndex(el => el.classList.contains('search-result-item'));
+                        var firstFilterIndex = -1;
+                        var firstResultIndex = -1;
+                        for (var k = 0; k < focusableElements.length; k++) {
+                            var el = focusableElements[k];
+                            if (['filter-toggle', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) {
+                                firstFilterIndex = k;
+                            }
+                            if (el.classList && el.classList.contains('search-result-item') && firstResultIndex === -1) {
+                                firstResultIndex = k;
+                            }
+                        }
                         if (direction === 'down' && firstFilterIndex !== -1) {
                             setFocus(firstFilterIndex);
                         } else if (firstFilterIndex !== -1) {
@@ -770,13 +934,13 @@ function setupKeyboardHandlers() {
             }
             if (isKeyPressed('OK', key)) {
                 e.preventDefault();
-                const query = activeElement.value.trim();
+                var query = activeElement.value.trim();
                 if (AppState.currentScreen === 'search') {
                     if (query && typeof window.searchTorrents === 'function') {
                         window.searchTorrents(query);
                     }
                     activeElement.blur();
-                    setTimeout(() => focusSearchHome(true), 100);
+                    setTimeout(function () { focusSearchHome(true); }, 100);
                     return;
                 }
                 if (typeof window.showSearchResults === 'function') {
@@ -788,7 +952,7 @@ function setupKeyboardHandlers() {
         }
 
         if (AppState.currentScreen === 'config') {
-            const isInputFocused = activeElement && (
+            var isInputFocused = activeElement && (
                 activeElement.id === 'torrserver-url' ||
                 activeElement.id === 'auth-login' ||
                 activeElement.id === 'auth-password'
@@ -799,7 +963,13 @@ function setupKeyboardHandlers() {
                     e.preventDefault();
                     activeElement.blur();
                     updateFocusableElements();
-                    const currentIndex = focusableElements.findIndex(el => el.id === activeElement.id);
+                    var currentIndex = -1;
+                    for (var l = 0; l < focusableElements.length; l++) {
+                        if (focusableElements[l].id === activeElement.id) {
+                            currentIndex = l;
+                            break;
+                        }
+                    }
                     if (currentIndex !== -1 && currentIndex < focusableElements.length - 1) {
                         setFocus(currentIndex + 1);
                     } else {
@@ -834,7 +1004,7 @@ function setupKeyboardHandlers() {
             }
             if (isKeyPressed('OK', key)) {
                 e.preventDefault();
-                const focused = document.querySelector('.focused');
+                var focused = document.querySelector('.focused');
                 if (focused) {
                     if (focused.id === 'torrserver-url' ||
                         focused.id === 'auth-login' ||
@@ -849,15 +1019,21 @@ function setupKeyboardHandlers() {
         }
 
         if (AppState.currentScreen === 'search') {
-            const activeTag = e.target.tagName;
-            const isFilterControl = activeTag === 'SELECT' || e.target.id === 'filter-year';
+            var activeTag = e.target.tagName;
+            var isFilterControl = activeTag === 'SELECT' || e.target.id === 'filter-year';
             if (isFilterControl && (isKeyPressed('UP', key) || isKeyPressed('DOWN', key) || isKeyPressed('LEFT', key) || isKeyPressed('RIGHT', key))) {
                 e.preventDefault();
                 if (document.activeElement && typeof document.activeElement.blur === 'function') {
                     document.activeElement.blur();
                 }
                 updateFocusableElements();
-                const firstFilterIndex = focusableElements.findIndex(el => ['filter-toggle', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].includes(el.id));
+                var firstFilterIndex = -1;
+                for (var m = 0; m < focusableElements.length; m++) {
+                    if (['filter-toggle', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].indexOf(focusableElements[m].id) !== -1) {
+                        firstFilterIndex = m;
+                        break;
+                    }
+                }
                 if (firstFilterIndex !== -1) {
                     setFocus(firstFilterIndex);
                     if (keyToDirection(key) !== 'left') {
@@ -876,9 +1052,9 @@ function setupKeyboardHandlers() {
 
         // ===== СПЕЦИАЛЬНАЯ ОБРАБОТКА ДЛЯ ПЛЕЕРА =====
         if (AppState.currentScreen === 'player') {
-            const videoPlayer = document.getElementById('video-player');
-            const controlsContainer = document.getElementById('controls-container');
-            const controlsVisible = !controlsContainer.classList.contains('idle-hidden');
+            var videoPlayer = document.getElementById('video-player');
+            var controlsContainer = document.getElementById('controls-container');
+            var controlsVisible = !controlsContainer.classList.contains('idle-hidden');
 
             if (isKeyPressed('UP', key) && !controlsVisible) {
                 e.preventDefault();
@@ -889,7 +1065,7 @@ function setupKeyboardHandlers() {
             if (isKeyPressed('OK', key)) {
                 e.preventDefault();
 
-                const focused = document.querySelector('.focused');
+                var focused = document.querySelector('.focused');
 
                 if (!controlsVisible) {
                     showPlayerControls('play-pause-btn');
@@ -899,7 +1075,7 @@ function setupKeyboardHandlers() {
                 if (focused) {
                     console.log('🎯 OK на элементе (панель видима):', focused.id || focused.className);
 
-                    let actionPerformed = false;
+                    var actionPerformed = false;
 
                     if (focused.id === 'play-pause-btn') {
                         if (videoPlayer.paused) {
@@ -920,22 +1096,25 @@ function setupKeyboardHandlers() {
                         if (typeof window.nextEpisode === 'function') window.nextEpisode();
                         actionPerformed = true;
                     } else if (focused.id === 'episodes-btn') {
-                        document.getElementById('episodes-btn')?.click();
+                        var episodesBtn = document.getElementById('episodes-btn');
+                        if (episodesBtn) episodesBtn.click();
                         actionPerformed = false;
                     } else if (focused.id === 'audio-btn') {
-                        document.getElementById('audio-btn')?.click();
+                        var audioBtn = document.getElementById('audio-btn');
+                        if (audioBtn) audioBtn.click();
                         actionPerformed = false;
                     } else if (focused.id === 'exit-player-btn') {
                         if (typeof window.showDetailView === 'function') window.showDetailView();
                         return;
                     } else if (focused.id === 'toggle-buffer-btn') {
-                        document.getElementById('toggle-buffer-btn')?.click();
+                        var toggleBufferBtn = document.getElementById('toggle-buffer-btn');
+                        if (toggleBufferBtn) toggleBufferBtn.click();
                         actionPerformed = true;
                     } else if (focused.id === 'seek-slider') {
-                        const currentTime = parseFloat(focused.value);
+                        var currentTime = parseFloat(focused.value);
                         if (typeof window.showPlayerLoading === 'function') {
-                            window.showPlayerLoading(`⏱️ ${formatTime(currentTime)}`);
-                            setTimeout(() => {
+                            window.showPlayerLoading('⏱️ ' + formatTime(currentTime));
+                            setTimeout(function () {
                                 if (typeof window.hidePlayerLoading === 'function') window.hidePlayerLoading();
                             }, 1000);
                         }
@@ -946,7 +1125,7 @@ function setupKeyboardHandlers() {
                     }
 
                     if (actionPerformed) {
-                        setTimeout(() => {
+                        setTimeout(function () {
                             hidePlayerControls();
                             console.log('✅ Действие выполнено, панель скрыта, фокус сброшен');
                         }, 400);
@@ -964,8 +1143,8 @@ function setupKeyboardHandlers() {
 
             if (isKeyPressed('LEFT', key) || isKeyPressed('RIGHT', key)) {
                 // Проверяем, видна ли панель управления
-                const controlsContainer = document.getElementById('controls-container');
-                const controlsVisible = !controlsContainer.classList.contains('idle-hidden');
+                var controlsContainer = document.getElementById('controls-container');
+                var controlsVisible = !controlsContainer.classList.contains('idle-hidden');
 
                 // Если панель скрыта, не обрабатываем перемотку (просто игнорируем)
                 if (!controlsVisible) {
@@ -976,17 +1155,17 @@ function setupKeyboardHandlers() {
                 e.preventDefault();
                 if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
 
-                const focusedElement = focusableElements[currentFocusIndex];
-                const isSeekSliderFocused = focusedElement && focusedElement.id === 'seek-slider';
+                var focusedElement = focusableElements[currentFocusIndex];
+                var isSeekSliderFocused = focusedElement && focusedElement.id === 'seek-slider';
 
                 if (isSeekSliderFocused) {
-                    const slider = document.getElementById('seek-slider');
-                    const direction = isKeyPressed('LEFT', key) ? -1 : 1;
+                    var slider = document.getElementById('seek-slider');
+                    var direction = isKeyPressed('LEFT', key) ? -1 : 1;
 
-                    let holdDuration = 0;
-                    let currentStep = seekHoldStep;
-                    const maxStep = 120;
-                    const accelerationCurve = [
+                    var holdDuration = 0;
+                    var currentStep = seekHoldStep;
+                    var maxStep = 120;
+                    var accelerationCurve = [
                         { time: 0, step: 5 },
                         { time: 500, step: 10 },
                         { time: 1000, step: 20 },
@@ -997,32 +1176,32 @@ function setupKeyboardHandlers() {
                         { time: 4000, step: 120 }
                     ];
 
-                    let lastUpdateTime = Date.now();
-                    let accelerationTimer = null;
+                    var lastUpdateTime = Date.now();
+                    var accelerationTimer = null;
 
-                    const updateStepByDuration = () => {
-                        const elapsed = Date.now() - lastUpdateTime;
+                    var updateStepByDuration = function () {
+                        var elapsed = Date.now() - lastUpdateTime;
 
-                        let newStep = seekHoldStep;
-                        for (let i = accelerationCurve.length - 1; i >= 0; i--) {
-                            if (elapsed >= accelerationCurve[i].time) {
-                                newStep = accelerationCurve[i].step;
+                        var newStep = seekHoldStep;
+                        for (var idx = accelerationCurve.length - 1; idx >= 0; idx--) {
+                            if (elapsed >= accelerationCurve[idx].time) {
+                                newStep = accelerationCurve[idx].step;
                                 break;
                             }
                         }
 
                         if (newStep !== currentStep) {
                             currentStep = newStep;
-                            console.log(`⚡ Ускорение перемотки: ${currentStep} сек (удержание ${(elapsed / 1000).toFixed(1)}с)`);
+                            console.log('⚡ Ускорение перемотки: ' + currentStep + ' сек (удержание ' + (elapsed / 1000).toFixed(1) + 'с)');
                         }
                     };
 
-                    const performSeekStep = () => {
-                        let currentValue = parseFloat(slider.value);
-                        const maxVal = parseFloat(slider.max);
-                        const step = currentStep * direction;
+                    var performSeekStep = function () {
+                        var currentValue = parseFloat(slider.value);
+                        var maxVal = parseFloat(slider.max);
+                        var step = currentStep * direction;
 
-                        let newValue = currentValue + step;
+                        var newValue = currentValue + step;
 
                         if (newValue < 0) newValue = 0;
                         if (newValue > maxVal) newValue = maxVal;
@@ -1032,10 +1211,12 @@ function setupKeyboardHandlers() {
                         if (typeof AppState !== 'undefined') {
                             AppState.previewTime = newValue;
                         }
-                        document.getElementById('current-time').textContent = formatTime(newValue);
+                        var currentTimeEl = document.getElementById('current-time');
+                        if (currentTimeEl) currentTimeEl.textContent = formatTime(newValue);
 
                         if (AppState.isSeeking || document.getElementById('loading-player-overlay').classList.contains('active')) {
-                            document.getElementById('loading-time').textContent = formatTime(newValue);
+                            var loadingTimeEl = document.getElementById('loading-time');
+                            if (loadingTimeEl) loadingTimeEl.textContent = formatTime(newValue);
                         }
                     };
 
@@ -1049,7 +1230,7 @@ function setupKeyboardHandlers() {
 
                         seekHoldInterval = setInterval(performSeekStep, seekHoldDelay);
 
-                        accelerationTimer = setInterval(() => {
+                        accelerationTimer = setInterval(function () {
                             if (seekHoldInterval) {
                                 updateStepByDuration();
                             } else {
@@ -1098,18 +1279,18 @@ function setupKeyboardHandlers() {
 
             if (isKeyPressed('VOL_UP', key)) {
                 e.preventDefault();
-                const newVolume = Math.min(1, videoPlayer.volume + 0.1);
+                var newVolume = Math.min(1, videoPlayer.volume + 0.1);
                 videoPlayer.volume = newVolume;
-                const volumeSlider = document.getElementById('volume-slider');
+                var volumeSlider = document.getElementById('volume-slider');
                 if (volumeSlider) volumeSlider.value = newVolume;
                 if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
                 return;
             }
             if (isKeyPressed('VOL_DOWN', key)) {
                 e.preventDefault();
-                const newVolume = Math.max(0, videoPlayer.volume - 0.1);
+                var newVolume = Math.max(0, videoPlayer.volume - 0.1);
                 videoPlayer.volume = newVolume;
-                const volumeSlider = document.getElementById('volume-slider');
+                var volumeSlider = document.getElementById('volume-slider');
                 if (volumeSlider) volumeSlider.value = newVolume;
                 if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
                 return;
@@ -1124,25 +1305,29 @@ function setupKeyboardHandlers() {
 
             if (isKeyPressed('RED', key)) {
                 e.preventDefault();
-                document.getElementById('audio-btn')?.click();
+                var audioBtn = document.getElementById('audio-btn');
+                if (audioBtn) audioBtn.click();
                 if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
                 return;
             }
             if (isKeyPressed('GREEN', key)) {
                 e.preventDefault();
-                document.getElementById('episodes-btn')?.click();
+                var episodesBtn = document.getElementById('episodes-btn');
+                if (episodesBtn) episodesBtn.click();
                 if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
                 return;
             }
             if (isKeyPressed('YELLOW', key)) {
                 e.preventDefault();
-                document.getElementById('toggle-buffer-btn')?.click();
+                var toggleBufferBtn = document.getElementById('toggle-buffer-btn');
+                if (toggleBufferBtn) toggleBufferBtn.click();
                 if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
                 return;
             }
             if (isKeyPressed('BLUE', key)) {
                 e.preventDefault();
-                document.getElementById('exit-player-btn')?.click();
+                var exitPlayerBtn = document.getElementById('exit-player-btn');
+                if (exitPlayerBtn) exitPlayerBtn.click();
                 if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
                 return;
             }
@@ -1153,7 +1338,7 @@ function setupKeyboardHandlers() {
                     lastPlayerBackPressAt = 0;
                     return;
                 }
-                const now = Date.now();
+                var now = Date.now();
                 if (now - lastPlayerBackPressAt < 1500) {
                     lastPlayerBackPressAt = 0;
                     if (typeof window.showDetailView === 'function') window.showDetailView();
@@ -1184,12 +1369,12 @@ function setupKeyboardHandlers() {
 
         if (AppState.currentScreen === 'search' && isKeyPressed('OK', key)) {
             e.preventDefault();
-            const focused = document.querySelector('.focused');
+            var focused = document.querySelector('.focused');
 
             if (focused) {
                 if (focused.id === 'search-query') {
                     focused.focus();
-                    try { focused.select && focused.select(); } catch (err) { }
+                    try { if (focused.select) focused.select(); } catch (err) { }
                 } else if (focused.tagName === 'SELECT' || focused.id === 'filter-year') {
                     if (typeof window.openNativeSearchControl === 'function') {
                         window.openNativeSearchControl(focused);
@@ -1198,9 +1383,10 @@ function setupKeyboardHandlers() {
                         focused.click();
                     }
                 } else if (focused.id === 'search-btn') {
-                    const query = document.getElementById('search-query')?.value?.trim();
-                    if (query && typeof window.searchTorrents === 'function') {
-                        window.searchTorrents(query);
+                    var query = document.getElementById('search-query');
+                    var q = query ? query.value.trim() : '';
+                    if (q && typeof window.searchTorrents === 'function') {
+                        window.searchTorrents(q);
                     }
                 } else {
                     focused.click();
@@ -1226,10 +1412,10 @@ function setupKeyboardHandlers() {
         } else if (isKeyPressed('OK', key)) {
             e.preventDefault();
 
-            const focused = document.querySelector('.focused');
+            var focused = document.querySelector('.focused');
             if (focused) {
                 if (focused.classList.contains('file-item')) {
-                    const playBtn = focused.querySelector('.play-btn');
+                    var playBtn = focused.querySelector('.play-btn');
                     if (playBtn) {
                         playBtn.click();
                     } else {
@@ -1244,7 +1430,8 @@ function setupKeyboardHandlers() {
         } else if (isKeyPressed('BACK', key) || isKeyPressed('EXIT', key)) {
             e.preventDefault();
             if (AppState.currentScreen === 'detail') {
-                document.getElementById('back-from-detail')?.click();
+                var backBtn = document.getElementById('back-from-detail');
+                if (backBtn) backBtn.click();
             } else if (AppState.currentScreen === 'search') {
                 if (typeof window.hideSearchResults === 'function') {
                     window.hideSearchResults();
@@ -1253,14 +1440,16 @@ function setupKeyboardHandlers() {
                 if (typeof window.backToCatalogList === 'function') {
                     window.backToCatalogList();
                 } else {
-                    document.getElementById('back-from-catalog')?.click();
+                    var backFromCatalog = document.getElementById('back-from-catalog');
+                    if (backFromCatalog) backFromCatalog.click();
                 }
             } else if (AppState.currentScreen === 'torrents') {
-                const hasFocus = !!document.querySelector('.focused');
+                var hasFocus = !!document.querySelector('.focused');
                 if (!hasFocus) {
                     focusFirstTorrentCard();
                 } else {
-                    document.getElementById('settings-btn')?.click();
+                    var settingsBtn = document.getElementById('settings-btn');
+                    if (settingsBtn) settingsBtn.click();
                 }
             }
         } else if (isKeyPressed('INFO', key)) {
@@ -1287,18 +1476,24 @@ function clearOkHold() {
 // ==================== TV FOCUS RESCUE ====================
 
 function setupFocusRescue() {
-    const VISIBLE = (el) => !!(el && el.offsetParent !== null && !el.disabled);
-    const byId = (id) => document.getElementById(id);
-    const clearFocused = () => document.querySelectorAll('.focused').forEach(el => el.classList.remove('focused'));
-    const clickEl = (el) => { try { el && el.click && el.click(); } catch (e) { } };
-    const blurEditor = () => {
-        const a = document.activeElement;
+    var VISIBLE = function (el) { return !!(el && el.offsetParent !== null && !el.disabled); };
+    var byId = function (id) { return document.getElementById(id); };
+    var clearFocused = function () {
+        var focused = document.querySelectorAll('.focused');
+        for (var i = 0; i < focused.length; i++) {
+            focused[i].classList.remove('focused');
+        }
+    };
+    var clickEl = function (el) { try { if (el && el.click) el.click(); } catch (e) { } };
+    var blurEditor = function () {
+        var a = document.activeElement;
         if (a && a !== document.body && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA')) {
             try { a.blur(); } catch (e) { }
         }
     };
 
-    function focusEl(el, opts = {}) {
+    function focusEl(el, opts) {
+        if (opts === undefined) opts = {};
         if (!VISIBLE(el)) return false;
         clearFocused();
         el.classList.add('focused');
@@ -1311,43 +1506,41 @@ function setupFocusRescue() {
         return true;
     }
 
-    let customFilterMenuState = null;
+    var customFilterMenuState = null;
 
     function ensureCustomFilterMenu() {
-        let menu = document.getElementById('custom-filter-menu');
+        var menu = document.getElementById('custom-filter-menu');
         if (menu) return menu;
 
         menu = document.createElement('div');
         menu.id = 'custom-filter-menu';
         menu.className = 'custom-filter-menu hidden';
-        menu.innerHTML = `
-            <div class="custom-filter-menu-backdrop"></div>
-            <div class="custom-filter-menu-panel">
-                <div class="custom-filter-menu-title" id="custom-filter-menu-title">Выбор</div>
-                <div class="custom-filter-menu-options" id="custom-filter-menu-options"></div>
-            </div>
-        `;
+        menu.innerHTML = '\n            <div class="custom-filter-menu-backdrop"></div>\n            <div class="custom-filter-menu-panel">\n                <div class="custom-filter-menu-title" id="custom-filter-menu-title">Выбор</div>\n                <div class="custom-filter-menu-options" id="custom-filter-menu-options"></div>\n            </div>\n        ';
         document.body.appendChild(menu);
-        menu.querySelector('.custom-filter-menu-backdrop').addEventListener('click', closeCustomFilterMenu);
+        var backdrop = menu.querySelector('.custom-filter-menu-backdrop');
+        if (backdrop) backdrop.addEventListener('click', closeCustomFilterMenu);
         return menu;
     }
 
     function renderCustomFilterMenu() {
-        const menu = ensureCustomFilterMenu();
-        const titleEl = document.getElementById('custom-filter-menu-title');
-        const optionsEl = document.getElementById('custom-filter-menu-options');
+        var menu = ensureCustomFilterMenu();
+        var titleEl = document.getElementById('custom-filter-menu-title');
+        var optionsEl = document.getElementById('custom-filter-menu-options');
         if (!customFilterMenuState || !titleEl || !optionsEl) return;
 
         titleEl.textContent = customFilterMenuState.title || 'Выбор';
-        optionsEl.innerHTML = customFilterMenuState.options.map((opt, idx) => {
-            const cls = idx === customFilterMenuState.index ? 'custom-filter-option active' : 'custom-filter-option';
-            const selected = String(opt.value) === String(customFilterMenuState.value) ? ' ✓' : '';
-            return `<div class="${cls}" data-index="${idx}">${opt.label}${selected}</div>`;
-        }).join('');
+        var optionsHtml = '';
+        for (var i = 0; i < customFilterMenuState.options.length; i++) {
+            var opt = customFilterMenuState.options[i];
+            var cls = (i === customFilterMenuState.index) ? 'custom-filter-option active' : 'custom-filter-option';
+            var selected = (String(opt.value) === String(customFilterMenuState.value)) ? ' ✓' : '';
+            optionsHtml += '<div class="' + cls + '" data-index="' + i + '">' + opt.label + selected + '</div>';
+        }
+        optionsEl.innerHTML = optionsHtml;
     }
 
     function closeCustomFilterMenu() {
-        const menu = document.getElementById('custom-filter-menu');
+        var menu = document.getElementById('custom-filter-menu');
         if (menu) menu.classList.add('hidden');
         customFilterMenuState = null;
         return true;
@@ -1355,7 +1548,7 @@ function setupFocusRescue() {
 
     function moveCustomFilterMenu(delta) {
         if (!customFilterMenuState || !customFilterMenuState.options.length) return true;
-        const len = customFilterMenuState.options.length;
+        var len = customFilterMenuState.options.length;
         customFilterMenuState.index = (customFilterMenuState.index + delta + len) % len;
         renderCustomFilterMenu();
         return true;
@@ -1363,11 +1556,17 @@ function setupFocusRescue() {
 
     function applyCustomFilterMenuSelection() {
         if (!customFilterMenuState || !customFilterMenuState.selectEl) return false;
-        const { selectEl, options, index } = customFilterMenuState;
-        const chosen = options[index];
+        var selectEl = customFilterMenuState.selectEl;
+        var options = customFilterMenuState.options;
+        var index = customFilterMenuState.index;
+        var chosen = options[index];
         if (!chosen) return false;
         selectEl.value = String(chosen.value);
-        try { selectEl.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) { }
+        try {
+            var event = document.createEvent('Event');
+            event.initEvent('change', true, true);
+            selectEl.dispatchEvent(event);
+        } catch (e) { }
         if (typeof window.getCurrentSearchMode === 'function') window.getCurrentSearchMode();
         closeCustomFilterMenu();
         try { focusEl(selectEl); } catch (e) { }
@@ -1375,7 +1574,7 @@ function setupFocusRescue() {
     }
 
     function isCustomFilterMenuOpen() {
-        const menu = document.getElementById('custom-filter-menu');
+        var menu = document.getElementById('custom-filter-menu');
         return !!(menu && !menu.classList.contains('hidden') && customFilterMenuState);
     }
 
@@ -1383,12 +1582,23 @@ function setupFocusRescue() {
         if (!VISIBLE(el)) return false;
 
         if (el.tagName === 'SELECT') {
-            const title = el.closest('.filter-group')?.querySelector('.filter-label')?.textContent?.trim() || 'Выбор';
-            const options = Array.from(el.options || []).map(opt => ({ value: opt.value, label: opt.textContent || opt.label || opt.value }));
-            let index = Math.max(0, options.findIndex(opt => String(opt.value) === String(el.value)));
+            var filterGroup = el.closest('.filter-group');
+            var titleLabel = filterGroup ? filterGroup.querySelector('.filter-label') : null;
+            var title = (titleLabel && titleLabel.textContent ? titleLabel.textContent.trim() : 'Выбор');
+            var options = [];
+            for (var i = 0; i < el.options.length; i++) {
+                options.push({ value: el.options[i].value, label: el.options[i].textContent || el.options[i].label || el.options[i].value });
+            }
+            var index = 0;
+            for (var j = 0; j < options.length; j++) {
+                if (String(options[j].value) === String(el.value)) {
+                    index = j;
+                    break;
+                }
+            }
             if (index < 0) index = 0;
-            customFilterMenuState = { selectEl: el, title, options, index, value: el.value };
-            const menu = ensureCustomFilterMenu();
+            customFilterMenuState = { selectEl: el, title: title, options: options, index: index, value: el.value };
+            var menu = ensureCustomFilterMenu();
             menu.classList.remove('hidden');
             renderCustomFilterMenu();
             return true;
@@ -1402,15 +1612,15 @@ function setupFocusRescue() {
 
     function currentScreen() {
         try {
-            const stateScreen = window.AppState?.currentScreen;
-            const player = byId('player-screen');
-            const detail = byId('detail-view');
-            const config = byId('config-screen');
-            const search = byId('search-overlay');
-            const catalogTab = byId('tab-catalog');
-            const donateTab = byId('donate-overlay');
+            var stateScreen = window.AppState && AppState.currentScreen ? AppState.currentScreen : null;
+            var player = byId('player-screen');
+            var detail = byId('detail-view');
+            var config = byId('config-screen');
+            var search = byId('search-overlay');
+            var catalogTab = byId('tab-catalog');
+            var donateTab = byId('donate-overlay');
 
-            const catalogGrid = document.getElementById('torrents-grid');
+            var catalogGrid = document.getElementById('torrents-grid');
 
             if (stateScreen === 'player') return 'player';
             if (player && getComputedStyle(player).display !== 'none') return 'player';
@@ -1424,8 +1634,8 @@ function setupFocusRescue() {
             }
 
             if (catalogGrid) {
-                const hasCatalogCards = catalogGrid.querySelector('.catalog-card, .catalog-folder-card') !== null;
-                const hasTorrentCards = catalogGrid.querySelector('.torrent-card:not(.catalog-card):not(.catalog-folder-card)') !== null;
+                var hasCatalogCards = catalogGrid.querySelector('.catalog-card, .catalog-folder-card') !== null;
+                var hasTorrentCards = catalogGrid.querySelector('.torrent-card:not(.catalog-card):not(.catalog-folder-card)') !== null;
 
                 if (hasCatalogCards && !hasTorrentCards) {
                     return 'catalog';
@@ -1438,36 +1648,104 @@ function setupFocusRescue() {
         }
     }
 
-    function getTorrentCards() { return Array.from(document.querySelectorAll('.torrent-card')).filter(VISIBLE); }
-    function getTorrentHeader() { return ['settings-btn'].map(byId).filter(VISIBLE); }
-    function getTorrentTabs() { return ['tab-catalog', 'tab-torrents', 'tab-search', 'tab-donate'].map(byId).filter(VISIBLE); }
-    function getSearchTop() { return ['search-query', 'filter-toggle', 'search-btn', 'close-search'].map(byId).filter(VISIBLE); }
-    function getSearchFilters() { return ['torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters'].map(byId).filter(VISIBLE); }
+    function getTorrentCards() {
+        var cards = document.querySelectorAll('.torrent-card');
+        var visible = [];
+        for (var i = 0; i < cards.length; i++) {
+            if (VISIBLE(cards[i])) visible.push(cards[i]);
+        }
+        return visible;
+    }
+    function getTorrentHeader() {
+        var ids = ['settings-btn'];
+        var visible = [];
+        for (var i = 0; i < ids.length; i++) {
+            var el = byId(ids[i]);
+            if (VISIBLE(el)) visible.push(el);
+        }
+        return visible;
+    }
+    function getTorrentTabs() {
+        var ids = ['tab-catalog', 'tab-torrents', 'tab-search', 'tab-donate'];
+        var visible = [];
+        for (var i = 0; i < ids.length; i++) {
+            var el = byId(ids[i]);
+            if (VISIBLE(el)) visible.push(el);
+        }
+        return visible;
+    }
+    function getSearchTop() {
+        var ids = ['search-query', 'filter-toggle', 'search-btn', 'close-search'];
+        var visible = [];
+        for (var i = 0; i < ids.length; i++) {
+            var el = byId(ids[i]);
+            if (VISIBLE(el)) visible.push(el);
+        }
+        return visible;
+    }
+    function getSearchFilters() {
+        var ids = ['torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters'];
+        var visible = [];
+        for (var i = 0; i < ids.length; i++) {
+            var el = byId(ids[i]);
+            if (VISIBLE(el)) visible.push(el);
+        }
+        return visible;
+    }
     function getSearchResults() {
-        const currentMode = typeof window.getCurrentSearchMode === 'function' ? window.getCurrentSearchMode() : 'torrentsearch';
+        var currentMode = typeof window.getCurrentSearchMode === 'function' ? window.getCurrentSearchMode() : 'torrentsearch';
         if (currentMode === 'torrentsearch') {
-            return Array.from(document.querySelectorAll('.search-result-item')).filter(VISIBLE);
+            var items = document.querySelectorAll('.search-result-item');
+            var visible = [];
+            for (var i = 0; i < items.length; i++) {
+                if (VISIBLE(items[i])) visible.push(items[i]);
+            }
+            return visible;
         } else if (currentMode === 'globalsearch') {
-            return Array.from(document.querySelectorAll('.global-search-card')).filter(VISIBLE);
+            var items = document.querySelectorAll('.global-search-card');
+            var visible = [];
+            for (var i = 0; i < items.length; i++) {
+                if (VISIBLE(items[i])) visible.push(items[i]);
+            }
+            return visible;
         }
         return [];
     }
 
     function getDetailItems() {
-        return Array.from(document.querySelectorAll(
-            '.detail-progress-btn, .file-item, .back-btn, #catalog-watch-btn, ' +
-            '.catalog-trailer-link, .catalog-trailer-play, .catalog-trailer-card-item, ' +
-            '#catalog-trailer-close, ' +
-            '.catalog-actor-card, .catalog-recommendation-card'
-        )).filter(VISIBLE);
+        var selectors = [
+            '.detail-progress-btn', '.file-item', '.back-btn', '#catalog-watch-btn',
+            '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item',
+            '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'
+        ];
+        var all = [];
+        for (var s = 0; s < selectors.length; s++) {
+            var items = document.querySelectorAll(selectors[s]);
+            for (var i = 0; i < items.length; i++) {
+                if (VISIBLE(items[i])) all.push(items[i]);
+            }
+        }
+        return all;
     }
-    function getConfigItems() { return Array.from(document.querySelectorAll('#torrserver-url, #auth-checkbox, #auth-login, #auth-password, .settings-btn, #auto-fullscreen')).filter(VISIBLE); }
+    function getConfigItems() {
+        var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', '.settings-btn', '#auto-fullscreen'];
+        var visible = [];
+        for (var i = 0; i < ids.length; i++) {
+            var el = byId(ids[i]);
+            if (VISIBLE(el)) visible.push(el);
+        }
+        var settingsBtns = document.querySelectorAll('.settings-btn');
+        for (var j = 0; j < settingsBtns.length; j++) {
+            if (VISIBLE(settingsBtns[j])) visible.push(settingsBtns[j]);
+        }
+        return visible;
+    }
 
     function getColumns() {
-        const grid = byId('torrents-grid');
+        var grid = byId('torrents-grid');
         if (!grid) return 8;
         try {
-            const cols = (getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(Boolean).length;
+            var cols = (getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
             return cols || 8;
         } catch (e) { return 8; }
     }
@@ -1475,7 +1753,7 @@ function setupFocusRescue() {
     function belongsToScreen(el, screen) {
         if (!el) return false;
         if (screen === 'torrents') {
-            return el.closest('.torrent-card') || el.classList.contains('file-item') || ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-donate', 'back-from-detail', 'tab-catalog'].includes(el.id);
+            return el.closest('.torrent-card') || el.classList.contains('file-item') || ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-donate', 'back-from-detail', 'tab-catalog'].indexOf(el.id) !== -1;
         }
         if (screen === 'catalog') {
             return el.closest('.torrent-card.catalog-card') ||
@@ -1483,11 +1761,11 @@ function setupFocusRescue() {
                 (el.closest('#torrents-grid') && !el.closest('.torrent-card:not(.catalog-card):not(.catalog-folder-card)')) ||
                 el.id === 'back-from-catalog' ||
                 el.classList.contains('file-item') ||
-                el.classList.contains('back-btn') || ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-catalog', 'tab-donate'].includes(el.id);
+                el.classList.contains('back-btn') || ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-catalog', 'tab-donate'].indexOf(el.id) !== -1;
         }
         if (screen === 'search') {
             return el.closest('.search-result-item') || el.closest('.global-search-card') ||
-                ['search-query', 'filter-toggle', 'search-btn', 'close-search', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters'].includes(el.id);
+                ['search-query', 'filter-toggle', 'search-btn', 'close-search', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters'].indexOf(el.id) !== -1;
         }
         if (screen === 'detail') {
             return !!(
@@ -1501,45 +1779,56 @@ function setupFocusRescue() {
         if (screen === 'config') {
             return !!(
                 el.closest('#config-screen') ||
-                ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password'].includes(el.id) ||
+                ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password'].indexOf(el.id) !== -1 ||
                 el.classList.contains('settings-btn')
             );
         }
         return false;
     }
 
-    function ensureTorrentFocus(force = false) {
+    function ensureTorrentFocus(force) {
+        if (force === undefined) force = false;
         if (currentScreen() !== 'torrents') return false;
-        if (window.AppState?.restoringFocus) return false;
+        if (window.AppState && AppState.restoringFocus) return false;
 
-        const focused = document.querySelector('.focused');
+        var focused = document.querySelector('.focused');
         if (!force && belongsToScreen(focused, 'torrents')) return true;
 
-        return focusEl(getTorrentCards()[0] || getTorrentTabs()[0] || getTorrentHeader()[0]);
+        var cards = getTorrentCards();
+        var tabs = getTorrentTabs();
+        var header = getTorrentHeader();
+        return focusEl(cards[0] || tabs[0] || header[0]);
     }
 
-    function ensureCatalogFocus(force = false) {
+    function ensureCatalogFocus(force) {
+        if (force === undefined) force = false;
         if (currentScreen() !== 'catalog') return false;
 
-        const focused = document.querySelector('.focused');
+        var focused = document.querySelector('.focused');
         if (!force && focused && belongsToScreen(focused, 'catalog')) {
             return true;
         }
 
-        const cards = Array.from(document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card')).filter(VISIBLE);
+        var cards = [];
+        var allCards = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+        for (var i = 0; i < allCards.length; i++) {
+            if (VISIBLE(allCards[i])) cards.push(allCards[i]);
+        }
         if (!cards.length) return false;
 
-        const savedIndexRaw = localStorage.getItem('lastCatalogCardIndex');
-        let targetCard = null;
+        var savedIndexRaw = localStorage.getItem('lastCatalogCardIndex');
+        var targetCard = null;
 
         if (savedIndexRaw !== null) {
-            const savedNumIndex = parseInt(savedIndexRaw, 10);
+            var savedNumIndex = parseInt(savedIndexRaw, 10);
             if (Number.isFinite(savedNumIndex)) {
-                targetCard = cards.find(card => {
-                    const cardNumIndex = parseInt(card.dataset.numIndex || '-1', 10);
-                    return Number.isFinite(cardNumIndex) && cardNumIndex === savedNumIndex;
-                }) || null;
-
+                for (var j = 0; j < cards.length; j++) {
+                    var cardNumIndex = parseInt(cards[j].dataset.numIndex || '-1', 10);
+                    if (Number.isFinite(cardNumIndex) && cardNumIndex === savedNumIndex) {
+                        targetCard = cards[j];
+                        break;
+                    }
+                }
                 if (!targetCard && savedNumIndex >= 0 && savedNumIndex < cards.length) {
                     targetCard = cards[savedNumIndex];
                 }
@@ -1550,52 +1839,67 @@ function setupFocusRescue() {
             targetCard = cards[0];
         }
 
-        const targetIndex = cards.indexOf(targetCard);
-        console.log(`🎯 ensureCatalogFocus: восстанавливаем фокус на карточке ${targetIndex}, saved=${savedIndexRaw}`);
+        var targetIndex = -1;
+        for (var k = 0; k < cards.length; k++) {
+            if (targetCard === cards[k]) {
+                targetIndex = k;
+                break;
+            }
+        }
+        console.log('🎯 ensureCatalogFocus: восстанавливаем фокус на карточке ' + targetIndex + ', saved=' + savedIndexRaw);
         return focusEl(targetCard);
     }
 
-    function ensureSearchFocus(force = false, preferInput = true) {
+    function ensureSearchFocus(force, preferInput) {
+        if (force === undefined) force = false;
+        if (preferInput === undefined) preferInput = true;
         if (currentScreen() !== 'search') return false;
-        const focused = document.querySelector('.focused');
+        var focused = document.querySelector('.focused');
         if (!force && belongsToScreen(focused, 'search')) return true;
-        const top = getSearchTop();
-        const filters = getSearchFilters();
-        const results = getSearchResults();
-        const query = byId('search-query');
+        var top = getSearchTop();
+        var filters = getSearchFilters();
+        var results = getSearchResults();
+        var query = byId('search-query');
         return focusEl((preferInput && query) ? query : (top[0] || filters[0] || results[0] || query));
     }
-    function ensureDetailFocus(force = false) {
+    function ensureDetailFocus(force) {
+        if (force === undefined) force = false;
         if (currentScreen() !== 'detail') return false;
-        const focused = document.querySelector('.focused');
+        var focused = document.querySelector('.focused');
         if (!force && belongsToScreen(focused, 'detail')) return true;
-        return focusEl(getDetailItems()[0] || byId('back-from-detail'));
+        var items = getDetailItems();
+        return focusEl(items[0] || byId('back-from-detail'));
     }
-    function ensureConfigFocus(force = false) {
+    function ensureConfigFocus(force) {
+        if (force === undefined) force = false;
         if (currentScreen() !== 'config') return false;
-        const focused = document.querySelector('.focused');
+        var focused = document.querySelector('.focused');
         if (!force && belongsToScreen(focused, 'config')) return true;
         return focusEl(getConfigItems()[0]);
     }
 
     window.focusFirstTorrentCard = function () { return ensureTorrentFocus(true); };
     window.focusFirstCatalogCard = function () { return ensureCatalogFocus(true); };
-    window.focusSearchHome = function (preferQuery = true) { return ensureSearchFocus(true, preferQuery); };
+    window.focusSearchHome = function (preferQuery) {
+        if (preferQuery === undefined) preferQuery = true;
+        return ensureSearchFocus(true, preferQuery);
+    };
     window.ensureCatalogFocus = ensureCatalogFocus;
     window.ensureDetailFocus = ensureDetailFocus;
     window.ensureTorrentFocus = ensureTorrentFocus;
     window.ensureSearchFocus = ensureSearchFocus;
     window.ensureConfigFocus = ensureConfigFocus;
 
-    function openSearchScreen(focusInput = true) {
+    function openSearchScreen(focusInput) {
+        if (focusInput === undefined) focusInput = true;
         clickEl(byId('tab-search') || byId('search-btn'));
-        setTimeout(() => {
+        setTimeout(function () {
             ensureSearchFocus(true, focusInput);
             if (focusInput) {
-                const q = byId('search-query');
+                var q = byId('search-query');
                 focusEl(q, { nativeFocus: true });
-                try { q && q.click && q.click(); } catch (e) { }
-                try { q && q.select && q.select(); } catch (e) { }
+                try { if (q && q.click) q.click(); } catch (e) { }
+                try { if (q && q.select) q.select(); } catch (e) { }
             }
         }, 120);
     }
@@ -1604,8 +1908,8 @@ function setupFocusRescue() {
             window.hideSearchResults();
         } else {
             clickEl(byId('close-search') || byId('tab-torrents'));
-            setTimeout(() => {
-                const returnTo = window.AppState?.searchReturnTo === 'catalog' ? 'catalog' : 'torrents';
+            setTimeout(function () {
+                var returnTo = (window.AppState && AppState.searchReturnTo === 'catalog') ? 'catalog' : 'torrents';
                 if (returnTo === 'catalog') {
                     ensureCatalogFocus(true);
                 } else {
@@ -1616,17 +1920,35 @@ function setupFocusRescue() {
     }
 
     function torrentHandle(direction) {
-        const focused = belongsToScreen(document.querySelector('.focused'), 'torrents') ? document.querySelector('.focused') : null;
-        const cards = getTorrentCards();
-        const header = getTorrentHeader();
-        const tabs = getTorrentTabs();
-        const cols = getColumns();
+        var focused = (belongsToScreen(document.querySelector('.focused'), 'torrents') ? document.querySelector('.focused') : null);
+        var cards = getTorrentCards();
+        var header = getTorrentHeader();
+        var tabs = getTorrentTabs();
+        var cols = getColumns();
         if (!focused) return ensureTorrentFocus(true);
-        const cardIndex = cards.indexOf(focused);
-        const headerIndex = header.indexOf(focused);
-        const tabIndex = tabs.indexOf(focused);
+        var cardIndex = -1;
+        for (var i = 0; i < cards.length; i++) {
+            if (focused === cards[i]) {
+                cardIndex = i;
+                break;
+            }
+        }
+        var headerIndex = -1;
+        for (var j = 0; j < header.length; j++) {
+            if (focused === header[j]) {
+                headerIndex = j;
+                break;
+            }
+        }
+        var tabIndex = -1;
+        for (var k = 0; k < tabs.length; k++) {
+            if (focused === tabs[k]) {
+                tabIndex = k;
+                break;
+            }
+        }
         if (cardIndex !== -1) {
-            const row = Math.floor(cardIndex / cols);
+            var row = Math.floor(cardIndex / cols);
             if (direction === 'left') return focusEl(cards[Math.max(0, cardIndex - 1)] || focused);
             if (direction === 'right') return focusEl(cards[Math.min(cards.length - 1, cardIndex + 1)] || focused);
             if (direction === 'up') return focusEl(row === 0 ? (tabs[0] || header[0] || focused) : (cards[Math.max(0, cardIndex - cols)] || focused));
@@ -1650,20 +1972,42 @@ function setupFocusRescue() {
     }
 
     function catalogHandle(direction) {
-        const focused = belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null;
-        const cards = Array.from(document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card')).filter(VISIBLE);
-        const header = getTorrentHeader();
-        const tabs = getTorrentTabs();
-        const cols = getColumns();
+        var focused = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
+        var cards = [];
+        var allCards = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+        for (var i = 0; i < allCards.length; i++) {
+            if (VISIBLE(allCards[i])) cards.push(allCards[i]);
+        }
+        var header = getTorrentHeader();
+        var tabs = getTorrentTabs();
+        var cols = getColumns();
 
         if (!focused) return ensureCatalogFocus(true);
 
-        const cardIndex = cards.indexOf(focused);
-        const headerIndex = header.indexOf(focused);
-        const tabIndex = tabs.indexOf(focused);
+        var cardIndex = -1;
+        for (var j = 0; j < cards.length; j++) {
+            if (focused === cards[j]) {
+                cardIndex = j;
+                break;
+            }
+        }
+        var headerIndex = -1;
+        for (var k = 0; k < header.length; k++) {
+            if (focused === header[k]) {
+                headerIndex = k;
+                break;
+            }
+        }
+        var tabIndex = -1;
+        for (var l = 0; l < tabs.length; l++) {
+            if (focused === tabs[l]) {
+                tabIndex = l;
+                break;
+            }
+        }
 
         if (cardIndex !== -1) {
-            const row = Math.floor(cardIndex / cols);
+            var row = Math.floor(cardIndex / cols);
 
             if (direction === 'left') {
                 if (cardIndex > 0 && cardIndex % cols !== 0) {
@@ -1681,43 +2025,43 @@ function setupFocusRescue() {
 
             if (direction === 'up') {
                 if (row === 0) {
-                    // Переходим к вкладкам
                     return focusEl(tabs[0] || header[0] || focused);
                 }
                 return focusEl(cards[Math.max(0, cardIndex - cols)] || focused);
             }
 
             if (direction === 'down') {
-                // Проверяем, есть ли следующая строка
                 if (cardIndex + cols < cards.length) {
-                    // Если есть следующая строка, просто перемещаем фокус
-                    const newIndex = cardIndex + cols;
+                    var newIndex = cardIndex + cols;
                     return focusEl(cards[Math.min(cards.length - 1, newIndex)] || focused);
                 }
-                // Если мы на последней строке и есть еще элементы для загрузки
                 else if (cards.length < catalogState.totalItems && !catalogState.isLoadingMore) {
-                    // Сохраняем текущий индекс для восстановления после загрузки
-                    const currentCardIndex = cardIndex;
+                    var currentCardIndex = cardIndex;
 
-                    // Сначала имитируем, что мы переместились на следующую строку (показываем загрузку)
-                    // Но фокус пока оставляем на текущей карточке
-                    const loadMoreTrigger = document.getElementById('load-more-trigger');
+                    var loadMoreTrigger = document.getElementById('load-more-trigger');
                     if (loadMoreTrigger) {
                         loadMoreTrigger.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
 
-                    // Загружаем следующую страницу
                     console.log('📦 Загружаем следующую страницу каталога');
-                    window.loadMoreCatalogItems().then(() => {
-                        setTimeout(() => {
-                            // После загрузки обновляем список карточек
-                            const newCards = Array.from(document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card')).filter(VISIBLE);
-                            // Перемещаем фокус на следующий элемент (на ту же позицию, но в новой строке)
-                            const targetIndex = Math.min(currentCardIndex + cols, newCards.length - 1);
+                    window.loadMoreCatalogItems().then(function () {
+                        setTimeout(function () {
+                            var newCards = [];
+                            var newAllCards = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+                            for (var m = 0; m < newAllCards.length; m++) {
+                                if (VISIBLE(newAllCards[m])) newCards.push(newAllCards[m]);
+                            }
+                            var targetIndex = Math.min(currentCardIndex + cols, newCards.length - 1);
                             if (targetIndex >= 0 && targetIndex < newCards.length) {
-                                const newFocusCard = newCards[targetIndex];
+                                var newFocusCard = newCards[targetIndex];
                                 if (newFocusCard) {
-                                    const globalIndex = focusableElements.indexOf(newFocusCard);
+                                    var globalIndex = -1;
+                                    for (var n = 0; n < focusableElements.length; n++) {
+                                        if (newFocusCard === focusableElements[n]) {
+                                            globalIndex = n;
+                                            break;
+                                        }
+                                    }
                                     if (globalIndex !== -1) {
                                         setFocus(globalIndex);
                                     }
@@ -1765,42 +2109,78 @@ function setupFocusRescue() {
     }
 
     function detailHandle(direction) {
-        const items = getDetailItems();
-        const focused = belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null;
+        var items = getDetailItems();
+        var focused = (belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null);
         if (!focused) return ensureDetailFocus(true);
-        const idx = items.indexOf(focused);
+        var idx = -1;
+        for (var i = 0; i < items.length; i++) {
+            if (focused === items[i]) {
+                idx = i;
+                break;
+            }
+        }
         if (idx === -1) return ensureDetailFocus(true);
 
-        const trailerLinks = items.filter(el => el.classList.contains('catalog-trailer-play') ||
-            el.classList.contains('catalog-trailer-link') ||
-            el.classList.contains('catalog-trailer-card-item'));
-        const actorCards = items.filter(el => el.classList.contains('catalog-actor-card'));
-        const recommendationCards = items.filter(el => el.classList.contains('catalog-recommendation-card'));
-        const watchBtn = byId('catalog-watch-btn');
-        const backBtn = byId('back-from-detail');
+        var trailerLinks = [];
+        var actorCards = [];
+        var recommendationCards = [];
+        for (var j = 0; j < items.length; j++) {
+            var el = items[j];
+            if (el.classList.contains('catalog-trailer-play') ||
+                el.classList.contains('catalog-trailer-link') ||
+                el.classList.contains('catalog-trailer-card-item')) {
+                trailerLinks.push(el);
+            }
+            if (el.classList.contains('catalog-actor-card')) {
+                actorCards.push(el);
+            }
+            if (el.classList.contains('catalog-recommendation-card')) {
+                recommendationCards.push(el);
+            }
+        }
+        var watchBtn = byId('catalog-watch-btn');
+        var backBtn = byId('back-from-detail');
 
-        const isTrailer = focused.classList.contains('catalog-trailer-play') ||
+        var isTrailer = focused.classList.contains('catalog-trailer-play') ||
             focused.classList.contains('catalog-trailer-link') ||
             focused.classList.contains('catalog-trailer-card-item');
-        const isActor = focused.classList.contains('catalog-actor-card');
-        const isRecommendation = focused.classList.contains('catalog-recommendation-card');
-        const isWatchBtn = focused.id === 'catalog-watch-btn';
-        const isBackBtn = focused.id === 'back-from-detail';
+        var isActor = focused.classList.contains('catalog-actor-card');
+        var isRecommendation = focused.classList.contains('catalog-recommendation-card');
+        var isWatchBtn = focused.id === 'catalog-watch-btn';
+        var isBackBtn = focused.id === 'back-from-detail';
 
-        const trailerIndex = trailerLinks.indexOf(focused);
-        const actorIndex = actorCards.indexOf(focused);
-        const recommendationIndex = recommendationCards.indexOf(focused);
+        var trailerIndex = -1;
+        for (var k = 0; k < trailerLinks.length; k++) {
+            if (focused === trailerLinks[k]) {
+                trailerIndex = k;
+                break;
+            }
+        }
+        var actorIndex = -1;
+        for (var l = 0; l < actorCards.length; l++) {
+            if (focused === actorCards[l]) {
+                actorIndex = l;
+                break;
+            }
+        }
+        var recommendationIndex = -1;
+        for (var m = 0; m < recommendationCards.length; m++) {
+            if (focused === recommendationCards[m]) {
+                recommendationIndex = m;
+                break;
+            }
+        }
 
-        const scrollToElement = (element) => {
+        var scrollToElement = function (element) {
             if (!element) return;
 
-            const detailView = document.getElementById('detail-view');
+            var detailView = document.getElementById('detail-view');
             if (detailView) {
-                const elementRect = element.getBoundingClientRect();
-                const containerRect = detailView.getBoundingClientRect();
-                const scrollTop = detailView.scrollTop;
-                const elementTop = elementRect.top - containerRect.top + scrollTop;
-                const offset = 20;
+                var elementRect = element.getBoundingClientRect();
+                var containerRect = detailView.getBoundingClientRect();
+                var scrollTop = detailView.scrollTop;
+                var elementTop = elementRect.top - containerRect.top + scrollTop;
+                var offset = 20;
                 detailView.scrollTo({
                     top: Math.max(0, elementTop - offset),
                     behavior: 'smooth'
@@ -1810,8 +2190,8 @@ function setupFocusRescue() {
             }
         };
 
-        const scrollToTop = () => {
-            const detailView = document.getElementById('detail-view');
+        var scrollToTop = function () {
+            var detailView = document.getElementById('detail-view');
             if (detailView) {
                 detailView.scrollTo({
                     top: 0,
@@ -1967,7 +2347,7 @@ function setupFocusRescue() {
         }
 
         if (direction === 'up') {
-            const targetEl = items[Math.max(0, idx - 1)] || focused;
+            var targetEl = items[Math.max(0, idx - 1)] || focused;
             focusEl(targetEl);
             if (targetEl.id === 'catalog-watch-btn' || targetEl.id === 'back-from-detail') {
                 scrollToTop();
@@ -1977,7 +2357,7 @@ function setupFocusRescue() {
             return true;
         }
         if (direction === 'down') {
-            const targetEl = items[Math.min(items.length - 1, idx + 1)] || focused;
+            var targetEl = items[Math.min(items.length - 1, idx + 1)] || focused;
             focusEl(targetEl);
             if (targetEl.id === 'catalog-watch-btn' || targetEl.id === 'back-from-detail') {
                 scrollToTop();
@@ -1993,26 +2373,47 @@ function setupFocusRescue() {
     }
 
     function searchHandle(direction) {
-        const currentMode = typeof window.getCurrentSearchMode === 'function' ? window.getCurrentSearchMode() : 'torrentsearch';
+        var currentMode = typeof window.getCurrentSearchMode === 'function' ? window.getCurrentSearchMode() : 'torrentsearch';
 
-        const focused = belongsToScreen(document.querySelector('.focused'), 'search') ? document.querySelector('.focused') : null;
-        const query = byId('search-query');
-        const top = getSearchTop();
-        const filters = getSearchFilters();
-        const results = getSearchResults();
-        const topWithoutQuery = top.filter(el => el && el.id !== 'search-query');
-        const topEntry = topWithoutQuery[0] || filters[0] || results[0] || query;
+        var focused = (belongsToScreen(document.querySelector('.focused'), 'search') ? document.querySelector('.focused') : null);
+        var query = byId('search-query');
+        var top = getSearchTop();
+        var filters = getSearchFilters();
+        var results = getSearchResults();
+        var topWithoutQuery = [];
+        for (var i = 0; i < top.length; i++) {
+            if (top[i] && top[i].id !== 'search-query') topWithoutQuery.push(top[i]);
+        }
+        var topEntry = topWithoutQuery[0] || filters[0] || results[0] || query;
 
         if (!focused) return ensureSearchFocus(true, false);
 
-        if (document.activeElement === query && ['left', 'right', 'up', 'down'].includes(direction)) {
+        if (document.activeElement === query && ['left', 'right', 'up', 'down'].indexOf(direction) !== -1) {
             blurEditor();
             return focusEl(topEntry);
         }
 
-        const topIndex = top.indexOf(focused);
-        const filterIndex = filters.indexOf(focused);
-        const resultIndex = results.indexOf(focused);
+        var topIndex = -1;
+        for (var j = 0; j < top.length; j++) {
+            if (focused === top[j]) {
+                topIndex = j;
+                break;
+            }
+        }
+        var filterIndex = -1;
+        for (var k = 0; k < filters.length; k++) {
+            if (focused === filters[k]) {
+                filterIndex = k;
+                break;
+            }
+        }
+        var resultIndex = -1;
+        for (var l = 0; l < results.length; l++) {
+            if (focused === results[l]) {
+                resultIndex = l;
+                break;
+            }
+        }
 
         if (currentMode === 'torrentsearch') {
             if (topIndex !== -1) {
@@ -2033,11 +2434,13 @@ function setupFocusRescue() {
                     return focusEl(filters[Math.min(filters.length - 1, filterIndex + 1)] || focused);
                 }
                 if (direction === 'up') {
-                    document.getElementById('filter-toggle').click();
+                    var filterToggle = document.getElementById('filter-toggle');
+                    if (filterToggle) filterToggle.click();
                     return focusEl(top[Math.max(0, topIndex - 1)] || focused);
                 }
                 if (direction === 'down') {
-                    document.getElementById('filter-toggle').click();
+                    var filterToggle = document.getElementById('filter-toggle');
+                    if (filterToggle) filterToggle.click();
                     return focusEl(results[0] || focused);
                 } else {
                     return true;
@@ -2050,7 +2453,11 @@ function setupFocusRescue() {
                     return focusEl(top[Math.max(0, topIndex - 1)] || focused);
                 }
                 if (direction === 'down') return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
-                if (direction === 'left' || direction === 'right') return document.getElementById('filter-toggle').click();
+                if (direction === 'left' || direction === 'right') {
+                    var filterToggle = document.getElementById('filter-toggle');
+                    if (filterToggle) filterToggle.click();
+                    return true;
+                }
                 return true;
             }
 
@@ -2074,11 +2481,13 @@ function setupFocusRescue() {
                     return focusEl(filters[Math.min(filters.length - 1, filterIndex + 1)] || focused);
                 }
                 if (direction === 'up') {
-                    document.getElementById('filter-toggle').click();
+                    var filterToggle = document.getElementById('filter-toggle');
+                    if (filterToggle) filterToggle.click();
                     return focusEl(top[Math.max(0, topIndex - 1)] || focused);
                 }
                 if (direction === 'down') {
-                    document.getElementById('filter-toggle').click();
+                    var filterToggle = document.getElementById('filter-toggle');
+                    if (filterToggle) filterToggle.click();
                     return focusEl(results[0] || focused);
                 } else {
                     return true;
@@ -2086,8 +2495,8 @@ function setupFocusRescue() {
             }
 
             if (resultIndex !== -1) {
-                const cols = getColumns();
-                const row = Math.floor(resultIndex / cols);
+                var cols = getColumns();
+                var row = Math.floor(resultIndex / cols);
 
                 if (direction === 'left') {
                     return focusEl(results[Math.max(0, resultIndex - 1)] || focused);
@@ -2114,10 +2523,16 @@ function setupFocusRescue() {
     }
 
     function configHandle(direction) {
-        const items = getConfigItems();
-        const focused = belongsToScreen(document.querySelector('.focused'), 'config') ? document.querySelector('.focused') : null;
+        var items = getConfigItems();
+        var focused = (belongsToScreen(document.querySelector('.focused'), 'config') ? document.querySelector('.focused') : null);
         if (!focused) return ensureConfigFocus(true);
-        const idx = items.indexOf(focused);
+        var idx = -1;
+        for (var i = 0; i < items.length; i++) {
+            if (focused === items[i]) {
+                idx = i;
+                break;
+            }
+        }
         if (idx === -1) return ensureConfigFocus(true);
         if (direction === 'up') return focusEl(items[Math.max(0, idx - 1)] || focused);
         if (direction === 'down') return focusEl(items[Math.min(items.length - 1, idx + 1)] || focused);
@@ -2126,8 +2541,8 @@ function setupFocusRescue() {
     }
 
     function onOk() {
-        const screen = currentScreen();
-        const focused = document.querySelector('.focused');
+        var screen = currentScreen();
+        var focused = document.querySelector('.focused');
         if (screen === 'torrents') {
             if (!belongsToScreen(focused, 'torrents')) return ensureTorrentFocus(true);
             if (focused.id === 'search-query' || focused.id === 'search-btn' || focused.id === 'tab-search') return openSearchScreen(true);
@@ -2150,7 +2565,7 @@ function setupFocusRescue() {
                 focusEl(focused, { nativeFocus: true });
                 try { focused.click(); } catch (e) { }
                 try { focused.focus(); } catch (e) { }
-                try { focused.select && focused.select(); } catch (e) { }
+                try { if (focused.select) focused.select(); } catch (e) { }
                 return true;
             }
 
@@ -2187,21 +2602,22 @@ function setupFocusRescue() {
     }
 
     function onBack() {
-        const search = byId('search-overlay');
-        const detail = byId('detail-view');
-        const config = byId('config-screen');
-        const catalog = currentScreen() === 'catalog';
-        const donate = currentScreen() === 'donate';
+        var search = byId('search-overlay');
+        var detail = byId('detail-view');
+        var config = byId('config-screen');
+        var catalog = currentScreen() === 'catalog';
+        var donate = currentScreen() === 'donate';
 
         if (typeof window.closeCatalogTrailerOverlay === 'function' && window.closeCatalogTrailerOverlay()) {
-            setTimeout(() => ensureDetailFocus(true), 80);
+            setTimeout(function () { ensureDetailFocus(true); }, 80);
             return true;
         }
 
         if (search && !search.classList.contains('hidden') && getComputedStyle(search).display !== 'none') {
             if (typeof window.hideSearchResults === 'function') {
                 window.hideSearchResults();
-                focusEl(getTorrentTabs()[2]);
+                var tabs = getTorrentTabs();
+                focusEl(tabs[2]);
             } else {
                 leaveSearchToTorrents();
             }
@@ -2232,31 +2648,48 @@ function setupFocusRescue() {
             } else {
                 clickEl(byId('back-from-catalog'));
             }
-            setTimeout(() => ensureCatalogFocus(true), 180);
+            setTimeout(function () { ensureCatalogFocus(true); }, 180);
             return true;
         }
 
         if (config && getComputedStyle(config).display !== 'none') {
-            const main = byId('torrserver-section');
+            var main = byId('torrserver-section');
             config.style.display = 'none';
             if (main) main.style.display = 'block';
             try { window.AppState.currentScreen = 'torrents'; } catch (e) { }
-            setTimeout(() => ensureTorrentFocus(true), 180);
+            setTimeout(function () { ensureTorrentFocus(true); }, 180);
             return true;
         }
 
         return false;
     }
 
-    function isArrowKey(keyCode) { return [37, 38, 39, 40].includes(keyCode) || (typeof isKeyPressed === 'function' && (isKeyPressed('UP', keyCode) || isKeyPressed('DOWN', keyCode) || isKeyPressed('LEFT', keyCode) || isKeyPressed('RIGHT', keyCode))); }
-    function arrowDir(keyCode) { return ({ 37: 'left', 38: 'up', 39: 'right', 40: 'down' })[keyCode] || ((typeof isKeyPressed === 'function' && isKeyPressed('UP', keyCode)) ? 'up' : (typeof isKeyPressed === 'function' && isKeyPressed('DOWN', keyCode)) ? 'down' : (typeof isKeyPressed === 'function' && isKeyPressed('LEFT', keyCode)) ? 'left' : (typeof isKeyPressed === 'function' && isKeyPressed('RIGHT', keyCode)) ? 'right' : null); }
-    function isOkKey(keyCode) { return keyCode === 13 || (typeof isKeyPressed === 'function' && isKeyPressed('OK', keyCode)); }
-    function isBackKey(keyCode) { return [8, 27, 461, 10009].includes(keyCode) || (typeof isKeyPressed === 'function' && (isKeyPressed('BACK', keyCode) || isKeyPressed('EXIT', keyCode))); }
+    function isArrowKey(keyCode) {
+        return [37, 38, 39, 40].indexOf(keyCode) !== -1 || (typeof isKeyPressed === 'function' && (isKeyPressed('UP', keyCode) || isKeyPressed('DOWN', keyCode) || isKeyPressed('LEFT', keyCode) || isKeyPressed('RIGHT', keyCode)));
+    }
+    function arrowDir(keyCode) {
+        if ([37, 38, 39, 40].indexOf(keyCode) !== -1) {
+            return ({ 37: 'left', 38: 'up', 39: 'right', 40: 'down' })[keyCode];
+        }
+        if (typeof isKeyPressed === 'function') {
+            if (isKeyPressed('UP', keyCode)) return 'up';
+            if (isKeyPressed('DOWN', keyCode)) return 'down';
+            if (isKeyPressed('LEFT', keyCode)) return 'left';
+            if (isKeyPressed('RIGHT', keyCode)) return 'right';
+        }
+        return null;
+    }
+    function isOkKey(keyCode) {
+        return keyCode === 13 || (typeof isKeyPressed === 'function' && isKeyPressed('OK', keyCode));
+    }
+    function isBackKey(keyCode) {
+        return [8, 27, 461, 10009].indexOf(keyCode) !== -1 || (typeof isKeyPressed === 'function' && (isKeyPressed('BACK', keyCode) || isKeyPressed('EXIT', keyCode)));
+    }
 
     document.addEventListener('keydown', function (e) {
         // БЛОКИРУЕМ НАВИГАЦИЮ ЕСЛИ ПЛЕЕР АКТИВЕН
-        const playbackOverlay = document.getElementById('playback-overlay');
-        const isPlaybackActive = playbackOverlay && playbackOverlay.classList.contains('active');
+        var playbackOverlay = document.getElementById('playback-overlay');
+        var isPlaybackActive = playbackOverlay && playbackOverlay.classList.contains('active');
 
         // Если плеер активен, не обрабатываем навигацию по торрентам
         if (isPlaybackActive) {
@@ -2264,11 +2697,11 @@ function setupFocusRescue() {
             // Они обрабатываются позже в секции плеера
             return;
         }
-        const screen = currentScreen();
+        var screen = currentScreen();
         if (screen === 'player') return;
-        if (!['torrents', 'catalog', 'search', 'detail', 'config', 'donate'].includes(screen)) return;
-        const active = document.activeElement;
-        const editing = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT');
+        if (['torrents', 'catalog', 'search', 'detail', 'config', 'donate'].indexOf(screen) === -1) return;
+        var active = document.activeElement;
+        var editing = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT');
 
         if (isBackKey(e.keyCode)) {
             e.preventDefault(); e.stopImmediatePropagation();
@@ -2299,7 +2732,7 @@ function setupFocusRescue() {
 
         if (isArrowKey(e.keyCode)) {
             e.preventDefault(); e.stopImmediatePropagation();
-            const dir = arrowDir(e.keyCode);
+            var dir = arrowDir(e.keyCode);
             if (isCustomFilterMenuOpen()) {
                 if (dir === 'up') moveCustomFilterMenu(-1);
                 else if (dir === 'down') moveCustomFilterMenu(1);
@@ -2322,15 +2755,15 @@ function setupFocusRescue() {
             }
 
             if (screen === 'torrents') {
-                const focused = document.querySelector('.focused');
+                var focused = document.querySelector('.focused');
                 if (focused && focused.classList.contains('torrent-card')) {
                     if (!e.repeat) {
                         okHoldHandled = false;
                         okHoldFocused = focused;
                         clearOkHold();
-                        okHoldTimer = setTimeout(async () => {
+                        okHoldTimer = setTimeout(async function () {
                             okHoldHandled = true;
-                            const hash = okHoldFocused?.dataset?.hash;
+                            var hash = okHoldFocused && okHoldFocused.dataset ? okHoldFocused.dataset.hash : null;
                             if (typeof window.setTorrentClickSuppressed === 'function') {
                                 window.setTorrentClickSuppressed(1500);
                             }
@@ -2340,7 +2773,7 @@ function setupFocusRescue() {
                             if (hash && typeof window.removeTorrentByHash === 'function') {
                                 await window.removeTorrentByHash(hash, { skipConfirm: true });
                             }
-                            setTimeout(() => {
+                            setTimeout(function () {
                                 if (okHoldFocused) delete okHoldFocused.dataset.suppressClick;
                             }, 1500);
                         }, 900);
@@ -2355,12 +2788,12 @@ function setupFocusRescue() {
     }, true);
 
     document.addEventListener('keyup', function (e) {
-        const screen = currentScreen();
+        var screen = currentScreen();
         if (isCustomFilterMenuOpen()) return;
         if (!isOkKey(e.keyCode) || screen !== 'torrents') return;
 
-        const focused = document.querySelector('.focused');
-        const cardStillFocused = focused && okHoldFocused && focused === okHoldFocused;
+        var focused = document.querySelector('.focused');
+        var cardStillFocused = focused && okHoldFocused && focused === okHoldFocused;
 
         clearOkHold();
 
@@ -2372,8 +2805,8 @@ function setupFocusRescue() {
         okHoldFocused = null;
     }, true);
 
-    setInterval(() => {
-        const s = currentScreen();
+    setInterval(function () {
+        var s = currentScreen();
         if (s === 'player') return;
         if (s === 'torrents') ensureTorrentFocus(false);
         else if (s === 'catalog') ensureCatalogFocus(false);
@@ -2382,27 +2815,27 @@ function setupFocusRescue() {
         else if (s === 'config') ensureConfigFocus(false);
     }, 250);
 
-    const prevShowDetail = window.showDetail;
+    var prevShowDetail = window.showDetail;
     if (typeof prevShowDetail === 'function') {
         window.showDetail = function () {
-            const out = prevShowDetail.apply(this, arguments);
-            setTimeout(() => {
+            var out = prevShowDetail.apply(this, arguments);
+            setTimeout(function () {
                 if (currentScreen() !== 'player') ensureDetailFocus(true);
             }, 220);
             return out;
         };
     }
 
-    const prevShowSearchResults = window.showSearchResults;
+    var prevShowSearchResults = window.showSearchResults;
     if (typeof prevShowSearchResults === 'function') {
         window.showSearchResults = function () {
-            const out = prevShowSearchResults.apply(this, arguments);
-            setTimeout(() => ensureSearchFocus(true, true), 120);
+            var out = prevShowSearchResults.apply(this, arguments);
+            setTimeout(function () { ensureSearchFocus(true, true); }, 120);
             return out;
         };
     }
 
-    setTimeout(() => ensureTorrentFocus(true), 120);
+    setTimeout(function () { ensureTorrentFocus(true); }, 120);
 }
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
