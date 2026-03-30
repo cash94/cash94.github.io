@@ -1,15 +1,15 @@
 // TMDB API через свой прокси
-const TMDB_API_URL = '/api/tmdb/search';
-const TMDB_IMAGE_URL = 'https://nmtmdb.duckdns.org/t/p/w342';
+var TMDB_API_URL = '/api/tmdb/search';
+var TMDB_IMAGE_URL = 'https://nmtmdb.duckdns.org/t/p/w342';
 
 // Кэш для постеров
-let posterCache = new Map();
+var posterCache = new Map();
 
 // Функция для очистки названия
 function cleanTitle(title) {
   if (!title) return '';
 
-  let cleaned = title;
+  var cleaned = title;
 
   // Убираем информацию о качестве/формате в квадратных скобках
   cleaned = cleaned.replace(/\[[^\]]*\]/g, ' ').trim();
@@ -22,9 +22,14 @@ function cleanTitle(title) {
   cleaned = cleaned.replace(/@\s*[^\s]+$/, '').trim();
 
   // Убираем дублирование названий (через слеш)
-  const slashParts = cleaned.split('/');
+  var slashParts = cleaned.split('/');
   if (slashParts.length > 1) {
-    const shortest = slashParts.reduce((a, b) => a.length < b.length ? a : b);
+    var shortest = slashParts[0];
+    for (var i = 1; i < slashParts.length; i++) {
+      if (slashParts[i].length < shortest.length) {
+        shortest = slashParts[i];
+      }
+    }
     cleaned = shortest.trim();
   }
 
@@ -41,9 +46,9 @@ function cleanTitle(title) {
 function extractYear(title) {
   if (!title) return null;
 
-  const yearMatch = title.match(/(?:\(|\[|\s)(\d{4})(?:\)|\]|\s|$)/);
+  var yearMatch = title.match(/(?:\(|\[|\s)(\d{4})(?:\)|\]|\s|$)/);
   if (yearMatch && yearMatch[1]) {
-    return parseInt(yearMatch[1]);
+    return parseInt(yearMatch[1], 10);
   }
 
   return null;
@@ -53,10 +58,10 @@ function extractYear(title) {
 function detectMediaType(title) {
   if (!title) return 'movie';
 
-  const lowerTitle = title.toLowerCase();
+  var lowerTitle = title.toLowerCase();
 
   // Признаки сериала (расширенный список)
-  const tvIndicators = [
+  var tvIndicators = [
     'сезон', 'season', 'серия', 'episode', 'tv-',
     's01', 's02', 's03', 's04', 's05', 's06', 's07', 's08', 's09', 's10',
     'e01', 'e02', 'e03', 'e04', 'e05',
@@ -65,8 +70,8 @@ function detectMediaType(title) {
     'tv series', 'телесериал', 'serial'
   ];
 
-  for (const indicator of tvIndicators) {
-    if (lowerTitle.includes(indicator)) {
+  for (var i = 0; i < tvIndicators.length; i++) {
+    if (lowerTitle.indexOf(tvIndicators[i]) !== -1) {
       return 'tv';
     }
   }
@@ -75,14 +80,18 @@ function detectMediaType(title) {
 }
 
 // Функция для поиска постера через TMDB (с защитой от зацикливания)
-async function searchPoster(title, year = null, mediaType = null, retry = true) {
+async function searchPoster(title, year, mediaType, retry) {
+  if (year === undefined) year = null;
+  if (mediaType === undefined) mediaType = null;
+  if (retry === undefined) retry = true;
+
   if (!title) return null;
 
   // Очищаем название от лишней информации
-  const cleanTitleStr = cleanTitle(title);
+  var cleanTitleStr = cleanTitle(title);
 
   // Создаем ключ для кэша
-  const cacheKey = `${cleanTitleStr}_${year || 'any'}_${mediaType || 'any'}`;
+  var cacheKey = cleanTitleStr + '_' + (year || 'any') + '_' + (mediaType || 'any');
 
   // Проверяем кэш
   if (posterCache.has(cacheKey)) {
@@ -91,25 +100,25 @@ async function searchPoster(title, year = null, mediaType = null, retry = true) 
   }
 
   // Определяем тип, если не передан
-  const type = mediaType || detectMediaType(title);
+  var type = mediaType || detectMediaType(title);
 
-  console.log(`🔍 Поиск постера для: "${cleanTitleStr}" (${year ? 'год: ' + year : 'год не указан'}, тип: ${type})`);
+  console.log('🔍 Поиск постера для: "' + cleanTitleStr + '" (' + (year ? 'год: ' + year : 'год не указан') + ', тип: ' + type + ')');
 
   try {
     // Формируем поисковый запрос к своему прокси
-    let url = `${TMDB_API_URL}?query=${encodeURIComponent(cleanTitleStr)}&type=${type}`;
+    var url = TMDB_API_URL + '?query=' + encodeURIComponent(cleanTitleStr) + '&type=' + type;
     if (year) {
-      url += `&year=${year}`;
+      url += '&year=' + year;
     }
 
     console.log('📡 Запрос к своему прокси:', url);
 
-    const response = await fetch(url);
+    var response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      throw new Error('HTTP ' + response.status);
     }
 
-    const data = await response.json();
+    var data = await response.json();
 
     if (!data.results || data.results.length === 0) {
       console.log('❌ Ничего не найдено в TMDB');
@@ -132,24 +141,35 @@ async function searchPoster(title, year = null, mediaType = null, retry = true) 
       return null;
     }
 
-    let firstResult = data.results[0];
+    var firstResult = data.results[0];
 
     // Проверяем, что год совпадает (если указан)
     if (year) {
-      const resultYear = type === 'tv'
-        ? (firstResult.first_air_date ? new Date(firstResult.first_air_date).getFullYear() : null)
-        : (firstResult.release_date ? new Date(firstResult.release_date).getFullYear() : null);
+      var resultYear = null;
+      if (type === 'tv') {
+        resultYear = firstResult.first_air_date ? new Date(firstResult.first_air_date).getFullYear() : null;
+      } else {
+        resultYear = firstResult.release_date ? new Date(firstResult.release_date).getFullYear() : null;
+      }
 
       if (resultYear && Math.abs(resultYear - year) > 1) {
-        console.log(`⚠️ Год не совпадает: ожидался ${year}, получен ${resultYear}`);
+        console.log('⚠️ Год не совпадает: ожидался ' + year + ', получен ' + resultYear);
 
         // Пробуем найти другой результат с подходящим годом
-        const betterMatch = data.results.find(r => {
-          const rYear = type === 'tv'
-            ? (r.first_air_date ? new Date(r.first_air_date).getFullYear() : null)
-            : (r.release_date ? new Date(r.release_date).getFullYear() : null);
-          return rYear === year;
-        });
+        var betterMatch = null;
+        for (var i = 0; i < data.results.length; i++) {
+          var r = data.results[i];
+          var rYear = null;
+          if (type === 'tv') {
+            rYear = r.first_air_date ? new Date(r.first_air_date).getFullYear() : null;
+          } else {
+            rYear = r.release_date ? new Date(r.release_date).getFullYear() : null;
+          }
+          if (rYear === year) {
+            betterMatch = r;
+            break;
+          }
+        }
 
         if (betterMatch) {
           console.log('✅ Найдено лучшее совпадение по году');
@@ -159,7 +179,7 @@ async function searchPoster(title, year = null, mediaType = null, retry = true) 
     }
 
     // Получаем путь к постеру
-    const posterPath = firstResult.poster_path;
+    var posterPath = firstResult.poster_path;
     if (!posterPath) {
       console.log('❌ Нет постера в результате');
 
@@ -179,7 +199,7 @@ async function searchPoster(title, year = null, mediaType = null, retry = true) 
     }
 
     // Формируем прямой URL к изображению
-    const posterUrl = `${TMDB_IMAGE_URL}${posterPath}`;
+    var posterUrl = TMDB_IMAGE_URL + posterPath;
     console.log('✅ Найден прямой URL постера:', posterUrl);
 
     // Сохраняем в кэш
@@ -191,8 +211,8 @@ async function searchPoster(title, year = null, mediaType = null, retry = true) 
     console.error('❌ Ошибка при поиске постера:', error);
 
     // Сохраняем ошибку в кэш, чтобы не пытаться снова
-    const cacheKey = `${cleanTitleStr}_${year || 'any'}_${mediaType || 'any'}`;
-    posterCache.set(cacheKey, null);
+    var errorCacheKey = cleanTitleStr + '_' + (year || 'any') + '_' + (mediaType || 'any');
+    posterCache.set(errorCacheKey, null);
 
     return null;
   }
@@ -203,13 +223,13 @@ async function findPosterFromSearchResult(result) {
   if (!result) return null;
 
   // Используем поля из выбранного результата
-  const displayTitle = result.name || result.title || '';
+  var displayTitle = result.name || result.title || '';
 
   // Важно: берем год именно из выбранного элемента!
-  const year = result.relased || null;
+  var year = result.relased || null;
 
   // Определяем тип из выбранного элемента
-  const mediaType = result.types && result.types.includes('tv') ? 'tv' : 'movie';
+  var mediaType = (result.types && result.types.indexOf('tv') !== -1) ? 'tv' : 'movie';
 
   console.log('Поиск постера для выбранного:');
   console.log('   Название:', displayTitle);
@@ -221,12 +241,11 @@ async function findPosterFromSearchResult(result) {
   return await searchPoster(displayTitle, year, mediaType, true);
 }
 
-
 // Делаем функции доступными глобально
 window.tmdb = {
-  searchPoster,
-  findPosterFromSearchResult,
-  cleanTitle,
-  extractYear,
-  detectMediaType
+  searchPoster: searchPoster,
+  findPosterFromSearchResult: findPosterFromSearchResult,
+  cleanTitle: cleanTitle,
+  extractYear: extractYear,
+  detectMediaType: detectMediaType
 };
