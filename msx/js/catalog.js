@@ -2119,16 +2119,17 @@ function createCatalogFolderCard(key, config) {
     card.dataset.catalogKey = key;
 
     var posterHtml = '';
-    if (key.indexOf('movie') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Films.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
-    else if (key.indexOf('quadhd') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Films4k.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
-    else if (key.indexOf('legends') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/BestFilms.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
-    else if (key.indexOf('cartoons_tv') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/multserials.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
-    else if (key.indexOf('tv') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Serials.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
-    else if (key.indexOf('cartoons') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/multfilms.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
-    else if (key.indexOf('anime') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Anime.jpg" style="width: 100%; height: 100%; object-fit: cover;">';
-    else posterHtml = '<div style="font-size: 64px; display: flex; align-items: center; justify-content: center; height: 100%;"></div>';
+    if (key.indexOf('movie') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Films.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
+    else if (key.indexOf('quadhd') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Films4k.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
+    else if (key.indexOf('legends') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/BestFilms.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
+    else if (key.indexOf('cartoons_tv') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/multserials.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
+    else if (key.indexOf('tv') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Serials.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
+    else if (key.indexOf('cartoons') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/multfilms.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
+    else if (key.indexOf('anime') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Anime.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
+    else posterHtml = '<div class="no-poster" style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 64px;"></div>';
 
-    card.innerHTML = '\n        <div class="torrent-poster catalog-folder-poster">\n            <div style="position: relative; width: 100%; height: 100%;">\n                ' + posterHtml + '\n            </div>\n        </div>\n        <div class="torrent-info">\n            <div class="torrent-title">' + config.name + '</div>\n            <div class="torrent-meta">\n                <span></span>\n                <span class="torrent-badge catalog-badge"></span>\n            </div>\n        </div>\n    ';
+    // Упрощаем структуру для лучшей совместимости со старыми браузерами
+    card.innerHTML = '\n        <div class="torrent-poster catalog-folder-poster">\n            ' + posterHtml + '\n        </div>\n        <div class="torrent-info">\n            <div class="torrent-title">' + config.name + '</div>\n            <div class="torrent-meta">\n                <span></span>\n                <span class="torrent-badge catalog-badge"></span>\n            </div>\n        </div>\n    ';
 
     card.addEventListener('click', function () {
         catalogState.selectedCatalog = key;
