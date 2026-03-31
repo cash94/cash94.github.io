@@ -1,38 +1,38 @@
 // Работа с TorrServer и торрентами
 
 // Переменные для поиска
-let searchResults = [];
-let filteredResults = [];
-let currentSearchQuery = '';
-let currentSearchMode = 'globalsearch'; // 'torrentsearch' или 'globalsearch'
-let globalSearchResults = []; // Результаты глобального поиска
+var searchResults = [];
+var filteredResults = [];
+var currentSearchQuery = '';
+var currentSearchMode = 'globalsearch'; // 'torrentsearch' или 'globalsearch'
+var globalSearchResults = []; // Результаты глобального поиска
 
 // Настройки фильтрации и сортировки
-let currentSort = 'date-desc';
-let currentQualityFilter = 'all';
-let currentTrackerFilter = 'all';
-let currentYearFilter = '';
+var currentSort = 'date-desc';
+var currentQualityFilter = 'all';
+var currentTrackerFilter = 'all';
+var currentYearFilter = '';
 
 // Список уникальных трекеров из результатов поиска
-let availableTrackers = [];
+var availableTrackers = [];
 
 // Hash последнего добавленного торрента из поиска (в нижнем регистре)
-let lastAddedTorrentHash = null;
+var lastAddedTorrentHash = null;
 // Флаг, что последнее воспроизведение было из поиска
-let lastPlaybackFromSearch = false;
+var lastPlaybackFromSearch = false;
 
 // Таймеры для long press удаления
-const torrentDeleteHoldTimers = new WeakMap();
-const TORRENT_DELETE_HOLD_MS = 900;
-let suppressTorrentClickUntil = 0;
-let pendingRemoteHoldHash = null;
+var torrentDeleteHoldTimers = new WeakMap();
+var TORRENT_DELETE_HOLD_MS = 900;
+var suppressTorrentClickUntil = 0;
+var pendingRemoteHoldHash = null;
 
 
 // Кэш для хранения информации о прогрессе
-let progressCache = new Map();
+var progressCache = new Map();
 
 
-const SORT_OPTIONS = [
+var SORT_OPTIONS = [
   { value: 'date-desc', label: 'Сначала новые' },
   { value: 'date-asc', label: 'Сначала старые' },
   { value: 'size-desc', label: 'Размер ↓' },
@@ -43,7 +43,7 @@ const SORT_OPTIONS = [
   { value: 'pir-asc', label: 'Пиры ↑' }
 ];
 
-const QUALITY_OPTIONS = [
+var QUALITY_OPTIONS = [
   { value: 'all', label: 'Все качества' },
   { value: '2160', label: '4K (2160p)' },
   { value: '1080', label: 'Full HD (1080p)' },
@@ -53,13 +53,15 @@ const QUALITY_OPTIONS = [
 ];
 
 function getTrackerFilterOptions() {
-  return [
-    { value: 'all', label: 'Все трекеры' },
-    ...availableTrackers.map(tracker => ({
+  var options = [{ value: 'all', label: 'Все трекеры' }];
+  for (var i = 0; i < availableTrackers.length; i++) {
+    var tracker = availableTrackers[i];
+    options.push({
       value: tracker,
-      label: `${tracker.charAt(0).toUpperCase() + tracker.slice(1)}`
-    }))
-  ];
+      label: tracker.charAt(0).toUpperCase() + tracker.slice(1)
+    });
+  }
+  return options;
 }
 
 function getFilterOptions(type) {
@@ -85,13 +87,26 @@ function setCurrentFilterValue(type, value) {
 function fillSelectOptions(select, options, selectedValue) {
   if (!select) return;
 
-  const normalizedSelected = String(selectedValue ?? '');
-  select.innerHTML = options.map(option => {
-    const selected = String(option.value) === normalizedSelected ? ' selected' : '';
-    return `<option value="${option.value}"${selected}>${option.label}</option>`;
-  }).join('');
+  var normalizedSelected = String(selectedValue !== null && selectedValue !== undefined ? selectedValue : '');
+  var optionsHtml = '';
 
-  if (options.some(option => String(option.value) === normalizedSelected)) {
+  for (var i = 0; i < options.length; i++) {
+    var option = options[i];
+    var selected = String(option.value) === normalizedSelected ? ' selected' : '';
+    optionsHtml += '<option value="' + option.value + '"' + selected + '>' + option.label + '</option>';
+  }
+
+  select.innerHTML = optionsHtml;
+
+  var hasSelected = false;
+  for (var j = 0; j < options.length; j++) {
+    if (String(options[j].value) === normalizedSelected) {
+      hasSelected = true;
+      break;
+    }
+  }
+
+  if (hasSelected) {
     select.value = normalizedSelected;
   }
 }
@@ -102,29 +117,41 @@ function syncSearchFilterButtons() {
   fillSelectOptions(document.getElementById('filter-tracker'), getTrackerFilterOptions(), currentTrackerFilter);
 }
 
-function cycleFilterButton(filterType, direction = 1) {
-  const options = getFilterOptions(filterType);
+function cycleFilterButton(filterType, direction) {
+  if (direction === undefined) direction = 1;
+  var options = getFilterOptions(filterType);
   if (!options.length) return;
 
-  const currentValue = getCurrentFilterValue(filterType);
-  const currentIndex = Math.max(0, options.findIndex(option => option.value === currentValue));
-  const nextIndex = (currentIndex + direction + options.length) % options.length;
+  var currentValue = getCurrentFilterValue(filterType);
+  var currentIndex = 0;
+  for (var i = 0; i < options.length; i++) {
+    if (options[i].value === currentValue) {
+      currentIndex = i;
+      break;
+    }
+  }
+
+  var nextIndex = (currentIndex + direction + options.length) % options.length;
 
   setCurrentFilterValue(filterType, options[nextIndex].value);
   syncSearchFilterButtons();
   applyFiltersAndSort();
 }
 
-function toggleSearchFiltersPanel(forceOpen = null) {
-  const panel = document.getElementById('search-filters-panel');
-  const toggleBtn = document.getElementById('filter-toggle');
+function toggleSearchFiltersPanel(forceOpen) {
+  var panel = document.getElementById('search-filters-panel');
+  var toggleBtn = document.getElementById('filter-toggle');
   if (!panel) return false;
 
-  const shouldOpen = forceOpen === null ? panel.classList.contains('collapsed') : !!forceOpen;
-  panel.classList.toggle('collapsed', !shouldOpen);
-  if (toggleBtn) {
-    toggleBtn.classList.toggle('active', shouldOpen);
-    //toggleBtn.textContent = shouldOpen ? '🛠️' : '⚙️';
+  // Если параметр не передан (undefined) - переключаем, иначе используем forceOpen
+  var shouldOpen = (forceOpen === undefined) ? panel.classList.contains('collapsed') : !!forceOpen;
+
+  if (shouldOpen) {
+    panel.classList.remove('collapsed');
+    if (toggleBtn) toggleBtn.classList.add('active');
+  } else {
+    panel.classList.add('collapsed');
+    if (toggleBtn) toggleBtn.classList.remove('active');
   }
   return shouldOpen;
 }
@@ -140,7 +167,7 @@ function getTorrentFiles(torrent) {
 
   if (torrent.data) {
     try {
-      const data = JSON.parse(torrent.data);
+      var data = JSON.parse(torrent.data);
       if (data.TorrServer && Array.isArray(data.TorrServer.Files)) {
         return data.TorrServer.Files;
       }
@@ -153,48 +180,61 @@ function getTorrentFiles(torrent) {
 }
 
 function getVideoFilesFromTorrent(torrent) {
-  return getTorrentFiles(torrent).filter(file => {
-    const name = (file.path || '').toLowerCase();
-    return name.endsWith('.mp4') || name.endsWith('.mkv') || name.endsWith('.avi') ||
-      name.endsWith('.mov') || name.endsWith('.webm') || name.endsWith('.m4v');
-  });
+  var files = getTorrentFiles(torrent);
+  var videoFiles = [];
+
+  for (var i = 0; i < files.length; i++) {
+    var name = (files[i].path || '').toLowerCase();
+    if (name.indexOf('.mp4') !== -1 || name.indexOf('.mkv') !== -1 || name.indexOf('.avi') !== -1 ||
+      name.indexOf('.mov') !== -1 || name.indexOf('.webm') !== -1 || name.indexOf('.m4v') !== -1) {
+      videoFiles.push(files[i]);
+    }
+  }
+
+  return videoFiles;
 }
 
-function inferSearchResultIsSeries(searchResult = null, torrent = null) {
-  if (searchResult?.types && Array.isArray(searchResult.types) && searchResult.types.includes('tv')) {
-    return true;
+function inferSearchResultIsSeries(searchResult, torrent) {
+  if (searchResult && searchResult.types && Array.isArray(searchResult.types)) {
+    for (var i = 0; i < searchResult.types.length; i++) {
+      if (searchResult.types[i] === 'tv') return true;
+    }
   }
 
   if (torrent) {
-    const videoFiles = getVideoFilesFromTorrent(torrent);
+    var videoFiles = getVideoFilesFromTorrent(torrent);
     if (videoFiles.length > 1) {
       return true;
     }
   }
 
-  const title = (searchResult?.title || searchResult?.name || torrent?.title || '').toLowerCase();
-  return /(s\d{1,2}e\d{1,2})|(season|сезон|серия|эпизод)/i.test(title);
+  var title = (searchResult && (searchResult.title || searchResult.name || torrent && torrent.title) || '').toLowerCase();
+  return (title.indexOf('s') !== -1 && title.indexOf('e') !== -1) ||
+    title.indexOf('season') !== -1 ||
+    title.indexOf('сезон') !== -1 ||
+    title.indexOf('серия') !== -1 ||
+    title.indexOf('эпизод') !== -1;
 }
 
-function getPreferredPlaybackFile(torrent, searchResult = null) {
-  const videoFiles = getVideoFilesFromTorrent(torrent);
+function getPreferredPlaybackFile(torrent, searchResult) {
+  if (searchResult === undefined) searchResult = null;
+  var videoFiles = getVideoFilesFromTorrent(torrent);
   if (videoFiles.length === 0) {
     return { fileId: 1, episodeIndex: null, isSeries: inferSearchResultIsSeries(searchResult, torrent) };
   }
 
-  const isSeries = inferSearchResultIsSeries(searchResult, torrent) || videoFiles.length > 1;
-  const targetIndex = 0;
-  const targetFile = videoFiles[targetIndex] || videoFiles[0];
+  var isSeries = inferSearchResultIsSeries(searchResult, torrent) || videoFiles.length > 1;
+  var targetFile = videoFiles[0] || videoFiles[0];
 
   return {
-    fileId: targetFile?.id || 1,
-    episodeIndex: isSeries ? targetIndex : null,
-    isSeries
+    fileId: targetFile && targetFile.id || 1,
+    episodeIndex: isSeries ? 0 : null,
+    isSeries: isSeries
   };
 }
 
 function clearTorrentDeleteHoldTimer(card) {
-  const timer = torrentDeleteHoldTimers.get(card);
+  var timer = torrentDeleteHoldTimers.get(card);
   if (timer) {
     clearTimeout(timer);
     torrentDeleteHoldTimers.delete(card);
@@ -202,38 +242,54 @@ function clearTorrentDeleteHoldTimer(card) {
 }
 
 window.removeTorrentByHash = removeTorrentByHash;
-window.setTorrentClickSuppressed = function (ms = 1200) { suppressTorrentClickUntil = Date.now() + ms; };
+window.setTorrentClickSuppressed = function (ms) {
+  if (ms === undefined) ms = 1200;
+  suppressTorrentClickUntil = Date.now() + ms;
+};
 
-async function removeTorrentByHash(hash, options = {}) {
+async function removeTorrentByHash(hash, options) {
+  if (options === undefined) options = {};
   if (!hash || !AppState.currentTorrserverUrl) {
     return false;
   }
 
-  const { skipConfirm = false } = options;
-  const torrent = AppState.torrents.find(t => (t.hash || '').toLowerCase() === String(hash).toLowerCase());
-  const title = torrent?.title || 'эту раздачу';
+  var skipConfirm = options.skipConfirm || false;
+  var torrent = null;
+  for (var i = 0; i < AppState.torrents.length; i++) {
+    if ((AppState.torrents[i].hash || '').toLowerCase() === String(hash).toLowerCase()) {
+      torrent = AppState.torrents[i];
+      break;
+    }
+  }
+  var title = (torrent && torrent.title) || 'эту раздачу';
 
-  if (!skipConfirm && !window.confirm(`Удалить ${title}?`)) {
+  if (!skipConfirm && !window.confirm('Удалить ' + title + '?')) {
     return false;
   }
 
   showLoading('Удаление торрента...');
 
   try {
-    const response = await fetch(`${AppState.currentTorrserverUrl}/torrents`, {
+    var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthHeaders()
       },
       body: JSON.stringify({
         action: 'rem',
-        hash
+        hash: hash
       })
     });
 
+    var authHeaders = getAuthHeaders();
+    for (var key in authHeaders) {
+      if (authHeaders.hasOwnProperty(key)) {
+        response.headers[key] = authHeaders[key];
+      }
+    }
+
     if (!response.ok) {
-      throw new Error(`Ошибка удаления: HTTP ${response.status}`);
+      throw new Error('Ошибка удаления: HTTP ' + response.status);
     }
 
     try {
@@ -244,7 +300,7 @@ async function removeTorrentByHash(hash, options = {}) {
       document.getElementById('detail-view').style.display = 'none';
       AppState.currentDetailItem = null;
       AppState.currentScreen = 'torrents';
-      const mainContainer = document.getElementById('main-container');
+      var mainContainer = document.getElementById('main-container');
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
       document.getElementById('torrserver-section').style.display = 'block';
     }
@@ -263,26 +319,26 @@ async function removeTorrentByHash(hash, options = {}) {
 function attachTorrentDeleteLongPress(card, torrent) {
   if (!card || !torrent || !torrent.hash) return;
 
-  const startHold = (event) => {
-    if (event?.target?.closest && event.target.closest('button, input, select, textarea, a')) {
+  var startHold = function (event) {
+    if (event && event.target && event.target.closest && event.target.closest('button, input, select, textarea, a')) {
       return;
     }
 
     clearTorrentDeleteHoldTimer(card);
-    const timer = setTimeout(async () => {
+    var timer = setTimeout(async function () {
       suppressTorrentClickUntil = Date.now() + 1200;
       pendingRemoteHoldHash = null;
       card.dataset.suppressClick = '1';
       card.classList.remove('touch-active');
       await removeTorrentByHash(torrent.hash, { skipConfirm: true });
-      setTimeout(() => {
+      setTimeout(function () {
         if (card) delete card.dataset.suppressClick;
       }, 1200);
     }, TORRENT_DELETE_HOLD_MS);
     torrentDeleteHoldTimers.set(card, timer);
   };
 
-  const stopHold = () => clearTorrentDeleteHoldTimer(card);
+  var stopHold = function () { clearTorrentDeleteHoldTimer(card); };
 
   card.addEventListener('touchstart', startHold, { passive: true });
   card.addEventListener('touchend', stopHold);
@@ -291,8 +347,8 @@ function attachTorrentDeleteLongPress(card, torrent) {
   card.addEventListener('mousedown', startHold);
   card.addEventListener('mouseup', stopHold);
   card.addEventListener('mouseleave', stopHold);
-  card.addEventListener('click', (e) => {
-    const shouldSuppress = card.dataset.suppressClick === '1' || Date.now() < suppressTorrentClickUntil;
+  card.addEventListener('click', function (e) {
+    var shouldSuppress = card.dataset.suppressClick === '1' || Date.now() < suppressTorrentClickUntil;
     if (shouldSuppress) {
       e.preventDefault();
       e.stopImmediatePropagation();
@@ -301,12 +357,12 @@ function attachTorrentDeleteLongPress(card, torrent) {
       return false;
     }
   }, true);
-  card.addEventListener('contextmenu', (e) => {
+  card.addEventListener('contextmenu', function (e) {
     e.preventDefault();
     suppressTorrentClickUntil = Date.now() + 1200;
     card.dataset.suppressClick = '1';
-    removeTorrentByHash(torrent.hash, { skipConfirm: true }).finally(() => {
-      setTimeout(() => {
+    removeTorrentByHash(torrent.hash, { skipConfirm: true }).finally(function () {
+      setTimeout(function () {
         if (card) delete card.dataset.suppressClick;
       }, 1200);
     });
@@ -316,17 +372,17 @@ function attachTorrentDeleteLongPress(card, torrent) {
 // Загрузка сохраненной конфигурации клиента
 async function loadClientConfig() {
   try {
-    const response = await fetch(`${SERVER_URL}/api/client/config`);
+    var response = await fetch(SERVER_URL + '/api/client/config');
     if (response.ok) {
-      const data = await response.json();
+      var data = await response.json();
       AppState.clientId = data.clientId;
 
       // Заполняем поля формы сохраненными данными
       if (data.config) {
-        const urlInput = document.getElementById('torrserver-url');
-        const authCheckbox = document.getElementById('auth-checkbox');
-        const authLogin = document.getElementById('auth-login');
-        const authPassword = document.getElementById('auth-password');
+        var urlInput = document.getElementById('torrserver-url');
+        var authCheckbox = document.getElementById('auth-checkbox');
+        var authLogin = document.getElementById('auth-login');
+        var authPassword = document.getElementById('auth-password');
 
         if (data.config.url) {
           urlInput.value = data.config.url;
@@ -360,15 +416,15 @@ async function loadClientConfig() {
 
 // Сохранение конфигурации клиента
 async function saveClientConfig() {
-  const url = document.getElementById('torrserver-url').value.trim();
-  const authEnabled = document.getElementById('auth-checkbox').checked;
-  const login = document.getElementById('auth-login').value.trim();
-  const password = document.getElementById('auth-password').value.trim();
+  var url = document.getElementById('torrserver-url').value.trim();
+  var authEnabled = document.getElementById('auth-checkbox').checked;
+  var login = document.getElementById('auth-login').value.trim();
+  var password = document.getElementById('auth-password').value.trim();
 
-  const config = {
-    url,
-    authEnabled,
-    login
+  var config = {
+    url: url,
+    authEnabled: authEnabled,
+    login: login
   };
 
   // Отправляем пароль только если он был изменен
@@ -377,14 +433,14 @@ async function saveClientConfig() {
   }
 
   try {
-    const response = await fetch(`${SERVER_URL}/api/client/config`, {
+    var response = await fetch(SERVER_URL + '/api/client/config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config)
     });
 
     if (response.ok) {
-      const data = await response.json();
+      var data = await response.json();
       console.log('✅ Конфигурация сохранена:', data);
       return true;
     }
@@ -399,9 +455,9 @@ async function loadProgressForTorrent(torrent) {
   if (!torrent || !torrent.hash) return null;
 
   // Проверяем кэш
-  const cacheKey = torrent.hash;
+  var cacheKey = torrent.hash;
   if (progressCache.has(cacheKey)) {
-    const cached = progressCache.get(cacheKey);
+    var cached = progressCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp < 60000)) { // Кэш на 1 минуту
       return cached.data;
     }
@@ -409,12 +465,12 @@ async function loadProgressForTorrent(torrent) {
 
   try {
     // Парсим данные торрента для получения списка файлов
-    let files = [];
+    var files = [];
     if (torrent.file_stats && Array.isArray(torrent.file_stats)) {
       files = torrent.file_stats;
     } else if (torrent.data) {
       try {
-        const data = JSON.parse(torrent.data);
+        var data = JSON.parse(torrent.data);
         if (data.TorrServer && data.TorrServer.Files) {
           files = data.TorrServer.Files;
         }
@@ -426,14 +482,14 @@ async function loadProgressForTorrent(torrent) {
     // Если это фильм (один файл или data.lampa)
     if (files.length === 0 && torrent.data) {
       try {
-        const data = JSON.parse(torrent.data);
+        var data = JSON.parse(torrent.data);
         if (data.lampa && data.movie) {
           // Это фильм из LAMPA, используем hash для запроса
-          const response = await fetch(`${SERVER_URL}/api/timecode/get?hash=${torrent.hash}&fileId=1`);
+          var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + torrent.hash + '&fileId=1');
           if (response.ok) {
-            const timecodeData = await response.json();
+            var timecodeData = await response.json();
             if (timecodeData.success && timecodeData.timecode > 0) {
-              const progress = {
+              var progress = {
                 hash: torrent.hash,
                 fileId: '1',
                 timecode: timecodeData.timecode,
@@ -459,46 +515,65 @@ async function loadProgressForTorrent(torrent) {
     // Для сериала - проверяем каждый файл
     if (files.length > 0) {
       // Сортируем файлы (предполагаем, что они уже в правильном порядке)
-      const videoFiles = files.filter(file => {
-        const name = file.path.toLowerCase();
-        return name.endsWith('.mp4') || name.endsWith('.mkv') || name.endsWith('.avi') ||
-          name.endsWith('.mov') || name.endsWith('.webm') || name.endsWith('.m4v');
-      });
+      var videoFiles = [];
+      for (var i = 0; i < files.length; i++) {
+        var file = files[i];
+        var name = file.path.toLowerCase();
+        if (name.indexOf('.mp4') !== -1 || name.indexOf('.mkv') !== -1 || name.indexOf('.avi') !== -1 ||
+          name.indexOf('.mov') !== -1 || name.indexOf('.webm') !== -1 || name.indexOf('.m4v') !== -1) {
+          videoFiles.push(file);
+        }
+      }
 
       if (videoFiles.length === 0) return null;
 
       // Загружаем таймкоды для всех файлов
-      const progressPromises = videoFiles.map(async (file, index) => {
-        try {
-          const response = await fetch(`${SERVER_URL}/api/timecode/get?hash=${torrent.hash}&fileId=${file.id}`);
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.timecode > 0) {
-              return {
-                hash: torrent.hash,
-                fileId: file.id,
-                timecode: data.timecode,
-                duration: data.duration,
-                index: index,
-                fileName: file.path.split('/').pop()
-              };
+      var progressPromises = [];
+      for (var j = 0; j < videoFiles.length; j++) {
+        var file = videoFiles[j];
+        var index = j;
+        progressPromises.push((function (file, idx) {
+          return async function () {
+            try {
+              var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + torrent.hash + '&fileId=' + file.id);
+              if (response.ok) {
+                var data = await response.json();
+                if (data.success && data.timecode > 0) {
+                  return {
+                    hash: torrent.hash,
+                    fileId: file.id,
+                    timecode: data.timecode,
+                    duration: data.duration,
+                    index: idx,
+                    fileName: file.path.split('/').pop()
+                  };
+                }
+              }
+            } catch (e) {
+              console.error('Ошибка загрузки прогресса для файла ' + file.id + ':', e);
             }
-          }
-        } catch (e) {
-          console.error(`Ошибка загрузки прогресса для файла ${file.id}:`, e);
-        }
-        return null;
-      });
+            return null;
+          };
+        })(file, index));
+      }
 
-      const results = await Promise.all(progressPromises);
-      const validProgress = results.filter(r => r !== null);
+      var results = [];
+      for (var k = 0; k < progressPromises.length; k++) {
+        var result = await progressPromises[k]();
+        results.push(result);
+      }
+
+      var validProgress = [];
+      for (var m = 0; m < results.length; m++) {
+        if (results[m] !== null) validProgress.push(results[m]);
+      }
 
       if (validProgress.length > 0) {
         // Находим последнюю просмотренную серию (по индексу)
-        validProgress.sort((a, b) => b.index - a.index);
-        const lastWatched = validProgress[0];
+        validProgress.sort(function (a, b) { return b.index - a.index; });
+        var lastWatched = validProgress[0];
 
-        const progress = {
+        var progress = {
           hash: torrent.hash,
           fileId: lastWatched.fileId,
           timecode: lastWatched.timecode,
@@ -531,16 +606,16 @@ async function addProgressToCard(card, torrent) {
   if (!torrent || !torrent.hash) return;
 
   // Проверяем кэш
-  const cacheKey = torrent.hash;
+  var cacheKey = torrent.hash;
   if (progressCache.has(cacheKey)) {
-    const cached = progressCache.get(cacheKey);
+    var cached = progressCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp < 60000)) { // Кэш на 1 минуту
       renderProgressBadge(card, cached.data);
       return;
     }
   }
 
-  const progress = await loadProgressForTorrent(torrent);
+  var progress = await loadProgressForTorrent(torrent);
 
   if (progress) {
     // Сохраняем в кэш
@@ -556,69 +631,47 @@ async function addProgressToCard(card, torrent) {
 // НОВАЯ ФУНКЦИЯ: Отрисовка бейджа прогресса
 function renderProgressBadge(card, progress) {
   // Удаляем старый бейдж если есть
-  const oldBadge = card.querySelector('.progress-badge');
+  var oldBadge = card.querySelector('.progress-badge');
   if (oldBadge) oldBadge.remove();
 
-  const progressBadge = document.createElement('div');
+  var progressBadge = document.createElement('div');
   progressBadge.className = 'progress-badge';
 
-  const timeStr = formatTime(progress.timecode);
-  const totalStr = progress.duration ? formatTime(progress.duration) : '??:??';
+  var timeStr = formatTime(progress.timecode);
+  var totalStr = progress.duration ? formatTime(progress.duration) : '??:??';
 
   if (progress.isSeries) {
     // Для сериала
-    const episodeNum = progress.episodeIndex + 1;
-    progressBadge.innerHTML = `
-      <div class="progress-content" data-hash="${progress.hash}" data-file-id="${progress.fileId}" data-timecode="${progress.timecode}" data-episode-index="${progress.episodeIndex}">
-        <div class="progress-info">
-          <span class="progress-episode">Серия ${episodeNum}</span>
-          <span class="progress-time">${timeStr} / ${totalStr}</span>
-        </div>
-        <button class="progress-continue-btn">▶ Продолжить</button>
-      </div>
-    `;
+    var episodeNum = progress.episodeIndex + 1;
+    progressBadge.innerHTML = '\n      <div class="progress-content" data-hash="' + progress.hash + '" data-file-id="' + progress.fileId + '" data-timecode="' + progress.timecode + '" data-episode-index="' + progress.episodeIndex + '">\n        <div class="progress-info">\n          <span class="progress-episode">Серия ' + episodeNum + '</span>\n          <span class="progress-time">' + timeStr + ' / ' + totalStr + '</span>\n        </div>\n        <button class="progress-continue-btn">▶ Продолжить</button>\n      </div>\n    ';
   } else if (progress.isMovie) {
     // Для фильма
-    progressBadge.innerHTML = `
-      <div class="progress-content" data-hash="${progress.hash}" data-file-id="${progress.fileId}" data-timecode="${progress.timecode}" data-episode-index="0">
-        <div class="progress-info">
-          <span class="progress-time"> ${timeStr} / ${totalStr}</span>
-        </div>
-        <button class="progress-continue-btn">▶ Продолжить</button>
-      </div>
-    `;
+    progressBadge.innerHTML = '\n      <div class="progress-content" data-hash="' + progress.hash + '" data-file-id="' + progress.fileId + '" data-timecode="' + progress.timecode + '" data-episode-index="0">\n        <div class="progress-info">\n          <span class="progress-time"> ' + timeStr + ' / ' + totalStr + '</span>\n        </div>\n        <button class="progress-continue-btn">▶ Продолжить</button>\n      </div>\n    ';
   } else {
     // Для обычного файла
-    progressBadge.innerHTML = `
-      <div class="progress-content" data-hash="${progress.hash}" data-file-id="${progress.fileId}" data-timecode="${progress.timecode}" data-episode-index="0">
-        <div class="progress-info">
-          <span class="progress-time">${timeStr} / ${totalStr}</span>
-        </div>
-        <button class="progress-continue-btn">▶ Продолжить</button>
-      </div>
-    `;
+    progressBadge.innerHTML = '\n      <div class="progress-content" data-hash="' + progress.hash + '" data-file-id="' + progress.fileId + '" data-timecode="' + progress.timecode + '" data-episode-index="0">\n        <div class="progress-info">\n          <span class="progress-time">' + timeStr + ' / ' + totalStr + '</span>\n        </div>\n        <button class="progress-continue-btn">▶ Продолжить</button>\n      </div>\n    ';
   }
 
   // Добавляем обработчик для кнопки "Продолжить"
-  const continueBtn = progressBadge.querySelector('.progress-continue-btn');
-  continueBtn.addEventListener('click', (e) => {
+  var continueBtn = progressBadge.querySelector('.progress-continue-btn');
+  continueBtn.addEventListener('click', function (e) {
     e.stopPropagation();
-    const hash = progress.hash;
-    const fileId = progress.fileId;
-    const timecode = progress.timecode;
-    const episodeIndex = progress.episodeIndex || 0;
+    var hash = progress.hash;
+    var fileId = progress.fileId;
+    var timecode = progress.timecode;
+    var episodeIndex = progress.episodeIndex || 0;
 
     // Формируем URL с таймкодом
-    const playUrl = `${AppState.currentTorrserverUrl}/play/${hash}/${fileId}`;
+    var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
 
     document.getElementById('playback-overlay').classList.add('active');
     document.getElementById('detail-view').style.pointerEvents = 'none';
 
     // Передаем episodeIndex в startHLSPlayback
-    startHLSPlayback(playUrl, timecode, false, episodeIndex).then(() => {
+    startHLSPlayback(playUrl, timecode, false, episodeIndex).then(function () {
       document.getElementById('playback-overlay').classList.remove('active');
       document.getElementById('detail-view').style.pointerEvents = 'auto';
-    }).catch(() => {
+    })['catch'](function () {
       document.getElementById('playback-overlay').classList.remove('active');
       document.getElementById('detail-view').style.pointerEvents = 'auto';
     });
@@ -631,68 +684,47 @@ function renderProgressBadge(card, progress) {
 async function addProgressToDetail(torrent) {
   if (!torrent || !torrent.hash) return;
 
-  const progress = await loadProgressForTorrent(torrent);
+  var progress = await loadProgressForTorrent(torrent);
 
   // Если нет прогресса, ничего не добавляем
   if (!progress) return;
 
-  const detailHeader = document.querySelector('.detail-header');
+  var detailHeader = document.querySelector('.detail-header');
   if (!detailHeader) return;
 
-  const progressDiv = document.createElement('div');
+  var progressDiv = document.createElement('div');
   progressDiv.id = 'detail-progress';
   progressDiv.className = 'detail-progress';
   progressDiv.dataset.hash = torrent.hash;
 
-  const timeStr = formatTime(progress.timecode);
-  const totalStr = progress.duration ? formatTime(progress.duration) : '??:??';
+  var timeStr = formatTime(progress.timecode);
+  var totalStr = progress.duration ? formatTime(progress.duration) : '??:??';
 
   if (progress.isSeries) {
-    const episodeNum = progress.episodeIndex + 1;
-    progressDiv.innerHTML = `
-      <div class="detail-progress-content">
-        <div class="detail-progress-info">
-          <span class="detail-progress-label">Продолжить просмотр:</span>
-          <span class="detail-progress-episode">Серия ${episodeNum}</span>
-          <span class="detail-progress-time">${timeStr} / ${totalStr}</span>
-        </div>
-        <button class="detail-progress-btn" data-hash="${progress.hash}" data-file-id="${progress.fileId}" data-timecode="${progress.timecode}" data-episode-index="${progress.episodeIndex}">
-          ▶ Продолжить с ${timeStr}
-        </button>
-      </div>
-    `;
+    var episodeNum = progress.episodeIndex + 1;
+    progressDiv.innerHTML = '\n      <div class="detail-progress-content">\n        <div class="detail-progress-info">\n          <span class="detail-progress-label">Продолжить просмотр:</span>\n          <span class="detail-progress-episode">Серия ' + episodeNum + '</span>\n          <span class="detail-progress-time">' + timeStr + ' / ' + totalStr + '</span>\n        </div>\n        <button class="detail-progress-btn" data-hash="' + progress.hash + '" data-file-id="' + progress.fileId + '" data-timecode="' + progress.timecode + '" data-episode-index="' + progress.episodeIndex + '">\n          ▶ Продолжить с ' + timeStr + '\n        </button>\n      </div>\n    ';
   } else {
-    progressDiv.innerHTML = `
-      <div class="detail-progress-content">
-        <div class="detail-progress-info">
-          <span class="detail-progress-label">Продолжить просмотр:</span>
-          <span class="detail-progress-time">${timeStr} / ${totalStr}</span>
-        </div>
-        <button class="detail-progress-btn" data-hash="${progress.hash}" data-file-id="${progress.fileId}" data-timecode="${progress.timecode}" data-episode-index="0">
-          ▶ Продолжить с ${timeStr}
-        </button>
-      </div>
-    `;
+    progressDiv.innerHTML = '\n      <div class="detail-progress-content">\n        <div class="detail-progress-info">\n          <span class="detail-progress-label">Продолжить просмотр:</span>\n          <span class="detail-progress-time">' + timeStr + ' / ' + totalStr + '</span>\n        </div>\n        <button class="detail-progress-btn" data-hash="' + progress.hash + '" data-file-id="' + progress.fileId + '" data-timecode="' + progress.timecode + '" data-episode-index="0">\n          ▶ Продолжить с ' + timeStr + '\n        </button>\n      </div>\n    ';
   }
 
-  const progressBtn = progressDiv.querySelector('.detail-progress-btn');
-  progressBtn.addEventListener('click', (e) => {
+  var progressBtn = progressDiv.querySelector('.detail-progress-btn');
+  progressBtn.addEventListener('click', function (e) {
     e.stopPropagation();
-    const hash = progress.hash;
-    const fileId = progress.fileId;
-    const timecode = progress.timecode;
-    const episodeIndex = parseInt(progressBtn.dataset.episodeIndex || 0);
+    var hash = progress.hash;
+    var fileId = progress.fileId;
+    var timecode = progress.timecode;
+    var episodeIndex = parseInt(progressBtn.dataset.episodeIndex || 0);
 
-    const playUrl = `${AppState.currentTorrserverUrl}/play/${hash}/${fileId}`;
+    var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
 
     document.getElementById('playback-overlay').classList.add('active');
     document.getElementById('detail-view').style.pointerEvents = 'none';
 
     // Передаем episodeIndex в startHLSPlayback через дополнительный параметр
-    startHLSPlayback(playUrl, timecode, false, episodeIndex).then(() => {
+    startHLSPlayback(playUrl, timecode, false, episodeIndex).then(function () {
       document.getElementById('playback-overlay').classList.remove('active');
       document.getElementById('detail-view').style.pointerEvents = 'auto';
-    }).catch(() => {
+    })['catch'](function () {
       document.getElementById('playback-overlay').classList.remove('active');
       document.getElementById('detail-view').style.pointerEvents = 'auto';
     });
@@ -702,12 +734,13 @@ async function addProgressToDetail(torrent) {
 }
 
 // Проверка сервера
-async function checkServer(shouldLoadTorrents = true) {
-  const urlInput = document.getElementById('torrserver-url');
-  const statusIndicator = document.getElementById('status-indicator');
-  const statusText = document.getElementById('status-text');
+async function checkServer(shouldLoadTorrents) {
+  if (shouldLoadTorrents === undefined) shouldLoadTorrents = true;
+  var urlInput = document.getElementById('torrserver-url');
+  var statusIndicator = document.getElementById('status-indicator');
+  var statusText = document.getElementById('status-text');
 
-  const url = urlInput.value.trim();
+  var url = urlInput.value.trim();
   if (!url) {
     statusIndicator.className = 'status-indicator status-offline';
     statusText.textContent = 'Введите адрес сервера';
@@ -718,15 +751,15 @@ async function checkServer(shouldLoadTorrents = true) {
   statusText.textContent = 'Проверка...';
 
   try {
-    const testUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-    const response = await fetch(`${testUrl}/echo`, {
+    var testUrl = url.indexOf('/') === url.length - 1 ? url.slice(0, -1) : url;
+    var response = await fetch(testUrl + '/echo', {
       method: 'GET',
       headers: getAuthHeaders()
     });
 
     if (response.ok) {
-      const text = await response.text();
-      if (/MatriX\.\d+/.test(text)) {
+      var text = await response.text();
+      if (text.indexOf('MatriX.') !== -1) {
         statusIndicator.className = 'status-indicator status-online';
         statusText.textContent = 'Сервер доступен ✓';
         AppState.currentTorrserverUrl = testUrl;
@@ -754,11 +787,12 @@ async function checkServer(shouldLoadTorrents = true) {
 }
 
 // Загрузка списка торрентов
-async function loadTorrents(silent = false) {
-  const torrentsGrid = document.getElementById('torrents-grid');
+async function loadTorrents(silent) {
+  if (silent === undefined) silent = false;
+  var torrentsGrid = document.getElementById('torrents-grid');
 
   if (!AppState.serverOnline) {
-    const checked = await checkServer(false);
+    var checked = await checkServer(false);
     if (!checked) {
       if (!silent) {
         alert('Сначала подключитесь к серверу');
@@ -780,21 +814,27 @@ async function loadTorrents(silent = false) {
 
   try {
     console.log('📥 Загрузка списка торрентов с сервера...');
-    const response = await fetch(`${AppState.currentTorrserverUrl}/torrents`, {
+    var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthHeaders()
       },
       body: JSON.stringify({ action: 'list' })
     });
 
-    if (!response.ok) {
-      throw new Error(`Ошибка загрузки: HTTP ${response.status}`);
+    var authHeaders = getAuthHeaders();
+    for (var key in authHeaders) {
+      if (authHeaders.hasOwnProperty(key)) {
+        response.headers[key] = authHeaders[key];
+      }
     }
 
-    const data = await response.json();
-    console.log('Получены данные торрентов:', Array.isArray(data) ? `${data.length} шт.` : data);
+    if (!response.ok) {
+      throw new Error('Ошибка загрузки: HTTP ' + response.status);
+    }
+
+    var data = await response.json();
+    console.log('Получены данные торрентов:', Array.isArray(data) ? data.length + ' шт.' : data);
 
     AppState.torrents = Array.isArray(data) ? data : [];
 
@@ -813,13 +853,7 @@ async function loadTorrents(silent = false) {
 
     if (!silent) {
       if (torrentsGrid) {
-        torrentsGrid.innerHTML = `
-          <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">
-            <div style="font-size: 48px; margin-bottom: 20px;"></div>
-            <div style="font-size: 16px; color: #ff6a6a;">Ошибка: ${error.message}</div>
-            <button class="btn" style="margin-top: 20px;" onclick="loadTorrents()">Попробовать снова</button>
-          </div>
-        `;
+        torrentsGrid.innerHTML = '\n          <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n            <div style="font-size: 48px; margin-bottom: 20px;"></div>\n            <div style="font-size: 16px; color: #ff6a6a;">Ошибка: ' + error.message + '</div>\n            <button class="btn" style="margin-top: 20px;" onclick="loadTorrents()">Попробовать снова</button>\n          </div>\n        ';
       }
     }
 
@@ -832,7 +866,8 @@ async function loadTorrents(silent = false) {
 }
 
 // Принудительное обновление списка торрентов (с очисткой кэша)
-async function refreshTorrents(showLoading = true) {
+async function refreshTorrents(showLoadingFlag) {
+  if (showLoadingFlag === undefined) showLoadingFlag = true;
   console.log('Принудительное обновление списка торрентов');
 
   // Очищаем кэш прогресса
@@ -841,12 +876,12 @@ async function refreshTorrents(showLoading = true) {
   }
 
   // Загружаем торренты
-  return await loadTorrents(!showLoading);
+  return await loadTorrents(!showLoadingFlag);
 }
 
 // Отрисовка карточек торрентов
 function renderTorrents() {
-  const torrentsGrid = document.getElementById('torrents-grid');
+  var torrentsGrid = document.getElementById('torrents-grid');
   torrentsGrid.innerHTML = '';
 
   // Очищаем кэш прогресса при обновлении списка
@@ -854,96 +889,88 @@ function renderTorrents() {
 
   if (AppState.torrents.length === 0) {
     // Показываем сообщение о пустом списке
-    torrentsGrid.innerHTML = `
-      <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">
-        <div style="font-size: 48px; margin-bottom: 20px;"></div>
-        <div style="font-size: 18px; color: #aaa; margin-bottom: 10px;">Нет торрентов</div>
-        <div style="font-size: 14px; color: #666;">Используйте поиск выше, чтобы найти и добавить торренты</div>
-      </div>
-    `;
+    torrentsGrid.innerHTML = '\n      <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n        <div style="font-size: 48px; margin-bottom: 20px;"></div>\n        <div style="font-size: 18px; color: #aaa; margin-bottom: 10px;">Нет торрентов</div>\n        <div style="font-size: 14px; color: #666;">Используйте поиск выше, чтобы найти и добавить торренты</div>\n      </div>\n    ';
     return;
   }
 
   // Здесь остается существующий код для отрисовки торрентов
-  AppState.torrents.forEach(async (torrent) => {
-    let poster = '';
-    let title = torrent.title || 'Без названия';
-    let category = torrent.category || '';
-    let isTv = false;
+  for (var i = 0; i < AppState.torrents.length; i++) {
+    (function (torrent) {
+      var poster = '';
+      var title = torrent.title || 'Без названия';
+      var category = torrent.category || '';
+      var isTv = false;
 
-    try {
-      // Проверяем наличие file_stats (активный торрент)
-      if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) {
-        isTv = torrent.file_stats.length > 1;
-      }
-      // Проверяем data поле
-      else if (torrent.data) {
-        const data = JSON.parse(torrent.data);
-
-        if (data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 0) {
-          isTv = data.TorrServer.Files.length > 1;
+      try {
+        // Проверяем наличие file_stats (активный торрент)
+        if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) {
+          isTv = torrent.file_stats.length > 1;
         }
+        // Проверяем data поле
+        else if (torrent.data) {
+          var data = JSON.parse(torrent.data);
 
-        if (data.movie) {
-          if (data.movie.img) {
-            poster = data.movie.img;
-          } else if (data.movie.poster_path) {
-            poster = `https://image.tmdb.org/t/p/w342${data.movie.poster_path}`;
+          if (data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 0) {
+            isTv = data.TorrServer.Files.length > 1;
+          }
+
+          if (data.movie) {
+            if (data.movie.img) {
+              poster = data.movie.img;
+            } else if (data.movie.poster_path) {
+              poster = 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path;
+            }
           }
         }
+      } catch (e) {
+        console.warn('Ошибка парсинга data для торрента:', e);
       }
-    } catch (e) {
-      console.warn('Ошибка парсинга data для торрента:', e);
-    }
 
-    if (!poster && torrent.poster) {
-      poster = torrent.poster;
-    }
+      if (!poster && torrent.poster) {
+        poster = torrent.poster;
+      }
 
-    let displayCategory = isTv ? 'tv' : (category || 'movie');
+      var displayCategory = isTv ? 'tv' : (category || 'movie');
 
-    const card = document.createElement('div');
-    card.className = 'torrent-card';
-    card.dataset.hash = torrent.hash;
-    card.onclick = () => showDetail(torrent);
-    attachTorrentDeleteLongPress(card, torrent);
+      var card = document.createElement('div');
+      card.className = 'torrent-card';
+      card.dataset.hash = torrent.hash;
+      card.onclick = function () { showDetail(torrent); };
+      attachTorrentDeleteLongPress(card, torrent);
 
-    card.innerHTML = `
-      <div class="torrent-poster">
-        ${poster ? `<img src="${poster}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'no-poster\\'>Нет постера</div>'">` : '<div class="no-poster">Нет постера</div>'}
-      </div>
-      <div class="torrent-info">
-        <div class="torrent-title">${escapeHtml(title)}</div>
-        <div class="torrent-meta">
-          <span>${formatBytes(torrent.torrent_size)}</span>
-          <span class="torrent-badge">${displayCategory === 'tv' ? 'Сериал' : 'Фильм'}</span>
-        </div>
-      </div>
-    `;
+      card.innerHTML = '\n      <div class="torrent-poster">\n        ' + (poster ? '<img src="' + poster + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">' : '<div class="no-poster">Нет постера</div>') + '\n      </div>\n      <div class="torrent-info">\n        <div class="torrent-title">' + escapeHtml(title) + '</div>\n        <div class="torrent-meta">\n          <span>' + formatBytes(torrent.torrent_size) + '</span>\n          <span class="torrent-badge">' + (displayCategory === 'tv' ? 'Сериал' : 'Фильм') + '</span>\n        </div>\n      </div>\n    ';
 
-    torrentsGrid.appendChild(card);
+      torrentsGrid.appendChild(card);
 
-    // Загружаем и добавляем прогресс
-    await addProgressToCard(card, torrent);
-  });
+      // Загружаем и добавляем прогресс
+      addProgressToCard(card, torrent);
+    })(AppState.torrents[i]);
+  }
 
   if (AppState.currentScreen === 'torrents' && !document.querySelector('.torrent-card.focused')) {
-    setTimeout(() => {
+    setTimeout(function () {
       if (typeof window.focusFirstTorrentCard === 'function') {
         window.focusFirstTorrentCard();
       }
     }, 80);
   }
 }
+
 // Показать детали торрента по hash
 function showDetailByHash(hash) {
   if (!hash) return false;
 
   // Приводим hash к нижнему регистру для поиска
-  const hashLower = hash.toLowerCase();
+  var hashLower = hash.toLowerCase();
 
   // Ищем торрент по hash (без учета регистра)
-  const torrent = AppState.torrents.find(t => t.hash && t.hash.toLowerCase() === hashLower);
+  var torrent = null;
+  for (var i = 0; i < AppState.torrents.length; i++) {
+    if (AppState.torrents[i].hash && AppState.torrents[i].hash.toLowerCase() === hashLower) {
+      torrent = AppState.torrents[i];
+      break;
+    }
+  }
 
   if (torrent) {
     showDetail(torrent);
@@ -954,16 +981,16 @@ function showDetailByHash(hash) {
 }
 
 function hideCatalogDetailExtra() {
-  const extra = document.getElementById('catalog-detail-extra');
-  const filesList = document.getElementById('files-list');
-  const subtitle = document.getElementById('detail-subtitle');
-  const backdrop = document.getElementById('catalog-detail-backdrop');
-  const meta = document.getElementById('catalog-detail-meta');
-  const overview = document.getElementById('catalog-detail-overview');
-  const trailersWrap = document.getElementById('catalog-detail-trailers-wrap');
-  const trailers = document.getElementById('catalog-detail-trailers');
-  const shotsWrap = document.getElementById('catalog-detail-screenshots-wrap');
-  const shots = document.getElementById('catalog-detail-screenshots');
+  var extra = document.getElementById('catalog-detail-extra');
+  var filesList = document.getElementById('files-list');
+  var subtitle = document.getElementById('detail-subtitle');
+  var backdrop = document.getElementById('catalog-detail-backdrop');
+  var meta = document.getElementById('catalog-detail-meta');
+  var overview = document.getElementById('catalog-detail-overview');
+  var trailersWrap = document.getElementById('catalog-detail-trailers-wrap');
+  var trailers = document.getElementById('catalog-detail-trailers');
+  var shotsWrap = document.getElementById('catalog-detail-screenshots-wrap');
+  var shots = document.getElementById('catalog-detail-screenshots');
   if (extra) extra.classList.add('hidden');
   if (filesList) filesList.style.display = 'block';
   if (subtitle) subtitle.textContent = '';
@@ -995,14 +1022,14 @@ async function showDetail(torrent) {
   }
 
   AppState.currentDetailItem = torrent;
-  const detailView = document.getElementById('detail-view');
+  var detailView = document.getElementById('detail-view');
 
   // Убеждаемся что detail-view перекрывает все
   detailView.style.display = 'block';
   detailView.style.zIndex = '100';
 
   // Блокируем взаимодействие с основным контентом
-  const mainContainer = document.getElementById('main-container');
+  var mainContainer = document.getElementById('main-container');
   if (mainContainer) {
     mainContainer.style.pointerEvents = 'none';
   }
@@ -1011,18 +1038,18 @@ async function showDetail(torrent) {
   AppState.detailReturnTo = 'torrents';
   hideCatalogDetailExtra();
 
-  const posterImg = document.getElementById('detail-poster');
-  const titleEl = document.getElementById('detail-title-text');
-  const filesList = document.getElementById('files-list');
+  var posterImg = document.getElementById('detail-poster');
+  var titleEl = document.getElementById('detail-title-text');
+  var filesList = document.getElementById('files-list');
 
-  let poster = '';
+  var poster = '';
   try {
     if (torrent.data) {
-      const data = JSON.parse(torrent.data);
+      var data = JSON.parse(torrent.data);
       if (data.movie && data.movie.img) {
         poster = data.movie.img;
       } else if (data.movie && data.movie.poster_path) {
-        poster = `https://image.tmdb.org/t/p/w342${data.movie.poster_path}`;
+        poster = 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path;
       }
     }
   } catch (e) { }
@@ -1031,11 +1058,11 @@ async function showDetail(torrent) {
     poster = torrent.poster;
   }
 
-  posterImg.innerHTML = poster ? `<img src="${poster}" alt="poster">` : '<div class="no-poster">Нет постера</div>';
+  posterImg.innerHTML = poster ? '<img src="' + poster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
   titleEl.textContent = torrent.title || 'Без названия';
 
   // Удаляем старый прогресс если есть
-  const oldProgress = document.getElementById('detail-progress');
+  var oldProgress = document.getElementById('detail-progress');
   if (oldProgress) oldProgress.remove();
 
   // Добавляем прогресс для текущего торрента
@@ -1044,7 +1071,7 @@ async function showDetail(torrent) {
   filesList.innerHTML = '<div style="text-align: center; padding: 20px;">Загрузка...</div>';
 
   try {
-    let files = [];
+    var files = [];
 
     // Проверяем наличие file_stats (активный торрент)
     if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) {
@@ -1052,7 +1079,7 @@ async function showDetail(torrent) {
     }
     // Проверяем data поле
     else if (torrent.data) {
-      const data = JSON.parse(torrent.data);
+      var data = JSON.parse(torrent.data);
 
       if (data.TorrServer && data.TorrServer.Files) {
         files = data.TorrServer.Files;
@@ -1068,9 +1095,9 @@ async function showDetail(torrent) {
       filesList.innerHTML = '<div style="text-align: center; padding: 20px;">Нет файлов</div>';
     } else {
       filesList.innerHTML = '';
-      files.forEach(file => {
-        addFileItem(file, torrent.hash);
-      });
+      for (var i = 0; i < files.length; i++) {
+        addFileItem(files[i], torrent.hash);
+      }
     }
 
   } catch (e) {
@@ -1079,18 +1106,23 @@ async function showDetail(torrent) {
   }
 
   // Устанавливаем фокус на первый элемент в детальном просмотре
-  setTimeout(() => {
+  setTimeout(function () {
     if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
       updateFocusableElements();
 
       // 1. Ищем все элементы файлов
-      const fileItems = document.querySelectorAll('.file-item');
+      var fileItems = document.querySelectorAll('.file-item');
 
-      let targetIndex = -1;
+      var targetIndex = -1;
 
       // 2. Если есть файлы, ставим фокус на первый файл
       if (fileItems.length > 0) {
-        targetIndex = focusableElements.findIndex(el => el.classList.contains('file-item'));
+        for (var i = 0; i < focusableElements.length; i++) {
+          if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) {
+            targetIndex = i;
+            break;
+          }
+        }
 
         if (targetIndex !== -1) {
           setFocus(targetIndex);
@@ -1100,11 +1132,14 @@ async function showDetail(torrent) {
       }
 
       // 3. Если файлов нет, пробуем найти кнопку "Продолжить"
-      const progressBtn = document.querySelector('.detail-progress-btn');
+      var progressBtn = document.querySelector('.detail-progress-btn');
       if (progressBtn) {
-        targetIndex = focusableElements.findIndex(el =>
-          el.classList.contains('detail-progress-btn')
-        );
+        for (var i = 0; i < focusableElements.length; i++) {
+          if (focusableElements[i].classList && focusableElements[i].classList.contains('detail-progress-btn')) {
+            targetIndex = i;
+            break;
+          }
+        }
 
         if (targetIndex !== -1) {
           setFocus(targetIndex);
@@ -1114,9 +1149,14 @@ async function showDetail(torrent) {
       }
 
       // 4. Фолбэк на кнопку "Назад"
-      const backBtn = document.querySelector('.back-btn');
+      var backBtn = document.querySelector('.back-btn');
       if (backBtn) {
-        targetIndex = focusableElements.findIndex(el => el.classList.contains('back-btn'));
+        for (var i = 0; i < focusableElements.length; i++) {
+          if (focusableElements[i].classList && focusableElements[i].classList.contains('back-btn')) {
+            targetIndex = i;
+            break;
+          }
+        }
         if (targetIndex !== -1) {
           setFocus(targetIndex);
           console.log('Фокус в детальном просмотре на кнопке "Назад"');
@@ -1132,35 +1172,29 @@ async function showDetail(torrent) {
 
 // Добавить элемент файла (для сериалов)
 function addFileItem(file, hash) {
-  const fileName = file.path.split('/').pop() || `Файл ${file.id}`;
-  const fileSize = formatBytes(file.length);
+  var fileName = file.path.split('/').pop() || ('Файл ' + file.id);
+  var fileSize = formatBytes(file.length);
 
-  const item = document.createElement('div');
+  var item = document.createElement('div');
   item.className = 'file-item';
-  item.innerHTML = `
-    <div class="file-name">
-      <div>${escapeHtml(fileName)}</div>
-      <div style="font-size: 12px; color: #888; margin-top: 4px;">${fileSize}</div>
-    </div>
-    <button class="play-btn" data-hash="${hash}" data-file-id="${file.id}">▶ Воспроизвести</button>
-  `;
+  item.innerHTML = '\n    <div class="file-name">\n      <div>' + escapeHtml(fileName) + '</div>\n      <div style="font-size: 12px; color: #888; margin-top: 4px;">' + fileSize + '</div>\n    </div>\n    <button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '">▶ Воспроизвести</button>\n  ';
 
-  item.querySelector('.play-btn').onclick = (e) => {
+  item.querySelector('.play-btn').onclick = function (e) {
     e.stopPropagation();
-    const btn = e.currentTarget;
+    var btn = e.currentTarget;
 
-    const playUrl = file.id ?
-      `${AppState.currentTorrserverUrl}/play/${hash}/${file.id}` :
-      `${AppState.currentTorrserverUrl}/play/${hash}/1`;
+    var playUrl = file.id ?
+      AppState.currentTorrserverUrl + '/play/' + hash + '/' + file.id :
+      AppState.currentTorrserverUrl + '/play/' + hash + '/1';
 
     document.getElementById('playback-overlay').classList.add('active');
     document.getElementById('detail-view').style.pointerEvents = 'none';
 
     // Явно передаем timecode = 0 для воспроизведения с начала
-    startHLSPlayback(playUrl, 0, false).then(() => {
+    startHLSPlayback(playUrl, 0, false).then(function () {
       document.getElementById('playback-overlay').classList.remove('active');
       document.getElementById('detail-view').style.pointerEvents = 'auto';
-    }).catch(() => {
+    })['catch'](function () {
       document.getElementById('playback-overlay').classList.remove('active');
       document.getElementById('detail-view').style.pointerEvents = 'auto';
     });
@@ -1171,33 +1205,27 @@ function addFileItem(file, hash) {
 
 // Добавить элемент фильма
 function addMovieItem(torrent) {
-  const filesList = document.getElementById('files-list');
+  var filesList = document.getElementById('files-list');
   filesList.innerHTML = '';
 
-  const item = document.createElement('div');
+  var item = document.createElement('div');
   item.className = 'file-item';
-  item.innerHTML = `
-    <div class="file-name">
-      <div>${escapeHtml(torrent.title || 'Фильм')}</div>
-      <div style="font-size: 12px; color: #888; margin-top: 4px;">${formatBytes(torrent.torrent_size)}</div>
-    </div>
-    <button class="play-btn" data-hash="${torrent.hash}">▶ Воспроизвести</button>
-  `;
+  item.innerHTML = '\n    <div class="file-name">\n      <div>' + escapeHtml(torrent.title || 'Фильм') + '</div>\n      <div style="font-size: 12px; color: #888; margin-top: 4px;">' + formatBytes(torrent.torrent_size) + '</div>\n    </div>\n    <button class="play-btn" data-hash="' + torrent.hash + '">▶ Воспроизвести</button>\n  ';
 
-  item.querySelector('.play-btn').onclick = (e) => {
+  item.querySelector('.play-btn').onclick = function (e) {
     e.stopPropagation();
-    const btn = e.currentTarget;
+    var btn = e.currentTarget;
 
-    const playUrl = `${AppState.currentTorrserverUrl}/play/${torrent.hash}/1`;
+    var playUrl = AppState.currentTorrserverUrl + '/play/' + torrent.hash + '/1';
 
     document.getElementById('playback-overlay').classList.add('active');
     document.getElementById('detail-view').style.pointerEvents = 'none';
 
     // Явно передаем timecode = 0 для воспроизведения с начала
-    startHLSPlayback(playUrl, 0, false).then(() => {
+    startHLSPlayback(playUrl, 0, false).then(function () {
       document.getElementById('playback-overlay').classList.remove('active');
       document.getElementById('detail-view').style.pointerEvents = 'auto';
-    }).catch(() => {
+    })['catch'](function () {
       document.getElementById('playback-overlay').classList.remove('active');
       document.getElementById('detail-view').style.pointerEvents = 'auto';
     });
@@ -1207,10 +1235,15 @@ function addMovieItem(torrent) {
 }
 
 function normalizeSearchResult(item) {
-  const normalized = { ...item };
+  var normalized = {};
+  for (var key in item) {
+    if (item.hasOwnProperty(key)) {
+      normalized[key] = item[key];
+    }
+  }
 
-  const releasedRaw = normalized.released ?? normalized.relased ?? normalized.year ?? null;
-  const releasedYear = parseInt(releasedRaw, 10);
+  var releasedRaw = normalized.released || normalized.relased || normalized.year || null;
+  var releasedYear = parseInt(releasedRaw, 10);
 
   normalized.released = Number.isFinite(releasedYear) ? releasedYear : null;
   normalized.relased = normalized.released;
@@ -1226,7 +1259,7 @@ async function searchTorrents(query) {
   }
 
   // Получаем текущий режим поиска
-  const searchMode = getCurrentSearchMode();
+  var searchMode = getCurrentSearchMode();
 
   if (searchMode === 'globalsearch') {
     // Используем глобальный поиск через TMDB
@@ -1244,20 +1277,23 @@ async function searchTorrentsLegacy(query) {
     return;
   }
 
-  const encodedQuery = encodeURIComponent(query.trim());
-  const searchUrl = `https://jac.red/api/v1.0/torrents?search=${encodedQuery}&apikey=null&exact=true`;
+  var encodedQuery = encodeURIComponent(query.trim());
+  var searchUrl = 'https://jac.red/api/v1.0/torrents?search=' + encodedQuery + '&apikey=null&exact=true';
 
   showLoading('Поиск...');
 
   try {
-    const response = await fetch(searchUrl);
+    var response = await fetch(searchUrl);
     if (!response.ok) throw new Error('Ошибка поиска');
 
-    const data = await response.json();
-    searchResults = (Array.isArray(data) ? data : []).map(normalizeSearchResult);
+    var data = await response.json();
+    searchResults = (Array.isArray(data) ? data : []);
+    for (var i = 0; i < searchResults.length; i++) {
+      searchResults[i] = normalizeSearchResult(searchResults[i]);
+    }
     currentSearchQuery = query;
 
-    const searchInput = document.getElementById('search-query');
+    var searchInput = document.getElementById('search-query');
     if (searchInput) {
       searchInput.value = '';
     }
@@ -1276,15 +1312,15 @@ async function searchTorrentsLegacy(query) {
 
 // Добавляем обработчик изменения режима поиска
 function initSearchModeToggle() {
-  const modeSelect = document.getElementById('search-mode');
+  var modeSelect = document.getElementById('search-mode');
   if (modeSelect) {
-    modeSelect.addEventListener('change', (e) => {
+    modeSelect.addEventListener('change', function (e) {
       currentSearchMode = e.target.value;
 
       // Адаптируем интерфейс под выбранный режим
-      const trackerFilter = document.getElementById('filter-tracker');
-      const qualityFilter = document.getElementById('filter-quality');
-      const contentTypeFilter = document.getElementById('filter-content-type');
+      var trackerFilter = document.getElementById('filter-tracker');
+      var qualityFilter = document.getElementById('filter-quality');
+      var contentTypeFilter = document.getElementById('filter-content-type');
 
       if (currentSearchMode === 'globalsearch') {
         // Для глобального поиска отключаем ненужные фильтры
@@ -1295,7 +1331,7 @@ function initSearchModeToggle() {
         // Для поиска по торрентам включаем обратно
         if (trackerFilter) trackerFilter.disabled = false;
         if (qualityFilter) qualityFilter.disabled = false;
-        if (contentTypeFilter) contentTypeFilter.remove();
+        if (contentTypeFilter && contentTypeFilter.remove) contentTypeFilter.remove();
       }
 
       // Если есть текущий поиск, обновляем результаты
@@ -1306,19 +1342,33 @@ function initSearchModeToggle() {
   }
 }
 
-
 // Обновление списка доступных трекеров
 function updateAvailableTrackers() {
-  const trackerSet = new Set();
+  var trackerSet = {};
 
-  searchResults.forEach(result => {
+  for (var i = 0; i < searchResults.length; i++) {
+    var result = searchResults[i];
     if (result.tracker) {
-      trackerSet.add(result.tracker);
+      trackerSet[result.tracker] = true;
     }
-  });
+  }
 
-  availableTrackers = Array.from(trackerSet).sort();
-  if (!availableTrackers.includes(currentTrackerFilter)) {
+  availableTrackers = [];
+  for (var key in trackerSet) {
+    if (trackerSet.hasOwnProperty(key)) {
+      availableTrackers.push(key);
+    }
+  }
+  availableTrackers.sort();
+
+  var trackerFilterAll = false;
+  for (var j = 0; j < availableTrackers.length; j++) {
+    if (availableTrackers[j] === currentTrackerFilter) {
+      trackerFilterAll = true;
+      break;
+    }
+  }
+  if (!trackerFilterAll) {
     currentTrackerFilter = 'all';
   }
   syncSearchFilterButtons();
@@ -1326,26 +1376,33 @@ function updateAvailableTrackers() {
 
 // Применение фильтров и сортировки
 function applyFiltersAndSort() {
-  filteredResults = searchResults.filter(item => {
+  filteredResults = [];
+
+  for (var i = 0; i < searchResults.length; i++) {
+    var item = searchResults[i];
+    var shouldInclude = true;
+
     if (currentQualityFilter !== 'all') {
-      const quality = parseInt(currentQualityFilter, 10);
-      if ((item.quality || 0) !== quality) return false;
+      var quality = parseInt(currentQualityFilter, 10);
+      if ((item.quality || 0) !== quality) shouldInclude = false;
     }
 
-    if (currentTrackerFilter !== 'all') {
-      const tracker = (item.tracker || '').toLowerCase();
-      if (tracker !== currentTrackerFilter) return false;
+    if (shouldInclude && currentTrackerFilter !== 'all') {
+      var tracker = (item.tracker || '').toLowerCase();
+      if (tracker !== currentTrackerFilter) shouldInclude = false;
     }
 
-    if (currentYearFilter) {
-      const year = parseInt(currentYearFilter, 10);
-      if (!Number.isFinite(year) || item.released !== year) return false;
+    if (shouldInclude && currentYearFilter) {
+      var year = parseInt(currentYearFilter, 10);
+      if (!Number.isFinite(year) || item.released !== year) shouldInclude = false;
     }
 
-    return true;
-  });
+    if (shouldInclude) {
+      filteredResults.push(item);
+    }
+  }
 
-  filteredResults.sort((a, b) => {
+  filteredResults.sort(function (a, b) {
     switch (currentSort) {
       case 'date-desc':
         return new Date(b.createTime || 0) - new Date(a.createTime || 0);
@@ -1372,21 +1429,15 @@ function applyFiltersAndSort() {
 }
 
 // Отображение результатов поиска
-function showSearchResults(options = {}) {
-  const searchOverlay = document.getElementById('search-overlay');
-  const searchTab = document.getElementById('tab-search');
-  const torrentsTab = document.getElementById('tab-torrents');
-  const catalogTab = document.getElementById('tab-catalog');
-  const searchInput = document.getElementById('search-query');
+function showSearchResults(options) {
+  if (options === undefined) options = {};
+  var searchOverlay = document.getElementById('search-overlay');
+  var searchTab = document.getElementById('tab-search');
+  var torrentsTab = document.getElementById('tab-torrents');
+  var catalogTab = document.getElementById('tab-catalog');
+  var searchInput = document.getElementById('search-query');
 
   if (!searchOverlay || !searchTab || !torrentsTab) return;
-
-  //const previousScreen = AppState.currentScreen;
-  //if (previousScreen === 'catalog') {
-  //AppState.searchReturnTo = 'catalog';
-  //} else if (previousScreen !== 'search') {
-  // AppState.searchReturnTo = 'catalog';
-  //}
 
   if (searchInput && document.activeElement === searchInput) {
     searchInput.blur();
@@ -1395,17 +1446,17 @@ function showSearchResults(options = {}) {
   searchOverlay.classList.remove('hidden');
   searchTab.classList.add('active');
   torrentsTab.classList.remove('active');
-  catalogTab?.classList.remove('active');
+  if (catalogTab) catalogTab.classList.remove('active');
   AppState.currentScreen = 'search';
 
   syncSearchFilterButtons();
   toggleSearchFiltersPanel(false);
 
   if (options.runSearch && searchInput && searchInput.value.trim()) {
-    setTimeout(() => searchTorrents(searchInput.value.trim()), 0);
+    setTimeout(function () { searchTorrents(searchInput.value.trim()); }, 0);
   }
 
-  setTimeout(() => {
+  setTimeout(function () {
     if (typeof window.focusSearchHome === 'function') {
       window.focusSearchHome(options.focusQuery !== false);
       return;
@@ -1414,14 +1465,22 @@ function showSearchResults(options = {}) {
     if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
       updateFocusableElements();
 
-      const searchInputIndex = focusableElements.findIndex(el => el.id === 'search-query');
-      const searchBtnIndex = focusableElements.findIndex(el => el.id === 'search-btn');
-      const filterToggleIndex = focusableElements.findIndex(el => el.id === 'filter-toggle');
-      const firstFilterIndex = focusableElements.findIndex(el =>
-        ['sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].includes(el.id)
-      );
+      var searchInputIndex = -1;
+      var searchBtnIndex = -1;
+      var filterToggleIndex = -1;
+      var firstFilterIndex = -1;
 
-      const targetIndex = options.focusQuery !== false
+      for (var i = 0; i < focusableElements.length; i++) {
+        var el = focusableElements[i];
+        if (el.id === 'search-query') searchInputIndex = i;
+        if (el.id === 'search-btn') searchBtnIndex = i;
+        if (el.id === 'filter-toggle') filterToggleIndex = i;
+        if (['sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) {
+          firstFilterIndex = i;
+        }
+      }
+
+      var targetIndex = options.focusQuery !== false
         ? (searchInputIndex !== -1 ? searchInputIndex : (searchBtnIndex !== -1 ? searchBtnIndex : filterToggleIndex))
         : (firstFilterIndex !== -1 ? firstFilterIndex : (filterToggleIndex !== -1 ? filterToggleIndex : 0));
 
@@ -1432,17 +1491,18 @@ function showSearchResults(options = {}) {
 
 // Скрытие результатов поиска
 function hideSearchResults() {
-  const searchOverlay = document.getElementById('search-overlay');
-  const searchTab = document.getElementById('tab-search');
-  const torrentsTab = document.getElementById('tab-torrents');
-  const catalogTab = document.getElementById('tab-catalog');
-  const searchInput = document.getElementById('search-query');
-  document.getElementById('torrent-movie').value = 'globalsearch';
+  var searchOverlay = document.getElementById('search-overlay');
+  var searchTab = document.getElementById('tab-search');
+  var torrentsTab = document.getElementById('tab-torrents');
+  var catalogTab = document.getElementById('tab-catalog');
+  var searchInput = document.getElementById('search-query');
+  var modeSelect = document.getElementById('torrent-movie');
+  if (modeSelect) modeSelect.value = 'globalsearch';
 
   if (!searchOverlay || !searchTab || !torrentsTab) return;
 
   // Определяем куда возвращаться
-  const returnTo = AppState.searchReturnTo || 'torrents';
+  var returnTo = AppState.searchReturnTo || 'torrents';
 
   searchOverlay.classList.add('hidden');
   searchTab.classList.remove('active');
@@ -1454,11 +1514,11 @@ function hideSearchResults() {
     AppState.currentScreen = 'detail';
 
     // Скрываем вкладки каталога/торрентов
-    catalogTab?.classList.remove('active');
+    if (catalogTab) catalogTab.classList.remove('active');
     torrentsTab.classList.remove('active');
 
     // Показываем детальный просмотр, если он скрыт
-    const detailView = document.getElementById('detail-view');
+    var detailView = document.getElementById('detail-view');
     if (detailView && detailView.style.display !== 'block') {
       detailView.style.display = 'block';
     }
@@ -1466,7 +1526,7 @@ function hideSearchResults() {
     // Восстанавливаем детальный просмотр
     if (AppState.pendingDetailItem) {
       console.log('Возврат к детальному просмотру:',
-        AppState.pendingDetailItem.torrent?.[0]?.name || 'Фильм');
+        AppState.pendingDetailItem.torrent && AppState.pendingDetailItem.torrent[0] && AppState.pendingDetailItem.torrent[0].name || 'Фильм');
 
       showCatalogDetail(
         AppState.pendingDetailItem,
@@ -1488,12 +1548,18 @@ function hideSearchResults() {
     }
 
     // Устанавливаем фокус на кнопку просмотра
-    setTimeout(() => {
+    setTimeout(function () {
       if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
         updateFocusableElements();
-        const watchBtn = document.getElementById('catalog-watch-btn');
+        var watchBtn = document.getElementById('catalog-watch-btn');
         if (watchBtn) {
-          const watchIndex = focusableElements.findIndex(el => el.id === 'catalog-watch-btn');
+          var watchIndex = -1;
+          for (var i = 0; i < focusableElements.length; i++) {
+            if (focusableElements[i].id === 'catalog-watch-btn') {
+              watchIndex = i;
+              break;
+            }
+          }
           if (watchIndex !== -1) {
             setFocus(watchIndex);
             return;
@@ -1508,14 +1574,14 @@ function hideSearchResults() {
 
   } else if (returnTo === 'catalog') {
     // Возврат в каталог
-    catalogTab?.classList.add('active');
+    if (catalogTab) catalogTab.classList.add('active');
     torrentsTab.classList.remove('active');
     AppState.currentScreen = 'catalog';
 
-    setTimeout(() => {
+    setTimeout(function () {
       if (typeof window.focusCatalogCardByIndex === 'function') {
-        const savedIndex = localStorage.getItem('lastCatalogCardIndex');
-        const targetIndex = savedIndex !== null ?
+        var savedIndex = localStorage.getItem('lastCatalogCardIndex');
+        var targetIndex = savedIndex !== null ?
           window.focusCatalogCardByIndex(parseInt(savedIndex)) : 0;
 
         if (typeof window.ensureCatalogFocus === 'function') {
@@ -1531,19 +1597,23 @@ function hideSearchResults() {
   } else {
     // Возврат в торренты (по умолчанию)
     torrentsTab.classList.add('active');
-    catalogTab?.classList.remove('active');
+    if (catalogTab) catalogTab.classList.remove('active');
     AppState.currentScreen = 'torrents';
 
-    setTimeout(() => {
+    setTimeout(function () {
       if (typeof window.focusFirstTorrentCard === 'function' && window.focusFirstTorrentCard()) {
         return;
       }
 
       if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
         updateFocusableElements();
-        const firstCardIndex = focusableElements.findIndex(el =>
-          el.classList && el.classList.contains('torrent-card')
-        );
+        var firstCardIndex = -1;
+        for (var i = 0; i < focusableElements.length; i++) {
+          if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) {
+            firstCardIndex = i;
+            break;
+          }
+        }
         setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
       }
     }, 80);
@@ -1565,7 +1635,7 @@ function resetFilters() {
   currentYearFilter = '';
 
   syncSearchFilterButtons();
-  const filterYear = document.getElementById('filter-year');
+  var filterYear = document.getElementById('filter-year');
   if (filterYear) {
     filterYear.value = '';
   }
@@ -1574,14 +1644,15 @@ function resetFilters() {
 }
 
 // Добавление торрента в TorrServer
-async function addTorrentToServer(magnet, hash, searchResult = null) {
+async function addTorrentToServer(magnet, hash, searchResult) {
+  if (searchResult === undefined) searchResult = null;
   if (!AppState.currentTorrserverUrl) {
     alert('Сначала подключитесь к TorrServer');
     return null;
   }
 
   // Используем постер из каталога, если он есть
-  let poster = null;
+  var poster = null;
 
   // Сначала проверяем, есть ли сохраненный постер из каталога
   if (window.pendingCatalogPoster) {
@@ -1600,7 +1671,7 @@ async function addTorrentToServer(magnet, hash, searchResult = null) {
   try {
     console.log('Добавление торрента в TorrServer:', magnet);
 
-    const requestBody = {
+    var requestBody = {
       action: 'add',
       link: magnet,
       save_to_db: true
@@ -1612,20 +1683,26 @@ async function addTorrentToServer(magnet, hash, searchResult = null) {
       console.log('Добавляем постер в запрос');
     }
 
-    const response = await fetch(`${AppState.currentTorrserverUrl}/torrents`, {
+    var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthHeaders()
       },
       body: JSON.stringify(requestBody)
     });
 
-    if (!response.ok) {
-      throw new Error(`Ошибка добавления: ${response.status}`);
+    var authHeaders = getAuthHeaders();
+    for (var key in authHeaders) {
+      if (authHeaders.hasOwnProperty(key)) {
+        response.headers[key] = authHeaders[key];
+      }
     }
 
-    const data = await response.json();
+    if (!response.ok) {
+      throw new Error('Ошибка добавления: ' + response.status);
+    }
+
+    var data = await response.json();
     console.log('Торрент добавлен:', data);
 
     // Очищаем временные данные
@@ -1636,13 +1713,19 @@ async function addTorrentToServer(magnet, hash, searchResult = null) {
     lastAddedTorrentHash = hash.toLowerCase();
 
     // Ждем немного для обновления списка
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(function (resolve) { setTimeout(resolve, 1000); });
 
     // Обновляем список торрентов
     await refreshTorrentsList();
 
     // Ищем добавленный торрент по hash (в нижнем регистре)
-    const addedTorrent = AppState.torrents.find(t => t.hash && t.hash.toLowerCase() === lastAddedTorrentHash);
+    var addedTorrent = null;
+    for (var i = 0; i < AppState.torrents.length; i++) {
+      if (AppState.torrents[i].hash && AppState.torrents[i].hash.toLowerCase() === lastAddedTorrentHash) {
+        addedTorrent = AppState.torrents[i];
+        break;
+      }
+    }
 
     return addedTorrent || null;
 
@@ -1660,38 +1743,65 @@ async function addTorrentToServer(magnet, hash, searchResult = null) {
 
 // Обновление списка торрентов
 async function refreshTorrentsList() {
-  const focusedCard = document.querySelector('.torrent-card.focused');
-  const preserveHash = focusedCard?.dataset.hash || window.lastSelectedTorrentHash || null;
-  const preserveIndex = typeof window.lastSelectedTorrentIndex === 'number' ? window.lastSelectedTorrentIndex : 0;
+  var focusedCard = document.querySelector('.torrent-card.focused');
+  var preserveHash = (focusedCard && focusedCard.dataset.hash) || window.lastSelectedTorrentHash || null;
+  var preserveIndex = typeof window.lastSelectedTorrentIndex === 'number' ? window.lastSelectedTorrentIndex : 0;
 
   try {
-    const response = await fetch(`${AppState.currentTorrserverUrl}/torrents`, {
+    var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthHeaders()
       },
       body: JSON.stringify({ action: 'list' })
     });
 
+    var authHeaders = getAuthHeaders();
+    for (var key in authHeaders) {
+      if (authHeaders.hasOwnProperty(key)) {
+        response.headers[key] = authHeaders[key];
+      }
+    }
+
     if (response.ok) {
-      const data = await response.json();
+      var data = await response.json();
       AppState.torrents = Array.isArray(data) ? data : [];
       renderTorrents();
 
       if (AppState.currentScreen === 'torrents') {
-        setTimeout(() => {
+        setTimeout(function () {
           if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
             updateFocusableElements();
-            let targetIndex = focusableElements.findIndex(el => el.classList.contains('torrent-card') && preserveHash && el.dataset.hash === preserveHash);
-            if (targetIndex === -1) {
-              const cards = focusableElements.filter(el => el.classList.contains('torrent-card'));
-              if (cards[preserveIndex]) {
-                targetIndex = focusableElements.indexOf(cards[preserveIndex]);
+            var targetIndex = -1;
+            for (var i = 0; i < focusableElements.length; i++) {
+              if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card') && preserveHash && focusableElements[i].dataset.hash === preserveHash) {
+                targetIndex = i;
+                break;
               }
             }
             if (targetIndex === -1) {
-              targetIndex = focusableElements.findIndex(el => el.classList.contains('torrent-card'));
+              var cards = [];
+              for (var j = 0; j < focusableElements.length; j++) {
+                if (focusableElements[j].classList && focusableElements[j].classList.contains('torrent-card')) {
+                  cards.push(focusableElements[j]);
+                }
+              }
+              if (cards[preserveIndex]) {
+                for (var k = 0; k < focusableElements.length; k++) {
+                  if (focusableElements[k] === cards[preserveIndex]) {
+                    targetIndex = k;
+                    break;
+                  }
+                }
+              }
+            }
+            if (targetIndex === -1) {
+              for (var l = 0; l < focusableElements.length; l++) {
+                if (focusableElements[l].classList && focusableElements[l].classList.contains('torrent-card')) {
+                  targetIndex = l;
+                  break;
+                }
+              }
             }
             if (targetIndex !== -1) setFocus(targetIndex);
           }
@@ -1706,7 +1816,8 @@ async function refreshTorrentsList() {
 }
 
 // Воспроизведение по hash
-async function playFromHash(hash, magnet, searchResult = null) {
+async function playFromHash(hash, magnet, searchResult) {
+  if (searchResult === undefined) searchResult = null;
   console.log('playFromHash вызван:');
   console.log('Hash:', hash);
   console.log('SearchResult:', searchResult ? searchResult.title || searchResult.name : 'null');
@@ -1725,27 +1836,33 @@ async function playFromHash(hash, magnet, searchResult = null) {
   document.querySelector('.playback-text').textContent = 'Поиск постера и добавление...';
 
   try {
-    let addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
+    var addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
 
     hideSearchResults();
 
     if (!addedTorrent) {
       await refreshTorrentsList();
-      addedTorrent = AppState.torrents.find(t => (t.hash || '').toLowerCase() === hash.toLowerCase()) || null;
+      addedTorrent = null;
+      for (var i = 0; i < AppState.torrents.length; i++) {
+        if ((AppState.torrents[i].hash || '').toLowerCase() === hash.toLowerCase()) {
+          addedTorrent = AppState.torrents[i];
+          break;
+        }
+      }
     }
 
     if (addedTorrent) {
       AppState.currentDetailItem = addedTorrent;
     }
 
-    const playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
-    const fileId = playbackTarget.fileId || 1;
+    var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
+    var fileId = playbackTarget.fileId || 1;
 
     document.querySelector('.playback-text').textContent = playbackTarget.isSeries
       ? 'Воспроизведение серии...'
       : 'Воспроизведение...';
 
-    const playUrl = `${AppState.currentTorrserverUrl}/play/${hash}/${fileId}`;
+    var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
     console.log('URL воспроизведения:', playUrl, 'isSeries:', playbackTarget.isSeries, 'episodeIndex:', playbackTarget.episodeIndex);
 
     await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
@@ -1771,142 +1888,109 @@ function clearSearchResults() {
 
 // Рендеринг результатов поиска
 function renderSearchResults() {
-  const searchResultsDiv = document.getElementById('search-results');
+  var searchResultsDiv = document.getElementById('search-results');
 
   if (!searchResultsDiv) return;
 
   if (filteredResults.length === 0) {
-    const totalResults = searchResults.length;
-    searchResultsDiv.innerHTML = `
-      <div class="filter-stats">Всего найдено: <span>${totalResults}</span></div>
-      <div class="search-result-empty">
-        ${currentSearchQuery ? `Нет результатов по фильтрам для "${escapeHtml(currentSearchQuery)}"` : 'Введите запрос для поиска'}
-      </div>
-    `;
+    var totalResults = searchResults.length;
+    searchResultsDiv.innerHTML = '\n      <div class="filter-stats">Всего найдено: <span>' + totalResults + '</span></div>\n      <div class="search-result-empty">\n        ' + (currentSearchQuery ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"' : 'Введите запрос для поиска') + '\n      </div>\n    ';
     return;
   }
 
-  let html = `<div class="filter-stats">Показано: <span>${filteredResults.length}</span> из <span>${searchResults.length}</span></div>`;
+  var html = '<div class="filter-stats">Показано: <span>' + filteredResults.length + '</span> из <span>' + searchResults.length + '</span></div>';
 
-  filteredResults.forEach((result, index) => {
-    const voices = Array.isArray(result.voices) ? result.voices : [];
-    const quality = result.quality || 'N/A';
-    const size = result.sizeName || formatBytes(result.size);
-    const year = result.released || 'N/A';
-    const type = result.types && result.types.includes('tv') ? 'Сериал' : 'Фильм';
-    const date = result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A';
+  for (var idx = 0; idx < filteredResults.length; idx++) {
+    var result = filteredResults[idx];
+    var voices = Array.isArray(result.voices) ? result.voices : [];
+    var quality = result.quality || 'N/A';
+    var size = result.sizeName || formatBytes(result.size);
+    var year = result.released || 'N/A';
+    var type = (result.types && result.types.indexOf('tv') !== -1) ? 'Сериал' : 'Фильм';
+    var date = result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A';
 
     // Информация о sid и pir
-    const sid = result.sid !== undefined ? result.sid : 0;
-    const pir = result.pir !== undefined ? result.pir : 0;
+    var sid = result.sid !== undefined ? result.sid : 0;
+    var pir = result.pir !== undefined ? result.pir : 0;
 
     // Извлекаем hash из magnet ссылки (в нижнем регистре)
-    const hash = extractHashFromMagnet(result.magnet);
+    var hash = extractHashFromMagnet(result.magnet);
 
     // Форматируем трекер для отображения
-    const tracker = result.tracker || 'Unknown';
-    const trackerDisplay = tracker.charAt(0).toUpperCase() + tracker.slice(1);
+    var tracker = result.tracker || 'Unknown';
+    var trackerDisplay = tracker.charAt(0).toUpperCase() + tracker.slice(1);
 
     // 👇 НОВЫЙ БЛОК С DATA-RESULT
-    html += `
-      <div class="search-result-item" data-index="${index}">
-        <div class="search-result-info">
-          <div class="search-result-title">${escapeHtml(result.title || result.name || 'Без названия')}</div>
-          
-          <div class="search-result-meta">
-            <div class="search-result-meta-item">
-              <span></span> ${escapeHtml(trackerDisplay)}
-            </div>
-            <div class="search-result-meta-item">
-              <span></span> ${escapeHtml(size)}
-            </div>
-            <div class="search-result-meta-item">
-              <span></span> ${year} (${date})
-            </div>
-            <div class="search-result-meta-item">
-              <span></span> ${type} / ${quality}p
-            </div>
-            <div class="search-result-meta-item">
-              <span></span> сиды: ${sid}
-            </div>
-            <div class="search-result-meta-item">
-              <span></span> пиры: ${pir}
-            </div>
-          </div>
-          
-          ${voices.length > 0 ? `
-            <div class="search-result-voices">
-              ${voices.map(v => `<span class="search-result-voice">${escapeHtml(v)}</span>`).join('')}
-            </div>
-          ` : ''}
-        </div>
-        
-        <button class="search-result-play" 
-                data-hash="${hash}" 
-                data-magnet="${escapeHtml(result.magnet)}"
-                data-result='${escapeHtml(JSON.stringify(result))}'
-                ${!hash ? 'disabled' : ''}>
-          ${hash ? '▶ PLAY' : '❌ Нет hash'}
-        </button>
-      </div>
-    `;
-  });
+    html += '\n      <div class="search-result-item" data-index="' + idx + '">\n        <div class="search-result-info">\n          <div class="search-result-title">' + escapeHtml(result.title || result.name || 'Без названия') + '</div>\n          \n          <div class="search-result-meta">\n            <div class="search-result-meta-item">\n              <span></span> ' + escapeHtml(trackerDisplay) + '\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> ' + escapeHtml(size) + '\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> ' + year + ' (' + date + ')\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> ' + type + ' / ' + quality + 'p\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> сиды: ' + sid + '\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> пиры: ' + pir + '\n            </div>\n          </div>\n          \n          ' + (voices.length > 0 ? '\n            <div class="search-result-voices">\n              ' + (function () {
+      var voicesHtml = '';
+      for (var v = 0; v < voices.length; v++) {
+        voicesHtml += '<span class="search-result-voice">' + escapeHtml(voices[v]) + '</span>';
+      }
+      return voicesHtml;
+    })() + '\n            </div>\n          ' : '') + '\n        </div>\n        \n        <button class="search-result-play" \n                data-hash="' + hash + '" \n                data-magnet="' + escapeHtml(result.magnet) + '"\n                data-result=\'' + escapeHtml(JSON.stringify(result)) + '\'\n                ' + (!hash ? 'disabled' : '') + '>\n          ' + (hash ? '▶ PLAY' : '❌ Нет hash') + '\n        </button>\n      </div>\n    ';
+  }
 
   searchResultsDiv.innerHTML = html;
 
   // Добавляем обработчики для кнопок PLAY
-  searchResultsDiv.querySelectorAll('.search-result-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const playBtn = item.querySelector('.search-result-play');
-      playBtn?.click();
-    });
-  });
+  var resultItems = searchResultsDiv.querySelectorAll('.search-result-item');
+  for (var i = 0; i < resultItems.length; i++) {
+    (function (item) {
+      item.addEventListener('click', function () {
+        var playBtn = item.querySelector('.search-result-play');
+        if (playBtn) playBtn.click();
+      });
+    })(resultItems[i]);
+  }
 
-  searchResultsDiv.querySelectorAll('.search-result-play').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const hash = btn.dataset.hash;
-      const magnet = btn.dataset.magnet;
-      const resultJson = btn.dataset.result;
+  var playButtons = searchResultsDiv.querySelectorAll('.search-result-play');
+  for (var j = 0; j < playButtons.length; j++) {
+    (function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var hash = btn.dataset.hash;
+        var magnet = btn.dataset.magnet;
+        var resultJson = btn.dataset.result;
 
-      console.log('Нажата кнопка PLAY');
-      console.log('Hash:', hash);
-      console.log('Magnet:', magnet);
-      console.log('Есть постер из каталога:', !!window.pendingCatalogPoster);
+        console.log('Нажата кнопка PLAY');
+        console.log('Hash:', hash);
+        console.log('Magnet:', magnet);
+        console.log('Есть постер из каталога:', !!window.pendingCatalogPoster);
 
-      if (hash) {
-        let searchResult = null;
-        if (resultJson) {
-          try {
-            searchResult = JSON.parse(resultJson);
-            console.log('   Найден сохраненный результат:', searchResult.title || searchResult.name);
+        if (hash) {
+          var searchResult = null;
+          if (resultJson) {
+            try {
+              searchResult = JSON.parse(resultJson);
+              console.log('   Найден сохраненный результат:', searchResult.title || searchResult.name);
 
-            // Если есть постер из каталога, добавляем его в searchResult
-            if (window.pendingCatalogPoster) {
-              searchResult.poster = window.pendingCatalogPoster;
-              console.log('   Добавлен постер из каталога в searchResult');
+              // Если есть постер из каталога, добавляем его в searchResult
+              if (window.pendingCatalogPoster) {
+                searchResult.poster = window.pendingCatalogPoster;
+                console.log('   Добавлен постер из каталога в searchResult');
+              }
+            } catch (e) {
+              console.error('Ошибка парсинга resultJson:', e);
             }
-          } catch (e) {
-            console.error('Ошибка парсинга resultJson:', e);
           }
-        }
 
-        playFromHash(hash, magnet, searchResult);
-      } else {
-        alert('Не удалось извлечь hash из magnet ссылки');
-      }
-    });
-  });
+          playFromHash(hash, magnet, searchResult);
+        } else {
+          alert('Не удалось извлечь hash из magnet ссылки');
+        }
+      });
+    })(playButtons[j]);
+  }
 }
 
 // Получение класса для трекера
 function getTrackerClass(tracker) {
   if (!tracker) return 'tracker-other';
 
-  const t = tracker.toLowerCase();
-  if (t.includes('kinozal')) return 'tracker-kinozal';
-  if (t.includes('rutor')) return 'tracker-rutor';
-  if (t.includes('rutracker')) return 'tracker-rutracker';
+  var t = tracker.toLowerCase();
+  if (t.indexOf('kinozal') !== -1) return 'tracker-kinozal';
+  if (t.indexOf('rutor') !== -1) return 'tracker-rutor';
+  if (t.indexOf('rutracker') !== -1) return 'tracker-rutracker';
   return 'tracker-other';
 }
 
@@ -1915,13 +1999,13 @@ function extractHashFromMagnet(magnet) {
   if (!magnet) return null;
 
   // Ищем xt=urn:btih:ХЕШ
-  const match = magnet.match(/xt=urn:btih:([a-fA-F0-9]{40})/i);
+  var match = magnet.match(/xt=urn:btih:([a-fA-F0-9]{40})/i);
   if (match && match[1]) {
     return match[1].toLowerCase(); // Возвращаем в нижнем регистре
   }
 
   // Альтернативный формат
-  const altMatch = magnet.match(/[a-fA-F0-9]{40}/);
+  var altMatch = magnet.match(/[a-fA-F0-9]{40}/);
   if (altMatch) {
     return altMatch[0].toLowerCase(); // Возвращаем в нижнем регистре
   }
@@ -1931,7 +2015,7 @@ function extractHashFromMagnet(magnet) {
 
 // Функция для получения текущего режима поиска
 function getCurrentSearchMode() {
-  const modeSelect = document.getElementById('torrent-movie');
+  var modeSelect = document.getElementById('torrent-movie');
   if (modeSelect) {
     currentSearchMode = modeSelect.value;
   }
@@ -1948,65 +2032,64 @@ async function searchTMDB(query) {
   showLoading('Поиск в TMDB...');
 
   try {
-    const encodedQuery = encodeURIComponent(query.trim());
+    var encodedQuery = encodeURIComponent(query.trim());
 
     // Параллельный поиск фильмов и сериалов для лучших результатов
-    const [moviesResponse, tvResponse] = await Promise.allSettled([
-      fetch(`/api/tmdb/search?query=${encodedQuery}&type=movie&year=`),
-      fetch(`/api/tmdb/search?query=${encodedQuery}&type=tv&year=`)
-    ]);
+    var moviesResponse = await fetch('/api/tmdb/search?query=' + encodedQuery + '&type=movie&year=');
+    var tvResponse = await fetch('/api/tmdb/search?query=' + encodedQuery + '&type=tv&year=');
 
-    let allResults = [];
+    var allResults = [];
 
     // Обрабатываем фильмы
-    if (moviesResponse.status === 'fulfilled' && moviesResponse.value.ok) {
-      const moviesData = await moviesResponse.value.json();
+    if (moviesResponse && moviesResponse.ok) {
+      var moviesData = await moviesResponse.json();
       if (moviesData.results) {
-        const movieItems = moviesData.results.map(item => ({
-          ...item,
-          media_type: 'movie',
-          title: item.title,
-          name: item.title,
-          release_date: item.release_date,
-          vote_average: item.vote_average,
-          vote_count: item.vote_count,
-          overview: item.overview,
-          poster_path: item.poster_path,
-          backdrop_path: item.backdrop_path,
-          id: item.id,
-          // Добавляем метаданные для поиска
-          searchQuery: query
-        }));
-        allResults.push(...movieItems);
+        for (var i = 0; i < moviesData.results.length; i++) {
+          var item = moviesData.results[i];
+          allResults.push({
+            id: item.id,
+            media_type: 'movie',
+            title: item.title,
+            name: item.title,
+            release_date: item.release_date,
+            vote_average: item.vote_average,
+            vote_count: item.vote_count,
+            overview: item.overview,
+            poster_path: item.poster_path,
+            backdrop_path: item.backdrop_path,
+            searchQuery: query
+          });
+        }
       }
     }
 
     // Обрабатываем сериалы
-    if (tvResponse.status === 'fulfilled' && tvResponse.value.ok) {
-      const tvData = await tvResponse.value.json();
+    if (tvResponse && tvResponse.ok) {
+      var tvData = await tvResponse.json();
       if (tvData.results) {
-        const tvItems = tvData.results.map(item => ({
-          ...item,
-          media_type: 'tv',
-          title: item.name,
-          name: item.name,
-          first_air_date: item.first_air_date,
-          vote_average: item.vote_average,
-          vote_count: item.vote_count,
-          overview: item.overview,
-          poster_path: item.poster_path,
-          backdrop_path: item.backdrop_path,
-          id: item.id,
-          searchQuery: query
-        }));
-        allResults.push(...tvItems);
+        for (var j = 0; j < tvData.results.length; j++) {
+          var tvItem = tvData.results[j];
+          allResults.push({
+            id: tvItem.id,
+            media_type: 'tv',
+            title: tvItem.name,
+            name: tvItem.name,
+            first_air_date: tvItem.first_air_date,
+            vote_average: tvItem.vote_average,
+            vote_count: tvItem.vote_count,
+            overview: tvItem.overview,
+            poster_path: tvItem.poster_path,
+            backdrop_path: tvItem.backdrop_path,
+            searchQuery: query
+          });
+        }
       }
     }
 
     // Сортируем по рейтингу и количеству голосов
-    allResults.sort((a, b) => {
+    allResults.sort(function (a, b) {
       // Сначала по рейтингу
-      const ratingDiff = (b.vote_average || 0) - (a.vote_average || 0);
+      var ratingDiff = (b.vote_average || 0) - (a.vote_average || 0);
       if (ratingDiff !== 0) return ratingDiff;
       // Затем по количеству голосов
       return (b.vote_count || 0) - (a.vote_count || 0);
@@ -2015,16 +2098,10 @@ async function searchTMDB(query) {
     globalSearchResults = allResults;
     currentSearchQuery = query;
 
-    console.log(`Найдено ${globalSearchResults.length} результатов в TMDB`);
+    console.log('Найдено ' + globalSearchResults.length + ' результатов в TMDB');
 
     // Очищаем фильтры для глобального поиска
     if (currentSearchMode === 'globalsearch') {
-      // Скрываем фильтры трекеров и качества (они не нужны для TMDB)
-      //const trackerFilter = document.getElementById('filter-tracker');
-      //const qualityFilter = document.getElementById('filter-quality');
-      //if (trackerFilter) trackerFilter.disabled = true;
-      //if (qualityFilter) qualityFilter.disabled = true;
-
       // Показываем фильтр по типу контента
       showContentTypeFilter();
     }
@@ -2040,10 +2117,17 @@ async function searchTMDB(query) {
   }
 }
 
+function getRatingColor(rating) {
+  if (rating >= 8) return '#4caf50';
+  if (rating >= 6) return '#ffc107';
+  if (rating >= 4) return '#ff9800';
+  return '#f44336';
+}
+
 // НОВАЯ ФУНКЦИЯ: Показать результаты глобального поиска
 function showGlobalSearchResults() {
-  const searchResultsDiv = document.getElementById('search-results');
-  const searchOverlay = document.getElementById('search-overlay');
+  var searchResultsDiv = document.getElementById('search-results');
+  var searchOverlay = document.getElementById('search-overlay');
 
   if (!searchResultsDiv) return;
 
@@ -2053,223 +2137,103 @@ function showGlobalSearchResults() {
   }
 
   if (globalSearchResults.length === 0) {
-    searchResultsDiv.innerHTML = `
-            <div class="filter-stats">Всего найдено: <span>0</span></div>
-            <div class="search-result-empty">
-                ${currentSearchQuery ? `Ничего не найдено для "${escapeHtml(currentSearchQuery)}" в TMDB` : 'Введите запрос для поиска'}
-            </div>
-        `;
+    searchResultsDiv.innerHTML = '\n            <div class="filter-stats">Всего найдено: <span>0</span></div>\n            <div class="search-result-empty">\n                ' + (currentSearchQuery ? 'Ничего не найдено для "' + escapeHtml(currentSearchQuery) + '" в TMDB' : 'Введите запрос для поиска') + '\n            </div>\n        ';
     return;
   }
 
-  const gridTemplateColumns = `repeat(8, 1fr)`;
+  var gridTemplateColumns = 'repeat(8, 1fr)';
 
-  let html = `<div class="filter-stats">Найдено в TMDB: <span>${globalSearchResults.length}</span></div>`;
-  html += `<div class="global-search-grid" style="display: grid; grid-template-columns: ${gridTemplateColumns}; gap: 20px; padding: 20px 0;">`;
+  var html = '<div class="filter-stats">Найдено в TMDB: <span>' + globalSearchResults.length + '</span></div>';
+  html += '<div class="global-search-grid" style="display: grid; grid-template-columns: ' + gridTemplateColumns + '; gap: 20px; padding: 20px 0;">';
 
-  globalSearchResults.forEach((result, index) => {
-    const title = result.title || result.name || 'Без названия';
-    const year = result.release_date || result.first_air_date;
-    const yearStr = year ? new Date(year).getFullYear() : 'N/A';
-    const mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
-    const rating = result.vote_average ? result.vote_average.toFixed(1) : null;
-    const posterUrl = result.poster_path
-      ? `https://nmtmdb.duckdns.org/t/p/w342${result.poster_path}`
+  for (var idx = 0; idx < globalSearchResults.length; idx++) {
+    var result = globalSearchResults[idx];
+    var title = result.title || result.name || 'Без названия';
+    var year = result.release_date || result.first_air_date;
+    var yearStr = year ? new Date(year).getFullYear() : 'N/A';
+    var mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
+    var rating = result.vote_average ? result.vote_average.toFixed(1) : null;
+    var posterUrl = result.poster_path
+      ? 'https://nmtmdb.duckdns.org/t/p/w342' + result.poster_path
       : null;
 
-    html += `
-            <div class="global-search-card" data-index="${index}" data-tmdb-id="${result.id}" data-media-type="${result.media_type}" style="
-                background: rgba(30, 30, 40, 0.9);
-                border-radius: 12px;
-                overflow: hidden;
-                cursor: pointer;
-                border: 1px solid rgba(74, 158, 255, 0.3);
-            ">
-                <div class="global-search-poster" style="
-                    position: relative;
-                    aspect-ratio: 2/3;
-                    overflow: hidden;
-                    background: linear-gradient(135deg, #1a1a2e, #16213e);
-                ">
-                    ${posterUrl ? `
-                        <img src="${posterUrl}" alt="${escapeHtml(title)}" style="
-                            width: 100%;
-                            height: 100%;
-                            object-fit: cover;
-                        " onerror="this.parentElement.innerHTML='<div style=\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\'></div>'">
-                    ` : `
-                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">
-                            ${mediaType === 'Сериал' ? 'Сериал' : 'Фильм'}
-                        </div>
-                    `}
-                    ${rating ? `
-                        <div style="
-                            position: absolute;
-                            top: 8px;
-                            right: 8px;
-                            background: rgba(0, 0, 0, 0.8);
-                            color: ${getRatingColor(parseFloat(rating))};
-                            font-weight: bold;
-                            font-size: 12px;
-                            padding: 4px 8px;
-                            border-radius: 12px;
-                            border: 1px solid ${getRatingColor(parseFloat(rating))};
-                        ">
-                            ${rating}
-                        </div>
-                    ` : ''}
-                </div>
-                <div class="global-search-info" style="padding: 12px;">
-                    <div class="global-search-title" style="
-                        font-weight: 600;
-                        font-size: 14px;
-                        margin-bottom: 6px;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        white-space: nowrap;
-                    ">${escapeHtml(title)}</div>
-                    <div style="
-                        display: flex;
-                        justify-content: space-between;
-                        font-size: 12px;
-                        color: #aaa;
-                    ">
-                        <span>${mediaType}</span>
-                        <span>${yearStr}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-  });
+    html += '\n            <div class="global-search-card" data-index="' + idx + '" data-tmdb-id="' + result.id + '" data-media-type="' + result.media_type + '" style="\n                background: rgba(30, 30, 40, 0.9);\n                border-radius: 12px;\n                overflow: hidden;\n                cursor: pointer;\n                border: 1px solid rgba(74, 158, 255, 0.3);\n            ">\n                <div class="global-search-poster" style="\n                    position: relative;\n                    aspect-ratio: 2/3;\n                    overflow: hidden;\n                    background: linear-gradient(135deg, #1a1a2e, #16213e);\n                ">\n                    ' + (posterUrl ? '\n                        <img src="' + posterUrl + '" alt="' + escapeHtml(title) + '" style="\n                            width: 100%;\n                            height: 100%;\n                            object-fit: cover;\n                        " onerror="this.parentElement.innerHTML=\'<div style=\\\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\\\'></div>\'">\n                    ' : '\n                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">\n                            ' + (mediaType === 'Сериал' ? 'Сериал' : 'Фильм') + '\n                        </div>\n                    ') + '\n                    ' + (rating ? '\n                        <div style="\n                            position: absolute;\n                            top: 8px;\n                            right: 8px;\n                            background: rgba(0, 0, 0, 0.8);\n                            color: ' + getRatingColor(parseFloat(rating)) + ';\n                            font-weight: bold;\n                            font-size: 12px;\n                            padding: 4px 8px;\n                            border-radius: 12px;\n                            border: 1px solid ' + getRatingColor(parseFloat(rating)) + ';\n                        ">\n                            ' + rating + '\n                        </div>\n                    ' : '') + '\n                </div>\n                <div class="global-search-info" style="padding: 12px;">\n                    <div class="global-search-title" style="\n                        font-weight: 600;\n                        font-size: 14px;\n                        margin-bottom: 6px;\n                        overflow: hidden;\n                        text-overflow: ellipsis;\n                        white-space: nowrap;\n                    ">' + escapeHtml(title) + '</div>\n                    <div style="\n                        display: flex;\n                        justify-content: space-between;\n                        font-size: 12px;\n                        color: #aaa;\n                    ">\n                        <span>' + mediaType + '</span>\n                        <span>' + yearStr + '</span>\n                    </div>\n                </div>\n            </div>\n        ';
+  }
 
-  html += `</div>`;
+  html += '</div>';
   searchResultsDiv.innerHTML = html;
 
   // Добавляем обработчики кликов на карточки
-  document.querySelectorAll('.global-search-card').forEach(card => {
-    card.addEventListener('click', async () => {
-      AppState.isSearch = true;
-      const tmdbId = card.dataset.tmdbId;
-      const mediaType = card.dataset.mediaType;
-      const index = parseInt(card.dataset.index);
-      const result = globalSearchResults[index];
+  var cards = document.querySelectorAll('.global-search-card');
+  for (var i = 0; i < cards.length; i++) {
+    (function (card) {
+      card.addEventListener('click', async function () {
+        AppState.isSearch = true;
+        var tmdbId = card.dataset.tmdbId;
+        var mediaType = card.dataset.mediaType;
+        var index = parseInt(card.dataset.index);
+        var result = globalSearchResults[index];
 
-      if (result) {
-        await showGlobalSearchDetail(result);
-      }
-    });
-  });
+        if (result) {
+          await showGlobalSearchDetail(result);
+        }
+      });
+    })(cards[i]);
+  }
 }
 
 function renderFilteredGlobalResults(results) {
-  const searchResultsDiv = document.getElementById('search-results');
+  var searchResultsDiv = document.getElementById('search-results');
   if (!searchResultsDiv) return;
 
   if (results.length === 0) {
-    searchResultsDiv.innerHTML = `
-            <div class="filter-stats">Всего найдено: <span>0</span></div>
-            <div class="search-result-empty">
-                Нет результатов для выбранного типа контента
-            </div>
-        `;
+    searchResultsDiv.innerHTML = '\n            <div class="filter-stats">Всего найдено: <span>0</span></div>\n            <div class="search-result-empty">\n                Нет результатов для выбранного типа контента\n            </div>\n        ';
     return;
   }
 
-  const gridTemplateColumns = `repeat(8, 1fr)`;
+  var gridTemplateColumns = 'repeat(8, 1fr)';
 
-  let html = `<div class="filter-stats">Найдено в TMDB: <span>${results.length}</span></div>`;
-  html += `<div class="global-search-grid" style="display: grid; grid-template-columns: ${gridTemplateColumns}; gap: 20px; padding: 20px 0;">`;
+  var html = '<div class="filter-stats">Найдено в TMDB: <span>' + results.length + '</span></div>';
+  html += '<div class="global-search-grid" style="display: grid; grid-template-columns: ' + gridTemplateColumns + '; gap: 20px; padding: 20px 0;">';
 
-  results.forEach((result, idx) => {
-    const title = result.title || result.name || 'Без названия';
-    const year = result.release_date || result.first_air_date;
-    const yearStr = year ? new Date(year).getFullYear() : 'N/A';
-    const mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
-    const rating = result.vote_average ? result.vote_average.toFixed(1) : null;
-    const posterUrl = result.poster_path
-      ? `https://nmtmdb.duckdns.org/t/p/w342${result.poster_path}`
+  for (var idx = 0; idx < results.length; idx++) {
+    var result = results[idx];
+    var title = result.title || result.name || 'Без названия';
+    var year = result.release_date || result.first_air_date;
+    var yearStr = year ? new Date(year).getFullYear() : 'N/A';
+    var mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
+    var rating = result.vote_average ? result.vote_average.toFixed(1) : null;
+    var posterUrl = result.poster_path
+      ? 'https://nmtmdb.duckdns.org/t/p/w342' + result.poster_path
       : null;
 
-    html += `
-            <div class="global-search-card" data-tmdb-id="${result.id}" data-media-type="${result.media_type}" style="
-                background: rgba(30, 30, 40, 0.9);
-                border-radius: 12px;
-                overflow: hidden;
-                cursor: pointer;
-                border: 1px solid rgba(74, 158, 255, 0.3);
-            ">
-                <div class="global-search-poster" style="
-                    position: relative;
-                    aspect-ratio: 2/3;
-                    overflow: hidden;
-                    background: linear-gradient(135deg, #1a1a2e, #16213e);
-                ">
-                    ${posterUrl ? `
-                        <img src="${posterUrl}" alt="${escapeHtml(title)}" style="
-                            width: 100%;
-                            height: 100%;
-                            object-fit: cover;
-                        " onerror="this.parentElement.innerHTML='<div style=\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\'></div>'">
-                    ` : `
-                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">
-                            ${mediaType === 'Сериал' ? 'Сериал' : 'Фильм'}
-                        </div>
-                    `}
-                    ${rating ? `
-                        <div style="
-                            position: absolute;
-                            top: 8px;
-                            right: 8px;
-                            background: rgba(0, 0, 0, 0.8);
-                            color: ${getRatingColor(parseFloat(rating))};
-                            font-weight: bold;
-                            font-size: 12px;
-                            padding: 4px 8px;
-                            border-radius: 12px;
-                            border: 1px solid ${getRatingColor(parseFloat(rating))};
-                        ">
-                            ${rating}
-                        </div>
-                    ` : ''}
-                </div>
-                <div class="global-search-info" style="padding: 12px;">
-                    <div class="global-search-title" style="
-                        font-weight: 600;
-                        font-size: 14px;
-                        margin-bottom: 6px;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        white-space: nowrap;
-                    ">${escapeHtml(title)}</div>
-                    <div style="
-                        display: flex;
-                        justify-content: space-between;
-                        font-size: 12px;
-                        color: #aaa;
-                    ">
-                        <span>${mediaType}</span>
-                        <span>${yearStr}</span>
-                    </div>
-                </div>
-            </div>
-        `;
-  });
+    html += '\n            <div class="global-search-card" data-tmdb-id="' + result.id + '" data-media-type="' + result.media_type + '" style="\n                background: rgba(30, 30, 40, 0.9);\n                border-radius: 12px;\n                overflow: hidden;\n                cursor: pointer;\n                border: 1px solid rgba(74, 158, 255, 0.3);\n            ">\n                <div class="global-search-poster" style="\n                    position: relative;\n                    aspect-ratio: 2/3;\n                    overflow: hidden;\n                    background: linear-gradient(135deg, #1a1a2e, #16213e);\n                ">\n                    ' + (posterUrl ? '\n                        <img src="' + posterUrl + '" alt="' + escapeHtml(title) + '" style="\n                            width: 100%;\n                            height: 100%;\n                            object-fit: cover;\n                        " onerror="this.parentElement.innerHTML=\'<div style=\\\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\\\'></div>\'">\n                    ' : '\n                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">\n                            ' + (mediaType === 'Сериал' ? 'Сериал' : 'Фильм') + '\n                        </div>\n                    ') + '\n                    ' + (rating ? '\n                        <div style="\n                            position: absolute;\n                            top: 8px;\n                            right: 8px;\n                            background: rgba(0, 0, 0, 0.8);\n                            color: ' + getRatingColor(parseFloat(rating)) + ';\n                            font-weight: bold;\n                            font-size: 12px;\n                            padding: 4px 8px;\n                            border-radius: 12px;\n                            border: 1px solid ' + getRatingColor(parseFloat(rating)) + ';\n                        ">\n                            ' + rating + '\n                        </div>\n                    ' : '') + '\n                </div>\n                <div class="global-search-info" style="padding: 12px;">\n                    <div class="global-search-title" style="\n                        font-weight: 600;\n                        font-size: 14px;\n                        margin-bottom: 6px;\n                        overflow: hidden;\n                        text-overflow: ellipsis;\n                        white-space: nowrap;\n                    ">' + escapeHtml(title) + '</div>\n                    <div style="\n                        display: flex;\n                        justify-content: space-between;\n                        font-size: 12px;\n                        color: #aaa;\n                    ">\n                        <span>' + mediaType + '</span>\n                        <span>' + yearStr + '</span>\n                    </div>\n                </div>\n            </div>\n        ';
+  }
 
-  html += `</div>`;
+  html += '</div>';
   searchResultsDiv.innerHTML = html;
 
   // Добавляем обработчики
-  document.querySelectorAll('.global-search-card').forEach(card => {
-    card.addEventListener('click', async () => {
-      AppState.isSearch = true;
-      const tmdbId = card.dataset.tmdbId;
-      const mediaType = card.dataset.mediaType;
-      const result = results.find(r => String(r.id) === tmdbId);
-      if (result) {
-        await showGlobalSearchDetail(result);
-      }
-    });
-  });
+  var cards = document.querySelectorAll('.global-search-card');
+  for (var i = 0; i < cards.length; i++) {
+    (function (card) {
+      card.addEventListener('click', async function () {
+        AppState.isSearch = true;
+        var tmdbId = card.dataset.tmdbId;
+        var mediaType = card.dataset.mediaType;
+        var result = null;
+        for (var j = 0; j < results.length; j++) {
+          if (String(results[j].id) === tmdbId) {
+            result = results[j];
+            break;
+          }
+        }
+        if (result) {
+          await showGlobalSearchDetail(result);
+        }
+      });
+    })(cards[i]);
+  }
 }
 
 // НОВАЯ ФУНКЦИЯ: Показать детали элемента из глобального поиска
@@ -2277,7 +2241,7 @@ async function showGlobalSearchDetail(item) {
   console.log('📺 Открываем детали из глобального поиска:', item.title || item.name);
 
   // Формируем объект, совместимый с catalog.js
-  const catalogItem = {
+  var catalogItem = {
     id: item.id,
     media_type: item.media_type,
     title: item.title || item.name,
@@ -2295,8 +2259,8 @@ async function showGlobalSearchDetail(item) {
   };
 
   // Получаем URL постера
-  const posterUrl = item.poster_path
-    ? `https://nmtmdb.duckdns.org/t/p/w342${item.poster_path}`
+  var posterUrl = item.poster_path
+    ? 'https://nmtmdb.duckdns.org/t/p/w342' + item.poster_path
     : null;
 
   // Используем catalog.js для показа деталей
@@ -2309,7 +2273,7 @@ async function showGlobalSearchDetail(item) {
     await window.showCatalogDetail(catalogItem, 0, posterUrl);
 
     // Скрываем поиск
-    const searchOverlay = document.getElementById('search-overlay');
+    var searchOverlay = document.getElementById('search-overlay');
     if (searchOverlay) {
       searchOverlay.classList.add('hidden');
     }
@@ -2320,28 +2284,26 @@ async function showGlobalSearchDetail(item) {
 
 // НОВАЯ ФУНКЦИЯ: Показать фильтр по типу контента
 function showContentTypeFilter() {
-  const filterGroup = document.querySelector('.filter-group:has(#filter-quality)');
+  var filterGroup = document.querySelector('.filter-group');
   if (!filterGroup) return;
 
   // Проверяем, есть ли уже фильтр по типу
-  let contentTypeFilter = document.getElementById('filter-content-type');
+  var contentTypeFilter = document.getElementById('filter-content-type');
   if (!contentTypeFilter) {
-    const newFilter = document.createElement('div');
+    var newFilter = document.createElement('div');
     newFilter.className = 'filter-group';
-    newFilter.innerHTML = `
-            <label class="filter-label" for="filter-content-type">Тип контента</label>
-            <select id="filter-content-type" class="filter-select">
-                <option value="all">Все</option>
-                <option value="movie">Фильмы</option>
-                <option value="tv">Сериалы</option>
-            </select>
-        `;
+    newFilter.innerHTML = '\n            <label class="filter-label" for="filter-content-type">Тип контента</label>\n            <select id="filter-content-type" class="filter-select">\n                <option value="all">Все</option>\n                <option value="movie">Фильмы</option>\n                <option value="tv">Сериалы</option>\n            </select>\n        ';
 
     // Вставляем после фильтра качества
-    filterGroup.parentNode.insertBefore(newFilter, filterGroup.nextSibling);
+    var qualityFilter = document.getElementById('filter-quality');
+    if (qualityFilter && qualityFilter.parentNode) {
+      qualityFilter.parentNode.parentNode.insertBefore(newFilter, qualityFilter.parentNode.nextSibling);
+    } else {
+      filterGroup.parentNode.appendChild(newFilter);
+    }
 
     // Добавляем обработчик
-    document.getElementById('filter-content-type').addEventListener('change', (e) => {
+    document.getElementById('filter-content-type').addEventListener('change', function (e) {
       filterGlobalSearchByType(e.target.value);
     });
   }
@@ -2351,9 +2313,14 @@ function showContentTypeFilter() {
 function filterGlobalSearchByType(type) {
   if (!globalSearchResults.length) return;
 
-  let filtered = globalSearchResults;
+  var filtered = globalSearchResults;
   if (type !== 'all') {
-    filtered = globalSearchResults.filter(item => item.media_type === type);
+    filtered = [];
+    for (var i = 0; i < globalSearchResults.length; i++) {
+      if (globalSearchResults[i].media_type === type) {
+        filtered.push(globalSearchResults[i]);
+      }
+    }
   }
 
   // Перерисовываем с фильтрацией
@@ -2361,7 +2328,7 @@ function filterGlobalSearchByType(type) {
 }
 
 function clearSearchResultsContainer() {
-  const searchResultsDiv = document.getElementById('search-results');
+  var searchResultsDiv = document.getElementById('search-results');
   if (searchResultsDiv) {
     searchResultsDiv.innerHTML = '';
   }
