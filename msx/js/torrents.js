@@ -1743,6 +1743,7 @@ async function addTorrentToServer(magnet, hash, searchResult) {
     var requestBody = {
       action: 'add',
       link: magnet,
+      title: searchResult.name,
       save_to_db: true
     };
 
