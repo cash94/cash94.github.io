@@ -115,6 +115,16 @@ function syncSearchFilterButtons() {
   fillSelectOptions(document.getElementById('sort-by'), SORT_OPTIONS, currentSort);
   fillSelectOptions(document.getElementById('filter-quality'), QUALITY_OPTIONS, currentQualityFilter);
   fillSelectOptions(document.getElementById('filter-tracker'), getTrackerFilterOptions(), currentTrackerFilter);
+
+  // Синхронизируем фильтр года
+  var yearFilter = document.getElementById('filter-year');
+  if (yearFilter) {
+    if (currentYearFilter && currentYearFilter !== 'all') {
+      yearFilter.value = currentYearFilter;
+    } else {
+      yearFilter.value = 'all';
+    }
+  }
 }
 
 function cycleFilterButton(filterType, direction) {
@@ -1299,6 +1309,7 @@ async function searchTorrentsLegacy(query) {
     }
 
     updateAvailableTrackers();
+    updateAvailableYears(); // Добавляем обновление доступных годов
     applyFiltersAndSort();
     showSearchResults();
 
@@ -1307,6 +1318,46 @@ async function searchTorrentsLegacy(query) {
     alert('Ошибка при поиске: ' + error.message);
   } finally {
     hideLoading();
+  }
+}
+
+// Новая функция: Обновление списка доступных годов
+function updateAvailableYears() {
+  var yearSet = {};
+  var yearFilter = document.getElementById('filter-year');
+
+  // Собираем все уникальные года из результатов поиска
+  for (var i = 0; i < searchResults.length; i++) {
+    var result = searchResults[i];
+    if (result.released && !isNaN(result.released)) {
+      yearSet[result.released] = true;
+    }
+  }
+
+  // Получаем года и сортируем по убыванию (сначала новые)
+  var availableYears = Object.keys(yearSet).map(Number).sort(function (a, b) {
+    return b - a;
+  });
+
+  // Обновляем select с годами
+  if (yearFilter) {
+    // Сохраняем текущее значение
+    var currentYear = yearFilter.value;
+
+    // Очищаем и заполняем заново
+    yearFilter.innerHTML = '<option value="all">Все года</option>';
+
+    for (var j = 0; j < availableYears.length; j++) {
+      var year = availableYears[j];
+      var selected = (currentYear !== 'all' && String(year) === currentYear) ? 'selected' : '';
+      yearFilter.innerHTML += '<option value="' + year + '" ' + selected + '>' + year + '</option>';
+    }
+
+    // Если текущий год не найден в новом списке, сбрасываем на "Все года"
+    if (currentYear !== 'all' && !yearSet[currentYear]) {
+      yearFilter.value = 'all';
+      currentYearFilter = '';
+    }
   }
 }
 
@@ -1382,17 +1433,20 @@ function applyFiltersAndSort() {
     var item = searchResults[i];
     var shouldInclude = true;
 
+    // Фильтр по качеству
     if (currentQualityFilter !== 'all') {
       var quality = parseInt(currentQualityFilter, 10);
       if ((item.quality || 0) !== quality) shouldInclude = false;
     }
 
+    // Фильтр по трекеру
     if (shouldInclude && currentTrackerFilter !== 'all') {
       var tracker = (item.tracker || '').toLowerCase();
       if (tracker !== currentTrackerFilter) shouldInclude = false;
     }
 
-    if (shouldInclude && currentYearFilter) {
+    // Фильтр по году
+    if (shouldInclude && currentYearFilter && currentYearFilter !== 'all') {
       var year = parseInt(currentYearFilter, 10);
       if (!Number.isFinite(year) || item.released !== year) shouldInclude = false;
     }
@@ -1637,10 +1691,25 @@ function resetFilters() {
   syncSearchFilterButtons();
   var filterYear = document.getElementById('filter-year');
   if (filterYear) {
-    filterYear.value = '';
+    filterYear.value = 'all';
   }
 
   applyFiltersAndSort();
+}
+
+function initYearFilter() {
+  var yearFilter = document.getElementById('filter-year');
+  if (yearFilter) {
+    yearFilter.addEventListener('change', function(e) {
+      var value = e.target.value;
+      if (value === 'all') {
+        currentYearFilter = '';
+      } else {
+        currentYearFilter = value;
+      }
+      applyFiltersAndSort();
+    });
+  }
 }
 
 // Добавление торрента в TorrServer
