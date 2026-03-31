@@ -2438,6 +2438,26 @@ body {
     font-size: 12px !important;
   }
 }
+/* ===== МИНИМАЛЬНЫЕ FIXES ДЛЯ СТАРЫХ БРАУЗЕРОВ ===== */
+
+/* Только если браузер не поддерживает inset */
+@supports not (inset: 0) {
+  #detail-view,
+  #playback-overlay,
+  #loading-overlay,
+  #loading-player-overlay,
+  .custom-filter-menu,
+  #player-screen,
+  #player-overlay,
+  .catalog-detail-backdrop,
+  .catalog-trailer-play-overlay {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+  }
+}
+
 /* Только если браузер не поддерживает aspect-ratio */
 @supports not (aspect-ratio: 2/3) {
   .torrent-poster {
