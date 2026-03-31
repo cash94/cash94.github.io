@@ -2068,7 +2068,7 @@ function setupFocusRescue() {
                                     }
                                 }
                             }
-                        }, 200);
+                        }, 50);
                     });
                     return true;
                 }
