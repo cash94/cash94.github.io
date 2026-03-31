@@ -1715,7 +1715,7 @@ function setupFocusRescue() {
 
     function getDetailItems() {
         var selectors = [
-            '.detail-progress-btn', '.file-item', '.back-btn', '#catalog-watch-btn',
+            '.back-btn','.detail-progress-btn', '.file-item', '#catalog-watch-btn',
             '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item',
             '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'
         ];
@@ -1773,8 +1773,8 @@ function setupFocusRescue() {
                 el.closest('#detail-view') ||
                 el.closest('.file-item') ||
                 el.closest('back-from-detail') ||
-                el.classList.contains('back-btn') ||
-                el.classList.contains('detail-progress-btn')
+                el.classList.contains('detail-progress-btn') ||
+                el.classList.contains('back-btn')
             );
         }
         if (screen === 'config') {
