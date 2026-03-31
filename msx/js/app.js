@@ -1,15 +1,15 @@
 // app.js - Инициализация приложения и обработчики событий
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', function () {
   init();
 });
 
-let checkServerTimeout = null;
+var checkServerTimeout = null;
 
 // Функция для начальной проверки сервера
 function initialServerCheck() {
-  setTimeout(() => {
-    const torrserverUrlInput = document.getElementById('torrserver-url');
+  setTimeout(function () {
+    var torrserverUrlInput = document.getElementById('torrserver-url');
     if (torrserverUrlInput && torrserverUrlInput.value && torrserverUrlInput.value.trim() !== '') {
       console.log('🔍 Автоматическая проверка сервера...');
       if (typeof checkServer === 'function') {
@@ -26,26 +26,31 @@ async function init() {
     console.log('🚀 Начало инициализации приложения');
 
     // Проверяем, что все необходимые DOM элементы существуют
-    const requiredElements = [
+    var requiredElements = [
       'seek-slider', 'volume-slider', 'play-pause-btn', 'mute-btn',
       'toggle-buffer-btn', 'exit-player-btn', 'player-overlay', 'video-player'
     ];
 
-    const missingElements = requiredElements.filter(id => !document.getElementById(id));
+    var missingElements = [];
+    for (var i = 0; i < requiredElements.length; i++) {
+      if (!document.getElementById(requiredElements[i])) {
+        missingElements.push(requiredElements[i]);
+      }
+    }
     if (missingElements.length > 0) {
       console.warn('⚠️ Отсутствуют DOM элементы:', missingElements);
       // Не прерываем инициализацию полностью, но логируем предупреждение
     }
 
     // Получаем ссылки на DOM элементы с проверкой существования
-    const seekSlider = document.getElementById('seek-slider');
-    const volumeSlider = document.getElementById('volume-slider');
-    const playPauseBtn = document.getElementById('play-pause-btn');
-    const muteBtn = document.getElementById('mute-btn');
-    const toggleBufferBtn = document.getElementById('toggle-buffer-btn');
-    const exitPlayerBtn = document.getElementById('exit-player-btn');
-    const overlay = document.getElementById('player-overlay');
-    const videoPlayer = document.getElementById('video-player');
+    var seekSlider = document.getElementById('seek-slider');
+    var volumeSlider = document.getElementById('volume-slider');
+    var playPauseBtn = document.getElementById('play-pause-btn');
+    var muteBtn = document.getElementById('mute-btn');
+    var toggleBufferBtn = document.getElementById('toggle-buffer-btn');
+    var exitPlayerBtn = document.getElementById('exit-player-btn');
+    var overlay = document.getElementById('player-overlay');
+    var videoPlayer = document.getElementById('video-player');
 
     // Инициализация значений с проверкой существования элементов
     if (seekSlider) {
@@ -64,10 +69,14 @@ async function init() {
     }
 
     // Определение платформы с fallback
-    const ua = navigator.userAgent ? navigator.userAgent.toLowerCase() : '';
-    const body = document.body;
+    var ua = navigator.userAgent ? navigator.userAgent.toLowerCase() : '';
+    var body = document.body;
     if (body) {
-      body.classList.toggle('msx', !!window.MSX || ua.includes('msx'));
+      if (window.MSX || ua.indexOf('msx') !== -1) {
+        body.classList.add('msx');
+      } else {
+        body.classList.remove('msx');
+      }
     }
 
     // Настройка обработчиков событий для плеера с проверкой существования элементов
@@ -174,7 +183,7 @@ async function init() {
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАЗБИЕНИЯ ЛОГИКИ ====================
 
 function setupSeekSliderEvents(seekSlider, videoPlayer) {
-  seekSlider.addEventListener('mousedown', () => {
+  seekSlider.addEventListener('mousedown', function () {
     if (typeof AppState !== 'undefined') {
       AppState.isSliderDragging = true;
       AppState.suppressTimeUpdate = true;
@@ -182,7 +191,7 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 
-  seekSlider.addEventListener('touchstart', () => {
+  seekSlider.addEventListener('touchstart', function () {
     if (typeof AppState !== 'undefined') {
       AppState.isSliderDragging = true;
       AppState.suppressTimeUpdate = true;
@@ -190,27 +199,27 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 
-  seekSlider.addEventListener('input', (e) => {
-    const newPreviewTime = parseFloat(e.target.value);
+  seekSlider.addEventListener('input', function (e) {
+    var newPreviewTime = parseFloat(e.target.value);
     if (isFinite(newPreviewTime)) {
       if (typeof AppState !== 'undefined') {
         AppState.previewTime = newPreviewTime;
       }
-      const currentTimeEl = document.getElementById('current-time');
+      var currentTimeEl = document.getElementById('current-time');
       if (currentTimeEl) currentTimeEl.textContent = formatTime(newPreviewTime);
 
       if (typeof AppState !== 'undefined' && (AppState.isSeeking ||
         (document.getElementById('loading-player-overlay') &&
           document.getElementById('loading-player-overlay').classList.contains('active')))) {
-        const loadingTimeEl = document.getElementById('loading-time');
+        var loadingTimeEl = document.getElementById('loading-time');
         if (loadingTimeEl) loadingTimeEl.textContent = formatTime(newPreviewTime);
       }
     }
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 
-  seekSlider.addEventListener('change', async (e) => {
-    const targetAbsoluteTime = parseFloat(e.target.value);
+  seekSlider.addEventListener('change', async function (e) {
+    var targetAbsoluteTime = parseFloat(e.target.value);
     if (typeof AppState !== 'undefined') {
       AppState.isSliderDragging = false;
       AppState.previewTime = targetAbsoluteTime;
@@ -225,11 +234,11 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
       return;
     }
 
-    console.log(`🎚️ Seek to: ${formatTime(targetAbsoluteTime)}`);
+    console.log('🎚️ Seek to: ' + formatTime(targetAbsoluteTime));
 
     if (!AppState || !AppState.hls) {
       if (videoPlayer) {
-        videoPlayer.currentTime = targetAbsoluteTime - (AppState?.seekOffset || 0);
+        videoPlayer.currentTime = targetAbsoluteTime - (AppState && AppState.seekOffset || 0);
       }
       if (typeof AppState !== 'undefined') {
         AppState.previewTime = null;
@@ -240,11 +249,12 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
       return;
     }
 
-    const controlBtns = document.querySelectorAll('.control-btn');
-    controlBtns.forEach(btn => {
+    var controlBtns = document.querySelectorAll('.control-btn');
+    for (var i = 0; i < controlBtns.length; i++) {
+      var btn = controlBtns[i];
       btn.style.pointerEvents = 'none';
       btn.style.opacity = '0.5';
-    });
+    }
 
     if (typeof seekStream === 'function') {
       await seekStream(targetAbsoluteTime, 'slider');
@@ -252,9 +262,9 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 
-  seekSlider.addEventListener('mouseup', () => {
-    setTimeout(() => {
-      if (!AppState?.isSliderDragging) return;
+  seekSlider.addEventListener('mouseup', function () {
+    setTimeout(function () {
+      if (!AppState || !AppState.isSliderDragging) return;
       if (typeof AppState !== 'undefined') {
         AppState.isSliderDragging = false;
         if (!AppState.isSeeking) {
@@ -267,9 +277,9 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 
-  seekSlider.addEventListener('touchend', () => {
-    setTimeout(() => {
-      if (!AppState?.isSliderDragging) return;
+  seekSlider.addEventListener('touchend', function () {
+    setTimeout(function () {
+      if (!AppState || !AppState.isSliderDragging) return;
       if (typeof AppState !== 'undefined') {
         AppState.isSliderDragging = false;
         if (!AppState.isSeeking) {
@@ -284,16 +294,16 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
 }
 
 function setupPlayPauseButton(playPauseBtn, videoPlayer) {
-  playPauseBtn.addEventListener('click', (e) => {
-    if (AppState?.isSeeking || (document.getElementById('loading-player-overlay') &&
-      document.getElementById('loading-player-overlay').classList.contains('active'))) {
+  playPauseBtn.addEventListener('click', function (e) {
+    if (AppState && (AppState.isSeeking || (document.getElementById('loading-player-overlay') &&
+      document.getElementById('loading-player-overlay').classList.contains('active')))) {
       e.preventDefault();
       return;
     }
     if (videoPlayer.paused) {
-      videoPlayer.play().then(() => {
+      videoPlayer.play().then(function () {
         if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
-      }).catch(() => { });
+      })['catch'](function () { });
     } else {
       videoPlayer.pause();
       if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
@@ -303,9 +313,9 @@ function setupPlayPauseButton(playPauseBtn, videoPlayer) {
 }
 
 function setupMuteButton(muteBtn, videoPlayer, volumeSlider) {
-  muteBtn.addEventListener('click', () => {
-    if (AppState?.isSeeking || (document.getElementById('loading-player-overlay') &&
-      document.getElementById('loading-player-overlay').classList.contains('active'))) return;
+  muteBtn.addEventListener('click', function () {
+    if (AppState && (AppState.isSeeking || (document.getElementById('loading-player-overlay') &&
+      document.getElementById('loading-player-overlay').classList.contains('active')))) return;
     videoPlayer.muted = !videoPlayer.muted;
     if (typeof updateMuteButton === 'function') updateMuteButton();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
@@ -313,10 +323,10 @@ function setupMuteButton(muteBtn, videoPlayer, volumeSlider) {
 }
 
 function setupVolumeSlider(volumeSlider, videoPlayer) {
-  volumeSlider.addEventListener('input', (e) => {
-    if (AppState?.isSeeking || (document.getElementById('loading-player-overlay') &&
-      document.getElementById('loading-player-overlay').classList.contains('active'))) return;
-    const vol = parseFloat(e.target.value);
+  volumeSlider.addEventListener('input', function (e) {
+    if (AppState && (AppState.isSeeking || (document.getElementById('loading-player-overlay') &&
+      document.getElementById('loading-player-overlay').classList.contains('active')))) return;
+    var vol = parseFloat(e.target.value);
     videoPlayer.volume = vol;
     if (vol > 0 && videoPlayer.muted) {
       videoPlayer.muted = false;
@@ -327,7 +337,7 @@ function setupVolumeSlider(volumeSlider, videoPlayer) {
 }
 
 function setupExitButton(exitPlayerBtn) {
-  exitPlayerBtn.addEventListener('click', (e) => {
+  exitPlayerBtn.addEventListener('click', function (e) {
     e.stopPropagation();
     if (typeof showDetailView === 'function') showDetailView();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
@@ -338,18 +348,18 @@ function setupExitButton(exitPlayerBtn) {
 }
 
 function setupEpisodeNavigation() {
-  const prevEpisodeBtn = document.getElementById('prev-episode-btn');
-  const nextEpisodeBtn = document.getElementById('next-episode-btn');
+  var prevEpisodeBtn = document.getElementById('prev-episode-btn');
+  var nextEpisodeBtn = document.getElementById('next-episode-btn');
 
   if (prevEpisodeBtn) {
-    prevEpisodeBtn.addEventListener('click', (e) => {
+    prevEpisodeBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       if (typeof prevEpisode === 'function') prevEpisode();
       if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
     });
   }
   if (nextEpisodeBtn) {
-    nextEpisodeBtn.addEventListener('click', (e) => {
+    nextEpisodeBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       if (typeof nextEpisode === 'function') nextEpisode();
       if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
@@ -358,43 +368,43 @@ function setupEpisodeNavigation() {
 }
 
 function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
-  videoPlayer.addEventListener('volumechange', () => {
+  videoPlayer.addEventListener('volumechange', function () {
     if (volumeSlider) volumeSlider.value = videoPlayer.volume;
     if (typeof updateMuteButton === 'function') updateMuteButton();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 
-  videoPlayer.addEventListener('timeupdate', () => {
+  videoPlayer.addEventListener('timeupdate', function () {
     if (typeof isSeekHoldActive !== 'undefined' && isSeekHoldActive) {
       return;
     }
 
-    if (AppState?.isSliderDragging || AppState?.suppressTimeUpdate) {
+    if (AppState && (AppState.isSliderDragging || AppState.suppressTimeUpdate)) {
       return;
     }
-    const totalDuration = AppState?.originalDuration || AppState?.expectedDuration || videoPlayer.duration;
+    var totalDuration = (AppState && (AppState.originalDuration || AppState.expectedDuration)) || videoPlayer.duration;
 
     if (totalDuration && isFinite(totalDuration) && totalDuration > 0) {
       if (seekSlider) seekSlider.max = totalDuration;
-      const absoluteTime = videoPlayer.currentTime + (AppState?.seekOffset || 0);
+      var absoluteTime = videoPlayer.currentTime + (AppState && AppState.seekOffset || 0);
       if (seekSlider) seekSlider.value = Math.min(absoluteTime, totalDuration);
       if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
     }
   });
 
-  videoPlayer.addEventListener('loadedmetadata', () => {
+  videoPlayer.addEventListener('loadedmetadata', function () {
     console.log('📊 loadedmeta', videoPlayer.duration);
-    if (AppState?.expectedDuration && typeof forceUpdateDuration === 'function') {
+    if (AppState && AppState.expectedDuration && typeof forceUpdateDuration === 'function') {
       forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
     }
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 
-  videoPlayer.addEventListener('progress', () => {
+  videoPlayer.addEventListener('progress', function () {
     if (typeof updateBufferDisplay === 'function') updateBufferDisplay();
   });
 
-  videoPlayer.addEventListener('ended', () => {
+  videoPlayer.addEventListener('ended', function () {
     console.log('🏁 Видео закончилось');
     if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
@@ -402,25 +412,25 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
 }
 
 function setupBufferUpdateInterval() {
-  setInterval(() => {
-    if (AppState?.currentScreen === 'player' && !AppState?.bufferHidden && !AppState?.isSeeking) {
+  setInterval(function () {
+    if (AppState && AppState.currentScreen === 'player' && !AppState.bufferHidden && !AppState.isSeeking) {
       if (typeof updateBufferDisplay === 'function') updateBufferDisplay();
     }
   }, 300);
 }
 
 function setupToggleBufferButton(toggleBufferBtn) {
-  toggleBufferBtn.addEventListener('click', (e) => {
+  toggleBufferBtn.addEventListener('click', function (e) {
     e.stopPropagation();
     if (typeof AppState !== 'undefined') {
       AppState.bufferHidden = !AppState.bufferHidden;
     }
-    toggleBufferBtn.style.opacity = AppState?.bufferHidden ? '0.6' : '1';
-    toggleBufferBtn.title = AppState?.bufferHidden ? 'показать буфер' : 'скрыть буфер';
-    if (!AppState?.bufferHidden && typeof updateBufferDisplay === 'function') {
+    toggleBufferBtn.style.opacity = AppState && AppState.bufferHidden ? '0.6' : '1';
+    toggleBufferBtn.title = AppState && AppState.bufferHidden ? 'показать буфер' : 'скрыть буфер';
+    if (AppState && !AppState.bufferHidden && typeof updateBufferDisplay === 'function') {
       updateBufferDisplay();
     } else {
-      const bufferStats = document.getElementById('buffer-stats');
+      var bufferStats = document.getElementById('buffer-stats');
       if (bufferStats) bufferStats.classList.add('hidden');
     }
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
@@ -431,25 +441,25 @@ function setupOverlayControls(overlay) {
   function showControls() {
     overlay.classList.add('touch-active');
     clearTimeout(overlay.timer);
-    overlay.timer = setTimeout(() => {
+    overlay.timer = setTimeout(function () {
       if (!overlay.matches(':hover')) overlay.classList.remove('touch-active');
     }, 3000);
   }
 
-  overlay.addEventListener('mousemove', () => {
+  overlay.addEventListener('mousemove', function () {
     showControls();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 
-  overlay.addEventListener('touchstart', (e) => {
+  overlay.addEventListener('touchstart', function (e) {
     showControls();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
     if (e.touches.length === 1) e.preventDefault();
   }, { passive: false });
 
-  let lastTap = 0;
-  overlay.addEventListener('touchend', (e) => {
-    const currentTime = Date.now();
+  var lastTap = 0;
+  overlay.addEventListener('touchend', function (e) {
+    var currentTime = Date.now();
     if (currentTime - lastTap < 300) {
       if (overlay.classList.contains('touch-active')) overlay.classList.remove('touch-active');
       else showControls();
@@ -460,46 +470,46 @@ function setupOverlayControls(overlay) {
 }
 
 function setupNavigation() {
-  const settingsBtn = document.getElementById('settings-btn');
+  var settingsBtn = document.getElementById('settings-btn');
   if (settingsBtn) {
-    settingsBtn.addEventListener('click', () => {
-      const torrserverSection = document.getElementById('torrserver-section');
-      const configScreen = document.getElementById('config-screen');
+    settingsBtn.addEventListener('click', function () {
+      var torrserverSection = document.getElementById('torrserver-section');
+      var configScreen = document.getElementById('config-screen');
       if (torrserverSection) torrserverSection.style.display = 'none';
       if (configScreen) configScreen.style.display = 'flex';
       if (typeof AppState !== 'undefined') AppState.currentScreen = 'config';
-      setTimeout(() => {
+      setTimeout(function () {
         if (typeof updateFocusableElements === 'function') updateFocusableElements();
         if (typeof setFocus === 'function') setFocus(0);
       }, 300);
     });
   }
 
-  const backFromDetail = document.getElementById('back-from-detail');
+  var backFromDetail = document.getElementById('back-from-detail');
   if (backFromDetail) {
-    backFromDetail.addEventListener('click', () => {
+    backFromDetail.addEventListener('click', function () {
       console.log('🔙 Возврат из детального просмотра');
-      if (!AppState?.isSearch) {
-        const detailView = document.getElementById('detail-view');
+      if (AppState && !AppState.isSearch) {
+        var detailView = document.getElementById('detail-view');
         if (detailView) detailView.style.display = 'none';
       }
-      const mainContainer = document.getElementById('main-container');
+      var mainContainer = document.getElementById('main-container');
       if (mainContainer) {
         mainContainer.style.pointerEvents = 'auto';
       }
-      const torrserverSection = document.getElementById('torrserver-section');
+      var torrserverSection = document.getElementById('torrserver-section');
       if (torrserverSection) torrserverSection.style.display = 'block';
       if (typeof AppState !== 'undefined') {
         AppState.detailReturnTo = AppState.inSearch;
       }
-      const returnTo = !AppState?.isSearch
-        ? (AppState?.detailReturnTo === 'catalog' ? 'catalog' : 'torrents')
+      var returnTo = (!AppState || !AppState.isSearch)
+        ? ((AppState && AppState.detailReturnTo === 'catalog') ? 'catalog' : 'torrents')
         : 'search';
 
-      const currentTorrentHash = AppState?.currentDetailItem?.hash;
+      var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash, 'returnTo=', returnTo);
 
-      setTimeout(() => {
+      setTimeout(function () {
         if (typeof updateFocusableElements !== 'function' || typeof setFocus !== 'function') {
           console.error('❌ Функции навигации еще не загружены');
           return;
@@ -508,24 +518,24 @@ function setupNavigation() {
         if (returnTo === 'catalog') {
           if (typeof window.ensureCatalogFocus === 'function') {
             window.ensureCatalogFocus(true);
-            const detailView = document.getElementById('detail-view');
+            var detailView = document.getElementById('detail-view');
             if (detailView) detailView.style.display = 'none';
             return;
           }
           if (typeof window.focusFirstCatalogCard === 'function') {
             window.focusFirstCatalogCard();
-            const detailView = document.getElementById('detail-view');
+            var detailView = document.getElementById('detail-view');
             if (detailView) detailView.style.display = 'none';
             return;
           }
         } else if (returnTo === 'search') {
-          if (AppState?.isSearch) {
+          if (AppState && AppState.isSearch) {
             if (typeof AppState !== 'undefined') AppState.isSearch = false;
             if (typeof window.showSearchResults === 'function') window.showSearchResults();
           } else {
             if (typeof window.clearSearchResults === 'function') window.clearSearchResults();
           }
-          const detailView = document.getElementById('detail-view');
+          var detailView = document.getElementById('detail-view');
           if (detailView) detailView.style.display = 'none';
           return;
         }
@@ -534,15 +544,15 @@ function setupNavigation() {
         if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
         updateFocusableElements();
 
-        let targetIndex = -1;
+        var targetIndex = -1;
 
         if (currentTorrentHash) {
           console.log('🔍 Поиск карточки с hash:', currentTorrentHash);
 
-          for (let i = 0; i < focusableElements.length; i++) {
-            const el = focusableElements[i];
+          for (var i = 0; i < focusableElements.length; i++) {
+            var el = focusableElements[i];
             if (el.classList && el.classList.contains('torrent-card')) {
-              const cardHash = el.dataset.hash;
+              var cardHash = el.dataset.hash;
               if (cardHash && cardHash.toLowerCase() === currentTorrentHash.toLowerCase()) {
                 targetIndex = i;
                 console.log('✅ Найдена карточка по hash, индекс:', targetIndex);
@@ -555,12 +565,12 @@ function setupNavigation() {
         if (targetIndex === -1 && typeof lastSelectedTorrentIndex !== 'undefined') {
           console.log('🔍 Поиск по сохраненному индексу:', lastSelectedTorrentIndex);
 
-          const cardIndices = [];
-          focusableElements.forEach((el, idx) => {
-            if (el.classList && el.classList.contains('torrent-card')) {
-              cardIndices.push(idx);
+          var cardIndices = [];
+          for (var j = 0; j < focusableElements.length; j++) {
+            if (focusableElements[j].classList && focusableElements[j].classList.contains('torrent-card')) {
+              cardIndices.push(j);
             }
-          });
+          }
 
           if (lastSelectedTorrentIndex < cardIndices.length) {
             targetIndex = cardIndices[lastSelectedTorrentIndex];
@@ -569,9 +579,13 @@ function setupNavigation() {
         }
 
         if (targetIndex === -1) {
-          const firstCardIndex = focusableElements.findIndex(el =>
-            el.classList && el.classList.contains('torrent-card')
-          );
+          var firstCardIndex = -1;
+          for (var k = 0; k < focusableElements.length; k++) {
+            if (focusableElements[k].classList && focusableElements[k].classList.contains('torrent-card')) {
+              firstCardIndex = k;
+              break;
+            }
+          }
           targetIndex = firstCardIndex !== -1 ? firstCardIndex : 0;
           console.log('⚠️ Используем первую карточку, индекс:', targetIndex);
         }
@@ -583,37 +597,37 @@ function setupNavigation() {
 }
 
 function setupSearch() {
-  const searchInput = document.getElementById('search-query');
-  const searchBtn = document.getElementById('search-btn');
-  const closeSearchBtn = document.getElementById('close-search');
-  const tabTorrents = document.getElementById('tab-torrents');
-  const tabSearch = document.getElementById('tab-search');
-  const tabCatalog = document.getElementById('tab-catalog');
+  var searchInput = document.getElementById('search-query');
+  var searchBtn = document.getElementById('search-btn');
+  var closeSearchBtn = document.getElementById('close-search');
+  var tabTorrents = document.getElementById('tab-torrents');
+  var tabSearch = document.getElementById('tab-search');
+  var tabCatalog = document.getElementById('tab-catalog');
 
   if (searchBtn && searchInput) {
-    searchBtn.addEventListener('click', () => {
-      const query = searchInput.value.trim();
+    searchBtn.addEventListener('click', function () {
+      var query = searchInput.value.trim();
       if (typeof showSearchResults === 'function') showSearchResults();
       if (query && typeof searchTorrents === 'function') searchTorrents(query);
     });
   }
 
   if (searchInput) {
-    searchInput.addEventListener('keypress', (e) => {
+    searchInput.addEventListener('keypress', function (e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        const query = searchInput.value.trim();
+        var query = searchInput.value.trim();
         if (typeof searchTorrents === 'function') searchTorrents(query);
       }
     });
   }
 
   if (closeSearchBtn && typeof hideSearchResults === 'function') {
-    closeSearchBtn.addEventListener('click', () => hideSearchResults());
+    closeSearchBtn.addEventListener('click', function () { hideSearchResults(); });
   }
 
   if (tabTorrents && typeof hideSearchResults === 'function' && typeof loadTorrents === 'function') {
-    tabTorrents.addEventListener('click', () => {
+    tabTorrents.addEventListener('click', function () {
       console.log('📁 Переключение на вкладку "Мои торренты"');
       window.pendingCatalogPoster = null;
       window.pendingCatalogItem = null;
@@ -622,36 +636,29 @@ function setupSearch() {
       tabTorrents.classList.add('active');
       if (tabSearch) tabSearch.classList.remove('active');
       if (tabCatalog) tabCatalog.classList.remove('active');
-      const searchOverlay = document.getElementById('search-overlay');
+      var searchOverlay = document.getElementById('search-overlay');
       if (searchOverlay) searchOverlay.classList.add('hidden');
       if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
-      const torrentsGrid = document.getElementById('torrents-grid');
+      var torrentsGrid = document.getElementById('torrents-grid');
       if (torrentsGrid) {
-        torrentsGrid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">
-          <div class="loading-spinner" style="margin: 0 auto 20px;"></div>
-          <div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div>
-        </div>`;
+        torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n          <div class="loading-spinner" style="margin: 0 auto 20px;"></div>\n          <div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div>\n        </div>';
       }
-      loadTorrents(true).then(() => {
-        setTimeout(() => {
+      loadTorrents(true).then(function () {
+        setTimeout(function () {
           if (typeof updateFocusableElements === 'function') updateFocusableElements();
           if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard();
         }, 200);
-      }).catch(error => {
+      })['catch'](function (error) {
         console.error('Ошибка загрузки торрентов:', error);
         if (torrentsGrid) {
-          torrentsGrid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">
-            <div style="font-size: 48px; margin-bottom: 20px;">❌</div>
-            <div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div>
-            <button class="btn" style="margin-top: 20px;" onclick="document.getElementById('tab-torrents').click()">Попробовать снова</button>
-          </div>`;
+          torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n            <div style="font-size: 48px; margin-bottom: 20px;">❌</div>\n            <div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div>\n            <button class="btn" style="margin-top: 20px;" onclick="document.getElementById(\'tab-torrents\').click()">Попробовать снова</button>\n          </div>';
         }
       });
     });
   }
 
   if (tabSearch && typeof showSearchResults === 'function') {
-    tabSearch.addEventListener('click', () => {
+    tabSearch.addEventListener('click', function () {
       showSearchResults();
       if (searchInput && searchInput.value.trim() && typeof searchResults !== 'undefined' && searchResults.length === 0 && typeof searchTorrents === 'function') {
         searchTorrents(searchInput.value.trim());
@@ -660,7 +667,7 @@ function setupSearch() {
   }
 
   if (tabCatalog && typeof window.loadCatalogList === 'function') {
-    tabCatalog.addEventListener('click', () => {
+    tabCatalog.addEventListener('click', function () {
       if (typeof AppState !== 'undefined') AppState.inSearch = 'catalog';
       window.pendingCatalogPoster = null;
       window.pendingCatalogItem = null;
@@ -670,16 +677,16 @@ function setupSearch() {
       }
       localStorage.removeItem('lastCatalogCardIndex');
       if (typeof hideSearchResults === 'function') hideSearchResults();
-      const searchOverlay = document.getElementById('search-overlay');
+      var searchOverlay = document.getElementById('search-overlay');
       if (searchOverlay) searchOverlay.classList.add('hidden');
-      const tabTorrentsEl = document.getElementById('tab-torrents');
-      const tabSearchEl = document.getElementById('tab-search');
+      var tabTorrentsEl = document.getElementById('tab-torrents');
+      var tabSearchEl = document.getElementById('tab-search');
       if (tabTorrentsEl) tabTorrentsEl.classList.remove('active');
       if (tabSearchEl) tabSearchEl.classList.remove('active');
       tabCatalog.classList.add('active');
       if (typeof AppState !== 'undefined') AppState.currentScreen = 'catalog';
       window.loadCatalogList();
-      setTimeout(() => {
+      setTimeout(function () {
         if (typeof updateFocusableElements === 'function') updateFocusableElements();
         if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
       }, 200);
@@ -688,58 +695,93 @@ function setupSearch() {
 }
 
 function setupSearchFilters() {
-  const filterToggleBtn = document.getElementById('filter-toggle');
-  const torrentmovie = document.getElementById('torrent-movie');
-  const sortBy = document.getElementById('sort-by');
-  const filterQuality = document.getElementById('filter-quality');
-  const filterTracker = document.getElementById('filter-tracker');
-  const filterYear = document.getElementById('filter-year');
-  const resetFiltersBtn = document.getElementById('reset-filters');
+  var filterToggleBtn = document.getElementById('filter-toggle');
+  var torrentmovie = document.getElementById('torrent-movie');
+  var sortBy = document.getElementById('sort-by');
+  var filterQuality = document.getElementById('filter-quality');
+  var filterTracker = document.getElementById('filter-tracker');
+  var filterYear = document.getElementById('filter-year');
+  var resetFiltersBtn = document.getElementById('reset-filters');
 
-  if (filterToggleBtn && typeof toggleSearchFiltersPanel === 'function') {
-    filterToggleBtn.addEventListener('click', () => {
-      const opened = toggleSearchFiltersPanel();
+  if (filterToggleBtn) {
+    filterToggleBtn.addEventListener('click', function () {
+      console.log('🔘 filter-toggle нажат');
+
+      // Вызываем toggleSearchFiltersPanel
+      var opened = false;
+      if (typeof toggleSearchFiltersPanel === 'function') {
+        opened = toggleSearchFiltersPanel();
+        console.log('Панель открыта:', opened);
+      } else {
+        console.warn('toggleSearchFiltersPanel не определена');
+        // Fallback - просто переключаем класс
+        var panel = document.getElementById('search-filters-panel');
+        if (panel) {
+          if (panel.classList.contains('collapsed')) {
+            panel.classList.remove('collapsed');
+            filterToggleBtn.classList.add('active');
+            opened = true;
+          } else {
+            panel.classList.add('collapsed');
+            filterToggleBtn.classList.remove('active');
+            opened = false;
+          }
+        }
+      }
+
+      // Если панель открылась, устанавливаем фокус на первый фильтр
       if (opened && typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-        setTimeout(() => {
+        setTimeout(function () {
           updateFocusableElements();
-          const firstFilterIndex = focusableElements.findIndex(el =>
-            ['torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters'].includes(el.id));
+          var firstFilterIndex = -1;
+          for (var i = 0; i < focusableElements.length; i++) {
+            var el = focusableElements[i];
+            if (el && el.id) {
+              var elId = el.id;
+              if (['torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters'].indexOf(elId) !== -1) {
+                firstFilterIndex = i;
+                break;
+              }
+            }
+          }
+          console.log('Первый фильтр индекс:', firstFilterIndex);
           if (firstFilterIndex !== -1) setFocus(firstFilterIndex);
         }, 60);
       }
     });
   }
 
+  // ... остальной код без изменений
   if (torrentmovie && typeof applyFiltersAndSort === 'function') {
-    torrentmovie.addEventListener('change', (e) => {
+    torrentmovie.addEventListener('change', function (e) {
       if (typeof currentSort !== 'undefined') currentSort = e.target.value;
       applyFiltersAndSort();
     });
   }
 
   if (sortBy && typeof applyFiltersAndSort === 'function') {
-    sortBy.addEventListener('change', (e) => {
+    sortBy.addEventListener('change', function (e) {
       if (typeof currentSort !== 'undefined') currentSort = e.target.value;
       applyFiltersAndSort();
     });
   }
 
   if (filterQuality && typeof applyFiltersAndSort === 'function') {
-    filterQuality.addEventListener('change', (e) => {
+    filterQuality.addEventListener('change', function (e) {
       if (typeof currentQualityFilter !== 'undefined') currentQualityFilter = e.target.value;
       applyFiltersAndSort();
     });
   }
 
   if (filterTracker && typeof applyFiltersAndSort === 'function') {
-    filterTracker.addEventListener('change', (e) => {
+    filterTracker.addEventListener('change', function (e) {
       if (typeof currentTrackerFilter !== 'undefined') currentTrackerFilter = e.target.value;
       applyFiltersAndSort();
     });
   }
 
   if (filterYear && typeof applyFiltersAndSort === 'function') {
-    filterYear.addEventListener('input', (e) => {
+    filterYear.addEventListener('input', function (e) {
       if (typeof currentYearFilter !== 'undefined') currentYearFilter = e.target.value;
       applyFiltersAndSort();
     });
@@ -751,63 +793,50 @@ function setupSearchFilters() {
 }
 
 function setupServerCheck() {
-  const torrserverUrl = document.getElementById('torrserver-url');
+  var torrserverUrl = document.getElementById('torrserver-url');
   if (torrserverUrl) {
-    torrserverUrl.addEventListener('input', () => {
+    torrserverUrl.addEventListener('input', function () {
       if (checkServerTimeout) clearTimeout(checkServerTimeout);
-      checkServerTimeout = setTimeout(() => {
+      checkServerTimeout = setTimeout(function () {
         if (typeof checkServer === 'function') checkServer(true);
       }, 300);
     });
   }
 }
 
-// Добавляем функцию для начальной проверки сервера
-function initialServerCheck() {
-  setTimeout(() => {
-    const savedUrl = document.getElementById('torrserver-url')?.value;
-    if (savedUrl && savedUrl.trim() !== '') {
-      console.log('🔍 Автоматическая проверка сервера...');
-      if (typeof checkServer === 'function') {
-        checkServer(true);
-      }
-    }
-  }, 500);
-}
-
 function setupAuth() {
-  const authCheckbox = document.getElementById('auth-checkbox');
-  const authLogin = document.getElementById('auth-login');
-  const authPassword = document.getElementById('auth-password');
+  var authCheckbox = document.getElementById('auth-checkbox');
+  var authLogin = document.getElementById('auth-login');
+  var authPassword = document.getElementById('auth-password');
 
   if (authCheckbox) {
-    authCheckbox.addEventListener('change', (e) => {
+    authCheckbox.addEventListener('change', function (e) {
       if (typeof AppState !== 'undefined') AppState.authEnabled = e.target.checked;
-      const authFields = document.getElementById('auth-fields');
+      var authFields = document.getElementById('auth-fields');
       if (authFields) {
-        if (AppState?.authEnabled) authFields.classList.add('visible');
+        if (AppState && AppState.authEnabled) authFields.classList.add('visible');
         else authFields.classList.remove('visible');
       }
       if (checkServerTimeout) clearTimeout(checkServerTimeout);
-      checkServerTimeout = setTimeout(() => {
+      checkServerTimeout = setTimeout(function () {
         if (typeof checkServer === 'function') checkServer(true);
       }, 500);
     });
   }
 
   if (authLogin) {
-    authLogin.addEventListener('input', () => {
+    authLogin.addEventListener('input', function () {
       if (checkServerTimeout) clearTimeout(checkServerTimeout);
-      checkServerTimeout = setTimeout(() => {
+      checkServerTimeout = setTimeout(function () {
         if (typeof checkServer === 'function') checkServer(true);
       }, 300);
     });
   }
 
   if (authPassword) {
-    authPassword.addEventListener('input', () => {
+    authPassword.addEventListener('input', function () {
       if (checkServerTimeout) clearTimeout(checkServerTimeout);
-      checkServerTimeout = setTimeout(() => {
+      checkServerTimeout = setTimeout(function () {
         if (typeof checkServer === 'function') checkServer(true);
       }, 300);
     });
@@ -815,31 +844,32 @@ function setupAuth() {
 }
 
 function setupPlayerAutoHide() {
-  const playerScreen = document.getElementById('player-screen');
+  var playerScreen = document.getElementById('player-screen');
   if (playerScreen && typeof resetMouseIdleTimer === 'function') {
     playerScreen.addEventListener('mousemove', resetMouseIdleTimer);
     playerScreen.addEventListener('mousedown', resetMouseIdleTimer);
     playerScreen.addEventListener('mouseenter', resetMouseIdleTimer);
   }
 
-  const controls = document.querySelectorAll('.control-btn, #seek-slider, #volume-slider');
+  var controls = document.querySelectorAll('.control-btn, #seek-slider, #volume-slider');
   if (typeof resetMouseIdleTimer === 'function') {
-    controls.forEach(control => {
+    for (var i = 0; i < controls.length; i++) {
+      var control = controls[i];
       control.addEventListener('mouseenter', resetMouseIdleTimer);
       control.addEventListener('mousedown', resetMouseIdleTimer);
-    });
+    }
   }
 }
 
 function setupTouchControls(seekSlider, volumeSlider) {
-  let touchTarget = null;
-  let touchStartX = 0;
-  let touchStartY = 0;
-  let touchStartTime = 0;
-  let touchMoved = false;
+  var touchTarget = null;
+  var touchStartX = 0;
+  var touchStartY = 0;
+  var touchStartTime = 0;
+  var touchMoved = false;
 
   function setupTouchButtons() {
-    const clickableElements = document.querySelectorAll(
+    var clickableElements = document.querySelectorAll(
       'button, .control-btn, .play-btn, .torrent-card, .file-item, ' +
       '.search-result-item, .back-btn, .settings-btn, .view-tab, ' +
       '#play-pause-btn, #mute-btn, #prev-episode-btn, #next-episode-btn, ' +
@@ -848,7 +878,8 @@ function setupTouchControls(seekSlider, volumeSlider) {
       '.filter-reset-btn, .progress-continue-btn, .detail-progress-btn, ' +
       '#close-search, #filter-toggle'
     );
-    clickableElements.forEach(el => {
+    for (var i = 0; i < clickableElements.length; i++) {
+      var el = clickableElements[i];
       el.removeEventListener('touchstart', handleTouchStart);
       el.removeEventListener('touchend', handleTouchEnd);
       el.removeEventListener('touchcancel', handleTouchCancel);
@@ -856,7 +887,7 @@ function setupTouchControls(seekSlider, volumeSlider) {
       el.addEventListener('touchstart', handleTouchStart, { passive: true });
       el.addEventListener('touchend', handleTouchEnd, { passive: true });
       el.addEventListener('touchcancel', handleTouchCancel, { passive: true });
-    });
+    }
   }
 
   function handleTouchStart(e) {
@@ -872,9 +903,9 @@ function setupTouchControls(seekSlider, volumeSlider) {
 
   function handleTouchEnd(e) {
     if (!touchStartX) return;
-    const deltaX = e.changedTouches[0].clientX - touchStartX;
-    const deltaY = e.changedTouches[0].clientY - touchStartY;
-    const deltaTime = Date.now() - touchStartTime;
+    var deltaX = e.changedTouches[0].clientX - touchStartX;
+    var deltaY = e.changedTouches[0].clientY - touchStartY;
+    var deltaTime = Date.now() - touchStartTime;
 
     if (touchTarget) {
       touchTarget.classList.remove('touch-active');
@@ -910,40 +941,40 @@ function setupTouchControls(seekSlider, volumeSlider) {
   }
 
   if (seekSlider) {
-    seekSlider.addEventListener('touchstart', (e) => {
+    seekSlider.addEventListener('touchstart', function (e) {
       e.stopPropagation();
       if (typeof AppState !== 'undefined') {
         AppState.isSliderDragging = true;
         AppState.suppressTimeUpdate = true;
       }
     }, { passive: true });
-    seekSlider.addEventListener('touchmove', (e) => {
+    seekSlider.addEventListener('touchmove', function (e) {
       e.stopPropagation();
     }, { passive: true });
-    seekSlider.addEventListener('touchend', (e) => {
+    seekSlider.addEventListener('touchend', function (e) {
       e.stopPropagation();
       if (typeof AppState !== 'undefined') AppState.isSliderDragging = false;
-      setTimeout(() => {
+      setTimeout(function () {
         if (typeof AppState !== 'undefined') AppState.suppressTimeUpdate = false;
       }, 100);
     }, { passive: true });
   }
 
   if (volumeSlider) {
-    volumeSlider.addEventListener('touchstart', (e) => {
+    volumeSlider.addEventListener('touchstart', function (e) {
       e.stopPropagation();
     }, { passive: true });
-    volumeSlider.addEventListener('touchmove', (e) => {
+    volumeSlider.addEventListener('touchmove', function (e) {
       e.stopPropagation();
     }, { passive: true });
-    volumeSlider.addEventListener('touchend', (e) => {
+    volumeSlider.addEventListener('touchend', function (e) {
       e.stopPropagation();
     }, { passive: true });
   }
 
   setupTouchButtons();
 
-  const observer = new MutationObserver(() => {
+  var observer = new MutationObserver(function () {
     setupTouchButtons();
   });
   observer.observe(document.body, {
@@ -953,17 +984,17 @@ function setupTouchControls(seekSlider, volumeSlider) {
 }
 
 function setupAutoRefresh() {
-  let autoRefreshInterval = null;
+  var autoRefreshInterval = null;
 
   function startAutoRefresh() {
     if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-    autoRefreshInterval = setInterval(() => {
-      const torrserverSection = document.getElementById('torrserver-section');
+    autoRefreshInterval = setInterval(function () {
+      var torrserverSection = document.getElementById('torrserver-section');
       if (torrserverSection && torrserverSection.style.display === 'block' &&
-        AppState?.currentScreen !== 'player' &&
-        AppState?.currentScreen !== 'detail' &&
-        AppState?.currentScreen !== 'search' &&
-        AppState?.currentScreen !== 'catalog') {
+        AppState && AppState.currentScreen !== 'player' &&
+        AppState.currentScreen !== 'detail' &&
+        AppState.currentScreen !== 'search' &&
+        AppState.currentScreen !== 'catalog') {
         console.log('🔄 Автоматическое обновление списка торрентов');
         if (typeof loadTorrents === 'function') loadTorrents();
       }
@@ -977,18 +1008,20 @@ function setupAutoRefresh() {
     }
   }
 
-  const originalStartHLSPlayback = typeof startHLSPlayback === 'function' ? startHLSPlayback : null;
+  var originalStartHLSPlayback = typeof startHLSPlayback === 'function' ? startHLSPlayback : null;
   if (originalStartHLSPlayback) {
-    window.startHLSPlayback = function (...args) {
+    window.startHLSPlayback = function () {
+      var args = arguments;
       stopAutoRefresh();
       return originalStartHLSPlayback.apply(this, args);
     };
   }
 
-  const originalShowDetailView = typeof showDetailView === 'function' ? showDetailView : null;
+  var originalShowDetailView = typeof showDetailView === 'function' ? showDetailView : null;
   if (originalShowDetailView) {
-    window.showDetailView = function (...args) {
-      const result = originalShowDetailView.apply(this, args);
+    window.showDetailView = function () {
+      var args = arguments;
+      var result = originalShowDetailView.apply(this, args);
       startAutoRefresh();
       return result;
     };
@@ -996,16 +1029,16 @@ function setupAutoRefresh() {
 }
 
 function setupFullscreen() {
-  const fullscreenBtn = document.getElementById('fullscreen-btn');
+  var fullscreenBtn = document.getElementById('fullscreen-btn');
   if (!fullscreenBtn) return;
 
-  const playerScreen = document.getElementById('player-screen');
+  var playerScreen = document.getElementById('player-screen');
 
   function toggleFullscreen() {
-    const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+    var isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
 
     if (!isFullscreen) {
-      const element = playerScreen || document.documentElement;
+      var element = playerScreen || document.documentElement;
       if (element.requestFullscreen) element.requestFullscreen();
       else if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();
       else if (element.mozRequestFullScreen) element.mozRequestFullScreen();
@@ -1025,14 +1058,14 @@ function setupFullscreen() {
   }
 
   function updateFullscreenIcon() {
-    const isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    var isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
     fullscreenBtn.innerHTML = isFullscreen
       ? '<i class="fi fi-rr-compress"></i>'
       : '<i class="fi fi-rr-expand"></i>';
     fullscreenBtn.title = isFullscreen ? 'Выйти из полноэкранного режима' : 'Полный экран';
   }
 
-  fullscreenBtn.addEventListener('click', (e) => {
+  fullscreenBtn.addEventListener('click', function (e) {
     e.stopPropagation();
     toggleFullscreen();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
@@ -1043,16 +1076,16 @@ function setupFullscreen() {
 }
 
 function setupAutoFullscreen() {
-  const autoFullscreenCheckbox = document.getElementById('auto-fullscreen');
+  var autoFullscreenCheckbox = document.getElementById('auto-fullscreen');
   if (!autoFullscreenCheckbox) return;
 
-  const savedAutoFullscreen = localStorage.getItem('autoFullscreen') === 'true';
+  var savedAutoFullscreen = localStorage.getItem('autoFullscreen') === 'true';
   autoFullscreenCheckbox.checked = savedAutoFullscreen;
 
-  autoFullscreenCheckbox.addEventListener('change', (e) => {
+  autoFullscreenCheckbox.addEventListener('change', function (e) {
     localStorage.setItem('autoFullscreen', e.target.checked);
     if (e.target.checked) {
-      const element = document.documentElement;
+      var element = document.documentElement;
       if (element.requestFullscreen) element.requestFullscreen();
       else if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();
       else if (element.mozRequestFullScreen) element.mozRequestFullScreen();
@@ -1061,10 +1094,10 @@ function setupAutoFullscreen() {
   });
 
   function enterFullscreenIfEnabled() {
-    const autoFullscreen = localStorage.getItem('autoFullscreen') === 'true';
+    var autoFullscreen = localStorage.getItem('autoFullscreen') === 'true';
     if (autoFullscreen) {
-      setTimeout(() => {
-        const element = document.documentElement;
+      setTimeout(function () {
+        var element = document.documentElement;
         if (element.requestFullscreen) element.requestFullscreen();
         else if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();
         else if (element.mozRequestFullScreen) element.mozRequestFullScreen();
@@ -1081,62 +1114,46 @@ function setupAutoFullscreen() {
 }
 
 function showInitError() {
-  const errorDiv = document.createElement('div');
-  errorDiv.style.cssText = `
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0,0,0,0.9);
-    color: #ff6a6a;
-    padding: 20px;
-    border-radius: 12px;
-    text-align: center;
-    z-index: 10000;
-    border: 1px solid #ff6a6a;
-  `;
-  errorDiv.innerHTML = `
-    <div style="font-size: 48px; margin-bottom: 10px;">⚠️</div>
-    <div style="margin-bottom: 10px;">Ошибка инициализации приложения</div>
-    <div style="font-size: 12px; color: #aaa;">Попробуйте обновить страницу</div>
-    <button onclick="location.reload()" style="margin-top: 15px; padding: 8px 20px; background: #4a9eff; border: none; border-radius: 6px; color: white; cursor: pointer;">Обновить</button>
-  `;
+  var errorDiv = document.createElement('div');
+  errorDiv.style.cssText = '\n    position: fixed;\n    top: 50%;\n    left: 50%;\n    transform: translate(-50%, -50%);\n    background: rgba(0,0,0,0.9);\n    color: #ff6a6a;\n    padding: 20px;\n    border-radius: 12px;\n    text-align: center;\n    z-index: 10000;\n    border: 1px solid #ff6a6a;\n  ';
+  errorDiv.innerHTML = '\n    <div style="font-size: 48px; margin-bottom: 10px;">⚠️</div>\n    <div style="margin-bottom: 10px;">Ошибка инициализации приложения</div>\n    <div style="font-size: 12px; color: #aaa;">Попробуйте обновить страницу</div>\n    <button onclick="location.reload()" style="margin-top: 15px; padding: 8px 20px; background: #4a9eff; border: none; border-radius: 6px; color: white; cursor: pointer;">Обновить</button>\n  ';
   document.body.appendChild(errorDiv);
 }
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ МЫШИ ====================
 
 function resetMouseIdleTimer() {
-  const playerScreen = document.getElementById('player-screen');
-  const playerOverlay = document.getElementById('player-overlay');
-  const controlsContainer = document.getElementById('controls-container');
-  const bufferStats = document.getElementById('buffer-stats');
-  const playerHint = document.getElementById('player-hint');
-  const toggleBufferBtn = document.getElementById('toggle-buffer-btn');
-  const exitPlayerBtn = document.getElementById('exit-player-btn');
-  const episodesBtn = document.getElementById('episodes-btn');
-  const episodesPanel = document.getElementById('episodes-panel');
-  const prevBtn = document.getElementById('prev-episode-btn');
-  const nextBtn = document.getElementById('next-episode-btn');
-  const playerTitle = document.getElementById('player-title');
+  var playerScreen = document.getElementById('player-screen');
+  var playerOverlay = document.getElementById('player-overlay');
+  var controlsContainer = document.getElementById('controls-container');
+  var bufferStats = document.getElementById('buffer-stats');
+  var playerHint = document.getElementById('player-hint');
+  var toggleBufferBtn = document.getElementById('toggle-buffer-btn');
+  var exitPlayerBtn = document.getElementById('exit-player-btn');
+  var episodesBtn = document.getElementById('episodes-btn');
+  var episodesPanel = document.getElementById('episodes-panel');
+  var prevBtn = document.getElementById('prev-episode-btn');
+  var nextBtn = document.getElementById('next-episode-btn');
+  var playerTitle = document.getElementById('player-title');
 
   if (!playerScreen || playerScreen.style.display !== 'block') return;
 
   if (playerOverlay) playerOverlay.classList.add('touch-active');
 
-  const controlElements = [
+  var controlElements = [
     controlsContainer, bufferStats, playerHint,
     toggleBufferBtn, exitPlayerBtn, episodesBtn,
     prevBtn, nextBtn, playerTitle
   ];
 
-  controlElements.forEach(el => {
+  for (var i = 0; i < controlElements.length; i++) {
+    var el = controlElements[i];
     if (el) {
       el.classList.remove('idle-hidden');
       el.style.opacity = '1';
       el.style.pointerEvents = 'auto';
     }
-  });
+  }
   if (typeof syncPlayerTitleVisibility === 'function') {
     syncPlayerTitleVisibility(true);
   }
@@ -1150,17 +1167,18 @@ function resetMouseIdleTimer() {
     clearTimeout(window.mouseIdleTimer);
   }
 
-  window.mouseIdleTimer = setTimeout(() => {
+  window.mouseIdleTimer = setTimeout(function () {
     if (playerScreen.style.display === 'block') {
       if (playerOverlay) playerOverlay.classList.remove('touch-active');
 
-      controlElements.forEach(el => {
+      for (var j = 0; j < controlElements.length; j++) {
+        var el = controlElements[j];
         if (el) {
           el.classList.add('idle-hidden');
           el.style.opacity = '0';
           el.style.pointerEvents = 'none';
         }
-      });
+      }
       if (typeof syncPlayerTitleVisibility === 'function') {
         syncPlayerTitleVisibility(false);
       }
@@ -1176,12 +1194,12 @@ function resetMouseIdleTimer() {
 window.resetMouseIdleTimer = resetMouseIdleTimer;
 
 function showPlayerHint(message) {
-  const hint = document.getElementById('player-hint');
+  var hint = document.getElementById('player-hint');
   if (!hint) return;
   hint.textContent = message;
   hint.style.opacity = '1';
   clearTimeout(window.hintTimeout);
-  window.hintTimeout = setTimeout(() => {
+  window.hintTimeout = setTimeout(function () {
     hint.style.opacity = '0';
   }, 2000);
 }
