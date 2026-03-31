@@ -1304,6 +1304,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (fromSearch === undefined) fromSearch = false;
   if (episodeIndex === undefined) episodeIndex = null;
   if (audioTrack === undefined) audioTrack = null;
+  AppState.inSearch = 'torrents';
 
   if (!originalUrl || !originalUrl.trim()) {
     alert('Ошибка: URL не указан');
