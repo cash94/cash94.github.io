@@ -781,7 +781,7 @@ function setupSearchFilters() {
   }
 
   if (filterYear && typeof applyFiltersAndSort === 'function') {
-    filterYear.addEventListener('input', function (e) {
+    filterYear.addEventListener('change', function (e) {
       if (typeof currentYearFilter !== 'undefined') currentYearFilter = e.target.value;
       applyFiltersAndSort();
     });
