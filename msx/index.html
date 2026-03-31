@@ -280,9 +280,53 @@
     <div id="exit-player-btn" title="Выйти (ESC)">←</div>
   </div>
 
-  <!-- JavaScript модули - порядок важен! -->
+  <!-- Загрузчик модулей с индикатором -->
+  <div id="module-loader" style="
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, #0a0a0f, #1a1a2e);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+">
+    <div style="
+    width: 60px;
+    height: 60px;
+    border: 4px solid rgba(74, 158, 255, 0.2);
+    border-top: 4px solid #4a9eff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+  "></div>
+    <div style="
+    font-size: 18px;
+    color: #fff;
+    margin-bottom: 10px;
+  ">TorrStream</div>
+    <div style="
+    font-size: 12px;
+    color: #aaa;
+  ">Загрузка модулей...</div>
+  </div>
+
+  <style>
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+
   <script>
-    // Добавляем timestamp при каждой загрузке страницы
     var VERSION = Date.now();
 
     document.write('<script src="https://cash94.github.io/msx/js/config.js?v=' + VERSION + '"><\/script>');
@@ -293,6 +337,21 @@
     document.write('<script src="https://cash94.github.io/msx/js/control.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/donate.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/app.js?v=' + VERSION + '"><\/script>');
+
+    // Скрываем загрузчик после инициализации
+    document.write('<script>');
+    document.write('  window.addEventListener("load", function() {');
+    document.write('    setTimeout(function() {');
+    document.write('      var loader = document.getElementById("module-loader");');
+    document.write('      if (loader) {');
+    document.write('        loader.style.opacity = "0";');
+    document.write('        setTimeout(function() {');
+    document.write('          if (loader) loader.style.display = "none";');
+    document.write('        }, 500);');
+    document.write('      }');
+    document.write('    }, 1000);');
+    document.write('  });');
+    document.write('<\/script>');
   </script>
 
 
