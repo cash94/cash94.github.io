@@ -11,16 +11,19 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <link rel="icon" type="image/x-icon" href="https://cash94.github.io/msx/favicon16.ico">
 
-  <!-- HLS.js библиотека -->
+  <!-- HLS.js библиотека (без версионирования, так как с CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"></script>
-  <link rel='stylesheet' href='https://cash94.github.io/msx/css/uicons-regular-rounded.css'>
-  <link rel='stylesheet' href='https://cash94.github.io/msx/css/uicons-thin-rounded.css'>
-  <link rel='stylesheet' href='https://cash94.github.io/msx/css/uicons-thin-chubby.css'>
-
-  <!-- CSS стили -->
-  <link rel="stylesheet" href="https://cash94.github.io/msx/css/styles.css">
-  <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap"
-    rel="stylesheet">
+  
+  <!-- CSS стили с версионированием -->
+  <script>
+    var VERSION = Date.now();
+    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-regular-rounded.css?v=' + VERSION + '">');
+    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-rounded.css?v=' + VERSION + '">');
+    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-chubby.css?v=' + VERSION + '">');
+    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/styles.css?v=' + VERSION + '">');
+  </script>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap" rel="stylesheet">
 </head>
 
 <body class="tv-mode">
@@ -278,14 +281,19 @@
   </div>
 
   <!-- JavaScript модули - порядок важен! -->
-  <script src="https://cash94.github.io/msx/js/config.js"></script>
-  <script src="https://cash94.github.io/msx/js/tmdb.js"></script>
-  <script src="https://cash94.github.io/msx/js/torrents.js"></script>
-  <script src="https://cash94.github.io/msx/js/catalog.js"></script>
-  <script src="https://cash94.github.io/msx/js/player.js"></script>
-  <script src="https://cash94.github.io/msx/js/control.js"></script>
-  <script src="https://cash94.github.io/msx/js/donate.js"></script>
-  <script src="https://cash94.github.io/msx/js/app.js"></script>
+  <script>
+    // Добавляем timestamp при каждой загрузке страницы
+    var VERSION = Date.now();
+
+    document.write('<script src="https://cash94.github.io/msx/js/config.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/tmdb.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/torrents.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/catalog.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/player.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/control.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/donate.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/app.js?v=' + VERSION + '"><\/script>');
+  </script>
 
 
 </body>
