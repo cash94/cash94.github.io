@@ -6,6 +6,23 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Функция для определения архитектуры
+detect_architecture() {
+    local arch=$(uname -m)
+    case $arch in
+        x86_64|amd64)
+            echo "amd64"
+            ;;
+        aarch64|arm64)
+            echo "arm64"
+            ;;
+        *)
+            echo -e "${RED}Неподдерживаемая архитектура: $arch${NC}"
+            exit 1
+            ;;
+    esac
+}
+
 # Функция для проверки доступности порта
 check_port() {
     local port=$1
@@ -33,13 +50,25 @@ get_free_port() {
 install_vidaa() {
     echo -e "${GREEN}Начинаем установку Vidaa...${NC}"
     
+    # Определяем архитектуру
+    local arch=$(detect_architecture)
+    echo -e "${GREEN}Обнаружена архитектура: $arch${NC}"
+    
+    # Выбираем версию приложения
+    local app_file=""
+    if [ "$arch" = "amd64" ]; then
+        app_file="TorrStream-linux-amd64"
+    else
+        app_file="TorrStream-linux-arm64"
+    fi
+    
     # Создаем директорию
     mkdir -p /opt/Vidaa/
     cd /opt/Vidaa/ || exit 1
     
-    # Скачиваем архив
-    echo "Скачивание архива..."
-    wget -q --show-progress https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/Vidaa.zip
+    # Скачиваем архив приложения
+    echo "Скачивание архива приложения..."
+    wget -q --show-progress "https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-linux.zip"
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ошибка при скачивании архива${NC}"
@@ -48,7 +77,7 @@ install_vidaa() {
     
     # Распаковываем
     echo "Распаковка архива..."
-    unzip -q Vidaa.zip
+    unzip -q TorrStream-linux.zip
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ошибка при распаковке архива${NC}"
@@ -56,29 +85,62 @@ install_vidaa() {
     fi
     
     # Удаляем архив
-    rm -rf /opt/Vidaa/Vidaa.zip
+    rm -rf /opt/Vidaa/TorrStream-linux.zip
     
+    # Переименовываем бинарник в соответствии с архитектурой
+    if [ -f "/opt/Vidaa/$app_file" ]; then
+        mv "/opt/Vidaa/$app_file" "/opt/Vidaa/myapp-linux-x64"
+    else
+        echo -e "${RED}Бинарник $app_file не найден в архиве${NC}"
+        exit 1
+    fi
+    
+    # Создаем директорию для ffmpeg
     mkdir -p /opt/Vidaa/ffmpeg
     cd /opt/Vidaa/ffmpeg || exit 1
     
-    # Скачиваем архив
-    echo "Скачивание архива..."
-    wget -q --show-progress https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/ffmpeg.zip
+    # Выбираем версию ffmpeg
+    local ffmpeg_url=""
+    if [ "$arch" = "amd64" ]; then
+        ffmpeg_url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_linux64-gpl.tar.xz"
+    else
+        ffmpeg_url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_linuxarm64-gpl.tar.xz"
+    fi
+    
+    # Скачиваем ffmpeg
+    echo "Скачивание ffmpeg..."
+    wget -q --show-progress "$ffmpeg_url"
     
     if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при скачивании архива${NC}"
+        echo -e "${RED}Ошибка при скачивании ffmpeg${NC}"
         exit 1
     fi
     
-    # Распаковываем
-    echo "Распаковка архива..."
-    unzip -q ffmpeg.zip
+    # Распаковываем tar.xz
+    echo "Распаковка ffmpeg..."
+    tar -xf jellyfin-ffmpeg_*.tar.xz
     
     if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при распаковке архива${NC}"
+        echo -e "${RED}Ошибка при распаковке ffmpeg${NC}"
         exit 1
     fi
-
+    
+    # Копируем бинарники из распакованной папки
+    find . -name "ffmpeg" -type f -exec cp {} /opt/Vidaa/ffmpeg/ \;
+    find . -name "ffprobe" -type f -exec cp {} /opt/Vidaa/ffmpeg/ \;
+    
+    # Удаляем распакованную папку и архив
+    rm -rf jellyfin-ffmpeg_* && rm -f jellyfin-ffmpeg_*.tar.xz
+    
+    # Скачиваем yt-dlp
+    echo "Скачивание yt-dlp..."
+    wget -q --show-progress "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux" -O yt-dlp
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ошибка при скачивании yt-dlp${NC}"
+        exit 1
+    fi
+    
     # Устанавливаем права
     chmod 775 /opt/Vidaa/myapp-linux-x64
     chmod 775 /opt/Vidaa/ffmpeg/ffmpeg
@@ -170,11 +232,23 @@ update_vidaa() {
         exit 1
     fi
     
+    # Определяем архитектуру
+    local arch=$(detect_architecture)
+    echo -e "${GREEN}Обнаружена архитектура: $arch${NC}"
+    
+    # Выбираем версию приложения
+    local app_file=""
+    if [ "$arch" = "amd64" ]; then
+        app_file="TorrStream-linux-amd64"
+    else
+        app_file="TorrStream-linux-arm64"
+    fi
+    
     cd /opt/Vidaa/ || exit 1
     
     # Скачиваем архив
     echo "Скачивание обновления..."
-    wget -q --show-progress https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/Vidaa.zip
+    wget -q --show-progress "https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-linux.zip"
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ошибка при скачивании архива${NC}"
@@ -184,7 +258,7 @@ update_vidaa() {
     # Распаковываем с заменой файлов
     echo "Распаковка обновления..."
     rm -rf /opt/Vidaa/public
-    unzip -q -o Vidaa.zip
+    unzip -q -o TorrStream-linux.zip
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ошибка при распаковке архива${NC}"
@@ -192,7 +266,24 @@ update_vidaa() {
     fi
     
     # Удаляем архив
-    rm -rf /opt/Vidaa/Vidaa.zip
+    rm -rf /opt/Vidaa/TorrStream-linux.zip
+    
+    # Переименовываем бинарник
+    if [ -f "/opt/Vidaa/$app_file" ]; then
+        mv "/opt/Vidaa/$app_file" "/opt/Vidaa/myapp-linux-x64"
+    else
+        echo -e "${RED}Бинарник $app_file не найден в архиве${NC}"
+        exit 1
+    fi
+    
+    # Обновляем yt-dlp (без ffmpeg, так как он обновляется реже)
+    echo "Обновление yt-dlp..."
+    wget -q --show-progress "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux" -O /opt/Vidaa/ffmpeg/yt-dlp
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ошибка при скачивании yt-dlp${NC}"
+        exit 1
+    fi
     
     # Обновляем права
     chmod 775 /opt/Vidaa/myapp-linux-x64
@@ -285,7 +376,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Проверка наличия необходимых утилит
-for cmd in wget unzip systemctl; do
+for cmd in wget unzip systemctl tar; do
     if ! command -v $cmd &> /dev/null; then
         echo -e "${RED}Утилита $cmd не найдена. Пожалуйста, установите её.${NC}"
         exit 1
