@@ -17,10 +17,10 @@ function Test-Port {
         $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $Port)
         $listener.Start()
         $listener.Stop()
-        return $true  # порт свободен
+        return $true
     }
     catch {
-        return $false # порт занят
+        return $false
     }
 }
 
@@ -43,7 +43,6 @@ function Add-FirewallRule {
     
     Write-Host "Настройка брандмауэра для порта $Port..." -ForegroundColor $YELLOW
     
-    # Проверяем, существует ли уже правило
     $ruleExists = Get-NetFirewallRule -DisplayName "Vidaa Server" -ErrorAction SilentlyContinue
     
     if ($ruleExists) {
@@ -51,7 +50,6 @@ function Add-FirewallRule {
         Remove-NetFirewallRule -DisplayName "Vidaa Server" -ErrorAction SilentlyContinue
     }
     
-    # Создаем новое правило
     try {
         New-NetFirewallRule -DisplayName "Vidaa Server" `
             -Direction Inbound `
@@ -64,7 +62,6 @@ function Add-FirewallRule {
         
         Write-Host "Правило брандмауэра успешно добавлено для порта $Port" -ForegroundColor $GREEN
         
-        # Проверяем, что правило активно
         $rule = Get-NetFirewallRule -DisplayName "Vidaa Server"
         if ($rule.Enabled -eq 'False') {
             Enable-NetFirewallRule -DisplayName "Vidaa Server"
@@ -104,7 +101,6 @@ function Create-WindowsService {
     
     Write-Host "Создание службы Windows..." -ForegroundColor $YELLOW
     
-    # Проверяем, существует ли служба
     $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
     
     if ($service) {
@@ -115,16 +111,10 @@ function Create-WindowsService {
     }
     
     try {
-        # Создаем службу
         & sc.exe create $serviceName binPath= "`"$exePath`"" start= auto DisplayName= "Vidaa Video Server"
-        
-        # Устанавливаем описание
         & sc.exe description $serviceName "Vidaa Video HLS Server - стриминг видео с торрентов"
-        
-        # Устанавливаем переменные окружения для службы
         & sc.exe config $serviceName obj= "LocalSystem"
         
-        # Добавляем переменные окружения через реестр
         $regPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$serviceName"
         Set-ItemProperty -Path $regPath -Name "Environment" -Value "NODE_ENV=production;PORT=$Port;HOST=0.0.0.0" -Type MultiString
         
@@ -161,7 +151,6 @@ function Start-ServiceIfCreated {
 function Install-Vidaa {
     Write-Host "Начинаем установку Vidaa для Windows..." -ForegroundColor $GREEN
     
-    # Проверяем, запущен ли скрипт от администратора
     $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if (-not $isAdmin) {
         Write-Host "ВНИМАНИЕ: Для установки службы и настройки брандмауэра требуются права администратора!" -ForegroundColor $RED
@@ -169,7 +158,6 @@ function Install-Vidaa {
         exit 1
     }
     
-    # Создаем директорию
     if (Test-Path $installPath) {
         Write-Host "Директория $installPath уже существует. Удаляем старые файлы..." -ForegroundColor $YELLOW
         Remove-Item -Path $installPath -Recurse -Force -ErrorAction SilentlyContinue
@@ -178,7 +166,6 @@ function Install-Vidaa {
     New-Item -ItemType Directory -Path $installPath -Force | Out-Null
     Set-Location $installPath
     
-    # Скачиваем архив приложения
     Write-Host "Скачивание архива приложения..." -ForegroundColor $YELLOW
     $appUrl = "https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-windows.zip"
     $appZip = "$installPath\TorrStream-windows.zip"
@@ -190,14 +177,10 @@ function Install-Vidaa {
         exit 1
     }
     
-    # Распаковываем
     Write-Host "Распаковка архива..." -ForegroundColor $YELLOW
     Expand-Archive -Path $appZip -DestinationPath $installPath -Force
-    
-    # Удаляем архив
     Remove-Item $appZip -Force
     
-    # Переименовываем исполняемый файл
     $exeFile = Get-ChildItem -Path $installPath -Filter "TorrStream-windows-*.exe" | Select-Object -First 1
     if ($exeFile) {
         Rename-Item -Path $exeFile.FullName -NewName "myapp.exe"
@@ -208,11 +191,9 @@ function Install-Vidaa {
         exit 1
     }
     
-    # Создаем директорию для ffmpeg
     $ffmpegPath = "$installPath\ffmpeg"
     New-Item -ItemType Directory -Path $ffmpegPath -Force | Out-Null
     
-    # Скачиваем ffmpeg
     Write-Host "Скачивание ffmpeg..." -ForegroundColor $YELLOW
     $ffmpegUrl = "https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_win64-clang-gpl.zip"
     $ffmpegZip = "$ffmpegPath\ffmpeg.zip"
@@ -224,14 +205,10 @@ function Install-Vidaa {
         exit 1
     }
     
-    # Распаковываем ffmpeg
     Write-Host "Распаковка ffmpeg..." -ForegroundColor $YELLOW
     Expand-Archive -Path $ffmpegZip -DestinationPath $ffmpegPath -Force
-    
-    # Удаляем архив
     Remove-Item $ffmpegZip -Force
     
-    # Скачиваем yt-dlp
     Write-Host "Скачивание yt-dlp..." -ForegroundColor $YELLOW
     $ytdlpUrl = "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp.exe"
     $ytdlpPath = "$ffmpegPath\yt-dlp.exe"
@@ -243,7 +220,6 @@ function Install-Vidaa {
         exit 1
     }
     
-    # Запрос порта
     $selectedPort = $null
     while ($true) {
         $userPort = Read-Host "`nВведите порт для Vidaa сервера (или нажмите Enter для автоматического выбора)"
@@ -268,7 +244,6 @@ function Install-Vidaa {
         }
     }
     
-    # Создаем скрипт запуска (для ручного запуска)
     $startScript = @"
 @echo off
 set NODE_ENV=production
@@ -277,18 +252,14 @@ set HOST=0.0.0.0
 cd /d "$installPath"
 start "Vidaa Server" "$installPath\myapp.exe"
 "@
-    
     $startScript | Out-File -FilePath "$installPath\start_vidaa.bat" -Encoding ASCII
     
-    # Создаем скрипт остановки
     $stopScript = @"
 @echo off
 taskkill /F /IM myapp.exe
 "@
-    
     $stopScript | Out-File -FilePath "$installPath\stop_vidaa.bat" -Encoding ASCII
     
-    # Создаем ярлык на рабочем столе
     $shortcutPath = [Environment]::GetFolderPath("Desktop") + "\Vidaa Server.lnk"
     $wshell = New-Object -ComObject WScript.Shell
     $shortcut = $wshell.CreateShortcut($shortcutPath)
@@ -297,7 +268,6 @@ taskkill /F /IM myapp.exe
     $shortcut.Description = "Запуск Vidaa сервера"
     $shortcut.Save()
     
-    # Настройка брандмауэра
     Write-Host "`nХотите открыть порт $selectedPort в брандмауэре для доступа из сети?" -ForegroundColor $YELLOW
     $configureFw = Read-Host "(y/n)"
     
@@ -308,7 +278,6 @@ taskkill /F /IM myapp.exe
         Write-Host "Брандмауэр не настроен. Сервер будет доступен только локально." -ForegroundColor $YELLOW
     }
     
-    # Создание службы Windows
     Write-Host "`nХотите создать службу Windows для автоматического запуска?" -ForegroundColor $YELLOW
     $createService = Read-Host "(y/n)"
     
@@ -317,7 +286,6 @@ taskkill /F /IM myapp.exe
         Start-ServiceIfCreated -ServiceName "VidaaServer"
     }
     
-    # Получаем IP адрес
     $ipAddress = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*" -and $_.IPAddress -notlike "169.254.*"} | Select-Object -First 1).IPAddress
     
     Write-Host "`n========================================" -ForegroundColor $GREEN
@@ -338,18 +306,15 @@ taskkill /F /IM myapp.exe
         Write-Host "  Запуск службы: Start-Service VidaaServer" -ForegroundColor $NC
         Write-Host "  Остановка службы: Stop-Service VidaaServer" -ForegroundColor $NC
         Write-Host "  Просмотр статуса: Get-Service VidaaServer" -ForegroundColor $NC
-        Write-Host "  Удаление службы: sc.exe delete VidaaServer" -ForegroundColor $NC
     }
     
     Write-Host "`nДля проверки брандмауэра: Get-NetFirewallRule -DisplayName 'Vidaa Server'" -ForegroundColor $YELLOW
-    Write-Host "Для просмотра активных соединений: netstat -an | findstr :$selectedPort" -ForegroundColor $YELLOW
 }
 
 # Функция для удаления
 function Uninstall-Vidaa {
     Write-Host "Начинаем удаление Vidaa..." -ForegroundColor $YELLOW
     
-    # Запрашиваем подтверждение
     Write-Host "ВНИМАНИЕ: Это действие полностью удалит Vidaa и все его данные!" -ForegroundColor $RED
     $confirm = Read-Host "Вы уверены, что хотите продолжить? (y/n)"
     
@@ -358,7 +323,6 @@ function Uninstall-Vidaa {
         return
     }
     
-    # Останавливаем и удаляем службу
     $service = Get-Service -Name "VidaaServer" -ErrorAction SilentlyContinue
     if ($service) {
         Write-Host "Остановка и удаление службы VidaaServer..." -ForegroundColor $YELLOW
@@ -367,25 +331,18 @@ function Uninstall-Vidaa {
         Start-Sleep -Seconds 2
     }
     
-    # Удаляем правило брандмауэра
     Remove-FirewallRule
     
-    # Удаляем директорию установки
     if (Test-Path $installPath) {
         Write-Host "Удаление $installPath..." -ForegroundColor $YELLOW
         Remove-Item -Path $installPath -Recurse -Force -ErrorAction SilentlyContinue
     }
-    else {
-        Write-Host "Директория $installPath не найдена" -ForegroundColor $YELLOW
-    }
     
-    # Удаляем ярлык с рабочего стола
     $shortcutPath = [Environment]::GetFolderPath("Desktop") + "\Vidaa Server.lnk"
     if (Test-Path $shortcutPath) {
         Remove-Item -Path $shortcutPath -Force
     }
     
-    # Удаляем конфигурационную директорию в пользовательской папке
     $configDir = "$env:USERPROFILE\.videoloop-server"
     if (Test-Path $configDir) {
         Write-Host "Удаление $configDir..." -ForegroundColor $YELLOW
