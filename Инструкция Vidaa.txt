@@ -1,4 +1,4 @@
-ДЛЯ WINDOWS!!!!
+ДЛЯ WINDOWS x64
 Если Вы устанавливаете программу впервые то сначала нужно выполнить действия на компьютере.
 	1) создать папку "Vidaa" на диске C:\, должно получиться "C:\Vidaa"
 	2) Скачать ffmpeg по ссылке https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_win64-clang-gpl.zip
@@ -24,7 +24,7 @@
 	5) Далее в поле Torrserver пишем свой TorrServer ("http://192.168.1.30:8090" <-- данный адрес служит примером Ваш адрес может отличаться).
 Внимание если torrserver размещен локально, а данная программа на VPS, то данная связка работать не будет.
 
-ДЛЯ Linux Debian/Ubuntu
+ДЛЯ Linux Debian/Ubuntu arm64 и amd64
 Действия на компьютере. (Скрипт умеет устанавливать, обновлять, удалять)
 	1) curl -L https://cash94.github.io/install_vidaa.sh -o install_vidaa.sh && chmod +x install_vidaa.sh && sudo ./install_vidaa.sh
 Действия на телевизоре
@@ -36,7 +36,7 @@
 Внимание если torrserver размещен локально, а данная программа на VPS, то данная связка работать не будет.
 
 
-ДЛЯ Macos
+ДЛЯ Macos arm64 и amd64
 Действия на компьютере. (Скрипт умеет устанавливать, обновлять, удалять).
 	1) curl -L https://cash94.github.io/install_macos_vidaa.sh -o install_macos_vidaa.sh && chmod +x install_macos_vidaa.sh && ./install_macos_vidaa.sh
 Действия на телевизоре
