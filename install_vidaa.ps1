@@ -101,7 +101,6 @@ function Create-WindowsService {
     
     $serviceName = "VidaaServer"
     $exePath = "$installPath\myapp.exe"
-    $workingDir = $installPath
     
     Write-Host "Создание службы Windows..." -ForegroundColor $YELLOW
     
