@@ -2,7 +2,7 @@
 Если Вы устанавливаете программу впервые то сначала нужно выполнить действия на компьютере.
 	1) создать папку "Vidaa" на диске C:\, должно получиться "C:\Vidaa"
 	2) Скачать ffmpeg по ссылке https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_win64-clang-gpl.zip
-	3) Создать папку "ffmpeg" C:\Vidaa, должно получиться "C:\Vidaa\ffmpeg"
+	3) Создать папку "ffmpeg" в C:\Vidaa, должно получиться "C:\Vidaa\ffmpeg"
 	4) Поместить содержимое ffmpeg.exe и ffprobe.exe из п.2 в C:\Vidaa\ffmpeg
 	5) Скачать yt-dlp по ссылке https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp.exe
 	6) Поместить yt-dlp.exe в C:\Vidaa\ffmpeg
