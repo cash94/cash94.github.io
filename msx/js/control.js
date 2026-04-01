@@ -821,6 +821,15 @@ function setupKeyboardHandlers() {
     document.addEventListener('keydown', function (e) {
         var key = e.keyCode;
         var activeElement = document.activeElement;
+        var playbackOverlay = document.getElementById('playback-overlay');
+        var isPlaybackActive = playbackOverlay && playbackOverlay.classList.contains('active');
+
+        // Если плеер активен, не обрабатываем навигацию по торрентам
+        if (isPlaybackActive) {
+            // Пропускаем обработку, если только это не специальные клавиши для плеера
+            // Они обрабатываются позже в секции плеера
+            return;
+        }
 
         if (AppState.currentScreen === 'torrents') {
             if (isKeyPressed('UP', key) || isKeyPressed('DOWN', key) ||
