@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 
-# Цвета для вывода (для PowerShell используем Write-Host с цветами)
+# Цвета для вывода
 $RED = 'Red'
 $GREEN = 'Green'
 $YELLOW = 'Yellow'
@@ -244,6 +244,7 @@ function Install-Vidaa {
         }
     }
     
+    # Создаем скрипт запуска
     $startScript = @"
 @echo off
 set NODE_ENV=production
@@ -254,12 +255,14 @@ start "Vidaa Server" "$installPath\myapp.exe"
 "@
     $startScript | Out-File -FilePath "$installPath\start_vidaa.bat" -Encoding ASCII
     
+    # Создаем скрипт остановки
     $stopScript = @"
 @echo off
 taskkill /F /IM myapp.exe
 "@
     $stopScript | Out-File -FilePath "$installPath\stop_vidaa.bat" -Encoding ASCII
     
+    # Создаем ярлык на рабочем столе
     $shortcutPath = [Environment]::GetFolderPath("Desktop") + "\Vidaa Server.lnk"
     $wshell = New-Object -ComObject WScript.Shell
     $shortcut = $wshell.CreateShortcut($shortcutPath)
@@ -268,6 +271,7 @@ taskkill /F /IM myapp.exe
     $shortcut.Description = "Запуск Vidaa сервера"
     $shortcut.Save()
     
+    # Настройка брандмауэра
     Write-Host "`nХотите открыть порт $selectedPort в брандмауэре для доступа из сети?" -ForegroundColor $YELLOW
     $configureFw = Read-Host "(y/n)"
     
@@ -278,6 +282,7 @@ taskkill /F /IM myapp.exe
         Write-Host "Брандмауэр не настроен. Сервер будет доступен только локально." -ForegroundColor $YELLOW
     }
     
+    # Создание службы Windows
     Write-Host "`nХотите создать службу Windows для автоматического запуска?" -ForegroundColor $YELLOW
     $createService = Read-Host "(y/n)"
     
@@ -286,6 +291,7 @@ taskkill /F /IM myapp.exe
         Start-ServiceIfCreated -ServiceName "VidaaServer"
     }
     
+    # Получаем IP адрес
     $ipAddress = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*" -and $_.IPAddress -notlike "169.254.*"} | Select-Object -First 1).IPAddress
     
     Write-Host "`n========================================" -ForegroundColor $GREEN
