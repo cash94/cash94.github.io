@@ -2294,11 +2294,6 @@ function setupFocusRescue() {
                 return focusEl(items[Math.max(0, idx - 1)] || focused);
             }
             if (direction === 'down') {
-                if (recommendationIndex + 1 < recommendationCards.length) {
-                    focusEl(recommendationCards[recommendationIndex + 1]);
-                    scrollToElement(recommendationCards[recommendationIndex + 1]);
-                    return true;
-                }
                 return true;
             }
             return true;
@@ -2324,7 +2319,7 @@ function setupFocusRescue() {
                 return true;
             }
             if (direction === 'left') {
-                return focusEl(backBtn || focused);
+                return true;
             }
             if (direction === 'right') {
                 return true;
