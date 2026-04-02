@@ -2578,10 +2578,7 @@ function setupFocusRescue() {
                 }
 
                 if (direction === 'down') {
-                    if (results.length > 0) {
-                        return focusEl(results[0]);
-                    }
-                    return true;
+                    return focusEl(results[Math.max(0, resultIndex - cols)] || focused);
                 }
 
                 return true;
