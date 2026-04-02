@@ -918,13 +918,159 @@ function createCatalogCard(item, index) {
     return card;
 }
 
+// Функция для форматирования даты
+function formatLastModifiedDate(lastModifiedISO) {
+    if (!lastModifiedISO) return 'Дата неизвестна';
+
+    const date = new Date(lastModifiedISO);
+    const now = new Date();
+    const diffHours = (now - date) / (1000 * 60 * 60);
+
+    // Форматируем дату
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+
+    let timeAgo = '';
+    if (diffHours < 1) {
+        const minutesAgo = Math.floor(diffHours * 60);
+        timeAgo = `${minutesAgo} мин. назад`;
+    } else if (diffHours < 24) {
+        timeAgo = `${Math.floor(diffHours)} ч. назад`;
+    } else {
+        const daysAgo = Math.floor(diffHours / 24);
+        timeAgo = `${daysAgo} дн. назад`;
+    }
+
+    return `${day}.${month}.${year} ${hours}:${minutes} (${timeAgo})`;
+}
+
+// Функция для проверки и обновления устаревшего каталога
+async function checkAndUpdateCatalogIfNeeded(catalogId, lastModifiedISO) {
+    if (!lastModifiedISO) return false;
+
+    const lastModified = new Date(lastModifiedISO);
+    const now = new Date();
+    const hoursDiff = (now - lastModified) / (1000 * 60 * 60);
+
+    // Если прошло более 6 часов
+    if (hoursDiff > 6) {
+        console.log(`🔄 Каталог ${catalogId} устарел (${Math.floor(hoursDiff)} ч.), обновляем...`);
+
+        try {
+            const response = await fetch(`${SERVER_URL}/api/catalog/${catalogId}/update`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    console.log(`✅ Каталог ${catalogId} успешно обновлен`);
+
+                    // Очищаем кэш каталога
+                    if (catalogCache.has(catalogId)) {
+                        catalogCache.delete(catalogId);
+                    }
+
+                    // Если это текущий каталог, перезагружаем его
+                    if (catalogState.currentCatalog === catalogId) {
+                        console.log(`🔄 Перезагружаем обновленный каталог ${catalogId}`);
+                        setTimeout(() => {
+                            loadCatalog(catalogId);
+                        }, 500);
+                    }
+
+                    return true;
+                }
+            }
+        } catch (error) {
+            console.error(`❌ Ошибка обновления каталога ${catalogId}:`, error);
+        }
+    }
+
+    return false;
+}
+
+// Модифицированная функция addCatalogHeader
 function addCatalogHeader(grid) {
     var headerElement = document.createElement('div');
     headerElement.className = 'catalog-header';
-    headerElement.style.cssText = '\n        grid-column: 1 / -1;\n        display: flex;\n        align-items: center;\n        justify-content: space-between;\n        margin-bottom: 20px;\n        padding: 15px 20px;\n        background: rgba(74, 158, 255, 0.1);\n        border-radius: 16px;\n        border: 1px solid rgba(74, 158, 255, 0.3);\n    ';
+    headerElement.style.cssText = `
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        padding: 15px 20px;
+        background: rgba(74, 158, 255, 0.1);
+        border-radius: 16px;
+        border: 1px solid rgba(74, 158, 255, 0.3);
+        flex-wrap: wrap;
+        gap: 10px;
+    `;
 
-    var currentCatalogName = (CATALOG_CONFIG[catalogState.currentCatalog] && CATALOG_CONFIG[catalogState.currentCatalog].name) || 'Каталог';
-    headerElement.innerHTML = '\n        <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">' + currentCatalogName + '</span>\n        <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">\n            ' + catalogState.items.length + ' / ' + (catalogState.totalItems || catalogState.items.length) + '\n        </span>\n    ';
+    var currentCatalogName = (CATALOG_CONFIG[catalogState.currentCatalog] &&
+        CATALOG_CONFIG[catalogState.currentCatalog].name) || 'Каталог';
+
+    // Загружаем информацию о каталоге с сервера
+    fetch(`${SERVER_URL}/api/catalogs`)
+        .then(response => response.json())
+        .then(async data => {
+            if (data.success && data.catalogs) {
+                const catalogInfo = data.catalogs.find(c => c.id === catalogState.currentCatalog);
+
+                if (catalogInfo && catalogInfo.lastModifiedISO) {
+                    const formattedDate = formatLastModifiedDate(catalogInfo.lastModifiedISO);
+
+                    // Проверяем и обновляем если нужно
+                    await checkAndUpdateCatalogIfNeeded(catalogInfo.id, catalogInfo.lastModifiedISO);
+
+                    // Обновляем заголовок с датой
+                    headerElement.innerHTML = `
+                        <div style="display: flex; flex-direction: column; gap: 5px;">
+                            <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
+                            <div style="display: flex; gap: 15px; font-size: 12px; color: #aaa;">
+                                <span>📅 ${formattedDate}</span>
+                            </div>
+                        </div>
+                        <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
+                            ${catalogState.items.length} / ${catalogState.totalItems || catalogState.items.length}
+                        </span>
+                    `;
+                } else {
+                    // Если нет информации о дате, показываем только счетчик
+                    headerElement.innerHTML = `
+                        <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
+                        <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
+                            ${catalogState.items.length} / ${catalogState.totalItems || catalogState.items.length}
+                        </span>
+                    `;
+                }
+            } else {
+                // Fallback если не удалось загрузить информацию
+                headerElement.innerHTML = `
+                    <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
+                    <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
+                        ${catalogState.items.length} / ${catalogState.totalItems || catalogState.items.length}
+                    </span>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка загрузки информации о каталоге:', error);
+            // Fallback при ошибке
+            headerElement.innerHTML = `
+                <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
+                <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
+                    ${catalogState.items.length} / ${catalogState.totalItems || catalogState.items.length}
+                </span>
+            `;
+        });
 
     grid.appendChild(headerElement);
 }
