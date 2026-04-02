@@ -13,7 +13,7 @@
 
   <!-- HLS.js библиотека (без версионирования, так как с CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"></script>
-
+  
   <!-- CSS стили с версионированием -->
   <script>
     var VERSION = Date.now();
@@ -22,72 +22,8 @@
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-chubby.css?v=' + VERSION + '">');
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/styles.css?v=' + VERSION + '">');
   </script>
-
-  <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap"
-    rel="stylesheet">
-  <!-- PWA Meta Tags -->
-  <link rel="manifest" href="https://cash94.github.io/msx/manifest.json">
-  <meta name="theme-color" content="#000000">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="TorrStream">
-  <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
-
-  <!-- Service Worker Registration -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function () {
-        navigator.serviceWorker.register('/msx/sw.js')
-          .then(function (registration) {
-            console.log('Service Worker зарегистрирован:', registration.scope);
-
-            // Проверка обновлений
-            registration.addEventListener('updatefound', function () {
-              const newWorker = registration.installing;
-              newWorker.addEventListener('statechange', function () {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  // Показать уведомление о доступном обновлении
-                  showUpdateNotification();
-                }
-              });
-            });
-          })
-          .catch(function (error) {
-            console.log('Ошибка регистрации Service Worker:', error);
-          });
-      });
-    }
-
-    function showUpdateNotification() {
-      // Создаем уведомление об обновлении
-      const notification = document.createElement('div');
-      notification.style.cssText = `
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #1e1e2d;
-      color: white;
-      padding: 12px 20px;
-      border-radius: 30px;
-      border: 1px solid #4a9eff;
-      z-index: 10000;
-      display: flex;
-      gap: 15px;
-      align-items: center;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    `;
-      notification.innerHTML = `
-      <span>🔄 Доступно обновление!</span>
-      <button onclick="location.reload()" style="background: #4a9eff; border: none; color: white; padding: 5px 15px; border-radius: 20px; cursor: pointer;">Обновить</button>
-    `;
-      document.body.appendChild(notification);
-
-      setTimeout(() => {
-        if (notification.parentNode) notification.remove();
-      }, 10000);
-    }
-  </script>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap" rel="stylesheet">
 </head>
 
 <body class="tv-mode">
