@@ -777,8 +777,10 @@ body {
   position: relative;
   margin: 18.42px;
   border-radius: 14.89px;
-  background: #1e1e2d;
-  border: 1px solid #4a9eff;
+  background: rgba(30, 30, 45, 0.85); /* Прозрачный фон с затемнением */
+  backdrop-filter: blur(10px); /* Размытие для лучшей читаемости текста */
+  border: 1px solid rgba(74, 158, 255, 0.3); /* Более прозрачная граница */
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); /* Тень для глубины */
 }
 
 .catalog-detail-extra.hidden {
