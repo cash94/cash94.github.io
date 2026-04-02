@@ -11,17 +11,7 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <link rel="icon" type="image/x-icon" href="https://cash94.github.io/msx/favicon16.ico">
 
-  <!-- PWA Meta Tags (исправленные) -->
-  <meta name="theme-color" content="#000000">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="TorrStream">
-  
-  <!-- Иконки для PWA -->
-  <link rel="apple-touch-icon" href="https://cash94.github.io/msx/icons/icon-192x192.png">
-  
-  <!-- HLS.js библиотека -->
+  <!-- HLS.js библиотека (без версионирования, так как с CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"></script>
 
   <!-- CSS стили с версионированием -->
@@ -33,7 +23,71 @@
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/styles.css?v=' + VERSION + '">');
   </script>
 
-  <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap"
+    rel="stylesheet">
+  <!-- PWA Meta Tags -->
+  <link rel="manifest" href="https://cash94.github.io/msx/manifest.json">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="TorrStream">
+  <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/msx/sw.js')
+          .then(function (registration) {
+            console.log('Service Worker зарегистрирован:', registration.scope);
+
+            // Проверка обновлений
+            registration.addEventListener('updatefound', function () {
+              const newWorker = registration.installing;
+              newWorker.addEventListener('statechange', function () {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // Показать уведомление о доступном обновлении
+                  showUpdateNotification();
+                }
+              });
+            });
+          })
+          .catch(function (error) {
+            console.log('Ошибка регистрации Service Worker:', error);
+          });
+      });
+    }
+
+    function showUpdateNotification() {
+      // Создаем уведомление об обновлении
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e1e2d;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 30px;
+      border: 1px solid #4a9eff;
+      z-index: 10000;
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    `;
+      notification.innerHTML = `
+      <span>🔄 Доступно обновление!</span>
+      <button onclick="location.reload()" style="background: #4a9eff; border: none; color: white; padding: 5px 15px; border-radius: 20px; cursor: pointer;">Обновить</button>
+    `;
+      document.body.appendChild(notification);
+
+      setTimeout(() => {
+        if (notification.parentNode) notification.remove();
+      }, 10000);
+    }
+  </script>
 </head>
 
 <body class="tv-mode">
@@ -84,8 +138,14 @@
     <!-- Раздел TorrServer с торрентами -->
     <div id="torrserver-section" style="display: none;">
       <div class="section-header">
+        <!-- Кнопка "Назад" для каталога (изначально скрыта) -->
+        <!-- <div class="back-btn" id="back-from-catalog" style="display: none;">← Назад к списку</div> -->
+        <!-- Пустой div слева для баланса -->
         <div class="placeholder-btn"></div>
+
         <div class="section-title-header">TorrStream</div>
+
+        <!-- Кнопка настроек справа (на месте refresh-torrents) -->
         <div class="settings-btn" id="settings-btn">Настройки</div>
       </div>
 
@@ -97,10 +157,10 @@
         <button class="view-tab" id="tab-donate">Донат</button>
       </div>
 
-      <!-- Сетка с торрентами -->
+      <!-- Сетка с торрентами (всегда видна на фоне) -->
       <div id="torrents-grid"></div>
 
-      <!-- Контейнер для результатов поиска -->
+      <!-- Контейнер для результатов поиска (оверлей поверх сетки) -->
       <div id="search-overlay" class="search-overlay hidden">
         <div class="search-overlay-header search-screen-toolbar">
           <input type="text" class="search-input-screen" id="search-query" placeholder="Поиск фильмов и сериалов...">
@@ -190,13 +250,13 @@
     <div class="files-list" id="files-list"></div>
   </div>
 
-  <!-- Оверлей воспроизведения -->
+  <!-- Оверлей воспроизведения (блокировка интерфейса) -->
   <div id="playback-overlay">
     <div class="playback-spinner"></div>
     <div class="playback-text">Воспроизведение...</div>
   </div>
 
-  <!-- Загрузочный оверлей -->
+  <!-- Загрузочный оверлей для торрентов -->
   <div id="loading-overlay">
     <div class="loading-spinner"></div>
     <div class="loading-text">Загрузка...</div>
@@ -205,7 +265,9 @@
   <!-- Плеер -->
   <div id="player-screen">
     <video id="video-player" autoplay playsinline crossorigin="anonymous" preload="auto"></video>
+    <!-- Индикатор скорости перемотки -->
     <div id="seek-speed-indicator" class="seek-speed-indicator hidden"></div>
+    <!-- Название текущего воспроизводимого файла -->
     <div id="player-title" class="player-title hidden">Загрузка...</div>
     <div id="player-overlay">
       <div id="controls-container">
@@ -217,6 +279,7 @@
 
         <div class="button-row">
           <div class="left-buttons">
+            <!-- Кнопки переключения серий -->
             <button class="control-btn" id="prev-episode-btn" title="Предыдущая серия">
               <i class="fi fi-rr-step-backward"></i>
             </button>
@@ -226,9 +289,12 @@
             <button class="control-btn" id="next-episode-btn" title="Следующая серия">
               <i class="fi fi-rr-step-forward"></i>
             </button>
+
+            <!-- Кнопка выбора аудиодорожек -->
             <button class="control-btn" id="audio-btn" title="Аудиодорожки">
               <i class="fi fi-rr-music-alt"></i>
             </button>
+            <!-- Кнопка выбора серий -->
             <button class="control-btn" id="episodes-btn" title="Список серий">
               <i class="fi fi-rr-database"></i>
             </button>
@@ -275,10 +341,12 @@
     <div id="buffer-stats">Загрузка...</div>
     <div id="player-hint">← Назад для выхода</div>
     <div id="toggle-buffer-btn" title="показать/скрыть буфер"><i class="fi fi-rr-eye"></i></div>
+
+    <!-- Кнопка выхода из плеера -->
     <div id="exit-player-btn" title="Выйти (ESC)">←</div>
   </div>
 
-  <!-- Загрузчик модулей -->
+  <!-- Загрузчик модулей с индикатором -->
   <div id="module-loader" style="
   position: fixed;
   top: 0;
@@ -301,21 +369,32 @@
     animation: spin 1s linear infinite;
     margin-bottom: 20px;
   "></div>
-    <div style="font-size: 18px; color: #fff; margin-bottom: 10px;">TorrStream</div>
-    <div style="font-size: 12px; color: #aaa;">Загрузка модулей...</div>
+    <div style="
+    font-size: 18px;
+    color: #fff;
+    margin-bottom: 10px;
+  ">TorrStream</div>
+    <div style="
+    font-size: 12px;
+    color: #aaa;
+  ">Загрузка модулей...</div>
   </div>
 
   <style>
     @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
     }
   </style>
 
   <script>
     var VERSION = Date.now();
 
-    // Загрузка JS модулей
     document.write('<script src="https://cash94.github.io/msx/js/config.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/tmdb.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/torrents.js?v=' + VERSION + '"><\/script>');
@@ -325,7 +404,7 @@
     document.write('<script src="https://cash94.github.io/msx/js/donate.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/app.js?v=' + VERSION + '"><\/script>');
 
-    // Скрываем загрузчик
+    // Скрываем загрузчик после инициализации
     document.write('<script>');
     document.write('  window.addEventListener("load", function() {');
     document.write('    setTimeout(function() {');
@@ -339,31 +418,8 @@
     document.write('    }, 1000);');
     document.write('  });');
     document.write('<\/script>');
-    
-    // ИСПРАВЛЕННАЯ РЕГИСТРАЦИЯ SERVICE WORKER
-    document.write('<script>');
-    document.write('  if ("serviceWorker" in navigator && window.location.protocol === "https:") {');
-    document.write('    window.addEventListener("load", function() {');
-    document.write('      var isGitHubPages = window.location.hostname === "cash94.github.io";');
-    document.write('      ');
-    document.write('      if (!isGitHubPages) {');
-    document.write('        console.log("PWA: Регистрация Service Worker отключена (не GitHub Pages)");');
-    document.write('        return;');
-    document.write('      }');
-    document.write('      ');
-    document.write('      navigator.serviceWorker.register("/msx/sw.js")');
-    document.write('        .then(function(registration) {');
-    document.write('          console.log("✅ Service Worker зарегистрирован:", registration.scope);');
-    document.write('        })');
-    document.write('        .catch(function(error) {');
-    document.write('          console.log("❌ Ошибка регистрации Service Worker:", error);');
-    document.write('        });');
-    document.write('    });');
-    document.write('  } else {');
-    document.write('    console.log("Service Worker не поддерживается или используется HTTP");');
-    document.write('  }');
-    document.write('<\/script>');
   </script>
+
 
 </body>
 
