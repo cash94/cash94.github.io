@@ -26,7 +26,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap"
     rel="stylesheet">
   <!-- PWA Meta Tags -->
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="/msx/manifest.json">
   <meta name="theme-color" content="#000000">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -37,7 +37,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
-        navigator.serviceWorker.register('/sw.js')
+        navigator.serviceWorker.register('/msx/sw.js')
           .then(function (registration) {
             console.log('Service Worker зарегистрирован:', registration.scope);
 
