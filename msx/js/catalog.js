@@ -1035,7 +1035,7 @@ function addCatalogHeader(grid) {
                         <div style="display: flex; flex-direction: column; gap: 5px;">
                             <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
                             <div style="display: flex; gap: 15px; font-size: 12px; color: #aaa;">
-                                <span>📅 ${formattedDate}</span>
+                                <span>${formattedDate}</span>
                             </div>
                         </div>
                         <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
