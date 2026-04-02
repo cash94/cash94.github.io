@@ -1450,6 +1450,7 @@ async function showCatalogDetail(item, index, posterUrl) {
         backdropEl.style.backgroundImage = '';
     }
 
+    // Актеры - грид на 12 колонок
     if (actorsWrap && actorsEl) {
         actorsEl.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>';
         actorsWrap.classList.remove('hidden');
@@ -1457,25 +1458,32 @@ async function showCatalogDetail(item, index, posterUrl) {
         var actors = await fetchCatalogActors(item);
 
         if (actors.length > 0) {
-            var actorsHtml = '';
+            var actorsGridTemplateColumns = 'repeat(12, 1fr)';
+            var actorsHtml = '<div class="catalog-detail-actors-grid" style="display: grid; grid-template-columns: ' + actorsGridTemplateColumns + '; gap: 20px;">';
+
             for (var j = 0; j < actors.length; j++) {
                 var actor = actors[j];
                 var profileUrl = actor.profilePath ? 'https://nmtmdb.duckdns.org/t/p/w185' + actor.profilePath : null;
                 actorsHtml += '\n                    <div class="catalog-actor-card" data-actor-id="' + actor.id + '">\n                        <div class="catalog-actor-photo">\n                            ' + (profileUrl ? '<img src="' + profileUrl + '" alt="' + escapeHtml(actor.name) + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') + '\n                        </div>\n                        <div class="catalog-actor-info">\n                            <div class="catalog-actor-name">' + escapeHtml(actor.name) + '</div>\n                            <div class="catalog-actor-character">' + escapeHtml(actor.character || '') + '</div>\n                        </div>\n                    </div>\n                ';
             }
+
+            actorsHtml += '</div>';
             actorsEl.innerHTML = actorsHtml;
         } else {
             actorsEl.innerHTML = '<div class="catalog-empty">Актеры не найдены</div>';
         }
     }
 
+    // Рекомендации - грид на 12 колонок
     if (recommendationsWrap && recommendationsEl && source.recommendations && source.recommendations.length > 0) {
         recommendationsEl.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка похожих фильмов...</span></div>';
         recommendationsWrap.classList.remove('hidden');
 
         var recommendations = source.recommendations.slice(0, 12);
 
-        var recHtml = '';
+        var recGridTemplateColumns = 'repeat(12, 1fr)';
+        var recHtml = '<div class="catalog-recommendations-grid" style="display: grid; grid-template-columns: ' + recGridTemplateColumns + '; gap: 20px;">';
+
         for (var k = 0; k < recommendations.length; k++) {
             var rec = recommendations[k];
             var recPosterUrl = rec.poster_path ? 'https://nmtmdb.duckdns.org/t/p/w185' + rec.poster_path : null;
@@ -1485,6 +1493,8 @@ async function showCatalogDetail(item, index, posterUrl) {
 
             recHtml += '\n                <div class="catalog-recommendation-card" data-tmdb-id="' + rec.id + '" data-media-type="' + mediaType + '" data-title="' + escapeHtml(recTitle) + '">\n                    <div class="catalog-recommendation-poster">\n                        ' + (recPosterUrl ? '<img src="' + recPosterUrl + '" alt="' + escapeHtml(recTitle) + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-recommendation-no-poster\\\'></div>\'">' : '<div class="catalog-recommendation-no-poster"></div>') + '\n                        ' + (recRating ? '<div class="catalog-recommendation-rating">' + recRating + '</div>' : '') + '\n                    </div>\n                    <div class="catalog-recommendation-info">\n                        <div class="catalog-recommendation-title">' + escapeHtml(recTitle) + '</div>\n                        ' + (recYear ? '<div class="catalog-recommendation-year">' + recYear + '</div>' : '') + '\n                    </div>\n                </div>\n            ';
         }
+
+        recHtml += '</div>';
         recommendationsEl.innerHTML = recHtml;
 
         var recCards = recommendationsEl.querySelectorAll('.catalog-recommendation-card');
@@ -1550,12 +1560,14 @@ async function showCatalogDetail(item, index, posterUrl) {
     }
     videos = videos.slice(0, 6);
 
+    // Видео/трейлеры - грид на 6 колонок
     if (videos.length > 0) {
         trailersWrap.classList.remove('hidden');
         trailersEl.classList.add('catalog-detail-trailers-grid');
         trailersEl.classList.remove('catalog-detail-trailers-links');
 
-        trailersEl.style.cssText = '\n            display: grid;\n            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));\n            gap: 16px;\n            padding: 10px;\n        ';
+        var trailersGridTemplateColumns = 'repeat(6, 1fr)';
+        trailersEl.style.cssText = '\n            display: grid;\n            grid-template-columns: ' + trailersGridTemplateColumns + ';\n            gap: 16px;\n            padding: 10px;\n        ';
 
         var trailersHtml = '';
         for (var n = 0; n < videos.length; n++) {
