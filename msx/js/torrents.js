@@ -1750,9 +1750,6 @@ async function addTorrentToServer(magnet, hash, searchResult) {
     // Добавляем постер, если нашли
     if (poster) {
       requestBody.poster = poster;
-      if (poster && typeof cachePoster === 'function') {
-        cachePoster(poster, hash);
-      }
       console.log('Добавляем постер в запрос');
     }
 
