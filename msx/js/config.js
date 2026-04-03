@@ -8,6 +8,8 @@ var AppState = {
   authEnabled: false,
   serverOnline: false,
   clientId: null,
+  userlogin: '',
+  userpassword: '',
 
   // Данные торрентов
   torrents: [],
@@ -78,7 +80,12 @@ function getAuthHeaders() {
   if (AppState.authEnabled) {
     var login = document.getElementById('auth-login').value.trim();
     var password = document.getElementById('auth-password').value.trim();
-    if (login && password) {
+
+    AppState.userlogin = login;
+    AppState.userpassword = password;
+    if (AppState.userlogin && AppState.userpassword) {
+      headers['Authorization'] = 'Basic ' + btoa(AppState.userlogin + ':' + AppState.userpassword);
+    } else if (login && password) {
       headers['Authorization'] = 'Basic ' + btoa(login + ':' + password);
     }
   }
