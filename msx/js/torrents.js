@@ -853,20 +853,22 @@ async function loadTorrents(silent) {
 
   try {
     console.log('📥 Загрузка списка торрентов с сервера...');
-    var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ action: 'list' })
-    });
+    var headers = {
+      'Content-Type': 'application/json',
+    };
 
     var authHeaders = getAuthHeaders();
     for (var key in authHeaders) {
       if (authHeaders.hasOwnProperty(key)) {
-        response.headers[key] = authHeaders[key];
+        headers[key] = authHeaders[key];
       }
     }
+
+    var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({ action: 'list' })
+    });
 
     if (!response.ok) {
       throw new Error('Ошибка загрузки: HTTP ' + response.status);
