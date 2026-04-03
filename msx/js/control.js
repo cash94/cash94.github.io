@@ -2917,10 +2917,10 @@ function setupFocusRescue() {
     setTimeout(function () { ensureTorrentFocus(true); }, 120);
 }
 
-window.addEventListener('popstate', function(e) {
+window.addEventListener('popstate', function (e) {
     // Блокировка если нужно
     if (window.swipeBlocked) return;
-        
+
     // Создаем событие клавиши BACK для существующего обработчика
     var backEvent = new KeyboardEvent('keydown', {
         keyCode: 27,  // ESC/BACK
@@ -2929,15 +2929,21 @@ window.addEventListener('popstate', function(e) {
         cancelable: true
     });
     document.dispatchEvent(backEvent);
+
+    // КРИТИЧЕСКИ ВАЖНО: добавляем новое состояние после обработки свайпа
+    // чтобы следующий свайп сработал так же, а не закрыл приложение
+    setTimeout(function () {
+        window.history.pushState({ page: 'main' }, '');
+    }, 100);
 });
 
-// Добавляем состояние в историю
-window.history.pushState({page: 'main'}, '');
+// Добавляем начальное состояние в историю
+window.history.pushState({ page: 'main' }, '');
 
 // Функция для блокировки свайпов на время
-window.blockSwipe = function(ms) {
+window.blockSwipe = function (ms) {
     window.swipeBlocked = true;
-    setTimeout(function() {
+    setTimeout(function () {
         window.swipeBlocked = false;
     }, ms || 500);
 };
