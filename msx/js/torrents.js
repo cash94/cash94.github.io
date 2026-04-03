@@ -749,6 +749,9 @@ async function checkServer(shouldLoadTorrents) {
   var urlInput = document.getElementById('torrserver-url');
   var statusIndicator = document.getElementById('status-indicator');
   var statusText = document.getElementById('status-text');
+  var authCheckbox = document.getElementById('auth-checkbox');
+  var authLogin = document.getElementById('auth-login');
+  var authPassword = document.getElementById('auth-password');
 
   var url = urlInput.value.trim();
   if (!url) {
@@ -762,9 +765,25 @@ async function checkServer(shouldLoadTorrents) {
 
   try {
     var testUrl = url.indexOf('/') === url.length - 1 ? url.slice(0, -1) : url;
+
+    // Формируем заголовки с учетом Basic Auth
+    var headers = getAuthHeaders();
+
+    // Если включена авторизация, добавляем Basic Auth
+    if (authCheckbox && authCheckbox.checked) {
+      var login = authLogin ? authLogin.value.trim() : '';
+      var password = authPassword ? authPassword.value : '';
+
+      if (login && password) {
+        var credentials = btoa(login + ':' + password);
+        headers['Authorization'] = 'Basic ' + credentials;
+        console.log('🔐 Используется Basic Auth для проверки сервера');
+      }
+    }
+
     var response = await fetch(testUrl + '/echo', {
       method: 'GET',
-      headers: getAuthHeaders()
+      headers: headers
     });
 
     if (response.ok) {
@@ -774,6 +793,15 @@ async function checkServer(shouldLoadTorrents) {
         statusText.textContent = 'Сервер доступен ✓';
         AppState.currentTorrserverUrl = testUrl;
         AppState.serverOnline = true;
+
+        // Сохраняем Basic Auth в AppState при успешной проверке
+        if (authCheckbox && authCheckbox.checked) {
+          AppState.authEnabled = true;
+          AppState.authLogin = authLogin ? authLogin.value.trim() : '';
+          AppState.authPassword = authPassword ? authPassword.value : '';
+        } else {
+          AppState.authEnabled = false;
+        }
 
         // Сохраняем конфигурацию после успешной проверки
         await saveClientConfig();
@@ -789,6 +817,7 @@ async function checkServer(shouldLoadTorrents) {
 
     throw new Error('Сервер не отвечает');
   } catch (error) {
+    console.error('Ошибка проверки сервера:', error);
     statusIndicator.className = 'status-indicator status-offline';
     statusText.textContent = 'Сервер недоступен ✗';
     AppState.serverOnline = false;
