@@ -2924,7 +2924,7 @@ window.addEventListener('popstate', function (e) {
     // Создаем событие клавиши BACK для существующего обработчика
     var backEvent = new KeyboardEvent('keydown', {
         keyCode: 27,  // ESC/BACK
-        //key: 'Escape',
+        key: 'Escape',
         bubbles: true,
         cancelable: true
     });
