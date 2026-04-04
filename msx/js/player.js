@@ -2432,6 +2432,75 @@ function exitPlayer() {
   }
 }
 
+function setupPageUnloadHandler() {
+  // Обработчик закрытия страницы/вкладки
+  window.addEventListener('beforeunload', function () {
+    console.log('🔄 Страница закрывается, останавливаем HLS поток...');
+
+    // Синхронный запрос на остановку потока
+    if (AppState.currentStreamId) {
+      // Используем sendBeacon для гарантированной отправки даже при закрытии
+      const blob = new Blob([], { type: 'application/json' });
+      navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, blob);
+
+      // Также пытаемся отправить обычный fetch (но он может не успеть)
+      fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
+        method: 'POST',
+        keepalive: true  // Важно! Позволяет запросу выполняться после закрытия страницы
+      }).catch(() => { });
+    }
+
+    // Сохраняем таймкод при закрытии
+    if (currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
+      const timecodeData = JSON.stringify({
+        hash: currentTimecodeData.hash,
+        fileId: currentTimecodeData.fileId,
+        timecode: currentTimecodeData.timecode,
+        duration: currentTimecodeData.duration
+      });
+
+      navigator.sendBeacon(SERVER_URL + '/api/timecode/save', timecodeData);
+    }
+  });
+
+  // Также обрабатываем событие pagehide (для мобильных браузеров)
+  window.addEventListener('pagehide', function () {
+    console.log('🔄 Страница скрывается, останавливаем HLS поток...');
+
+    if (AppState.currentStreamId) {
+      navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, '');
+    }
+
+    if (currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
+      const timecodeData = JSON.stringify({
+        hash: currentTimecodeData.hash,
+        fileId: currentTimecodeData.fileId,
+        timecode: currentTimecodeData.timecode,
+        duration: currentTimecodeData.duration
+      });
+
+      navigator.sendBeacon(SERVER_URL + '/api/timecode/save', timecodeData);
+    }
+  });
+
+  // Для visibilitychange (переключение вкладок) - останавливаем видео для экономии ресурсов
+  document.addEventListener('visibilitychange', function () {
+    const videoPlayer = document.getElementById('video-player');
+    if (document.hidden && videoPlayer && !videoPlayer.paused) {
+      console.log('👁️ Вкладка скрыта, ставим видео на паузу');
+      videoPlayer.pause();
+      updatePlayPauseButton();
+    }
+  });
+}
+
+// Вызовите эту функцию при загрузке
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', setupPageUnloadHandler);
+} else {
+  setupPageUnloadHandler();
+}
+
 // Делаем функции доступными глобально
 window.showDetailView = showDetailView;
 window.setupEpisodesButton = setupEpisodesButton;
