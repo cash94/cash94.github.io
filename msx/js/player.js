@@ -2433,6 +2433,28 @@ function exitPlayer() {
 }
 
 function setupPageUnloadHandler() {
+
+  // Добавляем событие unload - оно срабатывает даже при закрытии приложения
+  window.addEventListener('unload', function () {
+    console.log('🔄 Приложение закрывается, останавливаем HLS поток...');
+
+    // Синхронный вызов через sendBeacon (самый надежный)
+    if (AppState && AppState.currentStreamId) {
+      navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, '');
+    }
+
+    // Сохраняем таймкод
+    if (currentTimecodeData && currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
+      const timecodeData = JSON.stringify({
+        hash: currentTimecodeData.hash,
+        fileId: currentTimecodeData.fileId,
+        timecode: currentTimecodeData.timecode,
+        duration: currentTimecodeData.duration
+      });
+      navigator.sendBeacon(SERVER_URL + '/api/timecode/save', timecodeData);
+    }
+  });
+  
   // Обработчик закрытия страницы/вкладки
   window.addEventListener('beforeunload', function () {
     console.log('🔄 Страница закрывается, останавливаем HLS поток...');
