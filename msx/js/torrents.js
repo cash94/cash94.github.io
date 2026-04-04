@@ -1321,7 +1321,7 @@ async function searchTorrentsLegacy(query) {
   }
 
   var encodedQuery = encodeURIComponent(query.trim());
-  var searchUrl = 'https://nmjc.duckdns.org/api/v1.0/torrents?search=' + encodedQuery + '&apikey=null&exact=true';
+  var searchUrl = 'https://jac.red/api/v1.0/torrents?search=' + encodedQuery + '&apikey=null&exact=true';
 
   showLoading('Поиск...');
 
