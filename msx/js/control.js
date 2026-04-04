@@ -2924,7 +2924,7 @@ window.addEventListener('popstate', function (e) {
     // Создаем событие клавиши BACK для существующего обработчика
     var backEvent = new KeyboardEvent('keydown', {
         keyCode: 27,  // ESC/BACK
-        key: 'Escape',
+        //key: 'Escape',
         bubbles: true,
         cancelable: true
     });
@@ -2934,7 +2934,7 @@ window.addEventListener('popstate', function (e) {
     // чтобы следующий свайп сработал так же, а не закрыл приложение
     setTimeout(function () {
         window.history.pushState({ page: 'main' }, '');
-    }, 100);
+    }, 150);
 });
 
 // Добавляем начальное состояние в историю
