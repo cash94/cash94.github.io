@@ -2058,6 +2058,14 @@
         "category": "General",
         "versions": [
             {
+                "version": "8.0.0.0",
+                "changelog": "- Fix invalid operation exception (#59) @balciseri\n- Revert \"Update dependency Microsoft.Extensions.Http to v10\" (#54) @Shadowghost\n\n### Dependency updates ###\n- Update dependency Microsoft.Extensions.Http to v10 (#52) @[renovate[bot]](https://github.com/apps/renovate)\n- Update dependency Microsoft.Extensions.Http to 9.0.11 (#49) @[renovate[bot]](https://github.com/apps/renovate)",
+                "targetAbi": "10.11.7.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/simkl/simkl_8.0.0.0.zip",
+                "checksum": "0cef8908b50ad5b2642792de1f233dfe",
+                "timestamp": "2026-04-05T00:17:08Z"
+            },
+            {
                 "version": "7.0.0.0",
                 "changelog": "- Jellyfin 10.11 support (#47) @crobibero\n- Change Error Logging (#37) @JamsRepos",
                 "targetAbi": "10.11.0.0",
