@@ -375,6 +375,7 @@ function updatePlayPauseButton() {
 
   if (videoPlayer.paused) {
     btn.innerHTML = '<i class="fi fi-rr-play"></i>';
+    startHeartbeat();
   } else {
     btn.innerHTML = '<i class="fi fi-rr-pause"></i>';
   }
