@@ -25,6 +25,33 @@ var currentAudioTracks = [];
 var currentAudioTrack = 0;
 var currentFileInfo = null;
 
+var heartbeatInterval = null;
+
+// Функции heartbeat
+function startHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+
+  heartbeatInterval = setInterval(function () {
+    if (AppState.currentStreamId && AppState.currentScreen === 'player') {
+      fetch(SERVER_URL + '/hls/activity/' + AppState.currentStreamId, {
+        method: 'POST'
+      })['catch'](function (e) {
+        console.log('⚠️ Heartbeat error:', e);
+      });
+    }
+  }, 30000);
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
+
 // Скрываем кнопку серий по умолчанию
 document.addEventListener('DOMContentLoaded', function () {
   var episodesBtn = document.getElementById('episodes-btn');
@@ -1136,6 +1163,8 @@ async function switchToEpisode(index, fileId) {
   console.log('🔄 Переключение на серию ' + (index + 1) + ', fileId: ' + fileId);
   console.log('Текущий hash:', currentTorrentHash);
 
+  stopHeartbeat();
+
   if (!currentTorrentHash || !AppState.currentTorrserverUrl) {
     console.error('❌ Нет hash или URL сервера');
     return;
@@ -1690,6 +1719,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
                 clearInterval(nearEndCheckInterval);
               }
               startNearEndCheck();
+              startHeartbeat();
             }
           }
         };
@@ -1723,6 +1753,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               clearInterval(nearEndCheckInterval);
             }
             startNearEndCheck();
+            startHeartbeat();
           }
         }, 30000);
       });
@@ -1816,6 +1847,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
                 clearInterval(nearEndCheckInterval);
               }
               startNearEndCheck();
+              startHeartbeat();
             }
           }
         };
@@ -1848,6 +1880,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               clearInterval(nearEndCheckInterval);
             }
             startNearEndCheck();
+            startHeartbeat();
           }
         }, 30000);
 
@@ -1917,6 +1950,8 @@ function showDetailView() {
       updateDetailProgress(AppState.currentDetailItem);
     }
   });
+
+  stopHeartbeat();
 
   // Останавливаем проверку приближения к концу видео
   if (nearEndCheckInterval) {
@@ -2347,6 +2382,8 @@ async function loadAudioPreference(hash, fileId) {
 async function handleVideoEnded() {
   console.log('🏁 Видео завершено');
 
+  stopHeartbeat();
+
   // Сохраняем таймкод перед переключением
   await saveTimecodeToServer();
 
@@ -2454,7 +2491,7 @@ function setupPageUnloadHandler() {
       navigator.sendBeacon(SERVER_URL + '/api/timecode/save', timecodeData);
     }
   });
-  
+
   // Обработчик закрытия страницы/вкладки
   window.addEventListener('beforeunload', function () {
     console.log('🔄 Страница закрывается, останавливаем HLS поток...');
