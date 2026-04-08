@@ -58,14 +58,30 @@ set /p "extractPath=Введите путь для распаковки (Enter �
 if "%extractPath%"=="" set "extractPath=%USERPROFILE%\Desktop"
 
 echo Распаковка TorrStream...
-powershell -Command "Expand-Archive -Path '%TEMP%\TorrStream.zip' -DestinationPath '%extractPath%' -Force"
+powershell -Command "Expand-Archive -Path '%TEMP%\TorrStream.zip' -DestinationPath '%TEMP%\TorrStream_extracted' -Force"
+
+:: Копирование TorrStream-windows-x64.exe в указанную папку
+copy /Y "%TEMP%\TorrStream_extracted\TorrStream-windows-x64.exe" "%extractPath%\" >nul
+
+:: Копирование pssuspend.exe в C:\Vidaa\ffmpeg
+if exist "%TEMP%\TorrStream_extracted\pssuspend.exe" (
+    copy /Y "%TEMP%\TorrStream_extracted\pssuspend.exe" "C:\Vidaa\ffmpeg\" >nul
+    echo [OK] pssuspend.exe помещен в C:\Vidaa\ffmpeg
+) else (
+    echo [ПРЕДУПРЕЖДЕНИЕ] pssuspend.exe не найден в архиве
+)
+
+:: Очистка временных файлов
+rmdir /S /Q "%TEMP%\TorrStream_extracted" >nul 2>&1
 del /Q "%TEMP%\TorrStream.zip" >nul
 
 echo.
 echo ========================================
 echo     Установка завершена!
 echo ========================================
-echo TorrStream распакован в: %extractPath%
-echo Запустите: TorrStream-windows-x64.exe
+echo TorrStream-windows-x64.exe распакован в: %extractPath%
+echo pssuspend.exe помещен в: C:\Vidaa\ffmpeg
+echo.
+echo Запустите: %extractPath%\TorrStream-windows-x64.exe
 echo.
 pause
