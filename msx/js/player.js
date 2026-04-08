@@ -26,6 +26,10 @@ var currentAudioTrack = 0;
 var currentFileInfo = null;
 
 var heartbeatInterval = null;
+// Переменные для паузы
+var pauseStartTime = null;
+var pauseTimer = null;
+var PAUSE_THRESHOLD = 60000; // 1 минута
 
 // Функции heartbeat
 function startHeartbeat() {
@@ -375,9 +379,45 @@ function updatePlayPauseButton() {
 
   if (videoPlayer.paused) {
     btn.innerHTML = '<i class="fi fi-rr-play"></i>';
-    startHeartbeat();
+
+    // Запоминаем время начала паузы
+    pauseStartTime = Date.now();
+
+    // Запускаем таймер на 1 минуту
+    if (pauseTimer) clearTimeout(pauseTimer);
+    pauseTimer = setTimeout(async function () {
+      console.log('⏸️ Пауза больше минуты, приостанавливаем поток');
+      await fetch(SERVER_URL + '/api/stream/pause', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ streamId: AppState.currentStreamId })
+      });
+    }, PAUSE_THRESHOLD);
+
   } else {
     btn.innerHTML = '<i class="fi fi-rr-pause"></i>';
+
+    // Проверяем сколько длилась пауза
+    if (pauseStartTime) {
+      var pauseDuration = Date.now() - pauseStartTime;
+
+      if (pauseDuration >= PAUSE_THRESHOLD) {
+        // Пауза была больше минуты - возобновляем поток
+        console.log('▶️ Пауза была ' + (pauseDuration / 1000).toFixed(0) + ' сек, возобновляем поток');
+        fetch(SERVER_URL + '/api/stream/resume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ streamId: AppState.currentStreamId })
+        }).catch(e => console.error('Ошибка возобновления:', e));
+      } else {
+        console.log('▶️ Короткая пауза (' + (pauseDuration / 1000).toFixed(0) + ' сек), возобновление не требуется');
+      }
+    }
+
+    // Сбрасываем таймеры
+    if (pauseTimer) clearTimeout(pauseTimer);
+    pauseStartTime = null;
+    pauseTimer = null;
   }
 }
 
