@@ -26,10 +26,7 @@ var currentAudioTrack = 0;
 var currentFileInfo = null;
 
 var heartbeatInterval = null;
-// Переменные для паузы
-var pauseStartTime = null;
-var pauseTimer = null;
-var PAUSE_THRESHOLD = 60000; // 1 минута
+var currentBufferAhead = 0; 
 
 // Функции heartbeat
 function startHeartbeat() {
@@ -373,48 +370,73 @@ function updateTimeDisplay() {
   }
 }
 
+// Вспомогательная функция для определения задержки паузы
+function getPauseDelay() {
+  if (currentBufferAhead > 28) {
+    return 0; // сразу
+  } else if (currentBufferAhead > 20) {
+    return 30000; // 30 секунд
+  } else {
+    return PAUSE_THRESHOLD; // 60 секунд
+  }
+}
+
 function updatePlayPauseButton() {
   var btn = document.getElementById('play-pause-btn');
   var videoPlayer = document.getElementById('video-player');
 
   if (videoPlayer.paused) {
     btn.innerHTML = '<i class="fi fi-rr-play"></i>';
-
-    // Запоминаем время начала паузы
+    
     pauseStartTime = Date.now();
-
-    // Запускаем таймер на 1 минуту
+    
+    var delay = getPauseDelay();
+    
     if (pauseTimer) clearTimeout(pauseTimer);
-    pauseTimer = setTimeout(async function () {
-      console.log('⏸️ Пауза больше минуты, приостанавливаем поток');
-      await fetch(SERVER_URL + '/api/stream/pause', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ streamId: AppState.currentStreamId })
-      });
-    }, PAUSE_THRESHOLD);
-
+    
+    console.log(`⏰ Планируем паузу через ${delay / 1000} сек (буфер: ${currentBufferAhead.toFixed(1)}с)`);
+    
+    if (delay === 0) {
+      // Немедленная пауза
+      (async () => {
+        console.log('⏸️ Немедленная пауза (буфер > 28с)');
+        await fetch(SERVER_URL + '/api/stream/pause', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ streamId: AppState.currentStreamId })
+        });
+      })();
+    } else {
+      pauseTimer = setTimeout(async () => {
+        console.log(`⏸️ Пауза через ${delay / 1000} сек (буфер был ${currentBufferAhead.toFixed(1)}с)`);
+        await fetch(SERVER_URL + '/api/stream/pause', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ streamId: AppState.currentStreamId })
+        });
+      }, delay);
+    }
+    
   } else {
     btn.innerHTML = '<i class="fi fi-rr-pause"></i>';
-
-    // Проверяем сколько длилась пауза
+    
     if (pauseStartTime) {
       var pauseDuration = Date.now() - pauseStartTime;
-
-      if (pauseDuration >= PAUSE_THRESHOLD) {
-        // Пауза была больше минуты - возобновляем поток
-        console.log('▶️ Пауза была ' + (pauseDuration / 1000).toFixed(0) + ' сек, возобновляем поток');
+      var expectedDelay = getPauseDelay();
+      
+      // Если пауза длилась дольше ожидаемой задержки (или была мгновенная)
+      if (pauseDuration >= expectedDelay || expectedDelay === 0) {
+        console.log(`▶️ Возобновляем поток (пауза была ${(pauseDuration / 1000).toFixed(0)}с)`);
         fetch(SERVER_URL + '/api/stream/resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ streamId: AppState.currentStreamId })
         }).catch(e => console.error('Ошибка возобновления:', e));
       } else {
-        console.log('▶️ Короткая пауза (' + (pauseDuration / 1000).toFixed(0) + ' сек), возобновление не требуется');
+        console.log(`▶️ Короткая пауза (${(pauseDuration / 1000).toFixed(0)}с), возобновление не требуется`);
       }
     }
-
-    // Сбрасываем таймеры
+    
     if (pauseTimer) clearTimeout(pauseTimer);
     pauseStartTime = null;
     pauseTimer = null;
@@ -451,6 +473,8 @@ function updateBufferDisplay() {
       var absoluteBuffered = buffered + AppState.seekOffset;
       var absoluteCurrent = currentTime + AppState.seekOffset;
       var bufferAhead = absoluteBuffered - absoluteCurrent;
+      
+      currentBufferAhead = bufferAhead;
 
       var percent = Math.min(100, (absoluteBuffered / totalDuration * 100).toFixed(0));
 
@@ -464,7 +488,7 @@ function updateBufferDisplay() {
         bufferAheadText = (bufferAhead / 3600).toFixed(1) + ' ч';
       }
 
-      bufferStats.innerText = '⬇️ Прогресс: ' + percent + '% (впереди ' + bufferAheadText + ')';
+      bufferStats.innerText = 'Прогресс: ' + percent + '% (впереди ' + bufferAheadText + ')';
     }
   } else {
     bufferStats.innerText = '⬇️ буфер: 0%';
@@ -702,6 +726,7 @@ function isPositionInBuffer(targetTime) {
 
 // Обновленная функция перемотки с блокировкой интерфейса
 async function seekStream(absoluteSeekTime, source) {
+  currentBufferAhead = 0;
   if (source === undefined) source = 'user';
   if (!AppState.currentStreamId || !AppState.videoUrl) {
     console.warn('⚠️ Нет активного потока для перемотки');
@@ -1375,6 +1400,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (episodeIndex === undefined) episodeIndex = null;
   if (audioTrack === undefined) audioTrack = null;
   AppState.inSearch = 'torrents';
+  currentBufferAhead = 0;
 
   if (!originalUrl || !originalUrl.trim()) {
     alert('Ошибка: URL не указан');
@@ -1948,6 +1974,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 // Обновленная функция выхода из плеера
 function showDetailView() {
   // Проверяем, не является ли текущее воспроизведение YouTube
+  currentBufferAhead = 0;
   if (AppState.isYoutubePlayback) {
     console.log('Выход из YouTube плеера');
 
