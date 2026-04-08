@@ -28,6 +28,9 @@ var currentFileInfo = null;
 var heartbeatInterval = null;
 var currentBufferAhead = 0;
 var wasImmediatePause = false;
+var pauseTimer = null;
+var pauseStartTime = null;
+var PAUSE_THRESHOLD = 60000; // 1 минута
 
 // Функции heartbeat
 function startHeartbeat() {
