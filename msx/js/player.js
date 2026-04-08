@@ -286,6 +286,11 @@ function nextEpisode() {
   console.log('Текущий индекс:', currentEpisodeIndex);
   console.log('Всего серий:', currentEpisodeFiles.length);
 
+  currentBufferAhead = 0;
+  wasImmediatePause = false;
+  pauseTimer = null;
+  pauseStartTime = null;
+
   if (currentEpisodeFiles.length === 0 || currentEpisodeIndex === undefined) {
     console.log('❌ Нет данных о сериях');
     return;
@@ -306,6 +311,11 @@ function prevEpisode() {
   console.log('⬅️ Попытка переключения на предыдущую серию');
   console.log('Текущий индекс:', currentEpisodeIndex);
   console.log('Всего серий:', currentEpisodeFiles.length);
+
+  currentBufferAhead = 0;
+  wasImmediatePause = false;
+  pauseTimer = null;
+  pauseStartTime = null;
 
   if (currentEpisodeFiles.length === 0 || currentEpisodeIndex === undefined) {
     console.log('❌ Нет данных о сериях');
@@ -718,6 +728,9 @@ function isPositionInBuffer(targetTime) {
 // Обновленная функция перемотки с блокировкой интерфейса
 async function seekStream(absoluteSeekTime, source) {
   currentBufferAhead = 0;
+  wasImmediatePause = false;
+  pauseTimer = null;
+  pauseStartTime = null;
   if (source === undefined) source = 'user';
   if (!AppState.currentStreamId || !AppState.videoUrl) {
     console.warn('⚠️ Нет активного потока для перемотки');
@@ -1220,6 +1233,11 @@ async function switchToEpisode(index, fileId) {
   console.log('🔄 Переключение на серию ' + (index + 1) + ', fileId: ' + fileId);
   console.log('Текущий hash:', currentTorrentHash);
 
+  currentBufferAhead = 0;
+  wasImmediatePause = false;
+  pauseTimer = null;
+  pauseStartTime = null;
+
   stopHeartbeat();
 
   if (!currentTorrentHash || !AppState.currentTorrserverUrl) {
@@ -1392,6 +1410,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (audioTrack === undefined) audioTrack = null;
   AppState.inSearch = 'torrents';
   currentBufferAhead = 0;
+  wasImmediatePause = false;
+  pauseTimer = null;
+  pauseStartTime = null;
 
   if (!originalUrl || !originalUrl.trim()) {
     alert('Ошибка: URL не указан');
@@ -1966,6 +1987,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 function showDetailView() {
   // Проверяем, не является ли текущее воспроизведение YouTube
   currentBufferAhead = 0;
+  wasImmediatePause = false;
+  pauseTimer = null;
+  pauseStartTime = null;
   if (AppState.isYoutubePlayback) {
     console.log('Выход из YouTube плеера');
 
