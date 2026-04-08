@@ -26,7 +26,8 @@ var currentAudioTrack = 0;
 var currentFileInfo = null;
 
 var heartbeatInterval = null;
-var currentBufferAhead = 0; 
+var currentBufferAhead = 0;
+var wasImmediatePause = false;
 
 // Функции heartbeat
 function startHeartbeat() {
@@ -370,76 +371,63 @@ function updateTimeDisplay() {
   }
 }
 
-// Вспомогательная функция для определения задержки паузы
-function getPauseDelay() {
-  if (currentBufferAhead > 28) {
-    return 0; // сразу
-  } else if (currentBufferAhead > 20) {
-    return 30000; // 30 секунд
-  } else {
-    return PAUSE_THRESHOLD; // 60 секунд
-  }
-}
-
 function updatePlayPauseButton() {
   var btn = document.getElementById('play-pause-btn');
   var videoPlayer = document.getElementById('video-player');
 
   if (videoPlayer.paused) {
     btn.innerHTML = '<i class="fi fi-rr-play"></i>';
-    
+
     pauseStartTime = Date.now();
-    
-    var delay = getPauseDelay();
-    
+    wasImmediatePause = false;
+
     if (pauseTimer) clearTimeout(pauseTimer);
-    
-    console.log(`⏰ Планируем паузу через ${delay / 1000} сек (буфер: ${currentBufferAhead.toFixed(1)}с)`);
-    
-    if (delay === 0) {
-      // Немедленная пауза
-      (async () => {
-        console.log('⏸️ Немедленная пауза (буфер > 28с)');
-        await fetch(SERVER_URL + '/api/stream/pause', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ streamId: AppState.currentStreamId })
-        });
-      })();
+
+    // Буфер > 20 секунд - пауза сразу
+    if (currentBufferAhead > 20) {
+      console.log(`📊 Буфер ${currentBufferAhead.toFixed(1)}с > 20с, пауза немедленно`);
+      wasImmediatePause = true;
+      fetch(SERVER_URL + '/api/stream/pause', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ streamId: AppState.currentStreamId })
+      }).catch(e => console.error('Ошибка паузы:', e));
     } else {
+      // Буфер < 20 секунд - пауза через минуту
+      console.log(`📊 Буфер ${currentBufferAhead.toFixed(1)}с < 20с, пауза через минуту`);
       pauseTimer = setTimeout(async () => {
-        console.log(`⏸️ Пауза через ${delay / 1000} сек (буфер был ${currentBufferAhead.toFixed(1)}с)`);
+        console.log('⏸️ Пауза больше минуты, приостанавливаем поток');
         await fetch(SERVER_URL + '/api/stream/pause', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ streamId: AppState.currentStreamId })
         });
-      }, delay);
+      }, PAUSE_THRESHOLD);
     }
-    
+
   } else {
     btn.innerHTML = '<i class="fi fi-rr-pause"></i>';
-    
+
     if (pauseStartTime) {
       var pauseDuration = Date.now() - pauseStartTime;
-      var expectedDelay = getPauseDelay();
-      
-      // Если пауза длилась дольше ожидаемой задержки (или была мгновенная)
-      if (pauseDuration >= expectedDelay || expectedDelay === 0) {
-        console.log(`▶️ Возобновляем поток (пауза была ${(pauseDuration / 1000).toFixed(0)}с)`);
+
+      // Возобновляем если: была мгновенная пауза ИЛИ пауза длилась больше минуты
+      if (wasImmediatePause || pauseDuration >= PAUSE_THRESHOLD) {
+        console.log(`▶️ Возобновляем поток (${wasImmediatePause ? 'мгновенная пауза' : 'пауза ' + (pauseDuration / 1000).toFixed(0) + ' сек'})`);
         fetch(SERVER_URL + '/api/stream/resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ streamId: AppState.currentStreamId })
         }).catch(e => console.error('Ошибка возобновления:', e));
       } else {
-        console.log(`▶️ Короткая пауза (${(pauseDuration / 1000).toFixed(0)}с), возобновление не требуется`);
+        console.log(`▶️ Короткая пауза (${(pauseDuration / 1000).toFixed(0)} сек), возобновление не требуется`);
       }
     }
-    
+
     if (pauseTimer) clearTimeout(pauseTimer);
     pauseStartTime = null;
     pauseTimer = null;
+    wasImmediatePause = false;
   }
 }
 
@@ -473,7 +461,7 @@ function updateBufferDisplay() {
       var absoluteBuffered = buffered + AppState.seekOffset;
       var absoluteCurrent = currentTime + AppState.seekOffset;
       var bufferAhead = absoluteBuffered - absoluteCurrent;
-      
+
       currentBufferAhead = bufferAhead;
 
       var percent = Math.min(100, (absoluteBuffered / totalDuration * 100).toFixed(0));
