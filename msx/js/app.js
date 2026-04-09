@@ -171,6 +171,12 @@ async function init() {
 
     initialServerCheck();
 
+    var savedVolume = localStorage.getItem('playerVolume');
+    if (savedVolume !== null && videoPlayer) {
+      videoPlayer.volume = parseFloat(savedVolume);
+      if (volumeSlider) volumeSlider.value = videoPlayer.volume;
+    }
+
     console.log('✅ Инициализация приложения завершена');
 
   } catch (error) {
@@ -333,6 +339,7 @@ function setupVolumeSlider(volumeSlider, videoPlayer) {
       if (typeof updateMuteButton === 'function') updateMuteButton();
     }
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    localStorage.setItem('playerVolume', vol);
   });
 }
 
@@ -372,6 +379,7 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
     if (volumeSlider) volumeSlider.value = videoPlayer.volume;
     if (typeof updateMuteButton === 'function') updateMuteButton();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    localStorage.setItem('playerVolume', videoPlayer.volume);
   });
 
   videoPlayer.addEventListener('timeupdate', function () {
