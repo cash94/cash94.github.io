@@ -474,6 +474,7 @@ function updateBufferDisplay() {
       var absoluteBuffered = buffered + AppState.seekOffset;
       var absoluteCurrent = currentTime + AppState.seekOffset;
       var bufferAhead = absoluteBuffered - absoluteCurrent;
+      var remainingTime = totalDuration - absoluteCurrent;
 
       currentBufferAhead = bufferAhead;
 
@@ -489,13 +490,26 @@ function updateBufferDisplay() {
         bufferAheadText = (bufferAhead / 3600).toFixed(1) + ' ч';
       }
 
-      bufferStats.innerText = 'Прогресс: ' + percent + '% (впереди ' + bufferAheadText + ')';
+      // Форматируем оставшееся время
+      var remainingText;
+      if (remainingTime < 60) {
+        remainingText = remainingTime.toFixed(0) + ' сек';
+      } else if (remainingTime < 3600) {
+        remainingText = (remainingTime / 60).toFixed(1) + ' мин';
+      } else {
+        remainingText = (remainingTime / 3600).toFixed(1) + ' ч';
+      }
+
+      // Вычисляем время окончания (текущее время клиента + оставшееся время)
+      var endTime = new Date(Date.now() + remainingTime * 1000);
+      var endTimeText = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      bufferStats.innerText = 'Прогресс: ' + percent + '% (впереди ' + bufferAheadText + ') | До конца: ' + remainingText + ' | Конец в: ' + endTimeText;
     }
   } else {
     bufferStats.innerText = '⬇️ буфер: 0%';
   }
 }
-
 function forceUpdateDuration(duration, origDur, offset) {
   if (origDur === undefined) origDur = null;
   if (offset === undefined) offset = 0;
