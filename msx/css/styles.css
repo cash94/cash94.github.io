@@ -2529,21 +2529,14 @@ body.detail-open {
   position: fixed;
   top: 20px;
   right: 20px;
-  background: rgba(0, 0, 0, 0.7);
-  color: #fff;
-  padding: 6px 12px;
-  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 0;
+  border-radius: 0;
   font-size: 20px;
   font-weight: bold;
   font-family: monospace;
   z-index: 10000;
   pointer-events: none;
-}
-
-/* Для браузеров, которые поддерживают backdrop-filter (добавляем как улучшение) */
-@supports (backdrop-filter: blur(4px)) {
-  #clock-display {
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-  }
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
 }
