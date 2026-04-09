@@ -2657,6 +2657,22 @@ if (document.readyState === 'loading') {
   setupPageUnloadHandler();
 }
 
+// Функция обновления часов
+function updateClock() {
+  var clock = document.getElementById('clock-display');
+  if (!clock) return;
+
+  var now = new Date();
+  var hours = now.getHours().toString().padStart(2, '0');
+  var minutes = now.getMinutes().toString().padStart(2, '0');
+
+  clock.textContent = hours + ':' + minutes;
+}
+
+// Запускаем обновление каждую минуту
+updateClock();
+setInterval(updateClock, 60000);
+
 // Делаем функции доступными глобально
 window.showDetailView = showDetailView;
 window.setupEpisodesButton = setupEpisodesButton;
