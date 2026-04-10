@@ -76,11 +76,20 @@ async function fetchTorrentStatsForBuffer(hash) {
   try {
     var statsUrl = AppState.currentTorrserverUrl + '/cache';
 
+    var headers = {
+      'Content-Type': 'application/json',
+    };
+
+    var authHeaders = getAuthHeaders();
+    for (var key in authHeaders) {
+      if (authHeaders.hasOwnProperty(key)) {
+        headers[key] = authHeaders[key];
+      }
+    }
+
     var response = await fetch(statsUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers:headers,
       body: JSON.stringify({
         action: 'get',
         hash: hash.toLowerCase()
