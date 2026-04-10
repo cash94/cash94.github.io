@@ -1623,11 +1623,7 @@ body.detail-open {
 .playback-text,
 .loading-text,
 .loading-player-text,
-#buffer-stats,
-#player-hint,
-.player-title,
 #controls-container,
-.volume-container,
 .audio-panel,
 .episodes-panel,
 .close-panel-btn,
@@ -1643,6 +1639,10 @@ body.detail-open {
 
 /* Убираем border только у этих кнопок полностью */
 #toggle-buffer-btn,
+.volume-container,
+#buffer-stats,
+#player-hint,
+.player-title,
 #exit-player-btn {
   border: none !important;
 }
