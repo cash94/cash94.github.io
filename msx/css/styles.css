@@ -1136,16 +1136,17 @@ body.detail-open {
   bottom: 120px;
   left: 50%;
   transform: translateX(-50%);
-  background: #000000;
+  background: rgba(0, 0, 0, 0.5);
   color: #4a9eff;
   padding: 6px 12px;
   border-radius: 20px;
   font-size: 11px;
   font-family: monospace;
-  border: 1px solid #4a9eff;
+  border: 1px solid rgba(74, 158, 255, 0.5);
   z-index: 220;
   white-space: nowrap;
   pointer-events: none;
+  backdrop-filter: blur(4px);
 }
 
 #buffer-stats.hidden,
