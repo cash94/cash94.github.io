@@ -662,15 +662,15 @@ function updateBufferDisplay() {
         var preloadedText = formatSize(torrentStatsCache.preloaded);
         var preloadSizeText = formatSize(torrentStatsCache.preloadSize);
         var speedText = formatSpeed(torrentStatsCache.downloadSpeed); // больше не умножаем на 8
-        torrServerText = ' TorrServer: Буфер ' + preloadedText + ' скорость ' + speedText;
+        torrServerText = '| TorrServer: буфер ' + preloadedText + '| скорость ' + speedText;
 
         // Опционально: добавить информацию о пирах
         if (torrentStatsCache.activePeers > 0) {
-          torrServerText += ' пиры ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
+          torrServerText += '| пиры ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
         }
       }
 
-      bufferStats.innerText = 'Впереди: ' + bufferAheadText + ' До конца: ' + remainingText + ' Конец в: ' + endTimeText + torrServerText;
+      bufferStats.innerText = 'Впереди: ' + bufferAheadText + '| до конца: ' + remainingText + '| конец в: ' + endTimeText + torrServerText;
     }
   } else {
     bufferStats.innerText = 'буфер: 0%';
