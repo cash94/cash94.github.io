@@ -1463,15 +1463,17 @@ body.detail-open {
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: #000000;
-  border: 1px solid #4a9eff;
-  color: #4a9eff;
+  background: transparent;
+  border: 1px solid rgba(74, 158, 255, 0.5);
+  color: rgba(74, 158, 255, 0.8);
   font-size: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 230;
   cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: all 0.2s ease;
 }
 
 #toggle-buffer-btn {
