@@ -1287,12 +1287,13 @@ body.detail-open {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #0a0a0f;
+  background: rgba(10, 10, 15, 0.3);
   padding: 4px 12px;
   border-radius: 20px;
   flex: 1;
   max-width: 140px;
-  border: 1px solid #4a9eff;
+  border: 1px solid rgba(74, 158, 255, 0.5);
+  backdrop-filter: blur(4px);
 }
 
 #volume-slider {
