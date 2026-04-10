@@ -1202,7 +1202,7 @@ body.detail-open {
   z-index: 225;
   opacity: 0;
   pointer-events: none;
-  background: rgba(20, 20, 30, 0.5);
+  background: rgba(20, 20, 30, 0.4);
   padding: 12px 16px;
   border-radius: 24px;
   border: 1px solid rgba(74, 158, 255, 0.5);
@@ -1287,7 +1287,7 @@ body.detail-open {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(10, 10, 15, 0.8);
+  background: rgba(10, 10, 15, 0.2);
   padding: 4px 12px;
   border-radius: 20px;
   flex: 1;
