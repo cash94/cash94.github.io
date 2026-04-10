@@ -1641,6 +1641,12 @@ body.detail-open {
   border-color: #000000 !important;
 }
 
+/* Убираем border только у этих кнопок полностью */
+#toggle-buffer-btn,
+#exit-player-btn {
+  border: none !important;
+}
+
 .search-filters.collapsed {
   display: none !important;
 }
