@@ -16,6 +16,18 @@ var currentTimecodeData = {
   duration: 0
 };
 
+// Переменные для статистики TorrServer
+var torrentStatsCache = {
+  preloaded: 0,
+  preloadSize: 0,
+  downloadSpeed: 0,
+  percent: 0,
+  activePeers: 0,
+  totalPeers: 0,
+  connectedSeeders: 0
+};
+var torrentStatsInterval = null;
+
 // Переменные для скрытия элементов
 var mouseIdleTimer = null;
 var IDLE_TIMEOUT = 3000; // 3 секунды
@@ -54,6 +66,146 @@ function stopHeartbeat() {
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;
+  }
+}
+
+// Функция для получения статистики TorrServer
+async function fetchTorrentStatsForBuffer(hash) {
+  if (!hash || !AppState.currentTorrserverUrl) return null;
+
+  try {
+    var statsUrl = AppState.currentTorrserverUrl + '/cache';
+
+    var response = await fetch(statsUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        action: 'get',
+        hash: hash.toLowerCase()
+      })
+    });
+
+    if (response.ok) {
+      var data = await response.json();
+
+      // Данные могут быть в data.Torrent или прямо в data
+      var torrent = data.Torrent || data;
+
+      if (torrent) {
+        var torrentData = {
+          preloaded_bytes: torrent.preloaded_bytes || 0,
+          preload_size: torrent.torrent_size || torrent.preload_size || 1,
+          download_speed: torrent.download_speed || 0,  // уже в байтах/с
+          active_peers: torrent.active_peers || 0,
+          total_peers: torrent.total_peers || 0,
+          connected_seeders: torrent.connected_seeders || 0,
+          percent: torrent.torrent_size
+            ? Math.floor((torrent.preloaded_bytes || 0) * 100 / torrent.torrent_size)
+            : 0
+        };
+
+        console.log('📊 Статистика торрента:', {
+          percent: torrentData.percent + '%',
+          preloaded: formatSize(torrentData.preloaded_bytes),
+          total: formatSize(torrentData.preload_size),
+          download_speed_bps: torrentData.download_speed + ' B/s',
+          download_speed_readable: formatSpeed(torrentData.download_speed),
+          active_peers: torrentData.active_peers,
+          total_peers: torrentData.total_peers,
+          seeders: torrentData.connected_seeders
+        });
+
+        return torrentData;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.log('⚠️ Ошибка получения статистики TorrServer:', error);
+    return null;
+  }
+}
+
+// Функция для обновления кэша статистики
+async function updateTorrentStatsCache() {
+  if (!currentTimecodeData.hash) {
+    torrentStatsCache = {
+      preloaded: 0,
+      preloadSize: 0,
+      downloadSpeed: 0,
+      percent: 0,
+      activePeers: 0,
+      totalPeers: 0,
+      connectedSeeders: 0
+    };
+    return;
+  }
+
+  var stats = await fetchTorrentStatsForBuffer(currentTimecodeData.hash);
+  if (stats) {
+    torrentStatsCache.preloaded = stats.preloaded_bytes || 0;
+    torrentStatsCache.preloadSize = stats.preload_size || 1;
+    torrentStatsCache.downloadSpeed = stats.download_speed || 0;  // уже в байтах/с
+    torrentStatsCache.percent = stats.percent;
+    torrentStatsCache.activePeers = stats.active_peers || 0;
+    torrentStatsCache.totalPeers = stats.total_peers || 0;
+    torrentStatsCache.connectedSeeders = stats.connected_seeders || 0;
+
+    console.log('📊 Статистика обновлена:',
+      torrentStatsCache.percent + '%, ' +
+      formatSpeed(torrentStatsCache.downloadSpeed) +
+      ', пиры: ' + torrentStatsCache.activePeers + '/' + torrentStatsCache.totalPeers +
+      ', сидеры: ' + torrentStatsCache.connectedSeeders);
+  }
+}
+
+// Функция форматирования скорости
+function formatSpeed(speedInBytes) {
+  if (speedInBytes === 0 || !speedInBytes) return '0 Mb/s';
+
+  // Переводим байты/с в мегабиты/с: (байты * 8) / 1_000_000
+  var speedInMegabits = (speedInBytes * 8) / 1000000;
+
+  if (speedInMegabits < 1) {
+    // Если меньше 1 Мбит/с, показываем в килобитах
+    var speedInKilobits = (speedInBytes * 8) / 1000;
+    return speedInKilobits.toFixed(1) + ' Kb/s';
+  }
+
+  return speedInMegabits.toFixed(1) + ' Mb/s';
+}
+
+// Функция форматирования размера
+function formatSize(bytes) {
+  if (bytes === 0 || !bytes) return '0 B';
+  if (bytes < 1024) return bytes.toFixed(0) + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+// Запуск интервала обновления статистики
+function startTorrentStatsUpdates() {
+  stopTorrentStatsUpdates();
+
+  console.log('📊 Запуск интервала обновления статистики TorrServer');
+
+  // Первоначальное обновление
+  updateTorrentStatsCache();
+
+  // Обновляем каждые 2 секунды
+  torrentStatsInterval = setInterval(function () {
+    updateTorrentStatsCache();
+  }, 2000);
+}
+
+// Остановка интервала обновления статистики
+function stopTorrentStatsUpdates() {
+  if (torrentStatsInterval) {
+    clearInterval(torrentStatsInterval);
+    torrentStatsInterval = null;
+    console.log('📊 Остановлен интервал обновления статистики TorrServer');
   }
 }
 
@@ -504,12 +656,27 @@ function updateBufferDisplay() {
       var endTime = new Date(Date.now() + remainingTime * 1000);
       var endTimeText = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-      bufferStats.innerText = 'Прогресс: ' + percent + '% (впереди ' + bufferAheadText + ') | До конца: ' + remainingText + ' | Конец в: ' + endTimeText;
+      // Добавляем статистику TorrServer из кэша
+      var torrServerText = '';
+      if (currentTimecodeData.hash && torrentStatsCache.preloadSize > 0) {
+        var preloadedText = formatSize(torrentStatsCache.preloaded);
+        var preloadSizeText = formatSize(torrentStatsCache.preloadSize);
+        var speedText = formatSpeed(torrentStatsCache.downloadSpeed); // больше не умножаем на 8
+        torrServerText = ' | TorrServer: Буфер ' + preloadedText + ' скорость ' + speedText;
+
+        // Опционально: добавить информацию о пирах
+        if (torrentStatsCache.activePeers > 0) {
+          torrServerText += ' пиры ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
+        }
+      }
+
+      bufferStats.innerText = 'Прогресс: ' + percent + '% (впереди ' + bufferAheadText + ') | До конца: ' + remainingText + ' | Конец в: ' + endTimeText + torrServerText;
     }
   } else {
-    bufferStats.innerText = '⬇️ буфер: 0%';
+    bufferStats.innerText = 'буфер: 0%';
   }
 }
+
 function forceUpdateDuration(duration, origDur, offset) {
   if (origDur === undefined) origDur = null;
   if (offset === undefined) offset = 0;
@@ -1244,6 +1411,7 @@ function renderEpisodesList() {
 
 // Функция переключения на другую серию
 async function switchToEpisode(index, fileId) {
+  stopTorrentStatsUpdates();
   console.log('🔄 Переключение на серию ' + (index + 1) + ', fileId: ' + fileId);
   console.log('Текущий hash:', currentTorrentHash);
 
@@ -1348,6 +1516,7 @@ async function switchToEpisode(index, fileId) {
     }
 
     hidePlayerLoading();
+    startTorrentStatsUpdates();
   }
 }
 
@@ -1770,6 +1939,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         videoPlayer.currentTime = 0;
         videoPlayer.pause();
         updatePlayPauseButton();
+        startTorrentStatsUpdates();
 
         console.log('⏳ Ожидание накопления буфера 10 секунд... (видео на паузе)');
         showPlayerLoading('Буферизация... 0/10 сек', null);
@@ -1999,11 +2169,13 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
 // Обновленная функция выхода из плеера
 function showDetailView() {
-  // Проверяем, не является ли текущее воспроизведение YouTube
+
+  stopTorrentStatsUpdates();
   currentBufferAhead = 0;
   wasImmediatePause = false;
   pauseTimer = null;
   pauseStartTime = null;
+  // Проверяем, не является ли текущее воспроизведение YouTube
   if (AppState.isYoutubePlayback) {
     console.log('Выход из YouTube плеера');
 
@@ -2480,6 +2652,7 @@ async function handleVideoEnded() {
   console.log('🏁 Видео завершено');
 
   stopHeartbeat();
+  stopTorrentStatsUpdates();
 
   // Сохраняем таймкод перед переключением
   await saveTimecodeToServer();
