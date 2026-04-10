@@ -1136,7 +1136,7 @@ body.detail-open {
   bottom: 120px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.3);
   color: #4a9eff;
   padding: 6px 12px;
   border-radius: 20px;
@@ -1458,6 +1458,7 @@ body.detail-open {
 }
 
 #toggle-buffer-btn,
+#toggle-buffer-btn,
 #exit-player-btn {
   position: fixed;
   width: 42px;
@@ -1474,6 +1475,14 @@ body.detail-open {
   cursor: pointer;
   backdrop-filter: blur(4px);
   transition: all 0.2s ease;
+  
+  /* Убираем контур */
+  outline: none;
+  outline-style: none;
+  outline-width: 0;
+  
+  /* Для браузеров WebKit */
+  -webkit-tap-highlight-color: transparent;
 }
 
 #toggle-buffer-btn {
