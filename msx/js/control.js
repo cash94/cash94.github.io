@@ -2917,6 +2917,18 @@ function setupFocusRescue() {
     setTimeout(function () { ensureTorrentFocus(true); }, 120);
 }
 
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' || e.keyCode === 27) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.dispatchEvent(new PopStateEvent('popstate', {
+            state: { page: 'main' },
+            bubbles: true,
+            cancelable: true
+        }));
+    }
+});
+
 window.addEventListener('popstate', function (e) {
     // Блокировка если нужно
     if (window.swipeBlocked) return;
