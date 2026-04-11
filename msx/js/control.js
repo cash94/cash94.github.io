@@ -2917,100 +2917,28 @@ function setupFocusRescue() {
     setTimeout(function () { ensureTorrentFocus(true); }, 120);
 }
 
-// Переменная для отслеживания источника события
-var backEventSource = null; // 'swipe' или 'remote'
-
-// Обработчик для свайпов (через popstate)
 window.addEventListener('popstate', function (e) {
     // Блокировка если нужно
     if (window.swipeBlocked) return;
-    
-    // Если событие пришло от пульта (через pushState), игнорируем
-    if (backEventSource === 'remote') {
-        backEventSource = null;
-        return;
-    }
-    
-    // Отмечаем, что это свайп
-    backEventSource = 'swipe';
-    
-    // Предотвращаем закрытие приложения
-    e.preventDefault();
-    
+
     // Создаем событие клавиши BACK для существующего обработчика
     var backEvent = new KeyboardEvent('keydown', {
-        keyCode: 27,
+        keyCode: 27,  // ESC/BACK
         key: 'Escape',
         bubbles: true,
         cancelable: true
     });
     document.dispatchEvent(backEvent);
-    
-    // Восстанавливаем состояние истории
+
+    // КРИТИЧЕСКИ ВАЖНО: добавляем новое состояние после обработки свайпа
+    // чтобы следующий свайп сработал так же, а не закрыл приложение
     setTimeout(function () {
-        if (window.history.state && window.history.state.page === 'main') {
-            // Уже норм
-        } else {
-            window.history.pushState({ page: 'main', fromSwipe: true }, '');
-        }
-        // Сбрасываем источник через небольшую задержку
-        setTimeout(function() {
-            backEventSource = null;
-        }, 100);
-    }, 50);
-}, false);
+        window.history.pushState({ page: 'main' }, '');
+    }, 150);
+});
 
-// Обработчик для пульта
-document.addEventListener('keydown', function(e) {
-    // Коды для кнопки Back на Android TV
-    var isBackKey = (e.keyCode === 4 || e.keyCode === 461 || e.key === 'Back' || e.key === 'Escape');
-    
-    if (!isBackKey) return;
-    
-    // Проверяем режим редактирования
-    var activeElement = document.activeElement;
-    var isEditing = activeElement && (activeElement.tagName === 'INPUT' || 
-                                      activeElement.tagName === 'TEXTAREA' ||
-                                      activeElement.contentEditable === 'true');
-    
-    if (isEditing) return; // Пусть стандартная обработка идет
-    
-    // Отмечаем, что это нажатие с пульта
-    backEventSource = 'remote';
-    
-    // Предотвращаем стандартную обработку
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Создаем событие для существующего обработчика
-    var backEvent = new KeyboardEvent('keydown', {
-        keyCode: 27,
-        key: 'Escape',
-        bubbles: true,
-        cancelable: true
-    });
-    document.dispatchEvent(backEvent);
-    
-    // Добавляем состояние в историю, чтобы следующее нажатие не закрыло приложение
-    // Используем replaceState вместо pushState, чтобы не создавать лишних записей
-    if (!window.history.state || window.history.state.page !== 'main') {
-        window.history.replaceState({ page: 'main', fromRemote: true }, '');
-    } else {
-        window.history.pushState({ page: 'main', fromRemote: true }, '');
-    }
-    
-    // Сбрасываем источник
-    setTimeout(function() {
-        backEventSource = null;
-    }, 100);
-    
-    return false;
-}, true); // capture phase
-
-// Инициализация истории - только один раз
-if (!window.history.state || window.history.state.page !== 'main') {
-    window.history.replaceState({ page: 'main', fromApp: true }, '');
-}
+// Добавляем начальное состояние в историю
+window.history.pushState({ page: 'main' }, '');
 
 // Функция для блокировки свайпов на время
 window.blockSwipe = function (ms) {
@@ -3019,25 +2947,6 @@ window.blockSwipe = function (ms) {
         window.swipeBlocked = false;
     }, ms || 500);
 };
-
-// Резервный механизм - защита от случайного выхода
-setInterval(function() {
-    // Только если нет активного источника события
-    if (backEventSource) return;
-    
-    // Проверяем, не осталось ли мало состояний в истории
-    try {
-        if (window.history.length <= 1) {
-            window.history.pushState({ page: 'main', fromBackup: true }, '');
-        } else if (!window.history.state || window.history.state.page !== 'main') {
-            // Если текущее состояние не наше, добавляем
-            window.history.replaceState({ page: 'main', fromBackup: true }, '');
-        }
-    } catch(e) {
-        // Игнорируем ошибки
-    }
-}, 500);
-
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
