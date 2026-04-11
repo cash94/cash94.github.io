@@ -1154,6 +1154,29 @@ body.detail-open {
   opacity: 0;
 }
 
+#torrserver-stats {
+  position: fixed;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.3);
+  color: #4a9eff;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-family: monospace;
+  border: 1px solid rgba(74, 158, 255, 0.5);
+  z-index: 220;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+
+#torrserver-stats.hidden,
+#torrserver-stats.idle-hidden {
+  opacity: 0;
+}
+
 #player-hint {
   position: fixed;
   bottom: 16px;
@@ -1641,6 +1664,7 @@ body.detail-open {
 #toggle-buffer-btn,
 .volume-container,
 #buffer-stats,
+torrserver-stats,
 #player-hint,
 .player-title,
 #exit-player-btn {
@@ -2445,6 +2469,7 @@ body.detail-open {
 
 /* Скрытие элементов плеера при idle-hidden */
 #buffer-stats.idle-hidden,
+#torrserver-stats.idle-hidden,
 #player-hint.idle-hidden,
 #toggle-buffer-btn.idle-hidden,
 #exit-player-btn.idle-hidden,
