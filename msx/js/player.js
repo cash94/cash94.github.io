@@ -618,7 +618,7 @@ function updateMuteButton() {
 
 function updateBufferDisplay() {
   var bufferStats = document.getElementById('buffer-stats');
-  var torrserverStats = document.getElementById('buffer-stats');
+  var torrserverStats = document.getElementById('torrserver-stats');
   var videoPlayer = document.getElementById('video-player');
 
   if (AppState.bufferHidden) {
