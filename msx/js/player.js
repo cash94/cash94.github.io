@@ -618,13 +618,16 @@ function updateMuteButton() {
 
 function updateBufferDisplay() {
   var bufferStats = document.getElementById('buffer-stats');
+  var torrserverStats = document.getElementById('buffer-stats');
   var videoPlayer = document.getElementById('video-player');
 
   if (AppState.bufferHidden) {
     bufferStats.classList.add('hidden');
+    torrserverStats.classList.add('hidden');    
     return;
   }
   bufferStats.classList.remove('hidden');
+  torrserverStats.classList.remove('hidden');
 
   if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
     var buffered = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
@@ -679,7 +682,8 @@ function updateBufferDisplay() {
         }
       }
 
-      bufferStats.innerText = 'Буфер: ' + bufferAheadText + '| до конца: ' + remainingText + '| конец в: ' + endTimeText + torrServerText;
+      bufferStats.innrTexet = 'Буфер: ' + bufferAheadText + '| до конца: ' + remainingText + '| конец в: ' + endTimeText;
+      torrserverStats.innrTexet = torrServerText;
     }
   } else {
     bufferStats.innerText = 'буфер: 0%';
