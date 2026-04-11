@@ -682,8 +682,8 @@ function updateBufferDisplay() {
         }
       }
 
-      bufferStats.innrTexet = 'Буфер: ' + bufferAheadText + '| до конца: ' + remainingText + '| конец в: ' + endTimeText;
-      torrserverStats.innrTexet = torrServerText;
+      bufferStats.innrText = 'Буфер: ' + bufferAheadText + '| до конца: ' + remainingText + '| конец в: ' + endTimeText;
+      torrserverStats.innrText = torrServerText;
     }
   } else {
     bufferStats.innerText = 'буфер: 0%';
