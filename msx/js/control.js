@@ -2921,6 +2921,10 @@ window.addEventListener('popstate', function (e) {
     // Блокировка если нужно
     if (window.swipeBlocked) return;
 
+    // Предотвращаем закрытие приложения, добавляя новое состояние
+    // до того, как браузер обработает нативное возвращение
+    e.preventDefault();
+    
     // Создаем событие клавиши BACK для существующего обработчика
     var backEvent = new KeyboardEvent('keydown', {
         keyCode: 27,  // ESC/BACK
@@ -2930,15 +2934,20 @@ window.addEventListener('popstate', function (e) {
     });
     document.dispatchEvent(backEvent);
 
-    // КРИТИЧЕСКИ ВАЖНО: добавляем новое состояние после обработки свайпа
-    // чтобы следующий свайп сработал так же, а не закрыл приложение
-    setTimeout(function () {
-        window.history.pushState({ page: 'main' }, '');
-    }, 150);
-});
+    // КРИТИЧЕСКИ ВАЖНО: добавляем новое состояние ПОСЛЕ обработки
+    // но ДО того, как браузер успеет закрыть приложение
+    // Используем pushState синхронно, без setTimeout
+    window.history.pushState({ page: 'main' }, '');
+    
+    // Дополнительная защита - добавляем еще одно состояние на случай,
+    // если первое не сработало
+    if (!window.history.state || window.history.state.page !== 'main') {
+        window.history.replaceState({ page: 'main' }, '');
+    }
+}, false);
 
-// Добавляем начальное состояние в историю
-window.history.pushState({ page: 'main' }, '');
+// Добавляем начальное состояние в историю с флагом, что это наше состояние
+window.history.replaceState({ page: 'main', fromApp: true }, '');
 
 // Функция для блокировки свайпов на время
 window.blockSwipe = function (ms) {
@@ -2947,6 +2956,39 @@ window.blockSwipe = function (ms) {
         window.swipeBlocked = false;
     }, ms || 500);
 };
+
+// Дополнительно: перехватываем нативное поведение кнопки Back на пульте
+// через keydown для Android TV
+document.addEventListener('keydown', function(e) {
+    // Коды для кнопки Back на Android TV: 4 (KEYCODE_BACK), 461 (KEYCODE_ESCAPE)
+    if (e.keyCode === 4 || e.keyCode === 461 || e.key === 'Back' || e.key === 'Escape') {
+        // Проверяем, что мы не в режиме редактирования текста
+        var activeElement = document.activeElement;
+        var isEditing = activeElement && (activeElement.tagName === 'INPUT' || 
+                                          activeElement.tagName === 'TEXTAREA' ||
+                                          activeElement.contentEditable === 'true');
+        
+        if (!isEditing) {
+            // Предотвращаем стандартную обработку
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Создаем событие для существующего обработчика
+            var backEvent = new KeyboardEvent('keydown', {
+                keyCode: 27,
+                key: 'Escape',
+                bubbles: true,
+                cancelable: true
+            });
+            document.dispatchEvent(backEvent);
+            
+            // Добавляем состояние в историю, чтобы следующее нажатие не закрыло приложение
+            window.history.pushState({ page: 'main', fromApp: true }, '');
+            return false;
+        }
+    }
+}, true); // Используем capture фазу для перехвата до других обработчиков
+
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
