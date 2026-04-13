@@ -2279,12 +2279,28 @@ function setupFocusRescue() {
             }
             if (direction === 'up') {
                 if (actorCards.length > 0) {
-                    focusEl(actorCards[actorCards.length - 1]);
-                    scrollToElement(actorCards[actorCards.length - 1]);
+                    // Пытаемся найти элемент с тем же индексом
+                    var targetIndex;
+                    if (recommendationIndex < actorCards.length) {
+                        targetIndex = recommendationIndex;
+                    } else {
+                        targetIndex = actorCards.length - 1;
+                    }
+
+                    focusEl(actorCards[targetIndex]);
+                    scrollToElement(actorCards[targetIndex]);
                     return true;
                 } else if (trailerLinks.length > 0) {
-                    focusEl(trailerLinks[trailerLinks.length - 1]);
-                    scrollToElement(trailerLinks[trailerLinks.length - 1]);
+                    // Та же логика для trailerLinks
+                    var targetIndex;
+                    if (recommendationIndex < trailerLinks.length) {
+                        targetIndex = recommendationIndex;
+                    } else {
+                        targetIndex = trailerLinks.length - 1;
+                    }
+
+                    focusEl(trailerLinks[targetIndex]);
+                    scrollToElement(trailerLinks[targetIndex]);
                     return true;
                 } else if (watchBtn && watchBtn.offsetParent !== null) {
                     focusEl(watchBtn);
