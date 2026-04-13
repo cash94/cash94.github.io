@@ -2065,7 +2065,7 @@ function setupFocusRescue() {
                             if (targetIndex >= 0 && targetIndex < newCards.length) {
                                 var newFocusCard = newCards[targetIndex];
                                 if (newFocusCard) {
-                                    setFocus(newFocusCard);
+                                    focusEl(newFocusCard);
                                     //var globalIndex = -1;
                                     //for (var n = 0; n < focusableElements.length; n++) {
                                         //if (newFocusCard === focusableElements[n]) {
