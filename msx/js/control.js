@@ -2261,8 +2261,16 @@ function setupFocusRescue() {
             }
             if (direction === 'down') {
                 if (recommendationCards.length > 0) {
-                    focusEl(recommendationCards[0]);
-                    scrollToElement(recommendationCards[0]);
+                    var targetIndex;
+                    // Предполагается, что есть переменная actorIndex (текущий индекс в actorCards)
+                    if (actorIndex < recommendationCards.length) {
+                        targetIndex = actorIndex;
+                    } else {
+                        targetIndex = recommendationCards.length - 1;
+                    }
+
+                    focusEl(recommendationCards[targetIndex]);
+                    scrollToElement(recommendationCards[targetIndex]);
                     return true;
                 }
                 return true;
