@@ -2065,16 +2065,17 @@ function setupFocusRescue() {
                             if (targetIndex >= 0 && targetIndex < newCards.length) {
                                 var newFocusCard = newCards[targetIndex];
                                 if (newFocusCard) {
-                                    var globalIndex = -1;
-                                    for (var n = 0; n < focusableElements.length; n++) {
-                                        if (newFocusCard === focusableElements[n]) {
-                                            globalIndex = n;
-                                            break;
-                                        }
-                                    }
-                                    if (globalIndex !== -1) {
-                                        setFocus(globalIndex);
-                                    }
+                                    setFocus(newFocusCard);
+                                    //var globalIndex = -1;
+                                    //for (var n = 0; n < focusableElements.length; n++) {
+                                        //if (newFocusCard === focusableElements[n]) {
+                                            //globalIndex = n;
+                                            //break;
+                                        //}
+                                    //}
+                                    //if (globalIndex !== -1) {
+                                        //setFocus(globalIndex);
+                                    //}
                                 }
                             }
                         }, 50);
