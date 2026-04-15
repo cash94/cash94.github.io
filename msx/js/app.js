@@ -177,6 +177,18 @@ async function init() {
       if (volumeSlider) volumeSlider.value = videoPlayer.volume;
     }
 
+    // Настройка чекбоксов
+    setupCheckboxes();
+
+    // Настройка отображения часов
+    setupClockVisibility();
+
+    // Инициализация AppState с новыми значениями
+    if (typeof AppState !== 'undefined') {
+      AppState.addToDbEnabled = addToDbEnabled;
+      console.log('📦 AppState.addToDbEnabled =', AppState.addToDbEnabled);
+    }
+
     console.log('✅ Инициализация приложения завершена');
 
   } catch (error) {
@@ -1210,6 +1222,46 @@ function showPlayerHint(message) {
   window.hintTimeout = setTimeout(function () {
     hint.style.opacity = '0';
   }, 2000);
+}
+
+function setupCheckboxes() {
+  // Чекбокс "Скрыть часы"
+  var hideClockCheckbox = document.getElementById('hide-clock');
+  if (hideClockCheckbox) {
+    var savedHideClock = localStorage.getItem('hideClockEnabled') === 'true';
+    hideClockEnabled = savedHideClock;
+    hideClockCheckbox.checked = savedHideClock;
+
+    hideClockCheckbox.addEventListener('change', function (e) {
+      hideClockEnabled = e.target.checked;
+      localStorage.setItem('hideClockEnabled', hideClockEnabled);
+      setupClockVisibility();
+      console.log('🕐 Скрытие часов:', hideClockEnabled ? 'включено' : 'выключено');
+    });
+  }
+
+  // Чекбокс "Добавлять торренты в базу"
+  var addToDbCheckbox = document.getElementById('add-to-db');
+  if (addToDbCheckbox) {
+    var savedAddToDb = localStorage.getItem('addToDbEnabled') === 'true';
+    addToDbEnabled = savedAddToDb;
+    addToDbCheckbox.checked = savedAddToDb;
+
+    if (typeof AppState !== 'undefined') {
+      AppState.addToDbEnabled = addToDbEnabled;
+    }
+
+    addToDbCheckbox.addEventListener('change', function (e) {
+      addToDbEnabled = e.target.checked;
+      localStorage.setItem('addToDbEnabled', addToDbEnabled);
+
+      if (typeof AppState !== 'undefined') {
+        AppState.addToDbEnabled = addToDbEnabled;
+      }
+
+      console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
+    });
+  }
 }
 
 window.showPlayerHint = showPlayerHint;
