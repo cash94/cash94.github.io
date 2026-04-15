@@ -699,7 +699,7 @@ function updateBufferDisplay() {
         torrServerText = 'TorrServer: ' + preloadedText + ' | скорость: ' + speedText;
 
         if (torrentStatsCache.activePeers > 0) {
-          torrServerText += ' | пиры: ' + torrentStatsCache.activePeers + '/' + torrentStatsCache.totalPeers;
+          torrServerText += ' | пиры: ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
         }
       }
 
