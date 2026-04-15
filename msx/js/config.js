@@ -10,6 +10,7 @@ var AppState = {
   clientId: null,
   userlogin: '',
   userpassword: '',
+  addToDbEnabled: false,
 
   // Данные торрентов
   torrents: [],
