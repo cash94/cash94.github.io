@@ -2585,3 +2585,15 @@ body.detail-open {
   pointer-events: none;
   text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
 }
+
+#time-display,
+#current-time,
+#duration-time,
+#buffer-stats,
+.player-subtitle {
+  font-family: 'Courier New', 'Monaco', 'Menlo', monospace !important;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+  font-feature-settings: normal !important;
+  font-variant-numeric: tabular-nums !important;
+}
