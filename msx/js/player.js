@@ -618,13 +618,16 @@ function updateMuteButton() {
 
 function updateBufferDisplay() {
   var bufferStats = document.getElementById('buffer-stats');
+  var subtitleElement = document.getElementById('player-subtitle');
   var videoPlayer = document.getElementById('video-player');
 
   if (AppState.bufferHidden) {
-    bufferStats.classList.add('hidden');   
+    bufferStats.classList.add('hidden');
+    subtitleElement.classList.add('hidden');
     return;
   }
   bufferStats.classList.remove('hidden');
+  subtitleElement.classList.remove('hidden');
 
   if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
     var buffered = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
@@ -671,7 +674,7 @@ function updateBufferDisplay() {
         var preloadedText = formatSize(torrentStatsCache.preloaded);
         var preloadSizeText = formatSize(torrentStatsCache.preloadSize);
         var speedText = formatSpeed(torrentStatsCache.downloadSpeed); // больше не умножаем на 8
-        torrServerText = '| TorrServer: буфер ' + preloadedText + '| скорость ' + speedText;
+        torrServerText = 'TorrServer: буфер ' + preloadedText + '| скорость ' + speedText;
 
         // Опционально: добавить информацию о пирах
         if (torrentStatsCache.activePeers > 0) {
@@ -680,6 +683,7 @@ function updateBufferDisplay() {
       }
 
       bufferStats.innerText = 'Буфер: ' + bufferAheadText + '| до конца: ' + remainingText + '| конец в: ' + endTimeText + torrServerText;
+      subtitleElement.innerText = torrServerText;
     }
   } else {
     bufferStats.innerText = 'буфер: 0%';
