@@ -2041,15 +2041,16 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             }
 
             hidePlayerLoading();
-            updatePlayPauseButton();
+            
 
             videoPlayer.play()['catch'](function (err) {
               console.log('🔇 Автоплей заблокирован');
               videoPlayer.muted = true;
               videoPlayer.play()['catch'](function () { });
               updateMuteButton();
+              updatePlayPauseButton();
             });
-
+            
             playbackStarted = true;
             startTimecodeSaving();
             resetMouseIdleTimer();
@@ -2201,6 +2202,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     playerHint.style.opacity = '1';
     if (AppState.hintTimeout) clearTimeout(AppState.hintTimeout);
     AppState.hintTimeout = setTimeout(function () { playerHint.style.opacity = '0'; }, 4000);
+    updatePlayPauseButton();
 
     return true;
   } catch (error) {
