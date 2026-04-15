@@ -1777,7 +1777,7 @@ async function addTorrentToServer(magnet, hash, searchResult) {
       action: 'add',
       link: magnet,
       title: searchResult.name,
-      save_to_db: true
+      save_to_db: AppState.addToDbEnabled
     };
 
     // Добавляем постер, если нашли
