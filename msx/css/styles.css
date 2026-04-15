@@ -1489,8 +1489,6 @@ body.detail-open {
   font-weight: bold;
 }
 
-#toggle-buffer-btn,
-#toggle-buffer-btn,
 #exit-player-btn {
   position: fixed;
   width: 42px;
@@ -1515,11 +1513,6 @@ body.detail-open {
   
   /* Для браузеров WebKit */
   -webkit-tap-highlight-color: transparent;
-}
-
-#toggle-buffer-btn {
-  top: 16px;
-  right: 16px;
 }
 
 #exit-player-btn {
@@ -1670,7 +1663,6 @@ body.detail-open {
 }
 
 /* Убираем border только у этих кнопок полностью */
-#toggle-buffer-btn,
 .volume-container,
 #buffer-stats,
 #player-hint,
@@ -2479,7 +2471,6 @@ body.detail-open {
 /* Скрытие элементов плеера при idle-hidden */
 #buffer-stats.idle-hidden,
 #player-hint.idle-hidden,
-#toggle-buffer-btn.idle-hidden,
 #exit-player-btn.idle-hidden,
 #episodes-btn.idle-hidden,
 #prev-episode-btn.idle-hidden,
