@@ -630,70 +630,92 @@ function updateBufferDisplay() {
 
   if (AppState.bufferHidden) {
     bufferStats.classList.add('hidden');
-    subtitleElement.classList.add('hidden');
+    if (subtitleElement) subtitleElement.classList.add('hidden');
     return;
   }
   bufferStats.classList.remove('hidden');
-  subtitleElement.classList.remove('hidden');
+  if (subtitleElement) subtitleElement.classList.remove('hidden');
 
   if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
     var buffered = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
     var totalDuration = AppState.originalDuration || AppState.expectedDuration || videoPlayer.duration;
     var currentTime = videoPlayer.currentTime;
 
-    if (totalDuration && totalDuration > 0) {
+    if (totalDuration && totalDuration > 0 && isFinite(totalDuration)) {
       var absoluteBuffered = buffered + AppState.seekOffset;
       var absoluteCurrent = currentTime + AppState.seekOffset;
       var bufferAhead = absoluteBuffered - absoluteCurrent;
       var remainingTime = totalDuration - absoluteCurrent;
 
+      // Защита от отрицательных значений
+      if (remainingTime < 0) remainingTime = 0;
+      if (bufferAhead < 0) bufferAhead = 0;
+
       currentBufferAhead = bufferAhead;
 
-      var percent = Math.min(100, (absoluteBuffered / totalDuration * 100).toFixed(0));
-
-      // Форматируем разницу в зависимости от величины
+      // Форматируем буфер
       var bufferAheadText;
       if (bufferAhead < 60) {
-        bufferAheadText = bufferAhead.toFixed(0) + ' сек';
+        bufferAheadText = Math.floor(bufferAhead) + ' сек';
       } else if (bufferAhead < 3600) {
-        bufferAheadText = (bufferAhead / 60).toFixed(1) + ' мин';
+        bufferAheadText = Math.floor(bufferAhead / 60) + ' мин';
       } else {
-        bufferAheadText = (bufferAhead / 3600).toFixed(1) + ' ч';
+        bufferAheadText = Math.floor(bufferAhead / 3600) + ' ч';
       }
 
-      // Форматируем оставшееся время
+      // ИСПРАВЛЕННОЕ форматирование оставшегося времени
       var remainingText;
-      if (remainingTime < 60) {
-        remainingText = remainingTime.toFixed(0) + ' сек';
-      } else if (remainingTime < 3600) {
-        remainingText = (remainingTime / 60).toFixed(1) + ' мин';
+      var remainingHours = Math.floor(remainingTime / 3600);
+      var remainingMinutes = Math.floor((remainingTime % 3600) / 60);
+      var remainingSeconds = Math.floor(remainingTime % 60);
+
+      if (remainingHours > 0) {
+        if (remainingMinutes > 0) {
+          remainingText = remainingHours + ' ч ' + remainingMinutes + ' мин';
+        } else {
+          remainingText = remainingHours + ' ч';
+        }
+      } else if (remainingMinutes > 0) {
+        if (remainingSeconds > 0) {
+          remainingText = remainingMinutes + ' мин ' + remainingSeconds + ' сек';
+        } else {
+          remainingText = remainingMinutes + ' мин';
+        }
       } else {
-        remainingText = (remainingTime / 3600).toFixed(1) + ' ч';
+        remainingText = remainingSeconds + ' сек';
       }
 
-      // Вычисляем время окончания (текущее время клиента + оставшееся время)
+      // Вычисляем время окончания
       var endTime = new Date(Date.now() + remainingTime * 1000);
-      var endTimeText = endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      var endTimeHours = endTime.getHours().toString().padStart(2, '0');
+      var endTimeMinutes = endTime.getMinutes().toString().padStart(2, '0');
+      var endTimeText = endTimeHours + ':' + endTimeMinutes;
 
       // Добавляем статистику TorrServer из кэша
       var torrServerText = '';
       if (currentTimecodeData.hash && torrentStatsCache.preloadSize > 0) {
         var preloadedText = formatSize(torrentStatsCache.preloaded);
-        var preloadSizeText = formatSize(torrentStatsCache.preloadSize);
-        var speedText = formatSpeed(torrentStatsCache.downloadSpeed); // больше не умножаем на 8
-        torrServerText = 'TorrServer: буфер ' + preloadedText + ' скорость ' + speedText;
+        var speedText = formatSpeed(torrentStatsCache.downloadSpeed);
+        torrServerText = 'TorrServer: ' + preloadedText + ' | скорость: ' + speedText;
 
-        // Опционально: добавить информацию о пирах
         if (torrentStatsCache.activePeers > 0) {
-          torrServerText += ' пиры ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
+          torrServerText += ' | пиры: ' + torrentStatsCache.activePeers + '/' + torrentStatsCache.totalPeers;
         }
       }
 
-      bufferStats.innerText = 'Буфер: ' + bufferAheadText + ' до конца: ' + remainingText + ' конец в: ' + endTimeText;
-      subtitleElement.innerText = torrServerText;
+      bufferStats.innerText = 'Буфер: ' + bufferAheadText + ' | до конца: ' + remainingText + ' | конец в: ' + endTimeText;
+
+      if (subtitleElement && torrServerText) {
+        subtitleElement.innerText = torrServerText;
+      } else if (subtitleElement) {
+        subtitleElement.innerText = '';
+      }
     }
   } else {
     bufferStats.innerText = 'буфер: 0%';
+    if (subtitleElement) {
+      subtitleElement.innerText = '';
+    }
   }
 }
 
