@@ -2041,6 +2041,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             }
 
             hidePlayerLoading();
+            updatePlayPauseButton();
 
             videoPlayer.play()['catch'](function (err) {
               console.log('🔇 Автоплей заблокирован');
