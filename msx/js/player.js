@@ -2048,12 +2048,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               videoPlayer.muted = true;
               videoPlayer.play()['catch'](function () { });
               updateMuteButton();
-              updatePlayPauseButton();
             });
             
             playbackStarted = true;
             startTimecodeSaving();
             resetMouseIdleTimer();
+            updatePlayPauseButton();
 
             // Запускаем проверку приближения к концу видео
             if (nearEndCheckInterval) {
@@ -2202,7 +2202,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     playerHint.style.opacity = '1';
     if (AppState.hintTimeout) clearTimeout(AppState.hintTimeout);
     AppState.hintTimeout = setTimeout(function () { playerHint.style.opacity = '0'; }, 4000);
-    updatePlayPauseButton();
 
     return true;
   } catch (error) {
