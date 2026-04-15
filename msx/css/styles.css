@@ -1170,30 +1170,62 @@ body.detail-open {
   text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
 }
 
-.player-title {
+/* Контейнер для двух строк заголовка */
+.player-title-container {
   position: fixed;
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
+  z-index: 230;
+  pointer-events: none;
+  max-width: 80%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Основной заголовок */
+.player-title {
   background: rgba(0, 0, 0, 0.5);
   color: #fff;
   padding: 8px 20px;
   border-radius: 30px;
   font-size: 14px;
   font-weight: 500;
-  z-index: 230;
   border: 1px solid rgba(74, 158, 255, 0.5);
   text-align: center;
-  max-width: 80%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
   backdrop-filter: blur(4px);
+  transition: opacity 0.3s ease;
+}
+
+/* Вторая строка (субтитр) */
+.player-subtitle {
+  background: rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.8);
+  padding: 6px 16px;
+  border-radius: 30px;
+  font-size: 12px;
+  font-weight: 400;
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+  transition: opacity 0.3s ease;
 }
 
 .player-title.hidden,
-.player-title.idle-hidden {
+.player-subtitle.hidden,
+.player-title.idle-hidden,
+.player-subtitle.idle-hidden {
   opacity: 0;
 }
 
@@ -1643,6 +1675,7 @@ body.detail-open {
 #buffer-stats,
 #player-hint,
 .player-title,
+.player-subtitle,
 #exit-player-btn {
   border: none !important;
 }
