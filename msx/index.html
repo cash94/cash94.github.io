@@ -13,14 +13,14 @@
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-K43Y9GMGR9"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
+    function gtag() { dataLayer.push(arguments); }
     gtag('js', new Date());
     gtag('config', 'G-K43Y9GMGR9');
   </script>
 
   <!-- HLS.js библиотека (без версионирования, так как с CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"></script>
-  
+
   <!-- CSS стили с версионированием -->
   <script>
     var VERSION = Date.now();
@@ -29,8 +29,9 @@
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-chubby.css?v=' + VERSION + '">');
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/styles.css?v=' + VERSION + '">');
   </script>
-  
-  <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap" rel="stylesheet">
+
+  <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap"
+    rel="stylesheet">
 </head>
 
 <body class="tv-mode">
@@ -69,6 +70,14 @@
         <div class="checkbox-container">
           <input type="checkbox" id="auto-fullscreen">
           <span>Автоматический полноэкранный режим при запуске</span>
+        </div>
+        <div class="checkbox-container">
+          <input type="checkbox" id="hide-clock">
+          <span>Скрыть часы в плеере</span>
+        </div>
+        <div class="checkbox-container">
+          <input type="checkbox" id="add-to-db">
+          <span>Добавлять торренты в базу</span>
         </div>
         <div class="help-text" style="margin-top: 20px; color: #666;">
           • Введите адрес TorrServer для автоматического подключения<br>
@@ -211,7 +220,10 @@
     <!-- Индикатор скорости перемотки -->
     <div id="seek-speed-indicator" class="seek-speed-indicator hidden"></div>
     <!-- Название текущего воспроизводимого файла -->
-    <div id="player-title" class="player-title hidden">Загрузка...</div>
+    <div class="player-title-container" id="player-title-container">
+      <div id="player-title" class="player-title hidden">Загрузка...</div>
+      <div id="player-subtitle" class="player-subtitle hidden"></div>
+    </div>
     <div id="player-overlay">
       <div id="controls-container">
         <div id="time-display">
@@ -243,6 +255,9 @@
             </button>
             <button class="control-btn" id="mute-btn">
               <i class="fi fi-rr-volume"></i>
+            </button>
+            <button class="control-btn" id="toggle-buffer-btn">
+              <i class="fi fi-rr-eye"></i>
             </button>
           </div>
           <div class="volume-container">
