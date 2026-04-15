@@ -1990,23 +1990,15 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           if (playbackStarted) return;
 
           if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
-            // 🔥 ИСПРАВЛЕНИЕ: измеряем буфер от начала (0) до конца буфера
             var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
-            var bufferAhead = bufferedEnd; // Так как currentTime = 0 на паузе
-
-            // Альтернативный способ: просто берем buffered.end()
-            // Если currentTime все же не 0, используем max
             var currentTime = videoPlayer.currentTime;
-            var actualBuffer = Math.max(bufferAhead - currentTime, bufferAhead);
+            var bufferAhead = bufferedEnd - currentTime;
 
-            console.log('📊 Текущий буфер: ' + actualBuffer.toFixed(2) + ' сек (bufferedEnd=' + bufferedEnd.toFixed(2) + ', currentTime=' + currentTime.toFixed(2) + ')');
+            console.log('📊 Текущий буфер: ' + bufferAhead.toFixed(2) + ' сек');
+            showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек', null);
 
-            var bufferPercent = Math.min(10, Math.floor(actualBuffer));
-            showPlayerLoading('Буферизация... ' + bufferPercent + '/10 сек', null);
-
-            // 🔥 Увеличиваем порог до 15 секунд для более стабильного запуска
-            if (actualBuffer >= 10) {
-              console.log('✅ Буфер накоплен (' + actualBuffer.toFixed(2) + ' сек), запускаем воспроизведение');
+            if (bufferAhead >= 10) {
+              console.log('✅ Буфер накоплен, запускаем воспроизведение');
 
               if (bufferCheckInterval) {
                 clearInterval(bufferCheckInterval);
@@ -2014,9 +2006,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               }
 
               hidePlayerLoading();
-
-              // 🔥 Сброс currentTime на 0 перед воспроизведением для точности
-              videoPlayer.currentTime = 0;
 
               videoPlayer.play()['catch'](function (err) {
                 console.log('🔇 Автоплей заблокирован');
@@ -2030,6 +2019,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               startTimecodeSaving();
               resetMouseIdleTimer();
 
+              // Запускаем проверку приближения к концу видео
               if (nearEndCheckInterval) {
                 clearInterval(nearEndCheckInterval);
               }
@@ -2045,19 +2035,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           if (!playbackStarted) {
             console.log('⚠️ Таймаут ожидания буфера, запускаем принудительно');
 
-            // 🔥 Дополнительная проверка: если буфер есть, но меньше 10 сек, всё равно запускаем
-            if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
-              var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
-              console.log('⚠️ Принудительный запуск с буфером: ' + bufferedEnd.toFixed(2) + ' сек');
-            }
-
             if (bufferCheckInterval) {
               clearInterval(bufferCheckInterval);
               bufferCheckInterval = null;
             }
 
             hidePlayerLoading();
-            videoPlayer.currentTime = 0;
 
             videoPlayer.play()['catch'](function (err) {
               console.log('🔇 Автоплей заблокирован');
@@ -2070,13 +2053,14 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             startTimecodeSaving();
             resetMouseIdleTimer();
 
+            // Запускаем проверку приближения к концу видео
             if (nearEndCheckInterval) {
               clearInterval(nearEndCheckInterval);
             }
             startNearEndCheck();
             startHeartbeat();
           }
-        }, 12000); // 🔥 Уменьшаем таймаут с 30 до 15 секунд
+        }, 15000);
       });
 
       AppState.hls.on(Hls.Events.ERROR, function (event, data) {
