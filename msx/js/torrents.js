@@ -1215,7 +1215,17 @@ async function showDetail(torrent) {
 
 // Добавить элемент файла (для сериалов)
 function addFileItem(file, hash) {
+  // Проверяем расширение файла
   var fileName = file.path.split('/').pop() || ('Файл ' + file.id);
+  var fileExt = fileName.split('.').pop().toLowerCase();
+  var allowedExtensions = ['mkv', 'mp4', 'avi', 'mov', 'webm', 'm4v'];
+
+  // Если расширение не в списке разрешенных - не добавляем
+  if (!allowedExtensions.includes(fileExt)) {
+    console.log(`⏭️ Пропускаем файл (не видео): ${fileName}`);
+    return;
+  }
+
   var fileSize = formatBytes(file.length);
 
   var item = document.createElement('div');
