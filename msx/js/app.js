@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 var checkServerTimeout = null;
+var hideClockEnabled = false;
+var addToDbEnabled = false;
 
 // Функция для начальной проверки сервера
 function initialServerCheck() {
