@@ -293,6 +293,7 @@ function updatePlayerTitle(title) {
 function syncPlayerTitleVisibility(forceVisible) {
   if (forceVisible === undefined) forceVisible = null;
   var titleElement = document.getElementById('player-title');
+  var subtitleElement = document.getElementById('player-subtitle');
   var controlsContainer = document.getElementById('controls-container');
   if (!titleElement) return;
 
@@ -300,6 +301,8 @@ function syncPlayerTitleVisibility(forceVisible) {
   if (!hasTitle) {
     titleElement.classList.add('hidden');
     titleElement.classList.add('idle-hidden');
+    subtitleElement.classList.add('hidden');
+    subtitleElement.classList.add('idle-hidden');
     return;
   }
 
@@ -310,9 +313,13 @@ function syncPlayerTitleVisibility(forceVisible) {
   if (shouldShow) {
     titleElement.classList.remove('hidden');
     titleElement.classList.remove('idle-hidden');
+    subtitleElement.classList.remove('hidden');
+    subtitleElement.classList.remove('idle-hidden');
   } else {
     titleElement.classList.add('hidden');
     titleElement.classList.add('idle-hidden');
+    subtitleElement.classList.add('hidden');
+    subtitleElement.classList.add('idle-hidden');
   }
 }
 window.syncPlayerTitleVisibility = syncPlayerTitleVisibility;
@@ -682,7 +689,7 @@ function updateBufferDisplay() {
         }
       }
 
-      bufferStats.innerText = 'Буфер: ' + bufferAheadText + '| до конца: ' + remainingText + '| конец в: ' + endTimeText + torrServerText;
+      bufferStats.innerText = 'Буфер: ' + bufferAheadText + '| до конца: ' + remainingText + '| конец в: ' + endTimeText;
       subtitleElement.innerText = torrServerText;
     }
   } else {
