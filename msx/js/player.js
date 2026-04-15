@@ -681,15 +681,15 @@ function updateBufferDisplay() {
         var preloadedText = formatSize(torrentStatsCache.preloaded);
         var preloadSizeText = formatSize(torrentStatsCache.preloadSize);
         var speedText = formatSpeed(torrentStatsCache.downloadSpeed); // больше не умножаем на 8
-        torrServerText = 'TorrServer: буфер ' + preloadedText + '| скорость ' + speedText;
+        torrServerText = 'TorrServer: буфер ' + preloadedText + ' скорость ' + speedText;
 
         // Опционально: добавить информацию о пирах
         if (torrentStatsCache.activePeers > 0) {
-          torrServerText += '| пиры ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
+          torrServerText += ' пиры ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
         }
       }
 
-      bufferStats.innerText = 'Буфер: ' + bufferAheadText + '| до конца: ' + remainingText + '| конец в: ' + endTimeText;
+      bufferStats.innerText = 'Буфер: ' + bufferAheadText + ' до конца: ' + remainingText + ' конец в: ' + endTimeText;
       subtitleElement.innerText = torrServerText;
     }
   } else {
@@ -2054,7 +2054,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             startNearEndCheck();
             startHeartbeat();
           }
-        }, 15000); // 🔥 Уменьшаем таймаут с 30 до 15 секунд
+        }, 12000); // 🔥 Уменьшаем таймаут с 30 до 15 секунд
       });
 
       AppState.hls.on(Hls.Events.ERROR, function (event, data) {
