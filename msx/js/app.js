@@ -1135,6 +1135,53 @@ function setupAutoFullscreen() {
   }
 }
 
+function setupCheckboxes() {
+  // Чекбокс "Скрыть часы"
+  var hideClockCheckbox = document.getElementById('hide-clock');
+  if (hideClockCheckbox) {
+    var savedHideClock = localStorage.getItem('hideClockEnabled') === 'true';
+    hideClockEnabled = savedHideClock;
+    hideClockCheckbox.checked = savedHideClock;
+
+    hideClockCheckbox.addEventListener('change', function (e) {
+      hideClockEnabled = e.target.checked;
+      localStorage.setItem('hideClockEnabled', hideClockEnabled);
+      setupClockVisibility();
+      console.log('🕐 Скрытие часов:', hideClockEnabled ? 'включено' : 'выключено');
+    });
+  }
+
+  // Чекбокс "Добавлять торренты в базу"
+  var addToDbCheckbox = document.getElementById('add-to-db');
+  if (addToDbCheckbox) {
+    var savedAddToDb = localStorage.getItem('addToDbEnabled') === 'true';
+    addToDbEnabled = savedAddToDb;
+    addToDbCheckbox.checked = savedAddToDb;
+
+    if (typeof AppState !== 'undefined') {
+      AppState.addToDbEnabled = addToDbEnabled;
+    }
+
+    addToDbCheckbox.addEventListener('change', function (e) {
+      addToDbEnabled = e.target.checked;
+      localStorage.setItem('addToDbEnabled', addToDbEnabled);
+
+      if (typeof AppState !== 'undefined') {
+        AppState.addToDbEnabled = addToDbEnabled;
+      }
+
+      console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
+    });
+  }
+}
+
+function setupClockVisibility() {
+  var clockDisplay = document.getElementById('clock-display');
+  if (clockDisplay) {
+    clockDisplay.style.display = hideClockEnabled ? 'none' : 'block';
+  }
+}
+
 function showInitError() {
   var errorDiv = document.createElement('div');
   errorDiv.style.cssText = '\n    position: fixed;\n    top: 50%;\n    left: 50%;\n    transform: translate(-50%, -50%);\n    background: rgba(0,0,0,0.9);\n    color: #ff6a6a;\n    padding: 20px;\n    border-radius: 12px;\n    text-align: center;\n    z-index: 10000;\n    border: 1px solid #ff6a6a;\n  ';
@@ -1224,46 +1271,6 @@ function showPlayerHint(message) {
   window.hintTimeout = setTimeout(function () {
     hint.style.opacity = '0';
   }, 2000);
-}
-
-function setupCheckboxes() {
-  // Чекбокс "Скрыть часы"
-  var hideClockCheckbox = document.getElementById('hide-clock');
-  if (hideClockCheckbox) {
-    var savedHideClock = localStorage.getItem('hideClockEnabled') === 'true';
-    hideClockEnabled = savedHideClock;
-    hideClockCheckbox.checked = savedHideClock;
-
-    hideClockCheckbox.addEventListener('change', function (e) {
-      hideClockEnabled = e.target.checked;
-      localStorage.setItem('hideClockEnabled', hideClockEnabled);
-      setupClockVisibility();
-      console.log('🕐 Скрытие часов:', hideClockEnabled ? 'включено' : 'выключено');
-    });
-  }
-
-  // Чекбокс "Добавлять торренты в базу"
-  var addToDbCheckbox = document.getElementById('add-to-db');
-  if (addToDbCheckbox) {
-    var savedAddToDb = localStorage.getItem('addToDbEnabled') === 'true';
-    addToDbEnabled = savedAddToDb;
-    addToDbCheckbox.checked = savedAddToDb;
-
-    if (typeof AppState !== 'undefined') {
-      AppState.addToDbEnabled = addToDbEnabled;
-    }
-
-    addToDbCheckbox.addEventListener('change', function (e) {
-      addToDbEnabled = e.target.checked;
-      localStorage.setItem('addToDbEnabled', addToDbEnabled);
-
-      if (typeof AppState !== 'undefined') {
-        AppState.addToDbEnabled = addToDbEnabled;
-      }
-
-      console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
-    });
-  }
 }
 
 window.showPlayerHint = showPlayerHint;
