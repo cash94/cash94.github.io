@@ -1838,7 +1838,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             if (currentTimecodeData.hash && torrentStatsCache.preloadSize > 0) {
               var preloadedText = formatSize(torrentStatsCache.preloaded);
               var speedText = formatSpeed(torrentStatsCache.downloadSpeed);
-              torrServerText = 'TorrServer: ' + preloadedText + ' | скорость: ' + speedText;
+              torrServerText = preloadedText + ' ' + speedText;
 
               if (torrentStatsCache.activePeers > 0) {
                 torrServerText += ' | пиры: ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
