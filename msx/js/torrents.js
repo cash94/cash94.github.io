@@ -1949,33 +1949,8 @@ async function playFromHash(hash, magnet, searchResult) {
     return;
   }
 
-  var overlay = document.getElementById('playback-overlay');
-  var playbackText = document.querySelector('.playback-text');
-
-  overlay.classList.add('active');
-  playbackText.textContent = 'Поиск постера и добавление...';
-
-  // Функция для обновления текста со статистикой
-  var statsInterval = null;
-
-  function updatePlaybackText(baseText) {
-    var torrServerText = '';
-    if (currentTimecodeData.hash && window.torrentStatsCache && window.torrentStatsCache.preloadSize > 0) {
-      var preloadedText = formatSize(window.torrentStatsCache.preloaded);
-      var speedText = formatSpeed(window.torrentStatsCache.downloadSpeed);
-      torrServerText = 'TorrServer: ' + preloadedText + ' | скорость: ' + speedText;
-
-      if (window.torrentStatsCache.activePeers > 0) {
-        torrServerText += ' | пиры: ' + window.torrentStatsCache.totalPeers + ' / ' + window.torrentStatsCache.activePeers + ' - ' + window.torrentStatsCache.connectedSeeders;
-      }
-    }
-
-    if (torrServerText) {
-      playbackText.textContent = baseText + ' | ' + torrServerText;
-    } else {
-      playbackText.textContent = baseText;
-    }
-  }
+  document.getElementById('playback-overlay').classList.add('active');
+  document.querySelector('.playback-text').textContent = 'Поиск постера и добавление...';
 
   try {
     var addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
@@ -2000,15 +1975,9 @@ async function playFromHash(hash, magnet, searchResult) {
     var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
     var fileId = playbackTarget.fileId || 1;
 
-    var baseText = playbackTarget.isSeries ? 'Воспроизведение серии...' : 'Воспроизведение...';
-
-    // Запускаем интервал обновления статистики
-    statsInterval = setInterval(function () {
-      updatePlaybackText(baseText);
-    }, 2000);
-
-    // Первое обновление
-    updatePlaybackText(baseText);
+    document.querySelector('.playback-text').textContent = playbackTarget.isSeries
+      ? 'Воспроизведение серии...'
+      : 'Воспроизведение...';
 
     var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
     console.log('URL воспроизведения:', playUrl, 'isSeries:', playbackTarget.isSeries, 'episodeIndex:', playbackTarget.episodeIndex);
@@ -2019,11 +1988,8 @@ async function playFromHash(hash, magnet, searchResult) {
     console.error('❌ Ошибка воспроизведения:', error);
     alert('Ошибка воспроизведения: ' + error.message);
   } finally {
-    if (statsInterval) {
-      clearInterval(statsInterval);
-    }
-    overlay.classList.remove('active');
-    playbackText.textContent = 'Воспроизведение...';
+    document.getElementById('playback-overlay').classList.remove('active');
+    document.querySelector('.playback-text').textContent = 'Воспроизведение...';
   }
 }
 
