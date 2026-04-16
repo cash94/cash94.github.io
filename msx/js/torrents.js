@@ -1240,10 +1240,24 @@ function addFileItem(file, hash) {
       AppState.currentTorrserverUrl + '/play/' + hash + '/' + file.id :
       AppState.currentTorrserverUrl + '/play/' + hash + '/1';
 
+    startTorrentStatsUpdates();
+    var torrServerText = '';
+    if (currentTimecodeData.hash && torrentStatsCache.preloadSize > 0) {
+      var preloadedText = formatSize(torrentStatsCache.preloaded);
+      var speedText = formatSpeed(torrentStatsCache.downloadSpeed);
+      torrServerText = preloadedText + ' ' + speedText;
+
+      if (torrentStatsCache.activePeers > 0) {
+        torrServerText += ' | пиры: ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
+      }
+    }
     document.getElementById('playback-overlay').classList.add('active');
+    document.querySelector('.playback-text').textContent = 'Воспроизведение... ' + torrServerText;
+
     document.getElementById('detail-view').style.pointerEvents = 'none';
 
     // Явно передаем timecode = 0 для воспроизведения с начала
+    stopTorrentStatsUpdates();
     startHLSPlayback(playUrl, 0, false).then(function () {
       document.getElementById('playback-overlay').classList.remove('active');
       document.getElementById('detail-view').style.pointerEvents = 'auto';
