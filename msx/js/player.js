@@ -1944,28 +1944,15 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             }
 
             if (isUnsupportedCodec) {
-              console.log('⚠️ Обнаружен неподдерживаемый формат (AVI/VC1)');
+              console.log('Обнаружен неподдерживаемый формат (AVI/VC1)');
 
-              // Показываем сообщение в буфер-статистике
-              var bufferStats = document.getElementById('buffer-stats');
-              if (bufferStats) {
-                bufferStats.innerText = '❌ Формат AVI или VC1 не поддерживаются на вашем устройстве';
-                bufferStats.classList.remove('hidden');
-                bufferStats.style.color = '#ff6b6b';
-              }
-
-              // Также показываем в subtitle
-              var subtitleElement = document.getElementById('player-subtitle');
-              if (subtitleElement) {
-                subtitleElement.innerText = '❌ Неподдерживаемый формат. Возврат в карточку...';
-                subtitleElement.classList.remove('hidden');
-                subtitleElement.style.color = '#ff6b6b';
-              }
+              document.getElementById('playback-overlay').classList.add('active');
+              document.querySelector('.playback-text').textContent = 'Формат AVI или VC1 не поддерживаются на вашем устройстве';
 
               // Скрываем оверлей загрузки если он активен
               hidePlayerLoading();
 
-              // Автоматический выход из плеера через 2 секунды
+              // Автоматический выход из плеера через 4 секунды
               setTimeout(function () {
                 console.log('🚪 Автоматический выход из плеера из-за неподдерживаемого формата');
 
@@ -1973,18 +1960,18 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
                 var exitBtn = document.getElementById('exit-player-btn');
                 if (exitBtn) {
                   exitBtn.click();
+                  document.getElementById('playback-overlay').classList.remove('active');
+                  document.querySelector('.playback-text').textContent = 'Воспроизведение...';
                 } else {
                   // Если кнопка не найдена, вызываем showDetailView напрямую
                   if (typeof showDetailView === 'function') {
                     showDetailView();
+                    document.getElementById('playback-overlay').classList.remove('active');
+                    document.querySelector('.playback-text').textContent = 'Воспроизведение...';
                   }
                 }
 
-                // Дополнительно показываем уведомление через toast если есть
-                if (typeof showToast === 'function') {
-                  showToast('Формат AVI или VC1 не поддерживаются на вашем устройстве', 5000);
-                }
-              }, 2000);
+              }, 4000);
 
             } else {
               // Для других MEDIA_ERROR пробуем стандартное восстановление
