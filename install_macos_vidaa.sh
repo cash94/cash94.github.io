@@ -7,6 +7,20 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Функция для загрузки файлов через curl
+download_file() {
+    local url=$1
+    local output=$2
+    
+    if command -v curl &> /dev/null; then
+        curl -L --progress-bar "$url" -o "$output"
+        return $?
+    else
+        echo -e "${RED}curl не найден. Пожалуйста, установите curl.${NC}"
+        return 1
+    fi
+}
+
 # Функция для определения архитектуры macOS
 detect_architecture() {
     local arch=$(uname -m)
@@ -200,7 +214,7 @@ install_vidaa() {
     
     # Скачиваем архив приложения
     echo "Скачивание архива приложения..."
-    sudo wget -q --show-progress "https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-macos.zip"
+    download_file "https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-macos.zip" "TorrStream-macos.zip"
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ошибка при скачивании архива${NC}"
@@ -244,7 +258,7 @@ install_vidaa() {
     
     # Скачиваем ffmpeg
     echo "Скачивание ffmpeg..."
-    sudo wget -q --show-progress "$ffmpeg_url"
+    download_file "$ffmpeg_url" "jellyfin-ffmpeg.tar.xz"
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ошибка при скачивании ffmpeg${NC}"
@@ -253,7 +267,7 @@ install_vidaa() {
     
     # Распаковываем tar.xz
     echo "Распаковка ffmpeg..."
-    sudo tar -xf jellyfin-ffmpeg_*.tar.xz
+    sudo tar -xf jellyfin-ffmpeg.tar.xz
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ошибка при распаковке ffmpeg${NC}"
@@ -265,11 +279,11 @@ install_vidaa() {
     sudo find . -name "ffprobe" -type f -exec cp {} /opt/Vidaa/ffmpeg/ \;
     
     # Удаляем распакованную папку и архив
-    sudo rm -rf jellyfin-ffmpeg_* && sudo rm -f jellyfin-ffmpeg_*.tar.xz
+    sudo rm -rf jellyfin-ffmpeg_* && sudo rm -f jellyfin-ffmpeg.tar.xz
     
     # Скачиваем yt-dlp для macOS
     echo "Скачивание yt-dlp..."
-    sudo wget -q --show-progress "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_macos" -O yt-dlp
+    download_file "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_macos" "yt-dlp"
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ошибка при скачивании yt-dlp${NC}"
@@ -371,7 +385,7 @@ update_vidaa() {
     
     # Скачиваем архив
     echo "Скачивание обновления..."
-    sudo wget -q --show-progress "https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-macos.zip"
+    download_file "https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-macos.zip" "TorrStream-macos.zip"
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ошибка при скачивании архива${NC}"
@@ -402,7 +416,7 @@ update_vidaa() {
     
     # Обновляем yt-dlp
     echo "Обновление yt-dlp..."
-    sudo wget -q --show-progress "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_macos" -O /opt/Vidaa/ffmpeg/yt-dlp
+    download_file "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_macos" "/opt/Vidaa/ffmpeg/yt-dlp"
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ошибка при скачивании yt-dlp${NC}"
@@ -488,11 +502,11 @@ if [[ "$(uname)" != "Darwin" ]]; then
 fi
 
 # Проверка наличия необходимых утилит
-for cmd in wget unzip tar lsof pfctl; do
+for cmd in curl unzip tar lsof pfctl; do
     if ! command -v $cmd &> /dev/null; then
         echo -e "${RED}Утилита $cmd не найдена. Пожалуйста, установите её.${NC}"
-        if [ "$cmd" = "wget" ]; then
-            echo -e "${YELLOW}Для установки wget используйте: brew install wget${NC}"
+        if [ "$cmd" = "curl" ]; then
+            echo -e "${YELLOW}curl обычно предустановлен в macOS. Если нет, установите через brew install curl${NC}"
         elif [ "$cmd" = "pfctl" ]; then
             echo -e "${YELLOW}pfctl является системной утилитой macOS, должна быть доступна по умолчанию${NC}"
         fi
