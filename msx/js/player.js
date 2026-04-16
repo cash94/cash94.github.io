@@ -1834,7 +1834,17 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             var bufferAhead = bufferedEnd - currentTime;
 
             console.log('📊 Текущий буфер: ' + bufferAhead.toFixed(2) + ' сек');
-            showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек', null);
+            var torrServerText = '';
+            if (currentTimecodeData.hash && torrentStatsCache.preloadSize > 0) {
+              var preloadedText = formatSize(torrentStatsCache.preloaded);
+              var speedText = formatSpeed(torrentStatsCache.downloadSpeed);
+              torrServerText = 'TorrServer: ' + preloadedText + ' | скорость: ' + speedText;
+
+              if (torrentStatsCache.activePeers > 0) {
+                torrServerText += ' | пиры: ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
+              }
+            }
+            showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек '+ torrServerText, null);
 
             if (bufferAhead >= 10) {
               console.log('✅ Буфер накоплен, запускаем воспроизведение');
