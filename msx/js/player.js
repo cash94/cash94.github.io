@@ -2084,7 +2084,73 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             break;
           case Hls.ErrorTypes.MEDIA_ERROR:
             console.log('Медиа ошибка, пробуем восстановить...');
-            AppState.hls.recoverMediaError();
+
+            // Проверяем, связана ли ошибка с неподдерживаемыми кодеками
+            var errorMessage = data.error ? data.error.message || data.error : '';
+            var errorDetails = data.details || '';
+
+            // Проверяем наличие признаков ошибки с кодеками AVI/VC1
+            var isUnsupportedCodec = false;
+
+            // Анализируем текст ошибки
+            if (errorMessage.toLowerCase().includes('codec') ||
+              errorDetails.toLowerCase().includes('codec')) {
+              isUnsupportedCodec = true;
+            }
+
+            // Также проверяем другие признаки неподдерживаемых форматов
+            if (AppState.videoUrl && (AppState.videoUrl.toLowerCase().includes('.avi') ||
+              AppState.videoUrl.toLowerCase().includes('.vc1'))) {
+              isUnsupportedCodec = true;
+            }
+
+            if (isUnsupportedCodec) {
+              console.log('⚠️ Обнаружен неподдерживаемый формат (AVI/VC1)');
+
+              // Показываем сообщение в буфер-статистике
+              var bufferStats = document.getElementById('buffer-stats');
+              if (bufferStats) {
+                bufferStats.innerText = '❌ Формат AVI или VC1 не поддерживаются на вашем устройстве';
+                bufferStats.classList.remove('hidden');
+                bufferStats.style.color = '#ff6b6b';
+              }
+
+              // Также показываем в subtitle
+              var subtitleElement = document.getElementById('player-subtitle');
+              if (subtitleElement) {
+                subtitleElement.innerText = '❌ Неподдерживаемый формат. Возврат в карточку...';
+                subtitleElement.classList.remove('hidden');
+                subtitleElement.style.color = '#ff6b6b';
+              }
+
+              // Скрываем оверлей загрузки если он активен
+              hidePlayerLoading();
+
+              // Автоматический выход из плеера через 2 секунды
+              setTimeout(function () {
+                console.log('🚪 Автоматический выход из плеера из-за неподдерживаемого формата');
+
+                // Эмулируем нажатие кнопки exit-player-btn
+                var exitBtn = document.getElementById('exit-player-btn');
+                if (exitBtn) {
+                  exitBtn.click();
+                } else {
+                  // Если кнопка не найдена, вызываем showDetailView напрямую
+                  if (typeof showDetailView === 'function') {
+                    showDetailView();
+                  }
+                }
+
+                // Дополнительно показываем уведомление через toast если есть
+                if (typeof showToast === 'function') {
+                  showToast('Формат AVI или VC1 не поддерживаются на вашем устройстве', 5000);
+                }
+              }, 2000);
+
+            } else {
+              // Для других MEDIA_ERROR пробуем стандартное восстановление
+              AppState.hls.recoverMediaError();
+            }
             break;
           default:
             console.log('Неизвестная фатальная ошибка');
