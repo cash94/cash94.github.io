@@ -229,6 +229,15 @@ function checkAppVersion() {
     })
   ['catch'](function (error) {
     console.error('❌ Ошибка проверки версии:', error);
+    var sectionTitle = document.querySelector('.section-title-header');
+    if (sectionTitle && !document.querySelector('.version-warning')) {
+      var warningBlock = document.createElement('div');
+      warningBlock.className = 'version-warning';
+      warningBlock.style.cssText = 'color: #ff4444; font-size: 14px; margin-top: 8px; text-align: center;';
+      warningBlock.textContent = 'Требуется обновить TorrStream';
+
+      sectionTitle.parentNode.insertBefore(warningBlock, sectionTitle.nextSibling);
+    }
   });
 }
 
