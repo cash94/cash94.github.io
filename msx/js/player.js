@@ -2099,6 +2099,8 @@ function cancelCurrentPlayback() {
     console.log('⏹️ Отмена текущего воспроизведения...');
     currentPlaybackController.abort();
     currentPlaybackController = null;
+    document.getElementById('playback-overlay').classList.remove('active');
+    document.querySelector('.playback-text').textContent = 'Воспроизведение...';
   }
   
   // Очищаем интервалы буфера
