@@ -1834,7 +1834,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             }
             showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек ' + torrServerText, null);
 
-            if (bufferAhead >= 9) {
+            if (bufferAhead >= 10) {
               console.log('✅ Буфер накоплен, запускаем воспроизведение');
               if (bufferCheckInterval) {
                 clearInterval(bufferCheckInterval);
