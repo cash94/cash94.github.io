@@ -1834,7 +1834,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             }
             showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек ' + torrServerText, null);
 
-            if (bufferAhead >= 10) {
+            if (bufferAhead >= 9) {
               console.log('✅ Буфер накоплен, запускаем воспроизведение');
               if (bufferCheckInterval) {
                 clearInterval(bufferCheckInterval);
@@ -1849,6 +1849,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               });
               playbackStarted = true;
               updatePlayPauseButton();
+              updateMuteButton();
               startTimecodeSaving();
               resetMouseIdleTimer();
               if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
