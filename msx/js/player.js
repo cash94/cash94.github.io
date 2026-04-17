@@ -1492,100 +1492,80 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   lastPlaybackFromSearch = fromSearch;
 
   var match = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
-  var seekTime = initialSeek;
-
-  // Сохраняем hash и fileId сразу
   if (match) {
     currentTimecodeData.hash = match[1];
     currentTimecodeData.fileId = match[2];
     currentTimecodeData.timecode = 0;
-  }
 
-  // 🔥 ОПТИМИЗАЦИЯ 1: Запускаем все запросы параллельно и НЕ ЖДЁМ их здесь
-  var fileInfoPromise = null;
-  var savedTimecodePromise = null;
-  var savedAudioTrackPromise = null;
-  var fileNamePromise = null;
+    // 🚀 ЗАПУСКАЕМ ВСЕ ЗАПРОСЫ ПАРАЛЛЕЛЬНО
+    const requests = [
+      loadFileInfo(currentTimecodeData.hash, currentTimecodeData.fileId),
+      loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId),
+      getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId)
+    ];
 
-  if (match) {
-    fileInfoPromise = loadFileInfo(currentTimecodeData.hash, currentTimecodeData.fileId);
-
-    if (seekTime === null) {
-      savedTimecodePromise = loadTimecodeFromServer(currentTimecodeData.hash, currentTimecodeData.fileId);
+    // Добавляем загрузку таймкода только если initialSeek === null
+    let timecodePromise = null;
+    if (initialSeek === null) {
+      timecodePromise = loadTimecodeFromServer(currentTimecodeData.hash, currentTimecodeData.fileId);
+      requests.push(timecodePromise);
     }
 
-    savedAudioTrackPromise = loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId);
+    // Ждем выполнения всех запросов параллельно
+    const [fileInfo, savedAudioTrack, fileName, savedTimecode] = await Promise.all(requests);
 
-    // 🔥 ОПТИМИЗАЦИЯ 2: Загрузку имени файла тоже делаем параллельно, но не ждём
-    fileNamePromise = getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId);
-  }
-
-  // 🔥 ОПТИМИЗАЦИЯ 3: Ждём только ТО, что нужно ДЛЯ СТАРТА
-  // Для старта нужны: savedTimecode (для позиции) и savedAudioTrack (для аудио)
-  // fileInfo для аудиодорожек можно подгрузить позже
-
-  // Ждём только то, что критично для начала воспроизведения
-  var savedTimecode = savedTimecodePromise ? await savedTimecodePromise : null;
-
-  // Для аудио - если есть сохранённое предпочтение, используем его
-  // Если нет - будем использовать audioTrack из параметров
-  var savedAudioTrack = savedAudioTrackPromise ? await savedAudioTrackPromise : null;
-
-  // Обработка таймкода (критично для старта)
-  if (seekTime === null) {
-    if (savedTimecode > 0) {
-      seekTime = savedTimecode;
-      console.log('⏱️ Будем использовать сохраненный таймкод: ' + formatTime(savedTimecode));
-    } else {
-      seekTime = 0;
-      console.log('⏱️ Сохраненного таймкода нет, начинаем с начала');
+    // Обрабатываем результаты
+    if (fileInfo && fileInfo.audio) {
+      currentAudioTracks = fileInfo.audio;
+      currentAudioTrack = audioTrack !== null ? audioTrack : 0;
+      console.log('🎵 Загружено аудиодорожек:', currentAudioTracks.length);
     }
-  } else if (seekTime === 0) {
-    console.log('⏱️ Явно указано воспроизведение с начала (seekTime=0)');
-  } else {
-    console.log('⏱️ Явно указана позиция: ' + formatTime(seekTime));
-  }
 
-  initialSeek = seekTime;
-
-  // 🔥 ОПТИМИЗАЦИЯ 4: Аудиодорожки обрабатываем, но если fileInfo ещё не пришёл - используем то, что есть
-  // Не ждём fileInfo, если его нет - обойдёмся без списка дорожек
-  var fileInfo = fileInfoPromise ? await Promise.race([fileInfoPromise, new Promise(function (resolve) { setTimeout(resolve, 500); })]) : null;
-
-  if (fileInfo && fileInfo.audio) {
-    currentAudioTracks = fileInfo.audio;
-    console.log('🎵 Загружено аудиодорожек:', currentAudioTracks.length);
-  }
-
-  if (savedAudioTrack !== null && currentAudioTracks && savedAudioTrack < currentAudioTracks.length) {
-    currentAudioTrack = savedAudioTrack;
-    if (audioTrack !== savedAudioTrack) {
-      audioTrack = savedAudioTrack;
-    }
-    console.log('🎵 Используем сохраненное предпочтение: дорожка ' + currentAudioTrack);
-  } else {
-    currentAudioTrack = audioTrack !== null ? audioTrack : 0;
-  }
-
-  // 🔥 ОПТИМИЗАЦИЯ 5: Отображаем название файла ПОСЛЕ старта видео (не блокируем запуск)
-  // Запоминаем промис, но не ждём
-  if (fileNamePromise && match) {
-    fileNamePromise.then(function (fileName) {
-      if (fileName) {
-        if (AppState.currentDetailItem && AppState.currentDetailItem.title) {
-          updatePlayerTitle(AppState.currentDetailItem.title + ' - ' + fileName);
-        } else {
-          updatePlayerTitle(fileName);
-        }
-      } else if (AppState.currentDetailItem && AppState.currentDetailItem.title) {
-        updatePlayerTitle(AppState.currentDetailItem.title);
+    // Обрабатываем предпочтения аудио
+    if (savedAudioTrack !== null && savedAudioTrack < currentAudioTracks.length) {
+      currentAudioTrack = savedAudioTrack;
+      if (audioTrack !== savedAudioTrack) {
+        audioTrack = savedAudioTrack;
       }
-    }).catch(function (e) {
-      console.log('Ошибка загрузки имени файла:', e);
-    });
+      console.log('🎵 Используем сохраненное предпочтение: дорожка ' + currentAudioTrack);
+    } else {
+      currentAudioTrack = audioTrack !== null ? audioTrack : 0;
+    }
+
+    console.log('🎵 Загружено аудиодорожек:', currentAudioTracks.length);
+
+    // Обрабатываем таймкод
+    var seekTime = initialSeek;
+    if (seekTime === null && timecodePromise) {
+      if (savedTimecode > 0) {
+        seekTime = savedTimecode;
+        console.log('⏱️ Будем использовать сохраненный таймкод: ' + formatTime(savedTimecode));
+      } else {
+        seekTime = 0;
+        console.log('⏱️ Сохраненного таймкода нет, начинаем с начала');
+      }
+    } else if (seekTime === 0) {
+      console.log('⏱️ Явно указано воспроизведение с начала (seekTime=0)');
+    } else if (seekTime !== null) {
+      console.log('⏱️ Явно указана позиция: ' + formatTime(seekTime));
+    }
+
+    // Используем вычисленный seekTime для дальнейшего воспроизведения
+    initialSeek = seekTime;
+
+    // Отображаем название файла
+    if (fileName) {
+      if (AppState.currentDetailItem && AppState.currentDetailItem.title) {
+        updatePlayerTitle(AppState.currentDetailItem.title + ' - ' + fileName);
+      } else {
+        updatePlayerTitle(fileName);
+      }
+    } else if (AppState.currentDetailItem && AppState.currentDetailItem.title) {
+      updatePlayerTitle(AppState.currentDetailItem.title);
+    }
   }
 
-  // 🔥 ОПТИМИЗАЦИЯ 6: Загружаем информацию о сериях тоже после старта (не блокируем)
+  // Если есть текущий торрент, загружаем информацию о сериях
   if (AppState.currentDetailItem) {
     console.log('📂 Загружаем информацию о сериях для:', AppState.currentDetailItem.title);
 
@@ -1593,10 +1573,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       ? currentEpisodeFiles[episodeIndex].id
       : (match ? match[2] : null);
 
-    // Откладываем загрузку серий на 100мс после старта
     setTimeout(function () {
       loadEpisodesInfo(AppState.currentDetailItem.hash, currentFileId);
-    }, 100);
+    }, fromSearch ? 1600 : 1000);
   }
 
   try {
@@ -1618,6 +1597,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
     AppState.currentStreamId = data.streamId;
     AppState.videoUrl = originalUrl;
+
     AppState.expectedDuration = data.duration;
     AppState.originalDuration = data.originalDuration || data.duration;
     AppState.seekOffset = data.seekOffset || initialSeek || 0;
@@ -1627,21 +1607,25 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
     AppState.currentScreen = 'player';
 
+    // Скрываем все другие экраны
     document.getElementById('config-screen').style.display = 'none';
     document.getElementById('torrserver-section').style.display = 'none';
     document.getElementById('detail-view').style.display = 'none';
     document.getElementById('player-screen').style.display = 'block';
 
+    // 👇 ВАЖНО: СБРАСЫВАЕМ ФОКУС ПЕРЕД ЗАПУСКОМ ПЛЕЕРА
     var focusedElements = document.querySelectorAll('.focused');
     for (var i = 0; i < focusedElements.length; i++) {
       focusedElements[i].classList.remove('focused');
     }
 
+    // Скрываем элементы управления (они должны быть скрыты по умолчанию)
     var controlsContainer = document.getElementById('controls-container');
     if (controlsContainer) {
       controlsContainer.classList.add('idle-hidden');
     }
 
+    // Сбрасываем индекс фокуса в глобальной переменной
     if (typeof currentFocusIndex !== 'undefined') {
       currentFocusIndex = 0;
     }
@@ -1653,7 +1637,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     destroyHls();
 
     var videoPlayer = document.getElementById('video-player');
+
+    // Удаляем старый обработчик окончания видео
     videoPlayer.removeEventListener('ended', handleVideoEnded);
+    // Добавляем новый обработчик
     videoPlayer.addEventListener('ended', handleVideoEnded);
 
     if (Hls.isSupported()) {
