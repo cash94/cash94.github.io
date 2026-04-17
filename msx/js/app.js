@@ -70,6 +70,8 @@ async function init() {
       console.error('❌ Ошибка загрузки конфигурации:', error);
     }
 
+    checkAppVersion();
+
     // Определение платформы с fallback
     var ua = navigator.userAgent ? navigator.userAgent.toLowerCase() : '';
     var body = document.body;
@@ -201,6 +203,34 @@ async function init() {
 }
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАЗБИЕНИЯ ЛОГИКИ ====================
+
+function checkAppVersion() {
+  fetch('/api/version')
+    .then(function (response) {
+      return response.json();
+    })
+    .then(function (data) {
+      var serverVersion = data.version;
+      var currentVersion = AppState.currentVersion;
+
+      if (serverVersion !== currentVersion) {
+        console.warn('⚠️ Версии не совпадают: локальная ' + currentVersion + ', серверная ' + serverVersion);
+
+        var sectionTitle = document.querySelector('.section-title-header');
+        if (sectionTitle && !document.querySelector('.version-warning')) {
+          var warningBlock = document.createElement('div');
+          warningBlock.className = 'version-warning';
+          warningBlock.style.cssText = 'color: #ff4444; font-size: 14px; margin-top: 8px; text-align: center;';
+          warningBlock.textContent = 'Требуется обновить TorrStream';
+
+          sectionTitle.parentNode.insertBefore(warningBlock, sectionTitle.nextSibling);
+        }
+      }
+    })
+  ['catch'](function (error) {
+    console.error('❌ Ошибка проверки версии:', error);
+  });
+}
 
 function setupSeekSliderEvents(seekSlider, videoPlayer) {
   seekSlider.addEventListener('mousedown', function () {
