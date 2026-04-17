@@ -1489,64 +1489,72 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   console.log('Аудиодорожка:', audioTrack);
   console.log('Начальная позиция (initialSeek):', initialSeek !== null ? formatTime(initialSeek) : 'не указана');
 
-  // Устанавливаем флаг, откуда было начато воспроизведение
   lastPlaybackFromSearch = fromSearch;
 
-  // Парсим URL для получения hash и fileId
   var match = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
+  var seekTime = initialSeek;
+
+  // Параллельная загрузка данных: информация о файле, таймкод, предпочтение аудио
+  var fileInfoPromise = null;
+  var savedTimecodePromise = null;
+  var savedAudioTrackPromise = null;
+
   if (match) {
     currentTimecodeData.hash = match[1];
     currentTimecodeData.fileId = match[2];
     currentTimecodeData.timecode = 0;
 
-    // Загружаем информацию о файле (аудиодорожки)
-    var fileInfo = await loadFileInfo(currentTimecodeData.hash, currentTimecodeData.fileId);
-    if (fileInfo && fileInfo.audio) {
-      currentAudioTracks = fileInfo.audio;
-      // Если передана конкретная аудиодорожка, используем её, иначе первую
-      currentAudioTrack = audioTrack !== null ? audioTrack : 0;
-      console.log('🎵 Загружено аудиодорожек:', currentAudioTracks.length);
-    }
-    // Загружаем предпочтение аудиодорожки
-    var savedAudioTrack = await loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId);
-
-    // Если есть сохраненное предпочтение, используем его, иначе первую дорожку
-    if (savedAudioTrack !== null && savedAudioTrack < currentAudioTracks.length) {
-      currentAudioTrack = savedAudioTrack;
-      // Если переданная audioTrack отличается от сохраненной, обновляем её
-      if (audioTrack !== savedAudioTrack) {
-        audioTrack = savedAudioTrack;
-      }
-      console.log('🎵 Используем сохраненное предпочтение: дорожка ' + currentAudioTrack);
-    } else {
-      currentAudioTrack = audioTrack !== null ? audioTrack : 0;
-    }
-
-    console.log('🎵 Загружено аудиодорожек:', currentAudioTracks.length);
-
-    // 🔥 ИСПРАВЛЕННАЯ ЛОГИКА: обрабатываем initialSeek
-    var seekTime = initialSeek;
+    // Запускаем все запросы параллельно
+    fileInfoPromise = loadFileInfo(currentTimecodeData.hash, currentTimecodeData.fileId);
 
     if (seekTime === null) {
-      // Только если initialSeek не передан, загружаем сохраненный таймкод
-      var savedTimecode = await loadTimecodeFromServer(currentTimecodeData.hash, currentTimecodeData.fileId);
-      if (savedTimecode > 0) {
-        seekTime = savedTimecode;
-        console.log('⏱️ Будем использовать сохраненный таймкод: ' + formatTime(savedTimecode));
-      } else {
-        seekTime = 0;
-        console.log('⏱️ Сохраненного таймкода нет, начинаем с начала');
-      }
-    } else if (seekTime === 0) {
-      console.log('⏱️ Явно указано воспроизведение с начала (seekTime=0)');
-    } else {
-      console.log('⏱️ Явно указана позиция: ' + formatTime(seekTime));
+      savedTimecodePromise = loadTimecodeFromServer(currentTimecodeData.hash, currentTimecodeData.fileId);
     }
 
-    // Используем вычисленный seekTime для дальнейшего воспроизведения
-    initialSeek = seekTime;
+    savedAudioTrackPromise = loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId);
+  }
 
-    // Получаем и отображаем название файла
+  // Дожидаемся результатов параллельных запросов
+  var fileInfo = fileInfoPromise ? await fileInfoPromise : null;
+  var savedTimecode = savedTimecodePromise ? await savedTimecodePromise : null;
+  var savedAudioTrack = savedAudioTrackPromise ? await savedAudioTrackPromise : null;
+
+  // Обработка аудиодорожек (логика не изменена)
+  if (fileInfo && fileInfo.audio) {
+    currentAudioTracks = fileInfo.audio;
+    currentAudioTrack = audioTrack !== null ? audioTrack : 0;
+    console.log('🎵 Загружено аудиодорожек:', currentAudioTracks.length);
+  }
+
+  if (savedAudioTrack !== null && currentAudioTracks && savedAudioTrack < currentAudioTracks.length) {
+    currentAudioTrack = savedAudioTrack;
+    if (audioTrack !== savedAudioTrack) {
+      audioTrack = savedAudioTrack;
+    }
+    console.log('🎵 Используем сохраненное предпочтение: дорожка ' + currentAudioTrack);
+  } else {
+    currentAudioTrack = audioTrack !== null ? audioTrack : 0;
+  }
+
+  // Обработка таймкода (логика не изменена)
+  if (seekTime === null) {
+    if (savedTimecode > 0) {
+      seekTime = savedTimecode;
+      console.log('⏱️ Будем использовать сохраненный таймкод: ' + formatTime(savedTimecode));
+    } else {
+      seekTime = 0;
+      console.log('⏱️ Сохраненного таймкода нет, начинаем с начала');
+    }
+  } else if (seekTime === 0) {
+    console.log('⏱️ Явно указано воспроизведение с начала (seekTime=0)');
+  } else {
+    console.log('⏱️ Явно указана позиция: ' + formatTime(seekTime));
+  }
+
+  initialSeek = seekTime;
+
+  // Отображаем название файла (можно сделать параллельно, но это быстро)
+  if (match) {
     var fileName = await getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId);
     if (fileName) {
       if (AppState.currentDetailItem && AppState.currentDetailItem.title) {
@@ -1559,7 +1567,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     }
   }
 
-  // Если есть текущий торрент, загружаем информацию о сериях
+  // Загружаем информацию о сериях (убираем искусственную задержку)
   if (AppState.currentDetailItem) {
     console.log('📂 Загружаем информацию о сериях для:', AppState.currentDetailItem.title);
 
@@ -1567,9 +1575,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       ? currentEpisodeFiles[episodeIndex].id
       : (match ? match[2] : null);
 
-    setTimeout(function () {
-      loadEpisodesInfo(AppState.currentDetailItem.hash, currentFileId);
-    }, fromSearch ? 1600 : 1000);
+    // Запускаем без задержки, но не дожидаемся (фоновая загрузка)
+    loadEpisodesInfo(AppState.currentDetailItem.hash, currentFileId);
   }
 
   try {
@@ -1591,7 +1598,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
     AppState.currentStreamId = data.streamId;
     AppState.videoUrl = originalUrl;
-
     AppState.expectedDuration = data.duration;
     AppState.originalDuration = data.originalDuration || data.duration;
     AppState.seekOffset = data.seekOffset || initialSeek || 0;
@@ -1601,25 +1607,21 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
     AppState.currentScreen = 'player';
 
-    // Скрываем все другие экраны
     document.getElementById('config-screen').style.display = 'none';
     document.getElementById('torrserver-section').style.display = 'none';
     document.getElementById('detail-view').style.display = 'none';
     document.getElementById('player-screen').style.display = 'block';
 
-    // 👇 ВАЖНО: СБРАСЫВАЕМ ФОКУС ПЕРЕД ЗАПУСКОМ ПЛЕЕРА
     var focusedElements = document.querySelectorAll('.focused');
     for (var i = 0; i < focusedElements.length; i++) {
       focusedElements[i].classList.remove('focused');
     }
 
-    // Скрываем элементы управления (они должны быть скрыты по умолчанию)
     var controlsContainer = document.getElementById('controls-container');
     if (controlsContainer) {
       controlsContainer.classList.add('idle-hidden');
     }
 
-    // Сбрасываем индекс фокуса в глобальной переменной
     if (typeof currentFocusIndex !== 'undefined') {
       currentFocusIndex = 0;
     }
@@ -1631,15 +1633,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     destroyHls();
 
     var videoPlayer = document.getElementById('video-player');
-
-    // Удаляем старый обработчик окончания видео
     videoPlayer.removeEventListener('ended', handleVideoEnded);
-    // Добавляем новый обработчик
     videoPlayer.addEventListener('ended', handleVideoEnded);
 
     if (Hls.isSupported()) {
       AppState.hls = new Hls({
-        maxBufferSize: 80 * 1024 * 1024, // 80MB
+        maxBufferSize: 80 * 1024 * 1024,
         maxBufferLength: 30,
         maxMaxBufferLength: 30,
         backBufferLength: 20,
@@ -1674,23 +1673,18 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         }
       });
 
-      // Обработчики HLS событий
+      // Обработчики HLS (без изменений, они не влияют на скорость запуска)
       AppState.hls.on(Hls.Events.FRAG_LOADING, function (event, data) {
         try {
           if (data && data.frag && data.frag.sn !== undefined) {
             console.log('📥 Загрузка сегмента ' + data.frag.sn);
           }
-        } catch (e) {
-          // Игнорируем ошибки в обработчике
-        }
+        } catch (e) { }
       });
 
       AppState.hls.on(Hls.Events.FRAG_LOADED, function (event, data) {
         try {
-          if (!data || !data.frag || !data.stats) {
-            return;
-          }
-
+          if (!data || !data.frag || !data.stats) return;
           var stats = data.stats;
           if (stats && stats.loading && stats.loading.end && stats.loading.start && stats.loaded) {
             var loadTimeMs = stats.loading.end - stats.loading.start;
@@ -1716,14 +1710,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
             var currentTime = videoPlayer.currentTime;
             var bufferAhead = bufferedEnd - currentTime;
-
             if (bufferAhead > 0 && isFinite(bufferAhead)) {
               console.log('📊 Буфер впереди: ' + bufferAhead.toFixed(2) + 's');
             }
           }
-        } catch (e) {
-          // Игнорируем ошибки в обработчике
-        }
+        } catch (e) { }
       });
 
       var currentPlayingSegment = -1;
@@ -1752,12 +1743,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
                 console.log('🧹 Запускаем очистку: текущий сегмент ' + segmentNumber + ', удаляем сегменты до ' + (segmentNumber - 3));
                 fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, {
                   method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({
-                    keepFromSegment: segmentNumber - 3
-                  })
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ keepFromSegment: segmentNumber - 3 })
                 })
                   .then(function (response) { return response.json(); })
                   .then(function (data) {
@@ -1796,13 +1783,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               }
             }
           }
-        } catch (e) {
-          // Игнорируем
-        }
+        } catch (e) { }
       };
 
       videoPlayer.addEventListener('timeupdate', timeUpdateHandler);
-
       AppState.hls.on(Hls.Events.LEVEL_SWITCHED, function (event, data) {
         console.log('📊 Качество переключено на уровень ' + data.level);
       });
@@ -1815,7 +1799,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
       AppState.hls.on(Hls.Events.MANIFEST_PARSED, function () {
         console.log('📜 Манифест распарсен');
-
         forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
         videoPlayer.currentTime = 0;
         videoPlayer.pause();
@@ -1827,7 +1810,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
         var checkBuffer = function () {
           if (playbackStarted) return;
-
           if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
             var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
             var currentTime = videoPlayer.currentTime;
@@ -1839,39 +1821,30 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               var preloadedText = formatSize(torrentStatsCache.preloaded);
               var speedText = formatSpeed(torrentStatsCache.downloadSpeed);
               torrServerText = preloadedText + ' ' + speedText;
-
               if (torrentStatsCache.activePeers > 0) {
                 torrServerText += ' | пиры: ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
               }
             }
-            showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек '+ torrServerText, null);
+            showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек ' + torrServerText, null);
 
             if (bufferAhead >= 10) {
               console.log('✅ Буфер накоплен, запускаем воспроизведение');
-
               if (bufferCheckInterval) {
                 clearInterval(bufferCheckInterval);
                 bufferCheckInterval = null;
               }
-
               hidePlayerLoading();
-
               videoPlayer.play()['catch'](function (err) {
                 console.log('🔇 Автоплей заблокирован');
                 videoPlayer.muted = true;
                 videoPlayer.play()['catch'](function () { });
                 updateMuteButton();
               });
-
               playbackStarted = true;
               updatePlayPauseButton();
               startTimecodeSaving();
               resetMouseIdleTimer();
-
-              // Запускаем проверку приближения к концу видео
-              if (nearEndCheckInterval) {
-                clearInterval(nearEndCheckInterval);
-              }
+              if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
               startNearEndCheck();
               startHeartbeat();
             }
@@ -1883,31 +1856,22 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         setTimeout(function () {
           if (!playbackStarted) {
             console.log('⚠️ Таймаут ожидания буфера, запускаем принудительно');
-
             if (bufferCheckInterval) {
               clearInterval(bufferCheckInterval);
               bufferCheckInterval = null;
             }
-
             hidePlayerLoading();
-            
-
             videoPlayer.play()['catch'](function (err) {
               console.log('🔇 Автоплей заблокирован');
               videoPlayer.muted = true;
               videoPlayer.play()['catch'](function () { });
               updateMuteButton();
             });
-            
             playbackStarted = true;
             startTimecodeSaving();
             resetMouseIdleTimer();
             updatePlayPauseButton();
-
-            // Запускаем проверку приближения к концу видео
-            if (nearEndCheckInterval) {
-              clearInterval(nearEndCheckInterval);
-            }
+            if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
             startNearEndCheck();
             startHeartbeat();
           }
@@ -1922,9 +1886,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           error: data.error ? data.error.message : 'Unknown error'
         });
 
-        if (!data.fatal) {
-          return;
-        }
+        if (!data.fatal) return;
 
         switch (data.type) {
           case Hls.ErrorTypes.NETWORK_ERROR:
@@ -1933,58 +1895,37 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             break;
           case Hls.ErrorTypes.MEDIA_ERROR:
             console.log('Медиа ошибка, пробуем восстановить...');
-
-            // Проверяем, связана ли ошибка с неподдерживаемыми кодеками
             var errorMessage = data.error ? data.error.message || data.error : '';
             var errorDetails = data.details || '';
-
-            // Проверяем наличие признаков ошибки с кодеками AVI/VC1
             var isUnsupportedCodec = false;
-
-            // Анализируем текст ошибки
-            if (errorMessage.toLowerCase().includes('codec') ||
-              errorDetails.toLowerCase().includes('codec')) {
+            if (errorMessage.toLowerCase().includes('codec') || errorDetails.toLowerCase().includes('codec')) {
               isUnsupportedCodec = true;
             }
-
-            // Также проверяем другие признаки неподдерживаемых форматов
-            if (AppState.videoUrl && (AppState.videoUrl.toLowerCase().includes('.avi') ||
-              AppState.videoUrl.toLowerCase().includes('.vc1'))) {
+            if (AppState.videoUrl && (AppState.videoUrl.toLowerCase().includes('.avi') || AppState.videoUrl.toLowerCase().includes('.vc1'))) {
               isUnsupportedCodec = true;
             }
 
             if (isUnsupportedCodec) {
               console.log('Обнаружен неподдерживаемый формат (AVI/VC1)');
-
               document.getElementById('playback-overlay').classList.add('active');
               document.querySelector('.playback-text').textContent = 'Формат AVI или VC1 не поддерживаются на вашем устройстве';
-
-              // Скрываем оверлей загрузки если он активен
               hidePlayerLoading();
-
-              // Автоматический выход из плеера через 4 секунды
               setTimeout(function () {
                 console.log('🚪 Автоматический выход из плеера из-за неподдерживаемого формата');
-
-                // Эмулируем нажатие кнопки exit-player-btn
                 var exitBtn = document.getElementById('exit-player-btn');
                 if (exitBtn) {
                   exitBtn.click();
                   document.getElementById('playback-overlay').classList.remove('active');
                   document.querySelector('.playback-text').textContent = 'Воспроизведение...';
                 } else {
-                  // Если кнопка не найдена, вызываем showDetailView напрямую
                   if (typeof showDetailView === 'function') {
                     showDetailView();
                     document.getElementById('playback-overlay').classList.remove('active');
                     document.querySelector('.playback-text').textContent = 'Воспроизведение...';
                   }
                 }
-
               }, 4000);
-
             } else {
-              // Для других MEDIA_ERROR пробуем стандартное восстановление
               AppState.hls.recoverMediaError();
             }
             break;
@@ -2003,9 +1944,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       });
 
     } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari (без изменений)
       videoPlayer.src = data.playlistUrl;
-
-      // Удаляем и добавляем обработчик для Safari
       videoPlayer.removeEventListener('ended', handleVideoEnded);
       videoPlayer.addEventListener('ended', handleVideoEnded);
 
@@ -2023,38 +1963,27 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
         var checkBuffer = function () {
           if (playbackStarted) return;
-
           if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
             var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
             var currentTime = videoPlayer.currentTime;
             var bufferAhead = bufferedEnd - currentTime;
-
             showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек', null);
-
             if (bufferAhead >= 10) {
               console.log('✅ Буфер накоплен, запускаем воспроизведение (Safari)');
-
               if (bufferCheckInterval) {
                 clearInterval(bufferCheckInterval);
                 bufferCheckInterval = null;
               }
-
               hidePlayerLoading();
-
               videoPlayer.play()['catch'](function (err) {
                 videoPlayer.muted = true;
                 videoPlayer.play()['catch'](function () { });
                 updateMuteButton();
               });
-
               playbackStarted = true;
               startTimecodeSaving();
               resetMouseIdleTimer();
-
-              // Запускаем проверку приближения к концу видео
-              if (nearEndCheckInterval) {
-                clearInterval(nearEndCheckInterval);
-              }
+              if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
               startNearEndCheck();
               startHeartbeat();
             }
@@ -2066,33 +1995,24 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         setTimeout(function () {
           if (!playbackStarted) {
             console.log('⚠️ Таймаут ожидания буфера (Safari)');
-
             if (bufferCheckInterval) {
               clearInterval(bufferCheckInterval);
               bufferCheckInterval = null;
             }
-
             hidePlayerLoading();
-
             videoPlayer.play()['catch'](function (err) {
               videoPlayer.muted = true;
               videoPlayer.play()['catch'](function () { });
               updateMuteButton();
             });
-
             playbackStarted = true;
             startTimecodeSaving();
             resetMouseIdleTimer();
-
-            // Запускаем проверку приближения к концу видео
-            if (nearEndCheckInterval) {
-              clearInterval(nearEndCheckInterval);
-            }
+            if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
             startNearEndCheck();
             startHeartbeat();
           }
         }, 30000);
-
       }, { once: true });
 
       AppState.isPlaying = true;
