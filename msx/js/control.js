@@ -2791,16 +2791,6 @@ function setupFocusRescue() {
     }
 
     document.addEventListener('keydown', function (e) {
-        // БЛОКИРУЕМ НАВИГАЦИЮ ЕСЛИ ПЛЕЕР АКТИВЕН
-        var playbackOverlay = document.getElementById('playback-overlay');
-        var isPlaybackActive = playbackOverlay && playbackOverlay.classList.contains('active');
-
-        // Если плеер активен, не обрабатываем навигацию по торрентам
-        if (isPlaybackActive) {
-            // Пропускаем обработку, если только это не специальные клавиши для плеера
-            // Они обрабатываются позже в секции плеера
-            return;
-        }
         var screen = currentScreen();
         if (screen === 'player') return;
         if (['torrents', 'catalog', 'search', 'detail', 'config', 'donate'].indexOf(screen) === -1) return;
@@ -2809,6 +2799,17 @@ function setupFocusRescue() {
 
         if (isBackKey(e.keyCode)) {
             e.preventDefault(); e.stopImmediatePropagation();
+            // БЛОКИРУЕМ НАВИГАЦИЮ ЕСЛИ ПЛЕЕР АКТИВЕН
+            var playbackOverlay = document.getElementById('playback-overlay');
+            var isPlaybackActive = playbackOverlay && playbackOverlay.classList.contains('active');
+
+            // Если плеер активен, не обрабатываем навигацию по торрентам
+            if (isPlaybackActive) {
+                // Пропускаем обработку, если только это не специальные клавиши для плеера
+                // Они обрабатываются позже в секции плеера
+                cancelCurrentPlayback();
+                return;
+            }
             if (isCustomFilterMenuOpen()) {
                 closeCustomFilterMenu();
                 return;
