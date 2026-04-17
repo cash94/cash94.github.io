@@ -1645,10 +1645,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
     if (Hls.isSupported()) {
       AppState.hls = new Hls({
-        maxBufferSize: 40 * 1024 * 1024,
-        maxBufferLength: 10,
+        maxBufferSize: 64 * 1024 * 1024,
+        maxBufferLength: 20,
         maxMaxBufferLength: 30,
-        backBufferLength: 10,
+        backBufferLength: 5,
         startFragPrefetch: true,
         startLevel: -1,
         abrEwmaDefaultEstimate: 500000,
