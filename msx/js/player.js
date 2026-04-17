@@ -1494,17 +1494,20 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   var match = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
   var seekTime = initialSeek;
 
-  // Параллельная загрузка данных: информация о файле, таймкод, предпочтение аудио
-  var fileInfoPromise = null;
-  var savedTimecodePromise = null;
-  var savedAudioTrackPromise = null;
-
+  // Сохраняем hash и fileId сразу
   if (match) {
     currentTimecodeData.hash = match[1];
     currentTimecodeData.fileId = match[2];
     currentTimecodeData.timecode = 0;
+  }
 
-    // Запускаем все запросы параллельно
+  // 🔥 ОПТИМИЗАЦИЯ 1: Запускаем все запросы параллельно и НЕ ЖДЁМ их здесь
+  var fileInfoPromise = null;
+  var savedTimecodePromise = null;
+  var savedAudioTrackPromise = null;
+  var fileNamePromise = null;
+
+  if (match) {
     fileInfoPromise = loadFileInfo(currentTimecodeData.hash, currentTimecodeData.fileId);
 
     if (seekTime === null) {
@@ -1512,31 +1515,23 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     }
 
     savedAudioTrackPromise = loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId);
+
+    // 🔥 ОПТИМИЗАЦИЯ 2: Загрузку имени файла тоже делаем параллельно, но не ждём
+    fileNamePromise = getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId);
   }
 
-  // Дожидаемся результатов параллельных запросов
-  var fileInfo = fileInfoPromise ? await fileInfoPromise : null;
+  // 🔥 ОПТИМИЗАЦИЯ 3: Ждём только ТО, что нужно ДЛЯ СТАРТА
+  // Для старта нужны: savedTimecode (для позиции) и savedAudioTrack (для аудио)
+  // fileInfo для аудиодорожек можно подгрузить позже
+
+  // Ждём только то, что критично для начала воспроизведения
   var savedTimecode = savedTimecodePromise ? await savedTimecodePromise : null;
+
+  // Для аудио - если есть сохранённое предпочтение, используем его
+  // Если нет - будем использовать audioTrack из параметров
   var savedAudioTrack = savedAudioTrackPromise ? await savedAudioTrackPromise : null;
 
-  // Обработка аудиодорожек (логика не изменена)
-  if (fileInfo && fileInfo.audio) {
-    currentAudioTracks = fileInfo.audio;
-    currentAudioTrack = audioTrack !== null ? audioTrack : 0;
-    console.log('🎵 Загружено аудиодорожек:', currentAudioTracks.length);
-  }
-
-  if (savedAudioTrack !== null && currentAudioTracks && savedAudioTrack < currentAudioTracks.length) {
-    currentAudioTrack = savedAudioTrack;
-    if (audioTrack !== savedAudioTrack) {
-      audioTrack = savedAudioTrack;
-    }
-    console.log('🎵 Используем сохраненное предпочтение: дорожка ' + currentAudioTrack);
-  } else {
-    currentAudioTrack = audioTrack !== null ? audioTrack : 0;
-  }
-
-  // Обработка таймкода (логика не изменена)
+  // Обработка таймкода (критично для старта)
   if (seekTime === null) {
     if (savedTimecode > 0) {
       seekTime = savedTimecode;
@@ -1553,21 +1548,44 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
   initialSeek = seekTime;
 
-  // Отображаем название файла (можно сделать параллельно, но это быстро)
-  if (match) {
-    var fileName = await getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId);
-    if (fileName) {
-      if (AppState.currentDetailItem && AppState.currentDetailItem.title) {
-        updatePlayerTitle(AppState.currentDetailItem.title + ' - ' + fileName);
-      } else {
-        updatePlayerTitle(fileName);
-      }
-    } else if (AppState.currentDetailItem && AppState.currentDetailItem.title) {
-      updatePlayerTitle(AppState.currentDetailItem.title);
-    }
+  // 🔥 ОПТИМИЗАЦИЯ 4: Аудиодорожки обрабатываем, но если fileInfo ещё не пришёл - используем то, что есть
+  // Не ждём fileInfo, если его нет - обойдёмся без списка дорожек
+  var fileInfo = fileInfoPromise ? await Promise.race([fileInfoPromise, new Promise(function (resolve) { setTimeout(resolve, 500); })]) : null;
+
+  if (fileInfo && fileInfo.audio) {
+    currentAudioTracks = fileInfo.audio;
+    console.log('🎵 Загружено аудиодорожек:', currentAudioTracks.length);
   }
 
-  // Загружаем информацию о сериях (убираем искусственную задержку)
+  if (savedAudioTrack !== null && currentAudioTracks && savedAudioTrack < currentAudioTracks.length) {
+    currentAudioTrack = savedAudioTrack;
+    if (audioTrack !== savedAudioTrack) {
+      audioTrack = savedAudioTrack;
+    }
+    console.log('🎵 Используем сохраненное предпочтение: дорожка ' + currentAudioTrack);
+  } else {
+    currentAudioTrack = audioTrack !== null ? audioTrack : 0;
+  }
+
+  // 🔥 ОПТИМИЗАЦИЯ 5: Отображаем название файла ПОСЛЕ старта видео (не блокируем запуск)
+  // Запоминаем промис, но не ждём
+  if (fileNamePromise && match) {
+    fileNamePromise.then(function (fileName) {
+      if (fileName) {
+        if (AppState.currentDetailItem && AppState.currentDetailItem.title) {
+          updatePlayerTitle(AppState.currentDetailItem.title + ' - ' + fileName);
+        } else {
+          updatePlayerTitle(fileName);
+        }
+      } else if (AppState.currentDetailItem && AppState.currentDetailItem.title) {
+        updatePlayerTitle(AppState.currentDetailItem.title);
+      }
+    }).catch(function (e) {
+      console.log('Ошибка загрузки имени файла:', e);
+    });
+  }
+
+  // 🔥 ОПТИМИЗАЦИЯ 6: Загружаем информацию о сериях тоже после старта (не блокируем)
   if (AppState.currentDetailItem) {
     console.log('📂 Загружаем информацию о сериях для:', AppState.currentDetailItem.title);
 
@@ -1575,8 +1593,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       ? currentEpisodeFiles[episodeIndex].id
       : (match ? match[2] : null);
 
-    // Запускаем без задержки, но не дожидаемся (фоновая загрузка)
-    loadEpisodesInfo(AppState.currentDetailItem.hash, currentFileId);
+    // Откладываем загрузку серий на 100мс после старта
+    setTimeout(function () {
+      loadEpisodesInfo(AppState.currentDetailItem.hash, currentFileId);
+    }, 100);
   }
 
   try {
