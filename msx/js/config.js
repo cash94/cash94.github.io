@@ -5,6 +5,7 @@ var SERVER_URL = window.location.origin;
 var AppState = {
   // Настройки сервера
   currentTorrserverUrl: '',
+  currentVersion: 'TorrStream.002',
   authEnabled: false,
   serverOnline: false,
   clientId: null,
