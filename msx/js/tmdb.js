@@ -1,6 +1,6 @@
 // TMDB API через свой прокси
 var TMDB_API_URL = '/api/tmdb/search';
-var TMDB_IMAGE_URL = 'https://nmtmdb.duckdns.org/t/p/w342';
+var TMDB_IMAGE_URL = 'https://tsimg.hnar.online/t/p/w342';
 
 // Кэш для постеров
 var posterCache = new Map();
