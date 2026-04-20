@@ -50,7 +50,7 @@ function startHeartbeat() {
         console.log('⚠️ Heartbeat error:', e);
       });
     }
-  }, 30000);
+  }, 20000);
 }
 
 function stopHeartbeat() {
