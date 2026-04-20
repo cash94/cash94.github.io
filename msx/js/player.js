@@ -1481,7 +1481,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
   // Создаем новый AbortController для текущего воспроизведения
   currentPlaybackController = new AbortController();
-  const signal = currentPlaybackController.signal;
+  var signal = currentPlaybackController.signal;
 
   AppState.inSearch = 'torrents';
   currentBufferAhead = 0;
@@ -1509,21 +1509,25 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     currentTimecodeData.timecode = 0;
 
     // 🚀 ЗАПУСКАЕМ ВСЕ ЗАПРОСЫ ПАРАЛЛЕЛЬНО с поддержкой отмены
-    const requests = [
+    var requests = [
       loadFileInfo(currentTimecodeData.hash, currentTimecodeData.fileId),
       loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId),
       getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId)
     ];
 
     // Добавляем загрузку таймкода только если initialSeek === null
-    let timecodePromise = null;
+    var timecodePromise = null;
     if (initialSeek === null) {
       timecodePromise = loadTimecodeFromServer(currentTimecodeData.hash, currentTimecodeData.fileId);
       requests.push(timecodePromise);
     }
 
     // Ждем выполнения всех запросов параллельно с проверкой отмены
-    const [fileInfo, savedAudioTrack, fileName, savedTimecode] = await Promise.all(requests);
+    var promiseResults = await Promise.all(requests);
+    var fileInfo = promiseResults[0];
+    var savedAudioTrack = promiseResults[1];
+    var fileName = promiseResults[2];
+    var savedTimecode = promiseResults[3];
 
     // Проверяем, не была ли операция отменена
     if (signal.aborted) {
@@ -1695,10 +1699,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         }
       });
 
-      let isPlaybackCancelled = false;
+      var isPlaybackCancelled = false;
 
       // Обработчик манифеста
-      const manifestParsedHandler = () => {
+      var manifestParsedHandler = function () {
         if (signal.aborted || isPlaybackCancelled) {
           console.log('⏹️ Пропускаем MANIFEST_PARSED из-за отмены');
           return;
@@ -1714,9 +1718,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         console.log('⏳ Ожидание накопления буфера 10 секунд... (видео на паузе)');
         showPlayerLoading('Буферизация... 0/10 сек', null);
 
-        let bufferCheckInterval = null;
+        var bufferCheckInterval = null;
 
-        const checkBuffer = function () {
+        var checkBuffer = function () {
           if (signal.aborted || isPlaybackCancelled) {
             if (bufferCheckInterval) {
               clearInterval(bufferCheckInterval);
@@ -1727,8 +1731,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
           if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
             var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
-            var currentTime = videoPlayer.currentTime;
-            var bufferAhead = bufferedEnd - currentTime;
+            var currentTimeVar = videoPlayer.currentTime;
+            var bufferAhead = bufferedEnd - currentTimeVar;
 
             console.log('📊 Текущий буфер: ' + bufferAhead.toFixed(2) + ' сек');
             var torrServerText = '';
@@ -1830,11 +1834,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       AppState.hls.on(Hls.Events.BUFFER_APPENDED, function (event, data) {
         if (signal.aborted) return;
         try {
-          var videoPlayer = document.getElementById('video-player');
-          if (videoPlayer && videoPlayer.buffered && videoPlayer.buffered.length > 0) {
-            var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
-            var currentTime = videoPlayer.currentTime;
-            var bufferAhead = bufferedEnd - currentTime;
+          var videoPlayerEl = document.getElementById('video-player');
+          if (videoPlayerEl && videoPlayerEl.buffered && videoPlayerEl.buffered.length > 0) {
+            var bufferedEnd = videoPlayerEl.buffered.end(videoPlayerEl.buffered.length - 1);
+            var currentTimeVar = videoPlayerEl.currentTime;
+            var bufferAhead = bufferedEnd - currentTimeVar;
             if (bufferAhead > 0 && isFinite(bufferAhead)) {
               console.log('📊 Буфер впереди: ' + bufferAhead.toFixed(2) + 's');
             }
@@ -1844,6 +1848,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
       var currentPlayingSegment = -1;
       var lastLogTime = 0;
+      var lastCleanedSegment = -1;
 
       AppState.hls.on(Hls.Events.FRAG_CHANGED, function (event, data) {
         if (signal.aborted) return;
@@ -1895,15 +1900,15 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       var timeUpdateHandler = function () {
         if (signal.aborted) return;
         try {
-          var currentTime = videoPlayer.currentTime;
+          var currentTimeVar = videoPlayer.currentTime;
           if (Date.now() - lastLogTime > 30000) {
             if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
-              for (var i = 0; i < videoPlayer.buffered.length; i++) {
-                var start = videoPlayer.buffered.start(i);
-                var end = videoPlayer.buffered.end(i);
-                if (currentTime >= start && currentTime <= end) {
-                  var segmentEstimate = Math.floor(currentTime / 10);
-                  console.log('⏱️ Текущая позиция: ' + formatTime(currentTime) + ' (примерно сегмент #' + segmentEstimate + ')');
+              for (var idx = 0; idx < videoPlayer.buffered.length; idx++) {
+                var start = videoPlayer.buffered.start(idx);
+                var end = videoPlayer.buffered.end(idx);
+                if (currentTimeVar >= start && currentTimeVar <= end) {
+                  var segmentEstimate = Math.floor(currentTimeVar / 10);
+                  console.log('⏱️ Текущая позиция: ' + formatTime(currentTimeVar) + ' (примерно сегмент #' + segmentEstimate + ')');
                   lastLogTime = Date.now();
                   break;
                 }
@@ -1977,9 +1982,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             showPlayerLoading('Ошибка воспроизведения, перезагрузка...');
             setTimeout(function () {
               if (AppState.currentStreamId && !signal.aborted) {
-                var videoPlayer = document.getElementById('video-player');
-                var currentTime = videoPlayer.currentTime + AppState.seekOffset;
-                startHLSPlayback(AppState.videoUrl, currentTime, false);
+                var videoPlayerEl = document.getElementById('video-player');
+                var currentTimeVar = videoPlayerEl.currentTime + AppState.seekOffset;
+                startHLSPlayback(AppState.videoUrl, currentTimeVar, false);
               }
             }, 2000);
             break;
@@ -1995,10 +2000,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       videoPlayer.removeEventListener('ended', handleVideoEnded);
       videoPlayer.addEventListener('ended', handleVideoEnded);
 
-      let isPlaybackCancelled = false;
-      let bufferCheckInterval = null;
+      var isPlaybackCancelled = false;
+      var bufferCheckInterval = null;
 
-      const loadedMetadataHandler = function () {
+      var loadedMetadataHandler = function () {
         if (signal.aborted || isPlaybackCancelled) return;
 
         forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
@@ -2009,7 +2014,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         console.log('⏳ Ожидание накопления буфера 10 секунд... (Safari, видео на паузе)');
         showPlayerLoading('Буферизация... 0/10 сек', null);
 
-        const checkBuffer = function () {
+        var checkBuffer = function () {
           if (signal.aborted || isPlaybackCancelled) {
             if (bufferCheckInterval) {
               clearInterval(bufferCheckInterval);
@@ -2020,8 +2025,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
           if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
             var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
-            var currentTime = videoPlayer.currentTime;
-            var bufferAhead = bufferedEnd - currentTime;
+            var currentTimeVar = videoPlayer.currentTime;
+            var bufferAhead = bufferedEnd - currentTimeVar;
             showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек', null);
             if (bufferAhead >= 10) {
               console.log('✅ Буфер накоплен, запускаем воспроизведение (Safari)');
