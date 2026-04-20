@@ -1658,6 +1658,7 @@ body.detail-open {
 .catalog-detail-extra,
 .catalog-meta-chip,
 .catalog-trailer-card-item,
+.global-search-card,
 .catalog-detail-section-title {
   border-color: #000000 !important;
 }
