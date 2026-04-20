@@ -2142,7 +2142,7 @@ function cancelCurrentPlayback() {
     btn.style.pointerEvents = 'auto';
     btn.style.opacity = '1';
   }
-  showDetailView();
+  //showDetailView();
 }
 
 // Обновленная функция выхода из плеера
