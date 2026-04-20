@@ -1763,6 +1763,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
                 });
               }
 
+              updatePlayPauseButton();
               startTimecodeSaving();
               resetMouseIdleTimer();
               if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
@@ -1788,6 +1789,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               videoPlayer.play()['catch'](function () { });
               updateMuteButton();
             });
+            updatePlayPauseButton();
             startTimecodeSaving();
             resetMouseIdleTimer();
             if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
