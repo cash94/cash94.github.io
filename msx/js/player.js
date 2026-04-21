@@ -1688,7 +1688,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         enableWorker: true,
         abrEwmaSlowVoD: 4000,
         abrEwmaFastVoD: 1000,
-        progressive: true,
+        progressive: false,
         fetchSetup: function (context, initParams) {
           initParams.headers = {
             'Connection': 'keep-alive',
