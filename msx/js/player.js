@@ -1685,10 +1685,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         maxLiveSyncPlaybackRate: 1,
         liveDurationInfinity: false,
         liveBackBufferLength: 20,
-        enableWorker: true,
         abrEwmaSlowVoD: 4000,
         abrEwmaFastVoD: 1000,
-        progressive: false,
+        enableWorker: !navigator.userAgent.includes('Firefox'),
+        progressive: !navigator.userAgent.includes('Firefox'),
         fetchSetup: function (context, initParams) {
           initParams.headers = {
             'Connection': 'keep-alive',
