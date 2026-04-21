@@ -1730,37 +1730,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             return;
           }
 
-          var bufferAhead = 0;
-          var hasBuffer = false;
+          if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
+            var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
+            var currentTimeVar = videoPlayer.currentTime;
+            var bufferAhead = bufferedEnd - currentTimeVar;
 
-          // Используем внутренние метрики HLS.js для Firefox
-          if (AppState.hls && AppState.hls.bufferController) {
-            try {
-              var bufferInfo = AppState.hls.bufferController.bufferInfo;
-              if (bufferInfo && bufferInfo.len !== undefined && bufferInfo.len > 0) {
-                bufferAhead = bufferInfo.len;
-                hasBuffer = true;
-                console.log('📊 Текущий буфер (HLS.js): ' + bufferAhead.toFixed(2) + ' сек');
-              }
-            } catch (e) {
-              console.log('Ошибка доступа к bufferInfo:', e);
-            }
-          }
-
-          // Fallback на videoPlayer.buffered если HLS.js метрики не дали результат
-          if (!hasBuffer && videoPlayer.buffered && videoPlayer.buffered.length > 0) {
-            try {
-              var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
-              var currentTimeVar = videoPlayer.currentTime;
-              bufferAhead = bufferedEnd - currentTimeVar;
-              hasBuffer = true;
-              console.log('📊 Текущий буфер (video): ' + bufferAhead.toFixed(2) + ' сек');
-            } catch (e) {
-              console.log('Ошибка доступа к buffered:', e);
-            }
-          }
-
-          if (hasBuffer) {
+            console.log('📊 Текущий буфер: ' + bufferAhead.toFixed(2) + ' сек');
             var torrServerText = '';
             if (currentTimecodeData.hash && torrentStatsCache.preloadSize > 0) {
               var preloadedText = formatSize(torrentStatsCache.preloaded);
