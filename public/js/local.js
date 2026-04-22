@@ -783,35 +783,35 @@ async function playLocalFile(filePath, title) {
     if (textEl) textEl.textContent = 'Загрузка локального файла...';
 
     try {
-        var response = await fetch(SERVER_URL + '/api/local/stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: filePath, start: 0, audioTrack: null })
-        });
-
-        if (!response.ok) {
-            var errorData = await response.json();
-            throw new Error(errorData.error || 'Ошибка воспроизведения');
-        }
-
-        var streamData = await response.json();
-
-        if (!streamData.success) {
-            throw new Error(streamData.error || 'Ошибка создания потока');
-        }
-
-        console.log('✅ Локальный поток создан:', streamData);
-
-        if (typeof startHLSPlayback === 'function') {
-            await startHLSPlayback(streamData.playlistUrl, 0, false, null, null);
-
-            if (typeof updatePlayerTitle === 'function') {
-                updatePlayerTitle(title);
-            }
+        // Используем новую функцию startLocalPlayback из player.js
+        if (typeof startLocalPlayback === 'function') {
+            await startLocalPlayback(filePath, title, 0, false, null, null);
         } else {
-            throw new Error('Плеер не инициализирован');
-        }
+            // Fallback на старый метод через fetch
+            var response = await fetch(SERVER_URL + '/api/local/stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: filePath, start: 0, audioTrack: null })
+            });
 
+            if (!response.ok) {
+                var errorData = await response.json();
+                throw new Error(errorData.error || 'Ошибка воспроизведения');
+            }
+
+            var streamData = await response.json();
+
+            if (!streamData.success) {
+                throw new Error(streamData.error || 'Ошибка создания потока');
+            }
+
+            if (typeof startHLSPlayback === 'function') {
+                await startHLSPlayback(streamData.playlistUrl, 0, false, null, null);
+                if (typeof updatePlayerTitle === 'function') {
+                    updatePlayerTitle(title);
+                }
+            }
+        }
     } catch (error) {
         console.error('❌ Ошибка воспроизведения локального файла:', error);
         alert('Ошибка воспроизведения: ' + error.message);
