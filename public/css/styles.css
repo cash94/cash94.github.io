@@ -2647,3 +2647,43 @@ body.detail-open {
     padding-bottom: 5px;
     border-bottom: 1px solid #4a9eff;
 }
+
+/* Локальный каталог */
+.local-folder-badge {
+    background: #ff9800 !important;
+}
+
+.local-file-badge {
+    background: #4caf50 !important;
+}
+
+.local-folder-card .folder-poster {
+    background: linear-gradient(135deg, #2a2a3a, #1a1a2a);
+}
+
+.folder-nav-btn {
+    transition: all 0.2s ease;
+}
+
+.folder-nav-btn:hover,
+.folder-nav-btn.focused {
+    background: #4a9eff !important;
+    color: white !important;
+}
+
+/* Хлебные крошки */
+.local-header .folder-nav-btn {
+    background: #282837;
+    border: none;
+    color: #4a9eff;
+    padding: 4px 12px;
+    border-radius: 16px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.local-header .folder-nav-btn.focused {
+    background: #4a9eff !important;
+    color: white !important;
+    outline: 2px solid #ff8c00;
+}
