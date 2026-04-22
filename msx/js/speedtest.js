@@ -4,7 +4,7 @@ var SpeedTest = (function () {
     'use strict';
 
     var TEST_FILE_SIZE = 200 * 1024 * 1024; // 200 MB в байтах
-    var TIMEOUT_MS = 20000; // 20 секунд таймаут на этап
+    var TIMEOUT_MS = 20000; // 20 секунд
 
     var isRunning = false;
     var abortController = null;
@@ -24,15 +24,17 @@ var SpeedTest = (function () {
     async function measureTorrServerToServer(torrServerUrl) {
         var startTime = performance.now();
         var receivedLength = 0;
-        var timedOut = false;
+        var stopped = false;
 
         abortController = new AbortController();
 
+        // Таймаут 20 секунд
         var timeoutId = setTimeout(function () {
-            timedOut = true;
+            stopped = true;
             if (abortController) {
                 abortController.abort();
             }
+            console.log('⏱️ Таймаут 20 секунд, получено ' + (receivedLength / (1024 * 1024)).toFixed(0) + ' MB');
         }, TIMEOUT_MS);
 
         try {
@@ -44,10 +46,6 @@ var SpeedTest = (function () {
                 method: 'GET'
             });
 
-            if (timedOut) {
-                throw new Error('Таймаут TorrServer (' + TIMEOUT_MS / 1000 + 'с)');
-            }
-
             if (!response.ok) {
                 throw new Error('HTTP ' + response.status + ': ' + response.statusText);
             }
@@ -56,11 +54,6 @@ var SpeedTest = (function () {
             var lastProgress = 0;
 
             while (true) {
-                if (timedOut) {
-                    reader.cancel();
-                    throw new Error('Таймаут TorrServer (' + TIMEOUT_MS / 1000 + 'с)');
-                }
-
                 var result = await reader.read();
                 if (result.done) break;
 
@@ -70,6 +63,12 @@ var SpeedTest = (function () {
                 if (progress - lastProgress >= 10) {
                     lastProgress = progress;
                     updateSpeedtestStatus('torrserver', Math.floor(progress) + '%');
+                }
+
+                // Если достигли 200 MB - останавливаемся
+                if (receivedLength >= TEST_FILE_SIZE) {
+                    console.log('✅ Получено 200 MB, останавливаемся');
+                    break;
                 }
             }
 
@@ -92,13 +91,26 @@ var SpeedTest = (function () {
                 speedMbps: formatSpeed(speedBps),
                 speedBytesPerSec: speedBps,
                 durationMs: endTime - startTime,
-                bytesReceived: receivedLength
+                bytesReceived: receivedLength,
+                testCompleted: receivedLength >= TEST_FILE_SIZE
             };
 
         } catch (error) {
             clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
-                throw new Error('Таймаут TorrServer (' + TIMEOUT_MS / 1000 + 'с)');
+                // Это ожидаемый таймаут, не ошибка
+                var endTime = performance.now();
+                var durationSec = (endTime - startTime) / 1000;
+                var speedBps = receivedLength / durationSec;
+
+                return {
+                    speedMbps: formatSpeed(speedBps),
+                    speedBytesPerSec: speedBps,
+                    durationMs: endTime - startTime,
+                    bytesReceived: receivedLength,
+                    testCompleted: false,
+                    timeoutReached: true
+                };
             }
             throw error;
         }
@@ -108,15 +120,16 @@ var SpeedTest = (function () {
     async function measureServerToClient() {
         var startTime = performance.now();
         var receivedLength = 0;
-        var timedOut = false;
+        var stopped = false;
 
         abortController = new AbortController();
 
         var timeoutId = setTimeout(function () {
-            timedOut = true;
+            stopped = true;
             if (abortController) {
                 abortController.abort();
             }
+            console.log('⏱️ Таймаут 20 секунд, получено ' + (receivedLength / (1024 * 1024)).toFixed(0) + ' MB');
         }, TIMEOUT_MS);
 
         try {
@@ -129,10 +142,6 @@ var SpeedTest = (function () {
                 method: 'GET'
             });
 
-            if (timedOut) {
-                throw new Error('Таймаут клиента (' + TIMEOUT_MS / 1000 + 'с)');
-            }
-
             if (!response.ok) {
                 throw new Error('HTTP ' + response.status);
             }
@@ -141,11 +150,6 @@ var SpeedTest = (function () {
             var lastProgress = 0;
 
             while (true) {
-                if (timedOut) {
-                    reader.cancel();
-                    throw new Error('Таймаут клиента (' + TIMEOUT_MS / 1000 + 'с)');
-                }
-
                 var result = await reader.read();
                 if (result.done) break;
 
@@ -155,6 +159,11 @@ var SpeedTest = (function () {
                 if (progress - lastProgress >= 10) {
                     lastProgress = progress;
                     updateSpeedtestStatus('client', Math.floor(progress) + '%');
+                }
+
+                if (receivedLength >= TEST_FILE_SIZE) {
+                    console.log('✅ Получено 200 MB, останавливаемся');
+                    break;
                 }
             }
 
@@ -177,13 +186,25 @@ var SpeedTest = (function () {
                 speedMbps: formatSpeed(speedBps),
                 speedBytesPerSec: speedBps,
                 durationMs: endTime - startTime,
-                bytesReceived: receivedLength
+                bytesReceived: receivedLength,
+                testCompleted: receivedLength >= TEST_FILE_SIZE
             };
 
         } catch (error) {
             clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
-                throw new Error('Таймаут клиента (' + TIMEOUT_MS / 1000 + 'с)');
+                var endTime = performance.now();
+                var durationSec = (endTime - startTime) / 1000;
+                var speedBps = receivedLength / durationSec;
+
+                return {
+                    speedMbps: formatSpeed(speedBps),
+                    speedBytesPerSec: speedBps,
+                    durationMs: endTime - startTime,
+                    bytesReceived: receivedLength,
+                    testCompleted: false,
+                    timeoutReached: true
+                };
             }
             throw error;
         }
@@ -208,9 +229,15 @@ var SpeedTest = (function () {
         var clientEl = document.getElementById('speedtest-client');
         var totalEl = document.getElementById('speedtest-total');
 
+        var torrSizeMB = (torrResult.bytesReceived / (1024 * 1024)).toFixed(0);
+        var clientSizeMB = (clientResult.bytesReceived / (1024 * 1024)).toFixed(0);
+
+        var torrNote = torrResult.timeoutReached ? ' (таймаут ' + torrSizeMB + ' MB)' : '';
+        var clientNote = clientResult.timeoutReached ? ' (таймаут ' + clientSizeMB + ' MB)' : '';
+
         if (resultsDiv) resultsDiv.style.display = 'block';
-        if (torrEl) torrEl.innerHTML = 'TorrServer → TorrStream: ' + torrResult.speedMbps + ' (' + formatTime(torrResult.durationMs) + ')';
-        if (clientEl) clientEl.innerHTML = 'TorrStream → Клиент: ' + clientResult.speedMbps + ' (' + formatTime(clientResult.durationMs) + ')';
+        if (torrEl) torrEl.innerHTML = 'TorrServer → TorrStream: ' + torrResult.speedMbps + torrNote + ' (' + formatTime(torrResult.durationMs) + ')';
+        if (clientEl) clientEl.innerHTML = 'TorrStream → Клиент: ' + clientResult.speedMbps + clientNote + ' (' + formatTime(clientResult.durationMs) + ')';
         if (totalEl) totalEl.innerHTML = 'Общее время: ' + formatTime(totalTime) + ' | Тест: 200 MB';
 
         var statusEl = document.getElementById('speedtest-status');
@@ -261,6 +288,10 @@ var SpeedTest = (function () {
         if (resultsDiv) {
             resultsDiv.style.display = 'block';
             resultsDiv.style.borderColor = '#4a9eff';
+            var torrEl = document.getElementById('speedtest-torrserver');
+            var clientEl = document.getElementById('speedtest-client');
+            if (torrEl) torrEl.innerHTML = 'TorrServer → TorrStream: -- Mbps';
+            if (clientEl) clientEl.innerHTML = 'TorrStream → Клиент: -- Mbps';
         }
 
         if (!statusEl) {
@@ -298,6 +329,8 @@ var SpeedTest = (function () {
             console.log('✅ SpeedTest завершен:', {
                 torrServerToServer: torrResult.speedMbps,
                 serverToClient: clientResult.speedMbps,
+                torrBytesMB: (torrResult.bytesReceived / (1024 * 1024)).toFixed(0),
+                clientBytesMB: (clientResult.bytesReceived / (1024 * 1024)).toFixed(0),
                 totalTime: totalTime.toFixed(0) + 'ms'
             });
 
@@ -311,7 +344,7 @@ var SpeedTest = (function () {
         } finally {
             isRunning = false;
             if (btn) {
-                btn.innerHTML = originalBtnText || 'Замерить скорость';
+                btn.innerHTML = originalBtnText || '📡 Замерить скорость';
                 btn.disabled = false;
                 btn.style.opacity = '1';
             }
