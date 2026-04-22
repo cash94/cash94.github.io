@@ -2101,6 +2101,520 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   }
 }
 
+// Функция для воспроизведения локального файла (аналог startHLSPlayback)
+async function startLocalPlayback(filePath, title, initialSeek, fromSearch, episodeIndex, audioTrack) {
+  if (initialSeek === undefined) initialSeek = null;
+  if (fromSearch === undefined) fromSearch = false;
+  if (episodeIndex === undefined) episodeIndex = null;
+  if (audioTrack === undefined) audioTrack = null;
+
+  // Отменяем предыдущее воспроизведение
+  cancelCurrentPlayback();
+
+  // Создаем новый AbortController
+  currentPlaybackController = new AbortController();
+  var signal = currentPlaybackController.signal;
+
+  AppState.inSearch = 'torrents';
+  currentBufferAhead = 0;
+  wasImmediatePause = false;
+  pauseTimer = null;
+  pauseStartTime = null;
+
+  if (!filePath || !filePath.trim()) {
+    alert('Ошибка: путь к файлу не указан');
+    return false;
+  }
+
+  console.log('🎬 Запуск локального файла:', filePath);
+  console.log('Название:', title);
+  console.log('Из поиска:', fromSearch);
+  console.log('Индекс серии:', episodeIndex);
+  console.log('Аудиодорожка:', audioTrack);
+  console.log('Начальная позиция (initialSeek):', initialSeek !== null ? formatTime(initialSeek) : 'не указана');
+
+  lastPlaybackFromSearch = fromSearch;
+
+  // Для локальных файлов нет hash и fileId
+  if (title) {
+    updatePlayerTitle(title);
+  }
+
+  try {
+    var seekParam = (initialSeek && initialSeek > 0) ? ('&start=' + initialSeek.toFixed(2)) : '';
+    var audioParam = audioTrack !== null ? ('&audio=' + audioTrack) : '';
+
+    var response = await fetch(SERVER_URL + '/hls/local/stream?path=' + encodeURIComponent(filePath) + seekParam + audioParam, {
+      signal: signal
+    });
+
+    if (!response.ok) {
+      throw new Error('HTTP ' + response.status);
+    }
+
+    var data = await response.json();
+
+    if (!data.success) throw new Error(data.error || 'Ошибка создания потока');
+
+    console.log('📦 Данные локального потока:', data);
+    console.log('👤 Client ID:', data.clientId);
+    console.log('🎵 Используемая аудиодорожка:', data.audioTrack);
+
+    AppState.currentStreamId = data.streamId;
+    AppState.videoUrl = filePath;
+    AppState.isLocalPlayback = true;
+
+    AppState.expectedDuration = data.duration;
+    AppState.originalDuration = data.originalDuration || data.duration;
+    AppState.seekOffset = data.seekOffset || initialSeek || 0;
+    AppState.lastSuccessfulSeek = AppState.seekOffset;
+
+    console.log('📊 Длительность: полная=' + formatTime(AppState.originalDuration) + ', offset=' + AppState.seekOffset.toFixed(2) + 's');
+
+    AppState.currentScreen = 'player';
+
+    document.getElementById('config-screen').style.display = 'none';
+    document.getElementById('torrserver-section').style.display = 'none';
+    document.getElementById('detail-view').style.display = 'none';
+    document.getElementById('player-screen').style.display = 'block';
+
+    var focusedElements = document.querySelectorAll('.focused');
+    for (var i = 0; i < focusedElements.length; i++) {
+      focusedElements[i].classList.remove('focused');
+    }
+
+    var controlsContainer = document.getElementById('controls-container');
+    if (controlsContainer) {
+      controlsContainer.classList.add('idle-hidden');
+    }
+
+    if (typeof currentFocusIndex !== 'undefined') {
+      currentFocusIndex = 0;
+    }
+
+    if (typeof updateFocusableElements === 'function') {
+      updateFocusableElements();
+    }
+
+    destroyHls();
+
+    var videoPlayer = document.getElementById('video-player');
+
+    videoPlayer.removeEventListener('ended', handleVideoEnded);
+    videoPlayer.addEventListener('ended', handleVideoEnded);
+
+    if (Hls.isSupported()) {
+      AppState.hls = new Hls({
+        maxBufferSize: 64 * 1024 * 1024,
+        maxBufferLength: 20,
+        maxMaxBufferLength: 30,
+        backBufferLength: 5,
+        startFragPrefetch: true,
+        startLevel: -1,
+        abrEwmaDefaultEstimate: 500000,
+        abrBandWidthFactor: 0.8,
+        abrBandWidthUpFactor: 0.7,
+        fragLoadingTimeOut: 10000,
+        fragLoadingMaxRetry: 6,
+        fragLoadingRetryDelay: 500,
+        manifestLoadingTimeOut: 10000,
+        manifestLoadingMaxRetry: 4,
+        maxFragLookUpTolerance: 0.25,
+        lowLatencyMode: false,
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: Infinity,
+        maxLiveSyncPlaybackRate: 1,
+        liveDurationInfinity: false,
+        liveBackBufferLength: 20,
+        abrEwmaSlowVoD: 4000,
+        abrEwmaFastVoD: 1000,
+        enableWorker: !navigator.userAgent.includes('Firefox'),
+        progressive: false,
+        fetchSetup: function (context, initParams) {
+          initParams.headers = {
+            'Connection': 'keep-alive',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          };
+          return new Request(context.url, initParams);
+        }
+      });
+
+      var isPlaybackCancelled = false;
+
+      var manifestParsedHandler = function () {
+        if (signal.aborted || isPlaybackCancelled) {
+          console.log('⏹️ Пропускаем MANIFEST_PARSED из-за отмены');
+          return;
+        }
+
+        console.log('📜 Манифест распарсен');
+        forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
+        videoPlayer.currentTime = 0;
+        videoPlayer.pause();
+        updatePlayPauseButton();
+
+        console.log('⏳ Ожидание накопления буфера 10 секунд... (видео на паузе)');
+        showPlayerLoading('Буферизация... 0/10 сек', null);
+
+        var bufferCheckInterval = null;
+
+        var checkBuffer = function () {
+          if (signal.aborted || isPlaybackCancelled) {
+            if (bufferCheckInterval) {
+              clearInterval(bufferCheckInterval);
+              bufferCheckInterval = null;
+            }
+            return;
+          }
+
+          if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
+            var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
+            var currentTimeVar = videoPlayer.currentTime;
+            var bufferAhead = bufferedEnd - currentTimeVar;
+
+            console.log('📊 Текущий буфер: ' + bufferAhead.toFixed(2) + ' сек');
+            showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек', null);
+
+            if (bufferAhead >= 10) {
+              console.log('✅ Буфер накоплен, запускаем воспроизведение');
+              if (bufferCheckInterval) {
+                clearInterval(bufferCheckInterval);
+                bufferCheckInterval = null;
+              }
+              hidePlayerLoading();
+
+              if (!signal.aborted && !isPlaybackCancelled) {
+                videoPlayer.play()['catch'](function (err) {
+                  console.log('🔇 Автоплей заблокирован');
+                  videoPlayer.muted = true;
+                  videoPlayer.play()['catch'](function () { });
+                  updateMuteButton();
+                });
+              }
+
+              updatePlayPauseButton();
+              startTimecodeSaving();
+              resetMouseIdleTimer();
+              if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
+              startNearEndCheck();
+              startHeartbeat();
+            }
+          }
+        };
+
+        bufferCheckInterval = setInterval(checkBuffer, 500);
+        AppState.bufferCheckInterval = bufferCheckInterval;
+
+        setTimeout(function () {
+          if (!signal.aborted && !isPlaybackCancelled && bufferCheckInterval) {
+            console.log('⚠️ Таймаут ожидания буфера, запускаем принудительно');
+            clearInterval(bufferCheckInterval);
+            hidePlayerLoading();
+            videoPlayer.play()['catch'](function (err) {
+              console.log('🔇 Автоплей заблокирован');
+              videoPlayer.muted = true;
+              videoPlayer.play()['catch'](function () { });
+              updateMuteButton();
+            });
+            updatePlayPauseButton();
+            startTimecodeSaving();
+            resetMouseIdleTimer();
+            if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
+            startNearEndCheck();
+            startHeartbeat();
+          }
+        }, 15000);
+      };
+
+      AppState.hls.on(Hls.Events.MANIFEST_PARSED, manifestParsedHandler);
+
+      AppState.hls.on(Hls.Events.FRAG_LOADING, function (event, data) {
+        if (signal.aborted) return;
+        try {
+          if (data && data.frag && data.frag.sn !== undefined) {
+            console.log('📥 Загрузка сегмента ' + data.frag.sn);
+          }
+        } catch (e) { }
+      });
+
+      AppState.hls.on(Hls.Events.FRAG_LOADED, function (event, data) {
+        if (signal.aborted) return;
+        try {
+          if (!data || !data.frag || !data.stats) return;
+          var stats = data.stats;
+          if (stats && stats.loading && stats.loading.end && stats.loading.start && stats.loaded) {
+            var loadTimeMs = stats.loading.end - stats.loading.start;
+            if (loadTimeMs > 0) {
+              var sizeKB = stats.loaded / 1024;
+              var speedKBps = (sizeKB / loadTimeMs) * 1000;
+              console.log('✅ Сегмент ' + data.frag.sn + ' загружен: ' + sizeKB.toFixed(2) + ' KB за ' + loadTimeMs + 'ms (' + speedKBps.toFixed(2) + ' KB/s)');
+            } else {
+              console.log('✅ Сегмент ' + data.frag.sn + ' загружен (мгновенно)');
+            }
+          } else {
+            console.log('✅ Сегмент ' + data.frag.sn + ' загружен');
+          }
+        } catch (e) {
+          console.log('⚠️ Ошибка при обработке статистики загрузки сегмента');
+        }
+      });
+
+      AppState.hls.on(Hls.Events.BUFFER_APPENDED, function (event, data) {
+        if (signal.aborted) return;
+        try {
+          var videoPlayerEl = document.getElementById('video-player');
+          if (videoPlayerEl && videoPlayerEl.buffered && videoPlayerEl.buffered.length > 0) {
+            var bufferedEnd = videoPlayerEl.buffered.end(videoPlayerEl.buffered.length - 1);
+            var currentTimeVar = videoPlayerEl.currentTime;
+            var bufferAhead = bufferedEnd - currentTimeVar;
+            if (bufferAhead > 0 && isFinite(bufferAhead)) {
+              console.log('📊 Буфер впереди: ' + bufferAhead.toFixed(2) + 's');
+            }
+          }
+        } catch (e) { }
+      });
+
+      var currentPlayingSegment = -1;
+      var lastLogTime = 0;
+      var lastCleanedSegment = -1;
+
+      AppState.hls.on(Hls.Events.FRAG_CHANGED, function (event, data) {
+        if (signal.aborted) return;
+        try {
+          if (data && data.frag) {
+            var frag = data.frag;
+            var segmentNumber = frag.sn;
+            var segmentDuration = frag.duration || 0;
+            var segmentStart = frag.start || 0;
+
+            if (currentPlayingSegment !== segmentNumber) {
+              currentPlayingSegment = segmentNumber;
+              var startTimeFormatted = formatTime(segmentStart);
+              console.log('ВОСПРОИЗВЕДЕНИЕ: Сегмент #' + segmentNumber + ' | Начало: ' + startTimeFormatted + ' | Длительность: ' + segmentDuration.toFixed(2) + 'с');
+
+              var segmentToDelete = segmentNumber - 3;
+              if (segmentToDelete >= 0 && segmentToDelete > lastCleanedSegment) {
+                console.log('🧹 Запускаем очистку: текущий сегмент ' + segmentNumber + ', удаляем сегменты до ' + (segmentNumber - 3));
+                fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ keepFromSegment: segmentNumber - 3 })
+                })
+                  .then(function (response) { return response.json(); })
+                  .then(function (data) {
+                    if (data.success) {
+                      console.log('Очистка выполнена: удалено ' + data.deleted + ' сегментов');
+                      lastCleanedSegment = segmentNumber - 3;
+                    } else {
+                      console.error('Ошибка очистки:', data.error);
+                    }
+                  })
+                ['catch'](function (error) {
+                  console.error('Ошибка при вызове cleanup:', error);
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.log('⚠️ Ошибка при отслеживании сегмента:', e);
+        }
+      });
+
+      AppState.hls.on(Hls.Events.ERROR, function (event, data) {
+        if (signal.aborted) return;
+        console.log('HLS событие ошибки:', {
+          type: data.type,
+          details: data.details,
+          fatal: data.fatal,
+          error: data.error ? data.error.message : 'Unknown error'
+        });
+
+        if (!data.fatal) return;
+
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR:
+            console.log('Сетевая ошибка, пробуем восстановить...');
+            AppState.hls.startLoad();
+            break;
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            console.log('Медиа ошибка, пробуем восстановить...');
+            var errorMessage = data.error ? data.error.message || data.error : '';
+            var errorDetails = data.details || '';
+            var isUnsupportedCodec = false;
+            if (errorMessage.toLowerCase().includes('codec') || errorDetails.toLowerCase().includes('codec')) {
+              isUnsupportedCodec = true;
+            }
+
+            if (isUnsupportedCodec) {
+              console.log('Обнаружен неподдерживаемый формат');
+              document.getElementById('playback-overlay').classList.add('active');
+              document.querySelector('.playback-text').textContent = 'Формат не поддерживается на вашем устройстве';
+              hidePlayerLoading();
+              setTimeout(function () {
+                console.log('🚪 Автоматический выход из плеера из-за неподдерживаемого формата');
+                var exitBtn = document.getElementById('exit-player-btn');
+                if (exitBtn) {
+                  exitBtn.click();
+                  document.getElementById('playback-overlay').classList.remove('active');
+                  document.querySelector('.playback-text').textContent = 'Воспроизведение...';
+                } else {
+                  if (typeof showDetailView === 'function') {
+                    showDetailView();
+                    document.getElementById('playback-overlay').classList.remove('active');
+                    document.querySelector('.playback-text').textContent = 'Воспроизведение...';
+                  }
+                }
+              }, 4000);
+            } else {
+              AppState.hls.recoverMediaError();
+            }
+            break;
+          default:
+            console.log('Неизвестная фатальная ошибка');
+            showPlayerLoading('Ошибка воспроизведения, перезагрузка...');
+            setTimeout(function () {
+              if (AppState.currentStreamId && !signal.aborted) {
+                var videoPlayerEl = document.getElementById('video-player');
+                var currentTimeVar = videoPlayerEl.currentTime + AppState.seekOffset;
+                startLocalPlayback(filePath, title, currentTimeVar, false);
+              }
+            }, 2000);
+            break;
+        }
+      });
+
+      AppState.hls.loadSource(data.playlistUrl);
+      AppState.hls.attachMedia(videoPlayer);
+
+    } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
+      videoPlayer.src = data.playlistUrl;
+      videoPlayer.removeEventListener('ended', handleVideoEnded);
+      videoPlayer.addEventListener('ended', handleVideoEnded);
+
+      var isPlaybackCancelled = false;
+      var bufferCheckInterval = null;
+
+      var loadedMetadataHandler = function () {
+        if (signal.aborted || isPlaybackCancelled) return;
+
+        forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
+        videoPlayer.currentTime = 0;
+        videoPlayer.pause();
+        updatePlayPauseButton();
+
+        console.log('⏳ Ожидание накопления буфера 10 секунд... (Safari, видео на паузе)');
+        showPlayerLoading('Буферизация... 0/10 сек', null);
+
+        var checkBuffer = function () {
+          if (signal.aborted || isPlaybackCancelled) {
+            if (bufferCheckInterval) {
+              clearInterval(bufferCheckInterval);
+              bufferCheckInterval = null;
+            }
+            return;
+          }
+
+          if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
+            var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
+            var currentTimeVar = videoPlayer.currentTime;
+            var bufferAhead = bufferedEnd - currentTimeVar;
+            showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек', null);
+            if (bufferAhead >= 10) {
+              console.log('✅ Буфер накоплен, запускаем воспроизведение (Safari)');
+              if (bufferCheckInterval) {
+                clearInterval(bufferCheckInterval);
+                bufferCheckInterval = null;
+              }
+              hidePlayerLoading();
+
+              if (!signal.aborted && !isPlaybackCancelled) {
+                videoPlayer.play()['catch'](function (err) {
+                  videoPlayer.muted = true;
+                  videoPlayer.play()['catch'](function () { });
+                  updateMuteButton();
+                });
+              }
+
+              startTimecodeSaving();
+              resetMouseIdleTimer();
+              if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
+              startNearEndCheck();
+              startHeartbeat();
+            }
+          }
+        };
+
+        bufferCheckInterval = setInterval(checkBuffer, 500);
+        AppState.bufferCheckInterval = bufferCheckInterval;
+
+        setTimeout(function () {
+          if (!signal.aborted && !isPlaybackCancelled && bufferCheckInterval) {
+            console.log('⚠️ Таймаут ожидания буфера (Safari)');
+            clearInterval(bufferCheckInterval);
+            hidePlayerLoading();
+            videoPlayer.play()['catch'](function (err) {
+              videoPlayer.muted = true;
+              videoPlayer.play()['catch'](function () { });
+              updateMuteButton();
+            });
+            startTimecodeSaving();
+            resetMouseIdleTimer();
+            if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
+            startNearEndCheck();
+            startHeartbeat();
+          }
+        }, 30000);
+      };
+
+      videoPlayer.addEventListener('loadedmetadata', loadedMetadataHandler, { once: true });
+      AppState.isPlaying = true;
+    } else {
+      throw new Error('Ваш браузер не поддерживает HLS');
+    }
+
+    var playerHint = document.getElementById('player-hint');
+    playerHint.style.opacity = '1';
+    if (AppState.hintTimeout) clearTimeout(AppState.hintTimeout);
+    AppState.hintTimeout = setTimeout(function () { playerHint.style.opacity = '0'; }, 4000);
+
+    return true;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('⏹️ Воспроизведение отменено пользователем');
+      return false;
+    }
+    console.error('❌ Ошибка:', error);
+    alert('Ошибка воспроизведения: ' + error.message);
+    return false;
+  }
+}
+
+// Обновляем функцию playLocalFile
+async function playLocalFile(filePath, title) {
+  if (!filePath) {
+    console.error('❌ Путь к файлу не указан');
+    return;
+  }
+
+  console.log('▶️ Воспроизведение локального файла:', filePath, title);
+
+  var overlay = document.getElementById('playback-overlay');
+  var textEl = document.querySelector('.playback-text');
+  if (overlay) overlay.classList.add('active');
+  if (textEl) textEl.textContent = 'Загрузка локального файла...';
+
+  try {
+    await startLocalPlayback(filePath, title, 0, false, null, null);
+  } catch (error) {
+    console.error('❌ Ошибка воспроизведения локального файла:', error);
+    alert('Ошибка воспроизведения: ' + error.message);
+  } finally {
+    if (overlay) overlay.classList.remove('active');
+    if (textEl) textEl.textContent = 'Воспроизведение...';
+  }
+}
+
 // Функция для отмены текущего воспроизведения
 function cancelCurrentPlayback() {
   if (currentPlaybackController) {
@@ -2110,32 +2624,32 @@ function cancelCurrentPlayback() {
     //document.getElementById('playback-overlay').classList.remove('active');
     //document.querySelector('.playback-text').textContent = 'Воспроизведение...';
   }
-  
+
   // Очищаем интервалы буфера
   if (AppState.bufferCheckInterval) {
     clearInterval(AppState.bufferCheckInterval);
     AppState.bufferCheckInterval = null;
   }
-  
+
   // Останавливаем HLS поток
   if (AppState.hls) {
     try {
       AppState.hls.destroy();
       AppState.hls = null;
-    } catch(e) {
+    } catch (e) {
       console.error('Ошибка при уничтожении HLS:', e);
     }
   }
-  
+
   // Останавливаем поток на сервере
   if (AppState.currentStreamId) {
-    fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' }).catch(() => {});
+    fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' }).catch(() => { });
     AppState.currentStreamId = null;
   }
-  
+
   // Скрываем оверлей загрузки
   hidePlayerLoading();
-  
+
   // Разблокируем кнопки управления
   var controlBtns = document.querySelectorAll('.control-btn');
   for (var i = 0; i < controlBtns.length; i++) {
@@ -2154,6 +2668,10 @@ function showDetailView() {
   wasImmediatePause = false;
   pauseTimer = null;
   pauseStartTime = null;
+  if (AppState.isLocalPlayback) {
+    console.log('Выход из локального плеера');
+    AppState.isLocalPlayback = false;
+  }
   // Проверяем, не является ли текущее воспроизведение YouTube
   if (AppState.isYoutubePlayback) {
     console.log('Выход из YouTube плеера');
