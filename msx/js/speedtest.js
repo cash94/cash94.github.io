@@ -4,7 +4,7 @@ var SpeedTest = (function () {
     'use strict';
 
     var TEST_FILE_SIZE = 200 * 1024 * 1024; // 200 MB в байтах
-    var TIMEOUT_MS = 45000; // 45 секунд таймаут на этап
+    var TIMEOUT_MS = 30000; // 45 секунд таймаут на этап
 
     var isRunning = false;
     var abortController = null;
@@ -20,7 +20,7 @@ var SpeedTest = (function () {
         return ms.toFixed(0) + ' мс';
     }
 
-    // Замер скорости между TorrServer и Server.js
+    // Замер скорости между TorrServer и TorrStream
     async function measureTorrServerToServer(torrServerUrl) {
         var startTime = performance.now();
         var totalBytes = 0;
@@ -92,7 +92,7 @@ var SpeedTest = (function () {
         }
     }
 
-    // Замер скорости между Server.js и Клиентом
+    // Замер скорости между TorrStream и Клиентом
     async function measureServerToClient() {
         var startTime = performance.now();
         var totalBytes = 0;
@@ -170,9 +170,9 @@ var SpeedTest = (function () {
         var statusEl = document.getElementById('speedtest-status');
         if (statusEl) {
             if (type === 'torrserver') {
-                statusEl.innerHTML = '📡 Замер TorrServer → Сервер: ' + status;
+                statusEl.innerHTML = 'Замер TorrServer → TorrStream: ' + status;
             } else if (type === 'client') {
-                statusEl.innerHTML = '💻 Замер Сервер → Клиент: ' + status;
+                statusEl.innerHTML = 'Замер TorrStream → Клиент: ' + status;
             }
         }
     }
@@ -187,7 +187,7 @@ var SpeedTest = (function () {
         if (resultsDiv) resultsDiv.style.display = 'block';
         if (torrEl) torrEl.innerHTML = 'TorrServer → Сервер: ' + torrResult.speedMbps + ' (' + formatTime(torrResult.durationMs) + ')';
         if (clientEl) clientEl.innerHTML = 'Сервер → Клиент: ' + clientResult.speedMbps + ' (' + formatTime(clientResult.durationMs) + ')';
-        if (totalEl) totalEl.innerHTML = '⏱️ Общее время: ' + formatTime(totalTime) + ' | Тест: 200 MB';
+        if (totalEl) totalEl.innerHTML = 'Общее время: ' + formatTime(totalTime) + ' | Тест: 200 MB';
 
         // Скрываем статус
         var statusEl = document.getElementById('speedtest-status');
@@ -202,9 +202,9 @@ var SpeedTest = (function () {
         var totalEl = document.getElementById('speedtest-total');
 
         if (resultsDiv) resultsDiv.style.display = 'block';
-        if (torrEl) torrEl.innerHTML = '❌ ' + error.message;
+        if (torrEl) torrEl.innerHTML = '' + error.message;
         if (clientEl) clientEl.innerHTML = '--';
-        if (totalEl) totalEl.innerHTML = '❌ Ошибка замера';
+        if (totalEl) totalEl.innerHTML = 'Ошибка замера';
 
         // Скрываем статус
         var statusEl = document.getElementById('speedtest-status');
@@ -254,23 +254,23 @@ var SpeedTest = (function () {
             }
         }
         statusEl.style.display = 'block';
-        statusEl.innerHTML = '📡 Замер TorrServer → Сервер: 0%';
+        statusEl.innerHTML = 'Замер TorrServer → TorrStream: 0%';
 
         // Меняем текст кнопки
         var btn = document.getElementById('speedtest-btn');
         var originalBtnText = btn ? btn.innerHTML : '';
         if (btn) {
-            btn.innerHTML = '⏳ Замер скорости...';
+            btn.innerHTML = 'Замер скорости...';
             btn.disabled = true;
             btn.style.opacity = '0.6';
         }
 
         try {
-            // Этап 1: TorrServer → Server.js
+            // Этап 1: TorrServer → TorrStream
             var torrResult = await measureTorrServerToServer(torrServerUrl);
 
-            // Этап 2: Server.js → Клиент
-            statusEl.innerHTML = '💻 Замер Сервер → Клиент: 0%';
+            // Этап 2: TorrStream → Клиент
+            statusEl.innerHTML = 'Замер TorrStream → Клиент: 0%';
             var clientResult = await measureServerToClient();
 
             var totalTime = performance.now() - startTotalTime;
@@ -293,7 +293,7 @@ var SpeedTest = (function () {
         } finally {
             isRunning = false;
             if (btn) {
-                btn.innerHTML = originalBtnText || '📡 Замерить скорость';
+                btn.innerHTML = originalBtnText || 'Замерить скорость';
                 btn.disabled = false;
                 btn.style.opacity = '1';
             }
