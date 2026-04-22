@@ -129,7 +129,7 @@ var SpeedTest = (function () {
             if (abortController) {
                 abortController.abort();
             }
-            console.log('⏱️ Таймаут 20 секунд, получено ' + (receivedLength / (1024 * 1024)).toFixed(0) + ' MB');
+            console.log('Таймаут 20 секунд, получено ' + (receivedLength / (1024 * 1024)).toFixed(0) + ' MB');
         }, TIMEOUT_MS);
 
         try {
@@ -162,7 +162,7 @@ var SpeedTest = (function () {
                 }
 
                 if (receivedLength >= TEST_FILE_SIZE) {
-                    console.log('✅ Получено 200 MB, останавливаемся');
+                    console.log('Получено 200 MB, останавливаемся');
                     break;
                 }
             }
@@ -252,9 +252,9 @@ var SpeedTest = (function () {
         var totalEl = document.getElementById('speedtest-total');
 
         if (resultsDiv) resultsDiv.style.display = 'block';
-        if (torrEl) torrEl.innerHTML = '❌ ' + error.message;
+        if (torrEl) torrEl.innerHTML = error.message;
         if (clientEl) clientEl.innerHTML = '--';
-        if (totalEl) totalEl.innerHTML = '❌ Ошибка замера';
+        if (totalEl) totalEl.innerHTML = 'Ошибка замера';
 
         var statusEl = document.getElementById('speedtest-status');
         if (statusEl) statusEl.style.display = 'none';
@@ -268,7 +268,7 @@ var SpeedTest = (function () {
     // Основная функция замера
     async function runSpeedTest(torrServerUrl) {
         if (isRunning) {
-            console.log('⏳ Тест уже выполняется');
+            console.log('Тест уже выполняется');
             return false;
         }
 
@@ -326,7 +326,7 @@ var SpeedTest = (function () {
             var totalTime = performance.now() - startTotalTime;
             showResults(torrResult, clientResult, totalTime);
 
-            console.log('✅ SpeedTest завершен:', {
+            console.log('SpeedTest завершен:', {
                 torrServerToServer: torrResult.speedMbps,
                 serverToClient: clientResult.speedMbps,
                 torrBytesMB: (torrResult.bytesReceived / (1024 * 1024)).toFixed(0),
