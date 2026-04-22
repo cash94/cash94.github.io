@@ -23,11 +23,16 @@ var SpeedTest = (function () {
     // Замер скорости между TorrServer и TorrStream
     async function measureTorrServerToServer(torrServerUrl) {
         var startTime = performance.now();
-        var totalBytes = 0;
+        var receivedLength = 0;
+        var timedOut = false;
 
         abortController = new AbortController();
+
         var timeoutId = setTimeout(function () {
-            abortController.abort();
+            timedOut = true;
+            if (abortController) {
+                abortController.abort();
+            }
         }, TIMEOUT_MS);
 
         try {
@@ -39,22 +44,27 @@ var SpeedTest = (function () {
                 method: 'GET'
             });
 
-            clearTimeout(timeoutId);
+            if (timedOut) {
+                throw new Error('Таймаут TorrServer (' + TIMEOUT_MS / 1000 + 'с)');
+            }
 
             if (!response.ok) {
                 throw new Error('HTTP ' + response.status + ': ' + response.statusText);
             }
 
             var reader = response.body.getReader();
-            var receivedLength = 0;
             var lastProgress = 0;
 
             while (true) {
+                if (timedOut) {
+                    reader.cancel();
+                    throw new Error('Таймаут TorrServer (' + TIMEOUT_MS / 1000 + 'с)');
+                }
+
                 var result = await reader.read();
                 if (result.done) break;
 
                 receivedLength += result.value.length;
-                totalBytes = receivedLength;
 
                 var progress = (receivedLength / TEST_FILE_SIZE) * 100;
                 if (progress - lastProgress >= 10) {
@@ -62,6 +72,8 @@ var SpeedTest = (function () {
                     updateSpeedtestStatus('torrserver', Math.floor(progress) + '%');
                 }
             }
+
+            clearTimeout(timeoutId);
 
             var endTime = performance.now();
             var durationSec = (endTime - startTime) / 1000;
@@ -95,11 +107,16 @@ var SpeedTest = (function () {
     // Замер скорости между TorrStream и Клиентом
     async function measureServerToClient() {
         var startTime = performance.now();
-        var totalBytes = 0;
+        var receivedLength = 0;
+        var timedOut = false;
 
         abortController = new AbortController();
+
         var timeoutId = setTimeout(function () {
-            abortController.abort();
+            timedOut = true;
+            if (abortController) {
+                abortController.abort();
+            }
         }, TIMEOUT_MS);
 
         try {
@@ -112,22 +129,27 @@ var SpeedTest = (function () {
                 method: 'GET'
             });
 
-            clearTimeout(timeoutId);
+            if (timedOut) {
+                throw new Error('Таймаут клиента (' + TIMEOUT_MS / 1000 + 'с)');
+            }
 
             if (!response.ok) {
                 throw new Error('HTTP ' + response.status);
             }
 
             var reader = response.body.getReader();
-            var receivedLength = 0;
             var lastProgress = 0;
 
             while (true) {
+                if (timedOut) {
+                    reader.cancel();
+                    throw new Error('Таймаут клиента (' + TIMEOUT_MS / 1000 + 'с)');
+                }
+
                 var result = await reader.read();
                 if (result.done) break;
 
                 receivedLength += result.value.length;
-                totalBytes = receivedLength;
 
                 var progress = (receivedLength / TEST_FILE_SIZE) * 100;
                 if (progress - lastProgress >= 10) {
@@ -135,6 +157,8 @@ var SpeedTest = (function () {
                     updateSpeedtestStatus('client', Math.floor(progress) + '%');
                 }
             }
+
+            clearTimeout(timeoutId);
 
             var endTime = performance.now();
             var durationSec = (endTime - startTime) / 1000;
@@ -185,11 +209,10 @@ var SpeedTest = (function () {
         var totalEl = document.getElementById('speedtest-total');
 
         if (resultsDiv) resultsDiv.style.display = 'block';
-        if (torrEl) torrEl.innerHTML = 'TorrServer → Сервер: ' + torrResult.speedMbps + ' (' + formatTime(torrResult.durationMs) + ')';
-        if (clientEl) clientEl.innerHTML = 'Сервер → Клиент: ' + clientResult.speedMbps + ' (' + formatTime(clientResult.durationMs) + ')';
+        if (torrEl) torrEl.innerHTML = 'TorrServer → TorrStream: ' + torrResult.speedMbps + ' (' + formatTime(torrResult.durationMs) + ')';
+        if (clientEl) clientEl.innerHTML = 'TorrStream → Клиент: ' + clientResult.speedMbps + ' (' + formatTime(clientResult.durationMs) + ')';
         if (totalEl) totalEl.innerHTML = 'Общее время: ' + formatTime(totalTime) + ' | Тест: 200 MB';
 
-        // Скрываем статус
         var statusEl = document.getElementById('speedtest-status');
         if (statusEl) statusEl.style.display = 'none';
     }
@@ -202,15 +225,13 @@ var SpeedTest = (function () {
         var totalEl = document.getElementById('speedtest-total');
 
         if (resultsDiv) resultsDiv.style.display = 'block';
-        if (torrEl) torrEl.innerHTML = '' + error.message;
+        if (torrEl) torrEl.innerHTML = '❌ ' + error.message;
         if (clientEl) clientEl.innerHTML = '--';
-        if (totalEl) totalEl.innerHTML = 'Ошибка замера';
+        if (totalEl) totalEl.innerHTML = '❌ Ошибка замера';
 
-        // Скрываем статус
         var statusEl = document.getElementById('speedtest-status');
         if (statusEl) statusEl.style.display = 'none';
 
-        // Изменяем цвет блока на красноватый
         if (resultsDiv) resultsDiv.style.borderColor = '#ff4e4e';
         setTimeout(function () {
             if (resultsDiv) resultsDiv.style.borderColor = '#4a9eff';
@@ -229,13 +250,11 @@ var SpeedTest = (function () {
             return false;
         }
 
-        // Очищаем URL от слеша в конце
         torrServerUrl = torrServerUrl.trim().replace(/\/$/, '');
 
         isRunning = true;
         var startTotalTime = performance.now();
 
-        // Показываем блок с результатами и статус
         var resultsDiv = document.getElementById('speedtest-results');
         var statusEl = document.getElementById('speedtest-status');
 
@@ -244,7 +263,6 @@ var SpeedTest = (function () {
             resultsDiv.style.borderColor = '#4a9eff';
         }
 
-        // Создаем элемент статуса если его нет
         if (!statusEl) {
             statusEl = document.createElement('div');
             statusEl.id = 'speedtest-status';
@@ -256,7 +274,6 @@ var SpeedTest = (function () {
         statusEl.style.display = 'block';
         statusEl.innerHTML = 'Замер TorrServer → TorrStream: 0%';
 
-        // Меняем текст кнопки
         var btn = document.getElementById('speedtest-btn');
         var originalBtnText = btn ? btn.innerHTML : '';
         if (btn) {
@@ -266,15 +283,16 @@ var SpeedTest = (function () {
         }
 
         try {
-            // Этап 1: TorrServer → TorrStream
             var torrResult = await measureTorrServerToServer(torrServerUrl);
 
-            // Этап 2: TorrStream → Клиент
+            if (!isRunning) {
+                throw new Error('Тест прерван');
+            }
+
             statusEl.innerHTML = 'Замер TorrStream → Клиент: 0%';
             var clientResult = await measureServerToClient();
 
             var totalTime = performance.now() - startTotalTime;
-
             showResults(torrResult, clientResult, totalTime);
 
             console.log('✅ SpeedTest завершен:', {
@@ -302,11 +320,9 @@ var SpeedTest = (function () {
         }
     }
 
-    // Публичное API
     return {
         run: runSpeedTest
     };
 })();
 
-// Экспортируем для использования в других модулях
 window.SpeedTest = SpeedTest;
