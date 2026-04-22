@@ -1738,7 +1738,7 @@ function setupFocusRescue() {
         return all;
     }
     function getConfigItems() {
-        var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', '.settings-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db'];
+        var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', '.settings-btn', '.speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db'];
         var visible = [];
         for (var i = 0; i < ids.length; i++) {
             var el = byId(ids[i]);
@@ -1790,7 +1790,8 @@ function setupFocusRescue() {
             return !!(
                 el.closest('#config-screen') ||
                 ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'auto-fullscreen', 'hide-clock', 'add-to-db'].indexOf(el.id) !== -1 ||
-                el.classList.contains('settings-btn')
+                el.classList.contains('settings-btn')  ||
+                el.classList.contains('speedtest-btn')
             );
         }
         return false;
