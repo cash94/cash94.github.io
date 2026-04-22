@@ -11,8 +11,7 @@ var LocalState = {
     currentFile: null,
     lastSelectedIndex: 0,
     lastSelectedPath: null,
-    viewMode: 'grid', // 'grid' или 'folders'
-    expandedFolders: new Map() // для хранения состояния раскрытых папок
+    currentFolderStack: [] // Стек для навигации по папкам
 };
 
 // Кэш для локальных файлов
@@ -24,7 +23,6 @@ var LOCAL_CACHE_TTL = 5 * 60 * 1000; // 5 минут
 function loadLocalSettings() {
     var savedPath = localStorage.getItem('localMediaPath');
     var savedScanSubdirs = localStorage.getItem('localScanSubdirs');
-    var savedViewMode = localStorage.getItem('localViewMode');
 
     var pathInput = document.getElementById('local-media-path');
     var scanCheckbox = document.getElementById('local-scan-subdirs');
@@ -37,10 +35,6 @@ function loadLocalSettings() {
     if (savedScanSubdirs !== null && scanCheckbox) {
         scanCheckbox.checked = savedScanSubdirs === 'true';
         LocalState.scanSubdirs = scanCheckbox.checked;
-    }
-
-    if (savedViewMode) {
-        LocalState.viewMode = savedViewMode;
     }
 }
 
@@ -58,114 +52,101 @@ function saveLocalSettings() {
         localStorage.setItem('localScanSubdirs', scanCheckbox.checked);
         LocalState.scanSubdirs = scanCheckbox.checked;
     }
-
-    localStorage.setItem('localViewMode', LocalState.viewMode);
 }
 
-// Построение древовидной структуры папок
-function buildFolderTree(files) {
+// Получение имени папки из пути
+function getFolderNameFromPath(fullPath) {
+    if (!fullPath) return 'Корень';
+    // Нормализуем путь
+    var normalized = fullPath.replace(/\\/g, '/');
+    var parts = normalized.split('/');
+    // Убираем пустые части
+    var nonEmptyParts = [];
+    for (var i = 0; i < parts.length; i++) {
+        if (parts[i] && parts[i] !== '') {
+            nonEmptyParts.push(parts[i]);
+        }
+    }
+    if (nonEmptyParts.length === 0) return 'Корень';
+    // Возвращаем последнюю часть
+    return nonEmptyParts[nonEmptyParts.length - 1];
+}
+
+// Построение дерева папок для текущего уровня
+function buildFolderTreeForPath(files, currentFolderPath) {
     if (!files || files.length === 0) {
-        return [];
+        return { folders: [], files: [] };
     }
 
-    var tree = {};
+    var folders = {};
+    var currentLevelFiles = [];
+
+    // Нормализуем текущий путь
+    var normalizedCurrentPath = currentFolderPath ? currentFolderPath.replace(/\\/g, '/') : '';
+    if (normalizedCurrentPath && !normalizedCurrentPath.endsWith('/')) {
+        normalizedCurrentPath += '/';
+    }
 
     for (var i = 0; i < files.length; i++) {
         var file = files[i];
         if (!file || !file.path) continue;
 
-        // Нормализуем путь (заменяем обратные слеши на прямые)
         var normalizedPath = file.path.replace(/\\/g, '/');
-        var pathParts = normalizedPath.split('/');
-        var fileName = pathParts.pop();
-        var currentLevel = tree;
 
-        // Создаем вложенную структуру
-        for (var j = 0; j < pathParts.length; j++) {
-            var part = pathParts[j];
-            if (!part) continue;
-
-            if (!currentLevel[part]) {
-                currentLevel[part] = {
-                    name: part,
-                    fullPath: pathParts.slice(0, j + 1).join('/'),
-                    files: [],
-                    subfolders: {},
-                    isExpanded: LocalState.expandedFolders.get(pathParts.slice(0, j + 1).join('/')) || false
-                };
-            }
-            currentLevel = currentLevel[part].subfolders;
+        // Проверяем, находится ли файл в текущей папке или подпапке
+        if (normalizedCurrentPath && !normalizedPath.startsWith(normalizedCurrentPath)) {
+            continue;
         }
 
-        // Добавляем файл в текущую папку
-        var folderKey = pathParts.join('/');
-        var targetFolder = tree;
-        for (var k = 0; k < pathParts.length; k++) {
-            var partName = pathParts[k];
-            if (!partName) break;
-            if (!targetFolder[partName]) {
-                targetFolder[partName] = {
-                    name: partName,
-                    fullPath: pathParts.slice(0, k + 1).join('/'),
+        // Получаем относительный путь
+        var relativePath = normalizedCurrentPath ?
+            normalizedPath.substring(normalizedCurrentPath.length) :
+            normalizedPath;
+
+        var parts = relativePath.split('/');
+        var firstPart = parts[0];
+
+        if (parts.length > 1) {
+            // Это файл в подпапке
+            if (!folders[firstPart]) {
+                folders[firstPart] = {
+                    name: firstPart,
+                    fullPath: (normalizedCurrentPath || '') + firstPart,
                     files: [],
-                    subfolders: {},
-                    isExpanded: false
+                    subfolderCount: 0
                 };
             }
-            if (k < pathParts.length - 1) {
-                targetFolder = targetFolder[partName].subfolders;
-            } else {
-                targetFolder = targetFolder[partName];
-            }
-        }
-
-        if (targetFolder && targetFolder.files) {
-            targetFolder.files.push(file);
+            folders[firstPart].subfolderCount++;
+        } else {
+            // Это файл в текущей папке
+            currentLevelFiles.push(file);
         }
     }
 
-    // Преобразуем дерево в массив для отображения
-    function flattenTree(node, parentPath) {
-        if (!node || typeof node !== 'object') {
-            return [];
+    // Преобразуем объект папок в массив и сортируем
+    var foldersArray = [];
+    for (var folderName in folders) {
+        if (folders.hasOwnProperty(folderName)) {
+            foldersArray.push(folders[folderName]);
         }
-
-        var result = [];
-        var folders = Object.keys(node);
-
-        for (var i = 0; i < folders.length; i++) {
-            var folderName = folders[i];
-            var folder = node[folderName];
-
-            if (!folder || typeof folder !== 'object') continue;
-
-            var fullPath = parentPath ? parentPath + '/' + folderName : folderName;
-
-            result.push({
-                type: 'folder',
-                name: folderName,
-                fullPath: fullPath,
-                files: folder.files || [],
-                subfoldersCount: Object.keys(folder.subfolders || {}).length,
-                isExpanded: folder.isExpanded || false,
-                children: flattenTree(folder.subfolders || {}, fullPath)
-            });
-
-            if (folder.isExpanded && folder.children && folder.children.length) {
-                for (var j = 0; j < folder.children.length; j++) {
-                    result.push(folder.children[j]);
-                }
-            }
-        }
-
-        return result;
     }
+    foldersArray.sort(function (a, b) {
+        return a.name.localeCompare(b.name);
+    });
 
-    return flattenTree(tree, '');
+    // Сортируем файлы
+    currentLevelFiles.sort(function (a, b) {
+        return a.name.localeCompare(b.name);
+    });
+
+    return {
+        folders: foldersArray,
+        files: currentLevelFiles
+    };
 }
 
-// Получение постера для папки (по первому файлу или по имени)
-async function getFolderPoster(folderName, folderPath, files) {
+// Получение постера для папки
+async function getFolderPoster(folderName, folderPath, filesInFolder) {
     var cacheKey = 'folder_' + folderPath;
 
     if (LocalState.posterCache.has(cacheKey)) {
@@ -173,7 +154,7 @@ async function getFolderPoster(folderName, folderPath, files) {
     }
 
     // Сначала пробуем найти постер по первому видеофайлу в папке
-    var videoFiles = files.filter(function (f) {
+    var videoFiles = (filesInFolder || []).filter(function (f) {
         return f && f.name && /\.(mp4|mkv|avi|mov|webm|m4v)$/i.test(f.name);
     });
 
@@ -213,28 +194,6 @@ async function getFolderPoster(folderName, folderPath, files) {
     return null;
 }
 
-// Определение типа папки (сериал или фильм)
-function detectFolderType(folderName, files) {
-    if (!files) return 'movie';
-
-    var videoFiles = files.filter(function (f) {
-        return f && f.name && /\.(mp4|mkv|avi|mov|webm|m4v)$/i.test(f.name);
-    });
-
-    // Если в папке несколько видеофайлов - сериал
-    if (videoFiles.length > 1) {
-        return 'tv';
-    }
-
-    // Проверяем по имени
-    var lowerName = (folderName || '').toLowerCase();
-    if (/s\d{2}e\d{2}|season|\d+ серия|сезон|episode|tv|series/i.test(lowerName)) {
-        return 'tv';
-    }
-
-    return 'movie';
-}
-
 // Создание карточки папки
 function createFolderCard(folder, index) {
     var card = document.createElement('div');
@@ -243,22 +202,21 @@ function createFolderCard(folder, index) {
     card.dataset.folderPath = folder.fullPath;
     card.dataset.folderName = folder.name;
 
-    var fileCount = folder.files ? folder.files.length : 0;
-    var folderType = detectFolderType(folder.name, folder.files);
-    var typeLabel = folderType === 'tv' ? 'Сериал' : 'Фильм';
+    var displayName = getFolderNameFromPath(folder.name);
+    var fileCount = folder.subfolderCount || 0;
     var fileCountText = fileCount + ' ' + (fileCount === 1 ? 'файл' : (fileCount < 5 ? 'файла' : 'файлов'));
 
-    card.innerHTML = '\n        <div class="torrent-poster folder-poster">\n            <div class="no-poster" style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">\n                📁\n            </div>\n        </div>\n        <div class="torrent-info">\n            <div class="torrent-title">' + escapeHtml((folder.name || '').substring(0, 50)) + ((folder.name || '').length > 50 ? '...' : '') + '</div>\n            <div class="torrent-meta">\n                <span>' + fileCountText + '</span>\n                <span class="torrent-badge local-folder-badge">' + typeLabel + '</span>\n            </div>\n        </div>\n    ';
+    card.innerHTML = '\n        <div class="torrent-poster folder-poster">\n            <div class="no-poster" style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">\n                📁\n            </div>\n        </div>\n        <div class="torrent-info">\n            <div class="torrent-title">' + escapeHtml(displayName.substring(0, 50)) + (displayName.length > 50 ? '...' : '') + '</div>\n            <div class="torrent-meta">\n                <span>' + fileCountText + '</span>\n                <span class="torrent-badge local-folder-badge">Папка</span>\n            </div>\n        </div>\n    ';
 
     // Асинхронно загружаем постер
-    (function (cardEl, fName, fPath, fFiles, idx) {
-        getFolderPoster(fName, fPath, fFiles).then(function (posterUrl) {
+    (function (cardEl, fName, fPath) {
+        getFolderPoster(fName, fPath, []).then(function (posterUrl) {
             if (posterUrl && cardEl && cardEl.querySelector('.torrent-poster')) {
                 var posterDiv = cardEl.querySelector('.torrent-poster');
                 posterDiv.innerHTML = '<img src="' + posterUrl + '" loading="lazy" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\' style=\\\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\\\'>📁</div>\'">';
             }
         });
-    })(card, folder.name, folder.fullPath, folder.files || [], index);
+    })(card, folder.name, folder.fullPath);
 
     card.addEventListener('click', function () {
         onFolderClick(folder);
@@ -267,20 +225,141 @@ function createFolderCard(folder, index) {
     return card;
 }
 
-// Обработчик клика по папке
+// Обработчик клика по папке - открываем её содержимое
 function onFolderClick(folder) {
-    console.log('📁 Открыта папка:', folder.name);
+    console.log('📁 Открываем папку:', folder.fullPath);
 
-    // Переключаем состояние раскрытия
-    folder.isExpanded = !folder.isExpanded;
-    LocalState.expandedFolders.set(folder.fullPath, folder.isExpanded);
+    // Добавляем в стек
+    LocalState.currentFolderStack.push({
+        path: folder.fullPath,
+        name: folder.name
+    });
 
-    // Перерисовываем
-    renderLocalFiles();
+    // Отображаем содержимое папки
+    renderCurrentFolder();
+}
+
+// Возврат на уровень выше
+function goUpFolder() {
+    if (LocalState.currentFolderStack.length > 0) {
+        LocalState.currentFolderStack.pop();
+        renderCurrentFolder();
+    } else {
+        // Если стек пуст, показываем корневой каталог
+        renderCurrentFolder();
+    }
+}
+
+// Отображение текущей папки
+function renderCurrentFolder() {
+    var torrentsGrid = document.getElementById('torrents-grid');
+    if (!torrentsGrid) return;
+
+    // Определяем текущий путь
+    var currentPath = '';
+    if (LocalState.currentFolderStack.length > 0) {
+        currentPath = LocalState.currentFolderStack[LocalState.currentFolderStack.length - 1].path;
+    }
+
+    // Получаем содержимое текущей папки
+    var content = buildFolderTreeForPath(LocalState.files, currentPath);
+
+    torrentsGrid.innerHTML = '';
+
+    // Добавляем хлебные крошки и заголовок
+    var header = document.createElement('div');
+    header.className = 'catalog-header local-header';
+    header.style.display = 'flex';
+    header.style.flexDirection = 'column';
+    header.style.alignItems = 'stretch';
+    header.style.gap = '10px';
+
+    // Хлебные крошки
+    var breadcrumbs = '<div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px;">';
+    breadcrumbs += '<span style="color: #4a9eff;">📁</span>';
+
+    // Кнопка "Назад" если есть стек
+    if (LocalState.currentFolderStack.length > 0) {
+        breadcrumbs += '<button class="folder-nav-btn" data-action="up" style="background: #282837; border: none; color: #4a9eff; padding: 4px 8px; border-radius: 16px; cursor: pointer;">⬆ Наверх</button>';
+        breadcrumbs += '<span style="color: #888;">/</span>';
+    }
+
+    // Путь
+    var pathDisplay = '';
+    if (LocalState.currentFolderStack.length === 0) {
+        pathDisplay = '<span style="color: #fff;">Корень (' + getFolderNameFromPath(LocalState.currentPath) + ')</span>';
+    } else {
+        var pathParts = [];
+        for (var i = 0; i < LocalState.currentFolderStack.length; i++) {
+            var displayName = getFolderNameFromPath(LocalState.currentFolderStack[i].name);
+            pathParts.push('<span style="color: #fff;">' + escapeHtml(displayName) + '</span>');
+        }
+        pathDisplay = pathParts.join(' <span style="color: #888;">/</span> ');
+    }
+    breadcrumbs += pathDisplay;
+    breadcrumbs += '</div>';
+
+    // Статистика
+    var statsHtml = '<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">';
+    statsHtml += '<span>' + content.folders.length + ' папок, ' + content.files.length + ' файлов</span>';
+    statsHtml += '</div>';
+
+    header.innerHTML = breadcrumbs + statsHtml;
+    torrentsGrid.appendChild(header);
+
+    // Добавляем обработчики для кнопок навигации
+    var navBtn = header.querySelector('.folder-nav-btn');
+    if (navBtn) {
+        navBtn.addEventListener('click', function () {
+            goUpFolder();
+        });
+    }
+
+    // Если нет содержимого
+    if (content.folders.length === 0 && content.files.length === 0) {
+        var emptyDiv = document.createElement('div');
+        emptyDiv.style.cssText = 'grid-column: 1 / -1; text-align: center; padding: 60px 20px;';
+        emptyDiv.innerHTML = '\n            <div style="font-size: 48px; margin-bottom: 20px;">📂</div>\n            <div style="font-size: 16px; color: #aaa;">Папка пуста</div>\n        ';
+        torrentsGrid.appendChild(emptyDiv);
+
+        setTimeout(function () {
+            if (AppState.currentScreen === 'local' && typeof updateFocusableElements === 'function') {
+                updateFocusableElements();
+            }
+        }, 100);
+        return;
+    }
+
+    // Отображаем папки
+    for (var i = 0; i < content.folders.length; i++) {
+        var folder = content.folders[i];
+        var card = createFolderCard(folder, i);
+        torrentsGrid.appendChild(card);
+    }
+
+    // Отображаем файлы
+    for (var i = 0; i < content.files.length; i++) {
+        var file = content.files[i];
+        var card = createLocalFileCard(file, i);
+        torrentsGrid.appendChild(card);
+    }
+
+    setTimeout(function () {
+        if (AppState.currentScreen === 'local') {
+            if (typeof updateFocusableElements === 'function') {
+                updateFocusableElements();
+            }
+            setTimeout(function () {
+                if (typeof window.focusFirstLocalCard === 'function') {
+                    window.focusFirstLocalCard();
+                }
+            }, 100);
+        }
+    }, 200);
 }
 
 // Создание карточки файла
-function createLocalFileCard(file, index, parentFolder) {
+function createLocalFileCard(file, index) {
     var card = document.createElement('div');
     card.className = 'torrent-card local-file-card';
     card.dataset.localIndex = index;
@@ -289,12 +368,9 @@ function createLocalFileCard(file, index, parentFolder) {
 
     var fileName = file.name || 'Неизвестный файл';
     var fileSize = formatBytes(file.size || 0);
+    var fileExt = fileName.split('.').pop().toUpperCase();
 
-    // Определяем тип
-    var fileType = (parentFolder && parentFolder.name) ? detectFolderType(parentFolder.name, [file]) : 'movie';
-    var typeLabel = fileType === 'tv' ? 'Серия' : 'Фильм';
-
-    card.innerHTML = '\n        <div class="torrent-poster">\n            <div class="no-poster" style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 32px;">\n                🎬\n            </div>\n        </div>\n        <div class="torrent-info">\n            <div class="torrent-title">' + escapeHtml(fileName.substring(0, 60)) + (fileName.length > 60 ? '...' : '') + '</div>\n            <div class="torrent-meta">\n                <span>' + fileSize + '</span>\n                <span class="torrent-badge local-file-badge">' + typeLabel + '</span>\n            </div>\n        </div>\n    ';
+    card.innerHTML = '\n        <div class="torrent-poster">\n            <div class="no-poster" style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 32px;">\n                🎬\n            </div>\n        </div>\n        <div class="torrent-info">\n            <div class="torrent-title">' + escapeHtml(fileName.substring(0, 60)) + (fileName.length > 60 ? '...' : '') + '</div>\n            <div class="torrent-meta">\n                <span>' + fileSize + '</span>\n                <span class="torrent-badge local-file-badge">' + fileExt + '</span>\n            </div>\n        </div>\n    ';
 
     // Асинхронно загружаем постер
     (function (cardEl, fName, fPath, idx) {
@@ -314,8 +390,74 @@ function createLocalFileCard(file, index, parentFolder) {
     return card;
 }
 
-// Создание элемента файла в детальном просмотре папки
-function createFileItemForFolder(file, parentFolder) {
+// Показ содержимого папки в детальном режиме (для сериалов)
+async function showFolderDetail(folder) {
+    console.log('📂 Открытие деталей папки:', folder.fullPath);
+
+    // Получаем все файлы из этой папки
+    var content = buildFolderTreeForPath(LocalState.files, folder.fullPath);
+    var videoFiles = content.files.filter(function (f) {
+        return f && f.name && /\.(mp4|mkv|avi|mov|webm|m4v)$/i.test(f.name);
+    });
+
+    var folderName = getFolderNameFromPath(folder.fullPath);
+
+    // Создаем объект для детального просмотра
+    var detailItem = {
+        id: 'local_' + Date.now() + '_' + (folder.fullPath || ''),
+        media_type: videoFiles.length > 1 ? 'tv' : 'movie',
+        title: folderName,
+        name: folderName,
+        torrent: [{ name: folderName }],
+        localPath: folder.fullPath,
+        localFiles: videoFiles,
+        isSeries: videoFiles.length > 1
+    };
+
+    // Показываем детальный просмотр
+    if (typeof window.showCatalogDetail === 'function') {
+        AppState.currentScreen = 'detail';
+        AppState.detailReturnTo = 'local';
+        AppState.currentDetailItem = detailItem;
+
+        var posterUrl = await getFolderPoster(folderName, folder.fullPath, videoFiles);
+
+        var fakeItem = {
+            id: detailItem.id,
+            media_type: detailItem.media_type,
+            title: detailItem.title,
+            poster_path: posterUrl ? posterUrl.split('/').pop() : null
+        };
+
+        await window.showCatalogDetail(fakeItem, 0, posterUrl);
+
+        setTimeout(function () {
+            var filesList = document.getElementById('files-list');
+            if (filesList) {
+                filesList.innerHTML = '';
+                filesList.style.display = 'block';
+
+                for (var f = 0; f < videoFiles.length; f++) {
+                    var file = videoFiles[f];
+                    var item = createFileItemForFolder(file, folderName);
+                    filesList.appendChild(item);
+                }
+            }
+
+            var watchBtn = document.getElementById('catalog-watch-btn');
+            if (watchBtn && videoFiles.length > 0) {
+                watchBtn.textContent = '▶ Воспроизвести';
+                watchBtn.onclick = function () {
+                    var firstFile = videoFiles[0];
+                    playLocalFile(firstFile.path, folderName + ' - ' + firstFile.name);
+                };
+            }
+        }, 100);
+    }
+}
+
+// Создание элемента файла для детального просмотра
+function createFileItemForFolder(file, folderName) {
     var item = document.createElement('div');
     item.className = 'file-item';
 
@@ -327,160 +469,10 @@ function createFileItemForFolder(file, parentFolder) {
     var playBtn = item.querySelector('.local-play-btn');
     playBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        var title = parentFolder ? (parentFolder.name + ' - ' + fileName) : fileName;
-        playLocalFile(file.path, title);
+        playLocalFile(file.path, folderName + ' - ' + fileName);
     });
 
     return item;
-}
-
-// Показ содержимого папки в детальном режиме
-async function showFolderDetail(folder) {
-    console.log('📂 Открытие деталей папки:', folder.name);
-
-    var videoFiles = (folder.files || []).filter(function (f) {
-        return f && f.name && /\.(mp4|mkv|avi|mov|webm|m4v)$/i.test(f.name);
-    });
-
-    videoFiles.sort(function (a, b) {
-        return (a.name || '').localeCompare(b.name || '');
-    });
-
-    var folderType = detectFolderType(folder.name, folder.files);
-    var isSeries = folderType === 'tv';
-
-    // Создаем объект для детального просмотра
-    var detailItem = {
-        id: 'local_' + Date.now() + '_' + (folder.fullPath || ''),
-        media_type: isSeries ? 'tv' : 'movie',
-        title: folder.name || 'Папка',
-        name: folder.name || 'Папка',
-        torrent: [{ name: folder.name || 'Папка' }],
-        localPath: folder.fullPath || '',
-        localFiles: videoFiles,
-        isSeries: isSeries
-    };
-
-    // Если это сериал, группируем по сезонам
-    if (isSeries && videoFiles.length > 1) {
-        var seasons = {};
-
-        for (var i = 0; i < videoFiles.length; i++) {
-            var file = videoFiles[i];
-            var seasonMatch = file.name.match(/[sS](\d+)[eE]/);
-            var seasonNum = seasonMatch ? parseInt(seasonMatch[1], 10) : 1;
-
-            if (!seasons[seasonNum]) {
-                seasons[seasonNum] = {
-                    number: seasonNum,
-                    files: []
-                };
-            }
-
-            var episodeMatch = file.name.match(/[sS]\d+[eE](\d+)/);
-            var episodeNum = episodeMatch ? parseInt(episodeMatch[1], 10) : seasons[seasonNum].files.length + 1;
-
-            seasons[seasonNum].files.push({
-                id: Buffer.from(file.path || '').toString('base64'),
-                name: file.name,
-                path: file.path,
-                size: file.size,
-                episodeNumber: episodeNum,
-                seasonNumber: seasonNum
-            });
-        }
-
-        // Сортируем эпизоды в каждом сезоне
-        for (var s in seasons) {
-            seasons[s].files.sort(function (a, b) {
-                return a.episodeNumber - b.episodeNumber;
-            });
-        }
-
-        detailItem.seasons = Object.values(seasons).sort(function (a, b) {
-            return a.number - b.number;
-        });
-
-        detailItem.episodes = [];
-        for (var s in seasons) {
-            for (var e = 0; e < seasons[s].files.length; e++) {
-                detailItem.episodes.push(seasons[s].files[e]);
-            }
-        }
-    } else {
-        detailItem.files = videoFiles;
-    }
-
-    // Показываем детальный просмотр
-    if (typeof window.showCatalogDetail === 'function') {
-        AppState.currentScreen = 'detail';
-        AppState.detailReturnTo = 'local';
-        AppState.currentDetailItem = detailItem;
-
-        // Получаем постер для папки
-        var posterUrl = await getFolderPoster(folder.name, folder.fullPath, folder.files);
-
-        // Создаем фейковый элемент для совместимости
-        var fakeItem = {
-            id: detailItem.id,
-            media_type: detailItem.media_type,
-            title: detailItem.title,
-            poster_path: posterUrl ? posterUrl.split('/').pop() : null
-        };
-
-        await window.showCatalogDetail(fakeItem, 0, posterUrl);
-
-        // Заменяем список файлов на наши
-        setTimeout(function () {
-            var filesList = document.getElementById('files-list');
-            if (filesList) {
-                filesList.innerHTML = '';
-                filesList.style.display = 'block';
-
-                if (isSeries && detailItem.seasons) {
-                    for (var s = 0; s < detailItem.seasons.length; s++) {
-                        var season = detailItem.seasons[s];
-                        var seasonDiv = document.createElement('div');
-                        seasonDiv.className = 'season-section';
-                        seasonDiv.style.marginBottom = '20px';
-
-                        seasonDiv.innerHTML = '<div class="season-title" style="font-size: 16px; font-weight: 600; color: #4a9eff; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #4a9eff;">Сезон ' + season.number + '</div>';
-
-                        for (var e = 0; e < season.files.length; e++) {
-                            var file = season.files[e];
-                            var item = createFileItemForFolder(file, folder);
-                            seasonDiv.appendChild(item);
-                        }
-
-                        filesList.appendChild(seasonDiv);
-                    }
-                } else {
-                    for (var f = 0; f < detailItem.files.length; f++) {
-                        var file = detailItem.files[f];
-                        var item = createFileItemForFolder(file, folder);
-                        filesList.appendChild(item);
-                    }
-                }
-            }
-
-            var watchBtn = document.getElementById('catalog-watch-btn');
-            if (watchBtn) {
-                if (isSeries && detailItem.episodes && detailItem.episodes.length > 0) {
-                    watchBtn.textContent = '▶ Воспроизвести первую серию';
-                    watchBtn.onclick = function () {
-                        var firstEpisode = detailItem.episodes[0];
-                        playLocalFile(firstEpisode.path, folder.name + ' - ' + firstEpisode.name);
-                    };
-                } else if (detailItem.files && detailItem.files.length > 0) {
-                    watchBtn.textContent = '▶ Воспроизвести';
-                    watchBtn.onclick = function () {
-                        var firstFile = detailItem.files[0];
-                        playLocalFile(firstFile.path, folder.name + ' - ' + firstFile.name);
-                    };
-                }
-            }
-        }, 100);
-    }
 }
 
 // Сканирование локального каталога
@@ -494,6 +486,12 @@ async function scanLocalDirectory() {
     if (!mediaPath) {
         if (statsDiv) statsDiv.innerHTML = '<span style="color: #ff6a6a;">❌ Укажите путь к папке</span>';
         return false;
+    }
+
+    // Нормализуем путь
+    mediaPath = mediaPath.replace(/\\/g, '/');
+    if (mediaPath.endsWith('/')) {
+        mediaPath = mediaPath.slice(0, -1);
     }
 
     saveLocalSettings();
@@ -524,28 +522,26 @@ async function scanLocalDirectory() {
         if (data.success) {
             LocalState.files = data.files || [];
 
-            // Строим дерево папок
-            LocalState.folders = buildFolderTree(LocalState.files);
-
             // Сохраняем в кэш
             localFilesCache = {
                 files: LocalState.files.slice(),
-                folders: LocalState.folders,
                 timestamp: Date.now(),
                 path: mediaPath
             };
             localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(localFilesCache));
 
+            // Сбрасываем навигацию
+            LocalState.currentFolderStack = [];
+
             var fileCount = LocalState.files.length;
-            var folderCount = LocalState.folders.length;
             var sizeTotal = LocalState.files.reduce(function (sum, f) { return sum + (f.size || 0); }, 0);
 
             if (statsDiv) {
-                statsDiv.innerHTML = '<span style="color: #4eff6a;">✅ ' + folderCount + ' папок, ' + fileCount + ' файлов (' + formatBytes(sizeTotal) + ')</span>';
+                statsDiv.innerHTML = '<span style="color: #4eff6a;">✅ Найдено ' + fileCount + ' файлов (' + formatBytes(sizeTotal) + ')</span>';
             }
 
             if (AppState.currentScreen === 'local') {
-                renderLocalFiles();
+                renderCurrentFolder();
             }
 
             return true;
@@ -574,8 +570,7 @@ function loadLocalFilesFromCache() {
             var data = JSON.parse(cached);
             if (data && data.files && data.timestamp && (Date.now() - data.timestamp < LOCAL_CACHE_TTL)) {
                 LocalState.files = data.files;
-                LocalState.folders = data.folders || buildFolderTree(LocalState.files);
-                console.log('📦 Загружено из кэша ' + (LocalState.folders ? LocalState.folders.length : 0) + ' папок, ' + LocalState.files.length + ' файлов');
+                console.log('📦 Загружено из кэша ' + LocalState.files.length + ' файлов');
                 return true;
             }
         } catch (e) {
@@ -590,99 +585,17 @@ function clearLocalCache() {
     localStorage.removeItem(LOCAL_CACHE_KEY);
     localFilesCache = null;
     LocalState.files = [];
-    LocalState.folders = [];
     LocalState.posterCache.clear();
-    LocalState.expandedFolders.clear();
+    LocalState.currentFolderStack = [];
 
     var statsDiv = document.getElementById('local-stats');
     if (statsDiv) statsDiv.innerHTML = '<span style="color: #ffd966;">🧹 Кэш очищен</span>';
 
     if (AppState.currentScreen === 'local') {
-        renderLocalFiles();
+        renderCurrentFolder();
     }
 
     console.log('🗑️ Кэш локальных файлов очищен');
-}
-
-// Отображение списка локальных файлов и папок
-function renderLocalFiles() {
-    var torrentsGrid = document.getElementById('torrents-grid');
-    if (!torrentsGrid) return;
-
-    torrentsGrid.innerHTML = '';
-
-    if ((!LocalState.folders || LocalState.folders.length === 0) && (!LocalState.files || LocalState.files.length === 0)) {
-        var hasPath = !!LocalState.currentPath;
-        torrentsGrid.innerHTML = '\n            <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n                <div style="font-size: 48px; margin-bottom: 20px;">📁</div>\n                <div style="font-size: 18px; color: #aaa; margin-bottom: 10px;">' +
-            (hasPath ? 'Нет видеофайлов' : 'Не настроен локальный каталог') +
-            '</div>\n                <div style="font-size: 14px; color: #666;">' +
-            (hasPath ? 'Нажмите "Сканировать" в настройках' : 'Перейдите в настройки и укажите путь к папке с медиафайлами') +
-            '</div>\n            </div>\n        ';
-        return;
-    }
-
-    // Добавляем заголовок с переключателем режимов
-    var header = document.createElement('div');
-    header.className = 'catalog-header local-header';
-    header.style.display = 'flex';
-    header.style.justifyContent = 'space-between';
-    header.style.alignItems = 'center';
-    header.style.flexWrap = 'wrap';
-    header.style.gap = '10px';
-
-    var modeButtons = '';
-    if (LocalState.folders && LocalState.folders.length > 0) {
-        modeButtons = '\n            <div style="display: flex; gap: 8px;">\n                <button class="view-mode-btn ' + (LocalState.viewMode === 'folders' ? 'active' : '') + '" data-mode="folders" style="padding: 6px 12px; background: ' + (LocalState.viewMode === 'folders' ? '#4a9eff' : '#282837') + '; border: none; border-radius: 20px; color: white; cursor: pointer;">📁 По папкам</button>\n                <button class="view-mode-btn ' + (LocalState.viewMode === 'grid' ? 'active' : '') + '" data-mode="grid" style="padding: 6px 12px; background: ' + (LocalState.viewMode === 'grid' ? '#4a9eff' : '#282837') + '; border: none; border-radius: 20px; color: white; cursor: pointer;">🎬 Списком</button>\n            </div>\n        ';
-    }
-
-    var folderCount = LocalState.folders ? LocalState.folders.length : 0;
-    var fileCount = LocalState.files ? LocalState.files.length : 0;
-
-    header.innerHTML = '\n        <span>📁 Локальный каталог</span>\n        <div style="display: flex; gap: 15px; align-items: center;">\n            <span style="font-size: 12px; color: #aaa;">' + folderCount + ' папок, ' + fileCount + ' файлов</span>\n            ' + modeButtons + '\n        </div>\n    ';
-    torrentsGrid.appendChild(header);
-
-    // Добавляем обработчики для кнопок переключения режима
-    var modeBtns = header.querySelectorAll('.view-mode-btn');
-    for (var i = 0; i < modeBtns.length; i++) {
-        modeBtns[i].addEventListener('click', function (e) {
-            var mode = this.dataset.mode;
-            LocalState.viewMode = mode;
-            saveLocalSettings();
-            renderLocalFiles();
-        });
-    }
-
-    if (LocalState.viewMode === 'folders' && LocalState.folders && LocalState.folders.length > 0) {
-        for (var i = 0; i < LocalState.folders.length; i++) {
-            var folder = LocalState.folders[i];
-
-            if (folder && folder.type === 'folder') {
-                var card = createFolderCard(folder, i);
-                torrentsGrid.appendChild(card);
-            } else if (folder) {
-                var fileCard = createLocalFileCard(folder, i, null);
-                torrentsGrid.appendChild(fileCard);
-            }
-        }
-    } else {
-        for (var i = 0; i < LocalState.files.length; i++) {
-            var card = createLocalFileCard(LocalState.files[i], i, null);
-            torrentsGrid.appendChild(card);
-        }
-    }
-
-    setTimeout(function () {
-        if (AppState.currentScreen === 'local') {
-            if (typeof updateFocusableElements === 'function') {
-                updateFocusableElements();
-            }
-            setTimeout(function () {
-                if (typeof window.focusFirstLocalCard === 'function') {
-                    window.focusFirstLocalCard();
-                }
-            }, 100);
-        }
-    }, 200);
 }
 
 // Получение постера для локального файла по имени
@@ -756,7 +669,7 @@ async function playLocalFile(filePath, title) {
         var response = await fetch(SERVER_URL + '/api/local/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: filePath })
+            body: JSON.stringify({ path: filePath, start: 0, audioTrack: null })
         });
 
         if (!response.ok) {
@@ -837,11 +750,14 @@ function showLocalCatalog() {
 
     AppState.currentScreen = 'local';
 
-    if (LocalState.files.length === 0 || (LocalState.folders && LocalState.folders.length === 0)) {
+    if (LocalState.files.length === 0) {
         loadLocalFilesFromCache();
     }
 
-    renderLocalFiles();
+    // Сбрасываем навигацию при открытии
+    LocalState.currentFolderStack = [];
+
+    renderCurrentFolder();
 }
 
 // Настройка обработчиков для локального каталога
@@ -886,12 +802,11 @@ function setupLocal() {
         });
     }
 
-    if (loadLocalFilesFromCache() && (LocalState.files.length > 0 || (LocalState.folders && LocalState.folders.length > 0))) {
+    if (loadLocalFilesFromCache() && LocalState.files.length > 0) {
         var statsDiv = document.getElementById('local-stats');
         if (statsDiv) {
             var totalSize = LocalState.files.reduce(function (sum, f) { return sum + (f.size || 0); }, 0);
-            var folderCount = LocalState.folders ? LocalState.folders.length : 0;
-            statsDiv.innerHTML = '<span style="color: #4eff6a;">✅ ' + folderCount + ' папок, ' + LocalState.files.length + ' файлов (' + formatBytes(totalSize) + ') в кэше</span>';
+            statsDiv.innerHTML = '<span style="color: #4eff6a;">✅ ' + LocalState.files.length + ' файлов (' + formatBytes(totalSize) + ') в кэше</span>';
         }
     }
 
