@@ -1738,7 +1738,7 @@ function setupFocusRescue() {
         return all;
     }
     function getConfigItems() {
-        var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', '.settings-btn', '.speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db'];
+        var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', '.settings-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db'];
         var visible = [];
         for (var i = 0; i < ids.length; i++) {
             var el = byId(ids[i]);
@@ -1747,10 +1747,6 @@ function setupFocusRescue() {
         var settingsBtns = document.querySelectorAll('.settings-btn');
         for (var j = 0; j < settingsBtns.length; j++) {
             if (VISIBLE(settingsBtns[j])) visible.push(settingsBtns[j]);
-        }
-        var speedtestBtns = document.querySelectorAll('.speedtest-btn');
-        for (var j = 0; j < speedtestBtns.length; j++) {
-            if (VISIBLE(speedtestBtns[j])) visible.push(speedtestBtns[j]);
         }
         return visible;
     }
@@ -1793,9 +1789,8 @@ function setupFocusRescue() {
         if (screen === 'config') {
             return !!(
                 el.closest('#config-screen') ||
-                ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'auto-fullscreen', 'hide-clock', 'add-to-db'].indexOf(el.id) !== -1 ||
-                el.classList.contains('settings-btn')  ||
-                el.classList.contains('speedtest-btn')
+                ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db'].indexOf(el.id) !== -1 ||
+                el.classList.contains('settings-btn')
             );
         }
         return false;
