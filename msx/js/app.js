@@ -168,6 +168,9 @@ async function init() {
     // Автоматический полноэкранный режим
     setupAutoFullscreen();
 
+    //SpeedTest
+    setupSpeedTest();
+
     // Инициализация поиска
     if (typeof initSearchModeToggle === 'function') {
       initSearchModeToggle();
@@ -1312,6 +1315,51 @@ function showPlayerHint(message) {
   }, 2000);
 }
 
+// ==================== ФУНКЦИЯ ЗАМЕРА СКОРОСТИ ====================
+
+function setupSpeedTest() {
+  var speedtestBtn = document.getElementById('speedtest-btn');
+  if (!speedtestBtn) return;
+
+  speedtestBtn.addEventListener('click', async function () {
+    console.log('📡 Запуск замера скорости...');
+
+    // Получаем URL TorrServer из поля ввода
+    var torrserverUrlInput = document.getElementById('torrserver-url');
+    var torrServerUrl = torrserverUrlInput ? torrserverUrlInput.value.trim() : '';
+
+    if (!torrServerUrl) {
+      // Показываем ошибку в блоке результатов
+      var resultsDiv = document.getElementById('speedtest-results');
+      var torrEl = document.getElementById('speedtest-torrserver');
+
+      if (resultsDiv) resultsDiv.style.display = 'block';
+      if (torrEl) torrEl.innerHTML = '❌ Укажите URL TorrServer';
+
+      setTimeout(function () {
+        if (torrEl && torrEl.innerHTML === '❌ Укажите URL TorrServer') {
+          torrEl.innerHTML = 'TorrServer → Сервер: -- Mbps';
+        }
+      }, 3000);
+      return;
+    }
+
+    // Запускаем тест
+    if (typeof SpeedTest !== 'undefined' && SpeedTest.run) {
+      await SpeedTest.run(torrServerUrl);
+    } else {
+      console.error('❌ Модуль SpeedTest не загружен');
+      var resultsDiv = document.getElementById('speedtest-results');
+      if (resultsDiv) {
+        resultsDiv.style.display = 'block';
+        resultsDiv.innerHTML = '<div style="color: #ff4e4e;">❌ Модуль замера скорости не загружен. Обновите страницу.</div>';
+      }
+    }
+  });
+}
+
+// Экспортируем функцию
+window.setupSpeedTest = setupSpeedTest;
 window.showPlayerHint = showPlayerHint;
 
 // Экспортируем функции для использования в других модулях
