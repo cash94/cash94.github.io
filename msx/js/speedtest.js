@@ -18,17 +18,28 @@ var SpeedTest = (function () {
         return ms.toFixed(0) + ' мс';
     }
 
+    // Получение заголовков авторизации
+    function getAuthHeaders() {
+        if (typeof window.getAuthHeaders === 'function') {
+            return window.getAuthHeaders();
+        }
+        return {};
+    }
+
     // Этап 1: Замер на сервере (TorrServer → TorrStream)
     async function measureTorrServerToServer(torrServerUrl) {
         var url = '/api/speedtest/measure-torrserver?url=' + encodeURIComponent(torrServerUrl);
-
+        
         console.log('📡 Запрос серверного замера:', url);
-
+        
+        // Получаем заголовки авторизации
+        var authHeaders = getAuthHeaders();
+        
         // Обновляем статус
         updateSpeedtestStatus('torrserver', '0%');
-
+        
         // Имитируем прогресс (серверный замер)
-        var progressInterval = setInterval(function () {
+        var progressInterval = setInterval(function() {
             var statusEl = document.getElementById('speedtest-status');
             if (statusEl && statusEl.innerHTML.indexOf('TorrServer') !== -1) {
                 var currentText = statusEl.innerHTML;
@@ -43,23 +54,27 @@ var SpeedTest = (function () {
                 }
             }
         }, 2000);
-
+        
         try {
             var response = await fetch(url, {
                 method: 'GET',
+                headers: authHeaders,
                 signal: abortController ? abortController.signal : null
             });
-
+            
             clearInterval(progressInterval);
-
+            
             if (!response.ok) {
+                if (response.status === 401) {
+                    throw new Error('Ошибка авторизации TorrServer. Проверьте логин и пароль.');
+                }
                 var errorData = await response.json();
                 throw new Error(errorData.error || 'HTTP ' + response.status);
             }
-
+            
             var result = await response.json();
             updateSpeedtestStatus('torrserver', '100%');
-
+            
             return {
                 speedMbps: result.speedMbps,
                 speedBytesPerSec: result.speedBytesPerSec,
@@ -68,7 +83,7 @@ var SpeedTest = (function () {
                 testCompleted: result.testCompleted,
                 timeoutReached: result.timeoutReached
             };
-
+            
         } catch (error) {
             clearInterval(progressInterval);
             if (error.name === 'AbortError') {
@@ -82,67 +97,67 @@ var SpeedTest = (function () {
     async function measureServerToClient() {
         var startTime = performance.now();
         var receivedLength = 0;
-
+        
         abortController = new AbortController();
-
+        
         var timeoutId = setTimeout(function () {
             if (abortController) {
                 abortController.abort();
             }
             console.log('⏱️ Таймаут 20 секунд, получено ' + (receivedLength / (1024 * 1024)).toFixed(0) + ' MB');
         }, TIMEOUT_MS);
-
+        
         try {
             var testId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             var url = '/api/speedtest/download/' + testId;
             console.log('📡 Запрос к серверу:', url);
-
+            
             var response = await fetch(url, {
                 signal: abortController.signal,
                 method: 'GET'
             });
-
+            
             if (!response.ok) {
                 throw new Error('HTTP ' + response.status);
             }
-
+            
             var reader = response.body.getReader();
             var lastProgress = 0;
             var TEST_FILE_SIZE = 200 * 1024 * 1024;
-
+            
             while (true) {
                 var result = await reader.read();
                 if (result.done) break;
-
+                
                 receivedLength += result.value.length;
-
+                
                 var progress = (receivedLength / TEST_FILE_SIZE) * 100;
                 if (progress - lastProgress >= 10) {
                     lastProgress = progress;
                     updateSpeedtestStatus('client', Math.floor(progress) + '%');
                 }
-
+                
                 if (receivedLength >= TEST_FILE_SIZE) {
                     console.log('✅ Получено 200 MB, останавливаемся');
                     break;
                 }
             }
-
+            
             clearTimeout(timeoutId);
-
+            
             var endTime = performance.now();
             var durationSec = (endTime - startTime) / 1000;
-
+            
             if (durationSec <= 0) {
                 throw new Error('Ошибка замера: время не определено');
             }
-
+            
             if (receivedLength === 0) {
                 throw new Error('Не удалось загрузить тестовый файл');
             }
-
+            
             var speedBps = receivedLength / durationSec;
-
+            
             return {
                 speedMbps: formatSpeed(speedBps),
                 speedBytesPerSec: speedBps,
@@ -151,14 +166,14 @@ var SpeedTest = (function () {
                 testCompleted: receivedLength >= TEST_FILE_SIZE,
                 timeoutReached: false
             };
-
+            
         } catch (error) {
             clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
                 var endTime = performance.now();
                 var durationSec = (endTime - startTime) / 1000;
                 var speedBps = receivedLength / durationSec;
-
+                
                 return {
                     speedMbps: formatSpeed(speedBps),
                     speedBytesPerSec: speedBps,
@@ -295,7 +310,7 @@ var SpeedTest = (function () {
             return true;
 
         } catch (error) {
-            console.error('SpeedTest ошибка:', error);
+            console.error('❌ SpeedTest ошибка:', error);
             showError(error);
             return false;
 
