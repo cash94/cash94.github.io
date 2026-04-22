@@ -2590,31 +2590,6 @@ async function startLocalPlayback(filePath, title, initialSeek, fromSearch, epis
   }
 }
 
-// Обновляем функцию playLocalFile
-async function playLocalFile(filePath, title) {
-  if (!filePath) {
-    console.error('❌ Путь к файлу не указан');
-    return;
-  }
-
-  console.log('▶️ Воспроизведение локального файла:', filePath, title);
-
-  var overlay = document.getElementById('playback-overlay');
-  var textEl = document.querySelector('.playback-text');
-  if (overlay) overlay.classList.add('active');
-  if (textEl) textEl.textContent = 'Загрузка локального файла...';
-
-  try {
-    await startLocalPlayback(filePath, title, 0, false, null, null);
-  } catch (error) {
-    console.error('❌ Ошибка воспроизведения локального файла:', error);
-    alert('Ошибка воспроизведения: ' + error.message);
-  } finally {
-    if (overlay) overlay.classList.remove('active');
-    if (textEl) textEl.textContent = 'Воспроизведение...';
-  }
-}
-
 // Функция для отмены текущего воспроизведения
 function cancelCurrentPlayback() {
   if (currentPlaybackController) {
@@ -3350,3 +3325,4 @@ window.nextEpisode = nextEpisode;
 window.prevEpisode = prevEpisode;
 window.exitPlayer = exitPlayer;
 window.cancelCurrentPlayback = cancelCurrentPlayback;
+window.startLocalPlayback = startLocalPlayback;
