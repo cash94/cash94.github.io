@@ -1748,6 +1748,10 @@ function setupFocusRescue() {
         for (var j = 0; j < settingsBtns.length; j++) {
             if (VISIBLE(settingsBtns[j])) visible.push(settingsBtns[j]);
         }
+        var speedtestBtns = document.querySelectorAll('.speedtest-btn');
+        for (var j = 0; j < speedtestBtns.length; j++) {
+            if (VISIBLE(speedtestBtns[j])) visible.push(speedtestBtns[j]);
+        }
         return visible;
     }
 
