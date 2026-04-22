@@ -2613,3 +2613,37 @@ body.detail-open {
 .local-card .torrent-poster .no-poster {
   background: linear-gradient(135deg, #1a4a2a, #0d2a1a);
 }
+
+/* Локальный каталог */
+.local-folder-badge {
+    background: #ff9800 !important;
+}
+
+.local-file-badge {
+    background: #4caf50 !important;
+}
+
+.local-folder-card .folder-poster {
+    background: linear-gradient(135deg, #2a2a3a, #1a1a2a);
+}
+
+.view-mode-btn {
+    transition: all 0.2s ease;
+}
+
+.view-mode-btn.active {
+    background: #4a9eff !important;
+}
+
+.view-mode-btn:hover {
+    opacity: 0.8;
+}
+
+.season-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #4a9eff;
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #4a9eff;
+}
