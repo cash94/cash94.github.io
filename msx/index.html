@@ -67,6 +67,21 @@
             <span id="status-text">Введите адрес сервера</span>
           </div>
         </div>
+        
+        <div class="action-row" style="margin-bottom: 20px;">
+          <button class="btn btn-primary" id="speedtest-btn" style="background: #4a9eff;">Замерить скорость</button>
+        </div>
+        <div id="speedtest-results"
+          style="display: none; margin-bottom: 20px; padding: 12px; background: #0a0a0f; border-radius: 12px; border: 1px solid #4a9eff;">
+          <div style="font-size: 13px; margin-bottom: 8px; color: #4a9eff;">Результаты замера:</div>
+          <div id="speedtest-torrserver" style="font-size: 12px; color: #ccc;">TorrServer → TorrStream: -- Mbps</div>
+          <div id="speedtest-client" style="font-size: 12px; color: #ccc; margin-top: 5px;">TorrStream → Клиент: -- Mbps
+          </div>
+          <div id="speedtest-total"
+            style="font-size: 12px; color: #ff8c00; margin-top: 8px; border-top: 1px solid #333; padding-top: 6px;">
+            Общая задержка: --</div>
+        </div>
+
         <div class="checkbox-container">
           <input type="checkbox" id="auto-fullscreen">
           <span>Автоматический полноэкранный режим при запуске</span>
@@ -360,6 +375,7 @@
     document.write('<script src="https://cash94.github.io/msx/js/control.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/donate.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/torrserverstats.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/speedtest.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/app.js?v=' + VERSION + '"><\/script>');
 
     // Скрываем загрузчик после инициализации
