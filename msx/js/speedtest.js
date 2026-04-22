@@ -232,12 +232,12 @@ var SpeedTest = (function () {
         var torrSizeMB = (torrResult.bytesReceived / (1024 * 1024)).toFixed(0);
         var clientSizeMB = (clientResult.bytesReceived / (1024 * 1024)).toFixed(0);
 
-        var torrNote = torrResult.timeoutReached ? ' (таймаут ' + torrSizeMB + ' MB)' : '';
-        var clientNote = clientResult.timeoutReached ? ' (таймаут ' + clientSizeMB + ' MB)' : '';
+        //var torrNote = torrResult.timeoutReached ? ' (таймаут ' + torrSizeMB + ' MB)' : '';
+        //var clientNote = clientResult.timeoutReached ? ' (таймаут ' + clientSizeMB + ' MB)' : '';
 
         if (resultsDiv) resultsDiv.style.display = 'block';
-        if (torrEl) torrEl.innerHTML = 'TorrServer → TorrStream: ' + torrResult.speedMbps + torrNote + ' (' + formatTime(torrResult.durationMs) + ')';
-        if (clientEl) clientEl.innerHTML = 'TorrStream → Клиент: ' + clientResult.speedMbps + clientNote + ' (' + formatTime(clientResult.durationMs) + ')';
+        if (torrEl) torrEl.innerHTML = 'TorrServer → TorrStream: ' + torrResult.speedMbps; // + torrNote + ' (' + formatTime(torrResult.durationMs) + ')';
+        if (clientEl) clientEl.innerHTML = 'TorrStream → Клиент: ' + clientResult.speedMbps; // + clientNote + ' (' + formatTime(clientResult.durationMs) + ')';
         if (totalEl) totalEl.innerHTML = 'Общее время: ' + formatTime(totalTime) + ' | Тест: 200 MB';
 
         var statusEl = document.getElementById('speedtest-status');
