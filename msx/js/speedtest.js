@@ -4,7 +4,7 @@ var SpeedTest = (function () {
     'use strict';
 
     var TEST_FILE_SIZE = 200 * 1024 * 1024; // 200 MB в байтах
-    var TIMEOUT_MS = 30000; // 45 секунд таймаут на этап
+    var TIMEOUT_MS = 20000; // 20 секунд таймаут на этап
 
     var isRunning = false;
     var abortController = null;
