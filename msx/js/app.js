@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', function () {
 var checkServerTimeout = null;
 var hideClockEnabled = false;
 var addToDbEnabled = false;
+var multiChannelEnabled = false;
 
 // Функция для начальной проверки сервера
 function initialServerCheck() {
@@ -193,7 +194,9 @@ async function init() {
     // Инициализация AppState с новыми значениями
     if (typeof AppState !== 'undefined') {
       AppState.addToDbEnabled = addToDbEnabled;
+      AppState.multiChannelEnabled = multiChannelEnabled;
       console.log('📦 AppState.addToDbEnabled =', AppState.addToDbEnabled);
+      console.log('🎵 AppState.multiChannelEnabled =', AppState.multiChannelEnabled);
     }
 
     console.log('✅ Инициализация приложения завершена');
@@ -1213,6 +1216,41 @@ function setupCheckboxes() {
       }
 
       console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
+    });
+  }
+  var multiChannelCheckbox = document.getElementById('multi-channel-audio');
+  if (multiChannelCheckbox) {
+    var savedMultiChannel = localStorage.getItem('multiChannelEnabled') === 'true';
+    multiChannelEnabled = savedMultiChannel;
+    multiChannelCheckbox.checked = savedMultiChannel;
+
+    if (typeof AppState !== 'undefined') {
+      AppState.multiChannelEnabled = multiChannelEnabled;
+    }
+
+    multiChannelCheckbox.addEventListener('change', function (e) {
+      multiChannelEnabled = e.target.checked;
+      localStorage.setItem('multiChannelEnabled', multiChannelEnabled);
+
+      if (typeof AppState !== 'undefined') {
+        AppState.multiChannelEnabled = multiChannelEnabled;
+      }
+
+      console.log('🎵 Многоканальный звук:', multiChannelEnabled ? 'включен' : 'выключен');
+
+      // Показываем уведомление о необходимости перезагрузки для применения
+      if (multiChannelEnabled) {
+        var hint = document.getElementById('player-hint');
+        if (hint) {
+          var originalText = hint.textContent;
+          hint.textContent = 'Многоканальный звук включен. Новые потоки будут использовать оригинальные аудиодорожки (AC3/E-AC3/AAC)';
+          hint.style.opacity = '1';
+          setTimeout(function () {
+            hint.textContent = originalText;
+            hint.style.opacity = '0';
+          }, 3000);
+        }
+      }
     });
   }
 }
