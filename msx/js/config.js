@@ -12,6 +12,7 @@ var AppState = {
   userlogin: '',
   userpassword: '',
   addToDbEnabled: false,
+  multiChannelEnabled: false,
 
   // Данные торрентов
   torrents: [],
