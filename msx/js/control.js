@@ -1738,7 +1738,7 @@ function setupFocusRescue() {
         return all;
     }
     function getConfigItems() {
-        var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', '.settings-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db'];
+        var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', '.settings-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio'];
         var visible = [];
         for (var i = 0; i < ids.length; i++) {
             var el = byId(ids[i]);
@@ -1789,7 +1789,7 @@ function setupFocusRescue() {
         if (screen === 'config') {
             return !!(
                 el.closest('#config-screen') ||
-                ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db'].indexOf(el.id) !== -1 ||
+                ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio'].indexOf(el.id) !== -1 ||
                 el.classList.contains('settings-btn')
             );
         }
