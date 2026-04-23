@@ -922,7 +922,8 @@ async function seekStream(absoluteSeekTime, source) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               streamId: AppState.currentStreamId,
-              seekTime: targetTime
+              seekTime: targetTime,
+              multiChannel: AppState.multiChannelEnabled
             })
           });
 
@@ -1601,9 +1602,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   try {
     var seekParam = (initialSeek && initialSeek > 0) ? ('&start=' + initialSeek.toFixed(2)) : '';
     var audioParam = audioTrack !== null ? ('&audio=' + audioTrack) : '';
+    var multiChannelParam = AppState.multiChannelEnabled;
 
     // Используем AbortController для fetch запроса
-    var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam, {
+    var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam + multiChannelParam, {
       signal: signal
     });
 
