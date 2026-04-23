@@ -1602,7 +1602,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   try {
     var seekParam = (initialSeek && initialSeek > 0) ? ('&start=' + initialSeek.toFixed(2)) : '';
     var audioParam = audioTrack !== null ? ('&audio=' + audioTrack) : '';
-    var multiChannelParam = AppState.multiChannelEnabled;
+    var multiChannelParam = (AppState.multiChannelEnabled === true) ? '&multiChannel=true' : '';
 
     // Используем AbortController для fetch запроса
     var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam + multiChannelParam, {
