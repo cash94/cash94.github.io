@@ -973,7 +973,8 @@ async function seekStream(absoluteSeekTime, source) {
                 updateMuteButton();
               });
             }
-
+            videoPlayer.muted = false;
+            updateMuteButton();
             forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
             updatePlayPauseButton();
             var seekSlider = document.getElementById('seek-slider');
@@ -1766,6 +1767,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
                 });
               }
 
+              videoPlayer.muted = false;
+              updateMuteButton();
               updatePlayPauseButton();
               startTimecodeSaving();
               resetMouseIdleTimer();
@@ -1792,6 +1795,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               videoPlayer.play()['catch'](function () { });
               updateMuteButton();
             });
+            videoPlayer.muted = false;
+            updateMuteButton();
             updatePlayPauseButton();
             startTimecodeSaving();
             resetMouseIdleTimer();
@@ -2049,6 +2054,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
                 });
               }
 
+              videoPlayer.muted = false;
+              updateMuteButton();
               startTimecodeSaving();
               resetMouseIdleTimer();
               if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
@@ -2071,6 +2078,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               videoPlayer.play()['catch'](function () { });
               updateMuteButton();
             });
+            videoPlayer.muted = false;
+            updateMuteButton();
             startTimecodeSaving();
             resetMouseIdleTimer();
             if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
