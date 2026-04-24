@@ -19,7 +19,34 @@ function initialServerCheck() {
         checkServer(true);
       }
     } else {
-      console.log('ℹ️ URL сервера не задан, пропускаем автоматическую проверку');
+      console.log('ℹ️ URL сервера не задан, пробуем использовать SERVER_URL с портом 8090');
+
+      // Берем SERVER_URL и меняем порт на 8090
+      try {
+        var serverUrl = SERVER_URL;
+
+        // Парсим URL
+        var urlObj = new URL(serverUrl);
+        // Меняем порт на 8090
+        urlObj.port = '8090';
+        var torrserverUrl = urlObj.toString();
+
+        console.log('🔄 Автоматически установлен URL TorrServer:', torrserverUrl);
+
+        // Автоматически заполняем поле ввода
+        if (torrserverUrlInput) {
+          torrserverUrlInput.value = torrserverUrl;
+          // Сохраняем в localStorage
+          //localStorage.setItem('torrserver_url', torrserverUrl);
+        }
+
+        // Вызываем проверку сервера
+        if (typeof checkServer === 'function') {
+          checkServer(true);
+        }
+      } catch (error) {
+        console.error('❌ Ошибка при парсинге SERVER_URL:', error);
+      }
     }
   }, 1000); // Увеличил задержку до 1 секунды для полной загрузки всех модулей
 }
