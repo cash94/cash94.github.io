@@ -254,7 +254,7 @@ function checkAppVersion() {
           var warningBlock = document.createElement('div');
           warningBlock.className = 'version-warning';
           warningBlock.style.cssText = 'color: #ff4444; font-size: 14px; margin-top: 8px; text-align: center;';
-          warningBlock.textContent = 'Требуется обновить TorrStream';
+          warningBlock.textContent = 'Требуется обновить TorrStream. Версия сервера ' + serverVersion + ', версия клиента ' + currentVersion;
 
           sectionTitle.parentNode.insertBefore(warningBlock, sectionTitle.nextSibling);
         }
@@ -267,7 +267,7 @@ function checkAppVersion() {
       var warningBlock = document.createElement('div');
       warningBlock.className = 'version-warning';
       warningBlock.style.cssText = 'color: #ff4444; font-size: 14px; margin-top: 8px; text-align: center;';
-      warningBlock.textContent = 'Требуется обновить TorrStream';
+      warningBlock.textContent = 'Требуется обновить TorrStream. Версия сервера ' + serverVersion + ', версия клиента ' + currentVersion;
 
       sectionTitle.parentNode.insertBefore(warningBlock, sectionTitle.nextSibling);
     }
