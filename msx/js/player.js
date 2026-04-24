@@ -1329,6 +1329,9 @@ async function switchToEpisode(index, fileId) {
   // Сохраняем таймкод перед переключением
   await saveTimecodeToServer();
 
+  var savedAudioTrack = currentAudioTrack;
+  console.log('🎵 Сохраняем аудиодорожку для следующей серии:', savedAudioTrack);
+
   // Сначала закрываем панель серий
   var episodesPanel = document.getElementById('episodes-panel');
   var episodesBtn = document.getElementById('episodes-btn');
@@ -1371,8 +1374,8 @@ async function switchToEpisode(index, fileId) {
 
     destroyHls();
 
-    // Запускаем новый поток (начинаем с начала серии)
-    await startHLSPlayback(playUrl, 0, lastPlaybackFromSearch, index);
+    // Начинаем с начала серии (initialSeek = 0) и передаем сохраненную аудиодорожку
+    await startHLSPlayback(playUrl, 0, lastPlaybackFromSearch, index, savedAudioTrack);
 
     // Обновляем название для новой серии
     var fileName = await getFileNameByHash(currentTorrentHash, fileId);
@@ -1476,7 +1479,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (initialSeek === undefined) initialSeek = null;
   if (fromSearch === undefined) fromSearch = false;
   if (episodeIndex === undefined) episodeIndex = null;
-  if (audioTrack === undefined) audioTrack = null;
+  if (audioTrack === undefined) {
+    audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
+  }
 
   // Отменяем предыдущее воспроизведение, если оно есть
   cancelCurrentPlayback();
