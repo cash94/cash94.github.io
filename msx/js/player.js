@@ -1376,7 +1376,7 @@ async function switchToEpisode(index, fileId) {
 
     // Сохраняем предпочтение аудиодорожки
     if (currentTorrentHash && fileId) {
-      await saveAudioPreference(currentTorrentHash, fileId, trackIndex);
+      await saveAudioPreference(currentTorrentHash, fileId, savedAudioTrack);
     }
 
     // Начинаем с начала серии (initialSeek = 0) и передаем сохраненную аудиодорожку
