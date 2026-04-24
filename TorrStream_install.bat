@@ -15,14 +15,14 @@ if %errorLevel% neq 0 (
 )
 
 :: Создание папок
-echo [1/4] Создание папок...
+echo [1/5] Создание папок...
 if not exist "C:\Vidaa" mkdir "C:\Vidaa"
 if not exist "C:\Vidaa\ffmpeg" mkdir "C:\Vidaa\ffmpeg"
 echo [OK] Папки созданы
 echo.
 
 :: Скачивание ffmpeg
-echo [2/4] Скачивание ffmpeg...
+echo [2/5] Скачивание ffmpeg...
 powershell -Command "Invoke-WebRequest -Uri 'https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_win64-clang-gpl.zip' -OutFile '%TEMP%\ffmpeg.zip'"
 if %errorLevel% neq 0 (
     echo [ОШИБКА] Не удалось скачать ffmpeg
@@ -40,13 +40,29 @@ echo [OK] ffmpeg установлен
 echo.
 
 :: Скачивание yt-dlp
-echo [3/4] Скачивание yt-dlp...
+echo [3/5] Скачивание yt-dlp...
 powershell -Command "Invoke-WebRequest -Uri 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp.exe' -OutFile 'C:\Vidaa\ffmpeg\yt-dlp.exe'"
 echo [OK] yt-dlp установлен
 echo.
 
+:: Установка TorrServer (опционально)
+echo [4/5] Установка TorrServer...
+set /p "installTorrServer=Хотите установить последнюю версию TorrServer для автоматического запуска с TorrStream? (Y/N): "
+if /i "%installTorrServer%"=="Y" (
+    echo Скачивание TorrServer...
+    powershell -Command "Invoke-WebRequest -Uri 'https://github.com/YouROK/TorrServer/releases/latest/download/TorrServer-windows-amd64.exe' -OutFile 'C:\Vidaa\TorrServer-windows-amd64.exe'"
+    if %errorLevel% neq 0 (
+        echo [ОШИБКА] Не удалось скачать TorrServer
+    ) else (
+        echo [OK] TorrServer установлен в C:\Vidaa\TorrServer-windows-amd64.exe
+    )
+) else (
+    echo [ПРОПУЩЕНО] Установка TorrServer пропущена
+)
+echo.
+
 :: Скачивание TorrStream
-echo [4/4] Скачивание TorrStream...
+echo [5/5] Скачивание TorrStream...
 powershell -Command "Invoke-WebRequest -Uri 'https://github.com/cash94/cash94.github.io/releases/download/%%23vidaa/TorrStream-windows.zip' -OutFile '%TEMP%\TorrStream.zip'"
 if %errorLevel% neq 0 (
     echo [ОШИБКА] Не удалось скачать TorrStream
@@ -79,8 +95,19 @@ echo.
 echo ========================================
 echo     Установка завершена!
 echo ========================================
-echo TorrStream-windows-x64.exe распакован в: %extractPath%
-echo pssuspend.exe помещен в: C:\Vidaa\ffmpeg
+echo.
+echo Установленные компоненты:
+echo - ffmpeg: C:\Vidaa\ffmpeg\
+echo - yt-dlp: C:\Vidaa\ffmpeg\
+if /i "%installTorrServer%"=="Y" echo - TorrServer: C:\Vidaa\TorrServer-windows-amd64.exe
+if exist "C:\Vidaa\ffmpeg\pssuspend.exe" echo - pssuspend: C:\Vidaa\ffmpeg\
+echo.
+echo TorrStream распакован в: %extractPath%
+echo.
+if /i "%installTorrServer%"=="Y" (
+    echo 🔗 TorrServer будет автоматически запускаться при старте TorrStream
+    echo    (если файл существует в C:\Vidaa\)
+)
 echo.
 echo Запустите: %extractPath%\TorrStream-windows-x64.exe
 echo.
