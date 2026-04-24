@@ -1374,6 +1374,11 @@ async function switchToEpisode(index, fileId) {
 
     destroyHls();
 
+    // Сохраняем предпочтение аудиодорожки
+    if (currentTorrentHash && fileId) {
+      await saveAudioPreference(currentTorrentHash, fileId, trackIndex);
+    }
+
     // Начинаем с начала серии (initialSeek = 0) и передаем сохраненную аудиодорожку
     await startHLSPlayback(playUrl, 0, lastPlaybackFromSearch, index, savedAudioTrack);
 
