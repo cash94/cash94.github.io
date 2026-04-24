@@ -2026,25 +2026,22 @@ function renderSearchResults() {
     var type = (result.types && result.types.indexOf('tv') !== -1) ? 'Сериал' : 'Фильм';
     var date = result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A';
 
-    // Информация о sid и pir
     var sid = result.sid !== undefined ? result.sid : 0;
     var pir = result.pir !== undefined ? result.pir : 0;
-
-    // Извлекаем hash из magnet ссылки (в нижнем регистре)
     var hash = extractHashFromMagnet(result.magnet);
-
-    // Форматируем трекер для отображения
     var tracker = result.tracker || 'Unknown';
     var trackerDisplay = tracker.charAt(0).toUpperCase() + tracker.slice(1);
 
-    // 👇 НОВЫЙ БЛОК С DATA-RESULT
+    // ПРАВИЛЬНО: кодируем JSON для data-атрибута
+    var resultJsonEncoded = encodeURIComponent(JSON.stringify(result));
+
     html += '\n      <div class="search-result-item" data-index="' + idx + '">\n        <div class="search-result-info">\n          <div class="search-result-title">' + escapeHtml(result.title || result.name || 'Без названия') + '</div>\n          \n          <div class="search-result-meta">\n            <div class="search-result-meta-item">\n              <span></span> ' + escapeHtml(trackerDisplay) + '\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> ' + escapeHtml(size) + '\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> ' + year + ' (' + date + ')\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> ' + type + ' / ' + quality + 'p\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> сиды: ' + sid + '\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> пиры: ' + pir + '\n            </div>\n          </div>\n          \n          ' + (voices.length > 0 ? '\n            <div class="search-result-voices">\n              ' + (function () {
       var voicesHtml = '';
       for (var v = 0; v < voices.length; v++) {
         voicesHtml += '<span class="search-result-voice">' + escapeHtml(voices[v]) + '</span>';
       }
       return voicesHtml;
-    })() + '\n            </div>\n          ' : '') + '\n        </div>\n        \n        <button class="search-result-play" \n                data-hash="' + hash + '" \n                data-magnet="' + escapeHtml(result.magnet) + '"\n                data-result=\'' + escapeHtml(JSON.stringify(result)) + '\'\n                ' + (!hash ? 'disabled' : '') + '>\n          ' + (hash ? '▶ PLAY' : '❌ Нет hash') + '\n        </button>\n      </div>\n    ';
+    })() + '\n            </div>\n          ' : '') + '\n        </div>\n        \n        <button class="search-result-play" \n                data-hash="' + hash + '" \n                data-magnet="' + escapeHtml(result.magnet) + '"\n                data-result="' + resultJsonEncoded + '"\n                ' + (!hash ? 'disabled' : '') + '>\n          ' + (hash ? '▶ PLAY' : '❌ Нет hash') + '\n        </button>\n      </div>\n    ';
   }
 
   searchResultsDiv.innerHTML = html;
@@ -2067,7 +2064,7 @@ function renderSearchResults() {
         e.stopPropagation();
         var hash = btn.dataset.hash;
         var magnet = btn.dataset.magnet;
-        var resultJson = btn.dataset.result;
+        var resultJsonEncoded = btn.dataset.result;
 
         console.log('Нажата кнопка PLAY');
         console.log('Hash:', hash);
@@ -2076,18 +2073,20 @@ function renderSearchResults() {
 
         if (hash) {
           var searchResult = null;
-          if (resultJson) {
+          if (resultJsonEncoded) {
             try {
+              // Декодируем и парсим JSON
+              var resultJson = decodeURIComponent(resultJsonEncoded);
               searchResult = JSON.parse(resultJson);
               console.log('   Найден сохраненный результат:', searchResult.title || searchResult.name);
 
-              // Если есть постер из каталога, добавляем его в searchResult
               if (window.pendingCatalogPoster) {
                 searchResult.poster = window.pendingCatalogPoster;
                 console.log('   Добавлен постер из каталога в searchResult');
               }
             } catch (e) {
               console.error('Ошибка парсинга resultJson:', e);
+              console.error('Данные:', resultJsonEncoded);
             }
           }
 
