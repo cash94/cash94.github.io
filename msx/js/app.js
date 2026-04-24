@@ -29,7 +29,7 @@ function initialServerCheck() {
         var urlObj = new URL(serverUrl);
         // Меняем порт на 8090
         urlObj.port = '8090';
-        var torrserverUrl = urlObj.toString();
+        var torrserverUrl = urlObj.toString().replace(/\/$/, '');
 
         console.log('🔄 Автоматически установлен URL TorrServer:', torrserverUrl);
 
