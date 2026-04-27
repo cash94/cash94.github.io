@@ -633,11 +633,7 @@ function setupNavigation() {
           if (detailView) detailView.style.display = 'none';
           return;
         }
-        refreshTorrentsList().then(function () {
-          console.log('🔄 Список торрентов обновлен');
-        })['catch'](function (error) {
-          console.error('❌ Ошибка обновления списка:', error);
-        });
+
         if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
         if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
         updateFocusableElements();
