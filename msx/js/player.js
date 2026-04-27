@@ -1729,6 +1729,32 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         updatePlayPauseButton();
         startTorrentStatsUpdates();
 
+        
+        if (initialSeek !== null && initialSeek !== 0) {
+          console.log('⚡ Продолжение воспроизведения с позиции ' + formatTime(initialSeek) + ', пропускаем накопление буфера');
+          hidePlayerLoading();
+
+          if (!signal.aborted && !isPlaybackCancelled) {
+            videoPlayer.play()['catch'](function (err) {
+              console.log('🔇 Автоплей заблокирован');
+              videoPlayer.muted = true;
+              videoPlayer.play()['catch'](function () { });
+              updateMuteButton();
+            });
+          }
+
+          videoPlayer.muted = false;
+          updateMuteButton();
+          videoPlayer.play();
+          updatePlayPauseButton(); // Обновляем кнопку паузы/плея (теперь будет пауза)
+          startTimecodeSaving();
+          resetMouseIdleTimer();
+          if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
+          startNearEndCheck();
+          startHeartbeat();
+          return; // Выходим, чтобы не запускать буферизацию
+        }
+
         console.log('⏳ Ожидание накопления буфера 10 секунд... (видео на паузе)');
         showPlayerLoading('Буферизация... 0/10 сек', null);
 
@@ -1814,7 +1840,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             startNearEndCheck();
             startHeartbeat();
           }
-        }, 15000);
+        }, 10000);
       };
 
       AppState.hls.on(Hls.Events.MANIFEST_PARSED, manifestParsedHandler);
