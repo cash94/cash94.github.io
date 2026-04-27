@@ -1101,6 +1101,11 @@ async function showDetail(torrent) {
         // Данные есть, но не для постера
         dataParsed = true;
       }
+      refreshTorrentsList().then(function () {
+        console.log('🔄 Список торрентов обновлен');
+      })['catch'](function (error) {
+        console.error('❌ Ошибка обновления списка:', error);
+      });
     }
   } catch (e) {
     console.log('Ошибка парсинга torrent.data:', e);
@@ -1182,6 +1187,11 @@ async function showDetail(torrent) {
 
           if (success) {
             console.log('Данные успешно получены за попытку ' + attempt);
+            refreshTorrentsList().then(function () {
+              console.log('🔄 Список торрентов обновлен');
+            })['catch'](function (error) {
+              console.error('❌ Ошибка обновления списка:', error);
+            });
           }
         } else {
           console.log('Попытка ' + attempt + ' не удалась, статус:', response.status);
