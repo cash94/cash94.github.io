@@ -1054,6 +1054,7 @@ window.hideCatalogDetailExtra = hideCatalogDetailExtra;
 // Показать детали торрента
 async function showDetail(torrent) {
   // Сохраняем hash и индекс перед открытием
+  AppState.mediaType = "";
   if (torrent && torrent.hash) {
     lastSelectedTorrentHash = torrent.hash;
     console.log('Сохранен hash перед открытием деталей:', lastSelectedTorrentHash);
