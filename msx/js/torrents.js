@@ -1077,6 +1077,12 @@ async function showDetail(torrent) {
     mainContainer.style.pointerEvents = 'none';
   }
 
+  refreshTorrentsList().then(function () {
+    console.log('🔄 Список торрентов обновлен');
+  })['catch'](function (error) {
+    console.error('❌ Ошибка обновления списка:', error);
+  });
+  
   AppState.currentScreen = 'detail';
   AppState.detailReturnTo = 'torrents';
   hideCatalogDetailExtra();
