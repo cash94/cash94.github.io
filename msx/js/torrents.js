@@ -12,6 +12,8 @@ var currentSort = 'date-desc';
 var currentQualityFilter = 'all';
 var currentTrackerFilter = 'all';
 var currentYearFilter = '';
+var currentSeasonFilter = 'all';
+var currentVoiceFilter = 'all';
 
 // Список уникальных трекеров из результатов поиска
 var availableTrackers = [];
@@ -68,6 +70,8 @@ function getFilterOptions(type) {
   if (type === 'sort') return SORT_OPTIONS;
   if (type === 'quality') return QUALITY_OPTIONS;
   if (type === 'tracker') return getTrackerFilterOptions();
+  if (type === 'season') return [];
+  if (type === 'voice') return [];
   return [];
 }
 
@@ -123,6 +127,25 @@ function syncSearchFilterButtons() {
       yearFilter.value = currentYearFilter;
     } else {
       yearFilter.value = 'all';
+    }
+  }
+  // Синхронизируем фильтр сезона
+  var seasonFilter = document.getElementById('filter-season');
+  if (seasonFilter) {
+    if (currentSeasonFilter && currentSeasonFilter !== 'all') {
+      seasonFilter.value = currentSeasonFilter;
+    } else {
+      seasonFilter.value = 'all';
+    }
+  }
+
+  // Синхронизируем фильтр озвучки
+  var voiceFilter = document.getElementById('filter-voice');
+  if (voiceFilter) {
+    if (currentVoiceFilter && currentVoiceFilter !== 'all') {
+      voiceFilter.value = currentVoiceFilter;
+    } else {
+      voiceFilter.value = 'all';
     }
   }
 }
@@ -1589,6 +1612,8 @@ function updateAvailableTrackers() {
     currentTrackerFilter = 'all';
   }
   syncSearchFilterButtons();
+  updateAvailableSeasons();
+  updateAvailableVoices();
 }
 
 // Применение фильтров и сортировки
@@ -1615,6 +1640,18 @@ function applyFiltersAndSort() {
     if (shouldInclude && currentYearFilter && currentYearFilter !== 'all') {
       var year = parseInt(currentYearFilter, 10);
       if (!Number.isFinite(year) || item.released !== year) shouldInclude = false;
+    }
+    // По сезону
+    if (shouldInclude && currentSeasonFilter && currentSeasonFilter !== 'all') {
+      var seasonNum = parseInt(currentSeasonFilter, 10);
+      var hasSeason = item.seasons && Array.isArray(item.seasons) && item.seasons.indexOf(seasonNum) !== -1;
+      if (!hasSeason) shouldInclude = false;
+    }
+
+    // По озвучке
+    if (shouldInclude && currentVoiceFilter && currentVoiceFilter !== 'all') {
+      var hasVoice = item.voices && Array.isArray(item.voices) && item.voices.indexOf(currentVoiceFilter) !== -1;
+      if (!hasVoice) shouldInclude = false;
     }
 
     if (shouldInclude) {
@@ -1646,6 +1683,87 @@ function applyFiltersAndSort() {
   });
 
   renderSearchResults();
+}
+
+// Обновление списка доступных сезонов
+function updateAvailableSeasons() {
+  var seasonSet = {};
+  var seasonFilter = document.getElementById('filter-season');
+
+  if (!seasonFilter) return;
+
+  // Собираем все уникальные сезоны из результатов поиска
+  for (var i = 0; i < searchResults.length; i++) {
+    var result = searchResults[i];
+    if (result.seasons && Array.isArray(result.seasons)) {
+      for (var j = 0; j < result.seasons.length; j++) {
+        seasonSet[result.seasons[j]] = true;
+      }
+    }
+  }
+
+  // Получаем сезоны и сортируем по возрастанию
+  availableSeasons = Object.keys(seasonSet).map(Number).sort(function (a, b) {
+    return a - b;
+  });
+
+  // Обновляем select с сезонами
+  var currentSeason = seasonFilter.value;
+
+  seasonFilter.innerHTML = '<option value="all">Все сезоны</option>';
+
+  for (var j = 0; j < availableSeasons.length; j++) {
+    var season = availableSeasons[j];
+    var selected = (currentSeason !== 'all' && String(season) === currentSeason) ? 'selected' : '';
+    seasonFilter.innerHTML += '<option value="' + season + '" ' + selected + '>' + season + ' сезон</option>';
+  }
+
+  // Если текущий сезон не найден в новом списке, сбрасываем на "Все сезоны"
+  if (currentSeason !== 'all' && !seasonSet[parseInt(currentSeason)]) {
+    seasonFilter.value = 'all';
+    currentSeasonFilter = 'all';
+  }
+}
+
+// Обновление списка доступных озвучек
+function updateAvailableVoices() {
+  var voiceSet = {};
+  var voiceFilter = document.getElementById('filter-voice');
+
+  if (!voiceFilter) return;
+
+  // Собираем все уникальные озвучки из результатов поиска
+  for (var i = 0; i < searchResults.length; i++) {
+    var result = searchResults[i];
+    if (result.voices && Array.isArray(result.voices)) {
+      for (var j = 0; j < result.voices.length; j++) {
+        var voice = result.voices[j];
+        if (voice && voice.trim()) {
+          voiceSet[voice.trim()] = true;
+        }
+      }
+    }
+  }
+
+  // Получаем озвучки и сортируем по алфавиту
+  availableVoices = Object.keys(voiceSet).sort();
+
+  // Обновляем select с озвучками
+  var currentVoice = voiceFilter.value;
+
+  voiceFilter.innerHTML = '<option value="all">Все озвучки</option>';
+
+  for (var j = 0; j < availableVoices.length; j++) {
+    var voice = availableVoices[j];
+    var selected = (currentVoice !== 'all' && voice === currentVoice) ? 'selected' : '';
+    voiceFilter.innerHTML += '<option value="' + escapeHtml(voice) + '" ' + selected + '>' + escapeHtml(voice) + '</option>';
+  }
+
+  // Если текущая озвучка не найдена в новом списке, сбрасываем на "Все озвучки"
+  if (currentVoice !== 'all' && !voiceSet[currentVoice]) {
+    voiceFilter.value = 'all';
+    currentVoiceFilter = 'all';
+  }
 }
 
 // Отображение результатов поиска
@@ -1853,11 +1971,25 @@ function resetFilters() {
   currentQualityFilter = 'all';
   currentTrackerFilter = 'all';
   currentYearFilter = '';
+  currentSeasonFilter = 'all';
+  currentVoiceFilter = 'all';
 
   syncSearchFilterButtons();
   var filterYear = document.getElementById('filter-year');
   if (filterYear) {
     filterYear.value = 'all';
+  }
+
+  // НОВОЕ: Сбрасываем фильтр сезона
+  var filterSeason = document.getElementById('filter-season');
+  if (filterSeason) {
+    filterSeason.value = 'all';
+  }
+
+  // НОВОЕ: Сбрасываем фильтр озвучки
+  var filterVoice = document.getElementById('filter-voice');
+  if (filterVoice) {
+    filterVoice.value = 'all';
   }
 
   applyFiltersAndSort();
@@ -1866,7 +1998,7 @@ function resetFilters() {
 function initYearFilter() {
   var yearFilter = document.getElementById('filter-year');
   if (yearFilter) {
-    yearFilter.addEventListener('change', function(e) {
+    yearFilter.addEventListener('change', function (e) {
       var value = e.target.value;
       if (value === 'all') {
         currentYearFilter = '';
@@ -2139,7 +2271,11 @@ function clearSearchResults() {
   filteredResults = [];
   currentSearchQuery = '';
   availableTrackers = [];
+  availableSeasons = [];
+  availableVoices = [];
   currentTrackerFilter = 'all';
+  currentSeasonFilter = 'all';
+  currentVoiceFilter = 'all';
   syncSearchFilterButtons();
 }
 
