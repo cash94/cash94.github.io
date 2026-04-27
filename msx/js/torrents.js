@@ -2069,7 +2069,7 @@ async function playFromHash(hash, magnet, searchResult) {
 
       await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
     } else {
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 5000));
       AppState.inSearch = "torrents";
       showDetail(addedTorrent);
     }
