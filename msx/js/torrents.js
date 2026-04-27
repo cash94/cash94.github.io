@@ -1953,6 +1953,10 @@ async function playFromHash(hash, magnet, searchResult) {
   document.querySelector('.playback-text').textContent = 'Поиск постера и добавление...';
 
   try {
+    // Проверяем, является ли контент сериалом
+    const isSerial = searchResult && searchResult.types &&
+      Array.isArray(searchResult.types) &&
+      searchResult.types.includes('serial');
     var addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
 
     hideSearchResults();
@@ -1972,17 +1976,22 @@ async function playFromHash(hash, magnet, searchResult) {
       AppState.currentDetailItem = addedTorrent;
     }
 
-    var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
-    var fileId = playbackTarget.fileId || 1;
+    if (!isSerial) {
+      var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
+      var fileId = playbackTarget.fileId || 1;
 
-    document.querySelector('.playback-text').textContent = playbackTarget.isSeries
-      ? 'Воспроизведение серии...'
-      : 'Воспроизведение...';
+      document.querySelector('.playback-text').textContent = playbackTarget.isSeries
+        ? 'Воспроизведение серии...'
+        : 'Воспроизведение...';
 
-    var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
-    console.log('URL воспроизведения:', playUrl, 'isSeries:', playbackTarget.isSeries, 'episodeIndex:', playbackTarget.episodeIndex);
+      var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
+      console.log('URL воспроизведения:', playUrl, 'isSeries:', playbackTarget.isSeries, 'episodeIndex:', playbackTarget.episodeIndex);
 
-    await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
+      await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
+    } else {
+      showDetail(addedTorrent);
+      console.log('Это сериал, обработка будет добавлена позже');
+    }
 
   } catch (error) {
     console.error('❌ Ошибка воспроизведения:', error);
