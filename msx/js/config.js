@@ -17,6 +17,7 @@ var AppState = {
   // Данные торрентов
   torrents: [],
   currentDetailItem: null,
+  mediaType: "",
 
   // Состояние плеера
   currentScreen: 'config',
