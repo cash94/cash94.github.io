@@ -2056,15 +2056,14 @@ async function playFromHash(hash, magnet, searchResult) {
       var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
       var fileId = playbackTarget.fileId || 1;
 
-      document.querySelector('.playback-text').textContent = playbackTarget.isSeries
-        ? 'Воспроизведение серии...'
-        : 'Воспроизведение...';
+      document.querySelector('.playback-text').textContent = 'Воспроизведение...';
 
       var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
       console.log('URL воспроизведения:', playUrl, 'isSeries:', playbackTarget.isSeries, 'episodeIndex:', playbackTarget.episodeIndex);
 
       await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
     } else {
+      await new Promise(resolve => setTimeout(resolve, 3000));
       AppState.inSearch = "torrents";
       showDetail(addedTorrent);
     }
