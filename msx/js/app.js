@@ -796,6 +796,8 @@ function setupSearchFilters() {
   var filterTracker = document.getElementById('filter-tracker');
   var filterYear = document.getElementById('filter-year');
   var resetFiltersBtn = document.getElementById('reset-filters');
+  var filterSeason = document.getElementById('filter-season');
+  var filterVoice = document.getElementById('filter-voice');
 
   if (filterToggleBtn) {
     filterToggleBtn.addEventListener('click', function () {
@@ -845,7 +847,6 @@ function setupSearchFilters() {
     });
   }
 
-  // ... остальной код без изменений
   if (torrentmovie && typeof applyFiltersAndSort === 'function') {
     torrentmovie.addEventListener('change', function (e) {
       if (typeof currentSort !== 'undefined') currentSort = e.target.value;
@@ -877,6 +878,20 @@ function setupSearchFilters() {
   if (filterYear && typeof applyFiltersAndSort === 'function') {
     filterYear.addEventListener('change', function (e) {
       if (typeof currentYearFilter !== 'undefined') currentYearFilter = e.target.value;
+      applyFiltersAndSort();
+    });
+  }
+
+  if (filterSeason && typeof applyFiltersAndSort === 'function') {
+    filterSeason.addEventListener('change', function (e) {
+      if (typeof currentSeasonFilter !== 'undefined') currentSeasonFilter = e.target.value;
+      applyFiltersAndSort();
+    });
+  }
+
+  if (filterVoice && typeof applyFiltersAndSort === 'function') {
+    filterVoice.addEventListener('change', function (e) {
+      if (typeof currentVoiceFilter !== 'undefined') currentVoiceFilter = e.target.value;
       applyFiltersAndSort();
     });
   }
