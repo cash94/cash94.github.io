@@ -1989,8 +1989,8 @@ async function playFromHash(hash, magnet, searchResult) {
 
       await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
     } else {
+      await new Promise(resolve => setTimeout(resolve, 3000));
       showDetail(addedTorrent);
-      console.log('Это сериал, обработка будет добавлена позже');
     }
 
   } catch (error) {
