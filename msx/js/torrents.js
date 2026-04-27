@@ -2076,9 +2076,18 @@ async function playFromHash(hash, magnet, searchResult) {
 
   try {
     // Проверяем, является ли контент сериалом
-    const isSerial = searchResult && searchResult.types &&
+    var isSerial = false;
+
+    // Сначала проверяем AppState.mediaType
+    if (AppState.mediaType === "tv") {
+      isSerial = true;
+    }
+    // Если нет, проверяем searchResult.types
+    else if (searchResult && searchResult.types &&
       Array.isArray(searchResult.types) &&
-      searchResult.types.includes('serial');
+      searchResult.types.includes('serial')) {
+      isSerial = true;
+    }
     var addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
 
     hideSearchResults();
