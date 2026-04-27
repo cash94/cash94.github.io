@@ -2513,7 +2513,7 @@ async function showGlobalSearchDetail(item) {
       name: item.title || item.name
     }]
   };
-
+  AppState.mediaType = item.media_type;
   // Получаем URL постера
   var posterUrl = item.poster_path
     ? 'https://tsimg.hnar.online/t/p/w342' + item.poster_path
