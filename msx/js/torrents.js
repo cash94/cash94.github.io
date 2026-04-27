@@ -1077,12 +1077,6 @@ async function showDetail(torrent) {
     mainContainer.style.pointerEvents = 'none';
   }
 
-  refreshTorrentsList().then(function () {
-    console.log('🔄 Список торрентов обновлен');
-  })['catch'](function (error) {
-    console.error('❌ Ошибка обновления списка:', error);
-  });
-  
   AppState.currentScreen = 'detail';
   AppState.detailReturnTo = 'torrents';
   hideCatalogDetailExtra();
@@ -1112,70 +1106,106 @@ async function showDetail(torrent) {
     console.log('Ошибка парсинга torrent.data:', e);
   }
 
-  // Если не удалось получить данные из torrent.data, делаем запрос к API
+  // Если не удалось получить данные из torrent.data, делаем запрос к API с 5 попытками
   if (!dataParsed && torrent.hash && AppState.currentTorrserverUrl) {
-    try {
-      console.log('Пытаемся получить данные через API для hash:', torrent.hash);
+    var maxAttempts = 5;
+    var attempt = 0;
+    var success = false;
+    var delay = 1000; // Задержка в 1 секунду между попытками
 
-      var requestBody = {
-        action: 'get',
-        hash: torrent.hash
-      };
+    while (attempt < maxAttempts && !success) {
+      attempt++;
+      console.log('Попытка ' + attempt + '/' + maxAttempts + ' получить данные через API для hash:', torrent.hash);
 
-      var headers = {
-        'Content-Type': 'application/json',
-      };
+      try {
+        var requestBody = {
+          action: 'get',
+          hash: torrent.hash
+        };
 
-      var authHeaders = getAuthHeaders();
-      for (var key in authHeaders) {
-        if (authHeaders.hasOwnProperty(key)) {
-          headers[key] = authHeaders[key];
-        }
-      }
+        var headers = {
+          'Content-Type': 'application/json',
+        };
 
-      var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(requestBody)
-      });
-
-      if (response.ok) {
-        var apiData = await response.json();
-
-        // Обновляем torrent данными из API
-        if (apiData.data) {
-          torrent.data = apiData.data;
-
-          // Пробуем снова распарсить
-          try {
-            var parsedData = JSON.parse(apiData.data);
-            if (parsedData.movie && parsedData.movie.img) {
-              poster = parsedData.movie.img;
-            } else if (parsedData.movie && parsedData.movie.poster_path) {
-              poster = 'https://image.tmdb.org/t/p/w342' + parsedData.movie.poster_path;
-            }
-
-            // Обновляем file_stats если есть
-            if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
-              torrent.file_stats = apiData.file_stats;
-            }
-          } catch (e) {
-            console.log('Ошибка парсинга API data:', e);
+        var authHeaders = getAuthHeaders();
+        for (var key in authHeaders) {
+          if (authHeaders.hasOwnProperty(key)) {
+            headers[key] = authHeaders[key];
           }
         }
 
-        // Обновляем постер если есть в ответе
-        if (apiData.poster && !poster) {
-          poster = apiData.poster;
+        var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify(requestBody)
+        });
+
+        if (response.ok) {
+          var apiData = await response.json();
+
+          // Обновляем torrent данными из API
+          if (apiData.data) {
+            torrent.data = apiData.data;
+
+            // Пробуем снова распарсить
+            try {
+              var parsedData = JSON.parse(apiData.data);
+              if (parsedData.movie && parsedData.movie.img) {
+                poster = parsedData.movie.img;
+                success = true;
+              } else if (parsedData.movie && parsedData.movie.poster_path) {
+                poster = 'https://image.tmdb.org/t/p/w342' + parsedData.movie.poster_path;
+                success = true;
+              } else if (parsedData.TorrServer && parsedData.TorrServer.Files) {
+                success = true;
+              }
+
+              // Обновляем file_stats если есть
+              if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
+                torrent.file_stats = apiData.file_stats;
+              }
+            } catch (e) {
+              console.log('Ошибка парсинга API data (попытка ' + attempt + '):', e);
+            }
+          }
+
+          // Обновляем постер если есть в ответе
+          if (apiData.poster && !poster) {
+            poster = apiData.poster;
+            success = true;
+          }
+
+          // Обновляем title если есть
+          if (apiData.title && (!torrent.title || torrent.title === 'Без названия')) {
+            torrent.title = apiData.title;
+          }
+
+          if (success) {
+            console.log('Данные успешно получены за попытку ' + attempt);
+          }
+        } else {
+          console.log('Попытка ' + attempt + ' не удалась, статус:', response.status);
         }
 
-        // Обновляем title если есть
-        if (apiData.title && (!torrent.title || torrent.title === 'Без названия')) {
-          torrent.title = apiData.title;
+        // Если не успешно и не последняя попытка, ждем задержку перед следующей
+        if (!success && attempt < maxAttempts) {
+          await new Promise(function (resolve) {
+            setTimeout(resolve, delay);
+          });
+        }
+
+      } catch (apiError) {
+        console.error('Ошибка при запросе к API (попытка ' + attempt + '):', apiError);
+        if (attempt < maxAttempts) {
+          await new Promise(function (resolve) {
+            setTimeout(resolve, delay);
+          });
         }
       }
-    } catch (apiError) {
-      console.error('Ошибка при запросе к API:', apiError);
+    }
+
+    if (!success) {
+      console.log('Не удалось получить данные после', maxAttempts, 'попыток');
     }
   }
 
@@ -2069,7 +2099,7 @@ async function playFromHash(hash, magnet, searchResult) {
 
       await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
     } else {
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
       AppState.inSearch = "torrents";
       showDetail(addedTorrent);
     }
