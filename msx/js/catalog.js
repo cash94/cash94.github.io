@@ -599,6 +599,7 @@ async function loadCatalog(catalogKey) {
     catalogState.loadedItemIds = {};
     catalogState.loadedPostersCount = 0;
     catalogState.posterLoadQueue = [];
+    AppState.mediaType = config.mediaType;
 
     showCatalogLoading('Загрузка ' + config.name + '...');
 
