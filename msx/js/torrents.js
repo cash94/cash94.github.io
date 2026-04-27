@@ -1086,16 +1086,92 @@ async function showDetail(torrent) {
   var filesList = document.getElementById('files-list');
 
   var poster = '';
+  var dataParsed = false;
+
   try {
     if (torrent.data) {
       var data = JSON.parse(torrent.data);
       if (data.movie && data.movie.img) {
         poster = data.movie.img;
+        dataParsed = true;
       } else if (data.movie && data.movie.poster_path) {
         poster = 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path;
+        dataParsed = true;
+      } else if (data.TorrServer && data.TorrServer.Files) {
+        // Данные есть, но не для постера
+        dataParsed = true;
       }
     }
-  } catch (e) { }
+  } catch (e) {
+    console.log('Ошибка парсинга torrent.data:', e);
+  }
+
+  // Если не удалось получить данные из torrent.data, делаем запрос к API
+  if (!dataParsed && torrent.hash && AppState.currentTorrserverUrl) {
+    try {
+      console.log('Пытаемся получить данные через API для hash:', torrent.hash);
+
+      var requestBody = {
+        action: 'get',
+        hash: torrent.hash
+      };
+
+      var headers = {
+        'Content-Type': 'application/json',
+      };
+
+      var authHeaders = getAuthHeaders();
+      for (var key in authHeaders) {
+        if (authHeaders.hasOwnProperty(key)) {
+          headers[key] = authHeaders[key];
+        }
+      }
+
+      var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(requestBody)
+      });
+
+      if (response.ok) {
+        var apiData = await response.json();
+
+        // Обновляем torrent данными из API
+        if (apiData.data) {
+          torrent.data = apiData.data;
+
+          // Пробуем снова распарсить
+          try {
+            var parsedData = JSON.parse(apiData.data);
+            if (parsedData.movie && parsedData.movie.img) {
+              poster = parsedData.movie.img;
+            } else if (parsedData.movie && parsedData.movie.poster_path) {
+              poster = 'https://image.tmdb.org/t/p/w342' + parsedData.movie.poster_path;
+            }
+
+            // Обновляем file_stats если есть
+            if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
+              torrent.file_stats = apiData.file_stats;
+            }
+          } catch (e) {
+            console.log('Ошибка парсинга API data:', e);
+          }
+        }
+
+        // Обновляем постер если есть в ответе
+        if (apiData.poster && !poster) {
+          poster = apiData.poster;
+        }
+
+        // Обновляем title если есть
+        if (apiData.title && (!torrent.title || torrent.title === 'Без названия')) {
+          torrent.title = apiData.title;
+        }
+      }
+    } catch (apiError) {
+      console.error('Ошибка при запросе к API:', apiError);
+    }
+  }
 
   if (!poster && torrent.poster) {
     poster = torrent.poster;
