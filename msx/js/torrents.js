@@ -1284,8 +1284,13 @@ async function showDetail(torrent) {
       filesList.innerHTML = '<div style="text-align: center; padding: 20px;">Нет файлов</div>';
     } else {
       filesList.innerHTML = '';
+      var nameSerials = 'Серия';
       for (var i = 0; i < files.length; i++) {
-        addFileItem(files[i], torrent.hash);
+        if (AppState.mediaType != 'tv') {
+          addFileItem(files[i], torrent.hash, torrent.title);
+        } else {
+          addFileItem(files[i], torrent.hash, nameSerials +" "+ i);
+        }
       }
     }
 
@@ -1360,7 +1365,7 @@ async function showDetail(torrent) {
 }
 
 // Добавить элемент файла (для сериалов)
-function addFileItem(file, hash) {
+function addFileItem(file, hash, name) {
   // Проверяем расширение файла
   var fileName = file.path.split('/').pop() || ('Файл ' + file.id);
   var fileExt = fileName.split('.').pop().toLowerCase();
@@ -1376,7 +1381,7 @@ function addFileItem(file, hash) {
 
   var item = document.createElement('div');
   item.className = 'file-item';
-  item.innerHTML = '\n    <div class="file-name">\n      <div>' + escapeHtml(fileName) + '</div>\n      <div style="font-size: 12px; color: #888; margin-top: 4px;">' + fileSize + '</div>\n    </div>\n    <button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '">▶</button>\n  ';
+  item.innerHTML = '\n    <div class="file-name">\n      <div>' + escapeHtml(name) + '</div>\n      <div style="font-size: 12px; color: #888; margin-top: 4px;">' + fileSize + '</div>\n    </div>\n    <button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '">▶</button>\n  ';
 
   item.querySelector('.play-btn').onclick = function (e) {
     e.stopPropagation();
