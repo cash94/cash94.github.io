@@ -1284,8 +1284,9 @@ async function showDetail(torrent) {
     } else {
       filesList.innerHTML = '';
       var nameSerials = 'Серия';
+      var collFilles = files.length;
       for (var i = 0; i < files.length; i++) {
-        if (files.length = 1) {
+        if (collFilles = 1) {
           addFileItem(files[i], torrent.hash, torrent.title);
         } else {
           addFileItem(files[i], torrent.hash, nameSerials +" "+ i);
