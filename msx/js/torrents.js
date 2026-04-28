@@ -2046,10 +2046,22 @@ async function addTorrentToServer(magnet, hash, searchResult) {
   try {
     console.log('Добавление торрента в TorrServer:', magnet);
 
+    var torrname = '';
+    if (appState.mediaType == 'tv') {
+      if (searchResult.seasons && searchResult.seasons.length > 0) {
+        torrname = searchResult.name +' | сезон '+searchResult.seasons[0];
+      } else {
+        // обработка случая, когда массив пустой или отсутствует
+        torrname = searchResult.name;
+      }
+    } else {
+      torrname = searchResult.name;
+    }
+
     var requestBody = {
       action: 'add',
       link: magnet,
-      title: searchResult.name, //+' S['+searchResult.seasons[0]+']',
+      title: torrname, //+' S['+searchResult.seasons[0]+']',
       save_to_db: AppState.addToDbEnabled
     };
 
