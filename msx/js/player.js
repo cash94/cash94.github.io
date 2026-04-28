@@ -1583,7 +1583,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
     if (fileName) {
       if (AppState.currentDetailItem && AppState.currentDetailItem.title) {
-        updatePlayerTitle(AppState.currentDetailItem.title + ' - ' + fileName);
+        //updatePlayerTitle(AppState.currentDetailItem.title + ' - ' + fileName);
+        updatePlayerTitle(fileName);
       } else {
         updatePlayerTitle(fileName);
       }
