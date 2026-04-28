@@ -1261,6 +1261,75 @@ function setupKeyboardHandlers() {
             if (controlsVisible) {
                 updateFocusableElements();
 
+                // Проверяем, открыта ли панель серий
+                var episodesPanel = document.getElementById('episodes-panel');
+                var isEpisodesOpen = episodesPanel && !episodesPanel.classList.contains('hidden');
+
+                // Если открыта панель серий
+                if (isEpisodesOpen) {
+                    var focusedElement = focusableElements[currentFocusIndex];
+
+                    // Если фокус на кнопке закрытия - при нажатии вниз переходим на активную серию
+                    if (focusedElement && focusedElement.id === 'close-episodes') {
+                        if (isKeyPressed('DOWN', key)) {
+                            e.preventDefault();
+                            // Ищем активную серию
+                            var activeEpisodeIndex = -1;
+                            for (var i = 0; i < focusableElements.length; i++) {
+                                var el = focusableElements[i];
+                                if (el.classList && el.classList.contains('episode-item') && el.classList.contains('active')) {
+                                    activeEpisodeIndex = i;
+                                    break;
+                                }
+                            }
+                            // Если активная серия найдена, ставим на неё фокус
+                            if (activeEpisodeIndex !== -1) {
+                                setFocus(activeEpisodeIndex);
+                            } else if (focusableElements.length > 1) {
+                                // Если активной нет, ставим на первую серию
+                                setFocus(1);
+                            }
+                            if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+                            return;
+                        }
+                    }
+
+                    // Навигация по списку серий
+                    if (isKeyPressed('UP', key)) {
+                        e.preventDefault();
+                        // Если мы на первом элементе серий (индекс 1), то при нажатии вверх переходим на кнопку закрытия
+                        if (currentFocusIndex === 1) {
+                            setFocus(0); // Переход на кнопку закрытия
+                        } else {
+                            navigate('up');
+                        }
+                        if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+                        return;
+                    }
+
+                    if (isKeyPressed('DOWN', key)) {
+                        e.preventDefault();
+                        // Если мы на последней серии, то дальше не идем
+                        var lastEpisodeIndex = focusableElements.length - 1;
+                        if (currentFocusIndex === lastEpisodeIndex) {
+                            // Остаемся на последней серии, ничего не делаем
+                            return;
+                        }
+                        navigate('down');
+                        if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+                        return;
+                    }
+
+                    // Для LEFT и RIGHT - ничего не делаем (остаемся в списке)
+                    if (isKeyPressed('LEFT', key) || isKeyPressed('RIGHT', key)) {
+                        e.preventDefault();
+                        return;
+                    }
+
+                    return;
+                }
+
+                // Стандартная навигация для плеера (без панелей)
                 if (isKeyPressed('UP', key)) {
                     e.preventDefault();
                     navigate('up');
