@@ -277,13 +277,13 @@ update_vidaa() {
     fi
     
     # Обновляем yt-dlp (без ffmpeg, так как он обновляется реже)
-    echo "Обновление yt-dlp..."
-    wget -q --show-progress "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux" -O /opt/Vidaa/ffmpeg/yt-dlp
+    #echo "Обновление yt-dlp..."
+    #wget -q --show-progress "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux" -O /opt/Vidaa/ffmpeg/yt-dlp
     
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при скачивании yt-dlp${NC}"
-        exit 1
-    fi
+    #if [ $? -ne 0 ]; then
+        #echo -e "${RED}Ошибка при скачивании yt-dlp${NC}"
+        #exit 1
+    #fi
     
     # Обновляем права
     chmod 775 /opt/Vidaa/myapp-linux-x64
