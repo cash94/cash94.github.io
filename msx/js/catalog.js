@@ -2489,7 +2489,7 @@ function createCatalogFolderCard(key, config) {
 
     // Специальная обработка для истории
     if (key === 'history') {
-        var posterHtml = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 64px;">📜</div>';
+        var posterHtml = '<img src="https://cash94.github.io/msx/img/History.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
 
         card.innerHTML = `
             <div class="torrent-poster catalog-folder-poster">
