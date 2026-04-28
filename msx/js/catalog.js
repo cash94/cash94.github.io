@@ -646,7 +646,7 @@ async function loadHistoryCatalog() {
     catalogState.items = [];
     catalogState.totalItems = 0;
     catalogState.currentPage = 0;
-    catalogState.hasMore = false; // История не пагинируется
+    catalogState.hasMore = false;
     catalogState.isLoadingMore = false;
     catalogState.loadedItemIds = {};
     catalogState.loadedPostersCount = 0;
@@ -656,21 +656,34 @@ async function loadHistoryCatalog() {
     showCatalogLoading('Загрузка истории просмотра...');
 
     try {
-        // Получаем историю с сервера
         const response = await fetch(SERVER_URL + '/api/history');
         const data = await response.json();
 
         if (data.success && data.history && data.history.length > 0) {
             // Конвертируем историю в формат, совместимый с каталогом
             const historyItems = data.history.map((item, index) => {
+                // Исправляем posterPath - убеждаемся, что есть слеш
+                let posterPath = null;
+                if (item.posterPath) {
+                    // Если posterPath уже содержит полный URL, оставляем как есть
+                    if (item.posterPath.startsWith('http')) {
+                        posterPath = item.posterPath;
+                    }
+                    // Если это только имя файла или путь без слеша
+                    else if (item.posterPath) {
+                        // Добавляем слеш, если его нет
+                        posterPath = item.posterPath.startsWith('/') ? item.posterPath : '/' + item.posterPath;
+                    }
+                }
+
                 return {
                     id: item.tmdbId,
                     title: item.title,
                     name: item.title,
                     media_type: item.mediaType,
-                    poster_path: item.posterPath ? item.posterPath.split('/').pop() : null,
-                    vote_average: null, // Можно добавить рейтинг если есть
-                    overview: null, // Можно загрузить детали если нужно
+                    poster_path: posterPath,
+                    vote_average: null,
+                    overview: null,
                     release_date: item.watchedAt ? item.watchedAt.split('T')[0] : null,
                     watchedAt: item.watchedAt,
                     timestamp: item.timestamp,
@@ -701,7 +714,6 @@ async function loadHistoryCatalog() {
 
             renderCatalogGrid();
         } else {
-            // История пуста
             catalogState.items = [];
             catalogState.totalItems = 0;
             showEmptyHistory();
@@ -1509,6 +1521,38 @@ async function loadCatalogPoster(card, title, mediaType, tmdbId, index) {
     }
 
     var rating = card.dataset.rating;
+    var item = catalogState.items[index];
+
+    // Для истории - проверяем, есть ли сохраненный poster_path
+    if (catalogState.currentCatalog === 'history' && item && item.poster_path) {
+        var posterUrl = null;
+
+        // Если poster_path уже полный URL
+        if (item.poster_path.startsWith('http')) {
+            posterUrl = item.poster_path;
+        }
+        // Если это путь, начинающийся со слеша
+        else if (item.poster_path.startsWith('/')) {
+            posterUrl = 'https://tsimg.hnar.online/t/p/w342' + item.poster_path;
+        }
+        // Если это просто имя файла
+        else {
+            posterUrl = 'https://tsimg.hnar.online/t/p/w342/' + item.poster_path;
+        }
+
+        if (posterUrl) {
+            catalogState.posterCache[cacheKey] = posterUrl;
+            var posterHtml = '<img src="' + posterUrl + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
+
+            if (rating && rating !== 'null' && rating !== 'undefined') {
+                var ratingColor = getRatingColor(parseFloat(rating));
+                posterDiv.innerHTML = '\n                    ' + posterHtml + '\n                    <div style="\n                        position: absolute;\n                        top: 8px;\n                        right: 8px;\n                        background: rgba(0, 0, 0, 0.8);\n                        color: ' + ratingColor + ';\n                        font-weight: bold;\n                        font-size: 14px;\n                        padding: 4px 8px;\n                        border-radius: 12px;\n                        z-index: 10;\n                        border: 1px solid ' + ratingColor + ';\n                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);\n                        backdrop-filter: blur(2px);\n                    ">\n                        ' + rating + '\n                    </div>\n                ';
+            } else {
+                posterDiv.innerHTML = posterHtml;
+            }
+            return;
+        }
+    }
 
     try {
         var posterUrl = null;
@@ -2659,6 +2703,13 @@ window.focusCatalogCardByIndex = function (targetNumIndex) {
 
 window.addToWatchHistory = async function (tmdbId, title, mediaType, posterPath) {
     try {
+        // Если posterPath передан и это полный URL, извлекаем только относительный путь
+        let savePosterPath = posterPath || null;
+        if (savePosterPath && savePosterPath.startsWith('https://tsimg.hnar.online/t/p/w342')) {
+            // Извлекаем часть после w342 - она уже должна начинаться со слеша
+            savePosterPath = savePosterPath.replace('https://tsimg.hnar.online/t/p/w342', '');
+        }
+
         const response = await fetch('/api/history/add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2666,7 +2717,7 @@ window.addToWatchHistory = async function (tmdbId, title, mediaType, posterPath)
                 tmdbId: String(tmdbId),
                 title: title,
                 mediaType: mediaType,
-                posterPath: posterPath || null
+                posterPath: savePosterPath
             })
         });
 
