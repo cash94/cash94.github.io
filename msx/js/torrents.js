@@ -1077,7 +1077,6 @@ window.hideCatalogDetailExtra = hideCatalogDetailExtra;
 // Показать детали торрента
 async function showDetail(torrent) {
   // Сохраняем hash и индекс перед открытием
-  AppState.mediaType = "";
   if (torrent && torrent.hash) {
     lastSelectedTorrentHash = torrent.hash;
     console.log('Сохранен hash перед открытием деталей:', lastSelectedTorrentHash);
@@ -1362,6 +1361,7 @@ async function showDetail(torrent) {
       console.log('Фокус в детальном просмотре на первый элемент');
     }
   }, 300);
+  AppState.mediaType = "";
 }
 
 // Добавить элемент файла (для сериалов)
