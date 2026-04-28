@@ -1255,18 +1255,13 @@ function renderEpisodesList() {
   for (var idx = 0; idx < currentEpisodeFiles.length; idx++) {
     var file = currentEpisodeFiles[idx];
     var index = idx;
-    var fileName = file.path.split('/').pop() || ('Серия ' + (index + 1));
     var isActive = index === currentEpisodeIndex;
     var fileSize = formatBytes(file.length);
 
-    // Пытаемся извлечь номер серии из названия
+    // Номер серии (начинаем с 1)
     var episodeNumber = index + 1;
-    var episodeMatch = fileName.match(/[eE](\d+)|(\d+)[\s._-]*[серия]/);
-    if (episodeMatch) {
-      episodeNumber = episodeMatch[1] || episodeMatch[2];
-    }
 
-    html += '\n      <div class="episode-item ' + (isActive ? 'active' : '') + '" data-index="' + index + '" data-file-id="' + file.id + '">\n        <div class="episode-number">' + episodeNumber + '</div>\n        <div class="episode-info">\n          <div class="episode-title">' + escapeHtml(fileName.substring(0, 40)) + (fileName.length > 40 ? '...' : '') + '</div>\n          <div class="episode-duration">' + fileSize + '</div>\n        </div>\n        <button class="episode-play" title="Воспроизвести">▶</button>\n      </div>\n    ';
+    html += '\n      <div class="episode-item ' + (isActive ? 'active' : '') + '" data-index="' + index + '" data-file-id="' + file.id + '">\n        <div class="episode-number">' + episodeNumber + '</div>\n        <div class="episode-info">\n          <div class="episode-title">Серия ' + episodeNumber + '</div>\n          <div class="episode-duration">' + fileSize + '</div>\n        </div>\n        <button class="episode-play" title="Воспроизвести">▶</button>\n      </div>\n    ';
   }
 
   episodesList.innerHTML = html;
