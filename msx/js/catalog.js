@@ -2498,7 +2498,7 @@ function createCatalogFolderCard(key, config) {
             <div class="torrent-info">
                 <div class="torrent-title">${config.name}</div>
                 <div class="torrent-meta">
-                    <span>История просмотра</span>
+                    <span></span>
                     <span class="torrent-badge catalog-badge"></span>
                 </div>
             </div>
