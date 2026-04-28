@@ -1268,6 +1268,7 @@ function setupKeyboardHandlers() {
                 // Если открыта панель серий
                 if (isEpisodesOpen) {
                     var focusedElement = focusableElements[currentFocusIndex];
+                    focusEl(focusedElement);
 
                     // Если фокус на кнопке закрытия - при нажатии вниз переходим на активную серию
                     if (focusedElement && focusedElement.id === 'close-episodes') {
@@ -1284,10 +1285,11 @@ function setupKeyboardHandlers() {
                             }
                             // Если активная серия найдена, ставим на неё фокус
                             if (activeEpisodeIndex !== -1) {
-                                setFocus(activeEpisodeIndex);
+                                focusEl(focusableElements[activeEpisodeIndex]);
+                                //setFocus(activeEpisodeIndex);
                             } else if (focusableElements.length > 1) {
                                 // Если активной нет, ставим на первую серию
-                                setFocus(1);
+                                focusEl(focusableElements[1]);
                             }
                             if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
                             return;
@@ -1299,7 +1301,7 @@ function setupKeyboardHandlers() {
                         e.preventDefault();
                         // Если мы на первом элементе серий (индекс 1), то при нажатии вверх переходим на кнопку закрытия
                         if (currentFocusIndex === 1) {
-                            setFocus(0); // Переход на кнопку закрытия
+                            focusEl(focusableElements[0]); // Переход на кнопку закрытия
                         } else {
                             navigate('up');
                         }
