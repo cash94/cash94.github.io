@@ -604,7 +604,7 @@ function navigate(direction) {
 
         if (isPanelOpen) {
             var isCloseButton = 0;
-            var isLastElement = focusableElements.length;
+            var isLastElement = focusableElements.length -1;
 
             if (direction === 'up') {
                 if (currentFocusIndex > isCloseButton) {
