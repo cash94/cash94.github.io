@@ -2455,6 +2455,29 @@ window.focusCatalogCardByIndex = function (targetNumIndex) {
     return targetIndex;
 };
 
+window.addToWatchHistory = async function(tmdbId, title, mediaType, posterPath) {
+    try {
+        const response = await fetch('/api/history/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tmdbId: String(tmdbId),
+                title: title,
+                mediaType: mediaType,
+                posterPath: posterPath || null
+            })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            console.log('✅ Добавлено в историю просмотра:', title);
+        }
+        return data;
+    } catch (error) {
+        console.error('❌ Ошибка добавления в историю:', error);
+    }
+};
+
 // ==================== ПЕРИОДИЧЕСКАЯ ОЧИСТКА КЭША ====================
 
 var tmdbCacheCleanupInterval = null;
