@@ -36,6 +36,12 @@ var CATALOG_CONFIG = {
         name: 'Аниме',
         url: SERVER_URL + '/api/catalog/anime',
         mediaType: 'tv'
+    },
+    history: {
+        name: 'История',
+        url: null,
+        mediaType: 'history',
+        isHistory: true
     }
 };
 
@@ -630,6 +636,125 @@ async function loadCatalog(catalogKey) {
     catalogState.abortController = null;
 }
 
+// Загрузка истории просмотра
+async function loadHistoryCatalog() {
+    console.log('📜 Загрузка истории просмотра...');
+
+    abortCatalogRequests();
+
+    catalogState.currentCatalog = 'history';
+    catalogState.items = [];
+    catalogState.totalItems = 0;
+    catalogState.currentPage = 0;
+    catalogState.hasMore = false; // История не пагинируется
+    catalogState.isLoadingMore = false;
+    catalogState.loadedItemIds = {};
+    catalogState.loadedPostersCount = 0;
+    catalogState.posterLoadQueue = [];
+    AppState.mediaType = 'history';
+
+    showCatalogLoading('Загрузка истории просмотра...');
+
+    try {
+        // Получаем историю с сервера
+        const response = await fetch(SERVER_URL + '/api/history');
+        const data = await response.json();
+
+        if (data.success && data.history && data.history.length > 0) {
+            // Конвертируем историю в формат, совместимый с каталогом
+            const historyItems = data.history.map((item, index) => {
+                return {
+                    id: item.tmdbId,
+                    title: item.title,
+                    name: item.title,
+                    media_type: item.mediaType,
+                    poster_path: item.posterPath ? item.posterPath.split('/').pop() : null,
+                    vote_average: null, // Можно добавить рейтинг если есть
+                    overview: null, // Можно загрузить детали если нужно
+                    release_date: item.watchedAt ? item.watchedAt.split('T')[0] : null,
+                    watchedAt: item.watchedAt,
+                    timestamp: item.timestamp,
+                    isHistoryItem: true,
+                    historyIndex: index
+                };
+            });
+
+            // Сортируем по времени просмотра (новые сверху)
+            historyItems.sort((a, b) => b.timestamp - a.timestamp);
+
+            catalogState.items = historyItems;
+            catalogState.totalItems = historyItems.length;
+            catalogState.hasMore = false;
+
+            console.log(`📜 Загружено ${catalogState.items.length} элементов истории`);
+
+            // Сохраняем в кэш
+            catalogCache.set('history', {
+                data: {
+                    items: catalogState.items.slice(),
+                    totalItems: catalogState.totalItems,
+                    currentPage: 1,
+                    hasMore: false
+                },
+                timestamp: Date.now()
+            });
+
+            renderCatalogGrid();
+        } else {
+            // История пуста
+            catalogState.items = [];
+            catalogState.totalItems = 0;
+            showEmptyHistory();
+        }
+    } catch (error) {
+        console.error('❌ Ошибка загрузки истории:', error);
+        showCatalogError('Не удалось загрузить историю просмотра');
+    }
+
+    hideCatalogLoading();
+    catalogState.abortController = null;
+}
+
+// Показать пустую историю
+function showEmptyHistory() {
+    var torrentsGrid = document.getElementById('torrents-grid');
+    if (!torrentsGrid) return;
+
+    torrentsGrid.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">
+            <div style="font-size: 64px; margin-bottom: 20px;">📜</div>
+            <div style="font-size: 18px; color: #aaa; margin-bottom: 10px;">История просмотра пуста</div>
+            <div style="font-size: 14px; color: #666;">Фильмы и сериалы, которые вы посмотрите, появятся здесь</div>
+        </div>
+    `;
+}
+
+// Очистить историю
+async function clearHistory() {
+    if (!confirm('Вы уверены, что хотите очистить всю историю просмотра?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(SERVER_URL + '/api/history/clear', {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            console.log('✅ История очищена');
+            // Перезагружаем историю
+            await loadHistoryCatalog();
+        } else {
+            alert('Ошибка очистки истории');
+        }
+    } catch (error) {
+        console.error('❌ Ошибка очистки истории:', error);
+        alert('Ошибка очистки истории: ' + error.message);
+    }
+}
+
 async function loadMoreCatalogItems(reset) {
     if (reset === undefined) reset = false;
     if (!catalogState.currentCatalog || catalogState.isLoadingMore) return Promise.resolve(false);
@@ -1018,7 +1143,43 @@ function addCatalogHeader(grid) {
     var currentCatalogName = (CATALOG_CONFIG[catalogState.currentCatalog] &&
         CATALOG_CONFIG[catalogState.currentCatalog].name) || 'Каталог';
 
-    // Загружаем информацию о каталоге с сервера
+    // Специальная обработка для истории
+    if (catalogState.currentCatalog === 'history') {
+        headerElement.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+                <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
+                <div style="display: flex; gap: 15px; font-size: 12px; color: #aaa;">
+                    <span>${catalogState.items.length} записей</span>
+                </div>
+            </div>
+            <button id="clear-history-btn" style="
+                background: rgba(244, 67, 54, 0.2);
+                border: 1px solid #f44336;
+                color: #f44336;
+                padding: 8px 16px;
+                border-radius: 20px;
+                cursor: pointer;
+                font-size: 14px;
+                transition: all 0.3s;
+            " onmouseover="this.style.background='rgba(244, 67, 54, 0.4)'" 
+               onmouseout="this.style.background='rgba(244, 67, 54, 0.2)'">
+                Очистить историю
+            </button>
+        `;
+
+        var clearBtn = document.getElementById('clear-history-btn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                clearHistory();
+            });
+        }
+
+        grid.appendChild(headerElement);
+        return;
+    }
+
+    // Стандартный заголовок для других каталогов
     fetch(`${SERVER_URL}/api/catalogs`)
         .then(response => response.json())
         .then(async data => {
@@ -1027,11 +1188,8 @@ function addCatalogHeader(grid) {
 
                 if (catalogInfo && catalogInfo.lastModifiedISO) {
                     const formattedDate = formatLastModifiedDate(catalogInfo.lastModifiedISO);
-
-                    // Проверяем и обновляем если нужно
                     await checkAndUpdateCatalogIfNeeded(catalogInfo.id, catalogInfo.lastModifiedISO);
 
-                    // Обновляем заголовок с датой
                     headerElement.innerHTML = `
                         <div style="display: flex; flex-direction: column; gap: 5px;">
                             <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
@@ -1044,7 +1202,6 @@ function addCatalogHeader(grid) {
                         </span>
                     `;
                 } else {
-                    // Если нет информации о дате, показываем только счетчик
                     headerElement.innerHTML = `
                         <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
                         <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
@@ -1053,7 +1210,6 @@ function addCatalogHeader(grid) {
                     `;
                 }
             } else {
-                // Fallback если не удалось загрузить информацию
                 headerElement.innerHTML = `
                     <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
                     <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
@@ -1064,7 +1220,6 @@ function addCatalogHeader(grid) {
         })
         .catch(error => {
             console.error('Ошибка загрузки информации о каталоге:', error);
-            // Fallback при ошибке
             headerElement.innerHTML = `
                 <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
                 <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
@@ -2277,6 +2432,32 @@ function createCatalogFolderCard(key, config) {
     card.className = 'torrent-card catalog-folder-card';
     card.dataset.catalogKey = key;
 
+    // Специальная обработка для истории
+    if (key === 'history') {
+        var posterHtml = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 64px;">📜</div>';
+
+        card.innerHTML = `
+            <div class="torrent-poster catalog-folder-poster">
+                ${posterHtml}
+            </div>
+            <div class="torrent-info">
+                <div class="torrent-title">${config.name}</div>
+                <div class="torrent-meta">
+                    <span>История просмотра</span>
+                    <span class="torrent-badge catalog-badge"></span>
+                </div>
+            </div>
+        `;
+
+        card.addEventListener('click', function () {
+            catalogState.selectedCatalog = key;
+            loadHistoryCatalog();
+        });
+
+        return card;
+    }
+
+    // Остальные каталоги как раньше
     var posterHtml = '';
     if (key.indexOf('movie') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Films.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
     else if (key.indexOf('quadhd') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Films4k.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
@@ -2287,8 +2468,18 @@ function createCatalogFolderCard(key, config) {
     else if (key.indexOf('anime') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Anime.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
     else posterHtml = '<div class="no-poster" style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 64px;"></div>';
 
-    // Упрощаем структуру для лучшей совместимости со старыми браузерами
-    card.innerHTML = '\n        <div class="torrent-poster catalog-folder-poster">\n            ' + posterHtml + '\n        </div>\n        <div class="torrent-info">\n            <div class="torrent-title">' + config.name + '</div>\n            <div class="torrent-meta">\n                <span></span>\n                <span class="torrent-badge catalog-badge"></span>\n            </div>\n        </div>\n    ';
+    card.innerHTML = `
+        <div class="torrent-poster catalog-folder-poster">
+            ${posterHtml}
+        </div>
+        <div class="torrent-info">
+            <div class="torrent-title">${config.name}</div>
+            <div class="torrent-meta">
+                <span></span>
+                <span class="torrent-badge catalog-badge"></span>
+            </div>
+        </div>
+    `;
 
     card.addEventListener('click', function () {
         catalogState.selectedCatalog = key;
@@ -2455,7 +2646,7 @@ window.focusCatalogCardByIndex = function (targetNumIndex) {
     return targetIndex;
 };
 
-window.addToWatchHistory = async function(tmdbId, title, mediaType, posterPath) {
+window.addToWatchHistory = async function (tmdbId, title, mediaType, posterPath) {
     try {
         const response = await fetch('/api/history/add', {
             method: 'POST',
@@ -2467,7 +2658,7 @@ window.addToWatchHistory = async function(tmdbId, title, mediaType, posterPath) 
                 posterPath: posterPath || null
             })
         });
-        
+
         const data = await response.json();
         if (data.success) {
             console.log('✅ Добавлено в историю просмотра:', title);
