@@ -796,6 +796,32 @@ function stopSeeking() {
 
 // ==================== ОБРАБОТЧИКИ КЛАВИШ ====================
 
+// Вспомогательная функция для установки фокуса на активный элемент панели
+function focusActivePanelItem(panelType) {
+    setTimeout(function () {
+        var activeItem = document.querySelector('.episode-item.active, .audio-item.active');
+        if (activeItem) {
+            // Добавляем класс focused и удаляем со всех остальных
+            var focusedElements = document.querySelectorAll('.focused');
+            for (var i = 0; i < focusedElements.length; i++) {
+                focusedElements[i].classList.remove('focused');
+            }
+            activeItem.classList.add('focused');
+            activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            // Обновляем индекс
+            updateFocusableElements();
+            for (var i = 0; i < focusableElements.length; i++) {
+                if (focusableElements[i] === activeItem ||
+                    focusableElements[i].parentElement === activeItem) {
+                    currentFocusIndex = i;
+                    break;
+                }
+            }
+        }
+    }, 50);
+}
+
 function setupKeyboardHandlers() {
     document.addEventListener('keyup', function (e) {
         var key = e.keyCode;
@@ -1118,35 +1144,13 @@ function setupKeyboardHandlers() {
                         var episodesBtn = document.getElementById('episodes-btn');
                         if (episodesBtn) episodesBtn.click();
                         updateFocusableElements();
-
-                        // Устанавливаем фокус на активную серию
-                        setTimeout(function () {
-                            for (var i = 0; i < focusableElements.length; i++) {
-                                var el = focusableElements[i];
-                                if (el.classList && el.classList.contains('episode-item') && el.classList.contains('active')) {
-                                    setFocus(i);
-                                    break;
-                                }
-                            }
-                        }, 50);
-
+                        focusActivePanelItem('episodes');  // Вызываем функцию для установки фокуса
                         actionPerformed = false;
                     } else if (focused.id === 'audio-btn') {
                         var audioBtn = document.getElementById('audio-btn');
                         if (audioBtn) audioBtn.click();
                         updateFocusableElements();
-
-                        // Устанавливаем фокус на активную аудиодорожку
-                        setTimeout(function () {
-                            for (var i = 0; i < focusableElements.length; i++) {
-                                var el = focusableElements[i];
-                                if (el.classList && el.classList.contains('audio-item') && el.classList.contains('active')) {
-                                    setFocus(i);
-                                    break;
-                                }
-                            }
-                        }, 50);
-
+                        focusActivePanelItem('audio');  // Вызываем функцию для установки фокуса
                         actionPerformed = false;
                     } else if (focused.id === 'exit-player-btn') {
                         if (typeof window.showDetailView === 'function') window.showDetailView();
