@@ -603,56 +603,23 @@ function navigate(direction) {
             (audioPanel && !audioPanel.classList.contains('hidden'));
 
         if (isPanelOpen) {
-            // Проверяем, открыта ли панель с кнопкой закрытия (серии или аудио)
-            var closePanelBtn = document.getElementById('close-episodes') || document.getElementById('close-audio');
-            var isPanelWithCloseBtn = closePanelBtn && closePanelBtn.offsetParent !== null;
+            var isCloseButton = focusableElements[currentFocusIndex] === closePanelBtn;
+            var isLastElement = currentFocusIndex === focusableElements.length - 1;
 
-            if (isPanelWithCloseBtn && focusableElements.length > 0) {
-                setFocus(0);
-                // При открытии панели: если фокус на кнопке закрытия, ищем активный элемент
-                if (currentFocusIndex === 0 && focusableElements[0] === closePanelBtn) {
-                    // Ищем активный элемент (episode-item.active или audio-item.active)
-                    for (var i = 0; i < focusableElements.length; i++) {
-                        var el = focusableElements[i];
-                        if (el.classList && el.classList.contains('active')) {
-                            setFocus(i);
-                            return;
-                        }
-                    }
-                }
-
-                var isCloseButton = focusableElements[currentFocusIndex] === closePanelBtn;
-                var isLastElement = currentFocusIndex === focusableElements.length - 1;
-
-                if (direction === 'up') {
-                    if (!isCloseButton) {
-                        setFocus(currentFocusIndex - 1);
-                    }
-                    return;
-                }
-
-                if (direction === 'down') {
-                    if (!isLastElement) {
-                        setFocus(currentFocusIndex + 1);
-                    }
-                    return;
-                }
-
-                if (direction === 'left' || direction === 'right') {
-                    return;
-                }
-                return;
-            }
-
-            // Старая логика для других панелей (если вдруг понадобится)
             if (direction === 'up') {
-                setFocus(currentFocusIndex - 1);
+                if (!isCloseButton) {
+                    setFocus(currentFocusIndex - 1);
+                }
                 return;
             }
+
             if (direction === 'down') {
-                setFocus(currentFocusIndex + 1);
+                if (!isLastElement) {
+                    setFocus(currentFocusIndex + 1);
+                }
                 return;
             }
+
             if (direction === 'left' || direction === 'right') {
                 return;
             }
@@ -1150,10 +1117,36 @@ function setupKeyboardHandlers() {
                     } else if (focused.id === 'episodes-btn') {
                         var episodesBtn = document.getElementById('episodes-btn');
                         if (episodesBtn) episodesBtn.click();
+                        updateFocusableElements();
+
+                        // Устанавливаем фокус на активную серию
+                        setTimeout(function () {
+                            for (var i = 0; i < focusableElements.length; i++) {
+                                var el = focusableElements[i];
+                                if (el.classList && el.classList.contains('episode-item') && el.classList.contains('active')) {
+                                    setFocus(i);
+                                    break;
+                                }
+                            }
+                        }, 50);
+
                         actionPerformed = false;
                     } else if (focused.id === 'audio-btn') {
                         var audioBtn = document.getElementById('audio-btn');
                         if (audioBtn) audioBtn.click();
+                        updateFocusableElements();
+
+                        // Устанавливаем фокус на активную аудиодорожку
+                        setTimeout(function () {
+                            for (var i = 0; i < focusableElements.length; i++) {
+                                var el = focusableElements[i];
+                                if (el.classList && el.classList.contains('audio-item') && el.classList.contains('active')) {
+                                    setFocus(i);
+                                    break;
+                                }
+                            }
+                        }, 50);
+
                         actionPerformed = false;
                     } else if (focused.id === 'exit-player-btn') {
                         if (typeof window.showDetailView === 'function') window.showDetailView();
