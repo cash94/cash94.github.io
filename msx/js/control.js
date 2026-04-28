@@ -3055,6 +3055,7 @@ function initControl() {
     // Экспортируем функции в глобальный объект
     window.updateFocusableElements = updateFocusableElements;
     window.setFocus = setFocus;
+    window.focusEl = focusEl;
     window.navigate = navigate;
     window.showPlayerControls = showPlayerControls;
     window.hidePlayerControls = hidePlayerControls;
