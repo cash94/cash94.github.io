@@ -799,7 +799,15 @@ function stopSeeking() {
 // Вспомогательная функция для установки фокуса на активный элемент панели
 function focusActivePanelItem(panelType) {
     setTimeout(function () {
-        var activeItem = document.querySelector('.episode-item.active, .audio-item.active');
+        var activeItem = null;
+
+        // Выбираем нужный селектор в зависимости от типа панели
+        if (panelType === 'episodes') {
+            activeItem = document.querySelector('.episode-item.active');
+        } else if (panelType === 'audio') {
+            activeItem = document.querySelector('.audio-item.active');
+        }
+
         if (activeItem) {
             // Добавляем класс focused и удаляем со всех остальных
             var focusedElements = document.querySelectorAll('.focused');
@@ -818,6 +826,10 @@ function focusActivePanelItem(panelType) {
                     break;
                 }
             }
+
+            console.log('🎯 Фокус установлен на ' + panelType + ':', activeItem);
+        } else {
+            console.log('⚠️ Не найден активный элемент для панели:', panelType);
         }
     }, 50);
 }
