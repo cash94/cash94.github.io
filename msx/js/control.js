@@ -603,6 +603,47 @@ function navigate(direction) {
             (audioPanel && !audioPanel.classList.contains('hidden'));
 
         if (isPanelOpen) {
+            // Проверяем, открыта ли панель с кнопкой закрытия (серии или аудио)
+            var closePanelBtn = document.getElementById('close-episodes') || document.getElementById('close-audio');
+            var isPanelWithCloseBtn = closePanelBtn && closePanelBtn.offsetParent !== null;
+
+            if (isPanelWithCloseBtn && focusableElements.length > 0) {
+                // При открытии панели: если фокус на кнопке закрытия, ищем активный элемент
+                if (currentFocusIndex === 0 && focusableElements[0] === closePanelBtn) {
+                    // Ищем активный элемент (episode-item.active или audio-item.active)
+                    for (var i = 0; i < focusableElements.length; i++) {
+                        var el = focusableElements[i];
+                        if (el.classList && el.classList.contains('active')) {
+                            setFocus(i);
+                            return;
+                        }
+                    }
+                }
+
+                var isCloseButton = focusableElements[currentFocusIndex] === closePanelBtn;
+                var isLastElement = currentFocusIndex === focusableElements.length - 1;
+
+                if (direction === 'up') {
+                    if (!isCloseButton) {
+                        setFocus(currentFocusIndex - 1);
+                    }
+                    return;
+                }
+
+                if (direction === 'down') {
+                    if (!isLastElement) {
+                        setFocus(currentFocusIndex + 1);
+                    }
+                    return;
+                }
+
+                if (direction === 'left' || direction === 'right') {
+                    return;
+                }
+                return;
+            }
+
+            // Старая логика для других панелей (если вдруг понадобится)
             if (direction === 'up') {
                 setFocus(currentFocusIndex - 1);
                 return;
@@ -664,11 +705,11 @@ function navigate(direction) {
         var results = [];
         for (var q = 0; q < focusableElements.length; q++) {
             var el = focusableElements[q];
-            if (el.id === 'torrent-movie' || el.id === 'sort-by' || el.id === 'filter-quality' || 
-                el.id === 'filter-content-type' || el.id === 'filter-tracker' || 
-                el.id === 'filter-year' || el.id === 'filter-season' || el.id === 'filter-voice' || el.id === 'reset-filters' ||  el.id === 'close-search') {
+            if (el.id === 'torrent-movie' || el.id === 'sort-by' || el.id === 'filter-quality' ||
+                el.id === 'filter-content-type' || el.id === 'filter-tracker' ||
+                el.id === 'filter-year' || el.id === 'filter-season' || el.id === 'filter-voice' || el.id === 'reset-filters' || el.id === 'close-search') {
                 filters.push(el);
-            }  
+            }
             if (el.classList && el.classList.contains('search-result-item')) {
                 results.push(el);
             }
@@ -919,7 +960,7 @@ function setupKeyboardHandlers() {
                         var firstResultIndex = -1;
                         for (var k = 0; k < focusableElements.length; k++) {
                             var el = focusableElements[k];
-                            if (['filter-toggle', 'torrent-movie','sort-by', 'filter-quality', 'filter-content-type','filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) {
+                            if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) {
                                 firstFilterIndex = k;
                             }
                             if (el.classList && el.classList.contains('search-result-item') && firstResultIndex === -1) {
@@ -1039,7 +1080,7 @@ function setupKeyboardHandlers() {
                 updateFocusableElements();
                 var firstFilterIndex = -1;
                 for (var m = 0; m < focusableElements.length; m++) {
-                    if (['filter-toggle', 'torrent-movie','sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'reset-filters', 'close-search'].indexOf(focusableElements[m].id) !== -1) {
+                    if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'reset-filters', 'close-search'].indexOf(focusableElements[m].id) !== -1) {
                         firstFilterIndex = m;
                         break;
                     }
@@ -1261,77 +1302,6 @@ function setupKeyboardHandlers() {
             if (controlsVisible) {
                 updateFocusableElements();
 
-                // Проверяем, открыта ли панель серий
-                var episodesPanel = document.getElementById('episodes-panel');
-                var isEpisodesOpen = episodesPanel && !episodesPanel.classList.contains('hidden');
-
-                // Если открыта панель серий
-                if (isEpisodesOpen) {
-                    var focusedElement = focusableElements[currentFocusIndex];
-                    focusEl(focusedElement);
-
-                    // Если фокус на кнопке закрытия - при нажатии вниз переходим на активную серию
-                    if (focusedElement && focusedElement.id === 'close-episodes') {
-                        if (isKeyPressed('DOWN', key)) {
-                            e.preventDefault();
-                            // Ищем активную серию
-                            var activeEpisodeIndex = -1;
-                            for (var i = 0; i < focusableElements.length; i++) {
-                                var el = focusableElements[i];
-                                if (el.classList && el.classList.contains('episode-item') && el.classList.contains('active')) {
-                                    activeEpisodeIndex = i;
-                                    break;
-                                }
-                            }
-                            // Если активная серия найдена, ставим на неё фокус
-                            if (activeEpisodeIndex !== -1) {
-                                focusEl(focusableElements[activeEpisodeIndex]);
-                                //setFocus(activeEpisodeIndex);
-                            } else if (focusableElements.length > 1) {
-                                // Если активной нет, ставим на первую серию
-                                focusEl(focusableElements[1]);
-                            }
-                            if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                            return;
-                        }
-                    }
-
-                    // Навигация по списку серий
-                    if (isKeyPressed('UP', key)) {
-                        e.preventDefault();
-                        // Если мы на первом элементе серий (индекс 1), то при нажатии вверх переходим на кнопку закрытия
-                        if (currentFocusIndex === 1) {
-                            focusEl(focusableElements[0]); // Переход на кнопку закрытия
-                        } else {
-                            navigate('up');
-                        }
-                        if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                        return;
-                    }
-
-                    if (isKeyPressed('DOWN', key)) {
-                        e.preventDefault();
-                        // Если мы на последней серии, то дальше не идем
-                        var lastEpisodeIndex = focusableElements.length - 1;
-                        if (currentFocusIndex === lastEpisodeIndex) {
-                            // Остаемся на последней серии, ничего не делаем
-                            return;
-                        }
-                        navigate('down');
-                        if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                        return;
-                    }
-
-                    // Для LEFT и RIGHT - ничего не делаем (остаемся в списке)
-                    if (isKeyPressed('LEFT', key) || isKeyPressed('RIGHT', key)) {
-                        e.preventDefault();
-                        return;
-                    }
-
-                    return;
-                }
-
-                // Стандартная навигация для плеера (без панелей)
                 if (isKeyPressed('UP', key)) {
                     e.preventDefault();
                     navigate('up');
@@ -1795,7 +1765,7 @@ function setupFocusRescue() {
 
     function getDetailItems() {
         var selectors = [
-            '.back-btn','.detail-progress-btn', '.file-item', '#catalog-watch-btn',
+            '.back-btn', '.detail-progress-btn', '.file-item', '#catalog-watch-btn',
             '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item',
             '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'
         ];
@@ -2139,13 +2109,13 @@ function setupFocusRescue() {
                                     focusEl(newFocusCard);
                                     //var globalIndex = -1;
                                     //for (var n = 0; n < focusableElements.length; n++) {
-                                        //if (newFocusCard === focusableElements[n]) {
-                                            //globalIndex = n;
-                                            //break;
-                                        //}
+                                    //if (newFocusCard === focusableElements[n]) {
+                                    //globalIndex = n;
+                                    //break;
+                                    //}
                                     //}
                                     //if (globalIndex !== -1) {
-                                        //setFocus(globalIndex);
+                                    //setFocus(globalIndex);
                                     //}
                                 }
                             }
@@ -3055,7 +3025,6 @@ function initControl() {
     // Экспортируем функции в глобальный объект
     window.updateFocusableElements = updateFocusableElements;
     window.setFocus = setFocus;
-    window.focusEl = focusEl;
     window.navigate = navigate;
     window.showPlayerControls = showPlayerControls;
     window.hidePlayerControls = hidePlayerControls;
