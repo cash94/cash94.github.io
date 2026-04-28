@@ -1289,7 +1289,7 @@ async function showDetail(torrent) {
         if (collFilles == 1) {
           addFileItem(files[i], torrent.hash, torrent.title);
         } else {
-          addFileItem(files[i], torrent.hash, nameSerials +" "+ i);
+          addFileItem(files[i], torrent.hash, nameSerials +" "+ i+1);
         }
       }
     }
