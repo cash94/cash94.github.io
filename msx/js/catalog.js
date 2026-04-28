@@ -1974,12 +1974,13 @@ function hideCatalogDetailView() {
 function updateCatalogWatchButton(title) {
     var watchBtn = document.getElementById('catalog-watch-btn');
     if (watchBtn) {
-        if (title) {
-            watchBtn.textContent = 'Найти торренты для "' + title + '"';
-            watchBtn.dataset.searchTitle = title;
-        } else {
-            watchBtn.textContent = 'Найти торренты';
-        }
+        watchBtn.textContent = 'Поиск торрентов';
+        //if (title) {
+            ///watchBtn.textContent = 'Найти торренты для "' + title + '"';
+           // watchBtn.dataset.searchTitle = title;
+        //} else {
+        
+        //}
     }
 }
 
