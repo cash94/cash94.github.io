@@ -2047,7 +2047,7 @@ async function addTorrentToServer(magnet, hash, searchResult) {
     console.log('Добавление торрента в TorrServer:', magnet);
 
     var torrname = '';
-    if (appState.mediaType == 'tv') {
+    if (AppState.mediaType == 'tv') {
       if (searchResult.seasons && searchResult.seasons.length > 0) {
         torrname = searchResult.name +' | сезон '+searchResult.seasons[0];
       } else {
