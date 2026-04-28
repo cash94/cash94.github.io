@@ -1285,7 +1285,7 @@ async function showDetail(torrent) {
       filesList.innerHTML = '';
       var nameSerials = 'Серия';
       for (var i = 0; i < files.length; i++) {
-        if (AppState.mediaType != 'tv') {
+        if (files.length = 1) {
           addFileItem(files[i], torrent.hash, torrent.title);
         } else {
           addFileItem(files[i], torrent.hash, nameSerials +" "+ i);
