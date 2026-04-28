@@ -1286,7 +1286,7 @@ async function showDetail(torrent) {
       var nameSerials = 'Серия';
       var collFilles = files.length;
       for (var i = 0; i < files.length; i++) {
-        if (collFilles = 1) {
+        if (collFilles == 1) {
           addFileItem(files[i], torrent.hash, torrent.title);
         } else {
           addFileItem(files[i], torrent.hash, nameSerials +" "+ i);
