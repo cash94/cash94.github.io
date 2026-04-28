@@ -608,6 +608,7 @@ function navigate(direction) {
             var isPanelWithCloseBtn = closePanelBtn && closePanelBtn.offsetParent !== null;
 
             if (isPanelWithCloseBtn && focusableElements.length > 0) {
+                setFocus(0);
                 // При открытии панели: если фокус на кнопке закрытия, ищем активный элемент
                 if (currentFocusIndex === 0 && focusableElements[0] === closePanelBtn) {
                     // Ищем активный элемент (episode-item.active или audio-item.active)
