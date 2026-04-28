@@ -2393,15 +2393,18 @@ async function showCatalogList() {
 
     torrentsGrid.innerHTML = '';
 
+    // Добавляем каталоги с сервера
     if (availableCatalogs.length === 0) {
+        // Если сервер не вернул каталоги, используем локальную конфигурацию (кроме истории)
         for (var key in CATALOG_CONFIG) {
-            if (CATALOG_CONFIG.hasOwnProperty(key)) {
+            if (CATALOG_CONFIG.hasOwnProperty(key) && key !== 'history') {
                 var config = CATALOG_CONFIG[key];
                 var card = createCatalogFolderCard(key, config);
                 torrentsGrid.appendChild(card);
             }
         }
     } else {
+        // Добавляем каталоги с сервера (исключая возможные дубликаты)
         for (var i = 0; i < availableCatalogs.length; i++) {
             var catalog = availableCatalogs[i];
             var config = CATALOG_CONFIG[catalog.id] || {
@@ -2411,6 +2414,14 @@ async function showCatalogList() {
             var card = createCatalogFolderCard(catalog.id, config);
             torrentsGrid.appendChild(card);
         }
+    }
+
+    // Добавляем категорию "История" в конец списка
+    var historyConfig = CATALOG_CONFIG.history;
+    if (historyConfig) {
+        var historyCard = createCatalogFolderCard('history', historyConfig);
+        torrentsGrid.appendChild(historyCard);
+        console.log('📜 Добавлена категория "История" в конец списка');
     }
 
     setTimeout(function () {
