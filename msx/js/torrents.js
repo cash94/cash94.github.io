@@ -2049,7 +2049,7 @@ async function addTorrentToServer(magnet, hash, searchResult) {
     var requestBody = {
       action: 'add',
       link: magnet,
-      title: searchResult.name,
+      searchResult.name+' S['+searchResult.seasons[0]+']',
       save_to_db: AppState.addToDbEnabled
     };
 
