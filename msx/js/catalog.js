@@ -1164,19 +1164,6 @@ function addCatalogHeader(grid) {
                     <span>${catalogState.items.length} записей</span>
                 </div>
             </div>
-            <button id="clear-history-btn" style="
-                background: rgba(244, 67, 54, 0.2);
-                border: 1px solid #f44336;
-                color: #f44336;
-                padding: 8px 16px;
-                border-radius: 20px;
-                cursor: pointer;
-                font-size: 14px;
-                transition: all 0.3s;
-            " onmouseover="this.style.background='rgba(244, 67, 54, 0.4)'" 
-               onmouseout="this.style.background='rgba(244, 67, 54, 0.2)'">
-                Очистить историю
-            </button>
         `;
 
         var clearBtn = document.getElementById('clear-history-btn');
