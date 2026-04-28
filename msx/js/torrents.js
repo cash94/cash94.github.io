@@ -1285,11 +1285,13 @@ async function showDetail(torrent) {
       filesList.innerHTML = '';
       var nameSerials = 'Серия';
       var collFilles = files.length;
+      var indx = 0;
       for (var i = 0; i < files.length; i++) {
         if (collFilles == 1) {
           addFileItem(files[i], torrent.hash, torrent.title);
         } else {
-          addFileItem(files[i], torrent.hash, nameSerials +" "+ i+1);
+          indx = indx + 1;
+          addFileItem(files[i], torrent.hash, nameSerials +" "+ indx);
         }
       }
     }
