@@ -6,6 +6,7 @@ var currentEpisodeIndex = 0;
 var currentTorrentHash = null;
 var lastCleanedSegment = -1;
 var nearEndCheckInterval = null;
+var thisisseek = false;
 
 // Переменные для таймкода
 var timecodeSaveInterval = null;
@@ -796,6 +797,7 @@ async function seekStream(absoluteSeekTime, source) {
   wasImmediatePause = false;
   pauseTimer = null;
   pauseStartTime = null;
+  thisisseek = true;
   if (source === undefined) source = 'user';
   if (!AppState.currentStreamId || !AppState.videoUrl) {
     console.warn('⚠️ Нет активного потока для перемотки');
@@ -1305,6 +1307,7 @@ async function switchToEpisode(index, fileId) {
   wasImmediatePause = false;
   pauseTimer = null;
   pauseStartTime = null;
+  thisisseek = false;
 
   stopHeartbeat();
 
@@ -1730,7 +1733,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         startTorrentStatsUpdates();
 
         
-        if (initialSeek !== null && initialSeek !== 0) {
+        if (thisisseek) {
           console.log('⚡ Продолжение воспроизведения с позиции ' + formatTime(initialSeek) + ', пропускаем накопление буфера');
           hidePlayerLoading();
 
@@ -2201,6 +2204,7 @@ function showDetailView() {
   wasImmediatePause = false;
   pauseTimer = null;
   pauseStartTime = null;
+  thisisseek = false;
   // Проверяем, не является ли текущее воспроизведение YouTube
   if (AppState.isYoutubePlayback) {
     console.log('Выход из YouTube плеера');
@@ -2517,6 +2521,8 @@ async function switchAudioTrack(trackIndex) {
     toggleAudioPanel();
     return;
   }
+
+  thisisseek = false;
 
   console.log('🔊 Переключение на аудиодорожку ' + trackIndex);
 
