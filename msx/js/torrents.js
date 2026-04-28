@@ -1376,7 +1376,7 @@ function addFileItem(file, hash) {
 
   var item = document.createElement('div');
   item.className = 'file-item';
-  item.innerHTML = '\n    <div class="file-name">\n      <div>' + escapeHtml(fileName) + '</div>\n      <div style="font-size: 12px; color: #888; margin-top: 4px;">' + fileSize + '</div>\n    </div>\n    <button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '">▶ Воспроизвести</button>\n  ';
+  item.innerHTML = '\n    <div class="file-name">\n      <div>' + escapeHtml(fileName) + '</div>\n      <div style="font-size: 12px; color: #888; margin-top: 4px;">' + fileSize + '</div>\n    </div>\n    <button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '">▶</button>\n  ';
 
   item.querySelector('.play-btn').onclick = function (e) {
     e.stopPropagation();
@@ -1409,7 +1409,7 @@ function addMovieItem(torrent) {
 
   var item = document.createElement('div');
   item.className = 'file-item';
-  item.innerHTML = '\n    <div class="file-name">\n      <div>' + escapeHtml(torrent.title || 'Фильм') + '</div>\n      <div style="font-size: 12px; color: #888; margin-top: 4px;">' + formatBytes(torrent.torrent_size) + '</div>\n    </div>\n    <button class="play-btn" data-hash="' + torrent.hash + '">▶ Воспроизвести</button>\n  ';
+  item.innerHTML = '\n    <div class="file-name">\n      <div>' + escapeHtml(torrent.title || 'Фильм') + '</div>\n      <div style="font-size: 12px; color: #888; margin-top: 4px;">' + formatBytes(torrent.torrent_size) + '</div>\n    </div>\n    <button class="play-btn" data-hash="' + torrent.hash + '">▶</button>\n  ';
 
   item.querySelector('.play-btn').onclick = function (e) {
     e.stopPropagation();
@@ -2326,7 +2326,7 @@ function renderSearchResults() {
         voicesHtml += '<span class="search-result-voice">' + escapeHtml(voices[v]) + '</span>';
       }
       return voicesHtml;
-    })() + '\n            </div>\n          ' : '') + '\n        </div>\n        \n        <button class="search-result-play" \n                data-hash="' + hash + '" \n                data-magnet="' + escapeHtml(result.magnet) + '"\n                data-result="' + resultJsonEncoded + '"\n                ' + (!hash ? 'disabled' : '') + '>\n          ' + (hash ? '▶ PLAY' : '❌ Нет hash') + '\n        </button>\n      </div>\n    ';
+    })() + '\n            </div>\n          ' : '') + '\n        </div>\n        \n        <button class="search-result-play" \n                data-hash="' + hash + '" \n                data-magnet="' + escapeHtml(result.magnet) + '"\n                data-result="' + resultJsonEncoded + '"\n                ' + (!hash ? 'disabled' : '') + '>\n          ' + (hash ? '▶' : '❌ Нет hash') + '\n        </button>\n      </div>\n    ';
   }
 
   searchResultsDiv.innerHTML = html;
