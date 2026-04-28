@@ -603,8 +603,8 @@ function navigate(direction) {
             (audioPanel && !audioPanel.classList.contains('hidden'));
 
         if (isPanelOpen) {
-            var isCloseButton = focusableElements[currentFocusIndex] === closePanelBtn;
-            var isLastElement = currentFocusIndex === focusableElements.length - 1;
+            var isCloseButton = focusableElements[0];
+            var isLastElement = focusableElements.length;
 
             if (direction === 'up') {
                 if (!isCloseButton) {
