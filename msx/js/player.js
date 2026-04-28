@@ -1839,7 +1839,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             startNearEndCheck();
             startHeartbeat();
           }
-        }, 10000);
+        }, 7000);
       };
 
       AppState.hls.on(Hls.Events.MANIFEST_PARSED, manifestParsedHandler);
