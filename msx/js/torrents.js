@@ -2204,6 +2204,15 @@ async function playFromHash(hash, magnet, searchResult) {
     return;
   }
 
+  if (window.addToWatchHistory && AppState.pendingDetailItem.id) {
+    await window.addToWatchHistory(
+      String(AppState.pendingDetailItem.id),
+      currentSearchQuery,
+      AppState.pendingDetailItem.media_type,
+      AppState.pendingDetailPoster || null
+    );
+  }
+
   document.getElementById('playback-overlay').classList.add('active');
   document.querySelector('.playback-text').textContent = 'Поиск постера и добавление...';
 
