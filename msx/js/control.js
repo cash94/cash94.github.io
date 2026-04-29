@@ -2650,18 +2650,22 @@ function setupFocusRescue() {
                         }
 
                         if (magnet && typeof window.addTorrentSearchToServer === 'function') {
-                            await window.addTorrentSearchToServer(magnet, hash, searchResult);
+                            // Используем then вместо await
+                            window.addTorrentSearchToServer(magnet, hash, searchResult)
+                                .then(() => {
+                                    var originalHtml = playBtn.innerHTML;
+                                    playBtn.innerHTML = '✓';
+
+                                    setTimeout(() => {
+                                        playBtn.innerHTML = originalHtml;
+                                    }, 2000);
+                                })
+                                .catch(error => {
+                                    console.error('Ошибка при добавлении торрента:', error);
+                                });
                         } else if (!magnet) {
                             console.warn('Не найден magnet для добавления торрента');
                         }
-
-                        var originalHtml = playBtn.innerHTML;
-                        playBtn.innerHTML = '✓';
-
-                        // Возвращаем исходный HTML через 2 секунды
-                        setTimeout(() => {
-                            playBtn.innerHTML = originalHtml;
-                        }, 2000);
 
                         return true;
                     }
