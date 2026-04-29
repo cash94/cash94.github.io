@@ -2755,6 +2755,7 @@ function setupFocusRescue() {
                 try { if (focused.select) focused.select(); } catch (e) { }
                 return true;
             }
+
             var panel = document.getElementById('search-filters-panel');
 
             if (focused.id === 'filter-toggle') {
@@ -2769,6 +2770,50 @@ function setupFocusRescue() {
 
             if (focused.tagName === 'SELECT' || focused.id === 'filter-year') {
                 return openNativeSearchControl(focused);
+            }
+
+            // Обработка длинного нажатия для результатов поиска
+            if (focused && (focused.classList.contains('search-result-item') || focused.classList.contains('global-search-card'))) {
+                if (!e.repeat) {
+                    okHoldHandled = false;
+                    okHoldFocused = focused;
+                    clearOkHold();
+                    okHoldTimer = setTimeout(async function () {
+                        okHoldHandled = true;
+
+                        // Получаем данные из дочерней кнопки .search-result-play (индекс 1)
+                        var playButton = okHoldFocused && okHoldFocused.children && okHoldFocused.children[1];
+                        var magnet = playButton && playButton.dataset ? playButton.dataset.magnet : null;
+                        var hash = playButton && playButton.dataset ? playButton.dataset.hash : null;
+                        var searchResult = null;
+
+                        // Пытаемся получить searchResult из сохраненных данных
+                        if (okHoldFocused && okHoldFocused.dataset && okHoldFocused.dataset.searchResult) {
+                            try {
+                                searchResult = JSON.parse(okHoldFocused.dataset.searchResult);
+                            } catch (e) {
+                                console.error('Ошибка парсинга searchResult:', e);
+                            }
+                        }
+
+                        if (typeof window.setTorrentClickSuppressed === 'function') {
+                            window.setTorrentClickSuppressed(1500);
+                        }
+
+                        if (okHoldFocused) {
+                            okHoldFocused.dataset.suppressClick = '1';
+                        }
+
+                        if (magnet && typeof window.addTorrentSearchToServer === 'function') {
+                            await window.addTorrentSearchToServer(magnet, hash, searchResult);
+                        }
+
+                        setTimeout(function () {
+                            if (okHoldFocused) delete okHoldFocused.dataset.suppressClick;
+                        }, 1500);
+                    }, 900);
+                }
+                return true;
             }
 
             clickEl(focused);
@@ -2989,19 +3034,46 @@ function setupFocusRescue() {
     document.addEventListener('keyup', function (e) {
         var screen = currentScreen();
         if (isCustomFilterMenuOpen()) return;
-        if (!isOkKey(e.keyCode) || screen !== 'torrents') return;
+        if (!isOkKey(e.keyCode)) return;
 
-        var focused = document.querySelector('.focused');
-        var cardStillFocused = focused && okHoldFocused && focused === okHoldFocused;
+        // Для экрана торрентов
+        if (screen === 'torrents') {
+            var focused = document.querySelector('.focused');
+            var cardStillFocused = focused && okHoldFocused && focused === okHoldFocused;
 
-        clearOkHold();
+            clearOkHold();
 
-        if (!okHoldHandled && cardStillFocused && focused.classList.contains('torrent-card')) {
-            focused.click();
+            if (!okHoldHandled && cardStillFocused && focused.classList.contains('torrent-card')) {
+                focused.click();
+            }
+
+            okHoldHandled = false;
+            okHoldFocused = null;
+            return;
         }
 
-        okHoldHandled = false;
-        okHoldFocused = null;
+        // Для экрана поиска
+        if (screen === 'search') {
+            var focused = document.querySelector('.focused');
+            var resultStillFocused = focused && okHoldFocused && focused === okHoldFocused &&
+                (focused.classList.contains('search-result-item') || focused.classList.contains('global-search-card'));
+
+            clearOkHold();
+
+            if (!okHoldHandled && resultStillFocused) {
+                // Короткое нажатие - кликаем по кнопке play (children[1])
+                var playButton = focused && focused.children && focused.children[1];
+                if (playButton && playButton.classList && playButton.classList.contains('search-result-play')) {
+                    clickEl(playButton);
+                } else {
+                    clickEl(focused);
+                }
+            }
+
+            okHoldHandled = false;
+            okHoldFocused = null;
+            return;
+        }
     }, true);
 
     setInterval(function () {
