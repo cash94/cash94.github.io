@@ -59,22 +59,12 @@ function showDonateOverlay() {
     if (donateOverlay) {
         AppState.currentScreen = 'donate';
         donateOverlay.classList.remove('hidden');
-        // Устанавливаем фокус на кнопку закрытия для навигации с пульта
+        // Устанавливаем фокус на кнопку закрытия
         setTimeout(function () {
             var closeBtn = document.getElementById('donate-close-btn');
-            if (closeBtn && typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+            if (closeBtn && typeof updateFocusableElements === 'function' && typeof setFocusToElement === 'function') {
                 updateFocusableElements();
-                var focusableElements = Array.from(document.querySelectorAll('.donate-close-btn, .donate-copy-btn'));
-                var closeIndex = -1;
-                for (var i = 0; i < focusableElements.length; i++) {
-                    if (focusableElements[i].id === 'donate-close-btn') {
-                        closeIndex = i;
-                        break;
-                    }
-                }
-                if (closeIndex !== -1) {
-                    setFocus(closeIndex);
-                }
+                setFocusToElement(closeBtn);
             }
         }, 100);
     }
@@ -87,17 +77,11 @@ function closeDonateOverlay() {
         // Возвращаем фокус на кнопку доната
         setTimeout(function () {
             var donateTab = document.getElementById('tab-donate');
-            if (donateTab && typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+            if (donateTab && typeof updateFocusableElements === 'function' && typeof setFocusToElement === 'function') {
                 updateFocusableElements();
-                var donateIndex = -1;
-                for (var i = 0; i < focusableElements.length; i++) {
-                    if (focusableElements[i].id === 'tab-donate') {
-                        donateIndex = i;
-                        break;
-                    }
-                }
-                if (donateIndex !== -1) {
-                    setFocus(donateIndex);
+                var allElements = getAllFocusableElements();
+                if (allElements.includes(donateTab)) {
+                    setFocusToElement(donateTab);
                 }
             }
         }, 100);
