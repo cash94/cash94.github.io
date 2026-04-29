@@ -973,6 +973,14 @@ function renderCatalogGrid() {
             setTimeout(function () {
                 if (typeof window.focusFirstCatalogCard === 'function') {
                     window.focusFirstCatalogCard();
+                } else {
+                    var allElements = getAllFocusableElements();
+                    var firstCatalogCard = allElements.find(function (el) {
+                        return el.classList && (el.classList.contains('catalog-card') || el.classList.contains('catalog-folder-card'));
+                    });
+                    if (firstCatalogCard && typeof setFocusToElement === 'function') {
+                        setFocusToElement(firstCatalogCard);
+                    }
                 }
             }, 100);
         }
@@ -1958,18 +1966,15 @@ async function showCatalogDetail(item, index, posterUrl) {
     }
 
     setTimeout(function () {
-        if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+        if (typeof updateFocusableElements === 'function' && typeof setFocusToElement === 'function') {
             updateFocusableElements();
-            var watchIndex = -1;
-            if (typeof focusableElements !== 'undefined') {
-                for (var p = 0; p < focusableElements.length; p++) {
-                    if (focusableElements[p].id === 'catalog-watch-btn') {
-                        watchIndex = p;
-                        break;
-                    }
-                }
+            var allElements = getAllFocusableElements();
+            var watchBtn = document.getElementById('catalog-watch-btn');
+            if (watchBtn && allElements.includes(watchBtn)) {
+                setFocusToElement(watchBtn);
+            } else if (allElements.length > 0) {
+                setFocusToElement(allElements[0]);
             }
-            setFocus(watchIndex !== -1 ? watchIndex : 0);
         }
     }, 120);
 }
@@ -1989,10 +1994,10 @@ function updateCatalogWatchButton(title) {
     if (watchBtn) {
         watchBtn.textContent = 'Поиск торрентов';
         //if (title) {
-            //watchBtn.textContent = 'Найти торренты для "' + title + '"';
-            //watchBtn.dataset.searchTitle = title;
+        //watchBtn.textContent = 'Найти торренты для "' + title + '"';
+        //watchBtn.dataset.searchTitle = title;
         //} else {
-            
+
         //}
     }
 }
@@ -2477,6 +2482,14 @@ async function showCatalogList() {
             setTimeout(function () {
                 if (typeof window.focusFirstCatalogCard === 'function') {
                     window.focusFirstCatalogCard();
+                } else {
+                    var allElements = getAllFocusableElements();
+                    var firstCard = allElements.find(function (el) {
+                        return el.classList && (el.classList.contains('catalog-card') || el.classList.contains('catalog-folder-card'));
+                    });
+                    if (firstCard && typeof setFocusToElement === 'function') {
+                        setFocusToElement(firstCard);
+                    }
                 }
             }, 100);
         }
@@ -2591,6 +2604,14 @@ function backToCatalogList() {
             setTimeout(function () {
                 if (typeof window.focusFirstCatalogCard === 'function') {
                     window.focusFirstCatalogCard();
+                } else {
+                    var allElements = getAllFocusableElements();
+                    var firstCard = allElements.find(function (el) {
+                        return el.classList && (el.classList.contains('catalog-card') || el.classList.contains('catalog-folder-card'));
+                    });
+                    if (firstCard && typeof setFocusToElement === 'function') {
+                        setFocusToElement(firstCard);
+                    }
                 }
             }, 100);
         }
