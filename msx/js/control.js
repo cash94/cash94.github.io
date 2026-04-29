@@ -19,8 +19,6 @@ var okHoldTimer = null;
 var okHoldHandled = false;
 var okHoldFocused = null;
 
-// ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
-
 function isPlayerControlsVisible() {
     var controlsContainer = document.getElementById('controls-container');
     return !!controlsContainer && !controlsContainer.classList.contains('idle-hidden');
@@ -2748,7 +2746,6 @@ function setupFocusRescue() {
     function onOk() {
         var screen = currentScreen();
         var focused = document.querySelector('.focused');
-
         if (screen === 'torrents') {
             if (!belongsToScreen(focused, 'torrents')) return ensureTorrentFocus(true);
             if (focused.id === 'search-query' || focused.id === 'search-btn' || focused.id === 'tab-search') return openSearchScreen(true);
@@ -2759,14 +2756,11 @@ function setupFocusRescue() {
             clickEl(focused);
             return true;
         }
-
         if (screen === 'catalog') {
             if (!belongsToScreen(focused, 'catalog')) return ensureCatalogFocus(true);
             clickEl(focused);
             return true;
         }
-
-        // ===== ОБНОВЛЕННАЯ ЛОГИКА ДЛЯ SEARCH =====
         if (screen === 'search') {
             if (!belongsToScreen(focused, 'search')) return ensureSearchFocus(true, true);
 
@@ -2777,7 +2771,6 @@ function setupFocusRescue() {
                 try { if (focused.select) focused.select(); } catch (e) { }
                 return true;
             }
-
             var panel = document.getElementById('search-filters-panel');
 
             if (focused.id === 'filter-toggle') {
@@ -2794,107 +2787,18 @@ function setupFocusRescue() {
                 return openNativeSearchControl(focused);
             }
 
-            // ===== ЛОГИКА ДЛЯ РЕЗУЛЬТАТОВ ПОИСКА =====
-            if (focused.classList && focused.classList.contains('search-result-item')) {
-                var playBtn = focused.querySelector('.search-result-play');
-                if (!playBtn || playBtn.disabled) return true;
+            clickEl(focused);
+            return true;
+        }
+        if (screen === 'detail') {
+            if (!belongsToScreen(focused, 'detail')) return ensureDetailFocus(true);
 
-                var hash = playBtn.dataset.hash;
-                var magnet = playBtn.dataset.magnet;
-                var resultJsonEncoded = playBtn.dataset.result;
-
-                if (!hash) {
-                    alert('Не удалось извлечь hash');
-                    return true;
-                }
-
-                var searchResult = null;
-                if (resultJsonEncoded) {
-                    try {
-                        var resultJson = decodeURIComponent(resultJsonEncoded);
-                        searchResult = JSON.parse(resultJson);
-                        if (window.pendingCatalogPoster) {
-                            searchResult.poster = window.pendingCatalogPoster;
-                        }
-                    } catch (e) {
-                        console.error('Ошибка парсинга:', e);
-                    }
-                }
-
-                // Если таймер уже существует, не создаем новый
-                if (focused._okHoldTimer) return true;
-
-                // Флаги состояния
-                focused._longPressCompleted = false;
-                focused._shortPressCompleted = false;
-
-                // Таймер для long press (добавление) - 1500ms
-                focused._okHoldTimer = setTimeout(async function () {
-                    if (!focused._shortPressCompleted) {
-                        focused._longPressCompleted = true;
-                        console.log('🔽 Long press (1500ms) - ДОБАВЛЯЕМ торрент');
-
-                        var originalHtml = playBtn.innerHTML;
-                        playBtn.innerHTML = '⏳';
-                        playBtn.disabled = true;
-
-                        try {
-                            var addedTorrent = await window.addTorrentSearchToServer(magnet, hash, searchResult);
-                            if (addedTorrent) {
-                                playBtn.innerHTML = '✓';
-                                playBtn.style.background = '#4caf50';
-                                if (typeof window.refreshTorrentsList === 'function') {
-                                    await window.refreshTorrentsList();
-                                }
-                                setTimeout(function () {
-                                    if (playBtn) {
-                                        playBtn.innerHTML = originalHtml;
-                                        playBtn.style.background = '';
-                                        playBtn.style.borderColor = '';
-                                        playBtn.disabled = false;
-                                    }
-                                }, 2000);
-                            } else {
-                                playBtn.innerHTML = originalHtml;
-                                playBtn.disabled = false;
-                            }
-                        } catch (error) {
-                            console.error('Ошибка добавления:', error);
-                            playBtn.innerHTML = originalHtml;
-                            playBtn.disabled = false;
-                        }
-
-                        clearTimeout(focused._okHoldTimer);
-                        delete focused._okHoldTimer;
-                    }
-                }, 1500); // Long press после 1.5 секунд
-
-                // Таймер для короткого нажатия (воспроизведение) - 1000ms
-                focused._okShortTimer = setTimeout(function () {
-                    if (!focused._longPressCompleted) {
-                        focused._shortPressCompleted = true;
-                        console.log('👆 Короткое нажатие (до 1000ms) - ВОСПРОИЗВОДИМ');
-
-                        // Очищаем long press таймер, если он еще не сработал
-                        if (focused._okHoldTimer) {
-                            clearTimeout(focused._okHoldTimer);
-                            delete focused._okHoldTimer;
-                        }
-
-                        window.playFromHash(hash, magnet, searchResult);
-                    }
-
-                    clearTimeout(focused._okShortTimer);
-                    delete focused._okShortTimer;
-                    delete focused._longPressCompleted;
-                    delete focused._shortPressCompleted;
-                }, 1000); // Короткое нажатие до 1 секунды
-
+            if (focused.classList.contains('file-item')) {
+                clickEl(focused.querySelector('.play-btn') || focused);
                 return true;
             }
 
-            // Для глобальных карточек поиска
-            if (focused.classList && focused.classList.contains('global-search-card')) {
+            if (focused.classList.contains('detail-progress-btn')) {
                 clickEl(focused);
                 return true;
             }
@@ -2902,6 +2806,14 @@ function setupFocusRescue() {
             clickEl(focused);
             return true;
         }
+        if (screen === 'config') {
+            if (!belongsToScreen(focused, 'config')) return ensureConfigFocus(true);
+            focusEl(focused, { nativeFocus: focused.tagName === 'INPUT' });
+            clickEl(focused);
+            return true;
+        }
+        return false;
+    }
 
     function onBack() {
         var search = byId('search-overlay');
