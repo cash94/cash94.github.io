@@ -2794,7 +2794,7 @@ function setupFocusRescue() {
                 return openNativeSearchControl(focused);
             }
 
-            // ===== НОВАЯ ЛОГИКА ДЛЯ РЕЗУЛЬТАТОВ ПОИСКА =====
+            // ===== ЛОГИКА ДЛЯ РЕЗУЛЬТАТОВ ПОИСКА =====
             if (focused.classList && focused.classList.contains('search-result-item')) {
                 var playBtn = focused.querySelector('.search-result-play');
                 if (!playBtn || playBtn.disabled) return true;
@@ -2821,13 +2821,18 @@ function setupFocusRescue() {
                     }
                 }
 
-                // Используем механизм long press
-                if (!focused._okHoldTimer) {
-                    focused._okHoldHandled = false;
+                // Если таймер уже существует, не создаем новый
+                if (focused._okHoldTimer) return true;
 
-                    focused._okHoldTimer = setTimeout(async function () {
-                        focused._okHoldHandled = true;
-                        console.log('Long press - ДОБАВЛЯЕМ торрент');
+                // Флаги состояния
+                focused._longPressCompleted = false;
+                focused._shortPressCompleted = false;
+
+                // Таймер для long press (добавление) - 1500ms
+                focused._okHoldTimer = setTimeout(async function () {
+                    if (!focused._shortPressCompleted) {
+                        focused._longPressCompleted = true;
+                        console.log('🔽 Long press (1500ms) - ДОБАВЛЯЕМ торрент');
 
                         var originalHtml = playBtn.innerHTML;
                         playBtn.innerHTML = '⏳';
@@ -2838,6 +2843,9 @@ function setupFocusRescue() {
                             if (addedTorrent) {
                                 playBtn.innerHTML = '✓';
                                 playBtn.style.background = '#4caf50';
+                                if (typeof window.refreshTorrentsList === 'function') {
+                                    await window.refreshTorrentsList();
+                                }
                                 setTimeout(function () {
                                     if (playBtn) {
                                         playBtn.innerHTML = originalHtml;
@@ -2858,20 +2866,30 @@ function setupFocusRescue() {
 
                         clearTimeout(focused._okHoldTimer);
                         delete focused._okHoldTimer;
-                    }, 900);
+                    }
+                }, 1500); // Long press после 1.5 секунд
 
-                    // Сохраняем таймер для короткого нажатия
-                    focused._okShortTimer = setTimeout(function () {
-                        if (!focused._okHoldHandled && focused._okHoldTimer) {
-                            console.log('Короткое нажатие - ВОСПРОИЗВОДИМ');
-                            window.playFromHash(hash, magnet, searchResult);
+                // Таймер для короткого нажатия (воспроизведение) - 1000ms
+                focused._okShortTimer = setTimeout(function () {
+                    if (!focused._longPressCompleted) {
+                        focused._shortPressCompleted = true;
+                        console.log('👆 Короткое нажатие (до 1000ms) - ВОСПРОИЗВОДИМ');
+
+                        // Очищаем long press таймер, если он еще не сработал
+                        if (focused._okHoldTimer) {
                             clearTimeout(focused._okHoldTimer);
                             delete focused._okHoldTimer;
                         }
-                        clearTimeout(focused._okShortTimer);
-                        delete focused._okShortTimer;
-                    }, 900);
-                }
+
+                        window.playFromHash(hash, magnet, searchResult);
+                    }
+
+                    clearTimeout(focused._okShortTimer);
+                    delete focused._okShortTimer;
+                    delete focused._longPressCompleted;
+                    delete focused._shortPressCompleted;
+                }, 1000); // Короткое нажатие до 1 секунды
+
                 return true;
             }
 
@@ -2884,33 +2902,6 @@ function setupFocusRescue() {
             clickEl(focused);
             return true;
         }
-
-        if (screen === 'detail') {
-            if (!belongsToScreen(focused, 'detail')) return ensureDetailFocus(true);
-
-            if (focused.classList.contains('file-item')) {
-                clickEl(focused.querySelector('.play-btn') || focused);
-                return true;
-            }
-
-            if (focused.classList.contains('detail-progress-btn')) {
-                clickEl(focused);
-                return true;
-            }
-
-            clickEl(focused);
-            return true;
-        }
-
-        if (screen === 'config') {
-            if (!belongsToScreen(focused, 'config')) return ensureConfigFocus(true);
-            focusEl(focused, { nativeFocus: focused.tagName === 'INPUT' });
-            clickEl(focused);
-            return true;
-        }
-
-        return false;
-    }
 
     function onBack() {
         var search = byId('search-overlay');
