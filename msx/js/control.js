@@ -2655,7 +2655,7 @@ function setupFocusRescue() {
                             window.addTorrentSearchToServer(magnet, hash, searchResultJson)
                                 .then(() => {
                                     var originalHtml = playButton.innerHTML;
-                                    playBtn.innerHTML = '✓';
+                                    playButton.innerHTML = '✓';
 
                                     setTimeout(() => {
                                         playButton.innerHTML = originalHtml;
