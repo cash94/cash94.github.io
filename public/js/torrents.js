@@ -1017,6 +1017,14 @@ function renderTorrents() {
     setTimeout(function () {
       if (typeof window.focusFirstTorrentCard === 'function') {
         window.focusFirstTorrentCard();
+      } else {
+        var allElements = getAllFocusableElements();
+        var firstCard = allElements.find(function (el) {
+          return el.classList && el.classList.contains('torrent-card');
+        });
+        if (firstCard && typeof setFocusToElement === 'function') {
+          setFocusToElement(firstCard);
+        }
       }
     }, 80);
   }
@@ -1291,7 +1299,7 @@ async function showDetail(torrent) {
           addFileItem(files[i], torrent.hash, torrent.title);
         } else {
           indx = indx + 1;
-          addFileItem(files[i], torrent.hash, nameSerials +" "+ indx);
+          addFileItem(files[i], torrent.hash, nameSerials + " " + indx);
         }
       }
     }
@@ -1303,65 +1311,35 @@ async function showDetail(torrent) {
 
   // Устанавливаем фокус на первый элемент в детальном просмотре
   setTimeout(function () {
-    if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+    if (typeof updateFocusableElements === 'function' && typeof setFocusToElement === 'function') {
       updateFocusableElements();
+      var allElements = getAllFocusableElements();
 
-      // 1. Ищем все элементы файлов
-      var fileItems = document.querySelectorAll('.file-item');
+      // Ищем первый файл
+      var targetElement = allElements.find(function (el) {
+        return el.classList && el.classList.contains('file-item');
+      });
 
-      var targetIndex = -1;
-
-      // 2. Если есть файлы, ставим фокус на первый файл
-      if (fileItems.length > 0) {
-        for (var i = 0; i < focusableElements.length; i++) {
-          if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) {
-            targetIndex = i;
-            break;
-          }
-        }
-
-        if (targetIndex !== -1) {
-          setFocus(targetIndex);
-          console.log('Фокус в детальном просмотре на первый файл');
-          return;
-        }
+      // Ищем кнопку "Продолжить"
+      if (!targetElement) {
+        targetElement = allElements.find(function (el) {
+          return el.classList && el.classList.contains('detail-progress-btn');
+        });
       }
 
-      // 3. Если файлов нет, пробуем найти кнопку "Продолжить"
-      var progressBtn = document.querySelector('.detail-progress-btn');
-      if (progressBtn) {
-        for (var i = 0; i < focusableElements.length; i++) {
-          if (focusableElements[i].classList && focusableElements[i].classList.contains('detail-progress-btn')) {
-            targetIndex = i;
-            break;
-          }
-        }
-
-        if (targetIndex !== -1) {
-          setFocus(targetIndex);
-          console.log('Фокус в детальном просмотре на кнопке "Продолжить"');
-          return;
-        }
+      // Ищем кнопку "Назад"
+      if (!targetElement) {
+        targetElement = allElements.find(function (el) {
+          return el.classList && el.classList.contains('back-btn');
+        });
       }
 
-      // 4. Фолбэк на кнопку "Назад"
-      var backBtn = document.querySelector('.back-btn');
-      if (backBtn) {
-        for (var i = 0; i < focusableElements.length; i++) {
-          if (focusableElements[i].classList && focusableElements[i].classList.contains('back-btn')) {
-            targetIndex = i;
-            break;
-          }
-        }
-        if (targetIndex !== -1) {
-          setFocus(targetIndex);
-          console.log('Фокус в детальном просмотре на кнопке "Назад"');
-          return;
-        }
+      if (targetElement) {
+        setFocusToElement(targetElement);
+        console.log('Фокус в детальном просмотре на элементе:', targetElement);
+      } else if (allElements.length > 0) {
+        setFocusToElement(allElements[0]);
       }
-
-      setFocus(0);
-      console.log('Фокус в детальном просмотре на первый элемент');
     }
   }, 300);
   AppState.mediaType = "";
@@ -1808,29 +1786,37 @@ function showSearchResults(options) {
       return;
     }
 
-    if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+    if (typeof updateFocusableElements === 'function' && typeof setFocusToElement === 'function') {
       updateFocusableElements();
+      var allElements = getAllFocusableElements();
 
-      var searchInputIndex = -1;
-      var searchBtnIndex = -1;
-      var filterToggleIndex = -1;
-      var firstFilterIndex = -1;
-
-      for (var i = 0; i < focusableElements.length; i++) {
-        var el = focusableElements[i];
-        if (el.id === 'search-query') searchInputIndex = i;
-        if (el.id === 'search-btn') searchBtnIndex = i;
-        if (el.id === 'filter-toggle') filterToggleIndex = i;
-        if (['sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) {
-          firstFilterIndex = i;
-        }
+      var targetElement = null;
+      if (options.focusQuery !== false) {
+        targetElement = document.getElementById('search-query');
+        if (targetElement && !allElements.includes(targetElement)) targetElement = null;
       }
 
-      var targetIndex = options.focusQuery !== false
-        ? (searchInputIndex !== -1 ? searchInputIndex : (searchBtnIndex !== -1 ? searchBtnIndex : filterToggleIndex))
-        : (firstFilterIndex !== -1 ? firstFilterIndex : (filterToggleIndex !== -1 ? filterToggleIndex : 0));
+      if (!targetElement) {
+        targetElement = document.getElementById('search-btn');
+        if (targetElement && !allElements.includes(targetElement)) targetElement = null;
+      }
 
-      setFocus(targetIndex !== -1 ? targetIndex : 0);
+      if (!targetElement) {
+        targetElement = document.getElementById('filter-toggle');
+        if (targetElement && !allElements.includes(targetElement)) targetElement = null;
+      }
+
+      if (!targetElement) {
+        targetElement = allElements.find(function (el) {
+          return el.classList && el.classList.contains('search-result-item');
+        });
+      }
+
+      if (targetElement) {
+        setFocusToElement(targetElement);
+      } else if (allElements.length > 0) {
+        setFocusToElement(allElements[0]);
+      }
     }
   }, 80);
 }
@@ -2049,7 +2035,7 @@ async function addTorrentToServer(magnet, hash, searchResult) {
     var torrname = '';
     if (AppState.mediaType == 'tv') {
       if (searchResult.seasons && searchResult.seasons.length > 0) {
-        torrname = searchResult.name +' | сезон '+searchResult.seasons[0];
+        torrname = searchResult.name + ' | сезон ' + searchResult.seasons[0];
       } else {
         // обработка случая, когда массив пустой или отсутствует
         torrname = searchResult.name;
@@ -2162,40 +2148,44 @@ async function refreshTorrentsList() {
 
       if (AppState.currentScreen === 'torrents') {
         setTimeout(function () {
-          if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+          if (typeof updateFocusableElements === 'function' && typeof setFocusToElement === 'function') {
             updateFocusableElements();
-            var targetIndex = -1;
-            for (var i = 0; i < focusableElements.length; i++) {
-              if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card') && preserveHash && focusableElements[i].dataset.hash === preserveHash) {
-                targetIndex = i;
-                break;
-              }
-            }
-            if (targetIndex === -1) {
-              var cards = [];
-              for (var j = 0; j < focusableElements.length; j++) {
-                if (focusableElements[j].classList && focusableElements[j].classList.contains('torrent-card')) {
-                  cards.push(focusableElements[j]);
-                }
-              }
-              if (cards[preserveIndex]) {
-                for (var k = 0; k < focusableElements.length; k++) {
-                  if (focusableElements[k] === cards[preserveIndex]) {
-                    targetIndex = k;
-                    break;
-                  }
-                }
-              }
-            }
-            if (targetIndex === -1) {
-              for (var l = 0; l < focusableElements.length; l++) {
-                if (focusableElements[l].classList && focusableElements[l].classList.contains('torrent-card')) {
-                  targetIndex = l;
+            var allElements = getAllFocusableElements();
+            var targetElement = null;
+
+            // Поиск по сохраненному hash
+            if (preserveHash) {
+              for (var i = 0; i < allElements.length; i++) {
+                if (allElements[i].classList && allElements[i].classList.contains('torrent-card') &&
+                  allElements[i].dataset.hash === preserveHash) {
+                  targetElement = allElements[i];
                   break;
                 }
               }
             }
-            if (targetIndex !== -1) setFocus(targetIndex);
+
+            // Поиск по индексу
+            if (!targetElement && preserveIndex !== null) {
+              var cards = allElements.filter(function (el) {
+                return el.classList && el.classList.contains('torrent-card');
+              });
+              if (cards[preserveIndex]) {
+                targetElement = cards[preserveIndex];
+              }
+            }
+
+            // Первая карточка
+            if (!targetElement) {
+              targetElement = allElements.find(function (el) {
+                return el.classList && el.classList.contains('torrent-card');
+              });
+            }
+
+            if (targetElement) {
+              setFocusToElement(targetElement);
+            } else if (allElements.length > 0) {
+              setFocusToElement(allElements[0]);
+            }
           }
         }, 80);
       }
