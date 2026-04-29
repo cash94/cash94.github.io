@@ -2018,6 +2018,106 @@ function initYearFilter() {
   }
 }
 
+// Добавление торрента в TorrServer из поиска
+async function addTorrentSearchToServer(magnet, hash, searchResult) {
+  if (searchResult === undefined) searchResult = null;
+  if (!AppState.currentTorrserverUrl) {
+    alert('Сначала подключитесь к TorrServer');
+    return null;
+  }
+
+  // Используем постер из каталога, если он есть
+  var poster = null;
+
+  // Сначала проверяем, есть ли сохраненный постер из каталога
+  if (window.pendingCatalogPoster) {
+    poster = window.pendingCatalogPoster;
+    console.log('Используем постер из каталога:', poster);
+  }
+  // Если нет, ищем через TMDB
+  else if (searchResult) {
+    console.log('Поиск постера через TMDB для:', searchResult.title || searchResult.name);
+    poster = await tmdb.findPosterFromSearchResult(searchResult);
+    if (poster) {
+      console.log('Постер найден через TMDB:', poster);
+    }
+  }
+
+  try {
+    console.log('Добавление торрента в TorrServer:', magnet);
+
+    var torrname = '';
+    if (AppState.mediaType == 'tv') {
+      if (searchResult.seasons && searchResult.seasons.length > 0) {
+        torrname = searchResult.name + ' | сезон ' + searchResult.seasons[0];
+      } else {
+        // обработка случая, когда массив пустой или отсутствует
+        torrname = searchResult.name;
+      }
+    } else {
+      torrname = searchResult.name;
+    }
+
+    var requestBody = {
+      action: 'add',
+      link: magnet,
+      title: torrname, //+' S['+searchResult.seasons[0]+']',
+      save_to_db: AppState.addToDbEnabled
+    };
+
+    // Добавляем постер, если нашли
+    if (poster) {
+      requestBody.poster = poster;
+      console.log('Добавляем постер в запрос');
+    }
+
+    var headers = {
+      'Content-Type': 'application/json',
+    };
+
+    var authHeaders = getAuthHeaders();
+    for (var key in authHeaders) {
+      if (authHeaders.hasOwnProperty(key)) {
+        headers[key] = authHeaders[key];
+      }
+    }
+
+    var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      throw new Error('Ошибка добавления: ' + response.status);
+    }
+
+    var data = await response.json();
+    console.log('Торрент добавлен:', data);
+
+    // Очищаем временные данные
+    window.pendingCatalogPoster = null;
+    window.pendingCatalogItem = null;
+
+    // Сохраняем hash добавленного торрента в нижнем регистре
+    lastAddedTorrentHash = hash.toLowerCase();
+
+    var addedTorrent = true;
+
+    return addedTorrent || null;
+
+  } catch (error) {
+    console.error('❌ Ошибка добавления торрента:', error);
+    alert('Ошибка при добавлении торрента: ' + error.message);
+
+    // Очищаем временные данные даже при ошибке
+    window.pendingCatalogPoster = null;
+    window.pendingCatalogItem = null;
+
+    return null;
+  }
+}
+
 // Добавление торрента в TorrServer
 async function addTorrentToServer(magnet, hash, searchResult) {
   if (searchResult === undefined) searchResult = null;
@@ -2759,6 +2859,6 @@ function clearSearchResultsContainer() {
 window.clearSearchResultsContainer = clearSearchResultsContainer;
 window.refreshTorrents = refreshTorrents;
 window.clearSearchResults = clearSearchResults;
-window.addTorrentToServer = addTorrentToServer;
+window.addTorrentSearchToServer = addTorrentSearchToServer;
 window.playFromHash = playFromHash;
 window.refreshTorrentsList = refreshTorrentsList;
