@@ -2654,11 +2654,11 @@ function setupFocusRescue() {
                             // Используем then вместо await
                             window.addTorrentSearchToServer(magnet, hash, searchResultJson)
                                 .then(() => {
-                                    var originalHtml = playBtn.innerHTML;
+                                    var originalHtml = playButton.innerHTML;
                                     playBtn.innerHTML = '✓';
 
                                     setTimeout(() => {
-                                        playBtn.innerHTML = originalHtml;
+                                        playButton.innerHTML = originalHtml;
                                     }, 2000);
                                 })
                                 .catch(error => {
