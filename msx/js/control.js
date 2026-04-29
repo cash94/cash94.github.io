@@ -2539,24 +2539,8 @@ function setupFocusRescue() {
         }
     }
 
-    function clearSearchItemTimers() {
-        var focused = document.querySelector('.focused');
-        if (focused) {
-            if (focused._okHoldTimer) {
-                clearTimeout(focused._okHoldTimer);
-                delete focused._okHoldTimer;
-            }
-            if (focused._okShortTimer) {
-                clearTimeout(focused._okShortTimer);
-                delete focused._okShortTimer;
-            }
-            delete focused._okHoldHandled;
-        }
-    }
-
     //функция searchHandle
     function searchHandle(direction) {
-        clearSearchItemTimers();
         // Получаем текущий режим поиска
         var currentMode = getCurrentSearchMode();
 
