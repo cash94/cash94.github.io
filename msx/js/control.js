@@ -1638,7 +1638,20 @@ function setupFocusRescue() {
     function moveCustomFilterMenu(delta) {
         if (!customFilterMenuState || !customFilterMenuState.options.length) return true;
         var len = customFilterMenuState.options.length;
-        customFilterMenuState.index = (customFilterMenuState.index + delta + len) % len;
+        var newIndex = customFilterMenuState.index + delta;
+
+        // Проверяем границы - не позволяем выходить за пределы
+        if (newIndex < 0) {
+            // Если на первом элементе и пытаемся вверх - остаемся на месте
+            return true;
+        }
+        if (newIndex >= len) {
+            // Если на последнем элементе и пытаемся вниз - остаемся на месте
+            return true;
+        }
+
+        // Обновляем индекс только если не вышли за границы
+        customFilterMenuState.index = newIndex;
         renderCustomFilterMenu();
 
         // Скроллим к активному элементу после обновления
