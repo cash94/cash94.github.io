@@ -1598,6 +1598,9 @@ function setupFocusRescue() {
             optionsHtml += '<div class="' + cls + '" data-index="' + i + '">' + opt.label + selected + '</div>';
         }
         optionsEl.innerHTML = optionsHtml;
+
+        // Скроллим к активному элементу после рендера
+        setTimeout(scrollToActiveFilterOption, 10);
     }
 
     function closeCustomFilterMenu() {
@@ -1607,11 +1610,40 @@ function setupFocusRescue() {
         return true;
     }
 
+    // Функция для скролла к активному элементу в меню фильтров
+    function scrollToActiveFilterOption() {
+        var activeOption = document.querySelector('.custom-filter-option.active');
+        var optionsContainer = document.getElementById('custom-filter-menu-options');
+
+        if (!activeOption || !optionsContainer) return;
+
+        // Получаем позиции элемента и контейнера
+        var containerRect = optionsContainer.getBoundingClientRect();
+        var optionRect = activeOption.getBoundingClientRect();
+
+        // Вычисляем смещение для скролла
+        var scrollTop = optionsContainer.scrollTop;
+        var offsetTop = optionRect.top - containerRect.top;
+
+        // Если элемент выше видимой области
+        if (offsetTop < 0) {
+            optionsContainer.scrollTop = scrollTop + offsetTop - 10; // 10px отступа сверху
+        }
+        // Если элемент ниже видимой области
+        else if (offsetTop + optionRect.height > containerRect.height) {
+            optionsContainer.scrollTop = scrollTop + (offsetTop + optionRect.height - containerRect.height) + 10; // 10px отступа снизу
+        }
+    }
+
     function moveCustomFilterMenu(delta) {
         if (!customFilterMenuState || !customFilterMenuState.options.length) return true;
         var len = customFilterMenuState.options.length;
         customFilterMenuState.index = (customFilterMenuState.index + delta + len) % len;
         renderCustomFilterMenu();
+
+        // Скроллим к активному элементу после обновления
+        setTimeout(scrollToActiveFilterOption, 10);
+
         return true;
     }
 
