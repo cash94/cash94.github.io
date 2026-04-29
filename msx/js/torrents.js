@@ -2759,3 +2759,6 @@ function clearSearchResultsContainer() {
 window.clearSearchResultsContainer = clearSearchResultsContainer;
 window.refreshTorrents = refreshTorrents;
 window.clearSearchResults = clearSearchResults;
+window.addTorrentToServer = addTorrentToServer;
+window.playFromHash = playFromHash;
+window.refreshTorrentsList = refreshTorrentsList;
