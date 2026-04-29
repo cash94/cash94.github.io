@@ -2834,13 +2834,10 @@ function setupFocusRescue() {
                         playBtn.disabled = true;
 
                         try {
-                            var addedTorrent = await window.addTorrentToServer(magnet, hash, searchResult);
+                            var addedTorrent = await window.addTorrentSearchToServer(magnet, hash, searchResult);
                             if (addedTorrent) {
                                 playBtn.innerHTML = '✓';
                                 playBtn.style.background = '#4caf50';
-                                if (typeof window.refreshTorrentsList === 'function') {
-                                    await window.refreshTorrentsList();
-                                }
                                 setTimeout(function () {
                                     if (playBtn) {
                                         playBtn.innerHTML = originalHtml;
@@ -2861,7 +2858,7 @@ function setupFocusRescue() {
 
                         clearTimeout(focused._okHoldTimer);
                         delete focused._okHoldTimer;
-                    }, 900);
+                    }, 2000);
 
                     // Сохраняем таймер для короткого нажатия
                     focused._okShortTimer = setTimeout(function () {
