@@ -1433,87 +1433,6 @@ function setupKeyboardHandlers() {
             var focused = document.querySelector('.focused');
 
             if (focused) {
-                // НОВАЯ ЛОГИКА ДЛЯ РЕЗУЛЬТАТОВ ПОИСКА
-                if (focused.classList && focused.classList.contains('search-result-item')) {
-                    var playBtn = focused.querySelector('.search-result-play');
-                    if (!playBtn || playBtn.disabled) return;
-
-                    var hash = playBtn.dataset.hash;
-                    var magnet = playBtn.dataset.magnet;
-                    var resultJsonEncoded = playBtn.dataset.result;
-
-                    if (!hash) {
-                        alert('Не удалось извлечь hash');
-                        return;
-                    }
-
-                    var searchResult = null;
-                    if (resultJsonEncoded) {
-                        try {
-                            var resultJson = decodeURIComponent(resultJsonEncoded);
-                            searchResult = JSON.parse(resultJson);
-                            if (window.pendingCatalogPoster) {
-                                searchResult.poster = window.pendingCatalogPoster;
-                            }
-                        } catch (e) {
-                            console.error('Ошибка парсинга:', e);
-                        }
-                    }
-
-                    // Используем механизм long press
-                    if (!focused._okHoldTimer) {
-                        focused._okHoldHandled = false;
-
-                        focused._okHoldTimer = setTimeout(async function () {
-                            focused._okHoldHandled = true;
-                            console.log('Long press - ДОБАВЛЯЕМ торрент');
-
-                            var originalHtml = playBtn.innerHTML;
-                            playBtn.innerHTML = '⏳';
-                            playBtn.disabled = true;
-
-                            try {
-                                var addedTorrent = await window.addTorrentToServer(magnet, hash, searchResult);
-                                if (addedTorrent) {
-                                    playBtn.innerHTML = '✓';
-                                    playBtn.style.background = '#4caf50';
-                                    if (typeof window.refreshTorrentsList === 'function') {
-                                        await window.refreshTorrentsList();
-                                    }
-                                    setTimeout(function () {
-                                        if (playBtn) {
-                                            playBtn.innerHTML = originalHtml;
-                                            playBtn.style.background = '';
-                                            playBtn.style.borderColor = '';
-                                            playBtn.disabled = false;
-                                        }
-                                    }, 2000);
-                                } else {
-                                    playBtn.innerHTML = originalHtml;
-                                    playBtn.disabled = false;
-                                }
-                            } catch (error) {
-                                playBtn.innerHTML = originalHtml;
-                                playBtn.disabled = false;
-                            }
-
-                            clearTimeout(focused._okHoldTimer);
-                            delete focused._okHoldTimer;
-                        }, 900);
-
-                        setTimeout(function () {
-                            if (!focused._okHoldHandled && focused._okHoldTimer) {
-                                console.log('Короткое нажатие - ВОСПРОИЗВОДИМ');
-                                window.playFromHash(hash, magnet, searchResult);
-                                clearTimeout(focused._okHoldTimer);
-                                delete focused._okHoldTimer;
-                            }
-                        }, 900);
-                    }
-                    return;
-                }
-
-                // Остальная логика для search
                 if (focused.id === 'search-query') {
                     focused.focus();
                     try { if (focused.select) focused.select(); } catch (err) { }
@@ -2622,8 +2541,24 @@ function setupFocusRescue() {
         }
     }
 
+    function clearSearchItemTimers() {
+        var focused = document.querySelector('.focused');
+        if (focused) {
+            if (focused._okHoldTimer) {
+                clearTimeout(focused._okHoldTimer);
+                delete focused._okHoldTimer;
+            }
+            if (focused._okShortTimer) {
+                clearTimeout(focused._okShortTimer);
+                delete focused._okShortTimer;
+            }
+            delete focused._okHoldHandled;
+        }
+    }
+
     //функция searchHandle
     function searchHandle(direction) {
+        clearSearchItemTimers();
         // Получаем текущий режим поиска
         var currentMode = getCurrentSearchMode();
 
@@ -2813,6 +2748,7 @@ function setupFocusRescue() {
     function onOk() {
         var screen = currentScreen();
         var focused = document.querySelector('.focused');
+
         if (screen === 'torrents') {
             if (!belongsToScreen(focused, 'torrents')) return ensureTorrentFocus(true);
             if (focused.id === 'search-query' || focused.id === 'search-btn' || focused.id === 'tab-search') return openSearchScreen(true);
@@ -2823,11 +2759,14 @@ function setupFocusRescue() {
             clickEl(focused);
             return true;
         }
+
         if (screen === 'catalog') {
             if (!belongsToScreen(focused, 'catalog')) return ensureCatalogFocus(true);
             clickEl(focused);
             return true;
         }
+
+        // ===== ОБНОВЛЕННАЯ ЛОГИКА ДЛЯ SEARCH =====
         if (screen === 'search') {
             if (!belongsToScreen(focused, 'search')) return ensureSearchFocus(true, true);
 
@@ -2838,6 +2777,7 @@ function setupFocusRescue() {
                 try { if (focused.select) focused.select(); } catch (e) { }
                 return true;
             }
+
             var panel = document.getElementById('search-filters-panel');
 
             if (focused.id === 'filter-toggle') {
@@ -2854,9 +2794,100 @@ function setupFocusRescue() {
                 return openNativeSearchControl(focused);
             }
 
+            // ===== НОВАЯ ЛОГИКА ДЛЯ РЕЗУЛЬТАТОВ ПОИСКА =====
+            if (focused.classList && focused.classList.contains('search-result-item')) {
+                var playBtn = focused.querySelector('.search-result-play');
+                if (!playBtn || playBtn.disabled) return true;
+
+                var hash = playBtn.dataset.hash;
+                var magnet = playBtn.dataset.magnet;
+                var resultJsonEncoded = playBtn.dataset.result;
+
+                if (!hash) {
+                    alert('Не удалось извлечь hash');
+                    return true;
+                }
+
+                var searchResult = null;
+                if (resultJsonEncoded) {
+                    try {
+                        var resultJson = decodeURIComponent(resultJsonEncoded);
+                        searchResult = JSON.parse(resultJson);
+                        if (window.pendingCatalogPoster) {
+                            searchResult.poster = window.pendingCatalogPoster;
+                        }
+                    } catch (e) {
+                        console.error('Ошибка парсинга:', e);
+                    }
+                }
+
+                // Используем механизм long press
+                if (!focused._okHoldTimer) {
+                    focused._okHoldHandled = false;
+
+                    focused._okHoldTimer = setTimeout(async function () {
+                        focused._okHoldHandled = true;
+                        console.log('Long press - ДОБАВЛЯЕМ торрент');
+
+                        var originalHtml = playBtn.innerHTML;
+                        playBtn.innerHTML = '⏳';
+                        playBtn.disabled = true;
+
+                        try {
+                            var addedTorrent = await window.addTorrentToServer(magnet, hash, searchResult);
+                            if (addedTorrent) {
+                                playBtn.innerHTML = '✓';
+                                playBtn.style.background = '#4caf50';
+                                if (typeof window.refreshTorrentsList === 'function') {
+                                    await window.refreshTorrentsList();
+                                }
+                                setTimeout(function () {
+                                    if (playBtn) {
+                                        playBtn.innerHTML = originalHtml;
+                                        playBtn.style.background = '';
+                                        playBtn.style.borderColor = '';
+                                        playBtn.disabled = false;
+                                    }
+                                }, 2000);
+                            } else {
+                                playBtn.innerHTML = originalHtml;
+                                playBtn.disabled = false;
+                            }
+                        } catch (error) {
+                            console.error('Ошибка добавления:', error);
+                            playBtn.innerHTML = originalHtml;
+                            playBtn.disabled = false;
+                        }
+
+                        clearTimeout(focused._okHoldTimer);
+                        delete focused._okHoldTimer;
+                    }, 900);
+
+                    // Сохраняем таймер для короткого нажатия
+                    focused._okShortTimer = setTimeout(function () {
+                        if (!focused._okHoldHandled && focused._okHoldTimer) {
+                            console.log('Короткое нажатие - ВОСПРОИЗВОДИМ');
+                            window.playFromHash(hash, magnet, searchResult);
+                            clearTimeout(focused._okHoldTimer);
+                            delete focused._okHoldTimer;
+                        }
+                        clearTimeout(focused._okShortTimer);
+                        delete focused._okShortTimer;
+                    }, 900);
+                }
+                return true;
+            }
+
+            // Для глобальных карточек поиска
+            if (focused.classList && focused.classList.contains('global-search-card')) {
+                clickEl(focused);
+                return true;
+            }
+
             clickEl(focused);
             return true;
         }
+
         if (screen === 'detail') {
             if (!belongsToScreen(focused, 'detail')) return ensureDetailFocus(true);
 
@@ -2873,12 +2904,14 @@ function setupFocusRescue() {
             clickEl(focused);
             return true;
         }
+
         if (screen === 'config') {
             if (!belongsToScreen(focused, 'config')) return ensureConfigFocus(true);
             focusEl(focused, { nativeFocus: focused.tagName === 'INPUT' });
             clickEl(focused);
             return true;
         }
+
         return false;
     }
 
