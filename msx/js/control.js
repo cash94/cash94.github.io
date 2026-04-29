@@ -2858,7 +2858,7 @@ function setupFocusRescue() {
 
                         clearTimeout(focused._okHoldTimer);
                         delete focused._okHoldTimer;
-                    }, 2000);
+                    }, 900);
 
                     // Сохраняем таймер для короткого нажатия
                     focused._okShortTimer = setTimeout(function () {
