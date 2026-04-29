@@ -2644,14 +2644,15 @@ function setupFocusRescue() {
                         var searchResult = null;
 
                         try {
-                            searchResult = JSON.parse(playButton.dataset.result);
+                            var resultJson = decodeURIComponent(searchResult);
+                            searchResultJson = JSON.parse(resultJson);
                         } catch (e) {
                             console.error('Ошибка парсинга searchResult:');
                         }
 
                         if (magnet && typeof window.addTorrentSearchToServer === 'function') {
                             // Используем then вместо await
-                            window.addTorrentSearchToServer(magnet, hash, searchResult)
+                            window.addTorrentSearchToServer(magnet, hash, searchResultJson)
                                 .then(() => {
                                     var originalHtml = playBtn.innerHTML;
                                     playBtn.innerHTML = '✓';
