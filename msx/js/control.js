@@ -2630,8 +2630,41 @@ function setupFocusRescue() {
                     return focusEl(query);
                 }
                 if (direction === 'down') return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
-                if (direction === 'left' || direction === 'right') {
+                if (direction === 'left') {
                     openFiltersPanelAndFocus();
+                    return true;
+                }
+                if (direction === 'right') {
+                    if (focused && (focused.classList.contains('search-result-item') || focused.classList.contains('global-search-card'))) {
+                        // Получаем данные из дочерней кнопки .search-result-play (индекс 1)
+                        var playButton = focused.querySelector('.search-result-play');
+
+                        var magnet = playButton.dataset.magnet;
+                        var hash = playButton.dataset.hash;
+                        var searchResult = null;
+
+                        try {
+                            searchResult = JSON.parse(playButton.dataset.result);
+                        } catch (e) {
+                            console.error('Ошибка парсинга searchResult:');
+                        }
+
+                        if (magnet && typeof window.addTorrentSearchToServer === 'function') {
+                            await window.addTorrentSearchToServer(magnet, hash, searchResult);
+                        } else if (!magnet) {
+                            console.warn('Не найден magnet для добавления торрента');
+                        }
+
+                        var originalHtml = playBtn.innerHTML;
+                        playBtn.innerHTML = '✓';
+
+                        // Возвращаем исходный HTML через 2 секунды
+                        setTimeout(() => {
+                            playBtn.innerHTML = originalHtml;
+                        }, 2000);
+
+                        return true;
+                    }
                     return true;
                 }
                 return true;
