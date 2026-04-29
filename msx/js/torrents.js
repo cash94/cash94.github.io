@@ -33,11 +33,6 @@ var pendingRemoteHoldHash = null;
 // Кэш для хранения информации о прогрессе
 var progressCache = new Map();
 
-//Для длинного нажатия ОК
-var searchItemHoldTimer = null;
-var searchItemHoldHandled = false;
-var searchItemHoldFocused = null;
-
 
 var SORT_OPTIONS = [
   { value: 'date-desc', label: 'Сначала новые' },
@@ -2313,98 +2308,6 @@ function clearSearchResults() {
   syncSearchFilterButtons();
 }
 
-// Функция для обновления кнопки на добавленный торрент
-function markSearchResultAsAdded(playButton) {
-  if (!playButton) return;
-
-  // Сохраняем исходный HTML для возможного восстановления
-  if (!playButton.dataset.originalHtml) {
-    playButton.dataset.originalHtml = playButton.innerHTML;
-  }
-
-  // Меняем на галочку
-  playButton.innerHTML = '✓';
-  playButton.classList.add('added');
-  playButton.disabled = false; // Не блокируем, просто меняем визуал
-
-  // Добавляем класс для стилизации
-  playButton.style.background = '#4caf50';
-  playButton.style.borderColor = '#4caf50';
-
-  // Через 2 секунды возвращаем исходный вид (опционально)
-  setTimeout(function () {
-    if (playButton && !playButton.dataset.addingInProgress) {
-      playButton.innerHTML = playButton.dataset.originalHtml || '▶';
-      playButton.classList.remove('added');
-      playButton.style.background = '';
-      playButton.style.borderColor = '';
-    }
-  }, 2000);
-}
-
-// Функция для long press добавления торрента из поиска
-async function addTorrentFromSearch(playButton, magnet, hash, searchResult) {
-  if (!playButton || !magnet || !hash) return false;
-
-  // Проверяем, не идет ли уже добавление
-  if (playButton.dataset.addingInProgress === 'true') {
-    console.log('Добавление уже в процессе...');
-    return false;
-  }
-
-  // Сохраняем исходный HTML
-  if (!playButton.dataset.originalHtml) {
-    playButton.dataset.originalHtml = playButton.innerHTML;
-  }
-
-  // Меняем кнопку на состояние "добавления"
-  playButton.dataset.addingInProgress = 'true';
-  playButton.innerHTML = '⏳';
-  playButton.disabled = true;
-
-  try {
-    // Добавляем торрент
-    var addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
-
-    if (addedTorrent) {
-      console.log('✅ Торрент успешно добавлен:', addedTorrent.title);
-      // Меняем на галочку
-      playButton.innerHTML = '✓';
-      playButton.style.background = '#4caf50';
-      playButton.style.borderColor = '#4caf50';
-      playButton.classList.add('added');
-
-      // Обновляем список торрентов
-      await refreshTorrentsList();
-
-      // Через 2 секунды возвращаем исходный вид
-      setTimeout(function () {
-        if (playButton && !playButton.dataset.addingInProgress) {
-          playButton.innerHTML = playButton.dataset.originalHtml || '▶';
-          playButton.classList.remove('added');
-          playButton.style.background = '';
-          playButton.style.borderColor = '';
-        }
-        delete playButton.dataset.addingInProgress;
-      }, 2000);
-
-      return true;
-    } else {
-      // Если не добавился, возвращаем исходный вид
-      playButton.innerHTML = playButton.dataset.originalHtml || '▶';
-      playButton.disabled = false;
-      delete playButton.dataset.addingInProgress;
-      return false;
-    }
-  } catch (error) {
-    console.error('Ошибка добавления торрента:', error);
-    playButton.innerHTML = playButton.dataset.originalHtml || '▶';
-    playButton.disabled = false;
-    delete playButton.dataset.addingInProgress;
-    return false;
-  }
-}
-
 // Рендеринг результатов поиска
 function renderSearchResults() {
   var searchResultsDiv = document.getElementById('search-results');
@@ -2434,9 +2337,10 @@ function renderSearchResults() {
     var tracker = result.tracker || 'Unknown';
     var trackerDisplay = tracker.charAt(0).toUpperCase() + tracker.slice(1);
 
+    // ПРАВИЛЬНО: кодируем JSON для data-атрибута
     var resultJsonEncoded = encodeURIComponent(JSON.stringify(result));
 
-    html += '\n      <div class="search-result-item" data-index="' + idx + '" data-hash="' + (hash || '') + '" data-magnet="' + escapeHtml(result.magnet || '') + '" data-result="' + resultJsonEncoded + '">\n        <div class="search-result-info">\n          <div class="search-result-title">' + escapeHtml(result.title || result.name || 'Без названия') + '</div>\n          \n          <div class="search-result-meta">\n            <div class="search-result-meta-item">\n              <span></span> ' + escapeHtml(trackerDisplay) + '\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> ' + escapeHtml(size) + '\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> ' + year + ' (' + date + ')\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> ' + type + ' / ' + quality + 'p\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> сиды: ' + sid + '\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> пиры: ' + pir + '\n            </div>\n          </div>\n          \n          ' + (voices.length > 0 ? '\n            <div class="search-result-voices">\n              ' + (function () {
+    html += '\n      <div class="search-result-item" data-index="' + idx + '">\n        <div class="search-result-info">\n          <div class="search-result-title">' + escapeHtml(result.title || result.name || 'Без названия') + '</div>\n          \n          <div class="search-result-meta">\n            <div class="search-result-meta-item">\n              <span></span> ' + escapeHtml(trackerDisplay) + '\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> ' + escapeHtml(size) + '\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> ' + year + ' (' + date + ')\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> ' + type + ' / ' + quality + 'p\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> сиды: ' + sid + '\n            </div>\n            <div class="search-result-meta-item">\n              <span></span> пиры: ' + pir + '\n            </div>\n          </div>\n          \n          ' + (voices.length > 0 ? '\n            <div class="search-result-voices">\n              ' + (function () {
       var voicesHtml = '';
       for (var v = 0; v < voices.length; v++) {
         voicesHtml += '<span class="search-result-voice">' + escapeHtml(voices[v]) + '</span>';
@@ -2447,151 +2351,47 @@ function renderSearchResults() {
 
   searchResultsDiv.innerHTML = html;
 
-  // Добавляем обработчики для элементов поиска
-  var searchItems = searchResultsDiv.querySelectorAll('.search-result-item');
-  for (var i = 0; i < searchItems.length; i++) {
+  // Добавляем обработчики для кнопок PLAY
+  var resultItems = searchResultsDiv.querySelectorAll('.search-result-item');
+  for (var i = 0; i < resultItems.length; i++) {
     (function (item) {
-      var playBtn = item.querySelector('.search-result-play');
-      if (!playBtn) return;
+      item.addEventListener('click', function () {
+        var playBtn = item.querySelector('.search-result-play');
+        if (playBtn) playBtn.click();
+      });
+    })(resultItems[i]);
+  }
 
-      var magnet = playBtn.dataset.magnet;
-      var hash = playBtn.dataset.hash;
-      var resultJsonEncoded = playBtn.dataset.result;
-
-      var searchResult = null;
-      if (resultJsonEncoded) {
-        try {
-          var resultJson = decodeURIComponent(resultJsonEncoded);
-          searchResult = JSON.parse(resultJson);
-        } catch (e) {
-          console.error('Ошибка парсинга searchResult:', e);
-        }
-      }
-
-      // Переменные для long press
-      var holdTimer = null;
-      var holdHandled = false;
-
-      // Функция очистки таймера
-      function clearHoldTimer() {
-        if (holdTimer) {
-          clearTimeout(holdTimer);
-          holdTimer = null;
-        }
-      }
-
-      // Функция начала long press
-      function startHold(e) {
-        if (e && e.target && e.target.closest && e.target.closest('button, input, select, textarea, a')) {
-          // Если клик на кнопке, не обрабатываем long press (оставляем для обычного клика)
-          if (e.target.closest('.search-result-play')) {
-            return;
-          }
-        }
-
-        clearHoldTimer();
-        holdHandled = false;
-
-        holdTimer = setTimeout(async function () {
-          holdHandled = true;
-          console.log('🔽 Long press на элементе поиска, добавляем торрент');
-
-          // Добавляем торрент через long press
-          if (magnet && hash) {
-            // Сохраняем исходный HTML кнопки
-            var originalHtml = playBtn.innerHTML;
-
-            // Меняем состояние кнопки
-            playBtn.innerHTML = '⏳';
-            playBtn.disabled = true;
-
-            try {
-              var addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
-
-              if (addedTorrent) {
-                playBtn.innerHTML = '✓';
-                playBtn.style.background = '#4caf50';
-                playBtn.style.borderColor = '#4caf50';
-
-                // Обновляем список торрентов
-                await refreshTorrentsList();
-
-                // Через 2 секунды возвращаем исходный вид
-                setTimeout(function () {
-                  if (playBtn && !playBtn.dataset.addingInProgress) {
-                    playBtn.innerHTML = originalHtml;
-                    playBtn.style.background = '';
-                    playBtn.style.borderColor = '';
-                    playBtn.disabled = false;
-                  }
-                }, 2000);
-              } else {
-                playBtn.innerHTML = originalHtml;
-                playBtn.disabled = false;
-              }
-            } catch (error) {
-              console.error('Ошибка при добавлении:', error);
-              playBtn.innerHTML = originalHtml;
-              playBtn.disabled = false;
-            }
-          }
-        }, 900); // 900ms для long press
-      }
-
-      // Функция окончания нажатия
-      function endHold(e) {
-        clearHoldTimer();
-
-        if (!holdHandled) {
-          // Если не было long press, обрабатываем как обычный клик
-          // Но только если клик не на кнопке (чтобы не дублировать)
-          if (e && e.target && e.target.closest && !e.target.closest('.search-result-play')) {
-            // Клик на самом элементе, а не на кнопке
-            playBtn.click();
-          }
-        }
-
-        holdHandled = false;
-      }
-
-      // Добавляем обработчики для long press
-      item.addEventListener('touchstart', startHold, { passive: true });
-      item.addEventListener('touchend', endHold);
-      item.addEventListener('touchcancel', endHold);
-      item.addEventListener('touchmove', function () { clearHoldTimer(); });
-
-      item.addEventListener('mousedown', startHold);
-      item.addEventListener('mouseup', endHold);
-      item.addEventListener('mouseleave', function () { clearHoldTimer(); });
-
-      // Обработчик клика на кнопке (обычное воспроизведение)
-      playBtn.addEventListener('click', function (e) {
+  var playButtons = searchResultsDiv.querySelectorAll('.search-result-play');
+  for (var j = 0; j < playButtons.length; j++) {
+    (function (btn) {
+      btn.addEventListener('click', function (e) {
         e.stopPropagation();
+        var hash = btn.dataset.hash;
+        var magnet = btn.dataset.magnet;
+        var resultJsonEncoded = btn.dataset.result;
 
-        // Если идет добавление, не запускаем воспроизведение
-        if (playBtn.dataset.addingInProgress === 'true' || playBtn.disabled) {
-          console.log('Добавление в процессе, воспроизведение заблокировано');
-          return;
-        }
-
-        var hash = playBtn.dataset.hash;
-        var magnet = playBtn.dataset.magnet;
-        var resultJsonEncoded = playBtn.dataset.result;
-
-        console.log('▶ Нажата кнопка PLAY (воспроизведение)');
+        console.log('Нажата кнопка PLAY');
+        console.log('Hash:', hash);
+        console.log('Magnet:', magnet);
+        console.log('Есть постер из каталога:', !!window.pendingCatalogPoster);
 
         if (hash) {
           var searchResult = null;
           if (resultJsonEncoded) {
             try {
+              // Декодируем и парсим JSON
               var resultJson = decodeURIComponent(resultJsonEncoded);
               searchResult = JSON.parse(resultJson);
+              console.log('   Найден сохраненный результат:', searchResult.title || searchResult.name);
 
               if (window.pendingCatalogPoster) {
                 searchResult.poster = window.pendingCatalogPoster;
+                console.log('   Добавлен постер из каталога в searchResult');
               }
             } catch (e) {
               console.error('Ошибка парсинга resultJson:', e);
+              console.error('Данные:', resultJsonEncoded);
             }
           }
 
@@ -2600,23 +2400,7 @@ function renderSearchResults() {
           alert('Не удалось извлечь hash из magnet ссылки');
         }
       });
-
-      // Обработчик клика на самом элементе (не на кнопке)
-      item.addEventListener('click', function (e) {
-        // Если клик был на кнопке, не дублируем
-        if (e.target.closest('.search-result-play')) {
-          return;
-        }
-
-        // Если идет добавление, игнорируем
-        if (playBtn.dataset.addingInProgress === 'true' || playBtn.disabled) {
-          return;
-        }
-
-        // Воспроизводим через кнопку
-        playBtn.click();
-      });
-    })(searchItems[i]);
+    })(playButtons[j]);
   }
 }
 
