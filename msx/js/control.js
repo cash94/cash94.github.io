@@ -2641,7 +2641,7 @@ function setupFocusRescue() {
 
                         var magnet = playButton.dataset.magnet;
                         var hash = playButton.dataset.hash;
-                        var searchResult = null;
+                        var searchResult = playButton.dataset.result;
 
                         try {
                             var resultJson = decodeURIComponent(searchResult);
