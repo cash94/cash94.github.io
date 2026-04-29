@@ -1653,6 +1653,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     for (var i = 0; i < focusedElements.length; i++) {
       focusedElements[i].classList.remove('focused');
     }
+    currentFocusedElement = null;
 
     var controlsContainer = document.getElementById('controls-container');
     if (controlsContainer) {
@@ -1728,7 +1729,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         updatePlayPauseButton();
         startTorrentStatsUpdates();
 
-        
+
         if (thisisseek) {
           console.log('⚡ Продолжение воспроизведения с позиции ' + formatTime(initialSeek) + ', пропускаем накопление буфера');
           hidePlayerLoading();
@@ -2156,32 +2157,32 @@ function cancelCurrentPlayback() {
     //document.getElementById('playback-overlay').classList.remove('active');
     //document.querySelector('.playback-text').textContent = 'Воспроизведение...';
   }
-  
+
   // Очищаем интервалы буфера
   if (AppState.bufferCheckInterval) {
     clearInterval(AppState.bufferCheckInterval);
     AppState.bufferCheckInterval = null;
   }
-  
+
   // Останавливаем HLS поток
   if (AppState.hls) {
     try {
       AppState.hls.destroy();
       AppState.hls = null;
-    } catch(e) {
+    } catch (e) {
       console.error('Ошибка при уничтожении HLS:', e);
     }
   }
-  
+
   // Останавливаем поток на сервере
   if (AppState.currentStreamId) {
-    fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' }).catch(() => {});
+    fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' }).catch(() => { });
     AppState.currentStreamId = null;
   }
-  
+
   // Скрываем оверлей загрузки
   hidePlayerLoading();
-  
+
   // Разблокируем кнопки управления
   var controlBtns = document.querySelectorAll('.control-btn');
   for (var i = 0; i < controlBtns.length; i++) {
@@ -2323,21 +2324,34 @@ function showDetailView() {
   document.getElementById('torrserver-section').style.display = 'block';
 
   setTimeout(function () {
-    if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+    if (typeof updateFocusableElements === 'function' && typeof setFocusToElement === 'function') {
       updateFocusableElements();
+      var allElements = getAllFocusableElements();
 
-      var progressBtnIndex = -1;
-      if (typeof focusableElements !== 'undefined') {
-        for (var i = 0; i < focusableElements.length; i++) {
-          var el = focusableElements[i];
-          if (el && (el.classList.contains('detail-progress-btn') || el.classList.contains('file-item') || el.classList.contains('back-btn'))) {
-            progressBtnIndex = i;
-            break;
-          }
-        }
+      // Ищем кнопку прогресса
+      var targetElement = allElements.find(function (el) {
+        return el.classList && el.classList.contains('detail-progress-btn');
+      });
+
+      // Ищем элемент файла
+      if (!targetElement) {
+        targetElement = allElements.find(function (el) {
+          return el.classList && el.classList.contains('file-item');
+        });
       }
 
-      setFocus(progressBtnIndex !== -1 ? progressBtnIndex : 0);
+      // Ищем кнопку назад
+      if (!targetElement) {
+        targetElement = allElements.find(function (el) {
+          return el.classList && el.classList.contains('back-btn');
+        });
+      }
+
+      if (targetElement) {
+        setFocusToElement(targetElement);
+      } else if (allElements.length > 0) {
+        setFocusToElement(allElements[0]);
+      }
     }
   }, 250);
 
