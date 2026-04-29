@@ -1433,6 +1433,87 @@ function setupKeyboardHandlers() {
             var focused = document.querySelector('.focused');
 
             if (focused) {
+                // НОВАЯ ЛОГИКА ДЛЯ РЕЗУЛЬТАТОВ ПОИСКА
+                if (focused.classList && focused.classList.contains('search-result-item')) {
+                    var playBtn = focused.querySelector('.search-result-play');
+                    if (!playBtn || playBtn.disabled) return;
+
+                    var hash = playBtn.dataset.hash;
+                    var magnet = playBtn.dataset.magnet;
+                    var resultJsonEncoded = playBtn.dataset.result;
+
+                    if (!hash) {
+                        alert('Не удалось извлечь hash');
+                        return;
+                    }
+
+                    var searchResult = null;
+                    if (resultJsonEncoded) {
+                        try {
+                            var resultJson = decodeURIComponent(resultJsonEncoded);
+                            searchResult = JSON.parse(resultJson);
+                            if (window.pendingCatalogPoster) {
+                                searchResult.poster = window.pendingCatalogPoster;
+                            }
+                        } catch (e) {
+                            console.error('Ошибка парсинга:', e);
+                        }
+                    }
+
+                    // Используем механизм long press
+                    if (!focused._okHoldTimer) {
+                        focused._okHoldHandled = false;
+
+                        focused._okHoldTimer = setTimeout(async function () {
+                            focused._okHoldHandled = true;
+                            console.log('Long press - ДОБАВЛЯЕМ торрент');
+
+                            var originalHtml = playBtn.innerHTML;
+                            playBtn.innerHTML = '⏳';
+                            playBtn.disabled = true;
+
+                            try {
+                                var addedTorrent = await window.addTorrentToServer(magnet, hash, searchResult);
+                                if (addedTorrent) {
+                                    playBtn.innerHTML = '✓';
+                                    playBtn.style.background = '#4caf50';
+                                    if (typeof window.refreshTorrentsList === 'function') {
+                                        await window.refreshTorrentsList();
+                                    }
+                                    setTimeout(function () {
+                                        if (playBtn) {
+                                            playBtn.innerHTML = originalHtml;
+                                            playBtn.style.background = '';
+                                            playBtn.style.borderColor = '';
+                                            playBtn.disabled = false;
+                                        }
+                                    }, 2000);
+                                } else {
+                                    playBtn.innerHTML = originalHtml;
+                                    playBtn.disabled = false;
+                                }
+                            } catch (error) {
+                                playBtn.innerHTML = originalHtml;
+                                playBtn.disabled = false;
+                            }
+
+                            clearTimeout(focused._okHoldTimer);
+                            delete focused._okHoldTimer;
+                        }, 900);
+
+                        setTimeout(function () {
+                            if (!focused._okHoldHandled && focused._okHoldTimer) {
+                                console.log('Короткое нажатие - ВОСПРОИЗВОДИМ');
+                                window.playFromHash(hash, magnet, searchResult);
+                                clearTimeout(focused._okHoldTimer);
+                                delete focused._okHoldTimer;
+                            }
+                        }, 900);
+                    }
+                    return;
+                }
+
+                // Остальная логика для search
                 if (focused.id === 'search-query') {
                     focused.focus();
                     try { if (focused.select) focused.select(); } catch (err) { }
