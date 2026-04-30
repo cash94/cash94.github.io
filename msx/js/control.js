@@ -2752,27 +2752,52 @@ function setupFocusRescue() {
     function scrollToActiveConfigItem() {
         var activeItem = document.querySelector('#config-screen .focused');
         var configCard = document.querySelector('#config-screen .config-card');
+        var items = getConfigItems(); // Получаем все элементы для навигации
 
         if (!activeItem || !configCard) return;
+
+        // Находим индекс текущего элемента
+        var currentIndex = -1;
+        for (var i = 0; i < items.length; i++) {
+            if (activeItem === items[i]) {
+                currentIndex = i;
+                break;
+            }
+        }
 
         // Получаем позиции элемента и контейнера
         var containerRect = configCard.getBoundingClientRect();
         var itemRect = activeItem.getBoundingClientRect();
 
-        // Находим родительский контейнер с прокруткой (если есть)
         var scrollContainer = configCard;
-        var scrollTop = scrollContainer.scrollTop || 0;
-
-        // Вычисляем смещение для скролла
+        var scrollTop = scrollContainer.scrollTop;
         var offsetTop = itemRect.top - containerRect.top;
 
+        // Проверяем, предпоследний ли элемент
+        var isSecondLast = (currentIndex === items.length - 2);
+        // Проверяем, предпервый ли элемент
+        var isSecondFirst = (currentIndex === 1);
+
+        // Если предпоследний элемент - скроллим до конца
+        if (isSecondLast) {
+            scrollContainer.scrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+            return;
+        }
+
+        // Если предпервый элемент - скроллим до начала
+        if (isSecondFirst) {
+            scrollContainer.scrollTop = 0;
+            return;
+        }
+
+        // Стандартная логика для остальных элементов
         // Если элемент выше видимой области
         if (offsetTop < 0) {
-            scrollContainer.scrollTop = scrollTop + offsetTop - 10; // 10px отступа сверху
+            scrollContainer.scrollTop = scrollTop + offsetTop - 10;
         }
         // Если элемент ниже видимой области
         else if (offsetTop + itemRect.height > containerRect.height) {
-            scrollContainer.scrollTop = scrollTop + (offsetTop + itemRect.height - containerRect.height) + 10; // 10px отступа снизу
+            scrollContainer.scrollTop = scrollTop + (offsetTop + itemRect.height - containerRect.height) + 10;
         }
     }
 
