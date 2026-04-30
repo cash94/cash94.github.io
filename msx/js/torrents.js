@@ -1504,8 +1504,8 @@ async function searchTorrentsLegacy(query) {
     return;
   }
 
-  var encodedQuery = encodeURIComponent(query.trim());
-  var searchUrl = 'https://jac.red/api/v1.0/torrents?search=' + encodedQuery + '&apikey=null&exact=true';
+  var encodedQuery = encodeURIComponent(query.trim()); 
+  var searchUrl = AppState.protocol+ '//jac.red/api/v1.0/torrents?search=' + encodedQuery + '&apikey=null&exact=true';
 
   showLoading('Поиск...');
 
