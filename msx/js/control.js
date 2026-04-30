@@ -2751,10 +2751,25 @@ function setupFocusRescue() {
 
     function scrollToActiveConfigItem() {
         var activeItem = document.querySelector('#config-screen .focused');
-        var configCard = document.querySelector('#config-screen .config-card');
-        var items = getConfigItems(); // Получаем все элементы для навигации
+        var configScreen = document.querySelector('#config-screen');
+        var items = getConfigItems();
 
-        if (!activeItem || !configCard) return;
+        if (!activeItem || !configScreen) return;
+
+        // Находим реальный прокручиваемый контейнер
+        var scrollContainer = configScreen;
+        // Ищем родительский элемент, у которого есть прокрутка
+        while (scrollContainer && scrollContainer.scrollHeight <= scrollContainer.clientHeight) {
+            scrollContainer = scrollContainer.parentElement;
+            if (!scrollContainer || scrollContainer === document.body) {
+                scrollContainer = window;
+                break;
+            }
+        }
+
+        // Если контейнер - window, используем window.scrollY
+        var isWindow = (scrollContainer === window);
+        var currentScroll = isWindow ? window.scrollY : scrollContainer.scrollTop;
 
         // Находим индекс текущего элемента
         var currentIndex = -1;
@@ -2765,13 +2780,10 @@ function setupFocusRescue() {
             }
         }
 
-        // Получаем позиции элемента и контейнера
-        var containerRect = configCard.getBoundingClientRect();
+        // Получаем позицию элемента относительно окна
         var itemRect = activeItem.getBoundingClientRect();
-
-        var scrollContainer = configCard;
-        var scrollTop = scrollContainer.scrollTop;
-        var offsetTop = itemRect.top - containerRect.top;
+        var containerTop = isWindow ? 0 : scrollContainer.getBoundingClientRect().top;
+        var offsetTop = itemRect.top - containerTop;
 
         // Проверяем, предпоследний ли элемент
         var isSecondLast = (currentIndex === items.length - 2);
@@ -2780,24 +2792,44 @@ function setupFocusRescue() {
 
         // Если предпоследний элемент - скроллим до конца
         if (isSecondLast) {
-            scrollContainer.scrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+            if (isWindow) {
+                window.scrollTo(0, document.body.scrollHeight - window.innerHeight);
+            } else {
+                scrollContainer.scrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+            }
             return;
         }
 
         // Если предпервый элемент - скроллим до начала
         if (isSecondFirst) {
-            scrollContainer.scrollTop = 0;
+            if (isWindow) {
+                window.scrollTo(0, 0);
+            } else {
+                scrollContainer.scrollTop = 0;
+            }
             return;
         }
 
         // Стандартная логика для остальных элементов
+        var containerHeight = isWindow ? window.innerHeight : scrollContainer.clientHeight;
+
         // Если элемент выше видимой области
         if (offsetTop < 0) {
-            scrollContainer.scrollTop = scrollTop + offsetTop - 10;
+            var newScroll = currentScroll + offsetTop - 10;
+            if (isWindow) {
+                window.scrollTo(0, newScroll);
+            } else {
+                scrollContainer.scrollTop = newScroll;
+            }
         }
         // Если элемент ниже видимой области
-        else if (offsetTop + itemRect.height > containerRect.height) {
-            scrollContainer.scrollTop = scrollTop + (offsetTop + itemRect.height - containerRect.height) + 10;
+        else if (offsetTop + itemRect.height > containerHeight) {
+            var newScroll = currentScroll + (offsetTop + itemRect.height - containerHeight) + 10;
+            if (isWindow) {
+                window.scrollTo(0, newScroll);
+            } else {
+                scrollContainer.scrollTop = newScroll;
+            }
         }
     }
 
