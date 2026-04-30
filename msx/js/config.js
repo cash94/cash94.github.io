@@ -4,6 +4,7 @@ var SERVER_URL = window.location.origin;
 // Состояние приложения
 var AppState = {
   // Настройки сервера
+  protocol: window.location.protocol,
   currentTorrserverUrl: '',
   currentVersion: 'TorrStream.1.0.9',
   authEnabled: false,
