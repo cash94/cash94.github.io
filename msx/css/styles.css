@@ -379,13 +379,17 @@ body {
   padding: 1.2vw;
   background: #000000;
   border-bottom: 1px solid #4a9eff;
-  overflow-x: visible;
+  overflow-x: hidden;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-/* Гибкое сжатие групп фильтров */
+/* Гибкое сжатие групп фильтров - заставляем их сжиматься */
 .filter-group {
   flex: 1 1 0;
   min-width: 0;
+  width: 100%;
+  overflow: hidden;
 }
 
 .filter-select,
@@ -396,12 +400,13 @@ body {
   border: 1px solid #4a9eff;
   border-radius: 0.9vw;
   color: #fff;
-  font-size: clamp(10px, 1vw, 15px);
+  font-size: clamp(8px, 0.9vw, 14px);
   outline: none;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  box-sizing: border-box;
 }
 
 .filter-select:focus,
@@ -415,15 +420,16 @@ body {
 }
 
 .filter-reset-btn {
-  flex-shrink: 0;
-  padding: 0.7vw 1.5vw;
+  flex: 0 0 auto;
+  padding: 0.7vw 1.2vw;
   background: #4a1a1a;
   border: 1px solid #ff5050;
   border-radius: 0.9vw;
   color: #ff8a8a;
-  font-size: clamp(10px, 1vw, 15px);
+  font-size: clamp(8px, 0.9vw, 14px);
   cursor: pointer;
   white-space: nowrap;
+  max-width: 30%;
 }
 
 .filter-stats {
