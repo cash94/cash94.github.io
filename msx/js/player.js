@@ -2340,7 +2340,16 @@ function showDetailView() {
       setFocus(progressBtnIndex !== -1 ? progressBtnIndex : 0);
     }
   }, 250);
-
+  // сбрасываем торрент при выходе из плеера
+  dropTorrentToServer(AppState.currentDetailItem.hash).then(function (result) {
+    if (result) {
+      console.log('Торрент сброшен');
+    } else {
+      console.log('Торрент не был сброшен (нет подключения)');
+    }
+  }).catch(function (error) {  // убраны квадратные скобки
+    console.error('❌ Ошибка сброса торрента:', error);
+  });
   // Обновляем список торрентов в фоне
   refreshTorrentsList().then(function () {
     console.log('🔄 Список торрентов обновлен после выхода из плеера');
