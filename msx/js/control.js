@@ -140,7 +140,7 @@ function updateFocusableElements() {
         var filterToggleEl = document.getElementById('filter-toggle');
         var searchBtnEl = document.getElementById('search-btn');
         var closeSearchEl = document.getElementById('close-search');
-        var filterControlsList = document.querySelectorAll('#torrent-movie, #sort-by, #filter-quality, #filter-content-type, #filter-tracker, #filter-year, #filter-season, #filter-voice, #reset-filters');
+        var filterControlsList = document.querySelectorAll('#torrent-movie, #sort-by, #filter-quality, #filter-content-type, #filter-tracker, #filter-year, #filter-season, #filter-voice, #filter-videotype, #reset-filters');
         var filterControls = [];
         for (var r = 0; r < filterControlsList.length; r++) {
             var fc = filterControlsList[r];
@@ -270,7 +270,7 @@ function focusSearchHome(preferQuery) {
         var el = focusableElements[i];
         if (el.id === 'search-query') queryIndex = i;
         if (el.id === 'search-btn') searchBtnIndex = i;
-        if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && filterIndex === -1) {
+        if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && filterIndex === -1) {
             filterIndex = i;
         }
     }
@@ -384,7 +384,7 @@ function navigate(direction) {
             var firstResultIndex = -1;
             for (var i = 0; i < focusableElements.length; i++) {
                 var el = focusableElements[i];
-                if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) {
+                if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) {
                     firstFilterIndex = i;
                 }
                 if (el.classList && el.classList.contains('search-result-item') && firstResultIndex === -1) {
@@ -423,7 +423,7 @@ function navigate(direction) {
         } else if (AppState.currentScreen === 'search') {
             var firstFilterIndex = -1;
             for (var l = 0; l < focusableElements.length; l++) {
-                if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'reset-filters', 'close-search'].indexOf(focusableElements[l].id) !== -1) {
+                if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(focusableElements[l].id) !== -1) {
                     firstFilterIndex = l;
                     break;
                 }
@@ -675,7 +675,7 @@ function navigate(direction) {
             var el = focusableElements[q];
             if (el.id === 'torrent-movie' || el.id === 'sort-by' || el.id === 'filter-quality' ||
                 el.id === 'filter-content-type' || el.id === 'filter-tracker' ||
-                el.id === 'filter-year' || el.id === 'filter-season' || el.id === 'filter-voice' || el.id === 'reset-filters' || el.id === 'close-search') {
+                el.id === 'filter-year' || el.id === 'filter-season' || el.id === 'filter-voice' || el.id === 'filter-videotype'|| el.id === 'reset-filters' || el.id === 'close-search') {
                 filters.push(el);
             }
             if (el.classList && el.classList.contains('search-result-item')) {
@@ -966,7 +966,7 @@ function setupKeyboardHandlers() {
                         var firstResultIndex = -1;
                         for (var k = 0; k < focusableElements.length; k++) {
                             var el = focusableElements[k];
-                            if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) {
+                            if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) {
                                 firstFilterIndex = k;
                             }
                             if (el.classList && el.classList.contains('search-result-item') && firstResultIndex === -1) {
@@ -1086,7 +1086,7 @@ function setupKeyboardHandlers() {
                 updateFocusableElements();
                 var firstFilterIndex = -1;
                 for (var m = 0; m < focusableElements.length; m++) {
-                    if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'reset-filters', 'close-search'].indexOf(focusableElements[m].id) !== -1) {
+                    if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(focusableElements[m].id) !== -1) {
                         firstFilterIndex = m;
                         break;
                     }
@@ -1790,7 +1790,7 @@ function setupFocusRescue() {
         return visible;
     }
     function getSearchFilters() {
-        var ids = ['torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'reset-filters'];
+        var ids = ['torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters'];
         var visible = [];
         for (var i = 0; i < ids.length; i++) {
             var el = byId(ids[i]);
@@ -1871,7 +1871,7 @@ function setupFocusRescue() {
         }
         if (screen === 'search') {
             return el.closest('.search-result-item') || el.closest('.global-search-card') ||
-                ['search-query', 'filter-toggle', 'search-btn', 'close-search', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'reset-filters'].indexOf(el.id) !== -1;
+                ['search-query', 'filter-toggle', 'search-btn', 'close-search', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters'].indexOf(el.id) !== -1;
         }
         if (screen === 'detail') {
             return !!(
@@ -2524,7 +2524,7 @@ function setupFocusRescue() {
             // После открытия панели, устанавливаем фокус на первый фильтр
             setTimeout(function () {
                 updateFocusableElements();
-                var firstFilter = document.querySelector('#torrent-movie, #sort-by, #filter-quality, #filter-content-type, #filter-tracker, #filter-year, #filter-season, #filter-voice, #reset-filters');
+                var firstFilter = document.querySelector('#torrent-movie, #sort-by, #filter-quality, #filter-content-type, #filter-tracker, #filter-year, #filter-season, #filter-voice, #filter-videotype, #reset-filters');
                 if (firstFilter) {
                     var filterIndex = -1;
                     for (var i = 0; i < focusableElements.length; i++) {
@@ -2815,7 +2815,7 @@ function setupFocusRescue() {
 
         // Если элемент выше видимой области
         if (offsetTop < 0) {
-            var newScroll = currentScroll + offsetTop - 25;
+            var newScroll = currentScroll + offsetTop - 10;
             if (isWindow) {
                 window.scrollTo(0, newScroll);
             } else {
