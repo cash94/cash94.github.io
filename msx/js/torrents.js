@@ -1810,15 +1810,13 @@ function updateAvailableVideotype() {
 
   if (!videotypeFilter) return;
 
-  // Собираем все уникальные озвучки из результатов поиска
+  // Собираем все уникальные типы из результатов поиска
   for (var i = 0; i < searchResults.length; i++) {
     var result = searchResults[i];
-    if (result.videotype && Array.isArray(result.videotype)) {
-      for (var j = 0; j < result.videotype.length; j++) {
-        var videotype = result.videotype[j];
-        if (videotype && videotype.trim()) {
-          videotypeSet[videotype.trim()] = true;
-        }
+    if (result.videotype) {
+      var videotype = result.videotype;
+      if (videotype && videotype.trim()) {
+        videotypeSet[videotype.trim()] = true;
       }
     }
   }
