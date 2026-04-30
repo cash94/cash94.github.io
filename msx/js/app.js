@@ -798,6 +798,7 @@ function setupSearchFilters() {
   var resetFiltersBtn = document.getElementById('reset-filters');
   var filterSeason = document.getElementById('filter-season');
   var filterVoice = document.getElementById('filter-voice');
+  var filtervideotype = document.getElementById('filter-videotype');
 
   if (filterToggleBtn) {
     filterToggleBtn.addEventListener('click', function () {
@@ -892,6 +893,13 @@ function setupSearchFilters() {
   if (filterVoice && typeof applyFiltersAndSort === 'function') {
     filterVoice.addEventListener('change', function (e) {
       if (typeof currentVoiceFilter !== 'undefined') currentVoiceFilter = e.target.value;
+      applyFiltersAndSort();
+    });
+  }
+
+  if (filtervideotype && typeof applyFiltersAndSort === 'function') {
+    filtervideotype.addEventListener('change', function (e) {
+      if (typeof currentvideotypeFilter !== 'undefined') currentvideotypeFilter = e.target.value;
       applyFiltersAndSort();
     });
   }
