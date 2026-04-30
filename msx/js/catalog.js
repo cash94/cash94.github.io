@@ -1520,11 +1520,11 @@ async function loadCatalogPoster(card, title, mediaType, tmdbId, index) {
         }
         // Если это путь, начинающийся со слеша
         else if (item.poster_path.startsWith('/')) {
-            posterUrl = 'https://tsimg.hnar.online/t/p/w342' + item.poster_path;
+            posterUrl = AppState.protocol+'//tsimg.hnar.online/t/p/w342' + item.poster_path;
         }
         // Если это просто имя файла
         else {
-            posterUrl = 'https://tsimg.hnar.online/t/p/w342/' + item.poster_path;
+            posterUrl = AppState.protocol+'//tsimg.hnar.online/t/p/w342' + item.poster_path;
         }
 
         if (posterUrl) {
@@ -1571,7 +1571,7 @@ async function loadCatalogPoster(card, title, mediaType, tmdbId, index) {
                 if (response.ok) {
                     var data = await response.json();
                     if (data.poster_path) {
-                        posterUrl = 'https://tsimg.hnar.online/t/p/w342' + data.poster_path;
+                        posterUrl = AppState.protocol+'//tsimg.hnar.online/t/p/w342' + data.poster_path;
                         saveToTmdbCache('poster', cacheParams, { posterUrl: posterUrl, data: data });
                     }
                 }
@@ -1741,7 +1741,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     var finalPosterUrl = tempPoster;
 
     if (source.poster_path) {
-        var tmdbPosterUrl = 'https://tsimg.hnar.online/t/p/w342' + source.poster_path;
+        var tmdbPosterUrl = AppState.protocol+'//tsimg.hnar.online/t/p/w342' + source.poster_path;
         if (!tempPoster || tempPoster === '' || posterEl.innerHTML.indexOf('Нет постера') !== -1) {
             finalPosterUrl = tmdbPosterUrl;
             posterEl.innerHTML = '<img src="' + tmdbPosterUrl + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\"no-poster\">Нет постера</div>\'">';
@@ -1775,7 +1775,7 @@ async function showCatalogDetail(item, index, posterUrl) {
 
     var backdropPath = source.backdrop_path || (Array.isArray(source.backdrops) && source.backdrops[0] && source.backdrops[0].file_path) || null;
     if (backdropPath) {
-        var backdropUrl = backdropPath.indexOf('http') === 0 ? backdropPath : 'https://tsimg.hnar.online/t/p/original' + backdropPath;
+        var backdropUrl = backdropPath.indexOf('http') === 0 ? backdropPath : AppState.protocol+'//tsimg.hnar.online/t/p/original' + backdropPath;
         backdropEl.style.backgroundImage = 'url(' + backdropUrl + ')';
         backdropEl.classList.remove('hidden');
     } else {
@@ -1796,7 +1796,7 @@ async function showCatalogDetail(item, index, posterUrl) {
 
             for (var j = 0; j < actors.length; j++) {
                 var actor = actors[j];
-                var profileUrl = actor.profilePath ? 'https://tsimg.hnar.online/t/p/w185' + actor.profilePath : null;
+                var profileUrl = actor.profilePath ? AppState.protocol+'//tsimg.hnar.online/t/p/w185' + actor.profilePath : null;
                 actorsHtml += '\n                    <div class="catalog-actor-card" data-actor-id="' + actor.id + '">\n                        <div class="catalog-actor-photo">\n                            ' + (profileUrl ? '<img src="' + profileUrl + '" alt="' + escapeHtml(actor.name) + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') + '\n                        </div>\n                        <div class="catalog-actor-info">\n                            <div class="catalog-actor-name">' + escapeHtml(actor.name) + '</div>\n                            <div class="catalog-actor-character">' + escapeHtml(actor.character || '') + '</div>\n                        </div>\n                    </div>\n                ';
             }
 
@@ -1819,7 +1819,7 @@ async function showCatalogDetail(item, index, posterUrl) {
 
         for (var k = 0; k < recommendations.length; k++) {
             var rec = recommendations[k];
-            var recPosterUrl = rec.poster_path ? 'https://tsimg.hnar.online/t/p/w185' + rec.poster_path : null;
+            var recPosterUrl = rec.poster_path ? AppState.protocol+'//tsimg.hnar.online/t/p/w185' + rec.poster_path : null; 
             var recTitle = rec.title || rec.name || 'Без названия';
             var recYear = rec.release_date ? rec.release_date.substring(0, 4) : '';
             var recRating = rec.vote_average ? Math.round(rec.vote_average * 10) / 10 : null;
@@ -1857,7 +1857,7 @@ async function showCatalogDetail(item, index, posterUrl) {
 
                             var newPosterUrl = null;
                             if (newDetails.poster_path) {
-                                newPosterUrl = 'https://tsimg.hnar.online/t/p/w342' + newDetails.poster_path;
+                                newPosterUrl = AppState.protocol+'//tsimg.hnar.online/t/p/w342' + newDetails.poster_path;
                             }
 
                             await showCatalogDetail(newItem, 0, newPosterUrl);
@@ -2693,9 +2693,9 @@ window.addToWatchHistory = async function (tmdbId, title, mediaType, posterPath)
     try {
         // Если posterPath передан и это полный URL, извлекаем только относительный путь
         let savePosterPath = posterPath || null;
-        if (savePosterPath && savePosterPath.startsWith('https://tsimg.hnar.online/t/p/w342')) {
+        if (savePosterPath && savePosterPath.startsWith(AppState.protocol+'//tsimg.hnar.online/t/p/w342')) {
             // Извлекаем часть после w342 - она уже должна начинаться со слеша
-            savePosterPath = savePosterPath.replace('https://tsimg.hnar.online/t/p/w342', '');
+            savePosterPath = savePosterPath.replace(AppState.protocol+'//tsimg.hnar.online/t/p/w342', '');
         }
 
         const response = await fetch('/api/history/add', {
