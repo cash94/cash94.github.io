@@ -1004,7 +1004,15 @@ function renderTorrents() {
       card.onclick = function () { showDetail(torrent); };
       attachTorrentDeleteLongPress(card, torrent);
 
-      card.innerHTML = '\n      <div class="torrent-poster">\n        ' + (poster ? '<img src="' + poster + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">' : '<div class="no-poster">Нет постера</div>') + '\n      </div>\n      <div class="torrent-info">\n        <div class="torrent-title">' + escapeHtml(title) + '</div>\n        <div class="torrent-meta">\n          <span>' + formatBytes(torrent.torrent_size) + '</span>\n          <span class="torrent-badge">' + (displayCategory === 'tv' ? 'Сериал' : 'Фильм') + '</span>\n        </div>\n      </div>\n    ';
+      var playStatus = null;
+      
+      if (torrent.stat_string == "Torrent working" ) {
+        playStatus = escapeHtml("Идет просмотр");
+      } else {
+        playStatus = formatBytes(torrent.torrent_size);
+      }
+
+      card.innerHTML = '\n      <div class="torrent-poster">\n        ' + (poster ? '<img src="' + poster + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">' : '<div class="no-poster">Нет постера</div>') + '\n      </div>\n      <div class="torrent-info">\n        <div class="torrent-title">' + escapeHtml(title) + '</div>\n        <div class="torrent-meta">\n          <span>' + playStatus + '</span>\n          <span class="torrent-badge">' + (displayCategory === 'tv' ? 'Сериал' : 'Фильм') + '</span>\n        </div>\n      </div>\n    ';
 
       torrentsGrid.appendChild(card);
 
