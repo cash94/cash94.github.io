@@ -2749,6 +2749,33 @@ function setupFocusRescue() {
         return false;
     }
 
+    function scrollToActiveConfigItem() {
+        var activeItem = document.querySelector('#config-screen .focused');
+        var configCard = document.querySelector('#config-screen .config-card');
+
+        if (!activeItem || !configCard) return;
+
+        // Получаем позиции элемента и контейнера
+        var containerRect = configCard.getBoundingClientRect();
+        var itemRect = activeItem.getBoundingClientRect();
+
+        // Находим родительский контейнер с прокруткой (если есть)
+        var scrollContainer = configCard;
+        var scrollTop = scrollContainer.scrollTop || 0;
+
+        // Вычисляем смещение для скролла
+        var offsetTop = itemRect.top - containerRect.top;
+
+        // Если элемент выше видимой области
+        if (offsetTop < 0) {
+            scrollContainer.scrollTop = scrollTop + offsetTop - 10; // 10px отступа сверху
+        }
+        // Если элемент ниже видимой области
+        else if (offsetTop + itemRect.height > containerRect.height) {
+            scrollContainer.scrollTop = scrollTop + (offsetTop + itemRect.height - containerRect.height) + 10; // 10px отступа снизу
+        }
+    }
+
     function configHandle(direction) {
         var items = getConfigItems();
         var focused = (belongsToScreen(document.querySelector('.focused'), 'config') ? document.querySelector('.focused') : null);
@@ -2761,9 +2788,26 @@ function setupFocusRescue() {
             }
         }
         if (idx === -1) return ensureConfigFocus(true);
-        if (direction === 'up') return focusEl(items[Math.max(0, idx - 1)] || focused);
-        if (direction === 'down') return focusEl(items[Math.min(items.length - 1, idx + 1)] || focused);
-        if (direction === 'left' || direction === 'right') return true;
+
+        var newFocused = null;
+        if (direction === 'up') {
+            newFocused = items[Math.max(0, idx - 1)] || focused;
+        } else if (direction === 'down') {
+            newFocused = items[Math.min(items.length - 1, idx + 1)] || focused;
+        } else if (direction === 'left' || direction === 'right') {
+            return true;
+        } else {
+            return false;
+        }
+
+        if (newFocused) {
+            focusEl(newFocused);
+            // Добавляем скроллинг после фокуса
+            setTimeout(function () {
+                scrollToActiveConfigItem();
+            }, 50); // Небольшая задержка для применения стилей фокуса
+        }
+
         return false;
     }
 
