@@ -14,6 +14,7 @@ var currentTrackerFilter = 'all';
 var currentYearFilter = '';
 var currentSeasonFilter = 'all';
 var currentVoiceFilter = 'all';
+var currentvideotypeFilter = 'all';
 
 // Список уникальных трекеров из результатов поиска
 var availableTrackers = [];
@@ -148,6 +149,17 @@ function syncSearchFilterButtons() {
       voiceFilter.value = 'all';
     }
   }
+
+  // Синхронизируем фильтр по типу видео
+  var videotypeFilter = document.getElementById('filter-videotype');
+  if (videotypeFilter) {
+    if (currentvideotypeFilter && currentvideotypeFilter !== 'all') {
+      videotypeFilter.value = currentvideotypeFilter;
+    } else {
+      videotypeFilter.value = 'all';
+    }
+  }
+  
 }
 
 function cycleFilterButton(filterType, direction) {
@@ -1005,9 +1017,9 @@ function renderTorrents() {
       attachTorrentDeleteLongPress(card, torrent);
 
       var playStatus = null;
-      
-      if (torrent.stat_string == "Torrent working" ) {
-        playStatus = formatBytes(torrent.torrent_size) +" | "+ escapeHtml("Идет просмотр");
+
+      if (torrent.stat_string == "Torrent working") {
+        playStatus = escapeHtml("Идет просмотр");
       } else {
         playStatus = formatBytes(torrent.torrent_size);
       }
@@ -1017,7 +1029,7 @@ function renderTorrents() {
       torrentsGrid.appendChild(card);
 
       // Загружаем и добавляем прогресс
-      //addProgressToCard(card, torrent);
+      addProgressToCard(card, torrent);
     })(AppState.torrents[i]);
   }
 
@@ -1299,7 +1311,7 @@ async function showDetail(torrent) {
           addFileItem(files[i], torrent.hash, torrent.title);
         } else {
           indx = indx + 1;
-          addFileItem(files[i], torrent.hash, nameSerials +" "+ indx);
+          addFileItem(files[i], torrent.hash, nameSerials + " " + indx);
         }
       }
     }
@@ -1630,6 +1642,7 @@ function updateAvailableTrackers() {
   syncSearchFilterButtons();
   updateAvailableSeasons();
   updateAvailableVoices();
+  updateAvailableVideotype();
 }
 
 // Применение фильтров и сортировки
@@ -1668,6 +1681,12 @@ function applyFiltersAndSort() {
     if (shouldInclude && currentVoiceFilter && currentVoiceFilter !== 'all') {
       var hasVoice = item.voices && Array.isArray(item.voices) && item.voices.indexOf(currentVoiceFilter) !== -1;
       if (!hasVoice) shouldInclude = false;
+    }
+
+    // По типу
+    if (shouldInclude && currentvideotypeFilter && currentvideotypeFilter !== 'all') {
+      var hasvideotype = item.videotype && Array.isArray(item.videotype) && item.videotype.indexOf(currentvideotypeFilter) !== -1;
+      if (!hasvideotype) shouldInclude = false;
     }
 
     if (shouldInclude) {
@@ -1779,6 +1798,49 @@ function updateAvailableVoices() {
   if (currentVoice !== 'all' && !voiceSet[currentVoice]) {
     voiceFilter.value = 'all';
     currentVoiceFilter = 'all';
+  }
+}
+
+// Обновление списка доступных типов видео
+function updateAvailableVideotype() {
+
+  currentvideotypeFilter
+  var videotypeSet = {};
+  var videotypeFilter = document.getElementById('filter-videotype');
+
+  if (!videotypeFilter) return;
+
+  // Собираем все уникальные озвучки из результатов поиска
+  for (var i = 0; i < searchResults.length; i++) {
+    var result = searchResults[i];
+    if (result.videotype && Array.isArray(result.videotype)) {
+      for (var j = 0; j < result.videotype.length; j++) {
+        var videotype = result.videotype[j];
+        if (videotype && videotype.trim()) {
+          videotypeSet[videotype.trim()] = true;
+        }
+      }
+    }
+  }
+
+  // Получаем типы и сортируем по алфавиту
+  availablevideotype = Object.keys(videotypeSet).sort();
+
+  // Обновляем select с типами
+  var currentvideotype = videotypeFilter.value;
+
+  videotypeFilter.innerHTML = '<option value="all">Все типы</option>';
+
+  for (var j = 0; j < availablevideotype.length; j++) {
+    var videotype = availablevideotype[j];
+    var selected = (currentvideotype !== 'all' && videotype === currentvideotype) ? 'selected' : '';
+    videotypeFilter.innerHTML += '<option value="' + escapeHtml(videotype) + '" ' + selected + '>' + escapeHtml(videotype) + '</option>';
+  }
+
+  // Если текущая озвучка не найдена в новом списке, сбрасываем на "Все озвучки"
+  if (currentvideotype !== 'all' && !videotypeSet[currentvideotype]) {
+    videotypeFilter.value = 'all';
+    currenvideotypeFilter = 'all';
   }
 }
 
@@ -1989,6 +2051,7 @@ function resetFilters() {
   currentYearFilter = '';
   currentSeasonFilter = 'all';
   currentVoiceFilter = 'all';
+  currentvideotypeFilter = 'all'; 
 
   syncSearchFilterButtons();
   var filterYear = document.getElementById('filter-year');
@@ -1996,16 +2059,22 @@ function resetFilters() {
     filterYear.value = 'all';
   }
 
-  // НОВОЕ: Сбрасываем фильтр сезона
+  // Сбрасываем фильтр сезона
   var filterSeason = document.getElementById('filter-season');
   if (filterSeason) {
     filterSeason.value = 'all';
   }
 
-  // НОВОЕ: Сбрасываем фильтр озвучки
+  // Сбрасываем фильтр озвучки
   var filterVoice = document.getElementById('filter-voice');
   if (filterVoice) {
     filterVoice.value = 'all';
+  }
+
+  // Сбрасываем фильтр по типу
+  var filtervideotype = document.getElementById('filter-videotype');
+  if (filtervideotype) {
+    filtervideotype.value = 'all';
   }
 
   applyFiltersAndSort();
@@ -2201,7 +2270,7 @@ async function addTorrentToServer(magnet, hash, searchResult) {
     var torrname = '';
     if (AppState.mediaType == 'tv') {
       if (searchResult.seasons && searchResult.seasons.length > 0) {
-        torrname = searchResult.name +' | сезон '+searchResult.seasons[0];
+        torrname = searchResult.name + ' | сезон ' + searchResult.seasons[0];
       } else {
         // обработка случая, когда массив пустой или отсутствует
         torrname = searchResult.name;
@@ -2457,6 +2526,7 @@ function clearSearchResults() {
   currentTrackerFilter = 'all';
   currentSeasonFilter = 'all';
   currentVoiceFilter = 'all';
+  currentvideotypeFilter = 'all';
   syncSearchFilterButtons();
 }
 
