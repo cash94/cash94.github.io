@@ -47,7 +47,7 @@ var SORT_OPTIONS = [
 ];
 
 var QUALITY_OPTIONS = [
-  { value: 'all', label: 'Все качества' },
+  { value: 'all', label: 'Все' },
   { value: '2160', label: '4K (2160p)' },
   { value: '1080', label: 'Full HD (1080p)' },
   { value: '720', label: 'HD (720p)' },
@@ -56,7 +56,7 @@ var QUALITY_OPTIONS = [
 ];
 
 function getTrackerFilterOptions() {
-  var options = [{ value: 'all', label: 'Все трекеры' }];
+  var options = [{ value: 'all', label: 'Все' }];
   for (var i = 0; i < availableTrackers.length; i++) {
     var tracker = availableTrackers[i];
     options.push({
@@ -1562,7 +1562,7 @@ function updateAvailableYears() {
     var currentYear = yearFilter.value;
 
     // Очищаем и заполняем заново
-    yearFilter.innerHTML = '<option value="all">Все года</option>';
+    yearFilter.innerHTML = '<option value="all">Все</option>';
 
     for (var j = 0; j < availableYears.length; j++) {
       var year = availableYears[j];
@@ -1745,7 +1745,7 @@ function updateAvailableSeasons() {
   // Обновляем select с сезонами
   var currentSeason = seasonFilter.value;
 
-  seasonFilter.innerHTML = '<option value="all">Все сезоны</option>';
+  seasonFilter.innerHTML = '<option value="all">Все</option>';
 
   for (var j = 0; j < availableSeasons.length; j++) {
     var season = availableSeasons[j];
@@ -1786,7 +1786,7 @@ function updateAvailableVoices() {
   // Обновляем select с озвучками
   var currentVoice = voiceFilter.value;
 
-  voiceFilter.innerHTML = '<option value="all">Все озвучки</option>';
+  voiceFilter.innerHTML = '<option value="all">Все</option>';
 
   for (var j = 0; j < availableVoices.length; j++) {
     var voice = availableVoices[j];
@@ -1827,7 +1827,7 @@ function updateAvailableVideotype() {
   // Обновляем select с типами
   var currentvideotype = videotypeFilter.value;
 
-  videotypeFilter.innerHTML = '<option value="all">Все типы</option>';
+  videotypeFilter.innerHTML = '<option value="all">Все</option>';
 
   for (var j = 0; j < availablevideotype.length; j++) {
     var videotype = availablevideotype[j];
