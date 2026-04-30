@@ -2605,3 +2605,7 @@ body.detail-open {
   font-feature-settings: normal !important;
   font-variant-numeric: tabular-nums !important;
 }
+
+.hidden-filter {
+  display: none;
+}
