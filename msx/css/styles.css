@@ -374,16 +374,18 @@ body {
 
 .search-filters {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10.7px;
   padding: 17.12px;
   background: #000000;
   border-bottom: 1px solid #4a9eff;
+  overflow-x: visible;
 }
 
 .filter-group {
-  flex: 1;
-  min-width: 149.8px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .filter-select,
@@ -397,6 +399,9 @@ body {
   font-size: 13.91px;
   outline: none;
   cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .filter-select:focus,
@@ -410,6 +415,7 @@ body {
 }
 
 .filter-reset-btn {
+  flex-shrink: 0;
   padding: 10.7px 21.4px;
   background: #4a1a1a;
   border: 1px solid #ff5050;
