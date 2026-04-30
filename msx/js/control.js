@@ -2815,7 +2815,7 @@ function setupFocusRescue() {
 
         // Если элемент выше видимой области
         if (offsetTop < 0) {
-            var newScroll = currentScroll + offsetTop - 10;
+            var newScroll = currentScroll + offsetTop - 25;
             if (isWindow) {
                 window.scrollTo(0, newScroll);
             } else {
