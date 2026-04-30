@@ -375,38 +375,34 @@ body {
 .search-filters {
   display: flex;
   flex-wrap: nowrap;
-  gap: 0.8vw;
-  padding: 1.2vw;
+  gap: 10.7px;
+  padding: 17.12px;
   background: #000000;
   border-bottom: 1px solid #4a9eff;
-  overflow-x: hidden;
-  width: 100%;
-  box-sizing: border-box;
+  overflow-x: visible;
 }
 
-/* Гибкое сжатие групп фильтров - заставляем их сжиматься */
+/* Гибкое сжатие групп фильтров */
 .filter-group {
   flex: 1 1 0;
   min-width: 0;
-  width: 100%;
-  overflow: hidden;
+  max-width: 100%;
 }
 
 .filter-select,
 .filter-input {
   width: 100%;
-  padding: 0.7vw 0.9vw;
+  padding: 10.7px 12.84px;
   background: #282837;
   border: 1px solid #4a9eff;
-  border-radius: 0.9vw;
+  border-radius: 12.84px;
   color: #fff;
-  font-size: clamp(8px, 0.9vw, 14px);
+  font-size: 13.91px;
   outline: none;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-sizing: border-box;
 }
 
 .filter-select:focus,
@@ -420,16 +416,15 @@ body {
 }
 
 .filter-reset-btn {
-  flex: 0 0 auto;
-  padding: 0.7vw 1.2vw;
+  flex-shrink: 0;
+  padding: 10.7px 21.4px;
   background: #4a1a1a;
   border: 1px solid #ff5050;
-  border-radius: 0.9vw;
+  border-radius: 12.84px;
   color: #ff8a8a;
-  font-size: clamp(8px, 0.9vw, 14px);
+  font-size: 13.91px;
   cursor: pointer;
   white-space: nowrap;
-  max-width: 30%;
 }
 
 .filter-stats {
