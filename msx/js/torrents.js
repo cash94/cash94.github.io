@@ -1007,7 +1007,7 @@ function renderTorrents() {
       var playStatus = null;
       
       if (torrent.stat_string == "Torrent working" ) {
-        playStatus = escapeHtml("Идет просмотр");
+        playStatus = formatBytes(torrent.torrent_size) +" | "+ escapeHtml("Идет просмотр");
       } else {
         playStatus = formatBytes(torrent.torrent_size);
       }
