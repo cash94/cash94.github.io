@@ -2026,6 +2026,50 @@ function initYearFilter() {
   }
 }
 
+// сброс торрента в TorrServer
+async function dropTorrentToServer(hash) {
+
+  if (!AppState.currentTorrserverUrl) {
+    alert('Сначала подключитесь к TorrServer');
+    return null;
+  }
+
+  try {
+
+    var requestBody = {
+      action: 'drop',
+      hash: hash
+    };
+
+    var headers = {
+      'Content-Type': 'application/json',
+    };
+
+    var authHeaders = getAuthHeaders();
+    for (var key in authHeaders) {
+      if (authHeaders.hasOwnProperty(key)) {
+        headers[key] = authHeaders[key];
+      }
+    }
+
+    var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      throw new Error('Ошибка остановки: ' + response.status);
+    }
+
+    return true;
+
+  } catch (error) {
+    console.error('Ошибка остановки торрента:', error);
+    throw error;
+  }
+}
+
 // Добавление торрента в TorrServer из поиска
 async function addTorrentSearchToServer(magnet, hash, searchResult) {
   if (searchResult === undefined) searchResult = null;
@@ -2870,3 +2914,4 @@ window.clearSearchResults = clearSearchResults;
 window.addTorrentSearchToServer = addTorrentSearchToServer;
 window.playFromHash = playFromHash;
 window.refreshTorrentsList = refreshTorrentsList;
+window.dropTorrentToServer = dropTorrentToServer;
