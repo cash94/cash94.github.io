@@ -375,28 +375,28 @@ body {
 .search-filters {
   display: flex;
   flex-wrap: nowrap;
-  gap: 10.7px;
-  padding: 17.12px;
+  gap: 0.8vw;
+  padding: 1.2vw;
   background: #000000;
   border-bottom: 1px solid #4a9eff;
   overflow-x: visible;
 }
 
+/* Гибкое сжатие групп фильтров */
 .filter-group {
   flex: 1 1 0;
   min-width: 0;
-  max-width: 100%;
 }
 
 .filter-select,
 .filter-input {
   width: 100%;
-  padding: 10.7px 12.84px;
+  padding: 0.7vw 0.9vw;
   background: #282837;
   border: 1px solid #4a9eff;
-  border-radius: 12.84px;
+  border-radius: 0.9vw;
   color: #fff;
-  font-size: 13.91px;
+  font-size: clamp(10px, 1vw, 15px);
   outline: none;
   cursor: pointer;
   white-space: nowrap;
@@ -416,12 +416,12 @@ body {
 
 .filter-reset-btn {
   flex-shrink: 0;
-  padding: 10.7px 21.4px;
+  padding: 0.7vw 1.5vw;
   background: #4a1a1a;
   border: 1px solid #ff5050;
-  border-radius: 12.84px;
+  border-radius: 0.9vw;
   color: #ff8a8a;
-  font-size: 13.91px;
+  font-size: clamp(10px, 1vw, 15px);
   cursor: pointer;
   white-space: nowrap;
 }
