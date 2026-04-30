@@ -1029,7 +1029,7 @@ function renderTorrents() {
       torrentsGrid.appendChild(card);
 
       // Загружаем и добавляем прогресс
-      addProgressToCard(card, torrent);
+      //addProgressToCard(card, torrent);
     })(AppState.torrents[i]);
   }
 
