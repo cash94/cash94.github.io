@@ -1685,7 +1685,7 @@ function applyFiltersAndSort() {
 
     // По типу
     if (shouldInclude && currentvideotypeFilter && currentvideotypeFilter !== 'all') {
-      var hasvideotype = item.videotype && Array.isArray(item.videotype) && item.videotype.indexOf(currentvideotypeFilter) !== -1;
+      var hasvideotype = item.videotype == currentvideotypeFilter; 
       if (!hasvideotype) shouldInclude = false;
     }
 
