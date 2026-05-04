@@ -1460,6 +1460,14 @@
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-anilist.png",
         "versions": [
             {
+                "version": "13.0.0.0",
+                "changelog": "- Implement rate limit and HTTP 429 handling (#112) @ivanjx\n- Add option for including/excluding series description (synopsis) (#103) @jack-mil\n- Filter tags by Anilist rank and Add maximum tags setting (#102) @jack-mil\n\n### Dependency updates ###\n- Update dotnet monorepo to 9.0.11 (#105) @[renovate[bot]](https://github.com/apps/renovate)",
+                "targetAbi": "10.11.8.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/anilist/anilist_13.0.0.0.zip",
+                "checksum": "0b7b57fe4885d81755a2798fc992e24f",
+                "timestamp": "2026-05-04T17:22:10Z"
+            },
+            {
                 "version": "12.0.0.0",
                 "changelog": "- Jellyfin 10.11 support (#92) @crobibero",
                 "targetAbi": "10.11.0.0",
