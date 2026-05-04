@@ -6,7 +6,7 @@
 
 Если Вам нужно только обновить
 	1) Скачать скрипт https://cash94.github.io/TorrStream_update.bat
-	2) Запустить скрипт TorrStream_install.bat
+	2) Запустить скрипт TorrStream_update.bat
 	3) Запустить TorrStream-windows-x64.exe
 
 Действия на телевизоре
