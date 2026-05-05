@@ -2682,10 +2682,3 @@ body.detail-open {
   position: relative;
   background-color: #000000;
 }
-
-#detail-view .detail-header,
-#detail-view .detail-progress,
-#detail-view .files-list {
-  position: relative;
-  z-index: 1;
-}
