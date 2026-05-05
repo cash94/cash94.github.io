@@ -762,6 +762,18 @@ body {
 
 .files-list {
   margin-top: 18.42px;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 12px;
+  padding: 8px 4px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Скрываем скроллбар в Firefox */
+}
+
+.files-list::-webkit-scrollbar {
+  display: none; /* Скрываем скроллбар в Chrome/Safari */
 }
 
 .file-item {
@@ -769,17 +781,22 @@ body {
   backdrop-filter: blur(8px);
   border-radius: 12px;
   padding: 11.04px;
-  margin-bottom: 7.4px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border: 1px solid rgba(255, 255, 255, 0.15);
+  min-width: 280px;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  gap: 12px;
 }
 
 .file-name {
   flex: 1;
-  margin-right: 12px;
+  margin-right: 0;
   font-size: 12.9px;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .play-btn {
@@ -791,7 +808,7 @@ body {
   border-radius: 21.96px;
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .play-btn:hover {
