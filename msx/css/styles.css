@@ -374,12 +374,13 @@ body {
 
 .search-filters {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 10.7px;
   padding: 17.12px;
   background: #000000;
-  border-bottom: 1px solid #4a9eff;
+  border-bottom: 1px solid #000000;
   overflow-x: visible;
+  max-height: none;
 }
 
 /* Гибкое сжатие групп фильтров */
