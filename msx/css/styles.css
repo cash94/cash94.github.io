@@ -707,8 +707,9 @@ body {
 .detail-progress {
   margin: 14.89px;
   padding: 12.9px;
-  background: #1e3a5f;
-  border: 1px solid #4a9eff;
+  background: rgba(60, 60, 70, 0.5);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 12px;
 }
 
