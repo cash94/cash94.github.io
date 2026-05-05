@@ -583,6 +583,7 @@ function setupNavigation() {
   if (backFromDetail) {
     backFromDetail.addEventListener('click', function () {
       console.log('🔙 Возврат из детального просмотра');
+      resetDetailBackground();
       if (AppState && !AppState.isSearch) {
         var detailView = document.getElementById('detail-view');
         if (detailView) detailView.style.display = 'none';
