@@ -350,15 +350,6 @@ body {
   display: flex;
   align-items: center;
   gap: 6.42px;
-  position: relative;
-  
-  /* КРИТИЧЕСКИ ВАЖНО: увеличиваем область нажатия */
-  min-width: 90px;
-  min-height: 44px;
-  
-  /* Убираем стандартные стили WebKit */
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
 }
 
 .filter-toggle-btn.active {
