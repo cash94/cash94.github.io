@@ -2268,10 +2268,10 @@ async function addTorrentToServer(magnet, hash, searchResult) {
     var torrname = '';
     if (AppState.mediaType == 'tv') {
       if (searchResult.seasons && searchResult.seasons.length > 0) {
-        torrname = searchResult.name + ' | сезон ' + searchResult.seasons[0];
+        torrname = '['+catalogState.lastSelectedId+'] '+ searchResult.name + ' | сезон ' + searchResult.seasons[0];
       } else {
         // обработка случая, когда массив пустой или отсутствует
-        torrname = searchResult.name;
+        torrname = '['+catalogState.lastSelectedId+'] '+ searchResult.name;
       }
     } else {
       torrname = searchResult.name;
