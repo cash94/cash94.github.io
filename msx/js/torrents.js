@@ -1094,24 +1094,30 @@ function hideCatalogDetailExtra() {
 
 window.hideCatalogDetailExtra = hideCatalogDetailExtra;
 
-async function getTmdbDetailsWithCache(tmdbId) {
+async function getTmdbDetailsWithCache(tmdbId, mediaType) {
   if (!tmdbId) return null;
+
+  // Определяем тип, если не передан
+  if (!mediaType) {
+    // Ищем текущий торрент по hash или title
+    mediaType = 'movie'; // по умолчанию фильм
+  }
 
   // Проверяем, доступен ли кэш из catalog.js
   if (window.getFromTmdbCache && window.saveToTmdbCache) {
     // Используем существующий кэш catalog.js
-    var cacheParams = { id: tmdbId, type: 'movie' };
+    var cacheParams = { id: tmdbId, type: mediaType };
     var cachedData = window.getFromTmdbCache('details', cacheParams);
 
     if (cachedData) {
-      console.log('📦 TMDB данные взяты из catalog.js кэша для ID:', tmdbId);
+      console.log('📦 TMDB данные взяты из catalog.js кэша для ID:', tmdbId, 'тип:', mediaType);
       return cachedData;
     }
 
     // Загружаем данные
-    console.log('🌐 Загрузка TMDB данных для ID:', tmdbId);
+    console.log('🌐 Загрузка TMDB данных для ID:', tmdbId, 'тип:', mediaType);
     try {
-      var response = await fetch('/api/tmdb/details?id=' + tmdbId);
+      var response = await fetch('/api/tmdb/details?id=' + tmdbId + '&type=' + mediaType);
       if (response.ok) {
         var data = await response.json();
         // Сохраняем в кэш catalog.js
@@ -1130,18 +1136,19 @@ async function getTmdbDetailsWithCache(tmdbId) {
       window.tmdbDetailsCache = new Map();
     }
 
-    if (window.tmdbDetailsCache.has(tmdbId)) {
-      var cached = window.tmdbDetailsCache.get(tmdbId);
+    var cacheKey = tmdbId + '_' + mediaType;
+    if (window.tmdbDetailsCache.has(cacheKey)) {
+      var cached = window.tmdbDetailsCache.get(cacheKey);
       if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) {
         return cached.data;
       }
     }
 
     try {
-      var response = await fetch('/api/tmdb/details?id=' + tmdbId);
+      var response = await fetch('/api/tmdb/details?id=' + tmdbId + '&type=' + mediaType);
       if (response.ok) {
         var data = await response.json();
-        window.tmdbDetailsCache.set(tmdbId, {
+        window.tmdbDetailsCache.set(cacheKey, {
           data: data,
           timestamp: Date.now()
         });
@@ -1237,7 +1244,22 @@ async function showDetail(torrent) {
   // Если нашли TMDB ID, загружаем данные
   if (tmdbId) {
     console.log('Загрузка данных TMDB для ID:', tmdbId);
-    tmdbData = await getTmdbDetailsWithCache(tmdbId);
+    var mediaType = 'movie'; // по умолчанию
+
+    // Проверяем, сериал ли это
+    try {
+      if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 1) {
+        mediaType = 'tv';
+      } else if (torrent.data) {
+        var data = JSON.parse(torrent.data);
+        if (data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 1) {
+          mediaType = 'tv';
+        }
+      }
+    } catch (e) { }
+
+    // Загружаем данные с указанием типа
+    tmdbData = await getTmdbDetailsWithCache(tmdbId, mediaType);
 
     if (tmdbData) {
       console.log('Получены данные TMDB:', tmdbData);
