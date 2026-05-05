@@ -108,7 +108,6 @@ function saveToTmdbCache(endpoint, params, data) {
         params: params
     };
 
-    console.log('💾 TMDB кэш: SAVE для ' + endpoint, params);
 }
 
 // Функция очистки старых записей из кэша TMDB
@@ -1573,7 +1572,6 @@ async function loadCatalogPoster(card, title, mediaType, tmdbId, index) {
             var timeoutId = setTimeout(function () { controller.abort(); }, 5000);
 
             if (tmdbId && tmdbId !== 'undefined' && tmdbId !== 'null') {
-                console.log('🔍 Загрузка постера для ' + title + ' (ID: ' + tmdbId + ', type: ' + mediaType + ')');
 
                 var response = await fetch('/api/tmdb/item?id=' + tmdbId + '&type=' + mediaType, {
                     signal: controller.signal
