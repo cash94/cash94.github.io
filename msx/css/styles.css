@@ -2619,3 +2619,52 @@ body.detail-open {
 .hidden-filter {
   display: none;
 }
+
+/* Принудительно исправляем зону клика для кнопки Фильтры */
+.filter-toggle-btn,
+#filter-toggle {
+  /* Фиксируем позиционирование */
+  position: relative !important;
+  z-index: 100 !important;
+  
+  /* Явно указываем область нажатия */
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  
+  /* Увеличиваем область нажатия и фиксируем её положение */
+  min-width: 100px !important;
+  min-height: 44px !important;
+  padding: 8px 16px !important;
+  
+  /* Убираем любые трансформации, которые могут смещать область */
+  transform: none !important;
+  
+  /* Принудительно делаем кликабельным */
+  cursor: pointer !important;
+  pointer-events: auto !important;
+}
+
+/* Улучшаем область нажатия для всех сенсорных кнопок */
+button,
+.filter-toggle-btn,
+#filter-toggle,
+#search-btn,
+#close-search,
+.control-btn,
+.play-btn,
+.torrent-card,
+.file-item,
+.view-tab,
+.back-btn,
+.settings-btn {
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+/* Визуальная обратная связь при тапе */
+.touch-active {
+  transform: scale(0.97);
+  transition: transform 0.05s ease;
+}
+
