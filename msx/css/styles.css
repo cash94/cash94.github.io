@@ -756,14 +756,15 @@ body {
 }
 
 .file-item {
-  background: #282837;
+  background: rgba(60, 60, 70, 0.5);
+  backdrop-filter: blur(8px);
   border-radius: 12px;
   padding: 11.04px;
   margin-bottom: 7.4px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid #4a9eff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .file-name {
