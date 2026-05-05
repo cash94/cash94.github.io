@@ -1127,6 +1127,90 @@ async function showDetail(torrent) {
   var posterImg = document.getElementById('detail-poster');
   var titleEl = document.getElementById('detail-title-text');
   var filesList = document.getElementById('files-list');
+  var detailSubtitle = document.getElementById('detail-subtitle');
+  var detailViewDiv = document.getElementById('detail-view');
+
+  // Извлекаем TMDB ID из названия торрента
+  var tmdbId = null;
+  var cleanTitle = torrent.title || 'Без названия';
+
+  // Ищем ID в квадратных скобках [ID] - только цифры
+  var bracketMatch = cleanTitle.match(/\[(\d+)\]/);
+  if (bracketMatch && bracketMatch[1]) {
+    tmdbId = bracketMatch[1];
+    // Удаляем ID из названия для отображения
+    cleanTitle = cleanTitle.replace(/\[\d+\]/, '').trim();
+    console.log('Найден TMDB ID в названии:', tmdbId);
+  }
+
+  // Обновляем заголовок (без ID в скобках)
+  titleEl.textContent = cleanTitle;
+
+  // Переменные для данных TMDB
+  var tmdbData = null;
+  var backdropPath = null;
+  var overview = null;
+
+  // Если нашли TMDB ID, загружаем данные
+  if (tmdbId) {
+    console.log('Загрузка данных TMDB для ID:', tmdbId);
+    try {
+      var tmdbResponse = await fetch('/api/tmdb/details?id=' + tmdbId);
+      if (tmdbResponse.ok) {
+        tmdbData = await tmdbResponse.json();
+        console.log('Получены данные TMDB:', tmdbData);
+
+        // Сохраняем backdrop и overview
+        if (tmdbData.backdrop_path) {
+          backdropPath = AppState.protocol + '//tsimg.hnar.online/t/p/original' + tmdbData.backdrop_path;
+        }
+        if (tmdbData.overview) {
+          overview = tmdbData.overview;
+        }
+
+        // Если есть постер из TMDB и нет постера в торренте, используем его
+        if (!poster && tmdbData.poster_path) {
+          poster = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + tmdbData.poster_path;
+        }
+
+        // Обновляем backdrop фон
+        if (backdropPath) {
+          detailViewDiv.style.backgroundImage = 'url(' + backdropPath + ')';
+          detailViewDiv.style.backgroundSize = 'cover';
+          detailViewDiv.style.backgroundPosition = 'center';
+          detailViewDiv.style.backgroundRepeat = 'no-repeat';
+
+          // Добавляем затемнение для читаемости текста
+          var existingOverlay = document.getElementById('detail-backdrop-overlay');
+          if (!existingOverlay) {
+            var overlay = document.createElement('div');
+            overlay.id = 'detail-backdrop-overlay';
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.right = '0';
+            overlay.style.bottom = '0';
+            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+            overlay.style.zIndex = '-1';
+            detailViewDiv.appendChild(overlay);
+          }
+        }
+
+        // Обновляем описание, если оно есть
+        if (overview && detailSubtitle) {
+          detailSubtitle.textContent = overview;
+          detailSubtitle.style.display = 'block';
+        }
+
+        // Обновляем meta информацию если есть
+        updateDetailMetaInfo(tmdbData);
+      } else {
+        console.log('Не удалось загрузить TMDB данные, статус:', tmdbResponse.status);
+      }
+    } catch (tmdbError) {
+      console.error('Ошибка загрузки TMDB данных:', tmdbError);
+    }
+  }
 
   var poster = '';
   var dataParsed = false;
@@ -1267,7 +1351,11 @@ async function showDetail(torrent) {
   }
 
   posterImg.innerHTML = poster ? '<img src="' + poster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
-  titleEl.textContent = torrent.title || 'Без названия';
+
+  // Обновляем заголовок (если еще не обновили)
+  if (titleEl.textContent === 'Без названия' && cleanTitle !== 'Без названия') {
+    titleEl.textContent = cleanTitle;
+  }
 
   // Удаляем старый прогресс если есть
   var oldProgress = document.getElementById('detail-progress');
@@ -1385,6 +1473,52 @@ async function showDetail(torrent) {
     }
   }, 300);
   AppState.mediaType = "";
+}
+
+// Вспомогательная функция для обновления meta информации в детальном просмотре
+function updateDetailMetaInfo(tmdbData) {
+  var metaContainer = document.getElementById('catalog-detail-meta');
+  if (!metaContainer) return;
+
+  metaContainer.innerHTML = '';
+  metaContainer.classList.remove('hidden');
+
+  // Год
+  if (tmdbData.release_date || tmdbData.first_air_date) {
+    var year = (tmdbData.release_date || tmdbData.first_air_date).substring(0, 4);
+    var yearChip = document.createElement('div');
+    yearChip.className = 'catalog-meta-chip';
+    yearChip.textContent = year;
+    metaContainer.appendChild(yearChip);
+  }
+
+  // Рейтинг
+  if (tmdbData.vote_average) {
+    var ratingChip = document.createElement('div');
+    ratingChip.className = 'catalog-meta-chip';
+    ratingChip.textContent = '⭐ ' + tmdbData.vote_average.toFixed(1);
+    metaContainer.appendChild(ratingChip);
+  }
+
+  // Тип контента
+  var typeChip = document.createElement('div');
+  typeChip.className = 'catalog-meta-chip';
+  if (tmdbData.media_type === 'tv' || (tmdbData.number_of_seasons !== undefined)) {
+    typeChip.textContent = 'Сериал';
+  } else {
+    typeChip.textContent = 'Фильм';
+  }
+  metaContainer.appendChild(typeChip);
+
+  // Жанры
+  if (tmdbData.genres && Array.isArray(tmdbData.genres)) {
+    for (var i = 0; i < Math.min(tmdbData.genres.length, 3); i++) {
+      var genreChip = document.createElement('div');
+      genreChip.className = 'catalog-meta-chip';
+      genreChip.textContent = tmdbData.genres[i].name;
+      metaContainer.appendChild(genreChip);
+    }
+  }
 }
 
 // Добавить элемент файла (для сериалов)
