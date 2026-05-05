@@ -2667,4 +2667,25 @@ body.detail-open {
     bottom: -10px;
   }
 }
+/* Затемнение фона для читаемости текста при backdrop */
+#detail-backdrop-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  z-index: -1;
+}
 
+#detail-view {
+  position: relative;
+  background-color: #000000;
+}
+
+#detail-view .detail-header,
+#detail-view .detail-progress,
+#detail-view .files-list {
+  position: relative;
+  z-index: 1;
+}
