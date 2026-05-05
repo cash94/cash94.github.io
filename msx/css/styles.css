@@ -2645,26 +2645,35 @@ body.detail-open {
   pointer-events: auto !important;
 }
 
-/* Улучшаем область нажатия для всех сенсорных кнопок */
-button,
-.filter-toggle-btn,
-#filter-toggle,
-#search-btn,
-#close-search,
-.control-btn,
-.play-btn,
-.torrent-card,
-.file-item,
-.view-tab,
-.back-btn,
-.settings-btn {
-  touch-action: manipulation;
-  cursor: pointer;
+
+/* Невидимый слой-ловушка для кликов */
+.filter-toggle-btn::after,
+#filter-toggle::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: -10px;
+  right: -10px;
+  bottom: -5px;
+  background: transparent;
+  z-index: -1;
 }
 
-/* Визуальная обратная связь при тапе */
-.touch-active {
-  transform: scale(0.97);
-  transition: transform 0.05s ease;
+/* Медиа-запрос для сенсорных экранов */
+@media (pointer: coarse) {
+  .filter-toggle-btn,
+  #filter-toggle {
+    min-width: 110px !important;
+    min-height: 48px !important;
+    padding: 10px 20px !important;
+  }
+  
+  .filter-toggle-btn::after,
+  #filter-toggle::after {
+    top: -10px;
+    left: -15px;
+    right: -15px;
+    bottom: -10px;
+  }
 }
 
