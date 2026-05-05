@@ -799,6 +799,10 @@ body {
   word-break: break-word;
 }
 
+.file-name div:first-child {
+  color: #ff8c00;
+}
+
 .play-btn {
   background: rgba(60, 60, 70, 0.85);
   backdrop-filter: blur(4px);
