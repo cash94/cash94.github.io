@@ -2677,8 +2677,3 @@ body.detail-open {
   background-color: rgba(0, 0, 0, 0.7);
   z-index: -1;
 }
-
-#detail-view {
-  position: relative;
-  background-color: #000000;
-}
