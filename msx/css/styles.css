@@ -743,7 +743,7 @@ body {
 }
 
 .detail-progress-btn {
-  background: rgba(74, 158, 255, 0.85);
+  background: rgba(60, 60, 70, 0.85);
   backdrop-filter: blur(4px);
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -756,7 +756,7 @@ body {
 }
 
 .detail-progress-btn:hover {
-  background: rgba(74, 158, 255, 0.95);
+  background: rgba(60, 60, 70, 0.95);
   border-color: rgba(255, 255, 255, 0.3);
 }
 
@@ -800,7 +800,7 @@ body {
 }
 
 .play-btn {
-  background: rgba(74, 158, 255, 0.85);
+  background: rgba(60, 60, 70, 0.85);
   backdrop-filter: blur(4px);
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -808,11 +808,11 @@ body {
   border-radius: 21.96px;
   font-size: 12px;
   cursor: pointer;
-  flex-shrink: 0;
+  transition: all 0.2s ease;
 }
 
 .play-btn:hover {
-  background: rgba(74, 158, 255, 0.95);
+  background: rgba(60, 60, 70, 0.95);
   border-color: rgba(255, 255, 255, 0.3);
 }
 
