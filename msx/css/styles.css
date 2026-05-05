@@ -820,6 +820,10 @@ body {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
+.play-btn::before {
+  color: #ff8c00;
+}
+
 body.detail-open {
   overflow-x: hidden;
   overflow-y: auto;
