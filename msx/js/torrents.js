@@ -3226,3 +3226,4 @@ window.addTorrentSearchToServer = addTorrentSearchToServer;
 window.playFromHash = playFromHash;
 window.refreshTorrentsList = refreshTorrentsList;
 window.dropTorrentToServer = dropTorrentToServer;
+window.resetDetailBackground = resetDetailBackground;
