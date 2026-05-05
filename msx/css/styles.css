@@ -806,7 +806,7 @@ body {
 .play-btn {
   background: rgba(60, 60, 70, 0.85);
   backdrop-filter: blur(4px);
-  color: white;
+  color: #ff8c00;
   border: 1px solid rgba(255, 255, 255, 0.2);
   padding: 7.4px 14.89px;
   border-radius: 21.96px;
