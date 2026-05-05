@@ -2543,13 +2543,15 @@ function setupFocusRescue() {
 
     //функция searchHandle
     function searchHandle(direction) {
+        // Получаем текущий режим поиска
         var currentMode = getCurrentSearchMode();
+
+        // Общая часть для обоих режимов до навигации по результатам
         var focused = belongsToScreen(document.querySelector('.focused'), 'search') ? document.querySelector('.focused') : null;
         var query = byId('search-query');
         var top = getSearchTop();
         var filters = getSearchFilters();
         var results = getSearchResults();
-
         var topWithoutQuery = [];
         for (var i = 0; i < top.length; i++) {
             if (top[i] && top[i].id !== 'search-query') topWithoutQuery.push(top[i]);
@@ -2565,20 +2567,27 @@ function setupFocusRescue() {
 
         var topIndex = -1;
         for (var j = 0; j < top.length; j++) {
-            if (focused === top[j]) { topIndex = j; break; }
+            if (focused === top[j]) {
+                topIndex = j;
+                break;
+            }
         }
         var filterIndex = -1;
         for (var k = 0; k < filters.length; k++) {
-            if (focused === filters[k]) { filterIndex = k; break; }
+            if (focused === filters[k]) {
+                filterIndex = k;
+                break;
+            }
         }
         var resultIndex = -1;
         for (var l = 0; l < results.length; l++) {
-            if (focused === results[l]) { resultIndex = l; break; }
+            if (focused === results[l]) {
+                resultIndex = l;
+                break;
+            }
         }
 
-        // Определяем количество фильтров в строке (для двухстрочной навигации)
-        var filtersPerRow = 6; // Количество фильтров, помещающихся в одной строке (настройте под ваш экран)
-
+        // Если режим torrentsearch - работаем как раньше
         if (currentMode === 'torrentsearch') {
             if (topIndex !== -1) {
                 if (direction === 'left') return focusEl(top[Math.max(0, topIndex - 1)] || focused);
@@ -2586,30 +2595,25 @@ function setupFocusRescue() {
                 if (direction === 'down') {
                     return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
                 }
+                if (direction === 'up') return true;
                 return true;
             }
 
             if (filterIndex !== -1) {
-                // Двухстрочная навигация по фильтрам
                 if (direction === 'left') {
-                    if (filterIndex > 0) {
-                        return focusEl(filters[filterIndex - 1]);
-                    }
-                    return true;
+                    // Если на первом фильтре и нажимаем влево - закрываем панель и переходим к поисковой строке
+                    return focusEl(filters[Math.max(0, filterIndex - 1)] || focused);
                 }
                 if (direction === 'right') {
-                    if (filterIndex < filters.length - 1) {
-                        return focusEl(filters[filterIndex + 1]);
-                    }
-                    return true;
+                    return focusEl(filters[Math.min(filters.length - 1, filterIndex + 1)] || focused);
                 }
                 if (direction === 'up') {
-                    // Вверх - к строке поиска
+                    // Нажимаем вверх - закрываем панель и переходим к поисковой строке
                     closeFiltersPanel();
                     return focusEl(query);
                 }
                 if (direction === 'down') {
-                    // Вниз - к результатам
+                    // Нажимаем вниз - закрываем панель и переходим к первому результату
                     closeFiltersPanel();
                     if (results.length > 0) {
                         return focusEl(results[0]);
@@ -2621,108 +2625,127 @@ function setupFocusRescue() {
 
             if (resultIndex !== -1) {
                 if (direction === 'up') {
-                    if (resultIndex > 0) {
-                        return focusEl(results[resultIndex - 1] || focused);
-                    }
-                    // Наверх с первого результата - к фильтрам (последний в строке сохраняет позицию)
-                    closeFiltersPanel();
-                    var targetFilterIndex = Math.min(filterIndex, filters.length - 1);
-                    if (targetFilterIndex >= 0 && filters[targetFilterIndex]) {
-                        return focusEl(filters[targetFilterIndex]);
-                    }
+                    if (resultIndex > 0) return focusEl(results[resultIndex - 1] || focused);
+                    // Наверх с первого результата - открываем панель фильтров
                     return focusEl(query);
                 }
-                if (direction === 'down') {
-                    return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
-                }
+                if (direction === 'down') return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
                 if (direction === 'left') {
                     openFiltersPanelAndFocus();
                     return true;
                 }
                 if (direction === 'right') {
                     if (focused && (focused.classList.contains('search-result-item') || focused.classList.contains('global-search-card'))) {
+                        // Получаем данные из дочерней кнопки .search-result-play (индекс 1)
                         var playButton = focused.querySelector('.search-result-play');
+
                         var magnet = playButton.dataset.magnet;
                         var hash = playButton.dataset.hash;
                         var searchResult = playButton.dataset.result;
+
                         try {
                             var resultJson = decodeURIComponent(searchResult);
-                            var searchResultJson = JSON.parse(resultJson);
-                            if (magnet && typeof window.addTorrentSearchToServer === 'function') {
-                                window.addTorrentSearchToServer(magnet, hash, searchResultJson)
-                                    .then(() => {
-                                        var originalHtml = playButton.innerHTML;
-                                        playButton.innerHTML = '✓';
-                                        setTimeout(() => { playButton.innerHTML = originalHtml; }, 2000);
-                                    })
-                                    .catch(error => console.error('Ошибка:', error));
-                            }
-                        } catch (e) { console.error('Ошибка парсинга searchResult:'); }
+                            searchResultJson = JSON.parse(resultJson);
+                        } catch (e) {
+                            console.error('Ошибка парсинга searchResult:');
+                        }
+
+                        if (magnet && typeof window.addTorrentSearchToServer === 'function') {
+                            // Используем then вместо await
+                            window.addTorrentSearchToServer(magnet, hash, searchResultJson)
+                                .then(() => {
+                                    var originalHtml = playButton.innerHTML;
+                                    playButton.innerHTML = '✓';
+
+                                    setTimeout(() => {
+                                        playButton.innerHTML = originalHtml;
+                                    }, 2000);
+                                })
+                                .catch(error => {
+                                    console.error('Ошибка при добавлении торрента:', error);
+                                });
+                        } else if (!magnet) {
+                            console.warn('Не найден magnet для добавления торрента');
+                        }
+
+                        return true;
                     }
                     return true;
                 }
                 return true;
             }
+
             return false;
         }
+        // Если режим globalsearch - используем другую навигацию для результатов
         else if (currentMode === 'globalsearch') {
             if (topIndex !== -1) {
                 if (direction === 'left') return focusEl(top[Math.max(0, topIndex - 1)] || focused);
                 if (direction === 'right') return focusEl(top[Math.min(top.length - 1, topIndex + 1)] || focused);
                 if (direction === 'down') {
-                    if (results.length > 0) return focusEl(results[0]);
+                    if (results.length > 0) {
+                        return focusEl(results[0]);
+                    }
                     return true;
                 }
+                if (direction === 'up') return true;
                 return true;
             }
 
             if (filterIndex !== -1) {
-                // Двухстрочная навигация по фильтрам
                 if (direction === 'left') {
-                    if (filterIndex > 0) return focusEl(filters[filterIndex - 1] || focused);
-                    return true;
+                    return focusEl(filters[Math.max(0, filterIndex - 1)] || focused);
                 }
                 if (direction === 'right') {
-                    if (filterIndex < filters.length - 1) return focusEl(filters[filterIndex + 1] || focused);
-                    return true;
+                    return focusEl(filters[Math.min(filters.length - 1, filterIndex + 1)] || focused);
                 }
                 if (direction === 'up') {
+                    // Нажимаем вверх - закрываем панель и переходим к поисковой строке
                     closeFiltersPanel();
                     return focusEl(query);
                 }
                 if (direction === 'down') {
+                    // Нажимаем вниз - закрываем панель и переходим к первому результату
                     closeFiltersPanel();
-                    if (results.length > 0) return focusEl(results[0]);
+                    if (results.length > 0) {
+                        return focusEl(results[0]);
+                    }
                     return true;
                 }
                 return true;
             }
 
+            // Навигация по результатам для globalsearch
             if (resultIndex !== -1) {
                 var cols = getColumns();
                 var row = Math.floor(resultIndex / cols);
+
                 if (direction === 'left') {
                     return focusEl(results[Math.max(0, resultIndex - 1)] || focused);
                 }
+
                 if (direction === 'right') {
                     return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
                 }
+
                 if (direction === 'up') {
                     if (row === 0) {
-                        // К фильтрам (сохраняем горизонтальную позицию)
-                        var targetFilter = filters[Math.min(resultIndex, filters.length - 1)];
-                        if (targetFilter) return focusEl(targetFilter);
+                        // Наверх с первого ряда результатов - открываем панель фильтров
                         return focusEl(query);
                     }
                     return focusEl(results[Math.max(0, resultIndex - cols)] || focused);
                 }
+
                 if (direction === 'down') {
                     return focusEl(results[Math.min(results.length - 1, resultIndex + cols)] || focused);
                 }
+
                 return true;
             }
+
             return false;
         }
+
         return false;
     }
     
