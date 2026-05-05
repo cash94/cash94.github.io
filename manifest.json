@@ -538,6 +538,14 @@
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-opensubtitles.png",
         "versions": [
             {
+                "version": "24.0.0.0",
+                "changelog": "- Fix 429 handling (#189) @MBR-0001\n- Revert \"Update dependency Microsoft.Extensions.Http to v10\" (#184) @Shadowghost\n- imdbId fixes (#182) @MBR-0001\n\n### Dependency updates ###\n- Update dependency xunit to 2.9.3 (#137) @[renovate[bot]](https://github.com/apps/renovate)\n- Update dependency coverlet.collector to v6 (#125) @[renovate[bot]](https://github.com/apps/renovate)\n- Update dependency xunit.runner.visualstudio to v3 (#158) @[renovate[bot]](https://github.com/apps/renovate)\n- Update dependency Microsoft.NET.Test.Sdk to v18 - autoclosed (#170) @[renovate[bot]](https://github.com/apps/renovate)\n- Update dependency Microsoft.Extensions.Http to v10 (#178) @[renovate[bot]](https://github.com/apps/renovate)",
+                "targetAbi": "10.11.8.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/open-subtitles/open-subtitles_24.0.0.0.zip",
+                "checksum": "37e6bbe279fc197dffc55008f2096113",
+                "timestamp": "2026-05-05T15:28:07Z"
+            },
+            {
                 "version": "23.0.0.0",
                 "changelog": "- 5 requests per second, not 5 requests per 5 second (#175) @crobibero\n- Add bad subtitle handling (#165) @MBR-0001",
                 "targetAbi": "10.11.0.0",
@@ -818,6 +826,14 @@
         "category": "MoviesAndShows",
         "versions": [
             {
+                "version": "13.0.0.0",
+                "changelog": "- Fix: Honor minimum movies setting and exclude disabled libraries (#94) (#113) @elio42",
+                "targetAbi": "10.11.8.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/tmdb-box-sets/tmdb-box-sets_13.0.0.0.zip",
+                "checksum": "2ff04ab8e6189c9234eeb82cfbb37e69",
+                "timestamp": "2026-05-05T15:23:38Z"
+            },
+            {
                 "version": "12.0.0.0",
                 "changelog": "- Jellyfin 10.11 support (#101) @crobibero\n- Update wiki link (#105) @thornbill\n- fix: require admin privileges to refresh metadata (#95) @Theta-Dev\n- Add analyzers and fix issues (#86) @Shadowghost\n\n### Bug Fixes ###\n- Fix for collections with < entries than requested (#74) @tommargar",
                 "targetAbi": "10.11.0.0",
@@ -884,6 +900,22 @@
         "category": "General",
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-trakt.png",
         "versions": [
+            {
+                "version": "29.0.0.0",
+                "changelog": "- Revert \"Update dependency Microsoft.Extensions.Http to v10\" (#268) @Shadowghost",
+                "targetAbi": "10.11.8.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/trakt/trakt_29.0.0.0.zip",
+                "checksum": "c22bc62ec64833291e0235ff90a28a33",
+                "timestamp": "2026-05-05T15:44:10Z"
+            },
+            {
+                "version": "28.0.0.0",
+                "changelog": "- Bump .NET version to 9.0 in README (#277) @zotabee\n- Fix PCM audio handling (#278) @zotabee\n- Enhance channel layouts mapping (#279) @zotabee\n- Fix Trakt 3D metadata null value parsing (#282) @martinenko7\n- Reword Trakt settings UI for clarity and usability (#252) @n00bcodr\n\n### Dependency updates ###\n- Pin jellyfin/jellyfin-meta-plugins action to 672e46d - autoclosed (#283) @[renovate[bot]](https://github.com/apps/renovate)\n- Update dependency Microsoft.Extensions.Http to v10 (#263) @[renovate[bot]](https://github.com/apps/renovate)\n\n### CI & build changes ###\n- Pin jellyfin/jellyfin-meta-plugins action to 672e46d - autoclosed (#283) @[renovate[bot]](https://github.com/apps/renovate)",
+                "targetAbi": "10.11.8.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/trakt/trakt_28.0.0.0.zip",
+                "checksum": "a7fd8a943fb67eb9eb98d0394c8cab70",
+                "timestamp": "2026-05-05T15:28:19Z"
+            },
             {
                 "version": "27.0.0.0",
                 "changelog": "- Jellyfin 10.11 support (#250) @crobibero\n- Migrate analyzers and fix NPE (#245) @Shadowghost\n- Fix typo in trakt.html (#241) @maroessler",
@@ -1197,6 +1229,22 @@
         "category": "MoviesAndShows",
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-tvdb.png",
         "versions": [
+            {
+                "version": "22.0.0.0",
+                "changelog": "- Revert \"Update dependency Microsoft.Extensions.Http to v10\" (#228) @Shadowghost",
+                "targetAbi": "10.11.8.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/thetvdb/thetvdb_22.0.0.0.zip",
+                "checksum": "dff31b428c9416d67ac78f515852d2cb",
+                "timestamp": "2026-05-05T15:43:38Z"
+            },
+            {
+                "version": "21.0.0.0",
+                "changelog": "- Fix incorrect offset in birth and death dates (#214) @theguymadmax\n- Add season number fallback (#222) @ivanjx\n\n### Dependency updates ###\n- Update dependency Microsoft.Extensions.Http to v10 (#223) @[renovate[bot]](https://github.com/apps/renovate)",
+                "targetAbi": "10.11.8.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/thetvdb/thetvdb_21.0.0.0.zip",
+                "checksum": "8c8c0f5a23f44cc632eed6a4594b3fc7",
+                "timestamp": "2026-05-05T15:27:57Z"
+            },
             {
                 "version": "20.0.0.0",
                 "changelog": "- Jellyfin 10.11 support (#211) @crobibero",
@@ -1783,6 +1831,22 @@
         "category": "Administration",
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-webhook.png",
         "versions": [
+            {
+                "version": "21.0.0.0",
+                "changelog": "- Revert \"Update dependency Microsoft.Extensions.Http to v10\" (#364) @Shadowghost",
+                "targetAbi": "10.11.8.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/webhook/webhook_21.0.0.0.zip",
+                "checksum": "fa75f479e66fba83827d4542dbff5f95",
+                "timestamp": "2026-05-05T15:43:56Z"
+            },
+            {
+                "version": "20.0.0.0",
+                "changelog": "\n### Dependency updates ###\n- Update dependency MailKit to 4.16.0 (#370) @[renovate[bot]](https://github.com/apps/renovate)",
+                "targetAbi": "10.11.8.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/webhook/webhook_20.0.0.0.zip",
+                "checksum": "2f7ac3c53fd8697567e8be661d6e995a",
+                "timestamp": "2026-05-05T15:34:12Z"
+            },
             {
                 "version": "18.0.0.0",
                 "changelog": "- Jellyfin 10.11 support (#328) @crobibero\n- Fix the problem of html escape of \"Description\" in Chinese. (#320) @sqliu07\n\n### New features and improvements ###\n- Add json_encode helper mostly for {{{Overview}}} (#339) @mfedderly",
