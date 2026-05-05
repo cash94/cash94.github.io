@@ -1094,6 +1094,67 @@ function hideCatalogDetailExtra() {
 
 window.hideCatalogDetailExtra = hideCatalogDetailExtra;
 
+async function getTmdbDetailsWithCache(tmdbId) {
+  if (!tmdbId) return null;
+
+  // Проверяем, доступен ли кэш из catalog.js
+  if (window.getFromTmdbCache && window.saveToTmdbCache) {
+    // Используем существующий кэш catalog.js
+    var cacheParams = { id: tmdbId, type: 'movie' };
+    var cachedData = window.getFromTmdbCache('details', cacheParams);
+
+    if (cachedData) {
+      console.log('📦 TMDB данные взяты из catalog.js кэша для ID:', tmdbId);
+      return cachedData;
+    }
+
+    // Загружаем данные
+    console.log('🌐 Загрузка TMDB данных для ID:', tmdbId);
+    try {
+      var response = await fetch('/api/tmdb/details?id=' + tmdbId);
+      if (response.ok) {
+        var data = await response.json();
+        // Сохраняем в кэш catalog.js
+        window.saveToTmdbCache('details', cacheParams, data);
+        console.log('💾 TMDB данные сохранены в catalog.js кэш');
+        return data;
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки TMDB данных:', error);
+    }
+  } else {
+    // Fallback: используем локальный кэш если catalog.js не загружен
+    console.log('⚠️ catalog.js кэш не доступен, используем локальный');
+
+    if (!window.tmdbDetailsCache) {
+      window.tmdbDetailsCache = new Map();
+    }
+
+    if (window.tmdbDetailsCache.has(tmdbId)) {
+      var cached = window.tmdbDetailsCache.get(tmdbId);
+      if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) {
+        return cached.data;
+      }
+    }
+
+    try {
+      var response = await fetch('/api/tmdb/details?id=' + tmdbId);
+      if (response.ok) {
+        var data = await response.json();
+        window.tmdbDetailsCache.set(tmdbId, {
+          data: data,
+          timestamp: Date.now()
+        });
+        return data;
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки TMDB данных:', error);
+    }
+  }
+
+  return null;
+}
+
 // Показать детали торрента
 async function showDetail(torrent) {
   // Сохраняем hash и индекс перед открытием
@@ -1150,7 +1211,6 @@ async function showDetail(torrent) {
   var posterImg = document.getElementById('detail-poster');
   var titleEl = document.getElementById('detail-title-text');
   var filesList = document.getElementById('files-list');
-  var detailSubtitle = document.getElementById('detail-subtitle');
   var detailViewDiv = document.getElementById('detail-view');
 
   // Извлекаем TMDB ID из названия торрента
@@ -1177,61 +1237,57 @@ async function showDetail(torrent) {
   // Если нашли TMDB ID, загружаем данные
   if (tmdbId) {
     console.log('Загрузка данных TMDB для ID:', tmdbId);
-    try {
-      var tmdbResponse = await fetch('/api/tmdb/details?id=' + tmdbId);
-      if (tmdbResponse.ok) {
-        tmdbData = await tmdbResponse.json();
-        console.log('Получены данные TMDB:', tmdbData);
+    tmdbData = await getTmdbDetailsWithCache(tmdbId);
 
-        // Сохраняем backdrop и overview
-        if (tmdbData.backdrop_path) {
-          backdropPath = AppState.protocol + '//tsimg.hnar.online/t/p/original' + tmdbData.backdrop_path;
-        }
-        if (tmdbData.overview) {
-          overview = tmdbData.overview;
-        }
+    if (tmdbData) {
+      console.log('Получены данные TMDB:', tmdbData);
 
-        // Если есть постер из TMDB и нет постера в торренте, используем его
-        if (!poster && tmdbData.poster_path) {
-          poster = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + tmdbData.poster_path;
-        }
-
-        // Обновляем backdrop фон
-        if (backdropPath) {
-          detailViewDiv.style.backgroundImage = 'url(' + backdropPath + ')';
-          detailViewDiv.style.backgroundSize = 'cover';
-          detailViewDiv.style.backgroundPosition = 'center';
-          detailViewDiv.style.backgroundRepeat = 'no-repeat';
-
-          // Добавляем затемнение для читаемости текста
-          var existingOverlay = document.getElementById('detail-backdrop-overlay');
-          if (!existingOverlay) {
-            var overlay = document.createElement('div');
-            overlay.id = 'detail-backdrop-overlay';
-            overlay.style.position = 'fixed';
-            overlay.style.top = '0';
-            overlay.style.left = '0';
-            overlay.style.right = '0';
-            overlay.style.bottom = '0';
-            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-            overlay.style.zIndex = '-1';
-            detailViewDiv.appendChild(overlay);
-          }
-        }
-
-        // Обновляем описание, если оно есть
-        if (overview && detailSubtitle) {
-          detailSubtitle.textContent = overview;
-          detailSubtitle.style.display = 'block';
-        }
-
-        // Обновляем meta информацию если есть
-        updateDetailMetaInfo(tmdbData);
-      } else {
-        console.log('Не удалось загрузить TMDB данные, статус:', tmdbResponse.status);
+      // Сохраняем backdrop и overview
+      if (tmdbData.backdrop_path) {
+        backdropPath = AppState.protocol + '//tsimg.hnar.online/t/p/original' + tmdbData.backdrop_path;
       }
-    } catch (tmdbError) {
-      console.error('Ошибка загрузки TMDB данных:', tmdbError);
+      if (tmdbData.overview) {
+        overview = tmdbData.overview;
+      }
+
+      // Если есть постер из TMDB и нет постера в торренте, используем его
+      if (!poster && tmdbData.poster_path) {
+        poster = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + tmdbData.poster_path;
+      }
+
+      // Обновляем backdrop фон
+      if (backdropPath) {
+        detailViewDiv.style.backgroundImage = 'url(' + backdropPath + ')';
+        detailViewDiv.style.backgroundSize = 'cover';
+        detailViewDiv.style.backgroundPosition = 'center';
+        detailViewDiv.style.backgroundRepeat = 'no-repeat';
+
+        // Добавляем затемнение для читаемости текста
+        var existingOverlay = document.getElementById('detail-backdrop-overlay');
+        if (!existingOverlay) {
+          var overlay = document.createElement('div');
+          overlay.id = 'detail-backdrop-overlay';
+          overlay.style.position = 'fixed';
+          overlay.style.top = '0';
+          overlay.style.left = '0';
+          overlay.style.right = '0';
+          overlay.style.bottom = '0';
+          overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+          overlay.style.zIndex = '-1';
+          detailViewDiv.appendChild(overlay);
+        }
+      }
+
+      // Обновляем описание, если оно есть
+      if (overview && detailSubtitle) {
+        detailSubtitle.textContent = overview;
+        detailSubtitle.style.display = 'block';
+      }
+
+      // Обновляем meta информацию если есть
+      updateDetailMetaInfo(tmdbData);
+    } else {
+      console.log('Не удалось загрузить TMDB данные');
     }
   }
 
