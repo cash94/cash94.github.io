@@ -289,23 +289,40 @@ async function fetchCatalogActors(item) {
 
     var cacheParams = { id: tmdbId, type: mediaType };
 
+    // Сначала проверяем кэш актеров
     var cachedActors = getFromTmdbCache('actors', cacheParams);
     if (cachedActors !== null) {
         return cachedActors;
     }
 
     try {
-        var url = '/api/tmdb/details?id=' + encodeURIComponent(tmdbId) + '&type=' + encodeURIComponent(mediaType);
+        // Пытаемся получить уже загруженные детали из кэша, чтобы не делать лишний запрос
+        var cachedDetails = getFromTmdbCache('details', cacheParams);
+        var data = null;
 
-        var response = await fetch(url, {
-            signal: AbortSignal.timeout(5000)
-        });
+        if (cachedDetails !== null && cachedDetails.cast && Array.isArray(cachedDetails.cast)) {
+            // Используем данные из кэша деталей
+            console.log('📦 Используем кэшированные детали для актеров');
+            data = cachedDetails;
+        } else {
+            // Если нет в кэше, делаем запрос
+            var url = '/api/tmdb/details?id=' + encodeURIComponent(tmdbId) + '&type=' + encodeURIComponent(mediaType);
 
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
+            var response = await fetch(url, {
+                signal: AbortSignal.timeout(5000)
+            });
+
+            if (!response.ok) {
+                throw new Error('HTTP ' + response.status);
+            }
+
+            data = await response.json();
+
+            // Сохраняем полные детали в кэш
+            if (data && (data.id || data.overview)) {
+                saveToTmdbCache('details', cacheParams, data);
+            }
         }
-
-        var data = await response.json();
 
         var actors = [];
         if (data.cast && Array.isArray(data.cast)) {
@@ -321,6 +338,7 @@ async function fetchCatalogActors(item) {
             }
         }
 
+        // Сохраняем актеров в отдельный кэш
         saveToTmdbCache('actors', cacheParams, actors);
         return actors;
     } catch (error) {
