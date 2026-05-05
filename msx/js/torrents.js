@@ -1114,6 +1114,29 @@ async function showDetail(torrent) {
   detailView.style.display = 'block';
   detailView.style.zIndex = '100';
 
+  detailView.style.backgroundImage = '';
+  detailView.style.backgroundColor = '#000000';
+
+  // Удаляем overlay затемнения если он есть
+  var existingOverlay = document.getElementById('detail-backdrop-overlay');
+  if (existingOverlay) {
+    existingOverlay.remove();
+  }
+
+  // Очищаем subtitle
+  var detailSubtitle = document.getElementById('detail-subtitle');
+  if (detailSubtitle) {
+    detailSubtitle.textContent = '';
+    detailSubtitle.style.display = 'none';
+  }
+
+  // Очищаем meta информацию
+  var metaContainer = document.getElementById('catalog-detail-meta');
+  if (metaContainer) {
+    metaContainer.innerHTML = '';
+    metaContainer.classList.add('hidden');
+  }
+
   // Блокируем взаимодействие с основным контентом
   var mainContainer = document.getElementById('main-container');
   if (mainContainer) {
