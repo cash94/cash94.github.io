@@ -1226,6 +1226,7 @@ async function showDetail(torrent) {
   var posterImg = document.getElementById('detail-poster');
   var titleEl = document.getElementById('detail-title-text');
   var filesList = document.getElementById('files-list');
+  var detailSubtitle = document.getElementById('detail-subtitle');
   var detailViewDiv = document.getElementById('detail-view');
 
   // Извлекаем TMDB ID из названия торрента
