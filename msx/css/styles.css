@@ -741,14 +741,21 @@ body {
 }
 
 .detail-progress-btn {
-  background: #4a9eff;
+  background: rgba(74, 158, 255, 0.85);
+  backdrop-filter: blur(4px);
   color: white;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   padding: 7.4px 18.42px;
   border-radius: 21.96px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.detail-progress-btn:hover {
+  background: rgba(74, 158, 255, 0.95);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .files-list {
@@ -774,13 +781,20 @@ body {
 }
 
 .play-btn {
-  background: #4a9eff;
+  background: rgba(74, 158, 255, 0.85);
+  backdrop-filter: blur(4px);
   color: white;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   padding: 7.4px 14.89px;
   border-radius: 21.96px;
   font-size: 12px;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.play-btn:hover {
+  background: rgba(74, 158, 255, 0.95);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 body.detail-open {
