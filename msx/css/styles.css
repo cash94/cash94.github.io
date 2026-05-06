@@ -772,6 +772,14 @@ body {
   scrollbar-width: none;
 }
 
+.file-item:first-child {
+  margin-left: 0;  /* Убеждаемся что нет лишних отступов */
+}
+
+.file-item:last-child {
+  margin-right: 0;  /* Убеждаемся что нет лишних отступов */
+}
+
 .files-list::-webkit-scrollbar {
   display: none; /* Скрываем скроллбар в Chrome/Safari */
 }
