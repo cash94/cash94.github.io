@@ -1650,23 +1650,33 @@ function addFileItem(file, hash, name) {
   }
 
   var fileSize = formatBytes(file.length);
+  var fileId = file.id;
 
   var item = document.createElement('div');
   item.className = 'file-item';
-  item.innerHTML = '\n    <div class="file-name">\n      <div>' + escapeHtml(name) + '</div>\n      <div style="font-size: 12px; color: #888; margin-top: 4px;">' + fileSize + '</div>\n    </div>\n    <button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '">▶</button>\n  ';
 
-  item.querySelector('.play-btn').onclick = function (e) {
+  // Новая структура HTML
+  item.innerHTML = `
+    <div class="play-btn-wrapper">
+      <button class="play-btn" data-hash="${hash}" data-file-id="${fileId}">▶</button>
+    </div>
+    <div class="file-info">
+      <div class="file-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+      <div class="file-size">${fileSize}</div>
+    </div>
+  `;
+
+  // Добавляем обработчик для кнопки
+  var playBtn = item.querySelector('.play-btn');
+  playBtn.onclick = function (e) {
     e.stopPropagation();
-    var btn = e.currentTarget;
-
-    var playUrl = file.id ?
-      AppState.currentTorrserverUrl + '/play/' + hash + '/' + file.id :
+    var playUrl = fileId ?
+      AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId :
       AppState.currentTorrserverUrl + '/play/' + hash + '/1';
 
     document.getElementById('playback-overlay').classList.add('active');
     document.getElementById('detail-view').style.pointerEvents = 'none';
 
-    // Явно передаем timecode = 0 для воспроизведения с начала
     startHLSPlayback(playUrl, 0, false).then(function () {
       document.getElementById('playback-overlay').classList.remove('active');
       document.getElementById('detail-view').style.pointerEvents = 'auto';
