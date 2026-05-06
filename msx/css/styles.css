@@ -263,12 +263,6 @@ body {
   white-space: nowrap;
 }
 
-.view-tab.active {
-  background: #4a9eff;
-  color: #fff;
-  border-color: #4a9eff;
-}
-
 /* Увеличенная поисковая часть на 57% */
 .search-overlay {
   position: fixed;
