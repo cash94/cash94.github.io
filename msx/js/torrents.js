@@ -1189,6 +1189,15 @@ function resetDetailBackground() {
     metaContainer.innerHTML = '';
     metaContainer.classList.add('hidden');
   }
+  
+  // Очищаем список файлов
+  var filesList = document.getElementById('files-list');
+  if (filesList) {
+    filesList.innerHTML = '';
+    // Сбрасываем стили, если нужно
+    filesList.style.display = '';
+    filesList.style.flexDirection = '';
+  }
 }
 
 // Функция для извлечения номера сезона из названия
