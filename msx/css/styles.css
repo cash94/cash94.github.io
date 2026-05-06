@@ -760,11 +760,6 @@ body {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
-.files-list-wrapper {
-  padding: 0 20px;
-  overflow: visible;
-}
-
 .files-list {
   margin-top: 18.42px;
   display: flex;
