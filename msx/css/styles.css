@@ -766,7 +766,7 @@ body {
   overflow-x: auto;
   overflow-y: hidden;
   gap: 12px;
-  padding: 8px 4px;
+  padding: 8px 20px;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
