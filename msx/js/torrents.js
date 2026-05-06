@@ -1078,7 +1078,7 @@ function hideCatalogDetailExtra() {
   var shotsWrap = document.getElementById('catalog-detail-screenshots-wrap');
   var shots = document.getElementById('catalog-detail-screenshots');
   if (extra) extra.classList.add('hidden');
-  if (filesList) filesList.style.display = 'block';
+  //if (filesList) filesList.style.display = 'block';
   if (subtitle) subtitle.textContent = '';
   if (backdrop) {
     backdrop.classList.add('hidden');
