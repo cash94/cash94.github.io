@@ -769,7 +769,7 @@ body {
   padding: 8px 4px;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none; /* Скрываем скроллбар в Firefox */
+  scrollbar-width: none;
 }
 
 .files-list::-webkit-scrollbar {
@@ -780,23 +780,28 @@ body {
   background: rgba(60, 60, 70, 0.5);
   backdrop-filter: blur(8px);
   border-radius: 12px;
-  padding: 11.04px;
+  padding: 16px 11.04px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;  /* Меняем на колонку, чтобы кнопка была под названием или по центру */
+  align-items: center;      /* Центрируем по горизонтали */
+  justify-content: space-between;  /* Центрируем по вертикали */
   border: 1px solid rgba(255, 255, 255, 0.15);
-  min-width: 280px;
+  min-width: 160px;         /* Ширина плитки */
+  width: 160px;             /* Фиксированная ширина для квадрата */
+  height: 160px;            /* Фиксированная высота = ширина (квадрат) */
   flex-shrink: 0;
   scroll-snap-align: start;
-  gap: 12px;
+  gap: 8px;
+  text-align: center;
 }
 
 .file-name {
-  flex: 1;
+  flex: 0;                  /* Убираем растягивание */
   margin-right: 0;
   font-size: 12.9px;
   white-space: normal;
   word-break: break-word;
+  text-align: center;
 }
 
 .file-name div:first-child {
@@ -808,20 +813,31 @@ body {
   backdrop-filter: blur(4px);
   color: #ff8c00;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 7.4px 14.89px;
-  border-radius: 21.96px;
-  font-size: 12px;
+  padding: 10px 16px;       /* Немного больше для лучшего вида */
+  border-radius: 50%;       /* Делаем кнопку круглой (опционально) */
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 18px;          /* Увеличиваем размер стрелки */
   cursor: pointer;
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .play-btn:hover {
   background: rgba(60, 60, 70, 0.95);
   border-color: rgba(255, 255, 255, 0.3);
+  transform: scale(1.05);
 }
 
 .play-btn::before {
+  content: "▶";
   color: #ff8c00;
+}
+
+.play-btn {
+  font-size: 0;            /* Скрываем оригинальный текст, оставляя ::before */
 }
 
 body.detail-open {
