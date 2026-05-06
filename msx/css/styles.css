@@ -791,8 +791,6 @@ body {
   padding: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
   border: 1px solid rgba(255, 255, 255, 0.15);
   min-width: 160px;
   width: 160px;
@@ -803,13 +801,13 @@ body {
   overflow: hidden;
 }
 
-/* Контейнер для кадра (на всю плитку) */
+/* Контейнер для кадра (на всю верхнюю часть плитки) */
 .file-still-container {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
-  height: 100%;
+  height: calc(100% - 52px); /* Оставляем место для информации внизу */
   z-index: 0;
 }
 
@@ -819,52 +817,63 @@ body {
   object-fit: cover;
 }
 
-/* Затемнение поверх кадра для читаемости текста и кнопки */
+/* Затемнение поверх кадра */
 .file-overlay {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  height: calc(100% - 52px);
+  background: rgba(0, 0, 0, 0.3);
   z-index: 1;
 }
 
-/* Контент поверх кадра */
+/* Контент поверх кадра (только кнопка) */
 .file-content {
   position: relative;
   z-index: 2;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   width: 100%;
-  height: 100%;
-  padding: 12px;
+  height: calc(100% - 52px);
+}
+
+/* Информация под плиткой */
+.file-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 8px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0 0 12px 12px;
 }
 
 .file-name {
-  flex: 0;
-  margin-right: 0;
-  font-size: 12.9px;
-  white-space: normal;
-  word-break: break-word;
-  text-align: center;
-  background: rgba(0, 0, 0, 0.6);
-  padding: 6px 8px;
-  border-radius: 8px;
-  width: 100%;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  color: #fff;
+  margin-bottom: 2px;
 }
 
-.file-name div:first-child {
+.file-size {
+  font-size: 10px;
   color: #ff8c00;
+  text-align: left;
 }
 
+/* Кнопка почти прозрачная */
 .play-btn {
-  background: rgba(60, 60, 70, 0.85);
+  background: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(4px);
   color: #ff8c00;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 140, 0, 0.6);
   padding: 10px 16px;
   border-radius: 50%;
   min-width: 44px;
@@ -875,12 +884,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .play-btn:hover {
-  background: rgba(60, 60, 70, 0.95);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(60, 60, 70, 0.85);
+  border-color: rgba(255, 140, 0, 0.9);
   transform: scale(1.05);
 }
 
