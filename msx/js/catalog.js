@@ -1667,7 +1667,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     var subtitleEl = document.getElementById('detail-subtitle');
     var extraEl = document.getElementById('catalog-detail-extra');
     var backdropEl = document.getElementById('catalog-detail-backdrop');
-    var metaEl = document.getElementById('catalog-detail-meta');
+    //var metaEl = document.getElementById('catalog-detail-meta');
     var overviewEl = document.getElementById('catalog-detail-overview');
     var trailersWrap = document.getElementById('catalog-detail-trailers-wrap');
     var trailersEl = document.getElementById('catalog-detail-trailers');
@@ -1731,7 +1731,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     filesList.style.display = 'none';
     filesList.innerHTML = '';
     extraEl.classList.remove('hidden');
-    metaEl.innerHTML = '<span class="catalog-meta-chip">Загрузка описания...</span>';
+    //metaEl.innerHTML = '<span class="catalog-meta-chip">Загрузка описания...</span>';
     overviewEl.textContent = 'Загрузка...';
     trailersWrap.classList.add('hidden');
     trailersEl.innerHTML = '';
@@ -1785,15 +1785,15 @@ async function showCatalogDetail(item, index, posterUrl) {
 
     var chips = [];
     var releaseYear = getCatalogItemYear(source);
-    if (releaseYear) chips.push('<span class="catalog-meta-chip">' + escapeHtml(releaseYear) + '</span>');
+    //if (releaseYear) chips.push('<span class="catalog-meta-chip">' + escapeHtml(releaseYear) + '</span>');
     var safeRating = getSafeCatalogRating(source);
-    if (safeRating !== null) chips.push('<span class="catalog-meta-chip">' + escapeHtml(String(safeRating)) + '</span>');
-    if (source.source_name) chips.push('<span class="catalog-meta-chip">ℹ' + escapeHtml(String(source.source_name)) + '</span>');
+    //if (safeRating !== null) chips.push('<span class="catalog-meta-chip">' + escapeHtml(String(safeRating)) + '</span>');
+    //if (source.source_name) chips.push('<span class="catalog-meta-chip">ℹ' + escapeHtml(String(source.source_name)) + '</span>');
     var genres = getNormalizedCatalogGenres(source).slice(0, 4);
-    for (var i = 0; i < genres.length; i++) {
-        chips.push('<span class="catalog-meta-chip">' + escapeHtml(genres[i]) + '</span>');
-    }
-    metaEl.innerHTML = chips.join('') || '<span class="catalog-meta-chip">Каталог</span>';
+    //for (var i = 0; i < genres.length; i++) {
+        //chips.push('<span class="catalog-meta-chip">' + escapeHtml(genres[i]) + '</span>');
+    //}
+    //metaEl.innerHTML = chips.join('') || '<span class="catalog-meta-chip">Каталог</span>';
 
     var overview = source.overview || item.overview || 'Описание пока недоступно';
     overviewEl.textContent = overview;
