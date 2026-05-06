@@ -1214,18 +1214,79 @@ function extractSeasonFromTitle(title) {
   return null;
 }
 
-// Функция для загрузки кадров сезона из TMDB
+// Кэш для сезонов
+var seasonCache = new Map();
+
+// Функция для загрузки кадров сезона из TMDB с кэшированием
 async function loadSeasonStills(tmdbId, seasonNumber) {
+  var cacheKey = tmdbId + '_season_' + seasonNumber;
+
+  // Проверяем кэш
+  if (seasonCache.has(cacheKey)) {
+    var cached = seasonCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) { // 24 часа
+      console.log('📦 Кадры сезона взяты из кэша для', cacheKey);
+      return cached.data;
+    }
+  }
+
   try {
     var response = await fetch('/api/tmdb/season?id=' + tmdbId + '&seasonNumber=' + seasonNumber);
     if (response.ok) {
       var seasonData = await response.json();
-      return seasonData.episodes || [];
+      var episodes = seasonData.episodes || [];
+
+      // Сохраняем в кэш
+      seasonCache.set(cacheKey, {
+        data: episodes,
+        timestamp: Date.now()
+      });
+
+      console.log('💾 Кадры сезона сохранены в кэш для', cacheKey);
+      return episodes;
     }
   } catch (error) {
     console.error('Ошибка загрузки кадров сезона:', error);
   }
   return [];
+}
+
+// Функция для загрузки постера для фильма из TMDB (для кадра)
+async function loadMovieStill(tmdbId) {
+  var cacheKey = tmdbId + '_movie_still';
+
+  // Проверяем кэш
+  if (seasonCache.has(cacheKey)) {
+    var cached = seasonCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) {
+      console.log('📦 Постер фильма взят из кэша для', tmdbId);
+      return cached.data;
+    }
+  }
+
+  try {
+    var response = await fetch('/api/tmdb/details?id=' + tmdbId + '&type=movie');
+    if (response.ok) {
+      var data = await response.json();
+      var posterPath = data.poster_path;
+
+      if (posterPath) {
+        var stillUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + posterPath;
+
+        // Сохраняем в кэш
+        seasonCache.set(cacheKey, {
+          data: stillUrl,
+          timestamp: Date.now()
+        });
+
+        console.log('💾 Постер фильма сохранен в кэш для', tmdbId);
+        return stillUrl;
+      }
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки постера фильма:', error);
+  }
+  return null;
 }
 
 // Показать детали торрента
@@ -1296,93 +1357,42 @@ async function showDetail(torrent) {
   // Обновляем заголовок (без ID и сезона в скобках)
   titleEl.textContent = cleanTitle;
 
-  // Переменные для данных TMDB
-  var tmdbData = null;
-  var backdropPath = null;
-  var overview = null;
-  var seasonEpisodes = [];
-
-  // Если нашли TMDB ID, загружаем данные
-  if (tmdbId) {
-    console.log('Загрузка данных TMDB для ID:', tmdbId);
-    var mediaType = 'movie'; // по умолчанию
-
-    // Проверяем, сериал ли это
-    try {
-      if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 1) {
-        mediaType = 'tv';
-      } else if (torrent.data) {
-        var data = JSON.parse(torrent.data);
-        if (data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 1) {
-          mediaType = 'tv';
-        }
-      }
-    } catch (e) { }
-
-    // Если есть номер сезона и это сериал, загружаем кадры серий
-    if (mediaType === 'tv' && seasonNumber) {
-      console.log('Загрузка кадров для сезона ' + seasonNumber + ' сериала ' + tmdbId);
-      seasonEpisodes = await loadSeasonStills(tmdbId, seasonNumber);
-      if (seasonEpisodes.length > 0) {
-        console.log('Загружено ' + seasonEpisodes.length + ' серий с кадрами');
+  // Определяем, сериал ли это
+  var isTvSeries = false;
+  try {
+    if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 1) {
+      isTvSeries = true;
+    } else if (torrent.data) {
+      var data = JSON.parse(torrent.data);
+      if (data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 1) {
+        isTvSeries = true;
       }
     }
+  } catch (e) { }
 
-    // Загружаем основные данные TMDB
-    tmdbData = await getTmdbDetailsWithCache(tmdbId, mediaType);
+  // Переменные для данных TMDB
+  var seasonEpisodes = [];
+  var movieStill = null;
 
-    if (tmdbData) {
-      console.log('Получены данные TMDB:', tmdbData);
-
-      // Сохраняем backdrop и overview
-      if (tmdbData.backdrop_path) {
-        backdropPath = AppState.protocol + '//tsimg.hnar.online/t/p/original' + tmdbData.backdrop_path;
-      }
-      if (tmdbData.overview) {
-        overview = tmdbData.overview;
-      }
-
-      // Если есть постер из TMDB и нет постера в торренте, используем его
-      if (!poster && tmdbData.poster_path) {
-        poster = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + tmdbData.poster_path;
-      }
-
-      // Обновляем backdrop фон
-      if (backdropPath) {
-        detailViewDiv.style.backgroundImage = 'url(' + backdropPath + ')';
-        detailViewDiv.style.backgroundSize = 'cover';
-        detailViewDiv.style.backgroundPosition = 'center';
-        detailViewDiv.style.backgroundRepeat = 'no-repeat';
-
-        // Добавляем затемнение для читаемости текста
-        var existingOverlay = document.getElementById('detail-backdrop-overlay');
-        if (!existingOverlay) {
-          var overlay = document.createElement('div');
-          overlay.id = 'detail-backdrop-overlay';
-          overlay.style.position = 'fixed';
-          overlay.style.top = '0';
-          overlay.style.left = '0';
-          overlay.style.right = '0';
-          overlay.style.bottom = '0';
-          overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-          overlay.style.zIndex = '-1';
-          detailViewDiv.appendChild(overlay);
-        }
-      }
-
-      // Обновляем описание, если оно есть
-      if (overview && detailSubtitle) {
-        detailSubtitle.textContent = overview;
-        detailSubtitle.style.display = 'block';
-      }
-
-      // Обновляем meta информацию если есть
-      updateDetailMetaInfo(tmdbData);
-    } else {
-      console.log('Не удалось загрузить TMDB данные');
+  // Загружаем кадры для серий (если есть сезон и это сериал)
+  if (tmdbId && isTvSeries && seasonNumber) {
+    console.log('Загрузка кадров для сезона ' + seasonNumber + ' сериала ' + tmdbId);
+    seasonEpisodes = await loadSeasonStills(tmdbId, seasonNumber);
+    if (seasonEpisodes.length > 0) {
+      console.log('Загружено ' + seasonEpisodes.length + ' серий с кадрами');
     }
   }
 
+  // Загружаем постер для фильма (если нет сезона)
+  if (tmdbId && !isTvSeries && !seasonNumber) {
+    console.log('Загрузка постера для фильма ' + tmdbId);
+    movieStill = await loadMovieStill(tmdbId);
+    if (movieStill) {
+      console.log('Постер фильма загружен');
+    }
+  }
+
+  // Получаем постер из торрента
   var poster = '';
   var dataParsed = false;
 
@@ -1396,124 +1406,56 @@ async function showDetail(torrent) {
         poster = 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path;
         dataParsed = true;
       } else if (data.TorrServer && data.TorrServer.Files) {
-        // Данные есть, но не для постера
         dataParsed = true;
       }
-      refreshTorrentsList().then(function () {
-        console.log('Список торрентов обновлен');
-      })['catch'](function (error) {
-        console.error('Ошибка обновления списка:', error);
-      });
     }
   } catch (e) {
     console.log('Ошибка парсинга torrent.data:', e);
   }
 
-  // Если не удалось получить данные из torrent.data, делаем запрос к API с 5 попытками
+  // Если не удалось получить данные из torrent.data, делаем запрос к API
   if (!dataParsed && torrent.hash && AppState.currentTorrserverUrl) {
-    var maxAttempts = 5;
-    var attempt = 0;
-    var success = false;
-    var delay = 1000;
-
-    while (attempt < maxAttempts && !success) {
-      attempt++;
-      console.log('Попытка ' + attempt + '/' + maxAttempts + ' получить данные через API для hash:', torrent.hash);
-
-      try {
-        var requestBody = {
-          action: 'get',
-          hash: torrent.hash
-        };
-
-        var headers = {
-          'Content-Type': 'application/json',
-        };
-
-        var authHeaders = getAuthHeaders();
-        for (var key in authHeaders) {
-          if (authHeaders.hasOwnProperty(key)) {
-            headers[key] = authHeaders[key];
-          }
-        }
-
-        var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
-          method: 'POST',
-          headers: headers,
-          body: JSON.stringify(requestBody)
-        });
-
-        if (response.ok) {
-          var apiData = await response.json();
-
-          // Обновляем torrent данными из API
-          if (apiData.data) {
-            torrent.data = apiData.data;
-
-            // Пробуем снова распарсить
-            try {
-              var parsedData = JSON.parse(apiData.data);
-              if (parsedData.movie && parsedData.movie.img) {
-                poster = parsedData.movie.img;
-                success = true;
-              } else if (parsedData.movie && parsedData.movie.poster_path) {
-                poster = 'https://image.tmdb.org/t/p/w342' + parsedData.movie.poster_path;
-                success = true;
-              } else if (parsedData.TorrServer && parsedData.TorrServer.Files) {
-                success = true;
-              }
-
-              // Обновляем file_stats если есть
-              if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
-                torrent.file_stats = apiData.file_stats;
-              }
-            } catch (e) {
-              console.log('Ошибка парсинга API data (попытка ' + attempt + '):', e);
-            }
-          }
-
-          // Обновляем постер если есть в ответе
-          if (apiData.poster && !poster) {
-            poster = apiData.poster;
-            success = true;
-          }
-
-          // Обновляем title если есть
-          if (apiData.title && (!torrent.title || torrent.title === 'Без названия')) {
-            torrent.title = apiData.title;
-          }
-
-          if (success) {
-            console.log('Данные успешно получены за попытку ' + attempt);
-            refreshTorrentsList().then(function () {
-              console.log('Список торрентов обновлен');
-            })['catch'](function (error) {
-              console.error('Ошибка обновления списка:', error);
-            });
-          }
-        } else {
-          console.log('Попытка ' + attempt + ' не удалась, статус:', response.status);
-        }
-
-        // Если не успешно и не последняя попытка, ждем задержку перед следующей
-        if (!success && attempt < maxAttempts) {
-          await new Promise(function (resolve) {
-            setTimeout(resolve, delay);
-          });
-        }
-
-      } catch (apiError) {
-        console.error('Ошибка при запросе к API (попытка ' + attempt + '):', apiError);
-        if (attempt < maxAttempts) {
-          await new Promise(function (resolve) {
-            setTimeout(resolve, delay);
-          });
+    try {
+      var requestBody = { action: 'get', hash: torrent.hash };
+      var headers = { 'Content-Type': 'application/json' };
+      var authHeaders = getAuthHeaders();
+      for (var key in authHeaders) {
+        if (authHeaders.hasOwnProperty(key)) {
+          headers[key] = authHeaders[key];
         }
       }
-    }
 
-    if (!success) {
-      console.log('Не удалось получить данные после', maxAttempts, 'попыток');
+      var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(requestBody)
+      });
+
+      if (response.ok) {
+        var apiData = await response.json();
+        if (apiData.data) {
+          torrent.data = apiData.data;
+          try {
+            var parsedData = JSON.parse(apiData.data);
+            if (parsedData.movie && parsedData.movie.img) {
+              poster = parsedData.movie.img;
+            } else if (parsedData.movie && parsedData.movie.poster_path) {
+              poster = 'https://image.tmdb.org/t/p/w342' + parsedData.movie.poster_path;
+            }
+            if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
+              torrent.file_stats = apiData.file_stats;
+            }
+          } catch (e) { }
+        }
+        if (apiData.poster && !poster) {
+          poster = apiData.poster;
+        }
+        if (apiData.title && (!torrent.title || torrent.title === 'Без названия')) {
+          torrent.title = apiData.title;
+        }
+      }
+    } catch (apiError) {
+      console.error('Ошибка при запросе к API:', apiError);
     }
   }
 
@@ -1523,7 +1465,7 @@ async function showDetail(torrent) {
 
   posterImg.innerHTML = poster ? '<img src="' + poster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
 
-  // Обновляем заголовок (если еще не обновили)
+  // Обновляем заголовок
   if (titleEl.textContent === 'Без названия' && cleanTitle !== 'Без названия') {
     titleEl.textContent = cleanTitle;
   }
@@ -1547,13 +1489,22 @@ async function showDetail(torrent) {
     // Проверяем data поле
     else if (torrent.data) {
       var data = JSON.parse(torrent.data);
-
       if (data.TorrServer && data.TorrServer.Files) {
         files = data.TorrServer.Files;
       } else if (data.lampa && data.movie) {
-        // Для LAMPA формата
         filesList.innerHTML = '';
         addMovieItem(torrent);
+        // Асинхронно загружаем TMDB данные для фона
+        if (tmdbId && !isTvSeries && !seasonNumber) {
+          loadMovieStill(tmdbId).then(function (still) {
+            if (still) {
+              var fileItems = document.querySelectorAll('.file-item');
+              if (fileItems.length > 0 && fileItems[0]) {
+                updateFileItemStill(fileItems[0], still);
+              }
+            }
+          });
+        }
         return;
       }
     }
@@ -1571,17 +1522,20 @@ async function showDetail(torrent) {
 
         // Если есть кадры для серий, пытаемся найти соответствие
         if (seasonEpisodes.length > 0 && collFilles > 1) {
-          // Номер серии (индекс + 1)
           var episodeNum = i + 1;
           for (var e = 0; e < seasonEpisodes.length; e++) {
             if (seasonEpisodes[e].episodeNumber === episodeNum) {
               if (seasonEpisodes[e].stillPath) {
                 episodeStill = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + seasonEpisodes[e].stillPath;
-                console.log('Найден кадр для серии ' + episodeNum + ':', episodeStill);
+                console.log('Найден кадр для серии ' + episodeNum);
               }
               break;
             }
           }
+        }
+        // Если это фильм и есть постер
+        else if (collFilles === 1 && movieStill) {
+          episodeStill = movieStill;
         }
 
         if (collFilles == 1) {
@@ -1598,17 +1552,62 @@ async function showDetail(torrent) {
     filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #ff6a6a;">Ошибка загрузки файлов</div>';
   }
 
+  // Асинхронно загружаем TMDB данные для фона (backdrop, overview и т.д.)
+  if (tmdbId) {
+    (async function () {
+      try {
+        var mediaType = isTvSeries ? 'tv' : 'movie';
+        var tmdbData = await getTmdbDetailsWithCache(tmdbId, mediaType);
+
+        if (tmdbData) {
+          console.log('TMDB данные загружены асинхронно');
+
+          // Обновляем backdrop фон
+          if (tmdbData.backdrop_path) {
+            var backdropPath = AppState.protocol + '//tsimg.hnar.online/t/p/original' + tmdbData.backdrop_path;
+            detailViewDiv.style.backgroundImage = 'url(' + backdropPath + ')';
+            detailViewDiv.style.backgroundSize = 'cover';
+            detailViewDiv.style.backgroundPosition = 'center';
+            detailViewDiv.style.backgroundRepeat = 'no-repeat';
+
+            var existingOverlay = document.getElementById('detail-backdrop-overlay');
+            if (!existingOverlay) {
+              var overlay = document.createElement('div');
+              overlay.id = 'detail-backdrop-overlay';
+              overlay.style.position = 'fixed';
+              overlay.style.top = '0';
+              overlay.style.left = '0';
+              overlay.style.right = '0';
+              overlay.style.bottom = '0';
+              overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+              overlay.style.zIndex = '-1';
+              detailViewDiv.appendChild(overlay);
+            }
+          }
+
+          // Обновляем описание
+          if (tmdbData.overview && detailSubtitle) {
+            detailSubtitle.textContent = tmdbData.overview;
+            detailSubtitle.style.display = 'block';
+          }
+
+          // Обновляем meta информацию
+          updateDetailMetaInfo(tmdbData);
+        }
+      } catch (error) {
+        console.error('Ошибка асинхронной загрузки TMDB:', error);
+      }
+    })();
+  }
+
   // Устанавливаем фокус на первый элемент в детальном просмотре
   setTimeout(function () {
     if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
       updateFocusableElements();
 
-      // 1. Ищем все элементы файлов
       var fileItems = document.querySelectorAll('.file-item');
-
       var targetIndex = -1;
 
-      // 2. Если есть файлы, ставим фокус на первый файл
       if (fileItems.length > 0) {
         for (var i = 0; i < focusableElements.length; i++) {
           if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) {
@@ -1616,7 +1615,6 @@ async function showDetail(torrent) {
             break;
           }
         }
-
         if (targetIndex !== -1) {
           setFocus(targetIndex);
           console.log('Фокус в детальном просмотре на первый файл');
@@ -1624,7 +1622,6 @@ async function showDetail(torrent) {
         }
       }
 
-      // 3. Если файлов нет, пробуем найти кнопку "Продолжить"
       var progressBtn = document.querySelector('.detail-progress-btn');
       if (progressBtn) {
         for (var i = 0; i < focusableElements.length; i++) {
@@ -1633,7 +1630,6 @@ async function showDetail(torrent) {
             break;
           }
         }
-
         if (targetIndex !== -1) {
           setFocus(targetIndex);
           console.log('Фокус в детальном просмотре на кнопке "Продолжить"');
@@ -1641,7 +1637,6 @@ async function showDetail(torrent) {
         }
       }
 
-      // 4. Фолбэк на кнопку "Назад"
       var backBtn = document.querySelector('.back-btn');
       if (backBtn) {
         for (var i = 0; i < focusableElements.length; i++) {
@@ -1662,6 +1657,37 @@ async function showDetail(torrent) {
     }
   }, 300);
   AppState.mediaType = "";
+}
+
+// Функция для обновления кадра у существующей плитки
+function updateFileItemStill(fileItem, stillImage) {
+  if (!fileItem || !stillImage) return;
+
+  var existingContainer = fileItem.querySelector('.file-still-container');
+  var existingOverlay = fileItem.querySelector('.file-overlay');
+
+  if (existingContainer) {
+    // Обновляем существующее изображение
+    var img = existingContainer.querySelector('img');
+    if (img) {
+      img.src = stillImage;
+    }
+  } else {
+    // Создаем новые элементы
+    var stillHtml = '<div class="file-still-container">' +
+      '<img src="' + stillImage + '" onerror="this.parentElement.style.display=\'none\'">' +
+      '</div>' +
+      '<div class="file-overlay"></div>';
+
+    var tempDiv = document.createElement('div');
+    tempDiv.innerHTML = stillHtml;
+
+    var stillContainer = tempDiv.firstChild;
+    var overlay = stillContainer.nextSibling;
+
+    fileItem.insertBefore(stillContainer, fileItem.firstChild);
+    fileItem.insertBefore(overlay, fileItem.firstChild.nextSibling);
+  }
 }
 
 // Вспомогательная функция для обновления meta информации в детальном просмотре
