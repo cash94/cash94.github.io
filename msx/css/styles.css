@@ -832,7 +832,6 @@ body {
 }
 
 .play-btn::before {
-  content: "▶";
   color: #ff8c00;
 }
 
