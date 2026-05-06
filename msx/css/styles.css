@@ -788,52 +788,76 @@ body {
   background: rgba(60, 60, 70, 0.5);
   backdrop-filter: blur(8px);
   border-radius: 12px;
-  padding: 16px 11.04px;
+  padding: 0;
   display: flex;
-  flex-direction: column;  /* Меняем на колонку, чтобы кнопка была под названием или по центру */
-  align-items: center;      /* Центрируем по горизонтали */
-  justify-content: space-between;  /* Центрируем по вертикали */
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  min-width: 160px;         /* Ширина плитки */
-  width: 160px;             /* Фиксированная ширина для квадрата */
-  height: 160px;            /* Фиксированная высота = ширина (квадрат) */
+  min-width: 160px;
+  width: 160px;
+  height: 160px;
   flex-shrink: 0;
   scroll-snap-align: start;
-  gap: 8px;
-  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Контейнер для кадра (на всю плитку) */
+.file-still-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.file-still-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Затемнение поверх кадра для читаемости текста и кнопки */
+.file-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1;
+}
+
+/* Контент поверх кадра */
+.file-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+  padding: 12px;
 }
 
 .file-name {
-  flex: 0;                  /* Убираем растягивание */
+  flex: 0;
   margin-right: 0;
   font-size: 12.9px;
   white-space: normal;
   word-break: break-word;
   text-align: center;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 6px 8px;
+  border-radius: 8px;
+  width: 100%;
 }
 
 .file-name div:first-child {
   color: #ff8c00;
-}
-
-.file-still {
-  width: 100%;
-  height: 100px;
-  overflow: hidden;
-  border-radius: 8px;
-  margin-bottom: 8px;
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.file-still img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.3s ease;
-}
-
-.file-item:hover .file-still img {
-  transform: scale(1.05);
 }
 
 .play-btn {
@@ -841,16 +865,17 @@ body {
   backdrop-filter: blur(4px);
   color: #ff8c00;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 10px 16px;       /* Немного больше для лучшего вида */
-  border-radius: 50%;       /* Делаем кнопку круглой (опционально) */
+  padding: 10px 16px;
+  border-radius: 50%;
   min-width: 44px;
   min-height: 44px;
-  font-size: 18px;          /* Увеличиваем размер стрелки */
+  font-size: 18px;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-bottom: 8px;
 }
 
 .play-btn:hover {
@@ -864,7 +889,7 @@ body {
 }
 
 .play-btn {
-  font-size: 0;            /* Скрываем оригинальный текст, оставляя ::before */
+  font-size: 0;
 }
 
 body.detail-open {
