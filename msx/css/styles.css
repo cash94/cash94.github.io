@@ -760,74 +760,80 @@ body {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
-.files-list {
-  margin-top: 18.42px;
-  display: flex;
-  overflow-x: auto;
-  overflow-y: hidden;
-  gap: 12px;
-  padding: 8px 4px;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-
-.files-list::-webkit-scrollbar {
-  display: none; /* Скрываем скроллбар в Chrome/Safari */
-}
-
 .file-item {
   background: rgba(60, 60, 70, 0.5);
   backdrop-filter: blur(8px);
   border-radius: 12px;
-  padding: 16px 11.04px;
+  padding: 0;
   display: flex;
-  flex-direction: column;  /* Меняем на колонку, чтобы кнопка была под названием или по центру */
-  align-items: center;      /* Центрируем по горизонтали */
-  justify-content: space-between;  /* Центрируем по вертикали */
+  flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  min-width: 160px;         /* Ширина плитки */
-  width: 160px;             /* Фиксированная ширина для квадрата */
-  height: 160px;            /* Фиксированная высота = ширина (квадрат) */
+  min-width: 160px;
+  width: 160px;
+  height: 160px;
   flex-shrink: 0;
   scroll-snap-align: start;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Контейнер для кнопки (по центру плитки) */
+.file-item .play-btn-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Нижняя панель с названием и размером */
+.file-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.6);
   gap: 8px;
-  text-align: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .file-name {
-  flex: 0;                  /* Убираем растягивание */
-  margin-right: 0;
-  font-size: 12.9px;
-  white-space: normal;
-  word-break: break-word;
-  text-align: center;
+  flex: 1;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  color: #fff;
 }
 
-.file-name div:first-child {
+.file-size {
+  font-size: 10px;
   color: #ff8c00;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .play-btn {
-  background: rgba(60, 60, 70, 0.85);
+  background: rgba(60, 60, 70, 0.95);
   backdrop-filter: blur(4px);
   color: #ff8c00;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 10px 16px;       /* Немного больше для лучшего вида */
-  border-radius: 50%;       /* Делаем кнопку круглой (опционально) */
-  min-width: 44px;
-  min-height: 44px;
-  font-size: 18px;          /* Увеличиваем размер стрелки */
+  border: 2px solid rgba(255, 140, 0, 0.5);
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  font-size: 24px;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .play-btn:hover {
-  background: rgba(60, 60, 70, 0.95);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(60, 60, 70, 1);
+  border-color: rgba(255, 140, 0, 0.8);
   transform: scale(1.05);
 }
 
@@ -836,7 +842,7 @@ body {
 }
 
 .play-btn {
-  font-size: 0;            /* Скрываем оригинальный текст, оставляя ::before */
+  font-size: 0;
 }
 
 body.detail-open {
