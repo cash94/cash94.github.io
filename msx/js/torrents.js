@@ -1229,6 +1229,11 @@ async function showDetail(torrent) {
   var detailSubtitle = document.getElementById('detail-subtitle');
   var detailViewDiv = document.getElementById('detail-view');
 
+  if (filesList) {
+    filesList.style.display = 'flex'; // или 'block', но лучше flex
+    filesList.style.flexDirection = 'row'; // убеждаемся что горизонтальный
+  }
+
   // Извлекаем TMDB ID из названия торрента
   var tmdbId = null;
   var cleanTitle = torrent.title || 'Без названия';
