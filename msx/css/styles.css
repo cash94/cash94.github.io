@@ -766,11 +766,20 @@ body {
   overflow-x: auto;
   overflow-y: hidden;
   gap: 12px;
-  padding: 8px 20px;
+  padding: 8px 0;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  justify-content: space-around;
+}
+
+/* Добавляем отступ первому элементу */
+.file-item:first-child {
+  margin-left: 20px;
+}
+
+/* Добавляем отступ последнему элементу */
+.file-item:last-child {
+  margin-right: 20px;
 }
 
 .file-item:first-child {
