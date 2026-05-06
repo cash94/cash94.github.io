@@ -1198,6 +1198,18 @@ function resetDetailBackground() {
     filesList.style.display = '';
     filesList.style.flexDirection = '';
   }
+
+  // Очищаем постер
+  var detailPoster = document.getElementById('detail-poster');
+  if (detailPoster) {
+    detailPoster.innerHTML = '';
+  }
+
+  // Очищаем название
+  var detailTitleText = document.getElementById('detail-title-text');
+  if (detailTitleText) {
+    detailTitleText.textContent = '';
+  }
 }
 
 // Функция для извлечения номера сезона из названия
