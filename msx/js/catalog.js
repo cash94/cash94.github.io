@@ -535,7 +535,16 @@ function getCatalogItemSubtitle(item, details) {
     if (type) parts.push(type);
     if (year) parts.push(year);
     if (primaryGenre) parts.push(primaryGenre);
-    return parts.join(' • ');
+    var subtitleText = parts.join(' • ');
+
+    // Показываем элемент и устанавливаем текст
+    var detailSubtitle = document.getElementById('detail-subtitle');
+    if (detailSubtitle) {
+        detailSubtitle.textContent = subtitleText;
+        detailSubtitle.style.display = 'block'; // или '', чтобы вернуть стандартное отображение
+    }
+
+    return subtitleText;
 }
 
 async function fetchCatalogItemMeta(item, mediaType) {
