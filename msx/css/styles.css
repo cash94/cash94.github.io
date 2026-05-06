@@ -770,6 +770,7 @@ body {
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  justify-content: space-between;
 }
 
 .file-item:first-child {
