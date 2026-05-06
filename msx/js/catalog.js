@@ -530,10 +530,12 @@ function getCatalogItemSubtitle(item, details) {
     var year = getCatalogItemYear(source);
     var type = ((item && item.media_type) || source.media_type || 'movie') === 'tv' ? 'Сериал' : 'Фильм';
     var genres = getNormalizedCatalogGenres(source);
+    var safeRating = getSafeCatalogRating(source);
     var primaryGenre = genres[0] || '';
     var parts = [];
     if (type) parts.push(type);
     if (year) parts.push(year);
+    if (safeRating) parts.push(safeRating);
     if (primaryGenre) parts.push(primaryGenre);
     var subtitleText = parts.join(' • ');
 
