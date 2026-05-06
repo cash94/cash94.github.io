@@ -1191,6 +1191,43 @@ function resetDetailBackground() {
   }
 }
 
+// Функция для извлечения номера сезона из названия
+function extractSeasonFromTitle(title) {
+  if (!title) return null;
+
+  // Ищем [сезон X] или [season X]
+  var seasonPatterns = [
+    /\[сезон\s*(\d+)\]/i,
+    /\[season\s*(\d+)\]/i,
+    /сезон\s*(\d+)/i,
+    /season\s*(\d+)/i,
+    /S(\d+)/i
+  ];
+
+  for (var p = 0; p < seasonPatterns.length; p++) {
+    var match = title.match(seasonPatterns[p]);
+    if (match && match[1]) {
+      return parseInt(match[1], 10);
+    }
+  }
+
+  return null;
+}
+
+// Функция для загрузки кадров сезона из TMDB
+async function loadSeasonStills(tmdbId, seasonNumber) {
+  try {
+    var response = await fetch('/api/tmdb/season?id=' + tmdbId + '&seasonNumber=' + seasonNumber);
+    if (response.ok) {
+      var seasonData = await response.json();
+      return seasonData.episodes || [];
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки кадров сезона:', error);
+  }
+  return [];
+}
+
 // Показать детали торрента
 async function showDetail(torrent) {
   // Сохраняем hash и индекс перед открытием
@@ -1230,13 +1267,14 @@ async function showDetail(torrent) {
   var detailViewDiv = document.getElementById('detail-view');
 
   if (filesList) {
-    filesList.style.display = 'flex'; // или 'block', но лучше flex
-    filesList.style.flexDirection = 'row'; // убеждаемся что горизонтальный
+    filesList.style.display = 'flex';
+    filesList.style.flexDirection = 'row';
   }
 
   // Извлекаем TMDB ID из названия торрента
   var tmdbId = null;
   var cleanTitle = torrent.title || 'Без названия';
+  var seasonNumber = null;
 
   // Ищем ID в квадратных скобках [ID] - только цифры
   var bracketMatch = cleanTitle.match(/\[(\d+)\]/);
@@ -1247,13 +1285,22 @@ async function showDetail(torrent) {
     console.log('Найден TMDB ID в названии:', tmdbId);
   }
 
-  // Обновляем заголовок (без ID в скобках)
+  // Извлекаем номер сезона из названия
+  seasonNumber = extractSeasonFromTitle(cleanTitle);
+  if (seasonNumber) {
+    console.log('Найден номер сезона:', seasonNumber);
+    // Удаляем информацию о сезоне из названия для отображения
+    cleanTitle = cleanTitle.replace(/\[сезон\s*\d+\]/i, '').replace(/\[season\s*\d+\]/i, '').replace(/сезон\s*\d+/i, '').replace(/season\s*\d+/i, '').replace(/S\d+/i, '').trim();
+  }
+
+  // Обновляем заголовок (без ID и сезона в скобках)
   titleEl.textContent = cleanTitle;
 
   // Переменные для данных TMDB
   var tmdbData = null;
   var backdropPath = null;
   var overview = null;
+  var seasonEpisodes = [];
 
   // Если нашли TMDB ID, загружаем данные
   if (tmdbId) {
@@ -1272,7 +1319,16 @@ async function showDetail(torrent) {
       }
     } catch (e) { }
 
-    // Загружаем данные с указанием типа
+    // Если есть номер сезона и это сериал, загружаем кадры серий
+    if (mediaType === 'tv' && seasonNumber) {
+      console.log('Загрузка кадров для сезона ' + seasonNumber + ' сериала ' + tmdbId);
+      seasonEpisodes = await loadSeasonStills(tmdbId, seasonNumber);
+      if (seasonEpisodes.length > 0) {
+        console.log('Загружено ' + seasonEpisodes.length + ' серий с кадрами');
+      }
+    }
+
+    // Загружаем основные данные TMDB
     tmdbData = await getTmdbDetailsWithCache(tmdbId, mediaType);
 
     if (tmdbData) {
@@ -1344,9 +1400,9 @@ async function showDetail(torrent) {
         dataParsed = true;
       }
       refreshTorrentsList().then(function () {
-        console.log('🔄 Список торрентов обновлен');
+        console.log('Список торрентов обновлен');
       })['catch'](function (error) {
-        console.error('❌ Ошибка обновления списка:', error);
+        console.error('Ошибка обновления списка:', error);
       });
     }
   } catch (e) {
@@ -1358,7 +1414,7 @@ async function showDetail(torrent) {
     var maxAttempts = 5;
     var attempt = 0;
     var success = false;
-    var delay = 1000; // Задержка в 1 секунду между попытками
+    var delay = 1000;
 
     while (attempt < maxAttempts && !success) {
       attempt++;
@@ -1430,9 +1486,9 @@ async function showDetail(torrent) {
           if (success) {
             console.log('Данные успешно получены за попытку ' + attempt);
             refreshTorrentsList().then(function () {
-              console.log('🔄 Список торрентов обновлен');
+              console.log('Список торрентов обновлен');
             })['catch'](function (error) {
-              console.error('❌ Ошибка обновления списка:', error);
+              console.error('Ошибка обновления списка:', error);
             });
           }
         } else {
@@ -1509,12 +1565,30 @@ async function showDetail(torrent) {
       var nameSerials = 'Серия';
       var collFilles = files.length;
       var indx = 0;
+
       for (var i = 0; i < files.length; i++) {
+        var episodeStill = null;
+
+        // Если есть кадры для серий, пытаемся найти соответствие
+        if (seasonEpisodes.length > 0 && collFilles > 1) {
+          // Номер серии (индекс + 1)
+          var episodeNum = i + 1;
+          for (var e = 0; e < seasonEpisodes.length; e++) {
+            if (seasonEpisodes[e].episodeNumber === episodeNum) {
+              if (seasonEpisodes[e].stillPath) {
+                episodeStill = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + seasonEpisodes[e].stillPath;
+                console.log('Найден кадр для серии ' + episodeNum + ':', episodeStill);
+              }
+              break;
+            }
+          }
+        }
+
         if (collFilles == 1) {
-          addFileItem(files[i], torrent.hash, torrent.title);
+          addFileItem(files[i], torrent.hash, torrent.title, null, episodeStill);
         } else {
           indx = indx + 1;
-          addFileItem(files[i], torrent.hash, nameSerials + " " + indx);
+          addFileItem(files[i], torrent.hash, nameSerials + " " + indx, indx, episodeStill);
         }
       }
     }
@@ -1637,7 +1711,7 @@ function updateDetailMetaInfo(tmdbData) {
 }
 
 // Добавить элемент файла (для сериалов)
-function addFileItem(file, hash, name) {
+function addFileItem(file, hash, name, episodeIndex, stillImage) {
   // Проверяем расширение файла
   var fileName = file.path.split('/').pop() || ('Файл ' + file.id);
   var fileExt = fileName.split('.').pop().toLowerCase();
@@ -1645,7 +1719,7 @@ function addFileItem(file, hash, name) {
 
   // Если расширение не в списке разрешенных - не добавляем
   if (!allowedExtensions.includes(fileExt)) {
-    console.log(`⏭️ Пропускаем файл (не видео): ${fileName}`);
+    console.log('Пропускаем файл (не видео): ' + fileName);
     return;
   }
 
@@ -1653,11 +1727,21 @@ function addFileItem(file, hash, name) {
 
   var item = document.createElement('div');
   item.className = 'file-item';
-  item.innerHTML = '\n    <div class="file-name">\n      <div>' + escapeHtml(name) + '</div>\n      <div style="font-size: 12px; color: #888; margin-top: 4px;">' + fileSize + '</div>\n    </div>\n    <button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '">▶</button>\n  ';
+
+  // Создаем HTML с возможным кадром
+  var stillHtml = '';
+  if (stillImage) {
+    stillHtml = '<div class="file-still" style="width: 100%; height: 100px; overflow: hidden; border-radius: 8px; margin-bottom: 8px; background: rgba(0,0,0,0.3);">' +
+      '<img src="' + stillImage + '" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.style.display=\'none\'">' +
+      '</div>';
+  }
+
+  item.innerHTML = stillHtml + '\n    <div class="file-name">\n      <div>' + escapeHtml(name) + '</div>\n      <div style="font-size: 12px; color: #888; margin-top: 4px;">' + fileSize + '</div>\n    </div>\n    <button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '" data-episode-index="' + (episodeIndex !== undefined ? episodeIndex : '') + '">▶</button>\n  ';
 
   item.querySelector('.play-btn').onclick = function (e) {
     e.stopPropagation();
     var btn = e.currentTarget;
+    var episodeIdx = btn.dataset.episodeIndex ? parseInt(btn.dataset.episodeIndex) : null;
 
     var playUrl = file.id ?
       AppState.currentTorrserverUrl + '/play/' + hash + '/' + file.id :
@@ -1666,8 +1750,8 @@ function addFileItem(file, hash, name) {
     document.getElementById('playback-overlay').classList.add('active');
     document.getElementById('detail-view').style.pointerEvents = 'none';
 
-    // Явно передаем timecode = 0 для воспроизведения с начала
-    startHLSPlayback(playUrl, 0, false).then(function () {
+    // Передаем episodeIndex в startHLSPlayback
+    startHLSPlayback(playUrl, 0, false, episodeIdx).then(function () {
       document.getElementById('playback-overlay').classList.remove('active');
       document.getElementById('detail-view').style.pointerEvents = 'auto';
     })['catch'](function () {
