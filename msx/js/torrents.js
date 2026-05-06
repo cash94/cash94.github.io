@@ -1728,15 +1728,23 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
   var item = document.createElement('div');
   item.className = 'file-item';
 
-  // Создаем HTML с возможным кадром
+  // Создаем HTML с кадром на всю плитку
   var stillHtml = '';
   if (stillImage) {
-    stillHtml = '<div class="file-still" style="width: 100%; height: 100px; overflow: hidden; border-radius: 8px; margin-bottom: 8px; background: rgba(0,0,0,0.3);">' +
-      '<img src="' + stillImage + '" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.style.display=\'none\'">' +
-      '</div>';
+    stillHtml = '<div class="file-still-container">' +
+      '<img src="' + stillImage + '" onerror="this.parentElement.style.display=\'none\'">' +
+      '</div>' +
+      '<div class="file-overlay"></div>';
   }
 
-  item.innerHTML = stillHtml + '\n    <div class="file-name">\n      <div>' + escapeHtml(name) + '</div>\n      <div style="font-size: 12px; color: #888; margin-top: 4px;">' + fileSize + '</div>\n    </div>\n    <button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '" data-episode-index="' + (episodeIndex !== undefined ? episodeIndex : '') + '">▶</button>\n  ';
+  item.innerHTML = stillHtml +
+    '<div class="file-content">' +
+    '<div class="file-name">' +
+    '<div>' + escapeHtml(name) + '</div>' +
+    '<div style="font-size: 12px; color: #888; margin-top: 4px;">' + fileSize + '</div>' +
+    '</div>' +
+    '<button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '" data-episode-index="' + (episodeIndex !== undefined ? episodeIndex : '') + '">▶</button>' +
+    '</div>';
 
   item.querySelector('.play-btn').onclick = function (e) {
     e.stopPropagation();
