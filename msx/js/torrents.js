@@ -1728,7 +1728,7 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
   var item = document.createElement('div');
   item.className = 'file-item';
 
-  // Создаем HTML с кадром на всю плитку
+  // Создаем HTML с кадром на всю верхнюю часть
   var stillHtml = '';
   if (stillImage) {
     stillHtml = '<div class="file-still-container">' +
@@ -1739,11 +1739,11 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
 
   item.innerHTML = stillHtml +
     '<div class="file-content">' +
-    '<div class="file-name">' +
-    '<div>' + escapeHtml(name) + '</div>' +
-    '<div style="font-size: 12px; color: #888; margin-top: 4px;">' + fileSize + '</div>' +
-    '</div>' +
     '<button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '" data-episode-index="' + (episodeIndex !== undefined ? episodeIndex : '') + '">▶</button>' +
+    '</div>' +
+    '<div class="file-info">' +
+    '<div class="file-name" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</div>' +
+    '<div class="file-size">' + fileSize + '</div>' +
     '</div>';
 
   item.querySelector('.play-btn').onclick = function (e) {
