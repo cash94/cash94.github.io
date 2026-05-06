@@ -2231,6 +2231,8 @@ function setupFocusRescue() {
         var trailerLinks = [];
         var actorCards = [];
         var recommendationCards = [];
+        var fileItems = [];
+
         for (var j = 0; j < items.length; j++) {
             var el = items[j];
             if (el.classList.contains('catalog-trailer-play') ||
@@ -2244,6 +2246,9 @@ function setupFocusRescue() {
             if (el.classList.contains('catalog-recommendation-card')) {
                 recommendationCards.push(el);
             }
+            if (el.classList && el.classList.contains('file-item')) {
+                fileItems.push(el);
+            }
         }
         var watchBtn = byId('catalog-watch-btn');
         var backBtn = byId('back-from-detail');
@@ -2255,6 +2260,7 @@ function setupFocusRescue() {
         var isRecommendation = focused.classList.contains('catalog-recommendation-card');
         var isWatchBtn = focused.id === 'catalog-watch-btn';
         var isBackBtn = focused.id === 'back-from-detail';
+        var isFileItem = focused.classList && focused.classList.contains('file-item');
 
         var trailerIndex = -1;
         for (var k = 0; k < trailerLinks.length; k++) {
@@ -2274,6 +2280,13 @@ function setupFocusRescue() {
         for (var m = 0; m < recommendationCards.length; m++) {
             if (focused === recommendationCards[m]) {
                 recommendationIndex = m;
+                break;
+            }
+        }
+        var fileItemIndex = -1;
+        for (var n = 0; n < fileItems.length; n++) {
+            if (focused === fileItems[n]) {
+                fileItemIndex = n;
                 break;
             }
         }
@@ -2307,6 +2320,47 @@ function setupFocusRescue() {
             }
         };
 
+        // Новая логика для file-item
+        if (isFileItem && fileItemIndex !== -1) {
+            if (direction === 'left') {
+                if (fileItemIndex > 0) {
+                    focusEl(fileItems[fileItemIndex - 1]);
+                    scrollToElement(fileItems[fileItemIndex - 1]);
+                }
+                return true;
+            }
+            if (direction === 'right') {
+                if (fileItemIndex < fileItems.length - 1) {
+                    focusEl(fileItems[fileItemIndex + 1]);
+                    scrollToElement(fileItems[fileItemIndex + 1]);
+                }
+                return true;
+            }
+            if (direction === 'up') {
+                // Находим предыдущий элемент (не file-item)
+                var prevItems = [];
+                for (var p = idx - 1; p >= 0; p--) {
+                    if (!items[p].classList || !items[p].classList.contains('file-item')) {
+                        prevItems.push(items[p]);
+                    }
+                }
+                if (prevItems.length > 0) {
+                    focusEl(prevItems[0]);
+                    if (prevItems[0].id === 'catalog-watch-btn' || prevItems[0].id === 'back-from-detail') {
+                        scrollToTop();
+                    } else {
+                        scrollToElement(prevItems[0]);
+                    }
+                }
+                return true;
+            }
+            if (direction === 'down') {
+                // На file-item down ничего не делает
+                return true;
+            }
+            return true;
+        }
+
         if (isTrailer && trailerIndex !== -1) {
             if (direction === 'left') {
                 return focusEl(trailerLinks[Math.max(0, trailerIndex - 1)] || focused);
@@ -2330,6 +2384,10 @@ function setupFocusRescue() {
                 } else if (recommendationCards.length > 0) {
                     focusEl(recommendationCards[0]);
                     scrollToElement(recommendationCards[0]);
+                    return true;
+                } else if (fileItems.length > 0) {
+                    focusEl(fileItems[0]);
+                    scrollToElement(fileItems[0]);
                     return true;
                 }
                 return true;
@@ -2359,15 +2417,17 @@ function setupFocusRescue() {
             if (direction === 'down') {
                 if (recommendationCards.length > 0) {
                     var targetIndex;
-                    // Предполагается, что есть переменная actorIndex (текущий индекс в actorCards)
                     if (actorIndex < recommendationCards.length) {
                         targetIndex = actorIndex;
                     } else {
                         targetIndex = recommendationCards.length - 1;
                     }
-
                     focusEl(recommendationCards[targetIndex]);
                     scrollToElement(recommendationCards[targetIndex]);
+                    return true;
+                } else if (fileItems.length > 0) {
+                    focusEl(fileItems[0]);
+                    scrollToElement(fileItems[0]);
                     return true;
                 }
                 return true;
@@ -2384,26 +2444,22 @@ function setupFocusRescue() {
             }
             if (direction === 'up') {
                 if (actorCards.length > 0) {
-                    // Пытаемся найти элемент с тем же индексом
                     var targetIndex;
                     if (recommendationIndex < actorCards.length) {
                         targetIndex = recommendationIndex;
                     } else {
                         targetIndex = actorCards.length - 1;
                     }
-
                     focusEl(actorCards[targetIndex]);
                     scrollToElement(actorCards[targetIndex]);
                     return true;
                 } else if (trailerLinks.length > 0) {
-                    // Та же логика для trailerLinks
                     var targetIndex;
                     if (recommendationIndex < trailerLinks.length) {
                         targetIndex = recommendationIndex;
                     } else {
                         targetIndex = trailerLinks.length - 1;
                     }
-
                     focusEl(trailerLinks[targetIndex]);
                     scrollToElement(trailerLinks[targetIndex]);
                     return true;
@@ -2415,6 +2471,11 @@ function setupFocusRescue() {
                 return focusEl(items[Math.max(0, idx - 1)] || focused);
             }
             if (direction === 'down') {
+                if (fileItems.length > 0) {
+                    focusEl(fileItems[0]);
+                    scrollToElement(fileItems[0]);
+                    return true;
+                }
                 return true;
             }
             return true;
@@ -2435,6 +2496,10 @@ function setupFocusRescue() {
                 } else if (recommendationCards.length > 0) {
                     focusEl(recommendationCards[0]);
                     scrollToElement(recommendationCards[0]);
+                    return true;
+                } else if (fileItems.length > 0) {
+                    focusEl(fileItems[0]);
+                    scrollToElement(fileItems[0]);
                     return true;
                 }
                 return true;
@@ -2472,6 +2537,7 @@ function setupFocusRescue() {
             return true;
         }
 
+        // Общая навигация (для элементов, не попавших в специальные категории)
         if (direction === 'up') {
             var targetEl = items[Math.max(0, idx - 1)] || focused;
             focusEl(targetEl);
