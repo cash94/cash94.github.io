@@ -66,6 +66,19 @@ function updateFocusableElements() {
         return;
     }
 
+    if (screen === 'sync') {
+        var syncElements = [];
+        var syncCloseBtn = document.getElementById('sync-close-btn');
+        var syncCodeInput = document.getElementById('sync-code-input');
+
+        if (syncCloseBtn && syncCloseBtn.offsetParent !== null) syncElements.push(syncCloseBtn);
+        if (syncCodeInput && syncCodeInput.offsetParent !== null) syncElements.push(syncCodeInput);
+
+        focusableElements = syncElements;
+        console.log('🎯 Фокус на экране синхронизации, найдено элементов: ' + focusableElements.length);
+        return;
+    }
+
     if (screen === 'player') {
         var controlsContainer = document.getElementById('controls-container');
         var controlsVisible = !!controlsContainer && !controlsContainer.classList.contains('idle-hidden');
