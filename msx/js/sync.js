@@ -266,25 +266,6 @@ async function showSyncOverlay() {
 
         AppState.currentScreen = 'sync';
         syncOverlay.classList.remove('hidden');
-
-        // Устанавливаем фокус на поле ввода для удобства
-        setTimeout(function () {
-            if (codeInput && typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-                updateFocusableElements();
-                var focusableElements = Array.from(document.querySelectorAll('.sync-close-btn, .sync-code-input'));
-                var inputIndex = -1;
-                for (var i = 0; i < focusableElements.length; i++) {
-                    if (focusableElements[i].id === 'sync-code-input') {
-                        inputIndex = i;
-                        break;
-                    }
-                }
-                if (inputIndex !== -1) {
-                    setFocus(inputIndex);
-                }
-                codeInput.focus();
-            }
-        }, 100);
     }
 }
 
