@@ -2926,6 +2926,95 @@ function setupFocusRescue() {
         }
         if (idx === -1) return ensureConfigFocus(true);
 
+        // Проверяем, являются ли элементы кнопками синхронизации или замера скорости
+        var isSyncBtn = focused.id === 'sync-clients-btn';
+        var isSpeedtestBtn = focused.id === 'speedtest-btn';
+
+        // Логика для sync-clients-btn
+        if (isSyncBtn) {
+            if (direction === 'left') {
+                // Клавиша left - ничего не делаем
+                return true;
+            }
+            if (direction === 'right') {
+                // Перемещаем фокус на speedtest-btn
+                var speedtestBtn = document.getElementById('speedtest-btn');
+                if (speedtestBtn && belongsToScreen(speedtestBtn, 'config')) {
+                    focusEl(speedtestBtn);
+                    setTimeout(function () {
+                        scrollToActiveConfigItem();
+                    }, 50);
+                }
+                return true;
+            }
+            if (direction === 'up') {
+                // Перемещаем фокус на элемент перед sync-clients-btn
+                var newFocused = items[Math.max(0, idx - 1)] || focused;
+                if (newFocused) {
+                    focusEl(newFocused);
+                    setTimeout(function () {
+                        scrollToActiveConfigItem();
+                    }, 50);
+                }
+                return true;
+            }
+            if (direction === 'down') {
+                // Перемещаем фокус на элемент через один (idx + 2)
+                var newFocused = items[Math.min(items.length - 1, idx + 2)] || focused;
+                if (newFocused) {
+                    focusEl(newFocused);
+                    setTimeout(function () {
+                        scrollToActiveConfigItem();
+                    }, 50);
+                }
+                return true;
+            }
+            return false;
+        }
+
+        // Логика для speedtest-btn
+        if (isSpeedtestBtn) {
+            if (direction === 'right') {
+                // Клавиша right - ничего не делаем
+                return true;
+            }
+            if (direction === 'left') {
+                // Перемещаем фокус на sync-clients-btn
+                var syncBtn = document.getElementById('sync-clients-btn');
+                if (syncBtn && belongsToScreen(syncBtn, 'config')) {
+                    focusEl(syncBtn);
+                    setTimeout(function () {
+                        scrollToActiveConfigItem();
+                    }, 50);
+                }
+                return true;
+            }
+            if (direction === 'up') {
+                // Перемещаем фокус на элемент через один перед speedtest-btn (idx - 2)
+                var newFocused = items[Math.max(0, idx - 2)] || focused;
+                if (newFocused) {
+                    focusEl(newFocused);
+                    setTimeout(function () {
+                        scrollToActiveConfigItem();
+                    }, 50);
+                }
+                return true;
+            }
+            if (direction === 'down') {
+                // Перемещаем фокус на следующий элемент
+                var newFocused = items[Math.min(items.length - 1, idx + 1)] || focused;
+                if (newFocused) {
+                    focusEl(newFocused);
+                    setTimeout(function () {
+                        scrollToActiveConfigItem();
+                    }, 50);
+                }
+                return true;
+            }
+            return false;
+        }
+
+        // Стандартная логика для остальных элементов
         var newFocused = null;
         if (direction === 'up') {
             newFocused = items[Math.max(0, idx - 1)] || focused;
@@ -2942,7 +3031,7 @@ function setupFocusRescue() {
             // Добавляем скроллинг после фокуса
             setTimeout(function () {
                 scrollToActiveConfigItem();
-            }, 50); // Небольшая задержка для применения стилей фокуса
+            }, 50);
         }
 
         return false;
