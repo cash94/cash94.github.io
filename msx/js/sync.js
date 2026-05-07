@@ -235,6 +235,7 @@ function startSyncCodeTimer() {
 }
 
 async function showSyncOverlay() {
+    AppState.syncCodeScreen = true;
     initSyncOverlay();
     if (syncOverlay) {
         // Очищаем сообщения
@@ -365,7 +366,6 @@ function addSyncStyles() {
 
 // Инициализация модуля
 function initSync() {
-    AppState.syncCodeScreen = true;
     console.log('🔄 Модуль синхронизации инициализирован');
     addSyncStyles();
     setupSyncButton();
