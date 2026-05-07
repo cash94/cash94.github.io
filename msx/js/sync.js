@@ -288,6 +288,7 @@ async function showSyncOverlay() {
 }
 
 function closeSyncOverlay() {
+    AppState.syncCodeScreen = false;
     if (syncOverlay) {
         // Очищаем таймер
         if (AppState.syncCodeTimer) {
@@ -364,10 +365,11 @@ function addSyncStyles() {
 
 // Инициализация модуля
 function initSync() {
+    AppState.syncCodeScreen = true;
     console.log('🔄 Модуль синхронизации инициализирован');
     addSyncStyles();
     setupSyncButton();
-
+    
     // Добавляем обработку клавиш для закрытия оверлея
     document.addEventListener('keydown', function (e) {
         if (syncOverlay && !syncOverlay.classList.contains('hidden')) {
