@@ -266,6 +266,31 @@ async function showSyncOverlay() {
 
         AppState.currentScreen = 'sync';
         syncOverlay.classList.remove('hidden');
+
+        // Устанавливаем фокус на поле ввода
+        setTimeout(function () {
+            if (codeInput) {
+                // Убираем класс focused со всех элементов
+                var focusedElements = document.querySelectorAll('.focused');
+                for (var i = 0; i < focusedElements.length; i++) {
+                    focusedElements[i].classList.remove('focused');
+                }
+                // Добавляем класс focused на поле ввода
+                codeInput.classList.add('focused');
+                codeInput.focus();
+
+                // Обновляем focusableElements и currentFocusIndex для control.js
+                if (typeof updateFocusableElements === 'function') {
+                    updateFocusableElements();
+                    for (var j = 0; j < focusableElements.length; j++) {
+                        if (focusableElements[j].id === 'sync-code-input') {
+                            currentFocusIndex = j;
+                            break;
+                        }
+                    }
+                }
+            }
+        }, 100);
     }
 }
 
