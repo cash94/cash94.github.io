@@ -419,10 +419,24 @@ function attachTorrentDeleteLongPress(card, torrent) {
 // Загрузка сохраненной конфигурации клиента
 async function loadClientConfig() {
   try {
-    var response = await fetch(SERVER_URL + '/api/client/config');
+    // Проверяем наличие clientId в localStorage
+    var savedClientId = localStorage.getItem('clientId');
+
+    // Формируем URL с параметром clientId, если он есть
+    var url = SERVER_URL + '/api/client/config';
+    if (savedClientId) {
+      url += '?clientId=' + encodeURIComponent(savedClientId);
+    }
+
+    var response = await fetch(url);
     if (response.ok) {
       var data = await response.json();
       AppState.clientId = data.clientId;
+
+      // Сохраняем clientId в localStorage с проверкой
+      if (localStorage.getItem('clientId') !== data.clientId) {
+        localStorage.setItem('clientId', data.clientId);
+      }
 
       // Заполняем поля формы сохраненными данными
       if (data.config) {
