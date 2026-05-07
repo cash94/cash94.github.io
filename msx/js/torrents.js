@@ -460,7 +460,7 @@ async function loadClientConfig() {
 
           // Пароль не заполняем, только показываем, что он сохранен
           if (data.config.hasPassword) {
-            authPassword.placeholder = '•••••••• (сохранен)';
+            authPassword.value = data.config.password;
           }
         }
 
