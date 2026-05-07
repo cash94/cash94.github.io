@@ -3013,6 +3013,10 @@ function setupFocusRescue() {
         var catalog = currentScreen() === 'catalog';
         var donate = currentScreen() === 'donate';
 
+        if (AppState.syncCodeScreen == true) {
+            toggleSyncOverlay();
+        }
+
         if (typeof window.closeCatalogTrailerOverlay === 'function' && window.closeCatalogTrailerOverlay()) {
             setTimeout(function () { ensureDetailFocus(true); }, 80);
             return true;
