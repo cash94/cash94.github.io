@@ -51,7 +51,12 @@ var AppState = {
   inSearch: 'torrents',
   searchReturnTo: 'torrents',
   detailReturnTo: 'torrents',
-  restoringFocus: false
+  restoringFocus: false,
+
+  //Синхронизация
+  syncCodeScreen: false,
+  syncCode: null,
+  syncCodeTimer: null
 };
 
 // Вспомогательные функции
