@@ -1738,8 +1738,7 @@ function setupFocusRescue() {
             var search = byId('search-overlay');
             var catalogTab = byId('tab-catalog');
             var donateTab = byId('donate-overlay');
-
-            var catalogGrid = document.getElementById('torrents-grid');
+            var syncOverlay = byId('sync-overlay');
 
             if (stateScreen === 'player') return 'player';
             if (player && getComputedStyle(player).display !== 'none') return 'player';
@@ -1747,6 +1746,7 @@ function setupFocusRescue() {
             if (detail && getComputedStyle(detail).display !== 'none') return 'detail';
             if (search && !search.classList.contains('hidden') && getComputedStyle(search).display !== 'none') return 'search';
             if (donateTab && !donateTab.classList.contains('hidden') && getComputedStyle(donateTab).display !== 'none') return 'donate';
+            if (syncOverlay && !syncOverlay.classList.contains('hidden') && getComputedStyle(syncOverlay).display !== 'none') return 'sync';
 
             if (catalogTab && catalogTab.classList.contains('active')) {
                 return 'catalog';
