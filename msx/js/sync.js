@@ -309,7 +309,7 @@ function closeSyncOverlay() {
             countdownInterval = null;
         }
 
-        AppState.currentScreen = AppState.inSearch;
+        AppState.currentScreen = 'config';
         syncOverlay.classList.add('hidden');
 
         // Возвращаем фокус на кнопку синхронизации
