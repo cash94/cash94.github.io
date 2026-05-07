@@ -3015,6 +3015,7 @@ function setupFocusRescue() {
 
         if (AppState.syncCodeScreen == true) {
             toggleSyncOverlay();
+            return true;
         }
 
         if (typeof window.closeCatalogTrailerOverlay === 'function' && window.closeCatalogTrailerOverlay()) {
