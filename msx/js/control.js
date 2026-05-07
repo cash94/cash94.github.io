@@ -1742,11 +1742,12 @@ function setupFocusRescue() {
 
             if (stateScreen === 'player') return 'player';
             if (player && getComputedStyle(player).display !== 'none') return 'player';
+            if (syncOverlay && !syncOverlay.classList.contains('hidden') && getComputedStyle(syncOverlay).display !== 'none') return 'sync';
             if (config && getComputedStyle(config).display !== 'none') return 'config';
             if (detail && getComputedStyle(detail).display !== 'none') return 'detail';
             if (search && !search.classList.contains('hidden') && getComputedStyle(search).display !== 'none') return 'search';
             if (donateTab && !donateTab.classList.contains('hidden') && getComputedStyle(donateTab).display !== 'none') return 'donate';
-            if (syncOverlay && !syncOverlay.classList.contains('hidden') && getComputedStyle(syncOverlay).display !== 'none') return 'sync';
+            
 
             if (catalogTab && catalogTab.classList.contains('active')) {
                 return 'catalog';
