@@ -546,7 +546,8 @@ async function loadProgressForTorrent(torrent) {
         var data = JSON.parse(torrent.data);
         if (data.lampa && data.movie) {
           // Это фильм из LAMPA, используем hash для запроса
-          var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + torrent.hash + '&fileId=1');
+          var savedClientId = localStorage.getItem('clientId');
+          var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + torrent.hash + '&fileId=1' +'?clientId=' + encodeURIComponent(savedClientId));
           if (response.ok) {
             var timecodeData = await response.json();
             if (timecodeData.success && timecodeData.timecode > 0) {
@@ -596,7 +597,8 @@ async function loadProgressForTorrent(torrent) {
         progressPromises.push((function (file, idx) {
           return async function () {
             try {
-              var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + torrent.hash + '&fileId=' + file.id);
+              var savedClientId = localStorage.getItem('clientId');
+              var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + torrent.hash + '&fileId=' + file.id +'?clientId=' + encodeURIComponent(savedClientId));
               if (response.ok) {
                 var data = await response.json();
                 if (data.success && data.timecode > 0) {
