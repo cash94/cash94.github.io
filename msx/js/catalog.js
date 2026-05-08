@@ -691,7 +691,7 @@ async function loadHistoryCatalog() {
             // Конвертируем историю в формат, совместимый с каталогом
             var historyItems = data.history.map((item, index) => {
                 // Исправляем posterPath - убеждаемся, что есть слеш
-                let posterPath = null;
+                var posterPath = null;
                 if (item.posterPath) {
                     // Если posterPath уже содержит полный URL, оставляем как есть
                     if (item.posterPath.startsWith('http')) {
@@ -1099,7 +1099,7 @@ function formatLastModifiedDate(lastModifiedISO) {
     var hours = date.getHours().toString().padStart(2, '0');
     var minutes = date.getMinutes().toString().padStart(2, '0');
 
-    let timeAgo = '';
+    var timeAgo = '';
     if (diffHours < 1) {
         var minutesAgo = Math.floor(diffHours * 60);
         timeAgo = `${minutesAgo} мин. назад`;
@@ -2734,7 +2734,7 @@ window.focusCatalogCardByIndex = function (targetNumIndex) {
 window.addToWatchHistory = async function (tmdbId, title, mediaType, posterPath) {
     try {
         // Если posterPath передан и это полный URL, извлекаем только относительный путь
-        let savePosterPath = posterPath || null;
+        var savePosterPath = posterPath || null;
         if (savePosterPath && savePosterPath.startsWith(AppState.protocol+'//tsimg.hnar.online/t/p/w342')) {
             // Извлекаем часть после w342 - она уже должна начинаться со слеша
             savePosterPath = savePosterPath.replace(AppState.protocol+'//tsimg.hnar.online/t/p/w342', '');
