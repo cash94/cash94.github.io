@@ -1659,6 +1659,12 @@ async function loadCatalogPoster(card, title, mediaType, tmdbId, index) {
 
 async function showCatalogDetail(item, index, posterUrl) {
     if (posterUrl === undefined) posterUrl = null;
+
+    // Сохраняем позицию скролла перед началом
+    var torrentsGrid = document.getElementById('torrents-grid');
+    var savedScrollTop = torrentsGrid ? torrentsGrid.scrollTop : 0;
+    console.log('💾 Сохранена позиция скролла перед showCatalogDetail:', savedScrollTop);
+    
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
 
@@ -1762,7 +1768,17 @@ async function showCatalogDetail(item, index, posterUrl) {
         };
     }
 
+    var restoreScroll = function () {
+        if (torrentsGrid && savedScrollTop > 0) {
+            setTimeout(function () {
+                torrentsGrid.scrollTop = savedScrollTop;
+                console.log('🔄 Восстановлена позиция скролла:', savedScrollTop);
+            }, 50);
+        }
+    };
+
     var details = await fetchCatalogItemDetails(item);
+    restoreScroll();
     var source = details || item || {};
 
     var finalPosterUrl = tempPoster;
