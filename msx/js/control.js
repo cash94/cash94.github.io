@@ -1749,6 +1749,7 @@ function setupFocusRescue() {
             if (donateTab && !donateTab.classList.contains('hidden') && getComputedStyle(donateTab).display !== 'none') return 'donate';
             
             if (AppState.detailReturnTo == 'catalog') {
+                AppState.detailReturnTo = '';
                 return 'catalog';
             }
             
