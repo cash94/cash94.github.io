@@ -1659,11 +1659,6 @@ async function loadCatalogPoster(card, title, mediaType, tmdbId, index) {
 
 async function showCatalogDetail(item, index, posterUrl) {
     if (posterUrl === undefined) posterUrl = null;
-
-    // Сохраняем позицию скролла перед началом
-    var torrentsGrid = document.getElementById('torrents-grid');
-    var savedScrollTop = torrentsGrid ? torrentsGrid.scrollTop : 0;
-    console.log('💾 Сохранена позиция скролла перед showCatalogDetail:', savedScrollTop);
     
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
@@ -1681,6 +1676,10 @@ async function showCatalogDetail(item, index, posterUrl) {
     var trailersEl = document.getElementById('catalog-detail-trailers');
     var filesList = document.getElementById('files-list');
     var watchBtn = document.getElementById('catalog-watch-btn');
+
+    // Сохраняем позицию скролла перед началом
+    var savedScrollTop = mainContainer ? mainContainer.scrollTop : 0;
+    console.log('💾 Сохранена позиция скролла перед showCatalogDetail:', savedScrollTop);
 
     var existingProgress = document.querySelector('.detail-progress');
     if (existingProgress) {
