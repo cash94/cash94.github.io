@@ -584,25 +584,33 @@ function setupNavigation() {
     backFromDetail.addEventListener('click', function () {
       console.log('🔙 Возврат из детального просмотра');
       resetDetailBackground();
+
+      // Сохраняем hash текущего торрента перед очисткой
+      var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
+      console.log('🔍 Hash для восстановления:', currentTorrentHash);
+
       if (AppState && !AppState.isSearch) {
         var detailView = document.getElementById('detail-view');
         if (detailView) detailView.style.display = 'none';
       }
+
       var mainContainer = document.getElementById('main-container');
       if (mainContainer) {
         mainContainer.style.pointerEvents = 'auto';
       }
+
       var torrserverSection = document.getElementById('torrserver-section');
       if (torrserverSection) torrserverSection.style.display = 'block';
+
       if (typeof AppState !== 'undefined') {
         AppState.detailReturnTo = AppState.inSearch;
       }
+
       var returnTo = (!AppState || !AppState.isSearch)
         ? ((AppState && AppState.detailReturnTo === 'catalog') ? 'catalog' : 'torrents')
         : 'search';
 
-      var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
-      console.log('🔍 Hash для восстановления:', currentTorrentHash, 'returnTo=', returnTo);
+      console.log('📍 returnTo =', returnTo);
 
       setTimeout(function () {
         if (typeof updateFocusableElements !== 'function' || typeof setFocus !== 'function') {
@@ -610,6 +618,7 @@ function setupNavigation() {
           return;
         }
 
+        // Обработка возврата в каталог
         if (returnTo === 'catalog') {
           if (typeof window.ensureCatalogFocus === 'function') {
             window.ensureCatalogFocus(true);
@@ -623,7 +632,10 @@ function setupNavigation() {
             if (detailView) detailView.style.display = 'none';
             return;
           }
-        } else if (returnTo === 'search') {
+        }
+
+        // Обработка возврата в поиск
+        else if (returnTo === 'search') {
           if (AppState && AppState.isSearch) {
             if (typeof AppState !== 'undefined') AppState.isSearch = false;
             if (typeof window.showSearchResults === 'function') window.showSearchResults();
@@ -635,57 +647,105 @@ function setupNavigation() {
           return;
         }
 
-        if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
-        if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
-        updateFocusableElements();
+        // Обработка возврата в торренты
+        else if (returnTo === 'torrents') {
+          if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
+          if (typeof AppState !== 'undefined') {
+            AppState.currentScreen = 'torrents';
+          }
 
-        var targetIndex = -1;
+          // Сохраняем hash для восстановления фокуса
+          if (currentTorrentHash) {
+            window.lastSelectedTorrentHash = currentTorrentHash;
+            console.log('💾 Сохранен hash для восстановления:', currentTorrentHash);
+          }
 
-        if (currentTorrentHash) {
-          console.log('🔍 Поиск карточки с hash:', currentTorrentHash);
+          updateFocusableElements();
 
-          for (var i = 0; i < focusableElements.length; i++) {
-            var el = focusableElements[i];
-            if (el.classList && el.classList.contains('torrent-card')) {
-              var cardHash = el.dataset.hash;
-              if (cardHash && cardHash.toLowerCase() === currentTorrentHash.toLowerCase()) {
-                targetIndex = i;
-                console.log('✅ Найдена карточка по hash, индекс:', targetIndex);
-                break;
+          // Используем ensureTorrentFocus для восстановления фокуса
+          if (typeof window.ensureTorrentFocus === 'function') {
+            var focused = window.ensureTorrentFocus(true);
+            var detailView = document.getElementById('detail-view');
+            if (detailView) detailView.style.display = 'none';
+            console.log('🎯 Фокус восстановлен через ensureTorrentFocus');
+            return;
+          }
+
+          // Fallback если ensureTorrentFocus не определена
+          var targetIndex = -1;
+
+          if (currentTorrentHash) {
+            console.log('🔍 Поиск карточки с hash:', currentTorrentHash);
+
+            for (var i = 0; i < focusableElements.length; i++) {
+              var el = focusableElements[i];
+              if (el.classList && el.classList.contains('torrent-card')) {
+                var cardHash = el.dataset.hash;
+                if (cardHash && cardHash.toLowerCase() === currentTorrentHash.toLowerCase()) {
+                  targetIndex = i;
+                  console.log('✅ Найдена карточка по hash, индекс:', targetIndex);
+                  break;
+                }
               }
             }
           }
-        }
 
-        if (targetIndex === -1 && typeof lastSelectedTorrentIndex !== 'undefined') {
-          console.log('🔍 Поиск по сохраненному индексу:', lastSelectedTorrentIndex);
+          if (targetIndex === -1 && typeof lastSelectedTorrentIndex !== 'undefined') {
+            console.log('🔍 Поиск по сохраненному индексу:', lastSelectedTorrentIndex);
 
-          var cardIndices = [];
-          for (var j = 0; j < focusableElements.length; j++) {
-            if (focusableElements[j].classList && focusableElements[j].classList.contains('torrent-card')) {
-              cardIndices.push(j);
+            var cardIndices = [];
+            for (var j = 0; j < focusableElements.length; j++) {
+              if (focusableElements[j].classList && focusableElements[j].classList.contains('torrent-card')) {
+                cardIndices.push(j);
+              }
+            }
+
+            if (lastSelectedTorrentIndex < cardIndices.length) {
+              targetIndex = cardIndices[lastSelectedTorrentIndex];
+              console.log('✅ Найдена карточка по индексу, глобальный индекс:', targetIndex);
             }
           }
 
-          if (lastSelectedTorrentIndex < cardIndices.length) {
-            targetIndex = cardIndices[lastSelectedTorrentIndex];
-            console.log('✅ Найдена карточка по индексу, глобальный индекс:', targetIndex);
-          }
-        }
-
-        if (targetIndex === -1) {
-          var firstCardIndex = -1;
-          for (var k = 0; k < focusableElements.length; k++) {
-            if (focusableElements[k].classList && focusableElements[k].classList.contains('torrent-card')) {
-              firstCardIndex = k;
-              break;
+          if (targetIndex === -1) {
+            var firstCardIndex = -1;
+            for (var k = 0; k < focusableElements.length; k++) {
+              if (focusableElements[k].classList && focusableElements[k].classList.contains('torrent-card')) {
+                firstCardIndex = k;
+                break;
+              }
             }
+            targetIndex = firstCardIndex !== -1 ? firstCardIndex : 0;
+            console.log('⚠️ Используем первую карточку, индекс:', targetIndex);
           }
-          targetIndex = firstCardIndex !== -1 ? firstCardIndex : 0;
-          console.log('⚠️ Используем первую карточку, индекс:', targetIndex);
+
+          setFocus(targetIndex);
+
+          var detailView = document.getElementById('detail-view');
+          if (detailView) detailView.style.display = 'none';
         }
 
-        setFocus(targetIndex);
+        // Если returnTo не определен или неизвестен - по умолчанию торренты
+        else {
+          if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
+          if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
+          updateFocusableElements();
+
+          if (typeof window.ensureTorrentFocus === 'function') {
+            window.ensureTorrentFocus(true);
+          } else {
+            var firstCardIndex = -1;
+            for (var i = 0; i < focusableElements.length; i++) {
+              if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) {
+                firstCardIndex = i;
+                break;
+              }
+            }
+            setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
+          }
+
+          var detailView = document.getElementById('detail-view');
+          if (detailView) detailView.style.display = 'none';
+        }
       }, 250);
     });
   }
