@@ -1039,7 +1039,7 @@ function renderTorrents() {
       var playStatus = null;
 
       if (torrent.stat_string == "Torrent working") {
-        playStatus = escapeHtml("Идет просмотр");
+        playStatus = '<span style="color: #4caf50; font-weight: bold; text-shadow: 0 0 2px rgba(0,0,0,0.5);">▶ Идет просмотр</span>';
       } else {
         playStatus = formatBytes(torrent.torrent_size);
       }
