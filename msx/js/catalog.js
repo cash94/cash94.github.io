@@ -684,12 +684,12 @@ async function loadHistoryCatalog() {
     showCatalogLoading('Загрузка истории просмотра...');
 
     try {
-        const response = await fetch(SERVER_URL + '/api/history');
-        const data = await response.json();
+        var response = await fetch(SERVER_URL + '/api/history');
+        var data = await response.json();
 
         if (data.success && data.history && data.history.length > 0) {
             // Конвертируем историю в формат, совместимый с каталогом
-            const historyItems = data.history.map((item, index) => {
+            var historyItems = data.history.map((item, index) => {
                 // Исправляем posterPath - убеждаемся, что есть слеш
                 let posterPath = null;
                 if (item.posterPath) {
@@ -776,11 +776,11 @@ async function clearHistory() {
     }
 
     try {
-        const response = await fetch(SERVER_URL + '/api/history/clear', {
+        var response = await fetch(SERVER_URL + '/api/history/clear', {
             method: 'DELETE'
         });
 
-        const data = await response.json();
+        var data = await response.json();
 
         if (data.success) {
             console.log('✅ История очищена');
@@ -1088,25 +1088,25 @@ function createCatalogCard(item, index) {
 function formatLastModifiedDate(lastModifiedISO) {
     if (!lastModifiedISO) return 'Дата неизвестна';
 
-    const date = new Date(lastModifiedISO);
-    const now = new Date();
-    const diffHours = (now - date) / (1000 * 60 * 60);
+    var date = new Date(lastModifiedISO);
+    var now = new Date();
+    var diffHours = (now - date) / (1000 * 60 * 60);
 
     // Форматируем дату
-    const day = date.getDate().toString().padStart(2, '0');
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const year = date.getFullYear();
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
+    var day = date.getDate().toString().padStart(2, '0');
+    var month = (date.getMonth() + 1).toString().padStart(2, '0');
+    var year = date.getFullYear();
+    var hours = date.getHours().toString().padStart(2, '0');
+    var minutes = date.getMinutes().toString().padStart(2, '0');
 
     let timeAgo = '';
     if (diffHours < 1) {
-        const minutesAgo = Math.floor(diffHours * 60);
+        var minutesAgo = Math.floor(diffHours * 60);
         timeAgo = `${minutesAgo} мин. назад`;
     } else if (diffHours < 24) {
         timeAgo = `${Math.floor(diffHours)} ч. назад`;
     } else {
-        const daysAgo = Math.floor(diffHours / 24);
+        var daysAgo = Math.floor(diffHours / 24);
         timeAgo = `${daysAgo} дн. назад`;
     }
 
@@ -1117,16 +1117,16 @@ function formatLastModifiedDate(lastModifiedISO) {
 async function checkAndUpdateCatalogIfNeeded(catalogId, lastModifiedISO) {
     if (!lastModifiedISO) return false;
 
-    const lastModified = new Date(lastModifiedISO);
-    const now = new Date();
-    const hoursDiff = (now - lastModified) / (1000 * 60 * 60);
+    var lastModified = new Date(lastModifiedISO);
+    var now = new Date();
+    var hoursDiff = (now - lastModified) / (1000 * 60 * 60);
 
     // Если прошло более 6 часов
     if (hoursDiff > 6) {
         console.log(`🔄 Каталог ${catalogId} устарел (${Math.floor(hoursDiff)} ч.), обновляем...`);
 
         try {
-            const response = await fetch(`${SERVER_URL}/api/catalog/${catalogId}/update`, {
+            var response = await fetch(`${SERVER_URL}/api/catalog/${catalogId}/update`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1134,7 +1134,7 @@ async function checkAndUpdateCatalogIfNeeded(catalogId, lastModifiedISO) {
             });
 
             if (response.ok) {
-                const result = await response.json();
+                var result = await response.json();
                 if (result.success) {
                     console.log(`✅ Каталог ${catalogId} успешно обновлен`);
 
@@ -1211,10 +1211,10 @@ function addCatalogHeader(grid) {
         .then(response => response.json())
         .then(async data => {
             if (data.success && data.catalogs) {
-                const catalogInfo = data.catalogs.find(c => c.id === catalogState.currentCatalog);
+                var catalogInfo = data.catalogs.find(c => c.id === catalogState.currentCatalog);
 
                 if (catalogInfo && catalogInfo.lastModifiedISO) {
-                    const formattedDate = formatLastModifiedDate(catalogInfo.lastModifiedISO);
+                    var formattedDate = formatLastModifiedDate(catalogInfo.lastModifiedISO);
                     await checkAndUpdateCatalogIfNeeded(catalogInfo.id, catalogInfo.lastModifiedISO);
 
                     headerElement.innerHTML = `
@@ -2740,7 +2740,7 @@ window.addToWatchHistory = async function (tmdbId, title, mediaType, posterPath)
             savePosterPath = savePosterPath.replace(AppState.protocol+'//tsimg.hnar.online/t/p/w342', '');
         }
 
-        const response = await fetch('/api/history/add', {
+        var response = await fetch('/api/history/add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2751,7 +2751,7 @@ window.addToWatchHistory = async function (tmdbId, title, mediaType, posterPath)
             })
         });
 
-        const data = await response.json();
+        var data = await response.json();
         if (data.success) {
             console.log('✅ Добавлено в историю просмотра:', title);
         }
