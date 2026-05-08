@@ -252,6 +252,7 @@ function setFocus(index) {
 }
 
 function focusFirstTorrentCard(retries, delay) {
+    console.log('Фокус на первом элементе');
     if (retries === undefined) retries = 6;
     if (delay === undefined) delay = 120;
     if (AppState.currentScreen !== 'torrents') return false;
