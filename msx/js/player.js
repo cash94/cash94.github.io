@@ -721,7 +721,7 @@ async function loadTimecodeFromServer(hash, fileId) {
 
   try {
     var savedClientId = localStorage.getItem('clientId');
-    var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId +'?clientId=' + encodeURIComponent(savedClientId));
+    var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId +'&clientId=' + encodeURIComponent(savedClientId));
     if (response.ok) {
       var data = await response.json();
       if (data.success && data.timecode > 0) {
