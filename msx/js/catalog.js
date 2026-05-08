@@ -1768,7 +1768,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     }
 
     var restoreScroll = function () {
-        if (torrentsGrid && savedScrollTop > 0) {
+        if (mainContainer && savedScrollTop > 0) {
             setTimeout(function () {
                 torrentsGrid.scrollTop = savedScrollTop;
                 console.log('🔄 Восстановлена позиция скролла:', savedScrollTop);
