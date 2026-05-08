@@ -1976,9 +1976,9 @@ function setupFocusRescue() {
         }
 
         // Очищаем сохраненный hash после восстановления (опционально)
-        // if (window.AppState && window.AppState.currentDetailItem) {
-        //     window.AppState.currentDetailItem = null;
-        // }
+        if (window.AppState && window.AppState.currentDetailItem) {
+            window.AppState.currentDetailItem = null;
+        }
 
         return focusEl(targetCard);
     }
