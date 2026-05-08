@@ -1921,7 +1921,66 @@ function setupFocusRescue() {
         var cards = getTorrentCards();
         var tabs = getTorrentTabs();
         var header = getTorrentHeader();
-        return focusEl(cards[0] || tabs[0] || header[0]);
+
+        if (!cards.length) {
+            // Если нет карточек, фокусируемся на вкладках
+            return focusEl(tabs[0] || header[0]);
+        }
+
+        var targetCard = null;
+
+        // 1. Пытаемся восстановить по hash из AppState.currentDetailItem
+        var savedHash = (window.AppState && window.AppState.currentDetailItem && window.AppState.currentDetailItem.hash)
+            ? window.AppState.currentDetailItem.hash.toLowerCase()
+            : null;
+
+        if (savedHash) {
+            console.log('🎯 ensureTorrentFocus: ищем карточку с hash:', savedHash);
+            for (var i = 0; i < cards.length; i++) {
+                var cardHash = cards[i].dataset.hash;
+                if (cardHash && cardHash.toLowerCase() === savedHash) {
+                    targetCard = cards[i];
+                    console.log('✅ Найдена карточка по hash:', savedHash);
+                    break;
+                }
+            }
+        }
+
+        // 2. Если не нашли по hash, пробуем восстановить по lastSelectedTorrentHash
+        if (!targetCard && typeof window.lastSelectedTorrentHash !== 'undefined' && window.lastSelectedTorrentHash) {
+            console.log('🎯 ensureTorrentFocus: ищем по lastSelectedTorrentHash:', window.lastSelectedTorrentHash);
+            for (var i = 0; i < cards.length; i++) {
+                var cardHash = cards[i].dataset.hash;
+                if (cardHash && cardHash.toLowerCase() === window.lastSelectedTorrentHash.toLowerCase()) {
+                    targetCard = cards[i];
+                    console.log('✅ Найдена карточка по lastSelectedTorrentHash');
+                    break;
+                }
+            }
+        }
+
+        // 3. Если не нашли, пробуем восстановить по индексу
+        if (!targetCard && typeof window.lastSelectedTorrentIndex === 'number' && window.lastSelectedTorrentIndex >= 0) {
+            var savedIndex = window.lastSelectedTorrentIndex;
+            console.log('🎯 ensureTorrentFocus: восстанавливаем по индексу:', savedIndex);
+            if (savedIndex < cards.length) {
+                targetCard = cards[savedIndex];
+                console.log('✅ Найдена карточка по индексу:', savedIndex);
+            }
+        }
+
+        // 4. Если все еще не нашли, берем первую карточку
+        if (!targetCard) {
+            targetCard = cards[0];
+            console.log('🎯 ensureTorrentFocus: используем первую карточку');
+        }
+
+        // Очищаем сохраненный hash после восстановления (опционально)
+        // if (window.AppState && window.AppState.currentDetailItem) {
+        //     window.AppState.currentDetailItem = null;
+        // }
+
+        return focusEl(targetCard);
     }
 
     function ensureCatalogFocus(force) {
