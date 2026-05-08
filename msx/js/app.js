@@ -637,55 +637,85 @@ function setupNavigation() {
 
         if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
         if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
-        updateFocusableElements();
 
-        var targetIndex = -1;
+        // 🔥 НОВАЯ ЛОГИКА: Ожидаем появления карточек в DOM
+        function trySetFocus(attempt) {
+          if (attempt === undefined) attempt = 0;
+          var maxAttempts = 20; // максимум 20 попыток (2 секунды)
+          var delay = 100; // задержка между попытками 100ms
 
-        if (currentTorrentHash) {
-          console.log('🔍 Поиск карточки с hash:', currentTorrentHash);
+          updateFocusableElements();
 
-          for (var i = 0; i < focusableElements.length; i++) {
-            var el = focusableElements[i];
-            if (el.classList && el.classList.contains('torrent-card')) {
-              var cardHash = el.dataset.hash;
-              if (cardHash && cardHash.toLowerCase() === currentTorrentHash.toLowerCase()) {
-                targetIndex = i;
-                console.log('✅ Найдена карточка по hash, индекс:', targetIndex);
-                break;
+          var targetIndex = -1;
+
+          // Поиск по hash
+          if (currentTorrentHash) {
+            console.log('🔍 Попытка ' + (attempt + 1) + ': Поиск карточки с hash:', currentTorrentHash);
+
+            for (var i = 0; i < focusableElements.length; i++) {
+              var el = focusableElements[i];
+              if (el.classList && el.classList.contains('torrent-card')) {
+                var cardHash = el.dataset.hash;
+                if (cardHash && cardHash.toLowerCase() === currentTorrentHash.toLowerCase()) {
+                  targetIndex = i;
+                  console.log('✅ Найдена карточка по hash, индекс:', targetIndex);
+                  break;
+                }
               }
             }
           }
-        }
 
-        if (targetIndex === -1 && typeof lastSelectedTorrentIndex !== 'undefined') {
-          console.log('🔍 Поиск по сохраненному индексу:', lastSelectedTorrentIndex);
+          // Поиск по индексу
+          if (targetIndex === -1 && typeof lastSelectedTorrentIndex !== 'undefined') {
+            console.log('🔍 Попытка ' + (attempt + 1) + ': Поиск по сохраненному индексу:', lastSelectedTorrentIndex);
 
-          var cardIndices = [];
-          for (var j = 0; j < focusableElements.length; j++) {
-            if (focusableElements[j].classList && focusableElements[j].classList.contains('torrent-card')) {
-              cardIndices.push(j);
+            var cardIndices = [];
+            for (var j = 0; j < focusableElements.length; j++) {
+              if (focusableElements[j].classList && focusableElements[j].classList.contains('torrent-card')) {
+                cardIndices.push(j);
+              }
+            }
+
+            if (lastSelectedTorrentIndex < cardIndices.length) {
+              targetIndex = cardIndices[lastSelectedTorrentIndex];
+              console.log('✅ Найдена карточка по индексу, глобальный индекс:', targetIndex);
             }
           }
 
-          if (lastSelectedTorrentIndex < cardIndices.length) {
-            targetIndex = cardIndices[lastSelectedTorrentIndex];
-            console.log('✅ Найдена карточка по индексу, глобальный индекс:', targetIndex);
+          // Если нашли карточку - устанавливаем фокус и выходим
+          if (targetIndex !== -1) {
+            console.log('🎯 Устанавливаем фокус на карточку, индекс:', targetIndex);
+            setFocus(targetIndex);
+            return;
           }
-        }
 
-        if (targetIndex === -1) {
-          var firstCardIndex = -1;
-          for (var k = 0; k < focusableElements.length; k++) {
-            if (focusableElements[k].classList && focusableElements[k].classList.contains('torrent-card')) {
-              firstCardIndex = k;
-              break;
+          // Если не нашли и попытки не закончились - пробуем снова
+          if (attempt < maxAttempts - 1) {
+            console.log('⏳ Карточки еще не загружены, попытка ' + (attempt + 2) + ' через ' + delay + 'ms');
+            setTimeout(function () {
+              trySetFocus(attempt + 1);
+            }, delay);
+          } else {
+            // Последняя попытка - ставим фокус на первую карточку
+            console.log('⚠️ Карточка не найдена после ' + maxAttempts + ' попыток, фокус на первую карточку');
+
+            var firstCardIndex = -1;
+            for (var k = 0; k < focusableElements.length; k++) {
+              if (focusableElements[k].classList && focusableElements[k].classList.contains('torrent-card')) {
+                firstCardIndex = k;
+                break;
+              }
             }
+            targetIndex = firstCardIndex !== -1 ? firstCardIndex : 0;
+            setFocus(targetIndex);
           }
-          targetIndex = firstCardIndex !== -1 ? firstCardIndex : 0;
-          console.log('⚠️ Используем первую карточку, индекс:', targetIndex);
         }
 
-        setFocus(targetIndex);
+        // Начинаем попытки с небольшой задержкой, чтобы дать время отрендерить карточки
+        setTimeout(function () {
+          trySetFocus(0);
+        }, 100);
+
       }, 250);
     });
   }
