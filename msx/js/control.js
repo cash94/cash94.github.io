@@ -1975,9 +1975,22 @@ function setupFocusRescue() {
             console.log('🎯 ensureTorrentFocus: используем первую карточку');
         }
 
-        // Очищаем сохраненный hash после восстановления (опционально)
+        // ОЧИЩАЕМ ВСЕ СОХРАНЕННЫЕ ДАННЫЕ ПОСЛЕ ВОССТАНОВЛЕНИЯ
+        // Это предотвращает повторное использование старых данных при следующих вызовах
         if (window.AppState && window.AppState.currentDetailItem) {
             window.AppState.currentDetailItem = null;
+            console.log('🧹 Очищен AppState.currentDetailItem');
+        }
+
+        if (window.lastSelectedTorrentHash) {
+            window.lastSelectedTorrentHash = null;
+            console.log('🧹 Очищен lastSelectedTorrentHash');
+        }
+
+        // Не очищаем lastSelectedTorrentIndex, так как он может понадобиться для навигации
+        // Но можно очистить если нужно
+        if (typeof window.lastSelectedTorrentIndex !== 'undefined') {
+            window.lastSelectedTorrentIndex = 0;
         }
 
         return focusEl(targetCard);
