@@ -1748,10 +1748,13 @@ function setupFocusRescue() {
             if (search && !search.classList.contains('hidden') && getComputedStyle(search).display !== 'none') return 'search';
             if (donateTab && !donateTab.classList.contains('hidden') && getComputedStyle(donateTab).display !== 'none') return 'donate';
             
-
-            if (catalogTab && catalogTab.classList.contains('active')) {
+            if (AppState.detailReturnTo == 'catalog') {
                 return 'catalog';
             }
+            
+            //if (catalogTab && catalogTab.classList.contains('active')) {
+                //return 'catalog';
+            //}
 
             if (catalogGrid) {
                 var hasCatalogCards = catalogGrid.querySelector('.catalog-card, .catalog-folder-card') !== null;
