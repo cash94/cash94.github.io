@@ -696,10 +696,12 @@ async function saveTimecodeToServer() {
     currentTimecodeData.timecode > currentTimecodeData.duration - 10) return;
 
   try {
+    var savedClientId = localStorage.getItem('clientId');
     var response = await fetch(SERVER_URL + '/api/timecode/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientId: savedClientId,
         hash: currentTimecodeData.hash,
         fileId: currentTimecodeData.fileId,
         timecode: currentTimecodeData.timecode,
@@ -2790,7 +2792,9 @@ function setupPageUnloadHandler() {
 
     // Сохраняем таймкод
     if (currentTimecodeData && currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
-      const timecodeData = JSON.stringify({
+      var savedClientId = localStorage.getItem('clientId');
+      var timecodeData = JSON.stringify({
+        clientId: savedClientId,
         hash: currentTimecodeData.hash,
         fileId: currentTimecodeData.fileId,
         timecode: currentTimecodeData.timecode,
@@ -2807,7 +2811,7 @@ function setupPageUnloadHandler() {
     // Синхронный запрос на остановку потока
     if (AppState.currentStreamId) {
       // Используем sendBeacon для гарантированной отправки даже при закрытии
-      const blob = new Blob([], { type: 'application/json' });
+      var blob = new Blob([], { type: 'application/json' });
       navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, blob);
 
       // Также пытаемся отправить обычный fetch (но он может не успеть)
@@ -2819,7 +2823,9 @@ function setupPageUnloadHandler() {
 
     // Сохраняем таймкод при закрытии
     if (currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
-      const timecodeData = JSON.stringify({
+      var savedClientId = localStorage.getItem('clientId');
+      var timecodeData = JSON.stringify({
+        clientId: savedClientId,
         hash: currentTimecodeData.hash,
         fileId: currentTimecodeData.fileId,
         timecode: currentTimecodeData.timecode,
@@ -2839,7 +2845,9 @@ function setupPageUnloadHandler() {
     }
 
     if (currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
-      const timecodeData = JSON.stringify({
+      var savedClientId = localStorage.getItem('clientId');
+      var timecodeData = JSON.stringify({
+        clientId: savedClientId,
         hash: currentTimecodeData.hash,
         fileId: currentTimecodeData.fileId,
         timecode: currentTimecodeData.timecode,
@@ -2852,7 +2860,7 @@ function setupPageUnloadHandler() {
 
   // Для visibilitychange (переключение вкладок) - останавливаем видео для экономии ресурсов
   document.addEventListener('visibilitychange', function () {
-    const videoPlayer = document.getElementById('video-player');
+    var videoPlayer = document.getElementById('video-player');
     if (document.hidden && videoPlayer && !videoPlayer.paused) {
       console.log('👁️ Вкладка скрыта, ставим видео на паузу');
       videoPlayer.pause();
