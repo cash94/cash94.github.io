@@ -2246,6 +2246,10 @@ function showDetailView() {
     if (AppState.currentDetailItem) {
       console.log('🔄 Обновляем прогресс в текущей карточке:', AppState.currentDetailItem.title);
       updateDetailProgress(AppState.currentDetailItem);
+      
+      if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+        updateCurrentFileProgress(currentTimecodeData.hash, currentTimecodeData.fileId, currentEpisodeIndex);
+      }
     }
   });
 
@@ -2392,6 +2396,52 @@ function showDetailView() {
     } else {
       document.getElementById('detail-view').style.display = 'none';
     }
+  }
+}
+
+// Функция обновления полоски прогресса для текущего файла
+async function updateCurrentFileProgress(hash, fileId, episodeIndex) {
+  if (!hash || !fileId) return;
+
+  // Находим file-item с соответствующим hash и fileId
+  var fileItems = document.querySelectorAll('.file-item');
+  var targetItem = null;
+
+  for (var i = 0; i < fileItems.length; i++) {
+    var item = fileItems[i];
+    if (item.dataset.hash === hash && item.dataset.fileId == fileId) {
+      targetItem = item;
+      break;
+    }
+  }
+
+  if (!targetItem) {
+    console.log('⚠️ Не найден file-item для обновления прогресса');
+    return;
+  }
+
+  try {
+    var savedClientId = localStorage.getItem('clientId');
+    var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
+
+    if (response.ok) {
+      var data = await response.json();
+      if (data.success && data.timecode > 0 && data.duration && data.duration > 0) {
+        var progressPercent = (data.timecode / data.duration) * 100;
+        progressPercent = Math.min(progressPercent, 98);
+
+        var progressFill = targetItem.querySelector('.file-progress-fill');
+        if (progressFill) {
+          progressFill.style.width = progressPercent + '%';
+          if (progressPercent > 5) {
+            targetItem.classList.add('has-progress');
+          }
+        }
+        console.log('✅ Полоска прогресса обновлена:', progressPercent.toFixed(1) + '%');
+      }
+    }
+  } catch (error) {
+    console.error('Ошибка обновления полоски прогресса:', error);
   }
 }
 
