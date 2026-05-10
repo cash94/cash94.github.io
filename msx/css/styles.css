@@ -2793,3 +2793,38 @@ body.detail-open {
   background-color: rgba(0, 0, 0, 0.7);
   z-index: -1;
 }
+/* Полоска прогресса для file-item */
+.file-progress-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 0;
+  z-index: 15;
+}
+
+.file-progress-fill {
+  height: 100%;
+  background: #ff8c00;
+  width: 0%;
+  transition: width 0.3s ease;
+  border-radius: 0;
+}
+
+/* Визуальный эффект для карточек с прогрессом */
+.file-item.has-progress {
+  border-bottom: 1px solid rgba(255, 140, 0, 0.5);
+}
+
+/* Анимация появления полоски */
+@keyframes progressGlow {
+  0% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+.file-progress-fill:not([style*="width: 0%"]) {
+  animation: progressGlow 0.5s ease;
+  box-shadow: 0 0 4px rgba(255, 140, 0, 0.5);
+}
