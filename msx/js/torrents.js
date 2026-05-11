@@ -482,10 +482,13 @@ async function saveClientConfig() {
   var login = document.getElementById('auth-login').value.trim();
   var password = document.getElementById('auth-password').value.trim();
 
+  var savedClientId = localStorage.getItem('clientId');
+
   var config = {
     url: url,
     authEnabled: authEnabled,
-    login: login
+    login: login,
+    clientId: savedClientId
   };
 
   // Отправляем пароль только если он был изменен
