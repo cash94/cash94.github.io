@@ -33,6 +33,7 @@ var pendingRemoteHoldHash = null;
 
 // Кэш для хранения информации о прогрессе
 var progressCache = new Map();
+var torrentFilesCache = new Map(); // ключ: hash, значение: { files: [], timestamp: Date }
 
 
 var SORT_OPTIONS = [
@@ -342,6 +343,9 @@ async function removeTorrentByHash(hash, options) {
     try {
       await response.json();
     } catch (e) { }
+
+    // Очищаем кэш для удаленного торрента
+    clearTorrentFilesCache(hash);
 
     if (AppState.currentDetailItem && (AppState.currentDetailItem.hash || '').toLowerCase() === String(hash).toLowerCase()) {
       document.getElementById('detail-view').style.display = 'none';
@@ -976,6 +980,9 @@ async function refreshTorrents(showLoadingFlag) {
     progressCache.clear();
   }
 
+  // Очищаем кэш файлов торрентов (чтобы перезагрузить актуальные данные)
+  //clearAllTorrentFilesCache();
+
   // Загружаем торренты
   return await loadTorrents(!showLoadingFlag);
 }
@@ -1411,6 +1418,109 @@ async function loadMovieStill(tmdbId) {
   return null;
 }
 
+
+// Функция для получения файлов торрента с кэшированием
+async function getTorrentFilesWithCache(torrent, forceRefresh) {
+  if (forceRefresh === undefined) forceRefresh = false;
+
+  var hash = torrent.hash;
+  if (!hash) return [];
+
+  // Проверяем кэш
+  if (!forceRefresh && torrentFilesCache.has(hash)) {
+    var cached = torrentFilesCache.get(hash);
+    // Кэш на 5 минут
+    if (Date.now() - cached.timestamp < 5 * 60 * 1000) {
+      console.log('📦 Используем кэш для файлов торрента:', hash);
+      return cached.files;
+    } else {
+      console.log('🕐 Кэш устарел для:', hash);
+      torrentFilesCache.delete(hash);
+    }
+  }
+
+  console.log('🌐 Загружаем файлы с сервера для:', hash);
+  var files = [];
+
+  try {
+    // Проверяем наличие file_stats (активный торрент) - они уже есть в объекте
+    if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) {
+      files = torrent.file_stats;
+    }
+    // Если нет, запрашиваем через API
+    else if (torrent.data) {
+      try {
+        var data = JSON.parse(torrent.data);
+        if (data.TorrServer && data.TorrServer.Files) {
+          files = data.TorrServer.Files;
+        }
+      } catch (e) {
+        console.warn('Ошибка парсинга torrent.data:', e);
+      }
+    }
+
+    // Если всё ещё нет файлов, делаем запрос к TorrServer
+    if (files.length === 0 && AppState.currentTorrserverUrl) {
+      var headers = {
+        'Content-Type': 'application/json',
+      };
+      var authHeaders = getAuthHeaders();
+      for (var key in authHeaders) {
+        if (authHeaders.hasOwnProperty(key)) {
+          headers[key] = authHeaders[key];
+        }
+      }
+
+      var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({ action: 'get', hash: hash })
+      });
+
+      if (response.ok) {
+        var apiData = await response.json();
+        if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
+          files = apiData.file_stats;
+          // Обновляем torrent.file_stats для будущего использования
+          torrent.file_stats = files;
+        } else if (apiData.data) {
+          try {
+            var parsedData = JSON.parse(apiData.data);
+            if (parsedData.TorrServer && parsedData.TorrServer.Files) {
+              files = parsedData.TorrServer.Files;
+              torrent.file_stats = files;
+            }
+          } catch (e) { }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки файлов:', error);
+  }
+
+  // Сохраняем в кэш
+  torrentFilesCache.set(hash, {
+    files: files,
+    timestamp: Date.now()
+  });
+
+  return files;
+}
+
+// Функция для очистки кэша для конкретного торрента
+function clearTorrentFilesCache(hash) {
+  if (hash && torrentFilesCache.has(hash)) {
+    torrentFilesCache.delete(hash);
+    console.log('🗑️ Очищен кэш для торрента:', hash);
+  }
+}
+
+// Функция для очистки всего кэша файлов
+function clearAllTorrentFilesCache() {
+  torrentFilesCache.clear();
+  console.log('🗑️ Полностью очищен кэш файлов торрентов');
+}
+
 // Показать детали торрента
 async function showDetail(torrent) {
   // Сохраняем hash и индекс перед открытием
@@ -1571,21 +1681,20 @@ async function showDetail(torrent) {
   try {
     var files = [];
 
-    // Проверяем наличие file_stats (активный торрент)
-    if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) {
-      files = torrent.file_stats;
+    // Проверяем, не является ли это фильмом из LAMPA
+    if (torrent.data) {
+      try {
+        var checkData = JSON.parse(torrent.data);
+        if (checkData.lampa && checkData.movie) {
+          filesList.innerHTML = '';
+          addMovieItem(torrent);
+          return;
+        }
+      } catch (e) { }
     }
-    // Проверяем data поле
-    else if (torrent.data) {
-      var data = JSON.parse(torrent.data);
-      if (data.TorrServer && data.TorrServer.Files) {
-        files = data.TorrServer.Files;
-      } else if (data.lampa && data.movie) {
-        filesList.innerHTML = '';
-        addMovieItem(torrent);
-        return;
-      }
-    }
+
+    // Получаем файлы с кэшированием
+    files = await getTorrentFilesWithCache(torrent, false);
 
     if (files.length === 0) {
       filesList.innerHTML = '<div style="text-align: center; padding: 20px;">Нет файлов</div>';
