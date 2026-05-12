@@ -1588,18 +1588,6 @@ async function showDetail(torrent) {
   await addProgressToDetail(torrent);
 
   try {
-    // Проверяем, не является ли это фильмом из LAMPA
-    if (torrent.data) {
-      try {
-        var checkData = JSON.parse(torrent.data);
-        if (checkData.lampa && checkData.movie) {
-          filesList.innerHTML = '';
-          addMovieItem(torrent);
-          return;
-        }
-      } catch (e) { }
-    }
-
     // Получаем файлы с кэшированием (этот метод уже получает и file_stats, и данные)
     var files = await getTorrentFilesWithCache(torrent, false);
 
