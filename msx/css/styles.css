@@ -2894,3 +2894,7 @@ body.detail-open {
 .view-tabs .view-tab {
   color: #ff8c00; /* морковный для всех */
 }
+
+.file-overlay {
+  display: none !important;
+}
