@@ -1553,16 +1553,14 @@ async function showDetail(torrent) {
             }
           }
         }
-        // Если есть кадры для одного сезона (старая логика)
-        else if (seasonEpisodes && seasonEpisodes.length > 0 && collFilles > 1) {
-          var episodeNum = i + 1;
-          for (var e = 0; e < seasonEpisodes.length; e++) {
-            if (seasonEpisodes[e].episodeNumber === episodeNum) {
-              if (seasonEpisodes[e].stillPath) {
-                episodeStill = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + seasonEpisodes[e].stillPath;
-              }
-              break;
-            }
+        // Если есть данные о сезонах, но нет кадров, хотя бы показываем номера сезонов
+        else if (seasonEpisodeCount && seasonEpisodeCount.length > 0 && collFilles > 1) {
+          // Определяем, из какого сезона этот эпизод для отображения
+          if (fileToSeasonMap.has(globalEpisodeNum)) {
+            var seasonMapping = fileToSeasonMap.get(globalEpisodeNum);
+            currentSeasonNumber = seasonMapping.seasonNumber;
+            episodeInSeason = seasonMapping.episodeInSeason;
+            console.log(`Серия ${globalEpisodeNum} → ${currentSeasonNumber} сезон, эпизод ${episodeInSeason} (без кадра)`);
           }
         }
         // Если это фильм и есть постер
