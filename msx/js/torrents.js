@@ -1603,94 +1603,76 @@ async function showDetail(torrent) {
       var totalVideoFiles = videoFiles.length;
       console.log('Всего видео файлов:', totalVideoFiles);
       console.log('Найдено сезонов:', seasonNumbers.length);
+      console.log('Кадры по сезонам:', Object.keys(allSeasonEpisodes));
 
-      // Если есть несколько сезонов и у нас есть кадры для них
-      if (seasonNumbers.length > 1 && Object.keys(allSeasonEpisodes).length > 0) {
-        // Рассчитываем, сколько файлов приходится на один сезон
-        var filesPerSeason = Math.floor(totalVideoFiles / seasonNumbers.length);
-        var remainder = totalVideoFiles % seasonNumbers.length;
+      // Собираем ВСЕ кадры со всех сезонов в один массив по порядку
+      var allStillsInOrder = [];
 
-        console.log('Файлов на сезон:', filesPerSeason, 'Остаток:', remainder);
+      if (seasonNumbers.length > 0 && Object.keys(allSeasonEpisodes).length > 0) {
+        // Сортируем сезоны по возрастанию
+        var sortedSeasons = seasonNumbers.slice().sort(function (a, b) { return a - b; });
 
-        var currentFileIndex = 0;
+        for (var s = 0; s < sortedSeasons.length; s++) {
+          var seasonNum = sortedSeasons[s];
+          var episodes = allSeasonEpisodes[seasonNum] || [];
 
-        // Проходим по каждому сезону
-        for (var s = 0; s < seasonNumbers.length; s++) {
-          var seasonNum = seasonNumbers[s];
-          var episodesForSeason = allSeasonEpisodes[seasonNum] || [];
+          // Сортируем серии по номеру
+          episodes.sort(function (a, b) { return (a.episodeNumber || 0) - (b.episodeNumber || 0); });
 
-          // Определяем сколько файлов в этом сезоне
-          var filesInThisSeason = filesPerSeason;
-          if (s < remainder) {
-            filesInThisSeason++;
-          }
+          console.log('Сезон ' + seasonNum + ': найдено ' + episodes.length + ' кадров');
 
-          console.log('Сезон ' + seasonNum + ': ' + filesInThisSeason + ' файлов');
-
-          // Добавляем заголовок сезона
-          var seasonHeader = document.createElement('div');
-          seasonHeader.className = 'season-header';
-          seasonHeader.innerHTML = '<div class="season-title">Сезон ' + seasonNum + '</div><div class="season-divider"></div>';
-          filesList.appendChild(seasonHeader);
-
-          // Добавляем файлы для этого сезона
-          for (var f = 0; f < filesInThisSeason; f++) {
-            if (currentFileIndex >= videoFiles.length) break;
-
-            var file = videoFiles[currentFileIndex];
-            var episodeNum = f + 1;
-
-            // Ищем кадр для этой серии
-            var episodeStill = null;
-            if (episodesForSeason.length > 0) {
-              for (var e = 0; e < episodesForSeason.length; e++) {
-                if (episodesForSeason[e].episodeNumber === episodeNum) {
-                  if (episodesForSeason[e].stillPath) {
-                    episodeStill = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + episodesForSeason[e].stillPath;
-                    console.log('Найден кадр для сезона ' + seasonNum + ' серии ' + episodeNum);
-                  }
-                  break;
-                }
-              }
+          // Добавляем все кадры этого сезона в общий массив
+          for (var e = 0; e < episodes.length; e++) {
+            if (episodes[e].stillPath) {
+              allStillsInOrder.push({
+                season: seasonNum,
+                episode: episodes[e].episodeNumber,
+                stillPath: episodes[e].stillPath
+              });
             }
-
-            var displayName = 'Серия ' + episodeNum;
-            addFileItem(file, torrent.hash, displayName, currentFileIndex, episodeStill);
-            currentFileIndex++;
           }
         }
+
+        console.log('Всего кадров собрано:', allStillsInOrder.length);
       }
-      // Если один сезон или нет кадров для множества сезонов
-      else {
-        var seasonNum = (seasonNumbers.length === 1) ? seasonNumbers[0] : null;
-        var episodesForSeason = (seasonNum && allSeasonEpisodes[seasonNum]) ? allSeasonEpisodes[seasonNum] : [];
 
-        for (var i = 0; i < videoFiles.length; i++) {
-          var episodeStill = null;
+      // Добавляем файлы с картинками по порядку
+      for (var i = 0; i < videoFiles.length; i++) {
+        var file = videoFiles[i];
+        var episodeStill = null;
 
-          // Если есть кадры для серий, пытаемся найти соответствие
-          if (episodesForSeason.length > 0 && videoFiles.length > 1) {
-            var episodeNum = i + 1;
-            for (var e = 0; e < episodesForSeason.length; e++) {
-              if (episodesForSeason[e].episodeNumber === episodeNum) {
-                if (episodesForSeason[e].stillPath) {
-                  episodeStill = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + episodesForSeason[e].stillPath;
-                  console.log('Найден кадр для серии ' + episodeNum);
-                }
+        // Если есть кадры, берем по порядку (i-й кадр для i-го файла)
+        if (allStillsInOrder.length > 0 && i < allStillsInOrder.length) {
+          var stillData = allStillsInOrder[i];
+          episodeStill = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + stillData.stillPath;
+          console.log('Добавлен кадр для файла ' + (i + 1) + ': сезон ' + stillData.season + ', серия ' + stillData.episode);
+        }
+        // Если это фильм и есть постер (один файл)
+        else if (videoFiles.length === 1 && movieStill) {
+          episodeStill = movieStill;
+        }
+        // Если кадров больше чем файлов или наоборот - пробуем найти по соответствию
+        else if (allStillsInOrder.length === 0 && videoFiles.length > 1) {
+          // Пытаемся найти по номеру серии (если файлы названы правильно)
+          var episodeNum = i + 1;
+          for (var s = 0; s < seasonNumbers.length; s++) {
+            var seasonNum = seasonNumbers[s];
+            var episodes = allSeasonEpisodes[seasonNum] || [];
+            for (var e = 0; e < episodes.length; e++) {
+              if (episodes[e].episodeNumber === episodeNum && episodes[e].stillPath) {
+                episodeStill = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + episodes[e].stillPath;
+                console.log('Найден кадр для серии ' + episodeNum + ' (по соответствию)');
                 break;
               }
             }
+            if (episodeStill) break;
           }
-          // Если это фильм и есть постер
-          else if (videoFiles.length === 1 && movieStill) {
-            episodeStill = movieStill;
-          }
+        }
 
-          if (videoFiles.length === 1) {
-            addFileItem(videoFiles[i], torrent.hash, torrent.title, null, episodeStill);
-          } else {
-            addFileItem(videoFiles[i], torrent.hash, 'Серия ' + (i + 1), i, episodeStill);
-          }
+        if (videoFiles.length === 1) {
+          addFileItem(file, torrent.hash, torrent.title, null, episodeStill);
+        } else {
+          addFileItem(file, torrent.hash, 'Серия ' + (i + 1), i, episodeStill);
         }
       }
     }
