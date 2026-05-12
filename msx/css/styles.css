@@ -2828,3 +2828,26 @@ body.detail-open {
   animation: progressGlow 0.5s ease;
   box-shadow: 0 0 4px rgba(255, 140, 0, 0.5);
 }
+
+.file-still-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #2a2a3a, #1a1a2a);
+}
+
+.file-still-container {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.file-still-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
