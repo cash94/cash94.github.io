@@ -1936,6 +1936,7 @@ function updateDetailMetaInfo(tmdbData) {
 }
 
 // Добавить элемент файла (для сериалов)
+// Добавить элемент файла (для сериалов)
 function addFileItem(file, hash, name, episodeIndex, stillImage, returnOnly) {
   if (returnOnly === undefined) returnOnly = false;
 
@@ -1970,16 +1971,15 @@ function addFileItem(file, hash, name, episodeIndex, stillImage, returnOnly) {
   }
 
   // Создаем HTML с плейсхолдером
-  var placeholderHtml = '<div class="file-still-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #2a2a3a, #1a1a2a);">' +
-    '<div style="font-size: 24px; opacity: 0.3;">🎬</div>' +
-    '</div>';
+  //var placeholderHtml = '<div class="file-still-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #2a2a3a, #1a1a2a);">' +
+  //'<div style="font-size: 24px; opacity: 0.3;">🎬</div>' +
+  //'</div>';
 
   var progressBarHtml = '<div class="file-progress-container" style="width: 100%; height: 3px; background: rgba(255,255,255,0.2); border-radius: 0 0 12px 12px; overflow: hidden; position: absolute; bottom: 0; left: 0;">' +
     '<div class="file-progress-fill" style="width: 0%; height: 100%; background: #ff8c00; transition: width 0.2s ease;"></div>' +
     '</div>';
 
-  item.innerHTML = placeholderHtml +
-    '<div class="file-content">' +
+  item.innerHTML = '<div class="file-content">' +
     '<button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '" data-episode-index="' + (episodeIndex !== undefined ? episodeIndex : '') + '">▶</button>' +
     '</div>' +
     '<div class="file-info">' +
