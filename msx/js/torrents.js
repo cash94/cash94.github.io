@@ -2005,6 +2005,12 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
 
   var item = document.createElement('div');
   item.className = 'file-item';
+  // Добавляем data-атрибуты для идентификации
+  item.dataset.hash = hash;
+  item.dataset.fileId = file.id;
+  if (episodeIndex !== undefined && episodeIndex !== null) {
+    item.dataset.episodeIndex = episodeIndex;
+  }
 
   // Создаем HTML с кадром на всю верхнюю часть
   var stillHtml = '';
@@ -2015,6 +2021,11 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
       '<div class="file-overlay"></div>';
   }
 
+  // Добавляем контейнер для полоски прогресса
+  var progressBarHtml = '<div class="file-progress-container" style="width: 100%; height: 3px; background: rgba(255,255,255,0.2); border-radius: 0 0 12px 12px; overflow: hidden;">' +
+    '<div class="file-progress-fill" style="width: 0%; height: 100%; background: #ff8c00; transition: width 0.2s ease;"></div>' +
+    '</div>';
+
   item.innerHTML = stillHtml +
     '<div class="file-content">' +
     '<button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '" data-episode-index="' + (episodeIndex !== undefined ? episodeIndex : '') + '">▶</button>' +
@@ -2022,7 +2033,8 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
     '<div class="file-info">' +
     '<div class="file-name" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</div>' +
     '<div class="file-size">' + fileSize + '</div>' +
-    '</div>';
+    '</div>' +
+    progressBarHtml;
 
   item.querySelector('.play-btn').onclick = function (e) {
     e.stopPropagation();
@@ -2047,6 +2059,45 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
   };
 
   document.getElementById('files-list').appendChild(item);
+
+  // Загружаем прогресс для этого файла
+  loadProgressForFileItem(item, hash, file.id, episodeIndex);
+}
+
+// Загрузка прогресса для конкретного file-item
+async function loadProgressForFileItem(item, hash, fileId, episodeIndex) {
+  if (!item || !hash) return;
+
+  try {
+    var savedClientId = localStorage.getItem('clientId');
+    var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
+
+    if (response.ok) {
+      var data = await response.json();
+      if (data.success && data.timecode > 0 && data.duration && data.duration > 0) {
+        var progressPercent = (data.timecode / data.duration) * 100;
+        // Ограничиваем проценты (не более 98%, чтобы не показывать полностью просмотренные как 100%)
+        progressPercent = Math.min(progressPercent, 98);
+
+        var progressFill = item.querySelector('.file-progress-fill');
+        if (progressFill) {
+          progressFill.style.width = progressPercent + '%';
+          // Добавляем небольшой визуальный эффект при наличии прогресса
+          if (progressPercent > 5) {
+            progressFill.style.opacity = '1';
+            // Добавляем класс для анимации
+            item.classList.add('has-progress');
+          }
+        }
+
+        // Сохраняем данные прогресса в item для быстрого доступа
+        item.dataset.progressTimecode = data.timecode;
+        item.dataset.progressDuration = data.duration;
+      }
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки прогресса для файла:', error);
+  }
 }
 
 // Добавить элемент фильма
