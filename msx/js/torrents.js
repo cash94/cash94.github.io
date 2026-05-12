@@ -159,7 +159,7 @@ function syncSearchFilterButtons() {
       videotypeFilter.value = 'all';
     }
   }
-  
+
 }
 
 function cycleFilterButton(filterType, direction) {
@@ -550,7 +550,7 @@ async function loadProgressForTorrent(torrent) {
         if (data.lampa && data.movie) {
           // Это фильм из LAMPA, используем hash для запроса
           var savedClientId = localStorage.getItem('clientId');
-          var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + torrent.hash + '&fileId=1' +'&clientId=' + encodeURIComponent(savedClientId));
+          var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + torrent.hash + '&fileId=1' + '&clientId=' + encodeURIComponent(savedClientId));
           if (response.ok) {
             var timecodeData = await response.json();
             if (timecodeData.success && timecodeData.timecode > 0) {
@@ -601,7 +601,7 @@ async function loadProgressForTorrent(torrent) {
           return async function () {
             try {
               var savedClientId = localStorage.getItem('clientId');
-              var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + torrent.hash + '&fileId=' + file.id +'&clientId=' + encodeURIComponent(savedClientId));
+              var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + torrent.hash + '&fileId=' + file.id + '&clientId=' + encodeURIComponent(savedClientId));
               if (response.ok) {
                 var data = await response.json();
                 if (data.success && data.timecode > 0) {
@@ -1212,7 +1212,7 @@ function resetDetailBackground() {
     metaContainer.innerHTML = '';
     metaContainer.classList.add('hidden');
   }
-  
+
   // Очищаем список файлов
   var filesList = document.getElementById('files-list');
   if (filesList) {
@@ -1334,6 +1334,7 @@ async function loadMovieStill(tmdbId) {
 }
 
 // Показать детали торрента
+// Показать детали торрента
 async function showDetail(torrent) {
   // Сохраняем hash и индекс перед открытием
   if (torrent && torrent.hash) {
@@ -1389,9 +1390,10 @@ async function showDetail(torrent) {
   // Используем полученные данные
   var tmdbId = tmdbData.tmdbId;
   var cleanTitle = tmdbData.cleanTitle;
-  var seasonNumber = tmdbData.seasonNumber;
+  var seasonNumbers = tmdbData.seasonNumbers;
   var isTvSeries = tmdbData.isTvSeries;
-  var seasonEpisodes = tmdbData.seasonEpisodes;
+  var episodesMap = tmdbData.episodesMap;
+  var seasonEpisodeCount = tmdbData.seasonEpisodeCount;
   var movieStill = tmdbData.movieStill;
 
   // Получаем постер из торрента
@@ -1508,17 +1510,56 @@ async function showDetail(torrent) {
       var collFilles = files.length;
       var indx = 0;
 
+      // Определяем, к какому сезону относится каждый файл (для случая с несколькими сезонами)
+      var fileToSeasonMap = new Map(); // key: globalEpisodeIndex, value: { seasonNumber, episodeInSeason }
+
+      if (seasonEpisodeCount && seasonEpisodeCount.length > 0 && collFilles > 1) {
+        var currentGlobalIndex = 1;
+        for (var s = 0; s < seasonEpisodeCount.length; s++) {
+          var seasonInfo = seasonEpisodeCount[s];
+          for (var ep = 1; ep <= seasonInfo.count; ep++) {
+            if (currentGlobalIndex <= collFilles) {
+              fileToSeasonMap.set(currentGlobalIndex, {
+                seasonNumber: seasonInfo.season,
+                episodeInSeason: ep
+              });
+            }
+            currentGlobalIndex++;
+          }
+        }
+        console.log('📊 Сопоставление файлов с сезонами:', fileToSeasonMap);
+      }
+
       for (var i = 0; i < files.length; i++) {
         var episodeStill = null;
+        var currentSeasonNumber = null;
+        var episodeInSeason = null;
 
-        // Если есть кадры для серий, пытаемся найти соответствие
-        if (seasonEpisodes.length > 0 && collFilles > 1) {
+        // Глобальный номер эпизода (нумерация всех серий подряд)
+        var globalEpisodeNum = i + 1;
+
+        // Если есть кадры для серий и это сериал с несколькими сезонами
+        if (episodesMap && episodesMap.size > 0 && collFilles > 1) {
+          // Проверяем, есть ли кадр для этого глобального номера
+          if (episodesMap.has(globalEpisodeNum)) {
+            episodeStill = episodesMap.get(globalEpisodeNum);
+
+            // Определяем, из какого сезона этот эпизод
+            if (fileToSeasonMap.has(globalEpisodeNum)) {
+              var seasonMapping = fileToSeasonMap.get(globalEpisodeNum);
+              currentSeasonNumber = seasonMapping.seasonNumber;
+              episodeInSeason = seasonMapping.episodeInSeason;
+              console.log(`Серия ${globalEpisodeNum} (глобальный) → ${currentSeasonNumber} сезон, эпизод ${episodeInSeason}`);
+            }
+          }
+        }
+        // Если есть кадры для одного сезона (старая логика)
+        else if (seasonEpisodes && seasonEpisodes.length > 0 && collFilles > 1) {
           var episodeNum = i + 1;
           for (var e = 0; e < seasonEpisodes.length; e++) {
             if (seasonEpisodes[e].episodeNumber === episodeNum) {
               if (seasonEpisodes[e].stillPath) {
                 episodeStill = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + seasonEpisodes[e].stillPath;
-                console.log('Найден кадр для серии ' + episodeNum);
               }
               break;
             }
@@ -1530,10 +1571,11 @@ async function showDetail(torrent) {
         }
 
         if (collFilles == 1) {
-          addFileItem(files[i], torrent.hash, torrent.title, null, episodeStill);
+          addFileItem(files[i], torrent.hash, torrent.title, null, episodeStill, null);
         } else {
           indx = indx + 1;
-          addFileItem(files[i], torrent.hash, nameSerials + " " + indx, indx, episodeStill);
+          var displayName = nameSerials + " " + indx;
+          addFileItem(files[i], torrent.hash, displayName, indx, episodeStill, currentSeasonNumber);
         }
       }
     }
@@ -1608,23 +1650,49 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
   // Извлекаем TMDB ID из названия торрента
   var tmdbId = null;
   var cleanTitle = torrent.title || 'Без названия';
-  var seasonNumber = null;
+  var seasonNumbers = []; // Массив номеров сезонов
 
   // Ищем ID в квадратных скобках [ID] - только цифры
   var bracketMatch = cleanTitle.match(/\[(\d+)\]/);
   if (bracketMatch && bracketMatch[1]) {
     tmdbId = bracketMatch[1];
-    // Удаляем ID из названия для отображения
     cleanTitle = cleanTitle.replace(/\[\d+\]/, '').trim();
     console.log('Найден TMDB ID в названии:', tmdbId);
   }
 
-  // Извлекаем номер сезона из названия
-  seasonNumber = extractSeasonFromTitle(cleanTitle);
-  if (seasonNumber) {
-    console.log('Найден номер сезона:', seasonNumber);
-    // Удаляем информацию о сезоне из названия для отображения
-    cleanTitle = cleanTitle.replace(/\[сезон\s*\d+\]/i, '').replace(/\[season\s*\d+\]/i, '').replace(/сезон\s*\d+/i, '').replace(/season\s*\d+/i, '').replace(/S\d+/i, '').trim();
+  // Извлекаем номера сезонов из скобок [сезон 1, 2, 3] или [сезон 1-4]
+  var seasonBracketMatch = cleanTitle.match(/\[сезон\s*([\d,\s-]+)\]/i);
+  if (seasonBracketMatch && seasonBracketMatch[1]) {
+    var seasonStr = seasonBracketMatch[1];
+
+    // Проверяем, есть ли диапазон (например, 1-4)
+    if (seasonStr.includes('-')) {
+      var rangeParts = seasonStr.split('-');
+      if (rangeParts.length === 2) {
+        var startSeason = parseInt(rangeParts[0], 10);
+        var endSeason = parseInt(rangeParts[1], 10);
+        for (var s = startSeason; s <= endSeason; s++) {
+          seasonNumbers.push(s);
+        }
+      }
+    }
+    // Проверяем, есть ли список через запятую
+    else if (seasonStr.includes(',')) {
+      var parts = seasonStr.split(',');
+      for (var p = 0; p < parts.length; p++) {
+        var num = parseInt(parts[p].trim(), 10);
+        if (!isNaN(num)) seasonNumbers.push(num);
+      }
+    }
+    // Один номер сезона
+    else {
+      var singleSeason = parseInt(seasonStr, 10);
+      if (!isNaN(singleSeason)) seasonNumbers.push(singleSeason);
+    }
+
+    console.log('Найдены номера сезонов:', seasonNumbers);
+    // Удаляем информацию о сезонах из названия для отображения
+    cleanTitle = cleanTitle.replace(/\[сезон\s*[^\]]+\]/i, '').trim();
   }
 
   // Обновляем заголовок (без ID и сезона в скобках)
@@ -1648,124 +1716,194 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
   }
 
   // Переменные для данных TMDB
-  var seasonEpisodes = [];
+  var episodesMap = new Map(); // key: episodeNumber (глобальный), value: stillUrl
+  var seasonEpisodeCount = []; // Массив с количеством эпизодов по сезонам
   var movieStill = null;
   var tmdbDetails = null;
 
-  // Параллельная загрузка всех данных TMDB
-  var promises = [];
+  // Если есть TMDB ID и это сериал с несколькими сезонами
+  if (tmdbId && isTvSeries && seasonNumbers.length > 0) {
+    // Получаем информацию о сезонах
+    var allSeasons = await fetchTVSeasons(tmdbId);
 
-  // Загружаем кадры для серий (если есть сезон и это сериал)
-  if (tmdbId && isTvSeries && seasonNumber) {
-    promises.push((async () => {
-      try {
-        console.log('Загрузка кадров для сезона ' + seasonNumber + ' сериала ' + tmdbId);
-        var episodes = await loadSeasonStills(tmdbId, seasonNumber);
-        if (episodes && episodes.length > 0) {
-          console.log('Загружено ' + episodes.length + ' серий с кадрами');
-          return { type: 'episodes', data: episodes };
+    if (allSeasons && allSeasons.length > 0) {
+      // Сортируем сезоны по номеру
+      allSeasons.sort(function (a, b) { return a.seasonNumber - b.seasonNumber; });
+
+      // Для каждого нужного сезона загружаем эпизоды
+      for (var s = 0; s < seasonNumbers.length; s++) {
+        var seasonNum = seasonNumbers[s];
+
+        // Находим информацию о сезоне
+        var seasonInfo = null;
+        for (var i = 0; i < allSeasons.length; i++) {
+          if (allSeasons[i].seasonNumber === seasonNum) {
+            seasonInfo = allSeasons[i];
+            break;
+          }
         }
-      } catch (error) {
-        console.error('Ошибка загрузки кадров сезона:', error);
+
+        if (seasonInfo) {
+          // Загружаем эпизоды этого сезона
+          var episodes = await fetchSeasonEpisodes(tmdbId, seasonNum);
+
+          if (episodes && episodes.length > 0) {
+            // Сохраняем количество эпизодов в этом сезоне
+            seasonEpisodeCount.push({
+              season: seasonNum,
+              count: episodes.length,
+              startEpisode: seasonEpisodeCount.length === 0 ? 1 :
+                seasonEpisodeCount.reduce(function (sum, prev) { return sum + prev.count; }, 0) + 1
+            });
+
+            // Для каждого эпизода сохраняем кадр (если есть)
+            for (var e = 0; e < episodes.length; e++) {
+              var episode = episodes[e];
+              if (episode.still_path) {
+                var globalEpisodeNum = (seasonEpisodeCount.length === 1 ? 0 :
+                  seasonEpisodeCount.slice(0, -1).reduce(function (sum, prev) { return sum + prev.count; }, 0)) + (e + 1);
+                episodesMap.set(globalEpisodeNum, AppState.protocol + '//tsimg.hnar.online/t/p/w300' + episode.still_path);
+              }
+            }
+
+            console.log(`✅ Загружено ${episodes.length} эпизодов для сезона ${seasonNum}`);
+          } else {
+            // Если нет эпизодов, хотя бы сохраняем количество
+            seasonEpisodeCount.push({
+              season: seasonNum,
+              count: seasonInfo.episodeCount || 0,
+              startEpisode: seasonEpisodeCount.length === 0 ? 1 :
+                seasonEpisodeCount.reduce(function (sum, prev) { return sum + prev.count; }, 0) + 1
+            });
+            console.log(`⚠️ Нет данных об эпизодах для сезона ${seasonNum}, используем количество: ${seasonInfo.episodeCount}`);
+          }
+        }
       }
-      return { type: 'episodes', data: [] };
-    })());
+    }
   }
-
-  // Загружаем постер для фильма (если нет сезона)
-  if (tmdbId && !isTvSeries && !seasonNumber) {
-    promises.push((async () => {
-      try {
-        console.log('Загрузка постера для фильма ' + tmdbId);
-        var still = await loadMovieStill(tmdbId);
-        if (still) {
-          console.log('Постер фильма загружен');
-          return { type: 'movieStill', data: still };
+  // Если один сезон (старая логика)
+  else if (tmdbId && isTvSeries && seasonNumbers.length === 1) {
+    var singleSeasonNum = seasonNumbers[0] || extractSeasonFromTitle(cleanTitle);
+    if (singleSeasonNum) {
+      var episodes = await loadSeasonStills(tmdbId, singleSeasonNum);
+      if (episodes && episodes.length > 0) {
+        for (var e = 0; e < episodes.length; e++) {
+          if (episodes[e].still_path) {
+            episodesMap.set(e + 1, AppState.protocol + '//tsimg.hnar.online/t/p/w300' + episodes[e].still_path);
+          }
         }
-      } catch (error) {
-        console.error('Ошибка загрузки постера фильма:', error);
+        seasonEpisodeCount.push({
+          season: singleSeasonNum,
+          count: episodes.length,
+          startEpisode: 1
+        });
       }
-      return { type: 'movieStill', data: null };
-    })());
+    }
+  }
+  // Для фильма
+  else if (tmdbId && !isTvSeries) {
+    movieStill = await loadMovieStill(tmdbId);
   }
 
   // Загружаем детальные TMDB данные для фона, описания и мета-информации
   if (tmdbId) {
-    promises.push((async () => {
-      try {
-        var mediaType = isTvSeries ? 'tv' : 'movie';
-        var details = await getTmdbDetailsWithCache(tmdbId, mediaType);
-        if (details) {
-          console.log('TMDB детальные данные загружены');
+    try {
+      var mediaType = isTvSeries ? 'tv' : 'movie';
+      var details = await getTmdbDetailsWithCache(tmdbId, mediaType);
+      if (details) {
+        console.log('TMDB детальные данные загружены');
 
-          // Обновляем backdrop фон
-          if (details.backdrop_path && elements.detailViewDiv) {
-            var backdropPath = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
-            elements.detailViewDiv.style.backgroundImage = 'url(' + backdropPath + ')';
-            elements.detailViewDiv.style.backgroundSize = 'cover';
-            elements.detailViewDiv.style.backgroundPosition = 'center';
-            elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
+        // Обновляем backdrop фон
+        if (details.backdrop_path && elements.detailViewDiv) {
+          var backdropPath = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
+          elements.detailViewDiv.style.backgroundImage = 'url(' + backdropPath + ')';
+          elements.detailViewDiv.style.backgroundSize = 'cover';
+          elements.detailViewDiv.style.backgroundPosition = 'center';
+          elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
 
-            var existingOverlay = document.getElementById('detail-backdrop-overlay');
-            if (!existingOverlay && elements.detailViewDiv) {
-              var overlay = document.createElement('div');
-              overlay.id = 'detail-backdrop-overlay';
-              overlay.style.position = 'fixed';
-              overlay.style.top = '0';
-              overlay.style.left = '0';
-              overlay.style.right = '0';
-              overlay.style.bottom = '0';
-              overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-              overlay.style.zIndex = '-1';
-              elements.detailViewDiv.appendChild(overlay);
-            }
+          var existingOverlay = document.getElementById('detail-backdrop-overlay');
+          if (!existingOverlay && elements.detailViewDiv) {
+            var overlay = document.createElement('div');
+            overlay.id = 'detail-backdrop-overlay';
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.right = '0';
+            overlay.style.bottom = '0';
+            overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+            overlay.style.zIndex = '-1';
+            elements.detailViewDiv.appendChild(overlay);
           }
-
-          // Обновляем описание
-          if (details.overview && elements.detailSubtitle) {
-            elements.detailSubtitle.textContent = details.overview;
-            elements.detailSubtitle.style.display = 'block';
-          }
-
-          // Обновляем meta информацию
-          if (typeof updateDetailMetaInfo === 'function') {
-            updateDetailMetaInfo(details);
-          }
-
-          return { type: 'details', data: details };
         }
-      } catch (error) {
-        console.error('Ошибка загрузки детальных TMDB данных:', error);
+
+        // Обновляем описание
+        if (details.overview && elements.detailSubtitle) {
+          elements.detailSubtitle.textContent = details.overview;
+          elements.detailSubtitle.style.display = 'block';
+        }
+
+        // Обновляем meta информацию
+        if (typeof updateDetailMetaInfo === 'function') {
+          updateDetailMetaInfo(details);
+        }
+
+        tmdbDetails = details;
       }
-      return { type: 'details', data: null };
-    })());
-  }
-
-  // Ждем завершения всех загрузок
-  var results = await Promise.all(promises);
-
-  // Обрабатываем результаты
-  for (var i = 0; i < results.length; i++) {
-    var result = results[i];
-    if (result && result.type === 'episodes') {
-      seasonEpisodes = result.data;
-    } else if (result && result.type === 'movieStill') {
-      movieStill = result.data;
-    } else if (result && result.type === 'details') {
-      tmdbDetails = result.data;
+    } catch (error) {
+      console.error('Ошибка загрузки детальных TMDB данных:', error);
     }
   }
 
   return {
     tmdbId: tmdbId,
     cleanTitle: cleanTitle,
-    seasonNumber: seasonNumber,
+    seasonNumbers: seasonNumbers,
     isTvSeries: isTvSeries,
-    seasonEpisodes: seasonEpisodes,
+    episodesMap: episodesMap,
+    seasonEpisodeCount: seasonEpisodeCount,
     movieStill: movieStill,
     tmdbDetails: tmdbDetails
   };
 }
+
+// Функция для получения списка сезонов сериала по TMDB ID
+async function fetchTVSeasons(tmdbId) {
+  if (!tmdbId) return null;
+
+  try {
+    const response = await fetch(`/api/tmdb/seasons?id=${tmdbId}`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success && data.seasons) {
+        console.log('📺 Получены сезоны:', data.seasons);
+        return data.seasons;
+      }
+    }
+  } catch (error) {
+    console.error('Ошибка получения сезонов:', error);
+  }
+  return null;
+}
+
+// Функция для получения деталей конкретного сезона (эпизоды с кадрами)
+async function fetchSeasonEpisodes(tmdbId, seasonNumber) {
+  if (!tmdbId || !seasonNumber) return [];
+
+  try {
+    const response = await fetch(`/api/tmdb/season?id=${tmdbId}&seasonNumber=${seasonNumber}`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.episodes) {
+        console.log(`📺 Получены эпизоды для сезона ${seasonNumber}:`, data.episodes.length);
+        return data.episodes;
+      }
+    }
+  } catch (error) {
+    console.error(`Ошибка получения эпизодов для сезона ${seasonNumber}:`, error);
+  }
+  return [];
+}
+
 // Функция для обновления кадра у существующей плитки
 function updateFileItemStill(fileItem, stillImage) {
   if (!fileItem || !stillImage) return;
@@ -1844,7 +1982,7 @@ function updateDetailMetaInfo(tmdbData) {
 }
 
 // Добавить элемент файла (для сериалов)
-function addFileItem(file, hash, name, episodeIndex, stillImage) {
+function addFileItem(file, hash, name, episodeIndex, stillImage, seasonNumber) {
   // Проверяем расширение файла
   var fileName = file.path.split('/').pop() || ('Файл ' + file.id);
   var fileExt = fileName.split('.').pop().toLowerCase();
@@ -1866,6 +2004,9 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
   if (episodeIndex !== undefined && episodeIndex !== null) {
     item.dataset.episodeIndex = episodeIndex;
   }
+  if (seasonNumber !== undefined && seasonNumber !== null) {
+    item.dataset.seasonNumber = seasonNumber;
+  }
 
   // Создаем HTML с кадром на всю верхнюю часть
   var stillHtml = '';
@@ -1881,12 +2022,18 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
     '<div class="file-progress-fill" style="width: 0%; height: 100%; background: #ff8c00; transition: width 0.2s ease;"></div>' +
     '</div>';
 
+  // Формируем отображаемое имя с учетом сезона
+  var displayName = name;
+  if (seasonNumber) {
+    displayName = seasonNumber + ' сезон / ' + name;
+  }
+
   item.innerHTML = stillHtml +
     '<div class="file-content">' +
     '<button class="play-btn" data-hash="' + hash + '" data-file-id="' + file.id + '" data-episode-index="' + (episodeIndex !== undefined ? episodeIndex : '') + '">▶</button>' +
     '</div>' +
     '<div class="file-info">' +
-    '<div class="file-name" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</div>' +
+    '<div class="file-name" title="' + escapeHtml(displayName) + '">' + escapeHtml(displayName) + '</div>' +
     '<div class="file-size">' + fileSize + '</div>' +
     '</div>' +
     progressBarHtml;
@@ -2029,8 +2176,8 @@ async function searchTorrentsLegacy(query) {
     return;
   }
 
-  var encodedQuery = encodeURIComponent(query.trim()); 
-  var searchUrl = AppState.protocol+ '//jac.red/api/v1.0/torrents?search=' + encodedQuery + '&apikey=null&exact=true';
+  var encodedQuery = encodeURIComponent(query.trim());
+  var searchUrl = AppState.protocol + '//jac.red/api/v1.0/torrents?search=' + encodedQuery + '&apikey=null&exact=true';
 
   showLoading('Поиск...');
 
@@ -2210,7 +2357,7 @@ function applyFiltersAndSort() {
 
     // По типу
     if (shouldInclude && currentvideotypeFilter && currentvideotypeFilter !== 'all') {
-      var hasvideotype = item.videotype == currentvideotypeFilter; 
+      var hasvideotype = item.videotype == currentvideotypeFilter;
       if (!hasvideotype) shouldInclude = false;
     }
 
@@ -2574,7 +2721,7 @@ function resetFilters() {
   currentYearFilter = '';
   currentSeasonFilter = 'all';
   currentVoiceFilter = 'all';
-  currentvideotypeFilter = 'all'; 
+  currentvideotypeFilter = 'all';
 
   syncSearchFilterButtons();
   var filterYear = document.getElementById('filter-year');
@@ -3324,7 +3471,7 @@ function showGlobalSearchResults() {
     var mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
     var rating = result.vote_average ? result.vote_average.toFixed(1) : null;
     var posterUrl = result.poster_path
-      ? AppState.protocol+'//tsimg.hnar.online/t/p/w342' + result.poster_path
+      ? AppState.protocol + '//tsimg.hnar.online/t/p/w342' + result.poster_path
       : null;
 
     html += '\n            <div class="global-search-card" data-index="' + idx + '" data-tmdb-id="' + result.id + '" data-media-type="' + result.media_type + '" style="\n                background: rgba(30, 30, 40, 0.9);\n                border-radius: 12px;\n                overflow: hidden;\n                cursor: pointer;\n                border: 1px solid rgba(74, 158, 255, 0.3);\n            ">\n                <div class="global-search-poster" style="\n                    position: relative;\n                    aspect-ratio: 2/3;\n                    overflow: hidden;\n                    background: linear-gradient(135deg, #1a1a2e, #16213e);\n                ">\n                    ' + (posterUrl ? '\n                        <img src="' + posterUrl + '" alt="' + escapeHtml(title) + '" style="\n                            width: 100%;\n                            height: 100%;\n                            object-fit: cover;\n                        " onerror="this.parentElement.innerHTML=\'<div style=\\\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\\\'></div>\'">\n                    ' : '\n                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">\n                            ' + (mediaType === 'Сериал' ? 'Сериал' : 'Фильм') + '\n                        </div>\n                    ') + '\n                    ' + (rating ? '\n                        <div style="\n                            position: absolute;\n                            top: 8px;\n                            right: 8px;\n                            background: rgba(0, 0, 0, 0.8);\n                            color: ' + getRatingColor(parseFloat(rating)) + ';\n                            font-weight: bold;\n                            font-size: 12px;\n                            padding: 4px 8px;\n                            border-radius: 12px;\n                            border: 1px solid ' + getRatingColor(parseFloat(rating)) + ';\n                        ">\n                            ' + rating + '\n                        </div>\n                    ' : '') + '\n                </div>\n                <div class="global-search-info" style="padding: 12px;">\n                    <div class="global-search-title" style="\n                        font-weight: 600;\n                        font-size: 14px;\n                        margin-bottom: 6px;\n                        overflow: hidden;\n                        text-overflow: ellipsis;\n                        white-space: nowrap;\n                    ">' + escapeHtml(title) + '</div>\n                    <div style="\n                        display: flex;\n                        justify-content: space-between;\n                        font-size: 12px;\n                        color: #aaa;\n                    ">\n                        <span>' + mediaType + '</span>\n                        <span>' + yearStr + '</span>\n                    </div>\n                </div>\n            </div>\n        ';
@@ -3374,7 +3521,7 @@ function renderFilteredGlobalResults(results) {
     var mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
     var rating = result.vote_average ? result.vote_average.toFixed(1) : null;
     var posterUrl = result.poster_path
-      ? AppState.protocol+'//tsimg.hnar.online/t/p/w342' + result.poster_path
+      ? AppState.protocol + '//tsimg.hnar.online/t/p/w342' + result.poster_path
       : null;
 
     html += '\n            <div class="global-search-card" data-tmdb-id="' + result.id + '" data-media-type="' + result.media_type + '" style="\n                background: rgba(30, 30, 40, 0.9);\n                border-radius: 12px;\n                overflow: hidden;\n                cursor: pointer;\n                border: 1px solid rgba(74, 158, 255, 0.3);\n            ">\n                <div class="global-search-poster" style="\n                    position: relative;\n                    aspect-ratio: 2/3;\n                    overflow: hidden;\n                    background: linear-gradient(135deg, #1a1a2e, #16213e);\n                ">\n                    ' + (posterUrl ? '\n                        <img src="' + posterUrl + '" alt="' + escapeHtml(title) + '" style="\n                            width: 100%;\n                            height: 100%;\n                            object-fit: cover;\n                        " onerror="this.parentElement.innerHTML=\'<div style=\\\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\\\'></div>\'">\n                    ' : '\n                        <div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">\n                            ' + (mediaType === 'Сериал' ? 'Сериал' : 'Фильм') + '\n                        </div>\n                    ') + '\n                    ' + (rating ? '\n                        <div style="\n                            position: absolute;\n                            top: 8px;\n                            right: 8px;\n                            background: rgba(0, 0, 0, 0.8);\n                            color: ' + getRatingColor(parseFloat(rating)) + ';\n                            font-weight: bold;\n                            font-size: 12px;\n                            padding: 4px 8px;\n                            border-radius: 12px;\n                            border: 1px solid ' + getRatingColor(parseFloat(rating)) + ';\n                        ">\n                            ' + rating + '\n                        </div>\n                    ' : '') + '\n                </div>\n                <div class="global-search-info" style="padding: 12px;">\n                    <div class="global-search-title" style="\n                        font-weight: 600;\n                        font-size: 14px;\n                        margin-bottom: 6px;\n                        overflow: hidden;\n                        text-overflow: ellipsis;\n                        white-space: nowrap;\n                    ">' + escapeHtml(title) + '</div>\n                    <div style="\n                        display: flex;\n                        justify-content: space-between;\n                        font-size: 12px;\n                        color: #aaa;\n                    ">\n                        <span>' + mediaType + '</span>\n                        <span>' + yearStr + '</span>\n                    </div>\n                </div>\n            </div>\n        ';
@@ -3430,7 +3577,7 @@ async function showGlobalSearchDetail(item) {
   AppState.mediaType = item.media_type;
   // Получаем URL постера
   var posterUrl = item.poster_path
-    ? AppState.protocol+'//tsimg.hnar.online/t/p/w342' + item.poster_path
+    ? AppState.protocol + '//tsimg.hnar.online/t/p/w342' + item.poster_path
     : null;
 
   // Используем catalog.js для показа деталей
