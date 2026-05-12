@@ -2019,45 +2019,6 @@ function addFileItem(file, hash, name, episodeIndex, stillImage, returnOnly) {
   }
 }
 
-// Обновление постера у существующего файла
-function updateFileItemStill(fileItem, stillImage) {
-  if (!fileItem || !stillImage) return;
-
-  // Проверяем, есть ли уже контейнер с картинкой
-  if (fileItem.querySelector('.file-still-container')) return;
-
-  // Удаляем плейсхолдер
-  var placeholder = fileItem.querySelector('.file-still-placeholder');
-  if (placeholder) {
-    placeholder.remove();
-  }
-
-  // Создаем контейнер для кадра
-  var stillContainer = document.createElement('div');
-  stillContainer.className = 'file-still-container';
-  var img = document.createElement('img');
-  img.src = stillImage;
-  img.onerror = function () {
-    console.log('Ошибка загрузки картинки');
-    this.parentElement.style.display = 'none';
-  };
-  stillContainer.appendChild(img);
-
-  var overlay = document.createElement('div');
-  overlay.className = 'file-overlay';
-
-  // Вставляем в начало файл-айтема
-  fileItem.insertBefore(stillContainer, fileItem.firstChild);
-  fileItem.insertBefore(overlay, stillContainer.nextSibling);
-
-  // Добавляем анимацию появления
-  stillContainer.style.opacity = '0';
-  stillContainer.style.transition = 'opacity 0.3s ease';
-  setTimeout(function () {
-    stillContainer.style.opacity = '1';
-  }, 10);
-}
-
 // Функция для загрузки кадров и обновления существующих файлов
 async function loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieStill, totalVideoFiles) {
   console.log('loadStillsAndUpdateFiles: начинаем загрузку кадров');
