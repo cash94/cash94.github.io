@@ -1537,13 +1537,11 @@ async function showDetail(torrent) {
   AppState.currentDetailItem = torrent;
   var detailView = document.getElementById('detail-view');
 
-  // Убеждаемся что detail-view перекрывает все
   detailView.style.display = 'block';
   detailView.style.zIndex = '100';
 
   resetDetailBackground();
 
-  // Блокируем взаимодействие с основным контентом
   var mainContainer = document.getElementById('main-container');
   if (mainContainer) {
     mainContainer.style.pointerEvents = 'none';
@@ -1577,89 +1575,8 @@ async function showDetail(torrent) {
     detailSubtitle: detailSubtitle
   });
 
-  // Переменные для TMDB данных (заполнятся позже)
-  var tmdbId = null;
-  var cleanTitle = null;
-  var seasonNumbers = [];
-  var allSeasonEpisodes = {};
-  var movieStill = null;
-
-  // Получаем постер из торрента (это можно сделать сразу, без ожидания)
-  var poster = '';
-  var dataParsed = false;
-
-  try {
-    if (torrent.data) {
-      var data = JSON.parse(torrent.data);
-      if (data.movie && data.movie.img) {
-        poster = data.movie.img;
-        dataParsed = true;
-      } else if (data.movie && data.movie.poster_path) {
-        poster = 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path;
-        dataParsed = true;
-      } else if (data.TorrServer && data.TorrServer.Files) {
-        dataParsed = true;
-      }
-    }
-  } catch (e) {
-    console.log('Ошибка парсинга torrent.data:', e);
-  }
-
-  // Если не удалось получить данные из torrent.data, делаем запрос к API
-  if (!dataParsed && torrent.hash && AppState.currentTorrserverUrl) {
-    try {
-      var requestBody = { action: 'get', hash: torrent.hash };
-      var headers = { 'Content-Type': 'application/json' };
-      var authHeaders = getAuthHeaders();
-      for (var key in authHeaders) {
-        if (authHeaders.hasOwnProperty(key)) {
-          headers[key] = authHeaders[key];
-        }
-      }
-
-      var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(requestBody)
-      });
-
-      if (response.ok) {
-        var apiData = await response.json();
-        if (apiData.data) {
-          torrent.data = apiData.data;
-          try {
-            var parsedData = JSON.parse(apiData.data);
-            if (parsedData.movie && parsedData.movie.img) {
-              poster = parsedData.movie.img;
-            } else if (parsedData.movie && parsedData.movie.poster_path) {
-              poster = 'https://image.tmdb.org/t/p/w342' + parsedData.movie.poster_path;
-            }
-            if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
-              torrent.file_stats = apiData.file_stats;
-            }
-          } catch (e) { }
-        }
-        if (apiData.poster && !poster) {
-          poster = apiData.poster;
-        }
-        if (apiData.title && (!torrent.title || torrent.title === 'Без названия')) {
-          torrent.title = apiData.title;
-        }
-      }
-    } catch (apiError) {
-      console.error('Ошибка при запросе к API:', apiError);
-    }
-  }
-
-  if (!poster && torrent.poster) {
-    poster = torrent.poster;
-  }
-
-  posterImg.innerHTML = poster ? '<img src="' + poster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
-
   // Временно устанавливаем заголовок из torrent.title
   var displayTitle = torrent.title || 'Без названия';
-  // Убираем ID из временного заголовка для отображения
   displayTitle = displayTitle.replace(/\[\d+\]/, '').trim();
   titleEl.textContent = displayTitle;
 
@@ -1683,8 +1600,24 @@ async function showDetail(torrent) {
       } catch (e) { }
     }
 
-    // Получаем файлы с кэшированием (это основной контент, показываем сразу)
+    // Получаем файлы с кэшированием (этот метод уже получает и file_stats, и данные)
     var files = await getTorrentFilesWithCache(torrent, false);
+
+    // После получения файлов, пытаемся извлечь постер из тех же данных
+    var poster = torrent.poster || '';
+
+    if (!poster && torrent.data) {
+      try {
+        var data = JSON.parse(torrent.data);
+        if (data.movie && data.movie.img) {
+          poster = data.movie.img;
+        } else if (data.movie && data.movie.poster_path) {
+          poster = 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path;
+        }
+      } catch (e) { }
+    }
+
+    posterImg.innerHTML = poster ? '<img src="' + poster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
 
     if (files.length === 0) {
       filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">📁 Нет файлов</div>';
@@ -1779,6 +1712,7 @@ async function showDetail(torrent) {
 
   AppState.mediaType = "";
 }
+
 // Асинхронная функция для загрузки всех TMDB данных
 async function loadAllTmdbDataForTorrent(torrent, elements) {
   // Извлекаем TMDB ID из названия торрента
