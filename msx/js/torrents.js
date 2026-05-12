@@ -1233,26 +1233,104 @@ function resetDetailBackground() {
 }
 
 // Функция для извлечения номера сезона из названия
-function extractSeasonFromTitle(title) {
-  if (!title) return null;
+function extractSeasonsFromTitle(title) {
+  if (!title) return [];
 
-  // Ищем [сезон X] или [season X]
-  var seasonPatterns = [
-    /\[сезон\s*(\d+)\]/i,
-    /\[season\s*(\d+)\]/i,
-    /сезон\s*(\d+)/i,
-    /season\s*(\d+)/i,
-    /S(\d+)/i
+  var seasons = [];
+
+  // Шаблоны для поиска сезонов
+  var patterns = [
+    // [сезон 1, 2, 3] или [сезон 1,2,3]
+    /\[сезон\s*([\d,\s]+)\]/i,
+    /\[season\s*([\d,\s]+)\]/i,
+    // сезон 1, 2, 3
+    /сезон\s*([\d,\s]+)/i,
+    /season\s*([\d,\s]+)/i,
+    // S1-3 или S1,2,3
+    /S([\d\-,\s]+)/i,
+    // [сезон 1-3]
+    /\[сезон\s*(\d+)\s*[-–]\s*(\d+)\]/i,
+    /\[season\s*(\d+)\s*[-–]\s*(\d+)\]/i
   ];
 
-  for (var p = 0; p < seasonPatterns.length; p++) {
-    var match = title.match(seasonPatterns[p]);
-    if (match && match[1]) {
-      return parseInt(match[1], 10);
+  for (var p = 0; p < patterns.length; p++) {
+    var match = title.match(patterns[p]);
+    if (match) {
+      // Проверяем на диапазон (1-3)
+      if (match[2] && parseInt(match[2])) {
+        var start = parseInt(match[1], 10);
+        var end = parseInt(match[2], 10);
+        for (var s = start; s <= end; s++) {
+          if (seasons.indexOf(s) === -1) seasons.push(s);
+        }
+      }
+      // Проверяем на список (1,2,3)
+      else if (match[1] && match[1].match(/[\d,]+/)) {
+        var parts = match[1].split(/[,\s]+/);
+        for (var i = 0; i < parts.length; i++) {
+          var num = parseInt(parts[i], 10);
+          if (!isNaN(num) && seasons.indexOf(num) === -1) {
+            seasons.push(num);
+          }
+        }
+      }
+      // Одиночный сезон
+      else if (match[1] && parseInt(match[1])) {
+        var singleNum = parseInt(match[1], 10);
+        if (seasons.indexOf(singleNum) === -1) seasons.push(singleNum);
+      }
+
+      if (seasons.length > 0) break;
     }
   }
 
-  return null;
+  // Также ищем множественные сезоны в формате "S1-S3" или "S1, S2, S3"
+  var multiSeasonPatterns = [
+    /S(\d+)\s*[-–]\s*S?(\d+)/i,
+    /S(\d+)[,\s]+S(\d+)/i
+  ];
+
+  for (var p = 0; p < multiSeasonPatterns.length; p++) {
+    var multiMatch = title.match(multiSeasonPatterns[p]);
+    if (multiMatch && multiMatch[1] && multiMatch[2]) {
+      var startSeason = parseInt(multiMatch[1], 10);
+      var endSeason = parseInt(multiMatch[2], 10);
+      for (var s = startSeason; s <= endSeason; s++) {
+        if (seasons.indexOf(s) === -1) seasons.push(s);
+      }
+      break;
+    }
+  }
+
+  return seasons.sort(function (a, b) { return a - b; });
+}
+
+// Функция для очистки названия от информации о сезонах
+function cleanTitleFromSeasons(title, seasons) {
+  if (!title) return title;
+
+  var cleaned = title;
+
+  // Удаляем [сезон X, Y, Z]
+  cleaned = cleaned.replace(/\[сезон\s*[\d,\s\-]+\]/i, '');
+  cleaned = cleaned.replace(/\[season\s*[\d,\s\-]+\]/i, '');
+
+  // Удаляем сезон X, Y, Z без скобок
+  cleaned = cleaned.replace(/сезон\s*[\d,\s\-]+/i, '');
+  cleaned = cleaned.replace(/season\s*[\d,\s\-]+/i, '');
+
+  // Удаляем S1, S2, S3
+  if (seasons && seasons.length > 0) {
+    for (var i = 0; i < seasons.length; i++) {
+      cleaned = cleaned.replace(new RegExp('S' + seasons[i] + '\\b', 'ig'), '');
+    }
+  }
+  cleaned = cleaned.replace(/S\d+/ig, '');
+
+  // Удаляем лишние пробелы
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+  return cleaned;
 }
 
 // Кэш для сезонов
@@ -1386,9 +1464,9 @@ async function showDetail(torrent) {
   // Используем полученные данные
   var tmdbId = tmdbData.tmdbId;
   var cleanTitle = tmdbData.cleanTitle;
-  var seasonNumber = tmdbData.seasonNumber;
+  var seasonNumbers = tmdbData.seasonNumbers || []; // Массив сезонов
   var isTvSeries = tmdbData.isTvSeries;
-  var seasonEpisodes = tmdbData.seasonEpisodes;
+  var allSeasonEpisodes = tmdbData.allSeasonEpisodes || {}; // Объект с кадрами по сезонам
   var movieStill = tmdbData.movieStill;
 
   // Получаем постер из торрента
@@ -1469,6 +1547,15 @@ async function showDetail(torrent) {
     titleEl.textContent = cleanTitle;
   }
 
+  // Если есть несколько сезонов, добавляем индикатор сезонов в заголовок
+  if (seasonNumbers.length > 1) {
+    var seasonsText = titleEl.textContent;
+    if (!seasonsText.includes('сезон')) {
+      var seasonsList = seasonNumbers.join(', ');
+      titleEl.textContent = seasonsText + ' [сезон ' + seasonsList + ']';
+    }
+  }
+
   // Удаляем старый прогресс если есть
   var oldProgress = document.getElementById('detail-progress');
   if (oldProgress) oldProgress.remove();
@@ -1501,36 +1588,109 @@ async function showDetail(torrent) {
       filesList.innerHTML = '<div style="text-align: center; padding: 20px;">Нет файлов</div>';
     } else {
       filesList.innerHTML = '';
-      var nameSerials = 'Серия';
-      var collFilles = files.length;
-      var indx = 0;
 
+      // Фильтруем только видео файлы
+      var videoFiles = [];
       for (var i = 0; i < files.length; i++) {
-        var episodeStill = null;
+        var fileName = files[i].path.split('/').pop().toLowerCase();
+        if (fileName.indexOf('.mp4') !== -1 || fileName.indexOf('.mkv') !== -1 ||
+          fileName.indexOf('.avi') !== -1 || fileName.indexOf('.mov') !== -1 ||
+          fileName.indexOf('.webm') !== -1 || fileName.indexOf('.m4v') !== -1) {
+          videoFiles.push(files[i]);
+        }
+      }
 
-        // Если есть кадры для серий, пытаемся найти соответствие
-        if (seasonEpisodes.length > 0 && collFilles > 1) {
-          var episodeNum = i + 1;
-          for (var e = 0; e < seasonEpisodes.length; e++) {
-            if (seasonEpisodes[e].episodeNumber === episodeNum) {
-              if (seasonEpisodes[e].stillPath) {
-                episodeStill = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + seasonEpisodes[e].stillPath;
-                console.log('Найден кадр для серии ' + episodeNum);
+      var totalVideoFiles = videoFiles.length;
+      console.log('Всего видео файлов:', totalVideoFiles);
+      console.log('Найдено сезонов:', seasonNumbers.length);
+
+      // Если есть несколько сезонов и у нас есть кадры для них
+      if (seasonNumbers.length > 1 && Object.keys(allSeasonEpisodes).length > 0) {
+        // Рассчитываем, сколько файлов приходится на один сезон
+        var filesPerSeason = Math.floor(totalVideoFiles / seasonNumbers.length);
+        var remainder = totalVideoFiles % seasonNumbers.length;
+
+        console.log('Файлов на сезон:', filesPerSeason, 'Остаток:', remainder);
+
+        var currentFileIndex = 0;
+
+        // Проходим по каждому сезону
+        for (var s = 0; s < seasonNumbers.length; s++) {
+          var seasonNum = seasonNumbers[s];
+          var episodesForSeason = allSeasonEpisodes[seasonNum] || [];
+
+          // Определяем сколько файлов в этом сезоне
+          var filesInThisSeason = filesPerSeason;
+          if (s < remainder) {
+            filesInThisSeason++;
+          }
+
+          console.log('Сезон ' + seasonNum + ': ' + filesInThisSeason + ' файлов');
+
+          // Добавляем заголовок сезона
+          var seasonHeader = document.createElement('div');
+          seasonHeader.className = 'season-header';
+          seasonHeader.innerHTML = '<div class="season-title">Сезон ' + seasonNum + '</div><div class="season-divider"></div>';
+          filesList.appendChild(seasonHeader);
+
+          // Добавляем файлы для этого сезона
+          for (var f = 0; f < filesInThisSeason; f++) {
+            if (currentFileIndex >= videoFiles.length) break;
+
+            var file = videoFiles[currentFileIndex];
+            var episodeNum = f + 1;
+
+            // Ищем кадр для этой серии
+            var episodeStill = null;
+            if (episodesForSeason.length > 0) {
+              for (var e = 0; e < episodesForSeason.length; e++) {
+                if (episodesForSeason[e].episodeNumber === episodeNum) {
+                  if (episodesForSeason[e].stillPath) {
+                    episodeStill = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + episodesForSeason[e].stillPath;
+                    console.log('Найден кадр для сезона ' + seasonNum + ' серии ' + episodeNum);
+                  }
+                  break;
+                }
               }
-              break;
             }
+
+            var displayName = 'Серия ' + episodeNum;
+            addFileItem(file, torrent.hash, displayName, currentFileIndex, episodeStill);
+            currentFileIndex++;
           }
         }
-        // Если это фильм и есть постер
-        else if (collFilles === 1 && movieStill) {
-          episodeStill = movieStill;
-        }
+      }
+      // Если один сезон или нет кадров для множества сезонов
+      else {
+        var seasonNum = (seasonNumbers.length === 1) ? seasonNumbers[0] : null;
+        var episodesForSeason = (seasonNum && allSeasonEpisodes[seasonNum]) ? allSeasonEpisodes[seasonNum] : [];
 
-        if (collFilles == 1) {
-          addFileItem(files[i], torrent.hash, torrent.title, null, episodeStill);
-        } else {
-          indx = indx + 1;
-          addFileItem(files[i], torrent.hash, nameSerials + " " + indx, indx, episodeStill);
+        for (var i = 0; i < videoFiles.length; i++) {
+          var episodeStill = null;
+
+          // Если есть кадры для серий, пытаемся найти соответствие
+          if (episodesForSeason.length > 0 && videoFiles.length > 1) {
+            var episodeNum = i + 1;
+            for (var e = 0; e < episodesForSeason.length; e++) {
+              if (episodesForSeason[e].episodeNumber === episodeNum) {
+                if (episodesForSeason[e].stillPath) {
+                  episodeStill = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + episodesForSeason[e].stillPath;
+                  console.log('Найден кадр для серии ' + episodeNum);
+                }
+                break;
+              }
+            }
+          }
+          // Если это фильм и есть постер
+          else if (videoFiles.length === 1 && movieStill) {
+            episodeStill = movieStill;
+          }
+
+          if (videoFiles.length === 1) {
+            addFileItem(videoFiles[i], torrent.hash, torrent.title, null, episodeStill);
+          } else {
+            addFileItem(videoFiles[i], torrent.hash, 'Серия ' + (i + 1), i, episodeStill);
+          }
         }
       }
     }
@@ -1605,7 +1765,7 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
   // Извлекаем TMDB ID из названия торрента
   var tmdbId = null;
   var cleanTitle = torrent.title || 'Без названия';
-  var seasonNumber = null;
+  var seasonNumbers = []; // Массив сезонов вместо одного числа
 
   // Ищем ID в квадратных скобках [ID] - только цифры
   var bracketMatch = cleanTitle.match(/\[(\d+)\]/);
@@ -1616,15 +1776,15 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
     console.log('Найден TMDB ID в названии:', tmdbId);
   }
 
-  // Извлекаем номер сезона из названия
-  seasonNumber = extractSeasonFromTitle(cleanTitle);
-  if (seasonNumber) {
-    console.log('Найден номер сезона:', seasonNumber);
-    // Удаляем информацию о сезоне из названия для отображения
-    cleanTitle = cleanTitle.replace(/\[сезон\s*\d+\]/i, '').replace(/\[season\s*\d+\]/i, '').replace(/сезон\s*\d+/i, '').replace(/season\s*\d+/i, '').replace(/S\d+/i, '').trim();
+  // Извлекаем номера сезонов из названия (теперь массив)
+  seasonNumbers = extractSeasonsFromTitle(cleanTitle);
+  if (seasonNumbers.length > 0) {
+    console.log('Найден номера сезонов:', seasonNumbers);
+    // Удаляем информацию о сезонах из названия для отображения
+    cleanTitle = cleanTitleFromSeasons(cleanTitle, seasonNumbers);
   }
 
-  // Обновляем заголовок (без ID и сезона в скобках)
+  // Обновляем заголовок (без ID и сезонов в скобках)
   if (elements.titleEl) {
     elements.titleEl.textContent = cleanTitle;
   }
@@ -1645,32 +1805,37 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
   }
 
   // Переменные для данных TMDB
-  var seasonEpisodes = [];
+  var allSeasonEpisodes = {}; // Объект: ключ = номер сезона, значение = массив серий
   var movieStill = null;
   var tmdbDetails = null;
 
   // Параллельная загрузка всех данных TMDB
   var promises = [];
 
-  // Загружаем кадры для серий (если есть сезон и это сериал)
-  if (tmdbId && isTvSeries && seasonNumber) {
-    promises.push((async () => {
-      try {
-        console.log('Загрузка кадров для сезона ' + seasonNumber + ' сериала ' + tmdbId);
-        var episodes = await loadSeasonStills(tmdbId, seasonNumber);
-        if (episodes && episodes.length > 0) {
-          console.log('Загружено ' + episodes.length + ' серий с кадрами');
-          return { type: 'episodes', data: episodes };
-        }
-      } catch (error) {
-        console.error('Ошибка загрузки кадров сезона:', error);
-      }
-      return { type: 'episodes', data: [] };
-    })());
+  // Загружаем кадры для ВСЕХ сезонов (если есть TMDB ID, это сериал и есть сезоны)
+  if (tmdbId && isTvSeries && seasonNumbers.length > 0) {
+    for (var s = 0; s < seasonNumbers.length; s++) {
+      var seasonNum = seasonNumbers[s];
+      (function (season) {
+        promises.push((async () => {
+          try {
+            console.log('Загрузка кадров для сезона ' + season + ' сериала ' + tmdbId);
+            var episodes = await loadSeasonStills(tmdbId, season);
+            if (episodes && episodes.length > 0) {
+              console.log('Загружено ' + episodes.length + ' серий с кадрами для сезона ' + season);
+              return { type: 'episodes', season: season, data: episodes };
+            }
+          } catch (error) {
+            console.error('Ошибка загрузки кадров сезона ' + season + ':', error);
+          }
+          return { type: 'episodes', season: season, data: [] };
+        })());
+      })(seasonNum);
+    }
   }
 
-  // Загружаем постер для фильма (если нет сезона)
-  if (tmdbId && !isTvSeries && !seasonNumber) {
+  // Загружаем постер для фильма (если нет сезонов и это не сериал)
+  if (tmdbId && !isTvSeries && seasonNumbers.length === 0) {
     promises.push((async () => {
       try {
         console.log('Загрузка постера для фильма ' + tmdbId);
@@ -1745,7 +1910,7 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
   for (var i = 0; i < results.length; i++) {
     var result = results[i];
     if (result && result.type === 'episodes') {
-      seasonEpisodes = result.data;
+      allSeasonEpisodes[result.season] = result.data;
     } else if (result && result.type === 'movieStill') {
       movieStill = result.data;
     } else if (result && result.type === 'details') {
@@ -1756,9 +1921,9 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
   return {
     tmdbId: tmdbId,
     cleanTitle: cleanTitle,
-    seasonNumber: seasonNumber,
+    seasonNumbers: seasonNumbers, // теперь массив сезонов
     isTvSeries: isTvSeries,
-    seasonEpisodes: seasonEpisodes,
+    allSeasonEpisodes: allSeasonEpisodes, // все кадры по сезонам
     movieStill: movieStill,
     tmdbDetails: tmdbDetails
   };
