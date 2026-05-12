@@ -2890,3 +2890,7 @@ body.detail-open {
 .loading-progress-bar {
   box-shadow: 0 0 6px rgba(74, 158, 255, 0.5);
 }
+
+.view-tabs .view-tab {
+  color: #ff8c00; /* морковный для всех */
+}
