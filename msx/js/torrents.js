@@ -1577,9 +1577,9 @@ async function showDetail(torrent) {
   // Используем полученные данные
   var tmdbId = tmdbData.tmdbId;
   var cleanTitle = tmdbData.cleanTitle;
-  var seasonNumbers = tmdbData.seasonNumbers || []; // Массив сезонов
+  var seasonNumbers = tmdbData.seasonNumbers || [];
   var isTvSeries = tmdbData.isTvSeries;
-  var allSeasonEpisodes = tmdbData.allSeasonEpisodes || {}; // Объект с кадрами по сезонам
+  var allSeasonEpisodes = tmdbData.allSeasonEpisodes || {};
   var movieStill = tmdbData.movieStill;
 
   // Получаем постер из торрента
@@ -1663,7 +1663,7 @@ async function showDetail(torrent) {
   // Если есть несколько сезонов, добавляем индикатор сезонов в заголовок
   if (seasonNumbers.length > 1) {
     var seasonsText = titleEl.textContent;
-    if (!seasonsText.includes('сезон')) {
+    if (seasonsText.indexOf('сезон') === -1) {
       var seasonsList = seasonNumbers.join(', ');
       titleEl.textContent = seasonsText + ' [сезон ' + seasonsList + ']';
     }
@@ -1676,17 +1676,7 @@ async function showDetail(torrent) {
   // Добавляем прогресс для текущего торрента
   await addProgressToDetail(torrent);
 
-  // Показываем красивый индикатор загрузки с прогресс-баром
-  filesList.innerHTML = '<div class="files-loading-indicator" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;">' +
-    '<div class="spinner" style="width: 50px; height: 50px; border: 3px solid rgba(74, 158, 255, 0.2); border-top: 3px solid #4a9eff; border-right: 3px solid #4a9eff; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>' +
-    '<div style="font-size: 16px; color: #aaa; font-weight: 500;">Идет загрузка файлов...</div>' +
-    '<div class="loading-progress-container" style="width: 280px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 5px;">' +
-    '<div class="loading-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #4a9eff, #7b2cbf); transition: width 0.3s ease; border-radius: 4px;"></div>' +
-    '</div>' +
-    '<div class="loading-text" style="font-size: 12px; color: #666;">Подготовка списка файлов...</div>' +
-    '</div>';
-
-  // Функция для обновления прогресса загрузки
+  // Функция для обновления прогресса
   function updateLoadingProgress(percent, text) {
     var progressBar = document.querySelector('.loading-progress-bar');
     var loadingText = document.querySelector('.loading-text');
@@ -1698,9 +1688,17 @@ async function showDetail(torrent) {
     }
   }
 
-  try {
-    var files = [];
+  // Показываем индикатор загрузки
+  filesList.innerHTML = '<div class="files-loading-indicator" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;">' +
+    '<div class="spinner" style="width: 50px; height: 50px; border: 3px solid rgba(74, 158, 255, 0.2); border-top: 3px solid #4a9eff; border-right: 3px solid #4a9eff; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>' +
+    '<div style="font-size: 16px; color: #aaa; font-weight: 500;">Загрузка файлов...</div>' +
+    '<div class="loading-progress-container" style="width: 280px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 5px;">' +
+    '<div class="loading-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #4a9eff, #7b2cbf); transition: width 0.3s ease; border-radius: 4px;"></div>' +
+    '</div>' +
+    '<div class="loading-text" style="font-size: 12px; color: #666;">Подготовка...</div>' +
+    '</div>';
 
+  try {
     // Проверяем, не является ли это фильмом из LAMPA
     if (torrent.data) {
       try {
@@ -1713,19 +1711,21 @@ async function showDetail(torrent) {
       } catch (e) { }
     }
 
-    updateLoadingProgress(10, 'Получение списка файлов...');
+    updateLoadingProgress(5, 'Получение информации о файлах...');
+
+    // Небольшая задержка для отрисовки индикатора на медленных устройствах
+    await new Promise(function (resolve) { setTimeout(resolve, 50); });
 
     // Получаем файлы с кэшированием
-    files = await getTorrentFilesWithCache(torrent, false);
+    var files = await getTorrentFilesWithCache(torrent, false);
 
     updateLoadingProgress(30, 'Обработка видеофайлов...');
+
+    await new Promise(function (resolve) { setTimeout(resolve, 30); });
 
     if (files.length === 0) {
       filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">📁 Нет файлов</div>';
     } else {
-      // Очищаем индикатор загрузки
-      filesList.innerHTML = '';
-
       // Фильтруем только видео файлы
       var videoFiles = [];
       for (var i = 0; i < files.length; i++) {
@@ -1739,86 +1739,73 @@ async function showDetail(torrent) {
 
       var totalVideoFiles = videoFiles.length;
       console.log('Всего видео файлов:', totalVideoFiles);
-      console.log('Найдено сезонов:', seasonNumbers.length);
-      console.log('Кадры по сезонам:', Object.keys(allSeasonEpisodes));
 
-      // Сначала создаем ВСЕ файлы БЕЗ картинок (для быстрого отображения)
+      updateLoadingProgress(60, 'Создание списка файлов (' + totalVideoFiles + ' шт.)...');
+
+      await new Promise(function (resolve) { setTimeout(resolve, 30); });
+
+      // Очищаем индикатор загрузки
+      filesList.innerHTML = '';
+
+      // Создаем файлы с помощью DocumentFragment для лучшей производительности
+      var fragment = document.createDocumentFragment();
+      var fileItemsArray = [];
+
       for (var i = 0; i < videoFiles.length; i++) {
         var file = videoFiles[i];
+        var item;
+
         if (videoFiles.length === 1) {
-          addFileItem(file, torrent.hash, torrent.title, null, null);
+          item = addFileItem(file, torrent.hash, torrent.title, null, null, true);
         } else {
-          addFileItem(file, torrent.hash, 'Серия ' + (i + 1), i, null);
+          item = addFileItem(file, torrent.hash, 'Серия ' + (i + 1), i, null, true);
+        }
+
+        if (item) {
+          fileItemsArray.push(item);
+          fragment.appendChild(item);
+        }
+
+        // Обновляем прогресс каждые 10 файлов
+        if (i % 10 === 0 && i > 0) {
+          updateLoadingProgress(60 + Math.floor((i / totalVideoFiles) * 30), 'Создание списка файлов (' + i + '/' + totalVideoFiles + ')...');
+          // Небольшая пауза для отрисовки
+          await new Promise(function (resolve) { setTimeout(resolve, 10); });
         }
       }
 
-      // Запускаем фоновую загрузку кадров и обновление файлов
+      filesList.appendChild(fragment);
+
+      updateLoadingProgress(90, 'Загрузка постеров...');
+
+      // Запускаем фоновую загрузку кадров
       setTimeout(function () {
         loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieStill, videoFiles.length);
-      }, 50);
+      }, 100);
     }
 
   } catch (e) {
-    console.error('Ошибка парсинга данных:', e);
-    filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #ff6a6a;">❌ Ошибка загрузки файлов</div>';
+    console.error('Ошибка:', e);
+    filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #ff6a6a;">❌ Ошибка загрузки файлов: ' + (e.message || 'Неизвестная ошибка') + '</div>';
   }
 
-  // Устанавливаем фокус на первый элемент в детальном просмотре
+  // Устанавливаем фокус на первый элемент
   setTimeout(function () {
     if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
       updateFocusableElements();
-
       var fileItems = document.querySelectorAll('.file-item');
-      var targetIndex = -1;
-
       if (fileItems.length > 0) {
         for (var i = 0; i < focusableElements.length; i++) {
           if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) {
-            targetIndex = i;
+            setFocus(i);
             break;
           }
         }
-        if (targetIndex !== -1) {
-          setFocus(targetIndex);
-          console.log('Фокус в детальном просмотре на первый файл');
-          return;
-        }
+      } else {
+        setFocus(0);
       }
-
-      var progressBtn = document.querySelector('.detail-progress-btn');
-      if (progressBtn) {
-        for (var i = 0; i < focusableElements.length; i++) {
-          if (focusableElements[i].classList && focusableElements[i].classList.contains('detail-progress-btn')) {
-            targetIndex = i;
-            break;
-          }
-        }
-        if (targetIndex !== -1) {
-          setFocus(targetIndex);
-          console.log('Фокус в детальном просмотре на кнопке "Продолжить"');
-          return;
-        }
-      }
-
-      var backBtn = document.querySelector('.back-btn');
-      if (backBtn) {
-        for (var i = 0; i < focusableElements.length; i++) {
-          if (focusableElements[i].classList && focusableElements[i].classList.contains('back-btn')) {
-            targetIndex = i;
-            break;
-          }
-        }
-        if (targetIndex !== -1) {
-          setFocus(targetIndex);
-          console.log('Фокус в детальном просмотре на кнопке "Назад"');
-          return;
-        }
-      }
-
-      setFocus(0);
-      console.log('Фокус в детальном просмотре на первый элемент');
     }
-  }, 300);
+  }, 200);
 
   AppState.mediaType = "";
 }
@@ -2046,14 +2033,24 @@ function updateDetailMetaInfo(tmdbData) {
 }
 
 // Добавить элемент файла (для сериалов)
-function addFileItem(file, hash, name, episodeIndex, stillImage, seasonNum, episodeNum) {
+function addFileItem(file, hash, name, episodeIndex, stillImage, returnOnly) {
+  if (returnOnly === undefined) returnOnly = false;
+
   // Проверяем расширение файла
   var fileName = file.path.split('/').pop() || ('Файл ' + file.id);
   var fileExt = fileName.split('.').pop().toLowerCase();
   var allowedExtensions = ['mkv', 'mp4', 'avi', 'mov', 'webm', 'm4v'];
 
-  // Если расширение не в списке разрешенных - не добавляем
-  if (!allowedExtensions.includes(fileExt)) {
+  // Проверка поддержки массива includes (используем indexOf для старых браузеров)
+  var isAllowed = false;
+  for (var extIndex = 0; extIndex < allowedExtensions.length; extIndex++) {
+    if (fileExt === allowedExtensions[extIndex]) {
+      isAllowed = true;
+      break;
+    }
+  }
+
+  if (!isAllowed) {
     console.log('Пропускаем файл (не видео): ' + fileName);
     return null;
   }
@@ -2068,13 +2065,10 @@ function addFileItem(file, hash, name, episodeIndex, stillImage, seasonNum, epis
   if (episodeIndex !== undefined && episodeIndex !== null) {
     item.dataset.episodeIndex = episodeIndex;
   }
-  // Сохраняем информацию о сезоне и серии для последующего обновления постера
-  if (seasonNum !== undefined) item.dataset.season = seasonNum;
-  if (episodeNum !== undefined) item.dataset.episode = episodeNum;
 
-  // Создаем HTML с плейсхолдером вместо картинки (для быстрого отображения)
+  // Создаем HTML с плейсхолдером
   var placeholderHtml = '<div class="file-still-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #2a2a3a, #1a1a2a);">' +
-    '<div style="font-size: 24px; opacity: 0.3;"></div>' +
+    '<div style="font-size: 24px; opacity: 0.3;">🎬</div>' +
     '</div>';
 
   var progressBarHtml = '<div class="file-progress-container" style="width: 100%; height: 3px; background: rgba(255,255,255,0.2); border-radius: 0 0 12px 12px; overflow: hidden; position: absolute; bottom: 0; left: 0;">' +
@@ -2091,10 +2085,12 @@ function addFileItem(file, hash, name, episodeIndex, stillImage, seasonNum, epis
     '</div>' +
     progressBarHtml;
 
-  item.querySelector('.play-btn').onclick = function (e) {
+  // Обычная функция вместо стрелочной
+  var playBtn = item.querySelector('.play-btn');
+  playBtn.onclick = function (e) {
     e.stopPropagation();
     var btn = e.currentTarget;
-    var episodeIdx = btn.dataset.episodeIndex ? parseInt(btn.dataset.episodeIndex) : null;
+    var episodeIdx = btn.dataset.episodeIndex ? parseInt(btn.dataset.episodeIndex, 10) : null;
 
     var playUrl = file.id ?
       AppState.currentTorrserverUrl + '/play/' + hash + '/' + file.id :
@@ -2112,17 +2108,24 @@ function addFileItem(file, hash, name, episodeIndex, stillImage, seasonNum, epis
     });
   };
 
-  document.getElementById('files-list').appendChild(item);
-
-  // Если картинка уже есть (из кэша), загружаем сразу
+  // Сохраняем stillImage для последующей загрузки
   if (stillImage) {
-    updateFileItemStill(item, stillImage);
+    item.dataset.pendingStill = stillImage;
   }
 
   // Загружаем прогресс для этого файла
   loadProgressForFileItem(item, hash, file.id, episodeIndex);
 
-  return item;
+  // Если returnOnly === true, просто возвращаем элемент, иначе добавляем в DOM
+  if (returnOnly) {
+    return item;
+  } else {
+    var filesList = document.getElementById('files-list');
+    if (filesList) {
+      filesList.appendChild(item);
+    }
+    return item;
+  }
 }
 
 // Обновление постера у существующего файла
