@@ -1642,32 +1642,17 @@ async function showDetail(torrent) {
       // Сначала создаем ВСЕ файлы БЕЗ картинок (для быстрого отображения)
       for (var i = 0; i < videoFiles.length; i++) {
         var file = videoFiles[i];
-        var episodeStill = null;
-
-        // Если есть кадры, берем по порядку (i-й кадр для i-го файла)
-        if (allStillsInOrder.length > 0 && i < allStillsInOrder.length) {
-          var stillData = allStillsInOrder[i];
-          episodeStill = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + stillData.stillPath;
-          console.log('Подготовлен кадр для файла ' + (i + 1) + ': сезон ' + stillData.season + ', серия ' + stillData.episode);
-        }
-        // Если это фильм и есть постер (один файл)
-        else if (videoFiles.length === 1 && movieStill) {
-          episodeStill = movieStill;
-        }
-
         if (videoFiles.length === 1) {
-          addFileItem(file, torrent.hash, torrent.title, null, episodeStill);
+          addFileItem(file, torrent.hash, torrent.title, null, null);
         } else {
-          addFileItem(file, torrent.hash, 'Серия ' + (i + 1), i, episodeStill);
+          addFileItem(file, torrent.hash, 'Серия ' + (i + 1), i, null);
         }
       }
 
-      // Запускаем асинхронную загрузку кадров (если они были сохранены)
-      if (allStillsInOrder.length > 0 || movieStill) {
-        setTimeout(function () {
-          loadPendingStills();
-        }, 100);
-      }
+      // Запускаем фоновую загрузку кадров и обновление файлов
+      setTimeout(function () {
+        loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieStill, videoFiles.length);
+      }, 50);
     }
 
   } catch (e) {
@@ -1740,26 +1725,24 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
   // Извлекаем TMDB ID из названия торрента
   var tmdbId = null;
   var cleanTitle = torrent.title || 'Без названия';
-  var seasonNumbers = []; // Массив сезонов вместо одного числа
+  var seasonNumbers = [];
 
   // Ищем ID в квадратных скобках [ID] - только цифры
   var bracketMatch = cleanTitle.match(/\[(\d+)\]/);
   if (bracketMatch && bracketMatch[1]) {
     tmdbId = bracketMatch[1];
-    // Удаляем ID из названия для отображения
     cleanTitle = cleanTitle.replace(/\[\d+\]/, '').trim();
     console.log('Найден TMDB ID в названии:', tmdbId);
   }
 
-  // Извлекаем номера сезонов из названия (теперь массив)
+  // Извлекаем номера сезонов из названия
   seasonNumbers = extractSeasonsFromTitle(cleanTitle);
   if (seasonNumbers.length > 0) {
     console.log('Найден номера сезонов:', seasonNumbers);
-    // Удаляем информацию о сезонах из названия для отображения
     cleanTitle = cleanTitleFromSeasons(cleanTitle, seasonNumbers);
   }
 
-  // Обновляем заголовок (без ID и сезонов в скобках)
+  // Обновляем заголовок
   if (elements.titleEl) {
     elements.titleEl.textContent = cleanTitle;
   }
@@ -1780,13 +1763,12 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
   }
 
   // Переменные для данных TMDB
-  var allSeasonEpisodes = {}; // Объект: ключ = номер сезона, значение = массив серий
+  var allSeasonEpisodes = {};
   var movieStill = null;
   var tmdbDetails = null;
 
-  // Загружаем кадры для ВСЕХ сезонов асинхронно (не блокируем возврат)
+  // Запускаем фоновую загрузку кадров (не ждем)
   if (tmdbId && isTvSeries && seasonNumbers.length > 0) {
-    // Запускаем загрузку в фоне без await
     for (var s = 0; s < seasonNumbers.length; s++) {
       var seasonNum = seasonNumbers[s];
       (function (season) {
@@ -1794,23 +1776,40 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
           if (episodes && episodes.length > 0) {
             allSeasonEpisodes[season] = episodes;
             console.log('Фоново загружено ' + episodes.length + ' кадров для сезона ' + season);
+            // После загрузки кадров - обновляем файлы
+            var videoFiles = [];
+            var files = getTorrentFiles(torrent);
+            for (var i = 0; i < files.length; i++) {
+              var fileName = files[i].path.split('/').pop().toLowerCase();
+              if (fileName.indexOf('.mp4') !== -1 || fileName.indexOf('.mkv') !== -1 ||
+                fileName.indexOf('.avi') !== -1 || fileName.indexOf('.mov') !== -1 ||
+                fileName.indexOf('.webm') !== -1 || fileName.indexOf('.m4v') !== -1) {
+                videoFiles.push(files[i]);
+              }
+            }
+            loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieStill, videoFiles.length);
           }
         });
       })(seasonNum);
     }
   }
 
-  // Загружаем постер для фильма асинхронно
+  // Загружаем постер для фильма в фоне
   if (tmdbId && !isTvSeries && seasonNumbers.length === 0) {
     loadMovieStill(tmdbId).then(function (still) {
       if (still) {
         movieStill = still;
         console.log('Фоново загружен постер фильма');
+        // Обновляем файл с постером
+        var fileItem = document.querySelector('.file-item');
+        if (fileItem) {
+          updateFileItemStill(fileItem, movieStill);
+        }
       }
     });
   }
 
-  // Загружаем детальные TMDB данные для фона (не ждем)
+  // Загружаем детальные TMDB данные для фона
   if (tmdbId) {
     (function () {
       var mediaType = isTvSeries ? 'tv' : 'movie';
@@ -1819,7 +1818,6 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
           console.log('TMDB детальные данные загружены');
           tmdbDetails = details;
 
-          // Обновляем backdrop фон
           if (details.backdrop_path && elements.detailViewDiv) {
             var backdropPath = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
             elements.detailViewDiv.style.backgroundImage = 'url(' + backdropPath + ')';
@@ -1842,13 +1840,11 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
             }
           }
 
-          // Обновляем описание
           if (details.overview && elements.detailSubtitle) {
             elements.detailSubtitle.textContent = details.overview;
             elements.detailSubtitle.style.display = 'block';
           }
 
-          // Обновляем meta информацию
           if (typeof updateDetailMetaInfo === 'function') {
             updateDetailMetaInfo(details);
           }
@@ -1857,14 +1853,14 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
     })();
   }
 
-  // Возвращаем сразу, не дожидаясь загрузки кадров
+  // Возвращаем сразу, без ожидания кадров
   return {
     tmdbId: tmdbId,
     cleanTitle: cleanTitle,
     seasonNumbers: seasonNumbers,
     isTvSeries: isTvSeries,
-    allSeasonEpisodes: allSeasonEpisodes, // пустой объект, заполнится позже
-    movieStill: movieStill, // null, заполнится позже
+    allSeasonEpisodes: allSeasonEpisodes,
+    movieStill: movieStill,
     tmdbDetails: tmdbDetails
   };
 }
@@ -1947,7 +1943,7 @@ function updateDetailMetaInfo(tmdbData) {
 }
 
 // Добавить элемент файла (для сериалов)
-function addFileItem(file, hash, name, episodeIndex, stillImage) {
+function addFileItem(file, hash, name, episodeIndex, stillImage, seasonNum, episodeNum) {
   // Проверяем расширение файла
   var fileName = file.path.split('/').pop() || ('Файл ' + file.id);
   var fileExt = fileName.split('.').pop().toLowerCase();
@@ -1956,7 +1952,7 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
   // Если расширение не в списке разрешенных - не добавляем
   if (!allowedExtensions.includes(fileExt)) {
     console.log('Пропускаем файл (не видео): ' + fileName);
-    return;
+    return null;
   }
 
   var fileSize = formatBytes(file.length);
@@ -1969,13 +1965,16 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
   if (episodeIndex !== undefined && episodeIndex !== null) {
     item.dataset.episodeIndex = episodeIndex;
   }
+  // Сохраняем информацию о сезоне и серии для последующего обновления постера
+  if (seasonNum !== undefined) item.dataset.season = seasonNum;
+  if (episodeNum !== undefined) item.dataset.episode = episodeNum;
 
   // Создаем HTML с плейсхолдером вместо картинки (для быстрого отображения)
   var placeholderHtml = '<div class="file-still-placeholder" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #2a2a3a, #1a1a2a);">' +
     '<div style="font-size: 24px; opacity: 0.3;"></div>' +
     '</div>';
 
-  var progressBarHtml = '<div class="file-progress-container" style="width: 100%; height: 3px; background: rgba(255,255,255,0.2); border-radius: 0 0 12px 12px; overflow: hidden;">' +
+  var progressBarHtml = '<div class="file-progress-container" style="width: 100%; height: 3px; background: rgba(255,255,255,0.2); border-radius: 0 0 12px 12px; overflow: hidden; position: absolute; bottom: 0; left: 0;">' +
     '<div class="file-progress-fill" style="width: 0%; height: 100%; background: #ff8c00; transition: width 0.2s ease;"></div>' +
     '</div>';
 
@@ -2001,7 +2000,6 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
     document.getElementById('playback-overlay').classList.add('active');
     document.getElementById('detail-view').style.pointerEvents = 'none';
 
-    // Передаем episodeIndex в startHLSPlayback
     startHLSPlayback(playUrl, 0, false, episodeIdx).then(function () {
       document.getElementById('playback-overlay').classList.remove('active');
       document.getElementById('detail-view').style.pointerEvents = 'auto';
@@ -2013,13 +2011,109 @@ function addFileItem(file, hash, name, episodeIndex, stillImage) {
 
   document.getElementById('files-list').appendChild(item);
 
-  // Сохраняем stillImage для последующей загрузки
+  // Если картинка уже есть (из кэша), загружаем сразу
   if (stillImage) {
-    item.dataset.pendingStill = stillImage;
+    updateFileItemStill(item, stillImage);
   }
 
   // Загружаем прогресс для этого файла
   loadProgressForFileItem(item, hash, file.id, episodeIndex);
+
+  return item;
+}
+
+// Обновление постера у существующего файла
+function updateFileItemStill(fileItem, stillImage) {
+  if (!fileItem || !stillImage) return;
+
+  // Проверяем, есть ли уже контейнер с картинкой
+  if (fileItem.querySelector('.file-still-container')) return;
+
+  // Удаляем плейсхолдер
+  var placeholder = fileItem.querySelector('.file-still-placeholder');
+  if (placeholder) {
+    placeholder.remove();
+  }
+
+  // Создаем контейнер для кадра
+  var stillContainer = document.createElement('div');
+  stillContainer.className = 'file-still-container';
+  var img = document.createElement('img');
+  img.src = stillImage;
+  img.onerror = function () {
+    console.log('Ошибка загрузки картинки');
+    this.parentElement.style.display = 'none';
+  };
+  stillContainer.appendChild(img);
+
+  var overlay = document.createElement('div');
+  overlay.className = 'file-overlay';
+
+  // Вставляем в начало файл-айтема
+  fileItem.insertBefore(stillContainer, fileItem.firstChild);
+  fileItem.insertBefore(overlay, stillContainer.nextSibling);
+
+  // Добавляем анимацию появления
+  stillContainer.style.opacity = '0';
+  stillContainer.style.transition = 'opacity 0.3s ease';
+  setTimeout(function () {
+    stillContainer.style.opacity = '1';
+  }, 10);
+}
+
+// Функция для загрузки кадров и обновления существующих файлов
+async function loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieStill, totalVideoFiles) {
+  console.log('loadStillsAndUpdateFiles: начинаем загрузку кадров');
+
+  // Если есть данные о сезонах и кадрах
+  if (seasonNumbers.length > 0 && Object.keys(allSeasonEpisodes).length > 0) {
+    // Сортируем сезоны по возрастанию
+    var sortedSeasons = seasonNumbers.slice().sort(function (a, b) { return a - b; });
+
+    // Собираем все кадры в один массив по порядку
+    var allStillsInOrder = [];
+    for (var s = 0; s < sortedSeasons.length; s++) {
+      var seasonNum = sortedSeasons[s];
+      var episodes = allSeasonEpisodes[seasonNum] || [];
+      episodes.sort(function (a, b) { return (a.episodeNumber || 0) - (b.episodeNumber || 0); });
+
+      for (var e = 0; e < episodes.length; e++) {
+        if (episodes[e].stillPath) {
+          allStillsInOrder.push({
+            season: seasonNum,
+            episode: episodes[e].episodeNumber,
+            stillPath: episodes[e].stillPath
+          });
+        }
+      }
+    }
+
+    console.log('Найдено кадров для обновления:', allStillsInOrder.length);
+
+    // Обновляем каждый файл соответствующей картинкой
+    var fileItems = document.querySelectorAll('.file-item');
+    for (var i = 0; i < fileItems.length && i < allStillsInOrder.length; i++) {
+      var fileItem = fileItems[i];
+      var stillData = allStillsInOrder[i];
+      var stillUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + stillData.stillPath;
+
+      // Обновляем с задержкой для плавности
+      (function (item, url, index) {
+        setTimeout(function () {
+          updateFileItemStill(item, url);
+        }, index * 30);
+      })(fileItem, stillUrl, i);
+    }
+  }
+  // Если это фильм с постером
+  else if (totalVideoFiles === 1 && movieStill) {
+    var fileItem = document.querySelector('.file-item');
+    if (fileItem) {
+      setTimeout(function () {
+        updateFileItemStill(fileItem, movieStill);
+      }, 100);
+    }
+  }
 }
 
 async function loadPendingStills() {
