@@ -1542,7 +1542,6 @@ async function showDetail(torrent) {
   detailView.style.zIndex = '100';
 
   resetDetailBackground();
-  
 
   // Блокируем взаимодействие с основным контентом
   var mainContainer = document.getElementById('main-container');
@@ -1560,40 +1559,32 @@ async function showDetail(torrent) {
   var detailSubtitle = document.getElementById('detail-subtitle');
   var detailViewDiv = document.getElementById('detail-view');
 
-  // Показываем индикатор загрузки
-  filesList.innerHTML = '<div class="files-loading-indicator" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;">' +
-    '<div class="spinner" style="width: 50px; height: 50px; border: 3px solid rgba(74, 158, 255, 0.2); border-top: 3px solid #4a9eff; border-right: 3px solid #4a9eff; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>' +
-    '<div style="font-size: 16px; color: #aaa; font-weight: 500;">Загрузка файлов...</div>' +
-    '<div class="loading-progress-container" style="width: 280px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 5px;">' +
-    '<div class="loading-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #4a9eff, #7b2cbf); transition: width 0.3s ease; border-radius: 4px;"></div>' +
-    '</div>' +
-    '<div class="loading-text" style="font-size: 12px; color: #666;">Подготовка...</div>' +
-    '</div>';
-
   if (filesList) {
     filesList.style.display = 'flex';
     filesList.style.flexDirection = 'row';
   }
 
-  // Подготавливаем элементы для передачи в функцию загрузки TMDB
-  var tmdbElements = {
+  // Показываем индикатор загрузки
+  filesList.innerHTML = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;">' +
+    '<div class="spinner" style="width: 50px; height: 50px; border: 3px solid rgba(74, 158, 255, 0.2); border-top: 3px solid #4a9eff; border-right: 3px solid #4a9eff; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>' +
+    '<div style="font-size: 16px; color: #aaa;">Загрузка файлов...</div>' +
+    '</div>';
+
+  // Запускаем загрузку TMDB данных в фоне (НЕ ждем)
+  var tmdbPromise = loadAllTmdbDataForTorrent(torrent, {
     titleEl: titleEl,
     detailViewDiv: detailViewDiv,
     detailSubtitle: detailSubtitle
-  };
+  });
 
-  // Загружаем все TMDB данные асинхронно (параллельно)
-  var tmdbData = await loadAllTmdbDataForTorrent(torrent, tmdbElements);
+  // Переменные для TMDB данных (заполнятся позже)
+  var tmdbId = null;
+  var cleanTitle = null;
+  var seasonNumbers = [];
+  var allSeasonEpisodes = {};
+  var movieStill = null;
 
-  // Используем полученные данные
-  var tmdbId = tmdbData.tmdbId;
-  var cleanTitle = tmdbData.cleanTitle;
-  var seasonNumbers = tmdbData.seasonNumbers || [];
-  var isTvSeries = tmdbData.isTvSeries;
-  var allSeasonEpisodes = tmdbData.allSeasonEpisodes || {};
-  var movieStill = tmdbData.movieStill;
-
-  // Получаем постер из торрента
+  // Получаем постер из торрента (это можно сделать сразу, без ожидания)
   var poster = '';
   var dataParsed = false;
 
@@ -1666,19 +1657,11 @@ async function showDetail(torrent) {
 
   posterImg.innerHTML = poster ? '<img src="' + poster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
 
-  // Обновляем заголовок
-  if (titleEl.textContent === 'Без названия' && cleanTitle !== 'Без названия') {
-    titleEl.textContent = cleanTitle;
-  }
-
-  // Если есть несколько сезонов, добавляем индикатор сезонов в заголовок
-  if (seasonNumbers.length > 1) {
-    var seasonsText = titleEl.textContent;
-    if (seasonsText.indexOf('сезон') === -1) {
-      var seasonsList = seasonNumbers.join(', ');
-      titleEl.textContent = seasonsText + ' [сезон ' + seasonsList + ']';
-    }
-  }
+  // Временно устанавливаем заголовок из torrent.title
+  var displayTitle = torrent.title || 'Без названия';
+  // Убираем ID из временного заголовка для отображения
+  displayTitle = displayTitle.replace(/\[\d+\]/, '').trim();
+  titleEl.textContent = displayTitle;
 
   // Удаляем старый прогресс если есть
   var oldProgress = document.getElementById('detail-progress');
@@ -1687,18 +1670,6 @@ async function showDetail(torrent) {
   // Добавляем прогресс для текущего торрента
   await addProgressToDetail(torrent);
 
-  // Функция для обновления прогресса
-  function updateLoadingProgress(percent, text) {
-    var progressBar = document.querySelector('.loading-progress-bar');
-    var loadingText = document.querySelector('.loading-text');
-    if (progressBar) {
-      progressBar.style.width = percent + '%';
-    }
-    if (loadingText && text) {
-      loadingText.textContent = text;
-    }
-  }
-  
   try {
     // Проверяем, не является ли это фильмом из LAMPA
     if (torrent.data) {
@@ -1712,17 +1683,8 @@ async function showDetail(torrent) {
       } catch (e) { }
     }
 
-    updateLoadingProgress(5, 'Получение информации о файлах...');
-
-    // Небольшая задержка для отрисовки индикатора на медленных устройствах
-    await new Promise(function (resolve) { setTimeout(resolve, 50); });
-
-    // Получаем файлы с кэшированием
+    // Получаем файлы с кэшированием (это основной контент, показываем сразу)
     var files = await getTorrentFilesWithCache(torrent, false);
-
-    updateLoadingProgress(30, 'Обработка видеофайлов...');
-
-    await new Promise(function (resolve) { setTimeout(resolve, 30); });
 
     if (files.length === 0) {
       filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">📁 Нет файлов</div>';
@@ -1741,16 +1703,11 @@ async function showDetail(torrent) {
       var totalVideoFiles = videoFiles.length;
       console.log('Всего видео файлов:', totalVideoFiles);
 
-      updateLoadingProgress(60, 'Создание списка файлов (' + totalVideoFiles + ' шт.)...');
-
-      await new Promise(function (resolve) { setTimeout(resolve, 30); });
-
       // Очищаем индикатор загрузки
       filesList.innerHTML = '';
 
-      // Создаем файлы с помощью DocumentFragment для лучшей производительности
+      // Создаем файлы с помощью DocumentFragment
       var fragment = document.createDocumentFragment();
-      var fileItemsArray = [];
 
       for (var i = 0; i < videoFiles.length; i++) {
         var file = videoFiles[i];
@@ -1763,26 +1720,38 @@ async function showDetail(torrent) {
         }
 
         if (item) {
-          fileItemsArray.push(item);
           fragment.appendChild(item);
-        }
-
-        // Обновляем прогресс каждые 10 файлов
-        if (i % 10 === 0 && i > 0) {
-          updateLoadingProgress(60 + Math.floor((i / totalVideoFiles) * 30), 'Создание списка файлов (' + i + '/' + totalVideoFiles + ')...');
-          // Небольшая пауза для отрисовки
-          await new Promise(function (resolve) { setTimeout(resolve, 10); });
         }
       }
 
       filesList.appendChild(fragment);
 
-      updateLoadingProgress(90, 'Загрузка постеров...');
+      // Ждем TMDB данные в фоне и обновляем постеры когда они придут
+      tmdbPromise.then(function (tmdbData) {
+        // Обновляем заголовок если есть чистое название
+        if (tmdbData.cleanTitle && tmdbData.cleanTitle !== 'Без названия') {
+          titleEl.textContent = tmdbData.cleanTitle;
+        }
 
-      // Запускаем фоновую загрузку кадров
-      setTimeout(function () {
-        loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieStill, videoFiles.length);
-      }, 100);
+        // Если есть несколько сезонов, добавляем индикатор
+        if (tmdbData.seasonNumbers && tmdbData.seasonNumbers.length > 1) {
+          var seasonsText = titleEl.textContent;
+          if (seasonsText.indexOf('сезон') === -1) {
+            var seasonsList = tmdbData.seasonNumbers.join(', ');
+            titleEl.textContent = seasonsText + ' [сезон ' + seasonsList + ']';
+          }
+        }
+
+        // Запускаем загрузку кадров с полученными данными
+        loadStillsAndUpdateFiles(
+          tmdbData.seasonNumbers || [],
+          tmdbData.allSeasonEpisodes || {},
+          tmdbData.movieStill,
+          totalVideoFiles
+        );
+      }).catch(function (error) {
+        console.error('Ошибка загрузки TMDB данных:', error);
+      });
     }
 
   } catch (e) {
@@ -1810,7 +1779,6 @@ async function showDetail(torrent) {
 
   AppState.mediaType = "";
 }
-
 // Асинхронная функция для загрузки всех TMDB данных
 async function loadAllTmdbDataForTorrent(torrent, elements) {
   // Извлекаем TMDB ID из названия торрента
