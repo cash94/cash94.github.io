@@ -1542,6 +1542,7 @@ async function showDetail(torrent) {
   detailView.style.zIndex = '100';
 
   resetDetailBackground();
+  
 
   // Блокируем взаимодействие с основным контентом
   var mainContainer = document.getElementById('main-container');
@@ -1558,6 +1559,16 @@ async function showDetail(torrent) {
   var filesList = document.getElementById('files-list');
   var detailSubtitle = document.getElementById('detail-subtitle');
   var detailViewDiv = document.getElementById('detail-view');
+
+  // Показываем индикатор загрузки
+  filesList.innerHTML = '<div class="files-loading-indicator" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;">' +
+    '<div class="spinner" style="width: 50px; height: 50px; border: 3px solid rgba(74, 158, 255, 0.2); border-top: 3px solid #4a9eff; border-right: 3px solid #4a9eff; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>' +
+    '<div style="font-size: 16px; color: #aaa; font-weight: 500;">Загрузка файлов...</div>' +
+    '<div class="loading-progress-container" style="width: 280px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 5px;">' +
+    '<div class="loading-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #4a9eff, #7b2cbf); transition: width 0.3s ease; border-radius: 4px;"></div>' +
+    '</div>' +
+    '<div class="loading-text" style="font-size: 12px; color: #666;">Подготовка...</div>' +
+    '</div>';
 
   if (filesList) {
     filesList.style.display = 'flex';
@@ -1687,17 +1698,7 @@ async function showDetail(torrent) {
       loadingText.textContent = text;
     }
   }
-
-  // Показываем индикатор загрузки
-  filesList.innerHTML = '<div class="files-loading-indicator" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;">' +
-    '<div class="spinner" style="width: 50px; height: 50px; border: 3px solid rgba(74, 158, 255, 0.2); border-top: 3px solid #4a9eff; border-right: 3px solid #4a9eff; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>' +
-    '<div style="font-size: 16px; color: #aaa; font-weight: 500;">Загрузка файлов...</div>' +
-    '<div class="loading-progress-container" style="width: 280px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 5px;">' +
-    '<div class="loading-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #4a9eff, #7b2cbf); transition: width 0.3s ease; border-radius: 4px;"></div>' +
-    '</div>' +
-    '<div class="loading-text" style="font-size: 12px; color: #666;">Подготовка...</div>' +
-    '</div>';
-
+  
   try {
     // Проверяем, не является ли это фильмом из LAMPA
     if (torrent.data) {
