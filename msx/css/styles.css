@@ -2851,3 +2851,42 @@ body.detail-open {
   height: 100%;
   object-fit: cover;
 }
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.files-loading-indicator {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 16px;
+  margin: 40px 20px;
+  backdrop-filter: blur(4px);
+}
+
+/* Анимация пульсации для текста загрузки */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.loading-text {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Стили для прогресс-бара */
+.loading-progress-container {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.loading-progress-bar {
+  box-shadow: 0 0 6px rgba(74, 158, 255, 0.5);
+}
