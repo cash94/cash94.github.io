@@ -1429,8 +1429,8 @@ async function getTorrentFilesWithCache(torrent, forceRefresh) {
   // Проверяем кэш
   if (!forceRefresh && torrentFilesCache.has(hash)) {
     var cached = torrentFilesCache.get(hash);
-    // Кэш на 5 минут
-    if (Date.now() - cached.timestamp < 5 * 60 * 1000) {
+    // Кэш на 60 минут
+    if (Date.now() - cached.timestamp < 60 * 60 * 1000) {
       console.log('📦 Используем кэш для файлов торрента:', hash);
       return cached.files;
     } else {
@@ -1676,7 +1676,27 @@ async function showDetail(torrent) {
   // Добавляем прогресс для текущего торрента
   await addProgressToDetail(torrent);
 
-  filesList.innerHTML = '<div style="text-align: center; padding: 20px;">Загрузка...</div>';
+  // Показываем красивый индикатор загрузки с прогресс-баром
+  filesList.innerHTML = '<div class="files-loading-indicator" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;">' +
+    '<div class="spinner" style="width: 50px; height: 50px; border: 3px solid rgba(74, 158, 255, 0.2); border-top: 3px solid #4a9eff; border-right: 3px solid #4a9eff; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>' +
+    '<div style="font-size: 16px; color: #aaa; font-weight: 500;">Идет загрузка файлов...</div>' +
+    '<div class="loading-progress-container" style="width: 280px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 5px;">' +
+    '<div class="loading-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #4a9eff, #7b2cbf); transition: width 0.3s ease; border-radius: 4px;"></div>' +
+    '</div>' +
+    '<div class="loading-text" style="font-size: 12px; color: #666;">Подготовка списка файлов...</div>' +
+    '</div>';
+
+  // Функция для обновления прогресса загрузки
+  function updateLoadingProgress(percent, text) {
+    var progressBar = document.querySelector('.loading-progress-bar');
+    var loadingText = document.querySelector('.loading-text');
+    if (progressBar) {
+      progressBar.style.width = percent + '%';
+    }
+    if (loadingText && text) {
+      loadingText.textContent = text;
+    }
+  }
 
   try {
     var files = [];
@@ -1693,12 +1713,17 @@ async function showDetail(torrent) {
       } catch (e) { }
     }
 
+    updateLoadingProgress(10, 'Получение списка файлов...');
+
     // Получаем файлы с кэшированием
     files = await getTorrentFilesWithCache(torrent, false);
 
+    updateLoadingProgress(30, 'Обработка видеофайлов...');
+
     if (files.length === 0) {
-      filesList.innerHTML = '<div style="text-align: center; padding: 20px;">Нет файлов</div>';
+      filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">📁 Нет файлов</div>';
     } else {
+      // Очищаем индикатор загрузки
       filesList.innerHTML = '';
 
       // Фильтруем только видео файлы
@@ -1716,37 +1741,6 @@ async function showDetail(torrent) {
       console.log('Всего видео файлов:', totalVideoFiles);
       console.log('Найдено сезонов:', seasonNumbers.length);
       console.log('Кадры по сезонам:', Object.keys(allSeasonEpisodes));
-
-      // Собираем ВСЕ кадры со всех сезонов в один массив по порядку
-      var allStillsInOrder = [];
-
-      if (seasonNumbers.length > 0 && Object.keys(allSeasonEpisodes).length > 0) {
-        // Сортируем сезоны по возрастанию
-        var sortedSeasons = seasonNumbers.slice().sort(function (a, b) { return a - b; });
-
-        for (var s = 0; s < sortedSeasons.length; s++) {
-          var seasonNum = sortedSeasons[s];
-          var episodes = allSeasonEpisodes[seasonNum] || [];
-
-          // Сортируем серии по номеру
-          episodes.sort(function (a, b) { return (a.episodeNumber || 0) - (b.episodeNumber || 0); });
-
-          console.log('Сезон ' + seasonNum + ': найдено ' + episodes.length + ' кадров');
-
-          // Добавляем все кадры этого сезона в общий массив
-          for (var e = 0; e < episodes.length; e++) {
-            if (episodes[e].stillPath) {
-              allStillsInOrder.push({
-                season: seasonNum,
-                episode: episodes[e].episodeNumber,
-                stillPath: episodes[e].stillPath
-              });
-            }
-          }
-        }
-
-        console.log('Всего кадров собрано:', allStillsInOrder.length);
-      }
 
       // Сначала создаем ВСЕ файлы БЕЗ картинок (для быстрого отображения)
       for (var i = 0; i < videoFiles.length; i++) {
@@ -1766,7 +1760,7 @@ async function showDetail(torrent) {
 
   } catch (e) {
     console.error('Ошибка парсинга данных:', e);
-    filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #ff6a6a;">Ошибка загрузки файлов</div>';
+    filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #ff6a6a;">❌ Ошибка загрузки файлов</div>';
   }
 
   // Устанавливаем фокус на первый элемент в детальном просмотре
