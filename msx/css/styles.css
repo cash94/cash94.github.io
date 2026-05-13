@@ -2898,78 +2898,72 @@ body.detail-open {
 .file-overlay {
   display: none !important;
 }
+/* Плавная прокрутка для всей страницы и контейнеров */
+html {
+  scroll-behavior: smooth;
+}
 
-/* Плавная анимация фокуса для torrents-grid, detail-view и search-results */
-#torrents-grid .torrent-card:focus,
-#detail-view *:focus,
-.search-results-list .search-result-item:focus {
-  outline: none;
+/* Плавная прокрутка для сетки торрентов */
+#torrents-grid {
+  scroll-behavior: smooth;
+  scroll-padding: 20px;
+}
+
+/* Плавная прокрутка для результатов поиска */
+.search-results-list {
+  scroll-behavior: smooth;
+  scroll-padding: 20px;
+}
+
+/* Плавная прокрутка для detail-view */
+#detail-view {
+  scroll-behavior: smooth;
+  scroll-padding: 20px;
+}
+
+/* Плавная прокрутка для горизонтальных списков (файлы, актеры, рекомендации) */
+.files-list,
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid {
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 20px;
+}
+
+/* Плавный переход фокуса между карточками с анимацией появления */
+.torrent-card,
+.search-result-item,
+.catalog-recommendation-card,
+.catalog-actor-card,
+.file-item {
+  transition: all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+  scroll-margin: 20px;
+}
+
+/* Эффект при фокусе/выборе карточки */
+.torrent-card.focused,
+.search-result-item.focused,
+.catalog-card.focused {
+  scroll-margin: 20px;
   transition: all 0.2s ease-out;
-  transform: scale(1.02);
-  box-shadow: 0 0 0 2px #ff8c00, 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 10;
-  position: relative;
 }
 
-/* Более легкая анимация для touch-устройств (экономия ресурсов) */
-@media (pointer: coarse) {
-  #torrents-grid .torrent-card:focus,
-  #detail-view *:focus,
-  .search-results-list .search-result-item:focus {
-    transform: scale(1.01);
-    box-shadow: 0 0 0 2px #ff8c00;
-    transition: all 0.15s ease-out;
-  }
+/* Автоматическая прокрутка к focused элементу с плавностью */
+.torrent-card.focused,
+.search-result-item.focused {
+  scroll-margin-block: 30px;
+  scroll-margin-inline: 20px;
 }
 
-/* Альтернативная анимация для слабых устройств (без scale) */
+/* Для слабых устройств - убираем сложные анимации, но оставляем плавный скролл */
 @media (prefers-reduced-motion: reduce) {
-  #torrents-grid .torrent-card:focus,
-  #detail-view *:focus,
-  .search-results-list .search-result-item:focus {
-    transform: none;
-    transition: none;
-    box-shadow: 0 0 0 2px #ff8c00;
+  html {
+    scroll-behavior: auto;
   }
-}
-
-/* Базовый стиль фокуса для всех элементов в этих контейнерах */
-#torrents-grid .torrent-card:focus-visible,
-#detail-view *:focus-visible,
-.search-results-list .search-result-item:focus-visible {
-  outline: none;
-  animation: focusGlow 0.2s ease-out;
-  transform: scale(1.02);
-  box-shadow: 0 0 0 2px #ff8c00, 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 10;
-  position: relative;
-}
-
-@keyframes focusGlow {
-  0% {
-    box-shadow: 0 0 0 0 rgba(255, 140, 0, 0.4);
-    transform: scale(1);
+  
+  #torrents-grid,
+  .search-results-list,
+  #detail-view {
+    scroll-behavior: auto;
   }
-  100% {
-    box-shadow: 0 0 0 2px #ff8c00, 0 4px 12px rgba(0, 0, 0, 0.3);
-    transform: scale(1.02);
-  }
-}
-
-/* Обеспечиваем возможность фокуса для карточек */
-#torrents-grid .torrent-card,
-.search-results-list .search-result-item {
-  outline: none;
-}
-
-/* Для элементов в detail-view, которые могут получать фокус */
-#detail-view button:focus-visible,
-#detail-view div[tabindex]:focus-visible,
-#detail-view [role="button"]:focus-visible {
-  outline: none;
-  animation: focusGlow 0.2s ease-out;
-  transform: scale(1.02);
-  box-shadow: 0 0 0 2px #ff8c00, 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 10;
-  position: relative;
 }
