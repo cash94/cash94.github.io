@@ -2794,7 +2794,13 @@ function setupFocusRescue() {
 
             if (resultIndex !== -1) {
                 if (direction === 'up') {
-                    if (resultIndex > 0) return focusEl(results[resultIndex - 1] || focused);
+                    if (resultIndex === 1) {
+                        var searchResults = document.getElementById('search-results');
+                        searchResults.scrollTop = 0;
+                        return focusEl(results[resultIndex - 1] || focused);
+                    } else if (resultIndex > 1) {
+                        return focusEl(results[resultIndex - 1] || focused);
+                    }
                     // Наверх с первого результата - открываем панель фильтров
                     return focusEl(query);
                 }
