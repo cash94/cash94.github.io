@@ -2898,3 +2898,78 @@ body.detail-open {
 .file-overlay {
   display: none !important;
 }
+
+/* Плавная анимация фокуса для torrents-grid, detail-view и search-results */
+#torrents-grid .torrent-card:focus,
+#detail-view *:focus,
+.search-results-list .search-result-item:focus {
+  outline: none;
+  transition: all 0.2s ease-out;
+  transform: scale(1.02);
+  box-shadow: 0 0 0 2px #ff8c00, 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  position: relative;
+}
+
+/* Более легкая анимация для touch-устройств (экономия ресурсов) */
+@media (pointer: coarse) {
+  #torrents-grid .torrent-card:focus,
+  #detail-view *:focus,
+  .search-results-list .search-result-item:focus {
+    transform: scale(1.01);
+    box-shadow: 0 0 0 2px #ff8c00;
+    transition: all 0.15s ease-out;
+  }
+}
+
+/* Альтернативная анимация для слабых устройств (без scale) */
+@media (prefers-reduced-motion: reduce) {
+  #torrents-grid .torrent-card:focus,
+  #detail-view *:focus,
+  .search-results-list .search-result-item:focus {
+    transform: none;
+    transition: none;
+    box-shadow: 0 0 0 2px #ff8c00;
+  }
+}
+
+/* Базовый стиль фокуса для всех элементов в этих контейнерах */
+#torrents-grid .torrent-card:focus-visible,
+#detail-view *:focus-visible,
+.search-results-list .search-result-item:focus-visible {
+  outline: none;
+  animation: focusGlow 0.2s ease-out;
+  transform: scale(1.02);
+  box-shadow: 0 0 0 2px #ff8c00, 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  position: relative;
+}
+
+@keyframes focusGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 140, 0, 0.4);
+    transform: scale(1);
+  }
+  100% {
+    box-shadow: 0 0 0 2px #ff8c00, 0 4px 12px rgba(0, 0, 0, 0.3);
+    transform: scale(1.02);
+  }
+}
+
+/* Обеспечиваем возможность фокуса для карточек */
+#torrents-grid .torrent-card,
+.search-results-list .search-result-item {
+  outline: none;
+}
+
+/* Для элементов в detail-view, которые могут получать фокус */
+#detail-view button:focus-visible,
+#detail-view div[tabindex]:focus-visible,
+#detail-view [role="button"]:focus-visible {
+  outline: none;
+  animation: focusGlow 0.2s ease-out;
+  transform: scale(1.02);
+  box-shadow: 0 0 0 2px #ff8c00, 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  position: relative;
+}
