@@ -2785,6 +2785,8 @@ function setupFocusRescue() {
                     // Нажимаем вниз - закрываем панель и переходим к первому результату
                     closeFiltersPanel();
                     if (results.length > 0) {
+                        var searchResults = document.getElementById('search-results');
+                        searchResults.scrollTop = 0;
                         return focusEl(results[0]);
                     }
                     return true;
