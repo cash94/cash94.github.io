@@ -2222,6 +2222,10 @@ function setupFocusRescue() {
             if (direction === 'up') {
                 if (row === 0) {
                     return focusEl(tabs[0] || header[0] || focused);
+                } else if (row === 1) {
+                    var mainContainer = document.getElementById('main-container');
+                    mainContainer.scrollTop = 0;
+                    return focusEl(cards[Math.max(0, cardIndex - cols)] || focused);
                 }
                 return focusEl(cards[Math.max(0, cardIndex - cols)] || focused);
             }
