@@ -2147,7 +2147,16 @@ function setupFocusRescue() {
             var row = Math.floor(cardIndex / cols);
             if (direction === 'left') return focusEl(cards[Math.max(0, cardIndex - 1)] || focused);
             if (direction === 'right') return focusEl(cards[Math.min(cards.length - 1, cardIndex + 1)] || focused);
-            if (direction === 'up') return focusEl(row === 0 ? (tabs[0] || header[0] || focused) : (cards[Math.max(0, cardIndex - cols)] || focused));
+            if (direction === 'up') {
+                if (row === 0) {
+                    return focusEl(tabs[0] || header[0] || focused);
+                } else if (row === 1) {
+                    var mainContainer = document.getElementById('main-container');
+                    mainContainer.scrollTop = 0;
+                    return focusEl(cards[Math.max(0, cardIndex - cols)] || focused);
+                }
+                return focusEl(cards[Math.max(0, cardIndex - cols)] || focused);
+            }
             if (direction === 'down') return focusEl(cards[Math.min(cards.length - 1, cardIndex + cols)] || focused);
             return true;
         }
