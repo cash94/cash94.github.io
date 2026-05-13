@@ -2808,9 +2808,9 @@ function setupFocusRescue() {
                 }
                 if (direction === 'down') {
                     var allResults = results.length;
-                    if (allResults === resultIndex) {
+                    if (allResults === resultIndex+1) {
                         var searchResults = document.getElementById('search-results');
-                        searchResults.scrollTop = searchResults.scrollTop + 20;
+                        searchResults.scrollTop = searchResults.scrollTop + 30;
                         return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
                     } else {
                         return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
