@@ -2921,15 +2921,6 @@ html {
   scroll-padding: 20px;
 }
 
-/* Плавная прокрутка для горизонтальных списков (файлы, актеры, рекомендации) */
-.files-list,
-.catalog-detail-actors-grid,
-.catalog-detail-recommendations-grid {
-  scroll-behavior: smooth;
-  scroll-snap-type: x mandatory;
-  scroll-padding: 20px;
-}
-
 /* Плавный переход фокуса между карточками с анимацией появления */
 .torrent-card,
 .search-result-item,
@@ -2953,17 +2944,4 @@ html {
 .search-result-item.focused {
   scroll-margin-block: 30px;
   scroll-margin-inline: 20px;
-}
-
-/* Для слабых устройств - убираем сложные анимации, но оставляем плавный скролл */
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-  
-  #torrents-grid,
-  .search-results-list,
-  #detail-view {
-    scroll-behavior: auto;
-  }
 }
