@@ -2806,7 +2806,16 @@ function setupFocusRescue() {
                     // Наверх с первого результата - открываем панель фильтров
                     return focusEl(query);
                 }
-                if (direction === 'down') return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
+                if (direction === 'down') {
+                    var allResults = results.length;
+                    if (allResults === resultIndex) {
+                        var searchResults = document.getElementById('search-results');
+                        searchResults.scrollTop = searchResults.scrollTop + 20;
+                        return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
+                    } else {
+                        return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
+                    }
+                } 
                 if (direction === 'left') {
                     openFiltersPanelAndFocus();
                     return true;
