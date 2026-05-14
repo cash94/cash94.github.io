@@ -120,7 +120,7 @@ var Animations = (function () {
             scale: 1,
             duration: config.duration.normal,
             ease: config.ease.smooth,
-            clearProps: "all"
+            //clearProps: "all"
         });
 
         // Анимация заголовка
