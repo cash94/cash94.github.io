@@ -103,37 +103,49 @@ var Animations = (function () {
         var detailView = document.getElementById('detail-view');
         if (!detailView) return;
 
+        // Сначала делаем видимым
+        detailView.style.display = 'block';
+        detailView.style.pointerEvents = 'auto';
+
+        // Устанавливаем начальные значения
+        gsap.set(detailView, {
+            opacity: 0,
+            scale: 0.95
+        });
+
         var tl = gsap.timeline();
 
-        tl.fromTo(detailView,
-            { opacity: 0, scale: 0.95 },
-            {
-                opacity: 1,
-                scale: 1,
-                duration: config.duration.normal,
-                ease: config.ease.smooth,
-                clearProps: "all"
-            }
-        );
+        tl.to(detailView, {
+            opacity: 1,
+            scale: 1,
+            duration: config.duration.normal,
+            ease: config.ease.smooth,
+            clearProps: "all"
+        });
 
         // Анимация заголовка
         var title = detailView.querySelector('.detail-title');
         if (title) {
-            tl.fromTo(title,
-                { x: -30, opacity: 0 },
-                { x: 0, opacity: 1, duration: 0.4, ease: config.ease.smooth },
-                "-=0.3"
-            );
+            gsap.set(title, { x: -30, opacity: 0 });
+            tl.to(title, {
+                x: 0,
+                opacity: 1,
+                duration: 0.4,
+                ease: config.ease.smooth
+            }, "-=0.2");
         }
 
         // Анимация постера
         var poster = detailView.querySelector('.detail-poster');
         if (poster) {
-            tl.fromTo(poster,
-                { scale: 0.8, opacity: 0, rotation: -5 },
-                { scale: 1, opacity: 1, rotation: 0, duration: 0.4, ease: config.ease.elastic },
-                "-=0.4"
-            );
+            gsap.set(poster, { scale: 0.8, opacity: 0, rotation: -5 });
+            tl.to(poster, {
+                scale: 1,
+                opacity: 1,
+                rotation: 0,
+                duration: 0.4,
+                ease: config.ease.elastic
+            }, "-=0.3");
         }
 
         return tl;
