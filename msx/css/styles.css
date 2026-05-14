@@ -2947,14 +2947,14 @@ html {
 
 /* Более заметный и плавный outline при фокусе */
 .focused {
-  outline: none !important;
-  box-shadow: 0 0 0 3px #ff8c00, 0 0 0 6px rgba(255, 140, 0, 0.3) !important;
-  transition: box-shadow 0.15s ease;
-  transform: scale(1.02);
-  z-index: 10;
-  position: relative;
-  border-radius: 12px;
-  /* Добавляем скругление, чтобы тень соответствовала карточке */
+    outline: none !important;
+    /* Убираем transition - GSAP сам управляет анимацией */
+    /* transition: box-shadow 0.15s ease; */
+    z-index: 10;
+    position: relative;
+    border-radius: 12px;
+    /* Убираем scale из CSS */
+    /* transform: scale(1.02); */
 }
 
 /* Для ТВ пультов - убираем transform если вызывает тормоза */
@@ -2975,13 +2975,6 @@ html {
 #torrents-grid {
   scroll-behavior: smooth;
   scroll-padding: 30px;
-}
-
-/* Анимация появления новых карточек - только для ПК, на ТВ может тормозить */
-@media (prefers-reduced-motion: no-preference) {
-  .torrent-card {
-    animation: fadeInUp 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1) backwards;
-  }
 }
 
 @keyframes fadeInUp {
@@ -3051,21 +3044,6 @@ html {
   margin-right: 0;
 }
 
-/* Добавьте в styles.css */
-.torrent-card,
-.catalog-card,
-.catalog-folder-card,
-.search-result-item,
-.file-item {
-    will-change: transform, opacity;
-    backface-visibility: hidden;
-}
-
-/* Улучшенная анимация для focused элемента */
-.focused {
-    outline: none !important;
-    transition: none !important; /* GSAP будет управлять анимацией */
-}
 
 /* Плавное появление контента */
 @keyframes fadeInScale {
