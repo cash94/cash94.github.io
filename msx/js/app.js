@@ -595,7 +595,9 @@ function setupNavigation() {
     backFromDetail.addEventListener('click', function () {
       console.log('🔙 Возврат из детального просмотра');
       resetDetailBackground();
-
+      if (typeof Animations !== 'undefined') {
+        Animations.animateDetailHide();
+      }
       // Сохраняем hash текущего торрента перед очисткой
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
