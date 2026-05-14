@@ -242,11 +242,16 @@ function setFocus(index) {
             }
         }
 
-        element.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-            inline: 'center'
-        });
+        try {
+            element.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+                inline: 'center'
+            });
+        } catch (e) {
+            // Fallback для старых браузеров
+            element.scrollIntoView(false);
+        }
         console.log('🎯 Фокус на элементе:', element);
     }
 }
@@ -1577,7 +1582,16 @@ function setupFocusRescue() {
         } else {
             blurEditor();
         }
-        try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { }
+        // Плавный скролл с настройками
+        try {
+            el.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+                inline: 'center'
+            });
+        } catch (e) {
+            try { el.scrollIntoView(false); } catch (er) { }
+        }
         return true;
     }
 
