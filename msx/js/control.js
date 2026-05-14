@@ -227,7 +227,7 @@ function setFocus(index) {
     }
 
     if (element) {
-        element.classList.add('focused');
+        //element.classList.add('focused');
 
         if (typeof Animations !== 'undefined') {
             Animations.animateFocus(element);
@@ -1643,7 +1643,7 @@ function setupFocusRescue() {
         if (opts === undefined) opts = {};
         if (!VISIBLE(el)) return false;
         clearFocused();
-        el.classList.add('focused');
+        //el.classList.add('focused');
         if (typeof Animations !== 'undefined') {
             Animations.animateFocus(el);
         }
