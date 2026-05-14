@@ -84,24 +84,18 @@ var Animations = (function () {
     function animateFocus(element) {
         if (!element) return;
 
-        // Создаем timeline для последовательной анимации
-        var tl = gsap.timeline();
+        // Останавливаем текущие анимации
+        gsap.killTweensOf(element);
 
-        tl.to(element, {
-            scale: 1.05,
+        // Только рамка, без изменения размера
+        gsap.to(element, {
+            boxShadow: "0 0 0 3px #ff8c00, 0 0 0 6px rgba(255,140,0,0.3)",
             duration: 0.15,
             ease: config.ease.smooth,
-            boxShadow: "0 0 0 3px #ff8c00, 0 0 0 6px rgba(255,140,0,0.3)"
+            clearProps: "boxShadow" // очистит после потери фокуса
         });
 
-        tl.to(element, {
-            scale: 1,
-            duration: 0.1,
-            ease: "back.out(0.8)",
-            delay: 0.05
-        });
-
-        return tl;
+        return null;
     }
 
     // Анимация появления детального просмотра
