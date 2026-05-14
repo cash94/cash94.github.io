@@ -19,6 +19,18 @@ var okHoldTimer = null;
 var okHoldHandled = false;
 var okHoldFocused = null;
 
+// Переменная для отслеживания быстрой навигации
+var fastNavigation = false;
+var fastNavigationTimer = null;
+
+function setFastNavigation() {
+    fastNavigation = true;
+    if (fastNavigationTimer) clearTimeout(fastNavigationTimer);
+    fastNavigationTimer = setTimeout(function () {
+        fastNavigation = false;
+    }, 200);
+}
+
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
 function isPlayerControlsVisible() {
@@ -1597,28 +1609,31 @@ function isElementFullyVisible(el, container) {
 }
 
 // Функция для плавного скролла только если элемент не виден
-function scrollToElementIfNeeded(el, container) {
+function scrollToElementIfNeeded(el, container, useSmooth) {
+    if (useSmooth === undefined) useSmooth = !fastNavigation; // Без плавности при быстрой навигации
+
     if (!el) return;
 
     var rect = el.getBoundingClientRect();
     var containerRect = container ? container.getBoundingClientRect() : { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
 
     var needsScroll = false;
-    var scrollOptions = { behavior: 'smooth', block: 'center', inline: 'center' };
+    var scrollOptions = {
+        behavior: useSmooth ? 'smooth' : 'instant',  // ← instant или auto
+        block: 'center',
+        inline: 'center'
+    };
 
-    // Проверяем вертикальную видимость
     if (rect.top < containerRect.top + 50 || rect.bottom > containerRect.bottom - 50) {
         needsScroll = true;
         scrollOptions.block = 'center';
     }
 
-    // Проверяем горизонтальную видимость (важно для left/right)
     if (rect.left < containerRect.left + 30 || rect.right > containerRect.right - 30) {
         needsScroll = true;
         scrollOptions.inline = 'center';
     }
 
-    // Скроллим только если элемент не полностью виден
     if (needsScroll) {
         try {
             el.scrollIntoView(scrollOptions);
