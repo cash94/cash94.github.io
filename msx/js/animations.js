@@ -105,7 +105,9 @@ var Animations = (function () {
 
         // Сначала делаем видимым
         detailView.style.display = 'block';
+        detailView.style.zIndex = '100';
         detailView.style.pointerEvents = 'auto';
+        
 
         // Устанавливаем начальные значения
         gsap.set(detailView, {
