@@ -1628,12 +1628,17 @@ function setupFocusRescue() {
     var clearFocused = function () {
         var focused = document.querySelectorAll('.focused');
         for (var i = 0; i < focused.length; i++) {
-            focused[i].classList.remove('focused');
-            // Очищаем inline styles от GSAP
-            focused[i].style.boxShadow = '';
-            focused[i].style.transform = '';
-            focused[i].style.scale = '';
-            focused[i].style.translate = '';
+            var el = focused[i];
+            // Останавливаем все анимации GSAP на элементе
+            if (typeof gsap !== 'undefined') {
+                gsap.killTweensOf(el);
+            }
+            // Очищаем inline styles
+            el.style.boxShadow = '';
+            el.style.transform = '';
+            el.style.scale = '';
+            el.style.translate = '';
+            el.classList.remove('focused');
         }
     };
     var clickEl = function (el) { try { if (el && el.click) el.click(); } catch (e) { } };
