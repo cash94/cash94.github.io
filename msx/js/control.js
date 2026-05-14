@@ -242,16 +242,29 @@ function setFocus(index) {
             }
         }
 
-        try {
-            element.scrollIntoView({
-                behavior: 'smooth',
-                block: 'center',
-                inline: 'center'
-            });
-        } catch (e) {
-            // Fallback для старых браузеров
-            element.scrollIntoView(false);
+        // Определяем контейнер для скролла
+        var container = null;
+        if (AppState.currentScreen === 'catalog' || AppState.currentScreen === 'torrents') {
+            container = document.getElementById('main-container');
+        } else if (AppState.currentScreen === 'search') {
+            container = document.getElementById('search-results-list');
+        } else if (AppState.currentScreen === 'detail') {
+            container = document.getElementById('detail-view');
         }
+
+        // Скроллим только если элемент не полностью виден
+        if (!isElementFullyVisible(element, container)) {
+            try {
+                element.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center',
+                    inline: 'center'
+                });
+            } catch (e) {
+                element.scrollIntoView(false);
+            }
+        }
+
         console.log('🎯 Фокус на элементе:', element);
     }
 }
@@ -1553,6 +1566,56 @@ function clearOkHold() {
     }
 }
 
+// Функция для проверки, виден ли элемент полностью
+function isElementFullyVisible(el, container) {
+    if (!el) return true;
+
+    var rect = el.getBoundingClientRect();
+    var containerRect = container ? container.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+
+    // Проверяем, что элемент полностью в видимой области по вертикали
+    var isVerticallyVisible = rect.top >= containerRect.top + 20 &&
+        rect.bottom <= containerRect.bottom - 20;
+
+    // Для горизонтальной навигации проверяем горизонтальную видимость
+    var isHorizontallyVisible = rect.left >= containerRect.left + 20 &&
+        rect.right <= containerRect.right - 20;
+
+    return isVerticallyVisible && isHorizontallyVisible;
+}
+
+// Функция для плавного скролла только если элемент не виден
+function scrollToElementIfNeeded(el, container) {
+    if (!el) return;
+
+    var rect = el.getBoundingClientRect();
+    var containerRect = container ? container.getBoundingClientRect() : { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
+
+    var needsScroll = false;
+    var scrollOptions = { behavior: 'smooth', block: 'center', inline: 'center' };
+
+    // Проверяем вертикальную видимость
+    if (rect.top < containerRect.top + 50 || rect.bottom > containerRect.bottom - 50) {
+        needsScroll = true;
+        scrollOptions.block = 'center';
+    }
+
+    // Проверяем горизонтальную видимость (важно для left/right)
+    if (rect.left < containerRect.left + 30 || rect.right > containerRect.right - 30) {
+        needsScroll = true;
+        scrollOptions.inline = 'center';
+    }
+
+    // Скроллим только если элемент не полностью виден
+    if (needsScroll) {
+        try {
+            el.scrollIntoView(scrollOptions);
+        } catch (e) {
+            try { el.scrollIntoView(false); } catch (er) { }
+        }
+    }
+}
+
 // ==================== TV FOCUS RESCUE ====================
 
 function setupFocusRescue() {
@@ -1582,16 +1645,23 @@ function setupFocusRescue() {
         } else {
             blurEditor();
         }
-        // Плавный скролл с настройками
-        try {
-            el.scrollIntoView({
-                behavior: 'smooth',
-                block: 'center',
-                inline: 'center'
-            });
-        } catch (e) {
-            try { el.scrollIntoView(false); } catch (er) { }
+
+        // Определяем контейнер в зависимости от экрана
+        var container = null;
+        var screen = currentScreen();
+        if (screen === 'catalog' || screen === 'torrents') {
+            container = document.getElementById('main-container');
+        } else if (screen === 'search') {
+            container = document.getElementById('search-results-list');
+        } else if (screen === 'detail') {
+            container = document.getElementById('detail-view');
         }
+
+        // Скроллим только если элемент не виден
+        if (!isElementFullyVisible(el, container)) {
+            scrollToElementIfNeeded(el, container);
+        }
+
         return true;
     }
 
