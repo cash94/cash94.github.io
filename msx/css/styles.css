@@ -3050,3 +3050,36 @@ html {
 .catalog-recommendation-card:last-child {
   margin-right: 0;
 }
+
+/* Добавьте в styles.css */
+.torrent-card,
+.catalog-card,
+.catalog-folder-card,
+.search-result-item,
+.file-item {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+}
+
+/* Улучшенная анимация для focused элемента */
+.focused {
+    outline: none !important;
+    transition: none !important; /* GSAP будет управлять анимацией */
+}
+
+/* Плавное появление контента */
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Для обратной совместимости - если GSAP не загрузился */
+.no-gsap .torrent-card {
+    animation: fadeInScale 0.3s ease forwards;
+}
