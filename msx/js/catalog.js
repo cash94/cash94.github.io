@@ -1739,8 +1739,11 @@ async function showCatalogDetail(item, index, posterUrl) {
     AppState.currentScreen = 'detail';
     AppState.detailReturnTo = 'catalog';
 
-    detailView.style.display = 'block';
-    detailView.style.zIndex = '100';
+    //detailView.style.display = 'block';
+    //detailView.style.zIndex = '100';
+    if (typeof Animations !== 'undefined') {
+        Animations.animateDetailShow();
+    }
     detailView.style.pointerEvents = 'auto';
     if (mainContainer) mainContainer.style.pointerEvents = 'none';
     if (typeof window.hideCatalogDetailExtra === 'function') {
