@@ -431,6 +431,9 @@ function hidePlayerUi() {
 // ==================== НАВИГАЦИЯ ====================
 
 function navigate(direction) {
+    if (typeof setFastNavigation === 'function') {
+        setFastNavigation();
+    }
     var activeElement = document.activeElement;
     if (activeElement && activeElement.id === 'search-query') {
         activeElement.blur();
