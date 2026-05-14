@@ -3027,3 +3027,20 @@ html {
     animation: none;
   }
 }
+
+.catalog-actor-card.focused,
+.catalog-recommendation-card.focused {
+  outline: none !important;
+  box-shadow: 0 0 0 3px #ff8c00, 0 0 0 6px rgba(255, 140, 0, 0.3) !important;
+  border-radius: 12px;
+  z-index: 100;
+  position: relative;
+}
+
+/* Для обычных карточек */
+.torrent-card.focused,
+.search-result-item.focused,
+.file-item.focused {
+  outline: none !important;
+  box-shadow: 0 0 0 3px #ff8c00 !important;
+}
