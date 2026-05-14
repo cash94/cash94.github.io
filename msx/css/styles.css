@@ -2920,6 +2920,17 @@ html {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Для горизонтальных сеток - обеспечить отступы при скролле */
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid,
+.catalog-detail-trailers-grid {
+  scroll-padding-left: 30px;
+  scroll-padding-right: 30px;
+  scroll-snap-type: x mandatory;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 /* Увеличенная задержка для более плавного перехода */
 .torrent-card,
 .search-result-item,
@@ -2933,6 +2944,14 @@ html {
   scroll-snap-align: start;
 }
 
+/* Специально для горизонтальных карточек */
+.catalog-actor-card,
+.catalog-recommendation-card {
+  scroll-snap-align: start;
+  scroll-margin-inline: 20px;
+  /* Горизонтальный отступ при скролле */
+}
+
 /* Более заметный и плавный outline при фокусе */
 .focused {
   outline: 3px solid #ff8c00 !important;
@@ -2942,15 +2961,31 @@ html {
   z-index: 10;
 }
 
+/* Для ТВ пультов - убираем transform если вызывает тормоза */
+@media (pointer: coarse) {
+  .focused {
+    transform: none;
+    /* На ТВ scale может тормозить */
+  }
+
+  .torrent-card,
+  .catalog-card {
+    transition: all 0.15s ease;
+    /* Меньше анимации на ТВ */
+  }
+}
+
 /* Специально для сетки торрентов - плавное появление карточек */
 #torrents-grid {
   scroll-behavior: smooth;
   scroll-padding: 30px;
 }
 
-/* Анимация появления новых карточек */
-.torrent-card {
-  animation: fadeInUp 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1) backwards;
+/* Анимация появления новых карточек - только для ПК, на ТВ может тормозить */
+@media (prefers-reduced-motion: no-preference) {
+  .torrent-card {
+    animation: fadeInUp 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1) backwards;
+  }
 }
 
 @keyframes fadeInUp {
@@ -2965,7 +3000,7 @@ html {
   }
 }
 
-/* Задержки для каскадного появления карточек (опционально) */
+/* Задержки для каскадного появления карточек */
 .torrent-card:nth-child(n+1) {
   animation-delay: 0.00s;
 }
@@ -2984,4 +3019,11 @@ html {
 
 .torrent-card:nth-child(n+33) {
   animation-delay: 0.12s;
+}
+
+/* Для ТВ отключаем каскадную анимацию */
+@media (pointer: coarse) {
+  .torrent-card {
+    animation: none;
+  }
 }
