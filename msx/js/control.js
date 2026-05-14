@@ -270,15 +270,7 @@ function setFocus(index) {
 
         // Скроллим только если элемент не полностью виден
         if (!isElementFullyVisible(element, container)) {
-            try {
-                element.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'center',
-                    inline: 'center'
-                });
-            } catch (e) {
-                element.scrollIntoView(false);
-            }
+            scrollToElementIfNeeded(element, container, !fastNavigation);
         }
 
         console.log('🎯 Фокус на элементе:', element);
@@ -1702,7 +1694,7 @@ function setupFocusRescue() {
 
         // Скроллим только если элемент не виден
         if (!isElementFullyVisible(el, container)) {
-            scrollToElementIfNeeded(el, container);
+            scrollToElementIfNeeded(el, container, !fastNavigation);
         }
 
         return true;
