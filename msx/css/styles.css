@@ -2924,17 +2924,7 @@ html {
   overflow-y: hidden;
 }
 
-/* Увеличенная задержка для более плавного перехода */
-.torrent-card,
-.search-result-item,
-.catalog-recommendation-card,
-.catalog-actor-card,
-.file-item,
-.catalog-card,
-.catalog-folder-card {
-  scroll-margin: 30px;
-  scroll-snap-align: start;
-}
+
 
 /* Специально для горизонтальных карточек */
 .catalog-actor-card,
