@@ -138,14 +138,13 @@ var Animations = (function () {
         // Анимация постера
         var poster = detailView.querySelector('.detail-poster');
         if (poster) {
-            gsap.set(poster, { scale: 0.8, opacity: 0, rotation: -5 });
+            gsap.set(poster, { scale: 0.9, opacity: 0 }); // Убрал rotation, уменьшил scale
             tl.to(poster, {
                 scale: 1,
                 opacity: 1,
-                rotation: 0,
-                duration: 0.4,
-                ease: config.ease.elastic
-            }, "-=0.3");
+                duration: 0.35,  // Чуть дольше
+                ease: "back.out(0.4)"  // Мягкий вылет, почти незаметный
+            }, "-=0.2");
         }
 
         return tl;
