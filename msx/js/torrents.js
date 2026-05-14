@@ -1538,14 +1538,11 @@ async function showDetail(torrent) {
   AppState.currentDetailItem = torrent;
   var detailView = document.getElementById('detail-view');
 
-  detailView.style.display = 'block';
-  detailView.style.zIndex = '100';
+  //detailView.style.display = 'block';
+  //detailView.style.zIndex = '100';
 
   resetDetailBackground();
-  if (typeof Animations !== 'undefined') {
-    Animations.animateDetailShow();
-  }
-
+  
   var mainContainer = document.getElementById('main-container');
   if (mainContainer) {
     mainContainer.style.pointerEvents = 'none';
@@ -1699,7 +1696,10 @@ async function showDetail(torrent) {
       } else {
         setFocus(0);
       }
-    }    
+    }
+    if (typeof Animations !== 'undefined') {
+      Animations.animateDetailShow();
+    }
   }, 200);
 
   AppState.mediaType = "";
