@@ -332,6 +332,11 @@ function showPlayerControls(preferredFocusId) {
     }
     var playerTitle = document.getElementById('player-title');
     if (playerTitle) playerTitle.classList.remove('hidden');
+
+    if (typeof Animations !== 'undefined') {
+        Animations.animateControlsShow();
+    }
+
     if (typeof window.resetMouseIdleTimer === 'function') {
         window.resetMouseIdleTimer();
     }
