@@ -1542,6 +1542,9 @@ async function showDetail(torrent) {
   //detailView.style.zIndex = '100';
 
   resetDetailBackground();
+  if (typeof Animations !== 'undefined') {
+    Animations.animateDetailShow();
+  }
   
   var mainContainer = document.getElementById('main-container');
   if (mainContainer) {
@@ -1647,6 +1650,12 @@ async function showDetail(torrent) {
       }
 
       filesList.appendChild(fragment);
+      // Анимация файлов после загрузки
+      if (typeof Animations !== 'undefined') {
+        setTimeout(function () {
+          Animations.animateFilesList();
+        }, 100);
+      }
 
       // Ждем TMDB данные в фоне и обновляем постеры когда они придут
       tmdbPromise.then(function (tmdbData) {
@@ -1697,9 +1706,7 @@ async function showDetail(torrent) {
         setFocus(0);
       }
     }
-    if (typeof Animations !== 'undefined') {
-      Animations.animateDetailShow();
-    }
+    
   }, 200);
 
   AppState.mediaType = "";
