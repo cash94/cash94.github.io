@@ -2891,3 +2891,196 @@ body.detail-open {
 .file-overlay {
   display: none !important;
 }
+
+/* ===== ПЛАВНЫЙ СКРОЛЛИНГ ===== */
+
+/* Глобальные настройки плавности */
+html {
+  scroll-behavior: smooth;
+  scroll-padding: 20px;
+}
+
+/* Плавная прокрутка для всех контейнеров */
+#main-container,
+#torrents-grid,
+.search-results-list,
+#detail-view,
+.episodes-list,
+.audio-list,
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid {
+  scroll-behavior: smooth;
+  scroll-padding: 30px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Для горизонтальных сеток - обеспечить отступы при скролле */
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid,
+.catalog-detail-trailers-grid {
+  scroll-padding-left: 30px;
+  scroll-padding-right: 30px;
+  scroll-snap-type: x mandatory;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Увеличенная задержка для более плавного перехода */
+.torrent-card,
+.search-result-item,
+.catalog-recommendation-card,
+.catalog-actor-card,
+.file-item,
+.catalog-card,
+.catalog-folder-card {
+  scroll-margin: 30px;
+  scroll-snap-align: start;
+}
+
+/* Специально для горизонтальных карточек */
+.catalog-actor-card,
+.catalog-recommendation-card {
+  scroll-snap-align: start;
+  scroll-margin-inline: 20px;
+  /* Горизонтальный отступ при скролле */
+}
+
+/* Более заметный и плавный outline при фокусе */
+.focused {
+  outline: none !important;
+  box-shadow: 0 0 0 3px #ff8c00, 0 0 0 6px rgba(255, 140, 0, 0.3) !important;
+  transition: box-shadow 0.10s ease;
+  transform: scale(1.01);
+  z-index: 10;
+  position: relative;
+  border-radius: 12px;
+  /* Добавляем скругление, чтобы тень соответствовала карточке */
+}
+
+/* Для ТВ пультов - убираем transform если вызывает тормоза */
+@media (pointer: coarse) {
+  .focused {
+    transform: none;
+    /* На ТВ scale может тормозить */
+  }
+
+  .torrent-card,
+  .catalog-card {
+    transition: all 0.15s ease;
+    /* Меньше анимации на ТВ */
+  }
+}
+
+/* Специально для сетки торрентов - плавное появление карточек */
+#torrents-grid {
+  scroll-behavior: smooth;
+  scroll-padding: 30px;
+}
+
+/* Анимация появления новых карточек - только для ПК, на ТВ может тормозить */
+@media (prefers-reduced-motion: no-preference) {
+  .torrent-card {
+    animation: fadeInUp 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1) backwards;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Задержки для каскадного появления карточек */
+.torrent-card:nth-child(n+1) {
+  animation-delay: 0.00s;
+}
+
+.torrent-card:nth-child(n+9) {
+  animation-delay: 0.03s;
+}
+
+.torrent-card:nth-child(n+17) {
+  animation-delay: 0.06s;
+}
+
+.torrent-card:nth-child(n+25) {
+  animation-delay: 0.09s;
+}
+
+.torrent-card:nth-child(n+33) {
+  animation-delay: 0.12s;
+}
+
+/* Для ТВ отключаем каскадную анимацию */
+@media (pointer: coarse) {
+  .torrent-card {
+    animation: none;
+  }
+}
+
+/* Добавляем отступы родительскому контейнеру */
+.catalog-detail-actors-wrap,
+.catalog-detail-recommendations-wrap {
+  padding: 8px 0;
+  margin: 0;
+  overflow: visible;
+}
+
+/* Для самого грида - убираем отступы, но добавляем внутренние */
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid {
+  padding: 8px 20px 16px 20px !important;
+  gap: 20px;
+}
+
+/* Первый элемент - не обрезаем слева */
+.catalog-actor-card:first-child,
+.catalog-recommendation-card:first-child {
+  margin-left: 0;
+}
+
+/* Последний элемент - не обрезаем справа */
+.catalog-actor-card:last-child,
+.catalog-recommendation-card:last-child {
+  margin-right: 0;
+}
+
+/* Добавьте в styles.css */
+.torrent-card,
+.catalog-card,
+.catalog-folder-card,
+.search-result-item,
+.file-item {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+}
+
+/* Улучшенная анимация для focused элемента */
+.focused {
+    outline: none !important;
+    transition: none !important; /* GSAP будет управлять анимацией */
+}
+
+/* Плавное появление контента */
+@keyframes fadeInScale {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Для обратной совместимости - если GSAP не загрузился */
+.no-gsap .torrent-card {
+    animation: fadeInScale 0.3s ease forwards;
+}
+
