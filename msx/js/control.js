@@ -227,6 +227,11 @@ function setFocus(index) {
     }
 
     if (element) {
+
+        if (typeof Animations !== 'undefined') {
+            Animations.animateFocus(element);
+        }
+        
         element.classList.add('focused');
 
         if (element.id === 'search-query' ||
@@ -1639,6 +1644,9 @@ function setupFocusRescue() {
         if (opts === undefined) opts = {};
         if (!VISIBLE(el)) return false;
         clearFocused();
+        if (typeof Animations !== 'undefined') {
+            Animations.animateFocus(element);
+        }
         el.classList.add('focused');
         if (opts.nativeFocus) {
             try { el.focus(); } catch (e) { }
