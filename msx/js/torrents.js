@@ -1651,13 +1651,6 @@ async function showDetail(torrent) {
 
       filesList.appendChild(fragment);
 
-      // Анимация файлов после загрузки
-      if (typeof Animations !== 'undefined') {
-        setTimeout(function () {
-          Animations.animateFilesList();
-        }, 100);
-      }
-
       // Ждем TMDB данные в фоне и обновляем постеры когда они придут
       tmdbPromise.then(function (tmdbData) {
         // Обновляем заголовок если есть чистое название
