@@ -118,7 +118,7 @@ var Animations = (function () {
         tl.to(detailView, {
             opacity: 1,
             scale: 1,
-            duration: config.duration.normal,
+            duration: config.duration.fast,
             ease: config.ease.smooth,
             //clearProps: "all"
         });
