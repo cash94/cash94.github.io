@@ -1543,10 +1543,6 @@ async function showDetail(torrent) {
 
   resetDetailBackground();
 
-  if (typeof Animations !== 'undefined') {
-    Animations.animateDetailShow();
-  }
-
   var mainContainer = document.getElementById('main-container');
   if (mainContainer) {
     mainContainer.style.pointerEvents = 'none';
@@ -1708,6 +1704,11 @@ async function showDetail(torrent) {
         setFocus(0);
       }
     }
+    
+    if (typeof Animations !== 'undefined') {
+      Animations.animateDetailShow();
+    }
+    
   }, 200);
 
   AppState.mediaType = "";
