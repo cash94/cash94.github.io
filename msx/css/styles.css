@@ -2948,8 +2948,8 @@ html {
 .focused {
   outline: none !important;
   box-shadow: 0 0 0 3px #ff8c00, 0 0 0 6px rgba(255, 140, 0, 0.3) !important;
-  transition: box-shadow 0.15s ease;
-  transform: scale(1.02);
+  transition: box-shadow 0.10s ease;
+  transform: scale(1.03);
   z-index: 10;
   position: relative;
   border-radius: 12px;
