@@ -2898,50 +2898,90 @@ body.detail-open {
 .file-overlay {
   display: none !important;
 }
-/* Плавная прокрутка для всей страницы и контейнеров */
+/* ===== ПЛАВНЫЙ СКРОЛЛИНГ ===== */
+
+/* Глобальные настройки плавности */
 html {
   scroll-behavior: smooth;
-}
-
-/* Плавная прокрутка для сетки торрентов */
-#torrents-grid {
-  scroll-behavior: smooth;
   scroll-padding: 20px;
 }
 
-/* Плавная прокрутка для результатов поиска */
-.search-results-list {
+/* Плавная прокрутка для всех контейнеров */
+#main-container,
+#torrents-grid,
+.search-results-list,
+#detail-view,
+.episodes-list,
+.audio-list,
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid {
   scroll-behavior: smooth;
-  scroll-padding: 20px;
+  scroll-padding: 30px;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* Плавная прокрутка для detail-view */
-#detail-view {
-  scroll-behavior: smooth;
-  scroll-padding: 20px;
-}
-
-/* Плавный переход фокуса между карточками с анимацией появления */
+/* Увеличенная задержка для более плавного перехода */
 .torrent-card,
 .search-result-item,
 .catalog-recommendation-card,
 .catalog-actor-card,
-.file-item {
-  transition: all 0.2s cubic-bezier(0.2, 0.9, 0.4, 1.1);
-  scroll-margin: 20px;
+.file-item,
+.catalog-card,
+.catalog-folder-card {
+  transition: all 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+  scroll-margin: 30px;
+  scroll-snap-align: start;
 }
 
-/* Эффект при фокусе/выборе карточки */
-.torrent-card.focused,
-.search-result-item.focused,
-.catalog-card.focused {
-  scroll-margin: 20px;
-  transition: all 0.2s ease-out;
+/* Более заметный и плавный outline при фокусе */
+.focused {
+  outline: 3px solid #ff8c00 !important;
+  outline-offset: 4px !important;
+  transition: outline-offset 0.15s ease, outline-color 0.1s ease;
+  transform: scale(1.02);
+  z-index: 10;
 }
 
-/* Автоматическая прокрутка к focused элементу с плавностью */
-.torrent-card.focused,
-.search-result-item.focused {
-  scroll-margin-block: 30px;
-  scroll-margin-inline: 20px;
+/* Специально для сетки торрентов - плавное появление карточек */
+#torrents-grid {
+  scroll-behavior: smooth;
+  scroll-padding: 30px;
+}
+
+/* Анимация появления новых карточек */
+.torrent-card {
+  animation: fadeInUp 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1) backwards;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Задержки для каскадного появления карточек (опционально) */
+.torrent-card:nth-child(n+1) {
+  animation-delay: 0.00s;
+}
+
+.torrent-card:nth-child(n+9) {
+  animation-delay: 0.03s;
+}
+
+.torrent-card:nth-child(n+17) {
+  animation-delay: 0.06s;
+}
+
+.torrent-card:nth-child(n+25) {
+  animation-delay: 0.09s;
+}
+
+.torrent-card:nth-child(n+33) {
+  animation-delay: 0.12s;
 }
