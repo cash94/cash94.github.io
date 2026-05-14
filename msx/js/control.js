@@ -354,6 +354,9 @@ function showPlayerControls(preferredFocusId) {
 }
 
 function hidePlayerControls() {
+    if (typeof Animations !== 'undefined') {
+        Animations.animateControlsHide();
+    }
     var ids = [
         'controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn',
         'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn',
