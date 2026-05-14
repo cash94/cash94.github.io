@@ -1629,6 +1629,11 @@ function setupFocusRescue() {
         var focused = document.querySelectorAll('.focused');
         for (var i = 0; i < focused.length; i++) {
             focused[i].classList.remove('focused');
+            // Очищаем inline styles от GSAP
+            focused[i].style.boxShadow = '';
+            focused[i].style.transform = '';
+            focused[i].style.scale = '';
+            focused[i].style.translate = '';
         }
     };
     var clickEl = function (el) { try { if (el && el.click) el.click(); } catch (e) { } };
