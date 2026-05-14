@@ -866,10 +866,10 @@ body {
 
 /* Кнопка почти прозрачная */
 .play-btn {
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(4px);
   color: #ff8c00;
-  border: 2px solid rgba(255, 140, 0, 0.6);
+  border: 2px solid rgba(255, 140, 0, 0.3);
   padding: 10px 16px;
   border-radius: 50%;
   min-width: 44px;
@@ -880,7 +880,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .play-btn:hover {
