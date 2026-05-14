@@ -1645,7 +1645,7 @@ function setupFocusRescue() {
         if (!VISIBLE(el)) return false;
         clearFocused();
         if (typeof Animations !== 'undefined') {
-            Animations.animateFocus(element);
+            Animations.animateFocus(el);
         }
         el.classList.add('focused');
         if (opts.nativeFocus) {
