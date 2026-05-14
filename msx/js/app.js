@@ -55,6 +55,17 @@ async function init() {
   try {
     console.log('🚀 Начало инициализации приложения');
 
+    // Инициализация анимаций
+    if (typeof Animations !== 'undefined') {
+      Animations.init();
+      // Добавляем hover анимации для карточек
+      setTimeout(function () {
+        Animations.addCardHoverAnimation('.torrent-card');
+        Animations.addCardHoverAnimation('.catalog-card');
+        Animations.addCardHoverAnimation('.catalog-folder-card');
+      }, 1000);
+    }
+
     // Проверяем, что все необходимые DOM элементы существуют
     var requiredElements = [
       'seek-slider', 'volume-slider', 'play-pause-btn', 'mute-btn',
