@@ -227,12 +227,11 @@ function setFocus(index) {
     }
 
     if (element) {
+        element.classList.add('focused');
 
         if (typeof Animations !== 'undefined') {
             Animations.animateFocus(element);
         }
-        
-        element.classList.add('focused');
 
         if (element.id === 'search-query' ||
             element.id === 'torrserver-url' ||
@@ -1644,10 +1643,10 @@ function setupFocusRescue() {
         if (opts === undefined) opts = {};
         if (!VISIBLE(el)) return false;
         clearFocused();
+        el.classList.add('focused');
         if (typeof Animations !== 'undefined') {
             Animations.animateFocus(el);
         }
-        el.classList.add('focused');
         if (opts.nativeFocus) {
             try { el.focus(); } catch (e) { }
         } else {
