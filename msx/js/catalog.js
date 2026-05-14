@@ -1027,59 +1027,13 @@ function appendCatalogItems(newItems) {
         addLoadMoreTrigger(torrentsGrid);
     }
 
-    // ТВ-СОВМЕСТИМОСТЬ: пересоздаем наблюдатель вместо обновления
-    if (catalogState.posterObserver) {
-        catalogState.posterObserver.disconnect();
-        catalogState.posterObserver = null;
-    }
-
-    // Создаем новый наблюдатель
-    initPosterLazyLoading();
-
-    // Также пересоздаем observer для подгрузки
-    if (catalogState.loadMoreObserver) {
-        catalogState.loadMoreObserver.disconnect();
-        catalogState.loadMoreObserver = null;
-    }
+    updatePosterObservers();
     initLoadMoreObserver();
-
-    // Дополнительная загрузка видимых постеров для старых браузеров
-    setTimeout(function () {
-        forceLoadVisiblePosters();
-    }, 100);
 
     if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
         if (typeof updateFocusableElements === 'function') {
             updateFocusableElements();
         }
-    }
-}
-
-//ФУНКЦИЯ принудительной загрузки видимых постеров
-function forceLoadVisiblePosters() {
-    var cards = document.querySelectorAll('.torrent-card.catalog-card');
-    var viewportHeight = window.innerHeight;
-    var scrollTop = document.getElementById('main-container')?.scrollTop || 0;
-
-    for (var i = 0; i < cards.length && i < catalogState.items.length; i++) {
-        var card = cards[i];
-        var rect = card.getBoundingClientRect();
-
-        // Проверяем, видна ли карточка в области просмотра
-        if (rect.top < viewportHeight + 300 && rect.bottom > -100) {
-            var item = catalogState.items[i];
-            if (item) {
-                var cacheKey = item.id + '_' + (item.media_type || 'movie');
-                if (!catalogState.posterCache[cacheKey] && !isPosterInQueue(i)) {
-                    addToPosterQueue(i);
-                }
-            }
-        }
-    }
-
-    // Запускаем загрузку следующей партии
-    if (!catalogState.isPosterLoading && catalogState.posterLoadQueue.length > 0) {
-        loadNextPosterBatch();
     }
 }
 
@@ -1351,9 +1305,7 @@ function initLoadMoreObserver() {
                 var spinner = trigger.querySelector('.loading-spinner-small');
                 if (spinner) spinner.style.display = 'inline-block';
 
-                loadMoreCatalogItems().then(function () {
-                    if (spinner) spinner.style.display = 'none';
-                }).catch(function () {
+                loadMoreCatalogItems()['finally'](function () {
                     if (spinner) spinner.style.display = 'none';
                 });
             }
@@ -1409,26 +1361,6 @@ function initPosterLazyLoading() {
         catalogState.posterObserver.disconnect();
     }
 
-    // Проверяем поддержку IntersectionObserver
-    if (typeof IntersectionObserver === 'undefined') {
-        console.log('⚠️ IntersectionObserver не поддерживается, используем fallback');
-        // Fallback - загружаем все постеры сразу
-        var allIndices = [];
-        for (var i = 0; i < catalogState.items.length; i++) {
-            var item = catalogState.items[i];
-            if (item) {
-                var cacheKey = item.id + '_' + (item.media_type || 'movie');
-                if (!catalogState.posterCache[cacheKey]) {
-                    allIndices.push(i);
-                }
-            }
-        }
-        if (allIndices.length > 0) {
-            loadPosterBatch(allIndices);
-        }
-        return;
-    }
-
     catalogState.posterObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
             var entry = entries[i];
@@ -1448,13 +1380,23 @@ function initPosterLazyLoading() {
         }
     }, {
         root: null,
-        rootMargin: '300px',
-        threshold: 0.01
+        rootMargin: '200px',
+        threshold: 0.1
     });
 
     var cards = document.querySelectorAll('.torrent-card.catalog-card');
     for (var i = 0; i < cards.length; i++) {
-        catalogState.posterObserver.observe(cards[i]);
+        var card = cards[i];
+        if (!card) continue;
+
+        var item = catalogState.items[i];
+        if (!item) continue;
+
+        var cacheKey = item.id + '_' + (item.media_type || 'movie');
+
+        if (catalogState.posterCache[cacheKey] === undefined) {
+            catalogState.posterObserver.observe(card);
+        }
     }
 }
 
@@ -1533,74 +1475,34 @@ function loadPosterBatch(indices) {
         promises.push(loadPosterForIndex(indices[i]));
     }
 
-    if (typeof Promise.allSettled === 'function') {
-        // Используем native allSettled
-        Promise.allSettled(promises)
-            .then(function (results) {
-                var successful = 0;
-                for (var j = 0; j < results.length; j++) {
-                    if (results[j].status === 'fulfilled') successful++;
-                }
-                var failed = results.length - successful;
+    Promise.allSettled(promises)
+        .then(function (results) {
+            var successful = 0;
+            for (var j = 0; j < results.length; j++) {
+                if (results[j].status === 'fulfilled') successful++;
+            }
+            var failed = results.length - successful;
 
-                console.log('✅ Загружено ' + successful + ' постеров, ' + failed + ' ошибок');
+            console.log('✅ Загружено ' + successful + ' постеров, ' + failed + ' ошибок');
 
-                var maxIndex = indices[0];
-                for (var k = 1; k < indices.length; k++) {
-                    if (indices[k] > maxIndex) maxIndex = indices[k];
-                }
-                if (maxIndex + 1 > catalogState.loadedPostersCount) {
-                    catalogState.loadedPostersCount = maxIndex + 1;
-                }
+            var maxIndex = indices[0];
+            for (var k = 1; k < indices.length; k++) {
+                if (indices[k] > maxIndex) maxIndex = indices[k];
+            }
+            if (maxIndex + 1 > catalogState.loadedPostersCount) {
+                catalogState.loadedPostersCount = maxIndex + 1;
+            }
 
-                catalogState.isPosterLoading = false;
+            catalogState.isPosterLoading = false;
 
-                if (catalogState.posterLoadQueue.length > 0) {
-                    loadNextPosterBatch();
-                }
-            })
-            .catch(function (error) {
-                console.error('❌ Ошибка загрузки партии постеров:', error);
-                catalogState.isPosterLoading = false;
-            });
-    } else {
-        // Fallback для старых браузеров (без allSettled)
-        Promise.all(promises.map(function (promise) {
-            return promise.catch(function (error) {
-                console.warn('⚠️ Ошибка загрузки постера:', error);
-                return null;
-            });
-        }))
-            .then(function (results) {
-                var successful = 0;
-                for (var j = 0; j < results.length; j++) {
-                    if (results[j] !== null && results[j] !== undefined) {
-                        successful++;
-                    }
-                }
-                var failed = results.length - successful;
-
-                console.log('✅ Загружено ' + successful + ' постеров, ' + failed + ' ошибок');
-
-                var maxIndex = indices[0];
-                for (var k = 1; k < indices.length; k++) {
-                    if (indices[k] > maxIndex) maxIndex = indices[k];
-                }
-                if (maxIndex + 1 > catalogState.loadedPostersCount) {
-                    catalogState.loadedPostersCount = maxIndex + 1;
-                }
-
-                catalogState.isPosterLoading = false;
-
-                if (catalogState.posterLoadQueue.length > 0) {
-                    loadNextPosterBatch();
-                }
-            })
-            .catch(function (error) {
-                console.error('❌ Ошибка загрузки партии постеров:', error);
-                catalogState.isPosterLoading = false;
-            });
-    }
+            if (catalogState.posterLoadQueue.length > 0) {
+                loadNextPosterBatch();
+            }
+        })
+    ['catch'](function (error) {
+        console.error('❌ Ошибка загрузки партии постеров:', error);
+        catalogState.isPosterLoading = false;
+    });
 }
 
 async function loadPosterForIndex(index) {
@@ -2807,12 +2709,7 @@ window.checkAndLoadMoreOnNavigation = function () {
             if (spinner) spinner.style.display = 'inline-block';
         }
 
-        loadMoreCatalogItems().then(function () {
-            if (trigger) {
-                var spinner = trigger.querySelector('.loading-spinner-small');
-                if (spinner) spinner.style.display = 'none';
-            }
-        }).catch(function () {
+        loadMoreCatalogItems()['finally'](function () {
             if (trigger) {
                 var spinner = trigger.querySelector('.loading-spinner-small');
                 if (spinner) spinner.style.display = 'none';
