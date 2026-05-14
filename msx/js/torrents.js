@@ -1542,6 +1542,9 @@ async function showDetail(torrent) {
   detailView.style.zIndex = '100';
 
   resetDetailBackground();
+  if (typeof Animations !== 'undefined') {
+    Animations.animateDetailShow();
+  }
 
   var mainContainer = document.getElementById('main-container');
   if (mainContainer) {
@@ -1696,12 +1699,7 @@ async function showDetail(torrent) {
       } else {
         setFocus(0);
       }
-    }
-    
-    if (typeof Animations !== 'undefined') {
-      Animations.animateDetailShow();
-    }
-    
+    }    
   }, 200);
 
   AppState.mediaType = "";
