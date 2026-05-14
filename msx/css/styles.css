@@ -3044,3 +3044,30 @@ html {
   outline: none !important;
   box-shadow: 0 0 0 3px #ff8c00 !important;
 }
+
+/* Добавляем отступы родительскому контейнеру */
+.catalog-detail-actors-wrap,
+.catalog-detail-recommendations-wrap {
+  padding: 8px 0;
+  margin: 0;
+  overflow: visible;
+}
+
+/* Для самого грида - убираем отступы, но добавляем внутренние */
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid {
+  padding: 8px 20px 16px 20px !important;
+  gap: 20px;
+}
+
+/* Первый элемент - не обрезаем слева */
+.catalog-actor-card:first-child,
+.catalog-recommendation-card:first-child {
+  margin-left: 0;
+}
+
+/* Последний элемент - не обрезаем справа */
+.catalog-actor-card:last-child,
+.catalog-recommendation-card:last-child {
+  margin-right: 0;
+}
