@@ -1589,51 +1589,122 @@ function clearOkHold() {
 function isElementFullyVisible(el, container) {
     if (!el) return true;
 
+    // Если контейнер не указан, используем окно
+    if (!container) {
+        container = { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
+    } else if (container.getBoundingClientRect) {
+        container = container.getBoundingClientRect();
+    }
+
     var rect = el.getBoundingClientRect();
-    var containerRect = container ? container.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
 
-    // Проверяем, что элемент полностью в видимой области по вертикали
-    var isVerticallyVisible = rect.top >= containerRect.top + 20 &&
-        rect.bottom <= containerRect.bottom - 20;
+    // Проверяем вертикальную видимость
+    var isVerticallyVisible = rect.top >= container.top + 20 &&
+        rect.bottom <= container.bottom - 20;
 
-    // Для горизонтальной навигации проверяем горизонтальную видимость
-    var isHorizontallyVisible = rect.left >= containerRect.left + 20 &&
-        rect.right <= containerRect.right - 20;
+    // Проверяем горизонтальную видимость
+    var isHorizontallyVisible = rect.left >= container.left + 20 &&
+        rect.right <= container.right - 20;
+
+    // Для горизонтальных списков (files-list) важен только горизонтальный скролл
+    var isHorizontalContainer = container.id === 'files-list';
+
+    if (isHorizontalContainer) {
+        return isHorizontallyVisible;
+    }
 
     return isVerticallyVisible && isHorizontallyVisible;
 }
 
 // Функция для плавного скролла только если элемент не виден
 function scrollToElementIfNeeded(el, container, useSmooth) {
-    if (useSmooth === undefined) useSmooth = !fastNavigation; // Без плавности при быстрой навигации
-
+    if (useSmooth === undefined) useSmooth = !fastNavigation;
     if (!el) return;
 
+    // Определяем, является ли элемент file-item
+    var isFileItem = el.classList && el.classList.contains('file-item');
+    var isHorizontalScroll = isFileItem || (container && container.id === 'files-list');
+
+    // Для file-item используем files-list как контейнер, если он не передан
+    var targetContainer = container;
+    if (isFileItem && (!targetContainer || targetContainer.id !== 'files-list')) {
+        targetContainer = document.getElementById('files-list');
+        if (!targetContainer) return;
+    }
+
+    // Получаем bounding rects
     var rect = el.getBoundingClientRect();
-    var containerRect = container ? container.getBoundingClientRect() : { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
+    var containerRect = targetContainer ? targetContainer.getBoundingClientRect() :
+        { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
 
     var needsScroll = false;
-    var scrollOptions = {
-        behavior: 'auto', //useSmooth ? 'smooth' : 'instant',  // ← instant или auto
-        block: 'center',
-        inline: 'center'
-    };
+    var scrollLeft = null;
+    var scrollTop = null;
 
-    if (rect.top < containerRect.top + 50 || rect.bottom > containerRect.bottom - 50) {
-        needsScroll = true;
-        scrollOptions.block = 'center';
+    // ГОРИЗОНТАЛЬНАЯ ПРОВЕРКА (для file-item)
+    if (isHorizontalScroll && targetContainer && targetContainer.id === 'files-list') {
+        // Проверяем, виден ли элемент по горизонтали
+        var isLeftVisible = rect.left >= containerRect.left + 20;
+        var isRightVisible = rect.right <= containerRect.right - 20;
+
+        if (!isLeftVisible || !isRightVisible) {
+            needsScroll = true;
+            // Вычисляем позицию для скролла, чтобы элемент оказался по центру
+            var itemCenter = rect.left + rect.width / 2;
+            var containerCenter = containerRect.left + containerRect.width / 2;
+            var offset = itemCenter - containerCenter;
+
+            scrollLeft = targetContainer.scrollLeft + offset;
+            // Ограничиваем границы
+            scrollLeft = Math.max(0, Math.min(scrollLeft,
+                targetContainer.scrollWidth - targetContainer.clientWidth));
+        }
+    }
+    // ВЕРТИКАЛЬНАЯ ПРОВЕРКА (для обычных элементов)
+    else {
+        var isTopVisible = rect.top >= containerRect.top + 50;
+        var isBottomVisible = rect.bottom <= containerRect.bottom - 50;
+
+        if (!isTopVisible || !isBottomVisible) {
+            needsScroll = true;
+            scrollTop = targetContainer ? targetContainer.scrollTop + (rect.top - containerRect.top - (targetContainer.clientHeight / 2) + (rect.height / 2)) : null;
+            if (scrollTop !== null) {
+                scrollTop = Math.max(0, scrollTop);
+            }
+        }
     }
 
-    if (rect.left < containerRect.left + 30 || rect.right > containerRect.right - 30) {
-        needsScroll = true;
-        scrollOptions.inline = 'center';
-    }
-
+    // Выполняем скролл если нужно
     if (needsScroll) {
         try {
-            el.scrollIntoView(scrollOptions);
+            if (scrollLeft !== null && targetContainer) {
+                // Горизонтальный скролл
+                targetContainer.scrollTo({
+                    left: scrollLeft,
+                    behavior: useSmooth ? 'smooth' : 'auto'
+                });
+            } else if (scrollTop !== null && targetContainer && targetContainer !== window) {
+                // Вертикальный скролл для контейнера
+                targetContainer.scrollTo({
+                    top: scrollTop,
+                    behavior: useSmooth ? 'smooth' : 'auto'
+                });
+            } else {
+                // Fallback: стандартный scrollIntoView
+                el.scrollIntoView({
+                    behavior: useSmooth ? 'smooth' : 'auto',
+                    block: 'center',
+                    inline: 'center'
+                });
+            }
         } catch (e) {
-            try { el.scrollIntoView(false); } catch (er) { }
+            try {
+                if (scrollLeft !== null && targetContainer) {
+                    targetContainer.scrollLeft = scrollLeft;
+                } else {
+                    el.scrollIntoView(false);
+                }
+            } catch (er) { }
         }
     }
 }
@@ -1681,15 +1752,24 @@ function setupFocusRescue() {
             blurEditor();
         }
 
-        // Определяем контейнер в зависимости от экрана
+        // Определяем контейнер в зависимости от экрана и типа элемента
         var container = null;
         var screen = currentScreen();
+
+        // КРИТИЧЕСКИ ВАЖНО: для file-item используем files-list как контейнер
+        var isFileItem = el.classList && el.classList.contains('file-item');
+
         if (screen === 'catalog' || screen === 'torrents') {
             container = document.getElementById('main-container');
         } else if (screen === 'search') {
             container = document.getElementById('search-results-list');
         } else if (screen === 'detail') {
-            container = document.getElementById('detail-view');
+            if (isFileItem) {
+                // Для горизонтальных файлов используем files-list
+                container = document.getElementById('files-list');
+            } else {
+                container = document.getElementById('detail-view');
+            }
         }
 
         // Скроллим только если элемент не виден
