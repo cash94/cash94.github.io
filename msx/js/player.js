@@ -1480,6 +1480,30 @@ function setupEpisodesButton() {
   console.log('✅ Кнопка серий настроена');
 }
 
+// Функция для предзагрузки торрента
+function preloadTorrents(hash, fileId) {
+  if (!hash || !fileId) return;
+  if (!AppState.currentTorrserverUrl) return;
+
+  var preloadUrl = AppState.currentTorrserverUrl + "/stream?link=" + hash + "&index=" + fileId + "&preload=preload";
+
+  console.log('🚀 Предзагрузка торрента:', preloadUrl);
+
+  // Используем fetch с keepalive для надежности
+  fetch(preloadUrl, {
+    method: 'GET',
+    keepalive: true
+  }).then(function (response) {
+    if (response.ok) {
+      console.log('✅ Торрент отправлен на предзагрузку:', hash);
+    } else {
+      console.log('⚠️ Ошибка предзагрузки торрента:', response.status);
+    }
+  }).catch(function (error) {
+    console.error('❌ Ошибка при предзагрузке торрента:', error);
+  });
+}
+
 // Обновленная функция startHLSPlayback с ожиданием буфера (видео на паузе)
 async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack) {
   if (initialSeek === undefined) initialSeek = null;
@@ -1527,6 +1551,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId),
       getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId)
     ];
+
+    // Добавляем предзагрузку торрента если initialSeek = null или 0
+    if (initialSeek === null || initialSeek === 0) {
+      preloadTorrents(currentTimecodeData.hash, currentTimecodeData.fileId);
+    }
 
     // Добавляем загрузку таймкода только если initialSeek === null
     var timecodePromise = null;
