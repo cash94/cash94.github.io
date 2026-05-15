@@ -1736,7 +1736,7 @@ function setupFocusRescue() {
         if (screen === 'catalog' || screen === 'torrents') {
             container = document.getElementById('main-container');
         } else if (screen === 'search') {
-            container = document.getElementById('search-results-list');
+            container = document.getElementById('search-results');
         } else if (screen === 'detail') {
             if (isFileItem) {
                 // Для горизонтальных файлов используем files-list
