@@ -1592,14 +1592,27 @@ function isElementFullyVisible(el, container) {
     var rect = el.getBoundingClientRect();
     var containerRect = container ? container.getBoundingClientRect() : { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
 
-    // Проверяем вертикальную видимость
+    // Определяем тип контейнера
+    var isHorizontalContainer = container && (
+        container.id === 'catalog-detail-actors' ||
+        container.id === 'catalog-detail-recommendations' ||
+        container.id === 'catalog-detail-trailers' ||
+        container.id === 'files-list'
+    );
+
+    if (isHorizontalContainer) {
+        // Для горизонтальных контейнеров проверяем ТОЛЬКО горизонтальную видимость
+        var horizontalPadding = 30;
+        var isHorizontallyVisible = rect.left >= containerRect.left + horizontalPadding &&
+            rect.right <= containerRect.right - horizontalPadding;
+        return isHorizontallyVisible;
+    }
+
+    // Для обычных контейнеров проверяем оба направления
     var isVerticallyVisible = rect.top >= containerRect.top + 20 &&
         rect.bottom <= containerRect.bottom - 20;
-
-    // Для горизонтальных контейнеров проверяем горизонтальную видимость с меньшим отступом
-    var horizontalPadding = 30;
-    var isHorizontallyVisible = rect.left >= containerRect.left + horizontalPadding &&
-        rect.right <= containerRect.right - horizontalPadding;
+    var isHorizontallyVisible = rect.left >= containerRect.left + 20 &&
+        rect.right <= containerRect.right - 20;
 
     return isVerticallyVisible && isHorizontallyVisible;
 }
@@ -1613,10 +1626,35 @@ function scrollToElementIfNeeded(el, container, useSmooth) {
     var rect = el.getBoundingClientRect();
     var containerRect = container ? container.getBoundingClientRect() : { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
 
+    // Определяем тип контейнера
+    var isHorizontalContainer = container && (
+        container.id === 'catalog-detail-actors' ||
+        container.id === 'catalog-detail-recommendations' ||
+        container.id === 'catalog-detail-trailers' ||
+        container.id === 'files-list'
+    );
+
+    if (isHorizontalContainer) {
+        // ТОЛЬКО горизонтальный скролл
+        var elementLeft = rect.left - containerRect.left;
+        var newScrollLeft = container.scrollLeft + elementLeft - (containerRect.width / 2) + (rect.width / 2);
+
+        if (useSmooth) {
+            container.scrollTo({
+                left: newScrollLeft,
+                behavior: 'smooth'
+            });
+        } else {
+            container.scrollLeft = newScrollLeft;
+        }
+        return;
+    }
+
+    // Для обычных контейнеров
     var needsScroll = false;
     var scrollOptions = {
         behavior: useSmooth ? 'smooth' : 'auto',
-        block: 'center',
+        block: 'nearest',  // Изменено с 'center' на 'nearest'
         inline: 'center'
     };
 
@@ -1626,38 +1664,15 @@ function scrollToElementIfNeeded(el, container, useSmooth) {
         scrollOptions.block = 'center';
     }
 
-    // Проверяем горизонтальную видимость (важно для горизонтальных сеток)
+    // Проверяем горизонтальную видимость
     if (rect.left < containerRect.left + 30 || rect.right > containerRect.right - 30) {
         needsScroll = true;
         scrollOptions.inline = 'center';
     }
 
-    // Для горизонтальных контейнеров (actors, recommendations) используем скролл контейнера
-    var isHorizontalContainer = container && (
-        container.id === 'catalog-detail-actors' ||
-        container.id === 'catalog-detail-recommendations' ||
-        container.id === 'catalog-detail-trailers' ||
-        container.id === 'files-list'
-    );
-
     if (needsScroll) {
         try {
-            if (isHorizontalContainer && container) {
-                // Для горизонтальных контейнеров используем scrollLeft
-                var elementLeft = rect.left - containerRect.left;
-                var newScrollLeft = container.scrollLeft + elementLeft - (containerRect.width / 2) + (rect.width / 2);
-
-                if (useSmooth) {
-                    container.scrollTo({
-                        left: newScrollLeft,
-                        behavior: 'smooth'
-                    });
-                } else {
-                    container.scrollLeft = newScrollLeft;
-                }
-            } else {
-                el.scrollIntoView(scrollOptions);
-            }
+            el.scrollIntoView(scrollOptions);
         } catch (e) {
             try { el.scrollIntoView(false); } catch (er) { }
         }
