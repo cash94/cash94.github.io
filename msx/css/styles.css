@@ -2231,12 +2231,12 @@ body.detail-open {
   }
 
   .search-result-meta {
-    gap: 14.12px;
+    margin: -7.06px;
     font-size: 14.12px;
   }
 
   .search-result-meta-item {
-    gap: 4.71px;
+    margin: 7.06px;
   }
 
   .search-result-voices {
