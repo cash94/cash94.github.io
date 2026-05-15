@@ -1500,9 +1500,9 @@ function preloadTorrents(hash, fileId) {
       console.log('⚠️ Ошибка предзагрузки торрента:', response.status);
     }
 
-    // Ждем 3 секунды только при успешном выполнении
+    // Ждем 7 секунды только при успешном выполнении
     return new Promise(function (resolve) {
-      setTimeout(resolve, 3000);
+      setTimeout(resolve, 7000);
     });
   }).catch(function (error) {
     console.error('❌ Ошибка при предзагрузке торрента:', error);
