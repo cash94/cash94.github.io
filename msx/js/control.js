@@ -1594,8 +1594,8 @@ function isElementFullyVisible(el, container) {
 
     // Определяем тип контейнера
     var isHorizontalContainer = container && (
-        container.id === 'catalog-detail-actors' ||
-        container.id === 'catalog-detail-recommendations' ||
+        container.id === 'catalog-detail-actors-wrap' ||
+        container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers' ||
         container.id === 'files-list'
     );
@@ -1628,8 +1628,8 @@ function scrollToElementIfNeeded(el, container, useSmooth) {
 
     // Определяем тип контейнера
     var isHorizontalContainer = container && (
-        container.id === 'catalog-detail-actors' ||
-        container.id === 'catalog-detail-recommendations' ||
+        container.id === 'catalog-detail-actors-wrap' ||
+        container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers' ||
         container.id === 'files-list'
     );
