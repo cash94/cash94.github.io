@@ -341,7 +341,7 @@ async function fetchCatalogActors(item) {
         saveToTmdbCache('actors', cacheParams, actors);
         return actors;
     } catch (error) {
-        console.error('❌ Ошибка загрузки актеров:', error);
+        console.log('❌ Ошибка загрузки актеров:', error);
         return [];
     }
 }
@@ -613,7 +613,7 @@ async function fetchCatalogItemMeta(item, mediaType) {
 
 async function loadCatalog(catalogKey) {
     if (!CATALOG_CONFIG[catalogKey]) {
-        console.error('❌ Неизвестный каталог:', catalogKey);
+        console.log('❌ Неизвестный каталог:', catalogKey);
         return;
     }
 
@@ -747,7 +747,7 @@ async function loadHistoryCatalog() {
             showEmptyHistory();
         }
     } catch (error) {
-        console.error('❌ Ошибка загрузки истории:', error);
+        console.log('❌ Ошибка загрузки истории:', error);
         showCatalogError('Не удалось загрузить историю просмотра');
     }
 
@@ -790,7 +790,7 @@ async function clearHistory() {
             alert('Ошибка очистки истории');
         }
     } catch (error) {
-        console.error('❌ Ошибка очистки истории:', error);
+        console.log('❌ Ошибка очистки истории:', error);
         alert('Ошибка очистки истории: ' + error.message);
     }
 }
@@ -898,7 +898,7 @@ async function loadMoreCatalogItems(reset) {
         if (error.name === 'AbortError') {
             console.log('📴 Загрузка элементов отменена');
         } else {
-            console.error('❌ Ошибка загрузки элементов:', error);
+            console.log('❌ Ошибка загрузки элементов:', error);
             console.log('⚠️ Пробуем загрузить все элементы (fallback)');
             await fallbackLoadAllCatalogItems();
         }
@@ -958,7 +958,7 @@ async function fallbackLoadAllCatalogItems() {
         });
 
     } catch (error) {
-        console.error('❌ Ошибка fallback загрузки:', error);
+        console.log('❌ Ошибка fallback загрузки:', error);
         showCatalogError('Ошибка загрузки каталога');
     }
 }
@@ -1163,7 +1163,7 @@ async function checkAndUpdateCatalogIfNeeded(catalogId, lastModifiedISO) {
                 }
             }
         } catch (error) {
-            console.error(`❌ Ошибка обновления каталога ${catalogId}:`, error);
+            console.log(`❌ Ошибка обновления каталога ${catalogId}:`, error);
         }
     }
 
@@ -1260,7 +1260,7 @@ function addCatalogHeader(grid) {
             }
         })
         .catch(error => {
-            console.error('Ошибка загрузки информации о каталоге:', error);
+            console.log('Ошибка загрузки информации о каталоге:', error);
             headerElement.innerHTML = `
                 <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
                 <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
@@ -1500,7 +1500,7 @@ function loadPosterBatch(indices) {
             }
         })
     ['catch'](function (error) {
-        console.error('❌ Ошибка загрузки партии постеров:', error);
+        console.log('❌ Ошибка загрузки партии постеров:', error);
         catalogState.isPosterLoading = false;
     });
 }
@@ -1661,7 +1661,7 @@ async function loadCatalogPoster(card, title, mediaType, tmdbId, index) {
         if (error.name === 'AbortError') {
             console.log('📴 Загрузка постера отменена');
         } else {
-            console.error('Ошибка загрузки постера:', error);
+            console.log('Ошибка загрузки постера:', error);
         }
         if (catalogState.currentCatalog) {
             posterDiv.innerHTML = '<div class="no-poster">Ошибка загрузки</div>';
@@ -1928,7 +1928,7 @@ async function showCatalogDetail(item, index, posterUrl) {
                                 }
                             }, 200);
                         } catch (error) {
-                            console.error('Ошибка загрузки рекомендованного фильма:', error);
+                            console.log('Ошибка загрузки рекомендованного фильма:', error);
                         } finally {
                             loadingDiv.remove();
                         }
@@ -2305,7 +2305,7 @@ async function openYoutubeInPlayer(youtubeUrl, videoTitle) {
             });
 
             AppState.hls.on(Hls.Events.ERROR, function (event, data) {
-                console.error('HLS ошибка:', data);
+                console.log('HLS ошибка:', data);
                 if (data.fatal) {
                     if (playbackOverlay) playbackOverlay.classList.remove('active');
                     alert('Ошибка воспроизведения трейлера');
@@ -2331,7 +2331,7 @@ async function openYoutubeInPlayer(youtubeUrl, videoTitle) {
         AppState.currentScreen = 'player';
 
     } catch (error) {
-        console.error('❌ Ошибка воспроизведения трейлера:', error);
+        console.log('❌ Ошибка воспроизведения трейлера:', error);
         if (playbackOverlay) playbackOverlay.classList.remove('active');
         alert('Ошибка воспроизведения трейлера: ' + error.message);
 
@@ -2446,7 +2446,7 @@ async function fetchAvailableCatalogs() {
         }
         return [];
     } catch (error) {
-        console.error('❌ Ошибка загрузки списка каталогов:', error);
+        console.log('❌ Ошибка загрузки списка каталогов:', error);
         return [];
     }
 }
@@ -2775,7 +2775,7 @@ window.addToWatchHistory = async function (tmdbId, title, mediaType, posterPath)
         }
         return data;
     } catch (error) {
-        console.error('❌ Ошибка добавления в историю:', error);
+        console.log('❌ Ошибка добавления в историю:', error);
     }
 };
 
