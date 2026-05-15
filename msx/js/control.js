@@ -1589,29 +1589,17 @@ function clearOkHold() {
 function isElementFullyVisible(el, container) {
     if (!el) return true;
 
-    // Если контейнер не указан, используем окно
-    if (!container) {
-        container = { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
-    } else if (container.getBoundingClientRect) {
-        container = container.getBoundingClientRect();
-    }
-
     var rect = el.getBoundingClientRect();
+    var containerRect = container ? container.getBoundingClientRect() : { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
 
     // Проверяем вертикальную видимость
-    var isVerticallyVisible = rect.top >= container.top + 20 &&
-        rect.bottom <= container.bottom - 20;
+    var isVerticallyVisible = rect.top >= containerRect.top + 20 &&
+        rect.bottom <= containerRect.bottom - 20;
 
-    // Проверяем горизонтальную видимость
-    var isHorizontallyVisible = rect.left >= container.left + 20 &&
-        rect.right <= container.right - 20;
-
-    // Для горизонтальных списков (files-list) важен только горизонтальный скролл
-    var isHorizontalContainer = container.id === 'files-list';
-
-    if (isHorizontalContainer) {
-        return isHorizontallyVisible;
-    }
+    // Для горизонтальных контейнеров проверяем горизонтальную видимость с меньшим отступом
+    var horizontalPadding = 30;
+    var isHorizontallyVisible = rect.left >= containerRect.left + horizontalPadding &&
+        rect.right <= containerRect.right - horizontalPadding;
 
     return isVerticallyVisible && isHorizontallyVisible;
 }
@@ -1619,92 +1607,59 @@ function isElementFullyVisible(el, container) {
 // Функция для плавного скролла только если элемент не виден
 function scrollToElementIfNeeded(el, container, useSmooth) {
     if (useSmooth === undefined) useSmooth = !fastNavigation;
+
     if (!el) return;
 
-    // Определяем, является ли элемент file-item
-    var isFileItem = el.classList && el.classList.contains('file-item');
-    var isHorizontalScroll = isFileItem || (container && container.id === 'files-list');
-
-    // Для file-item используем files-list как контейнер, если он не передан
-    var targetContainer = container;
-    if (isFileItem && (!targetContainer || targetContainer.id !== 'files-list')) {
-        targetContainer = document.getElementById('files-list');
-        if (!targetContainer) return;
-    }
-
-    // Получаем bounding rects
     var rect = el.getBoundingClientRect();
-    var containerRect = targetContainer ? targetContainer.getBoundingClientRect() :
-        { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
+    var containerRect = container ? container.getBoundingClientRect() : { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
 
     var needsScroll = false;
-    var scrollLeft = null;
-    var scrollTop = null;
+    var scrollOptions = {
+        behavior: useSmooth ? 'smooth' : 'auto',
+        block: 'center',
+        inline: 'center'
+    };
 
-    // ГОРИЗОНТАЛЬНАЯ ПРОВЕРКА (для file-item)
-    if (isHorizontalScroll && targetContainer && targetContainer.id === 'files-list') {
-        // Проверяем, виден ли элемент по горизонтали
-        var isLeftVisible = rect.left >= containerRect.left + 20;
-        var isRightVisible = rect.right <= containerRect.right - 20;
-
-        if (!isLeftVisible || !isRightVisible) {
-            needsScroll = true;
-            // Вычисляем позицию для скролла, чтобы элемент оказался по центру
-            var itemCenter = rect.left + rect.width / 2;
-            var containerCenter = containerRect.left + containerRect.width / 2;
-            var offset = itemCenter - containerCenter;
-
-            scrollLeft = targetContainer.scrollLeft + offset;
-            // Ограничиваем границы
-            scrollLeft = Math.max(0, Math.min(scrollLeft,
-                targetContainer.scrollWidth - targetContainer.clientWidth));
-        }
-    }
-    // ВЕРТИКАЛЬНАЯ ПРОВЕРКА (для обычных элементов)
-    else {
-        var isTopVisible = rect.top >= containerRect.top + 50;
-        var isBottomVisible = rect.bottom <= containerRect.bottom - 50;
-
-        if (!isTopVisible || !isBottomVisible) {
-            needsScroll = true;
-            scrollTop = targetContainer ? targetContainer.scrollTop + (rect.top - containerRect.top - (targetContainer.clientHeight / 2) + (rect.height / 2)) : null;
-            if (scrollTop !== null) {
-                scrollTop = Math.max(0, scrollTop);
-            }
-        }
+    // Проверяем вертикальную видимость
+    if (rect.top < containerRect.top + 50 || rect.bottom > containerRect.bottom - 50) {
+        needsScroll = true;
+        scrollOptions.block = 'center';
     }
 
-    // Выполняем скролл если нужно
+    // Проверяем горизонтальную видимость (важно для горизонтальных сеток)
+    if (rect.left < containerRect.left + 30 || rect.right > containerRect.right - 30) {
+        needsScroll = true;
+        scrollOptions.inline = 'center';
+    }
+
+    // Для горизонтальных контейнеров (actors, recommendations) используем скролл контейнера
+    var isHorizontalContainer = container && (
+        container.id === 'catalog-detail-actors' ||
+        container.id === 'catalog-detail-recommendations' ||
+        container.id === 'catalog-detail-trailers' ||
+        container.id === 'files-list'
+    );
+
     if (needsScroll) {
         try {
-            if (scrollLeft !== null && targetContainer) {
-                // Горизонтальный скролл
-                targetContainer.scrollTo({
-                    left: scrollLeft,
-                    behavior: useSmooth ? 'smooth' : 'auto'
-                });
-            } else if (scrollTop !== null && targetContainer && targetContainer !== window) {
-                // Вертикальный скролл для контейнера
-                targetContainer.scrollTo({
-                    top: scrollTop,
-                    behavior: useSmooth ? 'smooth' : 'auto'
-                });
+            if (isHorizontalContainer && container) {
+                // Для горизонтальных контейнеров используем scrollLeft
+                var elementLeft = rect.left - containerRect.left;
+                var newScrollLeft = container.scrollLeft + elementLeft - (containerRect.width / 2) + (rect.width / 2);
+
+                if (useSmooth) {
+                    container.scrollTo({
+                        left: newScrollLeft,
+                        behavior: 'smooth'
+                    });
+                } else {
+                    container.scrollLeft = newScrollLeft;
+                }
             } else {
-                // Fallback: стандартный scrollIntoView
-                el.scrollIntoView({
-                    behavior: useSmooth ? 'smooth' : 'auto',
-                    block: 'center',
-                    inline: 'center'
-                });
+                el.scrollIntoView(scrollOptions);
             }
         } catch (e) {
-            try {
-                if (scrollLeft !== null && targetContainer) {
-                    targetContainer.scrollLeft = scrollLeft;
-                } else {
-                    el.scrollIntoView(false);
-                }
-            } catch (er) { }
+            try { el.scrollIntoView(false); } catch (er) { }
         }
     }
 }
@@ -1756,8 +1711,11 @@ function setupFocusRescue() {
         var container = null;
         var screen = currentScreen();
 
-        // КРИТИЧЕСКИ ВАЖНО: для file-item используем files-list как контейнер
+        // Определяем тип элемента для правильного контейнера
         var isFileItem = el.classList && el.classList.contains('file-item');
+        var isActorCard = el.classList && el.classList.contains('catalog-actor-card');
+        var isRecommendationCard = el.classList && el.classList.contains('catalog-recommendation-card');
+        var isTrailerCard = el.classList && el.classList.contains('catalog-trailer-card-item');
 
         if (screen === 'catalog' || screen === 'torrents') {
             container = document.getElementById('main-container');
@@ -1767,7 +1725,27 @@ function setupFocusRescue() {
             if (isFileItem) {
                 // Для горизонтальных файлов используем files-list
                 container = document.getElementById('files-list');
-            } else {
+            }
+            else if (isActorCard) {
+                // Для актеров используем catalog-detail-actors-grid
+                container = document.getElementById('catalog-detail-actors');
+                // Если внутри грида, ищем родительский контейнер
+                if (container && container.parentElement) {
+                    container = container.parentElement;
+                }
+            }
+            else if (isRecommendationCard) {
+                // Для рекомендаций используем catalog-detail-recommendations
+                container = document.getElementById('catalog-detail-recommendations');
+                if (container && container.parentElement) {
+                    container = container.parentElement;
+                }
+            }
+            else if (isTrailerCard) {
+                // Для трейлеров используем catalog-detail-trailers
+                container = document.getElementById('catalog-detail-trailers');
+            }
+            else {
                 container = document.getElementById('detail-view');
             }
         }
