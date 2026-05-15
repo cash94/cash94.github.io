@@ -1490,7 +1490,7 @@ function preloadTorrents(hash, fileId) {
   console.log('🚀 Предзагрузка торрента:', preloadUrl);
 
   // Используем fetch с keepalive для надежности
-  fetch(preloadUrl, {
+  return fetch(preloadUrl, {
     method: 'GET',
     keepalive: true
   }).then(function (response) {
@@ -1499,8 +1499,15 @@ function preloadTorrents(hash, fileId) {
     } else {
       console.log('⚠️ Ошибка предзагрузки торрента:', response.status);
     }
+
+    // Ждем 3 секунды только при успешном выполнении
+    return new Promise(function (resolve) {
+      setTimeout(resolve, 3000);
+    });
   }).catch(function (error) {
     console.error('❌ Ошибка при предзагрузке торрента:', error);
+    // При ошибке ничего не ждем, просто возвращаем resolved Promise
+    return Promise.resolve();
   });
 }
 
