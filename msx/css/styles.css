@@ -2902,7 +2902,7 @@ html {
 
 /* Плавная прокрутка для всех контейнеров */
 #main-container,
-#torrents-grid,
+/* #torrents-grid, */ 
 .search-results-list,
 #detail-view,
 .episodes-list,
@@ -2972,10 +2972,10 @@ html {
 }
 
 /* Специально для сетки торрентов - плавное появление карточек */
-#torrents-grid {
-  scroll-behavior: smooth;
-  scroll-padding: 30px;
-}
+/* #torrents-grid {
+ /*  scroll-behavior: smooth;
+ /*  scroll-padding: 30px;
+/* }
 
 /* Анимация появления новых карточек - только для ПК, на ТВ может тормозить */
 @media (prefers-reduced-motion: no-preference) {
