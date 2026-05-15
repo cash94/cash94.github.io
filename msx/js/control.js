@@ -1614,7 +1614,7 @@ function scrollToElementIfNeeded(el, container, useSmooth) {
 
     var needsScroll = false;
     var scrollOptions = {
-        behavior: useSmooth ? 'smooth' : 'instant',  // ← instant или auto
+        behavior: 'auto', //useSmooth ? 'smooth' : 'instant',  // ← instant или auto
         block: 'center',
         inline: 'center'
     };
