@@ -635,7 +635,7 @@ async function loadCatalog(catalogKey) {
     catalogState.posterLoadQueue = [];
     AppState.mediaType = config.mediaType;
 
-    CatalogLoading('Загрузка ' + config.name + '...');
+    showCatalogLoading('Загрузка ' + config.name + '...');
 
     if (catalogCache.has(catalogKey)) {
         var cached = catalogCache.get(catalogKey);
@@ -1672,9 +1672,7 @@ async function loadCatalogPoster(card, title, mediaType, tmdbId, index) {
 // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР ====================
 
 async function showCatalogDetail(item, index, posterUrl) {
-    
     window.initHorizontalScroll();
-    
     if (posterUrl === undefined) posterUrl = null;
 
     catalogState.lastSelectedIndex = index;
