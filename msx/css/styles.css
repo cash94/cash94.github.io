@@ -776,8 +776,28 @@ body {
   margin-right: 20px;
 }
 
-.files-list::-webkit-scrollbar {
+/* Скрываем скроллбары для всех контейнеров */
+.files-list::-webkit-scrollbar,
+.catalog-detail-actors-grid::-webkit-scrollbar,
+.catalog-detail-recommendations-grid::-webkit-scrollbar,
+#main-container::-webkit-scrollbar {
   display: none; /* Скрываем скроллбар в Chrome/Safari */
+}
+
+/* Для Firefox */
+.files-list,
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid,
+#main-container {
+  scrollbar-width: none; /* Скрываем скроллбар в Firefox */
+}
+
+/* Для IE и Edge (старые версии) */
+.files-list,
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid,
+#main-container {
+  -ms-overflow-style: none; /* Скрываем скроллбар в IE/Edge */
 }
 
 .file-item {
