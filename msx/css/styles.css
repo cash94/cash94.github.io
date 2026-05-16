@@ -780,6 +780,7 @@ body {
 .files-list::-webkit-scrollbar,
 .catalog-detail-actors-grid::-webkit-scrollbar,
 .catalog-detail-recommendations-grid::-webkit-scrollbar,
+.detail-view::-webkit-scrollbar,
 #main-container::-webkit-scrollbar {
   display: none; /* Скрываем скроллбар в Chrome/Safari */
 }
@@ -788,6 +789,7 @@ body {
 .files-list,
 .catalog-detail-actors-grid,
 .catalog-detail-recommendations-grid,
+.detail-view,
 #main-container {
   scrollbar-width: none; /* Скрываем скроллбар в Firefox */
 }
@@ -796,6 +798,7 @@ body {
 .files-list,
 .catalog-detail-actors-grid,
 .catalog-detail-recommendations-grid,
+.detail-view,
 #main-container {
   -ms-overflow-style: none; /* Скрываем скроллбар в IE/Edge */
 }
