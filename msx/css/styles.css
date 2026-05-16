@@ -3106,3 +3106,19 @@ html {
   margin: 0 6px;
   color: #4a9eff;
 }
+
+/* Убираем скроллбары у всех элементов, которые могут иметь скролл */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+div::-webkit-scrollbar,
+section::-webkit-scrollbar,
+main::-webkit-scrollbar,
+aside::-webkit-scrollbar,
+article::-webkit-scrollbar {
+  display: none;
+}
+
+html, body, div, section, main, aside, article {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
