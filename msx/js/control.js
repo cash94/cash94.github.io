@@ -3714,39 +3714,24 @@ if (document.readyState === 'loading') {
     initControl();
 }
 
-// ========== ГОРИЗОНТАЛЬНЫЙ СКРОЛЛ КОЛЕСИКОМ ДЛЯ .FILES-LIST ==========
+// ========== ГОРИЗОНТАЛЬНЫЙ СКРОЛЛ ==========
 (function() {
     function initHorizontalScroll() {
-        var containers = document.querySelectorAll('.files-list');
+        var containers = document.querySelectorAll('.files-list, .catalog-detail-actors-grid, .catalog-detail-recommendations-grid');
+        
         for (var i = 0; i < containers.length; i++) {
             (function(container) {
+                if (container._wheelHandlerAdded) return;
+                container._wheelHandlerAdded = true;
+                
                 function wheelHandler(e) {
                     e = e || window.event;
-                    var deltaY = 0;
-                    if (e.deltaY !== undefined) {
-                        deltaY = e.deltaY;
-                    } else if (e.wheelDeltaY !== undefined) {
-                        deltaY = e.wheelDeltaY;
-                    } else if (e.wheelDelta !== undefined) {
-                        deltaY = -e.wheelDelta / 40;
-                    } else if (e.detail !== undefined) {
-                        deltaY = e.detail;
-                    }
-                    
-                    var deltaX = 0;
-                    if (e.deltaX !== undefined) {
-                        deltaX = e.deltaX;
-                    } else if (e.wheelDeltaX !== undefined) {
-                        deltaX = e.wheelDeltaX;
-                    }
+                    var deltaY = e.deltaY || e.wheelDeltaY || (e.wheelDelta ? -e.wheelDelta / 40 : 0) || e.detail || 0;
+                    var deltaX = e.deltaX || e.wheelDeltaX || 0;
                     
                     if (Math.abs(deltaY) > Math.abs(deltaX)) {
-                        if (e.preventDefault) {
-                            e.preventDefault();
-                        }
-                        if (e.returnValue) {
-                            e.returnValue = false;
-                        }
+                        if (e.preventDefault) e.preventDefault();
+                        if (e.returnValue) e.returnValue = false;
                         container.scrollLeft += deltaY;
                     }
                 }
@@ -3764,22 +3749,15 @@ if (document.readyState === 'loading') {
         }
     }
     
+    // Запускаем при загрузке
     if (document.readyState === 'loading') {
-        if (document.addEventListener) {
-            document.addEventListener('DOMContentLoaded', initHorizontalScroll);
-        } else if (window.attachEvent) {
-            window.attachEvent('onload', initHorizontalScroll);
-        }
+        document.addEventListener ? document.addEventListener('DOMContentLoaded', initHorizontalScroll) : window.attachEvent('onload', initHorizontalScroll);
     } else {
         initHorizontalScroll();
     }
     
-    if (window.showDetailView) {
-        var originalShowDetail = window.showDetailView;
-        window.showDetailView = function() {
-            var result = originalShowDetail.apply(this, arguments);
-            setTimeout(initHorizontalScroll, 100);
-            return result;
-        };
-    }
+    // Экспортируем функцию для ручного вызова
+    window.initHorizontalScroll = initHorizontalScroll;
 })();
+
+
