@@ -23,6 +23,9 @@ var okHoldFocused = null;
 var fastNavigation = false;
 var fastNavigationTimer = null;
 
+var lastBackPressTime = 0;
+var lastBackPressHandled = false;
+
 function setFastNavigation() {
     fastNavigation = true;
     if (fastNavigationTimer) clearTimeout(fastNavigationTimer);
@@ -1541,6 +1544,26 @@ function setupKeyboardHandlers() {
             }
         } else if (isKeyPressed('BACK', key) || isKeyPressed('EXIT', key)) {
             e.preventDefault();
+            e.stopPropagation();
+    
+            // Защита от двойного срабатывания
+            var now = Date.now();
+            if (now - lastBackPressTime < 300) {
+                // Слишком быстро - игнорируем
+                console.log('Back pressed ignored (double)');
+                return;
+            }
+            lastBackPressTime = now;
+    
+            // Предотвращаем повторную обработку
+            if (lastBackPressHandled) {
+                return;
+            }
+            lastBackPressHandled = true;
+            setTimeout(function() {
+                lastBackPressHandled = false;
+            }, 200);
+            
             if (AppState.currentScreen === 'detail') {
                 var backBtn = document.getElementById('back-from-detail');
                 if (backBtn) backBtn.click();
