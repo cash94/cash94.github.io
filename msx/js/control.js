@@ -3641,15 +3641,7 @@ function setupFocusRescue() {
         okHoldFocused = null;
     }, true);
 
-    setInterval(function () {
-        var s = currentScreen();
-        if (s === 'player') return;
-        if (s === 'torrents') ensureTorrentFocus(false);
-        else if (s === 'catalog') ensureCatalogFocus(false);
-        else if (s === 'search') ensureSearchFocus(false, true);
-        else if (s === 'detail') ensureDetailFocus(false);
-        else if (s === 'config') ensureConfigFocus(false);
-    }, 250);
+    
 
     var prevShowDetail = window.showDetail;
     if (typeof prevShowDetail === 'function') {
