@@ -2821,20 +2821,7 @@ function initCatalog() {
     };
 }
 
-document.addEventListener('keydown', function (e) {
-    if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
-        var isBackKey = [8, 27, 461, 10009].indexOf(e.keyCode) !== -1 ||
-            (typeof isKeyPressed === 'function' &&
-                (isKeyPressed('BACK', e.keyCode) || isKeyPressed('EXIT', e.keyCode)));
 
-        if (isBackKey) {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('⬅️ Возврат к списку каталогов');
-            backToCatalogList();
-        }
-    }
-}, true);
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initCatalog);
