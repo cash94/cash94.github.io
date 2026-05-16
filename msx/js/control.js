@@ -3651,7 +3651,36 @@ function setupFocusRescue() {
     setTimeout(function () { ensureTorrentFocus(true); }, 120);
 }
 
+window.addEventListener('popstate', function (e) {
+    // Блокировка если нужно
+    if (window.swipeBlocked) return;
 
+    // Создаем событие клавиши BACK для существующего обработчика
+    var backEvent = new KeyboardEvent('keydown', {
+        keyCode: 27,  // ESC/BACK
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true
+    });
+    document.dispatchEvent(backEvent);
+
+    // КРИТИЧЕСКИ ВАЖНО: добавляем новое состояние после обработки свайпа
+    // чтобы следующий свайп сработал так же, а не закрыл приложение
+    setTimeout(function () {
+        window.history.pushState({ page: 'main' }, '');
+    }, 150);
+});
+
+// Добавляем начальное состояние в историю
+window.history.pushState({ page: 'main' }, '');
+
+// Функция для блокировки свайпов на время
+window.blockSwipe = function (ms) {
+    window.swipeBlocked = true;
+    setTimeout(function () {
+        window.swipeBlocked = false;
+    }, ms || 500);
+};
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
