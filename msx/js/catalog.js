@@ -2611,6 +2611,8 @@ function backToCatalogList() {
     console.log('Возврат к списку каталогов');
 
     abortCatalogRequests();
+    // ОЧИЩАЕМ КЭШ КАТАЛОГОВ ПРИ ВЫХОДЕ
+    catalogCache.clear();
 
     catalogState.currentCatalog = null;
     catalogState.items = [];
