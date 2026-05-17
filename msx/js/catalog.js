@@ -45,6 +45,29 @@ var CATALOG_CONFIG = {
     }
 };
 
+// Плавная загрузка постеров с интервалом
+var posterLoadInterval = null;
+
+function startSmoothPosterLoading() {
+    if (posterLoadInterval) {
+        clearInterval(posterLoadInterval);
+    }
+    
+    posterLoadInterval = setInterval(function() {
+        // Загружаем следующий постер, если есть очередь
+        if (catalogState.posterLoadQueue.length > 0 && !catalogState.isPosterLoading) {
+            loadNextPosterBatch();
+        }
+        
+        // Если все постеры загружены, останавливаем интервал
+        if (catalogState.posterLoadQueue.length === 0 && 
+            catalogState.loadedPostersCount >= catalogState.items.length) {
+            clearInterval(posterLoadInterval);
+            posterLoadInterval = null;
+        }
+    }, 1000); // Загружаем 1 постер каждые 1.5 секунды
+}
+
 // ==================== TMDB КЭШ ====================
 
 // Кэш для TMDB запросов
@@ -992,6 +1015,7 @@ function renderCatalogGrid() {
     initPosterLazyLoading();
     initLoadMoreObserver();
     loadInitialPosters();
+    startSmoothPosterLoading();
 
     setTimeout(function () {
         if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
