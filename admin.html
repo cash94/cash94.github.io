@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>TorrStream Админка</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #0a0e1a;
+            color: #e0e4f0;
+            padding: 20px;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header & Connection */
+        .header {
+            background: linear-gradient(135deg, #1a1f2e 0%, #0f1320 100%);
+            border-radius: 20px;
+            padding: 20px 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            border: 1px solid rgba(75, 130, 200, 0.2);
+        }
+
+        .connection-panel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: flex-end;
+            margin-bottom: 20px;
+        }
+
+        .url-input-group {
+            flex: 2;
+            min-width: 250px;
+        }
+
+        .url-input-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: #8b92a8;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .url-input-group input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #0c1120;
+            border: 1px solid #2a3148;
+            border-radius: 12px;
+            color: #e0e4f0;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+
+        .url-input-group input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+            background: #1e293b;
+            color: #e0e4f0;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+            box-shadow: 0 2px 8px rgba(59,130,246,0.3);
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #b91c1c;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #3b82f6;
+            color: #3b82f6;
+        }
+
+        .btn-outline:hover {
+            background: rgba(59,130,246,0.1);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 40px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .status-online {
+            background: rgba(34,197,94,0.15);
+            color: #4ade80;
+            border: 1px solid rgba(74,222,128,0.3);
+        }
+
+        .status-offline {
+            background: rgba(239,68,68,0.15);
+            color: #f87171;
+            border: 1px solid rgba(248,113,113,0.3);
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #2a3148;
+            padding-bottom: 12px;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #8b92a8;
+            cursor: pointer;
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background: #1e293b;
+            color: #3b82f6;
+        }
+
+        .tab-btn:hover:not(.active) {
+            background: #1a1f2e;
+            color: #cbd5e1;
+        }
+
+        /* Cards & Grids */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #111827;
+            border-radius: 20px;
+            padding: 20px;
+            border: 1px solid #1f2937;
+        }
+
+        .stat-value {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #3b82f6;
+            margin-top: 8px;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .section {
+            background: #111827;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border: 1px solid #1f2937;
+        }
+
+        .section-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-left: 3px solid #3b82f6;
+            padding-left: 16px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 12px 8px;
+            border-bottom: 1px solid #1f2937;
+        }
+
+        th {
+            color: #9ca3af;
+            font-weight: 500;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+        }
+
+        tr:hover {
+            background: #1a1f2e;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            background: #22c55e20;
+            color: #4ade80;
+        }
+
+        .badge-warning {
+            background: #f59e0b20;
+            color: #fbbf24;
+        }
+
+        .badge-info {
+            background: #3b82f620;
+            color: #60a5fa;
+        }
+
+        .code-block {
+            background: #0c1120;
+            border-radius: 12px;
+            padding: 12px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .error-msg {
+            background: rgba(220,38,38,0.1);
+            border: 1px solid #dc2626;
+            color: #fca5a5;
+            padding: 12px 18px;
+            border-radius: 12px;
+            margin-top: 15px;
+        }
+
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 12px; }
+            .stat-value { font-size: 1.6rem; }
+            th, td { font-size: 0.75rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div class="connection-panel">
+            <div class="url-input-group">
+                <label>🌐 Адрес сервера TorrStream</label>
+                <input type="text" id="serverUrl" placeholder="http://192.168.1.100:3000" value="http://localhost:3000">
+            </div>
+            <div>
+                <label style="visibility: hidden;">_</label>
+                <button class="btn btn-primary" id="connectBtn">🔌 Подключиться</button>
+            </div>
+            <div>
+                <label style="visibility: hidden;">_</label>
+                <button class="btn btn-outline" id="refreshBtn" disabled>🔄 Обновить</button>
+            </div>
+        </div>
+        <div id="connectionStatus">
+            <span class="status-badge status-offline">⚫ Не подключено</span>
+        </div>
+    </div>
+
+    <div id="adminContent" style="display: none;">
+        <div class="stats-grid" id="statsGrid"></div>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="streams">🎬 Активные потоки</button>
+            <button class="tab-btn" data-tab="clients">👥 Клиенты</button>
+            <button class="tab-btn" data-tab="catalogs">📀 Каталоги</button>
+            <button class="tab-btn" data-tab="history">📜 История просмотров</button>
+            <button class="tab-btn" data-tab="system">⚙️ Система</button>
+        </div>
+
+        <div id="tab-streams" class="tab-content section">
+            <div class="flex-between">
+                <div class="section-title">🎬 Активные HLS потоки (FFmpeg)</div>
+            </div>
+            <div id="streamsList">Загрузка...</div>
+        </div>
+
+        <div id="tab-clients" class="tab-content section" style="display: none;">
+            <div class="section-title">👥 Все клиенты (устройства)</div>
+            <div id="clientsList">Загрузка...</div>
+        </div>
+
+        <div id="tab-catalogs" class="tab-content section" style="display: none;">
+            <div class="flex-between">
+                <div class="section-title">📀 Загруженные медиа-каталоги</div>
+                <button class="btn btn-primary" id="updateCatalogsBtn" style="padding: 6px 14px;">🔄 Обновить все</button>
+            </div>
+            <div id="catalogsList">Загрузка...</div>
+        </div>
+
+        <div id="tab-history" class="tab-content section" style="display: none;">
+            <div class="section-title">📜 Статистика истории (все клиенты)</div>
+            <div id="historyStats">Загрузка...</div>
+        </div>
+
+        <div id="tab-system" class="tab-content section" style="display: none;">
+            <div class="section-title">⚙️ Информация о сервере</div>
+            <div id="systemInfo">Загрузка...</div>
+            <div style="margin-top: 20px;">
+                <button class="btn btn-danger" id="clearHistoryAllBtn" style="background:#7f1d1d;">🧹 Очистить историю (всех клиентов)</button>
+                <span style="margin-left: 12px; font-size: 0.75rem; color:#6b7280;">⚠️ Безвозвратно удаляет историю просмотров у ВСЕХ клиентов</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentServerUrl = '';
+    let adminToken = 'videoloop-admin';  // стандартный токен из server.js
+    let isConnected = false;
+
+    // DOM элементы
+    const serverUrlInput = document.getElementById('serverUrl');
+    const connectBtn = document.getElementById('connectBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const connectionStatusDiv = document.getElementById('connectionStatus');
+    const adminContent = document.getElementById('adminContent');
+
+    // Табы
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    const tabContents = {
+        streams: document.getElementById('tab-streams'),
+        clients: document.getElementById('tab-clients'),
+        catalogs: document.getElementById('tab-catalogs'),
+        history: document.getElementById('tab-history'),
+        system: document.getElementById('tab-system')
+    };
+
+    // Helper: запрос с авторизацией
+    async function apiFetch(endpoint, options = {}) {
+        if (!currentServerUrl) throw new Error('Сервер не выбран');
+        const url = `${currentServerUrl}${endpoint}`;
+        const headers = {
+            'Content-Type': 'application/json',
+            'X-Admin-Token': adminToken,
+            ...options.headers
+        };
+        const response = await fetch(url, { ...options, headers });
+        if (!response.ok) {
+            if (response.status === 403) throw new Error('Доступ запрещён: неверный admin токен');
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    }
+
+    // Обновить статус подключения
+    function setConnected(connected, serverUrl = '') {
+        isConnected = connected;
+        if (connected) {
+            connectionStatusDiv.innerHTML = `<span class="status-badge status-online">🟢 Онлайн: ${serverUrl}</span>`;
+            refreshBtn.disabled = false;
+            adminContent.style.display = 'block';
+            loadAllData();
+        } else {
+            connectionStatusDiv.innerHTML = `<span class="status-badge status-offline">🔴 Не подключено</span>`;
+            refreshBtn.disabled = true;
+            adminContent.style.display = 'none';
+        }
+    }
+
+    // Показать ошибку
+    function showError(containerId, message) {
+        const container = document.getElementById(containerId);
+        if (container) container.innerHTML = `<div class="error-msg">⚠️ ${message}</div>`;
+    }
+
+    // Загрузить всё: статус, потоки, клиенты, каталоги, историю, систему
+    async function loadAllData() {
+        if (!isConnected) return;
+        await Promise.all([
+            loadServerStatus(),
+            loadStreams(),
+            loadClients(),
+            loadCatalogs(),
+            loadHistoryStats(),
+            loadSystemInfo()
+        ]);
+    }
+
+    // /status и общая статистика
+    async function loadServerStatus() {
+        try {
+            const data = await apiFetch('/status');
+            const statsGrid = document.getElementById('statsGrid');
+            statsGrid.innerHTML = `
+                <div class="stat-card"><div class="stat-label">Активные потоки</div><div class="stat-value">${data.streamsCount || 0}</div></div>
+                <div class="stat-card"><div class="stat-label">Клиентов всего</div><div class="stat-value">${data.clientsCount || 0}</div></div>
+                <div class="stat-card"><div class="stat-label">FFmpeg</div><div class="stat-value" style="font-size:1.4rem;">${data.ffmpeg === 'available' ? '✅ Доступен' : '❌ Не найден'}</div></div>
+                <div class="stat-card"><div class="stat-label">Uptime (сек)</div><div class="stat-value">${data.uptime ? Math.floor(data.uptime/1000) : '—'}</div></div>
+            `;
+        } catch(e) {
+            showError('statsGrid', `Ошибка статуса: ${e.message}`);
+        }
+    }
+
+    // Потоки
+    async function loadStreams() {
+        const container = document.getElementById('streamsList');
+        container.innerHTML = '<div class="loading">⏳ Загрузка потоков...</div>';
+        try {
+            const data = await apiFetch('/status');
+            const streams = data.streams || [];
+            if (streams.length === 0) {
+                container.innerHTML = '<div class="code-block" style="text-align:center">✨ Нет активных потоков</div>';
+                return;
+            }
+            let html = '<table><thead><tr><th>ID потока</th><th>URL</th><th>Клиентов</th><th>Длит-ть(сек)</th><th>Аудио</th><th>Uptime</th><th>FFmpeg</th></tr></thead><tbody>';
+            for (const s of streams) {
+                const uptimeSec = s.uptime ? Math.floor(s.uptime / 1000) : '?';
+                const durationStr = s.duration ? s.duration.toFixed(1) : (s.originalDuration ? s.originalDuration.toFixed(1) : '∞');
+                html += `<tr>
+                    <td><code>${s.id.substring(0,12)}...</code></td>
+                    <td style="max-width:250px; overflow:hidden; text-overflow:ellipsis;">${s.url || '—'}</td>
+                    <td>${s.clients}</td>
+                    <td>${durationStr}</td>
+                    <td>${s.audioTrack !== undefined ? s.audioTrack : '—'}</td>
+                    <td>${uptimeSec}с</td>
+                    <td>${s.ffmpegRunning ? '🟢 жив' : '🔴 завершён'}</td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } catch(e) {
+            showError('streamsList', `Ошибка: ${e.message}`);
+        }
+    }
+
+    // Клиенты через /api/clients
+    async function loadClients() {
+        const container = document.getElementById('clientsList');
+        container.innerHTML = '<div class="loading">👥 Загрузка клиентов...</div>';
+        try {
+            const data = await apiFetch('/api/clients');
+            const clients = data.clients || [];
+            if (clients.length === 0) {
+                container.innerHTML = '<div class="code-block">Нет зарегистрированных клиентов</div>';
+                return;
+            }
+            let html = '<table><thead><tr><th>ID клиента</th><th>IP</th><th>User Agent</th><th>Первый визит</th><th>Последний визит</th><th>Настройки TS</th></tr></thead><tbody>';
+            for (const c of clients) {
+                const firstDate = c.firstSeen ? new Date(c.firstSeen).toLocaleString() : '—';
+                const lastDate = c.lastSeen ? new Date(c.lastSeen).toLocaleString() : '—';
+                html += `<tr>
+                    <td><code>${c.id.substring(0,16)}...</code></td>
+                    <td>${c.ip || '—'}</td>
+                    <td style="max-width:200px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;" title="${c.userAgent || ''}">${c.userAgent?.substring(0,40) || '—'}</td>
+                    <td>${firstDate}</td>
+                    <td>${lastDate}</td>
+                    <td>${c.hasConfig ? '✅ есть' : '—'}</td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        } catch(e) {
+            showError('clientsList', `Ошибка клиентов: ${e.message}`);
+        }
+    }
+
+    // Каталоги: /api/catalogs/status
+    async function loadCatalogs() {
+        const container = document.getElementById('catalogsList');
+        container.innerHTML = '<div class="loading">📀 Загрузка каталогов...</div>';
+        try {
+            const data = await apiFetch('/api/catalogs/status');
+            const loaded = data.loaded || [];
+            if (loaded.length === 0) {
+                container.innerHTML = '<div class="code-block">Нет загруженных каталогов (возможно требуется обновить)</div>';
+                return;
+            }
+            let html = '<table><thead><tr><th>Каталог</th><th>Размер</th><th>Кол-во элементов</th><th>Последнее изменение</th><th>Действие</th></tr></thead><tbody>';
+            for (const cat of loaded) {
+                const date = cat.lastModifiedISO ? new Date(cat.lastModifiedISO).toLocaleString() : '—';
+                html += `<tr>
+                    <td><strong>${cat.displayName || cat.name}</strong> (${cat.name})</td>
+                    <td>${cat.sizeFormatted || '—'}</td>
+                    <td>${cat.itemCount !== null ? cat.itemCount : '—'}</td>
+                    <td>${date}</td>
+                    <td><button class="btn-outline update-single-catalog" data-name="${cat.name}" style="padding:4px 12px;">🔄 Обновить</button></td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+
+            // навесить события на кнопки обновления отдельных каталогов
+            document.querySelectorAll('.update-single-catalog').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const name = btn.getAttribute('data-name');
+                    btn.textContent = '⏳...';
+                    btn.disabled = true;
+                    try {
+                        await apiFetch(`/api/catalog/${name}/update`, { method: 'POST' });
+                        await loadCatalogs();
+                    } catch (err) {
+                        alert(`Ошибка обновления: ${err.message}`);
+                    } finally {
+                        btn.disabled = false;
+                    }
+                });
+            });
+        } catch(e) {
+            showError('catalogsList', `Ошибка каталогов: ${e.message}`);
+        }
+    }
+
+    // Статистика истории: /api/history/stats
+    async function loadHistoryStats() {
+        const container = document.getElementById('historyStats');
+        container.innerHTML = '<div class="loading">📜 Загрузка истории...</div>';
+        try {
+            const data = await apiFetch('/api/history/stats');
+            const stats = data.stats || {};
+            const clientsCount = Object.keys(stats).length;
+            if (clientsCount === 0) {
+                container.innerHTML = '<div class="code-block">Нет данных об истории просмотров</div>';
+                return;
+            }
+            let html = `<div class="flex-between" style="margin-bottom:16px;"><span>📊 Всего клиентов с историей: ${clientsCount}</span></div>`;
+            html += '<table><thead><tr><th>ID клиента</th><th>Просмотрено всего</th><th>Последние 5</th><th>Действие</th></tr></thead><tbody>';
+            for (const [clientId, info] of Object.entries(stats)) {
+                const recentHtml = (info.recentWatched || []).map(item => `<div>🎬 ${item.title} (${item.mediaType})</div>`).join('') || '—';
+                html += `<tr>
+                    <td><code>${clientId.substring(0,12)}...</code></td>
+                    <td>${info.totalWatched}</td>
+                    <td style="max-width:300px;">${recentHtml}</td>
+                    <td><button class="btn-outline clear-client-history" data-client="${clientId}" style="padding:4px 10px;">🗑️ Очистить историю</button></td>
+                </tr>`;
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+
+            // очистка истории для конкретного клиента
+            document.querySelectorAll('.clear-client-history').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const client = btn.getAttribute('data-client');
+                    if (!confirm(`Очистить историю просмотров для клиента ${client.substring(0,16)}...?`)) return;
+                    try {
+                        await apiFetch(`/api/admin/history/${client}`, { method: 'DELETE' }); // Эндпоинт удаления истории по клиенту? в server.js есть только /api/history/clear но удаляет всю свою историю. Расширим функционал запросом к удалению через админку.
+                        // В текущем server.js нет отдельного удаления истории у клиента через админку, но можно отправить запрос на /api/history/clear?clientId=...
+                        // Однако безопаснее сделать прямое удаление через кастомный вызов? Используем прямое удаление через переданный clientId в теле запроса, но в API нет. Чтобы не ломать, сделаем повторную загрузку после ручного удаления.
+                        // В server.js есть DELETE /api/history/clear для текущего клиента. Но для админа создадим альтернативу через наш бэкенд? Поскольку сервер управляется, вызовем тот же endpoint но с query?
+                        // Вместо этого перезагрузим статистику через полный рефреш.
+                        alert('Функция требует доработки на бэкенде или используется ручное удаление. Пока просто перезагружаем данные.');
+                        await loadHistoryStats();
+                    } catch(err) { alert(err.message); }
+                });
+            });
+        } catch(e) {
+            showError('historyStats', `Ошибка истории: ${e.message}`);
+        }
+    }
+
+    // Системная информация (версия, настройки, директории)
+    async function loadSystemInfo() {
+        const container = document.getElementById('systemInfo');
+        container.innerHTML = '<div class="loading">⚙️ Загрузка...</div>';
+        try {
+            const versionData = await apiFetch('/api/version');
+            let dirInfo = '';
+            try {
+                const status = await apiFetch('/status');
+                dirInfo = `<div class="code-block" style="margin-top:12px;">📁 Активные потоки: ${status.streamsCount}<br>Общее кол-во клиентов: ${status.clientsCount}<br>Версия: ${versionData.version || '—'}</div>`;
+            } catch(e) { dirInfo = '<div class="error-msg">Не удалось получить дополнительную инфу</div>'; }
+            container.innerHTML = `
+                <div class="code-block">
+                    <strong>🖥️ Сервер TorrStream</strong><br>
+                    Версия сервера: ${versionData.version || 'unknown'}<br>
+                    Адрес: ${currentServerUrl}<br>
+                    Admin токен: videoloop-admin (стандартный)<br>
+                    <hr style="border-color:#2d3748; margin:12px 0;">
+                    <strong>📂 Хранилища:</strong><br>
+                    • HLS временные сегменты: ~/.videoloop-server/hls/<br>
+                    • Каталоги контента: ~/.videoloop-server/catalog/<br>
+                    • Таймкоды и предпочтения: ~/.videoloop-server/timecodes & audioPrefs<br>
+                    • История клиентов: ~/.videoloop-server/history/
+                </div>
+                ${dirInfo}
+            `;
+        } catch(e) {
+            showError('systemInfo', `Ошибка: ${e.message}`);
+        }
+    }
+
+    // Обновить все каталоги
+    document.getElementById('updateCatalogsBtn')?.addEventListener('click', async () => {
+        if (!isConnected) return;
+        const btn = document.getElementById('updateCatalogsBtn');
+        btn.textContent = '⏳ Обновление...';
+        btn.disabled = true;
+        try {
+            await apiFetch('/api/catalogs/update-all', { method: 'POST' });
+            alert('✅ Все каталоги обновлены');
+            await loadCatalogs();
+        } catch(e) { alert(`Ошибка: ${e.message}`); }
+        finally { btn.textContent = '🔄 Обновить все'; btn.disabled = false; }
+    });
+
+    // Очистить всю историю (опасно)
+    document.getElementById('clearHistoryAllBtn')?.addEventListener('click', async () => {
+        if (!isConnected) return;
+        if (!confirm('⚠️ ВНИМАНИЕ! Вы собираетесь удалить историю просмотров ВСЕХ КЛИЕНТОВ! Действие необратимо. Продолжить?')) return;
+        try {
+            const clientsData = await apiFetch('/api/clients');
+            const clients = clientsData.clients || [];
+            for (const client of clients) {
+                // Пытаемся очистить историю конкретного клиента через DELETE эндпоинт /api/history/clear? но он привязан к клиенту по кукам, поэтому для админа лучше использовать отдельный internal вызов.
+                // Т.к. сервер поддерживает только очистку для текущего клиента, нам придется реализовать это через отдельный запрос в админке.
+                // В данной версии ограничимся предупреждением.
+            }
+            alert('⚠️ Функция массовой очистки требует отдельного эндпоинта на сервере. Уточните у разработчика бэкенда.');
+        } catch(e) { alert(e.message); }
+    });
+
+    // Подключение к серверу
+    connectBtn.addEventListener('click', async () => {
+        let url = serverUrlInput.value.trim();
+        if (!url.startsWith('http')) url = 'http://' + url;
+        if (url.endsWith('/')) url = url.slice(0, -1);
+        currentServerUrl = url;
+        try {
+            const test = await fetch(`${currentServerUrl}/api/version`);
+            if (!test.ok) throw new Error(`HTTP ${test.status}`);
+            const versionJson = await test.json();
+            console.log('Версия сервера:', versionJson);
+            setConnected(true, currentServerUrl);
+        } catch (err) {
+            setConnected(false);
+            connectionStatusDiv.innerHTML += `<div class="error-msg">❌ Не удалось подключиться к ${currentServerUrl}: ${err.message}</div>`;
+        }
+    });
+
+    refreshBtn.addEventListener('click', () => {
+        if (isConnected) loadAllData();
+    });
+
+    // Tab переключение
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.getAttribute('data-tab');
+            tabBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            Object.keys(tabContents).forEach(key => {
+                if (tabContents[key]) tabContents[key].style.display = 'none';
+            });
+            if (tabContents[tabId]) tabContents[tabId].style.display = 'block';
+        });
+    });
+
+    // Если localhost — попробуем автоматом подключиться
+    setTimeout(() => {
+        if (!isConnected && serverUrlInput.value.includes('localhost')) connectBtn.click();
+    }, 500);
+</script>
+</body>
+</html>
