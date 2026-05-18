@@ -922,13 +922,15 @@ async function seekStream(absoluteSeekTime, source) {
         if (retryCount === undefined) retryCount = 0;
         if (maxRetries === undefined) maxRetries = 2;
         try {
+          var savedClientId = localStorage.getItem('clientId');
           var seekResponse = await fetch(SERVER_URL + '/hls/stream/seek', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               streamId: AppState.currentStreamId,
               seekTime: targetTime,
-              multiChannel: AppState.multiChannelEnabled
+              multiChannel: AppState.multiChannelEnabled,
+              clientId: savedClientId
             })
           });
 
@@ -1654,7 +1656,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     var multiChannelParam = (AppState.multiChannelEnabled === true) ? '&multiChannel=true' : '';
 
     // Используем AbortController для fetch запроса
-    var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam + multiChannelParam, {
+    var savedClientId = localStorage.getItem('clientId');
+    var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId), {
       signal: signal
     });
 
@@ -2561,7 +2564,8 @@ async function updateCurrentFileProgress(hash, fileId, episodeIndex) {
 // НОВАЯ ФУНКЦИЯ: Загрузка информации о файле
 async function loadFileInfo(hash, fileId) {
   try {
-    var response = await fetch(SERVER_URL + '/api/file/info?hash=' + hash + '&fileId=' + fileId);
+    var savedClientId = localStorage.getItem('clientId');
+    var response = await fetch(SERVER_URL + '/api/file/info?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
     if (response.ok) {
       var data = await response.json();
       return data;
@@ -2743,10 +2747,11 @@ function setupAudioButton() {
 // НОВАЯ ФУНКЦИЯ: Сохранение предпочтения аудиодорожки
 async function saveAudioPreference(hash, fileId, audioTrack) {
   try {
+    var savedClientId = localStorage.getItem('clientId');
     var response = await fetch(SERVER_URL + '/api/audio/pref/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hash: hash, fileId: fileId, audioTrack: audioTrack })
+      body: JSON.stringify({ hash: hash, fileId: fileId, audioTrack: audioTrack, clientId: savedClientId})
     });
 
     if (response.ok) {
@@ -2760,7 +2765,8 @@ async function saveAudioPreference(hash, fileId, audioTrack) {
 // НОВАЯ ФУНКЦИЯ: Загрузка предпочтения аудиодорожки
 async function loadAudioPreference(hash, fileId) {
   try {
-    var response = await fetch(SERVER_URL + '/api/audio/pref/get?hash=' + hash + '&fileId=' + fileId);
+    var savedClientId = localStorage.getItem('clientId');
+    var response = await fetch(SERVER_URL + '/api/audio/pref/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
     if (response.ok) {
       var data = await response.json();
       if (data.success && data.audioTrack !== null) {
