@@ -2669,28 +2669,28 @@ function hideSearchResults() {
     }
 
     // Восстанавливаем детальный просмотр
-    if (AppState.pendingDetailItem) {
-      console.log('Возврат к детальному просмотру:',
-        AppState.pendingDetailItem.torrent && AppState.pendingDetailItem.torrent[0] && AppState.pendingDetailItem.torrent[0].name || 'Фильм');
+    //if (AppState.pendingDetailItem) {
+      //console.log('Возврат к детальному просмотру:',
+        //AppState.pendingDetailItem.torrent && AppState.pendingDetailItem.torrent[0] && AppState.pendingDetailItem.torrent[0].name || 'Фильм');
 
-      showCatalogDetail(
-        AppState.pendingDetailItem,
-        AppState.pendingDetailIndex || 0,
-        AppState.pendingDetailPoster
-      );
+      //showCatalogDetail(
+        //AppState.pendingDetailItem,
+        //AppState.pendingDetailIndex || 0,
+        //AppState.pendingDetailPoster
+      //);
 
       // Очищаем сохраненные данные
-      AppState.pendingDetailItem = null;
-      AppState.pendingDetailPoster = null;
-      AppState.pendingDetailIndex = null;
-    } else if (AppState.currentDetailItem) {
+      //AppState.pendingDetailItem = null;
+      //AppState.pendingDetailPoster = null;
+      //AppState.pendingDetailIndex = null;
+    //} else if (AppState.currentDetailItem) {
       // Если есть текущий элемент детального просмотра
-      showCatalogDetail(
-        AppState.currentDetailItem,
-        catalogState.lastSelectedIndex || 0,
-        null
-      );
-    }
+      //showCatalogDetail(
+        //AppState.currentDetailItem,
+        /catalogState.lastSelectedIndex || 0,
+        //null
+      //);
+    //}
 
     // Устанавливаем фокус на кнопку просмотра
     setTimeout(function () {
