@@ -2973,7 +2973,7 @@ html {
   outline: none !important;
   box-shadow: 0 0 0 3px #ff8c00, 0 0 0 6px rgba(255, 140, 0, 0.3) !important;
   transition: box-shadow 0.10s ease;
-  transform: scale(1.01);
+  /* transform: scale(1.01); */
   z-index: 10;
   position: relative;
   border-radius: 12px;
@@ -2992,46 +2992,6 @@ html {
     transition: all 0.15s ease;
     /* Меньше анимации на ТВ */
   }
-}
-
-/* Анимация появления новых карточек - только для ПК, на ТВ может тормозить */
-@media (prefers-reduced-motion: no-preference) {
-  .torrent-card {
-    animation: fadeInUp 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1) backwards;
-  }
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(15px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Задержки для каскадного появления карточек */
-.torrent-card:nth-child(n+1) {
-  animation-delay: 0.00s;
-}
-
-.torrent-card:nth-child(n+9) {
-  animation-delay: 0.03s;
-}
-
-.torrent-card:nth-child(n+17) {
-  animation-delay: 0.06s;
-}
-
-.torrent-card:nth-child(n+25) {
-  animation-delay: 0.09s;
-}
-
-.torrent-card:nth-child(n+33) {
-  animation-delay: 0.12s;
 }
 
 /* Для ТВ отключаем каскадную анимацию */
