@@ -118,7 +118,7 @@ function updateFocusableElements() {
         var allElements = [];
         for (var l = 0; l < progressElements.length; l++) allElements.push(progressElements[l]);
         for (var m = 0; m < fileElements.length; m++) allElements.push(fileElements[m]);
-        for (var n = 0; n < backButton.length; n++) allElements.push(backButton[n]);
+        for (var n = 0; n < backButtons.length; n++) allElements.push(backButtons[n]);
         for (var t = 0; t < watchButtons.length; t++) allElements.push(watchButtons[t]);
         focusableElements = allElements;
     } else if (screen === 'torrents') {
