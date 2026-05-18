@@ -2666,6 +2666,8 @@ function hideSearchResults() {
     var detailView = document.getElementById('detail-view');
     if (detailView && detailView.style.display !== 'block') {
       detailView.style.display = 'block';
+      detailView.style.zIndex = '100';
+      detailView.style.pointerEvents = 'auto';
     }
 
     // Восстанавливаем детальный просмотр
