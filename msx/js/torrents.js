@@ -2687,7 +2687,7 @@ function hideSearchResults() {
       // Если есть текущий элемент детального просмотра
       //showCatalogDetail(
         //AppState.currentDetailItem,
-        /catalogState.lastSelectedIndex || 0,
+        //catalogState.lastSelectedIndex || 0,
         //null
       //);
     //}
