@@ -1652,12 +1652,13 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
   try {
     var seekParam = (initialSeek && initialSeek > 0) ? ('&start=' + initialSeek.toFixed(2)) : '';
+    var durationParam = (fileInfo.duration && fileInfo.duration > 0) ? ('&duration=' + fileInfo.duration.toFixed(2)) : '';
     var audioParam = audioTrack !== null ? ('&audio=' + audioTrack) : '';
     var multiChannelParam = (AppState.multiChannelEnabled === true) ? '&multiChannel=true' : '';
-
+    
     // Используем AbortController для fetch запроса
     var savedClientId = localStorage.getItem('clientId');
-    var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId), {
+    var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam, {
       signal: signal
     });
 
