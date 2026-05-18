@@ -269,6 +269,10 @@ function setFocus(index) {
             container = document.getElementById('search-results-list');
         } else if (AppState.currentScreen === 'detail') {
             container = document.getElementById('detail-view');
+        } else if (AppState.currentScreen === 'player') {
+           container = document.getElementById('episodes-panel'); 
+        } else if (AppState.currentScreen === 'player') {
+           container = document.getElementById('audio-panel'); 
         }
 
         // Скроллим только если элемент не полностью виден
