@@ -930,7 +930,8 @@ async function seekStream(absoluteSeekTime, source) {
               streamId: AppState.currentStreamId,
               seekTime: targetTime,
               multiChannel: AppState.multiChannelEnabled,
-              clientId: savedClientId
+              clientId: savedClientId, 
+              duration: AppState.originalDuration
             })
           });
 
