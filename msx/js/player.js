@@ -1652,7 +1652,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
   try {
     var seekParam = (initialSeek && initialSeek > 0) ? ('&start=' + initialSeek.toFixed(2)) : '';
-    var durationParam = (fileInfo.duration && fileInfo.duration > 0) ? ('&duration=' + fileInfo.duration.toFixed(2)) : '';
+    var durationParam = (fileInfo.duration && fileInfo.duration > 0) ? ('&duration=' + fileInfo.duration.toFixed(0)) : '';
     var audioParam = audioTrack !== null ? ('&audio=' + audioTrack) : '';
     var multiChannelParam = (AppState.multiChannelEnabled === true) ? '&multiChannel=true' : '';
     
