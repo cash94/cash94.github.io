@@ -595,13 +595,16 @@ function setupNavigation() {
     backFromDetail.addEventListener('click', function () {
       console.log('🔙 Возврат из детального просмотра');
       var mainContainer = document.getElementById('main-container');
-      if (AppState.backupScroll > 0) {
-        mainContainer.scrollTop = AppState.backupScroll;
-        // Ждём один "тик" event loop
-        await new Promise(function(resolve) { 
-          setTimeout(resolve, 10); 
-        });
-      }
+      var restoreScroll = function () {
+        if (mainContainer && AppState.backupScroll > 0) {
+          setTimeout(function () {
+            mainContainer.scrollTop = AppState.backupScroll;
+            console.log('🔄 Восстановлена позиция скролла:', savedScrollTop);
+          }, 50);
+        }
+      };
+
+      restoreScroll();
       resetDetailBackground();
       if (typeof Animations !== 'undefined') {
         Animations.animateDetailHide();
