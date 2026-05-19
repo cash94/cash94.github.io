@@ -1519,22 +1519,14 @@ function playInExternalPlayer(url, title) {
 
   console.log('📱 Открытие во внешнем плеере:', url);
 
-  // Создаем временную кнопку и эмулируем клик (обход блокировки Chrome)
-  var tempBtn = document.createElement('button');
-  tempBtn.style.position = 'fixed';
-  tempBtn.style.left = '-9999px';
-  tempBtn.style.top = '-9999px';
-  tempBtn.onclick = function () {
+  // Показываем ссылку для ручного копирования/нажатия
+  if (confirm(`Открыть видео во внешнем плеере?\n\n${title || 'Видео'}`)) {
+    // Этот переход сработает, потому что это результат confirm (пользовательское действие)
     window.location.href = `intent://${url}#Intent;scheme=https;package=org.videolan.vlc;action=android.intent.action.VIEW;end`;
-  };
-  document.body.appendChild(tempBtn);
-  tempBtn.click();
+    return true;
+  }
 
-  setTimeout(function () {
-    document.body.removeChild(tempBtn);
-  }, 100);
-
-  return true;
+  return false;
 }
 
 // Обновленная функция startHLSPlayback с ожиданием буфера (видео на паузе)
