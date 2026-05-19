@@ -634,6 +634,9 @@ function setupNavigation() {
         // Обработка возврата в каталог
         if (returnTo === 'catalog') {
           if (typeof window.ensureCatalogFocus === 'function') {
+            if (AppState.backupScroll > 0) {
+              mainContainer.scrollTop = AppState.backupScroll;
+            }
             window.ensureCatalogFocus(true);
             var detailView = document.getElementById('detail-view');
             if (detailView) detailView.style.display = 'none';
