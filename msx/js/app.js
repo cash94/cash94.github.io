@@ -1067,7 +1067,7 @@ function setupTouchControls(seekSlider, volumeSlider) {
       '#episodes-btn, #audio-btn, #exit-player-btn, #toggle-buffer-btn, ' +
       '.episode-item, .audio-item, .close-panel-btn, .filter-select, ' +
       '.filter-reset-btn, .progress-continue-btn, .detail-progress-btn, ' +
-      '#close-search, #filter-toggle'
+      '#close-search, #filter-toggle, #search-btn'
     );
     for (var i = 0; i < clickableElements.length; i++) {
       var el = clickableElements[i];
@@ -1082,6 +1082,17 @@ function setupTouchControls(seekSlider, volumeSlider) {
   }
 
   function handleTouchStart(e) {
+    // Проверяем, не нажат ли элемент в search-overlay
+    var target = e.target;
+    var isInSearchOverlay = target.closest && target.closest('#search-overlay');
+    var isCloseBtn = target.id === 'close-search' || (target.closest && target.closest('#close-search'));
+    var isFilterBtn = target.id === 'filter-toggle' || (target.closest && target.closest('#filter-toggle'));
+
+    // Если нажата кнопка закрытия или фильтров в search-overlay - не блокируем
+    if ((isCloseBtn || isFilterBtn) && isInSearchOverlay) {
+      return; // Пропускаем, позволим стандартному обработчику сработать
+    }
+
     touchTarget = e.target;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
@@ -1102,21 +1113,38 @@ function setupTouchControls(seekSlider, volumeSlider) {
       touchTarget.classList.remove('touch-active');
     }
 
+    // Получаем реальный элемент под пальцем в момент окончания касания
+    var elementAtTouch = document.elementFromPoint(
+      e.changedTouches[0].clientX,
+      e.changedTouches[0].clientY
+    );
+
+    // Находим ближайший кликабельный элемент
+    var clickableElement = null;
+    if (elementAtTouch) {
+      clickableElement = elementAtTouch.closest('button, .control-btn, .play-btn, .torrent-card, .file-item, .search-result-item, .episode-item, .audio-item, .close-panel-btn, .filter-reset-btn, .progress-continue-btn, .detail-progress-btn, #close-search, #filter-toggle, #search-btn');
+    }
+
     if (!touchMoved && deltaTime < 300 && Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10) {
-      if (touchTarget && (
-        touchTarget.closest('button') ||
-        touchTarget.closest('.control-btn') ||
-        touchTarget.closest('.play-btn') ||
-        touchTarget.closest('.torrent-card') ||
-        touchTarget.closest('.file-item') ||
-        touchTarget.closest('.search-result-item') ||
-        touchTarget.closest('.episode-item') ||
-        touchTarget.closest('.audio-item') ||
-        touchTarget.id === 'close-search' ||
-        touchTarget.id === 'filter-toggle'
+      // ИСПОЛЬЗУЕМ clickableElement вместо touchTarget для более точного определения
+      var targetToClick = clickableElement || touchTarget;
+
+      if (targetToClick && (
+        targetToClick.closest('button') ||
+        targetToClick.closest('.control-btn') ||
+        targetToClick.closest('.play-btn') ||
+        targetToClick.closest('.torrent-card') ||
+        targetToClick.closest('.file-item') ||
+        targetToClick.closest('.search-result-item') ||
+        targetToClick.closest('.episode-item') ||
+        targetToClick.closest('.audio-item') ||
+        targetToClick.id === 'close-search' ||
+        targetToClick.id === 'filter-toggle' ||
+        targetToClick.id === 'search-btn'
       )) {
         e.preventDefault();
-        touchTarget.click();
+        e.stopPropagation(); // ДОБАВЬТЕ это для предотвращения всплытия
+        targetToClick.click();
       }
     }
     touchStartX = 0;
