@@ -1569,7 +1569,7 @@ function playInExternalPlayer(url, title) {
 
   document.getElementById('external-player-open-btn').onclick = function () {
     // Прямой переход по реальному клику пользователя - РАБОТАЕТ!
-    window.location.href = 'vlc://${url}';
+    window.location.href = 'vlc://'+url;
     overlay.remove();
   };
 
