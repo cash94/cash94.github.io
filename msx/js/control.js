@@ -3063,9 +3063,11 @@ function setupFocusRescue() {
                             window.addTorrentSearchToServer(magnet, hash, searchResultJson)
                                 .then(() => {
                                     var originalHtml = playButton.innerHTML;
+                                    playButton.style.display = '';
                                     playButton.innerHTML = '✓';
 
                                     setTimeout(() => {
+                                        playButton.style.display = 'none';
                                         playButton.innerHTML = originalHtml;
                                     }, 2000);
                                 })
