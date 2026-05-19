@@ -1517,33 +1517,27 @@ function preloadTorrents(hash, fileId) {
 function playInExternalPlayer(url, title) {
   if (!externalPlayerEnabled) return false;
 
-  console.log('📱 Попытка открыть во внешнем плеере:', url);
+  var isAndroid = /android/i.test(navigator.userAgent);
+  if (!isAndroid) return false;
 
-  // Приоритетный порядок плееров (можно сделать выбор в настройках)
-  var players = [
-    { name: 'VLC', scheme: 'vlc://', package: 'org.videolan.vlc' },
-    { name: 'Just Player', scheme: null, package: 'com.brouken.player' }
-  ];
+  console.log('📱 Открытие во внешнем плеере:', url);
 
-  // Пробуем VLC (самый надёжный)
-  try {
-    window.location.href = `vlc://${url}`;
-    return true;
-  } catch (e) {
-    console.warn('VLC не открылся:', e);
-  }
+  // Создаем временную кнопку и эмулируем клик (обход блокировки Chrome)
+  var tempBtn = document.createElement('button');
+  tempBtn.style.position = 'fixed';
+  tempBtn.style.left = '-9999px';
+  tempBtn.style.top = '-9999px';
+  tempBtn.onclick = function () {
+    window.location.href = `intent://${url}#Intent;scheme=https;package=org.videolan.vlc;action=android.intent.action.VIEW;end`;
+  };
+  document.body.appendChild(tempBtn);
+  tempBtn.click();
 
-  // Если не сработало - показываем диалог выбора через intent
-  // (это может не сработать во всех браузерах)
-  try {
-    var intentUrl = `intent://${url}#Intent;package=com.brouken.player;action=android.intent.action.VIEW;type=video/mp4;end`;
-    window.location.href = intentUrl;
-    return true;
-  } catch (e) {
-    console.warn('Intent не сработал:', e);
-  }
+  setTimeout(function () {
+    document.body.removeChild(tempBtn);
+  }, 100);
 
-  return false;
+  return true;
 }
 
 // Обновленная функция startHLSPlayback с ожиданием буфера (видео на паузе)
