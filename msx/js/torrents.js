@@ -2588,17 +2588,12 @@ function showSearchResults(options) {
     searchInput.blur();
   }
 
+  document.getElementById('torrserver-section').style.display = 'none';
   searchOverlay.classList.remove('hidden');
   searchTab.classList.add('active');
   torrentsTab.classList.remove('active');
   if (catalogTab) catalogTab.classList.remove('active');
   AppState.currentScreen = 'search';
-
-  document.body.classList.add('search-open');
-  document.body.style.overflow = 'hidden';
-  document.body.style.position = 'fixed';
-  document.body.style.width = '100%';
-  document.body.style.height = '100%';
   
   syncSearchFilterButtons();
   toggleSearchFiltersPanel(false);
@@ -2655,6 +2650,7 @@ function hideSearchResults() {
   // Определяем куда возвращаться
   var returnTo = AppState.searchReturnTo || 'torrents';
 
+  document.getElementById('torrserver-section').style.display = 'block';
   searchOverlay.classList.add('hidden');
   searchTab.classList.remove('active');
   document.body.classList.remove('search-open');
