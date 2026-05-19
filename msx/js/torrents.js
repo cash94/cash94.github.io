@@ -2653,11 +2653,6 @@ function hideSearchResults() {
   document.getElementById('torrserver-section').style.display = 'block';
   searchOverlay.classList.add('hidden');
   searchTab.classList.remove('active');
-  document.body.classList.remove('search-open');
-  document.body.style.overflow = '';
-  document.body.style.position = '';
-  document.body.style.width = '';
-  document.body.style.height = '';
   toggleSearchFiltersPanel(false);
 
   // Обработка возврата в зависимости от режима
