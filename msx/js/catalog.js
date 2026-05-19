@@ -1694,6 +1694,7 @@ async function showCatalogDetail(item, index, posterUrl) {
 
     // Сохраняем позицию скролла перед началом
     var savedScrollTop = mainContainer ? mainContainer.scrollTop : 0;
+    AppState.backupScroll = savedScrollTop;
     console.log('💾 Сохранена позиция скролла перед showCatalogDetail:', savedScrollTop);
 
     var existingProgress = document.querySelector('.detail-progress');
