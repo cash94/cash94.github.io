@@ -136,80 +136,80 @@
 
       <!-- Сетка с торрентами (всегда видна на фоне) -->
       <div id="torrents-grid"></div>
-
-      <!-- Контейнер для результатов поиска (оверлей поверх сетки) -->
-      <div id="search-overlay" class="search-overlay hidden">
-        <div class="search-overlay-header search-screen-toolbar">
-          <input type="text" class="search-input-screen" id="search-query" placeholder="Поиск фильмов и сериалов...">
-          <button class="filter-toggle-btn" id="filter-toggle" title="Фильтры">Фильтры</button>
-          <button class="search-action-btn" id="search-btn">Поиск</button>
-          <button class="close-search-btn" id="close-search">X</button>
-        </div>
-
-        <div class="search-filters collapsed" id="search-filters-panel">
-          <div class="filter-group">
-            <label class="filter-label" for="torrent-movie">Категория</label>
-            <select id="torrent-movie" class="filter-select">
-              <option value="globalsearch">Глобальный поиск</option>
-              <option value="torrentsearch">Торренты</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="sort-by">Сортировка</label>
-            <select id="sort-by" class="filter-select">
-              <option value="date-desc">Сначала новые</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="filter-quality">Качество</label>
-            <select id="filter-quality" class="filter-select">
-              <option value="all">Все</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="filter-tracker">Трекер</label>
-            <select id="filter-tracker" class="filter-select">
-              <option value="all">Все</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="filter-year">Год</label>
-            <select id="filter-year" class="filter-select">
-              <option value="all">Все</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="filter-season">Сезон</label>
-            <select id="filter-season" class="filter-select">
-              <option value="all">Все</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="filter-voice">Озвучка</label>
-            <select id="filter-voice" class="filter-select">
-              <option value="all">Все</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="filter-videotype">Тип видео</label>
-            <select id="filter-videotype" class="filter-select">
-              <option value="all">Все</option>
-            </select>
-          </div>
-
-          <button class="filter-reset-btn" id="reset-filters">X</button>
-        </div>
-
-        <div id="search-results" class="search-results-list"></div>
-      </div>
     </div>
+  </div>
+
+  <!-- Контейнер для результатов поиска (оверлей поверх сетки) -->
+  <div id="search-overlay" class="search-overlay hidden">
+    <div class="search-overlay-header search-screen-toolbar">
+      <input type="text" class="search-input-screen" id="search-query" placeholder="Поиск фильмов и сериалов...">
+      <button class="filter-toggle-btn" id="filter-toggle" title="Фильтры">Фильтры</button>
+      <button class="search-action-btn" id="search-btn">Поиск</button>
+      <button class="close-search-btn" id="close-search">X</button>
+    </div>
+
+    <div class="search-filters collapsed" id="search-filters-panel">
+      <div class="filter-group">
+        <label class="filter-label" for="torrent-movie">Категория</label>
+        <select id="torrent-movie" class="filter-select">
+          <option value="globalsearch">Глобальный поиск</option>
+          <option value="torrentsearch">Торренты</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="sort-by">Сортировка</label>
+        <select id="sort-by" class="filter-select">
+          <option value="date-desc">Сначала новые</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-quality">Качество</label>
+        <select id="filter-quality" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-tracker">Трекер</label>
+        <select id="filter-tracker" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-year">Год</label>
+        <select id="filter-year" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-season">Сезон</label>
+        <select id="filter-season" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-voice">Озвучка</label>
+        <select id="filter-voice" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-videotype">Тип видео</label>
+        <select id="filter-videotype" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <button class="filter-reset-btn" id="reset-filters">X</button>
+    </div>
+
+    <div id="search-results" class="search-results-list"></div>
   </div>
 
   <!-- Детальный просмотр -->
