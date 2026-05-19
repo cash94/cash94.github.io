@@ -1517,9 +1517,6 @@ function preloadTorrents(hash, fileId) {
 function playInExternalPlayer(url, title) {
   if (!externalPlayerEnabled) return false;
 
-  var isAndroid = /android/i.test(navigator.userAgent);
-  if (!isAndroid) return false;
-
   console.log('📱 Открытие во внешнем плеере:', url);
 
   // Создаем временную кнопку и эмулируем клик (обход блокировки Chrome)
