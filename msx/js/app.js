@@ -594,6 +594,10 @@ function setupNavigation() {
   if (backFromDetail) {
     backFromDetail.addEventListener('click', function () {
       console.log('🔙 Возврат из детального просмотра');
+      var mainContainer = document.getElementById('main-container');
+      if (AppState.backupScroll > 0) {
+        mainContainer.scrollTop = AppState.backupScroll;
+      }
       resetDetailBackground();
       if (typeof Animations !== 'undefined') {
         Animations.animateDetailHide();
@@ -607,7 +611,7 @@ function setupNavigation() {
         if (detailView) detailView.style.display = 'none';
       }
 
-      var mainContainer = document.getElementById('main-container');
+      
       if (mainContainer) {
         mainContainer.style.pointerEvents = 'auto';
       }
@@ -634,9 +638,7 @@ function setupNavigation() {
         // Обработка возврата в каталог
         if (returnTo === 'catalog') {
           if (typeof window.ensureCatalogFocus === 'function') {
-            if (AppState.backupScroll > 0) {
-              mainContainer.scrollTop = AppState.backupScroll;
-            }
+            AppState.backupScroll = 0;
             window.ensureCatalogFocus(true);
             var detailView = document.getElementById('detail-view');
             if (detailView) detailView.style.display = 'none';
