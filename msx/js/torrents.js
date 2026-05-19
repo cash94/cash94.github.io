@@ -2594,6 +2594,12 @@ function showSearchResults(options) {
   if (catalogTab) catalogTab.classList.remove('active');
   AppState.currentScreen = 'search';
 
+  document.body.classList.add('search-open');
+  document.body.style.overflow = 'hidden';
+  document.body.style.position = 'fixed';
+  document.body.style.width = '100%';
+  document.body.style.height = '100%';
+  
   syncSearchFilterButtons();
   toggleSearchFiltersPanel(false);
 
@@ -2651,6 +2657,11 @@ function hideSearchResults() {
 
   searchOverlay.classList.add('hidden');
   searchTab.classList.remove('active');
+  document.body.classList.remove('search-open');
+  document.body.style.overflow = '';
+  document.body.style.position = '';
+  document.body.style.width = '';
+  document.body.style.height = '';
   toggleSearchFiltersPanel(false);
 
   // Обработка возврата в зависимости от режима
