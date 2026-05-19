@@ -1514,6 +1514,38 @@ function preloadTorrents(hash, fileId) {
   });
 }
 
+function playInExternalPlayer(url, title) {
+  if (!externalPlayerEnabled) return false;
+
+  console.log('📱 Попытка открыть во внешнем плеере:', url);
+
+  // Приоритетный порядок плееров (можно сделать выбор в настройках)
+  var players = [
+    { name: 'VLC', scheme: 'vlc://', package: 'org.videolan.vlc' },
+    { name: 'Just Player', scheme: null, package: 'com.brouken.player' }
+  ];
+
+  // Пробуем VLC (самый надёжный)
+  try {
+    window.location.href = `vlc://${url}`;
+    return true;
+  } catch (e) {
+    console.warn('VLC не открылся:', e);
+  }
+
+  // Если не сработало - показываем диалог выбора через intent
+  // (это может не сработать во всех браузерах)
+  try {
+    var intentUrl = `intent://${url}#Intent;package=com.brouken.player;action=android.intent.action.VIEW;type=video/mp4;end`;
+    window.location.href = intentUrl;
+    return true;
+  } catch (e) {
+    console.warn('Intent не сработал:', e);
+  }
+
+  return false;
+}
+
 // Обновленная функция startHLSPlayback с ожиданием буфера (видео на паузе)
 async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack) {
   if (initialSeek === undefined) initialSeek = null;
@@ -1521,6 +1553,13 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (episodeIndex === undefined) episodeIndex = null;
   if (audioTrack === undefined) {
     audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
+  }
+
+  if (externalPlayerEnabled) {
+    if (playInExternalPlayer(originalUrl, AppState.currentDetailItem.title)) {
+      console.log('📱 Запуск во внешнем плеере');
+      return; // прерываем встроенное воспроизведение
+    }
   }
 
   // Отменяем предыдущее воспроизведение, если оно есть
