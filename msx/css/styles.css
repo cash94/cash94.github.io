@@ -2744,62 +2744,6 @@ body.detail-open {
   display: none;
 }
 
-/* Принудительно исправляем зону клика для кнопки Фильтры */
-.filter-toggle-btn,
-#filter-toggle {
-  /* Фиксируем позиционирование */
-  position: relative !important;
-  z-index: 100 !important;
-  
-  /* Явно указываем область нажатия */
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  
-  /* Увеличиваем область нажатия и фиксируем её положение */
-  min-width: 100px !important;
-  min-height: 44px !important;
-  padding: 8px 16px !important;
-  
-  /* Убираем любые трансформации, которые могут смещать область */
-  transform: none !important;
-  
-  /* Принудительно делаем кликабельным */
-  cursor: pointer !important;
-  pointer-events: auto !important;
-}
-
-
-/* Невидимый слой-ловушка для кликов */
-.filter-toggle-btn::after,
-#filter-toggle::after {
-  content: '';
-  position: absolute;
-  top: -5px;
-  left: -10px;
-  right: -10px;
-  bottom: -5px;
-  background: transparent;
-  z-index: -1;
-}
-
-/* Медиа-запрос для сенсорных экранов */
-@media (pointer: coarse) {
-  .filter-toggle-btn,
-  #filter-toggle {
-    min-width: 110px !important;
-    min-height: 48px !important;
-    padding: 10px 20px !important;
-  }
-  
-  .filter-toggle-btn::after,
-  #filter-toggle::after {
-    top: -10px;
-    left: -15px;
-    right: -15px;
-    bottom: -10px;
-  }
-}
 /* Затемнение фона для читаемости текста при backdrop */
 #detail-backdrop-overlay {
   position: fixed;
