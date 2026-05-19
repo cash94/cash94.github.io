@@ -1142,7 +1142,7 @@ function setupTouchControls(seekSlider, volumeSlider) {
         targetToClick.id === 'filter-toggle' ||
         targetToClick.id === 'search-btn'
       )) {
-        e.preventDefault();
+        //e.preventDefault();
         e.stopPropagation(); // ДОБАВЬТЕ это для предотвращения всплытия
         targetToClick.click();
       }
