@@ -1569,7 +1569,7 @@ function playInExternalPlayer(url, title) {
 
   document.getElementById('external-player-open-btn').onclick = function () {
     // Прямой переход по реальному клику пользователя - РАБОТАЕТ!
-    var match = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
+    var match = url.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
     if (match) {
       preloadTorrents(match[1], match[2]);
     }      
