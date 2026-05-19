@@ -21,6 +21,7 @@ var AppState = {
   mediaType: "",
 
   // Состояние плеера
+  externalPlayerEnabled: false,
   currentScreen: 'config',
   videoUrl: '',
   bufferHidden: false,
