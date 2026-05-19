@@ -322,7 +322,7 @@ body {
 
 .search-action-btn {
   padding: 12.84px 21.4px;
-  background: #4a9eff;
+  background: #282837;
   border: none;
   border-radius: 29.96px;
   color: white;
@@ -498,7 +498,7 @@ body {
 }
 
 .search-result-play {
-  background: #4a9eff;
+  background: rgba(58, 58, 74, 0.3);
   color: white;
   border: none;
   padding: 10.7px 25.68px;
