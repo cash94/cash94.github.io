@@ -263,36 +263,20 @@ body {
   white-space: nowrap;
 }
 
-/* Блокировка прокрутки body при открытом поиске */
-body.search-open {
-  overflow: hidden !important;
-  position: fixed !important;
-  width: 100% !important;
-  height: 100% !important;
-}
-
-/* Убедимся, что оверлей полностью перекрывает всё */
+/* Увеличенная поисковая часть на 57% */
 .search-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  width: 100%;
-  height: 100%;
   background: #0a0a14;
   border: 1px solid #4a9eff;
   border-radius: 0;
-  z-index: 9999; /* Высокий z-index */
+  z-index: 50;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-/* Контент под оверлеем не должен получать события */
-body.search-open > *:not(.search-overlay) {
-  pointer-events: none;
-  user-select: none;
 }
 
 .search-overlay.hidden {
