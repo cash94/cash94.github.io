@@ -2664,6 +2664,10 @@ function hideSearchResults() {
   if (returnTo === 'detail') {
     // Возврат в детальный просмотр
     AppState.currentScreen = 'detail';
+    var mainContainer = document.getElementById('main-container');
+    if (mainContainer && AppState.backupScroll > 0) {
+      mainContainer.scrollTop = AppState.backupScroll;
+    }
 
     // Скрываем вкладки каталога/торрентов
     if (catalogTab) catalogTab.classList.remove('active');
