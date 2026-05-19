@@ -56,7 +56,10 @@ var AppState = {
   //Синхронизация
   syncCodeScreen: false,
   syncCode: null,
-  syncCodeTimer: null
+  syncCodeTimer: null,
+
+  //Восстановление скролла
+  backupScroll: 0
 };
 
 // Вспомогательные функции
