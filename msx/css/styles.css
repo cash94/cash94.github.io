@@ -507,6 +507,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  display: none;
 }
 
 .search-result-empty {
