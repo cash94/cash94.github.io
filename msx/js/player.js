@@ -2914,92 +2914,95 @@ function exitPlayer() {
 
 function setupPageUnloadHandler() {
 
-  // Добавляем событие unload - оно срабатывает даже при закрытии приложения
-  window.addEventListener('unload', function () {
-    console.log('🔄 Приложение закрывается, останавливаем HLS поток...');
+  if (!externalPlayerEnabled) {
 
-    // Синхронный вызов через sendBeacon (самый надежный)
-    if (AppState && AppState.currentStreamId) {
-      navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, '');
-    }
+    // Добавляем событие unload - оно срабатывает даже при закрытии приложения
+    window.addEventListener('unload', function () {
+      console.log('🔄 Приложение закрывается, останавливаем HLS поток...');
 
-    // Сохраняем таймкод
-    if (currentTimecodeData && currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
-      var savedClientId = localStorage.getItem('clientId');
-      var timecodeData = JSON.stringify({
-        clientId: savedClientId,
-        hash: currentTimecodeData.hash,
-        fileId: currentTimecodeData.fileId,
-        timecode: currentTimecodeData.timecode,
-        duration: currentTimecodeData.duration
-      });
-      navigator.sendBeacon(SERVER_URL + '/api/timecode/save', timecodeData);
-    }
-  });
+      // Синхронный вызов через sendBeacon (самый надежный)
+      if (AppState && AppState.currentStreamId) {
+        navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, '');
+      }
 
-  // Обработчик закрытия страницы/вкладки
-  window.addEventListener('beforeunload', function () {
-    console.log('🔄 Страница закрывается, останавливаем HLS поток...');
+      // Сохраняем таймкод
+      if (currentTimecodeData && currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
+        var savedClientId = localStorage.getItem('clientId');
+        var timecodeData = JSON.stringify({
+          clientId: savedClientId,
+          hash: currentTimecodeData.hash,
+          fileId: currentTimecodeData.fileId,
+          timecode: currentTimecodeData.timecode,
+          duration: currentTimecodeData.duration
+        });
+        navigator.sendBeacon(SERVER_URL + '/api/timecode/save', timecodeData);
+      }
+    });
 
-    // Синхронный запрос на остановку потока
-    if (AppState.currentStreamId) {
-      // Используем sendBeacon для гарантированной отправки даже при закрытии
-      var blob = new Blob([], { type: 'application/json' });
-      navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, blob);
+    // Обработчик закрытия страницы/вкладки
+    window.addEventListener('beforeunload', function () {
+      console.log('🔄 Страница закрывается, останавливаем HLS поток...');
 
-      // Также пытаемся отправить обычный fetch (но он может не успеть)
-      fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
-        method: 'POST',
-        keepalive: true  // Важно! Позволяет запросу выполняться после закрытия страницы
-      }).catch(() => { });
-    }
+      // Синхронный запрос на остановку потока
+      if (AppState.currentStreamId) {
+        // Используем sendBeacon для гарантированной отправки даже при закрытии
+        var blob = new Blob([], { type: 'application/json' });
+        navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, blob);
 
-    // Сохраняем таймкод при закрытии
-    if (currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
-      var savedClientId = localStorage.getItem('clientId');
-      var timecodeData = JSON.stringify({
-        clientId: savedClientId,
-        hash: currentTimecodeData.hash,
-        fileId: currentTimecodeData.fileId,
-        timecode: currentTimecodeData.timecode,
-        duration: currentTimecodeData.duration
-      });
+        // Также пытаемся отправить обычный fetch (но он может не успеть)
+        fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
+          method: 'POST',
+          keepalive: true  // Важно! Позволяет запросу выполняться после закрытия страницы
+        }).catch(() => { });
+      }
 
-      navigator.sendBeacon(SERVER_URL + '/api/timecode/save', timecodeData);
-    }
-  });
+      // Сохраняем таймкод при закрытии
+      if (currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
+        var savedClientId = localStorage.getItem('clientId');
+        var timecodeData = JSON.stringify({
+          clientId: savedClientId,
+          hash: currentTimecodeData.hash,
+          fileId: currentTimecodeData.fileId,
+          timecode: currentTimecodeData.timecode,
+          duration: currentTimecodeData.duration
+        });
 
-  // Также обрабатываем событие pagehide (для мобильных браузеров)
-  window.addEventListener('pagehide', function () {
-    console.log('🔄 Страница скрывается, останавливаем HLS поток...');
+        navigator.sendBeacon(SERVER_URL + '/api/timecode/save', timecodeData);
+      }
+    });
 
-    if (AppState.currentStreamId) {
-      navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, '');
-    }
+    // Также обрабатываем событие pagehide (для мобильных браузеров)
+    window.addEventListener('pagehide', function () {
+      console.log('🔄 Страница скрывается, останавливаем HLS поток...');
 
-    if (currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
-      var savedClientId = localStorage.getItem('clientId');
-      var timecodeData = JSON.stringify({
-        clientId: savedClientId,
-        hash: currentTimecodeData.hash,
-        fileId: currentTimecodeData.fileId,
-        timecode: currentTimecodeData.timecode,
-        duration: currentTimecodeData.duration
-      });
+      if (AppState.currentStreamId) {
+        navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, '');
+      }
 
-      navigator.sendBeacon(SERVER_URL + '/api/timecode/save', timecodeData);
-    }
-  });
+      if (currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
+        var savedClientId = localStorage.getItem('clientId');
+        var timecodeData = JSON.stringify({
+          clientId: savedClientId,
+          hash: currentTimecodeData.hash,
+          fileId: currentTimecodeData.fileId,
+          timecode: currentTimecodeData.timecode,
+          duration: currentTimecodeData.duration
+        });
 
-  // Для visibilitychange (переключение вкладок) - останавливаем видео для экономии ресурсов
-  document.addEventListener('visibilitychange', function () {
-    var videoPlayer = document.getElementById('video-player');
-    if (document.hidden && videoPlayer && !videoPlayer.paused) {
-      console.log('👁️ Вкладка скрыта, ставим видео на паузу');
-      videoPlayer.pause();
-      updatePlayPauseButton();
-    }
-  });
+        navigator.sendBeacon(SERVER_URL + '/api/timecode/save', timecodeData);
+      }
+    });
+
+    // Для visibilitychange (переключение вкладок) - останавливаем видео для экономии ресурсов
+    document.addEventListener('visibilitychange', function () {
+      var videoPlayer = document.getElementById('video-player');
+      if (document.hidden && videoPlayer && !videoPlayer.paused) {
+        console.log('👁️ Вкладка скрыта, ставим видео на паузу');
+        videoPlayer.pause();
+        updatePlayPauseButton();
+      }
+    });
+  }
 }
 
 // Вызовите эту функцию при загрузке
