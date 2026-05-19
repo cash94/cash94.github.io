@@ -1333,7 +1333,45 @@ function setupAutoFullscreen() {
   }
 }
 
+function setupExternalPlayerCheckbox() {
+  var externalPlayerCheckbox = document.getElementById('out-player');
+  if (!externalPlayerCheckbox) return;
+
+  // Загружаем сохраненное состояние из localStorage
+  var savedExternalPlayer = localStorage.getItem('externalPlayerEnabled') === 'true';
+  externalPlayerEnabled = savedExternalPlayer;
+  externalPlayerCheckbox.checked = savedExternalPlayer;
+
+  // Сохраняем в AppState для доступа из других модулей
+  if (typeof AppState !== 'undefined') {
+    AppState.externalPlayerEnabled = externalPlayerEnabled;
+  }
+
+  console.log('📱 Внешний плеер:', externalPlayerEnabled ? 'включен' : 'выключен');
+
+  // Обработчик изменения состояния
+  externalPlayerCheckbox.addEventListener('change', function (e) {
+    externalPlayerEnabled = e.target.checked;
+    localStorage.setItem('externalPlayerEnabled', externalPlayerEnabled);
+
+    if (typeof AppState !== 'undefined') {
+      AppState.externalPlayerEnabled = externalPlayerEnabled;
+    }
+
+    console.log('📱 Внешний плеер:', externalPlayerEnabled ? 'включен' : 'выключен');
+
+    // Показываем подсказку
+    if (externalPlayerEnabled && typeof showPlayerHint === 'function') {
+      showPlayerHint('Внешний плеер включен. При воспроизведении будет открыт выбор приложений.');
+    } else if (!externalPlayerEnabled && typeof showPlayerHint === 'function') {
+      showPlayerHint('Внешний плеер выключен. Используется встроенный плеер.');
+    }
+  });
+}
+
 function setupCheckboxes() {
+
+  setupExternalPlayerCheckbox();
   // Чекбокс "Скрыть часы"
   var hideClockCheckbox = document.getElementById('hide-clock');
   if (hideClockCheckbox) {
