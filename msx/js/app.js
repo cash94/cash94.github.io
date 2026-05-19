@@ -597,6 +597,10 @@ function setupNavigation() {
       var mainContainer = document.getElementById('main-container');
       if (AppState.backupScroll > 0) {
         mainContainer.scrollTop = AppState.backupScroll;
+        // Ждём один "тик" event loop
+        await new Promise(function(resolve) { 
+          setTimeout(resolve, 10); 
+        });
       }
       resetDetailBackground();
       if (typeof Animations !== 'undefined') {
