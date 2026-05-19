@@ -3063,7 +3063,7 @@ function setupFocusRescue() {
                             window.addTorrentSearchToServer(magnet, hash, searchResultJson)
                                 .then(() => {
                                     var originalHtml = playButton.innerHTML;
-                                    playButton.style.display = '';
+                                    playButton.style.display = 'block';
                                     playButton.innerHTML = '✓';
 
                                     setTimeout(() => {
