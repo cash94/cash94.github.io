@@ -3032,19 +3032,3 @@ html, body, div, section, main, aside, article {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-
-/* Защита для кнопок в поисковом оверлее */
-#search-overlay button,
-#search-overlay .filter-toggle-btn,
-#search-overlay .close-search-btn,
-#search-overlay .search-action-btn {
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-}
-
-/* Обеспечиваем корректную обработку кликов */
-#close-search,
-#filter-toggle {
-    position: relative;
-    z-index: 1001;
-}
