@@ -599,7 +599,7 @@ function setupNavigation() {
         if (mainContainer && AppState.backupScroll > 0) {
           setTimeout(function () {
             mainContainer.scrollTop = AppState.backupScroll;
-            console.log('🔄 Восстановлена позиция скролла:', savedScrollTop);
+            console.log('🔄 Восстановлена позиция скролла:', AppState.backupScroll);
           }, 50);
         }
       };
