@@ -596,9 +596,9 @@ function setupNavigation() {
       console.log('🔙 Возврат из детального просмотра');
       var mainContainer = document.getElementById('main-container');
       resetDetailBackground();
-      if (typeof Animations !== 'undefined') {
-        Animations.animateDetailHide();
-      }
+      //if (typeof Animations !== 'undefined') {
+        //Animations.animateDetailHide();
+      //}
       // Сохраняем hash текущего торрента перед очисткой
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
