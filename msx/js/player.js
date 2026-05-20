@@ -1518,7 +1518,7 @@ function playInExternalPlayer(url, title) {
 
   console.log('📱 Открытие во внешнем плеере:', url);
 
-  if (window.AndroidJS?.openPlayer) {
+  if (window.AndroidJS && window.AndroidJS.openPlayer) {
     AndroidJS.openPlayer(url, JSON.stringify({
       url: url,
       title: title || 'Видео',
@@ -1540,7 +1540,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
   }
 
-  if (window.AndroidJS?.openPlayer) {
+  if (window.AndroidJS && window.AndroidJS.openPlayer) {
     if (playInExternalPlayer(originalUrl, AppState.currentDetailItem.title)) {
       console.log('📱 Запуск во внешнем плеере');
       return; // прерываем встроенное воспроизведение
@@ -2899,8 +2899,7 @@ function exitPlayer() {
 
 function setupPageUnloadHandler() {
 
-  var externalPlayerCheckbox = document.getElementById('out-player');
-  if (!externalPlayerCheckbox) {
+  if (window.AndroidJS && window.AndroidJS.openPlayer) {
 
     // Добавляем событие unload - оно срабатывает даже при закрытии приложения
     window.addEventListener('unload', function () {
