@@ -2945,7 +2945,8 @@ function exitPlayer() {
 
 function setupPageUnloadHandler() {
 
-  if (!externalPlayerEnabled) {
+  var externalPlayerCheckbox = document.getElementById('out-player');
+  if (!externalPlayerCheckbox) {
 
     // Добавляем событие unload - оно срабатывает даже при закрытии приложения
     window.addEventListener('unload', function () {
