@@ -1573,7 +1573,7 @@ function playInExternalPlayer(url, title) {
     if (match) {
       preloadTorrents(match[1], match[2]);
     }      
-    window.location.href = 'vlc://'+url;
+    window.location.href = url; //'vlc://'+url;
     overlay.remove();
   };
 
