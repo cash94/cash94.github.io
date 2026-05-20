@@ -39,7 +39,8 @@ var currentPlaybackController = null;
 // Слушаем событие закрытия внешнего плеера
 window.addEventListener('playerClosed', function (event) {
   // Проверяем, включён ли внешний плеер
-  if (!externalPlayerEnabled) {
+  var externalPlayerCheckbox = document.getElementById('out-player');
+  if (!externalPlayerCheckbox) {
     console.log('🔇 Внешний плеер выключен, игнорируем событие playerClosed');
     return;
   }
