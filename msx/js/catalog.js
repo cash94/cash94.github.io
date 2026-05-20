@@ -199,13 +199,13 @@ var catalogState = {
     abortController: null,
 
     currentPage: 0,
-    itemsPerPage: 8,
+    itemsPerPage: 6,
     hasMore: true,
     isLoadingMore: false,
     loadedItemIds: {},
 
     loadedPostersCount: 0,
-    postersPerBatch: 16,
+    postersPerBatch: 6,
     isPosterLoading: false,
     posterLoadQueue: [],
     posterObserver: null,
