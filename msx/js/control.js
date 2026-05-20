@@ -2089,11 +2089,11 @@ function setupFocusRescue() {
 
     function getColumns() {
         var grid = byId('torrents-grid');
-        if (!grid) return 8;
+        if (!grid) return 6;
         try {
             var cols = (getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
-            return cols || 8;
-        } catch (e) { return 8; }
+            return cols || 6;
+        } catch (e) { return 6; }
     }
 
     function belongsToScreen(el, screen) {
