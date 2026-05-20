@@ -36,51 +36,6 @@ var PAUSE_THRESHOLD = 60000; // 1 минута
 //Для отмены воспроизведения
 var currentPlaybackController = null;
 
-// Слушаем событие закрытия внешнего плеера
-window.addEventListener('playerClosed', function (event) {
-  // Проверяем, включён ли внешний плеер
-  var externalPlayerCheckbox = document.getElementById('out-player');
-  if (!externalPlayerCheckbox) {
-    console.log('🔇 Внешний плеер выключен, игнорируем событие playerClosed');
-    return;
-  }
-
-  console.log('🎬 Получено событие закрытия внешнего плеера:', event.detail);
-
-  var detail = event.detail;
-  var url = detail.url;
-  var position = detail.position;
-  var duration = detail.duration;
-  var ended = detail.ended;
-
-  if (position > 0 && currentTimecodeData.hash && currentTimecodeData.fileId) {
-    // Обновляем текущий таймкод данными из плеера
-    currentTimecodeData.timecode = position / 1000; // конвертируем в секунды
-    currentTimecodeData.duration = duration / 1000;
-
-    console.log('💾 Сохраняем таймкод из внешнего плеера:', formatTime(currentTimecodeData.timecode));
-
-    // Сохраняем на сервер
-    saveTimecodeToServer().then(function () {
-      console.log('✅ Таймкод успешно сохранён на сервере');
-
-      // Обновляем прогресс в карточке, если нужно
-      if (AppState.currentDetailItem) {
-        updateDetailProgress(AppState.currentDetailItem);
-      }
-    }).catch(function (err) {
-      console.error('❌ Ошибка сохранения таймкода:', err);
-    });
-  }
-
-  if (ended) {
-    console.log('🎉 Видео досмотрено до конца!');
-    if (AppState.currentDetailItem) {
-      console.log('✅ Отмечаем как просмотренное:', AppState.currentDetailItem.title);
-    }
-  }
-});
-
 // Функции heartbeat
 function startHeartbeat() {
   if (heartbeatInterval) {
@@ -1571,7 +1526,7 @@ function playInExternalPlayer(url, title) {
       iptv: false
     }));
   } else {
-    return false;
+    return true;
   }
 
   return true;
