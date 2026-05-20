@@ -1515,7 +1515,6 @@ function preloadTorrents(hash, fileId) {
 }
 
 function playInExternalPlayer(url, title) {
-  if (!externalPlayerEnabled) return false;
 
   console.log('📱 Открытие во внешнем плеере:', url);
 
@@ -1541,7 +1540,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
   }
 
-  if (externalPlayerEnabled) {
+  if (window.AndroidJS?.openPlayer) {
     if (playInExternalPlayer(originalUrl, AppState.currentDetailItem.title)) {
       console.log('📱 Запуск во внешнем плеере');
       return; // прерываем встроенное воспроизведение
