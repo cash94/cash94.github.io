@@ -1519,89 +1519,17 @@ function playInExternalPlayer(url, title) {
 
   console.log('📱 Открытие во внешнем плеере:', url);
 
-  // Показываем диалог с инструкцией и ссылкой для ручного нажатия
-  var overlay = document.createElement('div');
-  overlay.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0,0,0,0.95);
-    z-index: 10000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    padding: 20px;
-  `;
-
-  overlay.innerHTML = `
-    <div style="background: #1e1e1e; border-radius: 12px; padding: 24px; max-width: 300px; text-align: center;">
-      <div style="font-size: 48px; margin-bottom: 16px;">📱</div>
-      <h3 style="margin: 0 0 8px; color: #fff;">Открыть во внешнем плеере?</h3>
-      <p style="margin: 0 0 20px; color: #aaa; font-size: 14px;">${escapeHtml(title) || 'Видео'}</p>
-      <button id="external-player-open-btn" style="
-        background: #4a9eff;
-        border: none;
-        color: white;
-        padding: 12px 24px;
-        border-radius: 8px;
-        font-size: 16px;
-        cursor: pointer;
-        width: 100%;
-        margin-bottom: 12px;
-      ">Открыть</button>
-      <button id="external-player-cancel-btn" style="
-        background: transparent;
-        border: 1px solid #555;
-        color: #aaa;
-        padding: 10px 20px;
-        border-radius: 8px;
-        font-size: 14px;
-        cursor: pointer;
-        width: 100%;
-      ">Отмена</button>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-
-  document.getElementById('external-player-open-btn').onclick = function () {
-    // Используем существующий AndroidJS.openPlayer метод
-    if (window.AndroidJS && AndroidJS.openPlayer) {
-      // Формируем JSON с параметрами видео
-      var playerParams = {
-        url: url,
-        title: title || 'Видео',
-        iptv: false,
-        // Дополнительные параметры по желанию:
-        // poster: posterUrl,  // Постер видео
-        // subtitles: subtitleUrl,  // Субтитры
-      };
-
-      AndroidJS.openPlayer(url, JSON.stringify(playerParams));
-    } else {
-      // Fallback для обычного браузера (если AndroidJS недоступен)
-      window.location.href = `intent://${encodeURIComponent(url)}#Intent;scheme=https;package=org.videolan.vlc;action=android.intent.action.VIEW;end`;
-    }
-    overlay.remove();
-  };
-
-  document.getElementById('external-player-cancel-btn').onclick = function () {
-    overlay.remove();
+  if (window.AndroidJS?.openPlayer) {
+    AndroidJS.openPlayer(url, JSON.stringify({
+      url: url,
+      title: title || 'Видео',
+      iptv: false
+    }));
+  } else {
     return false;
-  };
+  }
 
   return true;
-}
-
-// Вспомогательная функция для экранирования HTML
-function escapeHtml(text) {
-  if (!text) return '';
-  var div = document.createElement('div');
-  div.appendChild(document.createTextNode(text));
-  return div.innerHTML;
 }
 
 // Обновленная функция startHLSPlayback с ожиданием буфера (видео на паузе)
