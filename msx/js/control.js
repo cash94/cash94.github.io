@@ -2089,11 +2089,11 @@ function setupFocusRescue() {
 
     function getColumns() {
         var grid = byId('torrents-grid');
-        if (!grid) return 6;
+        if (!grid) return 8;
         try {
             var cols = (getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
-            return cols || 6;
-        } catch (e) { return 6; }
+            return cols || 8;
+        } catch (e) { return 8; }
     }
 
     function belongsToScreen(el, screen) {
@@ -3127,7 +3127,7 @@ function setupFocusRescue() {
 
             // Навигация по результатам для globalsearch
             if (resultIndex !== -1) {
-                var cols = getColumns();
+                var cols = 6; //getColumns();
                 var row = Math.floor(resultIndex / cols);
 
                 if (direction === 'left') {
