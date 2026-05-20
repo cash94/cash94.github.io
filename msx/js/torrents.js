@@ -3521,7 +3521,7 @@ function showGlobalSearchResults() {
     return;
   }
 
-  var gridTemplateColumns = 'repeat(8, 1fr)';
+  var gridTemplateColumns = 'repeat(6, 1fr)';
 
   var html = '<div class="filter-stats">Найдено в TMDB: <span>' + globalSearchResults.length + '</span></div>';
   html += '<div class="global-search-grid" style="display: grid; grid-template-columns: ' + gridTemplateColumns + '; gap: 20px; padding: 20px 0;">';
@@ -3571,7 +3571,7 @@ function renderFilteredGlobalResults(results) {
     return;
   }
 
-  var gridTemplateColumns = 'repeat(8, 1fr)';
+  var gridTemplateColumns = 'repeat(6, 1fr)';
 
   var html = '<div class="filter-stats">Найдено в TMDB: <span>' + results.length + '</span></div>';
   html += '<div class="global-search-grid" style="display: grid; grid-template-columns: ' + gridTemplateColumns + '; gap: 20px; padding: 20px 0;">';
