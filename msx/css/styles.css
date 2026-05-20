@@ -522,7 +522,7 @@ body {
 
 #torrents-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 10px;
   padding: 8px;
 }
