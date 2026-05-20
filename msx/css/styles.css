@@ -3047,3 +3047,7 @@ html, body, div, section, main, aside, article {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
+
+.checkbox-container[hidden] {
+    display: none !important;
+}
