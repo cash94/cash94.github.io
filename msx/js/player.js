@@ -1540,7 +1540,7 @@ function playInExternalPlayer(url, title) {
     <div style="background: #1e1e1e; border-radius: 12px; padding: 24px; max-width: 300px; text-align: center;">
       <div style="font-size: 48px; margin-bottom: 16px;">📱</div>
       <h3 style="margin: 0 0 8px; color: #fff;">Открыть во внешнем плеере?</h3>
-      <p style="margin: 0 0 20px; color: #aaa; font-size: 14px;">${title || 'Видео'}</p>
+      <p style="margin: 0 0 20px; color: #aaa; font-size: 14px;">${escapeHtml(title) || 'Видео'}</p>
       <button id="external-player-open-btn" style="
         background: #4a9eff;
         border: none;
@@ -1568,12 +1568,23 @@ function playInExternalPlayer(url, title) {
   document.body.appendChild(overlay);
 
   document.getElementById('external-player-open-btn').onclick = function () {
-    // Прямой переход по реальному клику пользователя - РАБОТАЕТ!
-    var match = url.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
-    if (match) {
-      preloadTorrents(match[1], match[2]);
-    }      
-    window.location.href = url; //'vlc://'+url;
+    // Используем существующий AndroidJS.openPlayer метод
+    if (window.AndroidJS && AndroidJS.openPlayer) {
+      // Формируем JSON с параметрами видео
+      var playerParams = {
+        url: url,
+        title: title || 'Видео',
+        iptv: false,
+        // Дополнительные параметры по желанию:
+        // poster: posterUrl,  // Постер видео
+        // subtitles: subtitleUrl,  // Субтитры
+      };
+
+      AndroidJS.openPlayer(url, JSON.stringify(playerParams));
+    } else {
+      // Fallback для обычного браузера (если AndroidJS недоступен)
+      window.location.href = `intent://${encodeURIComponent(url)}#Intent;scheme=https;package=org.videolan.vlc;action=android.intent.action.VIEW;end`;
+    }
     overlay.remove();
   };
 
@@ -1584,6 +1595,15 @@ function playInExternalPlayer(url, title) {
 
   return true;
 }
+
+// Вспомогательная функция для экранирования HTML
+function escapeHtml(text) {
+  if (!text) return '';
+  var div = document.createElement('div');
+  div.appendChild(document.createTextNode(text));
+  return div.innerHTML;
+}
+
 // Обновленная функция startHLSPlayback с ожиданием буфера (видео на паузе)
 async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack) {
   if (initialSeek === undefined) initialSeek = null;
