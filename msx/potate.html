@@ -945,12 +945,12 @@
                     }
                 }
 
-                let html = '<table class="catalogs-table"><thead><tr>' +
+                let html = '<table class="catalogs-table"><thead>' +
                     '<th>Каталог</th>' +
                     '<th>Кол-во элементов</th>' +
                     '<th>Последнее изменение</th>' +
                     '<th>Действие</th>' +
-                    '</tr></thead><tbody>';
+                    '</thead><tbody>';
 
                 // Загруженные каталоги
                 for (const cat of loaded) {
@@ -961,7 +961,7 @@
                         <td>✅ <strong>${cat.displayName || cat.name}</strong> (${cat.name})</td>
                         <td>${itemsCount}</td>
                         <td>${date}</td>
-                        <td><button class="btn-outline update-single-catalog" data-name="${cat.name}" style="padding:4px 12px;">🔄 Обновить</button></td>
+                        <td><button class="btn-action-catalog" data-name="${cat.name}" data-action="update" style="padding:4px 12px;">🔄 Обновить</button></td>
                       </tr>`;
                 }
 
@@ -974,45 +974,31 @@
                         <td>📋 <strong>${cat.displayName || cat.name}</strong> (${cat.name})</td>
                         <td>${itemsCount}</td>
                         <td>${date}</td>
-                        <td><button class="btn-outline load-single-catalog" data-name="${cat.name}" data-display="${cat.displayName || cat.name}" style="padding:4px 12px;">📥 Загрузить</button></td>
+                        <td><button class="btn-action-catalog" data-name="${cat.name}" data-action="load" style="padding:4px 12px;">📥 Загрузить</button></td>
                       </tr>`;
                 }
 
                 html += '</tbody></table>';
                 container.innerHTML = html;
 
-                // Обработчики для обновления загруженных каталогов
-                document.querySelectorAll('.update-single-catalog').forEach(btn => {
+                // Единый обработчик для всех кнопок каталогов
+                document.querySelectorAll('.btn-action-catalog').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const name = btn.getAttribute('data-name');
+                        const action = btn.getAttribute('data-action');
                         const originalText = btn.textContent;
-                        btn.textContent = '⏳...';
-                        btn.disabled = true;
-                        try {
-                            await apiFetch(`/api/catalog/${name}/update`, { method: 'POST' });
-                            await loadCatalogs();
-                        } catch (err) {
-                            alert(`Ошибка: ${err.message}`);
-                        } finally {
-                            btn.disabled = false;
-                            btn.textContent = originalText;
-                        }
-                    });
-                });
 
-                // Обработчики для загрузки отсутствующих каталогов
-                document.querySelectorAll('.load-single-catalog').forEach(btn => {
-                    btn.addEventListener('click', async (e) => {
-                        const name = btn.getAttribute('data-name');
-                        const displayName = btn.getAttribute('data-display');
-                        const originalText = btn.textContent;
-                        btn.textContent = '⏳ Загрузка...';
+                        // Меняем текст кнопки в зависимости от действия
+                        btn.textContent = action === 'update' ? '⏳ Обновление...' : '⏳ Загрузка...';
                         btn.disabled = true;
+
                         try {
-                            await apiFetch(`/api/catalog/${name}/load`, { method: 'POST' });
-                            await loadCatalogs();
+                            // И для обновления, и для загрузки используем один и тот же эндпоинт
+                            await apiFetch(`/api/catalog/${name}/update`, { method: 'POST' });
+                            await loadCatalogs(); // Перезагружаем список после успешной операции
                         } catch (err) {
-                            alert(`Ошибка загрузки ${displayName}: ${err.message}`);
+                            const actionText = action === 'update' ? 'обновления' : 'загрузки';
+                            alert(`Ошибка ${actionText} каталога ${name}: ${err.message}`);
                         } finally {
                             btn.disabled = false;
                             btn.textContent = originalText;
