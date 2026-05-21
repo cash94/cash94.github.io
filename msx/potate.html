@@ -925,29 +925,57 @@
                     return;
                 }
 
-                let html = '<table><thead><tr><th>Каталог</th><th>Размер</th><th>Кол-во элементов</th><th>Последнее изменение</th><th>Действие</th></tr></thead><tbody>';
+                // Получаем детальную информацию для отсутствующих каталогов
+                const missingWithDetails = [];
+                for (const cat of missing) {
+                    try {
+                        const details = await apiFetch(`/api/catalog/${cat.name}`);
+                        missingWithDetails.push({
+                            ...cat,
+                            itemsCount: details.itemsCount || 0,
+                            lastModified: details.lastModified || null
+                        });
+                    } catch (err) {
+                        console.error(`Ошибка получения данных для ${cat.name}:`, err);
+                        missingWithDetails.push({
+                            ...cat,
+                            itemsCount: null,
+                            lastModified: null
+                        });
+                    }
+                }
+
+                let html = '<table class="catalogs-table"><thead><tr>' +
+                    '<th>Каталог</th>' +
+                    '<th>Кол-во элементов</th>' +
+                    '<th>Последнее изменение</th>' +
+                    '<th>Действие</th>' +
+                    '</tr></thead><tbody>';
 
                 // Загруженные каталоги
                 for (const cat of loaded) {
                     const date = cat.lastModifiedISO ? new Date(cat.lastModifiedISO).toLocaleString() : '—';
+                    const itemsCount = cat.itemCount !== null && cat.itemCount !== undefined ? cat.itemCount : '—';
+
                     html += `<tr style="background: rgba(0,255,0,0.05);">
                         <td>✅ <strong>${cat.displayName || cat.name}</strong> (${cat.name})</td>
-                        <td>${cat.sizeFormatted || '—'}</td>
-                        <td>${cat.itemCount !== null ? cat.itemCount : '—'}</td>
+                        <td>${itemsCount}</td>
                         <td>${date}</td>
                         <td><button class="btn-outline update-single-catalog" data-name="${cat.name}" style="padding:4px 12px;">🔄 Обновить</button></td>
-                     </tr>`;
+                      </tr>`;
                 }
 
                 // Отсутствующие каталоги
-                for (const cat of missing) {
-                    html += `<tr style="background: rgba(255,0,0,0.05);">
-                        <td>❌ <strong>${cat.displayName || cat.name}</strong> (${cat.name})</td>
-                        <td>—</td>
-                        <td>—</td>
-                        <td>—</td>
+                for (const cat of missingWithDetails) {
+                    const date = cat.lastModified ? new Date(cat.lastModified).toLocaleString() : '—';
+                    const itemsCount = cat.itemsCount !== null && cat.itemsCount !== undefined ? cat.itemsCount : '—';
+
+                    html += `<tr style="background: rgba(255,255,0,0.05);">
+                        <td>📋 <strong>${cat.displayName || cat.name}</strong> (${cat.name})</td>
+                        <td>${itemsCount}</td>
+                        <td>${date}</td>
                         <td><button class="btn-outline load-single-catalog" data-name="${cat.name}" data-display="${cat.displayName || cat.name}" style="padding:4px 12px;">📥 Загрузить</button></td>
-                     </tr>`;
+                      </tr>`;
                 }
 
                 html += '</tbody></table>';
@@ -957,6 +985,7 @@
                 document.querySelectorAll('.update-single-catalog').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const name = btn.getAttribute('data-name');
+                        const originalText = btn.textContent;
                         btn.textContent = '⏳...';
                         btn.disabled = true;
                         try {
@@ -966,6 +995,7 @@
                             alert(`Ошибка: ${err.message}`);
                         } finally {
                             btn.disabled = false;
+                            btn.textContent = originalText;
                         }
                     });
                 });
@@ -975,6 +1005,7 @@
                     btn.addEventListener('click', async (e) => {
                         const name = btn.getAttribute('data-name');
                         const displayName = btn.getAttribute('data-display');
+                        const originalText = btn.textContent;
                         btn.textContent = '⏳ Загрузка...';
                         btn.disabled = true;
                         try {
@@ -984,6 +1015,7 @@
                             alert(`Ошибка загрузки ${displayName}: ${err.message}`);
                         } finally {
                             btn.disabled = false;
+                            btn.textContent = originalText;
                         }
                     });
                 });
