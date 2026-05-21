@@ -918,18 +918,42 @@
             try {
                 const data = await apiFetch('/api/catalogs/status');
                 const loaded = data.loaded || [];
-                if (loaded.length === 0) {
-                    container.innerHTML = '<div class="code-block">Нет загруженных каталогов</div>';
+                const missing = data.missing || [];
+
+                if (loaded.length === 0 && missing.length === 0) {
+                    container.innerHTML = '<div class="code-block">Нет доступных каталогов</div>';
                     return;
                 }
+
                 let html = '<table><thead><tr><th>Каталог</th><th>Размер</th><th>Кол-во элементов</th><th>Последнее изменение</th><th>Действие</th></tr></thead><tbody>';
+
+                // Загруженные каталоги
                 for (const cat of loaded) {
                     const date = cat.lastModifiedISO ? new Date(cat.lastModifiedISO).toLocaleString() : '—';
-                    html += `<tr><td><strong>${cat.displayName || cat.name}</strong> (${cat.name})</td><td>${cat.sizeFormatted || '—'}</td><td>${cat.itemCount !== null ? cat.itemCount : '—'}</td><td>${date}</td><td><button class="btn-outline update-single-catalog" data-name="${cat.name}" style="padding:4px 12px;">🔄 Обновить</button></td></tr>`;
+                    html += `<tr style="background: rgba(0,255,0,0.05);">
+                        <td>✅ <strong>${cat.displayName || cat.name}</strong> (${cat.name})</td>
+                        <td>${cat.sizeFormatted || '—'}</td>
+                        <td>${cat.itemCount !== null ? cat.itemCount : '—'}</td>
+                        <td>${date}</td>
+                        <td><button class="btn-outline update-single-catalog" data-name="${cat.name}" style="padding:4px 12px;">🔄 Обновить</button></td>
+                     </tr>`;
                 }
+
+                // Отсутствующие каталоги
+                for (const cat of missing) {
+                    html += `<tr style="background: rgba(255,0,0,0.05);">
+                        <td>❌ <strong>${cat.displayName || cat.name}</strong> (${cat.name})</td>
+                        <td>—</td>
+                        <td>—</td>
+                        <td>—</td>
+                        <td><button class="btn-outline load-single-catalog" data-name="${cat.name}" data-display="${cat.displayName || cat.name}" style="padding:4px 12px;">📥 Загрузить</button></td>
+                     </tr>`;
+                }
+
                 html += '</tbody></table>';
                 container.innerHTML = html;
 
+                // Обработчики для обновления загруженных каталогов
                 document.querySelectorAll('.update-single-catalog').forEach(btn => {
                     btn.addEventListener('click', async (e) => {
                         const name = btn.getAttribute('data-name');
@@ -938,11 +962,35 @@
                         try {
                             await apiFetch(`/api/catalog/${name}/update`, { method: 'POST' });
                             await loadCatalogs();
-                        } catch (err) { alert(`Ошибка: ${err.message}`); }
-                        finally { btn.disabled = false; }
+                        } catch (err) {
+                            alert(`Ошибка: ${err.message}`);
+                        } finally {
+                            btn.disabled = false;
+                        }
                     });
                 });
-            } catch (e) { showError('catalogsList', `Ошибка: ${e.message}`); }
+
+                // Обработчики для загрузки отсутствующих каталогов
+                document.querySelectorAll('.load-single-catalog').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const name = btn.getAttribute('data-name');
+                        const displayName = btn.getAttribute('data-display');
+                        btn.textContent = '⏳ Загрузка...';
+                        btn.disabled = true;
+                        try {
+                            await apiFetch(`/api/catalog/${name}/load`, { method: 'POST' });
+                            await loadCatalogs();
+                        } catch (err) {
+                            alert(`Ошибка загрузки ${displayName}: ${err.message}`);
+                        } finally {
+                            btn.disabled = false;
+                        }
+                    });
+                });
+
+            } catch (e) {
+                showError('catalogsList', `Ошибка: ${e.message}`);
+            }
         }
 
         async function loadHistoryStats() {
