@@ -561,24 +561,15 @@
         }
 
         async function deleteClient(clientId) {
-            if (!confirm(`⚠️ Вы уверены, что хотите удалить клиента ${clientId.substring(0, 16)}...?\n\nЭто действие удалит:\n- Все настройки клиента\n- Историю просмотров\n- Таймкоды\n- Предпочтения аудио\n\nДействие необратимо!`)) {
-                return false;
-            }
-
+            
             try {
-                // Удаляем историю клиента
-                await fetch(`${currentServerUrl}/api/admin/history/${clientId}`, {
-                    method: 'DELETE',
-                    headers: { 'X-Admin-Token': adminToken }
-                }).catch(() => { });
-
+                
                 // Удаляем конфиг клиента
                 await fetch(`${currentServerUrl}/api/client/config?clientId=${encodeURIComponent(clientId)}`, {
                     method: 'DELETE',
                     headers: { 'X-Admin-Token': adminToken }
                 }).catch(() => { });
 
-                alert(`✅ Клиент ${clientId.substring(0, 16)}... удален`);
                 await loadClients();
                 await loadServerStatus();
                 return true;
