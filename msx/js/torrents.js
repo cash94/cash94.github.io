@@ -1462,7 +1462,7 @@ async function getTorrentFilesWithCache(torrent, forceRefresh) {
     // Если всё ещё нет файлов, делаем запрос к TorrServer
     if (files.length === 0 && AppState.currentTorrserverUrl) {
       var headers = {
-        'Content-Type': 'application/json',
+        'accept': 'application/octet-stream',
       };
       var authHeaders = getAuthHeaders();
       for (var key in authHeaders) {
@@ -1471,10 +1471,9 @@ async function getTorrentFilesWithCache(torrent, forceRefresh) {
         }
       }
 
-      var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify({ action: 'set', hash: hash })
+      var response = await fetch(AppState.currentTorrserverUrl + '/stream?link='+ hash +'&index=1&stat=stat', {
+        method: 'GET',
+        headers: headers
       });
 
       if (response.ok) {
