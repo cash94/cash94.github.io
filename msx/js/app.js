@@ -859,7 +859,7 @@ function setupSearch() {
         if (typeof AppState !== 'undefined') AppState.currentScreen = 'catalog';
         window.loadCatalogList();
         setTimeout(function () {
-          if (typeof updateFocusableElements === 'function') updateFocusableElements();
+          //if (typeof updateFocusableElements === 'function') updateFocusableElements();
           if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
         }, 200);
       }
