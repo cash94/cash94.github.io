@@ -2706,7 +2706,7 @@ function hideSearchResults() {
   if (!searchOverlay || !searchTab || !torrentsTab) return;
 
   // Определяем куда возвращаться
-  var returnTo = AppState.searchReturnTo || 'torrents';
+  var returnTo = AppState.searchReturnTo || AppState.inSearch;
 
   document.getElementById('torrserver-section').style.display = 'block';
   searchOverlay.classList.add('hidden');
