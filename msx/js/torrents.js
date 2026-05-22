@@ -2811,10 +2811,10 @@ function hideSearchResults() {
     if (catalogTab) catalogTab.classList.remove('active');
     AppState.currentScreen = 'torrents';
 
-    setTimeout(function () {
-      if (typeof window.focusFirstTorrentCard === 'function' && window.focusFirstTorrentCard()) {
-        return;
-      }
+    //setTimeout(function () {
+      //if (typeof window.focusFirstTorrentCard === 'function' && window.focusFirstTorrentCard()) {
+        //return;
+      //}
 
      // if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
        // updateFocusableElements();
@@ -2828,7 +2828,7 @@ function hideSearchResults() {
        // setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
      // }
     //}, 80);
-  }
+  //}
 
   if (searchInput && document.activeElement === searchInput) {
     searchInput.blur();
