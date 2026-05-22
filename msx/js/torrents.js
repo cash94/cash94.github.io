@@ -2789,21 +2789,21 @@ function hideSearchResults() {
     torrentsTab.classList.remove('active');
     AppState.currentScreen = 'catalog';
 
-    //setTimeout(function () {
-    // if (typeof window.focusCatalogCardByIndex === 'function') {
-    // var savedIndex = localStorage.getItem('lastCatalogCardIndex');
-    // var targetIndex = savedIndex !== null ?
-    //window.focusCatalogCardByIndex(parseInt(savedIndex)) : 0;
+    setTimeout(function () {
+      if (typeof window.focusCatalogCardByIndex === 'function') {
+        var savedIndex = localStorage.getItem('lastCatalogCardIndex');
+        var targetIndex = savedIndex !== null ?
+          window.focusCatalogCardByIndex(parseInt(savedIndex)) : 0;
 
-    // if (typeof window.ensureCatalogFocus === 'function') {
-    //  window.ensureCatalogFocus(true);
-    // } else if (typeof window.focusFirstCatalogCard === 'function') {
-    //   window.focusFirstCatalogCard();
-    // }
-    // } else if (typeof window.focusFirstCatalogCard === 'function') {
-    // window.focusFirstCatalogCard();
-    // }
-    //}, 80);
+        if (typeof window.ensureCatalogFocus === 'function') {
+          window.ensureCatalogFocus(true);
+        } else if (typeof window.focusFirstCatalogCard === 'function') {
+          window.focusFirstCatalogCard();
+        }
+      } else if (typeof window.focusFirstCatalogCard === 'function') {
+        window.focusFirstCatalogCard();
+      }
+    }, 80);
 
   } else {
     // Возврат в торренты (по умолчанию)
@@ -2811,32 +2811,31 @@ function hideSearchResults() {
     if (catalogTab) catalogTab.classList.remove('active');
     AppState.currentScreen = 'torrents';
 
-    //setTimeout(function () {
-    //if (typeof window.focusFirstTorrentCard === 'function' && window.focusFirstTorrentCard()) {
-    //return;
-    //}
+    setTimeout(function () {
+      if (typeof window.focusFirstTorrentCard === 'function' && window.focusFirstTorrentCard()) {
+        return;
+      }
 
-    // if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-    // updateFocusableElements();
-    // var firstCardIndex = -1;
-    // for (var i = 0; i < focusableElements.length; i++) {
-    //  if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) {
-    //   firstCardIndex = i;
-    //   break;
-    // }
-    // }
-    // setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
-    // }
-    //}, 80);
-    //}
-
-    if (searchInput && document.activeElement === searchInput) {
-      searchInput.blur();
-    }
-
-    // Очищаем searchReturnTo после использования
-    AppState.searchReturnTo = null;
+      if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+        updateFocusableElements();
+        var firstCardIndex = -1;
+        for (var i = 0; i < focusableElements.length; i++) {
+          if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) {
+            firstCardIndex = i;
+            break;
+          }
+        }
+        setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
+      }
+    }, 80);
   }
+
+  if (searchInput && document.activeElement === searchInput) {
+    searchInput.blur();
+  }
+
+  // Очищаем searchReturnTo после использования
+  AppState.searchReturnTo = null;
 }
 
 // Сброс всех фильтров
