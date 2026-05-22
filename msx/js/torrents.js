@@ -518,11 +518,11 @@ async function saveClientConfig() {
   return false;
 }
 
-// НОВАЯ ФУНКЦИЯ: Загрузка прогресса для торрента
+// Загрузка прогресса для торрента
 async function loadProgressForTorrent(torrent) {
   if (!torrent || !torrent.hash) return null;
 
-  // Проверяем кэш прогресса
+  // Проверяем кэш
   var cacheKey = torrent.hash;
   if (progressCache.has(cacheKey)) {
     var cached = progressCache.get(cacheKey);
@@ -532,50 +532,56 @@ async function loadProgressForTorrent(torrent) {
   }
 
   try {
-    // Используем getTorrentFilesWithCache для получения файлов
-    var files = await getTorrentFilesWithCache(torrent, false);
+    var files = [];
+    var hash = cacheKey;
 
-    // Если это фильм (один файл или data.lampa)
-    if (files.length === 0 && torrent.data) {
-      try {
-        var data = JSON.parse(torrent.data);
-        if (data.lampa && data.movie) {
-          // Это фильм из LAMPA, используем hash для запроса
-          var savedClientId = localStorage.getItem('clientId');
-          var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + torrent.hash + '&fileId=1' + '&clientId=' + encodeURIComponent(savedClientId));
-          if (response.ok) {
-            var timecodeData = await response.json();
-            if (timecodeData.success && timecodeData.timecode > 0) {
-              var progress = {
-                hash: torrent.hash,
-                fileId: '1',
-                timecode: timecodeData.timecode,
-                duration: timecodeData.duration,
-                isMovie: true,
-                episodeIndex: 0
-              };
-              // Сохраняем в кэш
-              progressCache.set(cacheKey, {
-                data: progress,
-                timestamp: Date.now()
-              });
-              return progress;
-            }
-          }
+    // Проверяем наличие file_stats (активный торрент)
+    if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) {
+      files = torrent.file_stats;
+    }
+
+    // Если всё ещё нет файлов, делаем запрос к TorrServer
+    if (files.length === 0 && AppState.currentTorrserverUrl) {
+      var headers = {
+        'accept': 'application/octet-stream',
+      };
+      var authHeaders = getAuthHeaders();
+      for (var key in authHeaders) {
+        if (authHeaders.hasOwnProperty(key)) {
+          headers[key] = authHeaders[key];
         }
-      } catch (e) {
-        console.error('Ошибка парсинга LAMPA data:', e);
       }
-      return null;
+
+      var response = await fetch(AppState.currentTorrserverUrl + '/stream?link=' + hash + '&stat=stat', {
+        method: 'GET',
+        headers: headers
+      });
+
+      if (response.ok) {
+        var apiData = await response.json();
+        if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
+          files = apiData.file_stats;
+          // Обновляем torrent.file_stats для будущего использования
+          torrent.file_stats = files;
+        } else if (apiData.data) {
+          try {
+            var parsedData = JSON.parse(apiData.data);
+            if (parsedData.TorrServer && parsedData.TorrServer.Files) {
+              files = parsedData.TorrServer.Files;
+              torrent.file_stats = files;
+            }
+          } catch (e) { }
+        }
+      }
     }
 
     // Для сериала - проверяем каждый файл
     if (files.length > 0) {
-      // Фильтруем только видео файлы
+      // Сортируем файлы (предполагаем, что они уже в правильном порядке)
       var videoFiles = [];
       for (var i = 0; i < files.length; i++) {
         var file = files[i];
-        var name = (file.path || '').toLowerCase();
+        var name = file.path.toLowerCase();
         if (name.indexOf('.mp4') !== -1 || name.indexOf('.mkv') !== -1 || name.indexOf('.avi') !== -1 ||
           name.indexOf('.mov') !== -1 || name.indexOf('.webm') !== -1 || name.indexOf('.m4v') !== -1) {
           videoFiles.push(file);
@@ -603,7 +609,7 @@ async function loadProgressForTorrent(torrent) {
                     timecode: data.timecode,
                     duration: data.duration,
                     index: idx,
-                    fileName: (file.path || '').split('/').pop()
+                    fileName: file.path.split('/').pop()
                   };
                 }
               }
@@ -615,8 +621,11 @@ async function loadProgressForTorrent(torrent) {
         })(file, index));
       }
 
-      // Выполняем все запросы параллельно для лучшей производительности
-      var results = await Promise.all(progressPromises);
+      var results = [];
+      for (var k = 0; k < progressPromises.length; k++) {
+        var result = await progressPromises[k]();
+        results.push(result);
+      }
 
       var validProgress = [];
       for (var m = 0; m < results.length; m++) {
@@ -656,7 +665,7 @@ async function loadProgressForTorrent(torrent) {
   }
 }
 
-// НОВАЯ ФУНКЦИЯ: Добавление информации о прогрессе в карточку
+// Добавление информации о прогрессе в карточку
 async function addProgressToCard(card, torrent) {
   if (!torrent || !torrent.hash) return;
 
@@ -683,7 +692,7 @@ async function addProgressToCard(card, torrent) {
   }
 }
 
-// НОВАЯ ФУНКЦИЯ: Отрисовка бейджа прогресса
+// Отрисовка бейджа прогресса
 function renderProgressBadge(card, progress) {
   // Удаляем старый бейдж если есть
   var oldBadge = card.querySelector('.progress-badge');
@@ -735,7 +744,7 @@ function renderProgressBadge(card, progress) {
   card.appendChild(progressBadge);
 }
 
-// НОВАЯ ФУНКЦИЯ: Добавление информации о прогрессе в детальный просмотр
+// Добавление информации о прогрессе в детальный просмотр
 async function addProgressToDetail(torrent) {
   if (!torrent || !torrent.hash) return;
 
