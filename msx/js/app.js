@@ -814,10 +814,10 @@ function setupSearch() {
           torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n          <div class="loading-spinner" style="margin: 0 auto 20px;"></div>\n          <div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div>\n        </div>';
         }
         loadTorrents(true).then(function () {
-          setTimeout(function () {
-            if (typeof updateFocusableElements === 'function') updateFocusableElements();
-            if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard();
-          }, 200);
+          //setTimeout(function () {
+            //if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            //if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard();
+          //}, 200);
         })['catch'](function (error) {
           console.error('Ошибка загрузки торрентов:', error);
           if (torrentsGrid) {
