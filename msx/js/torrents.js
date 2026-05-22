@@ -2131,6 +2131,47 @@ async function loadPendingStills() {
 async function loadProgressForFileItem(item, hash, fileId, episodeIndex) {
   if (!item || !hash) return;
 
+  // Создаем ключ для кэша (такой же как в loadProgressForTorrent)
+  var cacheKey = hash;
+
+  // Проверяем кэш прогресса
+  if (progressCache.has(cacheKey)) {
+    var cached = progressCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < 60000)) { // Кэш на 1 минуту
+      var cachedProgress = cached.data;
+
+      // Ищем данные для конкретного файла
+      var fileProgress = null;
+      if (cachedProgress.isSeries && cachedProgress.fileId == fileId) {
+        fileProgress = cachedProgress;
+      } else if (!cachedProgress.isSeries && fileId === '1') {
+        fileProgress = cachedProgress;
+      }
+
+      // Если нашли данные в кэше, отображаем их
+      if (fileProgress && fileProgress.timecode > 0 && fileProgress.duration && fileProgress.duration > 0) {
+        var progressPercent = (fileProgress.timecode / fileProgress.duration) * 100;
+        progressPercent = Math.min(progressPercent, 98);
+
+        var progressFill = item.querySelector('.file-progress-fill');
+        if (progressFill) {
+          progressFill.style.width = progressPercent + '%';
+          if (progressPercent > 5) {
+            progressFill.style.opacity = '1';
+            item.classList.add('has-progress');
+          }
+        }
+
+        item.dataset.progressTimecode = fileProgress.timecode;
+        item.dataset.progressDuration = fileProgress.duration;
+
+        console.log('📦 Используем кэш для прогресса файла:', cacheKey, 'fileId:', fileId);
+        return;
+      }
+    }
+  }
+
+  // Если в кэше нет, загружаем с сервера
   try {
     var savedClientId = localStorage.getItem('clientId');
     var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
@@ -2139,23 +2180,38 @@ async function loadProgressForFileItem(item, hash, fileId, episodeIndex) {
       var data = await response.json();
       if (data.success && data.timecode > 0 && data.duration && data.duration > 0) {
         var progressPercent = (data.timecode / data.duration) * 100;
-        // Ограничиваем проценты (не более 98%, чтобы не показывать полностью просмотренные как 100%)
         progressPercent = Math.min(progressPercent, 98);
 
         var progressFill = item.querySelector('.file-progress-fill');
         if (progressFill) {
           progressFill.style.width = progressPercent + '%';
-          // Добавляем небольшой визуальный эффект при наличии прогресса
           if (progressPercent > 5) {
             progressFill.style.opacity = '1';
-            // Добавляем класс для анимации
             item.classList.add('has-progress');
           }
         }
 
-        // Сохраняем данные прогресса в item для быстрого доступа
         item.dataset.progressTimecode = data.timecode;
         item.dataset.progressDuration = data.duration;
+
+        // Сохраняем в кэш (если нет общих данных, сохраняем для этого файла)
+        if (!progressCache.has(cacheKey)) {
+          var progress = {
+            hash: hash,
+            fileId: fileId,
+            timecode: data.timecode,
+            duration: data.duration,
+            episodeIndex: episodeIndex || 0,
+            isSeries: episodeIndex !== undefined && episodeIndex !== null
+          };
+
+          progressCache.set(cacheKey, {
+            data: progress,
+            timestamp: Date.now()
+          });
+        }
+
+        console.log('💾 Сохранено в кэш прогресса:', cacheKey, 'fileId:', fileId);
       }
     }
   } catch (error) {
