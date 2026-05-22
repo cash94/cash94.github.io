@@ -813,17 +813,17 @@ function setupSearch() {
         if (torrentsGrid) {
           torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n          <div class="loading-spinner" style="margin: 0 auto 20px;"></div>\n          <div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div>\n        </div>';
         }
-        //loadTorrents(true).then(function () {
-          //setTimeout(function () {
+        loadTorrents(true).then(function () {
+          setTimeout(function () {
             //if (typeof updateFocusableElements === 'function') updateFocusableElements();
             //if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard();
-          //}, 200);
-        //})['catch'](function (error) {
-          //console.error('Ошибка загрузки торрентов:', error);
-          //if (torrentsGrid) {
-            //torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n            <div style="font-size: 48px; margin-bottom: 20px;">❌</div>\n            <div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div>\n            <button class="btn" style="margin-top: 20px;" onclick="document.getElementById(\'tab-torrents\').click()">Попробовать снова</button>\n          </div>';
-          //}
-        //});
+          }, 200);
+        })['catch'](function (error) {
+          console.error('Ошибка загрузки торрентов:', error);
+          if (torrentsGrid) {
+          /torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n            <div style="font-size: 48px; margin-bottom: 20px;">❌</div>\n            <div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div>\n            <button class="btn" style="margin-top: 20px;" onclick="document.getElementById(\'tab-torrents\').click()">Попробовать снова</button>\n          </div>';
+          }
+        });
       } else {
         loadTorrents(true).then(function () {
           //setTimeout(function () {
