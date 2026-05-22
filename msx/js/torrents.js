@@ -522,7 +522,7 @@ async function saveClientConfig() {
 async function loadProgressForTorrent(torrent) {
   if (!torrent || !torrent.hash) return null;
 
-  // Проверяем кэш
+  // Проверяем кэш прогресса
   var cacheKey = torrent.hash;
   if (progressCache.has(cacheKey)) {
     var cached = progressCache.get(cacheKey);
@@ -532,20 +532,8 @@ async function loadProgressForTorrent(torrent) {
   }
 
   try {
-    // Парсим данные торрента для получения списка файлов
-    var files = [];
-    if (torrent.file_stats && Array.isArray(torrent.file_stats)) {
-      files = torrent.file_stats;
-    } else if (torrent.data) {
-      try {
-        var data = JSON.parse(torrent.data);
-        if (data.TorrServer && data.TorrServer.Files) {
-          files = data.TorrServer.Files;
-        }
-      } catch (e) {
-        console.error('Ошибка парсинга data:', e);
-      }
-    }
+    // Используем getTorrentFilesWithCache для получения файлов
+    var files = await getTorrentFilesWithCache(torrent, false);
 
     // Если это фильм (один файл или data.lampa)
     if (files.length === 0 && torrent.data) {
@@ -583,11 +571,11 @@ async function loadProgressForTorrent(torrent) {
 
     // Для сериала - проверяем каждый файл
     if (files.length > 0) {
-      // Сортируем файлы (предполагаем, что они уже в правильном порядке)
+      // Фильтруем только видео файлы
       var videoFiles = [];
       for (var i = 0; i < files.length; i++) {
         var file = files[i];
-        var name = file.path.toLowerCase();
+        var name = (file.path || '').toLowerCase();
         if (name.indexOf('.mp4') !== -1 || name.indexOf('.mkv') !== -1 || name.indexOf('.avi') !== -1 ||
           name.indexOf('.mov') !== -1 || name.indexOf('.webm') !== -1 || name.indexOf('.m4v') !== -1) {
           videoFiles.push(file);
@@ -615,7 +603,7 @@ async function loadProgressForTorrent(torrent) {
                     timecode: data.timecode,
                     duration: data.duration,
                     index: idx,
-                    fileName: file.path.split('/').pop()
+                    fileName: (file.path || '').split('/').pop()
                   };
                 }
               }
@@ -627,11 +615,8 @@ async function loadProgressForTorrent(torrent) {
         })(file, index));
       }
 
-      var results = [];
-      for (var k = 0; k < progressPromises.length; k++) {
-        var result = await progressPromises[k]();
-        results.push(result);
-      }
+      // Выполняем все запросы параллельно для лучшей производительности
+      var results = await Promise.all(progressPromises);
 
       var validProgress = [];
       for (var m = 0; m < results.length; m++) {
