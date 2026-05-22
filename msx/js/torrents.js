@@ -1471,35 +1471,35 @@ async function getTorrentFilesWithCache(torrent, forceRefresh) {
         }
       }
 
-      var response = await fetch(AppState.currentTorrserverUrl + '/stream?link='+ hash +'&index=1&stat=stat', {
+      var response = await fetch(AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=1&stat=stat', {
         method: 'GET',
         headers: headers
       });
 
       if (response.ok) {
 
-        response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
-          method: 'POST',
-          headers: headers,
-          body: JSON.stringify({ action: 'get', hash: hash })
-        });
+        // response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
+        //   method: 'POST',
+        //   headers: headers,
+        //   body: JSON.stringify({ action: 'get', hash: hash })
+        // });
 
-        if (response.ok) {
-          var apiData = await response.json();
-          if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
-            files = apiData.file_stats;
-            // Обновляем torrent.file_stats для будущего использования
-            torrent.file_stats = files;
-          } else if (apiData.data) {
-            try {
-              var parsedData = JSON.parse(apiData.data);
-              if (parsedData.TorrServer && parsedData.TorrServer.Files) {
-                files = parsedData.TorrServer.Files;
-                torrent.file_stats = files;
-              }
-            } catch (e) { }
-          }
+        // if (response.ok) {
+        var apiData = await response.json();
+        if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
+          files = apiData.file_stats;
+          // Обновляем torrent.file_stats для будущего использования
+          torrent.file_stats = files;
+        } else if (apiData.data) {
+          try {
+            var parsedData = JSON.parse(apiData.data);
+            if (parsedData.TorrServer && parsedData.TorrServer.Files) {
+              files = parsedData.TorrServer.Files;
+              torrent.file_stats = files;
+            }
+          } catch (e) { }
         }
+        //}
       }
     }
   } catch (error) {
