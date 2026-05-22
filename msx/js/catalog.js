@@ -2517,18 +2517,18 @@ async function showCatalogList() {
         console.log('📜 Добавлена категория "История" в конец списка');
     }
 
-    setTimeout(function () {
-        if (AppState.currentScreen === 'catalog') {
-            if (typeof updateFocusableElements === 'function') {
-                updateFocusableElements();
-            }
-            setTimeout(function () {
-                if (typeof window.focusFirstCatalogCard === 'function') {
-                    window.focusFirstCatalogCard();
-                }
-            }, 100);
-        }
-    }, 200);
+    //setTimeout(function () {
+        //if (AppState.currentScreen === 'catalog') {
+            //if (typeof updateFocusableElements === 'function') {
+                //updateFocusableElements();
+            //}
+            //setTimeout(function () {
+                //if (typeof window.focusFirstCatalogCard === 'function') {
+                    //window.focusFirstCatalogCard();
+                //}
+            //}, 100);
+        //}
+    //}, 200);
 }
 
 function createCatalogFolderCard(key, config) {
