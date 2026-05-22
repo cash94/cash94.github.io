@@ -2899,7 +2899,7 @@ function exitPlayer() {
 
 function setupPageUnloadHandler() {
 
-  if (!window.AndroidJS && !window.AndroidJS.openPlayer) {
+  if (!window.AndroidJS) {
 
     // Добавляем событие unload - оно срабатывает даже при закрытии приложения
     window.addEventListener('unload', function () {
