@@ -1448,16 +1448,16 @@ async function getTorrentFilesWithCache(torrent, forceRefresh) {
       files = torrent.file_stats;
     }
     // Если нет, запрашиваем через API
-    else if (torrent.data) {
-      try {
-        var data = JSON.parse(torrent.data);
-        if (data.TorrServer && data.TorrServer.Files) {
-          files = data.TorrServer.Files;
-        }
-      } catch (e) {
-        console.warn('Ошибка парсинга torrent.data:', e);
-      }
-    }
+    // else if (torrent.data) {
+    //   try {
+    //     var data = JSON.parse(torrent.data);
+    //     if (data.TorrServer && data.TorrServer.Files) {
+    //       files = data.TorrServer.Files;
+    //     }
+    //   } catch (e) {
+    //     console.warn('Ошибка парсинга torrent.data:', e);
+    //   }
+    // }
 
     // Если всё ещё нет файлов, делаем запрос к TorrServer
     if (files.length === 0 && AppState.currentTorrserverUrl) {
@@ -1474,23 +1474,32 @@ async function getTorrentFilesWithCache(torrent, forceRefresh) {
       var response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
         method: 'POST',
         headers: headers,
-        body: JSON.stringify({ action: 'get', hash: hash })
+        body: JSON.stringify({ action: 'set', hash: hash })
       });
 
       if (response.ok) {
-        var apiData = await response.json();
-        if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
-          files = apiData.file_stats;
-          // Обновляем torrent.file_stats для будущего использования
-          torrent.file_stats = files;
-        } else if (apiData.data) {
-          try {
-            var parsedData = JSON.parse(apiData.data);
-            if (parsedData.TorrServer && parsedData.TorrServer.Files) {
-              files = parsedData.TorrServer.Files;
-              torrent.file_stats = files;
-            }
-          } catch (e) { }
+
+        response = await fetch(AppState.currentTorrserverUrl + '/torrents', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({ action: 'get', hash: hash })
+        });
+
+        if (response.ok) {
+          var apiData = await response.json();
+          if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
+            files = apiData.file_stats;
+            // Обновляем torrent.file_stats для будущего использования
+            torrent.file_stats = files;
+          } else if (apiData.data) {
+            try {
+              var parsedData = JSON.parse(apiData.data);
+              if (parsedData.TorrServer && parsedData.TorrServer.Files) {
+                files = parsedData.TorrServer.Files;
+                torrent.file_stats = files;
+              }
+            } catch (e) { }
+          }
         }
       }
     }
