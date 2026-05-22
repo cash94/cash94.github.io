@@ -858,10 +858,10 @@ function setupSearch() {
         tabCatalog.classList.add('active');
         if (typeof AppState !== 'undefined') AppState.currentScreen = 'catalog';
         window.loadCatalogList();
-        setTimeout(function () {
+        //setTimeout(function () {
           //if (typeof updateFocusableElements === 'function') updateFocusableElements();
-          if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
-        }, 200);
+          //if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+        //}, 200);
       }
     });
   }
