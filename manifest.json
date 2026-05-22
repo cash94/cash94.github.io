@@ -316,6 +316,14 @@
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-ldapauth.png",
         "versions": [
             {
+                "version": "23.0.0.0",
+                "changelog": "- Backport \"Fix IUserManager.RenameUser signature for Jellyfin 12.x\" for Jellyfin 10.11.9 (#215) @tam1m",
+                "targetAbi": "10.11.9.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/ldap-authentication/ldap-authentication_23.0.0.0.zip",
+                "checksum": "e67eda7dd1b91a71315bd6620c8b03f1",
+                "timestamp": "2026-05-22T14:03:42Z"
+            },
+            {
                 "version": "22.0.0.0",
                 "changelog": "- Fix 10.11.2 support (#195) @crobibero",
                 "targetAbi": "10.11.2.0",
@@ -649,8 +657,8 @@
                 "changelog": "- Jellyfin 10.11 support (#108) @crobibero",
                 "targetAbi": "10.11.0.0",
                 "sourceUrl": "https://repo.jellyfin.org/files/plugin/playback-reporting/playback-reporting_17.0.0.0.zip",
-                "checksum": "39575226bed8761f246de3f43183a528",
-                "timestamp": "2025-10-20T01:28:39Z"
+                "checksum": "564015681bc44246506ffd068a8d2d89",
+                "timestamp": "2026-05-22T14:04:03Z"
             },
             {
                 "version": "16.0.0.0",
@@ -900,6 +908,14 @@
         "category": "General",
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-trakt.png",
         "versions": [
+            {
+                "version": "30.0.0.0",
+                "changelog": "-  Fix MissingMethodException on Jellyfin 10.11 (use GetUsers() instead Users) (#292) @lowbit",
+                "targetAbi": "10.11.9.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/trakt/trakt_30.0.0.0.zip",
+                "checksum": "6ba3ddc64e273d9ac9b87a9a14bfb741",
+                "timestamp": "2026-05-22T14:09:42Z"
+            },
             {
                 "version": "29.0.0.0",
                 "changelog": "- Revert \"Update dependency Microsoft.Extensions.Http to v10\" (#268) @Shadowghost",
@@ -2342,6 +2358,14 @@
         "category": "General",
         "imageUrl": "",
         "versions": [
+            {
+                "version": "11.0.0.0",
+                "changelog": "- Fix IUserManager.Users -> GetUsers() for Jellyfin 10.11.9 (#209) @crobibero",
+                "targetAbi": "10.11.9.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/dlna/dlna_11.0.0.0.zip",
+                "checksum": "c1eaee5e02f1e2d51c3fce64175446c7",
+                "timestamp": "2026-05-22T14:03:42Z"
+            },
             {
                 "version": "10.0.0.0",
                 "changelog": "- Encode header values (#174) @crobibero\n- Avoid invalid PlayCommand start index (#175) @crobibero",
