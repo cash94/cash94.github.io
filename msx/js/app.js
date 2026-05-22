@@ -596,9 +596,9 @@ function setupNavigation() {
       console.log('🔙 Возврат из детального просмотра');
       var mainContainer = document.getElementById('main-container');
       resetDetailBackground();
-      //if (typeof Animations !== 'undefined') {
-        //Animations.animateDetailHide();
-      //}
+      if (typeof Animations !== 'undefined') {
+        Animations.animateDetailHide();
+      }
       // Сохраняем hash текущего торрента перед очисткой
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
@@ -815,8 +815,8 @@ function setupSearch() {
         }
         loadTorrents(true).then(function () {
           setTimeout(function () {
-            //if (typeof updateFocusableElements === 'function') updateFocusableElements();
-            //if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard();
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard();
           }, 200);
         })['catch'](function (error) {
           console.error('Ошибка загрузки торрентов:', error);
@@ -826,10 +826,10 @@ function setupSearch() {
         });
       } else {
         loadTorrents(true).then(function () {
-          //setTimeout(function () {
-            //if (typeof updateFocusableElements === 'function') updateFocusableElements();
-            //if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard();
-          //}, 200);
+          setTimeout(function () {
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard();
+          }, 200);
         })['catch'](function (error) {
           console.error('Ошибка загрузки торрентов:', error);
           if (torrentsGrid) {
@@ -870,10 +870,10 @@ function setupSearch() {
         tabCatalog.classList.add('active');
         if (typeof AppState !== 'undefined') AppState.currentScreen = 'catalog';
         window.loadCatalogList();
-        //setTimeout(function () {
-          //if (typeof updateFocusableElements === 'function') updateFocusableElements();
-          //if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
-        //}, 200);
+        setTimeout(function () {
+          if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+        }, 200);
       }
     });
   }
