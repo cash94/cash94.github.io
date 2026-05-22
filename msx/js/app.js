@@ -797,32 +797,34 @@ function setupSearch() {
 
   if (tabTorrents && typeof hideSearchResults === 'function' && typeof loadTorrents === 'function') {
     tabTorrents.addEventListener('click', function () {
-      console.log('📁 Переключение на вкладку "Мои торренты"');
-      window.pendingCatalogPoster = null;
-      window.pendingCatalogItem = null;
-      if (typeof AppState !== 'undefined') AppState.inSearch = 'torrents';
-      hideSearchResults();
-      tabTorrents.classList.add('active');
-      if (tabSearch) tabSearch.classList.remove('active');
-      if (tabCatalog) tabCatalog.classList.remove('active');
-      var searchOverlay = document.getElementById('search-overlay');
-      if (searchOverlay) searchOverlay.classList.add('hidden');
-      if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
-      var torrentsGrid = document.getElementById('torrents-grid');
-      if (torrentsGrid) {
-        torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n          <div class="loading-spinner" style="margin: 0 auto 20px;"></div>\n          <div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div>\n        </div>';
-      }
-      loadTorrents(true).then(function () {
-        setTimeout(function () {
-          if (typeof updateFocusableElements === 'function') updateFocusableElements();
-          if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard();
-        }, 200);
-      })['catch'](function (error) {
-        console.error('Ошибка загрузки торрентов:', error);
+      if (!tabTorrents.classList.contains('active')) {
+        console.log('📁 Переключение на вкладку "Мои торренты"');
+        window.pendingCatalogPoster = null;
+        window.pendingCatalogItem = null;
+        if (typeof AppState !== 'undefined') AppState.inSearch = 'torrents';
+        hideSearchResults();
+        tabTorrents.classList.add('active');
+        if (tabSearch) tabSearch.classList.remove('active');
+        if (tabCatalog) tabCatalog.classList.remove('active');
+        var searchOverlay = document.getElementById('search-overlay');
+        if (searchOverlay) searchOverlay.classList.add('hidden');
+        if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
+        var torrentsGrid = document.getElementById('torrents-grid');
         if (torrentsGrid) {
-          torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n            <div style="font-size: 48px; margin-bottom: 20px;">❌</div>\n            <div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div>\n            <button class="btn" style="margin-top: 20px;" onclick="document.getElementById(\'tab-torrents\').click()">Попробовать снова</button>\n          </div>';
+          torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n          <div class="loading-spinner" style="margin: 0 auto 20px;"></div>\n          <div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div>\n        </div>';
         }
-      });
+        loadTorrents(true).then(function () {
+          setTimeout(function () {
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard();
+          }, 200);
+        })['catch'](function (error) {
+          console.error('Ошибка загрузки торрентов:', error);
+          if (torrentsGrid) {
+            torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n            <div style="font-size: 48px; margin-bottom: 20px;">❌</div>\n            <div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div>\n            <button class="btn" style="margin-top: 20px;" onclick="document.getElementById(\'tab-torrents\').click()">Попробовать снова</button>\n          </div>';
+          }
+        });
+      }
     });
   }
 
@@ -838,27 +840,29 @@ function setupSearch() {
   if (tabCatalog && typeof window.loadCatalogList === 'function') {
     tabCatalog.addEventListener('click', function () {
       if (typeof AppState !== 'undefined') AppState.inSearch = 'catalog';
-      window.pendingCatalogPoster = null;
-      window.pendingCatalogItem = null;
-      if (typeof catalogState !== 'undefined') {
-        catalogState.lastSelectedIndex = 0;
-        catalogState.lastSelectedId = null;
+      if (!tabCatalog.classList.contains('active')) {
+        window.pendingCatalogPoster = null;
+        window.pendingCatalogItem = null;
+        if (typeof catalogState !== 'undefined') {
+          catalogState.lastSelectedIndex = 0;
+          catalogState.lastSelectedId = null;
+        }
+        localStorage.removeItem('lastCatalogCardIndex');
+        if (typeof hideSearchResults === 'function') hideSearchResults();
+        var searchOverlay = document.getElementById('search-overlay');
+        if (searchOverlay) searchOverlay.classList.add('hidden');
+        var tabTorrentsEl = document.getElementById('tab-torrents');
+        var tabSearchEl = document.getElementById('tab-search');
+        if (tabTorrentsEl) tabTorrentsEl.classList.remove('active');
+        if (tabSearchEl) tabSearchEl.classList.remove('active');
+        tabCatalog.classList.add('active');
+        if (typeof AppState !== 'undefined') AppState.currentScreen = 'catalog';
+        window.loadCatalogList();
+        setTimeout(function () {
+          if (typeof updateFocusableElements === 'function') updateFocusableElements();
+          if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+        }, 200);
       }
-      localStorage.removeItem('lastCatalogCardIndex');
-      if (typeof hideSearchResults === 'function') hideSearchResults();
-      var searchOverlay = document.getElementById('search-overlay');
-      if (searchOverlay) searchOverlay.classList.add('hidden');
-      var tabTorrentsEl = document.getElementById('tab-torrents');
-      var tabSearchEl = document.getElementById('tab-search');
-      if (tabTorrentsEl) tabTorrentsEl.classList.remove('active');
-      if (tabSearchEl) tabSearchEl.classList.remove('active');
-      tabCatalog.classList.add('active');
-      if (typeof AppState !== 'undefined') AppState.currentScreen = 'catalog';
-      window.loadCatalogList();
-      setTimeout(function () {
-        if (typeof updateFocusableElements === 'function') updateFocusableElements();
-        if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
-      }, 200);
     });
   }
 }
