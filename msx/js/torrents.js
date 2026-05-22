@@ -1549,7 +1549,7 @@ async function showDetail(torrent) {
   if (typeof Animations !== 'undefined') {
     Animations.animateDetailShow();
   }
-  
+
   var mainContainer = document.getElementById('main-container');
   if (mainContainer) {
     mainContainer.style.pointerEvents = 'none';
@@ -1704,7 +1704,7 @@ async function showDetail(torrent) {
         setFocus(0);
       }
     }
-    
+
   }, 200);
 
   AppState.mediaType = "";
@@ -2652,7 +2652,7 @@ function showSearchResults(options) {
   torrentsTab.classList.remove('active');
   if (catalogTab) catalogTab.classList.remove('active');
   AppState.currentScreen = 'search';
-  
+
   syncSearchFilterButtons();
   toggleSearchFiltersPanel(false);
 
@@ -2736,26 +2736,26 @@ function hideSearchResults() {
 
     // Восстанавливаем детальный просмотр
     //if (AppState.pendingDetailItem) {
-      //console.log('Возврат к детальному просмотру:',
-        //AppState.pendingDetailItem.torrent && AppState.pendingDetailItem.torrent[0] && AppState.pendingDetailItem.torrent[0].name || 'Фильм');
+    //console.log('Возврат к детальному просмотру:',
+    //AppState.pendingDetailItem.torrent && AppState.pendingDetailItem.torrent[0] && AppState.pendingDetailItem.torrent[0].name || 'Фильм');
 
-      //showCatalogDetail(
-        //AppState.pendingDetailItem,
-        //AppState.pendingDetailIndex || 0,
-        //AppState.pendingDetailPoster
-      //);
+    //showCatalogDetail(
+    //AppState.pendingDetailItem,
+    //AppState.pendingDetailIndex || 0,
+    //AppState.pendingDetailPoster
+    //);
 
-      // Очищаем сохраненные данные
-      //AppState.pendingDetailItem = null;
-      //AppState.pendingDetailPoster = null;
-      //AppState.pendingDetailIndex = null;
+    // Очищаем сохраненные данные
+    //AppState.pendingDetailItem = null;
+    //AppState.pendingDetailPoster = null;
+    //AppState.pendingDetailIndex = null;
     //} else if (AppState.currentDetailItem) {
-      // Если есть текущий элемент детального просмотра
-      //showCatalogDetail(
-        //AppState.currentDetailItem,
-        //catalogState.lastSelectedIndex || 0,
-        //null
-      //);
+    // Если есть текущий элемент детального просмотра
+    //showCatalogDetail(
+    //AppState.currentDetailItem,
+    //catalogState.lastSelectedIndex || 0,
+    //null
+    //);
     //}
 
     // Устанавливаем фокус на кнопку просмотра
@@ -2790,19 +2790,19 @@ function hideSearchResults() {
     AppState.currentScreen = 'catalog';
 
     //setTimeout(function () {
-     // if (typeof window.focusCatalogCardByIndex === 'function') {
-       // var savedIndex = localStorage.getItem('lastCatalogCardIndex');
-       // var targetIndex = savedIndex !== null ?
-          //window.focusCatalogCardByIndex(parseInt(savedIndex)) : 0;
+    // if (typeof window.focusCatalogCardByIndex === 'function') {
+    // var savedIndex = localStorage.getItem('lastCatalogCardIndex');
+    // var targetIndex = savedIndex !== null ?
+    //window.focusCatalogCardByIndex(parseInt(savedIndex)) : 0;
 
-       // if (typeof window.ensureCatalogFocus === 'function') {
-        //  window.ensureCatalogFocus(true);
-       // } else if (typeof window.focusFirstCatalogCard === 'function') {
-       //   window.focusFirstCatalogCard();
-       // }
-     // } else if (typeof window.focusFirstCatalogCard === 'function') {
-       // window.focusFirstCatalogCard();
-     // }
+    // if (typeof window.ensureCatalogFocus === 'function') {
+    //  window.ensureCatalogFocus(true);
+    // } else if (typeof window.focusFirstCatalogCard === 'function') {
+    //   window.focusFirstCatalogCard();
+    // }
+    // } else if (typeof window.focusFirstCatalogCard === 'function') {
+    // window.focusFirstCatalogCard();
+    // }
     //}, 80);
 
   } else {
@@ -2812,30 +2812,31 @@ function hideSearchResults() {
     AppState.currentScreen = 'torrents';
 
     //setTimeout(function () {
-      //if (typeof window.focusFirstTorrentCard === 'function' && window.focusFirstTorrentCard()) {
-        //return;
-      //}
+    //if (typeof window.focusFirstTorrentCard === 'function' && window.focusFirstTorrentCard()) {
+    //return;
+    //}
 
-     // if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-       // updateFocusableElements();
-       // var firstCardIndex = -1;
-       // for (var i = 0; i < focusableElements.length; i++) {
-        //  if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) {
-         //   firstCardIndex = i;
-         //   break;
-         // }
-       // }
-       // setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
-     // }
+    // if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+    // updateFocusableElements();
+    // var firstCardIndex = -1;
+    // for (var i = 0; i < focusableElements.length; i++) {
+    //  if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) {
+    //   firstCardIndex = i;
+    //   break;
+    // }
+    // }
+    // setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
+    // }
     //}, 80);
-  //}
+    //}
 
-  if (searchInput && document.activeElement === searchInput) {
-    searchInput.blur();
+    if (searchInput && document.activeElement === searchInput) {
+      searchInput.blur();
+    }
+
+    // Очищаем searchReturnTo после использования
+    AppState.searchReturnTo = null;
   }
-
-  // Очищаем searchReturnTo после использования
-  AppState.searchReturnTo = null;
 }
 
 // Сброс всех фильтров
