@@ -3478,6 +3478,14 @@ function setupFocusRescue() {
         }
 
         if (catalog) {
+            // Проверяем наличие карточек каталога
+            var hasCatalogCards = document.querySelector('#torrents-grid .torrent-card.catalog-folder-card');
+
+            if (hasCatalogCards) {
+                console.log('📁 Карточки каталога уже есть, выходим');
+                return true;
+            }
+
             if (window.catalogState) {
                 window.catalogState.lastSelectedIndex = 0;
                 window.catalogState.lastSelectedId = null;
