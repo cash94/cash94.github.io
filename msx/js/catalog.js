@@ -53,7 +53,7 @@ var tmdbCache = {};
 // Конфигурация кэша TMDB
 var TMDB_CACHE_CONFIG = {
     ttl: 3600000, // 1 час в миллисекундах
-    maxSize: 75, // Максимальное количество записей в кэше
+    maxSize: 80, // Максимальное количество записей в кэше
     cleanupInterval: 300000, // Очистка каждые 5 минут
     enabled: true // Включен ли кэш
 };
@@ -135,7 +135,7 @@ function cleanOldTmdbCache() {
         }
         sortedEntries.sort(function (a, b) { return a.timestamp - b.timestamp; });
 
-        var toDelete = keys.length - TMDB_CACHE_CONFIG.maxSize + 10;
+        var toDelete = keys.length - TMDB_CACHE_CONFIG.maxSize + 40;
         for (var j = 0; j < toDelete && j < sortedEntries.length; j++) {
             delete tmdbCache[sortedEntries[j].key];
             deletedCount++;
