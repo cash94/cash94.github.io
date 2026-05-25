@@ -6,7 +6,7 @@ var AppState = {
   // Настройки сервера
   protocol: window.location.protocol,
   currentTorrserverUrl: '',
-  currentVersion: 'TorrStream.1.0.17',
+  currentVersion: 'TorrStream.1.0.18',
   authEnabled: false,
   serverOnline: false,
   clientId: null,
