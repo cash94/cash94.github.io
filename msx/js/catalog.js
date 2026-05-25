@@ -633,6 +633,7 @@ async function loadCatalog(catalogKey) {
     catalogState.loadedItemIds = {};
     catalogState.loadedPostersCount = 0;
     catalogState.posterLoadQueue = [];
+    catalogState.posterCache = {};
     AppState.mediaType = config.mediaType;
 
     showCatalogLoading('Загрузка ' + config.name + '...');
@@ -2625,6 +2626,7 @@ function backToCatalogList() {
     catalogState.loadedItemIds = {};
     catalogState.loadedPostersCount = 0;
     catalogState.posterLoadQueue = [];
+    catalogState.posterCache = {};
 
     catalogState.lastSelectedIndex = 0;
     catalogState.lastSelectedId = null;
