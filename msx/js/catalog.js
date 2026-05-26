@@ -822,7 +822,14 @@ async function showCatalogList() {
     var grid = document.getElementById('torrents-grid'); if (!grid) return; abortCatalogRequests();
     catalogState.currentCatalog = null; catalogState.items = []; catalogState.loading = false; catalogState.loadedPostersCount = 0; catalogState.posterLoadQueue = [];
     catalogState.lastSelectedIndex = 0; catalogState.lastSelectedId = null;
-    document.getElementById('tab-catalog')?.classList.add('active'); document.getElementById('tab-torrents')?.classList.remove('active'); document.getElementById('tab-search')?.classList.remove('active');
+    var catalogTab = document.getElementById('tab-catalog');
+    if (catalogTab) catalogTab.classList.add('active');
+
+    var torrentsTab = document.getElementById('tab-torrents');
+    if (torrentsTab) torrentsTab.classList.remove('active');
+
+    var searchTab = document.getElementById('tab-search');
+    if (searchTab) searchTab.classList.remove('active');
     grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка списка каталогов...</div></div>';
     var cats = await fetchAvailableCatalogs();
     if (AppState.currentScreen !== 'catalog') return;
