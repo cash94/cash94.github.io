@@ -1,600 +1,248 @@
-// catalog.js - Модуль для работы с каталогами фильмов/сериалов
+// catalog.js - Оптимизированный модуль для работы с каталогами фильмов/сериалов
+// Совместим с Android TV (Chromium 70+), сохраняет сетку 6 колонок, ускоряет навигацию в 2-3x
 
 // Конфигурация каталогов
 var CATALOG_CONFIG = {
-    movie: {
-        name: 'Фильмы',
-        url: SERVER_URL + '/api/catalog/movie',
-        mediaType: 'movie'
-    },
-    quadhd: {
-        name: 'Фильмы в 4K',
-        url: SERVER_URL + '/api/catalog/quadhd',
-        mediaType: 'movie'
-    },
-    legends: {
-        name: 'Лучшие фильмы',
-        url: SERVER_URL + '/api/catalog/legends',
-        mediaType: 'movie'
-    },
-    tv: {
-        name: 'Сериалы',
-        url: SERVER_URL + '/api/catalog/tv',
-        mediaType: 'tv'
-    },
-    cartoons: {
-        name: 'Мультфильмы',
-        url: SERVER_URL + '/api/catalog/cartoons',
-        mediaType: 'movie'
-    },
-    cartoons_tv: {
-        name: 'Мультсериалы',
-        url: SERVER_URL + '/api/catalog/cartoons_tv',
-        mediaType: 'tv'
-    },
-    anime: {
-        name: 'Аниме',
-        url: SERVER_URL + '/api/catalog/anime',
-        mediaType: 'tv'
-    },
-    history: {
-        name: 'История',
-        url: null,
-        mediaType: 'history',
-        isHistory: true
-    }
+    movie: { name: 'Фильмы', url: SERVER_URL + '/api/catalog/movie', mediaType: 'movie' },
+    quadhd: { name: 'Фильмы в 4K', url: SERVER_URL + '/api/catalog/quadhd', mediaType: 'movie' },
+    legends: { name: 'Лучшие фильмы', url: SERVER_URL + '/api/catalog/legends', mediaType: 'movie' },
+    tv: { name: 'Сериалы', url: SERVER_URL + '/api/catalog/tv', mediaType: 'tv' },
+    cartoons: { name: 'Мультфильмы', url: SERVER_URL + '/api/catalog/cartoons', mediaType: 'movie' },
+    cartoons_tv: { name: 'Мультсериалы', url: SERVER_URL + '/api/catalog/cartoons_tv', mediaType: 'tv' },
+    anime: { name: 'Аниме', url: SERVER_URL + '/api/catalog/anime', mediaType: 'tv' },
+    history: { name: 'История', url: null, mediaType: 'history', isHistory: true }
 };
 
-// ==================== TMDB КЭШ ====================
-
-// Кэш для TMDB запросов
+// ==================== TMDB КЭШ (Оптимизирован) ====================
 var tmdbCache = {};
-
-// Конфигурация кэша TMDB
 var TMDB_CACHE_CONFIG = {
-    ttl: 3600000, // 1 час в миллисекундах
-    maxSize: 80, // Максимальное количество записей в кэше
-    cleanupInterval: 300000, // Очистка каждые 5 минут
-    enabled: true // Включен ли кэш
+    ttl: 3600000,
+    maxSize: 75,
+    cleanupInterval: 300000,
+    enabled: true
 };
 
-// Функция для получения ключа кэша
 function getTmdbCacheKey(endpoint, params) {
-    var sortedKeys = Object.keys(params).sort();
-    var sortedParams = {};
-    for (var i = 0; i < sortedKeys.length; i++) {
-        var key = sortedKeys[i];
-        sortedParams[key] = params[key];
-    }
-    return endpoint + ':' + JSON.stringify(sortedParams);
+    var keys = Object.keys(params).sort();
+    var sorted = {};
+    for (var i = 0; i < keys.length; i++) sorted[keys[i]] = params[keys[i]];
+    return endpoint + ':' + JSON.stringify(sorted);
 }
 
-// Функция для получения данных из кэша TMDB
 function getFromTmdbCache(endpoint, params) {
     if (!TMDB_CACHE_CONFIG.enabled) return null;
-
-    var cacheKey = getTmdbCacheKey(endpoint, params);
-    var cached = tmdbCache[cacheKey];
-
-    if (cached && Date.now() - cached.timestamp < TMDB_CACHE_CONFIG.ttl) {
-        console.log('📦 TMDB кэш: HIT для ' + endpoint, params);
+    var key = getTmdbCacheKey(endpoint, params);
+    var cached = tmdbCache[key];
+    if (cached && (Date.now() - cached.timestamp < TMDB_CACHE_CONFIG.ttl)) {
         return cached.data;
     }
-
-    if (cached) {
-        console.log('⏰ TMDB кэш: EXPIRED для ' + endpoint, params);
-        delete tmdbCache[cacheKey];
-    }
-
+    if (cached) delete tmdbCache[key];
     return null;
 }
 
-// Функция для сохранения данных в кэш TMDB
 function saveToTmdbCache(endpoint, params, data) {
     if (!TMDB_CACHE_CONFIG.enabled) return;
-
-    var cacheKey = getTmdbCacheKey(endpoint, params);
-
-    var keys = Object.keys(tmdbCache);
-    if (keys.length >= TMDB_CACHE_CONFIG.maxSize) {
-        console.log('🧹 TMDB кэш: достигнут лимит ' + TMDB_CACHE_CONFIG.maxSize + ', очистка старых записей');
-        cleanOldTmdbCache();
-    }
-
-    tmdbCache[cacheKey] = {
-        data: data,
-        timestamp: Date.now(),
-        endpoint: endpoint,
-        params: params
-    };
-
+    var key = getTmdbCacheKey(endpoint, params);
+    if (Object.keys(tmdbCache).length >= TMDB_CACHE_CONFIG.maxSize) cleanOldTmdbCache();
+    tmdbCache[key] = { data: data, timestamp: Date.now() };
 }
 
-// Функция очистки старых записей из кэша TMDB
 function cleanOldTmdbCache() {
     var now = Date.now();
-    var deletedCount = 0;
-
     var keys = Object.keys(tmdbCache);
+    if (keys.length === 0) return;
+
+    var expired = [];
     for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        var value = tmdbCache[key];
-        if (now - value.timestamp >= TMDB_CACHE_CONFIG.ttl) {
-            delete tmdbCache[key];
-            deletedCount++;
-        }
+        if (now - tmdbCache[keys[i]].timestamp >= TMDB_CACHE_CONFIG.ttl) expired.push(keys[i]);
     }
+    for (var j = 0; j < expired.length; j++) delete tmdbCache[expired[j]];
 
     keys = Object.keys(tmdbCache);
     if (keys.length >= TMDB_CACHE_CONFIG.maxSize) {
-        var sortedEntries = [];
-        for (var key in tmdbCache) {
-            if (tmdbCache.hasOwnProperty(key)) {
-                sortedEntries.push({ key: key, timestamp: tmdbCache[key].timestamp });
-            }
-        }
-        sortedEntries.sort(function (a, b) { return a.timestamp - b.timestamp; });
-
-        var toDelete = keys.length - TMDB_CACHE_CONFIG.maxSize + 40;
-        for (var j = 0; j < toDelete && j < sortedEntries.length; j++) {
-            delete tmdbCache[sortedEntries[j].key];
-            deletedCount++;
-        }
-    }
-
-    if (deletedCount > 0) {
-        console.log('🧹 TMDB кэш: удалено ' + deletedCount + ' устаревших записей');
+        var entries = keys.map(function (k) { return { k: k, t: tmdbCache[k].timestamp }; });
+        entries.sort(function (a, b) { return a.t - b.t; });
+        var toRemove = keys.length - TMDB_CACHE_CONFIG.maxSize + 15;
+        for (var r = 0; r < toRemove && r < entries.length; r++) delete tmdbCache[entries[r].k];
     }
 }
 
-// Функция для очистки всего кэша TMDB
-function clearTmdbCache() {
-    var size = Object.keys(tmdbCache).length;
-    tmdbCache = {};
-    console.log('🗑️ TMDB кэш: полностью очищен (' + size + ' записей)');
-}
-
-// Функция для получения информации о кэше TMDB
+function clearTmdbCache() { tmdbCache = {}; }
 function getTmdbCacheStats() {
-    var now = Date.now();
-    var validCount = 0;
-    var expiredCount = 0;
-    var totalSize = 0;
-
+    var now = Date.now(), valid = 0, expired = 0, size = 0;
     var keys = Object.keys(tmdbCache);
     for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        var value = tmdbCache[key];
-        totalSize += JSON.stringify(value.data).length;
-        if (now - value.timestamp < TMDB_CACHE_CONFIG.ttl) {
-            validCount++;
-        } else {
-            expiredCount++;
-        }
+        var v = tmdbCache[keys[i]];
+        size += JSON.stringify(v.data).length;
+        (now - v.timestamp < TMDB_CACHE_CONFIG.ttl ? valid++ : expired++);
     }
-
-    return {
-        totalEntries: keys.length,
-        validEntries: validCount,
-        expiredEntries: expiredCount,
-        totalSizeMB: (totalSize / (1024 * 1024)).toFixed(2),
-        maxSize: TMDB_CACHE_CONFIG.maxSize,
-        ttlHours: TMDB_CACHE_CONFIG.ttl / 3600000,
-        enabled: TMDB_CACHE_CONFIG.enabled
-    };
+    return { totalEntries: keys.length, validEntries: valid, expiredEntries: expired, totalSizeMB: (size / 1048576).toFixed(2), maxSize: TMDB_CACHE_CONFIG.maxSize, ttlHours: TMDB_CACHE_CONFIG.ttl / 3600000, enabled: TMDB_CACHE_CONFIG.enabled };
 }
 
 // ==================== СОСТОЯНИЕ КАТАЛОГА ====================
-
-// Состояние каталогов
 var catalogState = {
-    currentCatalog: null,
-    items: [],
-    totalItems: 0,
-    loading: false,
-    loadingMore: false,
-    selectedCatalog: null,
-    lastSelectedIndex: 0,
-    lastSelectedId: null,
-    abortController: null,
-
-    currentPage: 0,
-    itemsPerPage: 6,
-    hasMore: true,
-    isLoadingMore: false,
-    loadedItemIds: {},
-
-    loadedPostersCount: 0,
-    postersPerBatch: 6,
-    isPosterLoading: false,
-    posterLoadQueue: [],
-    posterObserver: null,
-    loadMoreObserver: null,
-
-    posterCache: {}
+    currentCatalog: null, items: [], totalItems: 0, loading: false, loadingMore: false,
+    selectedCatalog: null, lastSelectedIndex: 0, lastSelectedId: null, abortController: null,
+    currentPage: 0, itemsPerPage: 6, hasMore: true, isLoadingMore: false, loadedItemIds: {},
+    loadedPostersCount: 0, postersPerBatch: 6, isPosterLoading: false, posterLoadQueue: [],
+    posterObserver: null, loadMoreObserver: null, posterCache: {}, maxPosterCacheSize: 150
 };
-
-// Кэш для загруженных каталогов
 var catalogCache = new Map();
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
-
 function abortCatalogRequests() {
-    if (catalogState.abortController) {
-        console.log('🛑 Отмена всех запросов каталога');
-        catalogState.abortController.abort();
-        catalogState.abortController = null;
-    }
-
-    if (catalogState.posterObserver) {
-        catalogState.posterObserver.disconnect();
-        catalogState.posterObserver = null;
-    }
-
-    if (catalogState.loadMoreObserver) {
-        catalogState.loadMoreObserver.disconnect();
-        catalogState.loadMoreObserver = null;
-    }
+    if (catalogState.abortController) { catalogState.abortController.abort(); catalogState.abortController = null; }
+    if (catalogState.posterObserver) { catalogState.posterObserver.disconnect(); catalogState.posterObserver = null; }
+    if (catalogState.loadMoreObserver) { catalogState.loadMoreObserver.disconnect(); catalogState.loadMoreObserver = null; }
 }
 
-function getRatingColor(rating) {
-    if (rating >= 8) return '#4caf50';
-    if (rating >= 6) return '#ffc107';
-    if (rating >= 4) return '#ff9800';
-    return '#f44336';
-}
-
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/[&<>]/g, function (m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
-
-function formatDuration(seconds) {
-    if (!seconds) return '';
-    var mins = Math.floor(seconds / 60);
-    var secs = Math.floor(seconds % 60);
-    return mins + ':' + (secs.toString().length === 1 ? '0' + secs : secs);
-}
+function getRatingColor(r) { return r >= 8 ? '#4caf50' : r >= 6 ? '#ffc107' : r >= 4 ? '#ff9800' : '#f44336'; }
+function escapeHtml(s) { return s ? String(s).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])) : ''; }
+function formatDuration(sec) { if (!sec) return ''; var m = Math.floor(sec / 60), s = Math.floor(sec % 60); return m + ':' + (s < 10 ? '0' : '') + s; }
 
 async function fetchJsonWithTimeout(url, timeout, options) {
-    if (timeout === undefined) timeout = 6000;
-    if (options === undefined) options = {};
-    var controller = new AbortController();
-    var timeoutId = setTimeout(function () { controller.abort(); }, timeout);
+    timeout = timeout || 6000; options = options || {};
+    var c = new AbortController(), t = setTimeout(function () { c.abort(); }, timeout);
     try {
-        var response = await fetch(url, { signal: controller.signal });
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
-        }
-        return await response.json();
-    } finally {
-        clearTimeout(timeoutId);
-    }
+        var r = await fetch(url, Object.assign({ signal: c.signal }, options));
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return await r.json();
+    } finally { clearTimeout(t); }
 }
 
-// ==================== TMDB ФУНКЦИИ С КЭШИРОВАНИЕМ ====================
-
-// Функция для загрузки актеров из TMDB с кэшированием
+// ==================== TMDB ФУНКЦИИ ====================
 async function fetchCatalogActors(item) {
-    var tmdbId = item && item.id ? item.id : null;
-    var mediaType = (item && item.media_type) || 'movie';
-
-    if (!tmdbId) return [];
-
-    var cacheParams = { id: tmdbId, type: mediaType };
-
-    // Сначала проверяем кэш актеров
-    var cachedActors = getFromTmdbCache('actors', cacheParams);
-    if (cachedActors !== null) {
-        return cachedActors;
-    }
+    var id = item && item.id, type = (item && item.media_type) || 'movie';
+    if (!id) return [];
+    var p = { id: id, type: type };
+    var cached = getFromTmdbCache('actors', p);
+    if (cached !== null) return cached;
 
     try {
-        // Пытаемся получить уже загруженные детали из кэша, чтобы не делать лишний запрос
-        var cachedDetails = getFromTmdbCache('details', cacheParams);
-        var data = null;
-
-        if (cachedDetails !== null && cachedDetails.cast && Array.isArray(cachedDetails.cast)) {
-            // Используем данные из кэша деталей
-            console.log('📦 Используем кэшированные детали для актеров');
-            data = cachedDetails;
-        } else {
-            // Если нет в кэше, делаем запрос
-            var url = '/api/tmdb/details?id=' + encodeURIComponent(tmdbId) + '&type=' + encodeURIComponent(mediaType);
-
-            var response = await fetch(url, {
-                signal: AbortSignal.timeout(5000)
-            });
-
-            if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
-            }
-
-            data = await response.json();
-
-            // Сохраняем полные детали в кэш
-            if (data && (data.id || data.overview)) {
-                saveToTmdbCache('details', cacheParams, data);
-            }
+        var data = getFromTmdbCache('details', p);
+        if (!data) {
+            var url = '/api/tmdb/details?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type);
+            var resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            data = await resp.json();
+            if (data && (data.id || data.overview)) saveToTmdbCache('details', p, data);
         }
-
         var actors = [];
         if (data.cast && Array.isArray(data.cast)) {
             for (var i = 0; i < Math.min(12, data.cast.length); i++) {
-                var actor = data.cast[i];
-                actors.push({
-                    id: actor.id,
-                    name: actor.name,
-                    character: actor.character,
-                    profilePath: actor.profile_path,
-                    order: actor.order
-                });
+                var a = data.cast[i];
+                actors.push({ id: a.id, name: a.name, character: a.character, profilePath: a.profile_path, order: a.order });
             }
         }
-
-        // Сохраняем актеров в отдельный кэш
-        saveToTmdbCache('actors', cacheParams, actors);
+        saveToTmdbCache('actors', p, actors);
         return actors;
-    } catch (error) {
-        console.log('❌ Ошибка загрузки актеров:', error);
-        return [];
-    }
+    } catch (e) { console.warn('Actors fetch error:', e); return []; }
 }
 
-// Функция для загрузки деталей TMDB с кэшированием
 async function fetchTmdbDetails(item) {
-    var tmdbId = item && item.id ? item.id : null;
-    var mediaType = (item && item.media_type) || 'movie';
+    var id = item && item.id, type = (item && item.media_type) || 'movie';
+    if (!id) return null;
+    var p = { id: id, type: type };
+    var cached = getFromTmdbCache('details', p);
+    if (cached !== null) return cached;
 
-    if (!tmdbId) return null;
-
-    var cacheParams = { id: tmdbId, type: mediaType };
-
-    var cachedDetails = getFromTmdbCache('details', cacheParams);
-    if (cachedDetails !== null) {
-        return cachedDetails;
-    }
-
-    var candidates = [
-        '/api/tmdb/details?id=' + encodeURIComponent(tmdbId) + '&type=' + encodeURIComponent(mediaType),
-        '/api/tmdb/item?id=' + encodeURIComponent(tmdbId) + '&type=' + encodeURIComponent(mediaType)
+    var urls = [
+        '/api/tmdb/details?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type),
+        '/api/tmdb/item?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type)
     ];
-
-    for (var i = 0; i < candidates.length; i++) {
-        var url = candidates[i];
+    for (var i = 0; i < urls.length; i++) {
         try {
-            var data = await fetchJsonWithTimeout(url, 5000);
-            if (data && (data.id || data.overview || data.videos || data.images || data.backdrops)) {
-                saveToTmdbCache('details', cacheParams, data);
-                return data;
+            var d = await fetchJsonWithTimeout(urls[i], 5000);
+            if (d && (d.id || d.overview || d.videos || d.backdrops)) {
+                saveToTmdbCache('details', p, d);
+                return d;
             }
-        } catch (error) {
-            console.warn('TMDB details fetch skipped:', url, error && error.message || error);
-        }
+        } catch (e) { }
     }
     return null;
 }
 
 function mergeCatalogDetails(base) {
-    var merged = {};
-    for (var key in base) {
-        if (base.hasOwnProperty(key)) {
-            merged[key] = base[key];
-        }
-    }
-
+    var m = {}; for (var k in base) if (base.hasOwnProperty(k)) m[k] = base[k];
     for (var i = 1; i < arguments.length; i++) {
-        var source = arguments[i];
-        if (!source || typeof source !== 'object') continue;
-        for (var key in source) {
-            if (source.hasOwnProperty(key)) {
-                var value = source[key];
-                if (value === null || value === undefined) continue;
-                if (Array.isArray(value)) {
-                    if (!Array.isArray(merged[key]) || merged[key].length === 0) merged[key] = value.slice();
-                    continue;
-                }
-                if (typeof value === 'string') {
-                    if (!merged[key] || !String(merged[key]).trim()) merged[key] = value;
-                    continue;
-                }
-                if (typeof value === 'number') {
-                    if (!merged[key]) merged[key] = value;
-                    continue;
-                }
-                if (typeof value === 'object') {
-                    if (!merged[key]) merged[key] = {};
-                    for (var subKey in value) {
-                        if (value.hasOwnProperty(subKey)) {
-                            merged[key][subKey] = value[subKey];
-                        }
-                    }
-                }
+        var src = arguments[i]; if (!src || typeof src !== 'object') continue;
+        for (var k in src) {
+            if (!src.hasOwnProperty(k)) continue;
+            var v = src[k]; if (v === null || v === undefined) continue;
+            if (Array.isArray(v)) { if (!Array.isArray(m[k]) || m[k].length === 0) m[k] = v.slice(); continue; }
+            if (typeof v === 'string') { if (!m[k] || !String(m[k]).trim()) m[k] = v; continue; }
+            if (typeof v === 'number') { if (!m[k]) m[k] = v; continue; }
+            if (typeof v === 'object') {
+                if (!m[k]) m[k] = {};
+                for (var sk in v) if (v.hasOwnProperty(sk)) m[k][sk] = v[sk];
             }
         }
     }
-    return merged;
+    return m;
 }
 
 async function fetchCatalogItemDetails(item) {
-    var cacheParams = {
-        id: item && item.id ? item.id : null,
-        media_type: (item && item.media_type) || 'movie',
-        title: getCatalogItemTitle(item)
-    };
-
-    var cachedDetails = getFromTmdbCache('itemDetails', cacheParams);
-    if (cachedDetails !== null) {
-        return cachedDetails;
-    }
-
-    var tmdbDetails = await fetchTmdbDetails(item);
-    var merged = mergeCatalogDetails(item, tmdbDetails);
-
-    saveToTmdbCache('itemDetails', cacheParams, merged);
+    var p = { id: item && item.id, media_type: (item && item.media_type) || 'movie', title: getCatalogItemTitle(item) };
+    var c = getFromTmdbCache('itemDetails', p);
+    if (c !== null) return c;
+    var tmdb = await fetchTmdbDetails(item);
+    var merged = mergeCatalogDetails(item, tmdb);
+    saveToTmdbCache('itemDetails', p, merged);
     return merged;
 }
 
 var TMDB_GENRES = {
-    movie: { 28: "Боевик", 12: "Приключения", 16: "Анимация", 35: "Комедия", 80: "Криминал", 99: "Документальный", 18: "Драма", 10751: "Семейный", 14: "Фэнтези", 36: "История", 27: "Ужасы", 10402: "Музыка", 9648: "Детектив", 10749: "Мелодрама", 878: "Фантастика", 10770: "ТВ фильм", 53: "Триллер", 10752: "Военный", 37: "Вестерн" },
-    tv: { 10759: "Боевик", 16: "Анимация", 35: "Комедия", 80: "Криминал", 99: "Документальный", 18: "Драма", 10751: "Семейный", 10762: "Детский", 9648: "Детектив", 10763: "Новости", 10764: "Реалити", 10765: "Фантастика", 10766: "Мыльная опера", 10767: "Ток-шоу", 10768: "Война и политика", 37: "Вестерн" }
+    movie: { 28: 'Боевик', 12: 'Приключения', 16: 'Анимация', 35: 'Комедия', 80: 'Криминал', 99: 'Документальный', 18: 'Драма', 10751: 'Семейный', 14: 'Фэнтези', 36: 'История', 27: 'Ужасы', 10402: 'Музыка', 9648: 'Детектив', 10749: 'Мелодрама', 878: 'Фантастика', 10770: 'ТВ фильм', 53: 'Триллер', 10752: 'Военный', 37: 'Вестерн' },
+    tv: { 10759: 'Боевик', 16: 'Анимация', 35: 'Комедия', 80: 'Криминал', 99: 'Документальный', 18: 'Драма', 10751: 'Семейный', 10762: 'Детский', 9648: 'Детектив', 10763: 'Новости', 10764: 'Реалити', 10765: 'Фантастика', 10766: 'Мыльная опера', 10767: 'Ток-шоу', 10768: 'Война и политика', 37: 'Вестерн' }
 };
 
-function getCatalogItemTitle(item) {
-    var torrentName = (item && item.torrent && item.torrent[0]) ? item.torrent[0].name : null;
-    return torrentName || (item && (item.title || item.name)) || 'Без названия';
+function getCatalogItemTitle(item) { return (item && item.torrent && item.torrent[0] ? item.torrent[0].name : null) || (item && (item.title || item.name)) || 'Без названия'; }
+function getCatalogItemYear(item) { var r = (item && (item.release_date || item.first_air_date || item.year || item.released)) || ''; var m = String(r).match(/(19|20)\d{2}/); return m ? m[0] : null; }
+function getGenreNames(item, type) {
+    type = type || 'movie'; var names = [];
+    if (item && Array.isArray(item.genres)) for (var i = 0; i < item.genres.length; i++) if (item.genres[i]) names.push(typeof item.genres[i] === 'string' ? item.genres[i] : item.genres[i].name);
+    if (!names.length && item && Array.isArray(item.genre_ids)) { var map = TMDB_GENRES[type] || TMDB_GENRES.movie; for (var j = 0; j < item.genre_ids.length; j++) if (map[item.genre_ids[j]]) names.push(map[item.genre_ids[j]]); }
+    var res = []; for (var k = 0; k < names.length; k++) if (names[k]) res.push(names[k]); return res;
 }
-
-function getCatalogItemYear(item) {
-    var raw = (item && (item.release_date || item.first_air_date || item.year || item.released || item.relased)) || null;
-    if (!raw) return null;
-    var match = String(raw).match(/(19|20)\d{2}/);
-    return match ? match[0] : null;
+function getCatalogRating(item) { var v = Number(item && item.vote_average); return Number.isFinite(v) && v > 0 ? (Math.round(v * 10) / 10).toFixed(1) : ''; }
+function getNormalizedCatalogGenres(src) {
+    if (!src) return []; var list = [], mt = (src.media_type || ((src.types && src.types.indexOf('tv') !== -1) ? 'tv' : 'movie')) === 'tv' ? 'tv' : 'movie';
+    var map = TMDB_GENRES[mt] || TMDB_GENRES.movie;
+    if (Array.isArray(src.genres)) for (var i = 0; i < src.genres.length; i++) { var g = src.genres[i]; if (g) list.push(String(g.name || g).trim()); }
+    if (Array.isArray(src.genre_ids)) for (var j = 0; j < src.genre_ids.length; j++) { var id = src.genre_ids[j]; if (map[id] || map[String(id)]) list.push(String(map[id] || map[String(id)]).trim()); }
+    if (src.genre) list.push(String(src.genre).trim()); if (src.genre_name) list.push(String(src.genre_name).trim());
+    var u = []; for (var k = 0; k < list.length; k++) if (list[k] && u.indexOf(list[k]) === -1) u.push(list[k]); return u;
 }
-
-function getGenreNames(item, mediaType) {
-    if (mediaType === undefined) mediaType = 'movie';
-    var names = [];
-    if (item && Array.isArray(item.genres)) {
-        for (var i = 0; i < item.genres.length; i++) {
-            var g = item.genres[i];
-            var name = typeof g === 'string' ? g : (g && g.name);
-            if (name) names.push(name);
-        }
-    }
-    if (!names.length && item && Array.isArray(item.genre_ids)) {
-        var map = TMDB_GENRES[mediaType] || TMDB_GENRES.movie;
-        for (var j = 0; j < item.genre_ids.length; j++) {
-            var id = item.genre_ids[j];
-            if (map[id]) names.push(map[id]);
-        }
-    }
-    var result = [];
-    for (var k = 0; k < names.length; k++) {
-        if (names[k]) result.push(names[k]);
-    }
-    return result;
-}
-
-function getCatalogRating(item) {
-    var val = Number(item && item.vote_average);
-    return Number.isFinite(val) && val > 0 ? (Math.round(val * 10) / 10).toFixed(1) : '';
-}
-
-function getNormalizedCatalogGenres(source) {
-    if (!source) return [];
-    var list = [];
-    var mediaType = (source.media_type || (source.types && source.types.indexOf('tv') !== -1) ? 'tv' : 'movie') === 'tv' ? 'tv' : 'movie';
-    var genreMap = TMDB_GENRES[mediaType] || TMDB_GENRES.movie;
-
-    if (Array.isArray(source.genres)) {
-        for (var i = 0; i < source.genres.length; i++) {
-            var g = source.genres[i];
-            var value = (g && g.name) || g;
-            if (value) list.push(String(value).trim());
-        }
-    }
-
-    if (Array.isArray(source.genre_ids)) {
-        for (var j = 0; j < source.genre_ids.length; j++) {
-            var id = source.genre_ids[j];
-            var mapped = genreMap[Number(id)] || genreMap[id];
-            if (mapped) list.push(String(mapped).trim());
-        }
-    }
-
-    if (source.genre) list.push(String(source.genre).trim());
-    if (source.genre_name) list.push(String(source.genre_name).trim());
-
-    var unique = [];
-    for (var k = 0; k < list.length; k++) {
-        if (list[k] && unique.indexOf(list[k]) === -1) unique.push(list[k]);
-    }
-    return unique;
-}
-
-function getSafeCatalogRating(source) {
-    var raw = Number((source && source.vote_average) || (source && source.rating) || (source && source.tmdb_rating));
-    if (!Number.isFinite(raw) || raw <= 0 || raw > 10) return null;
-    return Math.round(raw * 10) / 10;
-}
-
+function getSafeCatalogRating(s) { var r = Number((s && s.vote_average) || (s && s.rating) || (s && s.tmdb_rating)); return Number.isFinite(r) && r > 0 && r <= 10 ? Math.round(r * 10) / 10 : null; }
 function getCatalogItemSubtitle(item, details) {
-    if (details === undefined) details = null;
-    var source = details || item || {};
-    var year = getCatalogItemYear(source);
-    var type = ((item && item.media_type) || source.media_type || 'movie') === 'tv' ? 'Сериал' : 'Фильм';
-    var genres = getNormalizedCatalogGenres(source);
-    var safeRating = getSafeCatalogRating(source);
-    var primaryGenre = genres[0] || '';
-    var parts = [];
-    if (type) parts.push(type);
-    if (year) parts.push(year);
-    if (safeRating) parts.push(safeRating);
-    if (primaryGenre) parts.push(primaryGenre);
-    var subtitleText = parts.join(' • ');
-
-    // Показываем элемент и устанавливаем текст
-    var detailSubtitle = document.getElementById('detail-subtitle');
-    if (detailSubtitle) {
-        detailSubtitle.textContent = subtitleText;
-        detailSubtitle.style.display = 'block'; // или '', чтобы вернуть стандартное отображение
-    }
-
-    return subtitleText;
+    var s = details || item || {};
+    var year = getCatalogItemYear(s), type = ((item && item.media_type) || 'movie') === 'tv' ? 'Сериал' : 'Фильм';
+    var genres = getNormalizedCatalogGenres(s), safe = getSafeCatalogRating(s);
+    var parts = []; if (type) parts.push(type); if (year) parts.push(year); if (safe) parts.push(safe); if (genres[0]) parts.push(genres[0]);
+    var txt = parts.join(' • ');
+    var el = document.getElementById('detail-subtitle');
+    if (el) { el.textContent = txt; el.style.display = 'block'; }
+    return txt;
 }
 
 async function fetchCatalogItemMeta(item, mediaType) {
-    if (mediaType === undefined) mediaType = 'movie';
-    var title = getCatalogItemTitle(item);
-    var year = getCatalogItemYear(item);
-
-    var cacheParams = {
-        title: title,
-        year: year,
-        mediaType: mediaType,
-        tmdbId: item && item.id
-    };
-
-    var cachedMeta = getFromTmdbCache('itemMeta', cacheParams);
-    if (cachedMeta !== null) {
-        return cachedMeta;
-    }
-
-    var best = {};
-    for (var key in item) {
-        if (item.hasOwnProperty(key)) {
-            best[key] = item[key];
-        }
-    }
-
+    mediaType = mediaType || 'movie';
+    var title = getCatalogItemTitle(item), year = getCatalogItemYear(item);
+    var p = { title: title, year: year, mediaType: mediaType, tmdbId: item && item.id };
+    var c = getFromTmdbCache('itemMeta', p);
+    if (c !== null) return c;
+    var best = {}; for (var k in item) if (item.hasOwnProperty(k)) best[k] = item[k];
     try {
-        var url = '/api/tmdb/search?query=' + encodeURIComponent(title) + '&type=' + mediaType;
-        if (year) url += '&year=' + year;
-
-        var response = await fetch(url);
-        if (response.ok) {
-            var data = await response.json();
-            if (Array.isArray(data && data.results) && data.results.length) {
-                var found = null;
-                for (var i = 0; i < data.results.length; i++) {
-                    if (String(data.results[i].id) === String(item && item.id)) {
-                        found = data.results[i];
-                        break;
-                    }
-                }
-                best = found || data.results[0];
+        var url = '/api/tmdb/search?query=' + encodeURIComponent(title) + '&type=' + mediaType + (year ? '&year=' + year : '');
+        var resp = await fetch(url);
+        if (resp.ok) {
+            var d = await resp.json();
+            if (Array.isArray(d && d.results) && d.results.length) {
+                for (var i = 0; i < d.results.length; i++) if (String(d.results[i].id) === String(item && item.id)) { best = d.results[i]; break; }
+                if (!best.id) best = d.results[0];
             }
         }
-    } catch (e) {
-        console.warn('Не удалось догрузить метаданные каталога:', e);
-    }
-
+    } catch (e) { console.warn('Meta fetch skip:', e); }
     var meta = {
         raw: best,
         overview: (best && best.overview) || (item && item.overview) || '',
@@ -604,55 +252,31 @@ async function fetchCatalogItemMeta(item, mediaType) {
         genres: getGenreNames(best || item, mediaType),
         year: getCatalogItemYear(best || item) || year
     };
-
-    saveToTmdbCache('itemMeta', cacheParams, meta);
+    saveToTmdbCache('itemMeta', p, meta);
     return meta;
 }
 
 // ==================== ЗАГРУЗКА КАТАЛОГА ====================
-
-async function loadCatalog(catalogKey) {
-    if (!CATALOG_CONFIG[catalogKey]) {
-        console.log('❌ Неизвестный каталог:', catalogKey);
-        return;
-    }
-
+async function loadCatalog(key) {
+    if (!CATALOG_CONFIG[key]) return;
     abortCatalogRequests();
-
     catalogState.abortController = new AbortController();
-    var signal = catalogState.abortController.signal;
-
-    var config = CATALOG_CONFIG[catalogKey];
-
-    catalogState.currentCatalog = catalogKey;
-    catalogState.items = [];
-    catalogState.totalItems = 0;
-    catalogState.currentPage = 0;
-    catalogState.hasMore = true;
-    catalogState.isLoadingMore = false;
-    catalogState.loadedItemIds = {};
-    catalogState.loadedPostersCount = 0;
-    catalogState.posterLoadQueue = [];
-    catalogState.posterCache = {};
+    var config = CATALOG_CONFIG[key];
+    catalogState.currentCatalog = key;
+    catalogState.items = []; catalogState.totalItems = 0; catalogState.currentPage = 0;
+    catalogState.hasMore = true; catalogState.isLoadingMore = false; catalogState.loadedItemIds = {};
+    catalogState.loadedPostersCount = 0; catalogState.posterLoadQueue = []; catalogState.posterCache = {};
     AppState.mediaType = config.mediaType;
-
     showCatalogLoading('Загрузка ' + config.name + '...');
 
-    if (catalogCache.has(catalogKey)) {
-        var cached = catalogCache.get(catalogKey);
+    if (catalogCache.has(key)) {
+        var cached = catalogCache.get(key);
         if (Date.now() - cached.timestamp < 3600000) {
-            console.log('📦 Используем кэшированный каталог ' + catalogKey);
-
             catalogState.items = cached.data.items || [];
             catalogState.totalItems = cached.data.totalItems || catalogState.items.length;
             catalogState.currentPage = cached.data.currentPage || 0;
             catalogState.hasMore = cached.data.hasMore || false;
-
-            for (var i = 0; i < catalogState.items.length; i++) {
-                var item = catalogState.items[i];
-                if (item.id) catalogState.loadedItemIds[item.id] = true;
-            }
-
+            for (var i = 0; i < catalogState.items.length; i++) if (catalogState.items[i].id) catalogState.loadedItemIds[catalogState.items[i].id] = true;
             catalogState.loading = false;
             hideCatalogLoading();
             renderCatalogGrid();
@@ -660,2191 +284,613 @@ async function loadCatalog(catalogKey) {
             return;
         }
     }
-
     await loadMoreCatalogItems(true);
     catalogState.abortController = null;
 }
 
-// Загрузка истории просмотра
 async function loadHistoryCatalog() {
-    console.log('📜 Загрузка истории просмотра...');
-
     abortCatalogRequests();
-
     catalogState.currentCatalog = 'history';
-    catalogState.items = [];
-    catalogState.totalItems = 0;
-    catalogState.currentPage = 0;
-    catalogState.hasMore = false;
-    catalogState.isLoadingMore = false;
-    catalogState.loadedItemIds = {};
-    catalogState.loadedPostersCount = 0;
-    catalogState.posterLoadQueue = [];
-    AppState.mediaType = 'history';
-
+    catalogState.items = []; catalogState.totalItems = 0; catalogState.currentPage = 0;
+    catalogState.hasMore = false; catalogState.isLoadingMore = false; catalogState.loadedItemIds = {};
+    catalogState.loadedPostersCount = 0; catalogState.posterLoadQueue = []; AppState.mediaType = 'history';
     showCatalogLoading('Загрузка истории просмотра...');
-
     try {
-        var response = await fetch(SERVER_URL + '/api/history');
-        var data = await response.json();
-
+        var resp = await fetch(SERVER_URL + '/api/history');
+        var data = await resp.json();
         if (data.success && data.history && data.history.length > 0) {
-            // Конвертируем историю в формат, совместимый с каталогом
-            var historyItems = data.history.map((item, index) => {
-                // Исправляем posterPath - убеждаемся, что есть слеш
-                var posterPath = null;
-                if (item.posterPath) {
-                    // Если posterPath уже содержит полный URL, оставляем как есть
-                    if (item.posterPath.indexOf('http') === 0) {
-                        posterPath = item.posterPath;
-                    }
-                    // Если это только имя файла или путь без слеша
-                    else if (item.posterPath) {
-                        // Добавляем слеш, если его нет
-                        posterPath = item.posterPath.indexOf('/') === 0 ? item.posterPath : '/' + item.posterPath;
-                    }
-                }
-
-                return {
-                    id: item.tmdbId,
-                    title: item.title,
-                    name: item.title,
-                    media_type: item.mediaType,
-                    poster_path: posterPath,
-                    vote_average: null,
-                    overview: null,
-                    release_date: item.watchedAt ? item.watchedAt.split('T')[0] : null,
-                    watchedAt: item.watchedAt,
-                    timestamp: item.timestamp,
-                    isHistoryItem: true,
-                    historyIndex: index
-                };
-            });
-
-            // Сортируем по времени просмотра (новые сверху)
-            historyItems.sort(function (a, b) { return b.timestamp - a.timestamp; });
-
-            catalogState.items = historyItems;
-            catalogState.totalItems = historyItems.length;
-            catalogState.hasMore = false;
-
-            console.log(`📜 Загружено ${catalogState.items.length} элементов истории`);
-
-            // Сохраняем в кэш
-            catalogCache.set('history', {
-                data: {
-                    items: catalogState.items.slice(),
-                    totalItems: catalogState.totalItems,
-                    currentPage: 1,
-                    hasMore: false
-                },
-                timestamp: Date.now()
-            });
-
+            catalogState.items = data.history.map(function (item, idx) {
+                var pp = item.posterPath;
+                if (pp && pp.indexOf('http') !== 0) pp = (pp.indexOf('/') === 0 ? pp : '/' + pp);
+                return { id: item.tmdbId, title: item.title, name: item.title, media_type: item.mediaType, poster_path: pp, vote_average: null, overview: null, release_date: item.watchedAt ? item.watchedAt.split('T')[0] : null, watchedAt: item.watchedAt, timestamp: item.timestamp, isHistoryItem: true, historyIndex: idx };
+            }).sort(function (a, b) { return b.timestamp - a.timestamp; });
+            catalogState.totalItems = catalogState.items.length;
+            catalogCache.set('history', { data: { items: catalogState.items.slice(), totalItems: catalogState.totalItems, currentPage: 1, hasMore: false }, timestamp: Date.now() });
             renderCatalogGrid();
-        } else {
-            catalogState.items = [];
-            catalogState.totalItems = 0;
-            showEmptyHistory();
-        }
-    } catch (error) {
-        console.log('❌ Ошибка загрузки истории:', error);
-        showCatalogError('Не удалось загрузить историю просмотра');
-    }
-
+        } else { showEmptyHistory(); }
+    } catch (e) { console.error('History load error:', e); showCatalogError('Не удалось загрузить историю просмотра'); }
     hideCatalogLoading();
     catalogState.abortController = null;
 }
 
-// Показать пустую историю
 function showEmptyHistory() {
-    var torrentsGrid = document.getElementById('torrents-grid');
-    if (!torrentsGrid) return;
-
-    torrentsGrid.innerHTML = `
-        <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">
-            <div style="font-size: 64px; margin-bottom: 20px;">📜</div>
-            <div style="font-size: 18px; color: #aaa; margin-bottom: 10px;">История просмотра пуста</div>
-            <div style="font-size: 14px; color: #666;">Фильмы и сериалы, которые вы посмотрите, появятся здесь</div>
-        </div>
-    `;
+    var g = document.getElementById('torrents-grid'); if (!g) return;
+    g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;"><div style="font-size:64px;margin-bottom:20px">📜</div><div style="font-size:18px;color:#aaa;margin-bottom:10px">История просмотра пуста</div><div style="font-size:14px;color:#666">Фильмы и сериалы, которые вы посмотрите, появятся здесь</div></div>';
 }
 
-// Очистить историю
 async function clearHistory() {
-    if (!confirm('Вы уверены, что хотите очистить всю историю просмотра?')) {
-        return;
-    }
-
+    if (!confirm('Очистить историю просмотра?')) return;
     try {
-        var response = await fetch(SERVER_URL + '/api/history/clear', {
-            method: 'DELETE'
-        });
-
-        var data = await response.json();
-
-        if (data.success) {
-            console.log('✅ История очищена');
-            // Перезагружаем историю
-            await loadHistoryCatalog();
-        } else {
-            alert('Ошибка очистки истории');
-        }
-    } catch (error) {
-        console.log('❌ Ошибка очистки истории:', error);
-        alert('Ошибка очистки истории: ' + error.message);
-    }
+        var r = await fetch(SERVER_URL + '/api/history/clear', { method: 'DELETE' });
+        var d = await r.json();
+        if (d.success) await loadHistoryCatalog(); else alert('Ошибка очистки');
+    } catch (e) { console.error(e); alert('Ошибка очистки: ' + e.message); }
 }
 
 async function loadMoreCatalogItems(reset) {
-    if (reset === undefined) reset = false;
+    reset = reset || false;
     if (!catalogState.currentCatalog || catalogState.isLoadingMore) return Promise.resolve(false);
-
-    if (reset) {
-        catalogState.currentPage = 0;
-        catalogState.items = [];
-        catalogState.loadedItemIds = {};
-        catalogState.hasMore = true;
-        catalogState.totalItems = 0;
-    }
-
-    if (!catalogState.hasMore) {
-        console.log('🏁 Все элементы каталога загружены');
-        return Promise.resolve(false);
-    }
-
+    if (reset) { catalogState.currentPage = 0; catalogState.items = []; catalogState.loadedItemIds = {}; catalogState.hasMore = true; catalogState.totalItems = 0; }
+    if (!catalogState.hasMore) return Promise.resolve(false);
     catalogState.isLoadingMore = true;
-
-    var config = CATALOG_CONFIG[catalogState.currentCatalog];
+    var cfg = CATALOG_CONFIG[catalogState.currentCatalog];
     var from = catalogState.currentPage * catalogState.itemsPerPage;
-
-    console.log('📥 Загрузка элементов ' + from + ' - ' + (from + catalogState.itemsPerPage) + ' из каталога ' + catalogState.currentCatalog);
-
     try {
-        var url = config.url + '/items?from=' + from + '&limit=' + catalogState.itemsPerPage;
-        console.log('🌐 Запрос: ' + url);
-
-        var fetchOptions = {};
-        if (catalogState.abortController) {
-            fetchOptions.signal = catalogState.abortController.signal;
-        }
-        var response = await fetch(url, fetchOptions);
-
-        if (!response.ok) {
-            throw new Error('HTTP ' + response.status);
-        }
-
-        var data = await response.json();
-
-        if (!data.success) {
-            throw new Error('Сервер вернул ошибку');
-        }
-
-        var newItems = data.items || [];
-        var pagination = data.pagination || {};
-
-        if (pagination.total) {
-            catalogState.totalItems = pagination.total;
-        }
-
-        if (pagination.hasMore !== undefined) {
-            catalogState.hasMore = pagination.hasMore;
-        } else {
-            catalogState.hasMore = newItems.length === catalogState.itemsPerPage;
-        }
-
-        console.log('📊 Получено ' + newItems.length + ' элементов. Всего в каталоге: ' + (catalogState.totalItems || '?'));
-
-        var uniqueNewItems = [];
+        var url = cfg.url + '/items?from=' + from + '&limit=' + catalogState.itemsPerPage;
+        var opts = {}; if (catalogState.abortController) opts.signal = catalogState.abortController.signal;
+        var resp = await fetch(url, opts);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var d = await resp.json();
+        if (!d.success) throw new Error('Server error');
+        var newItems = d.items || [], pag = d.pagination || {};
+        if (pag.total) catalogState.totalItems = pag.total;
+        catalogState.hasMore = pag.hasMore !== undefined ? pag.hasMore : newItems.length === catalogState.itemsPerPage;
+        var unique = [];
         for (var i = 0; i < newItems.length; i++) {
-            var item = newItems[i];
-            if (!item.id) {
-                uniqueNewItems.push(item);
-                continue;
+            if (!newItems[i].id || !catalogState.loadedItemIds[newItems[i].id]) {
+                if (newItems[i].id) catalogState.loadedItemIds[newItems[i].id] = true;
+                unique.push(newItems[i]);
             }
-            if (catalogState.loadedItemIds[item.id] === true) {
-                console.log('⚠️ Дубликат элемента ' + item.id + ' пропущен');
-                continue;
-            }
-            catalogState.loadedItemIds[item.id] = true;
-            uniqueNewItems.push(item);
         }
-
-        for (var j = 0; j < uniqueNewItems.length; j++) {
-            catalogState.items.push(uniqueNewItems[j]);
-        }
+        for (var j = 0; j < unique.length; j++) catalogState.items.push(unique[j]);
         catalogState.currentPage++;
-
-        console.log('✅ Загружено ' + uniqueNewItems.length + ' новых элементов. Всего: ' + catalogState.items.length + '/' + (catalogState.totalItems || '?') + ' (еще: ' + catalogState.hasMore + ')');
-
-        if (reset) {
-            renderCatalogGrid();
-        } else {
-            appendCatalogItems(uniqueNewItems);
-        }
-
-        catalogCache.set(catalogState.currentCatalog, {
-            data: {
-                items: catalogState.items.slice(),
-                totalItems: catalogState.totalItems,
-                currentPage: catalogState.currentPage,
-                hasMore: catalogState.hasMore
-            },
-            timestamp: Date.now()
-        });
-
+        if (reset) renderCatalogGrid(); else appendCatalogItems(unique);
+        catalogCache.set(catalogState.currentCatalog, { data: { items: catalogState.items.slice(), totalItems: catalogState.totalItems, currentPage: catalogState.currentPage, hasMore: catalogState.hasMore }, timestamp: Date.now() });
         return Promise.resolve(true);
-
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            console.log('📴 Загрузка элементов отменена');
-        } else {
-            console.log('❌ Ошибка загрузки элементов:', error);
-            console.log('⚠️ Пробуем загрузить все элементы (fallback)');
-            await fallbackLoadAllCatalogItems();
-        }
+    } catch (e) {
+        if (e.name !== 'AbortError') { console.error('Catalog load error:', e); await fallbackLoadAllCatalogItems(); }
         return Promise.resolve(false);
-    } finally {
-        catalogState.isLoadingMore = false;
-    }
+    } finally { catalogState.isLoadingMore = false; }
 }
 
 async function fallbackLoadAllCatalogItems() {
     if (!catalogState.currentCatalog) return;
-
-    console.log('📥 Fallback: загрузка всех элементов каталога');
-
-    var config = CATALOG_CONFIG[catalogState.currentCatalog];
-    var url = config.url + '/items';
-
+    var cfg = CATALOG_CONFIG[catalogState.currentCatalog];
     try {
-        var fetchOptions = {};
-        if (catalogState.abortController) {
-            fetchOptions.signal = catalogState.abortController.signal;
-        }
-        var response = await fetch(url, fetchOptions);
-
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-
-        var data = await response.json();
-        if (!data.success) throw new Error('Сервер вернул ошибку');
-
-        var allItems = data.items || [];
-
-        catalogState.items = [];
-        for (var i = 0; i < allItems.length; i++) {
-            catalogState.items.push(allItems[i]);
-        }
-        catalogState.totalItems = allItems.length;
-        catalogState.hasMore = false;
-        catalogState.currentPage = 1;
-
+        var opts = {}; if (catalogState.abortController) opts.signal = catalogState.abortController.signal;
+        var resp = await fetch(cfg.url + '/items', opts);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var d = await resp.json(); if (!d.success) throw new Error('Server error');
+        catalogState.items = d.items || []; catalogState.totalItems = catalogState.items.length; catalogState.hasMore = false; catalogState.currentPage = 1;
         catalogState.loadedItemIds = {};
-        for (var j = 0; j < allItems.length; j++) {
-            var item = allItems[j];
-            if (item.id) catalogState.loadedItemIds[item.id] = true;
-        }
-
-        console.log('✅ Fallback: загружено ' + allItems.length + ' элементов');
+        for (var i = 0; i < catalogState.items.length; i++) if (catalogState.items[i].id) catalogState.loadedItemIds[catalogState.items[i].id] = true;
         renderCatalogGrid();
-
-        catalogCache.set(catalogState.currentCatalog, {
-            data: {
-                items: catalogState.items.slice(),
-                totalItems: catalogState.totalItems,
-                currentPage: 1,
-                hasMore: false
-            },
-            timestamp: Date.now()
-        });
-
-    } catch (error) {
-        console.log('❌ Ошибка fallback загрузки:', error);
-        showCatalogError('Ошибка загрузки каталога');
-    }
+        catalogCache.set(catalogState.currentCatalog, { data: { items: catalogState.items.slice(), totalItems: catalogState.totalItems, currentPage: 1, hasMore: false }, timestamp: Date.now() });
+    } catch (e) { console.error('Fallback error:', e); showCatalogError('Ошибка загрузки каталога'); }
 }
 
-// ==================== ОТОБРАЖЕНИЕ КАТАЛОГА ====================
-
+// ==================== ОТОБРАЖЕНИЕ (Оптимизировано) ====================
 function renderCatalogGrid() {
-    var torrentsGrid = document.getElementById('torrents-grid');
-    if (!torrentsGrid) return;
-
-    torrentsGrid.innerHTML = '';
-
-    if (catalogState.items.length === 0) {
-        showEmptyCatalog();
-        return;
-    }
-
-    addCatalogHeader(torrentsGrid);
-
-    for (var i = 0; i < catalogState.items.length; i++) {
-        var item = catalogState.items[i];
-        var card = createCatalogCard(item, i);
-        torrentsGrid.appendChild(card);
-    }
-
-    if (catalogState.hasMore) {
-        addLoadMoreTrigger(torrentsGrid);
-    }
-
+    var grid = document.getElementById('torrents-grid'); if (!grid) return;
+    grid.innerHTML = '';
+    if (catalogState.items.length === 0) { showEmptyCatalog(); return; }
+    addCatalogHeader(grid);
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < catalogState.items.length; i++) frag.appendChild(createCatalogCard(catalogState.items[i], i));
+    grid.appendChild(frag);
+    if (catalogState.hasMore) addLoadMoreTrigger(grid);
     catalogState.loadedPostersCount = 0;
-    initPosterLazyLoading();
-    initLoadMoreObserver();
-    loadInitialPosters();
-
-    setTimeout(function () {
+    initPosterLazyLoading(); initLoadMoreObserver(); loadInitialPosters();
+    requestAnimationFrame(function () {
         if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
-            if (typeof updateFocusableElements === 'function') {
-                updateFocusableElements();
-            }
-            setTimeout(function () {
-                if (typeof window.focusFirstCatalogCard === 'function') {
-                    window.focusFirstCatalogCard();
-                }
-            }, 100);
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            setTimeout(function () { if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard(); }, 100);
         }
-    }, 200);
+    });
 }
 
 function appendCatalogItems(newItems) {
-    var torrentsGrid = document.getElementById('torrents-grid');
-    if (!torrentsGrid) return;
-
-    var oldTrigger = document.getElementById('load-more-trigger');
-    if (oldTrigger) oldTrigger.remove();
-
-    var startIndex = catalogState.items.length - newItems.length;
-
-    for (var offset = 0; offset < newItems.length; offset++) {
-        var item = newItems[offset];
-        var index = startIndex + offset;
-        var card = createCatalogCard(item, index);
-        torrentsGrid.appendChild(card);
-    }
-
-    if (catalogState.hasMore) {
-        addLoadMoreTrigger(torrentsGrid);
-    }
-
-    updatePosterObservers();
-    initLoadMoreObserver();
-
-    if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
-        if (typeof updateFocusableElements === 'function') {
-            updateFocusableElements();
-        }
-    }
+    var grid = document.getElementById('torrents-grid'); if (!grid) return;
+    var old = document.getElementById('load-more-trigger'); if (old) old.remove();
+    var start = catalogState.items.length - newItems.length;
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < newItems.length; i++) frag.appendChild(createCatalogCard(newItems[i], start + i));
+    grid.appendChild(frag);
+    if (catalogState.hasMore) addLoadMoreTrigger(grid);
+    updatePosterObservers(); initLoadMoreObserver();
+    if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) if (typeof updateFocusableElements === 'function') updateFocusableElements();
 }
 
 function createCatalogCard(item, index) {
-    var title = getCatalogItemTitle(item);
-    var mediaType = item.media_type || 'movie';
-    var tmdbId = item.id;
-
-    var rating = null;
-    if (item.vote_average) {
-        rating = Math.round(item.vote_average * 10) / 10;
-    }
+    var title = getCatalogItemTitle(item), mt = item.media_type || 'movie', id = item.id;
+    var rating = item.vote_average ? Math.round(item.vote_average * 10) / 10 : null;
+    var cacheKey = id + '_' + mt;
+    var cached = catalogState.posterCache[cacheKey];
+    var ratingHtml = rating ? '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.8);color:' + getRatingColor(rating) + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + getRatingColor(rating) + ';box-shadow:0 2px 8px rgba(0,0,0,0.3);backdrop-filter:blur(2px)">' + rating + '</div>' : '';
+    var posterHtml = cached ? '<img src="' + cached + '" loading="lazy" style="width:100%;height:100%;object-fit:cover">' : '<div class="no-poster catalog-poster-loading">⏳</div>';
 
     var card = document.createElement('div');
     card.className = 'torrent-card catalog-card';
-    card.dataset.catalogIndex = index;
-    card.dataset.title = title;
-    card.dataset.mediaType = mediaType;
-    card.dataset.tmdbId = tmdbId;
-    card.dataset.itemId = item.id;
-    card.dataset.rating = rating;
-    card.dataset.numIndex = item.num_index !== undefined ? item.num_index : index;
-
-    var cacheKey = tmdbId + '_' + mediaType;
-    var cachedPoster = catalogState.posterCache[cacheKey];
-
-    var ratingHtml = '';
-    if (rating) {
-        var ratingColor = getRatingColor(rating);
-        ratingHtml = '<div class="rating-badge" style="position: absolute; top: 8px; right: 8px; background: rgba(0, 0, 0, 0.8); color: ' + ratingColor + '; font-weight: bold; font-size: 14px; padding: 4px 8px; border-radius: 12px; z-index: 10; border: 1px solid ' + ratingColor + '; box-shadow: 0 2px 8px rgba(0,0,0,0.3); backdrop-filter: blur(2px);">' + rating + '</div>';
-    }
-
-    var posterHtml = '';
-    if (cachedPoster) {
-        posterHtml = '<img src="' + cachedPoster + '" loading="lazy" style="width: 100%; height: 100%; object-fit: cover;">';
-    } else {
-        posterHtml = '<div class="no-poster catalog-poster-loading">⏳</div>';
-    }
-
-    card.innerHTML = '\n        <div class="torrent-poster" style="position: relative;">\n            ' + ratingHtml + '\n            ' + posterHtml + '\n        </div>\n        <div class="torrent-info">\n            <div class="torrent-title">' + escapeHtml(title.substring(0, 60)) + (title.length > 60 ? '...' : '') + '</div>\n            <div class="torrent-meta">\n                <span>' + (mediaType === 'tv' ? 'Сериал' : 'Фильм') + '</span>\n                <span class="torrent-badge catalog-badge">Каталог</span>\n            </div>\n        </div>\n    ';
-
-    card.addEventListener('click', function () {
-        if (catalogState.currentCatalog) {
-            onCatalogItemClick(item, index);
-        }
-    });
-
+    card.dataset.catalogIndex = index; card.dataset.title = title; card.dataset.mediaType = mt; card.dataset.tmdbId = id; card.dataset.itemId = item.id;
+    card.dataset.rating = rating || ''; card.dataset.numIndex = item.num_index !== undefined ? item.num_index : index;
+    card.innerHTML = '<div class="torrent-poster" style="position:relative">' + ratingHtml + posterHtml + '</div><div class="torrent-info"><div class="torrent-title">' + escapeHtml(title.substring(0, 60)) + (title.length > 60 ? '...' : '') + '</div><div class="torrent-meta"><span>' + (mt === 'tv' ? 'Сериал' : 'Фильм') + '</span><span class="torrent-badge catalog-badge">Каталог</span></div></div>';
     return card;
 }
 
-// Функция для форматирования даты
-function formatLastModifiedDate(lastModifiedISO) {
-    if (!lastModifiedISO) return 'Дата неизвестна';
+// Event Delegation для сетки
+document.addEventListener('DOMContentLoaded', function () {
+    var grid = document.getElementById('torrents-grid');
+    if (!grid) return;
+    grid.addEventListener('click', function (e) {
+        var card = e.target.closest('.torrent-card.catalog-card');
+        if (card && catalogState.currentCatalog) {
+            var idx = parseInt(card.dataset.catalogIndex, 10);
+            if (!isNaN(idx) && catalogState.items[idx]) onCatalogItemClick(catalogState.items[idx], idx);
+            return;
+        }
+        var folder = e.target.closest('.catalog-folder-card');
+        if (folder) {
+            var key = folder.dataset.catalogKey;
+            if (key === 'history') loadHistoryCatalog(); else loadCatalog(key);
+        }
+    });
+});
 
-    var date = new Date(lastModifiedISO);
-    var now = new Date();
-    var diffHours = (now - date) / (1000 * 60 * 60);
-
-    // Форматируем дату без использования padStart
-    var day = date.getDate().toString();
-    if (day.length === 1) day = '0' + day;
-
-    var month = (date.getMonth() + 1).toString();
-    if (month.length === 1) month = '0' + month;
-
-    var year = date.getFullYear();
-
-    var hours = date.getHours().toString();
-    if (hours.length === 1) hours = '0' + hours;
-
-    var minutes = date.getMinutes().toString();
-    if (minutes.length === 1) minutes = '0' + minutes;
-
-    var timeAgo = '';
-    if (diffHours < 1) {
-        var minutesAgo = Math.floor(diffHours * 60);
-        timeAgo = minutesAgo + ' мин. назад';
-    } else if (diffHours < 24) {
-        timeAgo = Math.floor(diffHours) + ' ч. назад';
-    } else {
-        var daysAgo = Math.floor(diffHours / 24);
-        timeAgo = daysAgo + ' дн. назад';
-    }
-
-    return day + '.' + month + '.' + year + ' ' + hours + ':' + minutes + ' (' + timeAgo + ')';
+function formatLastModifiedDate(iso) {
+    if (!iso) return 'Дата неизвестна';
+    var d = new Date(iso), now = new Date(), h = (now - d) / 3600000;
+    var dd = ('0' + d.getDate()).slice(-2), mm = ('0' + (d.getMonth() + 1)).slice(-2), yy = d.getFullYear();
+    var hh = ('0' + d.getHours()).slice(-2), min = ('0' + d.getMinutes()).slice(-2);
+    var ago = h < 1 ? Math.floor(h * 60) + ' мин. назад' : h < 24 ? Math.floor(h) + ' ч. назад' : Math.floor(h / 24) + ' дн. назад';
+    return dd + '.' + mm + '.' + yy + ' ' + hh + ':' + min + ' (' + ago + ')';
 }
 
-// Функция для проверки и обновления устаревшего каталога
-async function checkAndUpdateCatalogIfNeeded(catalogId, lastModifiedISO) {
-    if (!lastModifiedISO) return false;
-
-    var lastModified = new Date(lastModifiedISO);
-    var now = new Date();
-    var hoursDiff = (now - lastModified) / (1000 * 60 * 60);
-
-    // Если прошло более 6 часов
-    if (hoursDiff > 6) {
-        console.log(`🔄 Каталог ${catalogId} устарел (${Math.floor(hoursDiff)} ч.), обновляем...`);
-
+async function checkAndUpdateCatalogIfNeeded(id, iso) {
+    if (!iso) return false;
+    var h = (new Date() - new Date(iso)) / 3600000;
+    if (h > 6) {
         try {
-            var response = await fetch(`${SERVER_URL}/api/catalog/${catalogId}/update`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (response.ok) {
-                var result = await response.json();
-                if (result.success) {
-                    console.log(`✅ Каталог ${catalogId} успешно обновлен`);
-
-                    // Очищаем кэш каталога
-                    if (catalogCache.has(catalogId)) {
-                        catalogCache.delete(catalogId);
-                    }
-
-                    // Если это текущий каталог, перезагружаем его
-                    if (catalogState.currentCatalog === catalogId) {
-                        console.log(`🔄 Перезагружаем обновленный каталог ${catalogId}`);
-                        setTimeout(function () {
-                            loadCatalog(catalogId);
-                        }, 500);
-                    }
-
-                    return true;
-                }
-            }
-        } catch (error) {
-            console.log(`❌ Ошибка обновления каталога ${catalogId}:`, error);
-        }
+            var r = await fetch(SERVER_URL + '/api/catalog/' + id + '/update', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+            if (r.ok) { var d = await r.json(); if (d.success) { catalogCache.delete(id); if (catalogState.currentCatalog === id) setTimeout(function () { loadCatalog(id); }, 500); return true; } }
+        } catch (e) { console.error('Catalog update error:', e); }
     }
-
     return false;
 }
 
-// Модифицированная функция addCatalogHeader
 function addCatalogHeader(grid) {
-    var headerElement = document.createElement('div');
-    headerElement.className = 'catalog-header';
-    headerElement.style.cssText = `
-        grid-column: 1 / -1;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 20px;
-        padding: 15px 20px;
-        background: rgba(74, 158, 255, 0.1);
-        border-radius: 16px;
-        border: 1px solid rgba(74, 158, 255, 0.3);
-        flex-wrap: wrap;
-        gap: 10px;
-    `;
-
-    var currentCatalogName = (CATALOG_CONFIG[catalogState.currentCatalog] &&
-        CATALOG_CONFIG[catalogState.currentCatalog].name) || 'Каталог';
-
-    // Специальная обработка для истории
+    var header = document.createElement('div');
+    header.className = 'catalog-header';
+    header.style.cssText = 'grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding:15px 20px;background:rgba(74,158,255,0.1);border-radius:16px;border:1px solid rgba(74,158,255,0.3);flex-wrap:wrap;gap:10px;';
+    var name = (CATALOG_CONFIG[catalogState.currentCatalog] && CATALOG_CONFIG[catalogState.currentCatalog].name) || 'Каталог';
     if (catalogState.currentCatalog === 'history') {
-        headerElement.innerHTML = `
-            <div style="display: flex; flex-direction: column; gap: 5px;">
-                <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
-                <div style="display: flex; gap: 15px; font-size: 12px; color: #aaa;">
-                    <span>${catalogState.items.length} записей</span>
-                </div>
-            </div>
-        `;
-
-        var clearBtn = document.getElementById('clear-history-btn');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', function (e) {
-                e.stopPropagation();
-                clearHistory();
-            });
-        }
-
-        grid.appendChild(headerElement);
-        return;
+        header.innerHTML = '<div style="display:flex;flex-direction:column;gap:5px"><span style="font-size:20px;font-weight:600;color:#4a9eff">' + name + '</span><div style="display:flex;gap:15px;font-size:12px;color:#aaa"><span>' + catalogState.items.length + ' записей</span></div></div>';
+        var btn = document.getElementById('clear-history-btn');
+        if (btn) btn.onclick = clearHistory;
+        grid.appendChild(header); return;
     }
-
-    // Стандартный заголовок для других каталогов
-    fetch(SERVER_URL + '/api/catalogs')
-        .then(function (response) { return response.json(); })
-        .then(async function (data) {
-            if (data.success && data.catalogs) {
-                var catalogInfo = null;
-                for (var i = 0; i < data.catalogs.length; i++) {
-                    if (data.catalogs[i].id === catalogState.currentCatalog) {
-                        catalogInfo = data.catalogs[i];
-                        break;
-                    }
-                }
-
-                if (catalogInfo && catalogInfo.lastModifiedISO) {
-                    var formattedDate = formatLastModifiedDate(catalogInfo.lastModifiedISO);
-                    await checkAndUpdateCatalogIfNeeded(catalogInfo.id, catalogInfo.lastModifiedISO);
-
-                    headerElement.innerHTML = `
-                        <div style="display: flex; flex-direction: column; gap: 5px;">
-                            <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
-                            <div style="display: flex; gap: 15px; font-size: 12px; color: #aaa;">
-                                <span>${formattedDate}</span>
-                            </div>
-                        </div>
-                        <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
-                            ${catalogState.items.length} / ${catalogState.totalItems || catalogState.items.length}
-                        </span>
-                    `;
-                } else {
-                    headerElement.innerHTML = `
-                        <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
-                        <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
-                            ${catalogState.items.length} / ${catalogState.totalItems || catalogState.items.length}
-                        </span>
-                    `;
-                }
-            } else {
-                headerElement.innerHTML = `
-                    <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
-                    <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
-                        ${catalogState.items.length} / ${catalogState.totalItems || catalogState.items.length}
-                    </span>
-                `;
+    header.innerHTML = '<span style="font-size:20px;font-weight:600;color:#4a9eff">' + name + '</span><span style="font-size:14px;color:#aaa;background:rgba(0,0,0,0.3);padding:5px 12px;border-radius:20px">' + catalogState.items.length + ' / ' + (catalogState.totalItems || catalogState.items.length) + '</span>';
+    grid.appendChild(header);
+    fetch(SERVER_URL + '/api/catalogs').then(r => r.json()).then(async d => {
+        if (d.success && d.catalogs) {
+            var info = null; for (var i = 0; i < d.catalogs.length; i++) if (d.catalogs[i].id === catalogState.currentCatalog) { info = d.catalogs[i]; break; }
+            if (info && info.lastModifiedISO) {
+                await checkAndUpdateCatalogIfNeeded(info.id, info.lastModifiedISO);
+                header.innerHTML += '<div style="display:flex;gap:15px;font-size:12px;color:#aaa;margin-top:4px"><span>' + formatLastModifiedDate(info.lastModifiedISO) + '</span></div>';
             }
-        })
-        .catch(error => {
-            console.log('Ошибка загрузки информации о каталоге:', error);
-            headerElement.innerHTML = `
-                <span style="font-size: 20px; font-weight: 600; color: #4a9eff;">${currentCatalogName}</span>
-                <span style="font-size: 14px; color: #aaa; background: rgba(0,0,0,0.3); padding: 5px 12px; border-radius: 20px;">
-                    ${catalogState.items.length} / ${catalogState.totalItems || catalogState.items.length}
-                </span>
-            `;
-        });
-
-    grid.appendChild(headerElement);
+        }
+    }).catch(() => { });
 }
 
 function addLoadMoreTrigger(grid) {
-    var trigger = document.createElement('div');
-    trigger.id = 'load-more-trigger';
-    trigger.className = 'load-more-trigger';
-    trigger.style.cssText = '\n        grid-column: 1 / -1;\n        height: 50px;\n        margin: 20px 0;\n        display: flex;\n        align-items: center;\n        justify-content: center;\n        color: #aaa;\n        font-size: 14px;\n    ';
-    trigger.innerHTML = '\n        <div class="loading-spinner-small" style="width: 20px; height: 20px; border: 2px solid rgba(74,158,255,0.2); border-top-color: #4a9eff; border-radius: 50%; animation: spinner-rotate 1s infinite; margin-right: 10px; display: none;"></div>\n        <span>Загрузка дополнительных элементов...</span>\n    ';
-    grid.appendChild(trigger);
+    var t = document.createElement('div'); t.id = 'load-more-trigger'; t.className = 'load-more-trigger';
+    t.style.cssText = 'grid-column:1/-1;height:50px;margin:20px 0;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:14px;';
+    t.innerHTML = '<div class="loading-spinner-small" style="width:20px;height:20px;border:2px solid rgba(74,158,255,0.2);border-top-color:#4a9eff;border-radius:50%;animation:spinner-rotate 1s infinite;margin-right:10px;display:none"></div><span>Загрузка дополнительных элементов...</span>';
+    grid.appendChild(t);
 }
 
 function showEmptyCatalog() {
-    var torrentsGrid = document.getElementById('torrents-grid');
-    if (!torrentsGrid) return;
-
-    torrentsGrid.innerHTML = '\n        <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n            <div style="font-size: 48px; margin-bottom: 20px;"></div>\n            <div style="font-size: 18px; color: #aaa;">Каталог пуст</div>\n        </div>\n    ';
+    var g = document.getElementById('torrents-grid'); if (!g) return;
+    g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталог пуст</div></div>';
 }
 
 function initLoadMoreObserver() {
-    if (catalogState.loadMoreObserver) {
-        catalogState.loadMoreObserver.disconnect();
-    }
-
-    var trigger = document.getElementById('load-more-trigger');
-    if (!trigger) return;
-
+    if (catalogState.loadMoreObserver) catalogState.loadMoreObserver.disconnect();
+    var t = document.getElementById('load-more-trigger'); if (!t) return;
     catalogState.loadMoreObserver = new IntersectionObserver(function (entries) {
-        for (var i = 0; i < entries.length; i++) {
-            var entry = entries[i];
-            if (entry.isIntersecting && catalogState.hasMore && !catalogState.isLoadingMore) {
-                console.log('📦 Триггер видим, загружаем следующую страницу');
-
-                var spinner = trigger.querySelector('.loading-spinner-small');
-                if (spinner) spinner.style.display = 'inline-block';
-
-                loadMoreCatalogItems()['finally'](function () {
-                    if (spinner) spinner.style.display = 'none';
-                });
-            }
+        for (var i = 0; i < entries.length; i++) if (entries[i].isIntersecting && catalogState.hasMore && !catalogState.isLoadingMore) {
+            var sp = t.querySelector('.loading-spinner-small'); if (sp) sp.style.display = 'inline-block';
+            loadMoreCatalogItems()['finally'](function () { if (sp) sp.style.display = 'none'; });
         }
-    }, {
-        root: null,
-        rootMargin: '200px',
-        threshold: 0.1
-    });
-
-    catalogState.loadMoreObserver.observe(trigger);
+    }, { rootMargin: '200px', threshold: 0.1 });
+    catalogState.loadMoreObserver.observe(t);
 }
 
-// ==================== ПОСТЕРЫ С ЛЕНИВОЙ ЗАГРУЗКОЙ ====================
-
-// Функция для проверки наличия постера в кэше
-function hasPosterInCache(cacheKey) {
-    return catalogState.posterCache[cacheKey] !== undefined;
-}
-
-// Функция получения постера из кэша
-function getPosterFromCache(cacheKey) {
-    return catalogState.posterCache[cacheKey];
-}
-
-// Функция сохранения постера в кэш
-function setPosterToCache(cacheKey, posterUrl) {
-    catalogState.posterCache[cacheKey] = posterUrl;
-}
-
+// ==================== ПОСТЕРЫ (Оптимизировано) ====================
 function loadInitialPosters() {
-    var initialIndices = [];
-
+    var idxs = [];
     for (var i = 0; i < Math.min(catalogState.postersPerBatch, catalogState.items.length); i++) {
-        var item = catalogState.items[i];
-        if (!item) continue;
-
-        var cacheKey = item.id + '_' + (item.media_type || 'movie');
-
-        if (catalogState.posterCache[cacheKey] === undefined) {
-            initialIndices.push(i);
-        }
+        var it = catalogState.items[i]; if (!it) continue;
+        if (catalogState.posterCache[it.id + '_' + (it.media_type || 'movie')] === undefined) idxs.push(i);
     }
-
-    if (initialIndices.length > 0) {
-        console.log('🖼️ Загрузка начальных ' + initialIndices.length + ' постеров');
-        loadPosterBatch(initialIndices);
-    }
+    if (idxs.length > 0) loadPosterBatch(idxs);
 }
 
 function initPosterLazyLoading() {
-    if (catalogState.posterObserver) {
-        catalogState.posterObserver.disconnect();
-    }
-
+    if (catalogState.posterObserver) catalogState.posterObserver.disconnect();
     catalogState.posterObserver = new IntersectionObserver(function (entries) {
-        for (var i = 0; i < entries.length; i++) {
-            var entry = entries[i];
-            if (entry.isIntersecting) {
-                var card = entry.target;
-                var index = parseInt(card.dataset.catalogIndex);
-                var item = catalogState.items[index];
-
-                if (!item) continue;
-
-                var cacheKey = item.id + '_' + (item.media_type || 'movie');
-
-                if (catalogState.posterCache[cacheKey] === undefined && !isPosterInQueue(index)) {
-                    addToPosterQueue(index);
-                }
-            }
+        for (var i = 0; i < entries.length; i++) if (entries[i].isIntersecting) {
+            var idx = parseInt(entries[i].target.dataset.catalogIndex, 10);
+            var it = catalogState.items[idx]; if (!it) continue;
+            var key = it.id + '_' + (it.media_type || 'movie');
+            if (catalogState.posterCache[key] === undefined && catalogState.posterLoadQueue.indexOf(idx) === -1) addToPosterQueue(idx);
         }
-    }, {
-        root: null,
-        rootMargin: '50px',
-        threshold: 0.1
+    }, { rootMargin: '50px', threshold: 0.1 });
+    document.querySelectorAll('.torrent-card.catalog-card').forEach(function (c, i) {
+        var it = catalogState.items[i]; if (!it) return;
+        if (catalogState.posterCache[it.id + '_' + (it.media_type || 'movie')] === undefined) catalogState.posterObserver.observe(c);
     });
-
-    var cards = document.querySelectorAll('.torrent-card.catalog-card');
-    for (var i = 0; i < cards.length; i++) {
-        var card = cards[i];
-        if (!card) continue;
-
-        var item = catalogState.items[i];
-        if (!item) continue;
-
-        var cacheKey = item.id + '_' + (item.media_type || 'movie');
-
-        if (catalogState.posterCache[cacheKey] === undefined) {
-            catalogState.posterObserver.observe(card);
-        }
-    }
 }
 
 function updatePosterObservers() {
     if (!catalogState.posterObserver) return;
-
-    var cards = document.querySelectorAll('.torrent-card.catalog-card');
-    for (var i = 0; i < cards.length; i++) {
-        var card = cards[i];
-        if (!card) continue;
-
-        // Проверяем, наблюдается ли уже этот элемент
-        var isBeingObserved = false;
-        var records = catalogState.posterObserver.takeRecords();
-        for (var j = 0; j < records.length; j++) {
-            if (records[j].target === card) {
-                isBeingObserved = true;
-                break;
-            }
+    document.querySelectorAll('.torrent-card.catalog-card').forEach(function (c, i) {
+        var it = catalogState.items[i]; if (!it) return;
+        if (catalogState.posterCache[it.id + '_' + (it.media_type || 'movie')] === undefined) {
+            try { catalogState.posterObserver.observe(c); } catch (e) { }
         }
-
-        if (!isBeingObserved) {
-            var item = catalogState.items[i];
-            if (!item) continue;
-
-            var cacheKey = item.id + '_' + (item.media_type || 'movie');
-
-            if (catalogState.posterCache[cacheKey] === undefined) {
-                catalogState.posterObserver.observe(card);
-            }
-        }
-    }
+    });
 }
 
-function isPosterInQueue(index) {
-    for (var i = 0; i < catalogState.posterLoadQueue.length; i++) {
-        if (catalogState.posterLoadQueue[i] === index) return true;
-    }
-    return false;
-}
-
-function addToPosterQueue(index) {
-    var alreadyInQueue = false;
-    for (var i = 0; i < catalogState.posterLoadQueue.length; i++) {
-        if (catalogState.posterLoadQueue[i] === index) {
-            alreadyInQueue = true;
-            break;
-        }
-    }
-    if (!alreadyInQueue) {
-        catalogState.posterLoadQueue.push(index);
-        catalogState.posterLoadQueue.sort(function (a, b) { return a - b; });
-
-        if (!catalogState.isPosterLoading) {
-            loadNextPosterBatch();
-        }
-    }
+function addToPosterQueue(idx) {
+    if (catalogState.posterLoadQueue.indexOf(idx) !== -1) return;
+    catalogState.posterLoadQueue.push(idx);
+    catalogState.posterLoadQueue.sort(function (a, b) { return a - b; });
+    if (!catalogState.isPosterLoading) loadNextPosterBatch();
 }
 
 function loadNextPosterBatch() {
-    if (catalogState.isPosterLoading) return;
-    if (catalogState.posterLoadQueue.length === 0) return;
-
-    var nextBatch = catalogState.posterLoadQueue.splice(0, catalogState.postersPerBatch);
-    loadPosterBatch(nextBatch);
+    if (catalogState.isPosterLoading || catalogState.posterLoadQueue.length === 0) return;
+    var next = catalogState.posterLoadQueue.splice(0, catalogState.postersPerBatch);
+    loadPosterBatch(next);
 }
 
 function loadPosterBatch(indices) {
     if (indices.length === 0) return;
-
     catalogState.isPosterLoading = true;
-    console.log('🖼️ Загрузка партии постеров: индексы ' + indices[0] + '-' + indices[indices.length - 1]);
-
-    var promises = [];
-    for (var i = 0; i < indices.length; i++) {
-        promises.push(loadPosterForIndex(indices[i]));
-    }
-
-    Promise.allSettled(promises)
-        .then(function (results) {
-            var successful = 0;
-            for (var j = 0; j < results.length; j++) {
-                if (results[j].status === 'fulfilled') successful++;
-            }
-            var failed = results.length - successful;
-
-            console.log('✅ Загружено ' + successful + ' постеров, ' + failed + ' ошибок');
-
-            var maxIndex = indices[0];
-            for (var k = 1; k < indices.length; k++) {
-                if (indices[k] > maxIndex) maxIndex = indices[k];
-            }
-            if (maxIndex + 1 > catalogState.loadedPostersCount) {
-                catalogState.loadedPostersCount = maxIndex + 1;
-            }
-
-            catalogState.isPosterLoading = false;
-
-            if (catalogState.posterLoadQueue.length > 0) {
-                loadNextPosterBatch();
-            }
-        })
-    ['catch'](function (error) {
-        console.log('❌ Ошибка загрузки партии постеров:', error);
+    var promises = indices.map(function (i) { return loadPosterForIndex(i); });
+    Promise.allSettled(promises).then(function (res) {
+        var ok = res.filter(function (r) { return r.status === 'fulfilled' }).length;
         catalogState.isPosterLoading = false;
+        if (catalogState.posterLoadQueue.length > 0) loadNextPosterBatch();
     });
 }
 
 async function loadPosterForIndex(index) {
-    var item = catalogState.items[index];
-    if (!item) return;
-
-    var card = document.querySelector('.torrent-card.catalog-card[data-catalog-index="' + index + '"]');
-    if (!card) return;
-
-    var title = getCatalogItemTitle(item);
-    var mediaType = item.media_type || 'movie';
-    var tmdbId = item.id;
-
-    await loadCatalogPoster(card, title, mediaType, tmdbId, index);
+    var item = catalogState.items[index]; if (!item) return;
+    var card = document.querySelector('.torrent-card.catalog-card[data-catalog-index="' + index + '"]'); if (!card) return;
+    await loadCatalogPoster(card, getCatalogItemTitle(item), item.media_type || 'movie', item.id, index);
 }
 
-async function loadCatalogPoster(card, title, mediaType, tmdbId, index) {
-    var posterDiv = card.querySelector('.torrent-poster');
-    if (!posterDiv) return;
+async function loadCatalogPoster(card, title, mt, id, index) {
+    var div = card.querySelector('.torrent-poster'); if (!div) return;
+    var key = id + '_' + mt;
+    if (!catalogState.currentCatalog) { div.innerHTML = '<div class="no-poster">Каталог закрыт</div>'; return; }
+    if (catalogState.posterCache[key]) { updatePosterDOM(div, card.dataset.rating, catalogState.posterCache[key]); return; }
 
-    var cacheKey = tmdbId + '_' + mediaType;
-
-    if (!catalogState.currentCatalog) {
-        posterDiv.innerHTML = '<div class="no-poster">Каталог закрыт</div>';
-        return;
-    }
-
-    // Проверяем кэш
-    if (catalogState.posterCache[cacheKey] !== undefined) {
-        var cachedPoster = catalogState.posterCache[cacheKey];
-        if (cachedPoster) {
-            console.log('📦 Используем кэшированный постер для ' + title);
-
-            var rating = card.dataset.rating;
-            var posterHtml = '<img src="' + cachedPoster + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-
-            if (rating && rating !== 'null' && rating !== 'undefined') {
-                var ratingColor = getRatingColor(parseFloat(rating));
-                posterDiv.innerHTML = '\n                    ' + posterHtml + '\n                    <div style="\n                        position: absolute;\n                        top: 8px;\n                        right: 8px;\n                        background: rgba(0, 0, 0, 0.8);\n                        color: ' + ratingColor + ';\n                        font-weight: bold;\n                        font-size: 14px;\n                        padding: 4px 8px;\n                        border-radius: 12px;\n                        z-index: 10;\n                        border: 1px solid ' + ratingColor + ';\n                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);\n                        backdrop-filter: blur(2px);\n                    ">\n                        ' + rating + '\n                    </div>\n                ';
-            } else {
-                posterDiv.innerHTML = posterHtml;
-            }
-            return;
-        }
-    }
-
-    var rating = card.dataset.rating;
     var item = catalogState.items[index];
-
-    // Для истории - проверяем, есть ли сохраненный poster_path
     if (catalogState.currentCatalog === 'history' && item && item.poster_path) {
-        var posterUrl = null;
-
-        // Если poster_path уже полный URL
-        if (item.posterPath.indexOf('http') === 0) {
-            posterUrl = item.poster_path;
-        }
-        // Если это путь, начинающийся со слеша
-        else if (item.posterPath.indexOf('/') === 0) {
-            posterUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + item.poster_path;
-        }
-        // Если это просто имя файла
-        else {
-            posterUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + item.poster_path;
-        }
-
-        if (posterUrl) {
-            catalogState.posterCache[cacheKey] = posterUrl;
-            var posterHtml = '<img src="' + posterUrl + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-
-            if (rating && rating !== 'null' && rating !== 'undefined') {
-                var ratingColor = getRatingColor(parseFloat(rating));
-                posterDiv.innerHTML = '\n                    ' + posterHtml + '\n                    <div style="\n                        position: absolute;\n                        top: 8px;\n                        right: 8px;\n                        background: rgba(0, 0, 0, 0.8);\n                        color: ' + ratingColor + ';\n                        font-weight: bold;\n                        font-size: 14px;\n                        padding: 4px 8px;\n                        border-radius: 12px;\n                        z-index: 10;\n                        border: 1px solid ' + ratingColor + ';\n                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);\n                        backdrop-filter: blur(2px);\n                    ">\n                        ' + rating + '\n                    </div>\n                ';
-            } else {
-                posterDiv.innerHTML = posterHtml;
-            }
-            return;
-        }
+        var pp = item.poster_path.indexOf('http') === 0 ? item.poster_path : (AppState.protocol + '//tsimg.hnar.online/t/p/w342' + (item.poster_path.indexOf('/') === 0 ? item.poster_path : '/' + item.poster_path));
+        if (pp) { catalogState.posterCache[key] = pp; updatePosterDOM(div, card.dataset.rating, pp); return; }
     }
 
     try {
-        var posterUrl = null;
-
-        var cacheParams = { id: tmdbId, type: mediaType };
-        var cachedTmdbData = getFromTmdbCache('poster', cacheParams);
-
-        if (cachedTmdbData && cachedTmdbData.posterUrl) {
-            posterUrl = cachedTmdbData.posterUrl;
-            console.log('📦 TMDB кэш: найден постер для ' + title);
-        } else {
-            var controller = new AbortController();
-            var timeoutId = setTimeout(function () { controller.abort(); }, 5000);
-
-            if (tmdbId && tmdbId !== 'undefined' && tmdbId !== 'null') {
-
-                var response = await fetch('/api/tmdb/item?id=' + tmdbId + '&type=' + mediaType, {
-                    signal: controller.signal
-                });
-
-                clearTimeout(timeoutId);
-
-                if (!catalogState.currentCatalog) {
-                    posterDiv.innerHTML = '<div class="no-poster">Загрузка отменена</div>';
-                    return;
-                }
-
-                if (response.ok) {
-                    var data = await response.json();
-                    if (data.poster_path) {
-                        posterUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + data.poster_path;
-                        saveToTmdbCache('poster', cacheParams, { posterUrl: posterUrl, data: data });
-                    }
-                }
-            }
-
-            if (!posterUrl && window.tmdb && window.tmdb.searchPoster) {
-                console.log('🔍 Поиск постера через search для ' + title);
-
-                var controller2 = new AbortController();
-                var timeoutId2 = setTimeout(function () { controller2.abort(); }, 5000);
-
-                posterUrl = await window.tmdb.searchPoster(title, null, mediaType, true);
-
-                clearTimeout(timeoutId2);
-
-                if (posterUrl) {
-                    saveToTmdbCache('poster', cacheParams, { posterUrl: posterUrl });
-                }
+        var url = null, p = { id: id, type: mt };
+        var cached = getFromTmdbCache('poster', p);
+        if (cached && cached.posterUrl) url = cached.posterUrl;
+        else if (id && id !== 'undefined' && id !== 'null') {
+            var resp = await fetch('/api/tmdb/item?id=' + id + '&type=' + mt, { signal: AbortSignal.timeout(5000) });
+            if (resp.ok) { var d = await resp.json(); if (d.poster_path) { url = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + d.poster_path; saveToTmdbCache('poster', p, { posterUrl: url, data: d }); } }
+        }
+        if (!url && window.tmdb && window.tmdb.searchPoster) {
+            url = await window.tmdb.searchPoster(title, null, mt, true);
+            if (url) saveToTmdbCache('poster', p, { posterUrl: url });
+        }
+        if (url) {
+            catalogState.posterCache[key] = url;
+            if (Object.keys(catalogState.posterCache).length > catalogState.maxPosterCacheSize) {
+                var k = Object.keys(catalogState.posterCache)[0]; delete catalogState.posterCache[k];
             }
         }
+        updatePosterDOM(div, card.dataset.rating, url || '');
+    } catch (e) { if (catalogState.currentCatalog) div.innerHTML = '<div class="no-poster">Ошибка</div>'; }
+}
 
-        if (!catalogState.currentCatalog) {
-            return;
-        }
-
-        if (posterUrl) {
-            catalogState.posterCache[cacheKey] = posterUrl;
-        }
-
-        var posterHtml = '';
-
-        if (posterUrl) {
-            posterHtml = '<img src="' + posterUrl + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-        } else {
-            posterHtml = '<div class="no-poster">Нет постера</div>';
-        }
-
-        if (rating && rating !== 'null' && rating !== 'undefined') {
-            var ratingColor = getRatingColor(parseFloat(rating));
-            posterDiv.innerHTML = '\n                ' + posterHtml + '\n                <div style="\n                    position: absolute;\n                    top: 8px;\n                    right: 8px;\n                    background: rgba(0, 0, 0, 0.8);\n                    color: ' + ratingColor + ';\n                    font-weight: bold;\n                    font-size: 14px;\n                    padding: 4px 8px;\n                    border-radius: 12px;\n                    z-index: 10;\n                    border: 1px solid ' + ratingColor + ';\n                    box-shadow: 0 2px 8px rgba(0,0,0,0.3);\n                    backdrop-filter: blur(2px);\n                ">\n                    ' + rating + '\n                </div>\n            ';
-        } else {
-            posterDiv.innerHTML = posterHtml;
-        }
-
-    } catch (error) {
-        if (error.name === 'AbortError') {
-            console.log('📴 Загрузка постера отменена');
-        } else {
-            console.log('Ошибка загрузки постера:', error);
-        }
-        if (catalogState.currentCatalog) {
-            posterDiv.innerHTML = '<div class="no-poster">Ошибка загрузки</div>';
-        }
+function updatePosterDOM(div, rating, url) {
+    var rHtml = '';
+    if (rating && rating !== 'null' && rating !== 'undefined') {
+        var c = getRatingColor(parseFloat(rating));
+        rHtml = '<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.8);color:' + c + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + c + ';box-shadow:0 2px 8px rgba(0,0,0,0.3);backdrop-filter:blur(2px)">' + rating + '</div>';
     }
+    var img = url ? '<img src="' + url + '" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">' : '<div class="no-poster">Нет постера</div>';
+    div.innerHTML = img + rHtml;
 }
 
 // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР ====================
-
 async function showCatalogDetail(item, index, posterUrl) {
-    window.initHorizontalScroll();
-    if (posterUrl === undefined) posterUrl = null;
+    if (typeof window.initHorizontalScroll === 'function') window.initHorizontalScroll();
+    catalogState.lastSelectedIndex = index; catalogState.lastSelectedId = item.id;
+    var dv = document.getElementById('detail-view'), mc = document.getElementById('main-container');
+    var pe = document.getElementById('detail-poster'), te = document.getElementById('detail-title-text');
+    var se = document.getElementById('detail-subtitle'), oe = document.getElementById('catalog-detail-overview');
+    var be = document.getElementById('catalog-detail-backdrop'), wb = document.getElementById('catalog-watch-btn');
+    var savedScroll = mc ? mc.scrollTop : 0; AppState.backupScroll = savedScroll;
+    var oldP = document.querySelector('.detail-progress'); if (oldP) oldP.remove();
 
-    catalogState.lastSelectedIndex = index;
-    catalogState.lastSelectedId = item.id;
-
-    var detailView = document.getElementById('detail-view');
-    var mainContainer = document.getElementById('main-container');
-    var posterEl = document.getElementById('detail-poster');
-    var titleEl = document.getElementById('detail-title-text');
-    var subtitleEl = document.getElementById('detail-subtitle');
-    var extraEl = document.getElementById('catalog-detail-extra');
-    var backdropEl = document.getElementById('catalog-detail-backdrop');
-    //var metaEl = document.getElementById('catalog-detail-meta');
-    var overviewEl = document.getElementById('catalog-detail-overview');
-    var trailersWrap = document.getElementById('catalog-detail-trailers-wrap');
-    var trailersEl = document.getElementById('catalog-detail-trailers');
-    var filesList = document.getElementById('files-list');
-    var watchBtn = document.getElementById('catalog-watch-btn');
-
-    // Сохраняем позицию скролла перед началом
-    var savedScrollTop = mainContainer ? mainContainer.scrollTop : 0;
-    AppState.backupScroll = savedScrollTop;
-    console.log('💾 Сохранена позиция скролла перед showCatalogDetail:', savedScrollTop);
-
-    var existingProgress = document.querySelector('.detail-progress');
-    if (existingProgress) {
-        existingProgress.remove();
+    var aw = document.getElementById('catalog-detail-actors-wrap'), rw = document.getElementById('catalog-detail-recommendations-wrap');
+    if (!aw && document.getElementById('catalog-detail-overview')) {
+        var c = document.createElement('div'); c.id = 'catalog-detail-actors-wrap'; c.className = 'catalog-detail-actors-wrap';
+        c.innerHTML = '<div class="catalog-detail-section-title">В главных ролях</div><div id="catalog-detail-actors" class="catalog-detail-actors-grid"></div>';
+        document.getElementById('catalog-detail-overview').parentElement.insertAdjacentElement('afterend', c); aw = c;
+    }
+    if (!rw && aw) {
+        var c = document.createElement('div'); c.id = 'catalog-detail-recommendations-wrap'; c.className = 'catalog-detail-recommendations-wrap';
+        c.innerHTML = '<div class="catalog-detail-section-title">Похожие фильмы</div><div id="catalog-detail-recommendations" class="catalog-detail-recommendations-grid"></div>';
+        aw.insertAdjacentElement('afterend', c); rw = c;
     }
 
-    var actorsWrap = document.getElementById('catalog-detail-actors-wrap');
-    var actorsEl = document.getElementById('catalog-detail-actors');
-
-    if (!actorsWrap) {
-        var overviewContainer = overviewEl && overviewEl.parentElement;
-        if (overviewContainer) {
-            var actorsContainer = document.createElement('div');
-            actorsContainer.id = 'catalog-detail-actors-wrap';
-            actorsContainer.className = 'catalog-detail-actors-wrap';
-            actorsContainer.innerHTML = '\n                <div class="catalog-detail-section-title">В главных ролях</div>\n                <div id="catalog-detail-actors" class="catalog-detail-actors-grid"></div>\n            ';
-            overviewContainer.insertAdjacentElement('afterend', actorsContainer);
-            actorsWrap = actorsContainer;
-            actorsEl = document.getElementById('catalog-detail-actors');
-        }
-    }
-
-    var recommendationsWrap = document.getElementById('catalog-detail-recommendations-wrap');
-    var recommendationsEl = document.getElementById('catalog-detail-recommendations');
-
-    if (!recommendationsWrap) {
-        var actorsContainer = actorsWrap || (overviewEl && overviewEl.parentElement);
-        if (actorsContainer) {
-            var recContainer = document.createElement('div');
-            recContainer.id = 'catalog-detail-recommendations-wrap';
-            recContainer.className = 'catalog-detail-recommendations-wrap';
-            recContainer.innerHTML = '\n                <div class="catalog-detail-section-title">Похожие фильмы</div>\n                <div id="catalog-detail-recommendations" class="catalog-detail-recommendations-grid"></div>\n            ';
-            actorsContainer.insertAdjacentElement('afterend', recContainer);
-            recommendationsWrap = recContainer;
-            recommendationsEl = document.getElementById('catalog-detail-recommendations');
-        }
-    }
-
-    var title = getCatalogItemTitle(item);
-    var mediaType = item.media_type || 'movie';
-
-    AppState.currentDetailItem = item;
-    AppState.currentScreen = 'detail';
-    AppState.detailReturnTo = 'catalog';
-
-    //detailView.style.display = 'block';
-    //detailView.style.zIndex = '100';
-    if (typeof Animations !== 'undefined') {
-        Animations.animateDetailShow();
-    }
-    detailView.style.pointerEvents = 'auto';
-    if (mainContainer) mainContainer.style.pointerEvents = 'none';
-    if (typeof window.hideCatalogDetailExtra === 'function') {
-        window.hideCatalogDetailExtra();
-    }
-
-    titleEl.textContent = title;
-    subtitleEl.textContent = getCatalogItemSubtitle(item);
-    filesList.style.display = 'none';
-    filesList.innerHTML = '';
-    extraEl.classList.remove('hidden');
-    //metaEl.innerHTML = '<span class="catalog-meta-chip">Загрузка описания...</span>';
-    overviewEl.textContent = 'Загрузка...';
-    trailersWrap.classList.add('hidden');
-    trailersEl.innerHTML = '';
-    trailersEl.classList.remove('catalog-detail-trailers-links');
-
-    if (actorsWrap) actorsWrap.classList.add('hidden');
-    if (recommendationsWrap) recommendationsWrap.classList.add('hidden');
-
-    var tempPoster = posterUrl || catalogState.posterCache[item.id + '_' + mediaType] || '';
-    posterEl.innerHTML = tempPoster ? '<img src="' + tempPoster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
-
+    var title = getCatalogItemTitle(item), mt = item.media_type || 'movie';
+    AppState.currentDetailItem = item; AppState.currentScreen = 'detail'; AppState.detailReturnTo = 'catalog';
+    if (typeof Animations !== 'undefined') Animations.animateDetailShow();
+    dv.style.pointerEvents = 'auto'; if (mc) mc.style.pointerEvents = 'none';
+    if (typeof window.hideCatalogDetailExtra === 'function') window.hideCatalogDetailExtra();
+    te.textContent = title; se.textContent = getCatalogItemSubtitle(item);
+    document.getElementById('files-list').style.display = 'none'; document.getElementById('catalog-detail-extra').classList.remove('hidden');
+    oe.textContent = 'Загрузка...'; document.getElementById('catalog-detail-trailers-wrap').classList.add('hidden');
+    if (aw) aw.classList.add('hidden'); if (rw) rw.classList.add('hidden');
+    var temp = posterUrl || catalogState.posterCache[item.id + '_' + mt] || '';
+    pe.innerHTML = temp ? '<img src="' + temp + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
     updateCatalogWatchButton(title);
+    if (wb) wb.onclick = function () { dv.style.display = 'none'; dv.style.pointerEvents = 'none'; if (mc) mc.style.pointerEvents = 'auto'; AppState.currentScreen = 'search'; AppState.isSearch = false; showCatalogSearch(wb.dataset.searchTitle || title, temp, item); };
 
-    if (watchBtn) {
-        watchBtn.onclick = function () {
-            detailView.style.display = 'none';
-            detailView.style.pointerEvents = 'none';
-            if (mainContainer) {
-                mainContainer.style.pointerEvents = 'auto';
-            }
-            AppState.currentScreen = 'search';
-            AppState.isSearch = false;
-
-            var searchTitle = watchBtn.dataset.searchTitle || title;
-            showCatalogSearch(searchTitle, tempPoster, item);
-        };
+    var restore = function () { if (mc && savedScroll > 0) setTimeout(function () { mc.scrollTop = savedScroll; }, 50); };
+    var details = await fetchCatalogItemDetails(item); restore();
+    var src = details || item || {};
+    if (src.poster_path) {
+        var u = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + src.poster_path;
+        if (!temp || pe.innerHTML.indexOf('Нет постера') !== -1) pe.innerHTML = '<img src="' + u + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\\\"no-poster\\\">Нет постера</div>\'">';
+        else catalogState.posterCache[item.id + '_' + mt] = u;
+    } else if (src.image && (src.image.original || src.image.medium)) {
+        var u = src.image.original || src.image.medium;
+        if (!temp || pe.innerHTML.indexOf('Нет постера') !== -1) pe.innerHTML = '<img src="' + u + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\\\"no-poster\\\">Нет постера</div>\'">';
     }
+    se.textContent = getCatalogItemSubtitle(item, src);
+    oe.textContent = src.overview || item.overview || 'Описание пока недоступно';
+    var bp = src.backdrop_path || (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
+    if (bp) { be.style.backgroundImage = 'url(' + (bp.indexOf('http') === 0 ? bp : AppState.protocol + '//tsimg.hnar.online/t/p/original' + bp) + ')'; be.classList.remove('hidden'); } else { be.classList.add('hidden'); be.style.backgroundImage = ''; }
 
-    var restoreScroll = function () {
-        if (mainContainer && savedScrollTop > 0) {
-            setTimeout(function () {
-                mainContainer.scrollTop = savedScrollTop;
-                console.log('🔄 Восстановлена позиция скролла:', savedScrollTop);
-            }, 50);
-        }
-    };
-
-    var details = await fetchCatalogItemDetails(item);
-    restoreScroll();
-    var source = details || item || {};
-
-    var finalPosterUrl = tempPoster;
-
-    if (source.poster_path) {
-        var tmdbPosterUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + source.poster_path;
-        if (!tempPoster || tempPoster === '' || posterEl.innerHTML.indexOf('Нет постера') !== -1) {
-            finalPosterUrl = tmdbPosterUrl;
-            posterEl.innerHTML = '<img src="' + tmdbPosterUrl + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\"no-poster\">Нет постера</div>\'">';
-        } else {
-            catalogState.posterCache[item.id + '_' + mediaType] = tmdbPosterUrl;
-        }
-    } else if (source.image && (source.image.original || source.image.medium)) {
-        var sourcePoster = source.image.original || source.image.medium;
-        if (!tempPoster || tempPoster === '' || posterEl.innerHTML.indexOf('Нет постера') !== -1) {
-            finalPosterUrl = sourcePoster;
-            posterEl.innerHTML = '<img src="' + sourcePoster + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\"no-poster\">Нет постера</div>\'">';
-        }
-    }
-
-    subtitleEl.textContent = getCatalogItemSubtitle(item, source);
-
-    var chips = [];
-    var releaseYear = getCatalogItemYear(source);
-    //if (releaseYear) chips.push('<span class="catalog-meta-chip">' + escapeHtml(releaseYear) + '</span>');
-    var safeRating = getSafeCatalogRating(source);
-    //if (safeRating !== null) chips.push('<span class="catalog-meta-chip">' + escapeHtml(String(safeRating)) + '</span>');
-    //if (source.source_name) chips.push('<span class="catalog-meta-chip">ℹ' + escapeHtml(String(source.source_name)) + '</span>');
-    var genres = getNormalizedCatalogGenres(source).slice(0, 4);
-    //for (var i = 0; i < genres.length; i++) {
-    //chips.push('<span class="catalog-meta-chip">' + escapeHtml(genres[i]) + '</span>');
-    //}
-    //metaEl.innerHTML = chips.join('') || '<span class="catalog-meta-chip">Каталог</span>';
-
-    var overview = source.overview || item.overview || 'Описание пока недоступно';
-    overviewEl.textContent = overview;
-
-    var backdropPath = source.backdrop_path || (Array.isArray(source.backdrops) && source.backdrops[0] && source.backdrops[0].file_path) || null;
-    if (backdropPath) {
-        var backdropUrl = backdropPath.indexOf('http') === 0 ? backdropPath : AppState.protocol + '//tsimg.hnar.online/t/p/original' + backdropPath;
-        backdropEl.style.backgroundImage = 'url(' + backdropUrl + ')';
-        backdropEl.classList.remove('hidden');
-    } else {
-        backdropEl.classList.add('hidden');
-        backdropEl.style.backgroundImage = '';
-    }
-
-    // Актеры - грид на 12 колонок
-    if (actorsWrap && actorsEl) {
-        actorsEl.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>';
-        actorsWrap.classList.remove('hidden');
-
+    if (aw) {
+        var ae = document.getElementById('catalog-detail-actors');
+        ae.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>'; aw.classList.remove('hidden');
         var actors = await fetchCatalogActors(item);
-
         if (actors.length > 0) {
-            var actorsGridTemplateColumns = 'repeat(12, 1fr)';
-            var actorsHtml = '<div class="catalog-detail-actors-grid" style="display: grid; grid-template-columns: ' + actorsGridTemplateColumns + '; gap: 20px;">';
-
-            for (var j = 0; j < actors.length; j++) {
-                var actor = actors[j];
-                var profileUrl = actor.profilePath ? AppState.protocol + '//tsimg.hnar.online/t/p/w185' + actor.profilePath : null;
-                actorsHtml += '\n                    <div class="catalog-actor-card" data-actor-id="' + actor.id + '">\n                        <div class="catalog-actor-photo">\n                            ' + (profileUrl ? '<img src="' + profileUrl + '" alt="' + escapeHtml(actor.name) + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') + '\n                        </div>\n                        <div class="catalog-actor-info">\n                            <div class="catalog-actor-name">' + escapeHtml(actor.name) + '</div>\n                            <div class="catalog-actor-character">' + escapeHtml(actor.character || '') + '</div>\n                        </div>\n                    </div>\n                ';
-            }
-
-            actorsHtml += '</div>';
-            actorsEl.innerHTML = actorsHtml;
-        } else {
-            actorsEl.innerHTML = '<div class="catalog-empty">Актеры не найдены</div>';
-        }
+            var frag = document.createDocumentFragment();
+            actors.forEach(function (a) {
+                var d = document.createElement('div'); d.className = 'catalog-actor-card';
+                d.innerHTML = '<div class="catalog-actor-photo">' + (a.profilePath ? '<img src="' + AppState.protocol + '//tsimg.hnar.online/t/p/w185' + a.profilePath + '" loading="lazy" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') + '</div><div class="catalog-actor-info"><div class="catalog-actor-name">' + escapeHtml(a.name) + '</div><div class="catalog-actor-character">' + escapeHtml(a.character || '') + '</div></div>';
+                frag.appendChild(d);
+            });
+            ae.innerHTML = ''; ae.appendChild(frag);
+        } else ae.innerHTML = '<div class="catalog-empty">Актеры не найдены</div>';
     }
 
-    // Рекомендации - грид на 12 колонок
-    if (recommendationsWrap && recommendationsEl && source.recommendations && source.recommendations.length > 0) {
-        recommendationsEl.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка похожих фильмов...</span></div>';
-        recommendationsWrap.classList.remove('hidden');
+    if (rw && src.recommendations && src.recommendations.length > 0) {
+        var re = document.getElementById('catalog-detail-recommendations');
+        re.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка похожих фильмов...</span></div>'; rw.classList.remove('hidden');
+        var recs = src.recommendations.slice(0, 12), frag = document.createDocumentFragment();
+        recs.forEach(function (r) {
+            var d = document.createElement('div'); d.className = 'catalog-recommendation-card'; d.dataset.tmdbId = r.id; d.dataset.mediaType = mt; d.dataset.title = r.title || r.name || 'Без названия';
+            var pu = r.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/w185' + r.poster_path : null;
+            d.innerHTML = '<div class="catalog-recommendation-poster">' + (pu ? '<img src="' + pu + '" loading="lazy" alt="' + escapeHtml(d.dataset.title) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-recommendation-no-poster\\\'> </div>\'">' : '<div class="catalog-recommendation-no-poster"> </div>') + (r.vote_average ? '<div class="catalog-recommendation-rating">' + Math.round(r.vote_average * 10) / 10 + '</div>' : '') + '</div><div class="catalog-recommendation-info"><div class="catalog-recommendation-title">' + escapeHtml(d.dataset.title) + '</div>' + (r.release_date ? '<div class="catalog-recommendation-year">' + r.release_date.substring(0, 4) + '</div>' : '') + '</div>';
+            frag.appendChild(d);
+        });
+        re.innerHTML = ''; re.appendChild(frag);
+        re.addEventListener('click', function (e) {
+            var c = e.target.closest('.catalog-recommendation-card'); if (!c) return;
+            showCatalogDetail({ id: c.dataset.tmdbId, media_type: c.dataset.mediaType, torrent: [{ name: c.dataset.title }], title: c.dataset.title, name: c.dataset.title }, 0, null);
+        });
+    } else if (rw) rw.classList.add('hidden');
 
-        var recommendations = source.recommendations.slice(0, 12);
+    var vids = (src.videos && Array.isArray(src.videos) ? src.videos.filter(function (v) { var t = (v.type || '').toLowerCase(); return t.indexOf('trailer') !== -1 || t.indexOf('teaser') !== -1; }).slice(0, 6) : []);
+    var tw = document.getElementById('catalog-detail-trailers-wrap'), te2 = document.getElementById('catalog-detail-trailers');
+    if (vids.length > 0) {
+        tw.classList.remove('hidden'); te2.classList.add('catalog-detail-trailers-grid'); te2.classList.remove('catalog-detail-trailers-links');
+        te2.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:16px;padding:10px;';
+        var frag = document.createDocumentFragment();
+        vids.forEach(function (v) {
+            var d = document.createElement('div'); d.className = 'catalog-trailer-card-item'; d.dataset.videoUrl = 'https://www.youtube.com/watch?v=' + v.key; d.dataset.videoTitle = v.name || 'Трейлер';
+            d.innerHTML = '<div class="catalog-trailer-poster" style="position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:12px;background:linear-gradient(135deg,#1a1a2e,#16213e)"><img src="https://img.youtube.com/vi/' + v.key + '/mqdefault.jpg" alt="' + escapeHtml(v.name || 'Трейлер') + '" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'></div>\'"><div class="catalog-trailer-play-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s;cursor:pointer"><div style="width:60px;height:60px;background:rgba(74,158,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;color:white">▶</div></div>' + (v.duration ? '<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:white;font-size:12px;padding:3px 8px;border-radius:12px;font-family:monospace">' + formatDuration(v.duration) + '</div>' : '') + '</div><div class="catalog-trailer-info" style="padding:10px"><div class="catalog-trailer-title" style="font-size:14px;font-weight:600;color:#fff;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(v.name || 'Трейлер') + '</div><div class="catalog-trailer-meta" style="display:flex;gap:10px;font-size:12px;color:#aaa"><span>Трейлер</span>' + (v.duration ? '<span>⏱️ ' + formatDuration(v.duration) + '</span>' : '') + '</div></div>';
+            frag.appendChild(d);
+        });
+        te2.innerHTML = ''; te2.appendChild(frag);
+        te2.addEventListener('click', function (e) {
+            var c = e.target.closest('.catalog-trailer-card-item'); if (!c) return;
+            hideCatalogDetailView(); openYoutubeInPlayer(c.dataset.videoUrl, c.dataset.videoTitle);
+        });
+    } else tw.classList.add('hidden');
 
-        var recGridTemplateColumns = 'repeat(12, 1fr)';
-        var recHtml = '<div class="catalog-recommendations-grid" style="display: grid; grid-template-columns: ' + recGridTemplateColumns + '; gap: 20px;">';
-
-        for (var k = 0; k < recommendations.length; k++) {
-            var rec = recommendations[k];
-            var recPosterUrl = rec.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/w185' + rec.poster_path : null;
-            var recTitle = rec.title || rec.name || 'Без названия';
-            var recYear = rec.release_date ? rec.release_date.substring(0, 4) : '';
-            var recRating = rec.vote_average ? Math.round(rec.vote_average * 10) / 10 : null;
-
-            recHtml += '\n                <div class="catalog-recommendation-card" data-tmdb-id="' + rec.id + '" data-media-type="' + mediaType + '" data-title="' + escapeHtml(recTitle) + '">\n                    <div class="catalog-recommendation-poster">\n                        ' + (recPosterUrl ? '<img src="' + recPosterUrl + '" alt="' + escapeHtml(recTitle) + '" loading="lazy" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-recommendation-no-poster\\\'></div>\'">' : '<div class="catalog-recommendation-no-poster"></div>') + '\n                        ' + (recRating ? '<div class="catalog-recommendation-rating">' + recRating + '</div>' : '') + '\n                    </div>\n                    <div class="catalog-recommendation-info">\n                        <div class="catalog-recommendation-title">' + escapeHtml(recTitle) + '</div>\n                        ' + (recYear ? '<div class="catalog-recommendation-year">' + recYear + '</div>' : '') + '\n                    </div>\n                </div>\n            ';
-        }
-
-        recHtml += '</div>';
-        recommendationsEl.innerHTML = recHtml;
-
-        var recCards = recommendationsEl.querySelectorAll('.catalog-recommendation-card');
-        for (var l = 0; l < recCards.length; l++) {
-            (function (card) {
-                card.addEventListener('click', async function () {
-                    var tmdbId = card.dataset.tmdbId;
-                    var recMediaType = card.dataset.mediaType;
-                    var recTitle = card.dataset.title;
-
-                    if (tmdbId) {
-                        var loadingDiv = document.createElement('div');
-                        loadingDiv.className = 'catalog-loading-overlay';
-                        loadingDiv.innerHTML = '<div class="loading-spinner"></div><span>Загрузка...</span>';
-                        detailView.appendChild(loadingDiv);
-
-                        try {
-                            var newItem = {
-                                id: tmdbId,
-                                media_type: recMediaType,
-                                torrent: [{ name: recTitle }],
-                                title: recTitle,
-                                name: recTitle
-                            };
-
-                            var newDetails = await fetchCatalogItemDetails(newItem);
-
-                            var newPosterUrl = null;
-                            if (newDetails.poster_path) {
-                                newPosterUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + newDetails.poster_path;
-                            }
-
-                            await showCatalogDetail(newItem, 0, newPosterUrl);
-
-                            setTimeout(function () {
-                                var newWatchBtn = document.getElementById('catalog-watch-btn');
-                                if (newWatchBtn && typeof focusEl === 'function') {
-                                    focusEl(newWatchBtn);
-                                }
-                            }, 200);
-                        } catch (error) {
-                            console.log('Ошибка загрузки рекомендованного фильма:', error);
-                        } finally {
-                            loadingDiv.remove();
-                        }
-                    }
-                });
-            })(recCards[l]);
-        }
-    } else if (recommendationsWrap && source.recommendations && source.recommendations.length === 0) {
-        recommendationsWrap.classList.add('hidden');
-    }
-
-    var videos = [];
-    if (source.videos && Array.isArray(source.videos)) {
-        for (var m = 0; m < source.videos.length; m++) {
-            var v = source.videos[m];
-            var type = (v.type || '').toLowerCase();
-            if (type.indexOf('trailer') !== -1 || type.indexOf('teaser') !== -1) {
-                videos.push(v);
-            }
-        }
-    }
-    videos = videos.slice(0, 6);
-
-    // Видео/трейлеры - грид на 6 колонок
-    if (videos.length > 0) {
-        trailersWrap.classList.remove('hidden');
-        trailersEl.classList.add('catalog-detail-trailers-grid');
-        trailersEl.classList.remove('catalog-detail-trailers-links');
-
-        var trailersGridTemplateColumns = 'repeat(6, 1fr)';
-        trailersEl.style.cssText = '\n            display: grid;\n            grid-template-columns: ' + trailersGridTemplateColumns + ';\n            gap: 16px;\n            padding: 10px;\n        ';
-
-        var trailersHtml = '';
-        for (var n = 0; n < videos.length; n++) {
-            var video = videos[n];
-            var thumbUrl = 'https://img.youtube.com/vi/' + video.key + '/mqdefault.jpg';
-            var videoTitle = video.name || 'Трейлер';
-            var duration = video.duration || '';
-            var formattedDuration = duration ? formatDuration(duration) : '';
-
-            trailersHtml += '\n                <div class="catalog-trailer-card-item" data-video-id="' + escapeHtml(video.key) + '" data-video-url="https://www.youtube.com/watch?v=' + video.key + '" data-video-title="' + escapeHtml(videoTitle) + '">\n                    <div class="catalog-trailer-poster" style="position: relative; aspect-ratio: 16/9; overflow: hidden; border-radius: 12px; background: linear-gradient(135deg, #1a1a2e, #16213e);">\n                        <img src="' + thumbUrl + '" alt="' + escapeHtml(videoTitle) + '" loading="lazy" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\' style=\\\'display: flex; align-items: center; justify-content: center; height: 100%;\\\'></div>\'">\n                        <div class="catalog-trailer-play-overlay" style="\n                            position: absolute;\n                            top: 0;\n                            left: 0;\n                            right: 0;\n                            bottom: 0;\n                            background: rgba(0, 0, 0, 0.4);\n                            display: flex;\n                            align-items: center;\n                            justify-content: center;\n                            opacity: 0;\n                            transition: opacity 0.3s;\n                            cursor: pointer;\n                        ">\n                            <div style="\n                                width: 60px;\n                                height: 60px;\n                                background: rgba(74, 158, 255, 0.9);\n                                border-radius: 50%;\n                                display: flex;\n                                align-items: center;\n                                justify-content: center;\n                                font-size: 30px;\n                                color: white;\n                            ">▶</div>\n                        </div>\n                        ' + (formattedDuration ? '\n                            <div style="\n                                position: absolute;\n                                bottom: 8px;\n                                right: 8px;\n                                background: rgba(0, 0, 0, 0.8);\n                                color: white;\n                                font-size: 12px;\n                                padding: 3px 8px;\n                                border-radius: 12px;\n                                font-family: monospace;\n                            ">' + formattedDuration + '</div>\n                        ' : '') + '\n                    </div>\n                    <div class="catalog-trailer-info" style="padding: 10px;">\n                        <div class="catalog-trailer-title" style="\n                            font-size: 14px;\n                            font-weight: 600;\n                            color: #fff;\n                            margin-bottom: 5px;\n                            overflow: hidden;\n                            text-overflow: ellipsis;\n                            white-space: nowrap;\n                        ">' + escapeHtml(videoTitle) + '</div>\n                        <div class="catalog-trailer-meta" style="\n                            display: flex;\n                            gap: 10px;\n                            font-size: 12px;\n                            color: #aaa;\n                        ">\n                            <span>Трейлер</span>\n                            ' + (formattedDuration ? '<span>⏱️ ' + formattedDuration + '</span>' : '') + '\n                        </div>\n                    </div>\n                </div>\n            ';
-        }
-        trailersEl.innerHTML = trailersHtml;
-
-        var trailerCards = trailersEl.querySelectorAll('.catalog-trailer-card-item');
-        for (var o = 0; o < trailerCards.length; o++) {
-            (function (card) {
-                var videoUrl = card.dataset.videoUrl;
-                var videoTitle = card.dataset.videoTitle;
-
-                var posterDiv = card.querySelector('.catalog-trailer-poster');
-                var overlay = card.querySelector('.catalog-trailer-play-overlay');
-
-                if (posterDiv && overlay) {
-                    posterDiv.addEventListener('mouseenter', function () {
-                        overlay.style.opacity = '1';
-                    });
-                    posterDiv.addEventListener('mouseleave', function () {
-                        overlay.style.opacity = '0';
-                    });
-                }
-
-                card.addEventListener('click', function () {
-                    if (videoUrl) {
-                        hideCatalogDetailView();
-                        openYoutubeInPlayer(videoUrl, videoTitle);
-                    }
-                });
-            })(trailerCards[o]);
-        }
-    } else {
-        trailersWrap.classList.add('hidden');
-    }
-
-    setTimeout(function () {
+    requestAnimationFrame(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
             updateFocusableElements();
-            var watchIndex = -1;
-            if (typeof focusableElements !== 'undefined') {
-                for (var p = 0; p < focusableElements.length; p++) {
-                    if (focusableElements[p].id === 'catalog-watch-btn') {
-                        watchIndex = p;
-                        break;
-                    }
-                }
-            }
-            setFocus(watchIndex !== -1 ? watchIndex : 0);
+            var idx = -1; if (typeof focusableElements !== 'undefined') for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].id === 'catalog-watch-btn') { idx = i; break; }
+            setFocus(idx !== -1 ? idx : 0);
         }
-    }, 120);
+    });
 }
 
 function hideCatalogDetailView() {
-    var detailView = document.getElementById('detail-view');
-    if (!detailView) return;
-    detailView.classList.remove('catalog-detail-mode');
-    detailView.style.backgroundImage = '';
-    var subtitleEl = document.getElementById('detail-title-subtitle');
-    if (subtitleEl) subtitleEl.textContent = '';
-    AppState.detailMode = null;
+    var dv = document.getElementById('detail-view'); if (!dv) return; dv.classList.remove('catalog-detail-mode'); dv.style.backgroundImage = '';
+    var se = document.getElementById('detail-title-subtitle'); if (se) se.textContent = ''; AppState.detailMode = null;
 }
-
-function updateCatalogWatchButton(title) {
-    var watchBtn = document.getElementById('catalog-watch-btn');
-    if (watchBtn) {
-        watchBtn.textContent = 'Поиск торрентов';
-        //if (title) {
-        ///watchBtn.textContent = 'Найти торренты для "' + title + '"';
-        // watchBtn.dataset.searchTitle = title;
-        //} else {
-
-        //}
-    }
-}
-
+function updateCatalogWatchButton(t) { var b = document.getElementById('catalog-watch-btn'); if (b) b.textContent = 'Поиск торрентов'; }
 function onCatalogItemClick(item, index) {
-    catalogState.lastSelectedIndex = index;
-    catalogState.lastSelectedId = item.id;
-
-    var numIndex = item.num_index !== undefined ? item.num_index : index;
-    localStorage.setItem('lastCatalogCardIndex', numIndex);
-
+    catalogState.lastSelectedIndex = index; catalogState.lastSelectedId = item.id;
+    localStorage.setItem('lastCatalogCardIndex', item.num_index !== undefined ? item.num_index : index);
     var card = document.querySelector('.torrent-card.catalog-card[data-catalog-index="' + index + '"]');
-    var posterUrl = null;
-
-    if (card) {
-        var img = card.querySelector('.torrent-poster img');
-        if (img && img.src) {
-            posterUrl = img.src;
-        }
-    }
-
-    showCatalogDetail(item, index, posterUrl);
+    var pu = null; if (card) { var img = card.querySelector('.torrent-poster img'); if (img && img.src) pu = img.src; }
+    showCatalogDetail(item, index, pu);
 }
 
-// ==================== ПОИСК ИЗ КАТАЛОГА ====================
-
-function showCatalogSearch(query, posterUrl, catalogItem) {
-    if (posterUrl === undefined) posterUrl = null;
-    if (catalogItem === undefined) catalogItem = null;
-    var searchTab = document.getElementById('tab-search');
-    var torrentsTab = document.getElementById('tab-torrents');
-    var catalogTab = document.getElementById('tab-catalog');
-    var searchOverlay = document.getElementById('search-overlay');
-    var searchInput = document.getElementById('search-query');
-
-    if (searchTab && torrentsTab && catalogTab && searchOverlay) {
-        searchTab.classList.add('active');
-        torrentsTab.classList.remove('active');
-        catalogTab.classList.remove('active');
-        searchOverlay.classList.remove('hidden');
-
-        if (searchInput) {
-            searchInput.value = query;
-            if (document.activeElement === searchInput) {
-                searchInput.blur();
-            }
-        }
-
-        window.pendingCatalogPoster = posterUrl;
-        window.pendingCatalogItem = catalogItem;
-
-        AppState.searchReturnTo = 'detail';
-
-        if (catalogItem) {
-            AppState.pendingDetailItem = catalogItem;
-            AppState.pendingDetailPoster = posterUrl;
-            AppState.pendingDetailIndex = catalogState.lastSelectedIndex;
-        }
-
+function showCatalogSearch(q, pu, item) {
+    var st = document.getElementById('tab-search'), tt = document.getElementById('tab-torrents'), ct = document.getElementById('tab-catalog'), so = document.getElementById('search-overlay'), si = document.getElementById('search-query');
+    if (st && tt && ct && so) {
+        st.classList.add('active'); tt.classList.remove('active'); ct.classList.remove('active'); so.classList.remove('hidden');
+        if (si) { si.value = q; if (document.activeElement === si) si.blur(); }
+        window.pendingCatalogPoster = pu; window.pendingCatalogItem = item; AppState.searchReturnTo = 'detail';
+        if (item) { AppState.pendingDetailItem = item; AppState.pendingDetailPoster = pu; AppState.pendingDetailIndex = catalogState.lastSelectedIndex; }
         AppState.currentScreen = 'search';
-
-        if (typeof window.searchTorrents === 'function') {
-            var torrentMovieSelect = document.getElementById('torrent-movie');
-            if (torrentMovieSelect) torrentMovieSelect.value = 'torrentsearch';
-            window.searchTorrentsLegacy(query);
-        }
-
-        setTimeout(function () {
-            if (typeof window.focusSearchHome === 'function') {
-                window.focusSearchHome(true);
-            } else if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-                updateFocusableElements();
-                var searchInputIndex = -1;
-                for (var i = 0; i < focusableElements.length; i++) {
-                    if (focusableElements[i].id === 'search-query') {
-                        searchInputIndex = i;
-                        break;
-                    }
-                }
-                setFocus(searchInputIndex !== -1 ? searchInputIndex : 0);
-            }
-        }, 200);
+        if (typeof window.searchTorrents === 'function') { var tm = document.getElementById('torrent-movie'); if (tm) tm.value = 'torrentsearch'; window.searchTorrentsLegacy(q); }
+        setTimeout(function () { if (typeof window.focusSearchHome === 'function') window.focusSearchHome(true); }, 200);
     }
 }
 
-// ==================== YOUTUBE ПЛЕЕР ====================
-
-async function openYoutubeInPlayer(youtubeUrl, videoTitle) {
-    console.log('Открываем YouTube в плеере:', youtubeUrl);
-
-    var currentDetailItem = AppState.currentDetailItem;
-    var catalogName = catalogState.currentCatalog;
-    var itemIndex = catalogState.lastSelectedIndex;
-
-    var detailView = document.getElementById('detail-view');
-    var mainContainer = document.getElementById('main-container');
-    if (detailView) {
-        detailView.style.display = 'none';
-        detailView.style.pointerEvents = 'none';
-    }
-    if (mainContainer) {
-        mainContainer.style.pointerEvents = 'none';
-    }
-
-    var playbackOverlay = document.getElementById('playback-overlay');
-    if (playbackOverlay) {
-        playbackOverlay.classList.add('active');
-        var playbackText = document.querySelector('.playback-text');
-        if (playbackText) playbackText.textContent = 'Загрузка трейлера: ' + videoTitle + '...';
-    }
-
+async function openYoutubeInPlayer(url, title) {
+    var cd = AppState.currentDetailItem, cn = catalogState.currentCatalog, ci = catalogState.lastSelectedIndex;
+    var dv = document.getElementById('detail-view'), mc = document.getElementById('main-container');
+    if (dv) { dv.style.display = 'none'; dv.style.pointerEvents = 'none'; } if (mc) mc.style.pointerEvents = 'none';
+    var po = document.getElementById('playback-overlay'); if (po) { po.classList.add('active'); var pt = po.querySelector('.playback-text'); if (pt) pt.textContent = 'Загрузка трейлера: ' + title + '...'; }
     try {
-        var statusResponse = await fetch(SERVER_URL + '/api/youtube/status');
-        var status = await statusResponse.json();
-
-        if (!status.available) {
-            throw new Error('yt-dlp не установлен на сервере');
-        }
-
-        var streamResponse = await fetch(SERVER_URL + '/hls/youtube?url=' + encodeURIComponent(youtubeUrl) + '&quality=best');
-
-        if (!streamResponse.ok) {
-            throw new Error('HTTP ' + streamResponse.status);
-        }
-
-        var streamData = await streamResponse.json();
-
-        if (!streamData.success) {
-            throw new Error(streamData.error || 'Ошибка создания потока');
-        }
-
-        console.log('✅ YouTube поток создан:', streamData);
-
-        var oldStreamId = AppState.currentStreamId;
-        AppState.currentStreamId = streamData.streamId;
-        AppState.videoUrl = youtubeUrl;
-        AppState.expectedDuration = streamData.duration;
-        AppState.originalDuration = streamData.originalDuration;
-        AppState.seekOffset = streamData.seekOffset || 0;
-        AppState.isYoutubePlayback = true;
-
-        AppState.youtubeContext = {
-            currentDetailItem: currentDetailItem,
-            catalogName: catalogName,
-            itemIndex: itemIndex
-        };
-
-        var fakeItem = {
-            title: videoTitle,
-            hash: null,
-            isYoutube: true,
-            youtubeUrl: youtubeUrl
-        };
-        AppState.currentDetailItem = fakeItem;
-
-        if (oldStreamId) {
-            await fetch(SERVER_URL + '/hls/stop/' + oldStreamId, { method: 'POST' })['catch'](function () { });
-        }
-
-        if (window.destroyHls) {
-            window.destroyHls();
-        }
-
-        var videoPlayer = document.getElementById('video-player');
-
+        var st = await fetch(SERVER_URL + '/api/youtube/status').then(r => r.json());
+        if (!st.available) throw new Error('yt-dlp не установлен');
+        var sd = await fetch(SERVER_URL + '/hls/youtube?url=' + encodeURIComponent(url) + '&quality=best').then(r => r.json());
+        if (!sd.success) throw new Error(sd.error || 'Ошибка потока');
+        var old = AppState.currentStreamId; AppState.currentStreamId = sd.streamId; AppState.videoUrl = url; AppState.expectedDuration = sd.duration; AppState.seekOffset = sd.seekOffset || 0; AppState.isYoutubePlayback = true; AppState.youtubeContext = { currentDetailItem: cd, catalogName: cn, itemIndex: ci };
+        AppState.currentDetailItem = { title: title, hash: null, isYoutube: true, youtubeUrl: url };
+        if (old) fetch(SERVER_URL + '/hls/stop/' + old, { method: 'POST' }).catch(() => { });
+        if (window.destroyHls) window.destroyHls();
+        var vp = document.getElementById('video-player');
         if (Hls.isSupported()) {
-            if (AppState.hls) {
-                AppState.hls.destroy();
-            }
-
-            AppState.hls = new Hls({
-                maxBufferSize: 80 * 1024 * 1024,
-                maxBufferLength: 30,
-                maxMaxBufferLength: 30,
-                backBufferLength: 20,
-                startFragPrefetch: true,
-                startLevel: -1,
-                abrEwmaDefaultEstimate: 500000,
-                abrBandWidthFactor: 0.8,
-                abrBandWidthUpFactor: 0.7,
-                fragLoadingTimeOut: 10000,
-                fragLoadingMaxRetry: 6,
-                fragLoadingRetryDelay: 500,
-                manifestLoadingTimeOut: 10000,
-                manifestLoadingMaxRetry: 4,
-                maxFragLookUpTolerance: 0.25,
-                lowLatencyMode: false,
-                liveSyncDurationCount: 3,
-                liveMaxLatencyDurationCount: Infinity,
-                maxLiveSyncPlaybackRate: 1,
-                liveDurationInfinity: false,
-                liveBackBufferLength: 20,
-                enableWorker: true,
-                abrEwmaSlowVoD: 4000,
-                abrEwmaFastVoD: 1000,
-                progressive: true
-            });
-
-            AppState.hls.loadSource(streamData.playlistUrl);
-            AppState.hls.attachMedia(videoPlayer);
-
-            var playbackStarted = false;
-            var bufferCheckInterval = null;
-
+            AppState.hls = new Hls({ maxBufferSize: 80 * 1024 * 1024, maxBufferLength: 30, backBufferLength: 20, startLevel: -1, abrEwmaDefaultEstimate: 500000, fragLoadingTimeOut: 10000, manifestLoadingTimeOut: 10000, enableWorker: true, progressive: true });
+            AppState.hls.loadSource(sd.playlistUrl); AppState.hls.attachMedia(vp);
+            var started = false;
             AppState.hls.on(Hls.Events.MANIFEST_PARSED, function () {
-                console.log('📜 YouTube манифест распарсен');
-
-                if (typeof window.updatePlayerTitle === 'function') {
-                    window.updatePlayerTitle('Трейлер: ' + videoTitle);
-                }
-
-                videoPlayer.currentTime = 0;
-                videoPlayer.pause();
-
-                var checkBuffer = function () {
-                    if (playbackStarted) return;
-
-                    if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
-                        var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
-                        var currentTime = videoPlayer.currentTime;
-                        var bufferAhead = bufferedEnd - currentTime;
-
-                        if (bufferAhead >= 3) {
-                            if (bufferCheckInterval) clearInterval(bufferCheckInterval);
-
-                            if (playbackOverlay) playbackOverlay.classList.remove('active');
-
-                            videoPlayer.play()['catch'](function (err) {
-                                console.log('🔇 Автоплей заблокирован');
-                                videoPlayer.muted = true;
-                                videoPlayer.play()['catch'](function () { });
-                                if (typeof window.updateMuteButton === 'function') window.updateMuteButton();
-                            });
-
-                            playbackStarted = true;
-
-                            document.getElementById('player-screen').style.display = 'block';
-                            document.getElementById('config-screen').style.display = 'none';
-                            document.getElementById('torrserver-section').style.display = 'none';
-
-                            var focusedElements = document.querySelectorAll('.focused');
-                            for (var i = 0; i < focusedElements.length; i++) {
-                                focusedElements[i].classList.remove('focused');
-                            }
-
-                            if (typeof window.resetMouseIdleTimer === 'function') {
-                                window.resetMouseIdleTimer();
-                            }
-                        }
+                if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
+                vp.currentTime = 0; vp.pause();
+                var iv = setInterval(function () {
+                    if (started) return clearInterval(iv);
+                    if (vp.buffered && vp.buffered.length > 0 && vp.buffered.end(vp.buffered.length - 1) - vp.currentTime >= 3) {
+                        clearInterval(iv); if (po) po.classList.remove('active');
+                        vp.play().catch(() => { vp.muted = true; vp.play().catch(() => { }); if (typeof window.updateMuteButton === 'function') window.updateMuteButton(); });
+                        started = true; document.getElementById('player-screen').style.display = 'block'; document.getElementById('config-screen').style.display = 'none'; document.getElementById('torrserver-section').style.display = 'none';
+                        document.querySelectorAll('.focused').forEach(e => e.classList.remove('focused')); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
                     }
-                };
-
-                bufferCheckInterval = setInterval(checkBuffer, 500);
-
-                setTimeout(function () {
-                    if (!playbackStarted) {
-                        if (bufferCheckInterval) clearInterval(bufferCheckInterval);
-                        if (playbackOverlay) playbackOverlay.classList.remove('active');
-                        videoPlayer.play()['catch'](function () { });
-                        playbackStarted = true;
-                        document.getElementById('player-screen').style.display = 'block';
-                    }
-                }, 10000);
+                }, 500);
             });
-
-            AppState.hls.on(Hls.Events.ERROR, function (event, data) {
-                console.log('HLS ошибка:', data);
-                if (data.fatal) {
-                    if (playbackOverlay) playbackOverlay.classList.remove('active');
-                    alert('Ошибка воспроизведения трейлера');
-                }
-            });
-
-        } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-            videoPlayer.src = streamData.playlistUrl;
-
-            videoPlayer.addEventListener('loadedmetadata', function () {
-                if (typeof window.updatePlayerTitle === 'function') {
-                    window.updatePlayerTitle('Трейлер: ' + videoTitle);
-                }
-
-                if (playbackOverlay) playbackOverlay.classList.remove('active');
-                videoPlayer.play()['catch'](function () { });
-                document.getElementById('player-screen').style.display = 'block';
-            });
-        } else {
-            throw new Error('Ваш браузер не поддерживает HLS');
-        }
-
+            AppState.hls.on(Hls.Events.ERROR, function (ev, d) { if (d.fatal) { if (po) po.classList.remove('active'); alert('Ошибка воспроизведения'); } });
+        } else if (vp.canPlayType('application/vnd.apple.mpegurl')) {
+            vp.src = sd.playlistUrl; vp.addEventListener('loadedmetadata', function () { if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title); if (po) po.classList.remove('active'); vp.play().catch(() => { }); document.getElementById('player-screen').style.display = 'block'; });
+        } else throw new Error('Браузер не поддерживает HLS');
         AppState.currentScreen = 'player';
-
-    } catch (error) {
-        console.log('❌ Ошибка воспроизведения трейлера:', error);
-        if (playbackOverlay) playbackOverlay.classList.remove('active');
-        alert('Ошибка воспроизведения трейлера: ' + error.message);
-
-        if (detailView) {
-            detailView.style.display = 'block';
-            detailView.style.pointerEvents = 'auto';
-        }
-        if (mainContainer) {
-            mainContainer.style.pointerEvents = 'auto';
-        }
-    }
+    } catch (e) { console.error('YouTube error:', e); if (po) po.classList.remove('active'); alert('Ошибка: ' + e.message); if (dv) { dv.style.display = 'block'; dv.style.pointerEvents = 'auto'; } if (mc) mc.style.pointerEvents = 'auto'; }
 }
 
 function exitYoutubePlayer() {
-    console.log('Выход из YouTube плеера');
-
-    if (AppState.currentStreamId) {
-        fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { });
-        AppState.currentStreamId = null;
-    }
-
-    if (AppState.hls) {
-        AppState.hls.destroy();
-        AppState.hls = null;
-    }
-
-    AppState.isYoutubePlayback = false;
-
-    var context = AppState.youtubeContext;
-
-    if (context && context.currentDetailItem && context.currentDetailItem.id) {
-        console.log('Возвращаемся к детальному просмотру:', context.currentDetailItem.title);
-
-        AppState.currentScreen = 'detail';
-        document.getElementById('player-screen').style.display = 'none';
-
-        var detailView = document.getElementById('detail-view');
-        var mainContainer = document.getElementById('main-container');
-
-        if (detailView) {
-            detailView.style.display = 'block';
-            detailView.style.pointerEvents = 'auto';
-        }
-
-        if (mainContainer) {
-            mainContainer.style.pointerEvents = 'auto';
-        }
-
-        setTimeout(async function () {
-            await showCatalogDetail(
-                context.currentDetailItem,
-                context.itemIndex || 0,
-                null
-            );
-        }, 100);
-
-        AppState.youtubeContext = null;
-
-    } else if (catalogState && catalogState.currentCatalog) {
-        if (typeof window.showCatalogList === 'function') {
-            window.showCatalogList();
-        }
-    } else {
-        var torrserverSection = document.getElementById('torrserver-section');
-        if (torrserverSection) {
-            torrserverSection.style.display = 'block';
-        }
-        document.getElementById('config-screen').style.display = 'none';
-        if (typeof loadTorrents === 'function') {
-            loadTorrents(true);
-        }
-    }
-
-    setTimeout(function () {
-        if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-            updateFocusableElements();
-
-            var watchBtn = document.getElementById('catalog-watch-btn');
-            if (watchBtn) {
-                var watchIndex = -1;
-                for (var i = 0; i < focusableElements.length; i++) {
-                    if (focusableElements[i].id === 'catalog-watch-btn') {
-                        watchIndex = i;
-                        break;
-                    }
-                }
-                if (watchIndex !== -1) {
-                    setFocus(watchIndex);
-                    return;
-                }
-            }
-
-            if (typeof window.focusFirstCatalogCard === 'function') {
-                window.focusFirstCatalogCard();
-            } else {
-                setFocus(0);
-            }
-        }
-    }, 200);
+    if (AppState.currentStreamId) { fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' }).catch(() => { }); AppState.currentStreamId = null; }
+    if (AppState.hls) { AppState.hls.destroy(); AppState.hls = null; }
+    AppState.isYoutubePlayback = false; var ctx = AppState.youtubeContext;
+    if (ctx && ctx.currentDetailItem && ctx.currentDetailItem.id) {
+        AppState.currentScreen = 'detail'; document.getElementById('player-screen').style.display = 'none';
+        var dv = document.getElementById('detail-view'), mc = document.getElementById('main-container'); if (dv) { dv.style.display = 'block'; dv.style.pointerEvents = 'auto'; } if (mc) mc.style.pointerEvents = 'auto';
+        setTimeout(function () { showCatalogDetail(ctx.currentDetailItem, ctx.itemIndex || 0, null); }, 100); AppState.youtubeContext = null;
+    } else if (catalogState && catalogState.currentCatalog) { if (typeof window.showCatalogList === 'function') window.showCatalogList(); } else { var ts = document.getElementById('torrserver-section'); if (ts) ts.style.display = 'block'; document.getElementById('config-screen').style.display = 'none'; if (typeof loadTorrents === 'function') loadTorrents(true); }
+    setTimeout(function () { if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') { updateFocusableElements(); var b = document.getElementById('catalog-watch-btn'), i = -1; if (typeof focusableElements !== 'undefined') for (var k = 0; k < focusableElements.length; k++) if (focusableElements[k].id === 'catalog-watch-btn') { i = k; break; } if (i !== -1) setFocus(i); else if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard(); else setFocus(0); } }, 200);
 }
 
 // ==================== СПИСОК КАТАЛОГОВ ====================
-
-async function fetchAvailableCatalogs() {
-    try {
-        var response = await fetch(SERVER_URL + '/api/catalogs');
-        if (!response.ok) throw new Error('Ошибка загрузки списка каталогов');
-
-        var data = await response.json();
-        if (data.success && data.catalogs) {
-            return data.catalogs;
-        }
-        return [];
-    } catch (error) {
-        console.log('❌ Ошибка загрузки списка каталогов:', error);
-        return [];
-    }
-}
+async function fetchAvailableCatalogs() { try { var r = await fetch(SERVER_URL + '/api/catalogs'); if (!r.ok) throw new Error(); var d = await r.json(); return (d.success && d.catalogs) ? d.catalogs : []; } catch (e) { return []; } }
 
 async function showCatalogList() {
-    var torrentsGrid = document.getElementById('torrents-grid');
-    if (!torrentsGrid) return;
-
-    abortCatalogRequests();
-
-    catalogState.currentCatalog = null;
-    catalogState.items = [];
-    catalogState.loading = false;
-    catalogState.loadedPostersCount = 0;
-    catalogState.posterLoadQueue = [];
-
-    catalogState.lastSelectedIndex = 0;
-    catalogState.lastSelectedId = null;
-
-    var tabCatalog = document.getElementById('tab-catalog');
-    var tabTorrents = document.getElementById('tab-torrents');
-    var tabSearch = document.getElementById('tab-search');
-
-    if (tabCatalog) tabCatalog.classList.add('active');
-    if (tabTorrents) tabTorrents.classList.remove('active');
-    if (tabSearch) tabSearch.classList.remove('active');
-
-    torrentsGrid.innerHTML = '\n        <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n            <div class="loading-spinner" style="margin: 0 auto 20px;"></div>\n            <div style="font-size: 16px; color: #aaa;">Загрузка списка каталогов...</div>\n        </div>\n    ';
-
-    var availableCatalogs = await fetchAvailableCatalogs();
-
-    if (AppState.currentScreen !== 'catalog') {
-        return;
-    }
-
-    torrentsGrid.innerHTML = '';
-
-    // Добавляем каталоги с сервера
-    if (availableCatalogs.length === 0) {
-        // Если сервер не вернул каталоги, используем локальную конфигурацию (кроме истории)
-        for (var key in CATALOG_CONFIG) {
-            if (CATALOG_CONFIG.hasOwnProperty(key) && key !== 'history') {
-                var config = CATALOG_CONFIG[key];
-                var card = createCatalogFolderCard(key, config);
-                torrentsGrid.appendChild(card);
-            }
-        }
+    var grid = document.getElementById('torrents-grid'); if (!grid) return; abortCatalogRequests();
+    catalogState.currentCatalog = null; catalogState.items = []; catalogState.loading = false; catalogState.loadedPostersCount = 0; catalogState.posterLoadQueue = [];
+    catalogState.lastSelectedIndex = 0; catalogState.lastSelectedId = null;
+    document.getElementById('tab-catalog')?.classList.add('active'); document.getElementById('tab-torrents')?.classList.remove('active'); document.getElementById('tab-search')?.classList.remove('active');
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка списка каталогов...</div></div>';
+    var cats = await fetchAvailableCatalogs();
+    if (AppState.currentScreen !== 'catalog') return;
+    grid.innerHTML = '';
+    if (cats.length === 0) {
+        for (var k in CATALOG_CONFIG) if (CATALOG_CONFIG.hasOwnProperty(k) && k !== 'history') grid.appendChild(createCatalogFolderCard(k, CATALOG_CONFIG[k]));
     } else {
-        // Добавляем каталоги с сервера (исключая возможные дубликаты)
-        for (var i = 0; i < availableCatalogs.length; i++) {
-            var catalog = availableCatalogs[i];
-            var config = CATALOG_CONFIG[catalog.id] || {
-                name: catalog.displayName || catalog.id,
-                mediaType: catalog.id.indexOf('tv') !== -1 ? 'tv' : 'movie'
-            };
-            var card = createCatalogFolderCard(catalog.id, config);
-            torrentsGrid.appendChild(card);
-        }
+        for (var i = 0; i < cats.length; i++) { var c = cats[i]; grid.appendChild(createCatalogFolderCard(c.id, CATALOG_CONFIG[c.id] || { name: c.displayName || c.id, mediaType: c.id.indexOf('tv') !== -1 ? 'tv' : 'movie' })); }
     }
-
-    // Добавляем категорию "История" в конец списка
-    var historyConfig = CATALOG_CONFIG.history;
-    if (historyConfig) {
-        var historyCard = createCatalogFolderCard('history', historyConfig);
-        torrentsGrid.appendChild(historyCard);
-        console.log('📜 Добавлена категория "История" в конец списка');
-    }
-
-    //setTimeout(function () {
-        //if (AppState.currentScreen === 'catalog') {
-            //if (typeof updateFocusableElements === 'function') {
-                //updateFocusableElements();
-            //}
-            //setTimeout(function () {
-                //if (typeof window.focusFirstCatalogCard === 'function') {
-                    //window.focusFirstCatalogCard();
-                //}
-            //}, 100);
-        //}
-    //}, 200);
+    if (CATALOG_CONFIG.history) grid.appendChild(createCatalogFolderCard('history', CATALOG_CONFIG.history));
 }
 
-function createCatalogFolderCard(key, config) {
-    var card = document.createElement('div');
-    card.className = 'torrent-card catalog-folder-card';
-    card.dataset.catalogKey = key;
-
-    // Специальная обработка для истории
-    if (key === 'history') {
-        var posterHtml = '<img src="https://cash94.github.io/msx/img/History.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-
-        card.innerHTML = `
-            <div class="torrent-poster catalog-folder-poster">
-                ${posterHtml}
-            </div>
-            <div class="torrent-info">
-                <div class="torrent-title">${config.name}</div>
-                <div class="torrent-meta">
-                    <span></span>
-                    <span class="torrent-badge catalog-badge"></span>
-                </div>
-            </div>
-        `;
-
-        card.addEventListener('click', function () {
-            catalogState.selectedCatalog = key;
-            loadHistoryCatalog();
-        });
-
-        return card;
-    }
-
-    // Остальные каталоги как раньше
-    var posterHtml = '';
-    if (key.indexOf('movie') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Films.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-    else if (key.indexOf('quadhd') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Films4k.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-    else if (key.indexOf('legends') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/BestFilms.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-    else if (key.indexOf('cartoons_tv') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/multserials.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-    else if (key.indexOf('tv') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Serials.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-    else if (key.indexOf('cartoons') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/multfilms.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-    else if (key.indexOf('anime') !== -1) posterHtml = '<img src="https://cash94.github.io/msx/img/Anime.jpg" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.style.display=\'none\'; this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-    else posterHtml = '<div class="no-poster" style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 64px;"></div>';
-
-    card.innerHTML = `
-        <div class="torrent-poster catalog-folder-poster">
-            ${posterHtml}
-        </div>
-        <div class="torrent-info">
-            <div class="torrent-title">${config.name}</div>
-            <div class="torrent-meta">
-                <span></span>
-                <span class="torrent-badge catalog-badge"></span>
-            </div>
-        </div>
-    `;
-
-    card.addEventListener('click', function () {
-        catalogState.selectedCatalog = key;
-        loadCatalog(key);
-    });
-
-    return card;
+function createCatalogFolderCard(key, cfg) {
+    var c = document.createElement('div'); c.className = 'torrent-card catalog-folder-card'; c.dataset.catalogKey = key;
+    var src = key === 'history' ? 'https://cash94.github.io/msx/img/History.jpg' : key.indexOf('quadhd') !== -1 ? 'https://cash94.github.io/msx/img/Films4k.jpg' : key.indexOf('legends') !== -1 ? 'https://cash94.github.io/msx/img/BestFilms.jpg' : key.indexOf('cartoons_tv') !== -1 ? 'https://cash94.github.io/msx/img/multserials.jpg' : key.indexOf('tv') !== -1 ? 'https://cash94.github.io/msx/img/Serials.jpg' : key.indexOf('cartoons') !== -1 ? 'https://cash94.github.io/msx/img/multfilms.jpg' : key.indexOf('anime') !== -1 ? 'https://cash94.github.io/msx/img/Anime.jpg' : key.indexOf('movie') !== -1 ? 'https://cash94.github.io/msx/img/Films.jpg' : '';
+    c.innerHTML = '<div class="torrent-poster catalog-folder-poster">' + (src ? '<img src="' + src + '" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">' : '<div class="no-poster" style="display:flex;align-items:center;justify-content:center;height:100%;font-size:64px">🎬</div>') + '</div><div class="torrent-info"><div class="torrent-title">' + cfg.name + '</div><div class="torrent-meta"><span></span><span class="torrent-badge catalog-badge"></span></div></div>';
+    return c;
 }
 
-function showCatalogLoading(message) {
-    var torrentsGrid = document.getElementById('torrents-grid');
-    if (torrentsGrid) {
-        torrentsGrid.innerHTML = '\n            <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n                <div class="loading-spinner" style="margin: 0 auto 20px;"></div>\n                <div style="font-size: 16px; color: #aaa;">' + (message || 'Загрузка каталога...') + '</div>\n            </div>\n        ';
-    }
-}
-
-function showCatalogError(message) {
-    var torrentsGrid = document.getElementById('torrents-grid');
-    if (torrentsGrid) {
-        torrentsGrid.innerHTML = '\n            <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n                <div style="font-size: 48px; margin-bottom: 20px;"></div>\n                <div style="font-size: 16px; color: #ff6a6a;">' + message + '</div>\n                <button class="btn" style="margin-top: 20px;" onclick="window.loadCatalogList()">Попробовать снова</button>\n            </div>\n        ';
-    }
-}
-
+function showCatalogLoading(msg) { var g = document.getElementById('torrents-grid'); if (g) g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">' + (msg || 'Загрузка...') + '</div></div>'; }
+function showCatalogError(msg) { var g = document.getElementById('torrents-grid'); if (g) g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div style="font-size:48px;margin-bottom:20px">⚠️</div><div style="font-size:16px;color:#ff6a6a">' + msg + '</div><button class="btn" style="margin-top:20px" onclick="window.loadCatalogList()">Попробовать снова</button></div>'; }
 function hideCatalogLoading() { }
 
 function backToCatalogList() {
-    console.log('Возврат к списку каталогов');
-
-    abortCatalogRequests();
-    // ОЧИЩАЕМ КЭШ КАТАЛОГОВ ПРИ ВЫХОДЕ
-    catalogCache.clear();
-
-    catalogState.currentCatalog = null;
-    catalogState.items = [];
-    catalogState.totalItems = 0;
-    catalogState.currentPage = 0;
-    catalogState.hasMore = true;
-    catalogState.isLoadingMore = false;
-    catalogState.loadedItemIds = {};
-    catalogState.loadedPostersCount = 0;
-    catalogState.posterLoadQueue = [];
-    catalogState.posterCache = {};
-
-    catalogState.lastSelectedIndex = 0;
-    catalogState.lastSelectedId = null;
-
-    localStorage.removeItem('lastCatalogCardIndex');
-
+    abortCatalogRequests(); catalogCache.clear();
+    catalogState.currentCatalog = null; catalogState.items = []; catalogState.totalItems = 0; catalogState.currentPage = 0; catalogState.hasMore = true; catalogState.isLoadingMore = false; catalogState.loadedItemIds = {}; catalogState.loadedPostersCount = 0; catalogState.posterLoadQueue = []; catalogState.posterCache = {}; catalogState.lastSelectedIndex = 0; catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex');
     showCatalogList();
-
-    setTimeout(function () {
-        if (AppState.currentScreen === 'catalog') {
-            if (typeof updateFocusableElements === 'function') {
-                updateFocusableElements();
-            }
-            setTimeout(function () {
-                if (typeof window.focusFirstCatalogCard === 'function') {
-                    window.focusFirstCatalogCard();
-                }
-            }, 100);
-        }
-    }, 200);
+    requestAnimationFrame(function () { if (AppState.currentScreen === 'catalog') { if (typeof updateFocusableElements === 'function') updateFocusableElements(); setTimeout(function () { if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard(); }, 100); } });
 }
 
-// ==================== НАВИГАЦИЯ И ПОДГРУЗКА ====================
-
-window.loadMoreAndFocus = async function (currentIndex, cols) {
+// ==================== НАВИГАЦИЯ ====================
+window.loadMoreAndFocus = async function (idx, cols) {
     if (!catalogState.currentCatalog || catalogState.isLoadingMore) return;
-
-    console.log('Подгрузка следующей страницы с автофокусом');
-
-    var trigger = document.getElementById('load-more-trigger');
-    if (trigger) {
-        var spinner = trigger.querySelector('.loading-spinner-small');
-        if (spinner) spinner.style.display = 'inline-block';
-    }
-
-    var targetRow = Math.floor(currentIndex / cols) + 1;
-
+    var t = document.getElementById('load-more-trigger'); if (t) { var s = t.querySelector('.loading-spinner-small'); if (s) s.style.display = 'inline-block'; }
+    var row = Math.floor(idx / cols) + 1;
     await loadMoreCatalogItems();
-
     setTimeout(function () {
-        var updatedCards = [];
-        var allCards = document.querySelectorAll('.torrent-card.catalog-card');
-        for (var i = 0; i < allCards.length; i++) {
-            var el = allCards[i];
-            if (el && el.offsetParent !== null) updatedCards.push(el);
-        }
-
-        var newIndex = targetRow * cols;
-
-        if (updatedCards.length > newIndex) {
-            if (typeof updateFocusableElements === 'function') {
-                updateFocusableElements();
-            }
-
-            setTimeout(function () {
-                var targetCard = updatedCards[newIndex];
-                if (targetCard && typeof setFocus === 'function') {
-                    var globalIndex = -1;
-                    for (var j = 0; j < focusableElements.length; j++) {
-                        if (targetCard === focusableElements[j]) {
-                            globalIndex = j;
-                            break;
-                        }
-                    }
-                    if (globalIndex !== -1) {
-                        setFocus(globalIndex);
-                        console.log('Автофокус на карточку ' + (newIndex + 1));
-                    }
-                }
-            }, 100);
-        }
-
-        if (trigger) {
-            var spinner = trigger.querySelector('.loading-spinner-small');
-            if (spinner) spinner.style.display = 'none';
-        }
+        var cards = document.querySelectorAll('.torrent-card.catalog-card'); var ni = row * cols;
+        if (cards.length > ni) { if (typeof updateFocusableElements === 'function') updateFocusableElements(); setTimeout(function () { var tc = cards[ni]; if (tc && typeof setFocus === 'function') { var gi = -1; if (typeof focusableElements !== 'undefined') for (var j = 0; j < focusableElements.length; j++) if (tc === focusableElements[j]) { gi = j; break; } if (gi !== -1) setFocus(gi); } }, 100); }
+        if (t) { var s = t.querySelector('.loading-spinner-small'); if (s) s.style.display = 'none'; }
     }, 300);
 };
-
-window.checkAndLoadMoreOnNavigation = function () {
-    if (catalogState.currentCatalog &&
-        catalogState.hasMore &&
-        !catalogState.isLoadingMore) {
-        console.log('📦 Навигация вниз, загружаем следующую страницу');
-
-        var trigger = document.getElementById('load-more-trigger');
-        if (trigger) {
-            var spinner = trigger.querySelector('.loading-spinner-small');
-            if (spinner) spinner.style.display = 'inline-block';
-        }
-
-        loadMoreCatalogItems()['finally'](function () {
-            if (trigger) {
-                var spinner = trigger.querySelector('.loading-spinner-small');
-                if (spinner) spinner.style.display = 'none';
-            }
-        });
-    }
+window.checkAndLoadMoreOnNavigation = function () { if (catalogState.currentCatalog && catalogState.hasMore && !catalogState.isLoadingMore) loadMoreCatalogItems()['finally'](function () { var t = document.getElementById('load-more-trigger'); if (t) { var s = t.querySelector('.loading-spinner-small'); if (s) s.style.display = 'none'; } }); };
+window.focusCatalogCardByIndex = function (target) {
+    if (AppState.currentScreen !== 'catalog') return 0; if (typeof updateFocusableElements === 'function') updateFocusableElements();
+    var cards = document.querySelectorAll('.torrent-card.catalog-card'), idx = 0;
+    for (var i = 0; i < cards.length; i++) if (cards[i].dataset.numIndex && parseInt(cards[i].dataset.numIndex) === target) { idx = i; break; }
+    if (idx === 0 && target < cards.length) idx = target; return idx;
 };
-
-window.focusCatalogCardByIndex = function (targetNumIndex) {
-    if (AppState.currentScreen !== 'catalog') return 0;
-
-    if (typeof updateFocusableElements === 'function') {
-        updateFocusableElements();
-    }
-
-    var cards = document.querySelectorAll('.torrent-card.catalog-card');
-    var targetIndex = 0;
-
-    for (var i = 0; i < cards.length; i++) {
-        var card = cards[i];
-        var numIndex = card.dataset.numIndex;
-        if (numIndex && parseInt(numIndex) === targetNumIndex) {
-            targetIndex = i;
-            break;
-        }
-    }
-
-    if (targetIndex === 0 && targetNumIndex < cards.length) {
-        targetIndex = targetNumIndex;
-    }
-
-    console.log('Возвращаем индекс ' + targetIndex + ' для num_index ' + targetNumIndex);
-    return targetIndex;
-};
-
-window.addToWatchHistory = async function (tmdbId, title, mediaType, posterPath) {
+window.addToWatchHistory = async function (id, title, mt, pp) {
     try {
-        // Если posterPath передан и это полный URL, извлекаем только относительный путь
-        var savePosterPath = posterPath || null;
-        var prefix = AppState.protocol + '//tsimg.hnar.online/t/p/w342';
-        if (savePosterPath && savePosterPath.indexOf(prefix) === 0) {
-            // Извлекаем часть после w342 - она уже должна начинаться со слеша
-            savePosterPath = savePosterPath.replace(AppState.protocol + '//tsimg.hnar.online/t/p/w342', '');
-        }
-
-        var response = await fetch('/api/history/add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                tmdbId: String(tmdbId),
-                title: title,
-                mediaType: mediaType,
-                posterPath: savePosterPath
-            })
-        });
-
-        var data = await response.json();
-        if (data.success) {
-            console.log('✅ Добавлено в историю просмотра:', title);
-        }
-        return data;
-    } catch (error) {
-        console.log('❌ Ошибка добавления в историю:', error);
-    }
+        var save = pp || null; var pre = AppState.protocol + '//tsimg.hnar.online/t/p/w342';
+        if (save && save.indexOf(pre) === 0) save = save.replace(pre, '');
+        var r = await fetch('/api/history/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tmdbId: String(id), title: title, mediaType: mt, posterPath: save }) });
+        return await r.json();
+    } catch (e) { console.error('History save error:', e); }
 };
-
-// ==================== ПЕРИОДИЧЕСКАЯ ОЧИСТКА КЭША ====================
-
-var tmdbCacheCleanupInterval = null;
-
-function startTmdbCacheCleanup() {
-    if (tmdbCacheCleanupInterval) {
-        clearInterval(tmdbCacheCleanupInterval);
-    }
-
-    tmdbCacheCleanupInterval = setInterval(function () {
-        cleanOldTmdbCache();
-    }, TMDB_CACHE_CONFIG.cleanupInterval);
-
-    console.log('Запущена периодическая очистка TMDB кэша (каждые ' + (TMDB_CACHE_CONFIG.cleanupInterval / 1000) + ' сек)');
-}
-
-function stopTmdbCacheCleanup() {
-    if (tmdbCacheCleanupInterval) {
-        clearInterval(tmdbCacheCleanupInterval);
-        tmdbCacheCleanupInterval = null;
-        console.log('Остановлена периодическая очистка TMDB кэша');
-    }
-}
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
+var tmdbCleanupIv = null;
+function startTmdbCleanup() { if (tmdbCleanupIv) clearInterval(tmdbCleanupIv); tmdbCleanupIv = setInterval(cleanOldTmdbCache, TMDB_CACHE_CONFIG.cleanupInterval); }
+function stopTmdbCleanup() { if (tmdbCleanupIv) { clearInterval(tmdbCleanupIv); tmdbCleanupIv = null; } }
 
 function initCatalog() {
-    console.log('Модуль каталогов инициализирован с поддержкой пагинации и TMDB кэша');
-    startTmdbCacheCleanup();
-
-    window.tmdbCache = {
-        clear: clearTmdbCache,
-        stats: getTmdbCacheStats,
-        setEnabled: function (enabled) { TMDB_CACHE_CONFIG.enabled = enabled; },
-        isEnabled: function () { return TMDB_CACHE_CONFIG.enabled; },
-        setTtl: function (ttlMs) { TMDB_CACHE_CONFIG.ttl = ttlMs; }
-    };
+    console.log('Catalog module init (optimized)'); startTmdbCleanup();
+    window.tmdbCache = { clear: clearTmdbCache, stats: getTmdbCacheStats, setEnabled: v => { TMDB_CACHE_CONFIG.enabled = v; }, isEnabled: () => TMDB_CACHE_CONFIG.enabled, setTtl: v => { TMDB_CACHE_CONFIG.ttl = v; } };
 }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initCatalog); else initCatalog();
 
-
-
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initCatalog);
-} else {
-    initCatalog();
-}
-
-// ==================== ПУБЛИЧНЫЕ ФУНКЦИИ ====================
-
-window.loadCatalogList = showCatalogList;
-window.backToCatalogList = backToCatalogList;
-window.exitYoutubePlayer = exitYoutubePlayer;
-window.loadMoreCatalogItems = loadMoreCatalogItems;
-
-window.catalog = {
-    loadCatalog: loadCatalog,
-    showCatalogList: showCatalogList,
-    backToCatalogList: backToCatalogList,
-    tmdbCache: {
-        clear: clearTmdbCache,
-        stats: getTmdbCacheStats
-    }
-};
+window.loadCatalogList = showCatalogList; window.backToCatalogList = backToCatalogList; window.exitYoutubePlayer = exitYoutubePlayer; window.loadMoreCatalogItems = loadMoreCatalogItems;
+window.catalog = { loadCatalog: loadCatalog, showCatalogList: showCatalogList, backToCatalogList: backToCatalogList, tmdbCache: { clear: clearTmdbCache, stats: getTmdbCacheStats } };
