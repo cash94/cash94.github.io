@@ -1119,16 +1119,16 @@ function extractSeasonsFromTitle(title) {
   // Шаблоны для поиска сезонов
   var patterns = [
     // [сезон 1, 2, 3] или [сезон 1,2,3]
-    /[сезон\s*([\d,\s]+)]/i,
-    /[season\s*([\d,\s]+)]/i,
+    /\[сезон\s*([\d,\s]+)\]/i,
+    /\[season\s*([\d,\s]+)\]/i,
     // сезон 1, 2, 3
     /сезон\s*([\d,\s]+)/i,
     /season\s*([\d,\s]+)/i,
     // S1-3 или S1,2,3
     /S([\d-,\s]+)/i,
     // [сезон 1-3]
-    /[сезон\s*(\d+)\s*[-–]\s*(\d+)]/i,
-    /[season\s*(\d+)\s*[-–]\s*(\d+)]/i
+    /\[сезон\s*(\d+)\s*[-–]\s*(\d+)\]/i,
+    /\[season\s*(\d+)\s*[-–]\s*(\d+)\]/i
   ];
   var patternsLen = patterns.length;
   for (var p = 0; p < patternsLen; p++) {
