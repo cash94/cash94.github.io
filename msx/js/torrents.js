@@ -379,14 +379,89 @@ function showSearchResults() {
   requestAnimationFrame(function () { if (typeof window.focusSearchHome === 'function') window.focusSearchHome(true); else if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') { updateFocusableElements(); setFocus(0); } });
 }
 function hideSearchResults() {
-  var ret = AppState.searchReturnTo || 'torrents'; AppState.searchReturnTo = null;
-  document.getElementById('search-overlay').classList.add('hidden'); document.getElementById('tab-search').classList.remove('active'); toggleSearchFiltersPanel(false);
-  document.getElementById('torrserver-section').style.display = 'block';
-  if (ret === 'detail') { AppState.currentScreen = 'detail'; var mc = document.getElementById('main-container'); if (mc && AppState.backupScroll > 0) mc.scrollTop = AppState.backupScroll; document.getElementById('detail-view').style.display = 'block'; document.getElementById('detail-view').style.pointerEvents = 'auto'; requestAnimationFrame(function () { if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') { updateFocusableElements(); var wb = document.getElementById('catalog-watch-btn'); if (wb) { var i = -1; (window.focusableElements || []).forEach(function (el, j) { if (el.id === 'catalog-watch-btn') i = j; }); if (i !== -1) setFocus(i); } }); });
-}
-    else if (ret === 'catalog') { document.getElementById('tab-catalog').classList.add('active'); document.getElementById('tab-torrents').classList.remove('active'); AppState.currentScreen = 'catalog'; setTimeout(function () { if (typeof window.focusCatalogCardByIndex === 'function') window.focusCatalogCardByIndex(parseInt(localStorage.getItem('lastCatalogCardIndex') || 0)); else if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard(); }, 80); }
-else { document.getElementById('tab-torrents').classList.add('active'); document.getElementById('tab-catalog').classList.remove('active'); AppState.currentScreen = 'torrents'; setTimeout(function () { if (typeof window.focusFirstTorrentCard === 'function' && !window.focusFirstTorrentCard()) { if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') { updateFocusableElements(); var c = -1; (window.focusableElements || []).forEach(function (el, j) { if (el.classList && el.classList.contains('torrent-card')) c = j; }); if (c !== -1) setFocus(c); } } }, 80); }
-var si = document.getElementById('search-query'); if (si && document.activeElement === si) si.blur();
+  var ret = AppState.searchReturnTo || 'torrents';
+  AppState.searchReturnTo = null;
+
+  var searchOverlay = document.getElementById('search-overlay');
+  var searchTab = document.getElementById('tab-search');
+  var torrentsTab = document.getElementById('tab-torrents');
+  var catalogTab = document.getElementById('tab-catalog');
+  var torrserverSection = document.getElementById('torrserver-section');
+  var detailView = document.getElementById('detail-view');
+  var mainContainer = document.getElementById('main-container');
+  var searchInput = document.getElementById('search-query');
+
+  if (searchOverlay) searchOverlay.classList.add('hidden');
+  if (searchTab) searchTab.classList.remove('active');
+  toggleSearchFiltersPanel(false);
+  if (torrserverSection) torrserverSection.style.display = 'block';
+
+  if (ret === 'detail') {
+    AppState.currentScreen = 'detail';
+    if (mainContainer && AppState.backupScroll > 0) {
+      mainContainer.scrollTop = AppState.backupScroll;
+    }
+    if (detailView) {
+      detailView.style.display = 'block';
+      detailView.style.pointerEvents = 'auto';
+    }
+    requestAnimationFrame(function () {
+      if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+        updateFocusableElements();
+        var wb = document.getElementById('catalog-watch-btn');
+        if (wb) {
+          var i = -1;
+          var focusable = window.focusableElements || [];
+          for (var j = 0; j < focusable.length; j++) {
+            if (focusable[j].id === 'catalog-watch-btn') {
+              i = j;
+              break;
+            }
+          }
+          if (i !== -1) setFocus(i);
+        }
+      }
+    });
+  }
+  else if (ret === 'catalog') {
+    if (catalogTab) catalogTab.classList.add('active');
+    if (torrentsTab) torrentsTab.classList.remove('active');
+    AppState.currentScreen = 'catalog';
+    setTimeout(function () {
+      if (typeof window.focusCatalogCardByIndex === 'function') {
+        var savedIdx = localStorage.getItem('lastCatalogCardIndex');
+        window.focusCatalogCardByIndex(parseInt(savedIdx || '0', 10));
+      }
+      else if (typeof window.focusFirstCatalogCard === 'function') {
+        window.focusFirstCatalogCard();
+      }
+    }, 80);
+  }
+  else {
+    if (torrentsTab) torrentsTab.classList.add('active');
+    if (catalogTab) catalogTab.classList.remove('active');
+    AppState.currentScreen = 'torrents';
+    setTimeout(function () {
+      if (typeof window.focusFirstTorrentCard === 'function' && !window.focusFirstTorrentCard()) {
+        if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+          updateFocusableElements();
+          var c = -1;
+          var focusable = window.focusableElements || [];
+          for (var j = 0; j < focusable.length; j++) {
+            if (focusable[j].classList && focusable[j].classList.contains('torrent-card')) {
+              c = j;
+              break;
+            }
+          }
+          if (c !== -1) setFocus(c);
+        }
+      }
+    }, 80);
+  }
+
+  if (searchInput && document.activeElement === searchInput) {
+    searchInput.blur();
+  }
 }
 function resetFilters() { currentSort = 'date-desc'; currentQualityFilter = 'all'; currentTrackerFilter = 'all'; currentYearFilter = ''; currentSeasonFilter = 'all'; currentVoiceFilter = 'all'; currentvideotypeFilter = 'all'; syncSearchFilterButtons(); applyFiltersAndSort(); }
 function showContentTypeFilter() { var fg = document.querySelector('.filter-group'); if (!fg) return; if (!document.getElementById('filter-content-type')) { var nf = document.createElement('div'); nf.className = 'filter-group'; nf.innerHTML = '<label class="filter-label" for="filter-content-type">Тип контента</label><select id="filter-content-type" class="filter-select"><option value="all">Все</option><option value="movie">Фильмы</option><option value="tv">Сериалы</option></select>'; var qf = document.getElementById('filter-quality'); if (qf && qf.parentNode) qf.parentNode.parentNode.insertBefore(nf, qf.parentNode.nextSibling); else fg.parentNode.appendChild(nf); document.getElementById('filter-content-type').addEventListener('change', function (e) { filterGlobalSearchByType(e.target.value); }); } }
