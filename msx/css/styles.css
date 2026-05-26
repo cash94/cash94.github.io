@@ -1094,9 +1094,9 @@ body.detail-open {
 
 .catalog-detail-actors-grid,
 .catalog-detail-recommendations-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12.9px;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 20px;
   overflow-x: auto;
   padding-bottom: 8px;
 }
