@@ -598,12 +598,26 @@ async function loadCatalogPoster(card, title, mt, id, index) {
         var cached = getFromTmdbCache('poster', p);
         if (cached && cached.posterUrl) url = cached.posterUrl;
         else if (id && id !== 'undefined' && id !== 'null') {
-            var resp = await fetch('/api/tmdb/item?id=' + id + '&type=' + mt, { signal: AbortSignal.timeout(5000) });
-            if (resp.ok) { var d = await resp.json(); if (d.poster_path) { url = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + d.poster_path; saveToTmdbCache('poster', p, { posterUrl: url, data: d }); } }
+            // ✅ Совместимый таймаут для старых браузеров
+            var controller = new AbortController();
+            var timeoutId = setTimeout(function () { controller.abort(); }, 5000);
+            try {
+                var resp = await fetch('/api/tmdb/item?id=' + id + '&type=' + mt, { signal: controller.signal });
+                if (resp.ok) { var d = await resp.json(); if (d.poster_path) { url = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + d.poster_path; saveToTmdbCache('poster', p, { posterUrl: url, data: d }); } }
+            } finally {
+                clearTimeout(timeoutId);
+            }
         }
         if (!url && window.tmdb && window.tmdb.searchPoster) {
-            url = await window.tmdb.searchPoster(title, null, mt, true);
-            if (url) saveToTmdbCache('poster', p, { posterUrl: url });
+            // ✅ Также применяем совместимый таймаут для searchPoster
+            var controller2 = new AbortController();
+            var timeoutId2 = setTimeout(function () { controller2.abort(); }, 5000);
+            try {
+                url = await window.tmdb.searchPoster(title, null, mt, true);
+                if (url) saveToTmdbCache('poster', p, { posterUrl: url });
+            } finally {
+                clearTimeout(timeoutId2);
+            }
         }
         if (url) {
             catalogState.posterCache[key] = url;
@@ -612,7 +626,14 @@ async function loadCatalogPoster(card, title, mt, id, index) {
             }
         }
         updatePosterDOM(div, card.dataset.rating, url || '');
-    } catch (e) { if (catalogState.currentCatalog) div.innerHTML = '<div class="no-poster">Ошибка</div>'; }
+    } catch (e) {
+        if (e.name === 'AbortError') {
+            console.log('⏱️ Загрузка постера прервана по таймауту');
+        } else {
+            console.log('❌ Ошибка загрузки постера:', e.message);
+        }
+        if (catalogState.currentCatalog) div.innerHTML = '<div class="no-poster">Нет постера</div>';
+    }
 }
 
 function updatePosterDOM(div, rating, url) {
