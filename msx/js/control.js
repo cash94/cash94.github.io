@@ -40,11 +40,11 @@ function isPlayerControlsVisible() {
 var _cachedColumns = 0;
 function getTorrentGridColumns() {
     var grid = getEl('torrents-grid');
-    if (!grid) return 8;
+    if (!grid) return 6;
     try {
         var cols = (window.getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
-        _cachedColumns = cols || 8;
-    } catch (e) { _cachedColumns = 8; }
+        _cachedColumns = cols || 6;
+    } catch (e) { _cachedColumns = 6; }
     return _cachedColumns;
 }
 
