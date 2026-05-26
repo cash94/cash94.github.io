@@ -2469,10 +2469,10 @@ function setupFocusRescue() {
                 else if (cards.length < catalogState.totalItems && !catalogState.isLoadingMore) {
                     var currentCardIndex = cardIndex;
 
-                    var loadMoreTrigger = document.getElementById('load-more-trigger');
-                    if (loadMoreTrigger) {
-                        loadMoreTrigger.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
+                    //var loadMoreTrigger = document.getElementById('load-more-trigger');
+                    //if (loadMoreTrigger) {
+                        //loadMoreTrigger.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    //
 
                     console.log('📦 Загружаем следующую страницу каталога');
                     window.loadMoreCatalogItems().then(function () {
