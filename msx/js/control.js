@@ -1,3794 +1,611 @@
-// control.js - Модуль управления навигацией, фокусом и обработкой клавиш
-
+// control.js - Модуль управления навигацией, фокусом и обработкой клавиш (Оптимизированная версия)
 // ==================== ПЕРЕМЕННЫЕ ====================
-
 var focusableElements = [];
 var currentFocusIndex = 0;
 var lastSelectedTorrentHash = null;
 var lastSelectedTorrentIndex = 0;
 var lastPlayerBackPressAt = 0;
-
-// Переменные для удержания клавиш перемотки
 var seekHoldInterval = null;
 var seekHoldStep = 5;
 var seekHoldDelay = 150;
 var isSeekHoldActive = false;
-
-// Переменные для long press удаления торрентов
 var okHoldTimer = null;
 var okHoldHandled = false;
 var okHoldFocused = null;
-
-// Переменная для отслеживания быстрой навигации
 var fastNavigation = false;
 var fastNavigationTimer = null;
-
 var lastBackPressTime = 0;
 var lastBackPressHandled = false;
+
+// Кэш для часто используемых DOM-элементов (ленивая инициализация)
+var domCache = {};
+function getEl(id) {
+    if (!domCache[id]) domCache[id] = document.getElementById(id);
+    return domCache[id];
+}
+function clearDomCache() { domCache = {}; }
 
 function setFastNavigation() {
     fastNavigation = true;
     if (fastNavigationTimer) clearTimeout(fastNavigationTimer);
-    fastNavigationTimer = setTimeout(function () {
-        fastNavigation = false;
-    }, 200);
+    fastNavigationTimer = setTimeout(function () { fastNavigation = false; }, 200);
 }
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
-
 function isPlayerControlsVisible() {
-    var controlsContainer = document.getElementById('controls-container');
-    return !!controlsContainer && !controlsContainer.classList.contains('idle-hidden');
+    var c = getEl('controls-container');
+    return !!c && !c.classList.contains('idle-hidden');
 }
 
+var _cachedColumns = 0;
 function getTorrentGridColumns() {
-    var grid = document.getElementById('torrents-grid');
+    var grid = getEl('torrents-grid');
     if (!grid) return 8;
-    var style = window.getComputedStyle(grid);
-    var cols = style.gridTemplateColumns ? style.gridTemplateColumns.split(' ').filter(function (b) { return b; }).length : 0;
-    return cols || 8;
+    try {
+        var cols = (window.getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
+        _cachedColumns = cols || 8;
+    } catch (e) { _cachedColumns = 8; }
+    return _cachedColumns;
 }
 
 // ==================== УПРАВЛЕНИЕ ФОКУСОМ ====================
-
 function updateFocusableElements() {
     var screen = AppState.currentScreen;
-
-    var episodesPanel = document.getElementById('episodes-panel');
-    var audioPanel = document.getElementById('audio-panel');
+    var episodesPanel = getEl('episodes-panel');
+    var audioPanel = getEl('audio-panel');
     var isEpisodesOpen = episodesPanel && !episodesPanel.classList.contains('hidden');
     var isAudioOpen = audioPanel && !audioPanel.classList.contains('hidden');
 
-    if (isEpisodesOpen) {
-        focusableElements = [];
-        var episodeItems = document.querySelectorAll('.episode-item, .close-panel-btn');
-        for (var i = 0; i < episodeItems.length; i++) {
-            var el = episodeItems[i];
-            if (el && el.offsetParent !== null) focusableElements.push(el);
-        }
-        console.log('🎯 Фокус на панели серий');
-        return;
-    }
+    var list = [];
 
+    if (isEpisodesOpen) {
+        var items = document.querySelectorAll('.episode-item, .close-panel-btn');
+        for (var i = 0; i < items.length; i++) if (items[i] && items[i].offsetParent !== null) list.push(items[i]);
+        focusableElements = list; return;
+    }
     if (isAudioOpen) {
-        focusableElements = [];
-        var audioItems = document.querySelectorAll('.audio-item, .close-panel-btn');
-        for (var j = 0; j < audioItems.length; j++) {
-            var el = audioItems[j];
-            if (el && el.offsetParent !== null) focusableElements.push(el);
-        }
-        console.log('🎯 Фокус на панели аудио');
-        return;
+        var items = document.querySelectorAll('.audio-item, .close-panel-btn');
+        for (var i = 0; i < items.length; i++) if (items[i] && items[i].offsetParent !== null) list.push(items[i]);
+        focusableElements = list; return;
     }
 
     if (screen === 'sync') {
-        var syncElements = [];
-        var syncCloseBtn = document.getElementById('sync-close-btn');
-        var syncCodeInput = document.getElementById('sync-code-input');
-
-        if (syncCloseBtn && syncCloseBtn.offsetParent !== null) syncElements.push(syncCloseBtn);
-        if (syncCodeInput && syncCodeInput.offsetParent !== null) syncElements.push(syncCodeInput);
-
-        focusableElements = syncElements;
-        console.log('🎯 Фокус на экране синхронизации, найдено элементов: ' + focusableElements.length);
-        return;
+        var btn = getEl('sync-close-btn'); if (btn && btn.offsetParent !== null) list.push(btn);
+        var inp = getEl('sync-code-input'); if (inp && inp.offsetParent !== null) list.push(inp);
+        focusableElements = list; return;
     }
 
     if (screen === 'player') {
-        var controlsContainer = document.getElementById('controls-container');
-        var controlsVisible = !!controlsContainer && !controlsContainer.classList.contains('idle-hidden');
-
-        if (controlsVisible) {
-            var seekSliderEl = document.getElementById('seek-slider');
-            var buttons = document.querySelectorAll('#prev-episode-btn, #play-pause-btn, #next-episode-btn, #audio-btn, #episodes-btn, #mute-btn, #toggle-buffer-btn');
-            var buttonList = [];
-            for (var k = 0; k < buttons.length; k++) {
-                var btn = buttons[k];
-                if (btn && btn.offsetParent !== null) buttonList.push(btn);
-            }
-            focusableElements = [seekSliderEl].concat(buttonList).filter(function (el) { return el && el.offsetParent !== null; });
-        } else {
-            focusableElements = [];
+        var c = getEl('controls-container');
+        if (c && !c.classList.contains('idle-hidden')) {
+            var seek = getEl('seek-slider');
+            var btns = document.querySelectorAll('#prev-episode-btn, #play-pause-btn, #next-episode-btn, #audio-btn, #episodes-btn, #mute-btn, #toggle-buffer-btn');
+            for (var i = 0; i < btns.length; i++) if (btns[i] && btns[i].offsetParent !== null) list.push(btns[i]);
+            if (seek && seek.offsetParent !== null) list.unshift(seek);
         }
-    } else if (screen === 'detail') {
-        var progressElements = document.querySelectorAll('.detail-progress-btn');
-        var fileElements = document.querySelectorAll('.file-item');
-        var backButtons = document.querySelectorAll('.back-btn');
-        var watchButtons = document.querySelectorAll('.catalog-watch-btn');
-        var allElements = [];
-        for (var l = 0; l < progressElements.length; l++) allElements.push(progressElements[l]);
-        for (var m = 0; m < fileElements.length; m++) allElements.push(fileElements[m]);
-        for (var n = 0; n < backButtons.length; n++) allElements.push(backButtons[n]);
-        for (var t = 0; t < watchButtons.length; t++) allElements.push(watchButtons[t]);
-        focusableElements = allElements;
-    } else if (screen === 'torrents') {
-        var searchInputEl = document.getElementById('search-query');
-        var searchBtnEl = document.getElementById('search-btn');
-        var settingsBtnEl = document.getElementById('settings-btn');
-        var tabTorrentsEl = document.getElementById('tab-torrents');
-        var tabSearchEl = document.getElementById('tab-search');
-        var tabCatalogEl = document.getElementById('tab-catalog');
-        var cards = [];
+        focusableElements = list.filter(function (e) { return e && e.offsetParent !== null; }); return;
+    }
+
+    if (screen === 'detail') {
+        var sel = '.detail-progress-btn, .file-item, .back-btn, .catalog-watch-btn';
+        var els = document.querySelectorAll(sel);
+        for (var i = 0; i < els.length; i++) if (els[i] && els[i].offsetParent !== null) list.push(els[i]);
+        focusableElements = list; return;
+    }
+
+    if (screen === 'torrents') {
+        var searchInput = getEl('search-query'), searchBtn = getEl('search-btn'), settingsBtn = getEl('settings-btn');
+        var tabTorrents = getEl('tab-torrents'), tabSearch = getEl('tab-search'), tabCatalog = getEl('tab-catalog');
         var allCards = document.querySelectorAll('.torrent-card');
-        for (var o = 0; o < allCards.length; o++) {
-            var card = allCards[o];
-            if (card && card.offsetParent !== null) cards.push(card);
-        }
-        var cardsPerRow = getTorrentGridColumns();
-
-        var rows = [];
-        for (var p = 0; p < cards.length; p += cardsPerRow) {
-            rows.push(cards.slice(p, p + cardsPerRow));
-        }
-
-        window.torrentRows = {
-            row1: [searchInputEl, searchBtnEl, settingsBtnEl].filter(function (el) { return el; }),
-            row2: [tabTorrentsEl, tabSearchEl, tabCatalogEl].filter(function (el) { return el; }),
-            cardRows: rows,
-            allCards: cards
-        };
-
+        var cards = []; for (var i = 0; i < allCards.length; i++) if (allCards[i] && allCards[i].offsetParent !== null) cards.push(allCards[i]);
+        var cols = getTorrentGridColumns();
+        var rows = []; for (var j = 0; j < cards.length; j += cols) rows.push(cards.slice(j, j + cols));
+        window.torrentRows = { row1: [searchInput, searchBtn, settingsBtn].filter(Boolean), row2: [tabTorrents, tabSearch, tabCatalog].filter(Boolean), cardRows: rows, allCards: cards };
         var focusList = cards.slice();
-        if (searchInputEl && searchInputEl.offsetParent !== null) focusList.push(searchInputEl);
-        if (searchBtnEl && searchBtnEl.offsetParent !== null) focusList.push(searchBtnEl);
-        if (tabTorrentsEl && tabTorrentsEl.offsetParent !== null) focusList.push(tabTorrentsEl);
-        if (tabSearchEl && tabSearchEl.offsetParent !== null) focusList.push(tabSearchEl);
-        if (tabCatalogEl && tabCatalogEl.offsetParent !== null) focusList.push(tabCatalogEl);
-        if (settingsBtnEl && settingsBtnEl.offsetParent !== null) focusList.push(settingsBtnEl);
-        focusableElements = focusList.filter(function (el) { return el && el.offsetParent !== null; });
-    } else if (screen === 'catalog') {
-        var catalogCards = [];
-        var allCatalogCards = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
-        for (var q = 0; q < allCatalogCards.length; q++) {
-            var catCard = allCatalogCards[q];
-            if (catCard && catCard.offsetParent !== null) catalogCards.push(catCard);
-        }
-        focusableElements = catalogCards;
-        window.catalogCards = catalogCards;
-    } else if (screen === 'search') {
-        var searchInputEl = document.getElementById('search-query');
-        var filterToggleEl = document.getElementById('filter-toggle');
-        var searchBtnEl = document.getElementById('search-btn');
-        var closeSearchEl = document.getElementById('close-search');
-        var filterControlsList = document.querySelectorAll('#torrent-movie, #sort-by, #filter-quality, #filter-content-type, #filter-tracker, #filter-year, #filter-season, #filter-voice, #filter-videotype, #reset-filters');
-        var filterControls = [];
-        for (var r = 0; r < filterControlsList.length; r++) {
-            var fc = filterControlsList[r];
-            if (fc && fc.offsetParent !== null) filterControls.push(fc);
-        }
-        var resultItemsList = document.querySelectorAll('.search-result-item');
-        var resultItems = [];
-        for (var s = 0; s < resultItemsList.length; s++) {
-            var ri = resultItemsList[s];
-            if (ri && ri.offsetParent !== null) resultItems.push(ri);
-        }
-        var focusList = [searchInputEl, filterToggleEl, searchBtnEl, closeSearchEl];
-        for (var t = 0; t < filterControls.length; t++) focusList.push(filterControls[t]);
-        for (var u = 0; u < resultItems.length; u++) focusList.push(resultItems[u]);
-        focusableElements = focusList.filter(function (el) { return el; });
-    } else if (screen === 'config') {
-        var configItems = document.querySelectorAll('#torrserver-url, #auth-checkbox, #auth-login, #auth-password, .settings-btn');
-        var configList = [];
-        for (var v = 0; v < configItems.length; v++) {
-            var ci = configItems[v];
-            if (ci && ci.offsetParent !== null) configList.push(ci);
-        }
-        focusableElements = configList;
-    } else {
-        focusableElements = [];
+        if (searchInput && searchInput.offsetParent !== null) focusList.push(searchInput);
+        if (searchBtn && searchBtn.offsetParent !== null) focusList.push(searchBtn);
+        if (tabTorrents && tabTorrents.offsetParent !== null) focusList.push(tabTorrents);
+        if (tabSearch && tabSearch.offsetParent !== null) focusList.push(tabSearch);
+        if (tabCatalog && tabCatalog.offsetParent !== null) focusList.push(tabCatalog);
+        if (settingsBtn && settingsBtn.offsetParent !== null) focusList.push(settingsBtn);
+        focusableElements = focusList.filter(function (e) { return e && e.offsetParent !== null; }); return;
     }
 
-    focusableElements = focusableElements.filter(function (el) {
-        if (!el) return false;
-        var style = window.getComputedStyle(el);
-        return style.display !== 'none' &&
-            style.visibility !== 'hidden' &&
-            style.opacity !== '0' &&
-            el.offsetParent !== null;
-    });
-
-    if (currentFocusIndex >= focusableElements.length) {
-        currentFocusIndex = 0;
+    if (screen === 'catalog') {
+        var cards = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+        for (var i = 0; i < cards.length; i++) if (cards[i] && cards[i].offsetParent !== null) list.push(cards[i]);
+        focusableElements = list; window.catalogCards = list; return;
     }
 
-    console.log('🎯 Найдено ' + focusableElements.length + ' фокусируемых элементов на экране ' + screen);
+    if (screen === 'search') {
+        var q = getEl('search-query'), ft = getEl('filter-toggle'), sb = getEl('search-btn'), cs = getEl('close-search');
+        var fcs = document.querySelectorAll('#torrent-movie, #sort-by, #filter-quality, #filter-content-type, #filter-tracker, #filter-year, #filter-season, #filter-voice, #filter-videotype, #reset-filters');
+        var ris = document.querySelectorAll('.search-result-item');
+        var res = []; for (var i = 0; i < ris.length; i++) if (ris[i] && ris[i].offsetParent !== null) res.push(ris[i]);
+        var filters = []; for (var i = 0; i < fcs.length; i++) if (fcs[i] && fcs[i].offsetParent !== null) filters.push(fcs[i]);
+        var fl = [q, ft, sb, cs];
+        for (var i = 0; i < filters.length; i++) fl.push(filters[i]);
+        for (var i = 0; i < res.length; i++) fl.push(res[i]);
+        focusableElements = fl.filter(Boolean); return;
+    }
+
+    if (screen === 'config') {
+        var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password'];
+        var cfg = document.querySelectorAll('.settings-btn');
+        for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e && e.offsetParent !== null) list.push(e); }
+        for (var i = 0; i < cfg.length; i++) if (cfg[i] && cfg[i].offsetParent !== null) list.push(cfg[i]);
+        focusableElements = list; return;
+    }
+
+    focusableElements = [];
 }
 
+// Оптимизированный setFocus с rAF для плавности
 function setFocus(index) {
-    var focusedElements = document.querySelectorAll('.focused');
-    for (var i = 0; i < focusedElements.length; i++) {
-        focusedElements[i].classList.remove('focused');
-    }
-    if (focusableElements.length === 0) return;
-
+    if (focusableElements.length === 0) { updateFocusableElements(); if (focusableElements.length === 0) return; }
     if (index < 0) index = focusableElements.length - 1;
     if (index >= focusableElements.length) index = 0;
-
     currentFocusIndex = index;
-    var element = focusableElements[currentFocusIndex];
 
-    if (AppState.currentScreen === 'torrents') {
-        if (element && element.classList.contains('torrent-card')) {
-            var torrentIndex = currentFocusIndex - ((window.torrentRows && window.torrentRows.row1 ? window.torrentRows.row1.length : 0) + (window.torrentRows && window.torrentRows.row2 ? window.torrentRows.row2.length : 0));
+    requestAnimationFrame(function () {
+        var focused = document.querySelectorAll('.focused');
+        for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
 
-            if (AppState.torrents[torrentIndex] && AppState.torrents[torrentIndex].hash) {
-                lastSelectedTorrentHash = AppState.torrents[torrentIndex].hash;
-                lastSelectedTorrentIndex = torrentIndex;
-            } else if (element.dataset.hash) {
-                lastSelectedTorrentHash = element.dataset.hash;
-                lastSelectedTorrentIndex = torrentIndex >= 0 ? torrentIndex : 0;
-            }
+        var element = focusableElements[currentFocusIndex];
+        if (!element) return;
+        element.classList.add('focused');
+
+        if (AppState.currentScreen === 'torrents' && element.classList.contains('torrent-card')) {
+            var row1Len = (window.torrentRows && window.torrentRows.row1 ? window.torrentRows.row1.length : 0);
+            var row2Len = (window.torrentRows && window.torrentRows.row2 ? window.torrentRows.row2.length : 0);
+            var torrentIndex = currentFocusIndex - (row1Len + row2Len);
+            var t = AppState.torrents[torrentIndex];
+            if (t && t.hash) { lastSelectedTorrentHash = t.hash; lastSelectedTorrentIndex = torrentIndex; }
+            else if (element.dataset.hash) { lastSelectedTorrentHash = element.dataset.hash; lastSelectedTorrentIndex = torrentIndex >= 0 ? torrentIndex : 0; }
             window.lastSelectedTorrentHash = lastSelectedTorrentHash;
             window.lastSelectedTorrentIndex = lastSelectedTorrentIndex;
         }
-    }
 
-    if (element) {
-        element.classList.add('focused');
+        if (typeof Animations !== 'undefined') Animations.animateFocus(element);
 
-        if (typeof Animations !== 'undefined') {
-            Animations.animateFocus(element);
+        // Сброс фокуса с инпутов
+        if (document.activeElement && document.activeElement.tagName === 'INPUT') {
+            var allowed = ['search-query', 'torrserver-url', 'auth-login', 'auth-password'];
+            if (allowed.indexOf(element.id) === -1) document.activeElement.blur();
         }
 
-        if (element.id === 'search-query' ||
-            element.id === 'torrserver-url' ||
-            element.id === 'auth-login' ||
-            element.id === 'auth-password') {
-            if (document.activeElement && document.activeElement.tagName === 'INPUT') {
-                document.activeElement.blur();
-            }
-        } else {
-            if (document.activeElement && document.activeElement.tagName === 'INPUT') {
-                document.activeElement.blur();
-            }
-        }
+        // Скролл
+        var container = null, s = AppState.currentScreen;
+        if (s === 'catalog' || s === 'torrents') container = getEl('main-container');
+        else if (s === 'search') container = getEl('search-results-list');
+        else if (s === 'detail') container = getEl('detail-view');
+        else if (s === 'player') container = getEl('episodes-panel') || getEl('audio-panel');
 
-        // Определяем контейнер для скролла
-        var container = null;
-        if (AppState.currentScreen === 'catalog' || AppState.currentScreen === 'torrents') {
-            container = document.getElementById('main-container');
-        } else if (AppState.currentScreen === 'search') {
-            container = document.getElementById('search-results-list');
-        } else if (AppState.currentScreen === 'detail') {
-            container = document.getElementById('detail-view');
-        } else if (AppState.currentScreen === 'player') {
-           container = document.getElementById('episodes-panel'); 
-        } else if (AppState.currentScreen === 'player') {
-           container = document.getElementById('audio-panel'); 
-        }
-
-        // Скроллим только если элемент не полностью виден
         if (!isElementFullyVisible(element, container)) {
             scrollToElementIfNeeded(element, container, !fastNavigation);
         }
-
-        console.log('🎯 Фокус на элементе:', element);
-    }
+    });
 }
 
 function focusFirstTorrentCard(retries, delay) {
-    console.log('Фокус на первом элементе');
-    if (retries === undefined) retries = 6;
-    if (delay === undefined) delay = 120;
+    if (retries === undefined) retries = 6; if (delay === undefined) delay = 120;
     if (AppState.currentScreen !== 'torrents') return false;
     updateFocusableElements();
-    var firstCardIndex = -1;
     for (var i = 0; i < focusableElements.length; i++) {
         if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) {
-            firstCardIndex = i;
-            break;
+            setFocus(i); return true;
         }
     }
-    if (firstCardIndex !== -1) {
-        setFocus(firstCardIndex);
-        return true;
-    }
-    if (retries > 0) {
-        setTimeout(function () { focusFirstTorrentCard(retries - 1, delay); }, delay);
-    }
+    if (retries > 0) setTimeout(function () { focusFirstTorrentCard(retries - 1, delay); }, delay);
     return false;
 }
 
 function focusSearchHome(preferQuery) {
     if (preferQuery === undefined) preferQuery = true;
     updateFocusableElements();
-    var queryIndex = -1;
-    var searchBtnIndex = -1;
-    var filterIndex = -1;
+    var qi = -1, si = -1, fi = -1;
     for (var i = 0; i < focusableElements.length; i++) {
-        var el = focusableElements[i];
-        if (el.id === 'search-query') queryIndex = i;
-        if (el.id === 'search-btn') searchBtnIndex = i;
-        if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && filterIndex === -1) {
-            filterIndex = i;
-        }
+        var e = focusableElements[i];
+        if (e.id === 'search-query') qi = i;
+        if (e.id === 'search-btn') si = i;
+        if (fi === -1 && ['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(e.id) !== -1) fi = i;
     }
-    var targetIndex = preferQuery && queryIndex !== -1
-        ? queryIndex
-        : (searchBtnIndex !== -1 ? searchBtnIndex : (filterIndex !== -1 ? filterIndex : 0));
-    setFocus(targetIndex);
+    var target = preferQuery && qi !== -1 ? qi : (si !== -1 ? si : (fi !== -1 ? fi : 0));
+    setFocus(target);
 }
 
 function showPlayerControls(preferredFocusId) {
     if (preferredFocusId === undefined) preferredFocusId = 'play-pause-btn';
-    var ids = [
-        'controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn',
-        'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn',
-        'audio-btn', 'player-title'
-    ];
-    for (var i = 0; i < ids.length; i++) {
-        var el = document.getElementById(ids[i]);
-        if (el) el.classList.remove('idle-hidden');
-    }
-    if (typeof window.syncPlayerTitleVisibility === 'function') {
-        window.syncPlayerTitleVisibility(true);
-    }
-    var playerTitle = document.getElementById('player-title');
-    if (playerTitle) playerTitle.classList.remove('hidden');
-
-    if (typeof Animations !== 'undefined') {
-        Animations.animateControlsShow();
-    }
-
-    if (typeof window.resetMouseIdleTimer === 'function') {
-        window.resetMouseIdleTimer();
-    }
+    var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn', 'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn', 'audio-btn', 'player-title'];
+    for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e) e.classList.remove('idle-hidden'); }
+    if (typeof window.syncPlayerTitleVisibility === 'function') window.syncPlayerTitleVisibility(true);
+    var pt = getEl('player-title'); if (pt) pt.classList.remove('hidden');
+    if (typeof Animations !== 'undefined') Animations.animateControlsShow();
+    if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
     setTimeout(function () {
         updateFocusableElements();
-        var targetIndex = -1;
-        for (var j = 0; j < focusableElements.length; j++) {
-            if (focusableElements[j].id === preferredFocusId) {
-                targetIndex = j;
-                break;
-            }
-        }
-        setFocus(targetIndex !== -1 ? targetIndex : 0);
+        var ti = -1; for (var j = 0; j < focusableElements.length; j++) if (focusableElements[j].id === preferredFocusId) { ti = j; break; }
+        setFocus(ti !== -1 ? ti : 0);
     }, 60);
 }
 
 function hidePlayerControls() {
-    if (typeof Animations !== 'undefined') {
-        Animations.animateControlsHide();
-    }
-    var ids = [
-        'controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn',
-        'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn',
-        'audio-btn', 'player-title'
-    ];
-    for (var i = 0; i < ids.length; i++) {
-        var element = document.getElementById(ids[i]);
-        if (element) {
-            element.classList.add('idle-hidden');
-        }
-    }
-    if (typeof window.syncPlayerTitleVisibility === 'function') {
-        window.syncPlayerTitleVisibility(false);
-    }
-    var playerTitle = document.getElementById('player-title');
-    if (playerTitle) playerTitle.classList.add('hidden');
-    var focusedElements = document.querySelectorAll('.focused');
-    for (var j = 0; j < focusedElements.length; j++) {
-        focusedElements[j].classList.remove('focused');
-    }
+    if (typeof Animations !== 'undefined') Animations.animateControlsHide();
+    var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn', 'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn', 'audio-btn', 'player-title'];
+    for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e) e.classList.add('idle-hidden'); }
+    if (typeof window.syncPlayerTitleVisibility === 'function') window.syncPlayerTitleVisibility(false);
+    var pt = getEl('player-title'); if (pt) pt.classList.add('hidden');
+    var focused = document.querySelectorAll('.focused');
+    for (var j = 0; j < focused.length; j++) focused[j].classList.remove('focused');
     currentFocusIndex = 0;
-    if (window.mouseIdleTimer) {
-        clearTimeout(window.mouseIdleTimer);
-        window.mouseIdleTimer = null;
-    }
+    if (window.mouseIdleTimer) { clearTimeout(window.mouseIdleTimer); window.mouseIdleTimer = null; }
 }
 
 function hidePlayerPanelsOnly() {
     var hidden = false;
-    var episodesPanel = document.getElementById('episodes-panel');
-    var audioPanel = document.getElementById('audio-panel');
-    if (episodesPanel && !episodesPanel.classList.contains('hidden')) {
-        episodesPanel.classList.add('hidden');
-        var episodesBtn = document.getElementById('episodes-btn');
-        if (episodesBtn) episodesBtn.classList.remove('active');
-        hidden = true;
-    }
-    if (audioPanel && !audioPanel.classList.contains('hidden')) {
-        audioPanel.classList.add('hidden');
-        var audioBtn = document.getElementById('audio-btn');
-        if (audioBtn) audioBtn.classList.remove('active');
-        hidden = true;
-    }
+    var ep = getEl('episodes-panel'); if (ep && !ep.classList.contains('hidden')) { ep.classList.add('hidden'); var b = getEl('episodes-btn'); if (b) b.classList.remove('active'); hidden = true; }
+    var ap = getEl('audio-panel'); if (ap && !ap.classList.contains('hidden')) { ap.classList.add('hidden'); var b = getEl('audio-btn'); if (b) b.classList.remove('active'); hidden = true; }
     return hidden;
 }
-
-function hidePlayerUi() {
-    var panelsHidden = hidePlayerPanelsOnly();
-    var controlsWereVisible = isPlayerControlsVisible();
-    if (controlsWereVisible) {
-        hidePlayerControls();
-    }
-    if (panelsHidden || controlsWereVisible) {
-        var playerTitle = document.getElementById('player-title');
-        if (playerTitle) playerTitle.classList.add('hidden');
-    }
-    return panelsHidden || controlsWereVisible;
-}
+function hidePlayerUi() { var p = hidePlayerPanelsOnly(); var c = isPlayerControlsVisible(); if (c) hidePlayerControls(); var pt = getEl('player-title'); if ((p || c) && pt) pt.classList.add('hidden'); return p || c; }
 
 // ==================== НАВИГАЦИЯ ====================
-
 function navigate(direction) {
-    if (typeof setFastNavigation === 'function') {
-        setFastNavigation();
-    }
-    var activeElement = document.activeElement;
-    if (activeElement && activeElement.id === 'search-query') {
-        activeElement.blur();
-        updateFocusableElements();
+    if (typeof setFastNavigation === 'function') setFastNavigation();
+    var active = document.activeElement;
+    if (active && active.id === 'search-query') {
+        active.blur(); updateFocusableElements();
         if (AppState.currentScreen === 'search') {
-            var firstFilterIndex = -1;
-            var firstResultIndex = -1;
-            for (var i = 0; i < focusableElements.length; i++) {
-                var el = focusableElements[i];
-                if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) {
-                    firstFilterIndex = i;
-                }
-                if (el.classList && el.classList.contains('search-result-item') && firstResultIndex === -1) {
-                    firstResultIndex = i;
-                }
-            }
-            if (direction === 'down' && firstResultIndex !== -1) {
-                setFocus(firstResultIndex);
-            } else {
-                setFocus(firstFilterIndex !== -1 ? firstFilterIndex : (firstResultIndex !== -1 ? firstResultIndex : 0));
-            }
-            return;
+            var ff = -1, fr = -1;
+            for (var i = 0; i < focusableElements.length; i++) { var e = focusableElements[i]; if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(e.id) !== -1 && ff === -1) ff = i; if (e.classList && e.classList.contains('search-result-item') && fr === -1) fr = i; }
+            setFocus(direction === 'down' && fr !== -1 ? fr : (ff !== -1 ? ff : (fr !== -1 ? fr : 0))); return;
         }
-        var firstCardIndex = -1;
-        for (var j = 0; j < focusableElements.length; j++) {
-            if (focusableElements[j].classList && focusableElements[j].classList.contains('torrent-card')) {
-                firstCardIndex = j;
-                break;
-            }
-        }
-        setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
-        return;
+        var fc = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) { fc = i; break; }
+        setFocus(fc !== -1 ? fc : 0); return;
     }
+
     if (focusableElements.length === 0) {
-        updateFocusableElements();
-        if (focusableElements.length === 0) return;
-        if (AppState.currentScreen === 'torrents') {
-            var firstCardIndex = -1;
-            for (var k = 0; k < focusableElements.length; k++) {
-                if (focusableElements[k].classList && focusableElements[k].classList.contains('torrent-card')) {
-                    firstCardIndex = k;
-                    break;
-                }
-            }
-            setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
-        } else if (AppState.currentScreen === 'search') {
-            var firstFilterIndex = -1;
-            for (var l = 0; l < focusableElements.length; l++) {
-                if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(focusableElements[l].id) !== -1) {
-                    firstFilterIndex = l;
-                    break;
-                }
-            }
-            setFocus(firstFilterIndex !== -1 ? firstFilterIndex : 0);
-        }
+        updateFocusableElements(); if (focusableElements.length === 0) return;
+        if (AppState.currentScreen === 'torrents') { var fc = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) { fc = i; break; } setFocus(fc !== -1 ? fc : 0); }
+        else if (AppState.currentScreen === 'search') { var ff = -1; for (var i = 0; i < focusableElements.length; i++) if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(focusableElements[i].id) !== -1) { ff = i; break; } setFocus(ff !== -1 ? ff : 0); }
         return;
     }
+    var cur = focusableElements[currentFocusIndex];
 
-    var currentElement = focusableElements[currentFocusIndex];
-
-    // ===== НАВИГАЦИЯ ДЛЯ ТОРРЕНТОВ =====
+    // TORRENTS NAV
     if (AppState.currentScreen === 'torrents') {
-        var settingsBtnEl = document.getElementById('settings-btn');
-        var tabTorrentsEl = document.getElementById('tab-torrents');
-        var tabSearchEl = document.getElementById('tab-search');
-        var tabCatalogEl = document.getElementById('tab-catalog');
+        var sBtn = getEl('settings-btn'), tT = getEl('tab-torrents'), tS = getEl('tab-search'), tC = getEl('tab-catalog');
         var cards = window.torrentRows && window.torrentRows.allCards ? window.torrentRows.allCards : [];
-
-        if (!currentElement) {
-            if (cards.length > 0) {
-                setFocus(focusableElements.indexOf(cards[0]));
-            } else {
-                var fallbackIndex = -1;
-                for (var m = 0; m < focusableElements.length; m++) {
-                    if (focusableElements[m].id === 'tab-torrents') {
-                        fallbackIndex = m;
-                        break;
-                    }
-                }
-                setFocus(fallbackIndex !== -1 ? fallbackIndex : 0);
-            }
-            return;
-        }
-
-        var isSettings = currentElement === settingsBtnEl;
-        var isTabTorrents = currentElement === tabTorrentsEl;
-        var isTabSearch = currentElement === tabSearchEl;
-        var isTabCatalog = currentElement === tabCatalogEl;
-        var isCard = false;
-        for (var n = 0; n < cards.length; n++) {
-            if (currentElement === cards[n]) {
-                isCard = true;
-                break;
-            }
-        }
-
-        var cardIndex = -1;
-        if (isCard) {
-            for (var o = 0; o < cards.length; o++) {
-                if (currentElement === cards[o]) {
-                    cardIndex = o;
-                    break;
-                }
-            }
-        }
-        var cardsPerRow = getTorrentGridColumns();
-
+        if (!cur) { if (cards.length > 0) setFocus(focusableElements.indexOf(cards[0])); else { var f = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].id === 'tab-torrents') { f = i; break; } setFocus(f !== -1 ? f : 0); } return; }
+        var isSet = cur === sBtn, isTT = cur === tT, isTS = cur === tS, isTC = cur === tC, isC = false, cIdx = -1;
+        for (var i = 0; i < cards.length; i++) if (cur === cards[i]) { isC = true; cIdx = i; break; }
+        var cols = getTorrentGridColumns();
         switch (direction) {
-            case 'up':
-                if (isCard) {
-                    if (cardIndex < cardsPerRow) {
-                        setFocus(focusableElements.indexOf(tabTorrentsEl));
-                    } else {
-                        var newIndex = cardIndex - cardsPerRow;
-                        setFocus(focusableElements.indexOf(cards[newIndex]));
-                    }
-                } else if (isTabTorrents || isTabSearch || isTabCatalog) {
-                    if (cards.length > 0) {
-                        setFocus(focusableElements.indexOf(cards[0]));
-                    }
-                }
-                break;
-
-            case 'down':
-                if (isSettings) {
-                    setFocus(focusableElements.indexOf(tabTorrentsEl));
-                } else if (isTabTorrents || isTabSearch || isTabCatalog) {
-                    if (cards.length > 0) {
-                        setFocus(focusableElements.indexOf(cards[0]));
-                    }
-                } else if (isCard) {
-                    if (cardIndex + cardsPerRow < cards.length) {
-                        var newIndex = cardIndex + cardsPerRow;
-                        setFocus(focusableElements.indexOf(cards[newIndex]));
-                    }
-                }
-                break;
-
-            case 'left':
-                if (isSettings) {
-                    setFocus(focusableElements.indexOf(tabCatalogEl));
-                } else if (isTabCatalog) {
-                    setFocus(focusableElements.indexOf(tabSearchEl));
-                } else if (isTabSearch) {
-                    setFocus(focusableElements.indexOf(tabTorrentsEl));
-                } else if (isCard && cardIndex > 0 && cardIndex % cardsPerRow !== 0) {
-                    setFocus(focusableElements.indexOf(cards[cardIndex - 1]));
-                }
-                break;
-
-            case 'right':
-                if (isTabTorrents) {
-                    setFocus(focusableElements.indexOf(tabSearchEl));
-                } else if (isTabSearch) {
-                    setFocus(focusableElements.indexOf(tabCatalogEl));
-                } else if (isCard && cardIndex < cards.length - 1 && (cardIndex + 1) % cardsPerRow !== 0) {
-                    setFocus(focusableElements.indexOf(cards[cardIndex + 1]));
-                }
-                break;
+            case 'up': if (isC) { if (cIdx < cols) setFocus(focusableElements.indexOf(tT)); else setFocus(focusableElements.indexOf(cards[cIdx - cols])); } else if (isTT || isTS || isTC) { if (cards.length > 0) setFocus(focusableElements.indexOf(cards[0])); } break;
+            case 'down': if (isSet) setFocus(focusableElements.indexOf(tT)); else if (isTT || isTS || isTC) { if (cards.length > 0) setFocus(focusableElements.indexOf(cards[0])); } else if (isC) { if (cIdx + cols < cards.length) setFocus(focusableElements.indexOf(cards[cIdx + cols])); } break;
+            case 'left': if (isSet) setFocus(focusableElements.indexOf(tC)); else if (isTC) setFocus(focusableElements.indexOf(tS)); else if (isTS) setFocus(focusableElements.indexOf(tT)); else if (isC && cIdx > 0 && cIdx % cols !== 0) setFocus(focusableElements.indexOf(cards[cIdx - 1])); break;
+            case 'right': if (isTT) setFocus(focusableElements.indexOf(tS)); else if (isTS) setFocus(focusableElements.indexOf(tC)); else if (isC && cIdx < cards.length - 1 && (cIdx + 1) % cols !== 0) setFocus(focusableElements.indexOf(cards[cIdx + 1])); break;
         }
         return;
     }
 
-    // ===== НАВИГАЦИЯ ДЛЯ КАТАЛОГА =====
+    // CATALOG NAV
     if (AppState.currentScreen === 'catalog') {
-        var cards = window.catalogCards || [];
-        if (cards.length === 0) return;
-
-        var currentIndex = -1;
-        for (var p = 0; p < cards.length; p++) {
-            if (currentElement === cards[p]) {
-                currentIndex = p;
-                break;
-            }
-        }
-        var cardsPerRow = getTorrentGridColumns();
-
+        var cards = window.catalogCards || []; if (!cards.length) return;
+        var cIdx = -1; for (var i = 0; i < cards.length; i++) if (cur === cards[i]) { cIdx = i; break; }
+        var cols = getTorrentGridColumns();
         switch (direction) {
-            case 'left':
-                if (currentIndex > 0 && currentIndex % cardsPerRow !== 0) {
-                    setFocus(focusableElements.indexOf(cards[currentIndex - 1]));
-                }
-                break;
-            case 'right':
-                if (currentIndex < cards.length - 1 && (currentIndex + 1) % cardsPerRow !== 0) {
-                    setFocus(focusableElements.indexOf(cards[currentIndex + 1]));
-                }
-                break;
-            case 'up':
-                if (currentIndex >= cardsPerRow) {
-                    setFocus(focusableElements.indexOf(cards[currentIndex - cardsPerRow]));
-                }
-                break;
-            case 'down':
-                if (currentIndex + cardsPerRow < cards.length) {
-                    setFocus(focusableElements.indexOf(cards[currentIndex + cardsPerRow]));
-
-                    if (typeof window.checkAndLoadMoreOnNavigation === 'function') {
-                        window.checkAndLoadMoreOnNavigation();
-                    }
-                } else if (currentIndex === cards.length - 1) {
-                    if (typeof window.checkAndLoadMoreOnNavigation === 'function') {
-                        window.checkAndLoadMoreOnNavigation();
-                    }
-                }
-                break;
+            case 'left': if (cIdx > 0 && cIdx % cols !== 0) setFocus(focusableElements.indexOf(cards[cIdx - 1])); break;
+            case 'right': if (cIdx < cards.length - 1 && (cIdx + 1) % cols !== 0) setFocus(focusableElements.indexOf(cards[cIdx + 1])); break;
+            case 'up': if (cIdx >= cols) setFocus(focusableElements.indexOf(cards[cIdx - cols])); break;
+            case 'down': if (cIdx + cols < cards.length) { setFocus(focusableElements.indexOf(cards[cIdx + cols])); if (typeof window.checkAndLoadMoreOnNavigation === 'function') window.checkAndLoadMoreOnNavigation(); } else if (cIdx === cards.length - 1 && typeof window.checkAndLoadMoreOnNavigation === 'function') window.checkAndLoadMoreOnNavigation(); break;
         }
         return;
     }
 
-    // ===== НАВИГАЦИЯ ДЛЯ ПЛЕЕРА И ПАНЕЛЕЙ =====
+    // PLAYER NAV
     if (AppState.currentScreen === 'player') {
-        var controlsContainer = document.getElementById('controls-container');
-        var controlsVisible = !controlsContainer.classList.contains('idle-hidden');
-
-        if (!controlsVisible) {
-            return;
-        }
-
-        var playerCurrentElement = focusableElements[currentFocusIndex];
-        var isSeekSliderFocused = playerCurrentElement && playerCurrentElement.id === 'seek-slider';
-
-        var episodesPanel = document.getElementById('episodes-panel');
-        var audioPanel = document.getElementById('audio-panel');
-        var isPanelOpen = (episodesPanel && !episodesPanel.classList.contains('hidden')) ||
-            (audioPanel && !audioPanel.classList.contains('hidden'));
-
-        if (isPanelOpen) {
-            var isCloseButton = 0;
-            var isLastElement = focusableElements.length - 1;
-
-            if (direction === 'up') {
-                if (currentFocusIndex > isCloseButton) {
-                    setFocus(currentFocusIndex - 1);
-                }
-                return;
-            }
-
-            if (direction === 'down') {
-                if (currentFocusIndex < isLastElement) {
-                    setFocus(currentFocusIndex + 1);
-                }
-                return;
-            }
-
-            if (direction === 'left' || direction === 'right') {
-                return;
-            }
-            return;
-        }
-
-        if (isSeekSliderFocused) {
-            if (direction === 'down') {
-                if (focusableElements.length > 1) {
-                    setFocus(1);
-                }
-                return;
-            }
-            if (direction === 'left' || direction === 'right') {
-                return;
-            }
-            return;
-        } else {
-            var isFirstButton = currentFocusIndex === 1;
-            var isLastButton = currentFocusIndex === focusableElements.length - 1;
-
-            if (direction === 'up') {
-                setFocus(0);
-                return;
-            }
-            if (direction === 'down') {
-                return;
-            }
-
-            if (direction === 'left') {
-                if (isFirstButton) {
-                    return;
-                }
-                setFocus(currentFocusIndex - 1);
-                return;
-            }
-            if (direction === 'right') {
-                if (isLastButton) {
-                    return;
-                }
-                setFocus(currentFocusIndex + 1);
-                return;
-            }
-        }
+        var cc = getEl('controls-container'); if (!cc || cc.classList.contains('idle-hidden')) return;
+        var ep = getEl('episodes-panel'), ap = getEl('audio-panel');
+        var isOpen = (ep && !ep.classList.contains('hidden')) || (ap && !ap.classList.contains('hidden'));
+        if (isOpen) { if (direction === 'up' && currentFocusIndex > 0) setFocus(currentFocusIndex - 1); else if (direction === 'down' && currentFocusIndex < focusableElements.length - 1) setFocus(currentFocusIndex + 1); return; }
+        if (cur && cur.id === 'seek-slider') { if (direction === 'down' && focusableElements.length > 1) setFocus(1); return; }
+        if (direction === 'up') setFocus(0); else if (direction === 'left' && currentFocusIndex > 1) setFocus(currentFocusIndex - 1); else if (direction === 'right' && currentFocusIndex < focusableElements.length - 1) setFocus(currentFocusIndex + 1);
         return;
     }
 
+    // SEARCH NAV
     if (AppState.currentScreen === 'search') {
-        var searchInputEl = document.getElementById('search-query');
-        var filters = [];
-        var results = [];
-        for (var q = 0; q < focusableElements.length; q++) {
-            var el = focusableElements[q];
-            if (el.id === 'torrent-movie' || el.id === 'sort-by' || el.id === 'filter-quality' ||
-                el.id === 'filter-content-type' || el.id === 'filter-tracker' ||
-                el.id === 'filter-year' || el.id === 'filter-season' || el.id === 'filter-voice' || el.id === 'filter-videotype'|| el.id === 'reset-filters' || el.id === 'close-search') {
-                filters.push(el);
-            }
-            if (el.classList && el.classList.contains('search-result-item')) {
-                results.push(el);
-            }
-        }
-        var current = focusableElements[currentFocusIndex];
-        var filterIndex = -1;
-        for (var r = 0; r < filters.length; r++) {
-            if (current === filters[r]) {
-                filterIndex = r;
-                break;
-            }
-        }
-        var resultIndex = -1;
-        for (var s = 0; s < results.length; s++) {
-            if (current === results[s]) {
-                resultIndex = s;
-                break;
-            }
-        }
-        var isSearchInput = current === searchInputEl;
-
-        if (!current) {
-            if (searchInputEl && focusableElements.indexOf(searchInputEl) !== -1) {
-                setFocus(focusableElements.indexOf(searchInputEl));
-            } else if (filters.length > 0) {
-                setFocus(focusableElements.indexOf(filters[0]));
-            } else if (results.length > 0) {
-                setFocus(focusableElements.indexOf(results[0]));
-            }
-            return;
-        }
-
-        if (isSearchInput) {
-            if (direction === 'left' || direction === 'right' || direction === 'down' || direction === 'up') {
-                if (filters.length > 0) {
-                    setFocus(focusableElements.indexOf(filters[0]));
-                } else if (results.length > 0) {
-                    setFocus(focusableElements.indexOf(results[0]));
-                }
-                return;
-            }
-        }
-
-        if (filterIndex !== -1) {
-            if (direction === 'left') {
-                setFocus(focusableElements.indexOf(filters[Math.max(0, filterIndex - 1)]));
-                return;
-            }
-            if (direction === 'right') {
-                setFocus(focusableElements.indexOf(filters[Math.min(filters.length - 1, filterIndex + 1)]));
-                return;
-            }
-            if (direction === 'down') {
-                if (results.length > 0) {
-                    setFocus(focusableElements.indexOf(results[0]));
-                } else {
-                    setFocus(focusableElements.indexOf(filters[Math.min(filters.length - 1, filterIndex + 1)]));
-                }
-                return;
-            }
-            if (direction === 'up') {
-                if (searchInputEl && focusableElements.indexOf(searchInputEl) !== -1) {
-                    setFocus(focusableElements.indexOf(searchInputEl));
-                } else {
-                    setFocus(focusableElements.indexOf(filters[Math.max(0, filterIndex - 1)]));
-                }
-                return;
-            }
-            return;
-        }
-
-        if (resultIndex !== -1) {
-            if (direction === 'up') {
-                if (resultIndex === 0 && filters.length > 0) {
-                    setFocus(focusableElements.indexOf(filters[0]));
-                } else {
-                    setFocus(focusableElements.indexOf(results[Math.max(0, resultIndex - 1)]));
-                }
-                return;
-            }
-            if (direction === 'down') {
-                setFocus(focusableElements.indexOf(results[Math.min(results.length - 1, resultIndex + 1)]));
-                return;
-            }
-            if (direction === 'left' || direction === 'right') {
-                return;
-            }
-        }
+        var q = getEl('search-query'), fl = [], res = [];
+        for (var i = 0; i < focusableElements.length; i++) { var e = focusableElements[i]; if (['torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(e.id) !== -1) fl.push(e); if (e.classList && e.classList.contains('search-result-item')) res.push(e); }
+        var fIdx = -1, rIdx = -1; for (var i = 0; i < fl.length; i++) if (cur === fl[i]) { fIdx = i; break; } for (var i = 0; i < res.length; i++) if (cur === res[i]) { rIdx = i; break; }
+        if (!cur) { if (q && focusableElements.indexOf(q) !== -1) setFocus(focusableElements.indexOf(q)); else if (fl.length > 0) setFocus(focusableElements.indexOf(fl[0])); else if (res.length > 0) setFocus(focusableElements.indexOf(res[0])); return; }
+        if (cur === q) { if (['left', 'right', 'down', 'up'].indexOf(direction) !== -1) setFocus(fl.length > 0 ? focusableElements.indexOf(fl[0]) : (res.length > 0 ? focusableElements.indexOf(res[0]) : 0)); return; }
+        if (fIdx !== -1) { if (direction === 'left') setFocus(focusableElements.indexOf(fl[Math.max(0, fIdx - 1)])); else if (direction === 'right') setFocus(focusableElements.indexOf(fl[Math.min(fl.length - 1, fIdx + 1)])); else if (direction === 'down') setFocus(res.length > 0 ? focusableElements.indexOf(res[0]) : focusableElements.indexOf(fl[Math.min(fl.length - 1, fIdx + 1)])); else if (direction === 'up') setFocus(q && focusableElements.indexOf(q) !== -1 ? focusableElements.indexOf(q) : focusableElements.indexOf(fl[Math.max(0, fIdx - 1)])); return; }
+        if (rIdx !== -1) { if (direction === 'up') setFocus(rIdx === 0 && fl.length > 0 ? focusableElements.indexOf(fl[0]) : focusableElements.indexOf(res[Math.max(0, rIdx - 1)])); else if (direction === 'down') setFocus(focusableElements.indexOf(res[Math.min(res.length - 1, rIdx + 1)])); return; }
     }
 
-    var columns = 1;
-    switch (direction) {
-        case 'up': setFocus(currentFocusIndex - columns); break;
-        case 'down': setFocus(currentFocusIndex + columns); break;
-        case 'left': setFocus(currentFocusIndex - 1); break;
-        case 'right': setFocus(currentFocusIndex + 1); break;
-    }
+    // DEFAULT
+    switch (direction) { case 'up': setFocus(currentFocusIndex - 1); break; case 'down': setFocus(currentFocusIndex + 1); break; case 'left': setFocus(currentFocusIndex - 1); break; case 'right': setFocus(currentFocusIndex + 1); break; }
 }
 
-function keyToDirection(keyCode) {
-    if (isKeyPressed('UP', keyCode)) return 'up';
-    if (isKeyPressed('DOWN', keyCode)) return 'down';
-    if (isKeyPressed('LEFT', keyCode)) return 'left';
-    if (isKeyPressed('RIGHT', keyCode)) return 'right';
-    return null;
-}
+function keyToDirection(keyCode) { if (isKeyPressed('UP', keyCode)) return 'up'; if (isKeyPressed('DOWN', keyCode)) return 'down'; if (isKeyPressed('LEFT', keyCode)) return 'left'; if (isKeyPressed('RIGHT', keyCode)) return 'right'; return null; }
 
-// ==================== УПРАВЛЕНИЕ ПЕРЕМОТКОЙ ====================
-
-function stopSeeking() {
-    if (seekHoldInterval) {
-        clearInterval(seekHoldInterval);
-        seekHoldInterval = null;
-    }
-}
+function stopSeeking() { if (seekHoldInterval) { clearInterval(seekHoldInterval); seekHoldInterval = null; } }
 
 // ==================== ОБРАБОТЧИКИ КЛАВИШ ====================
-
-// Вспомогательная функция для установки фокуса на активный элемент панели
 function focusActivePanelItem(panelType) {
     setTimeout(function () {
-        var activeItem = null;
-
-        // Выбираем нужный селектор в зависимости от типа панели
-        if (panelType === 'episodes') {
-            activeItem = document.querySelector('.episode-item.active');
-        } else if (panelType === 'audio') {
-            activeItem = document.querySelector('.audio-item.active');
-        }
-
-        if (activeItem) {
-            // Добавляем класс focused и удаляем со всех остальных
-            var focusedElements = document.querySelectorAll('.focused');
-            for (var i = 0; i < focusedElements.length; i++) {
-                focusedElements[i].classList.remove('focused');
-            }
-            activeItem.classList.add('focused');
-            activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-            // Обновляем индекс
-            updateFocusableElements();
-            for (var i = 0; i < focusableElements.length; i++) {
-                if (focusableElements[i] === activeItem ||
-                    focusableElements[i].parentElement === activeItem) {
-                    currentFocusIndex = i;
-                    break;
-                }
-            }
-
-            console.log('🎯 Фокус установлен на ' + panelType + ':', activeItem);
-        } else {
-            console.log('⚠️ Не найден активный элемент для панели:', panelType);
-        }
+        var sel = panelType === 'episodes' ? '.episode-item.active' : '.audio-item.active';
+        var active = document.querySelector(sel); if (!active) return;
+        var focused = document.querySelectorAll('.focused'); for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
+        active.classList.add('focused'); active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        updateFocusableElements();
+        for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i] === active || focusableElements[i].parentElement === active) { currentFocusIndex = i; break; }
     }, 50);
 }
 
 function setupKeyboardHandlers() {
     document.addEventListener('keyup', function (e) {
-        var key = e.keyCode;
-        if (isKeyPressed('LEFT', key) || isKeyPressed('RIGHT', key)) {
-            if (seekHoldInterval) {
-                clearInterval(seekHoldInterval);
-                seekHoldInterval = null;
-
-                if (typeof accelerationTimer !== 'undefined' && accelerationTimer) {
-                    clearInterval(accelerationTimer);
-                    accelerationTimer = null;
-                }
-
-                var slider = document.getElementById('seek-slider');
-                if (slider) {
-                    var event = document.createEvent('Event');
-                    event.initEvent('change', true, true);
-                    slider.dispatchEvent(event);
-                }
-
-                console.log('⏹️ Удержание прекращено, инициирована перемотка');
-
-                setTimeout(function () {
-                    isSeekHoldActive = false;
-                }, 500);
-            }
-
+        var k = e.keyCode;
+        if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) {
+            if (seekHoldInterval) { clearInterval(seekHoldInterval); seekHoldInterval = null; if (typeof accelerationTimer !== 'undefined' && accelerationTimer) { clearInterval(accelerationTimer); accelerationTimer = null; } var s = getEl('seek-slider'); if (s) { var ev = document.createEvent('Event'); ev.initEvent('change', true, true); s.dispatchEvent(ev); } setTimeout(function () { isSeekHoldActive = false; }, 500); }
             stopSeeking();
         }
     });
 
     document.addEventListener('keydown', function (e) {
-        var key = e.keyCode;
-        var activeElement = document.activeElement;
-        var playbackOverlay = document.getElementById('playback-overlay');
-        var isPlaybackActive = playbackOverlay && playbackOverlay.classList.contains('active');
-
-        // Если плеер активен, не обрабатываем навигацию по торрентам
-        if (isPlaybackActive) {
-            // Пропускаем обработку, если только это не специальные клавиши для плеера
-            // Они обрабатываются позже в секции плеера
-            return;
-        }
+        var k = e.keyCode, active = document.activeElement;
+        var po = getEl('playback-overlay'); var isPA = po && po.classList.contains('active'); if (isPA) return;
 
         if (AppState.currentScreen === 'torrents') {
-            if (isKeyPressed('UP', key) || isKeyPressed('DOWN', key) ||
-                isKeyPressed('LEFT', key) || isKeyPressed('RIGHT', key)) {
-                e.preventDefault();
-                if (!document.querySelector('.focused')) {
-                    focusFirstTorrentCard();
-                    return;
-                }
-                navigate(keyToDirection(key));
-                return;
-            }
-
-            if (isKeyPressed('OK', key) || key === 13) {
-                e.preventDefault();
-                if (e.repeat) {
-                    return;
-                }
-                var focused = document.querySelector('.focused');
-                if (!focused) {
-                    focusFirstTorrentCard();
-                    return;
-                }
-
-                if (focused.id === 'search-query') {
-                    if (typeof window.showSearchResults === 'function') {
-                        window.showSearchResults({ focusQuery: true });
-                    }
-                    return;
-                }
-                if (focused.id === 'search-btn' || focused.id === 'tab-search') {
-                    if (typeof window.showSearchResults === 'function') {
-                        window.showSearchResults({ focusQuery: true, runSearch: focused.id === 'search-btn' });
-                    }
-                    return;
-                }
-                if (focused.id === 'tab-catalog') {
-                    focused.click();
-                    return;
-                }
-                if (focused.id === 'settings-btn' || focused.id === 'tab-torrents') {
-                    focused.click();
-                    return;
-                }
-                if (focused.classList.contains('torrent-card')) {
-                    return;
-                }
-                if (focused.click) focused.click();
-                return;
-            }
+            if (['UP', 'DOWN', 'LEFT', 'RIGHT'].some(function (d) { return isKeyPressed(d, k); })) { e.preventDefault(); if (!document.querySelector('.focused')) { focusFirstTorrentCard(); return; } navigate(keyToDirection(k)); return; }
+            if (isKeyPressed('OK', k) || k === 13) { e.preventDefault(); if (e.repeat) return; var f = document.querySelector('.focused'); if (!f) { focusFirstTorrentCard(); return; } if (f.id === 'search-query') { if (typeof window.showSearchResults === 'function') window.showSearchResults({ focusQuery: true }); return; } if (f.id === 'search-btn' || f.id === 'tab-search') { if (typeof window.showSearchResults === 'function') window.showSearchResults({ focusQuery: true, runSearch: f.id === 'search-btn' }); return; } if (f.id === 'tab-catalog') { f.click(); return; } if (f.id === 'settings-btn' || f.id === 'tab-torrents') { f.click(); return; } if (f.classList.contains('torrent-card')) return; if (f.click) f.click(); return; }
             return;
         }
 
-        if (activeElement && activeElement.id === 'search-query') {
-            if (isKeyPressed('BACK', key) || isKeyPressed('EXIT', key)) {
-                e.preventDefault();
-                activeElement.blur();
-                updateFocusableElements();
-                var searchIndex = -1;
-                for (var i = 0; i < focusableElements.length; i++) {
-                    if (focusableElements[i].id === 'search-query') {
-                        searchIndex = i;
-                        break;
-                    }
-                }
-                setFocus(searchIndex !== -1 ? searchIndex : 0);
-                return;
-            }
-            if (isKeyPressed('DOWN', key) || isKeyPressed('UP', key) || isKeyPressed('LEFT', key) || isKeyPressed('RIGHT', key)) {
-                e.preventDefault();
-                var direction = keyToDirection(key);
-                activeElement.blur();
-                updateFocusableElements();
-
-                if (AppState.currentScreen === 'search') {
-                    if (direction === 'right') {
-                        var searchBtnIndex = -1;
-                        for (var j = 0; j < focusableElements.length; j++) {
-                            if (focusableElements[j].id === 'search-btn') {
-                                searchBtnIndex = j;
-                                break;
-                            }
-                        }
-                        setFocus(searchBtnIndex !== -1 ? searchBtnIndex : 0);
-                    } else {
-                        var firstFilterIndex = -1;
-                        var firstResultIndex = -1;
-                        for (var k = 0; k < focusableElements.length; k++) {
-                            var el = focusableElements[k];
-                            if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) {
-                                firstFilterIndex = k;
-                            }
-                            if (el.classList && el.classList.contains('search-result-item') && firstResultIndex === -1) {
-                                firstResultIndex = k;
-                            }
-                        }
-                        if (direction === 'down' && firstFilterIndex !== -1) {
-                            setFocus(firstFilterIndex);
-                        } else if (firstFilterIndex !== -1) {
-                            setFocus(firstFilterIndex);
-                        } else if (firstResultIndex !== -1) {
-                            setFocus(firstResultIndex);
-                        } else {
-                            setFocus(0);
-                        }
-                    }
-                    return;
-                }
-
-                navigate(direction);
-                return;
-            }
-            if (isKeyPressed('OK', key)) {
-                e.preventDefault();
-                var query = activeElement.value.trim();
-                if (AppState.currentScreen === 'search') {
-                    if (query && typeof window.searchTorrents === 'function') {
-                        window.searchTorrents(query);
-                    }
-                    activeElement.blur();
-                    setTimeout(function () { focusSearchHome(true); }, 100);
-                    return;
-                }
-                if (typeof window.showSearchResults === 'function') {
-                    window.showSearchResults({ focusQuery: true, runSearch: !!query });
-                }
-                activeElement.blur();
-                return;
-            }
+        if (active && active.id === 'search-query') {
+            if (isKeyPressed('BACK', k) || isKeyPressed('EXIT', k)) { e.preventDefault(); active.blur(); updateFocusableElements(); var si = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].id === 'search-query') { si = i; break; } setFocus(si !== -1 ? si : 0); return; }
+            if (['DOWN', 'UP', 'LEFT', 'RIGHT'].some(function (d) { return isKeyPressed(d, k); })) { e.preventDefault(); var dir = keyToDirection(k); active.blur(); updateFocusableElements(); if (AppState.currentScreen === 'search') { if (dir === 'right') { var sb = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].id === 'search-btn') { sb = i; break; } setFocus(sb !== -1 ? sb : 0); } else { var ff = -1, fr = -1; for (var i = 0; i < focusableElements.length; i++) { var el = focusableElements[i]; if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && ff === -1) ff = i; if (el.classList && el.classList.contains('search-result-item') && fr === -1) fr = i; } setFocus(dir === 'down' && ff !== -1 ? ff : (ff !== -1 ? ff : (fr !== -1 ? fr : 0))); } return; } navigate(dir); return; }
+            if (isKeyPressed('OK', k)) { e.preventDefault(); var q = active.value.trim(); if (AppState.currentScreen === 'search') { if (q && typeof window.searchTorrents === 'function') window.searchTorrents(q); active.blur(); setTimeout(function () { focusSearchHome(true); }, 100); return; } if (typeof window.showSearchResults === 'function') window.showSearchResults({ focusQuery: true, runSearch: !!q }); active.blur(); return; }
         }
 
         if (AppState.currentScreen === 'config') {
-            var isInputFocused = activeElement && (
-                activeElement.id === 'torrserver-url' ||
-                activeElement.id === 'auth-login' ||
-                activeElement.id === 'auth-password'
-            );
-
-            if (isInputFocused) {
-                if (isKeyPressed('OK', key)) {
-                    e.preventDefault();
-                    activeElement.blur();
-                    updateFocusableElements();
-                    var currentIndex = -1;
-                    for (var l = 0; l < focusableElements.length; l++) {
-                        if (focusableElements[l].id === activeElement.id) {
-                            currentIndex = l;
-                            break;
-                        }
-                    }
-                    if (currentIndex !== -1 && currentIndex < focusableElements.length - 1) {
-                        setFocus(currentIndex + 1);
-                    } else {
-                        setFocus(0);
-                    }
-                    return;
-                }
-                return;
-            }
-
+            var inp = active && (active.id === 'torrserver-url' || active.id === 'auth-login' || active.id === 'auth-password');
+            if (inp) { if (isKeyPressed('OK', k)) { e.preventDefault(); active.blur(); updateFocusableElements(); var ci = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].id === active.id) { ci = i; break; } setFocus(ci !== -1 && ci < focusableElements.length - 1 ? ci + 1 : 0); return; } return; }
             updateFocusableElements();
-
-            if (isKeyPressed('UP', key)) {
-                e.preventDefault();
-                setFocus(currentFocusIndex - 1);
-                return;
-            }
-            if (isKeyPressed('DOWN', key)) {
-                e.preventDefault();
-                setFocus(currentFocusIndex + 1);
-                return;
-            }
-            if (isKeyPressed('LEFT', key)) {
-                e.preventDefault();
-                setFocus(currentFocusIndex - 1);
-                return;
-            }
-            if (isKeyPressed('RIGHT', key)) {
-                e.preventDefault();
-                setFocus(currentFocusIndex + 1);
-                return;
-            }
-            if (isKeyPressed('OK', key)) {
-                e.preventDefault();
-                var focused = document.querySelector('.focused');
-                if (focused) {
-                    if (focused.id === 'torrserver-url' ||
-                        focused.id === 'auth-login' ||
-                        focused.id === 'auth-password') {
-                        focused.focus();
-                    } else {
-                        focused.click();
-                    }
-                }
-                return;
-            }
+            if (isKeyPressed('UP', k)) { e.preventDefault(); setFocus(currentFocusIndex - 1); return; }
+            if (isKeyPressed('DOWN', k)) { e.preventDefault(); setFocus(currentFocusIndex + 1); return; }
+            if (isKeyPressed('LEFT', k)) { e.preventDefault(); setFocus(currentFocusIndex - 1); return; }
+            if (isKeyPressed('RIGHT', k)) { e.preventDefault(); setFocus(currentFocusIndex + 1); return; }
+            if (isKeyPressed('OK', k)) { e.preventDefault(); var f = document.querySelector('.focused'); if (f) { if (f.id === 'torrserver-url' || f.id === 'auth-login' || f.id === 'auth-password') f.focus(); else f.click(); } return; }
         }
 
         if (AppState.currentScreen === 'search') {
-            var activeTag = e.target.tagName;
-            var isFilterControl = activeTag === 'SELECT' || e.target.id === 'filter-year';
-            if (isFilterControl && (isKeyPressed('UP', key) || isKeyPressed('DOWN', key) || isKeyPressed('LEFT', key) || isKeyPressed('RIGHT', key))) {
-                e.preventDefault();
-                if (document.activeElement && typeof document.activeElement.blur === 'function') {
-                    document.activeElement.blur();
-                }
-                updateFocusableElements();
-                var firstFilterIndex = -1;
-                for (var m = 0; m < focusableElements.length; m++) {
-                    if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(focusableElements[m].id) !== -1) {
-                        firstFilterIndex = m;
-                        break;
-                    }
-                }
-                if (firstFilterIndex !== -1) {
-                    setFocus(firstFilterIndex);
-                    if (keyToDirection(key) !== 'left') {
-                        navigate(keyToDirection(key));
-                    }
-                    return;
-                }
-            }
+            var tag = e.target.tagName; var isF = tag === 'SELECT' || e.target.id === 'filter-year';
+            if (isF && ['UP', 'DOWN', 'LEFT', 'RIGHT'].some(function (d) { return isKeyPressed(d, k); })) { e.preventDefault(); if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur(); updateFocusableElements(); var ff = -1; for (var i = 0; i < focusableElements.length; i++) if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(focusableElements[i].id) !== -1) { ff = i; break; } if (ff !== -1) { setFocus(ff); if (keyToDirection(k) !== 'left') navigate(keyToDirection(k)); } return; }
         }
 
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            return;
-        }
-
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
         updateFocusableElements();
 
-        // ===== СПЕЦИАЛЬНАЯ ОБРАБОТКА ДЛЯ ПЛЕЕРА =====
         if (AppState.currentScreen === 'player') {
-            var videoPlayer = document.getElementById('video-player');
-            var controlsContainer = document.getElementById('controls-container');
-            var controlsVisible = !controlsContainer.classList.contains('idle-hidden');
-
-            if (isKeyPressed('UP', key) && !controlsVisible) {
-                e.preventDefault();
-                showPlayerControls('play-pause-btn');
-                return;
-            }
-
-            if (isKeyPressed('OK', key)) {
-                e.preventDefault();
-
-                var focused = document.querySelector('.focused');
-
-                if (!controlsVisible) {
-                    showPlayerControls('play-pause-btn');
-                    return;
-                }
-
-                if (focused) {
-                    console.log('🎯 OK на элементе (панель видима):', focused.id || focused.className);
-
-                    var actionPerformed = false;
-
-                    if (focused.id === 'play-pause-btn') {
-                        if (videoPlayer.paused) {
-                            videoPlayer.play();
-                        } else {
-                            videoPlayer.pause();
-                        }
-                        if (typeof window.updatePlayPauseButton === 'function') window.updatePlayPauseButton();
-                        actionPerformed = true;
-                    } else if (focused.id === 'mute-btn') {
-                        videoPlayer.muted = !videoPlayer.muted;
-                        if (typeof window.updateMuteButton === 'function') window.updateMuteButton();
-                        actionPerformed = true;
-                    } else if (focused.id === 'prev-episode-btn') {
-                        if (typeof window.prevEpisode === 'function') window.prevEpisode();
-                        actionPerformed = true;
-                    } else if (focused.id === 'next-episode-btn') {
-                        if (typeof window.nextEpisode === 'function') window.nextEpisode();
-                        actionPerformed = true;
-                    } else if (focused.id === 'episodes-btn') {
-                        var episodesBtn = document.getElementById('episodes-btn');
-                        if (episodesBtn) episodesBtn.click();
-                        updateFocusableElements();
-                        focusActivePanelItem('episodes');  // Вызываем функцию для установки фокуса
-                        actionPerformed = false;
-                    } else if (focused.id === 'audio-btn') {
-                        var audioBtn = document.getElementById('audio-btn');
-                        if (audioBtn) audioBtn.click();
-                        updateFocusableElements();
-                        focusActivePanelItem('audio');  // Вызываем функцию для установки фокуса
-                        actionPerformed = false;
-                    } else if (focused.id === 'exit-player-btn') {
-                        if (typeof window.showDetailView === 'function') window.showDetailView();
-                        return;
-                    } else if (focused.id === 'toggle-buffer-btn') {
-                        var toggleBufferBtn = document.getElementById('toggle-buffer-btn');
-                        if (toggleBufferBtn) toggleBufferBtn.click();
-                        actionPerformed = true;
-                    } else if (focused.id === 'seek-slider') {
-                        var currentTime = parseFloat(focused.value);
-                        if (typeof window.showPlayerLoading === 'function') {
-                            window.showPlayerLoading('⏱️ ' + formatTime(currentTime));
-                            setTimeout(function () {
-                                if (typeof window.hidePlayerLoading === 'function') window.hidePlayerLoading();
-                            }, 1000);
-                        }
-                        actionPerformed = true;
-                    } else {
-                        focused.click();
-                        actionPerformed = true;
-                    }
-
-                    if (actionPerformed) {
-                        setTimeout(function () {
-                            hidePlayerControls();
-                            console.log('✅ Действие выполнено, панель скрыта, фокус сброшен');
-                        }, 400);
-                    }
-
-                    if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                    return;
-                }
-
-                if (controlsVisible) {
-                    hidePlayerControls();
-                }
-                return;
-            }
-
-            if (isKeyPressed('LEFT', key) || isKeyPressed('RIGHT', key)) {
-                // Проверяем, видна ли панель управления
-                var controlsContainer = document.getElementById('controls-container');
-                var controlsVisible = !controlsContainer.classList.contains('idle-hidden');
-
-                // Если панель скрыта, не обрабатываем перемотку (просто игнорируем)
-                if (!controlsVisible) {
-                    e.preventDefault(); // Предотвращаем стандартное поведение
-                    return;
-                }
-
-                e.preventDefault();
-                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-
-                var focusedElement = focusableElements[currentFocusIndex];
-                var isSeekSliderFocused = focusedElement && focusedElement.id === 'seek-slider';
-
-                if (isSeekSliderFocused) {
-                    var slider = document.getElementById('seek-slider');
-                    var direction = isKeyPressed('LEFT', key) ? -1 : 1;
-
-                    var holdDuration = 0;
-                    var currentStep = seekHoldStep;
-                    var maxStep = 120;
-                    var accelerationCurve = [
-                        { time: 0, step: 5 },
-                        { time: 500, step: 10 },
-                        { time: 1000, step: 20 },
-                        { time: 1500, step: 30 },
-                        { time: 2000, step: 45 },
-                        { time: 2500, step: 60 },
-                        { time: 3000, step: 90 },
-                        { time: 4000, step: 120 }
-                    ];
-
-                    var lastUpdateTime = Date.now();
-                    var accelerationTimer = null;
-
-                    var updateStepByDuration = function () {
-                        var elapsed = Date.now() - lastUpdateTime;
-
-                        var newStep = seekHoldStep;
-                        for (var idx = accelerationCurve.length - 1; idx >= 0; idx--) {
-                            if (elapsed >= accelerationCurve[idx].time) {
-                                newStep = accelerationCurve[idx].step;
-                                break;
-                            }
-                        }
-
-                        if (newStep !== currentStep) {
-                            currentStep = newStep;
-                            console.log('⚡ Ускорение перемотки: ' + currentStep + ' сек (удержание ' + (elapsed / 1000).toFixed(1) + 'с)');
-                        }
-                    };
-
-                    var performSeekStep = function () {
-                        var currentValue = parseFloat(slider.value);
-                        var maxVal = parseFloat(slider.max);
-                        var step = currentStep * direction;
-
-                        var newValue = currentValue + step;
-
-                        if (newValue < 0) newValue = 0;
-                        if (newValue > maxVal) newValue = maxVal;
-
-                        slider.value = newValue;
-
-                        if (typeof AppState !== 'undefined') {
-                            AppState.previewTime = newValue;
-                        }
-                        var currentTimeEl = document.getElementById('current-time');
-                        if (currentTimeEl) currentTimeEl.textContent = formatTime(newValue);
-
-                        if (AppState.isSeeking || document.getElementById('loading-player-overlay').classList.contains('active')) {
-                            var loadingTimeEl = document.getElementById('loading-time');
-                            if (loadingTimeEl) loadingTimeEl.textContent = formatTime(newValue);
-                        }
-                    };
-
-                    if (!seekHoldInterval) {
-                        isSeekHoldActive = true;
-                        holdDuration = 0;
-                        currentStep = seekHoldStep;
-                        lastUpdateTime = Date.now();
-
-                        performSeekStep();
-
-                        seekHoldInterval = setInterval(performSeekStep, seekHoldDelay);
-
-                        accelerationTimer = setInterval(function () {
-                            if (seekHoldInterval) {
-                                updateStepByDuration();
-                            } else {
-                                if (accelerationTimer) {
-                                    clearInterval(accelerationTimer);
-                                    accelerationTimer = null;
-                                }
-                            }
-                        }, 200);
-                    }
-                    return;
-                } else {
-                    navigate(keyToDirection(key));
-                    return;
-                }
-            }
-
-            if (controlsVisible) {
-                updateFocusableElements();
-
-                if (isKeyPressed('UP', key)) {
-                    e.preventDefault();
-                    navigate('up');
-                    if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                    return;
-                }
-                if (isKeyPressed('DOWN', key)) {
-                    e.preventDefault();
-                    navigate('down');
-                    if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                    return;
-                }
-            }
-
-            if (isKeyPressed('PLAY', key) || isKeyPressed('PAUSE', key) || isKeyPressed('PLAY_PAUSE', key)) {
-                e.preventDefault();
-                if (videoPlayer.paused) {
-                    videoPlayer.play();
-                } else {
-                    videoPlayer.pause();
-                }
-                if (typeof window.updatePlayPauseButton === 'function') window.updatePlayPauseButton();
-                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                return;
-            }
-
-            if (isKeyPressed('VOL_UP', key)) {
-                e.preventDefault();
-                var newVolume = Math.min(1, videoPlayer.volume + 0.1);
-                videoPlayer.volume = newVolume;
-                var volumeSlider = document.getElementById('volume-slider');
-                if (volumeSlider) volumeSlider.value = newVolume;
-                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                return;
-            }
-            if (isKeyPressed('VOL_DOWN', key)) {
-                e.preventDefault();
-                var newVolume = Math.max(0, videoPlayer.volume - 0.1);
-                videoPlayer.volume = newVolume;
-                var volumeSlider = document.getElementById('volume-slider');
-                if (volumeSlider) volumeSlider.value = newVolume;
-                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                return;
-            }
-            if (isKeyPressed('MUTE', key)) {
-                e.preventDefault();
-                videoPlayer.muted = !videoPlayer.muted;
-                if (typeof window.updateMuteButton === 'function') window.updateMuteButton();
-                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                return;
-            }
-
-            if (isKeyPressed('RED', key)) {
-                e.preventDefault();
-                var audioBtn = document.getElementById('audio-btn');
-                if (audioBtn) audioBtn.click();
-                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                return;
-            }
-            if (isKeyPressed('GREEN', key)) {
-                e.preventDefault();
-                var episodesBtn = document.getElementById('episodes-btn');
-                if (episodesBtn) episodesBtn.click();
-                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                return;
-            }
-            if (isKeyPressed('YELLOW', key)) {
-                e.preventDefault();
-                var toggleBufferBtn = document.getElementById('toggle-buffer-btn');
-                if (toggleBufferBtn) toggleBufferBtn.click();
-                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                return;
-            }
-            if (isKeyPressed('BLUE', key)) {
-                e.preventDefault();
-                var exitPlayerBtn = document.getElementById('exit-player-btn');
-                if (exitPlayerBtn) exitPlayerBtn.click();
-                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                return;
-            }
-
-            if (isKeyPressed('BACK', key) || isKeyPressed('EXIT', key)) {
-                e.preventDefault();
-                if (hidePlayerUi()) {
-                    lastPlayerBackPressAt = 0;
-                    return;
-                }
-                var now = Date.now();
-                if (now - lastPlayerBackPressAt < 1500) {
-                    lastPlayerBackPressAt = 0;
-                    if (typeof window.showDetailView === 'function') window.showDetailView();
-                } else {
-                    lastPlayerBackPressAt = now;
-                    if (typeof window.showPlayerHint === 'function') window.showPlayerHint('Нажмите Back ещё раз для выхода');
-                }
-                return;
-            }
-
-            if (isKeyPressed('FF', key)) {
-                e.preventDefault();
-                videoPlayer.currentTime = Math.min(videoPlayer.duration, videoPlayer.currentTime + 30);
-                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                return;
-            }
-            if (isKeyPressed('REW', key)) {
-                e.preventDefault();
-                videoPlayer.currentTime = Math.max(0, videoPlayer.currentTime - 30);
-                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                return;
-            }
-
-            if (!controlsVisible) {
-                return;
-            }
+            var vp = getEl('video-player'), cc = getEl('controls-container'), cv = !cc.classList.contains('idle-hidden');
+            if (isKeyPressed('UP', k) && !cv) { e.preventDefault(); showPlayerControls('play-pause-btn'); return; }
+            if (isKeyPressed('OK', k)) { e.preventDefault(); var f = document.querySelector('.focused'); if (!cv) { showPlayerControls('play-pause-btn'); return; } if (f) { var done = false; if (f.id === 'play-pause-btn') { vp.paused ? vp.play() : vp.pause(); if (typeof window.updatePlayPauseButton === 'function') window.updatePlayPauseButton(); done = true; } else if (f.id === 'mute-btn') { vp.muted = !vp.muted; if (typeof window.updateMuteButton === 'function') window.updateMuteButton(); done = true; } else if (f.id === 'prev-episode-btn') { if (typeof window.prevEpisode === 'function') window.prevEpisode(); done = true; } else if (f.id === 'next-episode-btn') { if (typeof window.nextEpisode === 'function') window.nextEpisode(); done = true; } else if (f.id === 'episodes-btn') { var eb = getEl('episodes-btn'); if (eb) eb.click(); updateFocusableElements(); focusActivePanelItem('episodes'); } else if (f.id === 'audio-btn') { var ab = getEl('audio-btn'); if (ab) ab.click(); updateFocusableElements(); focusActivePanelItem('audio'); } else if (f.id === 'exit-player-btn') { if (typeof window.showDetailView === 'function') window.showDetailView(); return; } else if (f.id === 'toggle-buffer-btn') { var tb = getEl('toggle-buffer-btn'); if (tb) tb.click(); done = true; } else if (f.id === 'seek-slider') { var t = parseFloat(f.value); if (typeof window.showPlayerLoading === 'function') window.showPlayerLoading('⏱️ ' + formatTime(t)); setTimeout(function () { if (typeof window.hidePlayerLoading === 'function') window.hidePlayerLoading(); }, 1000); done = true; } else { f.click(); done = true; } if (done) setTimeout(function () { hidePlayerControls(); }, 400); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; } if (cv) hidePlayerControls(); return; }
+            if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) { var cc = getEl('controls-container'); if (cc.classList.contains('idle-hidden')) { e.preventDefault(); return; } e.preventDefault(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); var fe = focusableElements[currentFocusIndex]; if (fe && fe.id === 'seek-slider') { var s = getEl('seek-slider'), dir = isKeyPressed('LEFT', k) ? -1 : 1, hd = 0, cs = seekHoldStep, ms = 120, ac = [{ t: 0, s: 5 }, { t: 500, s: 10 }, { t: 1000, s: 20 }, { t: 1500, s: 30 }, { t: 2000, s: 45 }, { t: 2500, s: 60 }, { t: 3000, s: 90 }, { t: 4000, s: 120 }], lu = Date.now(), at = null, us = function () { var el = Date.now() - lu, ns = seekHoldStep; for (var i = ac.length - 1; i >= 0; i--) if (el >= ac[i].t) { ns = ac[i].s; break; } if (ns !== cs) { cs = ns; console.log('⚡ Ускорение перемотки: ' + cs + ' сек'); } }, ps = function () { var cv = parseFloat(s.value), mx = parseFloat(s.max), st = cs * dir, nv = cv + st; if (nv < 0) nv = 0; if (nv > mx) nv = mx; s.value = nv; if (typeof AppState !== 'undefined') AppState.previewTime = nv; var ct = getEl('current-time'); if (ct) ct.textContent = formatTime(nv); if (AppState.isSeeking || getEl('loading-player-overlay').classList.contains('active')) { var lt = getEl('loading-time'); if (lt) lt.textContent = formatTime(nv); } }; if (!seekHoldInterval) { isSeekHoldActive = true; hd = 0; cs = seekHoldStep; lu = Date.now(); ps(); seekHoldInterval = setInterval(ps, seekHoldDelay); at = setInterval(function () { if (seekHoldInterval) us(); else if (at) { clearInterval(at); at = null; } }, 200); } return; } else { navigate(keyToDirection(k)); return; } }
+            if (cv) { updateFocusableElements(); if (isKeyPressed('UP', k)) { e.preventDefault(); navigate('up'); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; } if (isKeyPressed('DOWN', k)) { e.preventDefault(); navigate('down'); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; } }
+            if (isKeyPressed('PLAY', k) || isKeyPressed('PAUSE', k) || isKeyPressed('PLAY_PAUSE', k)) { e.preventDefault(); vp.paused ? vp.play() : vp.pause(); if (typeof window.updatePlayPauseButton === 'function') window.updatePlayPauseButton(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('VOL_UP', k)) { e.preventDefault(); vp.volume = Math.min(1, vp.volume + 0.1); var vs = getEl('volume-slider'); if (vs) vs.value = vp.volume; if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('VOL_DOWN', k)) { e.preventDefault(); vp.volume = Math.max(0, vp.volume - 0.1); var vs = getEl('volume-slider'); if (vs) vs.value = vp.volume; if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('MUTE', k)) { e.preventDefault(); vp.muted = !vp.muted; if (typeof window.updateMuteButton === 'function') window.updateMuteButton(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('RED', k)) { e.preventDefault(); var ab = getEl('audio-btn'); if (ab) ab.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('GREEN', k)) { e.preventDefault(); var eb = getEl('episodes-btn'); if (eb) eb.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('YELLOW', k)) { e.preventDefault(); var tb = getEl('toggle-buffer-btn'); if (tb) tb.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('BLUE', k)) { e.preventDefault(); var eb = getEl('exit-player-btn'); if (eb) eb.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('BACK', k) || isKeyPressed('EXIT', k)) { e.preventDefault(); if (hidePlayerUi()) { lastPlayerBackPressAt = 0; return; } var now = Date.now(); if (now - lastPlayerBackPressAt < 1500) { lastPlayerBackPressAt = 0; if (typeof window.showDetailView === 'function') window.showDetailView(); } else { lastPlayerBackPressAt = now; if (typeof window.showPlayerHint === 'function') window.showPlayerHint('Нажмите Back ещё раз для выхода'); } return; }
+            if (isKeyPressed('FF', k)) { e.preventDefault(); vp.currentTime = Math.min(vp.duration, vp.currentTime + 30); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('REW', k)) { e.preventDefault(); vp.currentTime = Math.max(0, vp.currentTime - 30); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (!cv) return;
         }
 
-        if (AppState.currentScreen === 'search' && isKeyPressed('OK', key)) {
-            e.preventDefault();
-            var focused = document.querySelector('.focused');
+        if (AppState.currentScreen === 'search' && isKeyPressed('OK', k)) { e.preventDefault(); var f = document.querySelector('.focused'); if (f) { if (f.id === 'search-query') { f.focus(); try { if (f.select) f.select(); } catch (e) { } } else if (f.tagName === 'SELECT' || f.id === 'filter-year') { if (typeof window.openNativeSearchControl === 'function') window.openNativeSearchControl(f); else { f.focus(); f.click(); } } else if (f.id === 'search-btn') { var q = getEl('search-query'); var qt = q ? q.value.trim() : ''; if (qt && typeof window.searchTorrents === 'function') window.searchTorrents(qt); } else f.click(); } else focusSearchHome(true); return; }
 
-            if (focused) {
-                if (focused.id === 'search-query') {
-                    focused.focus();
-                    try { if (focused.select) focused.select(); } catch (err) { }
-                } else if (focused.tagName === 'SELECT' || focused.id === 'filter-year') {
-                    if (typeof window.openNativeSearchControl === 'function') {
-                        window.openNativeSearchControl(focused);
-                    } else {
-                        focused.focus();
-                        focused.click();
-                    }
-                } else if (focused.id === 'search-btn') {
-                    var query = document.getElementById('search-query');
-                    var q = query ? query.value.trim() : '';
-                    if (q && typeof window.searchTorrents === 'function') {
-                        window.searchTorrents(q);
-                    }
-                } else {
-                    focused.click();
-                }
-            } else {
-                focusSearchHome(true);
-            }
-            return;
-        }
-
-        if (isKeyPressed('UP', key)) {
-            e.preventDefault();
-            navigate('up');
-        } else if (isKeyPressed('DOWN', key)) {
-            e.preventDefault();
-            navigate('down');
-        } else if (isKeyPressed('LEFT', key)) {
-            e.preventDefault();
-            navigate('left');
-        } else if (isKeyPressed('RIGHT', key)) {
-            e.preventDefault();
-            navigate('right');
-        } else if (isKeyPressed('OK', key)) {
-            e.preventDefault();
-
-            var focused = document.querySelector('.focused');
-            if (focused) {
-                if (focused.classList.contains('file-item')) {
-                    var playBtn = focused.querySelector('.play-btn');
-                    if (playBtn) {
-                        playBtn.click();
-                    } else {
-                        focused.click();
-                    }
-                } else {
-                    focused.click();
-                }
-            } else if (focusableElements.length > 0) {
-                focusableElements[0].click();
-            }
-        } else if (isKeyPressed('BACK', key) || isKeyPressed('EXIT', key)) {
-            e.preventDefault();
-            e.stopPropagation();
-    
-            // Защита от двойного срабатывания
-            var now = Date.now();
-            if (now - lastBackPressTime < 300) {
-                // Слишком быстро - игнорируем
-                console.log('Back pressed ignored (double)');
-                return;
-            }
-            lastBackPressTime = now;
-    
-            // Предотвращаем повторную обработку
-            if (lastBackPressHandled) {
-                return;
-            }
-            lastBackPressHandled = true;
-            setTimeout(function() {
-                lastBackPressHandled = false;
-            }, 200);
-            
-            if (AppState.currentScreen === 'detail') {
-                var backBtn = document.getElementById('back-from-detail');
-                if (backBtn) backBtn.click();
-            } else if (AppState.currentScreen === 'search') {
-                if (typeof window.hideSearchResults === 'function') {
-                    window.hideSearchResults();
-                }
-            } else if (AppState.currentScreen === 'catalog') {
-                if (typeof window.backToCatalogList === 'function') {
-                    window.backToCatalogList();
-                } else {
-                    var backFromCatalog = document.getElementById('back-from-catalog');
-                    if (backFromCatalog) backFromCatalog.click();
-                }
-            } else if (AppState.currentScreen === 'torrents') {
-                var hasFocus = !!document.querySelector('.focused');
-                if (!hasFocus) {
-                    focusFirstTorrentCard();
-                } else {
-                    var settingsBtn = document.getElementById('settings-btn');
-                    if (settingsBtn) settingsBtn.click();
-                }
-            }
-        } else if (isKeyPressed('INFO', key)) {
-            e.preventDefault();
-            console.log('ℹ️ Информация:', {
-                screen: AppState.currentScreen,
-                platform: AppState.platform,
-                focusIndex: currentFocusIndex,
-                focusableCount: focusableElements.length
-            });
-        }
+        if (isKeyPressed('UP', k)) { e.preventDefault(); navigate('up'); } else if (isKeyPressed('DOWN', k)) { e.preventDefault(); navigate('down'); } else if (isKeyPressed('LEFT', k)) { e.preventDefault(); navigate('left'); } else if (isKeyPressed('RIGHT', k)) { e.preventDefault(); navigate('right'); } else if (isKeyPressed('OK', k)) { e.preventDefault(); var f = document.querySelector('.focused'); if (f) { if (f.classList.contains('file-item')) { var pb = f.querySelector('.play-btn'); if (pb) pb.click(); else f.click(); } else f.click(); } else if (focusableElements.length > 0) focusableElements[0].click(); } else if (isKeyPressed('BACK', k) || isKeyPressed('EXIT', k)) { e.preventDefault(); e.stopPropagation(); var now = Date.now(); if (now - lastBackPressTime < 300) return; lastBackPressTime = now; if (lastBackPressHandled) return; lastBackPressHandled = true; setTimeout(function () { lastBackPressHandled = false; }, 200); if (AppState.currentScreen === 'detail') { var b = getEl('back-from-detail'); if (b) b.click(); } else if (AppState.currentScreen === 'search') { if (typeof window.hideSearchResults === 'function') window.hideSearchResults(); } else if (AppState.currentScreen === 'catalog') { if (typeof window.backToCatalogList === 'function') window.backToCatalogList(); else { var b = getEl('back-from-catalog'); if (b) b.click(); } } else if (AppState.currentScreen === 'torrents') { var h = !!document.querySelector('.focused'); if (!h) focusFirstTorrentCard(); else { var s = getEl('settings-btn'); if (s) s.click(); } } } else if (isKeyPressed('INFO', k)) { e.preventDefault(); console.log('ℹ️ Информация:', { screen: AppState.currentScreen, platform: AppState.platform, focusIndex: currentFocusIndex, focusableCount: focusableElements.length }); }
     });
 }
 
-// ==================== ФУНКЦИИ ДЛЯ LONG PRESS УДАЛЕНИЯ ====================
+// ==================== LONG PRESS & FOCUS RESCUE ====================
+function clearOkHold() { if (okHoldTimer) { clearTimeout(okHoldTimer); okHoldTimer = null; } }
 
-function clearOkHold() {
-    if (okHoldTimer) {
-        clearTimeout(okHoldTimer);
-        okHoldTimer = null;
-    }
-}
-
-// Функция для проверки, виден ли элемент полностью
 function isElementFullyVisible(el, container) {
-    if (!el) return true;
-    if (!container) return true;
-
-    var rect = el.getBoundingClientRect();
-    var containerRect = container.getBoundingClientRect();
-
-    // Определяем тип контейнера по ID
-    var isHorizontalContainer = container && (
-        container.id === 'catalog-detail-actors' ||
-        container.id === 'catalog-detail-recommendations' ||
-        container.id === 'catalog-detail-trailers' ||
-        container.id === 'files-list'
-    );
-
-    if (isHorizontalContainer) {
-        // Для горизонтальных контейнеров проверяем ТОЛЬКО горизонтальную видимость
-        var horizontalPadding = 30;
-        var isHorizontallyVisible = rect.left >= containerRect.left + horizontalPadding &&
-            rect.right <= containerRect.right - horizontalPadding;
-        return isHorizontallyVisible;
-    }
-
-    // Для обычных контейнеров проверяем оба направления
-    var isVerticallyVisible = rect.top >= containerRect.top + 20 &&
-        rect.bottom <= containerRect.bottom - 20;
-    var isHorizontallyVisible = rect.left >= containerRect.left + 20 &&
-        rect.right <= containerRect.right - 20;
-
-    return isVerticallyVisible && isHorizontallyVisible;
+    if (!el || !container) return true;
+    var r = el.getBoundingClientRect(), cr = container.getBoundingClientRect();
+    var isH = container.id === 'catalog-detail-actors' || container.id === 'catalog-detail-recommendations' || container.id === 'catalog-detail-trailers' || container.id === 'files-list';
+    if (isH) { var hp = 30; return r.left >= cr.left + hp && r.right <= cr.right - hp; }
+    return r.top >= cr.top + 20 && r.bottom <= cr.bottom - 20 && r.left >= cr.left + 20 && r.right <= cr.right - 20;
 }
 
-// Функция для плавного скролла только если элемент не виден
-function scrollToElementIfNeeded(el, container, useSmooth) {
-    if (useSmooth === undefined) useSmooth = !fastNavigation;
-    if (!el) return;
-    if (!container) return;
-
-    var rect = el.getBoundingClientRect();
-    var containerRect = container.getBoundingClientRect();
-
-    // Определяем тип контейнера по ID
-    var isHorizontalContainer = container && (
-        container.id === 'catalog-detail-actors' ||
-        container.id === 'catalog-detail-recommendations' ||
-        container.id === 'catalog-detail-trailers' ||
-        container.id === 'files-list'
-    );
-
-    if (isHorizontalContainer) {
-        // ТОЛЬКО горизонтальный скролл для этих контейнеров
-        var elementLeft = rect.left - containerRect.left;
-        var newScrollLeft = container.scrollLeft + elementLeft - (containerRect.width / 2) + (rect.width / 2);
-
-        if (useSmooth) {
-            container.scrollTo({
-                left: Math.max(0, newScrollLeft),
-                behavior: 'smooth'
-            });
-        } else {
-            container.scrollLeft = Math.max(0, newScrollLeft);
-        }
-        return;
-    }
-
-    // Для обычных контейнеров
-    var needsScroll = false;
-    var scrollOptions = {
-        behavior: useSmooth ? 'smooth' : 'auto',
-        block: 'nearest',
-        inline: 'center'
-    };
-
-    // Проверяем вертикальную видимость
-    if (rect.top < containerRect.top + 50 || rect.bottom > containerRect.bottom - 50) {
-        needsScroll = true;
-        scrollOptions.block = 'center';
-    }
-
-    // Проверяем горизонтальную видимость
-    if (rect.left < containerRect.left + 30 || rect.right > containerRect.right - 30) {
-        needsScroll = true;
-        scrollOptions.inline = 'center';
-    }
-
-    if (needsScroll) {
-        try {
-            el.scrollIntoView(scrollOptions);
-        } catch (e) {
-            try { el.scrollIntoView(false); } catch (er) { }
-        }
-    }
+function scrollToElementIfNeeded(el, container, smooth) {
+    if (smooth === undefined) smooth = !fastNavigation;
+    if (!el || !container) return;
+    var r = el.getBoundingClientRect(), cr = container.getBoundingClientRect();
+    var isH = container.id === 'catalog-detail-actors' || container.id === 'catalog-detail-recommendations' || container.id === 'catalog-detail-trailers' || container.id === 'files-list';
+    if (isH) { var nl = container.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2); if (smooth) container.scrollTo({ left: Math.max(0, nl), behavior: 'smooth' }); else container.scrollLeft = Math.max(0, nl); return; }
+    var ns = false, so = { behavior: smooth ? 'smooth' : 'auto', block: 'nearest', inline: 'center' };
+    if (r.top < cr.top + 50 || r.bottom > cr.bottom - 50) { ns = true; so.block = 'center'; }
+    if (r.left < cr.left + 30 || r.right > cr.right - 30) { ns = true; so.inline = 'center'; }
+    if (ns) { try { el.scrollIntoView(so); } catch (e) { try { el.scrollIntoView(false); } catch (er) { } } }
 }
 
-// ==================== TV FOCUS RESCUE ====================
-
+// ==================== TV FOCUS RESCUE (Оптимизировано) ====================
 function setupFocusRescue() {
     var VISIBLE = function (el) { return !!(el && el.offsetParent !== null && !el.disabled); };
-    var byId = function (id) { return document.getElementById(id); };
-    var clearFocused = function () {
-        var focused = document.querySelectorAll('.focused');
-        for (var i = 0; i < focused.length; i++) {
-            var el = focused[i];
-            // Останавливаем все анимации GSAP на элементе
-            if (typeof gsap !== 'undefined') {
-                gsap.killTweensOf(el);
-            }
-            // Очищаем inline styles
-            el.style.boxShadow = '';
-            el.style.transform = '';
-            el.style.scale = '';
-            el.style.translate = '';
-            el.classList.remove('focused');
-        }
-    };
+    var byId = function (id) { return getEl(id); };
+    var clearFocused = function () { var f = document.querySelectorAll('.focused'); for (var i = 0; i < f.length; i++) { if (typeof gsap !== 'undefined') gsap.killTweensOf(f[i]); f[i].style.boxShadow = ''; f[i].style.transform = ''; f[i].style.scale = ''; f[i].style.translate = ''; f[i].classList.remove('focused'); } };
     var clickEl = function (el) { try { if (el && el.click) el.click(); } catch (e) { } };
-    var blurEditor = function () {
-        var a = document.activeElement;
-        if (a && a !== document.body && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA')) {
-            try { a.blur(); } catch (e) { }
-        }
-    };
+    var blurEditor = function () { var a = document.activeElement; if (a && a !== document.body && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA')) try { a.blur(); } catch (e) { } };
 
     function focusEl(el, opts) {
-        if (opts === undefined) opts = {};
-        if (!VISIBLE(el)) return false;
-        clearFocused();
-        el.classList.add('focused');
-        if (typeof Animations !== 'undefined') {
-            Animations.animateFocus(el);
-        }
-        if (opts.nativeFocus) {
-            try { el.focus(); } catch (e) { }
-        } else {
-            blurEditor();
-        }
-
-        // Определяем контейнер в зависимости от экрана и типа элемента
-        var container = null;
-        var screen = currentScreen();
-
-        // Определяем тип элемента для правильного контейнера
-        var isFileItem = el.classList && el.classList.contains('file-item');
-        var isActorCard = el.classList && el.classList.contains('catalog-actor-card');
-        var isRecommendationCard = el.classList && el.classList.contains('catalog-recommendation-card');
-        var isTrailerCard = el.classList && el.classList.contains('catalog-trailer-card-item');
-
-        if (screen === 'catalog' || screen === 'torrents') {
-            container = document.getElementById('main-container');
-        } else if (screen === 'search') {
-            container = document.getElementById('search-results');
-        } else if (screen === 'detail') {
-            if (isFileItem) {
-                // Для горизонтальных файлов используем files-list
-                container = document.getElementById('files-list');
-            }
-            else if (isActorCard) {
-                // Для актеров используем catalog-detail-actors-grid
-                container = document.getElementById('catalog-detail-actors');
-                // Если внутри грида, ищем родительский контейнер
-                if (container && container.parentElement) {
-                    container = container.parentElement;
-                }
-            }
-            else if (isRecommendationCard) {
-                // Для рекомендаций используем catalog-detail-recommendations
-                container = document.getElementById('catalog-detail-recommendations');
-                if (container && container.parentElement) {
-                    container = container.parentElement;
-                }
-            }
-            else if (isTrailerCard) {
-                // Для трейлеров используем catalog-detail-trailers
-                container = document.getElementById('catalog-detail-trailers');
-            }
-            else {
-                container = document.getElementById('detail-view');
-            }
-        }
-
-        // Скроллим только если элемент не виден
-        if (!isElementFullyVisible(el, container)) {
-            scrollToElementIfNeeded(el, container, !fastNavigation);
-        }
-
+        if (opts === undefined) opts = {}; if (!VISIBLE(el)) return false;
+        clearFocused(); el.classList.add('focused');
+        if (typeof Animations !== 'undefined') Animations.animateFocus(el);
+        if (opts.nativeFocus) try { el.focus(); } catch (e) { } else blurEditor();
+        var container = null, s = AppState.currentScreen;
+        var isFI = el.classList && el.classList.contains('file-item'), isAC = el.classList && el.classList.contains('catalog-actor-card'), isRC = el.classList && el.classList.contains('catalog-recommendation-card'), isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
+        if (s === 'catalog' || s === 'torrents') container = getEl('main-container');
+        else if (s === 'search') container = getEl('search-results');
+        else if (s === 'detail') { if (isFI) container = getEl('files-list'); else if (isAC) { container = getEl('catalog-detail-actors'); if (container && container.parentElement) container = container.parentElement; } else if (isRC) { container = getEl('catalog-detail-recommendations'); if (container && container.parentElement) container = container.parentElement; } else if (isTC) container = getEl('catalog-detail-trailers'); else container = getEl('detail-view'); }
+        if (!isElementFullyVisible(el, container)) scrollToElementIfNeeded(el, container, !fastNavigation);
         return true;
     }
 
     var customFilterMenuState = null;
-
-    function ensureCustomFilterMenu() {
-        var menu = document.getElementById('custom-filter-menu');
-        if (menu) return menu;
-
-        menu = document.createElement('div');
-        menu.id = 'custom-filter-menu';
-        menu.className = 'custom-filter-menu hidden';
-        menu.innerHTML = '\n            <div class="custom-filter-menu-backdrop"></div>\n            <div class="custom-filter-menu-panel">\n                <div class="custom-filter-menu-title" id="custom-filter-menu-title">Выбор</div>\n                <div class="custom-filter-menu-options" id="custom-filter-menu-options"></div>\n            </div>\n        ';
-        document.body.appendChild(menu);
-        var backdrop = menu.querySelector('.custom-filter-menu-backdrop');
-        if (backdrop) backdrop.addEventListener('click', closeCustomFilterMenu);
-        return menu;
-    }
+    function ensureCustomFilterMenu() { var m = getEl('custom-filter-menu'); if (m) return m; m = document.createElement('div'); m.id = 'custom-filter-menu'; m.className = 'custom-filter-menu hidden'; m.innerHTML = '<div class="custom-filter-menu-backdrop"></div><div class="custom-filter-menu-panel"><div class="custom-filter-menu-title" id="custom-filter-menu-title">Выбор</div><div class="custom-filter-menu-options" id="custom-filter-menu-options"></div></div>'; document.body.appendChild(m); var bd = m.querySelector('.custom-filter-menu-backdrop'); if (bd) bd.addEventListener('click', closeCustomFilterMenu); return m; }
 
     function renderCustomFilterMenu() {
-        var menu = ensureCustomFilterMenu();
-        var titleEl = document.getElementById('custom-filter-menu-title');
-        var optionsEl = document.getElementById('custom-filter-menu-options');
-        if (!customFilterMenuState || !titleEl || !optionsEl) return;
-
-        titleEl.textContent = customFilterMenuState.title || 'Выбор';
-        var optionsHtml = '';
-        for (var i = 0; i < customFilterMenuState.options.length; i++) {
-            var opt = customFilterMenuState.options[i];
-            var cls = (i === customFilterMenuState.index) ? 'custom-filter-option active' : 'custom-filter-option';
-            var selected = (String(opt.value) === String(customFilterMenuState.value)) ? ' ✓' : '';
-            optionsHtml += '<div class="' + cls + '" data-index="' + i + '">' + opt.label + selected + '</div>';
+        var m = ensureCustomFilterMenu(), te = getEl('custom-filter-menu-title'), oe = getEl('custom-filter-menu-options');
+        if (!customFilterMenuState || !te || !oe) return;
+        te.textContent = customFilterMenuState.title || 'Выбор';
+        var html = [], opts = customFilterMenuState.options;
+        for (var i = 0; i < opts.length; i++) {
+            var o = opts[i], cls = (i === customFilterMenuState.index) ? 'custom-filter-option active' : 'custom-filter-option', sel = (String(o.value) === String(customFilterMenuState.value)) ? ' ✓' : '';
+            html.push('<div class="' + cls + '" data-index="' + i + '">' + o.label + sel + '</div>');
         }
-        optionsEl.innerHTML = optionsHtml;
-
-        // Скроллим к активному элементу после рендера
+        oe.innerHTML = html.join('');
         setTimeout(scrollToActiveFilterOption, 10);
     }
 
-    function closeCustomFilterMenu() {
-        var menu = document.getElementById('custom-filter-menu');
-        if (menu) menu.classList.add('hidden');
-        customFilterMenuState = null;
-        return true;
-    }
-
-    // Функция для скролла к активному элементу в меню фильтров
-    function scrollToActiveFilterOption() {
-        var activeOption = document.querySelector('.custom-filter-option.active');
-        var optionsContainer = document.getElementById('custom-filter-menu-options');
-
-        if (!activeOption || !optionsContainer) return;
-
-        // Получаем позиции элемента и контейнера
-        var containerRect = optionsContainer.getBoundingClientRect();
-        var optionRect = activeOption.getBoundingClientRect();
-
-        // Вычисляем смещение для скролла
-        var scrollTop = optionsContainer.scrollTop;
-        var offsetTop = optionRect.top - containerRect.top;
-
-        // Если элемент выше видимой области
-        if (offsetTop < 0) {
-            optionsContainer.scrollTop = scrollTop + offsetTop - 10; // 10px отступа сверху
-        }
-        // Если элемент ниже видимой области
-        else if (offsetTop + optionRect.height > containerRect.height) {
-            optionsContainer.scrollTop = scrollTop + (offsetTop + optionRect.height - containerRect.height) + 10; // 10px отступа снизу
-        }
-    }
-
-    function moveCustomFilterMenu(delta) {
-        if (!customFilterMenuState || !customFilterMenuState.options.length) return true;
-        var len = customFilterMenuState.options.length;
-        var newIndex = customFilterMenuState.index + delta;
-
-        // Проверяем границы - не позволяем выходить за пределы
-        if (newIndex < 0) {
-            // Если на первом элементе и пытаемся вверх - остаемся на месте
-            return true;
-        }
-        if (newIndex >= len) {
-            // Если на последнем элементе и пытаемся вниз - остаемся на месте
-            return true;
-        }
-
-        // Обновляем индекс только если не вышли за границы
-        customFilterMenuState.index = newIndex;
-        renderCustomFilterMenu();
-
-        // Скроллим к активному элементу после обновления
-        setTimeout(scrollToActiveFilterOption, 10);
-
-        return true;
-    }
-
-    function applyCustomFilterMenuSelection() {
-        if (!customFilterMenuState || !customFilterMenuState.selectEl) return false;
-        var selectEl = customFilterMenuState.selectEl;
-        var options = customFilterMenuState.options;
-        var index = customFilterMenuState.index;
-        var chosen = options[index];
-        if (!chosen) return false;
-        selectEl.value = String(chosen.value);
-        try {
-            var event = document.createEvent('Event');
-            event.initEvent('change', true, true);
-            selectEl.dispatchEvent(event);
-        } catch (e) { }
-        if (typeof window.getCurrentSearchMode === 'function') window.getCurrentSearchMode();
-        closeCustomFilterMenu();
-        try { focusEl(selectEl); } catch (e) { }
-        return true;
-    }
-
-    function isCustomFilterMenuOpen() {
-        var menu = document.getElementById('custom-filter-menu');
-        return !!(menu && !menu.classList.contains('hidden') && customFilterMenuState);
-    }
-
+    function closeCustomFilterMenu() { var m = getEl('custom-filter-menu'); if (m) m.classList.add('hidden'); customFilterMenuState = null; return true; }
+    function scrollToActiveFilterOption() { var ao = document.querySelector('.custom-filter-option.active'), oc = getEl('custom-filter-menu-options'); if (!ao || !oc) return; var cr = oc.getBoundingClientRect(), or = ao.getBoundingClientRect(), st = oc.scrollTop, ot = or.top - cr.top; if (ot < 0) oc.scrollTop = st + ot - 10; else if (ot + or.height > cr.height) oc.scrollTop = st + (ot + or.height - cr.height) + 10; }
+    function moveCustomFilterMenu(d) { if (!customFilterMenuState || !customFilterMenuState.options.length) return true; var l = customFilterMenuState.options.length, n = customFilterMenuState.index + d; if (n < 0 || n >= l) return true; customFilterMenuState.index = n; renderCustomFilterMenu(); setTimeout(scrollToActiveFilterOption, 10); return true; }
+    function applyCustomFilterMenuSelection() { if (!customFilterMenuState || !customFilterMenuState.selectEl) return false; var s = customFilterMenuState.selectEl, o = customFilterMenuState.options, i = customFilterMenuState.index, c = o[i]; if (!c) return false; s.value = String(c.value); try { var e = document.createEvent('Event'); e.initEvent('change', true, true); s.dispatchEvent(e); } catch (e) { } if (typeof window.getCurrentSearchMode === 'function') window.getCurrentSearchMode(); closeCustomFilterMenu(); try { focusEl(s); } catch (e) { } return true; }
+    function isCustomFilterMenuOpen() { var m = getEl('custom-filter-menu'); return !!(m && !m.classList.contains('hidden') && customFilterMenuState); }
     function openNativeSearchControl(el) {
         if (!VISIBLE(el)) return false;
-
         if (el.tagName === 'SELECT') {
-            var filterGroup = el.closest('.filter-group');
-            var titleLabel = filterGroup ? filterGroup.querySelector('.filter-label') : null;
-            var title = (titleLabel && titleLabel.textContent ? titleLabel.textContent.trim() : 'Выбор');
-            var options = [];
-            for (var i = 0; i < el.options.length; i++) {
-                options.push({ value: el.options[i].value, label: el.options[i].textContent || el.options[i].label || el.options[i].value });
-            }
-            var index = 0;
-            for (var j = 0; j < options.length; j++) {
-                if (String(options[j].value) === String(el.value)) {
-                    index = j;
-                    break;
-                }
-            }
-            if (index < 0) index = 0;
-            customFilterMenuState = { selectEl: el, title: title, options: options, index: index, value: el.value };
-            var menu = ensureCustomFilterMenu();
-            menu.classList.remove('hidden');
-            renderCustomFilterMenu();
-            return true;
+            var fg = el.closest('.filter-group'), tl = fg ? fg.querySelector('.filter-label') : null, t = (tl && tl.textContent ? tl.textContent.trim() : 'Выбор'), o = [];
+            for (var i = 0; i < el.options.length; i++) o.push({ value: el.options[i].value, label: el.options[i].textContent || el.options[i].label || el.options[i].value });
+            var idx = 0; for (var j = 0; j < o.length; j++) if (String(o[j].value) === String(el.value)) { idx = j; break; } if (idx < 0) idx = 0;
+            customFilterMenuState = { selectEl: el, title: t, options: o, index: idx, value: el.value }; var m = ensureCustomFilterMenu(); m.classList.remove('hidden'); renderCustomFilterMenu(); return true;
         }
-
-        focusEl(el, { nativeFocus: true });
-        try { el.focus(); } catch (e) { }
-        try { el.click(); } catch (e) { }
-        return true;
+        focusEl(el, { nativeFocus: true }); try { el.focus(); } catch (e) { } try { el.click(); } catch (e) { } return true;
     }
 
-    function currentScreen() {
-        try {
-            var stateScreen = window.AppState && AppState.currentScreen ? AppState.currentScreen : null;
-            var player = byId('player-screen');
-            var detail = byId('detail-view');
-            var config = byId('config-screen');
-            var search = byId('search-overlay');
-            var catalogTab = byId('tab-catalog');
-            var donateTab = byId('donate-overlay');
-            var syncOverlay = byId('sync-overlay');
+    function currentScreen() { try { var ss = window.AppState && AppState.currentScreen ? AppState.currentScreen : null, p = getEl('player-screen'), d = getEl('detail-view'), c = getEl('config-screen'), s = getEl('search-overlay'), ct = getEl('tab-catalog'), dn = getEl('donate-overlay'), sy = getEl('sync-overlay'); if (ss === 'player') return 'player'; if (p && getComputedStyle(p).display !== 'none') return 'player'; if (sy && !sy.classList.contains('hidden') && getComputedStyle(sy).display !== 'none') return 'sync'; if (c && getComputedStyle(c).display !== 'none') return 'config'; if (d && getComputedStyle(d).display !== 'none') return 'detail'; if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') return 'search'; if (dn && !dn.classList.contains('hidden') && getComputedStyle(dn).display !== 'none') return 'donate'; if (AppState.inSearch == 'catalog') return 'catalog'; var cg = getEl('torrents-grid'); if (cg) { var hc = cg.querySelector('.catalog-card,.catalog-folder-card') !== null, tc = cg.querySelector('.torrent-card:not(.catalog-card):not(.catalog-folder-card)') !== null; if (hc && !tc) return 'catalog'; } return ss || 'torrents'; } catch (e) { return 'torrents'; } }
 
-            if (stateScreen === 'player') return 'player';
-            if (player && getComputedStyle(player).display !== 'none') return 'player';
-            if (syncOverlay && !syncOverlay.classList.contains('hidden') && getComputedStyle(syncOverlay).display !== 'none') return 'sync';
-            if (config && getComputedStyle(config).display !== 'none') return 'config';
-            if (detail && getComputedStyle(detail).display !== 'none') return 'detail';
-            if (search && !search.classList.contains('hidden') && getComputedStyle(search).display !== 'none') return 'search';
-            if (donateTab && !donateTab.classList.contains('hidden') && getComputedStyle(donateTab).display !== 'none') return 'donate';
-            
-            if (AppState.inSearch == 'catalog') {
-                return 'catalog';
-            }
-            
-            //if (catalogTab && catalogTab.classList.contains('active')) {
-                //return 'catalog';
-            //}
+    function getTorrentCards() { var c = document.querySelectorAll('.torrent-card'), v = []; for (var i = 0; i < c.length; i++) if (VISIBLE(c[i])) v.push(c[i]); return v; }
+    function getTorrentHeader() { var ids = ['settings-btn'], v = []; for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (VISIBLE(e)) v.push(e); } return v; }
+    function getTorrentTabs() { var ids = ['tab-catalog', 'tab-torrents', 'tab-search', 'tab-donate'], v = []; for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (VISIBLE(e)) v.push(e); } return v; }
+    function getSearchTop() { var ids = ['search-query', 'filter-toggle', 'search-btn', 'close-search'], v = []; for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (VISIBLE(e)) v.push(e); } return v; }
+    function getSearchFilters() { var ids = ['torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters'], v = []; for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (VISIBLE(e)) v.push(e); } return v; }
+    function getSearchResults() { var cm = typeof window.getCurrentSearchMode === 'function' ? window.getCurrentSearchMode() : 'torrentsearch'; if (cm === 'torrentsearch') { var i = document.querySelectorAll('.search-result-item'), v = []; for (var j = 0; j < i.length; j++) if (VISIBLE(i[j])) v.push(i[j]); return v; } else if (cm === 'globalsearch') { var i = document.querySelectorAll('.global-search-card'), v = []; for (var j = 0; j < i.length; j++) if (VISIBLE(i[j])) v.push(i[j]); return v; } return []; }
+    function getDetailItems() { var s = ['.back-btn', '.detail-progress-btn', '.file-item', '#catalog-watch-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'], a = []; for (var i = 0; i < s.length; i++) { var it = document.querySelectorAll(s[i]); for (var j = 0; j < it.length; j++) if (VISIBLE(it[j])) a.push(it[j]); } return a; }
+    function getConfigItems() { var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', '.settings-btn', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio'], v = []; for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (VISIBLE(e)) v.push(e); } var sb = document.querySelectorAll('.settings-btn'); for (var j = 0; j < sb.length; j++) if (VISIBLE(sb[j])) v.push(sb[j]); return v; }
+    function getColumns() { var g = getEl('torrents-grid'); if (!g) return 8; try { return (getComputedStyle(g).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length || 8; } catch (e) { return 8; } }
+    function belongsToScreen(el, screen) { if (!el) return false; if (screen === 'torrents') return el.closest('.torrent-card') || el.classList.contains('file-item') || ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-donate', 'back-from-detail', 'tab-catalog'].indexOf(el.id) !== -1; if (screen === 'catalog') return el.closest('.torrent-card.catalog-card') || el.closest('.torrent-card.catalog-folder-card') || (el.closest('#torrents-grid') && !el.closest('.torrent-card:not(.catalog-card):not(.catalog-folder-card)')) || el.id === 'back-from-catalog' || el.classList.contains('file-item') || el.classList.contains('back-btn') || ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-catalog', 'tab-donate'].indexOf(el.id) !== -1; if (screen === 'search') return el.closest('.search-result-item') || el.closest('.global-search-card') || ['search-query', 'filter-toggle', 'search-btn', 'close-search', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters'].indexOf(el.id) !== -1; if (screen === 'detail') return !!(el.closest('#detail-view') || el.closest('.file-item') || el.closest('back-from-detail') || el.classList.contains('detail-progress-btn') || el.classList.contains('back-btn')); if (screen === 'config') return !!(el.closest('#config-screen') || ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio'].indexOf(el.id) !== -1 || el.classList.contains('settings-btn')); return false; }
 
-            if (catalogGrid) {
-                var hasCatalogCards = catalogGrid.querySelector('.catalog-card, .catalog-folder-card') !== null;
-                var hasTorrentCards = catalogGrid.querySelector('.torrent-card:not(.catalog-card):not(.catalog-folder-card)') !== null;
+    function ensureTorrentFocus(force) { if (force === undefined) force = false; if (currentScreen() !== 'torrents') return false; if (window.AppState && AppState.restoringFocus) return false; var f = document.querySelector('.focused'); if (!force && belongsToScreen(f, 'torrents')) return true; var c = getTorrentCards(), t = getTorrentTabs(), h = getTorrentHeader(); if (!c.length) return focusEl(t[0] || h[0]); var tc = null, sh = (window.AppState && window.AppState.currentDetailItem && window.AppState.currentDetailItem.hash) ? window.AppState.currentDetailItem.hash.toLowerCase() : null; if (sh) for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === sh) { tc = c[i]; break; } if (!tc && typeof window.lastSelectedTorrentHash !== 'undefined' && window.lastSelectedTorrentHash) for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === window.lastSelectedTorrentHash.toLowerCase()) { tc = c[i]; break; } if (!tc && typeof window.lastSelectedTorrentIndex === 'number' && window.lastSelectedTorrentIndex >= 0) { var si = window.lastSelectedTorrentIndex; if (si < c.length) tc = c[si]; } if (!tc) tc = c[0]; if (window.AppState && window.AppState.currentDetailItem) window.AppState.currentDetailItem = null; if (window.lastSelectedTorrentHash) window.lastSelectedTorrentHash = null; if (typeof window.lastSelectedTorrentIndex !== 'undefined') window.lastSelectedTorrentIndex = 0; return focusEl(tc); }
 
-                if (hasCatalogCards && !hasTorrentCards) {
-                    return 'catalog';
-                }
-            }
+    function ensureCatalogFocus(force) { if (force === undefined) force = false; if (currentScreen() !== 'catalog') return false; var f = document.querySelector('.focused'); if (!force && f && belongsToScreen(f, 'catalog')) return true; var c = [], ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card'); for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]); if (!c.length) return false; var si = localStorage.getItem('lastCatalogCardIndex'), tc = null; if (si !== null) { var sn = parseInt(si, 10); if (Number.isFinite(sn)) { for (var j = 0; j < c.length; j++) { var cn = parseInt(c[j].dataset.numIndex || '-1', 10); if (Number.isFinite(cn) && cn === sn) { tc = c[j]; break; } } if (!tc && sn >= 0 && sn < c.length) tc = c[sn]; } } if (!tc) tc = c[0]; var ti = -1; for (var k = 0; k < c.length; k++) if (tc === c[k]) { ti = k; break; } return focusEl(tc); }
 
-            return stateScreen || 'torrents';
-        } catch (e) {
-            return 'torrents';
-        }
-    }
-
-    function getTorrentCards() {
-        var cards = document.querySelectorAll('.torrent-card');
-        var visible = [];
-        for (var i = 0; i < cards.length; i++) {
-            if (VISIBLE(cards[i])) visible.push(cards[i]);
-        }
-        return visible;
-    }
-    function getTorrentHeader() {
-        var ids = ['settings-btn'];
-        var visible = [];
-        for (var i = 0; i < ids.length; i++) {
-            var el = byId(ids[i]);
-            if (VISIBLE(el)) visible.push(el);
-        }
-        return visible;
-    }
-    function getTorrentTabs() {
-        var ids = ['tab-catalog', 'tab-torrents', 'tab-search', 'tab-donate'];
-        var visible = [];
-        for (var i = 0; i < ids.length; i++) {
-            var el = byId(ids[i]);
-            if (VISIBLE(el)) visible.push(el);
-        }
-        return visible;
-    }
-    function getSearchTop() {
-        var ids = ['search-query', 'filter-toggle', 'search-btn', 'close-search'];
-        var visible = [];
-        for (var i = 0; i < ids.length; i++) {
-            var el = byId(ids[i]);
-            if (VISIBLE(el)) visible.push(el);
-        }
-        return visible;
-    }
-    function getSearchFilters() {
-        var ids = ['torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters'];
-        var visible = [];
-        for (var i = 0; i < ids.length; i++) {
-            var el = byId(ids[i]);
-            if (VISIBLE(el)) visible.push(el);
-        }
-        return visible;
-    }
-    function getSearchResults() {
-        var currentMode = typeof window.getCurrentSearchMode === 'function' ? window.getCurrentSearchMode() : 'torrentsearch';
-        if (currentMode === 'torrentsearch') {
-            var items = document.querySelectorAll('.search-result-item');
-            var visible = [];
-            for (var i = 0; i < items.length; i++) {
-                if (VISIBLE(items[i])) visible.push(items[i]);
-            }
-            return visible;
-        } else if (currentMode === 'globalsearch') {
-            var items = document.querySelectorAll('.global-search-card');
-            var visible = [];
-            for (var i = 0; i < items.length; i++) {
-                if (VISIBLE(items[i])) visible.push(items[i]);
-            }
-            return visible;
-        }
-        return [];
-    }
-
-    function getDetailItems() {
-        var selectors = [
-            '.back-btn', '.detail-progress-btn', '.file-item', '#catalog-watch-btn',
-            '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item',
-            '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'
-        ];
-        var all = [];
-        for (var s = 0; s < selectors.length; s++) {
-            var items = document.querySelectorAll(selectors[s]);
-            for (var i = 0; i < items.length; i++) {
-                if (VISIBLE(items[i])) all.push(items[i]);
-            }
-        }
-        return all;
-    }
-    function getConfigItems() {
-        var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', '.settings-btn', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio'];
-        var visible = [];
-        for (var i = 0; i < ids.length; i++) {
-            var el = byId(ids[i]);
-            if (VISIBLE(el)) visible.push(el);
-        }
-        var settingsBtns = document.querySelectorAll('.settings-btn');
-        for (var j = 0; j < settingsBtns.length; j++) {
-            if (VISIBLE(settingsBtns[j])) visible.push(settingsBtns[j]);
-        }
-        return visible;
-    }
-
-    function getColumns() {
-        var grid = byId('torrents-grid');
-        if (!grid) return 8;
-        try {
-            var cols = (getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
-            return cols || 8;
-        } catch (e) { return 8; }
-    }
-
-    function belongsToScreen(el, screen) {
-        if (!el) return false;
-        if (screen === 'torrents') {
-            return el.closest('.torrent-card') || el.classList.contains('file-item') || ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-donate', 'back-from-detail', 'tab-catalog'].indexOf(el.id) !== -1;
-        }
-        if (screen === 'catalog') {
-            return el.closest('.torrent-card.catalog-card') ||
-                el.closest('.torrent-card.catalog-folder-card') ||
-                (el.closest('#torrents-grid') && !el.closest('.torrent-card:not(.catalog-card):not(.catalog-folder-card)')) ||
-                el.id === 'back-from-catalog' ||
-                el.classList.contains('file-item') ||
-                el.classList.contains('back-btn') || ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-catalog', 'tab-donate'].indexOf(el.id) !== -1;
-        }
-        if (screen === 'search') {
-            return el.closest('.search-result-item') || el.closest('.global-search-card') ||
-                ['search-query', 'filter-toggle', 'search-btn', 'close-search', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters'].indexOf(el.id) !== -1;
-        }
-        if (screen === 'detail') {
-            return !!(
-                el.closest('#detail-view') ||
-                el.closest('.file-item') ||
-                el.closest('back-from-detail') ||
-                el.classList.contains('detail-progress-btn') ||
-                el.classList.contains('back-btn')
-            );
-        }
-        if (screen === 'config') {
-            return !!(
-                el.closest('#config-screen') ||
-                ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio'].indexOf(el.id) !== -1 ||
-                el.classList.contains('settings-btn')
-            );
-        }
-        return false;
-    }
-
-    function ensureTorrentFocus(force) {
-        if (force === undefined) force = false;
-        if (currentScreen() !== 'torrents') return false;
-        if (window.AppState && AppState.restoringFocus) return false;
-
-        var focused = document.querySelector('.focused');
-        if (!force && belongsToScreen(focused, 'torrents')) return true;
-
-        var cards = getTorrentCards();
-        var tabs = getTorrentTabs();
-        var header = getTorrentHeader();
-
-        if (!cards.length) {
-            // Если нет карточек, фокусируемся на вкладках
-            return focusEl(tabs[0] || header[0]);
-        }
-
-        var targetCard = null;
-
-        // 1. Пытаемся восстановить по hash из AppState.currentDetailItem
-        var savedHash = (window.AppState && window.AppState.currentDetailItem && window.AppState.currentDetailItem.hash)
-            ? window.AppState.currentDetailItem.hash.toLowerCase()
-            : null;
-
-        if (savedHash) {
-            console.log('🎯 ensureTorrentFocus: ищем карточку с hash:', savedHash);
-            for (var i = 0; i < cards.length; i++) {
-                var cardHash = cards[i].dataset.hash;
-                if (cardHash && cardHash.toLowerCase() === savedHash) {
-                    targetCard = cards[i];
-                    console.log('✅ Найдена карточка по hash:', savedHash);
-                    break;
-                }
-            }
-        }
-
-        // 2. Если не нашли по hash, пробуем восстановить по lastSelectedTorrentHash
-        if (!targetCard && typeof window.lastSelectedTorrentHash !== 'undefined' && window.lastSelectedTorrentHash) {
-            console.log('🎯 ensureTorrentFocus: ищем по lastSelectedTorrentHash:', window.lastSelectedTorrentHash);
-            for (var i = 0; i < cards.length; i++) {
-                var cardHash = cards[i].dataset.hash;
-                if (cardHash && cardHash.toLowerCase() === window.lastSelectedTorrentHash.toLowerCase()) {
-                    targetCard = cards[i];
-                    console.log('✅ Найдена карточка по lastSelectedTorrentHash');
-                    break;
-                }
-            }
-        }
-
-        // 3. Если не нашли, пробуем восстановить по индексу
-        if (!targetCard && typeof window.lastSelectedTorrentIndex === 'number' && window.lastSelectedTorrentIndex >= 0) {
-            var savedIndex = window.lastSelectedTorrentIndex;
-            console.log('🎯 ensureTorrentFocus: восстанавливаем по индексу:', savedIndex);
-            if (savedIndex < cards.length) {
-                targetCard = cards[savedIndex];
-                console.log('✅ Найдена карточка по индексу:', savedIndex);
-            }
-        }
-
-        // 4. Если все еще не нашли, берем первую карточку
-        if (!targetCard) {
-            targetCard = cards[0];
-            console.log('🎯 ensureTorrentFocus: используем первую карточку');
-        }
-
-        // ОЧИЩАЕМ ВСЕ СОХРАНЕННЫЕ ДАННЫЕ ПОСЛЕ ВОССТАНОВЛЕНИЯ
-        // Это предотвращает повторное использование старых данных при следующих вызовах
-        if (window.AppState && window.AppState.currentDetailItem) {
-            window.AppState.currentDetailItem = null;
-            console.log('🧹 Очищен AppState.currentDetailItem');
-        }
-
-        if (window.lastSelectedTorrentHash) {
-            window.lastSelectedTorrentHash = null;
-            console.log('🧹 Очищен lastSelectedTorrentHash');
-        }
-
-        // Не очищаем lastSelectedTorrentIndex, так как он может понадобиться для навигации
-        // Но можно очистить если нужно
-        if (typeof window.lastSelectedTorrentIndex !== 'undefined') {
-            window.lastSelectedTorrentIndex = 0;
-        }
-
-        return focusEl(targetCard);
-    }
-
-    function ensureCatalogFocus(force) {
-        if (force === undefined) force = false;
-        if (currentScreen() !== 'catalog') return false;
-
-        var focused = document.querySelector('.focused');
-        if (!force && focused && belongsToScreen(focused, 'catalog')) {
-            return true;
-        }
-
-        var cards = [];
-        var allCards = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
-        for (var i = 0; i < allCards.length; i++) {
-            if (VISIBLE(allCards[i])) cards.push(allCards[i]);
-        }
-        if (!cards.length) return false;
-
-        var savedIndexRaw = localStorage.getItem('lastCatalogCardIndex');
-        var targetCard = null;
-
-        if (savedIndexRaw !== null) {
-            var savedNumIndex = parseInt(savedIndexRaw, 10);
-            if (Number.isFinite(savedNumIndex)) {
-                for (var j = 0; j < cards.length; j++) {
-                    var cardNumIndex = parseInt(cards[j].dataset.numIndex || '-1', 10);
-                    if (Number.isFinite(cardNumIndex) && cardNumIndex === savedNumIndex) {
-                        targetCard = cards[j];
-                        break;
-                    }
-                }
-                if (!targetCard && savedNumIndex >= 0 && savedNumIndex < cards.length) {
-                    targetCard = cards[savedNumIndex];
-                }
-            }
-        }
-
-        if (!targetCard) {
-            targetCard = cards[0];
-        }
-
-        var targetIndex = -1;
-        for (var k = 0; k < cards.length; k++) {
-            if (targetCard === cards[k]) {
-                targetIndex = k;
-                break;
-            }
-        }
-        console.log('🎯 ensureCatalogFocus: восстанавливаем фокус на карточке ' + targetIndex + ', saved=' + savedIndexRaw);
-        return focusEl(targetCard);
-    }
-
-    function ensureSearchFocus(force, preferInput) {
-        if (force === undefined) force = false;
-        if (preferInput === undefined) preferInput = true;
-        if (currentScreen() !== 'search') return false;
-        var focused = document.querySelector('.focused');
-        if (!force && belongsToScreen(focused, 'search')) return true;
-        var top = getSearchTop();
-        var filters = getSearchFilters();
-        var results = getSearchResults();
-        var query = byId('search-query');
-        return focusEl((preferInput && query) ? query : (top[0] || filters[0] || results[0] || query));
-    }
-    function ensureDetailFocus(force) {
-        if (force === undefined) force = false;
-        if (currentScreen() !== 'detail') return false;
-        var focused = document.querySelector('.focused');
-        if (!force && belongsToScreen(focused, 'detail')) return true;
-        var items = getDetailItems();
-        return focusEl(items[0] || byId('back-from-detail'));
-    }
-    function ensureConfigFocus(force) {
-        if (force === undefined) force = false;
-        if (currentScreen() !== 'config') return false;
-        var focused = document.querySelector('.focused');
-        if (!force && belongsToScreen(focused, 'config')) return true;
-        return focusEl(getConfigItems()[0]);
-    }
+    function ensureSearchFocus(force, preferInput) { if (force === undefined) force = false; if (preferInput === undefined) preferInput = true; if (currentScreen() !== 'search') return false; var f = document.querySelector('.focused'); if (!force && belongsToScreen(f, 'search')) return true; var t = getSearchTop(), fl = getSearchFilters(), r = getSearchResults(), q = getEl('search-query'); return focusEl((preferInput && q) ? q : (t[0] || fl[0] || r[0] || q)); }
+    function ensureDetailFocus(force) { if (force === undefined) force = false; if (currentScreen() !== 'detail') return false; var f = document.querySelector('.focused'); if (!force && belongsToScreen(f, 'detail')) return true; return focusEl(getDetailItems()[0] || getEl('back-from-detail')); }
+    function ensureConfigFocus(force) { if (force === undefined) force = false; if (currentScreen() !== 'config') return false; var f = document.querySelector('.focused'); if (!force && belongsToScreen(f, 'config')) return true; return focusEl(getConfigItems()[0]); }
 
     window.focusFirstTorrentCard = function () { return ensureTorrentFocus(true); };
     window.focusFirstCatalogCard = function () { return ensureCatalogFocus(true); };
-    window.focusSearchHome = function (preferQuery) {
-        if (preferQuery === undefined) preferQuery = true;
-        return ensureSearchFocus(true, preferQuery);
-    };
-    window.ensureCatalogFocus = ensureCatalogFocus;
-    window.ensureDetailFocus = ensureDetailFocus;
-    window.ensureTorrentFocus = ensureTorrentFocus;
-    window.ensureSearchFocus = ensureSearchFocus;
-    window.ensureConfigFocus = ensureConfigFocus;
+    window.focusSearchHome = function (p) { if (p === undefined) p = true; return ensureSearchFocus(true, p); };
+    window.ensureCatalogFocus = ensureCatalogFocus; window.ensureDetailFocus = ensureDetailFocus; window.ensureTorrentFocus = ensureTorrentFocus; window.ensureSearchFocus = ensureSearchFocus; window.ensureConfigFocus = ensureConfigFocus;
 
-    function openSearchScreen(focusInput) {
-        if (focusInput === undefined) focusInput = true;
-        clickEl(byId('tab-search') || byId('search-btn'));
+    function openSearchScreen(fi) {
+        if (fi === undefined) fi = true;
+        clickEl(getEl('tab-search') || getEl('search-btn'));
         setTimeout(function () {
-            ensureSearchFocus(true, focusInput);
-            if (focusInput) {
-                var q = byId('search-query');
+            ensureSearchFocus(true, fi);
+            if (fi) {
+                var q = getEl('search-query');
                 focusEl(q, { nativeFocus: true });
-                try { if (q && q.click) q.click(); } catch (e) { }
-                try { if (q && q.select) q.select(); } catch (e) { }
+                try {
+                    if (q && q.click) q.click();
+                } catch (e) { }
+                try {
+                    if (q && q.select) q.select();
+                } catch (e) { }
             }
         }, 120);
     }
-    function leaveSearchToTorrents() {
-        if (typeof window.hideSearchResults === 'function') {
-            window.hideSearchResults();
-        } else {
-            clickEl(byId('close-search') || byId('tab-torrents'));
-            setTimeout(function () {
-                var returnTo = (window.AppState && AppState.searchReturnTo === 'catalog') ? 'catalog' : 'torrents';
-                if (returnTo === 'catalog') {
-                    ensureCatalogFocus(true);
-                } else {
-                    ensureTorrentFocus(true);
-                }
-            }, 150);
-        }
+    function leaveSearchToTorrents() { if (typeof window.hideSearchResults === 'function') window.hideSearchResults(); else { clickEl(getEl('close-search') || getEl('tab-torrents')); setTimeout(function () { var rt = (window.AppState && AppState.searchReturnTo === 'catalog') ? 'catalog' : 'torrents'; if (rt === 'catalog') ensureCatalogFocus(true); else ensureTorrentFocus(true); }, 150); } }
+
+    function torrentHandle(dir) { var f = (belongsToScreen(document.querySelector('.focused'), 'torrents') ? document.querySelector('.focused') : null), c = getTorrentCards(), h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns(); if (!f) return ensureTorrentFocus(true); var ci = -1, hi = -1, ti = -1; for (var i = 0; i < c.length; i++) if (f === c[i]) { ci = i; break; } for (var i = 0; i < h.length; i++) if (f === h[i]) { hi = i; break; } for (var i = 0; i < t.length; i++) if (f === t[i]) { ti = i; break; } if (ci !== -1) { var row = Math.floor(ci / cols); if (dir === 'left') return focusEl(c[Math.max(0, ci - 1)] || f); if (dir === 'right') return focusEl(c[Math.min(c.length - 1, ci + 1)] || f); if (dir === 'up') { if (row === 0) return focusEl(t[0] || h[0] || f); else if (row === 1) { var mc = getEl('main-container'); mc.scrollTop = 0; return focusEl(c[Math.max(0, ci - cols)] || f); } return focusEl(c[Math.max(0, ci - cols)] || f); } if (dir === 'down') return focusEl(c[Math.min(c.length - 1, ci + cols)] || f); return true; } if (ti !== -1) { if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f); if (dir === 'right') return focusEl(t[Math.min(t.length - 1, ti + 1)] || f); if (dir === 'down') return focusEl(c[0] || f); if (dir === 'up') return focusEl(h[Math.min(ti, h.length - 1)] || h[0] || f); return true; } if (hi !== -1) { if (dir === 'left') return focusEl(h[Math.max(0, hi - 1)] || f); if (dir === 'right') return focusEl(h[Math.min(h.length - 1, hi + 1)] || f); if (dir === 'down') return focusEl((f.id === 'settings-btn' ? t[0] : t[1]) || t[0] || c[0] || f); return true; } return false; }
+
+    function catalogHandle(dir) { var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null), c = [], ac = document.querySelectorAll('.torrent-card.catalog-card,.torrent-card.catalog-folder-card'); for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]); var h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns(); if (!f) return ensureCatalogFocus(true); var ci = -1, hi = -1, ti = -1; for (var i = 0; i < c.length; i++) if (f === c[i]) { ci = i; break; } for (var i = 0; i < h.length; i++) if (f === h[i]) { hi = i; break; } for (var i = 0; i < t.length; i++) if (f === t[i]) { ti = i; break; } if (ci !== -1) { var row = Math.floor(ci / cols); if (dir === 'left') { if (ci > 0 && ci % cols !== 0) return focusEl(c[Math.max(0, ci - 1)] || f); return true; } if (dir === 'right') { if (ci < c.length - 1 && (ci + 1) % cols !== 0) return focusEl(c[Math.min(c.length - 1, ci + 1)] || f); return true; } if (dir === 'up') { if (row === 0) return focusEl(t[0] || h[0] || f); else if (row === 1) { var mc = getEl('main-container'); mc.scrollTop = 0; return focusEl(c[Math.max(0, ci - cols)] || f); } return focusEl(c[Math.max(0, ci - cols)] || f); } if (dir === 'down') { if (ci + cols < c.length) return focusEl(c[Math.min(c.length - 1, ci + cols)] || f); else if (c.length < catalogState.totalItems && !catalogState.isLoadingMore) { window.loadMoreCatalogItems().then(function () { setTimeout(function () { var nc = [], nac = document.querySelectorAll('.torrent-card.catalog-card,.torrent-card.catalog-folder-card'); for (var m = 0; m < nac.length; m++) if (VISIBLE(nac[m])) nc.push(nac[m]); var ti = Math.min(ci + cols, nc.length - 1); if (ti >= 0 && ti < nc.length && nc[ti]) focusEl(nc[ti]); }, 50); }); return true; } return true; } return true; } if (ti !== -1) { if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f); if (dir === 'right') return focusEl(t[Math.min(t.length - 1, ti + 1)] || f); if (dir === 'down') return focusEl(c[0] || f); if (dir === 'up') return focusEl(h[Math.min(ti, h.length - 1)] || h[0] || f); return true; } if (hi !== -1) { if (dir === 'left') return focusEl(h[Math.max(0, hi - 1)] || f); if (dir === 'right') return focusEl(h[Math.min(h.length - 1, hi + 1)] || f); if (dir === 'down') return focusEl((f.id === 'settings-btn' ? t[0] : t[1]) || t[0] || c[0] || f); return true; } return false; }
+
+    function detailHandle(dir) {
+        var items = getDetailItems(), f = (belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null); if (!f) return ensureDetailFocus(true); var idx = -1; for (var i = 0; i < items.length; i++) if (f === items[i]) { idx = i; break; } if (idx === -1) return ensureDetailFocus(true); var tl = [], ac = [], rc = [], fi = []; for (var i = 0; i < items.length; i++) { var e = items[i]; if (e.classList.contains('catalog-trailer-play') || e.classList.contains('catalog-trailer-link') || e.classList.contains('catalog-trailer-card-item')) tl.push(e); if (e.classList.contains('catalog-actor-card')) ac.push(e); if (e.classList.contains('catalog-recommendation-card')) rc.push(e); if (e.classList && e.classList.contains('file-item')) fi.push(e); } var wb = getEl('catalog-watch-btn'), bb = getEl('back-from-detail'); var isT = f.classList.contains('catalog-trailer-play') || f.classList.contains('catalog-trailer-link') || f.classList.contains('catalog-trailer-card-item'), isA = f.classList.contains('catalog-actor-card'), isR = f.classList.contains('catalog-recommendation-card'), isW = f.id === 'catalog-watch-btn', isB = f.id === 'back-from-detail', isF = f.classList && f.classList.contains('file-item'); var ti = -1, ai = -1, ri = -1, fii = -1; for (var i = 0; i < tl.length; i++) if (f === tl[i]) { ti = i; break; } for (var i = 0; i < ac.length; i++) if (f === ac[i]) { ai = i; break; } for (var i = 0; i < rc.length; i++) if (f === rc[i]) { ri = i; break; } for (var i = 0; i < fi.length; i++) if (f === fi[i]) { fii = i; break; }
+        var scrollTo = function (el) { if (!el) return; var dv = getEl('detail-view'); if (dv) { var r = el.getBoundingClientRect(), cr = dv.getBoundingClientRect(), st = dv.scrollTop, et = r.top - cr.top + st; dv.scrollTo({ top: Math.max(0, et - 20), behavior: 'smooth' }); } else el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, toTop = function () { var dv = getEl('detail-view'); if (dv) dv.scrollTo({ top: 0, behavior: 'smooth' }); };
+        if (isF && fii !== -1) { if (dir === 'left') { if (fii > 0) { focusEl(fi[fii - 1]); scrollTo(fi[fii - 1]); } return true; } if (dir === 'right') { if (fii < fi.length - 1) { focusEl(fi[fii + 1]); scrollTo(fi[fii + 1]); } return true; } if (dir === 'up') { var p = []; for (var p = idx - 1; p >= 0; p--) if (!items[p].classList || !items[p].classList.contains('file-item')) p.push(items[p]); if (p.length > 0) { focusEl(p[0]); if (p[0].id === 'catalog-watch-btn' || p[0].id === 'back-from-detail') toTop(); else scrollTo(p[0]); } return true; } if (dir === 'down') return true; return true; }
+        if (isT && ti !== -1) { if (dir === 'left') return focusEl(tl[Math.max(0, ti - 1)] || f); if (dir === 'right') return focusEl(tl[Math.min(tl.length - 1, ti + 1)] || f); if (dir === 'up') { if (wb && wb.offsetParent !== null) { focusEl(wb); toTop(); return true; } return focusEl(items[Math.max(0, idx - 1)] || f); } if (dir === 'down') { if (ac.length > 0) { focusEl(ac[0]); scrollTo(ac[0]); return true; } else if (rc.length > 0) { focusEl(rc[0]); scrollTo(rc[0]); return true; } else if (fi.length > 0) { focusEl(fi[0]); scrollTo(fi[0]); return true; } return true; } return true; }
+        if (isA && ai !== -1) { if (dir === 'left') return focusEl(ac[Math.max(0, ai - 1)] || f); if (dir === 'right') return focusEl(ac[Math.min(ac.length - 1, ai + 1)] || f); if (dir === 'up') { if (tl.length > 0) { focusEl(tl[tl.length - 1]); scrollTo(tl[tl.length - 1]); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb); toTop(); return true; } return focusEl(items[Math.max(0, idx - 1)] || f); } if (dir === 'down') { if (rc.length > 0) { var t = ai < rc.length ? ai : rc.length - 1; focusEl(rc[t]); scrollTo(rc[t]); return true; } else if (fi.length > 0) { focusEl(fi[0]); scrollTo(fi[0]); return true; } return true; } return true; }
+        if (isR && ri !== -1) { if (dir === 'left') return focusEl(rc[Math.max(0, ri - 1)] || f); if (dir === 'right') return focusEl(rc[Math.min(rc.length - 1, ri + 1)] || f); if (dir === 'up') { if (ac.length > 0) { var t = ri < ac.length ? ri : ac.length - 1; focusEl(ac[t]); scrollTo(ac[t]); return true; } else if (tl.length > 0) { var t = ri < tl.length ? ri : tl.length - 1; focusEl(tl[t]); scrollTo(tl[t]); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb); toTop(); return true; } return focusEl(items[Math.max(0, idx - 1)] || f); } if (dir === 'down') { if (fi.length > 0) { focusEl(fi[0]); scrollTo(fi[0]); return true; } return true; } return true; }
+        if (isW) { toTop(); if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0]); scrollTo(tl[0]); return true; } else if (ac.length > 0) { focusEl(ac[0]); scrollTo(ac[0]); return true; } else if (rc.length > 0) { focusEl(rc[0]); scrollTo(rc[0]); return true; } else if (fi.length > 0) { focusEl(fi[0]); scrollTo(fi[0]); return true; } return true; } if (dir === 'left' || dir === 'right') return true; if (dir === 'up') return focusEl(bb || f); return true; }
+        if (isB) { toTop(); if (dir === 'down') { if (wb && wb.offsetParent !== null) { focusEl(wb); toTop(); return true; } return focusEl(items[Math.min(items.length - 1, idx + 1)] || f); } if (dir === 'up') { toTop(); return true; } if (dir === 'left' || dir === 'right') return true; return true; }
+        if (dir === 'up') { var t = items[Math.max(0, idx - 1)] || f; focusEl(t); if (t.id === 'catalog-watch-btn' || t.id === 'back-from-detail') toTop(); else scrollTo(t); return true; } if (dir === 'down') { var t = items[Math.min(items.length - 1, idx + 1)] || f; focusEl(t); if (t.id === 'catalog-watch-btn' || t.id === 'back-from-detail') toTop(); else scrollTo(t); return true; } return true;
     }
 
-    function torrentHandle(direction) {
-        var focused = (belongsToScreen(document.querySelector('.focused'), 'torrents') ? document.querySelector('.focused') : null);
-        var cards = getTorrentCards();
-        var header = getTorrentHeader();
-        var tabs = getTorrentTabs();
-        var cols = getColumns();
-        if (!focused) return ensureTorrentFocus(true);
-        var cardIndex = -1;
-        for (var i = 0; i < cards.length; i++) {
-            if (focused === cards[i]) {
-                cardIndex = i;
-                break;
-            }
-        }
-        var headerIndex = -1;
-        for (var j = 0; j < header.length; j++) {
-            if (focused === header[j]) {
-                headerIndex = j;
-                break;
-            }
-        }
-        var tabIndex = -1;
-        for (var k = 0; k < tabs.length; k++) {
-            if (focused === tabs[k]) {
-                tabIndex = k;
-                break;
-            }
-        }
-        if (cardIndex !== -1) {
-            var row = Math.floor(cardIndex / cols);
-            if (direction === 'left') return focusEl(cards[Math.max(0, cardIndex - 1)] || focused);
-            if (direction === 'right') return focusEl(cards[Math.min(cards.length - 1, cardIndex + 1)] || focused);
-            if (direction === 'up') {
-                if (row === 0) {
-                    return focusEl(tabs[0] || header[0] || focused);
-                } else if (row === 1) {
-                    var mainContainer = document.getElementById('main-container');
-                    mainContainer.scrollTop = 0;
-                    return focusEl(cards[Math.max(0, cardIndex - cols)] || focused);
-                }
-                return focusEl(cards[Math.max(0, cardIndex - cols)] || focused);
-            }
-            if (direction === 'down') return focusEl(cards[Math.min(cards.length - 1, cardIndex + cols)] || focused);
-            return true;
-        }
-        if (tabIndex !== -1) {
-            if (direction === 'left') return focusEl(tabs[Math.max(0, tabIndex - 1)] || focused);
-            if (direction === 'right') return focusEl(tabs[Math.min(tabs.length - 1, tabIndex + 1)] || focused);
-            if (direction === 'down') return focusEl(cards[0] || focused);
-            if (direction === 'up') return focusEl(header[Math.min(tabIndex, header.length - 1)] || header[0] || focused);
-            return true;
-        }
-        if (headerIndex !== -1) {
-            if (direction === 'left') return focusEl(header[Math.max(0, headerIndex - 1)] || focused);
-            if (direction === 'right') return focusEl(header[Math.min(header.length - 1, headerIndex + 1)] || focused);
-            if (direction === 'down') return focusEl((focused.id === 'settings-btn' ? tabs[0] : tabs[1]) || tabs[0] || cards[0] || focused);
-            return true;
-        }
+    function closeFiltersPanel() { var p = getEl('search-filters-panel'), t = getEl('filter-toggle'); if (p && !p.classList.contains('collapsed')) { if (typeof toggleSearchFiltersPanel === 'function') toggleSearchFiltersPanel(false); else if (t) t.click(); } }
+    function openFiltersPanelAndFocus() { var p = getEl('search-filters-panel'), t = getEl('filter-toggle'); if (p && p.classList.contains('collapsed')) { if (typeof toggleSearchFiltersPanel === 'function') toggleSearchFiltersPanel(true); else if (t) t.click(); setTimeout(function () { updateFocusableElements(); var ff = document.querySelector('#torrent-movie,#sort-by,#filter-quality,#filter-content-type,#filter-tracker,#filter-year,#filter-season,#filter-voice,#filter-videotype,#reset-filters'); if (ff) { var fi = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i] === ff) { fi = i; break; } if (fi !== -1) setFocus(fi); } }, 50); } }
+
+    function searchHandle(dir) {
+        var cm = getCurrentSearchMode(), f = belongsToScreen(document.querySelector('.focused'), 'search') ? document.querySelector('.focused') : null, q = getEl('search-query'), t = getSearchTop(), fl = getSearchFilters(), r = getSearchResults(), tWQ = []; for (var i = 0; i < t.length; i++) if (t[i] && t[i].id !== 'search-query') tWQ.push(t[i]); var te = tWQ[0] || fl[0] || r[0] || q; if (!f) return ensureSearchFocus(true, false); if (document.activeElement === q && ['left', 'right', 'up', 'down'].indexOf(dir) !== -1) { blurEditor(); return focusEl(te); } var ti = -1, fi = -1, ri = -1; for (var i = 0; i < t.length; i++) if (f === t[i]) { ti = i; break; } for (var i = 0; i < fl.length; i++) if (f === fl[i]) { fi = i; break; } for (var i = 0; i < r.length; i++) if (f === r[i]) { ri = i; break; }
+        if (cm === 'torrentsearch') { if (ti !== -1) { if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f); if (dir === 'right') return focusEl(t[Math.min(t.length - 1, ti + 1)] || f); if (dir === 'down') return focusEl(r[Math.min(r.length - 1, ri + 1)] || f); if (dir === 'up') return true; return true; } if (fi !== -1) { if (dir === 'left') return focusEl(fl[Math.max(0, fi - 1)] || f); if (dir === 'right') return focusEl(fl[Math.min(fl.length - 1, fi + 1)] || f); if (dir === 'up') { closeFiltersPanel(); return focusEl(q); } if (dir === 'down') { closeFiltersPanel(); if (r.length > 0) { var sr = getEl('search-results'); sr.scrollTop = 0; return focusEl(r[0]); } return true; } return true; } if (ri !== -1) { if (dir === 'up') { if (ri === 1) { var sr = getEl('search-results'); sr.scrollTop = 0; return focusEl(r[ri - 1] || f); } else if (ri > 1) return focusEl(r[ri - 1] || f); return focusEl(q); } if (dir === 'down') { var ar = r.length; if (ar === ri + 1) { var sr = getEl('search-results'); sr.scrollTop = sr.scrollTop + 30; return focusEl(r[Math.min(r.length - 1, ri + 1)] || f); } else return focusEl(r[Math.min(r.length - 1, ri + 1)] || f); } if (dir === 'left') { openFiltersPanelAndFocus(); return true; } if (dir === 'right') { if (f && (f.classList.contains('search-result-item') || f.classList.contains('global-search-card'))) { var pb = f.querySelector('.search-result-play'), m = pb ? pb.dataset.magnet : null, h = pb ? pb.dataset.hash : null, sr = pb ? pb.dataset.result : null; try { var rj = decodeURIComponent(sr); sr = JSON.parse(rj); } catch (e) { console.error('Ошибка парсинга searchResult:'); } if (m && typeof window.addTorrentSearchToServer === 'function') window.addTorrentSearchToServer(m, h, sr).then(function () { var oh = pb.innerHTML; pb.style.display = 'block'; pb.innerHTML = '✓'; setTimeout(function () { pb.style.display = 'none'; pb.innerHTML = oh; }, 2000); }).catch(function (e) { console.error('Ошибка добавления торрента:', e); }); } return true; } return true; } return false; }
+        else if (cm === 'globalsearch') { if (ti !== -1) { if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f); if (dir === 'right') return focusEl(t[Math.min(t.length - 1, ti + 1)] || f); if (dir === 'down') { if (r.length > 0) return focusEl(r[0]); return true; } if (dir === 'up') return true; return true; } if (fi !== -1) { if (dir === 'left') return focusEl(fl[Math.max(0, fi - 1)] || f); if (dir === 'right') return focusEl(fl[Math.min(fl.length - 1, fi + 1)] || f); if (dir === 'up') { closeFiltersPanel(); return focusEl(q); } if (dir === 'down') { closeFiltersPanel(); if (r.length > 0) return focusEl(r[0]); return true; } return true; } if (ri !== -1) { var cols = getColumns(), row = Math.floor(ri / cols); if (dir === 'left') return focusEl(r[Math.max(0, ri - 1)] || f); if (dir === 'right') return focusEl(r[Math.min(r.length - 1, ri + 1)] || f); if (dir === 'up') { if (row === 0) return focusEl(q); return focusEl(r[Math.max(0, ri - cols)] || f); } if (dir === 'down') return focusEl(r[Math.min(r.length - 1, ri + cols)] || f); return true; } return false; }
         return false;
     }
 
-    function catalogHandle(direction) {
-        var focused = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
-        var cards = [];
-        var allCards = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
-        for (var i = 0; i < allCards.length; i++) {
-            if (VISIBLE(allCards[i])) cards.push(allCards[i]);
-        }
-        var header = getTorrentHeader();
-        var tabs = getTorrentTabs();
-        var cols = getColumns();
+    function scrollToActiveConfigItem() { var ai = document.querySelector('#config-screen .focused'), cs = document.querySelector('#config-screen'), it = getConfigItems(); if (!ai || !cs) return; var sc = cs; while (sc && sc.scrollHeight <= sc.clientHeight) { sc = sc.parentElement; if (!sc || sc === document.body) { sc = window; break; } } var iw = (sc === window), cur = iw ? window.scrollY : sc.scrollTop, ci = -1; for (var i = 0; i < it.length; i++) if (ai === it[i]) { ci = i; break; } var ar = ai.getBoundingClientRect(), ct = iw ? 0 : sc.getBoundingClientRect().top, ot = ar.top - ct; if (ci === it.length - 2) { if (iw) window.scrollTo(0, document.body.scrollHeight - window.innerHeight); else sc.scrollTop = sc.scrollHeight - sc.clientHeight; return; } if (ci === 1) { if (iw) window.scrollTo(0, 0); else sc.scrollTop = 0; return; } var ch = iw ? window.innerHeight : sc.clientHeight; if (ot < 0) { var ns = cur + ot - 10; if (iw) window.scrollTo(0, ns); else sc.scrollTop = ns; } else if (ot + ar.height > ch) { var ns = cur + (ot + ar.height - ch) + 10; if (iw) window.scrollTo(0, ns); else sc.scrollTop = ns; } }
 
-        if (!focused) return ensureCatalogFocus(true);
+    function configHandle(dir) { var it = getConfigItems(), f = (belongsToScreen(document.querySelector('.focused'), 'config') ? document.querySelector('.focused') : null); if (!f) return ensureConfigFocus(true); var idx = -1; for (var i = 0; i < it.length; i++) if (f === it[i]) { idx = i; break; } if (idx === -1) return ensureConfigFocus(true); var isS = f.id === 'sync-clients-btn', isSp = f.id === 'speedtest-btn'; if (isS) { if (dir === 'right') { var s = getEl('speedtest-btn'); if (s && belongsToScreen(s, 'config')) { focusEl(s); setTimeout(scrollToActiveConfigItem, 50); } return true; } if (dir === 'up') { var n = it[Math.max(0, idx - 1)] || f; if (n) { focusEl(n); setTimeout(scrollToActiveConfigItem, 50); } return true; } if (dir === 'down') { var n = it[Math.min(it.length - 1, idx + 2)] || f; if (n) { focusEl(n); setTimeout(scrollToActiveConfigItem, 50); } return true; } return false; } if (isSp) { if (dir === 'left') { var s = getEl('sync-clients-btn'); if (s && belongsToScreen(s, 'config')) { focusEl(s); setTimeout(scrollToActiveConfigItem, 50); } return true; } if (dir === 'up') { var n = it[Math.max(0, idx - 2)] || f; if (n) { focusEl(n); setTimeout(scrollToActiveConfigItem, 50); } return true; } if (dir === 'down') { var n = it[Math.min(it.length - 1, idx + 1)] || f; if (n) { focusEl(n); setTimeout(scrollToActiveConfigItem, 50); } return true; } return false; } var nf = null; if (dir === 'up') nf = it[Math.max(0, idx - 1)] || f; else if (dir === 'down') nf = it[Math.min(it.length - 1, idx + 1)] || f; else if (dir === 'left' || dir === 'right') return true; else return false; if (nf) { focusEl(nf); setTimeout(scrollToActiveConfigItem, 50); } return false; }
 
-        var cardIndex = -1;
-        for (var j = 0; j < cards.length; j++) {
-            if (focused === cards[j]) {
-                cardIndex = j;
-                break;
-            }
-        }
-        var headerIndex = -1;
-        for (var k = 0; k < header.length; k++) {
-            if (focused === header[k]) {
-                headerIndex = k;
-                break;
-            }
-        }
-        var tabIndex = -1;
-        for (var l = 0; l < tabs.length; l++) {
-            if (focused === tabs[l]) {
-                tabIndex = l;
-                break;
-            }
-        }
+    function onOk() { var s = currentScreen(), f = document.querySelector('.focused'); if (s === 'torrents') { if (!belongsToScreen(f, 'torrents')) return ensureTorrentFocus(true); if (f.id === 'search-query' || f.id === 'search-btn' || f.id === 'tab-search') return openSearchScreen(true); if (f.id === 'tab-catalog') { clickEl(f); return true; } clickEl(f); return true; } if (s === 'catalog') { if (!belongsToScreen(f, 'catalog')) return ensureCatalogFocus(true); clickEl(f); return true; } if (s === 'search') { if (!belongsToScreen(f, 'search')) return ensureSearchFocus(true, true); if (f.id === 'search-query') { focusEl(f, { nativeFocus: true }); try { f.click(); } catch (e) { } try { f.focus(); } catch (e) { } try { if (f.select) f.select(); } catch (e) { } return true; } var p = getEl('search-filters-panel'); if (f.id === 'filter-toggle') { if (p && p.classList.contains('collapsed')) { openFiltersPanelAndFocus(); return true; } else { closeFiltersPanel(); return true; } } if (f.tagName === 'SELECT' || f.id === 'filter-year') return openNativeSearchControl(f); clickEl(f); return true; } if (s === 'detail') { if (!belongsToScreen(f, 'detail')) return ensureDetailFocus(true); if (f.classList.contains('file-item')) { clickEl(f.querySelector('.play-btn') || f); return true; } if (f.classList.contains('detail-progress-btn')) { clickEl(f); return true; } clickEl(f); return true; } if (s === 'config') { if (!belongsToScreen(f, 'config')) return ensureConfigFocus(true); focusEl(f, { nativeFocus: f.tagName === 'INPUT' }); clickEl(f); return true; } return false; }
 
-        if (cardIndex !== -1) {
-            var row = Math.floor(cardIndex / cols);
+    function onBack() { var s = getEl('search-overlay'), d = getEl('detail-view'), c = getEl('config-screen'), cat = currentScreen() === 'catalog', dn = currentScreen() === 'donate'; if (AppState.syncCodeScreen == true) { toggleSyncOverlay(); return true; } if (typeof window.closeCatalogTrailerOverlay === 'function' && window.closeCatalogTrailerOverlay()) { setTimeout(function () { ensureDetailFocus(true); }, 80); return true; } if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') { if (typeof window.hideSearchResults === 'function') { window.hideSearchResults(); focusEl(getTorrentTabs()[2]); } else leaveSearchToTorrents(); return true; } if (d && getComputedStyle(d).display !== 'none') { clickEl(getEl('back-from-detail') || document.querySelector('.back-btn')); return true; } if (dn) { if (typeof window.closeDonateOverlay === 'function') window.closeDonateOverlay(); return true; } if (cat) { var h = document.querySelector('#torrents-grid .torrent-card.catalog-folder-card'); if (h) return true; if (window.catalogState) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); } if (typeof window.backToCatalogList === 'function') { AppState.currentScreen = 'catalog'; window.backToCatalogList(); } else clickEl(getEl('back-from-catalog')); setTimeout(function () { ensureCatalogFocus(true); }, 180); return true; } if (c && getComputedStyle(c).display !== 'none') { var m = getEl('torrserver-section'); c.style.display = 'none'; if (m) m.style.display = 'block'; try { window.AppState.currentScreen = 'torrents'; } catch (e) { } setTimeout(function () { ensureTorrentFocus(true); }, 180); return true; } return false; }
 
-            if (direction === 'left') {
-                if (cardIndex > 0 && cardIndex % cols !== 0) {
-                    return focusEl(cards[Math.max(0, cardIndex - 1)] || focused);
-                }
-                return true;
-            }
+    function isArrowKey(kc) { return [37, 38, 39, 40].indexOf(kc) !== -1 || (typeof isKeyPressed === 'function' && (isKeyPressed('UP', kc) || isKeyPressed('DOWN', kc) || isKeyPressed('LEFT', kc) || isKeyPressed('RIGHT', kc))); }
+    function arrowDir(kc) { if ([37, 38, 39, 40].indexOf(kc) !== -1) return ({ 37: 'left', 38: 'up', 39: 'right', 40: 'down' })[kc]; if (typeof isKeyPressed === 'function') { if (isKeyPressed('UP', kc)) return 'up'; if (isKeyPressed('DOWN', kc)) return 'down'; if (isKeyPressed('LEFT', kc)) return 'left'; if (isKeyPressed('RIGHT', kc)) return 'right'; } return null; }
+    function isOkKey(kc) { return kc === 13 || (typeof isKeyPressed === 'function' && isKeyPressed('OK', kc)); }
+    function isBackKey(kc) { return [8, 27, 461, 10009].indexOf(kc) !== -1 || (typeof isKeyPressed === 'function' && (isKeyPressed('BACK', kc) || isKeyPressed('EXIT', kc))); }
 
-            if (direction === 'right') {
-                if (cardIndex < cards.length - 1 && (cardIndex + 1) % cols !== 0) {
-                    return focusEl(cards[Math.min(cards.length - 1, cardIndex + 1)] || focused);
-                }
-                return true;
-            }
+    document.addEventListener('keydown', function (e) { var s = currentScreen(); if (s === 'player') return; if (['torrents', 'catalog', 'search', 'detail', 'config', 'donate'].indexOf(s) === -1) return; var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT'); if (isBackKey(e.keyCode)) { e.preventDefault(); e.stopImmediatePropagation(); var po = getEl('playback-overlay'), ip = po && po.classList.contains('active'); if (ip) { cancelCurrentPlayback(); return; } if (isCustomFilterMenuOpen()) { closeCustomFilterMenu(); return; } if (s === 'catalog' && window.catalogState && window.catalogState.currentCatalog) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); } if (ed) { blurEditor(); if (s === 'search') ensureSearchFocus(true, true); else if (s === 'catalog') ensureCatalogFocus(true); else if (s === 'config') ensureConfigFocus(true); else if (s === 'detail') ensureDetailFocus(true); else ensureTorrentFocus(true); return; } onBack(); return; } if (isArrowKey(e.keyCode)) { e.preventDefault(); e.stopImmediatePropagation(); var d = arrowDir(e.keyCode); if (isCustomFilterMenuOpen()) { if (d === 'up') moveCustomFilterMenu(-1); else if (d === 'down') moveCustomFilterMenu(1); return; } if (s === 'torrents') torrentHandle(d); else if (s === 'catalog') catalogHandle(d); else if (s === 'search') searchHandle(d); else if (s === 'detail') detailHandle(d); else if (s === 'config') configHandle(d); return; } if (isOkKey(e.keyCode)) { e.preventDefault(); e.stopImmediatePropagation(); if (isCustomFilterMenuOpen()) { applyCustomFilterMenuSelection(); return; } if (s === 'torrents') { var f = document.querySelector('.focused'); if (f && f.classList.contains('torrent-card')) { if (!e.repeat) { okHoldHandled = false; okHoldFocused = f; clearOkHold(); okHoldTimer = setTimeout(async function () { okHoldHandled = true; var h = okHoldFocused && okHoldFocused.dataset ? okHoldFocused.dataset.hash : null; if (typeof window.setTorrentClickSuppressed === 'function') window.setTorrentClickSuppressed(1500); if (okHoldFocused) okHoldFocused.dataset.suppressClick = '1'; if (h && typeof window.removeTorrentByHash === 'function') await window.removeTorrentByHash(h, { skipConfirm: true }); setTimeout(function () { if (okHoldFocused) delete okHoldFocused.dataset.suppressClick; }, 1500); }, 900); } return; } } onOk(); return; } }, true);
 
-            if (direction === 'up') {
-                if (row === 0) {
-                    return focusEl(tabs[0] || header[0] || focused);
-                } else if (row === 1) {
-                    var mainContainer = document.getElementById('main-container');
-                    mainContainer.scrollTop = 0;
-                    return focusEl(cards[Math.max(0, cardIndex - cols)] || focused);
-                }
-                return focusEl(cards[Math.max(0, cardIndex - cols)] || focused);
-            }
+    document.addEventListener('keyup', function (e) { var s = currentScreen(); if (isCustomFilterMenuOpen()) return; if (!isOkKey(e.keyCode) || s !== 'torrents') return; var f = document.querySelector('.focused'), cs = f && okHoldFocused && f === okHoldFocused; clearOkHold(); if (!okHoldHandled && cs && f.classList.contains('torrent-card')) f.click(); okHoldHandled = false; okHoldFocused = null; }, true);
 
-            if (direction === 'down') {
-                if (cardIndex + cols < cards.length) {
-                    var newIndex = cardIndex + cols;
-                    return focusEl(cards[Math.min(cards.length - 1, newIndex)] || focused);
-                }
-                else if (cards.length < catalogState.totalItems && !catalogState.isLoadingMore) {
-                    var currentCardIndex = cardIndex;
-
-                    //var loadMoreTrigger = document.getElementById('load-more-trigger');
-                    //if (loadMoreTrigger) {
-                        //loadMoreTrigger.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    //
-
-                    console.log('📦 Загружаем следующую страницу каталога');
-                    window.loadMoreCatalogItems().then(function () {
-                        setTimeout(function () {
-                            var newCards = [];
-                            var newAllCards = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
-                            for (var m = 0; m < newAllCards.length; m++) {
-                                if (VISIBLE(newAllCards[m])) newCards.push(newAllCards[m]);
-                            }
-                            var targetIndex = Math.min(currentCardIndex + cols, newCards.length - 1);
-                            if (targetIndex >= 0 && targetIndex < newCards.length) {
-                                var newFocusCard = newCards[targetIndex];
-                                if (newFocusCard) {
-                                    focusEl(newFocusCard);
-                                    //var globalIndex = -1;
-                                    //for (var n = 0; n < focusableElements.length; n++) {
-                                    //if (newFocusCard === focusableElements[n]) {
-                                    //globalIndex = n;
-                                    //break;
-                                    //}
-                                    //}
-                                    //if (globalIndex !== -1) {
-                                    //setFocus(globalIndex);
-                                    //}
-                                }
-                            }
-                        }, 50);
-                    });
-                    return true;
-                }
-                return true;
-            }
-            return true;
-        }
-
-        if (tabIndex !== -1) {
-            if (direction === 'left') {
-                return focusEl(tabs[Math.max(0, tabIndex - 1)] || focused);
-            }
-            if (direction === 'right') {
-                return focusEl(tabs[Math.min(tabs.length - 1, tabIndex + 1)] || focused);
-            }
-            if (direction === 'down') {
-                return focusEl(cards[0] || focused);
-            }
-            if (direction === 'up') {
-                return focusEl(header[Math.min(tabIndex, header.length - 1)] || header[0] || focused);
-            }
-            return true;
-        }
-
-        if (headerIndex !== -1) {
-            if (direction === 'left') {
-                return focusEl(header[Math.max(0, headerIndex - 1)] || focused);
-            }
-            if (direction === 'right') {
-                return focusEl(header[Math.min(header.length - 1, headerIndex + 1)] || focused);
-            }
-            if (direction === 'down') {
-                return focusEl((focused.id === 'settings-btn' ? tabs[0] : tabs[1]) || tabs[0] || cards[0] || focused);
-            }
-            return true;
-        }
-
-        return false;
-    }
-
-    function detailHandle(direction) {
-        var items = getDetailItems();
-        var focused = (belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null);
-        if (!focused) return ensureDetailFocus(true);
-        var idx = -1;
-        for (var i = 0; i < items.length; i++) {
-            if (focused === items[i]) {
-                idx = i;
-                break;
-            }
-        }
-        if (idx === -1) return ensureDetailFocus(true);
-
-        var trailerLinks = [];
-        var actorCards = [];
-        var recommendationCards = [];
-        var fileItems = [];
-
-        for (var j = 0; j < items.length; j++) {
-            var el = items[j];
-            if (el.classList.contains('catalog-trailer-play') ||
-                el.classList.contains('catalog-trailer-link') ||
-                el.classList.contains('catalog-trailer-card-item')) {
-                trailerLinks.push(el);
-            }
-            if (el.classList.contains('catalog-actor-card')) {
-                actorCards.push(el);
-            }
-            if (el.classList.contains('catalog-recommendation-card')) {
-                recommendationCards.push(el);
-            }
-            if (el.classList && el.classList.contains('file-item')) {
-                fileItems.push(el);
-            }
-        }
-        var watchBtn = byId('catalog-watch-btn');
-        var backBtn = byId('back-from-detail');
-
-        var isTrailer = focused.classList.contains('catalog-trailer-play') ||
-            focused.classList.contains('catalog-trailer-link') ||
-            focused.classList.contains('catalog-trailer-card-item');
-        var isActor = focused.classList.contains('catalog-actor-card');
-        var isRecommendation = focused.classList.contains('catalog-recommendation-card');
-        var isWatchBtn = focused.id === 'catalog-watch-btn';
-        var isBackBtn = focused.id === 'back-from-detail';
-        var isFileItem = focused.classList && focused.classList.contains('file-item');
-
-        var trailerIndex = -1;
-        for (var k = 0; k < trailerLinks.length; k++) {
-            if (focused === trailerLinks[k]) {
-                trailerIndex = k;
-                break;
-            }
-        }
-        var actorIndex = -1;
-        for (var l = 0; l < actorCards.length; l++) {
-            if (focused === actorCards[l]) {
-                actorIndex = l;
-                break;
-            }
-        }
-        var recommendationIndex = -1;
-        for (var m = 0; m < recommendationCards.length; m++) {
-            if (focused === recommendationCards[m]) {
-                recommendationIndex = m;
-                break;
-            }
-        }
-        var fileItemIndex = -1;
-        for (var n = 0; n < fileItems.length; n++) {
-            if (focused === fileItems[n]) {
-                fileItemIndex = n;
-                break;
-            }
-        }
-
-        var scrollToElement = function (element) {
-            if (!element) return;
-
-            var detailView = document.getElementById('detail-view');
-            if (detailView) {
-                var elementRect = element.getBoundingClientRect();
-                var containerRect = detailView.getBoundingClientRect();
-                var scrollTop = detailView.scrollTop;
-                var elementTop = elementRect.top - containerRect.top + scrollTop;
-                var offset = 20;
-                detailView.scrollTo({
-                    top: Math.max(0, elementTop - offset),
-                    behavior: 'smooth'
-                });
-            } else {
-                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        };
-
-        var scrollToTop = function () {
-            var detailView = document.getElementById('detail-view');
-            if (detailView) {
-                detailView.scrollTo({
-                    top: 0,
-                    behavior: 'smooth'
-                });
-            }
-        };
-
-        // Новая логика для file-item
-        if (isFileItem && fileItemIndex !== -1) {
-            if (direction === 'left') {
-                if (fileItemIndex > 0) {
-                    focusEl(fileItems[fileItemIndex - 1]);
-                    scrollToElement(fileItems[fileItemIndex - 1]);
-                }
-                return true;
-            }
-            if (direction === 'right') {
-                if (fileItemIndex < fileItems.length - 1) {
-                    focusEl(fileItems[fileItemIndex + 1]);
-                    scrollToElement(fileItems[fileItemIndex + 1]);
-                }
-                return true;
-            }
-            if (direction === 'up') {
-                // Находим предыдущий элемент (не file-item)
-                var prevItems = [];
-                for (var p = idx - 1; p >= 0; p--) {
-                    if (!items[p].classList || !items[p].classList.contains('file-item')) {
-                        prevItems.push(items[p]);
-                    }
-                }
-                if (prevItems.length > 0) {
-                    focusEl(prevItems[0]);
-                    if (prevItems[0].id === 'catalog-watch-btn' || prevItems[0].id === 'back-from-detail') {
-                        scrollToTop();
-                    } else {
-                        scrollToElement(prevItems[0]);
-                    }
-                }
-                return true;
-            }
-            if (direction === 'down') {
-                // На file-item down ничего не делает
-                return true;
-            }
-            return true;
-        }
-
-        if (isTrailer && trailerIndex !== -1) {
-            if (direction === 'left') {
-                return focusEl(trailerLinks[Math.max(0, trailerIndex - 1)] || focused);
-            }
-            if (direction === 'right') {
-                return focusEl(trailerLinks[Math.min(trailerLinks.length - 1, trailerIndex + 1)] || focused);
-            }
-            if (direction === 'up') {
-                if (watchBtn && watchBtn.offsetParent !== null) {
-                    focusEl(watchBtn);
-                    scrollToTop();
-                    return true;
-                }
-                return focusEl(items[Math.max(0, idx - 1)] || focused);
-            }
-            if (direction === 'down') {
-                if (actorCards.length > 0) {
-                    focusEl(actorCards[0]);
-                    scrollToElement(actorCards[0]);
-                    return true;
-                } else if (recommendationCards.length > 0) {
-                    focusEl(recommendationCards[0]);
-                    scrollToElement(recommendationCards[0]);
-                    return true;
-                } else if (fileItems.length > 0) {
-                    focusEl(fileItems[0]);
-                    scrollToElement(fileItems[0]);
-                    return true;
-                }
-                return true;
-            }
-            return true;
-        }
-
-        if (isActor && actorIndex !== -1) {
-            if (direction === 'left') {
-                return focusEl(actorCards[Math.max(0, actorIndex - 1)] || focused);
-            }
-            if (direction === 'right') {
-                return focusEl(actorCards[Math.min(actorCards.length - 1, actorIndex + 1)] || focused);
-            }
-            if (direction === 'up') {
-                if (trailerLinks.length > 0) {
-                    focusEl(trailerLinks[trailerLinks.length - 1]);
-                    scrollToElement(trailerLinks[trailerLinks.length - 1]);
-                    return true;
-                } else if (watchBtn && watchBtn.offsetParent !== null) {
-                    focusEl(watchBtn);
-                    scrollToTop();
-                    return true;
-                }
-                return focusEl(items[Math.max(0, idx - 1)] || focused);
-            }
-            if (direction === 'down') {
-                if (recommendationCards.length > 0) {
-                    var targetIndex;
-                    if (actorIndex < recommendationCards.length) {
-                        targetIndex = actorIndex;
-                    } else {
-                        targetIndex = recommendationCards.length - 1;
-                    }
-                    focusEl(recommendationCards[targetIndex]);
-                    scrollToElement(recommendationCards[targetIndex]);
-                    return true;
-                } else if (fileItems.length > 0) {
-                    focusEl(fileItems[0]);
-                    scrollToElement(fileItems[0]);
-                    return true;
-                }
-                return true;
-            }
-            return true;
-        }
-
-        if (isRecommendation && recommendationIndex !== -1) {
-            if (direction === 'left') {
-                return focusEl(recommendationCards[Math.max(0, recommendationIndex - 1)] || focused);
-            }
-            if (direction === 'right') {
-                return focusEl(recommendationCards[Math.min(recommendationCards.length - 1, recommendationIndex + 1)] || focused);
-            }
-            if (direction === 'up') {
-                if (actorCards.length > 0) {
-                    var targetIndex;
-                    if (recommendationIndex < actorCards.length) {
-                        targetIndex = recommendationIndex;
-                    } else {
-                        targetIndex = actorCards.length - 1;
-                    }
-                    focusEl(actorCards[targetIndex]);
-                    scrollToElement(actorCards[targetIndex]);
-                    return true;
-                } else if (trailerLinks.length > 0) {
-                    var targetIndex;
-                    if (recommendationIndex < trailerLinks.length) {
-                        targetIndex = recommendationIndex;
-                    } else {
-                        targetIndex = trailerLinks.length - 1;
-                    }
-                    focusEl(trailerLinks[targetIndex]);
-                    scrollToElement(trailerLinks[targetIndex]);
-                    return true;
-                } else if (watchBtn && watchBtn.offsetParent !== null) {
-                    focusEl(watchBtn);
-                    scrollToTop();
-                    return true;
-                }
-                return focusEl(items[Math.max(0, idx - 1)] || focused);
-            }
-            if (direction === 'down') {
-                if (fileItems.length > 0) {
-                    focusEl(fileItems[0]);
-                    scrollToElement(fileItems[0]);
-                    return true;
-                }
-                return true;
-            }
-            return true;
-        }
-
-        if (isWatchBtn) {
-            scrollToTop();
-
-            if (direction === 'down') {
-                if (trailerLinks.length > 0) {
-                    focusEl(trailerLinks[0]);
-                    scrollToElement(trailerLinks[0]);
-                    return true;
-                } else if (actorCards.length > 0) {
-                    focusEl(actorCards[0]);
-                    scrollToElement(actorCards[0]);
-                    return true;
-                } else if (recommendationCards.length > 0) {
-                    focusEl(recommendationCards[0]);
-                    scrollToElement(recommendationCards[0]);
-                    return true;
-                } else if (fileItems.length > 0) {
-                    focusEl(fileItems[0]);
-                    scrollToElement(fileItems[0]);
-                    return true;
-                }
-                return true;
-            }
-            if (direction === 'left') {
-                return true;
-            }
-            if (direction === 'right') {
-                return true;
-            }
-            if (direction === 'up') {
-                return focusEl(backBtn || focused);
-            }
-            return true;
-        }
-
-        if (isBackBtn) {
-            scrollToTop();
-
-            if (direction === 'down') {
-                if (watchBtn && watchBtn.offsetParent !== null) {
-                    focusEl(watchBtn);
-                    scrollToTop();
-                    return true;
-                }
-                return focusEl(items[Math.min(items.length - 1, idx + 1)] || focused);
-            }
-            if (direction === 'up') {
-                scrollToTop();
-                return true;
-            }
-            if (direction === 'left' || direction === 'right') {
-                return true;
-            }
-            return true;
-        }
-
-        // Общая навигация (для элементов, не попавших в специальные категории)
-        if (direction === 'up') {
-            var targetEl = items[Math.max(0, idx - 1)] || focused;
-            focusEl(targetEl);
-            if (targetEl.id === 'catalog-watch-btn' || targetEl.id === 'back-from-detail') {
-                scrollToTop();
-            } else {
-                scrollToElement(targetEl);
-            }
-            return true;
-        }
-        if (direction === 'down') {
-            var targetEl = items[Math.min(items.length - 1, idx + 1)] || focused;
-            focusEl(targetEl);
-            if (targetEl.id === 'catalog-watch-btn' || targetEl.id === 'back-from-detail') {
-                scrollToTop();
-            } else {
-                scrollToElement(targetEl);
-            }
-            return true;
-        }
-        if (direction === 'left' || direction === 'right') {
-            return true;
-        }
-        return true;
-    }
-
-    function closeFiltersPanel() {
-        var panel = document.getElementById('search-filters-panel');
-        var toggleBtn = document.getElementById('filter-toggle');
-        if (panel && !panel.classList.contains('collapsed')) {
-            if (typeof toggleSearchFiltersPanel === 'function') {
-                toggleSearchFiltersPanel(false);
-            } else {
-                if (toggleBtn) toggleBtn.click();
-            }
-        }
-    }
-
-    function openFiltersPanelAndFocus() {
-        var panel = document.getElementById('search-filters-panel');
-        var toggleBtn = document.getElementById('filter-toggle');
-
-        if (panel && panel.classList.contains('collapsed')) {
-            if (typeof toggleSearchFiltersPanel === 'function') {
-                toggleSearchFiltersPanel(true);
-            } else {
-                if (toggleBtn) toggleBtn.click();
-            }
-
-            // После открытия панели, устанавливаем фокус на первый фильтр
-            setTimeout(function () {
-                updateFocusableElements();
-                var firstFilter = document.querySelector('#torrent-movie, #sort-by, #filter-quality, #filter-content-type, #filter-tracker, #filter-year, #filter-season, #filter-voice, #filter-videotype, #reset-filters');
-                if (firstFilter) {
-                    var filterIndex = -1;
-                    for (var i = 0; i < focusableElements.length; i++) {
-                        if (focusableElements[i] === firstFilter) {
-                            filterIndex = i;
-                            break;
-                        }
-                    }
-                    if (filterIndex !== -1) {
-                        setFocus(filterIndex);
-                    }
-                }
-            }, 50);
-        }
-    }
-
-    //функция searchHandle
-    function searchHandle(direction) {
-        // Получаем текущий режим поиска
-        var currentMode = getCurrentSearchMode();
-
-        // Общая часть для обоих режимов до навигации по результатам
-        var focused = belongsToScreen(document.querySelector('.focused'), 'search') ? document.querySelector('.focused') : null;
-        var query = byId('search-query');
-        var top = getSearchTop();
-        var filters = getSearchFilters();
-        var results = getSearchResults();
-        var topWithoutQuery = [];
-        for (var i = 0; i < top.length; i++) {
-            if (top[i] && top[i].id !== 'search-query') topWithoutQuery.push(top[i]);
-        }
-        var topEntry = topWithoutQuery[0] || filters[0] || results[0] || query;
-
-        if (!focused) return ensureSearchFocus(true, false);
-
-        if (document.activeElement === query && ['left', 'right', 'up', 'down'].indexOf(direction) !== -1) {
-            blurEditor();
-            return focusEl(topEntry);
-        }
-
-        var topIndex = -1;
-        for (var j = 0; j < top.length; j++) {
-            if (focused === top[j]) {
-                topIndex = j;
-                break;
-            }
-        }
-        var filterIndex = -1;
-        for (var k = 0; k < filters.length; k++) {
-            if (focused === filters[k]) {
-                filterIndex = k;
-                break;
-            }
-        }
-        var resultIndex = -1;
-        for (var l = 0; l < results.length; l++) {
-            if (focused === results[l]) {
-                resultIndex = l;
-                break;
-            }
-        }
-
-        // Если режим torrentsearch - работаем как раньше
-        if (currentMode === 'torrentsearch') {
-            if (topIndex !== -1) {
-                if (direction === 'left') return focusEl(top[Math.max(0, topIndex - 1)] || focused);
-                if (direction === 'right') return focusEl(top[Math.min(top.length - 1, topIndex + 1)] || focused);
-                if (direction === 'down') {
-                    return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
-                }
-                if (direction === 'up') return true;
-                return true;
-            }
-
-            if (filterIndex !== -1) {
-                if (direction === 'left') {
-                    // Если на первом фильтре и нажимаем влево - закрываем панель и переходим к поисковой строке
-                    return focusEl(filters[Math.max(0, filterIndex - 1)] || focused);
-                }
-                if (direction === 'right') {
-                    return focusEl(filters[Math.min(filters.length - 1, filterIndex + 1)] || focused);
-                }
-                if (direction === 'up') {
-                    // Нажимаем вверх - закрываем панель и переходим к поисковой строке
-                    closeFiltersPanel();
-                    return focusEl(query);
-                }
-                if (direction === 'down') {
-                    // Нажимаем вниз - закрываем панель и переходим к первому результату
-                    closeFiltersPanel();
-                    if (results.length > 0) {
-                        var searchResults = document.getElementById('search-results');
-                        searchResults.scrollTop = 0;
-                        return focusEl(results[0]);
-                    }
-                    return true;
-                }
-                return true;
-            }
-
-            if (resultIndex !== -1) {
-                if (direction === 'up') {
-                    if (resultIndex === 1) {
-                        var searchResults = document.getElementById('search-results');
-                        searchResults.scrollTop = 0;
-                        return focusEl(results[resultIndex - 1] || focused);
-                    } else if (resultIndex > 1) {
-                        return focusEl(results[resultIndex - 1] || focused);
-                    }
-                    // Наверх с первого результата - открываем панель фильтров
-                    return focusEl(query);
-                }
-                if (direction === 'down') {
-                    var allResults = results.length;
-                    if (allResults === resultIndex+1) {
-                        var searchResults = document.getElementById('search-results');
-                        searchResults.scrollTop = searchResults.scrollTop + 30;
-                        return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
-                    } else {
-                        return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
-                    }
-                } 
-                if (direction === 'left') {
-                    openFiltersPanelAndFocus();
-                    return true;
-                }
-                if (direction === 'right') {
-                    if (focused && (focused.classList.contains('search-result-item') || focused.classList.contains('global-search-card'))) {
-                        // Получаем данные из дочерней кнопки .search-result-play (индекс 1)
-                        var playButton = focused.querySelector('.search-result-play');
-
-                        var magnet = playButton.dataset.magnet;
-                        var hash = playButton.dataset.hash;
-                        var searchResult = playButton.dataset.result;
-
-                        try {
-                            var resultJson = decodeURIComponent(searchResult);
-                            searchResultJson = JSON.parse(resultJson);
-                        } catch (e) {
-                            console.error('Ошибка парсинга searchResult:');
-                        }
-
-                        if (magnet && typeof window.addTorrentSearchToServer === 'function') {
-                            // Используем then вместо await
-                            window.addTorrentSearchToServer(magnet, hash, searchResultJson)
-                                .then(() => {
-                                    var originalHtml = playButton.innerHTML;
-                                    playButton.style.display = 'block';
-                                    playButton.innerHTML = '✓';
-
-                                    setTimeout(() => {
-                                        playButton.style.display = 'none';
-                                        playButton.innerHTML = originalHtml;
-                                    }, 2000);
-                                })
-                                .catch(error => {
-                                    console.error('Ошибка при добавлении торрента:', error);
-                                });
-                        } else if (!magnet) {
-                            console.warn('Не найден magnet для добавления торрента');
-                        }
-
-                        return true;
-                    }
-                    return true;
-                }
-                return true;
-            }
-
-            return false;
-        }
-        // Если режим globalsearch - используем другую навигацию для результатов
-        else if (currentMode === 'globalsearch') {
-            if (topIndex !== -1) {
-                if (direction === 'left') return focusEl(top[Math.max(0, topIndex - 1)] || focused);
-                if (direction === 'right') return focusEl(top[Math.min(top.length - 1, topIndex + 1)] || focused);
-                if (direction === 'down') {
-                    if (results.length > 0) {
-                        return focusEl(results[0]);
-                    }
-                    return true;
-                }
-                if (direction === 'up') return true;
-                return true;
-            }
-
-            if (filterIndex !== -1) {
-                if (direction === 'left') {
-                    return focusEl(filters[Math.max(0, filterIndex - 1)] || focused);
-                }
-                if (direction === 'right') {
-                    return focusEl(filters[Math.min(filters.length - 1, filterIndex + 1)] || focused);
-                }
-                if (direction === 'up') {
-                    // Нажимаем вверх - закрываем панель и переходим к поисковой строке
-                    closeFiltersPanel();
-                    return focusEl(query);
-                }
-                if (direction === 'down') {
-                    // Нажимаем вниз - закрываем панель и переходим к первому результату
-                    closeFiltersPanel();
-                    if (results.length > 0) {
-                        return focusEl(results[0]);
-                    }
-                    return true;
-                }
-                return true;
-            }
-
-            // Навигация по результатам для globalsearch
-            if (resultIndex !== -1) {
-                var cols = 6; //getColumns();
-                var row = Math.floor(resultIndex / cols);
-
-                if (direction === 'left') {
-                    return focusEl(results[Math.max(0, resultIndex - 1)] || focused);
-                }
-
-                if (direction === 'right') {
-                    return focusEl(results[Math.min(results.length - 1, resultIndex + 1)] || focused);
-                }
-
-                if (direction === 'up') {
-                    if (row === 0) {
-                        // Наверх с первого ряда результатов - открываем панель фильтров
-                        return focusEl(query);
-                    }
-                    return focusEl(results[Math.max(0, resultIndex - cols)] || focused);
-                }
-
-                if (direction === 'down') {
-                    return focusEl(results[Math.min(results.length - 1, resultIndex + cols)] || focused);
-                }
-
-                return true;
-            }
-
-            return false;
-        }
-
-        return false;
-    }
-    
-    function scrollToActiveConfigItem() {
-        var activeItem = document.querySelector('#config-screen .focused');
-        var configScreen = document.querySelector('#config-screen');
-        var items = getConfigItems();
-
-        if (!activeItem || !configScreen) return;
-
-        // Находим реальный прокручиваемый контейнер
-        var scrollContainer = configScreen;
-        // Ищем родительский элемент, у которого есть прокрутка
-        while (scrollContainer && scrollContainer.scrollHeight <= scrollContainer.clientHeight) {
-            scrollContainer = scrollContainer.parentElement;
-            if (!scrollContainer || scrollContainer === document.body) {
-                scrollContainer = window;
-                break;
-            }
-        }
-
-        // Если контейнер - window, используем window.scrollY
-        var isWindow = (scrollContainer === window);
-        var currentScroll = isWindow ? window.scrollY : scrollContainer.scrollTop;
-
-        // Находим индекс текущего элемента
-        var currentIndex = -1;
-        for (var i = 0; i < items.length; i++) {
-            if (activeItem === items[i]) {
-                currentIndex = i;
-                break;
-            }
-        }
-
-        // Получаем позицию элемента относительно окна
-        var itemRect = activeItem.getBoundingClientRect();
-        var containerTop = isWindow ? 0 : scrollContainer.getBoundingClientRect().top;
-        var offsetTop = itemRect.top - containerTop;
-
-        // Проверяем, предпоследний ли элемент
-        var isSecondLast = (currentIndex === items.length - 2);
-        // Проверяем, предпервый ли элемент
-        var isSecondFirst = (currentIndex === 1);
-
-        // Если предпоследний элемент - скроллим до конца
-        if (isSecondLast) {
-            if (isWindow) {
-                window.scrollTo(0, document.body.scrollHeight - window.innerHeight);
-            } else {
-                scrollContainer.scrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
-            }
-            return;
-        }
-
-        // Если предпервый элемент - скроллим до начала
-        if (isSecondFirst) {
-            if (isWindow) {
-                window.scrollTo(0, 0);
-            } else {
-                scrollContainer.scrollTop = 0;
-            }
-            return;
-        }
-
-        // Стандартная логика для остальных элементов
-        var containerHeight = isWindow ? window.innerHeight : scrollContainer.clientHeight;
-
-        // Если элемент выше видимой области
-        if (offsetTop < 0) {
-            var newScroll = currentScroll + offsetTop - 10;
-            if (isWindow) {
-                window.scrollTo(0, newScroll);
-            } else {
-                scrollContainer.scrollTop = newScroll;
-            }
-        }
-        // Если элемент ниже видимой области
-        else if (offsetTop + itemRect.height > containerHeight) {
-            var newScroll = currentScroll + (offsetTop + itemRect.height - containerHeight) + 10;
-            if (isWindow) {
-                window.scrollTo(0, newScroll);
-            } else {
-                scrollContainer.scrollTop = newScroll;
-            }
-        }
-    }
-
-    function configHandle(direction) {
-        var items = getConfigItems();
-        var focused = (belongsToScreen(document.querySelector('.focused'), 'config') ? document.querySelector('.focused') : null);
-        if (!focused) return ensureConfigFocus(true);
-        var idx = -1;
-        for (var i = 0; i < items.length; i++) {
-            if (focused === items[i]) {
-                idx = i;
-                break;
-            }
-        }
-        if (idx === -1) return ensureConfigFocus(true);
-
-        // Проверяем, являются ли элементы кнопками синхронизации или замера скорости
-        var isSyncBtn = focused.id === 'sync-clients-btn';
-        var isSpeedtestBtn = focused.id === 'speedtest-btn';
-
-        // Логика для sync-clients-btn
-        if (isSyncBtn) {
-            if (direction === 'left') {
-                // Клавиша left - ничего не делаем
-                return true;
-            }
-            if (direction === 'right') {
-                // Перемещаем фокус на speedtest-btn
-                var speedtestBtn = document.getElementById('speedtest-btn');
-                if (speedtestBtn && belongsToScreen(speedtestBtn, 'config')) {
-                    focusEl(speedtestBtn);
-                    setTimeout(function () {
-                        scrollToActiveConfigItem();
-                    }, 50);
-                }
-                return true;
-            }
-            if (direction === 'up') {
-                // Перемещаем фокус на элемент перед sync-clients-btn
-                var newFocused = items[Math.max(0, idx - 1)] || focused;
-                if (newFocused) {
-                    focusEl(newFocused);
-                    setTimeout(function () {
-                        scrollToActiveConfigItem();
-                    }, 50);
-                }
-                return true;
-            }
-            if (direction === 'down') {
-                // Перемещаем фокус на элемент через один (idx + 2)
-                var newFocused = items[Math.min(items.length - 1, idx + 2)] || focused;
-                if (newFocused) {
-                    focusEl(newFocused);
-                    setTimeout(function () {
-                        scrollToActiveConfigItem();
-                    }, 50);
-                }
-                return true;
-            }
-            return false;
-        }
-
-        // Логика для speedtest-btn
-        if (isSpeedtestBtn) {
-            if (direction === 'right') {
-                // Клавиша right - ничего не делаем
-                return true;
-            }
-            if (direction === 'left') {
-                // Перемещаем фокус на sync-clients-btn
-                var syncBtn = document.getElementById('sync-clients-btn');
-                if (syncBtn && belongsToScreen(syncBtn, 'config')) {
-                    focusEl(syncBtn);
-                    setTimeout(function () {
-                        scrollToActiveConfigItem();
-                    }, 50);
-                }
-                return true;
-            }
-            if (direction === 'up') {
-                // Перемещаем фокус на элемент через один перед speedtest-btn (idx - 2)
-                var newFocused = items[Math.max(0, idx - 2)] || focused;
-                if (newFocused) {
-                    focusEl(newFocused);
-                    setTimeout(function () {
-                        scrollToActiveConfigItem();
-                    }, 50);
-                }
-                return true;
-            }
-            if (direction === 'down') {
-                // Перемещаем фокус на следующий элемент
-                var newFocused = items[Math.min(items.length - 1, idx + 1)] || focused;
-                if (newFocused) {
-                    focusEl(newFocused);
-                    setTimeout(function () {
-                        scrollToActiveConfigItem();
-                    }, 50);
-                }
-                return true;
-            }
-            return false;
-        }
-
-        // Стандартная логика для остальных элементов
-        var newFocused = null;
-        if (direction === 'up') {
-            newFocused = items[Math.max(0, idx - 1)] || focused;
-        } else if (direction === 'down') {
-            newFocused = items[Math.min(items.length - 1, idx + 1)] || focused;
-        } else if (direction === 'left' || direction === 'right') {
-            return true;
-        } else {
-            return false;
-        }
-
-        if (newFocused) {
-            focusEl(newFocused);
-            // Добавляем скроллинг после фокуса
-            setTimeout(function () {
-                scrollToActiveConfigItem();
-            }, 50);
-        }
-
-        return false;
-    }
-
-    function onOk() {
-        var screen = currentScreen();
-        var focused = document.querySelector('.focused');
-        if (screen === 'torrents') {
-            if (!belongsToScreen(focused, 'torrents')) return ensureTorrentFocus(true);
-            if (focused.id === 'search-query' || focused.id === 'search-btn' || focused.id === 'tab-search') return openSearchScreen(true);
-            if (focused.id === 'tab-catalog') {
-                clickEl(focused);
-                return true;
-            }
-            clickEl(focused);
-            return true;
-        }
-        if (screen === 'catalog') {
-            if (!belongsToScreen(focused, 'catalog')) return ensureCatalogFocus(true);
-            clickEl(focused);
-            return true;
-        }
-        if (screen === 'search') {
-            if (!belongsToScreen(focused, 'search')) return ensureSearchFocus(true, true);
-
-            if (focused.id === 'search-query') {
-                focusEl(focused, { nativeFocus: true });
-                try { focused.click(); } catch (e) { }
-                try { focused.focus(); } catch (e) { }
-                try { if (focused.select) focused.select(); } catch (e) { }
-                return true;
-            }
-            var panel = document.getElementById('search-filters-panel');
-
-            if (focused.id === 'filter-toggle') {
-                if (panel && panel.classList.contains('collapsed')) {
-                    openFiltersPanelAndFocus();
-                    return true;
-                } else {
-                    closeFiltersPanel();
-                    return true;
-                }
-            }
-
-            if (focused.tagName === 'SELECT' || focused.id === 'filter-year') {
-                return openNativeSearchControl(focused);
-            }
-
-            clickEl(focused);
-            return true;
-        }
-        if (screen === 'detail') {
-            if (!belongsToScreen(focused, 'detail')) return ensureDetailFocus(true);
-
-            if (focused.classList.contains('file-item')) {
-                clickEl(focused.querySelector('.play-btn') || focused);
-                return true;
-            }
-
-            if (focused.classList.contains('detail-progress-btn')) {
-                clickEl(focused);
-                return true;
-            }
-
-            clickEl(focused);
-            return true;
-        }
-        if (screen === 'config') {
-            if (!belongsToScreen(focused, 'config')) return ensureConfigFocus(true);
-            focusEl(focused, { nativeFocus: focused.tagName === 'INPUT' });
-            clickEl(focused);
-            return true;
-        }
-        return false;
-    }
-
-    function onBack() {
-        var search = byId('search-overlay');
-        var detail = byId('detail-view');
-        var config = byId('config-screen');
-        var catalog = currentScreen() === 'catalog';
-        var donate = currentScreen() === 'donate';
-
-        if (AppState.syncCodeScreen == true) {
-            toggleSyncOverlay();
-            return true;
-        }
-
-        if (typeof window.closeCatalogTrailerOverlay === 'function' && window.closeCatalogTrailerOverlay()) {
-            setTimeout(function () { ensureDetailFocus(true); }, 80);
-            return true;
-        }
-
-        if (search && !search.classList.contains('hidden') && getComputedStyle(search).display !== 'none') {
-            if (typeof window.hideSearchResults === 'function') {
-                window.hideSearchResults();
-                var tabs = getTorrentTabs();
-                focusEl(tabs[2]);
-            } else {
-                leaveSearchToTorrents();
-            }
-            return true;
-        }
-
-        if (detail && getComputedStyle(detail).display !== 'none') {
-            clickEl(byId('back-from-detail') || document.querySelector('.back-btn'));
-            return true;
-        }
-
-        if (donate) {
-            if (typeof window.closeDonateOverlay === 'function') window.closeDonateOverlay();
-            return true;
-        }
-
-        if (catalog) {
-            // Проверяем наличие карточек каталога
-            var hasCatalogCards = document.querySelector('#torrents-grid .torrent-card.catalog-folder-card');
-
-            if (hasCatalogCards) {
-                console.log('📁 Карточки каталога уже есть, выходим');
-                return true;
-            }
-
-            if (window.catalogState) {
-                window.catalogState.lastSelectedIndex = 0;
-                window.catalogState.lastSelectedId = null;
-                localStorage.removeItem('lastCatalogCardIndex');
-                console.log('🧹 Очищен num_index при выходе из каталога');
-            }
-
-            if (typeof window.backToCatalogList === 'function') {
-                AppState.currentScreen = 'catalog';
-                window.backToCatalogList();
-            } else {
-                clickEl(byId('back-from-catalog'));
-            }
-            setTimeout(function () { ensureCatalogFocus(true); }, 180);
-            return true;
-        }
-
-        if (config && getComputedStyle(config).display !== 'none') {
-            var main = byId('torrserver-section');
-            config.style.display = 'none';
-            if (main) main.style.display = 'block';
-            try { window.AppState.currentScreen = 'torrents'; } catch (e) { }
-            setTimeout(function () { ensureTorrentFocus(true); }, 180);
-            return true;
-        }
-
-        return false;
-    }
-
-    function isArrowKey(keyCode) {
-        return [37, 38, 39, 40].indexOf(keyCode) !== -1 || (typeof isKeyPressed === 'function' && (isKeyPressed('UP', keyCode) || isKeyPressed('DOWN', keyCode) || isKeyPressed('LEFT', keyCode) || isKeyPressed('RIGHT', keyCode)));
-    }
-    function arrowDir(keyCode) {
-        if ([37, 38, 39, 40].indexOf(keyCode) !== -1) {
-            return ({ 37: 'left', 38: 'up', 39: 'right', 40: 'down' })[keyCode];
-        }
-        if (typeof isKeyPressed === 'function') {
-            if (isKeyPressed('UP', keyCode)) return 'up';
-            if (isKeyPressed('DOWN', keyCode)) return 'down';
-            if (isKeyPressed('LEFT', keyCode)) return 'left';
-            if (isKeyPressed('RIGHT', keyCode)) return 'right';
-        }
-        return null;
-    }
-    function isOkKey(keyCode) {
-        return keyCode === 13 || (typeof isKeyPressed === 'function' && isKeyPressed('OK', keyCode));
-    }
-    function isBackKey(keyCode) {
-        return [8, 27, 461, 10009].indexOf(keyCode) !== -1 || (typeof isKeyPressed === 'function' && (isKeyPressed('BACK', keyCode) || isKeyPressed('EXIT', keyCode)));
-    }
-
-    document.addEventListener('keydown', function (e) {
-        var screen = currentScreen();
-        if (screen === 'player') return;
-        if (['torrents', 'catalog', 'search', 'detail', 'config', 'donate'].indexOf(screen) === -1) return;
-        var active = document.activeElement;
-        var editing = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT');
-
-        if (isBackKey(e.keyCode)) {
-            e.preventDefault(); e.stopImmediatePropagation();
-            // БЛОКИРУЕМ НАВИГАЦИЮ ЕСЛИ ПЛЕЕР АКТИВЕН
-            var playbackOverlay = document.getElementById('playback-overlay');
-            var isPlaybackActive = playbackOverlay && playbackOverlay.classList.contains('active');
-
-            // Если плеер активен, не обрабатываем навигацию по торрентам
-            if (isPlaybackActive) {
-                // Пропускаем обработку, если только это не специальные клавиши для плеера
-                // Они обрабатываются позже в секции плеера
-                cancelCurrentPlayback();
-                return;
-            }
-            if (isCustomFilterMenuOpen()) {
-                closeCustomFilterMenu();
-                return;
-            }
-
-            if (screen === 'catalog' && window.catalogState && window.catalogState.currentCatalog) {
-                window.catalogState.lastSelectedIndex = 0;
-                window.catalogState.lastSelectedId = null;
-                localStorage.removeItem('lastCatalogCardIndex');
-                console.log('🧹 Очищен num_index при выходе из каталога');
-            }
-
-            if (editing) {
-                blurEditor();
-                if (screen === 'search') ensureSearchFocus(true, true);
-                else if (screen === 'catalog') ensureCatalogFocus(true);
-                else if (screen === 'config') ensureConfigFocus(true);
-                else if (screen === 'detail') ensureDetailFocus(true);
-                else ensureTorrentFocus(true);
-                return;
-            }
-            onBack();
-            return;
-        }
-
-        if (isArrowKey(e.keyCode)) {
-            e.preventDefault(); e.stopImmediatePropagation();
-            var dir = arrowDir(e.keyCode);
-            if (isCustomFilterMenuOpen()) {
-                if (dir === 'up') moveCustomFilterMenu(-1);
-                else if (dir === 'down') moveCustomFilterMenu(1);
-                return;
-            }
-            if (screen === 'torrents') torrentHandle(dir);
-            else if (screen === 'catalog') catalogHandle(dir);
-            else if (screen === 'search') searchHandle(dir);
-            else if (screen === 'detail') detailHandle(dir);
-            else if (screen === 'config') configHandle(dir);
-            return;
-        }
-
-        if (isOkKey(e.keyCode)) {
-            e.preventDefault(); e.stopImmediatePropagation();
-
-            if (isCustomFilterMenuOpen()) {
-                applyCustomFilterMenuSelection();
-                return;
-            }
-
-            if (screen === 'torrents') {
-                var focused = document.querySelector('.focused');
-                if (focused && focused.classList.contains('torrent-card')) {
-                    if (!e.repeat) {
-                        okHoldHandled = false;
-                        okHoldFocused = focused;
-                        clearOkHold();
-                        okHoldTimer = setTimeout(async function () {
-                            okHoldHandled = true;
-                            var hash = okHoldFocused && okHoldFocused.dataset ? okHoldFocused.dataset.hash : null;
-                            if (typeof window.setTorrentClickSuppressed === 'function') {
-                                window.setTorrentClickSuppressed(1500);
-                            }
-                            if (okHoldFocused) {
-                                okHoldFocused.dataset.suppressClick = '1';
-                            }
-                            if (hash && typeof window.removeTorrentByHash === 'function') {
-                                await window.removeTorrentByHash(hash, { skipConfirm: true });
-                            }
-                            setTimeout(function () {
-                                if (okHoldFocused) delete okHoldFocused.dataset.suppressClick;
-                            }, 1500);
-                        }, 900);
-                    }
-                    return;
-                }
-            }
-
-            onOk();
-            return;
-        }
-    }, true);
-
-    document.addEventListener('keyup', function (e) {
-        var screen = currentScreen();
-        if (isCustomFilterMenuOpen()) return;
-        if (!isOkKey(e.keyCode) || screen !== 'torrents') return;
-
-        var focused = document.querySelector('.focused');
-        var cardStillFocused = focused && okHoldFocused && focused === okHoldFocused;
-
-        clearOkHold();
-
-        if (!okHoldHandled && cardStillFocused && focused.classList.contains('torrent-card')) {
-            focused.click();
-        }
-
-        okHoldHandled = false;
-        okHoldFocused = null;
-    }, true);
-
-    
-
-    var prevShowDetail = window.showDetail;
-    if (typeof prevShowDetail === 'function') {
-        window.showDetail = function () {
-            var out = prevShowDetail.apply(this, arguments);
-            setTimeout(function () {
-                if (currentScreen() !== 'player') ensureDetailFocus(true);
-            }, 220);
-            return out;
-        };
-    }
-
-    var prevShowSearchResults = window.showSearchResults;
-    if (typeof prevShowSearchResults === 'function') {
-        window.showSearchResults = function () {
-            var out = prevShowSearchResults.apply(this, arguments);
-            setTimeout(function () { ensureSearchFocus(true, true); }, 120);
-            return out;
-        };
-    }
-
+    var prevShow = window.showDetail; if (typeof prevShow === 'function') { window.showDetail = function () { var o = prevShow.apply(this, arguments); setTimeout(function () { if (currentScreen() !== 'player') ensureDetailFocus(true); }, 220); return o; }; }
+    var prevSR = window.showSearchResults; if (typeof prevSR === 'function') { window.showSearchResults = function () { var o = prevSR.apply(this, arguments); setTimeout(function () { ensureSearchFocus(true, true); }, 120); return o; }; }
     setTimeout(function () { ensureTorrentFocus(true); }, 120);
 }
 
-window.addEventListener('popstate', function (e) {
-    // Блокировка если нужно
-    if (window.swipeBlocked) return;
-
-    // Создаем событие клавиши BACK для существующего обработчика
-    var backEvent = new KeyboardEvent('keydown', {
-        keyCode: 27,  // ESC/BACK
-        key: 'Escape',
-        bubbles: true,
-        cancelable: true
-    });
-    document.dispatchEvent(backEvent);
-
-    // КРИТИЧЕСКИ ВАЖНО: добавляем новое состояние после обработки свайпа
-    // чтобы следующий свайп сработал так же, а не закрыл приложение
-    setTimeout(function () {
-        window.history.pushState({ page: 'main' }, '');
-    }, 150);
-});
-
-// Добавляем начальное состояние в историю
+window.addEventListener('popstate', function (e) { if (window.swipeBlocked) return; var be = new KeyboardEvent('keydown', { keyCode: 27, key: 'Escape', bubbles: true, cancelable: true }); document.dispatchEvent(be); setTimeout(function () { window.history.pushState({ page: 'main' }, ''); }, 150); });
 window.history.pushState({ page: 'main' }, '');
-
-// Функция для блокировки свайпов на время
-window.blockSwipe = function (ms) {
-    window.swipeBlocked = true;
-    setTimeout(function () {
-        window.swipeBlocked = false;
-    }, ms || 500);
-};
+window.blockSwipe = function (ms) { window.swipeBlocked = true; setTimeout(function () { window.swipeBlocked = false; }, ms || 500); };
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
-
 function initControl() {
-    console.log('Модуль управления инициализирован');
-    setupKeyboardHandlers();
-    setupFocusRescue();
-
-    // Экспортируем функции в глобальный объект
-    window.updateFocusableElements = updateFocusableElements;
-    window.setFocus = setFocus;
-    window.navigate = navigate;
-    window.showPlayerControls = showPlayerControls;
-    window.hidePlayerControls = hidePlayerControls;
-    window.hidePlayerPanelsOnly = hidePlayerPanelsOnly;
-    window.hidePlayerUi = hidePlayerUi;
-    window.focusFirstTorrentCard = focusFirstTorrentCard;
-    window.focusSearchHome = focusSearchHome;
-    window.openNativeSearchControl = window.openNativeSearchControl || function (el) {
-        if (el && (el.tagName === 'SELECT' || el.id === 'filter-year')) {
-            el.focus();
-            try { el.click(); } catch (e) { }
-        }
-    };
+    console.log('Модуль управления инициализирован (оптимизирован)');
+    setupKeyboardHandlers(); setupFocusRescue();
+    window.updateFocusableElements = updateFocusableElements; window.setFocus = setFocus; window.navigate = navigate;
+    window.showPlayerControls = showPlayerControls; window.hidePlayerControls = hidePlayerControls;
+    window.hidePlayerPanelsOnly = hidePlayerPanelsOnly; window.hidePlayerUi = hidePlayerUi;
+    window.focusFirstTorrentCard = focusFirstTorrentCard; window.focusSearchHome = focusSearchHome;
+    window.openNativeSearchControl = window.openNativeSearchControl || function (el) { if (el && (el.tagName === 'SELECT' || el.id === 'filter-year')) { el.focus(); try { el.click(); } catch (e) { } } };
 }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControl); else initControl();
 
-// Автоматическая инициализация
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initControl);
-} else {
-    initControl();
-}
-
-// ========== ГОРИЗОНТАЛЬНЫЙ СКРОЛЛ ==========
-(function() {
+(function () {
     function initHorizontalScroll() {
-        var containers = document.querySelectorAll('.files-list, .catalog-detail-actors-grid, .catalog-detail-recommendations-grid');
-        
-        for (var i = 0; i < containers.length; i++) {
-            (function(container) {
-                if (container._wheelHandlerAdded) return;
-                container._wheelHandlerAdded = true;
-                
-                function wheelHandler(e) {
-                    e = e || window.event;
-                    var deltaY = e.deltaY || e.wheelDeltaY || (e.wheelDelta ? -e.wheelDelta / 40 : 0) || e.detail || 0;
-                    var deltaX = e.deltaX || e.wheelDeltaX || 0;
-                    
-                    if (Math.abs(deltaY) > Math.abs(deltaX)) {
-                        if (e.preventDefault) e.preventDefault();
-                        if (e.returnValue) e.returnValue = false;
-                        container.scrollLeft += deltaY;
-                    }
-                }
-                
-                if (container.addEventListener) {
-                    container.addEventListener('wheel', wheelHandler, false);
-                    container.addEventListener('mousewheel', wheelHandler, false);
-                    if (window.navigator.userAgent.indexOf('Firefox') !== -1) {
-                        container.addEventListener('DOMMouseScroll', wheelHandler, false);
-                    }
-                } else if (container.attachEvent) {
-                    container.attachEvent('onmousewheel', wheelHandler);
-                }
-            })(containers[i]);
-        }
+        var c = document.querySelectorAll('.files-list,.catalog-detail-actors-grid,.catalog-detail-recommendations-grid');
+        for (var i = 0; i < c.length; i++) { (function (cnt) { if (cnt._wh) return; cnt._wh = true; function wh(e) { e = e || window.event; var dy = e.deltaY || e.wheelDeltaY || (e.wheelDelta ? -e.wheelDelta / 40 : 0) || e.detail || 0, dx = e.deltaX || e.wheelDeltaX || 0; if (Math.abs(dy) > Math.abs(dx)) { if (e.preventDefault) e.preventDefault(); if (e.returnValue) e.returnValue = false; cnt.scrollLeft += dy; } } if (cnt.addEventListener) { cnt.addEventListener('wheel', wh, false); cnt.addEventListener('mousewheel', wh, false); if (navigator.userAgent.indexOf('Firefox') !== -1) cnt.addEventListener('DOMMouseScroll', wh, false); } else if (cnt.attachEvent) cnt.attachEvent('onmousewheel', wh); })(c[i]); }
     }
-    
-    // Запускаем при загрузке
-    if (document.readyState === 'loading') {
-        document.addEventListener ? document.addEventListener('DOMContentLoaded', initHorizontalScroll) : window.attachEvent('onload', initHorizontalScroll);
-    } else {
-        initHorizontalScroll();
-    }
-    
-    // Экспортируем функцию для ручного вызова
+    if (document.readyState === 'loading') document.addEventListener ? document.addEventListener('DOMContentLoaded', initHorizontalScroll) : window.attachEvent('onload', initHorizontalScroll); else initHorizontalScroll();
     window.initHorizontalScroll = initHorizontalScroll;
 })();
-
-
