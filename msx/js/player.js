@@ -1342,7 +1342,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   console.log('Начальная позиция (initialSeek):', initialSeek !== null ? formatTime(initialSeek) : 'не указана');
 
   lastPlaybackFromSearch = fromSearch;
-  var match = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)\//);
+  var match = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)\/?/);
   if (match) {
     currentTimecodeData.hash = match[1];
     currentTimecodeData.fileId = match[2];
