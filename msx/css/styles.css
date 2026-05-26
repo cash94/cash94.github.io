@@ -2937,26 +2937,12 @@ html {
 .focused {
   outline: none !important;
   box-shadow: 0 0 0 3px #ff8c00, 0 0 0 6px rgba(255, 140, 0, 0.3) !important;
-  transition: box-shadow 0.10s ease;
+  /* transition: box-shadow 0.10s ease; */
   /* transform: scale(1.01); */
   z-index: 10;
   position: relative;
   border-radius: 12px;
   /* Добавляем скругление, чтобы тень соответствовала карточке */
-}
-
-/* Для ТВ пультов - убираем transform если вызывает тормоза */
-@media (pointer: coarse) {
-  .focused {
-    transform: none;
-    /* На ТВ scale может тормозить */
-  }
-
-  .torrent-card,
-  .catalog-card {
-    transition: all 0.15s ease;
-    /* Меньше анимации на ТВ */
-  }
 }
 
 /* Для ТВ отключаем каскадную анимацию */
@@ -3007,18 +2993,6 @@ html {
 .focused {
     outline: none !important;
     transition: none !important; /* GSAP будет управлять анимацией */
-}
-
-/* Плавное появление контента */
-@keyframes fadeInScale {
-    from {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
 }
 
 /* Для обратной совместимости - если GSAP не загрузился */
