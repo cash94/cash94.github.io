@@ -2665,3 +2665,28 @@ window.nextEpisode = nextEpisode;
 window.prevEpisode = prevEpisode;
 window.exitPlayer = exitPlayer;
 window.cancelCurrentPlayback = cancelCurrentPlayback;
+
+(function () {
+  // Создаем структуру объекта, если её нет
+  if (typeof window.Lampa === 'undefined') {
+    window.Lampa = {};
+  }
+  if (typeof window.Lampa.Timeline === 'undefined') {
+    window.Lampa.Timeline = {};
+  }
+
+  // Устанавливаем функцию update, которую будет вызывать Android
+  window.Lampa.Timeline.update = function (timelineData) {
+    console.log('📱 Вызов из Android Lampa, получены данные:', timelineData);
+
+    // Просто вызываем вашу существующую функцию
+    // updatePlayerTimeline уже умеет парсить строку или объект
+    if (typeof updatePlayerTimeline === 'function') {
+      updatePlayerTimeline(timelineData);
+    } else {
+      console.error('❌ Функция updatePlayerTimeline не найдена!');
+    }
+  };
+
+  console.log('✅ Lampa.Timeline.update успешно зарегистрирован');
+})();
