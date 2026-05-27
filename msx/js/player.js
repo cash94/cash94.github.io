@@ -2304,7 +2304,7 @@ async function switchAudioTrack(trackIndex) {
   document.querySelector('.playback-text').textContent = 'Переключение аудиодорожки...';
 
   try {
-    var parsed = AppState.videoUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)\//);
+    var parsed = AppState.videoUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
     if (!parsed) return;
     var hash = parsed[1];
     var fileId = parsed[2];
