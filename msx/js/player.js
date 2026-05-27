@@ -1297,18 +1297,22 @@ function preloadTorrents(hash, fileId) {
     });
 }
 
-function playInExternalPlayer(url, title) {
+function playInExternalPlayer(url, title, timecode) {
   console.log('📱 Открытие во внешнем плеере:', url);
   if (window.AndroidJS) {
-    var match = url.match(/\/play\/([a-fA-F0-9]+)\/(\d+)\/?/);
+    var match = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)\/?/);
     if (match) {
       currentTimecodeData.hash = match[1];
       currentTimecodeData.fileId = match[2];
-      currentTimecodeData.timecode = 0;
-      currentTimecodeData.duration = 0;
-      
-      var playURL = AppState.currentTorrserverUrl + "/stream?link=" + currentTimecodeData.hash +"&index=" + currentTimecodeData.fileId + "&play=play";
-      AndroidJS.openPlayer(playURL, JSON.stringify({ url: playURL, title: title || 'Видео', iptv: false }));
+
+      if (timecode != null) {
+        currentTimecodeData.timecode = timecode;
+      } else {
+        currentTimecodeData.timecode = 0;
+      }
+
+      var playURL = AppState.currentTorrserverUrl + "/stream?link=" + currentTimecodeData.hash + "&index=" + currentTimecodeData.fileId + "&play=play";
+      AndroidJS.openPlayer(playURL, JSON.stringify({ url: playURL, title: title, time: currentTimecodeData.timecode || 'Видео', iptv: false }));
       return true;
     }
   }
@@ -1323,7 +1327,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (audioTrack === undefined) audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
 
   if (window.AndroidJS) {
-    if (playInExternalPlayer(originalUrl, AppState.currentDetailItem.title)) {
+    if (playInExternalPlayer(originalUrl, AppState.currentDetailItem.title, initialSeek)) {
       console.log('📱 Запуск во внешнем плеере');
       return;
     }
@@ -2569,6 +2573,10 @@ function updatePlayerTimeline(timelineData) {
       }).catch(function (e) {
         console.error('Ошибка сохранения таймкода:', e);
       });
+    }
+    // Обновляем прогресс в UI
+    if (AppState && AppState.currentDetailItem && currentTimecodeData.hash) {
+      updateDetailProgress(AppState.currentDetailItem);
     }
   } catch (error) {
     console.error('❌ Ошибка в updatePlayerTimeline:', error);
