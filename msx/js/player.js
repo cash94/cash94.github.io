@@ -1305,7 +1305,7 @@ function playInExternalPlayer(url, title) {
       currentTimecodeData.hash = match[1];
       currentTimecodeData.fileId = match[2];
       currentTimecodeData.timecode = 0;
-      var playURL = AppState.currentTorrserverUrl + "/stream?link=" + currentTimecodeData.hash + "&index=" + currentTimecodeData.fileId + "&play=play";
+      var playURL = AppState.currentTorrserverUrl + "/stream?link=" + currentTimecodeData.hash +"&m3u=m3u"; //"&index=" + currentTimecodeData.fileId + "&play=play";
       AndroidJS.openPlayer(playURL, JSON.stringify({ url: playURL, title: title || 'Видео', iptv: false }));
       return true;
     }
