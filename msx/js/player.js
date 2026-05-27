@@ -1300,7 +1300,7 @@ function preloadTorrents(hash, fileId) {
 function playInExternalPlayer(url, title, timecode) {
   console.log('📱 Открытие во внешнем плеере:', url);
   if (window.AndroidJS) {
-    var match = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)\/?/);
+    var match = url.match(/\/play\/([a-fA-F0-9]+)\/(\d+)\/?/);
     if (match) {
       currentTimecodeData.hash = match[1];
       currentTimecodeData.fileId = match[2];
