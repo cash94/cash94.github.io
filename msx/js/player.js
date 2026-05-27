@@ -1299,24 +1299,58 @@ function preloadTorrents(hash, fileId) {
 
 function playInExternalPlayer(url, title, timecode) {
   console.log('📱 Открытие во внешнем плеере:', url);
-  if (window.AndroidJS) {
-    var match = url.match(/\/play\/([a-fA-F0-9]+)\/(\d+)\/?/);
-    if (match) {
-      currentTimecodeData.hash = match[1];
-      currentTimecodeData.fileId = match[2];
 
-      if (timecode != null) {
-        currentTimecodeData.timecode = timecode;
-      } else {
-        currentTimecodeData.timecode = 0;
-      }
-
-      var playURL = AppState.currentTorrserverUrl + "/stream?link=" + currentTimecodeData.hash + "&index=" + currentTimecodeData.fileId + "&play=play";
-      AndroidJS.openPlayer(playURL, JSON.stringify({ url: playURL, title: title, time: currentTimecodeData.timecode || 'Видео', iptv: false }));
-      return true;
-    }
+  if (!window.AndroidJS) {
+    console.log('❌ AndroidJS не доступен');
+    return false;
   }
-  return false;
+
+  if (!url) {
+    console.log('❌ URL не передан');
+    return false;
+  }
+
+  // Парсим URL
+  var match = url.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
+  if (!match) {
+    match = url.match(/[?&]link=([a-fA-F0-9]+)[&]index=(\d+)/);
+  }
+
+  if (match) {
+    // Сохраняем данные
+    var torrentHash = match[1];
+    var fileId = parseInt(match[2]);
+    var seekTime = (timecode != null && timecode > 0) ? Math.floor(timecode) : 0;
+
+    currentTimecodeData.hash = torrentHash;
+    currentTimecodeData.fileId = fileId;
+    currentTimecodeData.timecode = seekTime;
+
+    // Формируем URL для внешнего плеера
+    var playURL = AppState.currentTorrserverUrl + "/stream?link=" + torrentHash +
+      "&index=" + fileId + "&play=play";
+
+    // Формируем данные
+    var playerData = {
+      url: playURL,
+      title: title || 'Видео',
+      iptv: false,
+      timecode: seekTime,
+      timeline: {
+        hash: torrentHash + '_' + fileId,
+        time: seekTime,
+        duration: 0,
+        percent: 0
+      }
+    };
+
+    console.log('📱 Запуск внешнего плеера:', playerData);
+    AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
+    return true;
+  } else {
+    console.log('⚠️ Не удалось извлечь hash и fileId из URL:', url);
+    return false;
+  }
 }
 
 // Обновленная функция startHLSPlayback с ожиданием буфера (видео на паузе)
