@@ -1305,9 +1305,16 @@ function playInExternalPlayer(url, title) {
       currentTimecodeData.hash = match[1];
       currentTimecodeData.fileId = match[2];
       currentTimecodeData.timecode = 0;
-      var playURL = AppState.currentTorrserverUrl + "/stream?link=" + currentTimecodeData.hash +"&m3u=m3u"; //"&index=" + currentTimecodeData.fileId + "&play=play";
-      AndroidJS.openPlayer(playURL, JSON.stringify({ url: playURL, title: title || 'Видео', iptv: false }));
-      return true;
+      currentTimecodeData.duration = 0;
+      if (currentTimecodeData.fileId == 1) {
+        var playURL = AppState.currentTorrserverUrl + "/stream?link=" + currentTimecodeData.hash +"&m3u=m3u"; //"&index=" + currentTimecodeData.fileId + "&play=play";
+        AndroidJS.openPlayer(playURL, JSON.stringify({ url: playURL, title: title || 'Видео', iptv: false }));
+        return true;
+      } else if (currentTimecodeData.fileId > 1) {
+        var playURL = AppState.currentTorrserverUrl + "/stream?link=" + currentTimecodeData.hash +"&m3u=m3u"+"&fromlast="+currentTimecodeData.fileId; //"&index=" + currentTimecodeData.fileId + "&play=play";
+        AndroidJS.openPlayer(playURL, JSON.stringify({ url: playURL, title: title || 'Видео', iptv: false }));
+        return true;
+      }
     }
   }
   return false;
