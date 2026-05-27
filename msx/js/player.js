@@ -2497,6 +2497,125 @@ function updateClock() {
 updateClock();
 setInterval(updateClock, 60000);
 
+// Глобальная функция для получения таймкода из Android
+function updatePlayerTimeline(timelineData) {
+  console.log('📊 Получен timeline из Android:', timelineData);
+
+  try {
+    // Парсим данные (могут прийти как строка или объект)
+    var data = typeof timelineData === 'string' ? JSON.parse(timelineData) : timelineData;
+
+    // Проверяем валидность данных
+    if (!data.hash || data.hash === '0') {
+      console.log('⚠️ Некорректный hash, пробуем извлечь из currentUrl');
+
+      // Если hash == 0, но есть currentUrl - парсим из URL
+      if (data.currentUrl) {
+        var urlData = parseHashFromUrl(data.currentUrl);
+        if (urlData) {
+          data.hash = urlData.hash;
+          data.torrentHash = urlData.torrentHash;
+          data.fileId = urlData.fileId;
+          console.log('✅ Hash извлечен из URL:', data.hash);
+        } else {
+          console.log('⚠️ Не удалось извлечь hash из URL');
+          return;
+        }
+      } else {
+        return;
+      }
+    }
+
+    // Обновляем глобальные переменные вашего плеера
+    if (currentTimecodeData) {
+      currentTimecodeData.timecode = data.time;
+      currentTimecodeData.duration = data.duration;
+
+      // Если hash содержит torrentHash и fileId (формат "torrentHash_fileId")
+      var hashParts = data.hash.split('_');
+      if (hashParts.length >= 2) {
+        currentTimecodeData.hash = hashParts[0];
+        currentTimecodeData.fileId = hashParts[1];
+      } else {
+        currentTimecodeData.hash = data.hash;
+      }
+    }
+
+    // Если есть currentUrl и не удалось распарсить hash из data.hash
+    if (data.currentUrl && (!currentTimecodeData.hash || !currentTimecodeData.fileId)) {
+      var urlData = parseHashFromUrl(data.currentUrl);
+      if (urlData) {
+        currentTimecodeData.hash = urlData.torrentHash;
+        currentTimecodeData.fileId = urlData.fileId;
+        console.log('✅ Hash и fileId извлечены из URL:', urlData);
+      }
+    }
+
+    // Сохраняем на сервер
+    var savedClientId = localStorage.getItem('clientId');
+    if (savedClientId && currentTimecodeData.hash && currentTimecodeData.fileId) {
+      var timecodeToSave = Math.floor(data.time); // в секундах
+
+      fetch(SERVER_URL + '/api/timecode/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: savedClientId,
+          hash: currentTimecodeData.hash,
+          fileId: currentTimecodeData.fileId,
+          timecode: timecodeToSave,
+          duration: data.duration
+        })
+      }).catch(function (e) {
+        console.error('Ошибка сохранения таймкода:', e);
+      });
+    }
+  } catch (error) {
+    console.error('❌ Ошибка в updatePlayerTimeline:', error);
+  }
+}
+
+// Функция для парсинга hash и fileId из URL
+function parseHashFromUrl(url) {
+  if (!url) return null;
+
+  try {
+    // Формат 1: /play/{hash}/{index}
+    var playMatch = url.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
+    if (playMatch) {
+      return {
+        torrentHash: playMatch[1],
+        fileId: playMatch[2],
+        hash: playMatch[1] + '_' + playMatch[2]
+      };
+    }
+
+    // Формат 2: ?link={hash}&index={index}
+    var urlObj = new URL(url);
+    var link = urlObj.searchParams.get('link');
+    var index = urlObj.searchParams.get('index');
+
+    if (link && index) {
+      return {
+        torrentHash: link,
+        fileId: index,
+        hash: link + '_' + index
+      };
+    }
+
+    console.log('⚠️ Не удалось распарсить URL:', url);
+    return null;
+
+  } catch (e) {
+    console.error('Ошибка парсинга URL:', e);
+    return null;
+  }
+}
+
+// Сделаем функции глобально доступными
+window.updatePlayerTimeline = updatePlayerTimeline;
+window.parseHashFromUrl = parseHashFromUrl;
+
 // Делаем функции доступными глобально
 window.showDetailView = showDetailView;
 window.setupEpisodesButton = setupEpisodesButton;
