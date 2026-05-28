@@ -338,8 +338,9 @@ var SmoothScroll = (function () {
                         // Проверяем сам элемент
                         if (node.classList && (
                             node.classList.contains('files-list') ||
-                            node.classList.contains('catalog-detail-actors-grid') ||
-                            node.classList.contains('catalog-detail-recommendations-grid')
+                            node.classList.contains('catalog-detail-actors') ||
+                            node.classList.contains('catalog-detail-recommendations' ||
+                            node.classList.contains('catalog-detail-trailers')
                         )) {
                             initScrollForElement(node);
                         }
