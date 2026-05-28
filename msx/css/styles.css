@@ -648,18 +648,6 @@ body {
   overflow-y: auto;
   padding: 18.42px;
   display: none;
-  will-change: transform, opacity;
-  transform: translateZ(0); /* Включаем аппаратное ускорение */
-}
-
-#detail-view.animating {
-    transform: translateZ(0);
-}
-
-/* После анимации убираем трансформацию */
-#detail-view:not(.hidden) {
-    transform: none !important;
-    scale: 1 !important;
 }
 
 #detail-view.catalog-detail-mode {
@@ -2909,6 +2897,7 @@ html {
 .audio-list,
 .catalog-detail-actors-grid,
 .catalog-detail-recommendations-grid {
+  scroll-behavior: smooth;
   scroll-padding: 30px;
   -webkit-overflow-scrolling: touch;
 }
@@ -2936,17 +2925,6 @@ html {
   scroll-snap-align: start;
 }
 
-.torrent-card,
-.catalog-card,
-.catalog-folder-card,
-.search-result-item,
-.file-item {
-  will-change: transform, opacity;
-  backface-visibility: hidden;
-  transform: translateZ(0); /* Форсируем GPU */
-  backface-visibility: hidden;
-}
-
 /* Специально для горизонтальных карточек */
 .catalog-actor-card,
 .catalog-recommendation-card {
@@ -2971,8 +2949,6 @@ html {
 @media (pointer: coarse) {
   .torrent-card {
     animation: none;
-    will-change: auto; /* Отключаем на TV если слишком много элементов */
-    transform: none;
   }
 }
 
@@ -3001,6 +2977,16 @@ html {
 .catalog-actor-card:last-child,
 .catalog-recommendation-card:last-child {
   margin-right: 0;
+}
+
+/* Добавьте в styles.css */
+.torrent-card,
+.catalog-card,
+.catalog-folder-card,
+.search-result-item,
+.file-item {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
 }
 
 /* Улучшенная анимация для focused элемента */
