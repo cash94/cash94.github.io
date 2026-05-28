@@ -661,4 +661,4 @@ window.scrollToElementIfNeeded = function (el, container, smooth) {
     } else if (originalScrollToElementIfNeeded) {
         originalScrollToElementIfNeeded(el, container, smooth);
     }
-;
+};
