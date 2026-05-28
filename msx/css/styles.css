@@ -2897,7 +2897,6 @@ html {
 .audio-list,
 .catalog-detail-actors-grid,
 .catalog-detail-recommendations-grid {
-  scroll-behavior: smooth;
   scroll-padding: 30px;
   -webkit-overflow-scrolling: touch;
 }
