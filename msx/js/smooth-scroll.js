@@ -339,7 +339,7 @@ var SmoothScroll = (function () {
                         if (node.classList && (
                             node.classList.contains('files-list') ||
                             node.classList.contains('catalog-detail-actors') ||
-                            node.classList.contains('catalog-detail-recommendations' ||
+                            node.classList.contains('catalog-detail-recommendations') ||
                             node.classList.contains('catalog-detail-trailers')
                         )) {
                             initScrollForElement(node);
