@@ -648,6 +648,18 @@ body {
   overflow-y: auto;
   padding: 18.42px;
   display: none;
+  will-change: transform, opacity;
+  transform: translateZ(0); /* Включаем аппаратное ускорение */
+}
+
+#detail-view.animating {
+    transform: translateZ(0);
+}
+
+/* После анимации убираем трансформацию */
+#detail-view:not(.hidden) {
+    transform: none !important;
+    scale: 1 !important;
 }
 
 #detail-view.catalog-detail-mode {
