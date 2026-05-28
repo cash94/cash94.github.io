@@ -610,3 +610,55 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     if (document.readyState === 'loading') document.addEventListener ? document.addEventListener('DOMContentLoaded', initHorizontalScroll) : window.attachEvent('onload', initHorizontalScroll); else initHorizontalScroll();
     window.initHorizontalScroll = initHorizontalScroll;
 })();
+
+// Переопределяем scrollToElementIfNeeded для использования GSAP
+var originalScrollToElementIfNeeded = window.scrollToElementIfNeeded;
+window.scrollToElementIfNeeded = function (el, container, smooth) {
+    if (!el || !container) return;
+
+    // Используем плавный скролл от SmoothScroll
+    if (typeof SmoothScroll !== 'undefined' && SmoothScroll.smoothScrollTo) {
+        var r = el.getBoundingClientRect();
+        var cr = container.getBoundingClientRect();
+        var isH = container.id === 'catalog-detail-actors' ||
+            container.id === 'catalog-detail-recommendations' ||
+            container.id === 'catalog-detail-trailers' ||
+            container.id === 'files-list';
+
+        if (isH) {
+            var nl = container.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
+            nl = Math.max(0, nl);
+            if (typeof gsap !== 'undefined') {
+                gsap.to(container, {
+                    scrollLeft: nl,
+                    duration: smooth !== false ? 0.3 : 0.1,
+                    ease: "power2.out"
+                });
+            } else {
+                container.scrollTo({ left: nl, behavior: smooth !== false ? 'smooth' : 'auto' });
+            }
+        } else {
+            var ns = false;
+            if (r.top < cr.top + 50 || r.bottom > cr.bottom - 50) ns = true;
+            if (r.left < cr.left + 30 || r.right > cr.right - 30) ns = true;
+
+            if (ns) {
+                var targetScroll = container.scrollTop + (r.top - cr.top) - (cr.height / 2) + (el.offsetHeight / 2);
+                var maxScroll = container.scrollHeight - container.clientHeight;
+                targetScroll = Math.max(0, Math.min(targetScroll, maxScroll));
+
+                if (typeof gsap !== 'undefined') {
+                    gsap.to(container, {
+                        scrollTop: targetScroll,
+                        duration: smooth !== false ? 0.3 : 0.1,
+                        ease: "power2.out"
+                    });
+                } else {
+                    container.scrollTo({ top: targetScroll, behavior: smooth !== false ? 'smooth' : 'auto' });
+                }
+            }
+        }
+    } else if (originalScrollToElementIfNeeded) {
+        originalScrollToElementIfNeeded(el, container, smooth);
+    }
+};
