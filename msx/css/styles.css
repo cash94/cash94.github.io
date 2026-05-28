@@ -2941,7 +2941,7 @@ html {
 .catalog-folder-card,
 .search-result-item,
 .file-item {
-  will-change: transform;
+  will-change: transform, opacity;
   backface-visibility: hidden;
   transform: translateZ(0); /* Форсируем GPU */
   backface-visibility: hidden;
