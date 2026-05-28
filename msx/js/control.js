@@ -16,6 +16,7 @@ var fastNavigation = false;
 var fastNavigationTimer = null;
 var lastBackPressTime = 0;
 var lastBackPressHandled = false;
+var activeScrollAnimation = null;
 
 // Кэш для часто используемых DOM-элементов (ленивая инициализация)
 var domCache = {};
@@ -429,13 +430,75 @@ function isElementFullyVisible(el, container) {
 function scrollToElementIfNeeded(el, container, smooth) {
     if (smooth === undefined) smooth = !fastNavigation;
     if (!el || !container) return;
-    var r = el.getBoundingClientRect(), cr = container.getBoundingClientRect();
-    var isH = container.id === 'catalog-detail-actors' || container.id === 'catalog-detail-recommendations' || container.id === 'catalog-detail-trailers' || container.id === 'files-list';
-    if (isH) { var nl = container.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2); if (smooth) container.scrollTo({ left: Math.max(0, nl), behavior: 'smooth' }); else container.scrollLeft = Math.max(0, nl); return; }
-    var ns = false, so = { behavior: smooth ? 'smooth' : 'auto', block: 'nearest', inline: 'center' };
-    if (r.top < cr.top + 50 || r.bottom > cr.bottom - 50) { ns = true; so.block = 'center'; }
-    if (r.left < cr.left + 30 || r.right > cr.right - 30) { ns = true; so.inline = 'center'; }
-    if (ns) { try { el.scrollIntoView(so); } catch (e) { try { el.scrollIntoView(false); } catch (er) { } } }
+
+    // Прерываем предыдущую анимацию скролла
+    if (activeScrollAnimation && activeScrollAnimation.kill) {
+        activeScrollAnimation.kill();
+        activeScrollAnimation = null;
+    }
+
+    if (typeof gsap !== 'undefined' && smooth && typeof Animations !== 'undefined' && Animations.animateScrollTo) {
+        gsap.killTweensOf(container, "scrollTop,scrollLeft");
+
+        activeScrollAnimation = Animations.animateScrollTo(el, container, {
+            smooth: smooth,
+            duration: fastNavigation ? 0.2 : 0.35,
+            ease: fastNavigation ? "power1.out" : "power2.out"
+        });
+
+        // Автоматически очищаем ссылку после завершения
+        if (activeScrollAnimation && activeScrollAnimation.then) {
+            activeScrollAnimation.then(function () {
+                if (activeScrollAnimation === this) activeScrollAnimation = null;
+            });
+        } else if (activeScrollAnimation && activeScrollAnimation.eventCallback) {
+            activeScrollAnimation.eventCallback("onComplete", function () {
+                activeScrollAnimation = null;
+            });
+        }
+    } else {
+        // Существующая логика скролла
+        var r = el.getBoundingClientRect(), cr = container.getBoundingClientRect();
+        var isH = container.id === 'catalog-detail-actors' ||
+            container.id === 'catalog-detail-recommendations' ||
+            container.id === 'catalog-detail-trailers' ||
+            container.id === 'files-list';
+
+        if (isH) {
+            var nl = container.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
+            if (smooth) {
+                container.scrollTo({ left: Math.max(0, nl), behavior: 'smooth' });
+            } else {
+                container.scrollLeft = Math.max(0, nl);
+            }
+            return;
+        }
+
+        var ns = false, so = {
+            behavior: smooth ? 'smooth' : 'auto',
+            block: 'nearest',
+            inline: 'center'
+        };
+
+        if (r.top < cr.top + 50 || r.bottom > cr.bottom - 50) {
+            ns = true;
+            so.block = 'center';
+        }
+        if (r.left < cr.left + 30 || r.right > cr.right - 30) {
+            ns = true;
+            so.inline = 'center';
+        }
+
+        if (ns) {
+            try {
+                el.scrollIntoView(so);
+            } catch (e) {
+                try {
+                    el.scrollIntoView(false);
+                } catch (er) { }
+            }
+        }
+    }
 }
 
 // ==================== TV FOCUS RESCUE (Оптимизировано) ====================
