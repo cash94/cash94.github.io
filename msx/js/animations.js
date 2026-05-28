@@ -441,6 +441,112 @@ var Animations = (function () {
         }
     }
 
+    function animateScrollTo(element, container, options) {
+        if (!element || !container) return null;
+
+        var defaults = {
+            duration: 0.4,
+            ease: "power2.out",
+            offsetX: 0,
+            offsetY: 0,
+            smooth: true
+        };
+
+        var opts = Object.assign({}, defaults, options);
+
+        // Определяем тип контейнера (горизонтальный или вертикальный)
+        var isHorizontal = container.id === 'catalog-detail-actors' ||
+            container.id === 'catalog-detail-recommendations' ||
+            container.id === 'catalog-detail-trailers' ||
+            container.id === 'files-list';
+
+        var elementRect = element.getBoundingClientRect();
+        var containerRect = container.getBoundingClientRect();
+
+        if (isHorizontal) {
+            // Горизонтальный скролл
+            var targetScrollLeft = container.scrollLeft +
+                (elementRect.left - containerRect.left) -
+                (containerRect.width / 2) +
+                (elementRect.width / 2) +
+                opts.offsetX;
+
+            targetScrollLeft = Math.max(0, Math.min(targetScrollLeft, container.scrollWidth - container.clientWidth));
+
+            if (!opts.smooth) {
+                container.scrollLeft = targetScrollLeft;
+                return null;
+            }
+
+            // Используем GSAP для плавной анимации
+            return gsap.to(container, {
+                scrollLeft: targetScrollLeft,
+                duration: opts.duration,
+                ease: opts.ease,
+                overwrite: true
+            });
+
+        } else {
+            // Вертикальный скролл
+            var targetScrollTop = 0;
+            var needsScroll = false;
+
+            // Проверяем, нужно ли скроллить
+            if (elementRect.top < containerRect.top + 50) {
+                targetScrollTop = container.scrollTop + (elementRect.top - containerRect.top) - 20 + opts.offsetY;
+                needsScroll = true;
+            } else if (elementRect.bottom > containerRect.bottom - 50) {
+                targetScrollTop = container.scrollTop + (elementRect.bottom - containerRect.bottom) + 20 + opts.offsetY;
+                needsScroll = true;
+            }
+
+            // Проверка горизонтальной видимости для inline элементов
+            var needsInlineScroll = false;
+            var targetScrollLeft = container.scrollLeft;
+
+            if (elementRect.left < containerRect.left + 30) {
+                targetScrollLeft = container.scrollLeft + (elementRect.left - containerRect.left) - 10;
+                needsInlineScroll = true;
+            } else if (elementRect.right > containerRect.right - 30) {
+                targetScrollLeft = container.scrollLeft + (elementRect.right - containerRect.right) + 10;
+                needsInlineScroll = true;
+            }
+
+            if (!needsScroll && !needsInlineScroll) return null;
+
+            if (!opts.smooth) {
+                if (needsScroll) container.scrollTop = Math.max(0, Math.min(targetScrollTop, container.scrollHeight - container.clientHeight));
+                if (needsInlineScroll) container.scrollLeft = Math.max(0, Math.min(targetScrollLeft, container.scrollWidth - container.clientWidth));
+                return null;
+            }
+
+            // Создаем таймлайн для одновременной анимации обоих направлений
+            var tl = gsap.timeline();
+
+            if (needsScroll) {
+                targetScrollTop = Math.max(0, Math.min(targetScrollTop, container.scrollHeight - container.clientHeight));
+                tl.to(container, {
+                    scrollTop: targetScrollTop,
+                    duration: opts.duration,
+                    ease: opts.ease,
+                    overwrite: true
+                }, 0);
+            }
+
+            if (needsInlineScroll) {
+                targetScrollLeft = Math.max(0, Math.min(targetScrollLeft, container.scrollWidth - container.clientWidth));
+                tl.to(container, {
+                    scrollLeft: targetScrollLeft,
+                    duration: opts.duration,
+                    ease: opts.ease,
+                    overwrite: true
+                }, 0);
+            }
+
+            return tl;
+        }
+    }
+
     // Публичное API
     return {
         init: function () {
@@ -469,6 +575,7 @@ var Animations = (function () {
         animatePulse: animatePulse,
         animateScreenTransition: animateScreenTransition,
         refreshAnimations: refreshAnimations,
+        animateScrollTo: animateScrollTo,
 
         // Конфигурация
         config: config,
