@@ -2888,17 +2888,13 @@ html {
   scroll-padding: 20px;
 }
 
-/* Плавная прокрутка для всех контейнеров */
 #main-container,
-/* #torrents-grid, */
 .search-results-list,
 #detail-view,
 .episodes-list,
 .audio-list,
 .catalog-detail-actors-grid,
 .catalog-detail-recommendations-grid {
-  scroll-behavior: smooth;
-  scroll-padding: 30px;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -2911,18 +2907,6 @@ html {
   scroll-snap-type: x mandatory;
   overflow-x: auto;
   overflow-y: hidden;
-}
-
-/* Увеличенная задержка для более плавного перехода */
-.torrent-card,
-.search-result-item,
-.catalog-recommendation-card,
-.catalog-actor-card,
-.file-item,
-.catalog-card,
-.catalog-folder-card {
-  scroll-margin: 30px;
-  scroll-snap-align: start;
 }
 
 /* Специально для горизонтальных карточек */
