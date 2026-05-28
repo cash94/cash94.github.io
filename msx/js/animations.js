@@ -108,38 +108,21 @@ var Animations = (function () {
         detailView.style.zIndex = '100';
         detailView.style.pointerEvents = 'auto';
 
+
         // Устанавливаем начальные значения
         gsap.set(detailView, {
             opacity: 0,
             scale: 0.95
         });
 
-        var tl = gsap.timeline({
-            onComplete: function () {
-                // ВАЖНО: Очищаем transform после анимации
-                gsap.set(detailView, { clearProps: "transform,scale" });
-                // Обновляем фокус после появления
-                if (typeof window.updateFocusableElements === 'function') {
-                    setTimeout(function () {
-                        window.updateFocusableElements();
-                        if (typeof window.ensureDetailFocus === 'function') {
-                            window.ensureDetailFocus(true);
-                        }
-                    }, 50);
-                }
-            }
-        });
+        var tl = gsap.timeline();
 
         tl.to(detailView, {
             opacity: 1,
             scale: 1,
             duration: config.duration.fast,
             ease: config.ease.smooth,
-            onComplete: function () {
-                // Дополнительная очистка для надежности
-                detailView.style.transform = '';
-                detailView.style.scale = '';
-            }
+            //clearProps: "all"
         });
 
         // Анимация заголовка
@@ -150,25 +133,19 @@ var Animations = (function () {
                 x: 0,
                 opacity: 1,
                 duration: 0.4,
-                ease: config.ease.smooth,
-                onComplete: function () {
-                    gsap.set(title, { clearProps: "transform" });
-                }
+                ease: config.ease.smooth
             }, "-=0.2");
         }
 
         // Анимация постера
         var poster = detailView.querySelector('.detail-poster');
         if (poster) {
-            gsap.set(poster, { scale: 0.9, opacity: 0 });
+            gsap.set(poster, { scale: 0.9, opacity: 0 }); // Убрал rotation, уменьшил scale
             tl.to(poster, {
                 scale: 1,
                 opacity: 1,
-                duration: 0.35,
-                ease: "back.out(0.4)",
-                onComplete: function () {
-                    gsap.set(poster, { clearProps: "transform,scale" });
-                }
+                duration: 0.35,  // Чуть дольше
+                ease: "back.out(0.4)"  // Мягкий вылет, почти незаметный
             }, "-=0.2");
         }
 
@@ -180,34 +157,13 @@ var Animations = (function () {
         var detailView = document.getElementById('detail-view');
         if (!detailView) return;
 
-        var tl = gsap.timeline({
-            onComplete: function () {
-                // Очищаем все transform свойства
-                gsap.set(detailView, { clearProps: "all" });
-                detailView.style.transform = '';
-                detailView.style.scale = '';
-                detailView.style.opacity = '';
-
-                // Скрываем элемент
-                detailView.style.display = 'none';
-
-                // Обновляем фокус на торренты/каталог
-                setTimeout(function () {
-                    if (typeof window.updateFocusableElements === 'function') {
-                        window.updateFocusableElements();
-                    }
-                    if (typeof window.ensureTorrentFocus === 'function') {
-                        window.ensureTorrentFocus(true);
-                    } else if (typeof window.focusFirstTorrentCard === 'function') {
-                        window.focusFirstTorrentCard();
-                    }
-                    // Обновляем скролл контейнеры
-                    if (typeof SmoothScroll !== 'undefined') {
-                        SmoothScroll.refresh();
-                    }
-                }, 50);
-            }
+        return gsap.to(detailView, {
+            opacity: 0,
+            scale: 0.95,
+            duration: config.duration.fast,
+            ease: config.ease.smooth
         });
+    }
 
         tl.to(detailView, {
             opacity: 0,
