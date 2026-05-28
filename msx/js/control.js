@@ -616,6 +616,16 @@ var originalScrollToElementIfNeeded = window.scrollToElementIfNeeded;
 window.scrollToElementIfNeeded = function (el, container, smooth) {
     if (!el || !container) return;
 
+    var detailView = document.getElementById('detail-view');
+    if (detailView && detailView.style.display !== 'none') {
+        // Принудительно удаляем scale перед вычислением координат
+        if (detailView.style.transform && detailView.style.transform.includes('scale')) {
+            gsap.set(detailView, { clearProps: "transform,scale" });
+            detailView.style.transform = '';
+            detailView.style.scale = '';
+        }
+    }
+
     // Используем плавный скролл от SmoothScroll
     if (typeof SmoothScroll !== 'undefined' && SmoothScroll.smoothScrollTo) {
         var r = el.getBoundingClientRect();
