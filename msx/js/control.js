@@ -432,7 +432,53 @@ function scrollToElementIfNeeded(el, container, smooth) {
     if (!el || !container) return;
     var r = el.getBoundingClientRect(), cr = container.getBoundingClientRect();
     var isH = container.id === 'catalog-detail-actors' || container.id === 'catalog-detail-recommendations' || container.id === 'catalog-detail-trailers' || container.id === 'files-list';
-    if (isH) { var nl = container.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2); if (smooth) container.scrollTo({ left: Math.max(0, nl), behavior: 'smooth' }); else container.scrollLeft = Math.max(0, nl); return; }
+    
+    if (isH) {
+        // Сначала убеждаемся, что контейнер виден вертикально
+        var detailView = getEl('detail-view');
+        if (detailView) {
+            var containerRect = container.getBoundingClientRect();
+            var detailRect = detailView.getBoundingClientRect();
+            var detailScrollTop = detailView.scrollTop;
+            var containerTopRelative = containerRect.top - detailRect.top + detailScrollTop;
+            var containerBottomRelative = containerTopRelative + containerRect.height;
+            var detailViewportTop = detailView.scrollTop;
+            var detailViewportBottom = detailViewportTop + detailRect.height;
+            
+            var needsVertScroll = false;
+            var targetScrollTop = detailView.scrollTop;
+            
+            // Проверяем, виден ли контейнер вертикально
+            if (containerTopRelative < detailViewportTop + 50) {
+                // Контейнер выше видимой области
+                targetScrollTop = Math.max(0, containerTopRelative - 20);
+                needsVertScroll = true;
+            } else if (containerBottomRelative > detailViewportBottom - 50) {
+                // Контейнер ниже видимой области
+                targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 20);
+                needsVertScroll = true;
+            }
+            
+            // Сначала вертикальная прокрутка к контейнеру
+            if (needsVertScroll) {
+                if (smooth) {
+                    detailView.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+                } else {
+                    detailView.scrollTop = targetScrollTop;
+                }
+            }
+        }
+        
+        // Затем горизонтальная прокрутка внутри контейнера
+        var nl = container.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
+        if (smooth) {
+            container.scrollTo({ left: Math.max(0, nl), behavior: 'smooth' });
+        } else {
+            container.scrollLeft = Math.max(0, nl);
+        }
+        return;
+    }
+    
     var ns = false, so = { behavior: smooth ? 'smooth' : 'auto', block: 'nearest', inline: 'center' };
     if (r.top < cr.top + 50 || r.bottom > cr.bottom - 50) { ns = true; so.block = 'center'; }
     if (r.left < cr.left + 30 || r.right > cr.right - 30) { ns = true; so.inline = 'center'; }
