@@ -431,33 +431,19 @@ function scrollToElementIfNeeded(el, container, smooth) {
     if (smooth === undefined) smooth = !fastNavigation;
     if (!el || !container) return;
 
-    // Прерываем предыдущую анимацию скролла
-    if (activeScrollAnimation && activeScrollAnimation.kill) {
-        activeScrollAnimation.kill();
-        activeScrollAnimation = null;
-    }
-
-    if (typeof gsap !== 'undefined' && smooth && typeof Animations !== 'undefined' && Animations.animateScrollTo) {
+    // Используем GSAP анимацию если доступна
+    if (typeof gsap !== 'undefined' && smooth) {
+        // Останавливаем текущие анимации скролла
         gsap.killTweensOf(container, "scrollTop,scrollLeft");
 
-        activeScrollAnimation = Animations.animateScrollTo(el, container, {
+        // Используем анимированный скролл
+        animateScrollTo(el, container, {
             smooth: smooth,
             duration: fastNavigation ? 0.2 : 0.35,
             ease: fastNavigation ? "power1.out" : "power2.out"
         });
-
-        // Автоматически очищаем ссылку после завершения
-        if (activeScrollAnimation && activeScrollAnimation.then) {
-            activeScrollAnimation.then(function () {
-                if (activeScrollAnimation === this) activeScrollAnimation = null;
-            });
-        } else if (activeScrollAnimation && activeScrollAnimation.eventCallback) {
-            activeScrollAnimation.eventCallback("onComplete", function () {
-                activeScrollAnimation = null;
-            });
-        }
     } else {
-        // Существующая логика скролла
+        // Fallback на обычный скролл
         var r = el.getBoundingClientRect(), cr = container.getBoundingClientRect();
         var isH = container.id === 'catalog-detail-actors' ||
             container.id === 'catalog-detail-recommendations' ||
