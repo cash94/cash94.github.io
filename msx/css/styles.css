@@ -2979,16 +2979,6 @@ html {
   margin-right: 0;
 }
 
-/* Добавьте в styles.css */
-.torrent-card,
-.catalog-card,
-.catalog-folder-card,
-.search-result-item,
-.file-item {
-    will-change: transform, opacity;
-    backface-visibility: hidden;
-}
-
 /* Улучшенная анимация для focused элемента */
 .focused {
     outline: none !important;
