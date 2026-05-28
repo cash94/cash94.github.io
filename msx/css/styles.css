@@ -2924,6 +2924,17 @@ html {
   scroll-snap-align: start;
 }
 
+.torrent-card,
+.catalog-card,
+.catalog-folder-card,
+.search-result-item,
+.file-item {
+  will-change: transform;
+  backface-visibility: hidden;
+  transform: translateZ(0); /* Форсируем GPU */
+  backface-visibility: hidden;
+}
+
 /* Специально для горизонтальных карточек */
 .catalog-actor-card,
 .catalog-recommendation-card {
@@ -2948,6 +2959,8 @@ html {
 @media (pointer: coarse) {
   .torrent-card {
     animation: none;
+    will-change: auto; /* Отключаем на TV если слишком много элементов */
+    transform: none;
   }
 }
 
