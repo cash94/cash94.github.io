@@ -437,7 +437,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
         gsap.killTweensOf(container, "scrollTop,scrollLeft");
 
         // Используем анимированный скролл
-        animateScrollTo(el, container, {
+        Animations.animateScrollTo(el, container, {
             smooth: smooth,
             duration: fastNavigation ? 0.2 : 0.35,
             ease: fastNavigation ? "power1.out" : "power2.out"
