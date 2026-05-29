@@ -430,9 +430,9 @@ function scrollToElementIfNeeded(el, container, smooth) {
 
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
-    var isH = container.id === 'catalog-detail-actors' ||
-        container.id === 'catalog-detail-recommendations' ||
-        container.id === 'catalog-detail-trailers' ||
+    var isH = container.id === 'catalog-detail-actors-wrap' ||
+        container.id === 'catalog-detail-recommendations-wrap' ||
+        container.id === 'catalog-detail-trailers-wrap' ||
         container.id === 'files-list';
 
     if (isH) {
