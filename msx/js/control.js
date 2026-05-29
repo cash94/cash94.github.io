@@ -423,6 +423,11 @@ function scrollToElementIfNeeded(el, container, smooth) {
     if (smooth === undefined) smooth = !fastNavigation;
     if (!el || !container) return;
 
+    // Регистрируем ScrollToPlugin если используем GSAP
+    if (typeof gsap !== 'undefined' && typeof gsap.registerPlugin !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
+        gsap.registerPlugin(ScrollToPlugin);
+    }
+
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
     var isH = container.id === 'catalog-detail-actors' ||
@@ -435,23 +440,27 @@ function scrollToElementIfNeeded(el, container, smooth) {
         var targetLeft = container.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
         targetLeft = Math.max(0, targetLeft);
 
-        if (smooth && typeof gsap !== 'undefined') {
-            // GSAP для максимально плавной прокрутки
-            gsap.killTweensOf(container);
-            gsap.to(container, {
-                scrollLeft: targetLeft,
-                duration: 0.2,
-                ease: "power2.out",
-                overwrite: true
-            });
-        } else if (smooth) {
-            container.scrollTo({ left: targetLeft, behavior: 'smooth' });
-        } else {
-            container.scrollLeft = targetLeft;
+        // Проверяем нужно ли вообще скроллить
+        var needsHScroll = Math.abs(container.scrollLeft - targetLeft) > 10;
+
+        if (needsHScroll) {
+            if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
+                gsap.killTweensOf(container);
+                gsap.to(container, {
+                    scrollTo: { x: targetLeft, y: 'max' },
+                    duration: 0.25,
+                    ease: "power2.out",
+                    overwrite: true
+                });
+            } else if (smooth) {
+                container.scrollTo({ left: targetLeft, behavior: 'smooth' });
+            } else {
+                container.scrollLeft = targetLeft;
+            }
         }
 
         // Вертикальная прокрутка detail-view
-        var detailView = getEl('detail-view');
+        var detailView = document.getElementById('detail-view');
         if (detailView) {
             var containerRect = container.getBoundingClientRect();
             var detailRect = detailView.getBoundingClientRect();
@@ -473,12 +482,13 @@ function scrollToElementIfNeeded(el, container, smooth) {
             }
 
             if (needsVertScroll) {
-                targetScrollTop = Math.max(0, targetScrollTop);
-                if (smooth && typeof gsap !== 'undefined') {
+                targetScrollTop = Math.max(0, Math.min(targetScrollTop, detailView.scrollHeight - detailRect.height));
+
+                if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                     gsap.killTweensOf(detailView);
                     gsap.to(detailView, {
-                        scrollTop: targetScrollTop,
-                        duration: 0.2,
+                        scrollTo: { y: targetScrollTop },
+                        duration: 0.25,
                         ease: "power2.out",
                         overwrite: true
                     });
@@ -492,114 +502,83 @@ function scrollToElementIfNeeded(el, container, smooth) {
         return;
     }
 
-    // Вертикальная/горизонтальная прокрутка для обычных контейнеров
+    // Обычная прокрутка для обычных контейнеров
     var needsScroll = false;
-    var scrollOptions = { block: 'nearest', inline: 'center' };
+    var isWindow = container === window || container === document.body;
+    var scrollContainer = isWindow ? (window.scrollingElement || document.documentElement) : container;
 
-    if (r.top < cr.top + 50 || r.bottom > cr.bottom - 50) {
+    if (!scrollContainer) return;
+
+    var scrollRect = isWindow ? {
+        top: 0,
+        bottom: window.innerHeight,
+        left: 0,
+        right: window.innerWidth
+    } : scrollContainer.getBoundingClientRect();
+
+    var checkTop = isWindow ? r.top : r.top - scrollRect.top + (scrollContainer.scrollTop || 0);
+    var checkBottom = isWindow ? r.bottom : r.bottom - scrollRect.top + (scrollContainer.scrollTop || 0);
+    var checkLeft = isWindow ? r.left : r.left - scrollRect.left + (scrollContainer.scrollLeft || 0);
+    var checkRight = isWindow ? r.right : r.right - scrollRect.left + (scrollContainer.scrollLeft || 0);
+
+    var scrollTop = scrollContainer.scrollTop || 0;
+    var scrollLeft = scrollContainer.scrollLeft || 0;
+    var viewportHeight = isWindow ? window.innerHeight : scrollRect.height;
+    var viewportWidth = isWindow ? window.innerWidth : scrollRect.width;
+
+    var targetY = null;
+    var targetX = null;
+
+    // Вертикаль
+    if (checkTop < scrollTop + 50) {
+        targetY = Math.max(0, checkTop - 20);
         needsScroll = true;
-        scrollOptions.block = 'center';
+    } else if (checkBottom > scrollTop + viewportHeight - 50) {
+        targetY = Math.max(0, checkBottom - viewportHeight + 20);
+        needsScroll = true;
     }
-    if (r.left < cr.left + 30 || r.right > cr.right - 30) {
+
+    // Горизонталь
+    if (checkLeft < scrollLeft + 30) {
+        targetX = Math.max(0, checkLeft - 10);
         needsScroll = true;
-        scrollOptions.inline = 'center';
+    } else if (checkRight > scrollLeft + viewportWidth - 30) {
+        targetX = Math.max(0, checkRight - viewportWidth + 10);
+        needsScroll = true;
     }
 
     if (needsScroll) {
-        if (smooth && typeof gsap !== 'undefined') {
-            // Используем GSAP для плавной прокрутки элемента в зону видимости
-            var parent = container === window || container === document.body ?
-                (window.scrollingElement || document.documentElement) : container;
-            var targetScroll = null;
+        var scrollToObj = {};
+        if (targetY !== null) scrollToObj.y = targetY;
+        if (targetX !== null) scrollToObj.x = targetX;
 
-            if (parent === (window.scrollingElement || document.documentElement)) {
-                // Прокрутка окна
-                var elementRect = el.getBoundingClientRect();
-                var viewportHeight = window.innerHeight;
-                var viewportWidth = window.innerWidth;
-
-                if (scrollOptions.block === 'center') {
-                    targetScroll = window.scrollY + elementRect.top - (viewportHeight / 2) + (elementRect.height / 2);
+        if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
+            gsap.killTweensOf(scrollContainer);
+            gsap.to(scrollContainer, {
+                scrollTo: scrollToObj,
+                duration: 0.25,
+                ease: "power2.out",
+                overwrite: true
+            });
+        } else if (smooth) {
+            try {
+                if (!isWindow) {
+                    if (targetY !== null) scrollContainer.scrollTo({ top: targetY, behavior: 'smooth' });
+                    if (targetX !== null) scrollContainer.scrollTo({ left: targetX, behavior: 'smooth' });
                 } else {
-                    targetScroll = window.scrollY + elementRect.top - 100;
-                }
-
-                if (scrollOptions.inline === 'center') {
-                    var targetScrollX = window.scrollX + elementRect.left - (viewportWidth / 2) + (elementRect.width / 2);
-                    if (Math.abs(window.scrollX - targetScrollX) > 50) {
-                        gsap.killTweensOf(window);
-                        gsap.to(window, {
-                            scrollTo: { x: targetScrollX, y: targetScroll },
-                            duration: 0.2,
-                            ease: "power2.out",
-                            overwrite: true
-                        });
-                        return;
-                    }
-                }
-
-                if (Math.abs(window.scrollY - targetScroll) > 50) {
-                    gsap.killTweensOf(window);
-                    gsap.to(window, {
-                        scrollTo: { y: targetScroll },
-                        duration: 0.2,
-                        ease: "power2.out",
-                        overwrite: true
+                    window.scrollTo({
+                        top: targetY !== null ? targetY : window.scrollY,
+                        left: targetX !== null ? targetX : window.scrollX,
+                        behavior: 'smooth'
                     });
                 }
-            } else if (parent && parent.scrollTop !== undefined) {
-                // Прокрутка контейнера
-                var targetScrollTop = null;
-                var targetScrollLeft = null;
-                var rect = el.getBoundingClientRect();
-                var parentRect = parent.getBoundingClientRect();
-
-                if (scrollOptions.block === 'center') {
-                    targetScrollTop = parent.scrollTop + (rect.top - parentRect.top) - (parentRect.height / 2) + (rect.height / 2);
-                } else if (rect.top < parentRect.top + 50) {
-                    targetScrollTop = parent.scrollTop + (rect.top - parentRect.top) - 20;
-                } else if (rect.bottom > parentRect.bottom - 50) {
-                    targetScrollTop = parent.scrollTop + (rect.bottom - parentRect.bottom) + 20;
-                }
-
-                if (scrollOptions.inline === 'center') {
-                    targetScrollLeft = parent.scrollLeft + (rect.left - parentRect.left) - (parentRect.width / 2) + (rect.width / 2);
-                } else if (rect.left < parentRect.left + 30) {
-                    targetScrollLeft = parent.scrollLeft + (rect.left - parentRect.left) - 10;
-                } else if (rect.right > parentRect.right - 30) {
-                    targetScrollLeft = parent.scrollLeft + (rect.right - parentRect.right) + 10;
-                }
-
-                if (targetScrollTop !== null) {
-                    targetScrollTop = Math.max(0, Math.min(parent.scrollHeight - parentRect.height, targetScrollTop));
-                    gsap.killTweensOf(parent);
-                    gsap.to(parent, {
-                        scrollTop: targetScrollTop,
-                        duration: 0.2,
-                        ease: "power2.out",
-                        overwrite: true
-                    });
-                }
-
-                if (targetScrollLeft !== null) {
-                    targetScrollLeft = Math.max(0, Math.min(parent.scrollWidth - parentRect.width, targetScrollLeft));
-                    gsap.to(parent, {
-                        scrollLeft: targetScrollLeft,
-                        duration: 0.2,
-                        ease: "power2.out",
-                        overwrite: true
-                    });
-                }
+            } catch (e) {
+                if (targetY !== null) scrollContainer.scrollTop = targetY;
+                if (targetX !== null) scrollContainer.scrollLeft = targetX;
             }
         } else {
-            // Fallback для без GSAP
-            try {
-                el.scrollIntoView(scrollOptions);
-            } catch (e) {
-                try {
-                    el.scrollIntoView(false);
-                } catch (er) { }
-            }
+            if (targetY !== null) scrollContainer.scrollTop = targetY;
+            if (targetX !== null) scrollContainer.scrollLeft = targetX;
         }
     }
 }
