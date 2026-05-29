@@ -9,12 +9,12 @@ function initDonateOverlay() {
     donateOverlay = document.createElement('div');
     donateOverlay.id = 'donate-overlay';
     donateOverlay.className = 'donate-overlay hidden';
-    donateOverlay.innerHTML = '\n        <div class="donate-overlay-backdrop"></div>\n        <div class="donate-overlay-panel">\n            <div class="donate-overlay-header">\n                <h3>Поддержать проект</h3>\n                <button class="donate-close-btn" id="donate-close-btn">X</button>\n            </div>\n            <div class="donate-overlay-content">\n                <div class="donate-qr-container">\n                    <img src="https://cash94.github.io/msx/qr-code.png" alt="QR Code for donation" class="donate-qr-image" onerror="this.style.display=\'none\'; document.getElementById(\'donate-qr-error\').style.display=\'block\'">\n                    <div id="donate-qr-error" class="donate-qr-error" style="display: none;">\n                        <span>QR-код не найден</span><br>\n                        <span style="font-size: 12px; margin-top: 10px;">Пожалуйста, убедитесь, что файл qr-code.png находится в корневой папке приложения</span>\n                    </div>\n                </div>\n                <div class="donate-info">\n                    <p>Спасибо за поддержку!</p>\n                    <p>Ваши донаты помогут развивать проект и добавлять новые функции.</p>\n                </div>\n            </div>\n        </div>\n    ';
+    donateOverlay.innerHTML = '\n        <div class="donate-overlay-backdrop"></div>\n        <div class="donate-overlay-panel">\n            <div class="donate-overlay-header">\n                <h3>Поддержать проект</h3>\n                <button class="donate-close-btn" id="donate-close-btn">X</button>\n            </div>\n            <div class="donate-overlay-content">\n                <div class="donate-qr-container">\n                    <img src="https://cash94.github.io/msx/qr-code.png" alt="QR Code for donation" class="donate-qr-image" onerror="this.style.display=\'none\'; getEl(\'donate-qr-error\').style.display=\'block\'">\n                    <div id="donate-qr-error" class="donate-qr-error" style="display: none;">\n                        <span>QR-код не найден</span><br>\n                        <span style="font-size: 12px; margin-top: 10px;">Пожалуйста, убедитесь, что файл qr-code.png находится в корневой папке приложения</span>\n                    </div>\n                </div>\n                <div class="donate-info">\n                    <p>Спасибо за поддержку!</p>\n                    <p>Ваши донаты помогут развивать проект и добавлять новые функции.</p>\n                </div>\n            </div>\n        </div>\n    ';
 
     document.body.appendChild(donateOverlay);
 
     // Добавляем обработчики
-    var closeBtn = document.getElementById('donate-close-btn');
+    var closeBtn = getEl('donate-close-btn');
     var backdrop = donateOverlay.querySelector('.donate-overlay-backdrop');
 
     if (closeBtn) {
@@ -61,7 +61,7 @@ function showDonateOverlay() {
         donateOverlay.classList.remove('hidden');
         // Устанавливаем фокус на кнопку закрытия для навигации с пульта
         setTimeout(function () {
-            var closeBtn = document.getElementById('donate-close-btn');
+            var closeBtn = getEl('donate-close-btn');
             if (closeBtn && typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
                 updateFocusableElements();
                 var focusableElements = Array.from(document.querySelectorAll('.donate-close-btn, .donate-copy-btn'));
@@ -86,7 +86,7 @@ function closeDonateOverlay() {
         donateOverlay.classList.add('hidden');
         // Возвращаем фокус на кнопку доната
         setTimeout(function () {
-            var donateTab = document.getElementById('tab-donate');
+            var donateTab = getEl('tab-donate');
             if (donateTab && typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
                 updateFocusableElements();
                 var donateIndex = -1;
@@ -114,7 +114,7 @@ function toggleDonateOverlay() {
 
 // Настройка кнопки доната в интерфейсе
 function setupDonateButton() {
-    var donateTab = document.getElementById('tab-donate');
+    var donateTab = getEl('tab-donate');
     if (!donateTab) {
         console.warn('⚠️ Кнопка tab-donate не найдена');
         return;
@@ -133,7 +133,7 @@ function setupDonateButton() {
 // Добавляем CSS для оверлея доната
 function addDonateStyles() {
     var styleId = 'donate-styles';
-    if (document.getElementById(styleId)) return;
+    if (getEl(styleId)) return;
 
     var style = document.createElement('style');
     style.id = styleId;
