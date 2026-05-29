@@ -645,6 +645,7 @@ function initControl() {
     window.hidePlayerPanelsOnly = hidePlayerPanelsOnly; window.hidePlayerUi = hidePlayerUi;
     window.focusFirstTorrentCard = focusFirstTorrentCard; window.focusSearchHome = focusSearchHome;
     window.openNativeSearchControl = window.openNativeSearchControl || function (el) { if (el && (el.tagName === 'SELECT' || el.id === 'filter-year')) { el.focus(); try { el.click(); } catch (e) { } } };
+    window.getEl = getEl;
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControl); else initControl();
 
