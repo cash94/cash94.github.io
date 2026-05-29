@@ -401,7 +401,8 @@ function renderCatalogGrid() {
 
 function appendCatalogItems(newItems) {
     var grid = getEl('torrents-grid'); if (!grid) return;
-    var old = getEl('load-more-trigger'); if (old) old.remove();
+    var old = document.getElementById('load-more-trigger');
+    if (old) old.remove();
     var start = catalogState.items.length - newItems.length;
     var frag = document.createDocumentFragment();
     for (var i = 0; i < newItems.length; i++) frag.appendChild(createCatalogCard(newItems[i], start + i));
