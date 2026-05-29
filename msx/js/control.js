@@ -18,14 +18,6 @@ var lastBackPressTime = 0;
 var lastBackPressHandled = false;
 var activeScrollAnimation = null;
 
-// Кэш для часто используемых DOM-элементов (ленивая инициализация)
-var domCache = {};
-function getEl(id) {
-    if (!domCache[id]) domCache[id] = document.getElementById(id);
-    return domCache[id];
-}
-function clearDomCache() { domCache = {}; }
-
 function setFastNavigation() {
     fastNavigation = true;
     if (fastNavigationTimer) clearTimeout(fastNavigationTimer);
@@ -645,7 +637,6 @@ function initControl() {
     window.hidePlayerPanelsOnly = hidePlayerPanelsOnly; window.hidePlayerUi = hidePlayerUi;
     window.focusFirstTorrentCard = focusFirstTorrentCard; window.focusSearchHome = focusSearchHome;
     window.openNativeSearchControl = window.openNativeSearchControl || function (el) { if (el && (el.tagName === 'SELECT' || el.id === 'filter-year')) { el.focus(); try { el.click(); } catch (e) { } } };
-    window.getEl = getEl;
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControl); else initControl();
 
