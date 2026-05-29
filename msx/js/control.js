@@ -418,10 +418,7 @@ function isElementFullyVisible(el, container) {
     var cr = container.getBoundingClientRect();
 
     // Проверяем является ли контейнер горизонтальным
-    var isH = container.id === 'catalog-detail-actors' ||
-        container.id === 'catalog-detail-recommendations' ||
-        container.id === 'catalog-detail-trailers' ||
-        container.id === 'files-list' ||
+    var isH = container.id === container.id === 'files-list' ||
         container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap';
@@ -458,127 +455,58 @@ function scrollToElementIfNeeded(el, container, smooth) {
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
 
-    // Проверяем является ли контейнер горизонтальным
-    var isH = container.id === 'catalog-detail-actors' ||
-        container.id === 'catalog-detail-recommendations' ||
-        container.id === 'catalog-detail-trailers' ||
-        container.id === 'files-list' ||
-        container.id === 'catalog-detail-actors-wrap' ||
+    // Обычная прокрутка для обычных контейнеров
+    var needsScroll = false;
+    var isWindow = container === window || container === document.body;
+    var scrollContainer = isWindow ? (window.scrollingElement || document.documentElement) : container;
+    var isH = container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
-        container.id === 'catalog-detail-trailers-wrap';
+        container.id === 'catalog-detail-trailers-wrap' ||
+        container.id === 'files-list';
 
     if (isH) {
-        // Находим actual scroll контейнер
-        var scrollContainer = null;
+        // Горизонтальная прокрутка
+        var targetLeft = container.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
+        targetLeft = Math.max(0, targetLeft);
 
-        // 1. Сначала проверяем, не передан ли уже wrap
-        if (container.id && container.id.includes('-wrap')) {
-            scrollContainer = container;
-        }
-
-        // 2. Если передан внутренний грид, ищем его wrap по ID
-        if (!scrollContainer && (container.id === 'catalog-detail-actors' ||
-            container.id === 'catalog-detail-recommendations' ||
-            container.id === 'catalog-detail-trailers')) {
-            var wrapId = container.id + '-wrap';
-            scrollContainer = getEl(wrapId);
-        }
-
-        // 3. Пробуем найти через closest
-        if (!scrollContainer && el.closest) {
-            scrollContainer = el.closest('.catalog-detail-actors-wrap, .catalog-detail-recommendations-wrap, .catalog-detail-trailers-wrap');
-        }
-
-        // 4. Если всё ещё не нашли, ищем родителя с overflow-x: auto/scroll
-        if (!scrollContainer) {
-            var parent = container.parentElement;
-            while (parent && parent !== document.body) {
-                // Пропускаем detail-view, он нам не нужен для горизонтальной прокрутки
-                if (parent.id === 'detail-view') {
-                    parent = parent.parentElement;
-                    continue;
-                }
-                var style = window.getComputedStyle(parent);
-                var overflowX = style.overflowX;
-                if (overflowX === 'auto' || overflowX === 'scroll') {
-                    // Проверяем, что это именно тот контейнер, который содержит наш элемент
-                    var parentRect = parent.getBoundingClientRect();
-                    var elRect = el.getBoundingClientRect();
-                    if (elRect.left >= parentRect.left && elRect.right <= parentRect.right + 100) {
-                        scrollContainer = parent;
-                        break;
-                    }
-                }
-                parent = parent.parentElement;
-            }
-        }
-
-        if (!scrollContainer) {
-            console.log('Не найден scroll контейнер для', container.id);
-            return;
-        }
-
-        // Отладка
-        console.log('Scroll container:', scrollContainer.id);
-        console.log('scrollWidth:', scrollContainer.scrollWidth);
-        console.log('clientWidth:', scrollContainer.clientWidth);
-        console.log('scrollLeft:', scrollContainer.scrollLeft);
-
-        // Важно: используем scrollContainer.clientWidth, а не scrollRect.width
-        var scrollRect = scrollContainer.getBoundingClientRect();
-        var elementRect = el.getBoundingClientRect();
-
-        // Расчет targetLeft
-        var targetLeft = scrollContainer.scrollLeft + (elementRect.left - scrollRect.left) - (scrollRect.width / 2) + (elementRect.width / 2);
-        targetLeft = Math.max(0, Math.min(targetLeft, scrollContainer.scrollWidth - scrollContainer.clientWidth));
-
-        console.log('targetLeft:', targetLeft);
-        console.log('current scrollLeft:', scrollContainer.scrollLeft);
-
-        // Проверяем нужно ли скроллить
-        var needsHScroll = true;
+        // Проверяем нужно ли вообще скроллить
+        var needsHScroll = Math.abs(container.scrollLeft - targetLeft) > 10;
 
         if (needsHScroll) {
-            console.log('Скроллим к', targetLeft);
             if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                gsap.killTweensOf(scrollContainer);
-                gsap.to(scrollContainer, {
-                    scrollTo: { x: targetLeft },
+                gsap.killTweensOf(container);
+                gsap.to(container, {
+                    scrollTo: { x: targetLeft, y: 'max' },
                     duration: 0.1,
                     ease: "power0.out",
-                    overwrite: true,
-                    onComplete: function () {
-                        console.log('Скролл завершен, новый scrollLeft:', scrollContainer.scrollLeft);
-                    }
+                    overwrite: true
                 });
             } else if (smooth) {
-                scrollContainer.scrollTo({ left: targetLeft, behavior: 'smooth' });
+                container.scrollTo({ left: targetLeft, behavior: 'smooth' });
             } else {
-                scrollContainer.scrollLeft = targetLeft;
+                container.scrollLeft = targetLeft;
             }
-        } else {
-            console.log('Скролл не нужен');
         }
 
-        // Вертикальная прокрутка detail-view (только если нужно)
+        // Вертикальная прокрутка detail-view
         var detailView = getEl('detail-view');
-        if (detailView && detailView.scrollHeight > detailView.clientHeight) {
-            var wrapRect = scrollContainer.getBoundingClientRect();
+        if (detailView) {
+            var containerRect = container.getBoundingClientRect();
             var detailRect = detailView.getBoundingClientRect();
             var detailScrollTop = detailView.scrollTop;
-            var wrapTopRelative = wrapRect.top - detailRect.top + detailScrollTop;
-            var wrapBottomRelative = wrapTopRelative + wrapRect.height;
+            var containerTopRelative = containerRect.top - detailRect.top + detailScrollTop;
+            var containerBottomRelative = containerTopRelative + containerRect.height;
             var detailViewportTop = detailView.scrollTop;
             var detailViewportBottom = detailViewportTop + detailRect.height;
 
             var needsVertScroll = false;
             var targetScrollTop = detailView.scrollTop;
 
-            if (wrapTopRelative < detailViewportTop + 50) {
-                targetScrollTop = Math.max(0, wrapTopRelative - 20);
+            if (containerTopRelative < detailViewportTop + 50) {
+                targetScrollTop = Math.max(0, containerTopRelative - 20);
                 needsVertScroll = true;
-            } else if (wrapBottomRelative > detailViewportBottom - 50) {
-                targetScrollTop = Math.max(0, wrapBottomRelative - detailRect.height + 20);
+            } else if (containerBottomRelative > detailViewportBottom - 50) {
+                targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 20);
                 needsVertScroll = true;
             }
 
@@ -603,11 +531,6 @@ function scrollToElementIfNeeded(el, container, smooth) {
         return;
     }
 
-    // Остальной код для обычных контейнеров...
-    var needsScroll = false;
-    var isWindow = container === window || container === document.body;
-    var scrollContainer = isWindow ? (window.scrollingElement || document.documentElement) : container;
-
     if (!scrollContainer) return;
 
     var scrollRect = isWindow ? {
@@ -630,6 +553,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
     var targetY = null;
     var targetX = null;
 
+    // Вертикаль
     if (checkTop < scrollTop + 50) {
         targetY = Math.max(0, checkTop - 20);
         needsScroll = true;
@@ -638,6 +562,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
         needsScroll = true;
     }
 
+    // Горизонталь
     if (checkLeft < scrollLeft + 30) {
         targetX = Math.max(0, checkLeft - 10);
         needsScroll = true;
