@@ -99,7 +99,7 @@ var Animations = (function () {
 
     // Анимация появления детального просмотра
     function animateDetailShow() {
-        var detailView = document.getElementById('detail-view');
+        var detailView = getEl('detail-view');
         if (!detailView) return;
 
         // Сначала делаем видимым
@@ -154,7 +154,7 @@ var Animations = (function () {
 
     // Анимация скрытия детального просмотра
     function animateDetailHide() {
-        var detailView = document.getElementById('detail-view');
+        var detailView = getEl('detail-view');
         if (!detailView) return;
 
         return gsap.to(detailView, {
@@ -167,7 +167,7 @@ var Animations = (function () {
 
     // Анимация загрузки (спиннер)
     function animateLoading(overlayId) {
-        var overlay = document.getElementById(overlayId);
+        var overlay = getEl(overlayId);
         if (!overlay) return;
 
         var spinner = overlay.querySelector('.loading-spinner, .playback-spinner, .loading-player-spinner');
@@ -191,7 +191,7 @@ var Animations = (function () {
 
     // Анимация скрытия загрузки
     function animateLoadingHide(overlayId) {
-        var overlay = document.getElementById(overlayId);
+        var overlay = getEl(overlayId);
         if (!overlay) return;
 
         return gsap.to(overlay, {
@@ -206,7 +206,7 @@ var Animations = (function () {
 
     // Анимация для элементов управления плеера
     function animateControlsShow() {
-        var controls = document.getElementById('controls-container');
+        var controls = getEl('controls-container');
         if (!controls) return;
 
         gsap.killTweensOf(controls);
@@ -225,7 +225,7 @@ var Animations = (function () {
 
     // Анимация для элементов управления плеера (скрытие)
     function animateControlsHide() {
-        var controls = document.getElementById('controls-container');
+        var controls = getEl('controls-container');
         if (!controls) return;
 
         gsap.to(controls, {
@@ -251,7 +251,7 @@ var Animations = (function () {
 
     // Анимация для файлов в детальном просмотре (горизонтальный скролл)
     function animateFilesList() {
-        var filesList = document.getElementById('files-list');
+        var filesList = getEl('files-list');
         if (!filesList) return;
 
         var files = filesList.querySelectorAll('.file-item');
@@ -272,7 +272,7 @@ var Animations = (function () {
     // Анимация уведомления (хинта)
     function animateHint(message, duration) {
         if (duration === undefined) duration = 2000;
-        var hint = document.getElementById('player-hint');
+        var hint = getEl('player-hint');
         if (!hint) return;
 
         hint.textContent = message;
@@ -393,8 +393,8 @@ var Animations = (function () {
 
     // Анимация перехода между экранами
     function animateScreenTransition(fromScreen, toScreen, onComplete) {
-        var fromEl = document.getElementById(fromScreen);
-        var toEl = document.getElementById(toScreen);
+        var fromEl = getEl(fromScreen);
+        var toEl = getEl(toScreen);
 
         if (!fromEl || !toEl) {
             if (onComplete) onComplete();
@@ -429,7 +429,7 @@ var Animations = (function () {
     // Обновление всех анимаций при изменении контента
     function refreshAnimations() {
         // Анимация для сетки торрентов
-        var torrentsGrid = document.getElementById('torrents-grid');
+        var torrentsGrid = getEl('torrents-grid');
         if (torrentsGrid && torrentsGrid.children.length > 0) {
             animateCardsAppear('#torrents-grid', '.torrent-card');
         }
