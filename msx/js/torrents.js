@@ -2444,6 +2444,7 @@ function hideSearchResults() {
   document.getElementById('torrserver-section').style.display = 'block';
   searchOverlay.classList.add('hidden');
   searchTab.classList.remove('active');
+  document.getElementById('search-results').innerHTML = '';
   toggleSearchFiltersPanel(false);
   // Обработка возврата в зависимости от режима
   if (returnTo === 'detail') {
