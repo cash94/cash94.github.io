@@ -465,11 +465,14 @@ function scrollToElementIfNeeded(el, container, smooth) {
         container.id === 'files-list';
 
     if (isH) {
+        var con = "";
         if (container.id === 'catalog-detail-actors-wrap' ||
             container.id === 'catalog-detail-recommendations-wrap' ||
             container.id === 'catalog-detail-trailers-wrap') {
-            var con = container.id.replace('-wrap', '');
+            con = container.id.replace('-wrap', '');
             con = getEl(con);
+        } else {
+            con = container;
         }
 
         // Горизонтальная прокрутка
