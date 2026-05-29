@@ -431,7 +431,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
     if (smooth === undefined) smooth = !fastNavigation;
     if (!el || !container) return;
     var r = el.getBoundingClientRect(), cr = container.getBoundingClientRect();
-    var isH = container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers' || container.id === 'files-list';
+    var isH = container.id === 'catalog-detail-actors' || container.id === 'catalog-detail-recommendations' || container.id === 'catalog-detail-trailers' || container.id === 'files-list';
     
     if (isH) {
         // Сначала убеждаемся, что контейнер виден вертикально
