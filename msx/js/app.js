@@ -504,7 +504,7 @@ function setupNavigation() {
     backFromDetail.addEventListener('click', function () {
       console.log('🔙 Возврат из детального просмотра');
       var mainContainer = document.getElementById('main-container');
-      //resetDetailBackground();
+      resetDetailBackground();
       //if (typeof Animations !== 'undefined') {
         //Animations.animateDetailHide();
       //}
@@ -642,7 +642,6 @@ function setupNavigation() {
         }
       }, 250);
     });
-    resetDetailBackground();
     if (typeof Animations !== 'undefined') {
       Animations.animateDetailHide();
     }
