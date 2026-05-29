@@ -504,10 +504,10 @@ function setupNavigation() {
     backFromDetail.addEventListener('click', function () {
       console.log('🔙 Возврат из детального просмотра');
       var mainContainer = document.getElementById('main-container');
-      resetDetailBackground();
-      if (typeof Animations !== 'undefined') {
-        Animations.animateDetailHide();
-      }
+      //resetDetailBackground();
+      //if (typeof Animations !== 'undefined') {
+        //Animations.animateDetailHide();
+      //}
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
       if (AppState && !AppState.isSearch) {
@@ -642,6 +642,10 @@ function setupNavigation() {
         }
       }, 250);
     });
+    resetDetailBackground();
+    if (typeof Animations !== 'undefined') {
+      Animations.animateDetailHide();
+    }
   }
 }
 
