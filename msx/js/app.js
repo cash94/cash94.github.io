@@ -641,10 +641,10 @@ function setupNavigation() {
           if (detailView) detailView.style.display = 'none';
         }
       }, 250);
+      if (typeof Animations !== 'undefined') {
+        Animations.animateDetailHide();
+      }
     });
-    if (typeof Animations !== 'undefined') {
-      Animations.animateDetailHide();
-    }
   }
 }
 
