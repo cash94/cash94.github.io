@@ -2690,7 +2690,11 @@ async function addTorrentSearchToServer(magnet, hash, searchResult) {
     var torrname = '';
     if (AppState.mediaType == 'tv') {
       if (searchResult.seasons && searchResult.seasons.length > 0) {
-        torrname = '[' + catalogState.lastSelectedId + '] ' + searchResult.name + ' [сезон ' + searchResult.seasons[0] + ']';
+        if (searchResult.seasons.length > 1) {
+          torrname = '[' + catalogState.lastSelectedId + '] ' + searchResult.name + ' [сезон ' + searchResult.seasons[0] + '-' + searchResult.seasons[searchResult.seasons.length - 1] + ']';
+        } else {
+          torrname = '[' + catalogState.lastSelectedId + '] ' + searchResult.name + ' [сезон ' + searchResult.seasons[0] + ']';
+        }
       } else {
         // обработка случая, когда массив пустой или отсутствует
         torrname = '[' + catalogState.lastSelectedId + '] ' + searchResult.name;
@@ -2783,7 +2787,11 @@ async function addTorrentToServer(magnet, hash, searchResult) {
     var torrname = '';
     if (AppState.mediaType == 'tv') {
       if (searchResult.seasons && searchResult.seasons.length > 0) {
-        torrname = '[' + catalogState.lastSelectedId + '] ' + searchResult.name + ' [сезон ' + searchResult.seasons[0] + ']';
+        if (searchResult.seasons.length > 1) {
+          torrname = '[' + catalogState.lastSelectedId + '] ' + searchResult.name + ' [сезон ' + searchResult.seasons[0] + '-' + searchResult.seasons[searchResult.seasons.length - 1] + ']';
+        } else {
+          torrname = '[' + catalogState.lastSelectedId + '] ' + searchResult.name + ' [сезон ' + searchResult.seasons[0] + ']';
+        }
       } else {
         // обработка случая, когда массив пустой или отсутствует
         torrname = '[' + catalogState.lastSelectedId + '] ' + searchResult.name;
