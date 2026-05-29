@@ -1266,61 +1266,63 @@ function showInitError() {
 
 // ==================== ФУНКЦИИ МЫШИ И ИНТЕРФЕЙСА ====================
 function resetMouseIdleTimer() {
-  var playerScreen = getEl('player-screen');
-  var playerOverlay = getEl('player-overlay');
-  var controlsContainer = getEl('controls-container');
-  var bufferStats = getEl('buffer-stats');
-  var playerHint = getEl('player-hint');
-  var toggleBufferBtn = getEl('toggle-buffer-btn');
-  var exitPlayerBtn = getEl('exit-player-btn');
-  var episodesBtn = getEl('episodes-btn');
-  var episodesPanel = getEl('episodes-panel');
-  var prevBtn = getEl('prev-episode-btn');
-  var nextBtn = getEl('next-episode-btn');
-  var playerTitle = getEl('player-title');
-  if (!playerScreen || playerScreen.style.display !== 'block') return;
+  if (AppState.currentScreen == 'player') {
+    var playerScreen = getEl('player-screen');
+    var playerOverlay = getEl('player-overlay');
+    var controlsContainer = getEl('controls-container');
+    var bufferStats = getEl('buffer-stats');
+    var playerHint = getEl('player-hint');
+    var toggleBufferBtn = getEl('toggle-buffer-btn');
+    var exitPlayerBtn = getEl('exit-player-btn');
+    var episodesBtn = getEl('episodes-btn');
+    var episodesPanel = getEl('episodes-panel');
+    var prevBtn = getEl('prev-episode-btn');
+    var nextBtn = getEl('next-episode-btn');
+    var playerTitle = getEl('player-title');
+    if (!playerScreen || playerScreen.style.display !== 'block') return;
 
-  if (playerOverlay) playerOverlay.classList.add('touch-active');
-  var controlElements = [controlsContainer, bufferStats, playerHint, toggleBufferBtn, exitPlayerBtn, episodesBtn, prevBtn, nextBtn, playerTitle];
-  var len = controlElements.length;
-  for (var i = 0; i < len; i++) {
-    var el = controlElements[i];
-    if (el) {
-      el.classList.remove('idle-hidden');
-      el.style.opacity = '1';
-      el.style.pointerEvents = 'auto';
+    if (playerOverlay) playerOverlay.classList.add('touch-active');
+    var controlElements = [controlsContainer, bufferStats, playerHint, toggleBufferBtn, exitPlayerBtn, episodesBtn, prevBtn, nextBtn, playerTitle];
+    var len = controlElements.length;
+    for (var i = 0; i < len; i++) {
+      var el = controlElements[i];
+      if (el) {
+        el.classList.remove('idle-hidden');
+        el.style.opacity = '1';
+        el.style.pointerEvents = 'auto';
+      }
     }
-  }
-  if (typeof syncPlayerTitleVisibility === 'function') {
-    syncPlayerTitleVisibility(true);
-  }
-  if (episodesPanel && !episodesPanel.classList.contains('hidden')) {
-    episodesPanel.style.opacity = '1';
-    episodesPanel.style.pointerEvents = 'auto';
-  }
-  if (window.mouseIdleTimer) {
-    clearTimeout(window.mouseIdleTimer);
-  }
-  window.mouseIdleTimer = setTimeout(function () {
-    if (playerScreen.style.display === 'block') {
-      if (playerOverlay) playerOverlay.classList.remove('touch-active');
-      for (var j = 0; j < len; j++) {
-        var el = controlElements[j];
-        if (el) {
-          el.classList.add('idle-hidden');
-          el.style.opacity = '0';
-          el.style.pointerEvents = 'none';
+    if (typeof syncPlayerTitleVisibility === 'function') {
+      syncPlayerTitleVisibility(true);
+    }
+    if (episodesPanel && !episodesPanel.classList.contains('hidden')) {
+      episodesPanel.style.opacity = '1';
+      episodesPanel.style.pointerEvents = 'auto';
+    }
+    if (window.mouseIdleTimer) {
+      clearTimeout(window.mouseIdleTimer);
+    }
+    window.mouseIdleTimer = setTimeout(function () {
+      if (playerScreen.style.display === 'block') {
+        if (playerOverlay) playerOverlay.classList.remove('touch-active');
+        for (var j = 0; j < len; j++) {
+          var el = controlElements[j];
+          if (el) {
+            el.classList.add('idle-hidden');
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+          }
+        }
+        if (typeof syncPlayerTitleVisibility === 'function') {
+          syncPlayerTitleVisibility(false);
+        }
+        if (episodesPanel && episodesPanel.classList.contains('hidden')) {
+          episodesPanel.style.opacity = '0';
+          episodesPanel.style.pointerEvents = 'none';
         }
       }
-      if (typeof syncPlayerTitleVisibility === 'function') {
-        syncPlayerTitleVisibility(false);
-      }
-      if (episodesPanel && episodesPanel.classList.contains('hidden')) {
-        episodesPanel.style.opacity = '0';
-        episodesPanel.style.pointerEvents = 'none';
-      }
-    }
-  }, 3000);
+    }, 3000);
+  }
 }
 window.resetMouseIdleTimer = resetMouseIdleTimer;
 
