@@ -849,6 +849,7 @@ async function loadTorrents(silent) {
     document.getElementById('config-screen').style.display = 'none';
     document.getElementById('torrserver-section').style.display = 'block';
     AppState.currentScreen = 'torrents';
+    AppState.inSearch = 'torrents';
 
     // Рендерим список
     renderTorrents();
