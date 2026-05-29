@@ -537,6 +537,7 @@ function setupNavigation() {
         if (returnTo === 'catalog') {
           if (typeof window.ensureCatalogFocus === 'function') {
             AppState.backupScroll = 0;
+            AppState.currentScreen = 'catalog';
             window.ensureCatalogFocus(true);
             var detailView = getEl('detail-view');
             if (detailView) detailView.style.display = 'none';
