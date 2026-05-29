@@ -469,29 +469,45 @@ function scrollToElementIfNeeded(el, container, smooth) {
 
     if (isH) {
         // Находим actual scroll контейнер
-        var scrollContainer = container;
+        var scrollContainer = null;
 
-        // Если передан внутренний грид, ищем его wrap-родителя
-        if (container.id === 'catalog-detail-actors' ||
-            container.id === 'catalog-detail-recommendations' ||
-            container.id === 'catalog-detail-trailers') {
-            var wrapId = container.id + '-wrap';
-            scrollContainer = document.getElementById(wrapId);
-            // Если не нашли по ID, пробуем через closest
-            if (!scrollContainer && el.closest) {
-                scrollContainer = el.closest('.catalog-detail-actors-wrap, .catalog-detail-recommendations-wrap, .catalog-detail-trailers-wrap');
-            }
+        // 1. Сначала проверяем, не передан ли уже wrap
+        if (container.id && container.id.includes('-wrap')) {
+            scrollContainer = container;
         }
 
-        // Если всё равно не нашли, пробуем найти родителя с overflow
-        if (!scrollContainer || scrollContainer === container) {
+        // 2. Если передан внутренний грид, ищем его wrap по ID
+        if (!scrollContainer && (container.id === 'catalog-detail-actors' ||
+            container.id === 'catalog-detail-recommendations' ||
+            container.id === 'catalog-detail-trailers')) {
+            var wrapId = container.id + '-wrap';
+            scrollContainer = getEl(wrapId);
+        }
+
+        // 3. Пробуем найти через closest
+        if (!scrollContainer && el.closest) {
+            scrollContainer = el.closest('.catalog-detail-actors-wrap, .catalog-detail-recommendations-wrap, .catalog-detail-trailers-wrap');
+        }
+
+        // 4. Если всё ещё не нашли, ищем родителя с overflow-x: auto/scroll
+        if (!scrollContainer) {
             var parent = container.parentElement;
-            while (parent) {
+            while (parent && parent !== document.body) {
+                // Пропускаем detail-view, он нам не нужен для горизонтальной прокрутки
+                if (parent.id === 'detail-view') {
+                    parent = parent.parentElement;
+                    continue;
+                }
                 var style = window.getComputedStyle(parent);
-                var overflow = style.overflowX + style.overflow;
-                if (overflow.includes('auto') || overflow.includes('scroll')) {
-                    scrollContainer = parent;
-                    break;
+                var overflowX = style.overflowX;
+                if (overflowX === 'auto' || overflowX === 'scroll') {
+                    // Проверяем, что это именно тот контейнер, который содержит наш элемент
+                    var parentRect = parent.getBoundingClientRect();
+                    var elRect = el.getBoundingClientRect();
+                    if (elRect.left >= parentRect.left && elRect.right <= parentRect.right + 100) {
+                        scrollContainer = parent;
+                        break;
+                    }
                 }
                 parent = parent.parentElement;
             }
@@ -508,7 +524,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
         console.log('clientWidth:', scrollContainer.clientWidth);
         console.log('scrollLeft:', scrollContainer.scrollLeft);
 
-        // Получаем актуальные размеры
+        // Важно: используем scrollContainer.clientWidth, а не scrollRect.width
         var scrollRect = scrollContainer.getBoundingClientRect();
         var elementRect = el.getBoundingClientRect();
 
@@ -544,7 +560,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
             console.log('Скролл не нужен');
         }
 
-        // Вертикальная прокрутка detail-view
+        // Вертикальная прокрутка detail-view (только если нужно)
         var detailView = getEl('detail-view');
         if (detailView && detailView.scrollHeight > detailView.clientHeight) {
             var wrapRect = scrollContainer.getBoundingClientRect();
@@ -665,6 +681,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
         }
     }
 }
+
 // ==================== TV FOCUS RESCUE (Оптимизировано) ====================
 function setupFocusRescue() {
     var VISIBLE = function (el) { return !!(el && el.offsetParent !== null && !el.disabled); };
