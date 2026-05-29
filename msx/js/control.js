@@ -481,7 +481,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
 function setupFocusRescue() {
     var VISIBLE = function (el) { return !!(el && el.offsetParent !== null && !el.disabled); };
     var byId = function (id) { return getEl(id); };
-    var clearFocused = function () { var f = document.querySelectorAll('.focused'); for (var i = 0; i < f.length; i++) { if (typeof gsap !== 'undefined') gsap.killTweensOf(f[i]); f[i].style.boxShadow = ''; f[i].style.transform = ''; f[i].style.scale = ''; f[i].style.translate = ''; f[i].classList.remove('focused'); } };
+    //var clearFocused = function () { var f = document.querySelectorAll('.focused'); for (var i = 0; i < f.length; i++) { if (typeof gsap !== 'undefined') gsap.killTweensOf(f[i]); f[i].style.boxShadow = ''; f[i].style.transform = ''; f[i].style.scale = ''; f[i].style.translate = ''; f[i].classList.remove('focused'); } };
     var clickEl = function (el) { try { if (el && el.click) el.click(); } catch (e) { } };
     var blurEditor = function () { var a = document.activeElement; if (a && a !== document.body && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA')) try { a.blur(); } catch (e) { } };
 
