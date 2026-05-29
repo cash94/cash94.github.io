@@ -430,78 +430,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
 
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
-    var isH = container.id === 'catalog-detail-actors-wrap' ||
-        container.id === 'catalog-detail-recommendations-wrap' ||
-        container.id === 'catalog-detail-trailers-wrap' ||
-        container.id === 'files-list';
-
-    if (isH) {
-        // Горизонтальная прокрутка
-        var targetLeft = container.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
-        targetLeft = Math.max(0, targetLeft);
-
-        // Проверяем нужно ли вообще скроллить
-        var needsHScroll = Math.abs(container.scrollLeft - targetLeft) > 10;
-
-        if (needsHScroll) {
-            if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                gsap.killTweensOf(container);
-                gsap.to(container, {
-                    scrollTo: { x: targetLeft, y: 'max' },
-                    duration: 0.25,
-                    ease: "power2.out",
-                    overwrite: true
-                });
-            } else if (smooth) {
-                container.scrollTo({ left: targetLeft, behavior: 'smooth' });
-            } else {
-                container.scrollLeft = targetLeft;
-            }
-        }
-
-        // Вертикальная прокрутка detail-view
-        var detailView = document.getElementById('detail-view');
-        if (detailView) {
-            var containerRect = container.getBoundingClientRect();
-            var detailRect = detailView.getBoundingClientRect();
-            var detailScrollTop = detailView.scrollTop;
-            var containerTopRelative = containerRect.top - detailRect.top + detailScrollTop;
-            var containerBottomRelative = containerTopRelative + containerRect.height;
-            var detailViewportTop = detailView.scrollTop;
-            var detailViewportBottom = detailViewportTop + detailRect.height;
-
-            var needsVertScroll = false;
-            var targetScrollTop = detailView.scrollTop;
-
-            if (containerTopRelative < detailViewportTop + 50) {
-                targetScrollTop = Math.max(0, containerTopRelative - 20);
-                needsVertScroll = true;
-            } else if (containerBottomRelative > detailViewportBottom - 50) {
-                targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 20);
-                needsVertScroll = true;
-            }
-
-            if (needsVertScroll) {
-                targetScrollTop = Math.max(0, Math.min(targetScrollTop, detailView.scrollHeight - detailRect.height));
-
-                if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                    gsap.killTweensOf(detailView);
-                    gsap.to(detailView, {
-                        scrollTo: { y: targetScrollTop },
-                        duration: 0.25,
-                        ease: "power2.out",
-                        overwrite: true
-                    });
-                } else if (smooth) {
-                    detailView.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-                } else {
-                    detailView.scrollTop = targetScrollTop;
-                }
-            }
-        }
-        return;
-    }
-
+    
     // Обычная прокрутка для обычных контейнеров
     var needsScroll = false;
     var isWindow = container === window || container === document.body;
@@ -556,8 +485,8 @@ function scrollToElementIfNeeded(el, container, smooth) {
             gsap.killTweensOf(scrollContainer);
             gsap.to(scrollContainer, {
                 scrollTo: scrollToObj,
-                duration: 0.25,
-                ease: "power2.out",
+                duration: 0.1,
+                ease: "power0.out",
                 overwrite: true
             });
         } else if (smooth) {
