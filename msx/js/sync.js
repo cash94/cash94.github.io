@@ -15,7 +15,7 @@ function initSyncOverlay() {
     document.body.appendChild(syncOverlay);
 
     // Добавляем обработчики
-    var closeBtn = document.getElementById('sync-close-btn');
+    var closeBtn = getEl('sync-close-btn');
     var backdrop = syncOverlay.querySelector('.sync-overlay-backdrop');
 
     if (closeBtn) {
@@ -27,7 +27,7 @@ function initSyncOverlay() {
     }
 
     // Обработчик для поля ввода кода (только цифры и авто-проверка)
-    var codeInput = document.getElementById('sync-code-input');
+    var codeInput = getEl('sync-code-input');
     if (codeInput) {
         codeInput.addEventListener('input', function (e) {
             // Оставляем только цифры
@@ -63,14 +63,14 @@ function generateSyncCode() {
 }
 
 function updateSyncCodeDisplay() {
-    var syncCodeElement = document.getElementById('sync-code');
+    var syncCodeElement = getEl('sync-code');
     if (syncCodeElement && AppState.syncCode) {
         syncCodeElement.textContent = AppState.syncCode;
     }
 }
 
 function showSyncMessage(message, isError) {
-    var messageDiv = document.getElementById('sync-message');
+    var messageDiv = getEl('sync-message');
     if (messageDiv) {
         messageDiv.textContent = message;
         messageDiv.className = 'sync-message ' + (isError ? 'sync-message-error' : 'sync-message-success');
@@ -83,7 +83,7 @@ function showSyncMessage(message, isError) {
 }
 
 function startCountdown(seconds) {
-    var countdownDiv = document.getElementById('sync-countdown');
+    var countdownDiv = getEl('sync-countdown');
     var secondsLeft = seconds;
 
     if (countdownInterval) {
@@ -105,7 +105,7 @@ function startCountdown(seconds) {
 }
 
 async function verifySyncCode() {
-    var codeInput = document.getElementById('sync-code-input');
+    var codeInput = getEl('sync-code-input');
     var code = codeInput.value.trim();
 
     if (!code || code.length !== 4) {
@@ -211,13 +211,13 @@ function startSyncCodeTimer() {
                 if (success) {
                     updateSyncCodeDisplay();
                     // Очищаем поле ввода
-                    var codeInput = document.getElementById('sync-code-input');
+                    var codeInput = getEl('sync-code-input');
                     if (codeInput) {
                         codeInput.value = '';
                         codeInput.disabled = false;
                     }
                     // Показываем уведомление об обновлении кода
-                    var expiryElement = document.getElementById('sync-expiry');
+                    var expiryElement = getEl('sync-expiry');
                     if (expiryElement) {
                         var originalText = expiryElement.textContent;
                         expiryElement.textContent = 'Код обновлен! Действует 5 минут';
@@ -239,14 +239,14 @@ async function showSyncOverlay() {
     initSyncOverlay();
     if (syncOverlay) {
         // Очищаем сообщения
-        var messageDiv = document.getElementById('sync-message');
+        var messageDiv = getEl('sync-message');
         if (messageDiv) messageDiv.classList.add('hidden');
 
-        var countdownDiv = document.getElementById('sync-countdown');
+        var countdownDiv = getEl('sync-countdown');
         if (countdownDiv) countdownDiv.classList.add('hidden');
 
         // Очищаем и разблокируем поле ввода
-        var codeInput = document.getElementById('sync-code-input');
+        var codeInput = getEl('sync-code-input');
         if (codeInput) {
             codeInput.value = '';
             codeInput.disabled = false;
@@ -314,7 +314,7 @@ function closeSyncOverlay() {
 
         // Возвращаем фокус на кнопку синхронизации
         setTimeout(function () {
-            var syncBtn = document.getElementById('sync-clients-btn');
+            var syncBtn = getEl('sync-clients-btn');
             if (syncBtn && typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
                 updateFocusableElements();
                 var syncIndex = -1;
@@ -342,7 +342,7 @@ function toggleSyncOverlay() {
 
 // Настройка кнопки синхронизации в интерфейсе
 function setupSyncButton() {
-    var syncBtn = document.getElementById('sync-clients-btn');
+    var syncBtn = getEl('sync-clients-btn');
     if (!syncBtn) {
         console.warn('⚠️ Кнопка sync-clients-btn не найдена');
         return;
@@ -361,7 +361,7 @@ function setupSyncButton() {
 // Добавляем CSS для оверлея синхронизации
 function addSyncStyles() {
     var styleId = 'sync-styles';
-    if (document.getElementById(styleId)) return;
+    if (getEl(styleId)) return;
 
     var style = document.createElement('style');
     style.id = styleId;
