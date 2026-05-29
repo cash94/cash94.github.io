@@ -853,6 +853,14 @@ async function loadTorrents(silent) {
     // Рендерим список
     renderTorrents();
 
+    if (AppState.currentScreen === 'torrents' && !document.querySelector('.torrent-card.focused')) {
+      setTimeout(function () {
+        if (typeof window.focusFirstTorrentCard === 'function') {
+          window.focusFirstTorrentCard();
+        }
+      }, 80);
+    }
+
     return true;
   } catch (error) {
     console.error('Ошибка загрузки торрентов:', error);
