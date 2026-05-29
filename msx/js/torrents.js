@@ -1396,9 +1396,9 @@ async function showDetail(torrent) {
   //detailView.style.display = 'block';
   //detailView.style.zIndex = '100';
   resetDetailBackground();
-  if (typeof Animations !== 'undefined') {
-    Animations.animateDetailShow();
-  }
+  //if (typeof Animations !== 'undefined') {
+    //Animations.animateDetailShow();
+  //}
   var mainContainer = document.getElementById('main-container');
   if (mainContainer) {
     mainContainer.style.pointerEvents = 'none';
@@ -1545,6 +1545,9 @@ async function showDetail(torrent) {
       }
     }
   }, 200);
+  if (typeof Animations !== 'undefined') {
+    Animations.animateDetailShow();
+  }
   AppState.mediaType = "";
 }
 // Асинхронная функция для загрузки всех TMDB данных
