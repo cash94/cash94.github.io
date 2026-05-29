@@ -430,7 +430,97 @@ function scrollToElementIfNeeded(el, container, smooth) {
 
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
-    
+
+    // Проверяем является ли контейнер горизонтальным (любым из этих ID или их wrap-версий)
+    var isH = container.id === 'catalog-detail-actors' ||
+        container.id === 'catalog-detail-recommendations' ||
+        container.id === 'catalog-detail-trailers' ||
+        container.id === 'files-list' ||
+        container.id === 'catalog-detail-actors-wrap' ||
+        container.id === 'catalog-detail-recommendations-wrap' ||
+        container.id === 'catalog-detail-trailers-wrap';
+
+    if (isH) {
+        // Находим actual scroll контейнер (если передан wrap, используем его, иначе ищем родителя)
+        var scrollContainer = container;
+        if (container.id && !container.id.includes('-wrap')) {
+            // Если передан не-wrap, ищем его wrap-родителя
+            var wrapParent = container.closest('.catalog-detail-actors-wrap, .catalog-detail-recommendations-wrap, .catalog-detail-trailers-wrap');
+            if (wrapParent && wrapParent.id) {
+                scrollContainer = wrapParent;
+            }
+        }
+
+        // Получаем актуальные размеры scroll контейнера
+        var scrollRect = scrollContainer.getBoundingClientRect();
+        var elementRect = el.getBoundingClientRect();
+
+        // Горизонтальная прокрутка внутри wrap контейнера
+        var targetLeft = scrollContainer.scrollLeft + (elementRect.left - scrollRect.left) - (scrollRect.width / 2) + (elementRect.width / 2);
+        targetLeft = Math.max(0, Math.min(targetLeft, scrollContainer.scrollWidth - scrollRect.width));
+
+        // Проверяем нужно ли скроллить
+        var needsHScroll = Math.abs(scrollContainer.scrollLeft - targetLeft) > 10;
+
+        if (needsHScroll) {
+            if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
+                gsap.killTweensOf(scrollContainer);
+                gsap.to(scrollContainer, {
+                    scrollTo: { x: targetLeft },
+                    duration: 0.1,
+                    ease: "power0.out",
+                    overwrite: true
+                });
+            } else if (smooth) {
+                scrollContainer.scrollTo({ left: targetLeft, behavior: 'smooth' });
+            } else {
+                scrollContainer.scrollLeft = targetLeft;
+            }
+        }
+
+        // Вертикальная прокрутка detail-view (если нужно)
+        var detailView = document.getElementById('detail-view');
+        if (detailView && detailView.scrollHeight > detailView.clientHeight) {
+            // Получаем позицию scroll контейнера относительно detail-view
+            var detailRect = detailView.getBoundingClientRect();
+            var detailScrollTop = detailView.scrollTop;
+            var containerTopRelative = scrollRect.top - detailRect.top + detailScrollTop;
+            var containerBottomRelative = containerTopRelative + scrollRect.height;
+            var detailViewportTop = detailView.scrollTop;
+            var detailViewportBottom = detailViewportTop + detailRect.height;
+
+            var needsVertScroll = false;
+            var targetScrollTop = detailView.scrollTop;
+
+            if (containerTopRelative < detailViewportTop + 50) {
+                targetScrollTop = Math.max(0, containerTopRelative - 20);
+                needsVertScroll = true;
+            } else if (containerBottomRelative > detailViewportBottom - 50) {
+                targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 20);
+                needsVertScroll = true;
+            }
+
+            if (needsVertScroll) {
+                targetScrollTop = Math.max(0, Math.min(targetScrollTop, detailView.scrollHeight - detailRect.height));
+
+                if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
+                    gsap.killTweensOf(detailView);
+                    gsap.to(detailView, {
+                        scrollTo: { y: targetScrollTop },
+                        duration: 0.1,
+                        ease: "power0.out",
+                        overwrite: true
+                    });
+                } else if (smooth) {
+                    detailView.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+                } else {
+                    detailView.scrollTop = targetScrollTop;
+                }
+            }
+        }
+        return;
+    }
+
     // Обычная прокрутка для обычных контейнеров
     var needsScroll = false;
     var isWindow = container === window || container === document.body;
@@ -511,7 +601,6 @@ function scrollToElementIfNeeded(el, container, smooth) {
         }
     }
 }
-
 // ==================== TV FOCUS RESCUE (Оптимизировано) ====================
 function setupFocusRescue() {
     var VISIBLE = function (el) { return !!(el && el.offsetParent !== null && !el.disabled); };
