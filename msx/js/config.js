@@ -92,8 +92,8 @@ function formatTime(seconds) {
 function getAuthHeaders() {
   var headers = {};
   if (AppState.authEnabled) {
-    var login = document.getElementById('auth-login').value.trim();
-    var password = document.getElementById('auth-password').value.trim();
+    var login = getEl('auth-login').value.trim();
+    var password = getEl('auth-password').value.trim();
 
     AppState.userlogin = login;
     AppState.userpassword = password;
@@ -108,14 +108,14 @@ function getAuthHeaders() {
 
 // Показать/скрыть загрузочный оверлей
 function showLoading(message) {
-  var overlay = document.getElementById('loading-overlay');
+  var overlay = getEl('loading-overlay');
   overlay.classList.add('active');
   var textEl = document.querySelector('.loading-text');
   if (textEl) textEl.textContent = message || 'Загрузка...';
 }
 
 function hideLoading() {
-  document.getElementById('loading-overlay').classList.remove('active');
+  getEl('loading-overlay').classList.remove('active');
 }
 
 // НОВАЯ ФУНКЦИЯ: Определение платформы
