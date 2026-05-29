@@ -63,7 +63,7 @@ var AppState = {
   backupScroll: 0
 };
 
-var noCacheElements = ['load-more-trigger'];
+var noCacheElements = ['load-more-trigger', 'detail-progress'];
 var domCache = {};
 
 // Кэш для часто используемых DOM-элементов (ленивая инициализация)
