@@ -536,7 +536,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
         console.log('current scrollLeft:', scrollContainer.scrollLeft);
 
         // Проверяем нужно ли скроллить
-        var needsHScroll = Math.abs(scrollContainer.scrollLeft - targetLeft) > 5;
+        var needsHScroll = true;
 
         if (needsHScroll) {
             console.log('Скроллим к', targetLeft);
