@@ -22,6 +22,7 @@ var Animations = (function () {
     function initScrollTrigger() {
         if (typeof ScrollTrigger !== 'undefined') {
             gsap.registerPlugin(ScrollTrigger);
+            gsap.registerPlugin(ScrollToPlugin);
             console.log('✅ ScrollTrigger инициализирован');
         }
     }
