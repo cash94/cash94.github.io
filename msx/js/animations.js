@@ -6,14 +6,14 @@ var Animations = (function () {
     // Конфигурация анимаций
     var config = {
         duration: {
-            fast: 0.3,
-            normal: 0.5,
-            slow: 0.8
+            fast: 0.15,
+            normal: 0.25,
+            slow: 0.4
         },
         ease: {
             bounce: "back.out(1.2)",
             elastic: "elastic.out(1, 0.5)",
-            smooth: "power1.out",
+            smooth: "power0.out",
             soft: "sine.inOut"
         }
     };
