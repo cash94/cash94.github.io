@@ -90,7 +90,6 @@ var Animations = (function () {
         // Только рамка, без изменения размера
         gsap.to(element, {
             boxShadow: "0 0 0 3px #ff8c00, 0 0 0 6px rgba(255,140,0,0.3)",
-            duration: 0.15,
             ease: config.ease.smooth,
             clearProps: "boxShadow" // очистит после потери фокуса
         });
@@ -107,46 +106,47 @@ var Animations = (function () {
         detailView.style.display = 'block';
         detailView.style.zIndex = '100';
         detailView.style.pointerEvents = 'auto';
-        
+        detailView.style.willChange = 'transform, opacity';
 
         // Устанавливаем начальные значения
         gsap.set(detailView, {
             opacity: 0,
-            scale: 0.95
+            y: 10,
+            scale: 0.98
         });
 
         var tl = gsap.timeline();
 
         tl.to(detailView, {
             opacity: 1,
+            y: 0,
             scale: 1,
             duration: config.duration.fast,
-            ease: config.ease.smooth,
-            //clearProps: "all"
+            ease: config.ease.smooth
         });
 
         // Анимация заголовка
         var title = detailView.querySelector('.detail-title');
         if (title) {
-            gsap.set(title, { x: -30, opacity: 0 });
+            gsap.set(title, { y: -15, opacity: 0 });
             tl.to(title, {
-                x: 0,
+                y: 0,
                 opacity: 1,
-                duration: 0.4,
+                duration: config.duration.fast,
                 ease: config.ease.smooth
-            }, "-=0.2");
+            }, "-=0.15");
         }
 
         // Анимация постера
         var poster = detailView.querySelector('.detail-poster');
         if (poster) {
-            gsap.set(poster, { scale: 0.9, opacity: 0 }); // Убрал rotation, уменьшил scale
+            gsap.set(poster, { scale: 0.95, opacity: 0 });
             tl.to(poster, {
                 scale: 1,
                 opacity: 1,
-                duration: 0.35,  // Чуть дольше
-                ease: "back.out(0.4)"  // Мягкий вылет, почти незаметный
-            }, "-=0.2");
+                duration: config.duration.fast,
+                ease: config.ease.smooth
+            }, "-=0.15");
         }
 
         return tl;
