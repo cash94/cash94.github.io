@@ -63,6 +63,14 @@ var AppState = {
   backupScroll: 0
 };
 
+// Кэш для часто используемых DOM-элементов (ленивая инициализация)
+var domCache = {};
+function getEl(id) {
+    if (!domCache[id]) domCache[id] = document.getElementById(id);
+    return domCache[id];
+}
+function clearDomCache() { domCache = {}; }
+
 // Вспомогательные функции
 function escapeHtml(text) {
   if (!text) return '';
@@ -211,3 +219,4 @@ function isKeyPressed(keyName, keyCode) {
 // Определяем платформу при загрузке
 AppState.platform = detectPlatform();
 console.log('📱 Платформа: ' + AppState.platform);
+window.getEl = getEl;
