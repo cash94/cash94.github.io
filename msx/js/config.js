@@ -69,6 +69,7 @@ var domCache = {};
 // Кэш для часто используемых DOM-элементов (ленивая инициализация)
 function getEl(id) {
   // Проверяем, нужно ли кэшировать этот элемент
+  clearFocused();
   if (noCacheElements.includes(id)) {
     // Не кэшируем, каждый раз ищем заново
     return document.getElementById(id);
