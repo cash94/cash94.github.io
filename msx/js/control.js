@@ -640,7 +640,7 @@ function setupFocusRescue() {
         var isRC = el.classList && el.classList.contains('catalog-recommendation-card');
         var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
 
-        if (s === 'catalog' || s === 'torrents') {
+        if (s === 'catalog' || s === 'torrents' || s === 'config') {
             container = getEl('main-container');
         } else if (s === 'search') {
             container = getEl('search-results');
