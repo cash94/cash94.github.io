@@ -441,6 +441,41 @@ var Animations = (function () {
         }
     }
 
+    // Быстрая прокрутка элемента в зону видимости
+    function quickScrollTo(element, container, options) {
+        if (!element) return;
+        options = options || {};
+        var duration = options.duration || 0.2;
+        var ease = options.ease || "power2.out";
+        var offset = options.offset || 0;
+
+        if (container && container.scrollTop !== undefined) {
+            var rect = element.getBoundingClientRect();
+            var containerRect = container.getBoundingClientRect();
+            var targetTop = container.scrollTop + (rect.top - containerRect.top) - offset;
+            targetTop = Math.max(0, Math.min(container.scrollHeight - containerRect.height, targetTop));
+
+            gsap.killTweensOf(container);
+            gsap.to(container, {
+                scrollTop: targetTop,
+                duration: duration,
+                ease: ease,
+                overwrite: true
+            });
+        } else if (container === window || !container) {
+            var targetY = window.scrollY + element.getBoundingClientRect().top - offset;
+            targetY = Math.max(0, targetY);
+
+            gsap.killTweensOf(window);
+            gsap.to(window, {
+                scrollTo: { y: targetY },
+                duration: duration,
+                ease: ease,
+                overwrite: true
+            });
+        }
+    }
+
     // Публичное API
     return {
         init: function () {
@@ -469,6 +504,7 @@ var Animations = (function () {
         animatePulse: animatePulse,
         animateScreenTransition: animateScreenTransition,
         refreshAnimations: refreshAnimations,
+        quickScrollTo: quickScrollTo,
 
         // Конфигурация
         config: config,
