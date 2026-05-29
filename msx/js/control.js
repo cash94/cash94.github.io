@@ -413,7 +413,11 @@ function clearOkHold() { if (okHoldTimer) { clearTimeout(okHoldTimer); okHoldTim
 
 function isElementFullyVisible(el, container) {
     if (!el || !container) return true;
-    var r = el.getBoundingClientRect(), cr = container.getBoundingClientRect();
+
+    var r = el.getBoundingClientRect();
+    var cr = container.getBoundingClientRect();
+
+    // Проверяем является ли контейнер горизонтальным
     var isH = container.id === 'catalog-detail-actors' ||
         container.id === 'catalog-detail-recommendations' ||
         container.id === 'catalog-detail-trailers' ||
@@ -421,18 +425,35 @@ function isElementFullyVisible(el, container) {
         container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap';
-    if (isH) { var hp = 30; return r.left >= cr.left + hp && r.right <= cr.right - hp; }
-    return r.top >= cr.top + 20 && r.bottom <= cr.bottom - 20 && r.left >= cr.left + 20 && r.right <= cr.right - 20;
+
+    if (isH) {
+        var hp = 30; // Горизонтальный отступ
+        var vp = 20; // Вертикальный отступ для wrap контейнеров
+
+        // Проверяем горизонтальную видимость
+        var isHorizVisible = r.left >= cr.left + hp && r.right <= cr.right - hp;
+
+        // Для wrap контейнеров также проверяем вертикальную видимость в detail-view
+        if (container.id && container.id.includes('-wrap')) {
+            var detailView = getEl('detail-view');
+            if (detailView) {
+                var detailRect = detailView.getBoundingClientRect();
+                var isVertVisible = cr.top >= detailRect.top + vp && cr.bottom <= detailRect.bottom - vp;
+                return isHorizVisible && isVertVisible;
+            }
+        }
+
+        return isHorizVisible;
+    }
+
+    // Обычная проверка для вертикальных контейнеров
+    return r.top >= cr.top + 20 && r.bottom <= cr.bottom - 20 &&
+        r.left >= cr.left + 20 && r.right <= cr.right - 20;
 }
 
 function scrollToElementIfNeeded(el, container, smooth) {
     if (smooth === undefined) smooth = !fastNavigation;
     if (!el || !container) return;
-
-    // Регистрируем ScrollToPlugin если используем GSAP
-    if (typeof gsap !== 'undefined' && typeof gsap.registerPlugin !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-        gsap.registerPlugin(ScrollToPlugin);
-    }
 
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
@@ -484,25 +505,25 @@ function scrollToElementIfNeeded(el, container, smooth) {
             }
         }
 
-        // Вертикальная прокрутка detail-view (если нужно)
-        var detailView = document.getElementById('detail-view');
-        if (detailView && detailView.scrollHeight > detailView.clientHeight) {
-            // Получаем позицию scroll контейнера относительно detail-view
+        // Вертикальная прокрутка detail-view к wrap контейнеру
+        var detailView = getEl('detail-view');
+        if (detailView && scrollContainer.id && scrollContainer.id.includes('-wrap')) {
+            var wrapRect = scrollContainer.getBoundingClientRect();
             var detailRect = detailView.getBoundingClientRect();
             var detailScrollTop = detailView.scrollTop;
-            var containerTopRelative = scrollRect.top - detailRect.top + detailScrollTop;
-            var containerBottomRelative = containerTopRelative + scrollRect.height;
+            var wrapTopRelative = wrapRect.top - detailRect.top + detailScrollTop;
+            var wrapBottomRelative = wrapTopRelative + wrapRect.height;
             var detailViewportTop = detailView.scrollTop;
             var detailViewportBottom = detailViewportTop + detailRect.height;
 
             var needsVertScroll = false;
             var targetScrollTop = detailView.scrollTop;
 
-            if (containerTopRelative < detailViewportTop + 50) {
-                targetScrollTop = Math.max(0, containerTopRelative - 20);
+            if (wrapTopRelative < detailViewportTop + 50) {
+                targetScrollTop = Math.max(0, wrapTopRelative - 20);
                 needsVertScroll = true;
-            } else if (containerBottomRelative > detailViewportBottom - 50) {
-                targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 20);
+            } else if (wrapBottomRelative > detailViewportBottom - 50) {
+                targetScrollTop = Math.max(0, wrapBottomRelative - detailRect.height + 20);
                 needsVertScroll = true;
             }
 
@@ -616,16 +637,56 @@ function setupFocusRescue() {
     var blurEditor = function () { var a = document.activeElement; if (a && a !== document.body && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA')) try { a.blur(); } catch (e) { } };
 
     function focusEl(el, opts) {
-        if (opts === undefined) opts = {}; if (!VISIBLE(el)) return false;
-        clearFocused(); el.classList.add('focused');
+        if (opts === undefined) opts = {};
+        if (!VISIBLE(el)) return false;
+        clearFocused();
+        el.classList.add('focused');
         //if (typeof Animations !== 'undefined') Animations.animateFocus(el);
         if (opts.nativeFocus) try { el.focus(); } catch (e) { } else blurEditor();
-        var container = null, s = AppState.currentScreen;
-        var isFI = el.classList && el.classList.contains('file-item'), isAC = el.classList && el.classList.contains('catalog-actor-card'), isRC = el.classList && el.classList.contains('catalog-recommendation-card'), isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
-        if (s === 'catalog' || s === 'torrents') container = getEl('main-container');
-        else if (s === 'search') container = getEl('search-results');
-        else if (s === 'detail') { if (isFI) container = getEl('files-list'); else if (isAC) { container = getEl('catalog-detail-actors'); if (container && container.parentElement) container = container.parentElement; } else if (isRC) { container = getEl('catalog-detail-recommendations'); if (container && container.parentElement) container = container.parentElement; } else if (isTC) container = getEl('catalog-detail-trailers'); else container = getEl('detail-view'); }
-        if (!isElementFullyVisible(el, container)) scrollToElementIfNeeded(el, container, !fastNavigation);
+
+        var container = null;
+        var s = AppState.currentScreen;
+        var isFI = el.classList && el.classList.contains('file-item');
+        var isAC = el.classList && el.classList.contains('catalog-actor-card');
+        var isRC = el.classList && el.classList.contains('catalog-recommendation-card');
+        var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
+
+        if (s === 'catalog' || s === 'torrents') {
+            container = getEl('main-container');
+        } else if (s === 'search') {
+            container = getEl('search-results');
+        } else if (s === 'detail') {
+            if (isFI) {
+                container = getEl('files-list');
+            } else if (isAC) {
+                // Для актеров используем wrap контейнер (который реально скроллится)
+                container = getEl('catalog-detail-actors-wrap');
+                // Если wrap не найден, пробуем найти родителя
+                if (!container && el.closest) {
+                    container = el.closest('.catalog-detail-actors-wrap');
+                }
+            } else if (isRC) {
+                // Для рекомендаций используем wrap контейнер
+                container = getEl('catalog-detail-recommendations-wrap');
+                if (!container && el.closest) {
+                    container = el.closest('.catalog-detail-recommendations-wrap');
+                }
+            } else if (isTC) {
+                // Для трейлеров используем wrap контейнер
+                container = getEl('catalog-detail-trailers-wrap');
+                if (!container && el.closest) {
+                    container = el.closest('.catalog-detail-trailers-wrap');
+                }
+            } else {
+                container = getEl('detail-view');
+            }
+        }
+
+        // Проверяем видимость и скроллим если нужно
+        if (container && !isElementFullyVisible(el, container)) {
+            scrollToElementIfNeeded(el, container, !fastNavigation);
+        }
+
         return true;
     }
 
