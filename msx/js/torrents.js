@@ -1420,6 +1420,10 @@ async function showDetail(torrent) {
     ' <div class="spinner" style="width: 50px; height: 50px; border: 3px solid rgba(74, 158, 255, 0.2); border-top: 3px solid #4a9eff; border-right: 3px solid #4a9eff; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>' +
     ' <div style="font-size: 16px; color: #aaa;">Загрузка файлов...</div>' +
     ' </div>';
+
+  if (typeof Animations !== 'undefined') {
+    Animations.animateDetailShow();
+  }
   // Запускаем загрузку TMDB данных в фоне (НЕ ждем)
   var tmdbPromise = loadAllTmdbDataForTorrent(torrent, {
     titleEl: titleEl,
@@ -1435,9 +1439,6 @@ async function showDetail(torrent) {
   if (oldProgress) oldProgress.remove();
   // Добавляем прогресс для текущего торрента
   await addProgressToDetail(torrent);
-  if (typeof Animations !== 'undefined') {
-    Animations.animateDetailShow();
-  }
   try {
     // Получаем файлы с кэшированием (этот метод уже получает и file_stats, и данные)
     var files = await getTorrentFilesWithCache(torrent, false);
