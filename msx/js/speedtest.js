@@ -40,7 +40,7 @@ var SpeedTest = (function () {
         
         // Имитируем прогресс (серверный замер)
         var progressInterval = setInterval(function() {
-            var statusEl = document.getElementById('speedtest-status');
+            var statusEl = getEl('speedtest-status');
             if (statusEl && statusEl.innerHTML.indexOf('TorrServer') !== -1) {
                 var currentText = statusEl.innerHTML;
                 var match = currentText.match(/(\d+)%/);
@@ -191,7 +191,7 @@ var SpeedTest = (function () {
 
     // Обновление статуса в UI
     function updateSpeedtestStatus(type, status) {
-        var statusEl = document.getElementById('speedtest-status');
+        var statusEl = getEl('speedtest-status');
         if (statusEl) {
             if (type === 'torrserver') {
                 statusEl.innerHTML = 'Замер TorrServer → TorrStream: ' + status;
@@ -203,33 +203,33 @@ var SpeedTest = (function () {
 
     // Показать результаты
     function showResults(torrResult, clientResult, totalTime) {
-        var resultsDiv = document.getElementById('speedtest-results');
-        var torrEl = document.getElementById('speedtest-torrserver');
-        var clientEl = document.getElementById('speedtest-client');
-        var totalEl = document.getElementById('speedtest-total');
+        var resultsDiv = getEl('speedtest-results');
+        var torrEl = getEl('speedtest-torrserver');
+        var clientEl = getEl('speedtest-client');
+        var totalEl = getEl('speedtest-total');
 
         if (resultsDiv) resultsDiv.style.display = 'block';
         if (torrEl) torrEl.innerHTML = 'TorrServer → TorrStream: ' + torrResult.speedMbps;
         if (clientEl) clientEl.innerHTML = 'TorrStream → Клиент: ' + clientResult.speedMbps;
         if (totalEl) totalEl.innerHTML = 'Общее время: ' + formatTime(totalTime) + ' | Тест: 200 MB';
 
-        var statusEl = document.getElementById('speedtest-status');
+        var statusEl = getEl('speedtest-status');
         if (statusEl) statusEl.style.display = 'none';
     }
 
     // Показать ошибку
     function showError(error) {
-        var resultsDiv = document.getElementById('speedtest-results');
-        var torrEl = document.getElementById('speedtest-torrserver');
-        var clientEl = document.getElementById('speedtest-client');
-        var totalEl = document.getElementById('speedtest-total');
+        var resultsDiv = getEl('speedtest-results');
+        var torrEl = getEl('speedtest-torrserver');
+        var clientEl = getEl('speedtest-client');
+        var totalEl = getEl('speedtest-total');
 
         if (resultsDiv) resultsDiv.style.display = 'block';
         if (torrEl) torrEl.innerHTML = error.message;
         if (clientEl) clientEl.innerHTML = '--';
         if (totalEl) totalEl.innerHTML = 'Ошибка замера';
 
-        var statusEl = document.getElementById('speedtest-status');
+        var statusEl = getEl('speedtest-status');
         if (statusEl) statusEl.style.display = 'none';
 
         if (resultsDiv) resultsDiv.style.borderColor = '#ff4e4e';
@@ -255,14 +255,14 @@ var SpeedTest = (function () {
         isRunning = true;
         var startTotalTime = performance.now();
 
-        var resultsDiv = document.getElementById('speedtest-results');
-        var statusEl = document.getElementById('speedtest-status');
+        var resultsDiv = getEl('speedtest-results');
+        var statusEl = getEl('speedtest-status');
 
         if (resultsDiv) {
             resultsDiv.style.display = 'block';
             resultsDiv.style.borderColor = '#4a9eff';
-            var torrEl = document.getElementById('speedtest-torrserver');
-            var clientEl = document.getElementById('speedtest-client');
+            var torrEl = getEl('speedtest-torrserver');
+            var clientEl = getEl('speedtest-client');
             if (torrEl) torrEl.innerHTML = 'TorrServer → TorrStream: -- Mbps';
             if (clientEl) clientEl.innerHTML = 'TorrStream → Клиент: -- Mbps';
         }
@@ -278,7 +278,7 @@ var SpeedTest = (function () {
         statusEl.style.display = 'block';
         statusEl.innerHTML = 'Замер TorrServer → TorrStream: 0%';
 
-        var btn = document.getElementById('speedtest-btn');
+        var btn = getEl('speedtest-btn');
         var originalBtnText = btn ? btn.innerHTML : '';
         if (btn) {
             btn.innerHTML = 'Замер скорости...';
@@ -321,7 +321,7 @@ var SpeedTest = (function () {
                 btn.disabled = false;
                 btn.style.opacity = '1';
             }
-            var statusFinal = document.getElementById('speedtest-status');
+            var statusFinal = getEl('speedtest-status');
             if (statusFinal) statusFinal.style.display = 'none';
             abortController = null;
         }
