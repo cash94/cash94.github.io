@@ -100,11 +100,11 @@ function fillSelectOptions(select, options, selectedValue) {
   }
 }
 function syncSearchFilterButtons() {
-  fillSelectOptions(document.getElementById('sort-by'), SORT_OPTIONS, currentSort);
-  fillSelectOptions(document.getElementById('filter-quality'), QUALITY_OPTIONS, currentQualityFilter);
-  fillSelectOptions(document.getElementById('filter-tracker'), getTrackerFilterOptions(), currentTrackerFilter);
+  fillSelectOptions(getEl('sort-by'), SORT_OPTIONS, currentSort);
+  fillSelectOptions(getEl('filter-quality'), QUALITY_OPTIONS, currentQualityFilter);
+  fillSelectOptions(getEl('filter-tracker'), getTrackerFilterOptions(), currentTrackerFilter);
   // Синхронизируем фильтр года
-  var yearFilter = document.getElementById('filter-year');
+  var yearFilter = getEl('filter-year');
   if (yearFilter) {
     if (currentYearFilter && currentYearFilter !== 'all') {
       yearFilter.value = currentYearFilter;
@@ -113,7 +113,7 @@ function syncSearchFilterButtons() {
     }
   }
   // Синхронизируем фильтр сезона
-  var seasonFilter = document.getElementById('filter-season');
+  var seasonFilter = getEl('filter-season');
   if (seasonFilter) {
     if (currentSeasonFilter && currentSeasonFilter !== 'all') {
       seasonFilter.value = currentSeasonFilter;
@@ -122,7 +122,7 @@ function syncSearchFilterButtons() {
     }
   }
   // Синхронизируем фильтр озвучки
-  var voiceFilter = document.getElementById('filter-voice');
+  var voiceFilter = getEl('filter-voice');
   if (voiceFilter) {
     if (currentVoiceFilter && currentVoiceFilter !== 'all') {
       voiceFilter.value = currentVoiceFilter;
@@ -131,7 +131,7 @@ function syncSearchFilterButtons() {
     }
   }
   // Синхронизируем фильтр по типу видео
-  var videotypeFilter = document.getElementById('filter-videotype');
+  var videotypeFilter = getEl('filter-videotype');
   if (videotypeFilter) {
     if (currentvideotypeFilter && currentvideotypeFilter !== 'all') {
       videotypeFilter.value = currentvideotypeFilter;
@@ -159,8 +159,8 @@ function cycleFilterButton(filterType, direction) {
   applyFiltersAndSort();
 }
 function toggleSearchFiltersPanel(forceOpen) {
-  var panel = document.getElementById('search-filters-panel');
-  var toggleBtn = document.getElementById('filter-toggle');
+  var panel = getEl('search-filters-panel');
+  var toggleBtn = getEl('filter-toggle');
   if (!panel) return false;
   // Если параметр не передан (undefined) - переключаем, иначе используем forceOpen
   var shouldOpen = (forceOpen === undefined) ? panel.classList.contains('collapsed') : !!forceOpen;
@@ -301,12 +301,12 @@ async function removeTorrentByHash(hash, options) {
     clearTorrentFilesCache(hash);
 
     if (AppState.currentDetailItem && (AppState.currentDetailItem.hash || '').toLowerCase() === String(hash).toLowerCase()) {
-      document.getElementById('detail-view').style.display = 'none';
+      getEl('detail-view').style.display = 'none';
       AppState.currentDetailItem = null;
       AppState.currentScreen = 'torrents';
-      var mainContainer = document.getElementById('main-container');
+      var mainContainer = getEl('main-container');
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
-      document.getElementById('torrserver-section').style.display = 'block';
+      getEl('torrserver-section').style.display = 'block';
     }
 
     await refreshTorrentsList();
@@ -390,10 +390,10 @@ async function loadClientConfig() {
 
       // Заполняем поля формы сохраненными данными
       if (data.config) {
-        var urlInput = document.getElementById('torrserver-url');
-        var authCheckbox = document.getElementById('auth-checkbox');
-        var authLogin = document.getElementById('auth-login');
-        var authPassword = document.getElementById('auth-password');
+        var urlInput = getEl('torrserver-url');
+        var authCheckbox = getEl('auth-checkbox');
+        var authLogin = getEl('auth-login');
+        var authPassword = getEl('auth-password');
 
         if (data.config.url) {
           urlInput.value = data.config.url;
@@ -402,7 +402,7 @@ async function loadClientConfig() {
         if (data.config.authEnabled) {
           authCheckbox.checked = true;
           AppState.authEnabled = true;
-          document.getElementById('auth-fields').classList.add('visible');
+          getEl('auth-fields').classList.add('visible');
 
           if (data.config.login) {
             authLogin.value = data.config.login;
@@ -426,10 +426,10 @@ async function loadClientConfig() {
 }
 // Сохранение конфигурации клиента
 async function saveClientConfig() {
-  var url = document.getElementById('torrserver-url').value.trim();
-  var authEnabled = document.getElementById('auth-checkbox').checked;
-  var login = document.getElementById('auth-login').value.trim();
-  var password = document.getElementById('auth-password').value.trim();
+  var url = getEl('torrserver-url').value.trim();
+  var authEnabled = getEl('auth-checkbox').checked;
+  var login = getEl('auth-login').value.trim();
+  var password = getEl('auth-password').value.trim();
   var savedClientId = localStorage.getItem('clientId');
   var config = {
     url: url,
@@ -657,16 +657,16 @@ function renderProgressBadge(card, progress) {
     // Формируем URL с таймкодом
     var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
 
-    document.getElementById('playback-overlay').classList.add('active');
-    document.getElementById('detail-view').style.pointerEvents = 'none';
+    getEl('playback-overlay').classList.add('active');
+    getEl('detail-view').style.pointerEvents = 'none';
 
     // Передаем episodeIndex в startHLSPlayback
     startHLSPlayback(playUrl, timecode, false, episodeIndex).then(function () {
-      document.getElementById('playback-overlay').classList.remove('active');
-      document.getElementById('detail-view').style.pointerEvents = 'auto';
+      getEl('playback-overlay').classList.remove('active');
+      getEl('detail-view').style.pointerEvents = 'auto';
     })['catch'](function () {
-      document.getElementById('playback-overlay').classList.remove('active');
-      document.getElementById('detail-view').style.pointerEvents = 'auto';
+      getEl('playback-overlay').classList.remove('active');
+      getEl('detail-view').style.pointerEvents = 'auto';
     });
   });
   card.appendChild(progressBadge);
@@ -704,16 +704,16 @@ async function addProgressToDetail(torrent) {
     var episodeIndex = parseInt(progressBtn.dataset.episodeIndex || 0);
     var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
 
-    document.getElementById('playback-overlay').classList.add('active');
-    document.getElementById('detail-view').style.pointerEvents = 'none';
+    getEl('playback-overlay').classList.add('active');
+    getEl('detail-view').style.pointerEvents = 'none';
 
     // Передаем episodeIndex в startHLSPlayback через дополнительный параметр
     startHLSPlayback(playUrl, timecode, false, episodeIndex).then(function () {
-      document.getElementById('playback-overlay').classList.remove('active');
-      document.getElementById('detail-view').style.pointerEvents = 'auto';
+      getEl('playback-overlay').classList.remove('active');
+      getEl('detail-view').style.pointerEvents = 'auto';
     })['catch'](function () {
-      document.getElementById('playback-overlay').classList.remove('active');
-      document.getElementById('detail-view').style.pointerEvents = 'auto';
+      getEl('playback-overlay').classList.remove('active');
+      getEl('detail-view').style.pointerEvents = 'auto';
     });
   });
   detailHeader.parentNode.insertBefore(progressDiv, detailHeader.nextSibling);
@@ -721,12 +721,12 @@ async function addProgressToDetail(torrent) {
 // Проверка сервера
 async function checkServer(shouldLoadTorrents) {
   if (shouldLoadTorrents === undefined) shouldLoadTorrents = true;
-  var urlInput = document.getElementById('torrserver-url');
-  var statusIndicator = document.getElementById('status-indicator');
-  var statusText = document.getElementById('status-text');
-  var authCheckbox = document.getElementById('auth-checkbox');
-  var authLogin = document.getElementById('auth-login');
-  var authPassword = document.getElementById('auth-password');
+  var urlInput = getEl('torrserver-url');
+  var statusIndicator = getEl('status-indicator');
+  var statusText = getEl('status-text');
+  var authCheckbox = getEl('auth-checkbox');
+  var authLogin = getEl('auth-login');
+  var authPassword = getEl('auth-password');
   var url = urlInput.value.trim();
   if (!url) {
     statusIndicator.className = 'status-indicator status-offline';
@@ -798,15 +798,15 @@ async function checkServer(shouldLoadTorrents) {
 // Загрузка списка торрентов
 async function loadTorrents(silent) {
   if (silent === undefined) silent = false;
-  var torrentsGrid = document.getElementById('torrents-grid');
+  var torrentsGrid = getEl('torrents-grid');
   if (!AppState.serverOnline) {
     var checked = await checkServer(false);
     if (!checked) {
       if (!silent) {
         alert('Сначала подключитесь к серверу');
         // Показываем экран настроек
-        document.getElementById('config-screen').style.display = 'flex';
-        document.getElementById('torrserver-section').style.display = 'none';
+        getEl('config-screen').style.display = 'flex';
+        getEl('torrserver-section').style.display = 'none';
         AppState.currentScreen = 'config';
       }
       return;
@@ -846,8 +846,8 @@ async function loadTorrents(silent) {
     AppState.torrents = Array.isArray(data) ? data : [];
 
     // Показываем секцию торрентов
-    document.getElementById('config-screen').style.display = 'none';
-    document.getElementById('torrserver-section').style.display = 'block';
+    getEl('config-screen').style.display = 'none';
+    getEl('torrserver-section').style.display = 'block';
     AppState.currentScreen = 'torrents';
     AppState.inSearch = 'torrents';
 
@@ -893,7 +893,7 @@ async function refreshTorrents(showLoadingFlag) {
 }
 // Отрисовка карточек торрентов
 function renderTorrents() {
-  var torrentsGrid = document.getElementById('torrents-grid');
+  var torrentsGrid = getEl('torrents-grid');
   torrentsGrid.innerHTML = '';
   // Очищаем кэш прогресса при обновлении списка
   progressCache.clear();
@@ -992,16 +992,16 @@ function showDetailByHash(hash) {
   return false;
 }
 function hideCatalogDetailExtra() {
-  var extra = document.getElementById('catalog-detail-extra');
-  var filesList = document.getElementById('files-list');
-  var subtitle = document.getElementById('detail-subtitle');
-  var backdrop = document.getElementById('catalog-detail-backdrop');
-  var meta = document.getElementById('catalog-detail-meta');
-  var overview = document.getElementById('catalog-detail-overview');
-  var trailersWrap = document.getElementById('catalog-detail-trailers-wrap');
-  var trailers = document.getElementById('catalog-detail-trailers');
-  var shotsWrap = document.getElementById('catalog-detail-screenshots-wrap');
-  var shots = document.getElementById('catalog-detail-screenshots');
+  var extra = getEl('catalog-detail-extra');
+  var filesList = getEl('files-list');
+  var subtitle = getEl('detail-subtitle');
+  var backdrop = getEl('catalog-detail-backdrop');
+  var meta = getEl('catalog-detail-meta');
+  var overview = getEl('catalog-detail-overview');
+  var trailersWrap = getEl('catalog-detail-trailers-wrap');
+  var trailers = getEl('catalog-detail-trailers');
+  var shotsWrap = getEl('catalog-detail-screenshots-wrap');
+  var shots = getEl('catalog-detail-screenshots');
   if (extra) extra.classList.add('hidden');
   //if (filesList) filesList.style.display = 'block';
   if (subtitle) subtitle.textContent = '';
@@ -1080,30 +1080,30 @@ async function getTmdbDetailsWithCache(tmdbId, mediaType) {
   return null;
 }
 function resetDetailBackground() {
-  var detailView = document.getElementById('detail-view');
+  var detailView = getEl('detail-view');
   if (!detailView) return;
   // Очищаем фон
   detailView.style.backgroundImage = '';
   detailView.style.backgroundColor = '#000000';
   // Удаляем overlay затемнения
-  var existingOverlay = document.getElementById('detail-backdrop-overlay');
+  var existingOverlay = getEl('detail-backdrop-overlay');
   if (existingOverlay) {
     existingOverlay.remove();
   }
   // Очищаем subtitle
-  var detailSubtitle = document.getElementById('detail-subtitle');
+  var detailSubtitle = getEl('detail-subtitle');
   if (detailSubtitle) {
     detailSubtitle.textContent = '';
     detailSubtitle.style.display = 'none';
   }
   // Очищаем meta информацию
-  var metaContainer = document.getElementById('catalog-detail-meta');
+  var metaContainer = getEl('catalog-detail-meta');
   if (metaContainer) {
     metaContainer.innerHTML = '';
     metaContainer.classList.add('hidden');
   }
   // Очищаем список файлов
-  var filesList = document.getElementById('files-list');
+  var filesList = getEl('files-list');
   if (filesList) {
     filesList.innerHTML = '';
     // Сбрасываем стили, если нужно
@@ -1111,12 +1111,12 @@ function resetDetailBackground() {
     filesList.style.flexDirection = '';
   }
   // Очищаем постер
-  var detailPoster = document.getElementById('detail-poster');
+  var detailPoster = getEl('detail-poster');
   if (detailPoster) {
     detailPoster.innerHTML = '';
   }
   // Очищаем название
-  var detailTitleText = document.getElementById('detail-title-text');
+  var detailTitleText = getEl('detail-title-text');
   if (detailTitleText) {
     detailTitleText.textContent = '';
   }
@@ -1392,25 +1392,25 @@ async function showDetail(torrent) {
     console.log('Сохранен индекс перед открытием:', currentFocusIndex);
   }
   AppState.currentDetailItem = torrent;
-  var detailView = document.getElementById('detail-view');
+  var detailView = getEl('detail-view');
   //detailView.style.display = 'block';
   //detailView.style.zIndex = '100';
   resetDetailBackground();
   //if (typeof Animations !== 'undefined') {
     //Animations.animateDetailShow();
   //}
-  var mainContainer = document.getElementById('main-container');
+  var mainContainer = getEl('main-container');
   if (mainContainer) {
     mainContainer.style.pointerEvents = 'none';
   }
   AppState.currentScreen = 'detail';
   AppState.detailReturnTo = 'torrents';
   hideCatalogDetailExtra();
-  var posterImg = document.getElementById('detail-poster');
-  var titleEl = document.getElementById('detail-title-text');
-  var filesList = document.getElementById('files-list');
-  var detailSubtitle = document.getElementById('detail-subtitle');
-  var detailViewDiv = document.getElementById('detail-view');
+  var posterImg = getEl('detail-poster');
+  var titleEl = getEl('detail-title-text');
+  var filesList = getEl('files-list');
+  var detailSubtitle = getEl('detail-subtitle');
+  var detailViewDiv = getEl('detail-view');
   if (filesList) {
     filesList.style.display = 'flex';
     filesList.style.flexDirection = 'row';
@@ -1435,7 +1435,7 @@ async function showDetail(torrent) {
   displayTitle = displayTitle.replace(/[\d+]/, '').trim();
   titleEl.textContent = displayTitle;
   // Удаляем старый прогресс если есть
-  var oldProgress = document.getElementById('detail-progress');
+  var oldProgress = getEl('detail-progress');
   if (oldProgress) oldProgress.remove();
   // Добавляем прогресс для текущего торрента
   await addProgressToDetail(torrent);
@@ -1650,7 +1650,7 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
             elements.detailViewDiv.style.backgroundPosition = 'center';
             elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
 
-            var existingOverlay = document.getElementById('detail-backdrop-overlay');
+            var existingOverlay = getEl('detail-backdrop-overlay');
             if (!existingOverlay && elements.detailViewDiv) {
               var overlay = document.createElement('div');
               overlay.id = 'detail-backdrop-overlay';
@@ -1717,7 +1717,7 @@ function updateFileItemStill(fileItem, stillImage) {
 }
 // Вспомогательная функция для обновления meta информации в детальном просмотре
 function updateDetailMetaInfo(tmdbData) {
-  var metaContainer = document.getElementById('catalog-detail-meta');
+  var metaContainer = getEl('catalog-detail-meta');
   if (!metaContainer) return;
   metaContainer.innerHTML = '';
   metaContainer.classList.remove('hidden');
@@ -1811,15 +1811,15 @@ function addFileItem(file, hash, name, episodeIndex, stillImage, returnOnly) {
       AppState.currentTorrserverUrl + '/play/' + hash + '/' + file.id :
       AppState.currentTorrserverUrl + '/play/' + hash + '/1';
 
-    document.getElementById('playback-overlay').classList.add('active');
-    document.getElementById('detail-view').style.pointerEvents = 'none';
+    getEl('playback-overlay').classList.add('active');
+    getEl('detail-view').style.pointerEvents = 'none';
 
     startHLSPlayback(playUrl, 0, false, episodeIdx).then(function () {
-      document.getElementById('playback-overlay').classList.remove('active');
-      document.getElementById('detail-view').style.pointerEvents = 'auto';
+      getEl('playback-overlay').classList.remove('active');
+      getEl('detail-view').style.pointerEvents = 'auto';
     })['catch'](function () {
-      document.getElementById('playback-overlay').classList.remove('active');
-      document.getElementById('detail-view').style.pointerEvents = 'auto';
+      getEl('playback-overlay').classList.remove('active');
+      getEl('detail-view').style.pointerEvents = 'auto';
     });
   };
   // Сохраняем stillImage для последующей загрузки
@@ -1832,7 +1832,7 @@ function addFileItem(file, hash, name, episodeIndex, stillImage, returnOnly) {
   if (returnOnly) {
     return item;
   } else {
-    var filesList = document.getElementById('files-list');
+    var filesList = getEl('files-list');
     if (filesList) {
       filesList.appendChild(item);
     }
@@ -2024,7 +2024,7 @@ async function loadProgressForFileItem(item, hash, fileId, episodeIndex) {
 }
 // Добавить элемент фильма
 function addMovieItem(torrent) {
-  var filesList = document.getElementById('files-list');
+  var filesList = getEl('files-list');
   filesList.innerHTML = '';
   var item = document.createElement('div');
   item.className = 'file-item';
@@ -2034,16 +2034,16 @@ function addMovieItem(torrent) {
     var btn = e.currentTarget;
     var playUrl = AppState.currentTorrserverUrl + '/play/' + torrent.hash + '/1';
 
-    document.getElementById('playback-overlay').classList.add('active');
-    document.getElementById('detail-view').style.pointerEvents = 'none';
+    getEl('playback-overlay').classList.add('active');
+    getEl('detail-view').style.pointerEvents = 'none';
 
     // Явно передаем timecode = 0 для воспроизведения с начала
     startHLSPlayback(playUrl, 0, false).then(function () {
-      document.getElementById('playback-overlay').classList.remove('active');
-      document.getElementById('detail-view').style.pointerEvents = 'auto';
+      getEl('playback-overlay').classList.remove('active');
+      getEl('detail-view').style.pointerEvents = 'auto';
     })['catch'](function () {
-      document.getElementById('playback-overlay').classList.remove('active');
-      document.getElementById('detail-view').style.pointerEvents = 'auto';
+      getEl('playback-overlay').classList.remove('active');
+      getEl('detail-view').style.pointerEvents = 'auto';
     });
   };
   filesList.appendChild(item);
@@ -2097,7 +2097,7 @@ async function searchTorrentsLegacy(query) {
     }
     currentSearchQuery = query;
 
-    var searchInput = document.getElementById('search-query');
+    var searchInput = getEl('search-query');
     if (searchInput) {
       searchInput.value = '';
     }
@@ -2116,7 +2116,7 @@ async function searchTorrentsLegacy(query) {
 // Новая функция: Обновление списка доступных годов
 function updateAvailableYears() {
   var yearSet = {};
-  var yearFilter = document.getElementById('filter-year');
+  var yearFilter = getEl('filter-year');
   // Собираем все уникальные года из результатов поиска
   var resultsLen = searchResults.length;
   for (var i = 0; i < resultsLen; i++) {
@@ -2152,14 +2152,14 @@ function updateAvailableYears() {
 }
 // Добавляем обработчик изменения режима поиска
 function initSearchModeToggle() {
-  var modeSelect = document.getElementById('search-mode');
+  var modeSelect = getEl('search-mode');
   if (modeSelect) {
     modeSelect.addEventListener('change', function (e) {
       currentSearchMode = e.target.value;
       // Адаптируем интерфейс под выбранный режим
-      var trackerFilter = document.getElementById('filter-tracker');
-      var qualityFilter = document.getElementById('filter-quality');
-      var contentTypeFilter = document.getElementById('filter-content-type');
+      var trackerFilter = getEl('filter-tracker');
+      var qualityFilter = getEl('filter-quality');
+      var contentTypeFilter = getEl('filter-content-type');
 
       if (currentSearchMode === 'globalsearch') {
         // Для глобального поиска отключаем ненужные фильтры
@@ -2287,7 +2287,7 @@ function applyFiltersAndSort() {
 // Обновление списка доступных сезонов
 function updateAvailableSeasons() {
   var seasonSet = {};
-  var seasonFilter = document.getElementById('filter-season');
+  var seasonFilter = getEl('filter-season');
   if (!seasonFilter) return;
   // Собираем все уникальные сезоны из результатов поиска
   var resultsLen = searchResults.length;
@@ -2322,7 +2322,7 @@ function updateAvailableSeasons() {
 // Обновление списка доступных озвучек
 function updateAvailableVoices() {
   var voiceSet = {};
-  var voiceFilter = document.getElementById('filter-voice');
+  var voiceFilter = getEl('filter-voice');
   if (!voiceFilter) return;
   // Собираем все уникальные озвучки из результатов поиска
   var resultsLen = searchResults.length;
@@ -2358,7 +2358,7 @@ function updateAvailableVoices() {
 // Обновление списка доступных типов видео
 function updateAvailableVideotype() {
   var videotypeSet = {};
-  var videotypeFilter = document.getElementById('filter-videotype');
+  var videotypeFilter = getEl('filter-videotype');
   if (!videotypeFilter) return;
   // Собираем все уникальные типы из результатов поиска
   var resultsLen = searchResults.length;
@@ -2391,16 +2391,16 @@ function updateAvailableVideotype() {
 // Отображение результатов поиска
 function showSearchResults(options) {
   if (options === undefined) options = {};
-  var searchOverlay = document.getElementById('search-overlay');
-  var searchTab = document.getElementById('tab-search');
-  var torrentsTab = document.getElementById('tab-torrents');
-  var catalogTab = document.getElementById('tab-catalog');
-  var searchInput = document.getElementById('search-query');
+  var searchOverlay = getEl('search-overlay');
+  var searchTab = getEl('tab-search');
+  var torrentsTab = getEl('tab-torrents');
+  var catalogTab = getEl('tab-catalog');
+  var searchInput = getEl('search-query');
   if (!searchOverlay || !searchTab || !torrentsTab) return;
   if (searchInput && document.activeElement === searchInput) {
     searchInput.blur();
   }
-  document.getElementById('torrserver-section').style.display = 'none';
+  getEl('torrserver-section').style.display = 'none';
   searchOverlay.classList.remove('hidden');
   searchTab.classList.add('active');
   torrentsTab.classList.remove('active');
@@ -2445,26 +2445,26 @@ function showSearchResults(options) {
 }
 // Скрытие результатов поиска
 function hideSearchResults() {
-  var searchOverlay = document.getElementById('search-overlay');
-  var searchTab = document.getElementById('tab-search');
-  var torrentsTab = document.getElementById('tab-torrents');
-  var catalogTab = document.getElementById('tab-catalog');
-  var searchInput = document.getElementById('search-query');
-  var modeSelect = document.getElementById('torrent-movie');
+  var searchOverlay = getEl('search-overlay');
+  var searchTab = getEl('tab-search');
+  var torrentsTab = getEl('tab-torrents');
+  var catalogTab = getEl('tab-catalog');
+  var searchInput = getEl('search-query');
+  var modeSelect = getEl('torrent-movie');
   if (modeSelect) modeSelect.value = 'globalsearch';
   if (!searchOverlay || !searchTab || !torrentsTab) return;
   // Определяем куда возвращаться
   var returnTo = AppState.searchReturnTo || AppState.inSearch;
-  document.getElementById('torrserver-section').style.display = 'block';
+  getEl('torrserver-section').style.display = 'block';
   searchOverlay.classList.add('hidden');
   searchTab.classList.remove('active');
-  document.getElementById('search-results').innerHTML = '';
+  getEl('search-results').innerHTML = '';
   toggleSearchFiltersPanel(false);
   // Обработка возврата в зависимости от режима
   if (returnTo === 'detail') {
     // Возврат в детальный просмотр
     AppState.currentScreen = 'detail';
-    var mainContainer = document.getElementById('main-container');
+    var mainContainer = getEl('main-container');
     if (mainContainer && AppState.backupScroll > 0) {
       mainContainer.scrollTop = AppState.backupScroll;
     }
@@ -2473,7 +2473,7 @@ function hideSearchResults() {
     torrentsTab.classList.remove('active');
 
     // Показываем детальный просмотр, если он скрыт
-    var detailView = document.getElementById('detail-view');
+    var detailView = getEl('detail-view');
     if (detailView && detailView.style.display !== 'block') {
       detailView.style.display = 'block';
       detailView.style.zIndex = '100';
@@ -2508,7 +2508,7 @@ function hideSearchResults() {
     setTimeout(function () {
       if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
         updateFocusableElements();
-        var watchBtn = document.getElementById('catalog-watch-btn');
+        var watchBtn = getEl('catalog-watch-btn');
         if (watchBtn) {
           var watchIndex = -1;
           var focusLen = focusableElements.length;
@@ -2589,29 +2589,29 @@ function resetFilters() {
   currentVoiceFilter = 'all';
   currentvideotypeFilter = 'all';
   syncSearchFilterButtons();
-  var filterYear = document.getElementById('filter-year');
+  var filterYear = getEl('filter-year');
   if (filterYear) {
     filterYear.value = 'all';
   }
   // Сбрасываем фильтр сезона
-  var filterSeason = document.getElementById('filter-season');
+  var filterSeason = getEl('filter-season');
   if (filterSeason) {
     filterSeason.value = 'all';
   }
   // Сбрасываем фильтр озвучки
-  var filterVoice = document.getElementById('filter-voice');
+  var filterVoice = getEl('filter-voice');
   if (filterVoice) {
     filterVoice.value = 'all';
   }
   // Сбрасываем фильтр по типу
-  var filtervideotype = document.getElementById('filter-videotype');
+  var filtervideotype = getEl('filter-videotype');
   if (filtervideotype) {
     filtervideotype.value = 'all';
   }
   applyFiltersAndSort();
 }
 function initYearFilter() {
-  var yearFilter = document.getElementById('filter-year');
+  var yearFilter = getEl('filter-year');
   if (yearFilter) {
     yearFilter.addEventListener('change', function (e) {
       var value = e.target.value;
@@ -2959,7 +2959,7 @@ async function playFromHash(hash, magnet, searchResult) {
       AppState.pendingDetailPoster || null
     );
   }
-  document.getElementById('playback-overlay').classList.add('active');
+  getEl('playback-overlay').classList.add('active');
   document.querySelector('.playback-text').textContent = 'Поиск постера и добавление...';
   try {
     // Проверяем, является ли контент сериалом
@@ -3013,7 +3013,7 @@ async function playFromHash(hash, magnet, searchResult) {
     console.error('❌ Ошибка воспроизведения:', error);
     alert('Ошибка воспроизведения: ' + error.message);
   } finally {
-    document.getElementById('playback-overlay').classList.remove('active');
+    getEl('playback-overlay').classList.remove('active');
     document.querySelector('.playback-text').textContent = 'Воспроизведение...';
   }
 }
@@ -3033,7 +3033,7 @@ function clearSearchResults() {
 }
 // Рендеринг результатов поиска
 function renderSearchResults() {
-  var searchResultsDiv = document.getElementById('search-results');
+  var searchResultsDiv = getEl('search-results');
   if (!searchResultsDiv) return;
   if (filteredResults.length === 0) {
     var totalResults = searchResults.length;
@@ -3148,7 +3148,7 @@ function extractHashFromMagnet(magnet) {
 }
 // Функция для получения текущего режима поиска
 function getCurrentSearchMode() {
-  var modeSelect = document.getElementById('torrent-movie');
+  var modeSelect = getEl('torrent-movie');
   if (modeSelect) {
     currentSearchMode = modeSelect.value;
   }
@@ -3254,8 +3254,8 @@ function getRatingColor(rating) {
 }
 // НОВАЯ ФУНКЦИЯ: Показать результаты глобального поиска
 function showGlobalSearchResults() {
-  var searchResultsDiv = document.getElementById('search-results');
-  var searchOverlay = document.getElementById('search-overlay');
+  var searchResultsDiv = getEl('search-results');
+  var searchOverlay = getEl('search-overlay');
   if (!searchResultsDiv) return;
   // Убеждаемся, что overlay виден
   if (searchOverlay) {
@@ -3302,7 +3302,7 @@ function showGlobalSearchResults() {
   }
 }
 function renderFilteredGlobalResults(results) {
-  var searchResultsDiv = document.getElementById('search-results');
+  var searchResultsDiv = getEl('search-results');
   if (!searchResultsDiv) return;
   if (results.length === 0) {
     searchResultsDiv.innerHTML = '\n             <div class="filter-stats">Всего найдено:<span>0</span></div>\n             <div class="search-result-empty">\n                Нет результатов для выбранного типа контента\n             </div>\n        ';
@@ -3384,7 +3384,7 @@ async function showGlobalSearchDetail(item) {
     await window.showCatalogDetail(catalogItem, 0, posterUrl);
 
     // Скрываем поиск
-    var searchOverlay = document.getElementById('search-overlay');
+    var searchOverlay = getEl('search-overlay');
     if (searchOverlay) {
       searchOverlay.classList.add('hidden');
     }
@@ -3397,13 +3397,13 @@ function showContentTypeFilter() {
   var filterGroup = document.querySelector('.filter-group');
   if (!filterGroup) return;
   // Проверяем, есть ли уже фильтр по типу
-  var contentTypeFilter = document.getElementById('filter-content-type');
+  var contentTypeFilter = getEl('filter-content-type');
   if (!contentTypeFilter) {
     var newFilter = document.createElement('div');
     newFilter.className = 'filter-group';
     newFilter.innerHTML = '\n             <label class="filter-label" for="filter-content-type">Тип контента</label>\n             <select id="filter-content-type" class="filter-select">\n                 <option value="all">Все</option>\n                 <option value="movie">Фильмы</option>\n                 <option value="tv">Сериалы</option>\n             </select>\n        ';
     // Вставляем после фильтра качества
-    var qualityFilter = document.getElementById('filter-quality');
+    var qualityFilter = getEl('filter-quality');
     if (qualityFilter && qualityFilter.parentNode) {
       qualityFilter.parentNode.parentNode.insertBefore(newFilter, qualityFilter.parentNode.nextSibling);
     } else {
@@ -3411,7 +3411,7 @@ function showContentTypeFilter() {
     }
 
     // Добавляем обработчик
-    document.getElementById('filter-content-type').addEventListener('change', function (e) {
+    getEl('filter-content-type').addEventListener('change', function (e) {
       filterGlobalSearchByType(e.target.value);
     });
   }
@@ -3433,7 +3433,7 @@ function filterGlobalSearchByType(type) {
   renderFilteredGlobalResults(filtered);
 }
 function clearSearchResultsContainer() {
-  var searchResultsDiv = document.getElementById('search-results');
+  var searchResultsDiv = getEl('search-results');
   if (searchResultsDiv) {
     searchResultsDiv.innerHTML = '';
   }
