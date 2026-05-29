@@ -1194,22 +1194,18 @@ function extractSeasonsFromTitle(title) {
 function cleanTitleFromSeasons(title, seasons) {
   if (!title) return title;
   var cleaned = title;
-  // Удаляем [сезон X, Y, Z]
-  cleaned = cleaned.replace(/[сезон\s*[\d,\s-]+]/i, '');
-  cleaned = cleaned.replace(/[season\s*[\d,\s-]+]/i, '');
-  // Удаляем сезон X, Y, Z без скобок
-  cleaned = cleaned.replace(/сезон\s*[\d,\s-]+/i, '');
-  cleaned = cleaned.replace(/season\s*[\d,\s-]+/i, '');
-  // Удаляем S1, S2, S3
-  if (seasons && seasons.length > 0) {
-    var seasonsLen = seasons.length;
-    for (var i = 0; i < seasonsLen; i++) {
-      cleaned = cleaned.replace(new RegExp('S' + seasons[i] + '\\b', 'ig'), '');
-    }
-  }
-  cleaned = cleaned.replace(/S\d+/ig, '');
-  // Удаляем лишние пробелы
+  // Удаляем [сезон X-Y] или [сезон X, Y, Z]
+  cleaned = cleaned.replace(/\[\s*сезон\s*[\d\s,\-]+\s*\]/gi, '');
+  cleaned = cleaned.replace(/\[\s*season\s*[\d\s,\-]+\s*\]/gi, '');
+  // Удаляем сезон X-Y или сезон X, Y, Z без скобок
+  cleaned = cleaned.replace(/сезон\s*[\d\s,\-]+/gi, '');
+  cleaned = cleaned.replace(/season\s*[\d\s,\-]+/gi, '');
+  // Удаляем S1, S2, S3 и т.д.
+  cleaned = cleaned.replace(/S\d+/gi, '');
+  // Удаляем лишние пробелы и знаки
   cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  // Удаляем возможные оставшиеся скобки и тире
+  cleaned = cleaned.replace(/[\[\]()\-]/g, '').trim();
   return cleaned;
 }
 // Кэш для сезонов
