@@ -414,7 +414,13 @@ function clearOkHold() { if (okHoldTimer) { clearTimeout(okHoldTimer); okHoldTim
 function isElementFullyVisible(el, container) {
     if (!el || !container) return true;
     var r = el.getBoundingClientRect(), cr = container.getBoundingClientRect();
-    var isH = container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers' || container.id === 'files-list';
+    var isH = container.id === 'catalog-detail-actors' ||
+        container.id === 'catalog-detail-recommendations' ||
+        container.id === 'catalog-detail-trailers' ||
+        container.id === 'files-list' ||
+        container.id === 'catalog-detail-actors-wrap' ||
+        container.id === 'catalog-detail-recommendations-wrap' ||
+        container.id === 'catalog-detail-trailers-wrap';
     if (isH) { var hp = 30; return r.left >= cr.left + hp && r.right <= cr.right - hp; }
     return r.top >= cr.top + 20 && r.bottom <= cr.bottom - 20 && r.left >= cr.left + 20 && r.right <= cr.right - 20;
 }
