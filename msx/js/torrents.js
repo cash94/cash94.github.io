@@ -1453,6 +1453,9 @@ async function showDetail(torrent) {
     }
 
     posterImg.innerHTML = poster ? '<img src="' + poster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
+    if (typeof Animations !== 'undefined') {
+      Animations.animateDetailShow();
+    }
 
     if (files.length === 0) {
       filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">📁 Нет файлов</div>';
@@ -1545,9 +1548,7 @@ async function showDetail(torrent) {
       }
     }
   }, 200);
-  if (typeof Animations !== 'undefined') {
-    Animations.animateDetailShow();
-  }
+
   AppState.mediaType = "";
 }
 // Асинхронная функция для загрузки всех TMDB данных
