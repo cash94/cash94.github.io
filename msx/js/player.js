@@ -56,21 +56,21 @@ function stopHeartbeat() {
 
 // Скрываем кнопку серий по умолчанию
 document.addEventListener('DOMContentLoaded', function () {
-  var episodesBtn = document.getElementById('episodes-btn');
+  var episodesBtn = getEl('episodes-btn');
   if (episodesBtn) {
     episodesBtn.style.display = 'none';
   }
   // Скрываем кнопки переключения серий по умолчанию
-  var prevBtn = document.getElementById('prev-episode-btn');
-  var nextBtn = document.getElementById('next-episode-btn');
+  var prevBtn = getEl('prev-episode-btn');
+  var nextBtn = getEl('next-episode-btn');
   if (prevBtn) prevBtn.style.display = 'none';
   if (nextBtn) nextBtn.style.display = 'none';
 });
 
 // НОВАЯ ФУНКЦИЯ: Обновление видимости кнопок переключения серий
 function updateEpisodeButtons() {
-  var prevBtn = document.getElementById('prev-episode-btn');
-  var nextBtn = document.getElementById('next-episode-btn');
+  var prevBtn = getEl('prev-episode-btn');
+  var nextBtn = getEl('next-episode-btn');
   if (!prevBtn || !nextBtn) return;
 
   var filesLen = currentEpisodeFiles.length;
@@ -101,8 +101,8 @@ function updateEpisodeButtons() {
 
 // НОВАЯ ФУНКЦИЯ: Обновление названия текущего воспроизводимого файла
 function updatePlayerTitle(title) {
-  var titleElement = document.getElementById('player-title');
-  var controlsContainer = document.getElementById('controls-container');
+  var titleElement = getEl('player-title');
+  var controlsContainer = getEl('controls-container');
   if (!titleElement) return;
 
   if (title) {
@@ -124,9 +124,9 @@ function updatePlayerTitle(title) {
 
 function syncPlayerTitleVisibility(forceVisible) {
   if (forceVisible === undefined) forceVisible = null;
-  var titleElement = document.getElementById('player-title');
-  var subtitleElement = document.getElementById('player-subtitle');
-  var controlsContainer = document.getElementById('controls-container');
+  var titleElement = getEl('player-title');
+  var subtitleElement = getEl('player-subtitle');
+  var controlsContainer = getEl('controls-container');
   if (!titleElement) return;
 
   var hasTitle = !!titleElement.dataset.hasTitle;
@@ -198,20 +198,20 @@ async function getFileNameByHash(hash, fileId) {
 
 // НОВАЯ ФУНКЦИЯ: Сброс таймера бездействия мыши
 function resetMouseIdleTimer() {
-  var playerScreen = document.getElementById('player-screen');
+  var playerScreen = getEl('player-screen');
   if (!playerScreen || playerScreen.style.display !== 'block') return;
 
-  var playerOverlay = document.getElementById('player-overlay');
-  var controlsContainer = document.getElementById('controls-container');
-  var bufferStats = document.getElementById('buffer-stats');
-  var playerHint = document.getElementById('player-hint');
-  var toggleBufferBtn = document.getElementById('toggle-buffer-btn');
-  var exitPlayerBtn = document.getElementById('exit-player-btn');
-  var episodesBtn = document.getElementById('episodes-btn');
-  var episodesPanel = document.getElementById('episodes-panel');
-  var prevBtn = document.getElementById('prev-episode-btn');
-  var nextBtn = document.getElementById('next-episode-btn');
-  var playerTitle = document.getElementById('player-title');
+  var playerOverlay = getEl('player-overlay');
+  var controlsContainer = getEl('controls-container');
+  var bufferStats = getEl('buffer-stats');
+  var playerHint = getEl('player-hint');
+  var toggleBufferBtn = getEl('toggle-buffer-btn');
+  var exitPlayerBtn = getEl('exit-player-btn');
+  var episodesBtn = getEl('episodes-btn');
+  var episodesPanel = getEl('episodes-panel');
+  var prevBtn = getEl('prev-episode-btn');
+  var nextBtn = getEl('next-episode-btn');
+  var playerTitle = getEl('player-title');
 
   // Показываем элементы
   if (playerOverlay) playerOverlay.classList.add('touch-active');
@@ -316,9 +316,9 @@ function showPlayerLoading(message, targetTime) {
   if (message === undefined) message = 'Перемотка...';
   if (targetTime === undefined) targetTime = null;
 
-  var overlay = document.getElementById('loading-player-overlay');
-  var playerOverlay = document.getElementById('player-overlay');
-  var loadingTime = document.getElementById('loading-time');
+  var overlay = getEl('loading-player-overlay');
+  var playerOverlay = getEl('player-overlay');
+  var loadingTime = getEl('loading-time');
 
   overlay.classList.add('active');
   playerOverlay.classList.add('loading');
@@ -333,17 +333,17 @@ function showPlayerLoading(message, targetTime) {
 }
 
 function hidePlayerLoading() {
-  var overlay = document.getElementById('loading-player-overlay');
-  var playerOverlay = document.getElementById('player-overlay');
+  var overlay = getEl('loading-player-overlay');
+  var playerOverlay = getEl('player-overlay');
   if (overlay) overlay.classList.remove('active');
   if (playerOverlay) playerOverlay.classList.remove('loading');
 }
 
 function updateTimeDisplay() {
-  var currentTimeSpan = document.getElementById('current-time');
-  var durationSpan = document.getElementById('duration-time');
-  var seekSlider = document.getElementById('seek-slider');
-  var videoPlayer = document.getElementById('video-player');
+  var currentTimeSpan = getEl('current-time');
+  var durationSpan = getEl('duration-time');
+  var seekSlider = getEl('seek-slider');
+  var videoPlayer = getEl('video-player');
   if (!currentTimeSpan || !durationSpan || !videoPlayer) return;
 
   if (AppState.isSliderDragging && AppState.previewTime !== null) {
@@ -366,8 +366,8 @@ function updateTimeDisplay() {
 }
 
 function updatePlayPauseButton() {
-  var btn = document.getElementById('play-pause-btn');
-  var videoPlayer = document.getElementById('video-player');
+  var btn = getEl('play-pause-btn');
+  var videoPlayer = getEl('video-player');
   if (!btn || !videoPlayer) return;
 
   if (videoPlayer.paused) {
@@ -420,17 +420,17 @@ function updatePlayPauseButton() {
 }
 
 function updateMuteButton() {
-  var btn = document.getElementById('mute-btn');
-  var videoPlayer = document.getElementById('video-player');
+  var btn = getEl('mute-btn');
+  var videoPlayer = getEl('video-player');
   if (!btn || !videoPlayer) return;
 
   btn.innerHTML = videoPlayer.muted ? '<i class="fi fi-tc-volume-slash"></i>' : '<i class="fi fi-rr-volume"></i>';
 }
 
 function updateBufferDisplay() {
-  var bufferStats = document.getElementById('buffer-stats');
-  var subtitleElement = document.getElementById('player-subtitle');
-  var videoPlayer = document.getElementById('video-player');
+  var bufferStats = getEl('buffer-stats');
+  var subtitleElement = getEl('player-subtitle');
+  var videoPlayer = getEl('video-player');
   if (!bufferStats || !videoPlayer) return;
 
   if (AppState.bufferHidden) {
@@ -506,9 +506,9 @@ function forceUpdateDuration(duration, origDur, offset) {
   if (origDur === undefined) origDur = null;
   if (offset === undefined) offset = 0;
 
-  var videoPlayer = document.getElementById('video-player');
-  var durationSpan = document.getElementById('duration-time');
-  var seekSlider = document.getElementById('seek-slider');
+  var videoPlayer = getEl('video-player');
+  var durationSpan = getEl('duration-time');
+  var seekSlider = getEl('seek-slider');
 
   if (!duration || !isFinite(duration) || duration <= 0) return;
 
@@ -537,7 +537,7 @@ function destroyHls() {
     AppState.seekOffset = 0;
     AppState.lastSuccessfulSeek = 0;
 
-    var videoPlayer = document.getElementById('video-player');
+    var videoPlayer = getEl('video-player');
     if (videoPlayer) {
       delete videoPlayer.dataset.expectedDuration;
       delete videoPlayer.dataset.originalDuration;
@@ -695,7 +695,7 @@ function stopTimecodeSaving() {
 
 // НОВАЯ ФУНКЦИЯ: Проверка, доступна ли позиция в буфере
 function isPositionInBuffer(targetTime) {
-  var videoPlayer = document.getElementById('video-player');
+  var videoPlayer = getEl('video-player');
   if (!videoPlayer || !videoPlayer.buffered || videoPlayer.buffered.length === 0) return false;
 
   var relativeTargetTime = targetTime - AppState.seekOffset;
@@ -726,7 +726,7 @@ async function seekStream(absoluteSeekTime, source) {
     return false;
   }
 
-  var videoPlayer = document.getElementById('video-player');
+  var videoPlayer = getEl('video-player');
   var totalDuration = AppState.originalDuration || AppState.expectedDuration || 0;
   if (absoluteSeekTime < 0) absoluteSeekTime = 0;
   if (totalDuration > 0 && absoluteSeekTime >= totalDuration - 1) {
@@ -753,8 +753,8 @@ async function seekStream(absoluteSeekTime, source) {
       }
 
       var wasPlaying = !videoPlayer.paused;
-      var episodesPanel = document.getElementById('episodes-panel');
-      var episodesBtn = document.getElementById('episodes-btn');
+      var episodesPanel = getEl('episodes-panel');
+      var episodesBtn = getEl('episodes-btn');
       if (episodesPanel && !episodesPanel.classList.contains('hidden')) {
         episodesPanel.classList.add('hidden');
         if (episodesBtn) episodesBtn.classList.remove('active');
@@ -780,7 +780,7 @@ async function seekStream(absoluteSeekTime, source) {
         AppState.suppressTimeUpdate = false;
         AppState.isSeeking = false;
 
-        var seekSlider = document.getElementById('seek-slider');
+        var seekSlider = getEl('seek-slider');
         if (seekSlider) seekSlider.value = targetTime;
 
         updateTimeDisplay();
@@ -795,7 +795,7 @@ async function seekStream(absoluteSeekTime, source) {
         lastCleanedSegment = -1;
       }
 
-      var playbackOverlay = document.getElementById('playback-overlay');
+      var playbackOverlay = getEl('playback-overlay');
       var playbackText = document.querySelector('.playback-text');
       playbackOverlay.classList.add('active');
       playbackText.textContent = 'Перемотка на ' + formatTime(targetTime) + '...';
@@ -871,7 +871,7 @@ async function seekStream(absoluteSeekTime, source) {
             forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
             updatePlayPauseButton();
 
-            var seekSlider = document.getElementById('seek-slider');
+            var seekSlider = getEl('seek-slider');
             if (seekSlider) seekSlider.value = Math.min(targetTime, parseFloat(seekSlider.max) || targetTime);
 
             AppState.previewTime = null;
@@ -890,7 +890,7 @@ async function seekStream(absoluteSeekTime, source) {
           videoPlayer.addEventListener('loadedmetadata', onMetaData, { once: true });
 
           setTimeout(function () {
-            var loadingOverlay = document.getElementById('loading-player-overlay');
+            var loadingOverlay = getEl('loading-player-overlay');
             if (loadingOverlay && loadingOverlay.classList.contains('active')) {
               console.log('⚠️ Таймаут загрузки метаданных');
               hidePlayerLoading();
@@ -1069,14 +1069,14 @@ async function loadEpisodesInfo(hash, currentFileId) {
 
       renderEpisodesList();
 
-      var episodesBtn = document.getElementById('episodes-btn');
+      var episodesBtn = getEl('episodes-btn');
       if (episodesBtn) episodesBtn.style.display = videoFiles.length > 1 ? 'flex' : 'none';
       updateEpisodeButtons();
     } else {
       console.log('❌ Видеофайлы не найдены');
       currentEpisodeFiles = [];
       currentEpisodeIndex = 0;
-      var episodesBtn = document.getElementById('episodes-btn');
+      var episodesBtn = getEl('episodes-btn');
       if (episodesBtn) episodesBtn.style.display = 'none';
       updateEpisodeButtons();
     }
@@ -1087,7 +1087,7 @@ async function loadEpisodesInfo(hash, currentFileId) {
 
 // Функция для отрисовки списка серий
 function renderEpisodesList() {
-  var episodesList = document.getElementById('episodes-list');
+  var episodesList = getEl('episodes-list');
   if (!episodesList) return;
 
   if (currentEpisodeFiles.length === 0) {
@@ -1165,14 +1165,14 @@ async function switchToEpisode(index, fileId) {
   var savedAudioTrack = currentAudioTrack;
   console.log('🎵 Сохраняем аудиодорожку для следующей серии:', savedAudioTrack);
 
-  var episodesPanel = document.getElementById('episodes-panel');
-  var episodesBtn = document.getElementById('episodes-btn');
+  var episodesPanel = getEl('episodes-panel');
+  var episodesBtn = getEl('episodes-btn');
   if (episodesPanel) {
     episodesPanel.classList.add('hidden');
     if (episodesBtn) episodesBtn.classList.remove('active');
   }
 
-  document.getElementById('playback-overlay').classList.add('active');
+  getEl('playback-overlay').classList.add('active');
   document.querySelector('.playback-text').textContent = 'Переключение на серию ' + (index + 1) + '...';
 
   var controlBtns = document.querySelectorAll('.control-btn');
@@ -1193,7 +1193,7 @@ async function switchToEpisode(index, fileId) {
       AppState.currentStreamId = null;
     }
 
-    var videoPlayer = document.getElementById('video-player');
+    var videoPlayer = getEl('video-player');
     videoPlayer.removeEventListener('ended', handleVideoEnded);
     destroyHls();
 
@@ -1214,7 +1214,7 @@ async function switchToEpisode(index, fileId) {
     console.error('❌ Ошибка переключения серии:', error);
     alert('Ошибка при переключении серии');
   } finally {
-    document.getElementById('playback-overlay').classList.remove('active');
+    getEl('playback-overlay').classList.remove('active');
     document.querySelector('.playback-text').textContent = 'Воспроизведение...';
     for (var j = 0; j < btnLen; j++) {
       controlBtns[j].style.pointerEvents = 'auto';
@@ -1227,8 +1227,8 @@ async function switchToEpisode(index, fileId) {
 
 // Функция для открытия/закрытия панели серий
 function toggleEpisodesPanel() {
-  var panel = document.getElementById('episodes-panel');
-  var btn = document.getElementById('episodes-btn');
+  var panel = getEl('episodes-panel');
+  var btn = getEl('episodes-btn');
   if (!panel || !btn) return;
 
   if (panel.classList.contains('hidden')) {
@@ -1244,9 +1244,9 @@ function toggleEpisodesPanel() {
 // Настройка обработчиков для кнопки серий
 function setupEpisodesButton() {
   console.log('🔄 Настройка кнопки серий...');
-  var episodesBtn = document.getElementById('episodes-btn');
-  var closeEpisodesBtn = document.getElementById('close-episodes');
-  var episodesPanel = document.getElementById('episodes-panel');
+  var episodesBtn = getEl('episodes-btn');
+  var closeEpisodesBtn = getEl('close-episodes');
+  var episodesPanel = getEl('episodes-panel');
 
   console.log('📊 Элементы:', { episodesBtn: !!episodesBtn, closeEpisodesBtn: !!closeEpisodesBtn, episodesPanel: !!episodesPanel });
   if (!episodesBtn || !closeEpisodesBtn || !episodesPanel) {
@@ -1505,16 +1505,16 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     console.log('📊 Длительность: полная=' + formatTime(AppState.originalDuration) + ', offset=' + AppState.seekOffset.toFixed(2) + 's');
     AppState.currentScreen = 'player';
 
-    document.getElementById('config-screen').style.display = 'none';
-    document.getElementById('torrserver-section').style.display = 'none';
-    document.getElementById('detail-view').style.display = 'none';
-    document.getElementById('player-screen').style.display = 'block';
+    getEl('config-screen').style.display = 'none';
+    getEl('torrserver-section').style.display = 'none';
+    getEl('detail-view').style.display = 'none';
+    getEl('player-screen').style.display = 'block';
 
     var focusedElements = document.querySelectorAll('.focused');
     var focusedLen = focusedElements.length;
     for (var i = 0; i < focusedLen; i++) focusedElements[i].classList.remove('focused');
 
-    var controlsContainer = document.getElementById('controls-container');
+    var controlsContainer = getEl('controls-container');
     if (controlsContainer) controlsContainer.classList.add('idle-hidden');
 
     if (typeof currentFocusIndex !== 'undefined') currentFocusIndex = 0;
@@ -1522,7 +1522,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
     destroyHls();
 
-    var videoPlayer = document.getElementById('video-player');
+    var videoPlayer = getEl('video-player');
     videoPlayer.removeEventListener('ended', handleVideoEnded);
     videoPlayer.addEventListener('ended', handleVideoEnded);
 
@@ -1704,7 +1704,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       var bufferAppendedHandler = function (event, data) {
         if (signal.aborted) return;
         try {
-          var videoPlayerEl = document.getElementById('video-player');
+          var videoPlayerEl = getEl('video-player');
           if (videoPlayerEl && videoPlayerEl.buffered && videoPlayerEl.buffered.length > 0) {
             var bufferedEnd = videoPlayerEl.buffered.end(videoPlayerEl.buffered.length - 1);
             var currentTimeVar = videoPlayerEl.currentTime;
@@ -1811,19 +1811,19 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
             if (isUnsupportedCodec) {
               console.log('Обнаружен неподдерживаемый формат (AVI/VC1)');
-              document.getElementById('playback-overlay').classList.add('active');
+              getEl('playback-overlay').classList.add('active');
               document.querySelector('.playback-text').textContent = 'Формат AVI или VC1 не поддерживаются на вашем устройстве';
               hidePlayerLoading();
               setTimeout(function () {
                 console.log('🚪 Автоматический выход из плеера из-за неподдерживаемого формата');
-                var exitBtn = document.getElementById('exit-player-btn');
+                var exitBtn = getEl('exit-player-btn');
                 if (exitBtn) {
                   exitBtn.click();
-                  document.getElementById('playback-overlay').classList.remove('active');
+                  getEl('playback-overlay').classList.remove('active');
                   document.querySelector('.playback-text').textContent = 'Воспроизведение...';
                 } else if (typeof showDetailView === 'function') {
                   showDetailView();
-                  document.getElementById('playback-overlay').classList.remove('active');
+                  getEl('playback-overlay').classList.remove('active');
                   document.querySelector('.playback-text').textContent = 'Воспроизведение...';
                 }
               }, 4000);
@@ -1836,7 +1836,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             showPlayerLoading('Ошибка воспроизведения, перезагрузка...');
             setTimeout(function () {
               if (AppState.currentStreamId && !signal.aborted) {
-                var videoPlayerEl = document.getElementById('video-player');
+                var videoPlayerEl = getEl('video-player');
                 var currentTimeVar = videoPlayerEl.currentTime + AppState.seekOffset;
                 startHLSPlayback(AppState.videoUrl, currentTimeVar, false);
               }
@@ -1927,7 +1927,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       throw new Error('Ваш браузер не поддерживает HLS');
     }
 
-    var playerHint = document.getElementById('player-hint');
+    var playerHint = getEl('player-hint');
     if (playerHint) {
       playerHint.style.opacity = '1';
       if (AppState.hintTimeout) clearTimeout(AppState.hintTimeout);
@@ -1997,9 +1997,9 @@ function showDetailView() {
       if (AppState.hls) { AppState.hls.destroy(); AppState.hls = null; }
       AppState.isYoutubePlayback = false;
       AppState.currentScreen = 'catalog';
-      document.getElementById('player-screen').style.display = 'none';
+      getEl('player-screen').style.display = 'none';
 
-      var detailView = document.getElementById('detail-view');
+      var detailView = getEl('detail-view');
       if (detailView && AppState.youtubeContext) {
         detailView.style.display = 'block';
         detailView.style.pointerEvents = 'auto';
@@ -2034,26 +2034,26 @@ function showDetailView() {
   updatePlayerTitle(null);
   clearTimecodeData();
 
-  var episodesPanel = document.getElementById('episodes-panel');
-  var episodesBtn = document.getElementById('episodes-btn');
+  var episodesPanel = getEl('episodes-panel');
+  var episodesBtn = getEl('episodes-btn');
   if (episodesPanel) episodesPanel.classList.add('hidden');
   if (episodesBtn) episodesBtn.classList.remove('active');
 
-  var audioPanel = document.getElementById('audio-panel');
-  var audioBtn = document.getElementById('audio-btn');
+  var audioPanel = getEl('audio-panel');
+  var audioBtn = getEl('audio-btn');
   if (audioPanel) {
     audioPanel.classList.add('hidden');
     if (audioBtn) audioBtn.classList.remove('active');
   }
   if (episodesBtn) episodesBtn.style.display = 'none';
 
-  var prevBtn = document.getElementById('prev-episode-btn');
-  var nextBtn = document.getElementById('next-episode-btn');
+  var prevBtn = getEl('prev-episode-btn');
+  var nextBtn = getEl('next-episode-btn');
   if (prevBtn) prevBtn.style.display = 'none';
   if (nextBtn) nextBtn.style.display = 'none';
 
   AppState.currentScreen = 'detail';
-  var videoPlayer = document.getElementById('video-player');
+  var videoPlayer = getEl('video-player');
   videoPlayer.removeEventListener('ended', handleVideoEnded);
   videoPlayer.pause();
   videoPlayer.removeAttribute('src');
@@ -2066,9 +2066,9 @@ function showDetailView() {
     AppState.currentStreamId = null;
   }
 
-  document.getElementById('player-screen').style.display = 'none';
-  document.getElementById('config-screen').style.display = 'none';
-  document.getElementById('torrserver-section').style.display = 'block';
+  getEl('player-screen').style.display = 'none';
+  getEl('config-screen').style.display = 'none';
+  getEl('torrserver-section').style.display = 'block';
 
   setTimeout(function () {
     if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
@@ -2116,7 +2116,7 @@ function showDetailView() {
     lastPlaybackFromSearch = false;
   } else {
     console.log('📂 Возврат к исходной карточке (не из поиска)');
-    var detailView = document.getElementById('detail-view');
+    var detailView = getEl('detail-view');
     if (AppState.currentDetailItem) {
       detailView.style.display = 'block';
       updateDetailProgress(AppState.currentDetailItem);
@@ -2170,19 +2170,19 @@ async function updateDetailProgress(torrent) {
     var episodeIndex = parseInt(progressBtn.dataset.episodeIndex || 0);
     var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
 
-    document.getElementById('playback-overlay').classList.add('active');
-    document.getElementById('detail-view').style.pointerEvents = 'none';
+    getEl('playback-overlay').classList.add('active');
+    getEl('detail-view').style.pointerEvents = 'none';
 
     startHLSPlayback(playUrl, timecode, false, episodeIndex).then(function () {
-      document.getElementById('playback-overlay').classList.remove('active');
-      document.getElementById('detail-view').style.pointerEvents = 'auto';
+      getEl('playback-overlay').classList.remove('active');
+      getEl('detail-view').style.pointerEvents = 'auto';
     })['catch'](function () {
-      document.getElementById('playback-overlay').classList.remove('active');
-      document.getElementById('detail-view').style.pointerEvents = 'auto';
+      getEl('playback-overlay').classList.remove('active');
+      getEl('detail-view').style.pointerEvents = 'auto';
     });
   });
 
-  var existingProgress = document.getElementById('detail-progress');
+  var existingProgress = getEl('detail-progress');
   if (existingProgress) existingProgress.remove();
   detailHeader.parentNode.insertBefore(progressDiv, detailHeader.nextSibling);
   console.log('✅ Прогресс обновлен в карточке');
@@ -2240,7 +2240,7 @@ async function loadFileInfo(hash, fileId) {
 
 // НОВАЯ ФУНКЦИЯ: Отображение списка аудиодорожек
 function renderAudioTracks() {
-  var audioList = document.getElementById('audio-list');
+  var audioList = getEl('audio-list');
   if (!audioList) return;
   if (!currentAudioTracks || currentAudioTracks.length === 0) {
     audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>';
@@ -2290,17 +2290,17 @@ async function switchAudioTrack(trackIndex) {
     await saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
   }
 
-  var audioPanel = document.getElementById('audio-panel');
-  var audioBtn = document.getElementById('audio-btn');
+  var audioPanel = getEl('audio-panel');
+  var audioBtn = getEl('audio-btn');
   if (audioPanel) {
     audioPanel.classList.add('hidden');
     if (audioBtn) audioBtn.classList.remove('active');
   }
 
-  var videoPlayer = document.getElementById('video-player');
+  var videoPlayer = getEl('video-player');
   var currentTime = videoPlayer.currentTime + AppState.seekOffset;
 
-  document.getElementById('playback-overlay').classList.add('active');
+  getEl('playback-overlay').classList.add('active');
   document.querySelector('.playback-text').textContent = 'Переключение аудиодорожки...';
 
   try {
@@ -2323,17 +2323,17 @@ async function switchAudioTrack(trackIndex) {
     console.error('❌ Ошибка переключения аудиодорожки:', error);
     alert('Ошибка при переключении аудиодорожки');
   } finally {
-    document.getElementById('playback-overlay').classList.remove('active');
+    getEl('playback-overlay').classList.remove('active');
     document.querySelector('.playback-text').textContent = 'Воспроизведение...';
   }
 }
 
 // НОВАЯ ФУНКЦИЯ: Открытие/закрытие панели аудиодорожек
 function toggleAudioPanel() {
-  var panel = document.getElementById('audio-panel');
-  var btn = document.getElementById('audio-btn');
-  var episodesPanel = document.getElementById('episodes-panel');
-  var episodesBtn = document.getElementById('episodes-btn');
+  var panel = getEl('audio-panel');
+  var btn = getEl('audio-btn');
+  var episodesPanel = getEl('episodes-panel');
+  var episodesBtn = getEl('episodes-btn');
   if (!panel || !btn) return;
 
   if (panel.classList.contains('hidden')) {
@@ -2353,9 +2353,9 @@ function toggleAudioPanel() {
 // НОВАЯ ФУНКЦИЯ: Настройка кнопки аудиодорожек
 function setupAudioButton() {
   console.log('🔄 Настройка кнопки аудиодорожек...');
-  var audioBtn = document.getElementById('audio-btn');
-  var closeAudioBtn = document.getElementById('close-audio');
-  var audioPanel = document.getElementById('audio-panel');
+  var audioBtn = getEl('audio-btn');
+  var closeAudioBtn = getEl('close-audio');
+  var audioPanel = getEl('audio-panel');
   if (!audioBtn || !closeAudioBtn || !audioPanel) {
     console.error('❌ Не найдены элементы для кнопки аудиодорожек');
     return;
@@ -2419,7 +2419,7 @@ async function handleVideoEnded() {
 
   if (currentEpisodeFiles.length > 0 && currentEpisodeIndex < currentEpisodeFiles.length - 1) {
     console.log('➡️ Автоматическое переключение на следующую серию');
-    document.getElementById('playback-overlay').classList.add('active');
+    getEl('playback-overlay').classList.add('active');
     document.querySelector('.playback-text').textContent = 'Автоматическое переключение на серию ' + (currentEpisodeIndex + 2) + '...';
 
     var controlBtns = document.querySelectorAll('.control-btn');
@@ -2433,7 +2433,7 @@ async function handleVideoEnded() {
       var nextFile = currentEpisodeFiles[currentEpisodeIndex + 1];
       await switchToEpisode(currentEpisodeIndex + 1, nextFile.id);
     } catch (error) { console.error('❌ Ошибка автоматического переключения:', error); } finally {
-      document.getElementById('playback-overlay').classList.remove('active');
+      getEl('playback-overlay').classList.remove('active');
       document.querySelector('.playback-text').textContent = 'Воспроизведение...';
       for (var j = 0; j < btnLen; j++) {
         controlBtns[j].style.pointerEvents = 'auto';
@@ -2442,7 +2442,7 @@ async function handleVideoEnded() {
     }
   } else {
     console.log('Серии закончились или сериальный режим не активен, закрываем плеер');
-    var overlay = document.getElementById('playback-overlay');
+    var overlay = getEl('playback-overlay');
     overlay.classList.add('active');
     document.querySelector('.playback-text').textContent = 'Воспроизведение завершено';
     setTimeout(function () {
@@ -2455,7 +2455,7 @@ async function handleVideoEnded() {
 function startNearEndCheck() {
   if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
   nearEndCheckInterval = setInterval(function () {
-    var videoPlayer = document.getElementById('video-player');
+    var videoPlayer = getEl('video-player');
     var totalDuration = AppState.originalDuration || AppState.expectedDuration || videoPlayer.duration;
     var currentTime = videoPlayer.currentTime + AppState.seekOffset;
 
@@ -2510,7 +2510,7 @@ function setupPageUnloadHandler() {
     });
 
     document.addEventListener('visibilitychange', function () {
-      var videoPlayer = document.getElementById('video-player');
+      var videoPlayer = getEl('video-player');
       if (document.hidden && videoPlayer && !videoPlayer.paused) {
         console.log('👁️ Вкладка скрыта, ставим видео на паузу');
         videoPlayer.pause();
@@ -2527,7 +2527,7 @@ if (document.readyState === 'loading') {
 }
 
 function updateClock() {
-  var clock = document.getElementById('clock-display');
+  var clock = getEl('clock-display');
   if (!clock) return;
   var now = new Date();
   clock.textContent = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
