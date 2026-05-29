@@ -64,6 +64,7 @@ var AppState = {
 };
 
 var noCacheElements = ['load-more-trigger'];
+var domCache = {};
 
 // Кэш для часто используемых DOM-элементов (ленивая инициализация)
 function getEl(id) {
