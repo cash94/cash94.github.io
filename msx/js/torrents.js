@@ -1435,6 +1435,9 @@ async function showDetail(torrent) {
   if (oldProgress) oldProgress.remove();
   // Добавляем прогресс для текущего торрента
   await addProgressToDetail(torrent);
+  if (typeof Animations !== 'undefined') {
+    Animations.animateDetailShow();
+  }
   try {
     // Получаем файлы с кэшированием (этот метод уже получает и file_stats, и данные)
     var files = await getTorrentFilesWithCache(torrent, false);
@@ -1453,10 +1456,7 @@ async function showDetail(torrent) {
     }
 
     posterImg.innerHTML = poster ? '<img src="' + poster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
-    if (typeof Animations !== 'undefined') {
-      Animations.animateDetailShow();
-    }
-
+    
     if (files.length === 0) {
       filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">📁 Нет файлов</div>';
     } else {
