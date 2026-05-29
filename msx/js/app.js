@@ -11,7 +11,7 @@ var multiChannelEnabled = false;
 // Функция для начальной проверки сервера
 function initialServerCheck() {
   setTimeout(function () {
-    var torrserverUrlInput = document.getElementById('torrserver-url');
+    var torrserverUrlInput = getEl('torrserver-url');
     if (torrserverUrlInput && torrserverUrlInput.value && torrserverUrlInput.value.trim() !== '') {
       console.log('🔍 Автоматическая проверка сервера...');
       if (typeof checkServer === 'function') {
@@ -61,7 +61,7 @@ async function init() {
     var missingElements = [];
     var reqLen = requiredElements.length;
     for (var i = 0; i < reqLen; i++) {
-      if (!document.getElementById(requiredElements[i])) {
+      if (!getEl(requiredElements[i])) {
         missingElements.push(requiredElements[i]);
       }
     }
@@ -69,14 +69,14 @@ async function init() {
       console.warn('⚠️ Отсутствуют DOM элементы:', missingElements);
     }
 
-    var seekSlider = document.getElementById('seek-slider');
-    var volumeSlider = document.getElementById('volume-slider');
-    var playPauseBtn = document.getElementById('play-pause-btn');
-    var muteBtn = document.getElementById('mute-btn');
-    var toggleBufferBtn = document.getElementById('toggle-buffer-btn');
-    var exitPlayerBtn = document.getElementById('exit-player-btn');
-    var overlay = document.getElementById('player-overlay');
-    var videoPlayer = document.getElementById('video-player');
+    var seekSlider = getEl('seek-slider');
+    var volumeSlider = getEl('volume-slider');
+    var playPauseBtn = getEl('play-pause-btn');
+    var muteBtn = getEl('mute-btn');
+    var toggleBufferBtn = getEl('toggle-buffer-btn');
+    var exitPlayerBtn = getEl('exit-player-btn');
+    var overlay = getEl('player-overlay');
+    var videoPlayer = getEl('video-player');
 
     if (seekSlider) {
       seekSlider.value = 0;
@@ -214,9 +214,9 @@ function checkAppVersion() {
 }
 
 function setupSeekSliderEvents(seekSlider, videoPlayer) {
-  var currentTimeEl = document.getElementById('current-time');
-  var loadingOverlay = document.getElementById('loading-player-overlay');
-  var loadingTimeEl = document.getElementById('loading-time');
+  var currentTimeEl = getEl('current-time');
+  var loadingOverlay = getEl('loading-player-overlay');
+  var loadingTimeEl = getEl('loading-time');
 
   seekSlider.addEventListener('mousedown', function () {
     if (typeof AppState !== 'undefined') {
@@ -320,7 +320,7 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
 
 function setupPlayPauseButton(playPauseBtn, videoPlayer) {
   playPauseBtn.addEventListener('click', function (e) {
-    var loadingOverlay = document.getElementById('loading-player-overlay');
+    var loadingOverlay = getEl('loading-player-overlay');
     if (AppState && (AppState.isSeeking || (loadingOverlay && loadingOverlay.classList.contains('active')))) {
       e.preventDefault();
       return;
@@ -339,7 +339,7 @@ function setupPlayPauseButton(playPauseBtn, videoPlayer) {
 
 function setupMuteButton(muteBtn, videoPlayer, volumeSlider) {
   muteBtn.addEventListener('click', function () {
-    var loadingOverlay = document.getElementById('loading-player-overlay');
+    var loadingOverlay = getEl('loading-player-overlay');
     if (AppState && (AppState.isSeeking || (loadingOverlay && loadingOverlay.classList.contains('active')))) return;
     videoPlayer.muted = !videoPlayer.muted;
     if (typeof updateMuteButton === 'function') updateMuteButton();
@@ -349,7 +349,7 @@ function setupMuteButton(muteBtn, videoPlayer, volumeSlider) {
 
 function setupVolumeSlider(volumeSlider, videoPlayer) {
   volumeSlider.addEventListener('input', function (e) {
-    var loadingOverlay = document.getElementById('loading-player-overlay');
+    var loadingOverlay = getEl('loading-player-overlay');
     if (AppState && (AppState.isSeeking || (loadingOverlay && loadingOverlay.classList.contains('active')))) return;
     var vol = parseFloat(e.target.value);
     videoPlayer.volume = vol;
@@ -374,8 +374,8 @@ function setupExitButton(exitPlayerBtn) {
 }
 
 function setupEpisodeNavigation() {
-  var prevEpisodeBtn = document.getElementById('prev-episode-btn');
-  var nextEpisodeBtn = document.getElementById('next-episode-btn');
+  var prevEpisodeBtn = getEl('prev-episode-btn');
+  var nextEpisodeBtn = getEl('next-episode-btn');
   if (prevEpisodeBtn) {
     prevEpisodeBtn.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -447,7 +447,7 @@ function setupToggleBufferButton(toggleBufferBtn) {
     if (AppState && !AppState.bufferHidden && typeof updateBufferDisplay === 'function') {
       updateBufferDisplay();
     } else {
-      var bufferStats = document.getElementById('buffer-stats');
+      var bufferStats = getEl('buffer-stats');
       if (bufferStats) bufferStats.classList.add('hidden');
     }
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
@@ -484,11 +484,11 @@ function setupOverlayControls(overlay) {
 }
 
 function setupNavigation() {
-  var settingsBtn = document.getElementById('settings-btn');
+  var settingsBtn = getEl('settings-btn');
   if (settingsBtn) {
     settingsBtn.addEventListener('click', function () {
-      var torrserverSection = document.getElementById('torrserver-section');
-      var configScreen = document.getElementById('config-screen');
+      var torrserverSection = getEl('torrserver-section');
+      var configScreen = getEl('config-screen');
       if (torrserverSection) torrserverSection.style.display = 'none';
       if (configScreen) configScreen.style.display = 'flex';
       if (typeof AppState !== 'undefined') AppState.currentScreen = 'config';
@@ -499,11 +499,11 @@ function setupNavigation() {
     });
   }
 
-  var backFromDetail = document.getElementById('back-from-detail');
+  var backFromDetail = getEl('back-from-detail');
   if (backFromDetail) {
     backFromDetail.addEventListener('click', function () {
       console.log('🔙 Возврат из детального просмотра');
-      var mainContainer = document.getElementById('main-container');
+      var mainContainer = getEl('main-container');
       resetDetailBackground();
       //if (typeof Animations !== 'undefined') {
         //Animations.animateDetailHide();
@@ -511,13 +511,13 @@ function setupNavigation() {
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
       if (AppState && !AppState.isSearch) {
-        var detailView = document.getElementById('detail-view');
+        var detailView = getEl('detail-view');
         if (detailView) detailView.style.display = 'none';
       }
       if (mainContainer) {
         mainContainer.style.pointerEvents = 'auto';
       }
-      var torrserverSection = document.getElementById('torrserver-section');
+      var torrserverSection = getEl('torrserver-section');
       if (torrserverSection) torrserverSection.style.display = 'block';
       if (typeof AppState !== 'undefined') {
         AppState.detailReturnTo = AppState.inSearch;
@@ -538,13 +538,13 @@ function setupNavigation() {
           if (typeof window.ensureCatalogFocus === 'function') {
             AppState.backupScroll = 0;
             window.ensureCatalogFocus(true);
-            var detailView = document.getElementById('detail-view');
+            var detailView = getEl('detail-view');
             if (detailView) detailView.style.display = 'none';
             return;
           }
           if (typeof window.focusFirstCatalogCard === 'function') {
             window.focusFirstCatalogCard();
-            var detailView = document.getElementById('detail-view');
+            var detailView = getEl('detail-view');
             if (detailView) detailView.style.display = 'none';
             return;
           }
@@ -555,7 +555,7 @@ function setupNavigation() {
           } else {
             if (typeof window.clearSearchResults === 'function') window.clearSearchResults();
           }
-          var detailView = document.getElementById('detail-view');
+          var detailView = getEl('detail-view');
           if (detailView) detailView.style.display = 'none';
           return;
         } else if (returnTo === 'torrents') {
@@ -570,7 +570,7 @@ function setupNavigation() {
           updateFocusableElements();
           if (typeof window.ensureTorrentFocus === 'function') {
             var focused = window.ensureTorrentFocus(true);
-            var detailView = document.getElementById('detail-view');
+            var detailView = getEl('detail-view');
             if (detailView) detailView.style.display = 'none';
             console.log('🎯 Фокус восстановлен через ensureTorrentFocus');
             return;
@@ -618,7 +618,7 @@ function setupNavigation() {
             console.log('⚠️ Используем первую карточку, индекс:', targetIndex);
           }
           setFocus(targetIndex);
-          var detailView = document.getElementById('detail-view');
+          var detailView = getEl('detail-view');
           if (detailView) detailView.style.display = 'none';
         } else {
           if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
@@ -637,7 +637,7 @@ function setupNavigation() {
             }
             setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
           }
-          var detailView = document.getElementById('detail-view');
+          var detailView = getEl('detail-view');
           if (detailView) detailView.style.display = 'none';
         }
       }, 250);
@@ -649,12 +649,12 @@ function setupNavigation() {
 }
 
 function setupSearch() {
-  var searchInput = document.getElementById('search-query');
-  var searchBtn = document.getElementById('search-btn');
-  var closeSearchBtn = document.getElementById('close-search');
-  var tabTorrents = document.getElementById('tab-torrents');
-  var tabSearch = document.getElementById('tab-search');
-  var tabCatalog = document.getElementById('tab-catalog');
+  var searchInput = getEl('search-query');
+  var searchBtn = getEl('search-btn');
+  var closeSearchBtn = getEl('close-search');
+  var tabTorrents = getEl('tab-torrents');
+  var tabSearch = getEl('tab-search');
+  var tabCatalog = getEl('tab-catalog');
 
   if (searchBtn && searchInput) {
     searchBtn.addEventListener('click', function () {
@@ -686,24 +686,24 @@ function setupSearch() {
         tabTorrents.classList.add('active');
         if (tabSearch) tabSearch.classList.remove('active');
         if (tabCatalog) tabCatalog.classList.remove('active');
-        var searchOverlay = document.getElementById('search-overlay');
+        var searchOverlay = getEl('search-overlay');
         if (searchOverlay) searchOverlay.classList.add('hidden');
         if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
-        var torrentsGrid = document.getElementById('torrents-grid');
+        var torrentsGrid = getEl('torrents-grid');
         if (torrentsGrid) {
           torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n           <div class="loading-spinner" style="margin: 0 auto 20px;"></div>\n           <div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div>\n         </div>';
         }
         loadTorrents(true).then(function () { })['catch'](function (error) {
           console.error('Ошибка загрузки торрентов:', error);
           if (torrentsGrid) {
-            torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n             <div style="font-size: 48px; margin-bottom: 20px;">❌</div>\n             <div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div>\n             <button class="btn" style="margin-top: 20px;" onclick="document.getElementById(\'tab-torrents\').click()">Попробовать снова</button>\n           </div>';
+            torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n             <div style="font-size: 48px; margin-bottom: 20px;">❌</div>\n             <div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div>\n             <button class="btn" style="margin-top: 20px;" onclick="getEl(\'tab-torrents\').click()">Попробовать снова</button>\n           </div>';
           }
         });
       } else {
         loadTorrents(true).then(function () { })['catch'](function (error) {
           console.error('Ошибка загрузки торрентов:', error);
           if (torrentsGrid) {
-            torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n             <div style="font-size: 48px; margin-bottom: 20px;">❌</div>\n             <div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div>\n             <button class="btn" style="margin-top: 20px;" onclick="document.getElementById(\'tab-torrents\').click()">Попробовать снова</button>\n           </div>';
+            torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">\n             <div style="font-size: 48px; margin-bottom: 20px;">❌</div>\n             <div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div>\n             <button class="btn" style="margin-top: 20px;" onclick="getEl(\'tab-torrents\').click()">Попробовать снова</button>\n           </div>';
           }
         });
       }
@@ -729,10 +729,10 @@ function setupSearch() {
         }
         localStorage.removeItem('lastCatalogCardIndex');
         if (typeof hideSearchResults === 'function') hideSearchResults();
-        var searchOverlay = document.getElementById('search-overlay');
+        var searchOverlay = getEl('search-overlay');
         if (searchOverlay) searchOverlay.classList.add('hidden');
-        var tabTorrentsEl = document.getElementById('tab-torrents');
-        var tabSearchEl = document.getElementById('tab-search');
+        var tabTorrentsEl = getEl('tab-torrents');
+        var tabSearchEl = getEl('tab-search');
         if (tabTorrentsEl) tabTorrentsEl.classList.remove('active');
         if (tabSearchEl) tabSearchEl.classList.remove('active');
         tabCatalog.classList.add('active');
@@ -744,16 +744,16 @@ function setupSearch() {
 }
 
 function setupSearchFilters() {
-  var filterToggleBtn = document.getElementById('filter-toggle');
-  var torrentmovie = document.getElementById('torrent-movie');
-  var sortBy = document.getElementById('sort-by');
-  var filterQuality = document.getElementById('filter-quality');
-  var filterTracker = document.getElementById('filter-tracker');
-  var filterYear = document.getElementById('filter-year');
-  var resetFiltersBtn = document.getElementById('reset-filters');
-  var filterSeason = document.getElementById('filter-season');
-  var filterVoice = document.getElementById('filter-voice');
-  var filtervideotype = document.getElementById('filter-videotype');
+  var filterToggleBtn = getEl('filter-toggle');
+  var torrentmovie = getEl('torrent-movie');
+  var sortBy = getEl('sort-by');
+  var filterQuality = getEl('filter-quality');
+  var filterTracker = getEl('filter-tracker');
+  var filterYear = getEl('filter-year');
+  var resetFiltersBtn = getEl('reset-filters');
+  var filterSeason = getEl('filter-season');
+  var filterVoice = getEl('filter-voice');
+  var filtervideotype = getEl('filter-videotype');
 
   if (filterToggleBtn) {
     filterToggleBtn.addEventListener('click', function () {
@@ -764,7 +764,7 @@ function setupSearchFilters() {
         console.log('Панель открыта:', opened);
       } else {
         console.warn('toggleSearchFiltersPanel не определена');
-        var panel = document.getElementById('search-filters-panel');
+        var panel = getEl('search-filters-panel');
         if (panel) {
           if (panel.classList.contains('collapsed')) {
             panel.classList.remove('collapsed');
@@ -852,7 +852,7 @@ function setupSearchFilters() {
 }
 
 function setupServerCheck() {
-  var torrserverUrl = document.getElementById('torrserver-url');
+  var torrserverUrl = getEl('torrserver-url');
   if (torrserverUrl) {
     torrserverUrl.addEventListener('input', function () {
       if (checkServerTimeout) clearTimeout(checkServerTimeout);
@@ -864,13 +864,13 @@ function setupServerCheck() {
 }
 
 function setupAuth() {
-  var authCheckbox = document.getElementById('auth-checkbox');
-  var authLogin = document.getElementById('auth-login');
-  var authPassword = document.getElementById('auth-password');
+  var authCheckbox = getEl('auth-checkbox');
+  var authLogin = getEl('auth-login');
+  var authPassword = getEl('auth-password');
   if (authCheckbox) {
     authCheckbox.addEventListener('change', function (e) {
       if (typeof AppState !== 'undefined') AppState.authEnabled = e.target.checked;
-      var authFields = document.getElementById('auth-fields');
+      var authFields = getEl('auth-fields');
       if (authFields) {
         if (AppState && AppState.authEnabled) authFields.classList.add('visible');
         else authFields.classList.remove('visible');
@@ -900,7 +900,7 @@ function setupAuth() {
 }
 
 function setupPlayerAutoHide() {
-  var playerScreen = document.getElementById('player-screen');
+  var playerScreen = getEl('player-screen');
   if (playerScreen && typeof resetMouseIdleTimer === 'function') {
     playerScreen.addEventListener('mousemove', resetMouseIdleTimer);
     playerScreen.addEventListener('mousedown', resetMouseIdleTimer);
@@ -1051,7 +1051,7 @@ function setupAutoRefresh() {
   function startAutoRefresh() {
     if (autoRefreshInterval) clearInterval(autoRefreshInterval);
     autoRefreshInterval = setInterval(function () {
-      var torrserverSection = document.getElementById('torrserver-section');
+      var torrserverSection = getEl('torrserver-section');
       if (torrserverSection && torrserverSection.style.display === 'block' &&
         AppState && AppState.currentScreen !== 'player' &&
         AppState.currentScreen !== 'detail' &&
@@ -1088,9 +1088,9 @@ function setupAutoRefresh() {
 }
 
 function setupFullscreen() {
-  var fullscreenBtn = document.getElementById('fullscreen-btn');
+  var fullscreenBtn = getEl('fullscreen-btn');
   if (!fullscreenBtn) return;
-  var playerScreen = document.getElementById('player-screen');
+  var playerScreen = getEl('player-screen');
   function toggleFullscreen() {
     var isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
     if (!isFullscreen) {
@@ -1127,7 +1127,7 @@ function setupFullscreen() {
 }
 
 function setupAutoFullscreen() {
-  var autoFullscreenCheckbox = document.getElementById('auto-fullscreen');
+  var autoFullscreenCheckbox = getEl('auto-fullscreen');
   if (!autoFullscreenCheckbox) return;
   var savedAutoFullscreen = localStorage.getItem('autoFullscreen') === 'true';
   autoFullscreenCheckbox.checked = savedAutoFullscreen;
@@ -1161,7 +1161,7 @@ function setupAutoFullscreen() {
 }
 
 function setupExternalPlayerCheckbox() {
-  var externalPlayerCheckbox = document.getElementById('out-player');
+  var externalPlayerCheckbox = getEl('out-player');
   if (!externalPlayerCheckbox) return;
   var savedExternalPlayer = localStorage.getItem('externalPlayerEnabled') === 'true';
   window.externalPlayerEnabled = savedExternalPlayer;
@@ -1187,7 +1187,7 @@ function setupExternalPlayerCheckbox() {
 
 function setupCheckboxes() {
   setupExternalPlayerCheckbox();
-  var hideClockCheckbox = document.getElementById('hide-clock');
+  var hideClockCheckbox = getEl('hide-clock');
   if (hideClockCheckbox) {
     var savedHideClock = localStorage.getItem('hideClockEnabled') === 'true';
     hideClockEnabled = savedHideClock;
@@ -1199,7 +1199,7 @@ function setupCheckboxes() {
       console.log('🕐 Скрытие часов:', hideClockEnabled ? 'включено' : 'выключено');
     });
   }
-  var addToDbCheckbox = document.getElementById('add-to-db');
+  var addToDbCheckbox = getEl('add-to-db');
   if (addToDbCheckbox) {
     var savedAddToDb = localStorage.getItem('addToDbEnabled') === 'true';
     addToDbEnabled = savedAddToDb;
@@ -1216,7 +1216,7 @@ function setupCheckboxes() {
       console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
     });
   }
-  var multiChannelCheckbox = document.getElementById('multi-channel-audio');
+  var multiChannelCheckbox = getEl('multi-channel-audio');
   if (multiChannelCheckbox) {
     var savedMultiChannel = localStorage.getItem('multiChannelEnabled') === 'true';
     multiChannelEnabled = savedMultiChannel;
@@ -1232,7 +1232,7 @@ function setupCheckboxes() {
       }
       console.log('🎵 Многоканальный звук:', multiChannelEnabled ? 'включен' : 'выключен');
       if (multiChannelEnabled) {
-        var hint = document.getElementById('player-hint');
+        var hint = getEl('player-hint');
         if (hint) {
           var originalText = hint.textContent;
           hint.textContent = 'Многоканальный звук включен. Новые потоки будут использовать оригинальные аудиодорожки (AC3/E-AC3/AAC)';
@@ -1248,7 +1248,7 @@ function setupCheckboxes() {
 }
 
 function setupClockVisibility() {
-  var clockDisplay = document.getElementById('clock-display');
+  var clockDisplay = getEl('clock-display');
   if (clockDisplay) {
     clockDisplay.style.display = hideClockEnabled ? 'none' : 'block';
   }
@@ -1266,18 +1266,18 @@ function showInitError() {
 
 // ==================== ФУНКЦИИ МЫШИ И ИНТЕРФЕЙСА ====================
 function resetMouseIdleTimer() {
-  var playerScreen = document.getElementById('player-screen');
-  var playerOverlay = document.getElementById('player-overlay');
-  var controlsContainer = document.getElementById('controls-container');
-  var bufferStats = document.getElementById('buffer-stats');
-  var playerHint = document.getElementById('player-hint');
-  var toggleBufferBtn = document.getElementById('toggle-buffer-btn');
-  var exitPlayerBtn = document.getElementById('exit-player-btn');
-  var episodesBtn = document.getElementById('episodes-btn');
-  var episodesPanel = document.getElementById('episodes-panel');
-  var prevBtn = document.getElementById('prev-episode-btn');
-  var nextBtn = document.getElementById('next-episode-btn');
-  var playerTitle = document.getElementById('player-title');
+  var playerScreen = getEl('player-screen');
+  var playerOverlay = getEl('player-overlay');
+  var controlsContainer = getEl('controls-container');
+  var bufferStats = getEl('buffer-stats');
+  var playerHint = getEl('player-hint');
+  var toggleBufferBtn = getEl('toggle-buffer-btn');
+  var exitPlayerBtn = getEl('exit-player-btn');
+  var episodesBtn = getEl('episodes-btn');
+  var episodesPanel = getEl('episodes-panel');
+  var prevBtn = getEl('prev-episode-btn');
+  var nextBtn = getEl('next-episode-btn');
+  var playerTitle = getEl('player-title');
   if (!playerScreen || playerScreen.style.display !== 'block') return;
 
   if (playerOverlay) playerOverlay.classList.add('touch-active');
@@ -1325,7 +1325,7 @@ function resetMouseIdleTimer() {
 window.resetMouseIdleTimer = resetMouseIdleTimer;
 
 function showPlayerHint(message) {
-  var hint = document.getElementById('player-hint');
+  var hint = getEl('player-hint');
   if (!hint) return;
   hint.textContent = message;
   hint.style.opacity = '1';
@@ -1336,16 +1336,16 @@ function showPlayerHint(message) {
 }
 
 function setupSpeedTest() {
-  var speedtestBtn = document.getElementById('speedtest-btn');
+  var speedtestBtn = getEl('speedtest-btn');
   if (!speedtestBtn) return;
   speedtestBtn.addEventListener('click', async function () {
     console.log('📡 Запуск замера скорости...');
-    var torrserverUrlInput = document.getElementById('torrserver-url');
+    var torrserverUrlInput = getEl('torrserver-url');
     var torrServerUrl = torrserverUrlInput ? torrserverUrlInput.value.trim() : '';
 
     if (!torrServerUrl) {
-      var resultsDiv = document.getElementById('speedtest-results');
-      var torrEl = document.getElementById('speedtest-torrserver');
+      var resultsDiv = getEl('speedtest-results');
+      var torrEl = getEl('speedtest-torrserver');
       if (resultsDiv) resultsDiv.style.display = 'block';
       if (torrEl) torrEl.innerHTML = '❌ Укажите URL TorrServer';
       setTimeout(function () {
@@ -1360,7 +1360,7 @@ function setupSpeedTest() {
       await SpeedTest.run(torrServerUrl);
     } else {
       console.error('❌ Модуль SpeedTest не загружен');
-      var resultsDiv = document.getElementById('speedtest-results');
+      var resultsDiv = getEl('speedtest-results');
       if (resultsDiv) {
         resultsDiv.style.display = 'block';
         resultsDiv.innerHTML = '<div style="color: #ff4e4e;">❌ Модуль замера скорости не загружен. Обновите страницу.</div>';
