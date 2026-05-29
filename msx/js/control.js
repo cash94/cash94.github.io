@@ -488,7 +488,7 @@ function setupFocusRescue() {
     function focusEl(el, opts) {
         if (opts === undefined) opts = {}; if (!VISIBLE(el)) return false;
         clearFocused(); el.classList.add('focused');
-        if (typeof Animations !== 'undefined') Animations.animateFocus(el);
+        //if (typeof Animations !== 'undefined') Animations.animateFocus(el);
         if (opts.nativeFocus) try { el.focus(); } catch (e) { } else blurEditor();
         var container = null, s = AppState.currentScreen;
         var isFI = el.classList && el.classList.contains('file-item'), isAC = el.classList && el.classList.contains('catalog-actor-card'), isRC = el.classList && el.classList.contains('catalog-recommendation-card'), isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
