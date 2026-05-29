@@ -63,12 +63,23 @@ var AppState = {
   backupScroll: 0
 };
 
+var noCacheElements = ['load-more-trigger'];
+
 // Кэш для часто используемых DOM-элементов (ленивая инициализация)
-var domCache = {};
 function getEl(id) {
-    if (!domCache[id]) domCache[id] = document.getElementById(id);
-    return domCache[id];
+  // Проверяем, нужно ли кэшировать этот элемент
+  if (noCacheElements.includes(id)) {
+    // Не кэшируем, каждый раз ищем заново
+    return document.getElementById(id);
+  }
+  
+  // Для остальных элементов используем кэш
+  if (!domCache[id]) {
+    domCache[id] = document.getElementById(id);
+  }
+  return domCache[id];
 }
+
 function clearDomCache() { domCache = {}; }
 
 // Вспомогательные функции
