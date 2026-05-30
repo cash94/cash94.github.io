@@ -7,6 +7,15 @@ var checkServerTimeout = null;
 var hideClockEnabled = false;
 var addToDbEnabled = false;
 var multiChannelEnabled = false;
+var clickableElements = document.querySelectorAll(
+      'button, .control-btn, .play-btn, .torrent-card, .file-item, ' +
+      '.search-result-item, .back-btn, .settings-btn, .view-tab, ' +
+      '#play-pause-btn, #mute-btn, #prev-episode-btn, #next-episode-btn, ' +
+      '#episodes-btn, #audio-btn, #exit-player-btn, #toggle-buffer-btn, ' +
+      '.episode-item, .audio-item, .close-panel-btn, .filter-select, ' +
+      '.filter-reset-btn, .progress-continue-btn, .detail-progress-btn, ' +
+      '#close-search, #filter-toggle, #search-btn'
+    );
 
 // Функция для начальной проверки сервера
 function initialServerCheck() {
@@ -926,15 +935,6 @@ function setupTouchControls(seekSlider, volumeSlider) {
   var touchMoved = false;
 
   function setupTouchButtons() {
-    var clickableElements = document.querySelectorAll(
-      'button, .control-btn, .play-btn, .torrent-card, .file-item, ' +
-      '.search-result-item, .back-btn, .settings-btn, .view-tab, ' +
-      '#play-pause-btn, #mute-btn, #prev-episode-btn, #next-episode-btn, ' +
-      '#episodes-btn, #audio-btn, #exit-player-btn, #toggle-buffer-btn, ' +
-      '.episode-item, .audio-item, .close-panel-btn, .filter-select, ' +
-      '.filter-reset-btn, .progress-continue-btn, .detail-progress-btn, ' +
-      '#close-search, #filter-toggle, #search-btn'
-    );
     var elLen = clickableElements.length;
     for (var i = 0; i < elLen; i++) {
       var el = clickableElements[i];
