@@ -29,6 +29,7 @@ var pauseStartTime = null;
 var PAUSE_THRESHOLD = 60000; // 1 минута
 //Для отмены воспроизведения
 var currentPlaybackController = null;
+var controlBtns = document.querySelectorAll('.control-btn');
 
 // Функции heartbeat
 function startHeartbeat() {
@@ -800,7 +801,7 @@ async function seekStream(absoluteSeekTime, source) {
       playbackOverlay.classList.add('active');
       playbackText.textContent = 'Перемотка на ' + formatTime(targetTime) + '...';
 
-      var controlBtns = document.querySelectorAll('.control-btn');
+      
       var btnLen = controlBtns.length;
       for (var i = 0; i < btnLen; i++) {
         controlBtns[i].style.pointerEvents = 'none';
@@ -1175,7 +1176,7 @@ async function switchToEpisode(index, fileId) {
   getEl('playback-overlay').classList.add('active');
   document.querySelector('.playback-text').textContent = 'Переключение на серию ' + (index + 1) + '...';
 
-  var controlBtns = document.querySelectorAll('.control-btn');
+  //var controlBtns = document.querySelectorAll('.control-btn');
   var btnLen = controlBtns.length;
   for (var i = 0; i < btnLen; i++) {
     controlBtns[i].style.pointerEvents = 'none';
@@ -1968,7 +1969,7 @@ function cancelCurrentPlayback() {
     AppState.currentStreamId = null;
   }
   hidePlayerLoading();
-  var controlBtns = document.querySelectorAll('.control-btn');
+  //var controlBtns = document.querySelectorAll('.control-btn');
   var btnLen = controlBtns.length;
   for (var i = 0; i < btnLen; i++) {
     controlBtns[i].style.pointerEvents = 'auto';
@@ -2422,7 +2423,7 @@ async function handleVideoEnded() {
     getEl('playback-overlay').classList.add('active');
     document.querySelector('.playback-text').textContent = 'Автоматическое переключение на серию ' + (currentEpisodeIndex + 2) + '...';
 
-    var controlBtns = document.querySelectorAll('.control-btn');
+    //var controlBtns = document.querySelectorAll('.control-btn');
     var btnLen = controlBtns.length;
     for (var i = 0; i < btnLen; i++) {
       controlBtns[i].style.pointerEvents = 'none';
