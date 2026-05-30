@@ -17,6 +17,9 @@ var clickableElements = document.querySelectorAll(
       '#close-search, #filter-toggle, #search-btn'
     );
 
+var controls = document.querySelectorAll('.control-btn, #seek-slider, #volume-slider');
+var controlBtns = document.querySelectorAll('.control-btn');
+
 // Функция для начальной проверки сервера
 function initialServerCheck() {
   setTimeout(function () {
@@ -284,7 +287,6 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
       return;
     }
 
-    var controlBtns = document.querySelectorAll('.control-btn');
     var btnLen = controlBtns.length;
     for (var i = 0; i < btnLen; i++) {
       var btn = controlBtns[i];
@@ -916,7 +918,7 @@ function setupPlayerAutoHide() {
     playerScreen.addEventListener('mousedown', resetMouseIdleTimer);
     playerScreen.addEventListener('mouseenter', resetMouseIdleTimer);
   }
-  var controls = document.querySelectorAll('.control-btn, #seek-slider, #volume-slider');
+  
   if (typeof resetMouseIdleTimer === 'function') {
     var cLen = controls.length;
     for (var i = 0; i < cLen; i++) {
