@@ -1853,6 +1853,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
       AppState.hls.loadSource(data.playlistUrl);
       AppState.hls.attachMedia(videoPlayer);
+      updatePlayPauseButton();
 
     } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
       videoPlayer.src = data.playlistUrl;
