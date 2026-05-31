@@ -1659,6 +1659,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               updateMuteButton();
             });
             videoPlayer.muted = false;
+            videoPlayer.paused = false;
             updateMuteButton();
             updatePlayPauseButton();
             startTimecodeSaving();
