@@ -2920,7 +2920,7 @@ html {
 /* Более заметный и плавный outline при фокусе */
 .focused {
   outline: none !important;
-  box-shadow: 0 0 0 3px #ff8c00, 0 0 0 6px rgba(255, 140, 0, 0.3) !important;
+  box-shadow: 0 0 0 3px #ff8c00 !important;
   /* transition: box-shadow 0.10s ease; */
   /* transform: scale(1.01); */
   z-index: 10;
