@@ -1125,71 +1125,80 @@ function resetDetailBackground() {
 function extractSeasonsFromTitle(title) {
   if (!title) return [];
   var seasons = [];
-  // Шаблоны для поиска сезонов
-  var patterns = [
-    // [сезон 1, 2, 3] или [сезон 1,2,3]
+  
+  // Сначала проверяем паттерны с диапазонами (они должны быть в приоритете)
+  var rangePatterns = [
+    /\[сезон\s*(\d+)\s*[-–]\s*(\d+)\]/i,
+    /\[season\s*(\d+)\s*[-–]\s*(\d+)\]/i,
+    /сезон\s*(\d+)\s*[-–]\s*(\d+)/i,
+    /season\s*(\d+)\s*[-–]\s*(\d+)/i,
+    /S(\d+)\s*[-–]\s*S?(\d+)/i
+  ];
+  
+  var rangeLen = rangePatterns.length;
+  for (var p = 0; p < rangeLen; p++) {
+    var match = title.match(rangePatterns[p]);
+    if (match && match[1] && match[2]) {
+      var start = parseInt(match[1], 10);
+      var end = parseInt(match[2], 10);
+      for (var s = start; s <= end; s++) {
+        if (seasons.indexOf(s) === -1) seasons.push(s);
+      }
+      return seasons.sort(function (a, b) { return a - b; });
+    }
+  }
+  
+  // Затем проверяем списки
+  var listPatterns = [
     /\[сезон\s*([\d,\s]+)\]/i,
     /\[season\s*([\d,\s]+)\]/i,
-    // сезон 1, 2, 3
     /сезон\s*([\d,\s]+)/i,
     /season\s*([\d,\s]+)/i,
-    // S1-3 или S1,2,3
-    /S([\d-,\s]+)/i,
-    // [сезон 1-3]
-    /\[сезон\s*(\d+)\s*[-–]\s*(\d+)\]/i,
-    /\[season\s*(\d+)\s*[-–]\s*(\d+)\]/i
+    /S([\d,\s]+)/i
   ];
-  var patternsLen = patterns.length;
-  for (var p = 0; p < patternsLen; p++) {
-    var match = title.match(patterns[p]);
-    if (match) {
-      // Проверяем на диапазон (1-3)
-      if (match[2] && parseInt(match[2])) {
-        var start = parseInt(match[1], 10);
-        var end = parseInt(match[2], 10);
-        for (var s = start; s <= end; s++) {
-          if (seasons.indexOf(s) === -1) seasons.push(s);
+  
+  var listLen = listPatterns.length;
+  for (var p = 0; p < listLen; p++) {
+    var match = title.match(listPatterns[p]);
+    if (match && match[1]) {
+      var parts = match[1].split(/[,\s]+/);
+      var partsLen = parts.length;
+      for (var i = 0; i < partsLen; i++) {
+        var num = parseInt(parts[i], 10);
+        if (!isNaN(num) && seasons.indexOf(num) === -1) {
+          seasons.push(num);
         }
       }
-      // Проверяем на список (1,2,3)
-      else if (match[1] && match[1].match(/[\d,]+/)) {
-        var parts = match[1].split(/[,\s]+/);
-        var partsLen = parts.length;
-        for (var i = 0; i < partsLen; i++) {
-          var num = parseInt(parts[i], 10);
-          if (!isNaN(num) && seasons.indexOf(num) === -1) {
-            seasons.push(num);
-          }
-        }
-      }
-      // Одиночный сезон
-      else if (match[1] && parseInt(match[1])) {
-        var singleNum = parseInt(match[1], 10);
-        if (seasons.indexOf(singleNum) === -1) seasons.push(singleNum);
-      }
-
       if (seasons.length > 0) break;
     }
   }
-  // Также ищем множественные сезоны в формате "S1-S3" или "S1, S2, S3"
-  var multiSeasonPatterns = [
-    /S(\d+)\s*[-–]\s*S?(\d+)/i,
-    /S(\d+)[,\s]+S(\d+)/i
+  
+  // Затем одиночные сезоны
+  var singlePatterns = [
+    /\[сезон\s*(\d+)\]/i,
+    /\[season\s*(\d+)\]/i,
+    /сезон\s*(\d+)/i,
+    /season\s*(\d+)/i,
+    /S(\d+)/i
   ];
-  var multiLen = multiSeasonPatterns.length;
-  for (var p = 0; p < multiLen; p++) {
-    var multiMatch = title.match(multiSeasonPatterns[p]);
-    if (multiMatch && multiMatch[1] && multiMatch[2]) {
-      var startSeason = parseInt(multiMatch[1], 10);
-      var endSeason = parseInt(multiMatch[2], 10);
-      for (var s = startSeason; s <= endSeason; s++) {
-        if (seasons.indexOf(s) === -1) seasons.push(s);
+  
+  if (seasons.length === 0) {
+    var singleLen = singlePatterns.length;
+    for (var p = 0; p < singleLen; p++) {
+      var match = title.match(singlePatterns[p]);
+      if (match && match[1]) {
+        var singleNum = parseInt(match[1], 10);
+        if (!isNaN(singleNum) && seasons.indexOf(singleNum) === -1) {
+          seasons.push(singleNum);
+        }
+        break;
       }
-      break;
     }
   }
+  
   return seasons.sort(function (a, b) { return a - b; });
 }
+
 // Функция для очистки названия от информации о сезонах
 function cleanTitleFromSeasons(title, seasons) {
   if (!title) return title;
