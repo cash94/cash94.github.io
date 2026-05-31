@@ -1573,7 +1573,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
         videoPlayer.currentTime = 0;
         videoPlayer.pause();
-        updatePlayPauseButton();
+        pauseTimer = null;
+        pauseStartTime = null;
+        //updatePlayPauseButton();
         startTorrentStatsUpdates();
 
         if (thisisseek) {
@@ -1854,9 +1856,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
       AppState.hls.loadSource(data.playlistUrl);
       AppState.hls.attachMedia(videoPlayer);
-      setTimeout(function() {
-        updatePlayPauseButton();
-      }, 20000); // 20000 миллисекунд = 20 секунд
 
     } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
       videoPlayer.src = data.playlistUrl;
