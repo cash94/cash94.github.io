@@ -434,7 +434,7 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
   });
   videoPlayer.addEventListener('ended', function () {
     console.log('🏁 Видео закончилось');
-    if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
+    //if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 }
