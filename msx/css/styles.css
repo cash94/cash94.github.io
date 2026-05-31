@@ -1710,22 +1710,7 @@ body.detail-open {
 }
 
 @media (max-width: 768px) {
-  #player-screen {
-    width: 100vw !important;
-    height: 100vh !important;
-    /* Компенсация для адресной строки на iOS */
-    height: -webkit-fill-available !important;
-  }
-
-  #player-screen video {
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: fill !important;
-    /* Для iOS */
-    max-height: -webkit-fill-available !important;
-  }
-  
-  #torrents-grid {
+   #torrents-grid {
     grid-template-columns: repeat(4, 1fr);
   }
 
