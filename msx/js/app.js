@@ -70,6 +70,32 @@ async function init() {
       'toggle-buffer-btn', 'exit-player-btn', 'player-overlay', 'video-player'
     ];
 
+    var modes = ['contain', 'fill', 'cover', 'none'];
+    var modeIndex = 0;
+    var video = document.getElementById('video-player');
+
+    document.getElementById('zoom-mode-btn').onclick = function() {
+      modeIndex = (modeIndex + 1) % modes.length;
+      video.style.objectFit = modes[modeIndex];
+    
+      // Всплывашка
+      var modeNames = {
+          'contain': 'С полосами',
+          'fill': 'Растянуть',
+          'cover': 'Обрезка',
+          'none': 'Оригинал'
+      };
+    
+      var toast = document.createElement('div');
+      toast.textContent = modeNames[modes[modeIndex]];
+      toast.style.cssText = 'position:fixed;bottom:20%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:8px 16px;border-radius:8px;z-index:9999;font-size:14px;';
+      document.body.appendChild(toast);
+    
+      setTimeout(function() {
+        toast.remove();
+        }, 1500);
+    };
+
     var missingElements = [];
     var reqLen = requiredElements.length;
     for (var i = 0; i < reqLen; i++) {
