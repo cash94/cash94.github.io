@@ -810,7 +810,7 @@ async function seekStream(absoluteSeekTime, source) {
 
       if (wasPlaying) {
         videoPlayer.pause();
-        updatePlayPauseButton();
+        //updatePlayPauseButton();
       }
 
       var retrySeek = async function (retryCount, maxRetries) {
