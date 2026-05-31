@@ -1223,8 +1223,6 @@ async function switchToEpisode(index, fileId) {
     }
     hidePlayerLoading();
     startHeartbeat();
-    pauseTimer = null;
-    pauseStartTime = null;
     startTorrentStatsUpdates();
   }
 }
@@ -1573,6 +1571,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
         videoPlayer.currentTime = 0;
         videoPlayer.pause();
+        wasImmediatePause = false;
         pauseTimer = null;
         pauseStartTime = null;
         //updatePlayPauseButton();
