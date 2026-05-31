@@ -1224,6 +1224,7 @@ async function switchToEpisode(index, fileId) {
     hidePlayerLoading();
     startHeartbeat();
     pauseTimer = null;
+    pauseStartTime = null;
     startTorrentStatsUpdates();
   }
 }
