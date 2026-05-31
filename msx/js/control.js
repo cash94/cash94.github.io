@@ -72,7 +72,7 @@ function updateFocusableElements() {
         var c = getEl('controls-container');
         if (c && !c.classList.contains('idle-hidden')) {
             var seek = getEl('seek-slider');
-            var btns = document.querySelectorAll('#prev-episode-btn, #play-pause-btn, #next-episode-btn, #audio-btn, #episodes-btn, #mute-btn, #toggle-buffer-btn');
+            var btns = document.querySelectorAll('#prev-episode-btn, #play-pause-btn, #next-episode-btn, #audio-btn, #episodes-btn, #mute-btn, #zoom-mode-btn, #toggle-buffer-btn');
             for (var i = 0; i < btns.length; i++) if (btns[i] && btns[i].offsetParent !== null) list.push(btns[i]);
             if (seek && seek.offsetParent !== null) list.unshift(seek);
         }
