@@ -72,9 +72,9 @@ async function init() {
 
     var modes = ['contain', 'fill', 'cover', 'none'];
     var modeIndex = 0;
-    var video = document.getElementById('video-player');
+    var video = getEl('video-player');
 
-    document.getElementById('zoom-mode-btn').onclick = function() {
+    getEl('zoom-mode-btn').onclick = function() {
       modeIndex = (modeIndex + 1) % modes.length;
     
       // Проверка поддержки object-fit
