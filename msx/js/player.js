@@ -870,7 +870,7 @@ async function seekStream(absoluteSeekTime, source) {
             videoPlayer.muted = false;
             updateMuteButton();
             forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
-            updatePlayPauseButton();
+            //updatePlayPauseButton();
 
             var seekSlider = getEl('seek-slider');
             if (seekSlider) seekSlider.value = Math.min(targetTime, parseFloat(seekSlider.max) || targetTime);
@@ -1591,7 +1591,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           videoPlayer.muted = false;
           updateMuteButton();
           videoPlayer.play();
-          updatePlayPauseButton();
+          //updatePlayPauseButton();
           startTimecodeSaving();
           resetMouseIdleTimer();
           if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
@@ -1636,7 +1636,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               }
               videoPlayer.muted = false;
               updateMuteButton();
-              updatePlayPauseButton();
+              //updatePlayPauseButton();
               startTimecodeSaving();
               resetMouseIdleTimer();
               if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
@@ -1662,7 +1662,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             videoPlayer.muted = false;
             videoPlayer.paused = false;
             updateMuteButton();
-            updatePlayPauseButton();
+            //updatePlayPauseButton();
             startTimecodeSaving();
             resetMouseIdleTimer();
             if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
@@ -1869,7 +1869,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
         videoPlayer.currentTime = 0;
         videoPlayer.pause();
-        updatePlayPauseButton();
+        //updatePlayPauseButton();
 
         console.log('⏳ Ожидание накопления буфера 10 секунд... (Safari, видео на паузе)');
         showPlayerLoading('Буферизация... 0/10 сек', null);
