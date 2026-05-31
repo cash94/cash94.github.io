@@ -76,14 +76,22 @@ async function init() {
 
     document.getElementById('zoom-mode-btn').onclick = function() {
       modeIndex = (modeIndex + 1) % modes.length;
-      video.style.objectFit = modes[modeIndex];
     
-      // Всплывашка
+      // Проверка поддержки object-fit
+      if (typeof video.style.objectFit !== 'undefined') {
+        video.style.objectFit = modes[modeIndex];
+      } else {
+        // Для IE и очень старых браузеров - альтернативы нет, только показать уведомление
+        alert('Режим масштабирования не поддерживается вашим браузером');
+        return;
+      }
+    
+      // Всплывашка с совместимым удалением
       var modeNames = {
-          'contain': 'С полосами',
-          'fill': 'Растянуть',
-          'cover': 'Обрезка',
-          'none': 'Оригинал'
+        'contain': 'С полосами',
+        'fill': 'Растянуть',
+        'cover': 'Обрезка',
+        'none': 'Оригинал'
       };
     
       var toast = document.createElement('div');
@@ -92,8 +100,13 @@ async function init() {
       document.body.appendChild(toast);
     
       setTimeout(function() {
-        toast.remove();
-        }, 1500);
+        // Совместимый способ удаления
+        if (toast.remove) {
+            toast.remove();
+        } else {
+            toast.parentNode.removeChild(toast);
+        }
+      }, 1500);
     };
 
     var missingElements = [];
