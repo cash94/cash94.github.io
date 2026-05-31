@@ -1223,7 +1223,7 @@ async function switchToEpisode(index, fileId) {
     }
     hidePlayerLoading();
     startHeartbeat();
-    updatePlayPauseButton();
+    pauseTimer = null;
     startTorrentStatsUpdates();
   }
 }
