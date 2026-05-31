@@ -1222,6 +1222,7 @@ async function switchToEpisode(index, fileId) {
       controlBtns[j].style.opacity = '1';
     }
     hidePlayerLoading();
+    startHeartbeat();
     startTorrentStatsUpdates();
   }
 }
