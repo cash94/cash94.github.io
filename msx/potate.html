@@ -634,7 +634,7 @@
     </div>
 
     <script>
-        let currentServerUrl = window.location.origin;
+        let currentServerUrl = '';
         let adminToken = 'videoloop-admin';
         let isConnected = false;
         let expandedClients = new Set();
@@ -646,6 +646,8 @@
         const refreshBtn = document.getElementById('refreshBtn');
         const connectionStatusDiv = document.getElementById('connectionStatus');
         const adminContent = document.getElementById('adminContent');
+
+        serverUrlInput.value = window.location.origin;
 
         const tabBtns = document.querySelectorAll('.tab-btn');
         const tabContents = {
