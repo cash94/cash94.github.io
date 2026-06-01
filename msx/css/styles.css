@@ -2995,10 +2995,6 @@ html, body, div, section, main, aside, article {
     display: none !important;
 }
 
-.checkbox-container[hidden] {
-  display: none !important;
-}
-
 .video-object-fit-contain {
   object-fit: contain !important;
 }
