@@ -74,40 +74,60 @@ async function init() {
     var modeIndex = 0;
     var video = getEl('video-player');
 
-    getEl('zoom-mode-btn').onclick = function() {
-      modeIndex = (modeIndex + 1) % modes.length;
-    
-      // Проверка поддержки object-fit
-      if (typeof video.style.objectFit !== 'undefined') {
-        video.style.objectFit = modes[modeIndex];
-      } else {
-        // Для IE и очень старых браузеров - альтернативы нет, только показать уведомление
-        alert('Режим масштабирования не поддерживается вашим браузером');
-        return;
-      }
-    
-      // Всплывашка с совместимым удалением
-      var modeNames = {
-        'contain': 'С полосами',
-        'fill': 'Растянуть',
-        'cover': 'Обрезка',
-        'none': 'Оригинал'
-      };
-    
-      var toast = document.createElement('div');
-      toast.textContent = modeNames[modes[modeIndex]];
-      toast.style.cssText = 'position:fixed;bottom:20%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:8px 16px;border-radius:8px;z-index:9999;font-size:14px;';
-      document.body.appendChild(toast);
-    
-      setTimeout(function() {
-        // Совместимый способ удаления
-        if (toast.remove) {
+    // Проверка, что видео существует
+    if (!video) {
+      console.error('Video player element not found');
+      return;
+    }
+
+    function setVideoObjectFit(mode) {
+      // Удаляем все классы
+      video.classList.remove('video-object-fit-contain', 'video-object-fit-fill',
+        'video-object-fit-cover', 'video-object-fit-none');
+
+      // Добавляем новый класс
+      if (mode === 'contain') video.classList.add('video-object-fit-contain');
+      else if (mode === 'fill') video.classList.add('video-object-fit-fill');
+      else if (mode === 'cover') video.classList.add('video-object-fit-cover');
+      else video.classList.add('video-object-fit-none');
+
+      // Для Vidaa 9 - принудительный рефлоу (помогает применить стиль)
+      void video.offsetHeight;
+    }
+
+    // Устанавливаем начальный режим (contain)
+    setVideoObjectFit('contain');
+
+    var zoomBtn = getEl('zoom-mode-btn');
+    if (zoomBtn) {
+      zoomBtn.onclick = function () {
+        modeIndex = (modeIndex + 1) % modes.length;
+        setVideoObjectFit(modes[modeIndex]);
+
+        // Всплывашка с совместимым удалением
+        var modeNames = {
+          'contain': 'С полосами',
+          'fill': 'Растянуть',
+          'cover': 'Обрезка',
+          'none': 'Оригинал'
+        };
+
+        var toast = document.createElement('div');
+        toast.textContent = modeNames[modes[modeIndex]];
+        toast.style.cssText = 'position:fixed;bottom:20%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:8px 16px;border-radius:8px;z-index:9999;font-size:14px;pointer-events:none;';
+        document.body.appendChild(toast);
+
+        setTimeout(function () {
+          if (toast && toast.remove) {
             toast.remove();
-        } else {
+          } else if (toast && toast.parentNode) {
             toast.parentNode.removeChild(toast);
-        }
-      }, 1500);
-    };
+          }
+        }, 1500);
+      };
+    } else {
+      console.warn('Zoom mode button not found');
+    }
 
     var missingElements = [];
     var reqLen = requiredElements.length;
