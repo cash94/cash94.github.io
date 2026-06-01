@@ -382,7 +382,10 @@ function initSync() {
             var isBackKey = [8, 27, 461, 10009].indexOf(e.keyCode) !== -1 ||
                 (typeof isKeyPressed === 'function' &&
                     (isKeyPressed('BACK', e.keyCode) || isKeyPressed('EXIT', e.keyCode)));
-
+            var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
+            if (ed) {
+                return;
+            }
             if (isBackKey) {
                 e.preventDefault();
                 e.stopPropagation();
