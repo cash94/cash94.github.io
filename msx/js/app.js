@@ -626,8 +626,8 @@ function setupNavigation() {
           } else {
             if (typeof window.clearSearchResults === 'function') window.clearSearchResults();
           }
-          var detailView = getEl('detail-view');
-          if (detailView) detailView.style.display = 'none';
+          //var detailView = getEl('detail-view');
+          //if (detailView) detailView.style.display = 'none';
           return;
         } else if (returnTo === 'torrents') {
           if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
