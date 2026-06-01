@@ -350,6 +350,10 @@ function setupKeyboardHandlers() {
     document.addEventListener('keydown', function (e) {
         var k = e.keyCode, active = document.activeElement;
         var po = getEl('playback-overlay'); var isPA = po && po.classList.contains('active'); if (isPA) return;
+        var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
+        if (ed) {
+            return;
+        }
 
         if (AppState.currentScreen === 'torrents') {
             if (['UP', 'DOWN', 'LEFT', 'RIGHT'].some(function (d) { return isKeyPressed(d, k); })) { e.preventDefault(); if (!document.querySelector('.focused')) { focusFirstTorrentCard(); return; } navigate(keyToDirection(k)); return; }
