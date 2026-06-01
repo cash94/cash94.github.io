@@ -83,7 +83,7 @@ function getTmdbCacheStats() {
 var catalogState = {
     currentCatalog: null, items: [], totalItems: 0, loading: false, loadingMore: false,
     selectedCatalog: null, lastSelectedIndex: 0, lastSelectedId: null, abortController: null,
-    currentPage: 0, itemsPerPage: 6, hasMore: true, isLoadingMore: false, loadedItemIds: {},
+    currentPage: 0, itemsPerPage: 32, hasMore: true, isLoadingMore: false, loadedItemIds: {},
     loadedPostersCount: 0, postersPerBatch: 6, isPosterLoading: false, posterLoadQueue: [],
     posterObserver: null, loadMoreObserver: null, posterCache: {}, maxPosterCacheSize: 150
 };
