@@ -554,32 +554,43 @@ function scrollToElementIfNeeded(el, container, smooth) {
         }
         return;
     } else if (container.id === 'detail-view') {
-        var backBtn = getEl('back-from-detail');
-        var searchBtn = getEl('catalog-watch-btn');
-
-        // Проверяем, в фокусе ли одна из кнопок
-        var isBackBtnFocused = backBtn && backBtn.classList.contains('focused');
-        var isSearchBtnFocused = searchBtn && searchBtn.classList.contains('focused');
-
-        if (isBackBtnFocused || isSearchBtnFocused) {
+        if (el.id === 'back-from-detail' || el.id === 'catalog-watch-btn') {
             // Прокручиваем на самый верх
             var targetScrollTop = 0;
 
             if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                gsap.killTweensOf(container);
-                gsap.to(container, {
+                gsap.killTweensOf(detailView);
+                gsap.to(detailView, {
                     scrollTo: { y: targetScrollTop },
                     duration: 0.1,
                     ease: "power0.out",
                     overwrite: true
                 });
             } else if (smooth) {
-                container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+                detailView.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
             } else {
-                container.scrollTop = targetScrollTop;
+                detailView.scrollTop = targetScrollTop;
             }
             return;
         }
+    } else if (el.id === 'tab-catalog') {
+        // Прокручиваем на самый верх
+        var targetScrollTop = 0;
+
+        if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
+            gsap.killTweensOf(detailView);
+            gsap.to(detailView, {
+                scrollTo: { y: targetScrollTop },
+                duration: 0.1,
+                ease: "power0.out",
+                overwrite: true
+            });
+        } else if (smooth) {
+            detailView.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+        } else {
+            detailView.scrollTop = targetScrollTop;
+        }
+        return;
     }
 
     if (!scrollContainer) return;
@@ -713,7 +724,7 @@ function setupFocusRescue() {
         }
 
         // Проверяем видимость и скроллим если нужно
-        if (container && !isElementFullyVisible(el, container) || el.id === 'back-from-detail' || el.id === 'catalog-watch-btn') {
+        if (container && !isElementFullyVisible(el, container) || el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'tab-catalog') {
             scrollToElementIfNeeded(el, container, !fastNavigation);
         }
 
