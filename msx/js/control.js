@@ -558,8 +558,8 @@ function scrollToElementIfNeeded(el, container, smooth) {
         var searchBtn = getEl('catalog-watch-btn');
 
         // Проверяем, в фокусе ли одна из кнопок
-        var isBackBtnFocused = backBtn && (document.activeElement === backBtn);
-        var isSearchBtnFocused = searchBtn && (document.activeElement === searchBtn);
+        var isBackBtnFocused = backBtn && backBtn.classList.contains('focused');
+        var isSearchBtnFocused = searchBtn && searchBtn.classList.contains('focused');
 
         if (isBackBtnFocused || isSearchBtnFocused) {
             // Прокручиваем на самый верх
