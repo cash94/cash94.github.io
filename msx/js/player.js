@@ -801,7 +801,7 @@ async function seekStream(absoluteSeekTime, source) {
       playbackOverlay.classList.add('active');
       playbackText.textContent = 'Перемотка на ' + formatTime(targetTime) + '...';
 
-      
+
       var btnLen = controlBtns.length;
       for (var i = 0; i < btnLen; i++) {
         controlBtns[i].style.pointerEvents = 'none';
@@ -1984,97 +1984,99 @@ function cancelCurrentPlayback() {
 
 // функция выхода из плеера
 function showDetailView() {
-  stopTorrentStatsUpdates();
-  currentBufferAhead = 0;
-  wasImmediatePause = false;
-  pauseTimer = null;
-  pauseStartTime = null;
-  thisisseek = false;
+  if (!window.AndroidJS) {
+    stopTorrentStatsUpdates();
+    currentBufferAhead = 0;
+    wasImmediatePause = false;
+    pauseTimer = null;
+    pauseStartTime = null;
+    thisisseek = false;
 
-  if (AppState.isYoutubePlayback) {
-    console.log('Выход из YouTube плеера');
-    if (typeof window.exitYoutubePlayer === 'function') {
-      window.exitYoutubePlayer();
-    } else {
-      if (AppState.currentStreamId) {
-        fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { });
-        AppState.currentStreamId = null;
+    if (AppState.isYoutubePlayback) {
+      console.log('Выход из YouTube плеера');
+      if (typeof window.exitYoutubePlayer === 'function') {
+        window.exitYoutubePlayer();
+      } else {
+        if (AppState.currentStreamId) {
+          fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { });
+          AppState.currentStreamId = null;
+        }
+        if (AppState.hls) { AppState.hls.destroy(); AppState.hls = null; }
+        AppState.isYoutubePlayback = false;
+        AppState.currentScreen = 'catalog';
+        getEl('player-screen').style.display = 'none';
+
+        var detailView = getEl('detail-view');
+        if (detailView && AppState.youtubeContext) {
+          detailView.style.display = 'block';
+          detailView.style.pointerEvents = 'auto';
+        } else if (typeof window.showCatalogList === 'function') {
+          window.showCatalogList();
+        }
       }
-      if (AppState.hls) { AppState.hls.destroy(); AppState.hls = null; }
-      AppState.isYoutubePlayback = false;
-      AppState.currentScreen = 'catalog';
-      getEl('player-screen').style.display = 'none';
+      return;
+    }
 
-      var detailView = getEl('detail-view');
-      if (detailView && AppState.youtubeContext) {
-        detailView.style.display = 'block';
-        detailView.style.pointerEvents = 'auto';
-      } else if (typeof window.showCatalogList === 'function') {
-        window.showCatalogList();
+    saveTimecodeToServer().then(function () {
+      stopTimecodeSaving();
+      if (AppState.currentDetailItem) {
+        console.log('🔄 Обновляем прогресс в текущей карточке:', AppState.currentDetailItem.title);
+        updateDetailProgress(AppState.currentDetailItem);
       }
+    });
+
+    stopHeartbeat();
+    if (nearEndCheckInterval) {
+      clearInterval(nearEndCheckInterval);
+      nearEndCheckInterval = null;
     }
-    return;
-  }
-
-  saveTimecodeToServer().then(function () {
-    stopTimecodeSaving();
-    if (AppState.currentDetailItem) {
-      console.log('🔄 Обновляем прогресс в текущей карточке:', AppState.currentDetailItem.title);
-      updateDetailProgress(AppState.currentDetailItem);
+    if (typeof lastCleanedSegment !== 'undefined') {
+      console.log('🔄 Сброс lastCleanedSegment при выходе: ' + lastCleanedSegment + ' -> -1');
+      lastCleanedSegment = -1;
     }
-  });
 
-  stopHeartbeat();
-  if (nearEndCheckInterval) {
-    clearInterval(nearEndCheckInterval);
-    nearEndCheckInterval = null;
+    currentEpisodeFiles = [];
+    currentEpisodeIndex = 0;
+    currentTorrentHash = null;
+    updatePlayerTitle(null);
+    clearTimecodeData();
+
+    var episodesPanel = getEl('episodes-panel');
+    var episodesBtn = getEl('episodes-btn');
+    if (episodesPanel) episodesPanel.classList.add('hidden');
+    if (episodesBtn) episodesBtn.classList.remove('active');
+
+    var audioPanel = getEl('audio-panel');
+    var audioBtn = getEl('audio-btn');
+    if (audioPanel) {
+      audioPanel.classList.add('hidden');
+      if (audioBtn) audioBtn.classList.remove('active');
+    }
+    if (episodesBtn) episodesBtn.style.display = 'none';
+
+    var prevBtn = getEl('prev-episode-btn');
+    var nextBtn = getEl('next-episode-btn');
+    if (prevBtn) prevBtn.style.display = 'none';
+    if (nextBtn) nextBtn.style.display = 'none';
+
+    AppState.currentScreen = 'detail';
+    var videoPlayer = getEl('video-player');
+    videoPlayer.removeEventListener('ended', handleVideoEnded);
+    videoPlayer.pause();
+    videoPlayer.removeAttribute('src');
+    videoPlayer.load();
+    destroyHls();
+    hidePlayerLoading();
+
+    if (AppState.currentStreamId) {
+      fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { });
+      AppState.currentStreamId = null;
+    }
+
+    getEl('player-screen').style.display = 'none';
+    getEl('config-screen').style.display = 'none';
+    getEl('torrserver-section').style.display = 'block';
   }
-  if (typeof lastCleanedSegment !== 'undefined') {
-    console.log('🔄 Сброс lastCleanedSegment при выходе: ' + lastCleanedSegment + ' -> -1');
-    lastCleanedSegment = -1;
-  }
-
-  currentEpisodeFiles = [];
-  currentEpisodeIndex = 0;
-  currentTorrentHash = null;
-  updatePlayerTitle(null);
-  clearTimecodeData();
-
-  var episodesPanel = getEl('episodes-panel');
-  var episodesBtn = getEl('episodes-btn');
-  if (episodesPanel) episodesPanel.classList.add('hidden');
-  if (episodesBtn) episodesBtn.classList.remove('active');
-
-  var audioPanel = getEl('audio-panel');
-  var audioBtn = getEl('audio-btn');
-  if (audioPanel) {
-    audioPanel.classList.add('hidden');
-    if (audioBtn) audioBtn.classList.remove('active');
-  }
-  if (episodesBtn) episodesBtn.style.display = 'none';
-
-  var prevBtn = getEl('prev-episode-btn');
-  var nextBtn = getEl('next-episode-btn');
-  if (prevBtn) prevBtn.style.display = 'none';
-  if (nextBtn) nextBtn.style.display = 'none';
-
-  AppState.currentScreen = 'detail';
-  var videoPlayer = getEl('video-player');
-  videoPlayer.removeEventListener('ended', handleVideoEnded);
-  videoPlayer.pause();
-  videoPlayer.removeAttribute('src');
-  videoPlayer.load();
-  destroyHls();
-  hidePlayerLoading();
-
-  if (AppState.currentStreamId) {
-    fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { });
-    AppState.currentStreamId = null;
-  }
-
-  getEl('player-screen').style.display = 'none';
-  getEl('config-screen').style.display = 'none';
-  getEl('torrserver-section').style.display = 'block';
 
   setTimeout(function () {
     if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
@@ -2617,6 +2619,9 @@ function updatePlayerTimeline(timelineData) {
     // Обновляем прогресс в UI
     if (AppState && AppState.currentDetailItem && currentTimecodeData.hash) {
       updateDetailProgress(AppState.currentDetailItem);
+    }
+    if (AppState.currentScreen != 'detail') {
+      showDetailView
     }
   } catch (error) {
     console.error('❌ Ошибка в updatePlayerTimeline:', error);
