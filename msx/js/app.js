@@ -56,14 +56,14 @@ function initialServerCheck() {
 async function init() {
   try {
     console.log('🚀 Начало инициализации приложения');
-    if (typeof Animations !== 'undefined') {
-      Animations.init();
-      setTimeout(function () {
-        Animations.addCardHoverAnimation('.torrent-card');
-        Animations.addCardHoverAnimation('.catalog-card');
-        Animations.addCardHoverAnimation('.catalog-folder-card');
-      }, 1000);
-    }
+    //if (typeof Animations !== 'undefined') {
+      //Animations.init();
+      //setTimeout(function () {
+        //Animations.addCardHoverAnimation('.torrent-card');
+        //Animations.addCardHoverAnimation('.catalog-card');
+        //Animations.addCardHoverAnimation('.catalog-folder-card');
+      //}, 1000);
+    //}
 
     try {
       await loadClientConfig();
