@@ -662,11 +662,13 @@ body {
   align-items: center;
   margin-bottom: 18.42px;
   position: relative;
-  background: rgba(60, 60, 70, 0.5);
-  backdrop-filter: blur(8px);
+  background: rgba(30, 30, 45, 0.7); /* Тёмный полупрозрачный */
+  backdrop-filter: none;
   padding: 12px 0;
   z-index: 10;
   border-radius: 12px;
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .detail-poster {
