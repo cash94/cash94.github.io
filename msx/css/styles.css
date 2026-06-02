@@ -935,7 +935,8 @@ body.detail-open {
   border: 1px solid rgba(74, 158, 255, 0.3);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   /* Добавляем отступы от краев экрана */
-  max-width: calc(100% - 36.84px); /* Учитываем margin слева и справа */
+  /* max-width: calc(100% - 36.84px); */
+  /* Учитываем margin слева и справа */
   margin-left: auto;
   margin-right: auto;
 }
