@@ -1365,6 +1365,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (window.AndroidJS) {
     if (playInExternalPlayer(originalUrl, AppState.currentDetailItem.title, initialSeek)) {
       lastPlaybackFromSearch = fromSearch;
+      AppState.inSearch = 'torrents';
+      AppState.currentScreen = 'player';
+      getEl('config-screen').style.display = 'none';
+      getEl('torrserver-section').style.display = 'none';
+      getEl('detail-view').style.display = 'none';
       console.log('📱 Запуск во внешнем плеере');
       return;
     }
