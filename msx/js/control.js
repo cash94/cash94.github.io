@@ -559,17 +559,17 @@ function scrollToElementIfNeeded(el, container, smooth) {
             var targetScrollTop = 0;
 
             if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                gsap.killTweensOf(detailView);
-                gsap.to(detailView, {
+                gsap.killTweensOf(container);
+                gsap.to(container, {
                     scrollTo: { y: targetScrollTop },
                     duration: 0.1,
                     ease: "power0.out",
                     overwrite: true
                 });
             } else if (smooth) {
-                detailView.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+                container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
             } else {
-                detailView.scrollTop = targetScrollTop;
+                container.scrollTop = targetScrollTop;
             }
             return;
         }
@@ -578,17 +578,17 @@ function scrollToElementIfNeeded(el, container, smooth) {
         var targetScrollTop = 0;
 
         if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-            gsap.killTweensOf(detailView);
-            gsap.to(detailView, {
+            gsap.killTweensOf(container);
+            gsap.to(container, {
                 scrollTo: { y: targetScrollTop },
                 duration: 0.1,
                 ease: "power0.out",
                 overwrite: true
             });
         } else if (smooth) {
-            detailView.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+            container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
         } else {
-            detailView.scrollTop = targetScrollTop;
+            container.scrollTop = targetScrollTop;
         }
         return;
     }
