@@ -1299,7 +1299,7 @@ function preloadTorrents(hash, fileId) {
     });
 }
 
-function playInExternalPlayer(url, title, timecode) {
+function playInExternalPlayer(url, title, timecode, fromSearch) {
   console.log('📱 Открытие во внешнем плеере:', url);
 
   if (!window.AndroidJS) {
@@ -1369,7 +1369,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (audioTrack === undefined) audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
 
   if (window.AndroidJS) {
-    if (playInExternalPlayer(originalUrl, AppState.currentDetailItem.title, initialSeek)) {
+    if (playInExternalPlayer(originalUrl, AppState.currentDetailItem.title, initialSeek, fromSearch)) {
       console.log('📱 Запуск во внешнем плеере');
       return;
     }
