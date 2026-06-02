@@ -205,7 +205,7 @@ body {
 }
 
 .back-btn {
-  background: rgba(255, 255, 255, 0.20); /* Светлый фон */
+  background: rgba(255, 255, 255, 0.30); /* Светлый фон */
   border: 1px solid #4a9eff;
   color: #ff8c00;
   padding: 8px 16px;
@@ -673,7 +673,7 @@ body {
   align-items: center;
   margin-bottom: 18.42px;
   position: relative;
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   backdrop-filter: none;
   box-shadow:
@@ -717,7 +717,7 @@ body {
 
 .detail-progress {
   padding: 12.9px;
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   backdrop-filter: none;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
@@ -753,7 +753,7 @@ body {
 }
 
 .detail-progress-btn {
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   backdrop-filter: none;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
@@ -825,7 +825,7 @@ body {
 }
 
 .file-item {
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   backdrop-filter: none;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
@@ -913,7 +913,7 @@ body {
 
 /* Кнопка почти прозрачная */
 .play-btn {
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   backdrop-filter: none;
   color: #ff8c00;
@@ -953,7 +953,7 @@ body.detail-open {
 .catalog-detail-extra {
   position: relative;
   border-radius: 14.89px;
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   backdrop-filter: none;
   box-shadow:
@@ -1309,7 +1309,7 @@ body.detail-open {
   bottom: 120px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   color: #4a9eff;
   padding: 6px 12px;
@@ -1363,7 +1363,7 @@ body.detail-open {
 
 /* Основной заголовок */
 .player-title {
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   color: #fff;
   padding: 8px 20px;
@@ -1383,7 +1383,7 @@ body.detail-open {
 
 /* Вторая строка (субтитр) */
 .player-subtitle {
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   color: rgba(255, 255, 255, 0.8);
   padding: 6px 16px;
@@ -1416,7 +1416,7 @@ body.detail-open {
   z-index: 225;
   opacity: 0;
   pointer-events: none;
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   padding: 12px 16px;
   border-radius: 24px;
@@ -1503,7 +1503,7 @@ body.detail-open {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   padding: 4px 12px;
   border-radius: 20px;
@@ -1677,7 +1677,7 @@ body.detail-open {
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   border: 1px solid rgba(74, 158, 255, 0.5);
   color: rgba(74, 158, 255, 0.8);
@@ -2863,7 +2863,7 @@ body.detail-open {
 }
 
 .files-loading-indicator {
-  background: rgba(255, 255, 255, 0.20);
+  background: rgba(255, 255, 255, 0.30);
   /* Светлый фон */
   border-radius: 16px;
   margin: 40px 20px;
