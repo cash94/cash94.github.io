@@ -948,7 +948,7 @@ body.detail-open {
 .catalog-detail-extra {
   position: relative;
   border-radius: 14.89px;
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(255, 255, 255, 0.08); /* Светлый фон */
   backdrop-filter: none;
   box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.25);
