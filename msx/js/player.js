@@ -1364,6 +1364,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
   if (window.AndroidJS) {
     if (playInExternalPlayer(originalUrl, AppState.currentDetailItem.title, initialSeek)) {
+      lastPlaybackFromSearch = fromSearch;
       console.log('📱 Запуск во внешнем плеере');
       return;
     }
