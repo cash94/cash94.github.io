@@ -928,8 +928,8 @@ body.detail-open {
 
 .catalog-detail-extra {
   position: relative;
-  margin: 18.42px;
-  border-radius: 14.89px;
+  /* margin: 18.42px; */
+  /* border-radius: 14.89px; */
   background: rgba(30, 30, 45, 0.85);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(74, 158, 255, 0.3);
@@ -2051,11 +2051,6 @@ body.detail-open {
     font-size: 12.36px;
   }
 
-  .catalog-detail-extra {
-    margin: 18.97px;
-    border-radius: 15.34px;
-  }
-
   .catalog-detail-panel {
     padding: 18.97px;
   }
@@ -2371,11 +2366,6 @@ body.detail-open {
     padding: 9.25px 18.61px;
     border-radius: 27.45px;
     font-size: 15px;
-  }
-
-  .catalog-detail-extra {
-    margin: 23.03px;
-    border-radius: 18.61px;
   }
 
   .catalog-detail-panel {
