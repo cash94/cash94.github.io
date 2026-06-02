@@ -584,9 +584,9 @@ function setupNavigation() {
         var detailView = getEl('detail-view');
         if (detailView) detailView.style.display = 'none';
       }
-      //if (mainContainer) {
-        //mainContainer.style.pointerEvents = 'auto';
-      //}
+      if (mainContainer) {
+        mainContainer.style.pointerEvents = 'auto';
+      }
       var torrserverSection = getEl('torrserver-section');
       if (torrserverSection) torrserverSection.style.display = 'block';
       if (typeof AppState !== 'undefined') {
@@ -711,10 +711,10 @@ function setupNavigation() {
           var detailView = getEl('detail-view');
           if (detailView) detailView.style.display = 'none';
         }
+        if (typeof Animations !== 'undefined') {
+          Animations.animateDetailHide();
+        }
       }, 250);
-      if (typeof Animations !== 'undefined') {
-        Animations.animateDetailHide();
-      }
     });
   }
 }
