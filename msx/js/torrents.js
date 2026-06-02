@@ -1668,9 +1668,8 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
               // Применяем стиль, аналогичный .catalog-detail-extra
               overlay.style.background = 'rgba(255, 255, 255, 0.08)'; /* Светлый фон */
               overlay.style.backdropFilter = 'none'; /* Отключаем blur */
-              overlay.style.border = '1px solid rgba(74, 158, 255, 0.4)';
-              overlay.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.25), 0 0 20px rgba(74, 158, 255, 0.1)'; /* Свечение */
-              overlay.style.borderRadius = '14.89px'; /* Добавляем скругление */
+              overlay.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.25)';
+              overlay.style.borderRadius = '14.89px';
               overlay.style.zIndex = '-1';
 
               elements.detailViewDiv.appendChild(overlay);
