@@ -652,13 +652,15 @@ body {
 
 /* Увеличенный detail-view на 37% */
 #detail-view {
-  position: fixed;
-  inset: 0;
-  background: #000000;
-  z-index: 100;
-  overflow-y: auto;
-  padding: 18.42px;
-  display: none;
+  position: relative;
+  border-radius: 14.89px;
+  background: rgba(255, 255, 255, 0.30);
+  /* Светлый фон */
+  backdrop-filter: none;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.25);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 #detail-view.catalog-detail-mode {
