@@ -416,7 +416,7 @@ function createCatalogCard(item, index) {
     var rating = item.vote_average ? Math.round(item.vote_average * 10) / 10 : null;
     var cacheKey = id + '_' + mt;
     var cached = catalogState.posterCache[cacheKey];
-    var ratingHtml = rating ? '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.8);color:' + getRatingColor(rating) + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + getRatingColor(rating) + ';box-shadow:0 2px 8px rgba(0,0,0,0.3);backdrop-filter:blur(2px)">' + rating + '</div>' : '';
+    var ratingHtml = rating ? '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + getRatingColor(rating) + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + getRatingColor(rating) + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);backdrop-filter:none">' + rating + '</div>' : '';
     var posterHtml = cached ? '<img src="' + cached + '" loading="lazy" style="width:100%;height:100%;object-fit:cover">' : '<div class="no-poster catalog-poster-loading">⏳</div>';
 
     var card = document.createElement('div');
@@ -640,7 +640,7 @@ function updatePosterDOM(div, rating, url) {
     var rHtml = '';
     if (rating && rating !== 'null' && rating !== 'undefined') {
         var c = getRatingColor(parseFloat(rating));
-        rHtml = '<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.8);color:' + c + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + c + ';box-shadow:0 2px 8px rgba(0,0,0,0.3);backdrop-filter:blur(2px)">' + rating + '</div>';
+        rHtml = '<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + c + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + c + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);backdrop-filter:none">' + rating + '</div>';
     }
     var img = url ? '<img src="' + url + '" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">' : '<div class="no-poster">Нет постера</div>';
     div.innerHTML = img + rHtml;
