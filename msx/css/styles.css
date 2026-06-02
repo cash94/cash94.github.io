@@ -206,7 +206,6 @@ body {
 
 .back-btn {
   background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
-  border: 1px solid #4a9eff;
   color: #ff8c00;
   padding: 8px 16px;
   border-radius: 24px;
@@ -1801,7 +1800,6 @@ body.detail-open {
 .text-input,
 .checkbox-container input,
 .server-status,
-.back-btn,
 .settings-btn,
 .search-container-header,
 .search-btn-header,
