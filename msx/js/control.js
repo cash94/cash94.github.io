@@ -713,7 +713,7 @@ function setupFocusRescue() {
         }
 
         // Проверяем видимость и скроллим если нужно
-        if (container && !isElementFullyVisible(el, container)) {
+        if (container && !isElementFullyVisible(el, container) || el.id === 'back-from-detail' || el.id === 'catalog-watch-btn') {
             scrollToElementIfNeeded(el, container, !fastNavigation);
         }
 
