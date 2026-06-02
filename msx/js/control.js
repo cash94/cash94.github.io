@@ -513,6 +513,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
         // Вертикальная прокрутка detail-view
         var detailView = getEl('detail-view');
         if (detailView) {
+
             var containerRect = container.getBoundingClientRect();
             var detailRect = detailView.getBoundingClientRect();
             var detailScrollTop = detailView.scrollTop;
@@ -549,8 +550,36 @@ function scrollToElementIfNeeded(el, container, smooth) {
                     detailView.scrollTop = targetScrollTop;
                 }
             }
+
         }
         return;
+    } else if (container.id === 'detail-view') {
+        var backBtn = getEl('back-from-detail');
+        var searchBtn = getEl('catalog-watch-btn');
+
+        // Проверяем, в фокусе ли одна из кнопок
+        var isBackBtnFocused = backBtn && (document.activeElement === backBtn);
+        var isSearchBtnFocused = searchBtn && (document.activeElement === searchBtn);
+
+        if (isBackBtnFocused || isSearchBtnFocused) {
+            // Прокручиваем на самый верх
+            var targetScrollTop = 0;
+
+            if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
+                gsap.killTweensOf(detailView);
+                gsap.to(detailView, {
+                    scrollTo: { y: targetScrollTop },
+                    duration: 0.1,
+                    ease: "power0.out",
+                    overwrite: true
+                });
+            } else if (smooth) {
+                detailView.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+            } else {
+                detailView.scrollTop = targetScrollTop;
+            }
+            return;
+        }
     }
 
     if (!scrollContainer) return;
