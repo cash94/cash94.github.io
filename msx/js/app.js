@@ -8,14 +8,14 @@ var hideClockEnabled = false;
 var addToDbEnabled = false;
 var multiChannelEnabled = false;
 var clickableElements = document.querySelectorAll(
-      'button, .control-btn, .play-btn, .torrent-card, .file-item, ' +
-      '.search-result-item, .back-btn, .settings-btn, .view-tab, ' +
-      '#play-pause-btn, #mute-btn, #prev-episode-btn, #next-episode-btn, ' +
-      '#episodes-btn, #audio-btn, #exit-player-btn, #toggle-buffer-btn, ' +
-      '.episode-item, .audio-item, .close-panel-btn, .filter-select, ' +
-      '.filter-reset-btn, .progress-continue-btn, .detail-progress-btn, ' +
-      '#close-search, #filter-toggle, #search-btn'
-    );
+  'button, .control-btn, .play-btn, .torrent-card, .file-item, ' +
+  '.search-result-item, .back-btn, .settings-btn, .view-tab, ' +
+  '#play-pause-btn, #mute-btn, #prev-episode-btn, #next-episode-btn, ' +
+  '#episodes-btn, #audio-btn, #exit-player-btn, #toggle-buffer-btn, ' +
+  '.episode-item, .audio-item, .close-panel-btn, .filter-select, ' +
+  '.filter-reset-btn, .progress-continue-btn, .detail-progress-btn, ' +
+  '#close-search, #filter-toggle, #search-btn'
+);
 
 var controls = document.querySelectorAll('.control-btn, #seek-slider, #volume-slider');
 var controlBtns = document.querySelectorAll('.control-btn');
@@ -65,98 +65,6 @@ async function init() {
       }, 1000);
     }
 
-    var requiredElements = [
-      'seek-slider', 'volume-slider', 'play-pause-btn', 'mute-btn',
-      'toggle-buffer-btn', 'exit-player-btn', 'player-overlay', 'video-player'
-    ];
-
-    var modes = ['contain', 'fill', 'cover', 'none'];
-    var modeIndex = 0;
-    var video = getEl('video-player');
-
-    // Проверка, что видео существует
-    if (!video) {
-      console.error('Video player element not found');
-      return;
-    }
-
-    function setVideoObjectFit(mode) {
-      // Удаляем все классы
-      video.classList.remove('video-object-fit-contain', 'video-object-fit-fill',
-        'video-object-fit-cover', 'video-object-fit-none');
-
-      // Добавляем новый класс
-      if (mode === 'contain') video.classList.add('video-object-fit-contain');
-      else if (mode === 'fill') video.classList.add('video-object-fit-fill');
-      else if (mode === 'cover') video.classList.add('video-object-fit-cover');
-      else video.classList.add('video-object-fit-none');
-
-      // Для Vidaa 9 - принудительный рефлоу (помогает применить стиль)
-      void video.offsetHeight;
-    }
-
-    // Устанавливаем начальный режим (contain)
-    setVideoObjectFit('contain');
-
-    var zoomBtn = getEl('zoom-mode-btn');
-    if (zoomBtn) {
-      zoomBtn.onclick = function () {
-        modeIndex = (modeIndex + 1) % modes.length;
-        setVideoObjectFit(modes[modeIndex]);
-
-        // Всплывашка с совместимым удалением
-        var modeNames = {
-          'contain': 'С полосами',
-          'fill': 'Растянуть',
-          'cover': 'Обрезка',
-          'none': 'Оригинал'
-        };
-
-        var toast = document.createElement('div');
-        toast.textContent = modeNames[modes[modeIndex]];
-        toast.style.cssText = 'position:fixed;bottom:20%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:8px 16px;border-radius:8px;z-index:9999;font-size:14px;pointer-events:none;';
-        document.body.appendChild(toast);
-
-        setTimeout(function () {
-          if (toast && toast.remove) {
-            toast.remove();
-          } else if (toast && toast.parentNode) {
-            toast.parentNode.removeChild(toast);
-          }
-        }, 1500);
-      };
-    } else {
-      console.warn('Zoom mode button not found');
-    }
-
-    var missingElements = [];
-    var reqLen = requiredElements.length;
-    for (var i = 0; i < reqLen; i++) {
-      if (!getEl(requiredElements[i])) {
-        missingElements.push(requiredElements[i]);
-      }
-    }
-    if (missingElements.length > 0) {
-      console.warn('⚠️ Отсутствуют DOM элементы:', missingElements);
-    }
-
-    var seekSlider = getEl('seek-slider');
-    var volumeSlider = getEl('volume-slider');
-    var playPauseBtn = getEl('play-pause-btn');
-    var muteBtn = getEl('mute-btn');
-    var toggleBufferBtn = getEl('toggle-buffer-btn');
-    var exitPlayerBtn = getEl('exit-player-btn');
-    var overlay = getEl('player-overlay');
-    var videoPlayer = getEl('video-player');
-
-    if (seekSlider) {
-      seekSlider.value = 0;
-      seekSlider.max = 100;
-    }
-    if (volumeSlider) {
-      volumeSlider.value = 1;
-    }
-
     try {
       await loadClientConfig();
     } catch (error) {
@@ -165,56 +73,158 @@ async function init() {
 
     checkAppVersion();
 
-    var ua = navigator.userAgent ? navigator.userAgent.toLowerCase() : '';
-    var body = document.body;
-    if (body) {
-      if (window.MSX || ua.indexOf('msx') !== -1) {
-        body.classList.add('msx');
-      } else {
-        body.classList.remove('msx');
+    if (!window.AndroidJS) {
+
+      var requiredElements = [
+        'seek-slider', 'volume-slider', 'play-pause-btn', 'mute-btn',
+        'toggle-buffer-btn', 'exit-player-btn', 'player-overlay', 'video-player'
+      ];
+
+      var modes = ['contain', 'fill', 'cover', 'none'];
+      var modeIndex = 0;
+      var video = getEl('video-player');
+
+      // Проверка, что видео существует
+      if (!video) {
+        console.error('Video player element not found');
+        return;
       }
-    }
 
-    if (seekSlider) {
-      setupSeekSliderEvents(seekSlider, videoPlayer);
-    }
-    if (playPauseBtn && videoPlayer) {
-      setupPlayPauseButton(playPauseBtn, videoPlayer);
-    }
-    if (muteBtn && videoPlayer && volumeSlider) {
-      setupMuteButton(muteBtn, videoPlayer, volumeSlider);
-    }
-    if (volumeSlider && videoPlayer) {
-      setupVolumeSlider(volumeSlider, videoPlayer);
-    }
-    if (exitPlayerBtn) {
-      setupExitButton(exitPlayerBtn);
-    }
+      function setVideoObjectFit(mode) {
+        // Удаляем все классы
+        video.classList.remove('video-object-fit-contain', 'video-object-fit-fill',
+          'video-object-fit-cover', 'video-object-fit-none');
 
-    if (typeof setupEpisodesButton === 'function') {
-      setupEpisodesButton();
-    } else {
-      console.warn('⚠️ setupEpisodesButton не определена');
-    }
-    if (typeof setupAudioButton === 'function') {
-      setupAudioButton();
-    } else {
-      console.warn('⚠️ setupAudioButton не определена');
-    }
+        // Добавляем новый класс
+        if (mode === 'contain') video.classList.add('video-object-fit-contain');
+        else if (mode === 'fill') video.classList.add('video-object-fit-fill');
+        else if (mode === 'cover') video.classList.add('video-object-fit-cover');
+        else video.classList.add('video-object-fit-none');
 
-    setupEpisodeNavigation();
+        // Для Vidaa 9 - принудительный рефлоу (помогает применить стиль)
+        void video.offsetHeight;
+      }
 
-    if (videoPlayer) {
-      setupVideoEvents(videoPlayer, volumeSlider, seekSlider);
-    }
+      // Устанавливаем начальный режим (contain)
+      setVideoObjectFit('contain');
 
-    setupBufferUpdateInterval();
+      var zoomBtn = getEl('zoom-mode-btn');
+      if (zoomBtn) {
+        zoomBtn.onclick = function () {
+          modeIndex = (modeIndex + 1) % modes.length;
+          setVideoObjectFit(modes[modeIndex]);
 
-    if (toggleBufferBtn) {
-      setupToggleBufferButton(toggleBufferBtn);
-    }
-    if (overlay) {
-      setupOverlayControls(overlay);
+          // Всплывашка с совместимым удалением
+          var modeNames = {
+            'contain': 'С полосами',
+            'fill': 'Растянуть',
+            'cover': 'Обрезка',
+            'none': 'Оригинал'
+          };
+
+          var toast = document.createElement('div');
+          toast.textContent = modeNames[modes[modeIndex]];
+          toast.style.cssText = 'position:fixed;bottom:20%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:8px 16px;border-radius:8px;z-index:9999;font-size:14px;pointer-events:none;';
+          document.body.appendChild(toast);
+
+          setTimeout(function () {
+            if (toast && toast.remove) {
+              toast.remove();
+            } else if (toast && toast.parentNode) {
+              toast.parentNode.removeChild(toast);
+            }
+          }, 1500);
+        };
+      } else {
+        console.warn('Zoom mode button not found');
+      }
+
+      var missingElements = [];
+      var reqLen = requiredElements.length;
+      for (var i = 0; i < reqLen; i++) {
+        if (!getEl(requiredElements[i])) {
+          missingElements.push(requiredElements[i]);
+        }
+      }
+      if (missingElements.length > 0) {
+        console.warn('⚠️ Отсутствуют DOM элементы:', missingElements);
+      }
+
+      var seekSlider = getEl('seek-slider');
+      var volumeSlider = getEl('volume-slider');
+      var playPauseBtn = getEl('play-pause-btn');
+      var muteBtn = getEl('mute-btn');
+      var toggleBufferBtn = getEl('toggle-buffer-btn');
+      var exitPlayerBtn = getEl('exit-player-btn');
+      var overlay = getEl('player-overlay');
+      var videoPlayer = getEl('video-player');
+
+      if (seekSlider) {
+        seekSlider.value = 0;
+        seekSlider.max = 100;
+      }
+      if (volumeSlider) {
+        volumeSlider.value = 1;
+      }
+
+      var ua = navigator.userAgent ? navigator.userAgent.toLowerCase() : '';
+      var body = document.body;
+      if (body) {
+        if (window.MSX || ua.indexOf('msx') !== -1) {
+          body.classList.add('msx');
+        } else {
+          body.classList.remove('msx');
+        }
+      }
+
+      if (seekSlider) {
+        setupSeekSliderEvents(seekSlider, videoPlayer);
+      }
+      if (playPauseBtn && videoPlayer) {
+        setupPlayPauseButton(playPauseBtn, videoPlayer);
+      }
+      if (muteBtn && videoPlayer && volumeSlider) {
+        setupMuteButton(muteBtn, videoPlayer, volumeSlider);
+      }
+      if (volumeSlider && videoPlayer) {
+        setupVolumeSlider(volumeSlider, videoPlayer);
+      }
+      if (exitPlayerBtn) {
+        setupExitButton(exitPlayerBtn);
+      }
+
+      if (typeof setupEpisodesButton === 'function') {
+        setupEpisodesButton();
+      } else {
+        console.warn('⚠️ setupEpisodesButton не определена');
+      }
+      if (typeof setupAudioButton === 'function') {
+        setupAudioButton();
+      } else {
+        console.warn('⚠️ setupAudioButton не определена');
+      }
+
+      setupEpisodeNavigation();
+
+      if (videoPlayer) {
+        setupVideoEvents(videoPlayer, volumeSlider, seekSlider);
+      }
+
+      setupBufferUpdateInterval();
+
+      if (toggleBufferBtn) {
+        setupToggleBufferButton(toggleBufferBtn);
+      }
+      if (overlay) {
+        setupOverlayControls(overlay);
+      }
+
+      var savedVolume = localStorage.getItem('playerVolume');
+      if (savedVolume !== null && videoPlayer) {
+        videoPlayer.volume = parseFloat(savedVolume);
+        if (volumeSlider) volumeSlider.value = videoPlayer.volume;
+      }
+      setupClockVisibility();
     }
 
     setupNavigation();
@@ -234,15 +244,8 @@ async function init() {
     }
 
     initialServerCheck();
-
-    var savedVolume = localStorage.getItem('playerVolume');
-    if (savedVolume !== null && videoPlayer) {
-      videoPlayer.volume = parseFloat(savedVolume);
-      if (volumeSlider) volumeSlider.value = videoPlayer.volume;
-    }
-
     setupCheckboxes();
-    setupClockVisibility();
+
 
     if (typeof AppState !== 'undefined') {
       AppState.addToDbEnabled = addToDbEnabled;
@@ -576,7 +579,7 @@ function setupNavigation() {
       var mainContainer = getEl('main-container');
       resetDetailBackground();
       //if (typeof Animations !== 'undefined') {
-        //Animations.animateDetailHide();
+      //Animations.animateDetailHide();
       //}
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
@@ -977,7 +980,7 @@ function setupPlayerAutoHide() {
     playerScreen.addEventListener('mousedown', resetMouseIdleTimer);
     playerScreen.addEventListener('mouseenter', resetMouseIdleTimer);
   }
-  
+
   if (typeof resetMouseIdleTimer === 'function') {
     var cLen = controls.length;
     for (var i = 0; i < cLen; i++) {
