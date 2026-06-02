@@ -1366,7 +1366,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     if (playInExternalPlayer(originalUrl, AppState.currentDetailItem.title, initialSeek)) {
       lastPlaybackFromSearch = fromSearch;
       AppState.inSearch = 'torrents';
-      AppState.currentScreen = 'player';
+      AppState.currentScreen = 'torrents';
       getEl('config-screen').style.display = 'none';
       getEl('torrserver-section').style.display = 'none';
       getEl('detail-view').style.display = 'none';
