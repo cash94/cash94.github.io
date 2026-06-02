@@ -928,15 +928,13 @@ body.detail-open {
 
 .catalog-detail-extra {
   position: relative;
-  /* margin: 18.42px; */
-  /* border-radius: 14.89px; */
-  background: rgba(30, 30, 45, 0.85);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(74, 158, 255, 0.3);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  /* Добавляем отступы от краев экрана */
-  /* max-width: calc(100% - 36.84px); */
-  /* Учитываем margin слева и справа */
+  border-radius: 14.89px;
+  background: rgba(255, 255, 255, 0.08); /* Светлый фон */
+  backdrop-filter: none; /* Отключаем blur */
+  border: 1px solid rgba(74, 158, 255, 0.4);
+  box-shadow: 
+    0 4px 20px rgba(0, 0, 0, 0.25),
+    0 0 20px rgba(74, 158, 255, 0.1); /* Свечение */
   margin-left: auto;
   margin-right: auto;
 }
