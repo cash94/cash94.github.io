@@ -2620,9 +2620,7 @@ function updatePlayerTimeline(timelineData) {
     if (AppState && AppState.currentDetailItem && currentTimecodeData.hash) {
       updateDetailProgress(AppState.currentDetailItem);
     }
-    if (AppState.currentScreen != 'detail') {
-      showDetailView
-    }
+    showDetailView();
   } catch (error) {
     console.error('❌ Ошибка в updatePlayerTimeline:', error);
   }
