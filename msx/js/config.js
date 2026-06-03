@@ -60,7 +60,12 @@ var AppState = {
   syncCodeTimer: null,
 
   //Восстановление скролла
-  backupScroll: 0
+  backupScroll: 0,
+
+  //Для получения skip кодов
+  currentTMDB: '',
+  currentSeason: '',
+  isSerials: false
 };
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
