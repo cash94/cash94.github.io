@@ -3046,12 +3046,12 @@ article {
   object-fit: none !important;
 }
 
-/* Стили для кнопки пропуска */
+/* Базовый стиль кнопки пропуска */
 .skip-button {
     position: fixed;
     bottom: 80px;
     right: 20px;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(255, 87, 34, 0.1);
     color: white;
     padding: 12px 24px;
     border-radius: 8px;
@@ -3059,11 +3059,11 @@ article {
     font-weight: bold;
     cursor: pointer;
     z-index: 1000;
-    transition: all 0.3s ease;
     border: 2px solid #ff5722;
-    background: linear-gradient(135deg, #ff5722, #e64a19);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-    animation: fadeIn 0.3s ease;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    letter-spacing: 0.5px;
+    transition: background 10s linear;
 }
 
 .skip-button.hidden {
@@ -3075,16 +3075,9 @@ article {
     animation: slideIn 0.3s ease;
 }
 
-.skip-button.focused {
-    outline: none;
-    border-color: #ffeb3b;
-    box-shadow: 0 0 10px #ffeb3b, 0 4px 15px rgba(0,0,0,0.3);
-    transform: scale(1.05);
-}
-
-.skip-button:hover {
-    transform: scale(1.05);
-    background: linear-gradient(135deg, #ff7043, #f4511e);
+.skip-button.filled {
+    background: linear-gradient(135deg, #ff5722, #e64a19);
+    transition: background 0.3s ease;
 }
 
 @keyframes slideIn {
@@ -3094,15 +3087,6 @@ article {
     }
     to {
         transform: translateX(0);
-        opacity: 1;
-    }
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
         opacity: 1;
     }
 }
