@@ -2264,6 +2264,8 @@ function showDetailView() {
   if (!window.AndroidJS) {
     stopTorrentStatsUpdates();
     hideSkipButton();
+    skipIntro = 0;
+    skipCredits = 0;
     currentBufferAhead = 0;
     wasImmediatePause = false;
     pauseTimer = null;
