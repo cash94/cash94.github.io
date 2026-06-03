@@ -419,11 +419,22 @@ function createCatalogCard(item, index) {
     var ratingHtml = rating ? '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + getRatingColor(rating) + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + getRatingColor(rating) + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);backdrop-filter:none">' + rating + '</div>' : '';
     var posterHtml = cached ? '<img src="' + cached + '" loading="lazy" style="width:100%;height:100%;object-fit:cover">' : '<div class="no-poster catalog-poster-loading">⏳</div>';
 
+    // Извлекаем год из release_date
+    var year = '';
+    if (item.release_date && item.release_date !== '01.01.0001') {
+        // Пытаемся распарсить дату в формате DD.MM.YYYY
+        var parts = item.release_date.split('.');
+        if (parts.length === 3 && parts[2].length === 4) {
+            year = parts[2]; // Берем год
+        }
+    }
+    var badgeText = year || 'Каталог';
+
     var card = document.createElement('div');
     card.className = 'torrent-card catalog-card';
     card.dataset.catalogIndex = index; card.dataset.title = title; card.dataset.mediaType = mt; card.dataset.tmdbId = id; card.dataset.itemId = item.id;
     card.dataset.rating = rating || ''; card.dataset.numIndex = item.num_index !== undefined ? item.num_index : index;
-    card.innerHTML = '<div class="torrent-poster" style="position:relative">' + ratingHtml + posterHtml + '</div><div class="torrent-info"><div class="torrent-title">' + escapeHtml(title.substring(0, 60)) + (title.length > 60 ? '...' : '') + '</div><div class="torrent-meta"><span>' + (mt === 'tv' ? 'Сериал' : 'Фильм') + '</span><span class="torrent-badge catalog-badge">Каталог</span></div></div>';
+    card.innerHTML = '<div class="torrent-poster" style="position:relative">' + ratingHtml + posterHtml + '</div><div class="torrent-info"><div class="torrent-title">' + escapeHtml(title.substring(0, 60)) + (title.length > 60 ? '...' : '') + '</div><div class="torrent-meta"><span>' + (mt === 'tv' ? 'Сериал' : 'Фильм') + '</span><span class="torrent-badge catalog-badge">' + badgeText + '</span></div></div>';
     return card;
 }
 
