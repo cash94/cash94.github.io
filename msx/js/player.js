@@ -30,6 +30,7 @@ var PAUSE_THRESHOLD = 60000; // 1 минута
 //Для отмены воспроизведения
 var currentPlaybackController = null;
 var controlBtns = document.querySelectorAll('.control-btn');
+var skipData = [];
 
 // Функции heartbeat
 function startHeartbeat() {
