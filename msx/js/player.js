@@ -1347,13 +1347,10 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
     };
 
     console.log('📱 Запуск внешнего плеера:', playerData);
-    AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
     lastPlaybackFromSearch = fromSearch;
     AppState.inSearch = 'torrents';
     AppState.currentScreen = 'detail';
-    getEl('config-screen').style.display = 'none';
-    getEl('torrserver-section').style.display = 'none';
-    getEl('detail-view').style.display = 'none';
+    AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
     return true;
   } else {
     console.log('⚠️ Не удалось извлечь hash и fileId из URL:', url);
@@ -1371,6 +1368,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (window.AndroidJS) {
     if (playInExternalPlayer(originalUrl, AppState.currentDetailItem.title, initialSeek, fromSearch)) {
       console.log('📱 Запуск во внешнем плеере');
+      getEl('config-screen').style.display = 'none';
+      getEl('torrserver-section').style.display = 'none';
+      getEl('detail-view').style.display = 'none';
       return;
     }
   }
