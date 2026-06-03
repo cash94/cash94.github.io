@@ -3051,7 +3051,7 @@ article {
     position: fixed;
     bottom: 80px;
     right: 20px;
-    background: rgba(255, 87, 34, 0.1);
+    background: rgba(0, 0, 0, 0.7);
     color: white;
     padding: 12px 24px;
     border-radius: 8px;
@@ -3063,7 +3063,30 @@ article {
     backdrop-filter: blur(4px);
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     letter-spacing: 0.5px;
-    transition: background 10s linear;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Заливка фона слева направо */
+.skip-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #ff5722, #e64a19);
+    transition: width 10s linear;
+    z-index: 0;
+}
+
+.skip-button span {
+    position: relative;
+    z-index: 1;
+}
+
+.skip-button.visible::before {
+    width: 100%;
 }
 
 .skip-button.hidden {
@@ -3075,9 +3098,11 @@ article {
     animation: slideIn 0.3s ease;
 }
 
-.skip-button.filled {
-    background: linear-gradient(135deg, #ff5722, #e64a19);
-    transition: background 0.3s ease;
+.skip-button.focused {
+    outline: none;
+    border-color: #ffeb3b;
+    box-shadow: 0 0 10px #ffeb3b, 0 2px 8px rgba(0,0,0,0.2);
+    transform: scale(1.05);
 }
 
 @keyframes slideIn {
