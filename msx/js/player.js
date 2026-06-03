@@ -39,6 +39,8 @@ var currentSkipData = null;
 var skipButtonActive = false;
 var currentSkipInfo = null; // Хранит текущую информацию о пропуске
 var currentSkipRangeKey = null;
+var skipIntro = 0;
+var skipCredits = 0;
 
 function createSkipButton() {
   // Удаляем существующую кнопку, если есть
@@ -199,6 +201,7 @@ function checkAndShowSkipButton(currentTimeSec) {
         newType = 'intro';
         newStartMs = introStartMs;
         newEndMs = introEndMs;
+        skipIntro = skipIntro + 1;
         break;
       }
     }
@@ -219,6 +222,7 @@ function checkAndShowSkipButton(currentTimeSec) {
         newType = 'credits';
         newStartMs = creditsStartMs;
         newEndMs = credits.end_ms; // сохраняем оригинальный end_ms (может быть null)
+        skipCredits = skipCredits + 1;
         break;
       }
     }
@@ -228,7 +232,9 @@ function checkAndShowSkipButton(currentTimeSec) {
   if (inAnyRange) {
     // Показываем кнопку только если это новый диапазон
     if (!skipButtonActive || currentSkipRangeKey !== newRangeKey) {
-      showSkipButton(newType, newStartMs, newEndMs);
+      if (skipIntro == 1 || skipCredits == 1) {
+        showSkipButton(newType, newStartMs, newEndMs);
+      }
     }
   }
   // Если не в диапазоне, но кнопка активна - скрываем
