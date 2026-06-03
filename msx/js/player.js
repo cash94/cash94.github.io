@@ -1070,6 +1070,12 @@ async function loadEpisodesInfo(hash, currentFileId) {
 
       renderEpisodesList();
 
+      if (AppState.isSerials) {
+        fetchSkipData(AppState.currentTMDB, AppState.currentSeason, currentFileId).then(function (result) {
+          console.log('Глобальный массив skipData:', skipData);
+        });
+      }
+
       var episodesBtn = getEl('episodes-btn');
       if (episodesBtn) episodesBtn.style.display = videoFiles.length > 1 ? 'flex' : 'none';
       updateEpisodeButtons();
@@ -1083,6 +1089,31 @@ async function loadEpisodesInfo(hash, currentFileId) {
     }
   } catch (error) {
     console.error('Ошибка загрузки серий:', error);
+  }
+}
+
+// Функция для запроса данных с сервера
+async function fetchSkipData(tmdbId, season, episode) {
+  var url = AppState.protocol + '//tsskip.hnar.online/v2/media?tmdb_id=' + tmdbId + '&season=' + season + '&episode=' + episode;
+
+  try {
+    var response = await fetch(url);
+    var data = await response.json();
+
+    // Проверяем, есть ли ошибка
+    if (data.error) {
+      console.log('Медиа не найдено:', data.error);
+      skipData = []; // Очищаем массив при ошибке
+    } else {
+      // Записываем полученные данные в глобальный массив
+      skipData = data;
+    }
+
+    return skipData;
+  } catch (error) {
+    console.error('Ошибка при запросе:', error);
+    skipData = [];
+    return skipData;
   }
 }
 
