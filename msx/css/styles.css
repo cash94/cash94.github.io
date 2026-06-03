@@ -205,7 +205,7 @@ body {
 }
 
 .back-btn {
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.01); /* Тёмный фон */
   color: #ff8c00;
   padding: 8px 16px;
   border-radius: 24px;
