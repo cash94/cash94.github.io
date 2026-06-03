@@ -54,24 +54,24 @@ function createSkipButton() {
   skipButton.id = 'skip-button';
   skipButton.className = 'skip-button hidden';
   skipButton.innerHTML = '⏩ Пропустить';
-  skipButton.style.cssText = `
-    position: fixed;
-    bottom: 80px;
-    right: 20px;
-    background: rgba(255, 87, 34, 0.1);
-    color: white;
-    padding: 12px 24px;
-    border-radius: 8px;
-    font-size: 16px;
-    font-weight: bold;
-    cursor: pointer;
-    z-index: 1000;
-    transition: background 10s linear;
-    border: 2px solid #ff5722;
-    backdrop-filter: blur(4px);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    letter-spacing: 0.5px;
-  `;
+  //skipButton.style.cssText = `
+    //position: fixed;
+    //bottom: 80px;
+    //right: 20px;
+    //background: rgba(255, 87, 34, 0.1);
+    //color: white;
+    //padding: 12px 24px;
+    //border-radius: 8px;
+    //font-size: 16px;
+    //font-weight: bold;
+    //cursor: pointer;
+    //z-index: 1000;
+    //transition: background 10s linear;
+    //border: 2px solid #ff5722;
+    //backdrop-filter: blur(4px);
+    //box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    //letter-spacing: 0.5px;
+  //`;
 
   // Обработчик клика будет добавлен из control.js
   document.body.appendChild(skipButton);
