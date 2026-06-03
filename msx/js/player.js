@@ -2519,7 +2519,7 @@ function exitPlayer() {
 }
 
 function setupPageUnloadHandler() {
-  if (!window.AndroidJS) {
+  if (!window.AndroidJS && AppState.currentScreen == 'player') {
     window.addEventListener('unload', function () {
       console.log('🔄 Приложение закрывается, останавливаем HLS поток...');
       if (AppState && AppState.currentStreamId) {
@@ -2560,7 +2560,6 @@ function setupPageUnloadHandler() {
       if (document.hidden && videoPlayer && !videoPlayer.paused) {
         console.log('👁️ Вкладка скрыта, ставим видео на паузу');
         videoPlayer.pause();
-        updatePlayPauseButton();
       }
     });
   }
