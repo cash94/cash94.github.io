@@ -681,7 +681,7 @@ function blurEditor() { var a = document.activeElement; if (a && a !== document.
 
 function focusEl(el, opts) {
     if (opts === undefined) opts = {};
-    if (!VISIBLE(el)) return false;
+    //if (!VISIBLE(el)) return false;
     clearFocused();
     el.classList.add('focused');
     //if (typeof Animations !== 'undefined') Animations.animateFocus(el);
