@@ -58,7 +58,7 @@ function createSkipButton() {
     position: fixed;
     bottom: 80px;
     right: 20px;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(255, 87, 34, 0.1);
     color: white;
     padding: 12px 24px;
     border-radius: 8px;
@@ -66,10 +66,11 @@ function createSkipButton() {
     font-weight: bold;
     cursor: pointer;
     z-index: 1000;
-    transition: all 0.3s ease;
+    transition: background 10s linear;
     border: 2px solid #ff5722;
-    background: linear-gradient(135deg, #ff5722, #e64a19);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    backdrop-filter: blur(4px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    letter-spacing: 0.5px;
   `;
 
   // Обработчик клика будет добавлен из control.js
@@ -121,6 +122,9 @@ function showSkipButton(type, startMs, endMs) {
     skipButtonTimeout = null;
   }
 
+  // Сбрасываем класс filled
+  skipButton.classList.remove('filled');
+
   // Настраиваем текст и данные
   var buttonText = type === 'intro' ? '⏩ Пропустить вступление' : '⏩ Пропустить титры';
   skipButton.innerHTML = buttonText;
@@ -141,10 +145,17 @@ function showSkipButton(type, startMs, endMs) {
     window.focusEl(skipButton);
   }
 
-  // Кнопка исчезает через 10 секунд
+  // Кнопка исчезает через 10 секунд, но за это время она плавно заполняется цветом
   skipButtonTimeout = setTimeout(function () {
     hideSkipButton();
   }, 10000);
+
+  // Через небольшой таймаут добавляем класс filled, чтобы анимация сработала
+  setTimeout(function () {
+    if (skipButton && skipButtonActive) {
+      skipButton.classList.add('filled');
+    }
+  }, 50);
 
   console.log('🎬 Показана кнопка пропуска:', type, 'старт:', (startMs / 1000).toFixed(1), 'сек, конец:', (endMs / 1000).toFixed(1), 'сек');
 }
