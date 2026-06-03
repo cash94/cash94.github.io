@@ -1688,6 +1688,13 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
       });
     })();
   }
+
+  AppState.isSerials = isTvSeries;
+  if (seasonNumbers.length == 1 && isTvSeries) {
+    AppState.currentTMDB = tmdbId;
+    AppState.currentSeason = seasonNumbers[0];
+  }
+  
   // Возвращаем сразу, без ожидания кадров
   return {
     tmdbId: tmdbId,
