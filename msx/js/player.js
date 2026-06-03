@@ -137,21 +137,8 @@ function showSkipButton(type, startMs, endMs) {
   skipButtonActive = true;
 
   // Обновляем focusable элементы, чтобы кнопка стала доступна для навигации
-  if (typeof window.updateFocusableElements === 'function') {
-    setTimeout(function () {
-      window.updateFocusableElements();
-      // Находим индекс кнопки пропуска и устанавливаем на нее фокус
-      if (typeof window.focusableElements !== 'undefined' && window.focusableElements) {
-        for (var i = 0; i < window.focusableElements.length; i++) {
-          if (window.focusableElements[i] === skipButton) {
-            if (typeof window.setFocus === 'function') {
-              window.setFocus(i);
-            }
-            break;
-          }
-        }
-      }
-    }, 50);
+  if (typeof window.focusEl === 'function') {
+    window.focusEl(skipButton);
   }
 
   // Кнопка исчезает через 10 секунд
