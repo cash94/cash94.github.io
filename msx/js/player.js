@@ -75,9 +75,7 @@ function createSkipButton() {
     if (currentSkipData && currentSkipData.type === 'intro') {
       // Пропускаем интро - перематываем на end_ms
       var seekTime = currentSkipData.endMs / 1000;
-      if (typeof seekStream === 'function') {
-        await seekStream(seekTime, 'slider');
-      }
+      seekStream(seekTime, 'slider');
       console.log('⏩ Пропуск интро, перемотка на ' + formatTime(seekTime));
     } else if (currentSkipData && currentSkipData.type === 'credits') {
       // Пропускаем титры - перематываем на end_ms (если есть) или на конец
