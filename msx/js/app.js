@@ -106,7 +106,7 @@ async function init() {
       }
 
       // Устанавливаем начальный режим (contain)
-      setVideoObjectFit('contain');
+      setVideoObjectFit('cover');
 
       var zoomBtn = getEl('zoom-mode-btn');
       if (zoomBtn) {
