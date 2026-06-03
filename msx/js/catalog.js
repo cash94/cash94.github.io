@@ -420,14 +420,7 @@ function createCatalogCard(item, index) {
     var posterHtml = cached ? '<img src="' + cached + '" loading="lazy" style="width:100%;height:100%;object-fit:cover">' : '<div class="no-poster catalog-poster-loading">⏳</div>';
 
     // Извлекаем год из release_date
-    var year = '';
-    if (item.release_date && item.release_date !== '01.01.0001') {
-        // Пытаемся распарсить дату в формате DD.MM.YYYY
-        var parts = item.release_date.split('.');
-        if (parts.length === 3 && parts[2].length === 4) {
-            year = parts[2]; // Берем год
-        }
-    }
+    var year = getCatalogItemYear(item);
     var badgeText = year || 'Каталог';
 
     var card = document.createElement('div');
