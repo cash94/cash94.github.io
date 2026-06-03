@@ -72,27 +72,32 @@ function createSkipButton() {
     box-shadow: 0 4px 15px rgba(0,0,0,0.3);
   `;
 
-  skipButton.addEventListener('click', function () {
-    var videoPlayer = getEl('video-player');
-    if (!videoPlayer) return;
-
-    if (currentSkipInfo && currentSkipInfo.type === 'intro') {
-      // Пропускаем интро - перематываем на end_ms
-      var seekTime = currentSkipInfo.endMs / 1000;
-      seekStream(seekTime, 'slider');
-      console.log('⏩ Пропуск интро, перемотка на ' + formatTime(seekTime));
-    } else if (currentSkipInfo && currentSkipInfo.type === 'credits') {
-      // Пропускаем титры - переключаем на следующую серию
-      console.log('⏩ Пропуск титров, переключение на следующую серию');
-      nextEpisode();
-    }
-
-    hideSkipButton();
-  });
-
+  // Обработчик клика будет добавлен из control.js
   document.body.appendChild(skipButton);
   return skipButton;
 }
+
+// Глобальная функция для выполнения пропуска (вызывается из control.js)
+window.executeSkip = function () {
+  if (!skipButtonActive || !currentSkipInfo) return false;
+
+  var videoPlayer = getEl('video-player');
+  if (!videoPlayer) return false;
+
+  if (currentSkipInfo && currentSkipInfo.type === 'intro') {
+    // Пропускаем интро - перематываем на end_ms
+    var seekTime = currentSkipInfo.endMs / 1000;
+    seekStream(seekTime, 'slider');
+    console.log('⏩ Пропуск интро, перемотка на ' + formatTime(seekTime));
+  } else if (currentSkipInfo && currentSkipInfo.type === 'credits') {
+    // Пропускаем титры - переключаем на следующую серию
+    console.log('⏩ Пропуск титров, переключение на следующую серию');
+    nextEpisode();
+  }
+
+  hideSkipButton();
+  return true;
+};
 
 function showSkipButton(type, startMs, endMs) {
   if (!skipButton) {
@@ -131,15 +136,21 @@ function showSkipButton(type, startMs, endMs) {
   currentSkipRangeKey = rangeKey;
   skipButtonActive = true;
 
-  // Устанавливаем фокус на кнопку
-  skipButton.classList.add('focused');
-  if (typeof updateFocusableElements === 'function') {
-    // Если есть система фокуса, обновляем
+  // Обновляем focusable элементы, чтобы кнопка стала доступна для навигации
+  if (typeof window.updateFocusableElements === 'function') {
     setTimeout(function () {
-      var allFocusable = document.querySelectorAll('.focused');
-      allFocusable.forEach(function (el) {
-        if (el !== skipButton) el.classList.remove('focused');
-      });
+      window.updateFocusableElements();
+      // Находим индекс кнопки пропуска и устанавливаем на нее фокус
+      if (typeof window.focusableElements !== 'undefined' && window.focusableElements) {
+        for (var i = 0; i < window.focusableElements.length; i++) {
+          if (window.focusableElements[i] === skipButton) {
+            if (typeof window.setFocus === 'function') {
+              window.setFocus(i);
+            }
+            break;
+          }
+        }
+      }
     }, 50);
   }
 
@@ -165,6 +176,13 @@ function hideSkipButton() {
   skipButtonActive = false;
   currentSkipInfo = null;
   currentSkipRangeKey = null;
+
+  // Обновляем focusable элементы после скрытия кнопки
+  if (typeof window.updateFocusableElements === 'function') {
+    setTimeout(function () {
+      window.updateFocusableElements();
+    }, 50);
+  }
 }
 
 // Функция для проверки и отображения кнопки пропуска
@@ -1338,22 +1356,6 @@ async function fetchSkipData(tmdbId, season, episode) {
     return skipData;
   }
 }
-
-// Создаем кнопку пропуска при загрузке страницы
-document.addEventListener('DOMContentLoaded', function () {
-  createSkipButton();
-
-  // Добавляем обработчик нажатия клавиш для кнопки пропуска
-  document.addEventListener('keydown', function (e) {
-    if (skipButtonActive && skipButton && !skipButton.classList.contains('hidden')) {
-      // Нажатие Enter или пробел на кнопке пропуска
-      if (e.key === 'Enter' || e.key === '13' || e.key === 'Space' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        skipButton.click();
-      }
-    }
-  });
-});
 
 // Функция для отрисовки списка серий
 function renderEpisodesList() {
