@@ -358,7 +358,7 @@ function setupKeyboardHandlers() {
         var k = e.keyCode, active = document.activeElement;
         var po = getEl('playback-overlay'); var isPA = po && po.classList.contains('active'); if (isPA) return;
         var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
-        var skipBtn = getEl('skip-button'); if (skipBtn && !skipBtn.classList.contains('hidden') && skipBtn.classList.contains('focused')) { if (typeof window.executeSkip === 'function') { window.executeSkip(); return true; } }
+        var skipBtn = getEl('skip-button'); if (k == 13 && skipBtn && !skipBtn.classList.contains('hidden') && skipBtn.classList.contains('focused')) { if (typeof window.executeSkip === 'function') { window.executeSkip(); return true; } }
         if (ed) {
             // Проверяем, пустое ли поле
             var isEmpty = false;
