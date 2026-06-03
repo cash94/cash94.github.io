@@ -3045,3 +3045,64 @@ article {
 .video-object-fit-none {
   object-fit: none !important;
 }
+
+/* Стили для кнопки пропуска */
+.skip-button {
+    position: fixed;
+    bottom: 80px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 1000;
+    transition: all 0.3s ease;
+    border: 2px solid #ff5722;
+    background: linear-gradient(135deg, #ff5722, #e64a19);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    animation: fadeIn 0.3s ease;
+}
+
+.skip-button.hidden {
+    display: none;
+}
+
+.skip-button.visible {
+    display: flex;
+    animation: slideIn 0.3s ease;
+}
+
+.skip-button.focused {
+    outline: none;
+    border-color: #ffeb3b;
+    box-shadow: 0 0 10px #ffeb3b, 0 4px 15px rgba(0,0,0,0.3);
+    transform: scale(1.05);
+}
+
+.skip-button:hover {
+    transform: scale(1.05);
+    background: linear-gradient(135deg, #ff7043, #f4511e);
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
