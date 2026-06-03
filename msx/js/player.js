@@ -37,6 +37,7 @@ var skipButton = null;
 var skipButtonTimeout = null;
 var currentSkipData = null;
 var skipButtonActive = false;
+var currentSkipInfo = null; // Хранит текущую информацию о пропуске
 
 function createSkipButton() {
   // Удаляем существующую кнопку, если есть
@@ -72,17 +73,20 @@ function createSkipButton() {
     var videoPlayer = getEl('video-player');
     if (!videoPlayer) return;
 
-    if (currentSkipData && currentSkipData.type === 'intro') {
+    if (currentSkipInfo && currentSkipInfo.type === 'intro') {
       // Пропускаем интро - перематываем на end_ms
-      var seekTime = currentSkipData.endMs / 1000;
+      var seekTime = currentSkipInfo.endMs / 1000;
       seekStream(seekTime, 'slider');
       console.log('⏩ Пропуск интро, перемотка на ' + formatTime(seekTime));
-    } else if (currentSkipData && currentSkipData.type === 'credits') {
+    } else if (currentSkipInfo && currentSkipInfo.type === 'credits') {
       // Пропускаем титры - перематываем на end_ms (если есть) или на конец
-      if (currentSkipData.endMs !== null) {
+      if (currentSkipInfo.endMs !== null) {
         nextEpisode();
+        console.log('⏩ Пропуск титров, перемотка на ' + formatTime(seekTime));
       } else {
+        // Если end_ms = null, значит до конца видео
         nextEpisode();
+        console.log('⏩ Пропуск титров до конца видео');
       }
     }
 
@@ -105,13 +109,13 @@ function showSkipButton(type, startMs, endMs) {
   }
 
   // Настраиваем текст и данные
-  var buttonText = type === 'intro' ? '⏩ Пропустить интро' : '⏩ Пропустить титры';
+  var buttonText = type === 'intro' ? '⏩ Пропустить вступление' : '⏩ Пропустить титры';
   skipButton.innerHTML = buttonText;
   skipButton.classList.remove('hidden');
   skipButton.classList.add('visible');
   skipButton.style.display = 'flex';
 
-  currentSkipData = {
+  currentSkipInfo = {
     type: type,
     startMs: startMs,
     endMs: endMs
@@ -136,7 +140,7 @@ function showSkipButton(type, startMs, endMs) {
     hideSkipButton();
   }, 10000);
 
-  console.log('🎬 Показана кнопка пропуска:', type, 'старт:', startMs, 'ms, конец:', endMs, 'ms');
+  console.log('🎬 Показана кнопка пропуска:', type, 'старт:', (startMs / 1000).toFixed(1), 'сек, конец:', (endMs / 1000).toFixed(1), 'сек');
 }
 
 function hideSkipButton() {
@@ -151,9 +155,77 @@ function hideSkipButton() {
     skipButtonTimeout = null;
   }
   skipButtonActive = false;
-  currentSkipData = null;
+  currentSkipInfo = null;
 }
 
+// Функция для проверки и отображения кнопки пропуска
+function checkAndShowSkipButton(currentTimeSec) {
+  // Проверяем наличие skipData и что это не ошибка
+  if (!skipData || skipData.error) {
+    if (skipButtonActive) hideSkipButton();
+    return;
+  }
+
+  // Получаем текущее время в миллисекундах
+  var currentTimeMs = currentTimeSec * 1000;
+  var videoPlayer = getEl('video-player');
+  var totalDuration = AppState.originalDuration || AppState.expectedDuration || videoPlayer.duration;
+  var totalDurationMs = totalDuration * 1000;
+
+  var inAnyRange = false;
+
+  // Проверяем intro
+  if (skipData.intro && Array.isArray(skipData.intro) && skipData.intro.length > 0) {
+    for (var i = 0; i < skipData.intro.length; i++) {
+      var intro = skipData.intro[i];
+      var introStartMs = (intro.start_ms !== null && intro.start_ms !== undefined) ? intro.start_ms : 0;
+      var introEndMs = (intro.end_ms !== null && intro.end_ms !== undefined) ? intro.end_ms : 0;
+
+      // Если currentTime в диапазоне intro
+      if (currentTimeMs >= introStartMs && currentTimeMs <= introEndMs) {
+        inAnyRange = true;
+        if (!skipButtonActive || (currentSkipInfo && currentSkipInfo.type !== 'intro')) {
+          showSkipButton('intro', introStartMs, introEndMs);
+        }
+        // Обновляем данные на случай изменения
+        if (currentSkipInfo && currentSkipInfo.type === 'intro') {
+          currentSkipInfo.startMs = introStartMs;
+          currentSkipInfo.endMs = introEndMs;
+        }
+        break;
+      }
+    }
+  }
+
+  // Если не в intro, проверяем credits
+  if (!inAnyRange && skipData.credits && Array.isArray(skipData.credits) && skipData.credits.length > 0) {
+    for (var j = 0; j < skipData.credits.length; j++) {
+      var credits = skipData.credits[j];
+      var creditsStartMs = (credits.start_ms !== null && credits.start_ms !== undefined) ? credits.start_ms : 0;
+      // Если end_ms = null, используем totalDuration
+      var creditsEndMs = (credits.end_ms !== null && credits.end_ms !== undefined) ? credits.end_ms : totalDurationMs;
+
+      // Если currentTime в диапазоне credits
+      if (currentTimeMs >= creditsStartMs && currentTimeMs <= creditsEndMs) {
+        inAnyRange = true;
+        if (!skipButtonActive || (currentSkipInfo && currentSkipInfo.type !== 'credits')) {
+          showSkipButton('credits', creditsStartMs, creditsEndMs);
+        }
+        // Обновляем данные на случай изменения
+        if (currentSkipInfo && currentSkipInfo.type === 'credits') {
+          currentSkipInfo.startMs = creditsStartMs;
+          currentSkipInfo.endMs = credits.end_ms;
+        }
+        break;
+      }
+    }
+  }
+
+  // Если текущее время вне всех диапазонов, скрываем кнопку
+  if (!inAnyRange && skipButtonActive) {
+    hideSkipButton();
+  }
+}
 
 // Функции heartbeat
 function startHeartbeat() {
@@ -609,7 +681,7 @@ function updateBufferDisplay() {
       var endTimeText = endTime.getHours().toString().padStart(2, '0') + ':' + endTime.getMinutes().toString().padStart(2, '0');
 
       var torrServerText = '';
-      if (currentTimecodeData.hash && torrentStatsCache.preloadSize > 0) {
+      if (currentTimecodeData.hash && typeof torrentStatsCache !== 'undefined' && torrentStatsCache.preloadSize > 0) {
         torrServerText = 'TorrServer: ' + formatSize(torrentStatsCache.preloaded) + ' | скорость: ' + formatSpeed(torrentStatsCache.downloadSpeed);
         if (torrentStatsCache.activePeers > 0) {
           torrServerText += ' | пиры: ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
@@ -621,101 +693,9 @@ function updateBufferDisplay() {
         subtitleElement.innerText = torrServerText || '';
       }
 
-      // ============ НОВАЯ ПРОВЕРКА ДЛЯ SKIPDATA ============
-      // Проверяем skipData и отображаем кнопку пропуска
-      if (skipData && skipData.length > 0 && !skipData.error) {
-        // Получаем текущее время в миллисекундах
-        var currentTimeMs = absoluteCurrentTime * 1000;
-        var totalDurationMs = totalDuration * 1000;
-
-        // Проходим по всем элементам skipData
-        for (var i = 0; i < skipData.length; i++) {
-          var item = skipData[i];
-
-          // Проверяем intro
-          if (item.intro && Array.isArray(item.intro)) {
-            for (var j = 0; j < item.intro.length; j++) {
-              var intro = item.intro[j];
-              var introStartMs = intro.start_ms !== null ? intro.start_ms : 0;
-              var introEndMs = intro.end_ms !== null ? intro.end_ms : 0;
-
-              // Если currentTime в диапазоне intro
-              if (currentTimeMs >= introStartMs && currentTimeMs <= introEndMs) {
-                if (!skipButtonActive || (currentSkipData && currentSkipData.type !== 'intro')) {
-                  showSkipButton('intro', introStartMs, introEndMs);
-                }
-                // Обновляем данные на случай изменения
-                if (currentSkipData && currentSkipData.type === 'intro') {
-                  currentSkipData.startMs = introStartMs;
-                  currentSkipData.endMs = introEndMs;
-                }
-                break;
-              }
-            }
-          }
-
-          // Проверяем credits
-          if (item.credits && Array.isArray(item.credits)) {
-            for (var k = 0; k < item.credits.length; k++) {
-              var credits = item.credits[k];
-              var creditsStartMs = credits.start_ms !== null ? credits.start_ms : 0;
-              // Если end_ms = null, используем totalDuration
-              var creditsEndMs = credits.end_ms !== null ? credits.end_ms : totalDurationMs;
-
-              // Если currentTime в диапазоне credits
-              if (currentTimeMs >= creditsStartMs && currentTimeMs <= creditsEndMs) {
-                if (!skipButtonActive || (currentSkipData && currentSkipData.type !== 'credits')) {
-                  showSkipButton('credits', creditsStartMs, creditsEndMs);
-                }
-                // Обновляем данные на случай изменения
-                if (currentSkipData && currentSkipData.type === 'credits') {
-                  currentSkipData.startMs = creditsStartMs;
-                  currentSkipData.endMs = credits.end_ms;
-                }
-                break;
-              }
-            }
-          }
-        }
-
-        // Если текущее время вне всех диапазонов, скрываем кнопку
-        var inAnyRange = false;
-        for (var i = 0; i < skipData.length && !inAnyRange; i++) {
-          var item = skipData[i];
-
-          if (item.intro && Array.isArray(item.intro)) {
-            for (var j = 0; j < item.intro.length; j++) {
-              var intro = item.intro[j];
-              var introStartMs = intro.start_ms !== null ? intro.start_ms : 0;
-              var introEndMs = intro.end_ms !== null ? intro.end_ms : 0;
-              if (currentTimeMs >= introStartMs && currentTimeMs <= introEndMs) {
-                inAnyRange = true;
-                break;
-              }
-            }
-          }
-
-          if (!inAnyRange && item.credits && Array.isArray(item.credits)) {
-            for (var k = 0; k < item.credits.length; k++) {
-              var credits = item.credits[k];
-              var creditsStartMs = credits.start_ms !== null ? credits.start_ms : 0;
-              var creditsEndMs = credits.end_ms !== null ? credits.end_ms : totalDurationMs;
-              if (currentTimeMs >= creditsStartMs && currentTimeMs <= creditsEndMs) {
-                inAnyRange = true;
-                break;
-              }
-            }
-          }
-        }
-
-        if (!inAnyRange && skipButtonActive) {
-          hideSkipButton();
-        }
-      } else if (skipButtonActive) {
-        // Если нет данных skipData, скрываем кнопку
-        hideSkipButton();
-      }
-      // ============ КОНЕЦ ПРОВЕРКИ ДЛЯ SKIPDATA ============
+      // ============ ПРОВЕРКА ДЛЯ SKIPDATA ============
+      checkAndShowSkipButton(absoluteCurrentTime);
+      // ============ КОНЕЦ ПРОВЕРКИ ============
 
     }
   } else {
@@ -1323,19 +1303,41 @@ async function fetchSkipData(tmdbId, season, episode) {
     // Проверяем, есть ли ошибка
     if (data.error) {
       console.log('Медиа не найдено:', data.error);
-      skipData = []; // Очищаем массив при ошибке
+      skipData = {}; // Очищаем объект при ошибке
+      skipData.error = true;
     } else {
-      // Записываем полученные данные в глобальный массив
+      // Записываем полученные данные в глобальную переменную (это объект, а не массив)
       skipData = data;
+      skipData.error = false;
+      console.log('✅ Загружены данные пропуска:', skipData);
+      console.log('📺 Intro:', skipData.intro);
+      console.log('📺 Credits:', skipData.credits);
     }
 
     return skipData;
   } catch (error) {
     console.error('Ошибка при запросе:', error);
-    skipData = [];
+    skipData = {};
+    skipData.error = true;
     return skipData;
   }
 }
+
+// Создаем кнопку пропуска при загрузке страницы
+document.addEventListener('DOMContentLoaded', function () {
+  createSkipButton();
+
+  // Добавляем обработчик нажатия клавиш для кнопки пропуска
+  document.addEventListener('keydown', function (e) {
+    if (skipButtonActive && skipButton && !skipButton.classList.contains('hidden')) {
+      // Нажатие Enter или пробел на кнопке пропуска
+      if (e.key === 'Enter' || e.key === '13' || e.key === 'Space' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        skipButton.click();
+      }
+    }
+  });
+});
 
 // Функция для отрисовки списка серий
 function renderEpisodesList() {
@@ -2955,19 +2957,3 @@ window.cancelCurrentPlayback = cancelCurrentPlayback;
 
   console.log('✅ Lampa.Timeline.update успешно зарегистрирован');
 })();
-
-// Создаем кнопку пропуска при загрузке страницы
-document.addEventListener('DOMContentLoaded', function () {
-  createSkipButton();
-
-  // Добавляем обработчик нажатия клавиш для кнопки пропуска
-  document.addEventListener('keydown', function (e) {
-    if (skipButtonActive && skipButton && !skipButton.classList.contains('hidden')) {
-      // Нажатие Enter или пробел на кнопке пропуска
-      if (e.key === 'Enter' || e.key === '13' || e.key === 'Space') {
-        e.preventDefault();
-        skipButton.click();
-      }
-    }
-  });
-});
