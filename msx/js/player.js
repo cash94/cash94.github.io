@@ -38,6 +38,7 @@ var skipButtonTimeout = null;
 var currentSkipData = null;
 var skipButtonActive = false;
 var currentSkipInfo = null; // Хранит текущую информацию о пропуске
+var currentSkipRangeKey = null;
 
 function createSkipButton() {
   // Удаляем существующую кнопку, если есть
@@ -79,15 +80,9 @@ function createSkipButton() {
       seekStream(seekTime, 'slider');
       console.log('⏩ Пропуск интро, перемотка на ' + formatTime(seekTime));
     } else if (currentSkipInfo && currentSkipInfo.type === 'credits') {
-      // Пропускаем титры - перематываем на end_ms (если есть) или на конец
-      if (currentSkipInfo.endMs !== null) {
-        nextEpisode();
-        console.log('⏩ Пропуск титров, перемотка на ' + formatTime(seekTime));
-      } else {
-        // Если end_ms = null, значит до конца видео
-        nextEpisode();
-        console.log('⏩ Пропуск титров до конца видео');
-      }
+      // Пропускаем титры - переключаем на следующую серию
+      console.log('⏩ Пропуск титров, переключение на следующую серию');
+      nextEpisode();
     }
 
     hideSkipButton();
@@ -100,6 +95,17 @@ function createSkipButton() {
 function showSkipButton(type, startMs, endMs) {
   if (!skipButton) {
     createSkipButton();
+  }
+
+  // Если кнопка уже активна для этого же диапазона - не трогаем
+  var rangeKey = type + '_' + startMs + '_' + endMs;
+  if (skipButtonActive && currentSkipRangeKey === rangeKey) {
+    return;
+  }
+
+  // Если кнопка активна для другого диапазона - скрываем старую
+  if (skipButtonActive) {
+    hideSkipButton();
   }
 
   // Очищаем предыдущий таймер
@@ -120,7 +126,7 @@ function showSkipButton(type, startMs, endMs) {
     startMs: startMs,
     endMs: endMs
   };
-
+  currentSkipRangeKey = rangeKey;
   skipButtonActive = true;
 
   // Устанавливаем фокус на кнопку
@@ -156,6 +162,7 @@ function hideSkipButton() {
   }
   skipButtonActive = false;
   currentSkipInfo = null;
+  currentSkipRangeKey = null;
 }
 
 // Функция для проверки и отображения кнопки пропуска
@@ -173,6 +180,10 @@ function checkAndShowSkipButton(currentTimeSec) {
   var totalDurationMs = totalDuration * 1000;
 
   var inAnyRange = false;
+  var newRangeKey = null;
+  var newType = null;
+  var newStartMs = null;
+  var newEndMs = null;
 
   // Проверяем intro
   if (skipData.intro && Array.isArray(skipData.intro) && skipData.intro.length > 0) {
@@ -184,14 +195,10 @@ function checkAndShowSkipButton(currentTimeSec) {
       // Если currentTime в диапазоне intro
       if (currentTimeMs >= introStartMs && currentTimeMs <= introEndMs) {
         inAnyRange = true;
-        if (!skipButtonActive || (currentSkipInfo && currentSkipInfo.type !== 'intro')) {
-          showSkipButton('intro', introStartMs, introEndMs);
-        }
-        // Обновляем данные на случай изменения
-        if (currentSkipInfo && currentSkipInfo.type === 'intro') {
-          currentSkipInfo.startMs = introStartMs;
-          currentSkipInfo.endMs = introEndMs;
-        }
+        newRangeKey = 'intro_' + introStartMs + '_' + introEndMs;
+        newType = 'intro';
+        newStartMs = introStartMs;
+        newEndMs = introEndMs;
         break;
       }
     }
@@ -208,21 +215,24 @@ function checkAndShowSkipButton(currentTimeSec) {
       // Если currentTime в диапазоне credits
       if (currentTimeMs >= creditsStartMs && currentTimeMs <= creditsEndMs) {
         inAnyRange = true;
-        if (!skipButtonActive || (currentSkipInfo && currentSkipInfo.type !== 'credits')) {
-          showSkipButton('credits', creditsStartMs, creditsEndMs);
-        }
-        // Обновляем данные на случай изменения
-        if (currentSkipInfo && currentSkipInfo.type === 'credits') {
-          currentSkipInfo.startMs = creditsStartMs;
-          currentSkipInfo.endMs = credits.end_ms;
-        }
+        newRangeKey = 'credits_' + creditsStartMs + '_' + creditsEndMs;
+        newType = 'credits';
+        newStartMs = creditsStartMs;
+        newEndMs = credits.end_ms; // сохраняем оригинальный end_ms (может быть null)
         break;
       }
     }
   }
 
-  // Если текущее время вне всех диапазонов, скрываем кнопку
-  if (!inAnyRange && skipButtonActive) {
+  // Если в диапазоне
+  if (inAnyRange) {
+    // Показываем кнопку только если это новый диапазон
+    if (!skipButtonActive || currentSkipRangeKey !== newRangeKey) {
+      showSkipButton(newType, newStartMs, newEndMs);
+    }
+  }
+  // Если не в диапазоне, но кнопка активна - скрываем
+  else if (skipButtonActive) {
     hideSkipButton();
   }
 }
