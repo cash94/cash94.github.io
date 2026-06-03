@@ -1370,7 +1370,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       console.log('📱 Запуск во внешнем плеере');
       getEl('config-screen').style.display = 'none';
       getEl('torrserver-section').style.display = 'none';
-      getEl('detail-view').style.display = 'none';
+      //getEl('detail-view').style.display = 'none';
       return;
     }
   }
