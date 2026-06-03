@@ -2261,6 +2261,7 @@ function cancelCurrentPlayback() {
 function showDetailView() {
   if (!window.AndroidJS) {
     stopTorrentStatsUpdates();
+    hideSkipButton();
     currentBufferAhead = 0;
     wasImmediatePause = false;
     pauseTimer = null;
