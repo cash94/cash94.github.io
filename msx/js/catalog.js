@@ -661,6 +661,11 @@ async function showCatalogDetail(item, index, posterUrl) {
     var savedScroll = mc ? mc.scrollTop : 0; AppState.backupScroll = savedScroll;
     var oldP = document.querySelector('.detail-progress'); if (oldP) oldP.remove();
 
+    var dh = getEl('detail-header');
+    if (dh) { 
+        dh.style.background = "rgba(255, 255, 255, 0.08)";
+    }
+
     var aw = getEl('catalog-detail-actors-wrap'), rw = getEl('catalog-detail-recommendations-wrap');
     if (!aw && getEl('catalog-detail-overview')) {
         var c = document.createElement('div'); c.id = 'catalog-detail-actors-wrap'; c.className = 'catalog-detail-actors-wrap';
