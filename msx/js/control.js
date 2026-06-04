@@ -873,15 +873,27 @@ function currentScreen() { try { var ss = window.AppState && AppState.currentScr
 function onBack() { var s = getEl('search-overlay'), d = getEl('detail-view'), c = getEl('config-screen'), cat = currentScreen() === 'catalog', dn = currentScreen() === 'donate'; if (AppState.syncCodeScreen == true) { toggleSyncOverlay(); return true; } if (typeof window.closeCatalogTrailerOverlay === 'function' && window.closeCatalogTrailerOverlay()) { setTimeout(function () { ensureDetailFocus(true); }, 80); return true; } if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') { if (typeof window.hideSearchResults === 'function') { window.hideSearchResults(); focusEl(getTorrentTabs()[2]); } else leaveSearchToTorrents(); return true; } if (d && getComputedStyle(d).display !== 'none') { clickEl(getEl('back-from-detail') || document.querySelector('.back-btn')); return true; } if (dn) { if (typeof window.closeDonateOverlay === 'function') window.closeDonateOverlay(); return true; } if (cat) { var h = document.querySelector('#torrents-grid .torrent-card.catalog-folder-card'); if (h) return true; if (window.catalogState) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); } if (typeof window.backToCatalogList === 'function') { AppState.currentScreen = 'catalog'; window.backToCatalogList(); } else clickEl(getEl('back-from-catalog')); setTimeout(function () { ensureCatalogFocus(true); }, 180); return true; } if (c && getComputedStyle(c).display !== 'none') { var m = getEl('torrserver-section'); c.style.display = 'none'; if (m) m.style.display = 'block'; try { window.AppState.currentScreen = 'torrents'; } catch (e) { } setTimeout(function () { ensureTorrentFocus(true); }, 180); return true; } return false; }
 
 window.addEventListener('popstate', function (e) {
-    // fallback - эмуляция Escape, если onBack недоступна
-    var be = new KeyboardEvent('keydown', {
-        keyCode: 27,
-        key: 'Escape',
-        bubbles: true,
-        cancelable: true
-    });
-    document.dispatchEvent(be);
+    if (window.swipeBlocked) return;
 
+    e.preventDefault();
+
+    // Сохраняем текущий screen до обработки
+    var currentScreen = AppState.currentScreen;
+
+    // Вызываем onBack
+    onBack();
+
+    // Если onBack не изменил экран (например, мы уже на главном экране),
+    // то просто восстанавливаем состояние
+    setTimeout(function () {
+        if (AppState.currentScreen === currentScreen) {
+            // Ничего не изменилось, просто обновляем историю
+            window.history.pushState({ page: 'main' }, '');
+        } else {
+            // Экран изменился, обновляем историю с небольшой задержкой
+            window.history.pushState({ page: 'main' }, '');
+        }
+    }, 150);
 });
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
