@@ -149,7 +149,7 @@ function setFocus(index) {
     if (index >= focusableElements.length) index = 0;
     currentFocusIndex = index;
 
-    requestAnimationFrame(function () {
+    //requestAnimationFrame(function () {
     var focused = document.querySelectorAll('.focused');
     for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
 
