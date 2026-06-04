@@ -1416,6 +1416,12 @@ async function showDetail(torrent) {
   var filesList = getEl('files-list');
   var detailSubtitle = getEl('detail-subtitle');
   var detailViewDiv = getEl('detail-view');
+  
+  var dh = getEl('detail-header');
+  if (dh) {
+    dh.style.background = "rgba(0, 0, 0, 0.3)";
+  }
+  
   if (filesList) {
     filesList.style.display = 'flex';
     filesList.style.flexDirection = 'row';
