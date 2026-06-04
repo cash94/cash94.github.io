@@ -179,7 +179,7 @@ function getKeyMap() {
     'OK': [13, 23, 10013, 10020],
 
     // Vidaa OS специфичные
-    'BACK': [8, 27, 461, 10009, 10014], // Backspace, Escape, Return
+    'BACK': [4, 8, 27, 461, 10009, 10014], // Backspace, Escape, Return
     //'EXIT': [27, 10182], // Escape
     'HOME': [36, 3],
     'MENU': [18, 82, 457], // Alt, Menu
