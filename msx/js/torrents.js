@@ -1418,9 +1418,7 @@ async function showDetail(torrent) {
   var detailViewDiv = getEl('detail-view');
   
   var dh = getEl('detail-header');
-  if (dh) {
-    dh.style.background = "rgba(0, 0, 0, 0.3)";
-  }
+  dh.style.background = "rgba(0, 0, 0, 0.3)";
   
   if (filesList) {
     filesList.style.display = 'flex';
