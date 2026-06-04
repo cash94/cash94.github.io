@@ -508,14 +508,22 @@ var Animations = (function () {
         options = options || {};
         var duration = options.duration || 0.15;
         var ease = options.ease || "power0.out";
-        var offset = options.offset || 0;
+        var offset = options.offset || 0; // Отступ от нижнего края
 
         var targetContainer = container || window;
 
         if (targetContainer !== window && targetContainer.scrollTop !== undefined) {
             var rect = element.getBoundingClientRect();
             var containerRect = targetContainer.getBoundingClientRect();
-            var targetTop = targetContainer.scrollTop + (rect.top - containerRect.top) - offset;
+
+            // Логика для нижнего края:
+            // Мы хотим, чтобы низ элемента (rect.bottom) оказался на уровне низа контейнера (containerRect.bottom) минус offset.
+            // Формула: targetTop = currentScroll + (позиция_низа_элемента - позиция_низа_контейнера) - offset
+
+            var positionDiff = rect.bottom - containerRect.bottom;
+            var targetTop = targetContainer.scrollTop + positionDiff + offset;
+
+            // Ограничиваем значения, чтобы не выйти за пределы скролла
             targetTop = Math.max(0, Math.min(targetContainer.scrollHeight - containerRect.height, targetTop));
 
             gsap.killTweensOf(targetContainer);
@@ -526,7 +534,8 @@ var Animations = (function () {
                 overwrite: true
             });
         } else {
-            var targetY = window.scrollY + element.getBoundingClientRect().top - offset;
+            // Для окна браузера логика аналогичная
+            var targetY = window.scrollY + (element.getBoundingClientRect().bottom - window.innerHeight) + offset;
             targetY = Math.max(0, targetY);
 
             gsap.killTweensOf(window);
