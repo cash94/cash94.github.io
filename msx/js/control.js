@@ -858,7 +858,7 @@ function setupFocusRescue() {
     function isArrowKey(kc) { return [37, 38, 39, 40].indexOf(kc) !== -1 || (typeof isKeyPressed === 'function' && (isKeyPressed('UP', kc) || isKeyPressed('DOWN', kc) || isKeyPressed('LEFT', kc) || isKeyPressed('RIGHT', kc))); }
     function arrowDir(kc) { if ([37, 38, 39, 40].indexOf(kc) !== -1) return ({ 37: 'left', 38: 'up', 39: 'right', 40: 'down' })[kc]; if (typeof isKeyPressed === 'function') { if (isKeyPressed('UP', kc)) return 'up'; if (isKeyPressed('DOWN', kc)) return 'down'; if (isKeyPressed('LEFT', kc)) return 'left'; if (isKeyPressed('RIGHT', kc)) return 'right'; } return null; }
     function isOkKey(kc) { return kc === 13 || (typeof isKeyPressed === 'function' && isKeyPressed('OK', kc)); }
-    function isBackKey(kc) { return [8, 27, 461, 10009].indexOf(kc) !== -1 || (typeof isKeyPressed === 'function' && (isKeyPressed('BACK', kc) || isKeyPressed('EXIT', kc))); }
+    function isBackKey(kc) { return [4, 8, 27, 461, 10009].indexOf(kc) !== -1 || (typeof isKeyPressed === 'function' && (isKeyPressed('BACK', kc) || isKeyPressed('EXIT', kc))); }
 
     document.addEventListener('keydown', function (e) { var s = currentScreen(); if (s === 'player') return; if (['torrents', 'catalog', 'search', 'detail', 'config', 'donate'].indexOf(s) === -1) return; var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT'); if (isBackKey(e.keyCode)) { if (ed) { var isEmpty = false; if (a.tagName === 'SELECT') { isEmpty = (a.selectedIndex === -1 || a.value === ''); } else { isEmpty = (a.value === '' || a.value === null); } if (!isEmpty) { return; } }; e.preventDefault(); e.stopImmediatePropagation(); var po = getEl('playback-overlay'), ip = po && po.classList.contains('active'); if (ip) { cancelCurrentPlayback(); return; } if (isCustomFilterMenuOpen()) { closeCustomFilterMenu(); return; } if (s === 'catalog' && window.catalogState && window.catalogState.currentCatalog) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); } if (ed) { blurEditor(); if (s === 'search') ensureSearchFocus(true, true); else if (s === 'catalog') ensureCatalogFocus(true); else if (s === 'config') ensureConfigFocus(true); else if (s === 'detail') ensureDetailFocus(true); else ensureTorrentFocus(true); return; } onBack(); return; } if (isArrowKey(e.keyCode)) { e.preventDefault(); e.stopImmediatePropagation(); var d = arrowDir(e.keyCode); if (isCustomFilterMenuOpen()) { if (d === 'up') moveCustomFilterMenu(-1); else if (d === 'down') moveCustomFilterMenu(1); return; } if (s === 'torrents') torrentHandle(d); else if (s === 'catalog') catalogHandle(d); else if (s === 'search') searchHandle(d); else if (s === 'detail') detailHandle(d); else if (s === 'config') configHandle(d); return; } if (isOkKey(e.keyCode)) { e.preventDefault(); e.stopImmediatePropagation(); if (isCustomFilterMenuOpen()) { applyCustomFilterMenuSelection(); return; } if (s === 'torrents') { var f = document.querySelector('.focused'); if (f && f.classList.contains('torrent-card')) { if (!e.repeat) { okHoldHandled = false; okHoldFocused = f; clearOkHold(); okHoldTimer = setTimeout(async function () { okHoldHandled = true; var h = okHoldFocused && okHoldFocused.dataset ? okHoldFocused.dataset.hash : null; if (typeof window.setTorrentClickSuppressed === 'function') window.setTorrentClickSuppressed(1500); if (okHoldFocused) okHoldFocused.dataset.suppressClick = '1'; if (h && typeof window.removeTorrentByHash === 'function') await window.removeTorrentByHash(h, { skipConfirm: true }); setTimeout(function () { if (okHoldFocused) delete okHoldFocused.dataset.suppressClick; }, 1500); }, 900); } return; } } onOk(); return; } }, true);
 
@@ -871,30 +871,6 @@ function setupFocusRescue() {
 
 function currentScreen() { try { var ss = window.AppState && AppState.currentScreen ? AppState.currentScreen : null, p = getEl('player-screen'), d = getEl('detail-view'), c = getEl('config-screen'), s = getEl('search-overlay'), ct = getEl('tab-catalog'), dn = getEl('donate-overlay'), sy = getEl('sync-overlay'); if (ss === 'player') return 'player'; if (p && getComputedStyle(p).display !== 'none') return 'player'; if (sy && !sy.classList.contains('hidden') && getComputedStyle(sy).display !== 'none') return 'sync'; if (c && getComputedStyle(c).display !== 'none') return 'config'; if (d && getComputedStyle(d).display !== 'none') return 'detail'; if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') return 'search'; if (dn && !dn.classList.contains('hidden') && getComputedStyle(dn).display !== 'none') return 'donate'; if (AppState.inSearch == 'catalog') return 'catalog'; var cg = getEl('torrents-grid'); if (cg) { var hc = cg.querySelector('.catalog-card,.catalog-folder-card') !== null, tc = cg.querySelector('.torrent-card:not(.catalog-card):not(.catalog-folder-card)') !== null; if (hc && !tc) return 'catalog'; } return ss || 'torrents'; } catch (e) { return 'torrents'; } }
 function onBack() { var s = getEl('search-overlay'), d = getEl('detail-view'), c = getEl('config-screen'), cat = currentScreen() === 'catalog', dn = currentScreen() === 'donate'; if (AppState.syncCodeScreen == true) { toggleSyncOverlay(); return true; } if (typeof window.closeCatalogTrailerOverlay === 'function' && window.closeCatalogTrailerOverlay()) { setTimeout(function () { ensureDetailFocus(true); }, 80); return true; } if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') { if (typeof window.hideSearchResults === 'function') { window.hideSearchResults(); focusEl(getTorrentTabs()[2]); } else leaveSearchToTorrents(); return true; } if (d && getComputedStyle(d).display !== 'none') { clickEl(getEl('back-from-detail') || document.querySelector('.back-btn')); return true; } if (dn) { if (typeof window.closeDonateOverlay === 'function') window.closeDonateOverlay(); return true; } if (cat) { var h = document.querySelector('#torrents-grid .torrent-card.catalog-folder-card'); if (h) return true; if (window.catalogState) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); } if (typeof window.backToCatalogList === 'function') { AppState.currentScreen = 'catalog'; window.backToCatalogList(); } else clickEl(getEl('back-from-catalog')); setTimeout(function () { ensureCatalogFocus(true); }, 180); return true; } if (c && getComputedStyle(c).display !== 'none') { var m = getEl('torrserver-section'); c.style.display = 'none'; if (m) m.style.display = 'block'; try { window.AppState.currentScreen = 'torrents'; } catch (e) { } setTimeout(function () { ensureTorrentFocus(true); }, 180); return true; } return false; }
-
-window.addEventListener('popstate', function (e) {
-    if (window.swipeBlocked) return;
-
-    e.preventDefault();
-
-    // Сохраняем текущий screen до обработки
-    var currentScreen = AppState.currentScreen;
-
-    // Вызываем onBack
-    onBack();
-
-    // Если onBack не изменил экран (например, мы уже на главном экране),
-    // то просто восстанавливаем состояние
-    setTimeout(function () {
-        if (AppState.currentScreen === currentScreen) {
-            // Ничего не изменилось, просто обновляем историю
-            window.history.pushState({ page: 'main' }, '');
-        } else {
-            // Экран изменился, обновляем историю с небольшой задержкой
-            window.history.pushState({ page: 'main' }, '');
-        }
-    }, 150);
-});
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 function initControl() {
