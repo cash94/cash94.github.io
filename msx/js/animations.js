@@ -508,7 +508,7 @@ var Animations = (function () {
         options = options || {};
         var duration = options.duration || 0.15;
         var ease = options.ease || "power0.out";
-        var offset = options.offset || 0; // Отступ от нижнего края
+        var offset = options.offset || 10; // Отступ от нижнего края
 
         var targetContainer = container || window;
 
