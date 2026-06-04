@@ -899,7 +899,7 @@ window.addEventListener('popstate', function (e) {
 
     // Восстанавливаем состояние истории
     setTimeout(function () {
-        window.history.replaceState({ page: 'main' }, '');
+        window.history.pushState({ page: 'main' }, '');
         setTimeout(function () {
             isProcessingBack = false;
         }, 300);
