@@ -868,9 +868,9 @@ function setupFocusRescue() {
     setTimeout(function () { ensureTorrentFocus(true); }, 120);
 }
 
-//window.addEventListener('popstate', function (e) { if (window.swipeBlocked) return; var be = new KeyboardEvent('keydown', { keyCode: 27, key: 'Escape', bubbles: true, cancelable: true }); document.dispatchEvent(be); setTimeout(function () { window.history.pushState({ page: 'main' }, ''); }, 150); });
-//window.history.pushState({ page: 'main' }, '');
-//window.blockSwipe = function (ms) { window.swipeBlocked = true; setTimeout(function () { window.swipeBlocked = false; }, ms || 500); };
+window.addEventListener('popstate', function (e) { if (window.swipeBlocked) return; var be = new KeyboardEvent('keydown', { keyCode: 27, key: 'Escape', bubbles: true, cancelable: true }); document.dispatchEvent(be); setTimeout(function () { window.history.pushState({ page: 'main' }, ''); }, 150); });
+window.history.pushState({ page: 'main' }, '');
+window.blockSwipe = function (ms) { window.swipeBlocked = true; setTimeout(function () { window.swipeBlocked = false; }, ms || 500); };
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 function initControl() {
