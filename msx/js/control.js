@@ -181,7 +181,7 @@ function setFocus(index) {
         if (s === 'catalog' || s === 'torrents') container = getEl('main-container');
         else if (s === 'search') container = getEl('search-results-list');
         else if (s === 'detail') container = getEl('detail-view');
-        else if (s === 'player') container = getEl('episodes-panel') || getEl('audio-panel');
+        else if (s === 'player') container = getEl('episodes-list') || getEl('audio-list');
 
         if (!isElementFullyVisible(element, container)) {
             scrollToElementIfNeeded(element, container, !fastNavigation);
