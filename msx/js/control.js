@@ -606,79 +606,80 @@ function scrollToElementIfNeeded(el, container, smooth) {
     }
 
     if (!scrollContainer) return;
+    Animations.scrollToIfNotVisible(el, container); 
 
-    var scrollRect = isWindow ? {
-        top: 0,
-        bottom: window.innerHeight,
-        left: 0,
-        right: window.innerWidth
-    } : scrollContainer.getBoundingClientRect();
+    // var scrollRect = isWindow ? {
+    //     top: 0,
+    //     bottom: window.innerHeight,
+    //     left: 0,
+    //     right: window.innerWidth
+    // } : scrollContainer.getBoundingClientRect();
 
-    var checkTop = isWindow ? r.top : r.top - scrollRect.top + (scrollContainer.scrollTop || 0);
-    var checkBottom = isWindow ? r.bottom : r.bottom - scrollRect.top + (scrollContainer.scrollTop || 0);
-    var checkLeft = isWindow ? r.left : r.left - scrollRect.left + (scrollContainer.scrollLeft || 0);
-    var checkRight = isWindow ? r.right : r.right - scrollRect.left + (scrollContainer.scrollLeft || 0);
+    // var checkTop = isWindow ? r.top : r.top - scrollRect.top + (scrollContainer.scrollTop || 0);
+    // var checkBottom = isWindow ? r.bottom : r.bottom - scrollRect.top + (scrollContainer.scrollTop || 0);
+    // var checkLeft = isWindow ? r.left : r.left - scrollRect.left + (scrollContainer.scrollLeft || 0);
+    // var checkRight = isWindow ? r.right : r.right - scrollRect.left + (scrollContainer.scrollLeft || 0);
 
-    var scrollTop = scrollContainer.scrollTop || 0;
-    var scrollLeft = scrollContainer.scrollLeft || 0;
-    var viewportHeight = isWindow ? window.innerHeight : scrollRect.height;
-    var viewportWidth = isWindow ? window.innerWidth : scrollRect.width;
+    // var scrollTop = scrollContainer.scrollTop || 0;
+    // var scrollLeft = scrollContainer.scrollLeft || 0;
+    // var viewportHeight = isWindow ? window.innerHeight : scrollRect.height;
+    // var viewportWidth = isWindow ? window.innerWidth : scrollRect.width;
 
-    var targetY = null;
-    var targetX = null;
+    // var targetY = null;
+    // var targetX = null;
 
-    // Вертикаль
-    if (checkTop < scrollTop + 50) {
-        targetY = Math.max(0, checkTop - 20);
-        needsScroll = true;
-    } else if (checkBottom > scrollTop + viewportHeight - 50) {
-        targetY = Math.max(0, checkBottom - viewportHeight + 20);
-        needsScroll = true;
-    }
+    // // Вертикаль
+    // if (checkTop < scrollTop + 50) {
+    //     targetY = Math.max(0, checkTop - 20);
+    //     needsScroll = true;
+    // } else if (checkBottom > scrollTop + viewportHeight - 50) {
+    //     targetY = Math.max(0, checkBottom - viewportHeight + 20);
+    //     needsScroll = true;
+    // }
 
-    // Горизонталь
-    if (checkLeft < scrollLeft + 30) {
-        targetX = Math.max(0, checkLeft - 10);
-        needsScroll = true;
-    } else if (checkRight > scrollLeft + viewportWidth - 30) {
-        targetX = Math.max(0, checkRight - viewportWidth + 10);
-        needsScroll = true;
-    }
+    // // Горизонталь
+    // if (checkLeft < scrollLeft + 30) {
+    //     targetX = Math.max(0, checkLeft - 10);
+    //     needsScroll = true;
+    // } else if (checkRight > scrollLeft + viewportWidth - 30) {
+    //     targetX = Math.max(0, checkRight - viewportWidth + 10);
+    //     needsScroll = true;
+    // }
 
-    if (needsScroll) {
-        var scrollToObj = {};
-        if (targetY !== null) scrollToObj.y = targetY;
-        if (targetX !== null) scrollToObj.x = targetX;
+    // if (needsScroll) {
+    //     var scrollToObj = {};
+    //     if (targetY !== null) scrollToObj.y = targetY;
+    //     if (targetX !== null) scrollToObj.x = targetX;
 
-        if (typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-            gsap.killTweensOf(scrollContainer);
-            gsap.to(scrollContainer, {
-                scrollTo: scrollToObj,
-                duration: 0.1,
-                ease: "power0.out",
-                overwrite: true
-            });
-        } else if (smooth) {
-            try {
-                if (!isWindow) {
-                    if (targetY !== null) scrollContainer.scrollTo({ top: targetY, behavior: 'smooth' });
-                    if (targetX !== null) scrollContainer.scrollTo({ left: targetX, behavior: 'smooth' });
-                } else {
-                    window.scrollTo({
-                        top: targetY !== null ? targetY : window.scrollY,
-                        left: targetX !== null ? targetX : window.scrollX,
-                        behavior: 'smooth'
-                    });
-                }
-            } catch (e) {
-                if (targetY !== null) scrollContainer.scrollTop = targetY;
-                if (targetX !== null) scrollContainer.scrollLeft = targetX;
-            }
-        } else {
-            if (targetY !== null) scrollContainer.scrollTop = targetY;
-            if (targetX !== null) scrollContainer.scrollLeft = targetX;
-        }
-    }
+    //     if (typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
+    //         gsap.killTweensOf(scrollContainer);
+    //         gsap.to(scrollContainer, {
+    //             scrollTo: scrollToObj,
+    //             duration: 0.1,
+    //             ease: "power0.out",
+    //             overwrite: true
+    //         });
+    //     } else if (smooth) {
+    //         try {
+    //             if (!isWindow) {
+    //                 if (targetY !== null) scrollContainer.scrollTo({ top: targetY, behavior: 'smooth' });
+    //                 if (targetX !== null) scrollContainer.scrollTo({ left: targetX, behavior: 'smooth' });
+    //             } else {
+    //                 window.scrollTo({
+    //                     top: targetY !== null ? targetY : window.scrollY,
+    //                     left: targetX !== null ? targetX : window.scrollX,
+    //                     behavior: 'smooth'
+    //                 });
+    //             }
+    //         } catch (e) {
+    //             if (targetY !== null) scrollContainer.scrollTop = targetY;
+    //             if (targetX !== null) scrollContainer.scrollLeft = targetX;
+    //         }
+    //     } else {
+    //         if (targetY !== null) scrollContainer.scrollTop = targetY;
+    //         if (targetX !== null) scrollContainer.scrollLeft = targetX;
+    //     }
+    // }
 }
 
 function VISIBLE(el) { return !!(el && el.offsetParent !== null && !el.disabled); };
