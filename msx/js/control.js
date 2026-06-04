@@ -169,7 +169,7 @@ function setFocus(index) {
         window.lastSelectedTorrentIndex = lastSelectedTorrentIndex;
     }
 
-    //if (typeof Animations !== 'undefined') Animations.animateFocus(element);
+    if (typeof Animations !== 'undefined') Animations.animateFocus(element);
 
     // Сброс фокуса с инпутов
     if (document.activeElement && document.activeElement.tagName === 'INPUT') {
