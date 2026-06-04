@@ -68,7 +68,7 @@ var AppState = {
   isSerials: false
 };
 
-var noCacheElements = ['load-more-trigger', 'detail-progress'];
+var noCacheElements = ['load-more-trigger', 'detail-progress', 'detail-view'];
 var domCache = {};
 
 // Кэш для часто используемых DOM-элементов (ленивая инициализация)
