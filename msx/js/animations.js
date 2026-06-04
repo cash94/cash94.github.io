@@ -476,6 +476,68 @@ var Animations = (function () {
             });
         }
     }
+    // Проверка, находится ли элемент полностью в зоне видимости контейнера
+    function isElementInView(element, container) {
+        if (!element) return false;
+
+        var elRect = element.getBoundingClientRect();
+        var containerRect = (container === window || !container)
+            ? { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth }
+            : container.getBoundingClientRect();
+
+        // Элемент считается видимым, если он полностью помещается в границы контейнера
+        // (Если нужна проверка только по вертикали, можно убрать условия для left/right)
+        return (
+            elRect.top >= containerRect.top &&
+            elRect.bottom <= containerRect.bottom &&
+            elRect.left >= containerRect.left &&
+            elRect.right <= containerRect.right
+        );
+    }
+
+    // Проверка видимости и прокрутка к элементу, если он не виден
+    function scrollToIfNotVisible(element, container, options) {
+        if (!element) return;
+
+        // Если элемент уже виден, прокрутка не требуется
+        if (isElementInView(element, container)) {
+            return;
+        }
+
+        // Если не виден, выполняем прокрутку
+        options = options || {};
+        var duration = options.duration || 0.15;
+        var ease = options.ease || "power0.out";
+        var offset = options.offset || 0;
+
+        var targetContainer = container || window;
+
+        if (targetContainer !== window && targetContainer.scrollTop !== undefined) {
+            var rect = element.getBoundingClientRect();
+            var containerRect = targetContainer.getBoundingClientRect();
+            var targetTop = targetContainer.scrollTop + (rect.top - containerRect.top) - offset;
+            targetTop = Math.max(0, Math.min(targetContainer.scrollHeight - containerRect.height, targetTop));
+
+            gsap.killTweensOf(targetContainer);
+            gsap.to(targetContainer, {
+                scrollTop: targetTop,
+                duration: duration,
+                ease: ease,
+                overwrite: true
+            });
+        } else {
+            var targetY = window.scrollY + element.getBoundingClientRect().top - offset;
+            targetY = Math.max(0, targetY);
+
+            gsap.killTweensOf(window);
+            gsap.to(window, {
+                scrollTo: { y: targetY },
+                duration: duration,
+                ease: ease,
+                overwrite: true
+            });
+        }
+    }
 
     // Публичное API
     return {
@@ -506,6 +568,8 @@ var Animations = (function () {
         animateScreenTransition: animateScreenTransition,
         refreshAnimations: refreshAnimations,
         quickScrollTo: quickScrollTo,
+        isElementInView: isElementInView,
+        scrollToIfNotVisible: scrollToIfNotVisible,
 
         // Конфигурация
         config: config,
