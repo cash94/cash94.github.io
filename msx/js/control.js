@@ -149,14 +149,14 @@ function setFocus(index) {
     if (index >= focusableElements.length) index = 0;
     currentFocusIndex = index;
 
-    //requestAnimationFrame(function () {
-    //var focused = document.querySelectorAll('.focused');
-    //for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
+    requestAnimationFrame(function () {
+    var focused = document.querySelectorAll('.focused');
+    for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
 
     var element = focusableElements[currentFocusIndex];
     if (!element) return;
-    focusEl(element);
-    //element.classList.add('focused');
+    //focusEl(element);
+    element.classList.add('focused');
 
     if (AppState.currentScreen === 'torrents' && element.classList.contains('torrent-card')) {
         var row1Len = (window.torrentRows && window.torrentRows.row1 ? window.torrentRows.row1.length : 0);
@@ -169,7 +169,7 @@ function setFocus(index) {
         window.lastSelectedTorrentIndex = lastSelectedTorrentIndex;
     }
 
-    if (typeof Animations !== 'undefined') Animations.animateFocus(element);
+    //if (typeof Animations !== 'undefined') Animations.animateFocus(element);
 
     // Сброс фокуса с инпутов
     if (document.activeElement && document.activeElement.tagName === 'INPUT') {
@@ -178,15 +178,15 @@ function setFocus(index) {
     }
 
     // Скролл
-    //var container = null, s = AppState.currentScreen;
-    //if (s === 'catalog' || s === 'torrents') container = getEl('main-container');
-    //else if (s === 'search') container = getEl('search-results-list');
-    //else if (s === 'detail') container = getEl('detail-view');
-    //else if (s === 'player') container = getEl('episodes-list') || getEl('audio-list');
+    var container = null, s = AppState.currentScreen;
+    if (s === 'catalog' || s === 'torrents') container = getEl('main-container');
+    else if (s === 'search') container = getEl('search-results-list');
+    else if (s === 'detail') container = getEl('detail-view');
+    else if (s === 'player') container = getEl('episodes-list') || getEl('audio-list');
 
-    //if (!isElementFullyVisible(element, container)) {
-        //scrollToElementIfNeeded(element, container, !fastNavigation);
-    //}
+    if (!isElementFullyVisible(element, container)) {
+        scrollToElementIfNeeded(element, container, !fastNavigation);
+    }
     //});
 }
 
