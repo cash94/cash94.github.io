@@ -601,6 +601,8 @@ function scrollToElementIfNeeded(el, container, smooth) {
             container.scrollTop = targetScrollTop;
         }
         return;
+    } else if (container.id == 'episodes-panel' || container.id == 'audio-panel') {
+        Animations.scrollToIfNotVisible(el, container);   
     }
 
     if (!scrollContainer) return;
