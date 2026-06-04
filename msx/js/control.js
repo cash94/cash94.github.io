@@ -648,7 +648,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
         if (targetY !== null) scrollToObj.y = targetY;
         if (targetX !== null) scrollToObj.x = targetX;
 
-        if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
+        if (typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
             gsap.killTweensOf(scrollContainer);
             gsap.to(scrollContainer, {
                 scrollTo: scrollToObj,
