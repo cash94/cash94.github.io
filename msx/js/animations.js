@@ -119,7 +119,7 @@ var Animations = (function () {
 
         var tl = gsap.timeline({
             defaults: {
-                duration: 0.2,
+                duration: 0.3,
                 ease: "power2.out"  // Самый производительный и плавный ease
             }
         });
