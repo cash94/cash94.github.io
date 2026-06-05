@@ -740,23 +740,46 @@ async function showCatalogDetail(item, index, posterUrl) {
         });
     } else if (rw) rw.classList.add('hidden');
 
+    // Удаляем старый слушатель, если он существует
+    if (window._trailersClickListener) {
+        var oldTe2 = getEl('catalog-detail-trailers');
+        if (oldTe2 && window._trailersClickListener) {
+            oldTe2.removeEventListener('click', window._trailersClickListener);
+        }
+    }
+
     var vids = (src.videos && Array.isArray(src.videos) ? src.videos.filter(function (v) { var t = (v.type || '').toLowerCase(); return t.indexOf('trailer') !== -1 || t.indexOf('teaser') !== -1; }).slice(0, 6) : []);
     var tw = getEl('catalog-detail-trailers-wrap'), te2 = getEl('catalog-detail-trailers');
     if (vids.length > 0) {
-        tw.classList.remove('hidden'); te2.classList.add('catalog-detail-trailers-grid'); te2.classList.remove('catalog-detail-trailers-links');
+        tw.classList.remove('hidden');
+        te2.classList.add('catalog-detail-trailers-grid');
+        te2.classList.remove('catalog-detail-trailers-links');
         te2.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:16px;padding:10px;';
         var frag = document.createDocumentFragment();
         vids.forEach(function (v) {
-            var d = document.createElement('div'); d.className = 'catalog-trailer-card-item'; d.dataset.videoUrl = v.key; d.dataset.videoTitle = v.name || 'Трейлер';
+            var d = document.createElement('div');
+            d.className = 'catalog-trailer-card-item';
+            d.dataset.videoUrl = v.key;
+            d.dataset.videoTitle = v.name || 'Трейлер';
             d.innerHTML = '<div class="catalog-trailer-poster" style="position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:12px;background:linear-gradient(135deg,#1a1a2e,#16213e)"><img src="https://img.youtube.com/vi/' + v.key + '/mqdefault.jpg" alt="' + escapeHtml(v.name || 'Трейлер') + '" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'></div>\'"><div class="catalog-trailer-play-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s;cursor:pointer"><div style="width:60px;height:60px;background:rgba(74,158,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;color:white">▶</div></div>' + (v.duration ? '<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:white;font-size:12px;padding:3px 8px;border-radius:12px;font-family:monospace">' + formatDuration(v.duration) + '</div>' : '') + '</div><div class="catalog-trailer-info" style="padding:10px"><div class="catalog-trailer-title" style="font-size:14px;font-weight:600;color:#fff;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(v.name || 'Трейлер') + '</div><div class="catalog-trailer-meta" style="display:flex;gap:10px;font-size:12px;color:#aaa"><span>Трейлер</span>' + (v.duration ? '<span>⏱️ ' + formatDuration(v.duration) + '</span>' : '') + '</div></div>';
             frag.appendChild(d);
         });
-        te2.innerHTML = ''; te2.appendChild(frag);
-        te2.addEventListener('click', function (e) {
-            var c = e.target.closest('.catalog-trailer-card-item'); if (!c) return;
-            hideCatalogDetailView(); openYoutubeInPlayer(c.dataset.videoUrl, c.dataset.videoTitle);
-        });
-    } else tw.classList.add('hidden');
+        te2.innerHTML = '';
+        te2.appendChild(frag);
+
+        // Создаем и сохраняем новый обработчик
+        window._trailersClickListener = function (e) {
+            var c = e.target.closest('.catalog-trailer-card-item');
+            if (!c) return;
+            hideCatalogDetailView();
+            openYoutubeInPlayer(c.dataset.videoUrl, c.dataset.videoTitle);
+        };
+
+        // Добавляем новый слушатель
+        te2.addEventListener('click', window._trailersClickListener);
+    } else {
+        tw.classList.add('hidden');
+    }
 
     requestAnimationFrame(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
