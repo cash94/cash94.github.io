@@ -723,22 +723,44 @@ async function showCatalogDetail(item, index, posterUrl) {
         } else ae.innerHTML = '<div class="catalog-empty">Актеры не найдены</div>';
     }
 
+    // Удаляем старый слушатель для рекомендаций, если он существует
+    if (window._recommendationsClickListener) {
+        var oldRe = getEl('catalog-detail-recommendations');
+        if (oldRe && window._recommendationsClickListener) {
+            oldRe.removeEventListener('click', window._recommendationsClickListener);
+        }
+    }
+
     if (rw && src.recommendations && src.recommendations.length > 0) {
         var re = getEl('catalog-detail-recommendations');
-        re.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка похожих фильмов...</span></div>'; rw.classList.remove('hidden');
+        re.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка похожих фильмов...</span></div>';
+        rw.classList.remove('hidden');
         var recs = src.recommendations.slice(0, 12), frag = document.createDocumentFragment();
         recs.forEach(function (r) {
-            var d = document.createElement('div'); d.className = 'catalog-recommendation-card'; d.dataset.tmdbId = r.id; d.dataset.mediaType = mt; d.dataset.title = r.title || r.name || 'Без названия';
+            var d = document.createElement('div');
+            d.className = 'catalog-recommendation-card';
+            d.dataset.tmdbId = r.id;
+            d.dataset.mediaType = mt;
+            d.dataset.title = r.title || r.name || 'Без названия';
             var pu = r.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/w185' + r.poster_path : null;
             d.innerHTML = '<div class="catalog-recommendation-poster">' + (pu ? '<img src="' + pu + '" loading="lazy" alt="' + escapeHtml(d.dataset.title) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-recommendation-no-poster\\\'> </div>\'">' : '<div class="catalog-recommendation-no-poster"> </div>') + (r.vote_average ? '<div class="catalog-recommendation-rating">' + Math.round(r.vote_average * 10) / 10 + '</div>' : '') + '</div><div class="catalog-recommendation-info"><div class="catalog-recommendation-title">' + escapeHtml(d.dataset.title) + '</div>' + (r.release_date ? '<div class="catalog-recommendation-year">' + r.release_date.substring(0, 4) + '</div>' : '') + '</div>';
             frag.appendChild(d);
         });
-        re.innerHTML = ''; re.appendChild(frag);
-        re.addEventListener('click', function (e) {
-            var c = e.target.closest('.catalog-recommendation-card'); if (!c) return;
+        re.innerHTML = '';
+        re.appendChild(frag);
+
+        // Создаем и сохраняем новый обработчик для рекомендаций
+        window._recommendationsClickListener = function (e) {
+            var c = e.target.closest('.catalog-recommendation-card');
+            if (!c) return;
             showCatalogDetail({ id: c.dataset.tmdbId, media_type: c.dataset.mediaType, torrent: [{ name: c.dataset.title }], title: c.dataset.title, name: c.dataset.title }, 0, null);
-        });
-    } else if (rw) rw.classList.add('hidden');
+        };
+
+        // Добавляем новый слушатель
+        re.addEventListener('click', window._recommendationsClickListener);
+    } else if (rw) {
+        rw.classList.add('hidden');
+    }
 
     // Удаляем старый слушатель, если он существует
     if (window._trailersClickListener) {
