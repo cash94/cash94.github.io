@@ -799,38 +799,116 @@ async function openYoutubeInPlayer(url, title) {
     if (dv) { dv.style.display = 'none'; dv.style.pointerEvents = 'none'; } if (mc) mc.style.pointerEvents = 'none';
     var po = getEl('playback-overlay'); if (po) { po.classList.add('active'); var pt = po.querySelector('.playback-text'); if (pt) pt.textContent = 'Загрузка трейлера: ' + title + '...'; }
     try {
-        var st = await fetch(SERVER_URL + '/api/youtube/status').then(r => r.json());
-        if (!st.available) throw new Error('yt-dlp не установлен');
-        var sd = await fetch(SERVER_URL + '/hls/youtube?url=' + encodeURIComponent(url) + '&quality=best').then(r => r.json());
-        if (!sd.success) throw new Error(sd.error || 'Ошибка потока');
-        var old = AppState.currentStreamId; AppState.currentStreamId = sd.streamId; AppState.videoUrl = url; AppState.expectedDuration = sd.duration; AppState.seekOffset = sd.seekOffset || 0; AppState.isYoutubePlayback = true; AppState.youtubeContext = { currentDetailItem: cd, catalogName: cn, itemIndex: ci };
+        // Извлекаем ID видео из URL
+        var videoId = url;
+
+        // Новый API запрос
+        var apiUrl = 'https://tube.vidaapp.cfd/api/v1/video?v=' + videoId + '&device=thebest';
+        var response = await fetch(apiUrl);
+        var data = await response.json();
+
+        // Ищем m3u8_native с качеством 480p
+        var m3u8Url = null;
+        if (data.formats && Array.isArray(data.formats)) {
+            var format = data.formats.find(f => f.protocol === 'm3u8_native' && f.label === '480p');
+            if (format && format.url) {
+                m3u8Url = format.url;
+            } else {
+                // Если 480p не найден, пробуем взять любой m3u8_native
+                var anyM3u8 = data.formats.find(f => f.protocol === 'm3u8_native');
+                if (anyM3u8 && anyM3u8.url) {
+                    m3u8Url = anyM3u8.url;
+                }
+            }
+        }
+
+        if (!m3u8Url) {
+            throw new Error('Не найден HLS поток для видео');
+        }
+
+        // Сохраняем состояние
+        var old = AppState.currentStreamId;
+        AppState.videoUrl = url;
+        AppState.isYoutubePlayback = true;
+        AppState.youtubeContext = { currentDetailItem: cd, catalogName: cn, itemIndex: ci };
         AppState.currentDetailItem = { title: title, hash: null, isYoutube: true, youtubeUrl: url };
+
         if (old) fetch(SERVER_URL + '/hls/stop/' + old, { method: 'POST' }).catch(() => { });
         if (window.destroyHls) window.destroyHls();
+
         var vp = getEl('video-player');
+
         if (Hls.isSupported()) {
-            AppState.hls = new Hls({ maxBufferSize: 80 * 1024 * 1024, maxBufferLength: 30, backBufferLength: 20, startLevel: -1, abrEwmaDefaultEstimate: 500000, fragLoadingTimeOut: 10000, manifestLoadingTimeOut: 10000, enableWorker: true, progressive: true });
-            AppState.hls.loadSource(sd.playlistUrl); AppState.hls.attachMedia(vp);
+            AppState.hls = new Hls({
+                maxBufferSize: 80 * 1024 * 1024,
+                maxBufferLength: 30,
+                backBufferLength: 20,
+                startLevel: -1,
+                abrEwmaDefaultEstimate: 500000,
+                fragLoadingTimeOut: 10000,
+                manifestLoadingTimeOut: 10000,
+                enableWorker: true,
+                progressive: true
+            });
+
+            AppState.hls.loadSource(m3u8Url);
+            AppState.hls.attachMedia(vp);
+
             var started = false;
+
             AppState.hls.on(Hls.Events.MANIFEST_PARSED, function () {
                 if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
-                vp.currentTime = 0; vp.pause();
+                vp.currentTime = 0;
+                vp.pause();
+
                 var iv = setInterval(function () {
                     if (started) return clearInterval(iv);
                     if (vp.buffered && vp.buffered.length > 0 && vp.buffered.end(vp.buffered.length - 1) - vp.currentTime >= 3) {
-                        clearInterval(iv); if (po) po.classList.remove('active');
-                        vp.play().catch(() => { vp.muted = true; vp.play().catch(() => { }); if (typeof window.updateMuteButton === 'function') window.updateMuteButton(); });
-                        started = true; getEl('player-screen').style.display = 'block'; getEl('config-screen').style.display = 'none'; getEl('torrserver-section').style.display = 'none';
-                        document.querySelectorAll('.focused').forEach(e => e.classList.remove('focused')); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+                        clearInterval(iv);
+                        if (po) po.classList.remove('active');
+                        vp.play().catch(() => {
+                            vp.muted = true;
+                            vp.play().catch(() => { });
+                            if (typeof window.updateMuteButton === 'function') window.updateMuteButton();
+                        });
+                        started = true;
+                        getEl('player-screen').style.display = 'block';
+                        getEl('config-screen').style.display = 'none';
+                        getEl('torrserver-section').style.display = 'none';
+                        document.querySelectorAll('.focused').forEach(e => e.classList.remove('focused'));
+                        if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
                     }
                 }, 500);
             });
-            AppState.hls.on(Hls.Events.ERROR, function (ev, d) { if (d.fatal) { if (po) po.classList.remove('active'); alert('Ошибка воспроизведения'); } });
+
+            AppState.hls.on(Hls.Events.ERROR, function (ev, d) {
+                if (d.fatal) {
+                    if (po) po.classList.remove('active');
+                    alert('Ошибка воспроизведения');
+                }
+            });
+
         } else if (vp.canPlayType('application/vnd.apple.mpegurl')) {
-            vp.src = sd.playlistUrl; vp.addEventListener('loadedmetadata', function () { if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title); if (po) po.classList.remove('active'); vp.play().catch(() => { }); getEl('player-screen').style.display = 'block'; });
-        } else throw new Error('Браузер не поддерживает HLS');
+            vp.src = m3u8Url;
+            vp.addEventListener('loadedmetadata', function () {
+                if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
+                if (po) po.classList.remove('active');
+                vp.play().catch(() => { });
+                getEl('player-screen').style.display = 'block';
+            });
+        } else {
+            throw new Error('Браузер не поддерживает HLS');
+        }
+
         AppState.currentScreen = 'player';
-    } catch (e) { console.error('YouTube error:', e); if (po) po.classList.remove('active'); alert('Ошибка: ' + e.message); if (dv) { dv.style.display = 'block'; dv.style.pointerEvents = 'auto'; } if (mc) mc.style.pointerEvents = 'auto'; }
+
+    } catch (e) {
+        console.error('YouTube error:', e);
+        if (po) po.classList.remove('active');
+        alert('Ошибка: ' + e.message);
+        if (dv) { dv.style.display = 'block'; dv.style.pointerEvents = 'auto'; }
+        if (mc) mc.style.pointerEvents = 'auto';
+    }
 }
 
 function exitYoutubePlayer() {
