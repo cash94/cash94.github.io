@@ -803,18 +803,18 @@ async function openYoutubeInPlayer(url, title) {
         var videoId = url;
 
         // Новый API запрос
-        var apiUrl = 'https://tube.vidaapp.cfd/api/v1/video?v=' + videoId + '&device=thebest';
+        var apiUrl = 'https://tube.vidaapp.cfd/api/v1/video?v=' + videoId + '&device=vidaa-968394708';
         var response = await fetch(apiUrl);
         var data = await response.json();
 
         // Ищем m3u8_native с качеством 480p
         var m3u8Url = null;
         if (data.formats && Array.isArray(data.formats)) {
-            var format = data.formats.find(f => f.protocol === 'm3u8_native' && f.label === '480p');
+            var format = data.formats.find(f => f.protocol === 'm3u8_native' && f.label === '1080p');
             if (format && format.url) {
                 m3u8Url = format.url;
             } else {
-                // Если 480p не найден, пробуем взять любой m3u8_native
+                // Если 1080p не найден, пробуем взять любой m3u8_native
                 var anyM3u8 = data.formats.find(f => f.protocol === 'm3u8_native');
                 if (anyM3u8 && anyM3u8.url) {
                     m3u8Url = anyM3u8.url;
