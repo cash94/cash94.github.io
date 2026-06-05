@@ -836,84 +836,84 @@ async function openYoutubeInPlayer(url, title) {
 
             console.log('📱 Запуск внешнего плеера:', playerData);
             AndroidJS.openPlayer(m3u8Url, JSON.stringify(playerData));
-        }
-
-        // Сохраняем состояние
-        var old = AppState.currentStreamId;
-        AppState.videoUrl = url;
-        AppState.isYoutubePlayback = true;
-        AppState.youtubeContext = { currentDetailItem: cd, catalogName: cn, itemIndex: ci };
-        AppState.currentDetailItem = { title: title, hash: null, isYoutube: true, youtubeUrl: url };
-
-        if (old) fetch(SERVER_URL + '/hls/stop/' + old, { method: 'POST' }).catch(() => { });
-        if (window.destroyHls) window.destroyHls();
-
-        var vp = getEl('video-player');
-
-        if (Hls.isSupported()) {
-            AppState.hls = new Hls({
-                maxBufferSize: 80 * 1024 * 1024,
-                maxBufferLength: 30,
-                backBufferLength: 20,
-                startLevel: -1,
-                abrEwmaDefaultEstimate: 500000,
-                fragLoadingTimeOut: 10000,
-                manifestLoadingTimeOut: 10000,
-                enableWorker: true,
-                progressive: true
-            });
-
-            AppState.hls.loadSource(m3u8Url);
-            AppState.hls.attachMedia(vp);
-
-            var started = false;
-
-            AppState.hls.on(Hls.Events.MANIFEST_PARSED, function () {
-                if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
-                vp.currentTime = 0;
-                vp.pause();
-
-                var iv = setInterval(function () {
-                    if (started) return clearInterval(iv);
-                    if (vp.buffered && vp.buffered.length > 0 && vp.buffered.end(vp.buffered.length - 1) - vp.currentTime >= 3) {
-                        clearInterval(iv);
-                        if (po) po.classList.remove('active');
-                        vp.play().catch(() => {
-                            vp.muted = true;
-                            vp.play().catch(() => { });
-                            if (typeof window.updateMuteButton === 'function') window.updateMuteButton();
-                        });
-                        started = true;
-                        getEl('player-screen').style.display = 'block';
-                        getEl('config-screen').style.display = 'none';
-                        getEl('torrserver-section').style.display = 'none';
-                        document.querySelectorAll('.focused').forEach(e => e.classList.remove('focused'));
-                        if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                    }
-                }, 500);
-            });
-
-            AppState.hls.on(Hls.Events.ERROR, function (ev, d) {
-                if (d.fatal) {
-                    if (po) po.classList.remove('active');
-                    alert('Ошибка воспроизведения');
-                }
-            });
-
-        } else if (vp.canPlayType('application/vnd.apple.mpegurl')) {
-            vp.src = m3u8Url;
-            vp.addEventListener('loadedmetadata', function () {
-                if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
-                if (po) po.classList.remove('active');
-                vp.play().catch(() => { });
-                getEl('player-screen').style.display = 'block';
-            });
         } else {
-            throw new Error('Браузер не поддерживает HLS');
+
+            // Сохраняем состояние
+            var old = AppState.currentStreamId;
+            AppState.videoUrl = url;
+            AppState.isYoutubePlayback = true;
+            AppState.youtubeContext = { currentDetailItem: cd, catalogName: cn, itemIndex: ci };
+            AppState.currentDetailItem = { title: title, hash: null, isYoutube: true, youtubeUrl: url };
+
+            if (old) fetch(SERVER_URL + '/hls/stop/' + old, { method: 'POST' }).catch(() => { });
+            if (window.destroyHls) window.destroyHls();
+
+            var vp = getEl('video-player');
+
+            if (Hls.isSupported()) {
+                AppState.hls = new Hls({
+                    maxBufferSize: 80 * 1024 * 1024,
+                    maxBufferLength: 30,
+                    backBufferLength: 20,
+                    startLevel: -1,
+                    abrEwmaDefaultEstimate: 500000,
+                    fragLoadingTimeOut: 10000,
+                    manifestLoadingTimeOut: 10000,
+                    enableWorker: true,
+                    progressive: true
+                });
+
+                AppState.hls.loadSource(m3u8Url);
+                AppState.hls.attachMedia(vp);
+
+                var started = false;
+
+                AppState.hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                    if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
+                    vp.currentTime = 0;
+                    vp.pause();
+
+                    var iv = setInterval(function () {
+                        if (started) return clearInterval(iv);
+                        if (vp.buffered && vp.buffered.length > 0 && vp.buffered.end(vp.buffered.length - 1) - vp.currentTime >= 3) {
+                            clearInterval(iv);
+                            if (po) po.classList.remove('active');
+                            vp.play().catch(() => {
+                                vp.muted = true;
+                                vp.play().catch(() => { });
+                                if (typeof window.updateMuteButton === 'function') window.updateMuteButton();
+                            });
+                            started = true;
+                            getEl('player-screen').style.display = 'block';
+                            getEl('config-screen').style.display = 'none';
+                            getEl('torrserver-section').style.display = 'none';
+                            document.querySelectorAll('.focused').forEach(e => e.classList.remove('focused'));
+                            if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+                        }
+                    }, 500);
+                });
+
+                AppState.hls.on(Hls.Events.ERROR, function (ev, d) {
+                    if (d.fatal) {
+                        if (po) po.classList.remove('active');
+                        alert('Ошибка воспроизведения');
+                    }
+                });
+
+            } else if (vp.canPlayType('application/vnd.apple.mpegurl')) {
+                vp.src = m3u8Url;
+                vp.addEventListener('loadedmetadata', function () {
+                    if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
+                    if (po) po.classList.remove('active');
+                    vp.play().catch(() => { });
+                    getEl('player-screen').style.display = 'block';
+                });
+            } else {
+                throw new Error('Браузер не поддерживает HLS');
+            }
+
+            AppState.currentScreen = 'player';
         }
-
-        AppState.currentScreen = 'player';
-
     } catch (e) {
         console.error('YouTube error:', e);
         if (po) po.classList.remove('active');
