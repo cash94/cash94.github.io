@@ -15,7 +15,7 @@ var CATALOG_CONFIG = {
 
 // ==================== TMDB КЭШ (Оптимизирован) ====================
 var tmdbCache = {};
-var cats = {};
+var cats = [];
 var TMDB_CACHE_CONFIG = {
     ttl: 3600000,
     maxSize: 75,
