@@ -15,6 +15,7 @@ var CATALOG_CONFIG = {
 
 // ==================== TMDB КЭШ (Оптимизирован) ====================
 var tmdbCache = {};
+var cats = {};
 var TMDB_CACHE_CONFIG = {
     ttl: 3600000,
     maxSize: 75,
@@ -996,7 +997,9 @@ async function showCatalogList() {
     var searchTab = getEl('tab-search');
     if (searchTab) searchTab.classList.remove('active');
     grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка списка каталогов...</div></div>';
-    var cats = await fetchAvailableCatalogs();
+    if (cats.length == 0) {
+        cats = await fetchAvailableCatalogs();
+    }
     if (AppState.currentScreen !== 'catalog') return;
     grid.innerHTML = '';
     if (cats.length === 0) {
