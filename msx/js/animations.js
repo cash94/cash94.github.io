@@ -107,48 +107,30 @@ var Animations = (function () {
         detailView.style.display = 'block';
         detailView.style.zIndex = '100';
         detailView.style.pointerEvents = 'auto';
-        detailView.style.willChange = 'transform, opacity';
 
-        // Устанавливаем начальные значения
+        // Используем transform: translateY вместо y для лучшей производительности
+        // и избегаем willChange (экономия памяти)
         gsap.set(detailView, {
             opacity: 0,
-            y: 10,
-            scale: 0.98
+            y: 8,
+            scale: 0.99,
+            force3D: false  // Отключаем 3D для слабых устройств (экономит память GPU)
         });
 
-        var tl = gsap.timeline();
+        var tl = gsap.timeline({
+            defaults: {
+                duration: 0.2,
+                ease: "power2.out"  // Самый производительный и плавный ease
+            }
+        });
 
+        // Основной контейнер
         tl.to(detailView, {
             opacity: 1,
             y: 0,
             scale: 1,
-            duration: config.duration.fast,
-            ease: config.ease.smooth
-        });
-
-        // Анимация заголовка
-        var title = detailView.querySelector('.detail-title');
-        if (title) {
-            gsap.set(title, { y: -15, opacity: 0 });
-            tl.to(title, {
-                y: 0,
-                opacity: 1,
-                duration: config.duration.fast,
-                ease: config.ease.smooth
-            }, "-=0.15");
-        }
-
-        // Анимация постера
-        var poster = detailView.querySelector('.detail-poster');
-        if (poster) {
-            gsap.set(poster, { scale: 0.95, opacity: 0 });
-            tl.to(poster, {
-                scale: 1,
-                opacity: 1,
-                duration: config.duration.fast,
-                ease: config.ease.smooth
-            }, "-=0.15");
-        }
+            duration: 0.2
+        }, 0);
 
         return tl;
     }
