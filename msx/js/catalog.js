@@ -826,6 +826,18 @@ async function openYoutubeInPlayer(url, title) {
             throw new Error('Не найден HLS поток для видео');
         }
 
+        if (window.AndroidJS) {
+            // Формируем данные
+            var playerData = {
+                url: m3u8Url,
+                title: title || 'Видео',
+                iptv: false
+            };
+
+            console.log('📱 Запуск внешнего плеера:', playerData);
+            AndroidJS.openPlayer(m3u8Url, JSON.stringify(playerData));
+        }
+
         // Сохраняем состояние
         var old = AppState.currentStreamId;
         AppState.videoUrl = url;
