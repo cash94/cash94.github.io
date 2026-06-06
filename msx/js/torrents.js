@@ -3029,7 +3029,7 @@ async function playFromHash(hash, magnet, searchResult) {
         }
 
         if (!isSerial) {
-            var fileId = playbackTarget.fileId || 1;
+            var fileId = 1;
 
             if (window.AndroidJS) {
                 getEl('playback-overlay').classList.remove('active');
@@ -3055,6 +3055,7 @@ async function playFromHash(hash, magnet, searchResult) {
                 return true;
             }
             var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
+            fileId = playbackTarget.fileId || 1;
             document.querySelector('.playback-text').textContent = 'Воспроизведение...';
 
             var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
