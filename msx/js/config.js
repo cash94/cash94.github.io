@@ -69,7 +69,8 @@ var AppState = {
   playFromHash: false,
   androidBackCatalog: '',
   catalogIndex: null,
-  catalogPu: null
+  catalogPu: null,
+  backCurrentCatalog: ''
 };
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
