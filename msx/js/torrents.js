@@ -3168,7 +3168,7 @@ function renderSearchResults() {
               console.error('Данные:', resultJsonEncoded);
             }
           }
-
+          AppState.playFromHash = true;
           playFromHash(hash, magnet, searchResult);
         } else {
           alert('Не удалось извлечь hash из magnet ссылки');
