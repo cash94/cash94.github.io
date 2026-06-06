@@ -2918,11 +2918,10 @@ async function refreshTorrentsList() {
         });
 
         if (response.ok) {
-            if (!window.AndroidJS && !AppState.Hash) {
-                var data = await response.json();
-                AppState.torrents = Array.isArray(data) ? data : [];
-                renderTorrents();
-
+            var data = await response.json();
+            AppState.torrents = Array.isArray(data) ? data : [];
+            renderTorrents();
+            if (!window.AndroidJS && !AppState.playFromHash) {
                 if (AppState.currentScreen === 'torrents') {
                     setTimeout(function () {
                         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
@@ -3065,7 +3064,9 @@ async function playFromHash(hash, magnet, searchResult) {
             await new Promise(resolve => setTimeout(resolve, 3000));
             AppState.androidBackCatalog = AppState.currentDetailItem;
             AppState.currentDetailItem = addedTorrent;
-            hideSearchResults();
+            if (!window.AndroidJS) {
+                hideSearchResults();
+            }
             AppState.inSearch = "torrents";
             showDetail(addedTorrent);
         }
