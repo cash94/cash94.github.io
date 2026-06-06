@@ -2898,10 +2898,16 @@ function updatePlayerTimeline(timelineData) {
         console.error('Ошибка сохранения таймкода:', e);
       });
     }
-    if (AppState.playFromHash) {
+    if (AppState.playFromHash && AppState.isCatalogSerials) {
+      AppState.playFromHash = false;
+      AppState.isCatalogSerials = false;
+      window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+      return;
+    } else if (AppState.playFromHash) {
       AppState.playFromHash = false;
       return;
     }
+      
     showDetailView();
     // Обновляем прогресс в UI
     if (AppState && AppState.currentDetailItem && currentTimecodeData.hash) {
