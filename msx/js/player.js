@@ -2893,11 +2893,11 @@ function updatePlayerTimeline(timelineData) {
         console.error('Ошибка сохранения таймкода:', e);
       });
     }
+    showDetailView();
     // Обновляем прогресс в UI
     if (AppState && AppState.currentDetailItem && currentTimecodeData.hash) {
       updateDetailProgress(AppState.currentDetailItem);
     }
-    showDetailView();
   } catch (error) {
     console.error('❌ Ошибка в updatePlayerTimeline:', error);
   }
