@@ -1074,3 +1074,4 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 
 window.loadCatalogList = showCatalogList; window.backToCatalogList = backToCatalogList; window.exitYoutubePlayer = exitYoutubePlayer; window.loadMoreCatalogItems = loadMoreCatalogItems;
 window.catalog = { loadCatalog: loadCatalog, showCatalogList: showCatalogList, backToCatalogList: backToCatalogList, tmdbCache: { clear: clearTmdbCache, stats: getTmdbCacheStats } };
+window.showCatalogDetail = showCatalogDetail;
