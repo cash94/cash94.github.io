@@ -2931,9 +2931,9 @@ async function refreshTorrentsList() {
         if (response.ok) {
             var data = await response.json();
             AppState.torrents = Array.isArray(data) ? data : [];
-            
+            renderTorrents();            
             if (!window.AndroidJS && !AppState.playFromHash) {
-                renderTorrents();
+                
                 if (AppState.currentScreen === 'torrents') {
                     setTimeout(function () {
                         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
@@ -3076,6 +3076,7 @@ async function playFromHash(hash, magnet, searchResult) {
             await new Promise(resolve => setTimeout(resolve, 3000));
             AppState.androidBackCatalog = AppState.currentDetailItem;
             AppState.currentDetailItem = addedTorrent;
+            AppState.isCatalogSerials = true;
             hideSearchResults();
             if (!window.AndroidJS) {
                 AppState.inSearch = "torrents";
