@@ -3041,7 +3041,7 @@ async function playFromHash(hash, magnet, searchResult) {
                     title: addedTorrent.title  || 'Видео',
                     iptv: false,
                     timeline: {
-                        hash: torrentHash + '_' + fileId,
+                        hash: hash + '_' + fileId,
                         time: 0,
                         duration: 0,
                         percent: 0
