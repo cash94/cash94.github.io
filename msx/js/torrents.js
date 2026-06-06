@@ -3032,7 +3032,7 @@ async function playFromHash(hash, magnet, searchResult) {
         if (isSerial) {
             AppState.isCatalogSerials = isSerial;
         }
-
+        AppState.isCatalogSearch = true;
         var addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
 
         if (!addedTorrent) {
@@ -3055,7 +3055,7 @@ async function playFromHash(hash, magnet, searchResult) {
             var fileId = 1;
 
             if (window.AndroidJS) {
-                AppState.isCatalogSearch = true;
+                
                 getEl('playback-overlay').classList.remove('active');
 
                 // Формируем URL для внешнего плеера
@@ -3095,7 +3095,6 @@ async function playFromHash(hash, magnet, searchResult) {
             if (!window.AndroidJS) {
                 AppState.inSearch = "torrents";
             } else {
-                AppState.isCatalogSearch = true;
                 AppState.inSearch = "catalog";
             }
             showDetail(addedTorrent);
