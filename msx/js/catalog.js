@@ -260,6 +260,7 @@ async function fetchCatalogItemMeta(item, mediaType) {
 // ==================== ЗАГРУЗКА КАТАЛОГА ====================
 async function loadCatalog(key) {
     if (!CATALOG_CONFIG[key]) return;
+    AppState.backCurrentCatalog = key;
     abortCatalogRequests();
     catalogState.abortController = new AbortController();
     var config = CATALOG_CONFIG[key];
