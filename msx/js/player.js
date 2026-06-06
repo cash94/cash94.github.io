@@ -2901,6 +2901,7 @@ function updatePlayerTimeline(timelineData) {
     if (AppState.playFromHash && AppState.isCatalogSerials) {
       AppState.playFromHash = false;
       AppState.isCatalogSerials = false;
+      window.loadCatalog(AppState.backCurrentCatalog);
       window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
       return;
     } else if (AppState.playFromHash) {
