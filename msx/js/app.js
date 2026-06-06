@@ -600,6 +600,7 @@ function setupNavigation() {
         : 'search';
 
       console.log('📍 returnTo =', returnTo);
+      AppState.isCatalogSearch = false;
 
       setTimeout(function () {
         if (typeof updateFocusableElements !== 'function' || typeof setFocus !== 'function') {
