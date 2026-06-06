@@ -882,6 +882,7 @@ async function openYoutubeInPlayer(url, title) {
 
             console.log('📱 Запуск внешнего плеера:', playerData);
             AndroidJS.openPlayer(m3u8Url, JSON.stringify(playerData));
+            if (window.destroyHls) window.destroyHls();
         } else {
 
             // Сохраняем состояние
