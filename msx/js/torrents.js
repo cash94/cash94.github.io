@@ -2869,10 +2869,6 @@ async function addTorrentToServer(magnet, hash, searchResult) {
             throw new Error('Ошибка добавления: ' + response.status);
         }
 
-        if (window.AndroidJS && !AppState.isCatalogSerials) {
-            return;
-        }
-
         var data = await response.json();
         console.log('Торрент добавлен:', data);
         // Очищаем временные данные
@@ -2933,8 +2929,10 @@ async function refreshTorrentsList() {
 
         if (response.ok) {
             var data = await response.json();
-            AppState.torrents = Array.isArray(data) ? data : [];
-            renderTorrents();            
+            if (AppState.isCatalogSerials) {
+                AppState.torrents = Array.isArray(data) ? data : [];
+                renderTorrents();
+            }
             if (!window.AndroidJS && !AppState.playFromHash) {
                 
                 if (AppState.currentScreen === 'torrents') {
