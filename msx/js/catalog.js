@@ -794,7 +794,9 @@ async function showCatalogDetail(item, index, posterUrl) {
         window._trailersClickListener = function (e) {
             var c = e.target.closest('.catalog-trailer-card-item');
             if (!c) return;
-            hideCatalogDetailView();
+            if (!window.AndroidJS) {
+                hideCatalogDetailView();
+            }
             openYoutubeInPlayer(c.dataset.videoUrl, c.dataset.videoTitle);
         };
 
