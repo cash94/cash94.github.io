@@ -3010,6 +3010,34 @@ async function playFromHash(hash, magnet, searchResult) {
             searchResult.types.includes('serial')) {
             isSerial = true;
         }
+
+        if (!isSerial) {
+            var fileId = 1;
+
+            if (window.AndroidJS) {
+                getEl('playback-overlay').classList.remove('active');
+
+                // Формируем URL для внешнего плеера
+                var playURL = AppState.currentTorrserverUrl + "/stream?link=" + hash +
+                    "&index=" + fileId + "&play=play";
+
+                // Формируем данные
+                var playerData = {
+                    url: playURL,
+                    iptv: false,
+                    timeline: {
+                        hash: hash + '_' + fileId,
+                        time: 0,
+                        duration: 0,
+                        percent: 0
+                    }
+                };
+
+                AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
+                return true;
+            }
+        }
+
         var addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
 
         if (!addedTorrent) {
@@ -3029,31 +3057,6 @@ async function playFromHash(hash, magnet, searchResult) {
         }
 
         if (!isSerial) {
-            var fileId = 1;
-
-            if (window.AndroidJS) {
-                getEl('playback-overlay').classList.remove('active');
-
-                // Формируем URL для внешнего плеера
-                var playURL = AppState.currentTorrserverUrl + "/stream?link=" + hash +
-                    "&index=" + fileId + "&play=play";
-
-                // Формируем данные
-                var playerData = {
-                    url: playURL,
-                    title: addedTorrent.title  || 'Видео',
-                    iptv: false,
-                    timeline: {
-                        hash: hash + '_' + fileId,
-                        time: 0,
-                        duration: 0,
-                        percent: 0
-                    }
-                };
-
-                AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
-                return true;
-            }
             var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
             fileId = playbackTarget.fileId || 1;
             document.querySelector('.playback-text').textContent = 'Воспроизведение...';
