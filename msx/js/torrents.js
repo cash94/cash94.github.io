@@ -2934,7 +2934,7 @@ async function refreshTorrentsList() {
         if (response.ok) {
             var data = await response.json();
             AppState.torrents = Array.isArray(data) ? data : [];
-            if (AppState.isCatalogSerials) {
+            if (!window.AndroidJS && AppState.isCatalogSerials) {
                 renderTorrents();
             }
             if (!window.AndroidJS && !AppState.playFromHash) {
