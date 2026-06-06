@@ -606,7 +606,7 @@ function setupNavigation() {
           console.error('❌ Функции навигации еще не загружены');
           return;
         }
-        if (returnTo === 'catalog' && AppState.playFromHash) {
+        if (returnTo === 'catalog' && AppState.playFromHash && AppState.isCatalogSerials) {
           AppState.playFromHash = false;
           AppState.isCatalogSerials = false;
           window.loadCatalog(AppState.backCurrentCatalog);
