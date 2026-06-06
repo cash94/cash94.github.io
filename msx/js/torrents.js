@@ -1386,7 +1386,7 @@ function clearAllTorrentFilesCache() {
 }
 // Показать детали торрента
 async function showDetail(torrent) {
-    window.initHorizontalScroll();
+    //window.initHorizontalScroll();
     // Сохраняем hash и индекс перед открытием
     if (torrent && torrent.hash) {
         lastSelectedTorrentHash = torrent.hash;
