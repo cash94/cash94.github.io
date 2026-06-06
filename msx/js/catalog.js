@@ -842,9 +842,6 @@ function showCatalogSearch(q, pu, item) {
 }
 
 async function openYoutubeInPlayer(url, title) {
-    var cd = AppState.currentDetailItem, cn = catalogState.currentCatalog, ci = catalogState.lastSelectedIndex;
-    var dv = getEl('detail-view'), mc = getEl('main-container');
-    if (dv) { dv.style.display = 'none'; dv.style.pointerEvents = 'none'; } if (mc) mc.style.pointerEvents = 'none';
     var po = getEl('playback-overlay'); if (po) { po.classList.add('active'); var pt = po.querySelector('.playback-text'); if (pt) pt.textContent = 'Загрузка трейлера: ' + title + '...'; }
     try {
         // Извлекаем ID видео из URL
@@ -888,6 +885,9 @@ async function openYoutubeInPlayer(url, title) {
             console.log('📱 Запуск внешнего плеера:', playerData);
             AndroidJS.openPlayer(m3u8Url, JSON.stringify(playerData));
         } else {
+            var cd = AppState.currentDetailItem, cn = catalogState.currentCatalog, ci = catalogState.lastSelectedIndex;
+            var dv = getEl('detail-view'), mc = getEl('main-container');
+            if (dv) { dv.style.display = 'none'; dv.style.pointerEvents = 'none'; } if (mc) mc.style.pointerEvents = 'none';
 
             // Сохраняем состояние
             var old = AppState.currentStreamId;
