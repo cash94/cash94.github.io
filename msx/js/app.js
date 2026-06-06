@@ -608,6 +608,7 @@ function setupNavigation() {
         }
         if (returnTo === 'catalog' && AppState.playFromHash) {
           AppState.playFromHash = false;
+          AppState.isCatalogSerials = false;
           window.loadCatalog(AppState.backCurrentCatalog);
           window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
           return;         
