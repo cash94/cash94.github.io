@@ -1396,7 +1396,7 @@ async function showDetail(torrent) {
         lastSelectedTorrentIndex = currentFocusIndex;
         console.log('Сохранен индекс перед открытием:', currentFocusIndex);
     }
-    AppState.currentDetailItem = torrent;
+    
     var detailView = getEl('detail-view');
     //detailView.style.display = 'block';
     //detailView.style.zIndex = '100';
@@ -1411,8 +1411,15 @@ async function showDetail(torrent) {
     AppState.currentScreen = 'detail';
     if (!window.AndroidJS) {
         AppState.detailReturnTo = 'torrents';
+        AppState.currentDetailItem = torrent;
     } else {
-        AppState.detailReturnTo = 'catalog';
+        if (AppState.playFromHash) {
+            AppState.currentDetailItem = AppState.androidBackCatalog;
+            AppState.detailReturnTo = 'catalog';
+        } else {
+            AppState.detailReturnTo = 'torrents';
+            AppState.currentDetailItem = torrent;
+        }            
     }
     hideCatalogDetailExtra();
     var posterImg = getEl('detail-poster');
