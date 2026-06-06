@@ -2871,10 +2871,11 @@ async function addTorrentToServer(magnet, hash, searchResult) {
 
         var data = await response.json();
         console.log('Торрент добавлен:', data);
-
-        // Очищаем временные данные
-        window.pendingCatalogPoster = null;
-        window.pendingCatalogItem = null;
+        if (!window.AndroidJS) {
+            // Очищаем временные данные
+            window.pendingCatalogPoster = null;
+            window.pendingCatalogItem = null;
+        }
 
         // Сохраняем hash добавленного торрента в нижнем регистре
         lastAddedTorrentHash = hash.toLowerCase();
