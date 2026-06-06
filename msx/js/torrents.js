@@ -1409,7 +1409,11 @@ async function showDetail(torrent) {
         mainContainer.style.pointerEvents = 'none';
     }
     AppState.currentScreen = 'detail';
-    AppState.detailReturnTo = 'torrents';
+    if (!window.AndroidJS) {
+        AppState.detailReturnTo = 'torrents';
+    } else {
+        AppState.detailReturnTo = 'catalog';
+    }
     hideCatalogDetailExtra();
     var posterImg = getEl('detail-poster');
     var titleEl = getEl('detail-title-text');
