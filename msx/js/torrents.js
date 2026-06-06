@@ -2858,6 +2858,10 @@ async function addTorrentToServer(magnet, hash, searchResult) {
       throw new Error('Ошибка добавления: ' + response.status);
     }
 
+    if (window.AndroidJS && AppState.playFromHash) {
+      return;
+    }
+
     var data = await response.json();
     console.log('Торрент добавлен:', data);
 
