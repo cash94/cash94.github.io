@@ -3024,7 +3024,7 @@ async function playFromHash(hash, magnet, searchResult) {
             }
         }
 
-        if (addedTorrent && !window.AndroidJS) {
+        if (!window.AndroidJS) {
             AppState.currentDetailItem = addedTorrent;
         }
 
