@@ -1651,6 +1651,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (!AppState.playFromHash) {
     AppState.inSearch = 'torrents';
   } else {
+    AppState.currentDetailItem = AppState.androidBackCatalog;
     AppState.inSearch = 'catalog';
   }
   currentBufferAhead = 0;
@@ -1746,7 +1747,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     }
   }
 
-  if (AppState.currentDetailItem) {
+  if (AppState.currentDetailItem.hash) {
     console.log('📂 Загружаем информацию о сериях для:', AppState.currentDetailItem.title);
     var currentFileId = (episodeIndex !== null && currentEpisodeFiles[episodeIndex])
       ? currentEpisodeFiles[episodeIndex].id
