@@ -67,7 +67,9 @@ var AppState = {
   currentSeason: '',
   isSerials: false,
   playFromHash: false,
-  androidBackCatalog: ''
+  androidBackCatalog: '',
+  catalogIndex: null,
+  catalogPu: null
 };
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
