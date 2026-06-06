@@ -1648,7 +1648,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   currentPlaybackController = new AbortController();
   var signal = currentPlaybackController.signal;
 
-  AppState.inSearch = 'torrents';
+  if (!AppState.playFromHash) {
+    AppState.inSearch = 'torrents';
+  } else {
+    AppState.inSearch = 'catalog';
+  }
   currentBufferAhead = 0;
   wasImmediatePause = false;
   pauseTimer = null;
