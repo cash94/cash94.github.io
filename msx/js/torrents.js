@@ -2971,83 +2971,106 @@ async function refreshTorrentsList() {
 }
 // Воспроизведение по hash
 async function playFromHash(hash, magnet, searchResult) {
-  if (searchResult === undefined) searchResult = null;
-  console.log('playFromHash вызван:');
-  console.log('Hash:', hash);
-  console.log('SearchResult:', searchResult ? searchResult.title || searchResult.name : 'null');
-  if (!hash) {
-    alert('Ошибка: hash не найден');
-    return;
-  }
-  if (!AppState.currentTorrserverUrl) {
-    alert('Сначала подключитесь к TorrServer');
-    return;
-  }
-  if (window.addToWatchHistory && AppState.pendingDetailItem.id) {
-    await window.addToWatchHistory(
-      String(AppState.pendingDetailItem.id),
-      currentSearchQuery,
-      AppState.pendingDetailItem.media_type,
-      AppState.pendingDetailPoster || null
-    );
-  }
-  getEl('playback-overlay').classList.add('active');
-  document.querySelector('.playback-text').textContent = 'Поиск постера и добавление...';
-  try {
-    // Проверяем, является ли контент сериалом
-    var isSerial = false;
-    // Сначала проверяем AppState.mediaType
-    if (AppState.mediaType === "tv") {
-      isSerial = true;
+    if (searchResult === undefined) searchResult = null;
+    console.log('playFromHash вызван:');
+    console.log('Hash:', hash);
+    console.log('SearchResult:', searchResult ? searchResult.title || searchResult.name : 'null');
+    if (!hash) {
+        alert('Ошибка: hash не найден');
+        return;
     }
-    // Если нет, проверяем searchResult.types
-    else if (searchResult && searchResult.types &&
-      Array.isArray(searchResult.types) &&
-      searchResult.types.includes('serial')) {
-      isSerial = true;
+    if (!AppState.currentTorrserverUrl) {
+        alert('Сначала подключитесь к TorrServer');
+        return;
     }
-    var addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
-
-    hideSearchResults();
-
-    if (!addedTorrent) {
-      await refreshTorrentsList();
-      addedTorrent = null;
-      var torrentsLen = AppState.torrents.length;
-      for (var i = 0; i < torrentsLen; i++) {
-        if ((AppState.torrents[i].hash || '').toLowerCase() === hash.toLowerCase()) {
-          addedTorrent = AppState.torrents[i];
-          break;
+    if (window.addToWatchHistory && AppState.pendingDetailItem.id) {
+        await window.addToWatchHistory(
+            String(AppState.pendingDetailItem.id),
+            currentSearchQuery,
+            AppState.pendingDetailItem.media_type,
+            AppState.pendingDetailPoster || null
+        );
+    }
+    getEl('playback-overlay').classList.add('active');
+    document.querySelector('.playback-text').textContent = 'Поиск постера и добавление...';
+    try {
+        // Проверяем, является ли контент сериалом
+        var isSerial = false;
+        // Сначала проверяем AppState.mediaType
+        if (AppState.mediaType === "tv") {
+            isSerial = true;
         }
-      }
+        // Если нет, проверяем searchResult.types
+        else if (searchResult && searchResult.types &&
+            Array.isArray(searchResult.types) &&
+            searchResult.types.includes('serial')) {
+            isSerial = true;
+        }
+        var addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
+
+        if (!addedTorrent) {
+            await refreshTorrentsList();
+            addedTorrent = null;
+            var torrentsLen = AppState.torrents.length;
+            for (var i = 0; i < torrentsLen; i++) {
+                if ((AppState.torrents[i].hash || '').toLowerCase() === hash.toLowerCase()) {
+                    addedTorrent = AppState.torrents[i];
+                    break;
+                }
+            }
+        }
+
+        if (addedTorrent) {
+            AppState.currentDetailItem = addedTorrent;
+        }
+
+        if (!isSerial) {
+            var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
+            var fileId = playbackTarget.fileId || 1;
+
+            if (window.AndroidJS) {
+
+                // Формируем URL для внешнего плеера
+                var playURL = AppState.currentTorrserverUrl + "/stream?link=" + hash +
+                    "&index=" + fileId + "&play=play";
+
+                // Формируем данные
+                var playerData = {
+                    url: playURL,
+                    title: addedTorrent.title  || 'Видео',
+                    iptv: false,
+                    timecode: seekTime,
+                    timeline: {
+                        hash: torrentHash + '_' + fileId,
+                        time: 0,
+                        duration: 0,
+                        percent: 0
+                    }
+                };
+
+                AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
+                return true;
+            }
+
+            document.querySelector('.playback-text').textContent = 'Воспроизведение...';
+
+            var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
+            console.log('URL воспроизведения:', playUrl, 'isSeries:', playbackTarget.isSeries, 'episodeIndex:', playbackTarget.episodeIndex);
+
+            await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
+        } else {
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            hideSearchResults();
+            AppState.inSearch = "torrents";
+            showDetail(addedTorrent);
+        }
+    } catch (error) {
+        console.error('❌ Ошибка воспроизведения:', error);
+        alert('Ошибка воспроизведения: ' + error.message);
+    } finally {
+        getEl('playback-overlay').classList.remove('active');
+        document.querySelector('.playback-text').textContent = 'Воспроизведение...';
     }
-
-    if (addedTorrent) {
-      AppState.currentDetailItem = addedTorrent;
-    }
-
-    if (!isSerial) {
-      var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
-      var fileId = playbackTarget.fileId || 1;
-
-      document.querySelector('.playback-text').textContent = 'Воспроизведение...';
-
-      var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
-      console.log('URL воспроизведения:', playUrl, 'isSeries:', playbackTarget.isSeries, 'episodeIndex:', playbackTarget.episodeIndex);
-
-      await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
-    } else {
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      AppState.inSearch = "torrents";
-      showDetail(addedTorrent);
-    }
-  } catch (error) {
-    console.error('❌ Ошибка воспроизведения:', error);
-    alert('Ошибка воспроизведения: ' + error.message);
-  } finally {
-    getEl('playback-overlay').classList.remove('active');
-    document.querySelector('.playback-text').textContent = 'Воспроизведение...';
-  }
 }
 // Очистка результатов поиска (только при новом поиске)
 function clearSearchResults() {
