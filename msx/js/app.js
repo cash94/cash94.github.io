@@ -606,8 +606,11 @@ function setupNavigation() {
           console.error('❌ Функции навигации еще не загружены');
           return;
         }
-
-        if (returnTo === 'catalog') {
+        if (returnTo === 'catalog' && AppState.playFromHash) {
+          AppState.playFromHash = false;
+          window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+          return;         
+        } else if (returnTo === 'catalog') {
           if (typeof window.ensureCatalogFocus === 'function') {
             AppState.backupScroll = 0;
             AppState.currentScreen = 'catalog';
