@@ -1739,6 +1739,10 @@ body.detail-open {
   #torrents-grid {
     grid-template-columns: repeat(4, 1fr);
   }
+  .catalog-trailer-card-item {
+        width: 170px;
+        height: 150px;
+  }
 
   .search-overlay {
     position: fixed;
