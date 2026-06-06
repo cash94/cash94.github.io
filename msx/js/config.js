@@ -66,7 +66,8 @@ var AppState = {
   currentTMDB: '',
   currentSeason: '',
   isSerials: false,
-  playFromHash: false
+  playFromHash: false,
+  androidBackCatalog: ''
 };
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
