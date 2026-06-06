@@ -873,6 +873,9 @@ async function openYoutubeInPlayer(url, title) {
         }
 
         if (window.AndroidJS) {
+
+            // Скрываем оверлей перед запуском внешнего плеера
+            if (po) po.classList.remove('active');
             // Формируем данные
             var playerData = {
                 url: m3u8Url,
@@ -882,10 +885,6 @@ async function openYoutubeInPlayer(url, title) {
 
             console.log('📱 Запуск внешнего плеера:', playerData);
             AndroidJS.openPlayer(m3u8Url, JSON.stringify(playerData));
-            var overlay = getEl('loading-player-overlay');
-            var playerOverlay = getEl('player-overlay');
-            if (overlay) overlay.classList.remove('active');
-            if (playerOverlay) playerOverlay.classList.remove('loading');
         } else {
 
             // Сохраняем состояние
