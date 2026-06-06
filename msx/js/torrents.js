@@ -2931,8 +2931,9 @@ async function refreshTorrentsList() {
         if (response.ok) {
             var data = await response.json();
             AppState.torrents = Array.isArray(data) ? data : [];
-            renderTorrents();
+            
             if (!window.AndroidJS && !AppState.playFromHash) {
+                renderTorrents();
                 if (AppState.currentScreen === 'torrents') {
                     setTimeout(function () {
                         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
