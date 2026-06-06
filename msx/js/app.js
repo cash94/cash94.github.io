@@ -600,8 +600,7 @@ function setupNavigation() {
         : 'search';
 
       console.log('📍 returnTo =', returnTo);
-      AppState.isCatalogSearch = false;
-
+      
       setTimeout(function () {
         if (typeof updateFocusableElements !== 'function' || typeof setFocus !== 'function') {
           console.error('❌ Функции навигации еще не загружены');
@@ -725,6 +724,7 @@ function setupNavigation() {
         }
       }, 250);
     });
+    AppState.isCatalogSearch = false;
   }
 }
 
