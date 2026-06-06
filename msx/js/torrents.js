@@ -3064,9 +3064,7 @@ async function playFromHash(hash, magnet, searchResult) {
             await new Promise(resolve => setTimeout(resolve, 3000));
             AppState.androidBackCatalog = AppState.currentDetailItem;
             AppState.currentDetailItem = addedTorrent;
-            if (!window.AndroidJS) {
-                hideSearchResults();
-            }
+            hideSearchResults();
             AppState.inSearch = "torrents";
             showDetail(addedTorrent);
         }
