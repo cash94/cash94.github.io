@@ -825,6 +825,9 @@ function onCatalogItemClick(item, index) {
     localStorage.setItem('lastCatalogCardIndex', item.num_index !== undefined ? item.num_index : index);
     var card = document.querySelector('.torrent-card.catalog-card[data-catalog-index="' + index + '"]');
     var pu = null; if (card) { var img = card.querySelector('.torrent-poster img'); if (img && img.src) pu = img.src; }
+    AppState.catalogIndex = index;
+    AppState.catalogPu = pu;
+    AppState.androidBackCatalog = item;
     showCatalogDetail(item, index, pu);
 }
 
