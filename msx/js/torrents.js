@@ -2858,10 +2858,6 @@ async function addTorrentToServer(magnet, hash, searchResult) {
             throw new Error('Ошибка добавления: ' + response.status);
         }
 
-        if (window.AndroidJS && AppState.romHash) {
-            return;
-        }
-
         var data = await response.json();
         console.log('Торрент добавлен:', data);
 
@@ -2922,7 +2918,7 @@ async function refreshTorrentsList() {
         });
 
         if (response.ok) {
-            if (!window.AndroidJS && !AppState.playFromHash) {
+            if (!window.AndroidJS && !AppState.Hash) {
                 var data = await response.json();
                 AppState.torrents = Array.isArray(data) ? data : [];
                 renderTorrents();
@@ -3067,6 +3063,7 @@ async function playFromHash(hash, magnet, searchResult) {
             await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
         } else {
             await new Promise(resolve => setTimeout(resolve, 3000));
+            AppState.androidBackCatalog = AppState.currentDetailItem;
             AppState.currentDetailItem = addedTorrent;
             hideSearchResults();
             AppState.inSearch = "torrents";
