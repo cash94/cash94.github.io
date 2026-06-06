@@ -3084,7 +3084,7 @@ async function playFromHash(hash, magnet, searchResult) {
 
             var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
             console.log('URL воспроизведения:', playUrl, 'isSeries:', playbackTarget.isSeries, 'episodeIndex:', playbackTarget.episodeIndex);
-
+            hideSearchResults();
             await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
         } else {
             await new Promise(resolve => setTimeout(resolve, 3000));
