@@ -70,7 +70,8 @@ var AppState = {
   androidBackCatalog: '',
   catalogIndex: null,
   catalogPu: null,
-  backCurrentCatalog: ''
+  backCurrentCatalog: '',
+  isCatalogSerials: false
 };
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
