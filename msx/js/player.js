@@ -1617,7 +1617,12 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
 
     console.log('📱 Запуск внешнего плеера:', playerData);
     lastPlaybackFromSearch = fromSearch;
-    AppState.inSearch = 'torrents';
+    if (!AppState.playFromHash) {
+      AppState.inSearch = 'torrents';
+    } else {
+      AppState.currentDetailItem = AppState.androidBackCatalog;
+      AppState.inSearch = 'catalog';
+    }
     AppState.currentScreen = 'detail';
     AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
     return true;
@@ -1648,12 +1653,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   currentPlaybackController = new AbortController();
   var signal = currentPlaybackController.signal;
 
-  if (!AppState.playFromHash) {
-    AppState.inSearch = 'torrents';
-  } else {
-    AppState.currentDetailItem = AppState.androidBackCatalog;
-    AppState.inSearch = 'catalog';
-  }
+  
   currentBufferAhead = 0;
   wasImmediatePause = false;
   pauseTimer = null;
