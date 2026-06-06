@@ -2934,9 +2934,13 @@ async function refreshTorrentsList() {
         if (response.ok) {
             var data = await response.json();
             AppState.torrents = Array.isArray(data) ? data : [];
-            if (!window.AndroidJS && AppState.isCatalogSerials) {
+            if (!window.AndroidJS) {
                 renderTorrents();
-            }
+            } else if (window.AndroidJS && !AppState.isCatalogSearch) {
+                renderTorrents();
+            } else if (window.AndroidJS && AppState.isCatalogSerials) {
+                renderTorrents();
+            }                
             if (!window.AndroidJS && !AppState.playFromHash) {
                 
                 if (AppState.currentScreen === 'torrents') {
@@ -3051,6 +3055,7 @@ async function playFromHash(hash, magnet, searchResult) {
             var fileId = 1;
 
             if (window.AndroidJS) {
+                AppState.isCatalogSearch = true;
                 getEl('playback-overlay').classList.remove('active');
 
                 // Формируем URL для внешнего плеера
@@ -3090,6 +3095,7 @@ async function playFromHash(hash, magnet, searchResult) {
             if (!window.AndroidJS) {
                 AppState.inSearch = "torrents";
             } else {
+                AppState.isCatalogSearch = true;
                 AppState.inSearch = "catalog";
             }
             showDetail(addedTorrent);
