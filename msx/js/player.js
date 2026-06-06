@@ -2821,9 +2821,9 @@ updateClock();
 setInterval(updateClock, 60000);
 
 // Глобальная функция для получения таймкода из Android
-function updatePlayerTimeline(timelineData) {
+function updatePlayerTimeline(timelineData) { 
   console.log('📊 Получен timeline из Android:', timelineData);
-
+  
   try {
     // Парсим данные (могут прийти как строка или объект)
     var data = typeof timelineData === 'string' ? JSON.parse(timelineData) : timelineData;
@@ -2892,6 +2892,10 @@ function updatePlayerTimeline(timelineData) {
       }).catch(function (e) {
         console.error('Ошибка сохранения таймкода:', e);
       });
+    }
+    if (AppState.playFromHash) {
+      AppState.playFromHash = false;
+      return;
     }
     showDetailView();
     // Обновляем прогресс в UI
@@ -2970,7 +2974,7 @@ window.cancelCurrentPlayback = cancelCurrentPlayback;
     if (typeof updatePlayerTimeline === 'function') {
       updatePlayerTimeline(timelineData);
     } else {
-      console.error('❌ Функция updatePlayerTimeline не найдена!');
+      console.error('❌ Функция  не найдена!');
     }
   };
 
