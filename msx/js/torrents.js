@@ -3029,6 +3029,7 @@ async function playFromHash(hash, magnet, searchResult) {
             var fileId = playbackTarget.fileId || 1;
 
             if (window.AndroidJS) {
+                getEl('playback-overlay').classList.remove('active');
 
                 // Формируем URL для внешнего плеера
                 var playURL = AppState.currentTorrserverUrl + "/stream?link=" + hash +
@@ -3039,7 +3040,6 @@ async function playFromHash(hash, magnet, searchResult) {
                     url: playURL,
                     title: addedTorrent.title  || 'Видео',
                     iptv: false,
-                    timecode: seekTime,
                     timeline: {
                         hash: torrentHash + '_' + fileId,
                         time: 0,
