@@ -2869,13 +2869,15 @@ async function addTorrentToServer(magnet, hash, searchResult) {
             throw new Error('Ошибка добавления: ' + response.status);
         }
 
+        if (window.AndroidJS && !AppState.isCatalogSerials) {
+            return;
+        }
+
         var data = await response.json();
         console.log('Торрент добавлен:', data);
-        if (!window.AndroidJS) {
-            // Очищаем временные данные
-            window.pendingCatalogPoster = null;
-            window.pendingCatalogItem = null;
-        }
+        // Очищаем временные данные
+        window.pendingCatalogPoster = null;
+        window.pendingCatalogItem = null;
 
         // Сохраняем hash добавленного торрента в нижнем регистре
         lastAddedTorrentHash = hash.toLowerCase();
@@ -3019,6 +3021,10 @@ async function playFromHash(hash, magnet, searchResult) {
             Array.isArray(searchResult.types) &&
             searchResult.types.includes('serial')) {
             isSerial = true;
+        }
+
+        if (isSerial) {
+            AppState.isCatalogSerials = isSerial;
         }
 
         var addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
