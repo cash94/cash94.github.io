@@ -71,7 +71,8 @@ var AppState = {
   catalogIndex: null,
   catalogPu: null,
   backCurrentCatalog: '',
-  isCatalogSerials: false
+  isCatalogSerials: false,
+  isCatalogSearch: false
 };
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
