@@ -65,7 +65,8 @@ var AppState = {
   //Для получения skip кодов
   currentTMDB: '',
   currentSeason: '',
-  isSerials: false
+  isSerials: false,
+  playFromHash: false
 };
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
