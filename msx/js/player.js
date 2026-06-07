@@ -2912,7 +2912,7 @@ function updatePlayerTimeline(timelineData) {
                     hash: currentTimecodeData.hash,
                     fileId: currentTimecodeData.fileId,
                     timecode: timecodeToSave,
-                    duration: data.duration,
+                    duration: currentTimecodeData.duration,
                     completed: isCompleted // Добавляем флаг завершения
                 })
             }).catch(function (e) {
