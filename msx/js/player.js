@@ -2899,11 +2899,11 @@ function updatePlayerTimeline(timelineData) {
       });
     }
     if (AppState.playFromHash && AppState.isCatalogSerials) {
-      AppState.playFromHash = false;
-      AppState.isCatalogSerials = false;
+      //AppState.playFromHash = false;
+      //AppState.isCatalogSerials = false;
       AppState.isCatalogSearch = false;
-      window.loadCatalog(AppState.backCurrentCatalog);
-      window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+      //window.loadCatalog(AppState.backCurrentCatalog);
+      //window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
       return;
     } else if (AppState.playFromHash) {
       AppState.playFromHash = false;
