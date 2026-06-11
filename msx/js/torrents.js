@@ -2119,7 +2119,15 @@ async function searchTorrentsLegacy(query) {
         return;
     }
     var encodedQuery = encodeURIComponent(query.trim());
-    var searchUrl = AppState.protocol + '//jac.red/api/v1.0/torrents?search=' + encodedQuery + '&apikey=null&exact=true';
+    var jacred = getEl('jacred-url');
+    var jacDefault = '';
+
+    if (jacred && jacred.value !== "") {
+        jacDefault = jacred.value;
+    } else {
+        jacDefault = "jac.red"; // строка должна быть в кавычках
+    }
+    var searchUrl = AppState.protocol + '//'+jacDefault+'/api/v1.0/torrents?search=' + encodedQuery + '&apikey=null&exact=true';
     showLoading('Поиск...');
     try {
         var response = await fetch(searchUrl);
