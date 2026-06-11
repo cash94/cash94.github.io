@@ -834,7 +834,8 @@ function setupFocusRescue() {
     var configState = {
         activeTabId: 'torrserver-tab',
         isOnMenu: true,
-        previousFocusElement: null
+        previousFocusElement: null,
+        initialized: false
     };
 
     function getConfigMenuItems() {
@@ -850,35 +851,47 @@ function setupFocusRescue() {
     }
 
     function getConfigContentItems(tabId) {
-        var container = getEl(tabId + '-content');
-        if (!container) return [];
+        // tabId приходит как 'torrserver-tab', 'torrents-tab' и т.д.
+        // Добавляем '-content' чтобы получить id контейнера
+        var tabContentId = tabId + '-content';
+        var tabContent = getEl(tabContentId);
 
-        var selectors = [];
-        switch (tabId) {
-            case 'torrserver-tab':
-                selectors = ['#torrserver-url', '#auth-checkbox', '#auth-login', '#auth-password', '#sync-clients-btn', '#speedtest-btn'];
-                break;
-            case 'torrents-tab':
-                selectors = ['.settings-btn'];
-                break;
-            case 'player-tab':
-                selectors = ['#auto-fullscreen', '#hide-clock', '#add-to-db', '#multi-channel-audio'];
-                break;
-            case 'sync-tab':
-                selectors = ['.sync-option']; // замените на реальные селекторы контента синхронизации
-                break;
-            default:
-                return [];
-        }
+        if (!tabContent) return [];
 
         var visibleItems = [];
-        for (var i = 0; i < selectors.length; i++) {
-            var element = getEl(selectors[i].replace('#', '')) || document.querySelector(selectors[i]);
-            if (VISIBLE(element)) {
-                visibleItems.push(element);
+
+        // Ищем все интерактивные элементы внутри вкладки
+        var interactiveSelectors = [
+            'input:not([type="hidden"])',
+            'button',
+            'select',
+            'textarea'
+        ];
+
+        for (var i = 0; i < interactiveSelectors.length; i++) {
+            var elements = tabContent.querySelectorAll(interactiveSelectors[i]);
+            for (var j = 0; j < elements.length; j++) {
+                if (VISIBLE(elements[j]) && visibleItems.indexOf(elements[j]) === -1) {
+                    visibleItems.push(elements[j]);
+                }
             }
         }
+
         return visibleItems;
+    }
+
+    function switchConfigTab(tabId) {
+        // Скрываем все вкладки с контентом
+        var tabContents = document.querySelectorAll('.tab-content');
+        for (var i = 0; i < tabContents.length; i++) {
+            tabContents[i].style.display = 'none';
+        }
+
+        // Показываем выбранную вкладку (добавляем '-content' к id)
+        var selectedTab = getEl(tabId + '-content');
+        if (selectedTab) {
+            selectedTab.style.display = 'block';
+        }
     }
 
     function setConfigMenuActive(menuItemId) {
@@ -951,6 +964,15 @@ function setupFocusRescue() {
 
         if (currentScreen() !== 'config') {
             return false;
+        }
+
+        // Инициализация при первом открытии экрана config
+        if (!configState.initialized) {
+            configState.initialized = true;
+            configState.activeTabId = 'torrserver-tab';
+            configState.isOnMenu = true;
+            switchConfigTab('torrserver-tab');
+            setConfigMenuActive('torrserver-tab');
         }
 
         var focusedElement = document.querySelector('.focused');
@@ -1078,8 +1100,12 @@ function setupFocusRescue() {
                 return true;
             }
             if (dir === 'back') {
-                // Назад на меню - ничего не делаем, уже на меню
-                return true;
+                // Назад - возвращаемся на меню, снимаем активность
+                configState.isOnMenu = true;
+                configState.activeTabId = 'torrserver-tab';  // 👈 Устанавливаем первую вкладку
+                setConfigMenuActive(null);
+                switchConfigTab('torrserver-tab');  // 👈 Переключаем контент
+                return focusEl(menuItems[0]);
             }
         } else {
             // Фокус на контенте вкладки
@@ -1351,6 +1377,23 @@ function onBack() {
     var configScreen = getEl('config-screen');
     var isCatalogScreen = currentScreen() === 'catalog';
     var isDonateScreen = currentScreen() === 'donate';
+
+    if (configScreen && getComputedStyle(configScreen).display !== 'none') {
+        var focusedElement = document.querySelector('.focused');
+        // Если фокус не на меню - возвращаем на меню
+        var menuItems = getConfigMenuItems();
+        var isOnMenu = false;
+        for (var i = 0; i < menuItems.length; i++) {
+            if (focusedElement === menuItems[i]) {
+                isOnMenu = true;
+                break;
+            }
+        }
+        if (!isOnMenu) {
+            handleConfigNavigation('back');
+            return true;
+        }
+    }
 
     // Синхронизация
     if (AppState.syncCodeScreen == true) {
