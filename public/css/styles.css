@@ -193,16 +193,26 @@ body {
   flex-wrap: wrap;
 }
 
-.back-btn,
 .settings-btn {
   background: #282837;
   border: 1px solid #4a9eff;
-  color: #4a9eff;
+  color: #ff8c00;
   padding: 8px 16px;
   border-radius: 24px;
   cursor: pointer;
   font-size: 14px;
   white-space: nowrap;
+}
+
+.back-btn {
+  background: rgba(0, 0, 0, 0.01); /* Тёмный фон */
+  color: #ff8c00;
+  padding: 8px 16px;
+  border-radius: 24px;
+  cursor: pointer;
+  /* font-size: 14px; */
+  /*  white-space: nowrap;  */
+  /* box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25); */
 }
 
 .search-container-header {
@@ -248,7 +258,7 @@ body {
   gap: 8px;
   padding: 8px;
   margin-bottom: 16px;
-  border-bottom: 1px solid #4a9eff;
+  border-bottom: 1px solid #ff8c00;
   overflow-x: auto;
 }
 
@@ -263,30 +273,24 @@ body {
   white-space: nowrap;
 }
 
-.view-tab.active {
-  background: #4a9eff;
-  color: #fff;
-  border-color: #4a9eff;
-}
-
-/* Увеличенная поисковая часть на 57% */
 .search-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
+  width: 100%;
+  height: 100%;
   background: #0a0a14;
-  border: 1px solid #4a9eff;
-  border-radius: 0;
-  z-index: 50;
+  z-index: 1000;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
+/* Убедитесь, что нет конфликтующих стилей */
 .search-overlay.hidden {
-  display: none;
+  display: none !important;
 }
 
 .search-overlay-header {
@@ -328,7 +332,7 @@ body {
 
 .search-action-btn {
   padding: 12.84px 21.4px;
-  background: #4a9eff;
+  background: #282837;
   border: none;
   border-radius: 29.96px;
   color: white;
@@ -353,8 +357,8 @@ body {
 }
 
 .filter-toggle-btn.active {
-  background: #1e3a5f;
-  color: #4a9eff;
+  background: #e99e85;
+  color: #ffffff;
   border-color: #4a9eff;
 }
 
@@ -378,12 +382,16 @@ body {
   gap: 10.7px;
   padding: 17.12px;
   background: #000000;
-  border-bottom: 1px solid #4a9eff;
+  border-bottom: 1px solid #000000;
+  overflow-x: visible;
+  max-height: none;
 }
 
+/* Гибкое сжатие групп фильтров */
 .filter-group {
-  flex: 1;
-  min-width: 149.8px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .filter-select,
@@ -397,6 +405,9 @@ body {
   font-size: 13.91px;
   outline: none;
   cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .filter-select:focus,
@@ -410,6 +421,7 @@ body {
 }
 
 .filter-reset-btn {
+  flex-shrink: 0;
   padding: 10.7px 21.4px;
   background: #4a1a1a;
   border: 1px solid #ff5050;
@@ -424,11 +436,11 @@ body {
   padding: 10.7px 17.12px;
   color: #aaa;
   font-size: 13.91px;
-  border-bottom: 1px solid #4a9eff;
+  border-bottom: 1px solid #ff8c00;
 }
 
 .filter-stats span {
-  color: #4a9eff;
+  color: #ff8c00;
   font-weight: 600;
 }
 
@@ -496,7 +508,7 @@ body {
 }
 
 .search-result-play {
-  background: #4a9eff;
+  background: rgba(58, 58, 74, 0.3);
   color: white;
   border: none;
   padding: 10.7px 25.68px;
@@ -505,6 +517,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  display: none;
 }
 
 .search-result-empty {
@@ -519,7 +532,7 @@ body {
 
 #torrents-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 10px;
   padding: 8px;
 }
@@ -582,7 +595,7 @@ body {
 }
 
 .torrent-badge {
-  background: #4a9eff;
+  background: #66809e;
   color: #fff;
   padding: 2px 5px;
   border-radius: 8px;
@@ -640,7 +653,7 @@ body {
 #detail-view {
   position: fixed;
   inset: 0;
-  background: #000000;
+  background: linear-gradient(135deg, #7a7e85, #2a2e35);
   z-index: 100;
   overflow-y: auto;
   padding: 18.42px;
@@ -659,9 +672,13 @@ body {
   align-items: center;
   margin-bottom: 18.42px;
   position: relative;
-  background: #000000;
+  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  backdrop-filter: none;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.25);
   padding: 12px 0;
   z-index: 10;
+  border-radius: 12px;
 }
 
 .detail-poster {
@@ -697,10 +714,11 @@ body {
 }
 
 .detail-progress {
-  margin: 14.89px;
   padding: 12.9px;
-  background: #1e3a5f;
-  border: 1px solid #4a9eff;
+  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  backdrop-filter: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 12px;
 }
 
@@ -720,7 +738,7 @@ body {
 }
 
 .detail-progress-label {
-  color: #4a9eff;
+  color: #ff8c00;
   font-weight: 600;
   font-size: 12px;
 }
@@ -732,45 +750,195 @@ body {
 }
 
 .detail-progress-btn {
-  background: #4a9eff;
-  color: white;
-  border: none;
+  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  backdrop-filter: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  color: #ff8c00;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   padding: 7.4px 18.42px;
   border-radius: 21.96px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.detail-progress-btn:hover {
+  background: rgba(60, 60, 70, 0.95);
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .files-list {
   margin-top: 18.42px;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 12px;
+  padding: 8px 0;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+/* Добавляем отступ первому элементу */
+.file-item:first-child {
+  margin-left: 20px;
+}
+
+/* Добавляем отступ последнему элементу */
+.file-item:last-child {
+  margin-right: 20px;
+}
+
+/* Скрываем скроллбары для всех контейнеров */
+.files-list::-webkit-scrollbar,
+.catalog-detail-actors-grid::-webkit-scrollbar,
+.catalog-detail-recommendations-grid::-webkit-scrollbar,
+.detail-view::-webkit-scrollbar,
+#main-container::-webkit-scrollbar {
+  display: none;
+  /* Скрываем скроллбар в Chrome/Safari */
+}
+
+/* Для Firefox */
+.files-list,
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid,
+.detail-view,
+#main-container {
+  scrollbar-width: none;
+  /* Скрываем скроллбар в Firefox */
+}
+
+/* Для IE и Edge (старые версии) */
+.files-list,
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid,
+.detail-view,
+#main-container {
+  -ms-overflow-style: none;
+  /* Скрываем скроллбар в IE/Edge */
 }
 
 .file-item {
-  background: #282837;
+  margin-right: 5px;
+  margin-left: 5px;
+  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  backdrop-filter: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   border-radius: 12px;
-  padding: 11.04px;
-  margin-bottom: 7.4px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  min-width: 220px;
+  width: 220px;
+  height: 220px;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Контейнер для кадра (на всю верхнюю часть плитки) */
+.file-still-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 52px);
+  /* Оставляем место для информации внизу */
+  z-index: 0;
+}
+
+.file-still-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Затемнение поверх кадра */
+.file-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 52px);
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 1;
+}
+
+/* Контент поверх кадра (только кнопка) */
+.file-content {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  border: 1px solid #4a9eff;
+  justify-content: center;
+  width: 100%;
+  height: calc(100% - 52px);
+}
+
+/* Информация под плиткой */
+.file-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 8px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0 0 12px 12px;
 }
 
 .file-name {
-  flex: 1;
-  margin-right: 12px;
-  font-size: 12.9px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  color: #fff;
+  margin-bottom: 2px;
+}
+
+.file-size {
+  font-size: 10px;
+  color: #ff8c00;
+  text-align: left;
+}
+
+/* Кнопка почти прозрачная */
+.play-btn {
+  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  backdrop-filter: none;
+  color: #ff8c00;
+  border: 2px solid rgba(255, 140, 0, 0.4);
+  padding: 10px 16px;
+  border-radius: 50%;
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.play-btn:hover {
+  background: rgba(60, 60, 70, 0.85);
+  border-color: rgba(255, 140, 0, 0.9);
+  transform: scale(1.05);
+}
+
+.play-btn::before {
+  color: #ff8c00;
 }
 
 .play-btn {
-  background: #4a9eff;
-  color: white;
-  border: none;
-  padding: 7.4px 14.89px;
-  border-radius: 21.96px;
-  font-size: 12px;
-  cursor: pointer;
+  font-size: 0;
 }
 
 body.detail-open {
@@ -780,14 +948,11 @@ body.detail-open {
 
 .catalog-detail-extra {
   position: relative;
-  margin: 18.42px;
   border-radius: 14.89px;
-  background: rgba(30, 30, 45, 0.85);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(74, 158, 255, 0.3);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  /* Добавляем отступы от краев экрана */
-  max-width: calc(100% - 36.84px); /* Учитываем margin слева и справа */
+  background: rgba(255, 255, 255, 0.08); /* Светлый фон */
+  backdrop-filter: none;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.25);
   margin-left: auto;
   margin-right: auto;
 }
@@ -802,9 +967,12 @@ body.detail-open {
   left: 0 !important;
   right: 0 !important;
   bottom: 0 !important;
-  width: 100% !important; /* Вместо 100vw - используем 100% */
-  min-width: 100% !important; /* Вместо 100vw */
-  height: 100% !important; /* Вместо 100vh */
+  width: 100% !important;
+  /* Вместо 100vw - используем 100% */
+  min-width: 100% !important;
+  /* Вместо 100vw */
+  height: 100% !important;
+  /* Вместо 100vh */
   background-size: cover !important;
   background-position: center center !important;
   opacity: 0.2;
@@ -946,9 +1114,9 @@ body.detail-open {
 
 .catalog-detail-actors-grid,
 .catalog-detail-recommendations-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12.9px;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 20px;
   overflow-x: auto;
   padding-bottom: 8px;
 }
@@ -1122,7 +1290,7 @@ body.detail-open {
 #player-screen video {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  /* object-fit: contain; */
 }
 
 #player-overlay {
@@ -1136,7 +1304,7 @@ body.detail-open {
   bottom: 120px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
   color: #4a9eff;
   padding: 6px 12px;
   border-radius: 20px;
@@ -1146,7 +1314,8 @@ body.detail-open {
   z-index: 220;
   white-space: nowrap;
   pointer-events: none;
-  backdrop-filter: blur(4px);
+  backdrop-filter: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
 }
 
 #buffer-stats.hidden,
@@ -1188,7 +1357,7 @@ body.detail-open {
 
 /* Основной заголовок */
 .player-title {
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
   color: #fff;
   padding: 8px 20px;
   border-radius: 30px;
@@ -1200,13 +1369,14 @@ body.detail-open {
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
-  backdrop-filter: blur(4px);
+  backdrop-filter: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   transition: opacity 0.3s ease;
 }
 
 /* Вторая строка (субтитр) */
 .player-subtitle {
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
   color: rgba(255, 255, 255, 0.8);
   padding: 6px 16px;
   border-radius: 30px;
@@ -1218,7 +1388,8 @@ body.detail-open {
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
-  backdrop-filter: blur(4px);
+  backdrop-filter: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   transition: opacity 0.3s ease;
 }
 
@@ -1237,11 +1408,12 @@ body.detail-open {
   z-index: 225;
   opacity: 0;
   pointer-events: none;
-  background: rgba(20, 20, 30, 0.4);
+  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
   padding: 12px 16px;
   border-radius: 24px;
   border: 1px solid rgba(74, 158, 255, 0.5);
-  backdrop-filter: blur(8px);
+  backdrop-filter: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   transition: opacity 0.3s ease;
 }
 
@@ -1322,13 +1494,14 @@ body.detail-open {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(10, 10, 15, 0.2);
+  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
   padding: 4px 12px;
   border-radius: 20px;
   flex: 1;
   max-width: 140px;
   border: 1px solid rgba(74, 158, 255, 0.5);
-  backdrop-filter: blur(4px);
+  backdrop-filter: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
 }
 
 #volume-slider {
@@ -1494,7 +1667,7 @@ body.detail-open {
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: transparent;
+  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
   border: 1px solid rgba(74, 158, 255, 0.5);
   color: rgba(74, 158, 255, 0.8);
   font-size: 22px;
@@ -1503,14 +1676,15 @@ body.detail-open {
   justify-content: center;
   z-index: 230;
   cursor: pointer;
-  backdrop-filter: blur(4px);
+  backdrop-filter: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   transition: all 0.2s ease;
-  
+
   /* Убираем контур */
   outline: none;
   outline-style: none;
   outline-width: 0;
-  
+
   /* Для браузеров WebKit */
   -webkit-tap-highlight-color: transparent;
 }
@@ -1522,13 +1696,6 @@ body.detail-open {
 
 .hidden {
   display: none !important;
-}
-
-.focused {
-  outline: 3px solid #ff8c00 !important;
-  outline-offset: 2px !important;
-  z-index: 100;
-  position: relative;
 }
 
 .catalog-badge {
@@ -1572,12 +1739,21 @@ body.detail-open {
   #torrents-grid {
     grid-template-columns: repeat(4, 1fr);
   }
+  .catalog-trailer-card-item {
+        width: 170px;
+        height: 150px;
+  }
 
   .search-overlay {
-    top: 130px;
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
+    position: fixed;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw;
+    height: 100vh;
+    background: #0a0a14;
+    z-index: 1000;
   }
 
   .search-overlay-header {
@@ -1628,7 +1804,6 @@ body.detail-open {
 .text-input,
 .checkbox-container input,
 .server-status,
-.back-btn,
 .settings-btn,
 .search-container-header,
 .search-btn-header,
@@ -1855,7 +2030,6 @@ body.detail-open {
   }
 
   .detail-progress {
-    margin: 15.34px;
     padding: 13.29px;
     border-radius: 12.36px;
   }
@@ -1902,11 +2076,6 @@ body.detail-open {
     padding: 7.62px 15.34px;
     border-radius: 22.62px;
     font-size: 12.36px;
-  }
-
-  .catalog-detail-extra {
-    margin: 18.97px;
-    border-radius: 15.34px;
   }
 
   .catalog-detail-panel {
@@ -2114,12 +2283,12 @@ body.detail-open {
   }
 
   .search-result-meta {
-    gap: 14.12px;
+    margin: -7.06px;
     font-size: 14.12px;
   }
 
   .search-result-meta-item {
-    gap: 4.71px;
+    margin: 7.06px;
   }
 
   .search-result-voices {
@@ -2177,7 +2346,6 @@ body.detail-open {
   }
 
   .detail-progress {
-    margin: 18.61px;
     padding: 16.13px;
     border-radius: 15px;
   }
@@ -2224,11 +2392,6 @@ body.detail-open {
     padding: 9.25px 18.61px;
     border-radius: 27.45px;
     font-size: 15px;
-  }
-
-  .catalog-detail-extra {
-    margin: 23.03px;
-    border-radius: 18.61px;
   }
 
   .catalog-detail-panel {
@@ -2503,10 +2666,12 @@ body.detail-open {
     font-size: 12px !important;
   }
 }
+
 /* ===== МИНИМАЛЬНЫЕ FIXES ДЛЯ СТАРЫХ БРАУЗЕРОВ ===== */
 
 /* Только если браузер не поддерживает inset */
 @supports not (inset: 0) {
+
   #detail-view,
   #playback-overlay,
   #loading-overlay,
@@ -2531,7 +2696,7 @@ body.detail-open {
     height: 0;
     padding-bottom: 150%;
   }
-  
+
   .torrent-poster img,
   .torrent-poster .no-poster {
     position: absolute;
@@ -2540,14 +2705,14 @@ body.detail-open {
     width: 100%;
     height: 100%;
   }
-  
+
   .catalog-trailer-poster {
     position: relative;
     width: 100%;
     height: 0;
     padding-bottom: 56.25%;
   }
-  
+
   .catalog-trailer-poster img {
     position: absolute;
     top: 0;
@@ -2555,14 +2720,14 @@ body.detail-open {
     width: 100%;
     height: 100%;
   }
-  
+
   .global-search-poster {
     position: relative;
     width: 100%;
     height: 0;
     padding-bottom: 150%;
   }
-  
+
   .global-search-poster img {
     position: absolute;
     top: 0;
@@ -2571,6 +2736,7 @@ body.detail-open {
     height: 100%;
   }
 }
+
 #clock-display {
   position: fixed;
   top: 20px;
@@ -2597,4 +2763,343 @@ body.detail-open {
   letter-spacing: normal !important;
   font-feature-settings: normal !important;
   font-variant-numeric: tabular-nums !important;
+}
+
+.hidden-filter {
+  display: none;
+}
+
+/* Затемнение фона для читаемости текста при backdrop */
+#detail-backdrop-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  z-index: -1;
+}
+
+/* Полоска прогресса для file-item */
+.file-progress-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 0;
+  z-index: 15;
+}
+
+.file-progress-fill {
+  height: 100%;
+  background: #ff8c00;
+  width: 0%;
+  transition: width 0.3s ease;
+  border-radius: 0;
+}
+
+/* Визуальный эффект для карточек с прогрессом */
+.file-item.has-progress {
+  border-bottom: 1px solid rgba(255, 140, 0, 0.5);
+}
+
+/* Анимация появления полоски */
+@keyframes progressGlow {
+  0% {
+    opacity: 0.7;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+.file-progress-fill:not([style*="width: 0%"]) {
+  animation: progressGlow 0.5s ease;
+  box-shadow: 0 0 4px rgba(255, 140, 0, 0.5);
+}
+
+.file-still-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #2a2a3a, #1a1a2a);
+}
+
+.file-still-container {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.file-still-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.files-loading-indicator {
+  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  border-radius: 16px;
+  margin: 40px 20px;
+  backdrop-filter: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+/* Анимация пульсации для текста загрузки */
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.loading-text {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Стили для прогресс-бара */
+.loading-progress-container {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.loading-progress-bar {
+  box-shadow: 0 0 6px rgba(74, 158, 255, 0.5);
+}
+
+.view-tabs .view-tab {
+  color: #ff8c00;
+  /* морковный для всех */
+}
+
+.file-overlay {
+  display: none !important;
+}
+
+/* ===== ПЛАВНЫЙ СКРОЛЛИНГ ===== */
+
+/* Глобальные настройки плавности */
+html {
+  /* scroll-behavior: smooth; */
+  scroll-padding: 20px;
+}
+
+#main-container,
+.search-results-list,
+#detail-view,
+.episodes-list,
+.audio-list,
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Для горизонтальных сеток - обеспечить отступы при скролле */
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid,
+.catalog-detail-trailers-grid {
+  scroll-padding-left: 30px;
+  scroll-padding-right: 30px;
+  scroll-snap-type: x mandatory;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Специально для горизонтальных карточек */
+.catalog-actor-card,
+.catalog-recommendation-card {
+  scroll-snap-align: start;
+  scroll-margin-inline: 20px;
+  /* Горизонтальный отступ при скролле */
+}
+
+/* Более заметный и плавный outline при фокусе */
+.focused {
+  outline: none !important;
+  box-shadow: 0 0 0 3px #ff8c00 !important;
+  /* transition: box-shadow 0.10s ease; */
+  /* transform: scale(1.01); */
+  z-index: 10;
+  position: relative;
+  border-radius: 12px;
+  /* Добавляем скругление, чтобы тень соответствовала карточке */
+}
+
+/* Для ТВ отключаем каскадную анимацию */
+@media (pointer: coarse) {
+  .torrent-card {
+    animation: none;
+  }
+}
+
+/* Добавляем отступы родительскому контейнеру */
+.catalog-detail-actors-wrap,
+.catalog-detail-recommendations-wrap {
+  padding: 8px 0;
+  margin: 0;
+  overflow: visible;
+}
+
+/* Для самого грида - убираем отступы, но добавляем внутренние */
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid {
+  padding: 8px 20px 16px 20px !important;
+  gap: 20px;
+}
+
+/* Первый элемент - не обрезаем слева */
+.catalog-actor-card:first-child,
+.catalog-recommendation-card:first-child {
+  margin-left: 0;
+}
+
+/* Последний элемент - не обрезаем справа */
+.catalog-actor-card:last-child,
+.catalog-recommendation-card:last-child {
+  margin-right: 0;
+}
+
+/* Добавьте в styles.css */
+.torrent-card,
+.catalog-card,
+.catalog-folder-card,
+.search-result-item,
+.file-item {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+/* Улучшенная анимация для focused элемента */
+.focused {
+  outline: none !important;
+  transition: none !important;
+  /* GSAP будет управлять анимацией */
+}
+
+/* Для обратной совместимости - если GSAP не загрузился */
+.no-gsap .torrent-card {
+  animation: fadeInScale 0.3s ease forwards;
+}
+
+.search-result-meta-item:not(:first-child)::before {
+  content: "•";
+  margin: 0 6px;
+  color: #4a9eff;
+}
+
+/* Убираем скроллбары у всех элементов, которые могут иметь скролл */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+div::-webkit-scrollbar,
+section::-webkit-scrollbar,
+main::-webkit-scrollbar,
+aside::-webkit-scrollbar,
+article::-webkit-scrollbar {
+  display: none;
+}
+
+html,
+body,
+div,
+section,
+main,
+aside,
+article {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.checkbox-container[hidden] {
+  display: none !important;
+}
+
+.video-object-fit-contain {
+  object-fit: contain !important;
+}
+
+.video-object-fit-fill {
+  object-fit: fill !important;
+}
+
+.video-object-fit-cover {
+  object-fit: cover !important;
+}
+
+.video-object-fit-none {
+  object-fit: none !important;
+}
+
+/* Базовый стиль кнопки пропуска */
+.skip-button {
+    position: fixed;
+    bottom: 80px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 1000;
+    border: 2px solid #ff5722;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    letter-spacing: 0.5px;
+    transition: background 10s linear;
+}
+
+.skip-button.hidden {
+    display: none;
+}
+
+.skip-button.visible {
+    display: flex;
+    animation: slideIn 0.3s ease;
+}
+
+.skip-button.filled {
+    background: linear-gradient(135deg, #ff5722, #e64a19);
+    transition: background 0.3s ease;
+}
+
+.skip-button.focused {
+    outline: none;
+    border-color: #ffeb3b;
+    box-shadow: 0 0 10px #ffeb3b, 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.skip-button.focused.filled {
+    box-shadow: 0 0 15px #ffeb3b, 0 4px 15px rgba(0,0,0,0.3);
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
 }
