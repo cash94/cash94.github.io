@@ -38,7 +38,42 @@ body {
   border-radius: 24px;
   padding: 30px 24px;
   max-width: 100%;
+  width: 100%;
+  min-width: 600px; /* Фиксируем минимальную ширину */
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+}
+
+/* Контент внутри config-card */
+.config-card > div {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Все tab-content внутри config-card */
+.config-card .tab-content {
+  display: none;
+  width: 100%;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.config-card .tab-content[style*="display: block"],
+.config-card .tab-content[style*="display:block"] {
+  display: block;
+  width: 100%;
+}
+
+/* Правая колонка */
+.config-card > div[style*="flex: 2"] {
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Левая колонка с меню */
+.config-card > div[style*="flex: 0.8"] {
+  flex-shrink: 0;
 }
 
 .config-card h1 {
@@ -3104,13 +3139,4 @@ article {
 .menu-item.active {
     background: #1a1a20 !important;
     border-left: 3px solid #4a9eff;
-}
-#config-screen .tab-content {
-    display: none;
-    width: 100%;
-}
-
-#config-screen .tab-content:not([style*="display: none"]) {
-    display: block;
-    width: 100%;
 }
