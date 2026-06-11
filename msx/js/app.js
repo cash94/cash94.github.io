@@ -245,6 +245,7 @@ async function init() {
 
     initialServerCheck();
     setupCheckboxes();
+    initJacredUrlStorage();
 
 
     if (typeof AppState !== 'undefined') {
@@ -1440,6 +1441,35 @@ function setupSpeedTest() {
       }
     }
   });
+}
+
+function initJacredUrlStorage() {
+    var jacredUrlInput = getEl('jacred-url');
+    if (!jacredUrlInput) return;
+    
+    // Загружаем сохранённое значение
+    var savedUrl = localStorage.getItem('jacred-url');
+    if (savedUrl) {
+        jacredUrlInput.value = savedUrl;
+        console.log('📦 Загружен jacred URL:', savedUrl);
+    }
+    
+    // Сохраняем при вводе с задержкой
+    var saveTimeout;
+    jacredUrlInput.addEventListener('input', function() {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(function() {
+            var value = jacredUrlInput.value.trim();
+            localStorage.setItem('jacred-url', value);
+            console.log('💾 Сохранён jacred URL:', value);
+        }, 500);
+    });
+    
+    // Сохраняем при потере фокуса (для надёжности)
+    jacredUrlInput.addEventListener('blur', function() {
+        var value = jacredUrlInput.value.trim();
+        localStorage.setItem('jacred-url', value);
+    });
 }
 
 // Экспортируем функции
