@@ -1572,7 +1572,7 @@ window.blockSwipe = function (ms) {
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 function initControl() {
     console.log('Модуль управления инициализирован (оптимизирован)');
-    setupKeyboardHandlers(); //setupFocusRescue();
+    setupKeyboardHandlers(); setupFocusRescue();
     window.updateFocusableElements = updateFocusableElements; window.setFocus = setFocus; window.navigate = navigate;
     window.showPlayerControls = showPlayerControls; window.hidePlayerControls = hidePlayerControls;
     window.hidePlayerPanelsOnly = hidePlayerPanelsOnly; window.hidePlayerUi = hidePlayerUi;
