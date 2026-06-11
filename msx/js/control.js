@@ -1100,11 +1100,11 @@ function setupFocusRescue() {
                         } else {
                             // Не в фокусе - фокусируем и выделяем
                             currentFocused.focus();
-                            try {
-                                if (currentFocused.select) {
-                                    currentFocused.select();
-                                }
-                            } catch (e) { }
+                            //try {
+                                //if (currentFocused.select) {
+                                    //currentFocused.select();
+                                //}
+                            //} catch (e) { }
                         }
                     } else if (typeof currentFocused.click === 'function') {
                         currentFocused.click();
