@@ -3101,3 +3101,7 @@ article {
         opacity: 1;
     }
 }
+.menu-item.active {
+    background: #1a1a20 !important;
+    border-left: 3px solid #4a9eff;
+}
