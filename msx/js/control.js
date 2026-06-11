@@ -1089,7 +1089,7 @@ function setupFocusRescue() {
 
             if (dir === 'enter') {
                 if (currentFocused) {
-                    var isTextInput = currentFocused.tagName === 'INPUT' ||
+                    var isTextInput = (currentFocused.tagName === 'INPUT' && currentFocused.type !== 'checkbox') ||
                         currentFocused.tagName === 'TEXTAREA' ||
                         currentFocused.isContentEditable;
 
