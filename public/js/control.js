@@ -1321,7 +1321,7 @@ function setupFocusRescue() {
         }
 
         if (currentScreenName === 'config') {
-            if (!belongsToScreen(f, 'config')) return ensureConfigFocus(true);
+            if (!belongsToScreen(focusedElement, 'config')) return ensureConfigFocus(true);
             return handleConfigNavigation('enter');
         }
 
