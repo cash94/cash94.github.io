@@ -3105,3 +3105,12 @@ article {
     background: #1a1a20 !important;
     border-left: 3px solid #4a9eff;
 }
+#config-screen .tab-content {
+    display: none;
+    width: 100%;
+}
+
+#config-screen .tab-content:not([style*="display: none"]) {
+    display: block;
+    width: 100%;
+}
