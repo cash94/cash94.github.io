@@ -768,6 +768,31 @@ function getConfigMenuItems() {
     }
     return visibleItems;
 }
+
+function switchConfigTab(tabId) {
+    // Скрываем все вкладки с контентом
+    var tabContents = document.querySelectorAll('.tab-content');
+    for (var i = 0; i < tabContents.length; i++) {
+        tabContents[i].style.display = 'none';
+    }
+
+    // Показываем выбранную вкладку (добавляем '-content' к id)
+    var selectedTab = getEl(tabId + '-content');
+    if (selectedTab) {
+        selectedTab.style.display = 'block';
+    }
+}
+
+function setConfigMenuActive(menuItemId) {
+    var menuItems = getConfigMenuItems();
+    for (var i = 0; i < menuItems.length; i++) {
+        if (menuItems[i].id === menuItemId) {
+            menuItems[i].classList.add('active');
+        } else {
+            menuItems[i].classList.remove('active');
+        }
+    }
+}
 // ==================== TV FOCUS RESCUE (Оптимизировано) ====================
 function setupFocusRescue() {
     //var VISIBLE = function (el) { return !!(el && el.offsetParent !== null && !el.disabled); };
@@ -884,30 +909,6 @@ function setupFocusRescue() {
         return visibleItems;
     }
 
-    function switchConfigTab(tabId) {
-        // Скрываем все вкладки с контентом
-        var tabContents = document.querySelectorAll('.tab-content');
-        for (var i = 0; i < tabContents.length; i++) {
-            tabContents[i].style.display = 'none';
-        }
-
-        // Показываем выбранную вкладку (добавляем '-content' к id)
-        var selectedTab = getEl(tabId + '-content');
-        if (selectedTab) {
-            selectedTab.style.display = 'block';
-        }
-    }
-
-    function setConfigMenuActive(menuItemId) {
-        var menuItems = getConfigMenuItems();
-        for (var i = 0; i < menuItems.length; i++) {
-            if (menuItems[i].id === menuItemId) {
-                menuItems[i].classList.add('active');
-            } else {
-                menuItems[i].classList.remove('active');
-            }
-        }
-    }
 
     function getColumns() { return 6; }
     function belongsToScreen(el, screen) {
@@ -1052,7 +1053,6 @@ function setupFocusRescue() {
         return false;
     }
 
-    function scrollToActiveConfigItem() { var ai = document.querySelector('#config-screen .focused'), cs = document.querySelector('#config-screen'), it = getConfigItems(); if (!ai || !cs) return; var sc = cs; while (sc && sc.scrollHeight <= sc.clientHeight) { sc = sc.parentElement; if (!sc || sc === document.body) { sc = window; break; } } var iw = (sc === window), cur = iw ? window.scrollY : sc.scrollTop, ci = -1; for (var i = 0; i < it.length; i++) if (ai === it[i]) { ci = i; break; } var ar = ai.getBoundingClientRect(), ct = iw ? 0 : sc.getBoundingClientRect().top, ot = ar.top - ct; if (ci === it.length - 2) { if (iw) window.scrollTo(0, document.body.scrollHeight - window.innerHeight); else sc.scrollTop = sc.scrollHeight - sc.clientHeight; return; } if (ci === 1) { if (iw) window.scrollTo(0, 0); else sc.scrollTop = 0; return; } var ch = iw ? window.innerHeight : sc.clientHeight; if (ot < 0) { var ns = cur + ot - 10; if (iw) window.scrollTo(0, ns); else sc.scrollTop = ns; } else if (ot + ar.height > ch) { var ns = cur + (ot + ar.height - ch) + 10; if (iw) window.scrollTo(0, ns); else sc.scrollTop = ns; } }
     function handleConfigNavigation(dir) {
         if (currentScreen() !== 'config') return false;
 
