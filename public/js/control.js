@@ -132,7 +132,7 @@ function updateFocusableElements() {
     }
 
     if (screen === 'config') {
-        var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password'];
+        var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'sync-tab'];
         var cfg = document.querySelectorAll('.settings-btn');
         for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e && e.offsetParent !== null) list.push(e); }
         for (var i = 0; i < cfg.length; i++) if (cfg[i] && cfg[i].offsetParent !== null) list.push(cfg[i]);
