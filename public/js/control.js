@@ -1142,11 +1142,8 @@ function handleConfigNavigation(dir) {
         if (dir === 'up') {
             if (currentContentIndex > 0) {
                 return focusEl(contentItems[currentContentIndex - 1]);
-            } else {
-                // На самом верху контента - возвращаемся на меню
-                configState.isOnMenu = true;
-                return focusEl(getEl(configState.activeTabId));
             }
+            return true;
         }
 
         if (dir === 'down') {
