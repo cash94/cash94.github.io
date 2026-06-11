@@ -32,7 +32,7 @@
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-regular-rounded.css?v=' + VERSION + '">');
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-rounded.css?v=' + VERSION + '">');
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-chubby.css?v=' + VERSION + '">');
-    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/styles.css?v=' + VERSION + '">');
+    document.write('<link rel="stylesheet" href="https://cash94.github.io/public/css/styles.css?v=' + VERSION + '">');
   </script>
 
   <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap"
@@ -53,15 +53,19 @@
           <div style="margin-top: 30px;">
             <div class="menu-item" data-tab="torrserver-tab"
               style="padding: 12px 15px; margin-bottom: 10px; background: #1a1a20; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
-              ⚙️ Настройки TorrServer
+              Настройки TorrServer
             </div>
             <div class="menu-item" data-tab="torrents-tab"
               style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
-              🧲 Настройки торрентов
+              Настройки торрент-трекеров
             </div>
             <div class="menu-item" data-tab="player-tab"
               style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
-              🎬 Настройки плеера
+              Настройки плеера
+            </div>
+            <div class="menu-item" data-tab="sync-tab"
+              style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
+              Синхронизация
             </div>
           </div>
 
@@ -101,6 +105,11 @@
               </div>
             </div>
 
+            <div class="checkbox-container">
+              <input type="checkbox" id="add-to-db">
+              <span>Добавлять торренты в базу</span>
+            </div>
+
             <div class="action-row" style="margin-bottom: 20px;">
               <button class="btn btn-primary" id="sync-clients-btn"
                 style="background: #4a9eff; margin-right: 10px;">Синхронизация клиентов</button>
@@ -125,11 +134,6 @@
           <div id="torrents-tab" class="tab-content" style="display: none;">
             <div class="settings-section">
               <h2>Настройки торрентов</h2>
-
-              <div class="checkbox-container">
-                <input type="checkbox" id="add-to-db">
-                <span>Добавлять торренты в базу</span>
-              </div>
 
               <div class="help-text" style="margin-top: 20px; color: #666;">
                 • Здесь будут дополнительные настройки для торрентов<br>
@@ -162,6 +166,18 @@
 
               <div class="help-text" style="margin-top: 20px; color: #666;">
                 • Здесь будут настройки субтитров, качества видео и т.д.
+              </div>
+            </div>
+          </div>
+          
+          <!-- Блок 4: Синхронизация -->
+          <div id="sync-tab" class="tab-content" style="display: none;">
+            <div class="settings-section">
+              <h2>Синхронизация</h2>
+
+              <div class="help-text" style="margin-top: 20px; color: #666;">
+                • Здесь будут дополнительные настройки для торрентов<br>
+                • Например, ограничение скорости, папка загрузки и т.д.
               </div>
             </div>
           </div>
