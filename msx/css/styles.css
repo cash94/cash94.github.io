@@ -29,7 +29,6 @@ body {
   min-height: 100vh;
   padding: 20px;
   display: flex;
-  align-items: center;
   justify-content: center;
 }
 
@@ -38,9 +37,43 @@ body {
   border: 1px solid #4a9eff;
   border-radius: 24px;
   padding: 30px 24px;
-  width: 500px;
   max-width: 100%;
+  width: 100%;
+  min-width: 600px; /* Фиксируем минимальную ширину */
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+}
+
+/* Контент внутри config-card */
+.config-card > div {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Все tab-content внутри config-card */
+.config-card .tab-content {
+  display: none;
+  width: 100%;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.config-card .tab-content[style*="display: block"],
+.config-card .tab-content[style*="display:block"] {
+  display: block;
+  width: 100%;
+}
+
+/* Правая колонка */
+.config-card > div[style*="flex: 2"] {
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Левая колонка с меню */
+.config-card > div[style*="flex: 0.8"] {
+  flex-shrink: 0;
 }
 
 .config-card h1 {
@@ -3102,4 +3135,8 @@ article {
         transform: translateX(0);
         opacity: 1;
     }
+}
+.menu-item.active {
+    background: #1a1a20 !important;
+    border-left: 3px solid #ff8c00;
 }
