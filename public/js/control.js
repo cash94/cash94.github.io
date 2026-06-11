@@ -745,6 +745,25 @@ function focusEl(el, opts) {
 }
 function byId(id) { return getEl(id); };
 function clickEl(el) { try { if (el && el.click) el.click(); } catch (e) { } };
+
+var configState = {
+    activeTabId: 'torrserver-tab',
+    isOnMenu: true,
+    previousFocusElement: null,
+    initialized: false
+};
+
+function getConfigMenuItems() {
+    var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'sync-tab'];
+    var visibleItems = [];
+    for (var i = 0; i < ids.length; i++) {
+        var element = getEl(ids[i]);
+        if (VISIBLE(element)) {
+            visibleItems.push(element);
+        }
+    }
+    return visibleItems;
+}
 // ==================== TV FOCUS RESCUE (Оптимизировано) ====================
 function setupFocusRescue() {
     //var VISIBLE = function (el) { return !!(el && el.offsetParent !== null && !el.disabled); };
@@ -828,25 +847,6 @@ function setupFocusRescue() {
             }
         }
 
-        return visibleItems;
-    }
-
-    var configState = {
-        activeTabId: 'torrserver-tab',
-        isOnMenu: true,
-        previousFocusElement: null,
-        initialized: false
-    };
-
-    function getConfigMenuItems() {
-        var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'sync-tab'];
-        var visibleItems = [];
-        for (var i = 0; i < ids.length; i++) {
-            var element = getEl(ids[i]);
-            if (VISIBLE(element)) {
-                visibleItems.push(element);
-            }
-        }
         return visibleItems;
     }
 
