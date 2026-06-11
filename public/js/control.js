@@ -1074,38 +1074,59 @@ function handleConfigNavigation(dir) {
     if (isOnMenu) {
         if (dir === 'up') {
             if (currentMenuIndex > 0) {
-                return focusEl(menuItems[currentMenuIndex - 1]);
+                var targetIndex = currentMenuIndex - 1;
+                var targetMenuItem = menuItems[targetIndex];
+                var targetTabId = targetMenuItem.id;
+
+                // Переключаем вкладку и контент
+                configState.activeTabId = targetTabId;
+                switchConfigTab(targetTabId);
+                setConfigMenuActive(targetTabId);
+
+                return focusEl(targetMenuItem);
             }
             return true;
         }
+
         if (dir === 'down') {
             if (currentMenuIndex < menuItems.length - 1) {
-                return focusEl(menuItems[currentMenuIndex + 1]);
+                var targetIndex = currentMenuIndex + 1;
+                var targetMenuItem = menuItems[targetIndex];
+                var targetTabId = targetMenuItem.id;
+
+                // Переключаем вкладку и контент
+                configState.activeTabId = targetTabId;
+                switchConfigTab(targetTabId);
+                setConfigMenuActive(targetTabId);
+
+                return focusEl(targetMenuItem);
             }
             return true;
         }
+
         if (dir === 'left' || dir === 'right') {
             return true;
         }
+
         if (dir === 'enter') {
-            // Нажатие OK на пункте меню
+            // Нажатие OK на пункте меню - переключаемся на контент
             var selectedTabId = currentFocused.id;
             configState.activeTabId = selectedTabId;
             configState.isOnMenu = false;
             setConfigMenuActive(selectedTabId);
+
+            // Контент уже должен быть виден от навигации, но убеждаемся
+            switchConfigTab(selectedTabId);
+
             var contentItems = getConfigContentItems(selectedTabId);
             if (contentItems.length > 0) {
                 return focusEl(contentItems[0]);
             }
             return true;
         }
+
         if (dir === 'back') {
-            // Назад - возвращаемся на меню, снимаем активность
-            configState.isOnMenu = true;
-            configState.activeTabId = 'torrserver-tab';  // 👈 Устанавливаем первую вкладку
-            setConfigMenuActive(null);
-            switchConfigTab('torrserver-tab');  // 👈 Переключаем контент
-            return focusEl(menuItems[0]);
+            return true;
         }
     } else {
         // Фокус на контенте вкладки
@@ -1127,15 +1148,18 @@ function handleConfigNavigation(dir) {
                 return focusEl(getEl(configState.activeTabId));
             }
         }
+
         if (dir === 'down') {
             if (currentContentIndex < contentItems.length - 1 && currentContentIndex !== -1) {
                 return focusEl(contentItems[currentContentIndex + 1]);
             }
             return true;
         }
+
         if (dir === 'left' || dir === 'right') {
             return true;
         }
+
         if (dir === 'enter') {
             // OK на элементе контента
             if (currentFocused && currentFocused.click) {
@@ -1143,12 +1167,11 @@ function handleConfigNavigation(dir) {
             }
             return true;
         }
+
         if (dir === 'back') {
-            // Назад - возвращаемся на меню, снимаем активность
+            // Назад - возвращаемся на меню
             configState.isOnMenu = true;
-            setConfigMenuActive(null);
-            configState.activeTabId = null;
-            return focusEl(menuItems[0]);
+            return focusEl(getEl(configState.activeTabId));
         }
     }
 
