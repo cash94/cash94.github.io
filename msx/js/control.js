@@ -1100,14 +1100,12 @@ function setupFocusRescue() {
                         } else {
                             // Не в фокусе - фокусируем и выделяем
                             currentFocused.focus();
-                            //try {
-                                //if (currentFocused.select) {
-                                    //currentFocused.select();
-                                //}
-                            //} catch (e) { }
                         }
-                    } else if (typeof currentFocused.click === 'function') {
-                        currentFocused.click();
+                    } else {
+                        // Для всех остальных элементов (checkbox, button, div и т.д.) - кликаем
+                        if (typeof currentFocused.click === 'function') {
+                            currentFocused.click();
+                        }
                     }
                 }
                 return true;
