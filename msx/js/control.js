@@ -1118,11 +1118,11 @@ function setupFocusRescue() {
                         currentFocused.isContentEditable;
 
                     if (isTextInput) {
-                        if (document.activeElement === currentFocused) {
+                        //if (document.activeElement === currentFocused) {
                             // Уже в фокусе - снимаем выделение и убираем фокус
                             currentFocused.blur();
                             return true;
-                        }
+                        //}
                     }
                 } else {                       
                     // Назад - возвращаемся на меню
