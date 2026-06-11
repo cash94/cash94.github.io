@@ -178,7 +178,7 @@ function setFocus(index) {
 
     // Сброс фокуса с инпутов
     if (document.activeElement && document.activeElement.tagName === 'INPUT') {
-        var allowed = ['search-query', 'torrserver-url', 'auth-login', 'auth-password'];
+        var allowed = ['search-query', 'torrserver-url', 'auth-login', 'auth-password', 'jacred-url'];
         if (allowed.indexOf(element.id) === -1) document.activeElement.blur();
     }
 
@@ -392,14 +392,14 @@ function setupKeyboardHandlers() {
         }
 
         if (AppState.currentScreen === 'config') {
-            var inp = active && (active.id === 'torrserver-url' || active.id === 'auth-login' || active.id === 'auth-password');
+            var inp = active && (active.id === 'torrserver-url' || active.id === 'auth-login' || active.id === 'auth-password' || f.id === 'jacred-url');
             if (inp) { if (isKeyPressed('OK', k)) { e.preventDefault(); active.blur(); updateFocusableElements(); var ci = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].id === active.id) { ci = i; break; } setFocus(ci !== -1 && ci < focusableElements.length - 1 ? ci + 1 : 0); return; } return; }
             updateFocusableElements();
             if (isKeyPressed('UP', k)) { e.preventDefault(); setFocus(currentFocusIndex - 1); return; }
             if (isKeyPressed('DOWN', k)) { e.preventDefault(); setFocus(currentFocusIndex + 1); return; }
             if (isKeyPressed('LEFT', k)) { e.preventDefault(); setFocus(currentFocusIndex - 1); return; }
             if (isKeyPressed('RIGHT', k)) { e.preventDefault(); setFocus(currentFocusIndex + 1); return; }
-            if (isKeyPressed('OK', k)) { e.preventDefault(); var f = document.querySelector('.focused'); if (f) { if (f.id === 'torrserver-url' || f.id === 'auth-login' || f.id === 'auth-password') f.focus(); else f.click(); } return; }
+            if (isKeyPressed('OK', k)) { e.preventDefault(); var f = document.querySelector('.focused'); if (f) { if (f.id === 'torrserver-url' || f.id === 'auth-login' || f.id === 'auth-password' || f.id === 'jacred-url') f.focus(); else f.click(); } return; }
         }
 
         if (AppState.currentScreen === 'search') {
@@ -775,6 +775,7 @@ function setupFocusRescue() {
             'auth-checkbox',
             'auth-login',
             'auth-password',
+            'jacred-url',
             '.settings-btn',
             'sync-clients-btn',
             'speedtest-btn',
@@ -872,7 +873,7 @@ function setupFocusRescue() {
 
         if (screen === 'config') {
             return !!(el.closest('#config-screen') ||
-                ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio', 'torrserver-tab', 'torrents-tab', 'player-tab', 'sync-tab'].indexOf(el.id) !== -1 ||
+                ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio', 'torrserver-tab', 'torrents-tab', 'player-tab', 'sync-tab', 'jacred-url'].indexOf(el.id) !== -1 ||
                 el.classList.contains('settings-btn') ||
                 el.classList.contains('menu-item'));
         }
