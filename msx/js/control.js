@@ -1112,9 +1112,23 @@ function setupFocusRescue() {
             }
 
             if (dir === 'back') {
-                // Назад - возвращаемся на меню
-                configState.isOnMenu = true;
-                return focusEl(getEl(configState.activeTabId));
+                if (currentFocused) {
+                    var isTextInput = (currentFocused.tagName === 'INPUT' && currentFocused.type !== 'checkbox') ||
+                        currentFocused.tagName === 'TEXTAREA' ||
+                        currentFocused.isContentEditable;
+
+                    if (isTextInput) {
+                        if (document.activeElement === currentFocused) {
+                            // Уже в фокусе - снимаем выделение и убираем фокус
+                            currentFocused.blur();
+                            return true;
+                        }
+                    }
+                } else {                       
+                    // Назад - возвращаемся на меню
+                    configState.isOnMenu = true;
+                    return focusEl(getEl(configState.activeTabId));
+                }
             }
         }
 
