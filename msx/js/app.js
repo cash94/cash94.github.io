@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', function () {
   init();
 });
 
-var checkServerTimeout = null;
+var checkServerTimeout = 3;
 var hideClockEnabled = false;
 var addToDbEnabled = false;
 var multiChannelEnabled = false;
