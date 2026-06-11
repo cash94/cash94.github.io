@@ -1089,8 +1089,26 @@ function setupFocusRescue() {
 
             if (dir === 'enter') {
                 // OK на элементе контента
-                if (currentFocused && currentFocused.click) {
-                    currentFocused.click();
+                if (currentFocused) {
+                    // Проверяем, является ли элемент текстовым полем
+                    var isTextInput = currentFocused.tagName === 'INPUT' ||
+                        currentFocused.tagName === 'TEXTAREA' ||
+                        currentFocused.isContentEditable;
+
+                    if (isTextInput) {
+                        // Для текстовых полей - устанавливаем фокус и выделяем текст
+                        currentFocused.focus();
+                        try {
+                            if (currentFocused.select) {
+                                currentFocused.select();
+                            }
+                        } catch (e) { }
+                        // Опционально: эмулируем нажатие Enter внутри поля
+                        // currentFocused.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+                    } else if (typeof currentFocused.click === 'function') {
+                        // Для остальных элементов - обычный клик
+                        currentFocused.click();
+                    }
                 }
                 return true;
             }
