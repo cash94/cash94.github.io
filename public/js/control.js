@@ -1392,6 +1392,9 @@ function setupFocusRescue() {
     var prevShow = window.showDetail; if (typeof prevShow === 'function') { window.showDetail = function () { var o = prevShow.apply(this, arguments); setTimeout(function () { if (currentScreen() !== 'player') ensureDetailFocus(true); }, 220); return o; }; }
     var prevSR = window.showSearchResults; if (typeof prevSR === 'function') { window.showSearchResults = function () { var o = prevSR.apply(this, arguments); setTimeout(function () { ensureSearchFocus(true, true); }, 120); return o; }; }
     setTimeout(function () { ensureTorrentFocus(true); }, 120);
+
+    window.getTorrentTabs = getTorrentTabs;
+    window.handleConfigNavigation  = handleConfigNavigation;
 }
 
 function currentScreen() { try { var ss = window.AppState && AppState.currentScreen ? AppState.currentScreen : null, p = getEl('player-screen'), d = getEl('detail-view'), c = getEl('config-screen'), s = getEl('search-overlay'), ct = getEl('tab-catalog'), dn = getEl('donate-overlay'), sy = getEl('sync-overlay'); if (ss === 'player') return 'player'; if (p && getComputedStyle(p).display !== 'none') return 'player'; if (sy && !sy.classList.contains('hidden') && getComputedStyle(sy).display !== 'none') return 'sync'; if (c && getComputedStyle(c).display !== 'none') return 'config'; if (d && getComputedStyle(d).display !== 'none') return 'detail'; if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') return 'search'; if (dn && !dn.classList.contains('hidden') && getComputedStyle(dn).display !== 'none') return 'donate'; if (AppState.inSearch == 'catalog') return 'catalog'; var cg = getEl('torrents-grid'); if (cg) { var hc = cg.querySelector('.catalog-card,.catalog-folder-card') !== null, tc = cg.querySelector('.torrent-card:not(.catalog-card):not(.catalog-folder-card)') !== null; if (hc && !tc) return 'catalog'; } return ss || 'torrents'; } catch (e) { return 'torrents'; } }
