@@ -9,7 +9,7 @@
   <!-- Для Vidaa OS -->
   <meta name="tv" content="true">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <link rel="icon" type="image/x-icon" href="https://cash94.github.io/public/favicon16.ico">
+  <link rel="icon" type="image/x-icon" href="https://cash94.github.io/msx/favicon16.ico">
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-K43Y9GMGR9"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
@@ -19,15 +19,20 @@
   </script>
 
   <!-- HLS.js библиотека (без версионирования, так как с CDN) -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/EasePack.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollToPlugin.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/promise-polyfill@8/dist/polyfill.min.js"></script>
 
   <!-- CSS стили с версионированием -->
   <script>
     var VERSION = Date.now();
-    document.write('<link rel="stylesheet" href="https://cash94.github.io/public/css/uicons-regular-rounded.css?v=' + VERSION + '">');
-    document.write('<link rel="stylesheet" href="https://cash94.github.io/public/css/uicons-thin-rounded.css?v=' + VERSION + '">');
-    document.write('<link rel="stylesheet" href="https://cash94.github.io/public/css/uicons-thin-chubby.css?v=' + VERSION + '">');
-    document.write('<link rel="stylesheet" href="https://cash94.github.io/public/css/styles.css?v=' + VERSION + '">');
+    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-regular-rounded.css?v=' + VERSION + '">');
+    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-rounded.css?v=' + VERSION + '">');
+    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-chubby.css?v=' + VERSION + '">');
+    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/styles.css?v=' + VERSION + '">');
   </script>
 
   <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap"
@@ -69,6 +74,8 @@
         </div>
         
         <div class="action-row" style="margin-bottom: 20px;">
+          <button class="btn btn-primary" id="sync-clients-btn"
+            style="background: #4a9eff; margin-right: 10px;">Синхронизация клиентов</button>
           <button class="btn btn-primary" id="speedtest-btn" style="background: #4a9eff;">Замерить скорость</button>
         </div>
         <div id="speedtest-results"
@@ -97,6 +104,10 @@
         <div class="checkbox-container">
           <input type="checkbox" id="multi-channel-audio">
           <span>Включить многоканальный звук (экспериментальная функция)</span>
+        </div>
+        <div class="checkbox-container" hidden>
+          <input type="checkbox" id="out-player">
+          <span>Использовать внешний плеер (только android)</span>
         </div>
         <div class="help-text" style="margin-top: 20px; color: #666;">
           • Введите адрес TorrServer для автоматического подключения<br>
@@ -130,79 +141,88 @@
 
       <!-- Сетка с торрентами (всегда видна на фоне) -->
       <div id="torrents-grid"></div>
-
-      <!-- Контейнер для результатов поиска (оверлей поверх сетки) -->
-      <div id="search-overlay" class="search-overlay hidden">
-        <div class="search-overlay-header search-screen-toolbar">
-          <input type="text" class="search-input-screen" id="search-query" placeholder="Поиск фильмов и сериалов...">
-          <button class="filter-toggle-btn" id="filter-toggle" title="Фильтры">Фильтры</button>
-          <button class="search-action-btn" id="search-btn">Поиск</button>
-          <button class="close-search-btn" id="close-search">X</button>
-        </div>
-
-        <div class="search-filters collapsed" id="search-filters-panel">
-          <div class="filter-group">
-            <label class="filter-label" for="torrent-movie">Категория</label>
-            <select id="torrent-movie" class="filter-select">
-              <option value="globalsearch">Глобальный поиск</option>
-              <option value="torrentsearch">Торренты</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="sort-by">Сортировка</label>
-            <select id="sort-by" class="filter-select">
-              <option value="date-desc">Сначала новые</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="filter-quality">Качество</label>
-            <select id="filter-quality" class="filter-select">
-              <option value="all">Все качества</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="filter-tracker">Трекер</label>
-            <select id="filter-tracker" class="filter-select">
-              <option value="all">Все трекеры</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="filter-year">Год</label>
-            <select id="filter-year" class="filter-select">
-              <option value="all">Все года</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="filter-season">Сезон</label>
-            <select id="filter-season" class="filter-select">
-              <option value="all">Все сезоны</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label class="filter-label" for="filter-voice">Озвучка</label>
-            <select id="filter-voice" class="filter-select">
-              <option value="all">Все озвучки</option>
-            </select>
-          </div>
-
-          <button class="filter-reset-btn" id="reset-filters">Сброс</button>
-        </div>
-
-        <div id="search-results" class="search-results-list"></div>
-      </div>
     </div>
+  </div>
+
+  <!-- Контейнер для результатов поиска (оверлей поверх сетки) -->
+  <div id="search-overlay" class="search-overlay hidden">
+    <div class="search-overlay-header search-screen-toolbar">
+      <input type="text" class="search-input-screen" id="search-query" placeholder="Поиск фильмов и сериалов...">
+      <button class="filter-toggle-btn" id="filter-toggle" title="Фильтры">Фильтры</button>
+      <button class="search-action-btn" id="search-btn">Поиск</button>
+      <button class="close-search-btn" id="close-search">X</button>
+    </div>
+
+    <div class="search-filters collapsed" id="search-filters-panel">
+      <div class="filter-group">
+        <label class="filter-label" for="torrent-movie">Категория</label>
+        <select id="torrent-movie" class="filter-select">
+          <option value="globalsearch">Глобальный поиск</option>
+          <option value="torrentsearch">Торренты</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="sort-by">Сортировка</label>
+        <select id="sort-by" class="filter-select">
+          <option value="date-desc">Сначала новые</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-quality">Качество</label>
+        <select id="filter-quality" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-tracker">Трекер</label>
+        <select id="filter-tracker" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-year">Год</label>
+        <select id="filter-year" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-season">Сезон</label>
+        <select id="filter-season" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-voice">Озвучка</label>
+        <select id="filter-voice" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-videotype">Тип видео</label>
+        <select id="filter-videotype" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <button class="filter-reset-btn" id="reset-filters">X</button>
+    </div>
+
+    <div id="search-results" class="search-results-list"></div>
   </div>
 
   <!-- Детальный просмотр -->
   <div id="detail-view">
     <div class="detail-header">
-      <div class="back-btn" id="back-from-detail" style="margin-right: 20px;">←</div>
+      <div class="back-btn" id="back-from-detail" style="margin-right: 20px; margin-left: 20px;">
+        <i class="fi fi-rr-left"></i>
+      </div>
       <div class="detail-poster" id="detail-poster"></div>
       <div class="detail-title">
         <h2 id="detail-title-text"></h2>
@@ -288,6 +308,9 @@
             </button>
             <button class="control-btn" id="mute-btn">
               <i class="fi fi-rr-volume"></i>
+            </button>
+            <button class="control-btn" id="zoom-mode-btn" title="Режим масштабирования">
+              <i class="fi fi-rr-expand-arrows-alt"></i>
             </button>
             <button class="control-btn" id="toggle-buffer-btn">
               <i class="fi fi-rr-eye"></i>
@@ -385,16 +408,18 @@
   <script>
     var VERSION = Date.now();
 
-    document.write('<script src="https://cash94.github.io/public/js/config.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/tmdb.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/torrents.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/catalog.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/player.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/control.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/donate.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/torrserverstats.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/speedtest.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/app.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/config.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/tmdb.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/torrents.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/catalog.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/player.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/control.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/donate.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/torrserverstats.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/speedtest.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/sync.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/animations.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/app.js?v=' + VERSION + '"><\/script>');
 
     // Скрываем загрузчик после инициализации
     document.write('<script>');
