@@ -44,75 +44,127 @@
   <div id="main-container">
     <!-- Экран настроек TorrServer -->
     <div id="config-screen">
-      <div class="config-card">
-        <h1>TorrStream</h1>
-        <p class="subtitle">TorrServer + HLS стриминг</p>
+      <div class="config-card" style="display: flex; gap: 30px;">
+        <!-- Левая колонка - меню -->
+        <div style="flex: 0.8; border-right: 1px solid #2a2a30; padding-right: 20px;">
+          <h1 style="margin-top: 0;">TorrStream</h1>
+          <p class="subtitle">TorrServer + HLS стриминг</p>
 
-        <div class="settings-section">
-          <h2>Настройки TorrServer</h2>
-
-          <div class="field-label">URL TorrServer</div>
-          <input type="text" class="text-input" id="torrserver-url" placeholder="http://localhost:8090" autofocus>
-
-          <div class="checkbox-container">
-            <input type="checkbox" id="auth-checkbox">
-            <span>Требуется аутентификация</span>
+          <div style="margin-top: 30px;">
+            <div class="menu-item" data-tab="torrserver-tab"
+              style="padding: 12px 15px; margin-bottom: 10px; background: #1a1a20; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
+              ⚙️ Настройки TorrServer
+            </div>
+            <div class="menu-item" data-tab="torrents-tab"
+              style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
+              🧲 Настройки торрентов
+            </div>
+            <div class="menu-item" data-tab="player-tab"
+              style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
+              🎬 Настройки плеера
+            </div>
           </div>
 
-          <div class="auth-fields" id="auth-fields">
-            <div class="field-label">Логин</div>
-            <input type="text" class="text-input" id="auth-login" placeholder="Логин">
-
-            <div class="field-label">Пароль</div>
-            <input type="password" class="text-input" id="auth-password" placeholder="Пароль">
-          </div>
-
-          <div class="server-status" id="server-status">
-            <div class="status-indicator" id="status-indicator"></div>
-            <span id="status-text">Введите адрес сервера</span>
+          <div class="help-text" style="margin-top: 40px; color: #666; font-size: 12px;">
+            • Введите адрес TorrServer для автоматического подключения<br>
+            • После успешной проверки откроется список торрентов<br>
+            • Настройки сохраняются автоматически
           </div>
         </div>
-        
-        <div class="action-row" style="margin-bottom: 20px;">
-          <button class="btn btn-primary" id="sync-clients-btn"
-            style="background: #4a9eff; margin-right: 10px;">Синхронизация клиентов</button>
-          <button class="btn btn-primary" id="speedtest-btn" style="background: #4a9eff;">Замерить скорость</button>
-        </div>
-        <div id="speedtest-results"
-          style="display: none; margin-bottom: 20px; padding: 12px; background: #0a0a0f; border-radius: 12px; border: 1px solid #4a9eff;">
-          <div style="font-size: 13px; margin-bottom: 8px; color: #4a9eff;">Результаты замера:</div>
-          <div id="speedtest-torrserver" style="font-size: 12px; color: #ccc;">TorrServer → TorrStream: -- Mbps</div>
-          <div id="speedtest-client" style="font-size: 12px; color: #ccc; margin-top: 5px;">TorrStream → Клиент: -- Mbps
-          </div>
-          <div id="speedtest-total"
-            style="font-size: 12px; color: #ff8c00; margin-top: 8px; border-top: 1px solid #333; padding-top: 6px;">
-            Общая задержка: --</div>
-        </div>
 
-        <div class="checkbox-container">
-          <input type="checkbox" id="auto-fullscreen">
-          <span>Автоматический полноэкранный режим при запуске</span>
-        </div>
-        <div class="checkbox-container">
-          <input type="checkbox" id="hide-clock">
-          <span>Скрыть часы в плеере</span>
-        </div>
-        <div class="checkbox-container">
-          <input type="checkbox" id="add-to-db">
-          <span>Добавлять торренты в базу</span>
-        </div>
-        <div class="checkbox-container">
-          <input type="checkbox" id="multi-channel-audio">
-          <span>Включить многоканальный звук (экспериментальная функция)</span>
-        </div>
-        <div class="checkbox-container" hidden>
-          <input type="checkbox" id="out-player">
-          <span>Использовать внешний плеер (только android)</span>
-        </div>
-        <div class="help-text" style="margin-top: 20px; color: #666;">
-          • Введите адрес TorrServer для автоматического подключения<br>
-          • После успешной проверки откроется список торрентов<br>
-          • Настройки сохраняются автоматически
+        <!-- Правая колонка - контент (все существующие блоки) -->
+        <div style="flex: 2;">
+          <!-- Блок 1: Настройки TorrServer -->
+          <div id="torrserver-tab" class="tab-content" style="display: block;">
+            <div class="settings-section">
+              <h2>Настройки TorrServer</h2>
+
+              <div class="field-label">URL TorrServer</div>
+              <input type="text" class="text-input" id="torrserver-url" placeholder="http://localhost:8090" autofocus>
+
+              <div class="checkbox-container">
+                <input type="checkbox" id="auth-checkbox">
+                <span>Требуется аутентификация</span>
+              </div>
+
+              <div class="auth-fields" id="auth-fields">
+                <div class="field-label">Логин</div>
+                <input type="text" class="text-input" id="auth-login" placeholder="Логин">
+
+                <div class="field-label">Пароль</div>
+                <input type="password" class="text-input" id="auth-password" placeholder="Пароль">
+              </div>
+
+              <div class="server-status" id="server-status">
+                <div class="status-indicator" id="status-indicator"></div>
+                <span id="status-text">Введите адрес сервера</span>
+              </div>
+            </div>
+
+            <div class="action-row" style="margin-bottom: 20px;">
+              <button class="btn btn-primary" id="sync-clients-btn"
+                style="background: #4a9eff; margin-right: 10px;">Синхронизация клиентов</button>
+              <button class="btn btn-primary" id="speedtest-btn" style="background: #4a9eff;">Замерить скорость</button>
+            </div>
+            <div id="speedtest-results"
+              style="display: none; margin-bottom: 20px; padding: 12px; background: #0a0a0f; border-radius: 12px; border: 1px solid #4a9eff;">
+              <div style="font-size: 13px; margin-bottom: 8px; color: #4a9eff;">Результаты замера:</div>
+              <div id="speedtest-torrserver" style="font-size: 12px; color: #ccc;">TorrServer → TorrStream: -- Mbps
+              </div>
+              <div id="speedtest-client" style="font-size: 12px; color: #ccc; margin-top: 5px;">TorrStream → Клиент: --
+                Mbps
+              </div>
+              <div id="speedtest-total"
+                style="font-size: 12px; color: #ff8c00; margin-top: 8px; border-top: 1px solid #333; padding-top: 6px;">
+                Общая задержка: --
+              </div>
+            </div>
+          </div>
+
+          <!-- Блок 2: Настройки торрентов -->
+          <div id="torrents-tab" class="tab-content" style="display: none;">
+            <div class="settings-section">
+              <h2>Настройки торрентов</h2>
+
+              <div class="checkbox-container">
+                <input type="checkbox" id="add-to-db">
+                <span>Добавлять торренты в базу</span>
+              </div>
+
+              <div class="help-text" style="margin-top: 20px; color: #666;">
+                • Здесь будут дополнительные настройки для торрентов<br>
+                • Например, ограничение скорости, папка загрузки и т.д.
+              </div>
+            </div>
+          </div>
+
+          <!-- Блок 3: Настройки плеера -->
+          <div id="player-tab" class="tab-content" style="display: none;">
+            <div class="settings-section">
+              <h2>Настройки плеера</h2>
+
+              <div class="checkbox-container">
+                <input type="checkbox" id="auto-fullscreen">
+                <span>Автоматический полноэкранный режим при запуске</span>
+              </div>
+              <div class="checkbox-container">
+                <input type="checkbox" id="hide-clock">
+                <span>Скрыть часы в плеере</span>
+              </div>
+              <div class="checkbox-container">
+                <input type="checkbox" id="multi-channel-audio">
+                <span>Включить многоканальный звук (экспериментальная функция)</span>
+              </div>
+              <div class="checkbox-container" hidden>
+                <input type="checkbox" id="out-player">
+                <span>Использовать внешний плеер (только android)</span>
+              </div>
+
+              <div class="help-text" style="margin-top: 20px; color: #666;">
+                • Здесь будут настройки субтитров, качества видео и т.д.
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -419,6 +471,7 @@
     document.write('<script src="https://cash94.github.io/msx/js/speedtest.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/sync.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/animations.js?v=' + VERSION + '"><\/script>');
+    //document.write('<script src="https://cash94.github.io/msx/js/smooth-scroll.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/app.js?v=' + VERSION + '"><\/script>');
 
     // Скрываем загрузчик после инициализации
