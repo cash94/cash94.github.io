@@ -1117,7 +1117,7 @@ function setupFocusRescue() {
                 configState.isOnMenu = true;
                 return focusEl(getEl(configState.activeTabId));
             }
-
+        }
         return false;
     }
     function configHandle(dir) { return handleConfigNavigation(dir); var it = getConfigItems(), f = (belongsToScreen(document.querySelector('.focused'), 'config') ? document.querySelector('.focused') : null); if (!f) return ensureConfigFocus(true); var idx = -1; for (var i = 0; i < it.length; i++) if (f === it[i]) { idx = i; break; } if (idx === -1) return ensureConfigFocus(true); var isS = f.id === 'sync-clients-btn', isSp = f.id === 'speedtest-btn'; if (isS) { if (dir === 'right') { var s = getEl('speedtest-btn'); if (s && belongsToScreen(s, 'config')) { focusEl(s); } return true; } if (dir === 'up') { var n = it[Math.max(0, idx - 1)] || f; if (n) { focusEl(n); } return true; } if (dir === 'down') { var n = it[Math.min(it.length - 1, idx + 2)] || f; if (n) { focusEl(n); } return true; } return false; } if (isSp) { if (dir === 'left') { var s = getEl('sync-clients-btn'); if (s && belongsToScreen(s, 'config')) { focusEl(s); } return true; } if (dir === 'up') { var n = it[Math.max(0, idx - 2)] || f; if (n) { focusEl(n); } return true; } if (dir === 'down') { var n = it[Math.min(it.length - 1, idx + 1)] || f; if (n) { focusEl(n); } return true; } return false; } var nf = null; if (dir === 'up') nf = it[Math.max(0, idx - 1)] || f; else if (dir === 'down') nf = it[Math.min(it.length - 1, idx + 1)] || f; else if (dir === 'left' || dir === 'right') return true; else return false; if (nf) { focusEl(nf); } return false; }
