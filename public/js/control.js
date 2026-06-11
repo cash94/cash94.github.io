@@ -159,6 +159,10 @@ function setFocus(index) {
     //focusEl(element);
     element.classList.add('focused');
 
+    if (AppState.currentScreen === 'config') {
+        switchConfigTab(element.id);
+    }
+
     if (AppState.currentScreen === 'torrents' && element.classList.contains('torrent-card')) {
         var row1Len = (window.torrentRows && window.torrentRows.row1 ? window.torrentRows.row1.length : 0);
         var row2Len = (window.torrentRows && window.torrentRows.row2 ? window.torrentRows.row2.length : 0);
@@ -1411,6 +1415,28 @@ function onBack() {
         }
         if (!isOnMenu) {
             handleConfigNavigation('back');
+            return true;
+        } else {
+            // Убираем active у всех пунктов меню
+            for (var i = 0; i < menuItems.length; i++) {
+                menuItems[i].classList.remove('active');
+            }
+            // Сбрасываем состояние
+            configState.activeTabId = null;
+            configState.isOnMenu = true;
+            configState.initialized = false;
+            // Закрываем экран настроек
+            configScreen.style.display = 'none';
+            var torrserverSection = getEl('torrserver-section');
+            if (torrserverSection) {
+                torrserverSection.style.display = 'block';
+            }
+            try {
+                window.AppState.currentScreen = 'torrents';
+            } catch (e) { }
+            setTimeout(function () {
+                ensureTorrentFocus(true);
+            }, 180);
             return true;
         }
     }
