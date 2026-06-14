@@ -2764,7 +2764,7 @@ function exitPlayer() {
 }
 
 function setupPageUnloadHandler() {
-  if (!window.AndroidJS && AppState.currentScreen == 'player') {
+  if (!window.AndroidJS) {
     window.addEventListener('unload', function () {
       console.log('🔄 Приложение закрывается, останавливаем HLS поток...');
       if (AppState && AppState.currentStreamId) {
