@@ -442,7 +442,7 @@ function setupVolumeSlider(volumeSlider, videoPlayer) {
 function setupExitButton(exitPlayerBtn) {
   exitPlayerBtn.addEventListener('click', function (e) {
     e.stopPropagation();
-    if (typeof showDetailView === 'function') showDetailView();
+    if (typeof showDetailView === 'function') showDetailView(currentTimecodeData.fileId);
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
     if (typeof window.exitPlayer === 'function') {
       window.exitPlayer();
