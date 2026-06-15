@@ -14,7 +14,9 @@ var clickableElements = document.querySelectorAll(
   '#episodes-btn, #audio-btn, #exit-player-btn, #toggle-buffer-btn, ' +
   '.episode-item, .audio-item, .close-panel-btn, .filter-select, ' +
   '.filter-reset-btn, .progress-continue-btn, .detail-progress-btn, ' +
-  '#close-search, #filter-toggle, #search-btn'
+  '#close-search, #filter-toggle, #search-btn, '+
+  '#torrserver-tab-content, #torrents-tab-content, #player-tab-content, #sync-tab-content'+
+  '.menu-item'
 );
 
 var controls = document.querySelectorAll('.control-btn, #seek-slider, #volume-slider');
