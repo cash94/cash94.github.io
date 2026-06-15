@@ -2403,8 +2403,12 @@ function showDetailView(field = null) {
         var progressBtnIndex = -1;
         if (typeof focusableElements !== 'undefined') {
           var fLen = focusableElements.length;
-          if (field != null) {
-            setFocus(field+1);
+
+          // Преобразуем field в число
+          var fieldAsNumber = Number(field);
+
+          if (field != null && !isNaN(fieldAsNumber)) {
+            setFocus(fieldAsNumber + 1);
           } else {
             for (var i = 0; i < fLen; i++) {
               var el = focusableElements[i];
