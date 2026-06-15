@@ -2361,23 +2361,23 @@ function showDetailView() {
     getEl('torrserver-section').style.display = 'block';
   }
 
-  setTimeout(function () {
-    if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-      updateFocusableElements();
-      var progressBtnIndex = -1;
-      if (typeof focusableElements !== 'undefined') {
-        var fLen = focusableElements.length;
-        for (var i = 0; i < fLen; i++) {
-          var el = focusableElements[i];
-          if (el && (el.classList.contains('detail-progress-btn') || el.classList.contains('file-item') || el.classList.contains('back-btn'))) {
-            progressBtnIndex = i;
-            break;
-          }
-        }
-      }
-      setFocus(progressBtnIndex !== -1 ? progressBtnIndex : 0);
-    }
-  }, 250);
+  //setTimeout(function () {
+    //if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+      //updateFocusableElements();
+      //var progressBtnIndex = -1;
+      //if (typeof focusableElements !== 'undefined') {
+        //var fLen = focusableElements.length;
+        //for (var i = 0; i < fLen; i++) {
+          //var el = focusableElements[i];
+          //if (el && (el.classList.contains('detail-progress-btn') || el.classList.contains('file-item') || el.classList.contains('back-btn'))) {
+            //progressBtnIndex = i;
+            //break;
+          //}
+        //}
+      //}
+      //setFocus(progressBtnIndex !== -1 ? progressBtnIndex : 0);
+    //}
+  //}, 250);
 
   dropTorrentToServer(AppState.currentDetailItem.hash).then(function (result) {
     if (result) console.log('Торрент сброшен');
