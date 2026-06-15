@@ -1562,8 +1562,8 @@ async function showDetail(torrent) {
             if (fileItems.length > 0) {
                 var focusLen = focusableElements.length;
                 if (lastField > 0) {
-                    if (focusableElements[lastField+2].classList && focusableElements[lastField+2].classList.contains('file-item')) {
-                        setFocus(lastField+2);
+                    if (focusableElements[lastField+1].classList && focusableElements[lastField+1].classList.contains('file-item')) {
+                        setFocus(lastField+1);
                     }  
                 } else {
                     for (var i = 0; i < focusLen; i++) {
