@@ -185,10 +185,10 @@ function setFocus(index) {
     // Скролл
     var container = null;
     var s = AppState.currentScreen;
-    var isFI = el.classList && el.classList.contains('file-item');
-    var isAC = el.classList && el.classList.contains('catalog-actor-card');
-    var isRC = el.classList && el.classList.contains('catalog-recommendation-card');
-    var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
+    var isFI = element.classList && element.classList.contains('file-item');
+    var isAC = element.classList && element.classList.contains('catalog-actor-card');
+    var isRC = element.classList && element.classList.contains('catalog-recommendation-card');
+    var isTC = element.classList && element.classList.contains('catalog-trailer-card-item');
 
     if (s === 'catalog' || s === 'torrents' || s === 'config') {
         container = getEl('main-container');
