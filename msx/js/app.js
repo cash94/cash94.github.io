@@ -353,12 +353,12 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
       return;
     }
 
-    var btnLen = controlBtns.length;
-    for (var i = 0; i < btnLen; i++) {
-      var btn = controlBtns[i];
-      btn.style.pointerEvents = 'none';
-      btn.style.opacity = '0.5';
-    }
+    //var btnLen = controlBtns.length;
+    //for (var i = 0; i < btnLen; i++) {
+      //var btn = controlBtns[i];
+      //btn.style.pointerEvents = 'none';
+     //btn.style.opacity = '0.5';
+    //}
 
     if (typeof seekStream === 'function') {
       await seekStream(targetAbsoluteTime, 'slider');
