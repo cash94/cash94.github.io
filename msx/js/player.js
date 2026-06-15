@@ -2263,7 +2263,7 @@ function cancelCurrentPlayback() {
 }
 
 // функция выхода из плеера
-function showDetailView() {
+function showDetailView(field = null) {
   if (!window.AndroidJS) {
     stopTorrentStatsUpdates();
     hideSkipButton();
@@ -2403,11 +2403,15 @@ function showDetailView() {
         var progressBtnIndex = -1;
         if (typeof focusableElements !== 'undefined') {
           var fLen = focusableElements.length;
-          for (var i = 0; i < fLen; i++) {
-            var el = focusableElements[i];
-            if (el && (el.classList.contains('detail-progress-btn') || el.classList.contains('file-item') || el.classList.contains('back-btn'))) {
-              progressBtnIndex = i;
-              break;
+          if (field != null) {
+            setFocus(field+1);
+          } else {
+            for (var i = 0; i < fLen; i++) {
+              var el = focusableElements[i];
+              if (el && (el.classList.contains('detail-progress-btn') || el.classList.contains('file-item') || el.classList.contains('back-btn'))) {
+                progressBtnIndex = i;
+                break;
+              }
             }
           }
         }
@@ -2933,7 +2937,7 @@ function updatePlayerTimeline(timelineData) {
             return;
         }
 
-        showDetailView();
+        showDetailView(currentTimecodeData.fileId);
         // Обновляем прогресс в UI
         if (AppState && AppState.currentDetailItem && currentTimecodeData.hash) {
             updateDetailProgress(AppState.currentDetailItem);
