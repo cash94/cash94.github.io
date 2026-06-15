@@ -1035,11 +1035,11 @@ async function seekStream(absoluteSeekTime, source) {
       playbackText.textContent = 'Перемотка на ' + formatTime(targetTime) + '...';
 
 
-      var btnLen = controlBtns.length;
-      for (var i = 0; i < btnLen; i++) {
-        controlBtns[i].style.pointerEvents = 'none';
-        controlBtns[i].style.opacity = '0.5';
-      }
+      //var btnLen = controlBtns.length;
+      //for (var i = 0; i < btnLen; i++) {
+        //controlBtns[i].style.pointerEvents = 'none';
+        //controlBtns[i].style.opacity = '0.5';
+      //}
 
       if (wasPlaying) {
         videoPlayer.pause();
@@ -1113,10 +1113,10 @@ async function seekStream(absoluteSeekTime, source) {
 
             playbackOverlay.classList.remove('active');
             playbackText.textContent = 'Воспроизведение...';
-            for (var j = 0; j < btnLen; j++) {
-              controlBtns[j].style.pointerEvents = 'auto';
-              controlBtns[j].style.opacity = '1';
-            }
+            //for (var j = 0; j < btnLen; j++) {
+              //controlBtns[j].style.pointerEvents = 'auto';
+              //controlBtns[j].style.opacity = '1';
+            //}
             hidePlayerLoading();
             videoPlayer.removeEventListener('loadedmetadata', onMetaData);
           };
@@ -1152,10 +1152,10 @@ async function seekStream(absoluteSeekTime, source) {
         setTimeout(function () {
           playbackOverlay.classList.remove('active');
           playbackText.textContent = 'Воспроизведение...';
-          for (var k = 0; k < btnLen; k++) {
-            controlBtns[k].style.pointerEvents = 'auto';
-            controlBtns[k].style.opacity = '1';
-          }
+          //for (var k = 0; k < btnLen; k++) {
+            //controlBtns[k].style.pointerEvents = 'auto';
+            //controlBtns[k].style.opacity = '1';
+          //}
         }, 2000);
 
         if (wasPlaying) {
@@ -1446,11 +1446,11 @@ async function switchToEpisode(index, fileId) {
   document.querySelector('.playback-text').textContent = 'Переключение на серию ' + (index + 1) + '...';
 
   //var controlBtns = document.querySelectorAll('.control-btn');
-  var btnLen = controlBtns.length;
-  for (var i = 0; i < btnLen; i++) {
-    controlBtns[i].style.pointerEvents = 'none';
-    controlBtns[i].style.opacity = '0.5';
-  }
+  //var btnLen = controlBtns.length;
+  //for (var i = 0; i < btnLen; i++) {
+    //controlBtns[i].style.pointerEvents = 'none';
+    //controlBtns[i].style.opacity = '0.5';
+  //}
 
   try {
     var playUrl = AppState.currentTorrserverUrl + '/play/' + currentTorrentHash + '/' + fileId;
@@ -1486,10 +1486,10 @@ async function switchToEpisode(index, fileId) {
   } finally {
     getEl('playback-overlay').classList.remove('active');
     document.querySelector('.playback-text').textContent = 'Воспроизведение...';
-    for (var j = 0; j < btnLen; j++) {
-      controlBtns[j].style.pointerEvents = 'auto';
-      controlBtns[j].style.opacity = '1';
-    }
+    //for (var j = 0; j < btnLen; j++) {
+      //controlBtns[j].style.pointerEvents = 'auto';
+      //controlBtns[j].style.opacity = '1';
+    //}
     hidePlayerLoading();
     startHeartbeat();
     startTorrentStatsUpdates();
@@ -2255,11 +2255,11 @@ function cancelCurrentPlayback() {
   }
   hidePlayerLoading();
   //var controlBtns = document.querySelectorAll('.control-btn');
-  var btnLen = controlBtns.length;
-  for (var i = 0; i < btnLen; i++) {
-    controlBtns[i].style.pointerEvents = 'auto';
-    controlBtns[i].style.opacity = '1';
-  }
+  //var btnLen = controlBtns.length;
+  //for (var i = 0; i < btnLen; i++) {
+    //controlBtns[i].style.pointerEvents = 'auto';
+    //controlBtns[i].style.opacity = '1';
+  //}
 }
 
 // функция выхода из плеера
@@ -2417,9 +2417,9 @@ function showDetailView(field = null) {
                 break;
               }
             }
+            setFocus(progressBtnIndex !== -1 ? progressBtnIndex : 0);
           }
         }
-        setFocus(progressBtnIndex !== -1 ? progressBtnIndex : 0);
       }
     }, 250);
   }
@@ -2722,11 +2722,11 @@ async function handleVideoEnded() {
     document.querySelector('.playback-text').textContent = 'Автоматическое переключение на серию ' + (currentEpisodeIndex + 2) + '...';
 
     //var controlBtns = document.querySelectorAll('.control-btn');
-    var btnLen = controlBtns.length;
-    for (var i = 0; i < btnLen; i++) {
-      controlBtns[i].style.pointerEvents = 'none';
-      controlBtns[i].style.opacity = '0.5';
-    }
+    //var btnLen = controlBtns.length;
+    //for (var i = 0; i < btnLen; i++) {
+      //controlBtns[i].style.pointerEvents = 'none';
+      //controlBtns[i].style.opacity = '0.5';
+    //}
 
     try {
       var nextFile = currentEpisodeFiles[currentEpisodeIndex + 1];
@@ -2734,10 +2734,10 @@ async function handleVideoEnded() {
     } catch (error) { console.error('❌ Ошибка автоматического переключения:', error); } finally {
       getEl('playback-overlay').classList.remove('active');
       document.querySelector('.playback-text').textContent = 'Воспроизведение...';
-      for (var j = 0; j < btnLen; j++) {
-        controlBtns[j].style.pointerEvents = 'auto';
-        controlBtns[j].style.opacity = '1';
-      }
+      //for (var j = 0; j < btnLen; j++) {
+        //controlBtns[j].style.pointerEvents = 'auto';
+        //controlBtns[j].style.opacity = '1';
+      //}
     }
   } else {
     console.log('Серии закончились или сериальный режим не активен, закрываем плеер');
