@@ -717,6 +717,7 @@ async function addProgressToDetail(torrent) {
         });
     });
     detailHeader.parentNode.insertBefore(progressDiv, detailHeader.nextSibling);
+    return progress.fileId;
 }
 // Проверка сервера
 async function checkServer(shouldLoadTorrents) {
@@ -1460,7 +1461,7 @@ async function showDetail(torrent) {
     var oldProgress = getEl('detail-progress');
     if (oldProgress) oldProgress.remove();
     // Добавляем прогресс для текущего торрента
-    await addProgressToDetail(torrent);
+    var lastField = await addProgressToDetail(torrent);
     try {
         // Получаем файлы с кэшированием (этот метод уже получает и file_stats, и данные)
         var files = await getTorrentFilesWithCache(torrent, false);
@@ -1560,6 +1561,11 @@ async function showDetail(torrent) {
             var fileItems = document.querySelectorAll('.file-item');
             if (fileItems.length > 0) {
                 var focusLen = focusableElements.length;
+                if (lastField > 0) {
+                    if (focusableElements[lastField].classList && focusableElements[lastField].classList.contains('file-item')) {
+                        setFocus(lastField);
+                    }  
+                }
                 for (var i = 0; i < focusLen; i++) {
                     if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) {
                         setFocus(i);
