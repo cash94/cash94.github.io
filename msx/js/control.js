@@ -1094,13 +1094,11 @@ function setupFocusRescue() {
                         currentFocused.isContentEditable;
 
                     if (isTextInput) {
-                        //if (document.activeElement === currentFocused) {
-                            // Уже в фокусе - снимаем выделение и убираем фокус
-                            //currentFocused.blur();
-                        //} else {
-                            // Не в фокусе - фокусируем и выделяем
-                            currentFocused.focus();
-                        //}
+                        if (document.activeElement === currentFocused) {
+                            currentFocused.blur();  // Если элемент в фокусе - убираем фокус
+                        } else {
+                            currentFocused.focus(); // Если не в фокусе - ставим фокус
+                        }
                     } else {
                         // Для всех остальных элементов (checkbox, button, div и т.д.) - кликаем
                         if (typeof currentFocused.click === 'function') {
