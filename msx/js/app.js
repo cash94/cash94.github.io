@@ -248,6 +248,7 @@ async function init() {
     initialServerCheck();
     setupCheckboxes();
     initJacredUrlStorage();
+    setupConfigMenu();
 
 
     if (typeof AppState !== 'undefined') {
@@ -1326,6 +1327,72 @@ function setupClockVisibility() {
   if (clockDisplay) {
     clockDisplay.style.display = hideClockEnabled ? 'none' : 'block';
   }
+}
+
+function setupConfigMenu() {
+  // Полифилл closest для старых браузеров
+  if (!Element.prototype.closest) {
+    Element.prototype.closest = function (selector) {
+      var element = this;
+      while (element && element.nodeType === 1) {
+        if (element.matches(selector)) {
+          return element;
+        }
+        element = element.parentNode;
+      }
+      return null;
+    };
+  }
+
+  // Получаем все menu-item элементы
+  var menuItems = document.querySelectorAll('.menu-item');
+
+  for (var i = 0; i < menuItems.length; i++) {
+    var menuItem = menuItems[i];
+
+    // Удаляем старые обработчики, если они были
+    menuItem.removeEventListener('click', menuItem._configClickHandler);
+
+    // Создаем новый обработчик
+    var clickHandler = function (event) {
+      // Предотвращаем всплытие, чтобы не конфликтовать с другими обработчиками
+      if (event.stopPropagation) {
+        event.stopPropagation();
+      }
+
+      var tabId = this.getAttribute('data-tab') || this.id;
+      var isActive = this.classList.contains('active');
+
+      console.log('🔘 Нажато меню:', tabId, 'Активно:', isActive);
+
+      if (isActive) {
+        // Закрываем активную вкладку
+        var content = getEl(tabId + '-content');
+        if (content) {
+          content.style.display = 'none';
+        }
+        this.classList.remove('active');
+        if (this.blur) this.blur();
+      } else {
+        // Открываем новую вкладку
+        if (typeof switchConfigTab === 'function') {
+          switchConfigTab(tabId);
+        }
+        if (typeof setConfigMenuActive === 'function') {
+          setConfigMenuActive(this.id);
+        }
+        if (this.focus) this.focus();
+      }
+    };
+
+    // Сохраняем обработчик для возможности удаления
+    menuItem._configClickHandler = clickHandler;
+
+    // Добавляем обработчик
+    menuItem.addEventListener('click', clickHandler);
+  }
+
+  console.log('✅ Настройки меню инициализированы, элементов:', menuItems.length);
 }
 
 function showInitError() {
