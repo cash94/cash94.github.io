@@ -183,11 +183,45 @@ function setFocus(index) {
     }
 
     // Скролл
-    var container = null, s = AppState.currentScreen;
-    if (s === 'catalog' || s === 'torrents') container = getEl('main-container');
-    else if (s === 'search') container = getEl('search-results-list');
-    else if (s === 'detail') container = getEl('detail-view');
-    else if (s === 'player') container = getEl('episodes-list') || getEl('audio-list');
+    var container = null;
+    var s = AppState.currentScreen;
+    var isFI = el.classList && el.classList.contains('file-item');
+    var isAC = el.classList && el.classList.contains('catalog-actor-card');
+    var isRC = el.classList && el.classList.contains('catalog-recommendation-card');
+    var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
+
+    if (s === 'catalog' || s === 'torrents' || s === 'config') {
+        container = getEl('main-container');
+    } else if (s === 'search') {
+        container = getEl('search-results');
+    } else if (s === 'detail') {
+        if (isFI) {
+            container = getEl('files-list');
+        } else if (isAC) {
+            // Для актеров используем wrap контейнер (который реально скроллится)
+            container = getEl('catalog-detail-actors-wrap');
+            // Если wrap не найден, пробуем найти родителя
+            if (!container && el.closest) {
+                container = el.closest('.catalog-detail-actors-wrap');
+            }
+        } else if (isRC) {
+            // Для рекомендаций используем wrap контейнер
+            container = getEl('catalog-detail-recommendations-wrap');
+            if (!container && el.closest) {
+                container = el.closest('.catalog-detail-recommendations-wrap');
+            }
+        } else if (isTC) {
+            // Для трейлеров используем wrap контейнер
+            container = getEl('catalog-detail-trailers-wrap');
+            if (!container && el.closest) {
+                container = el.closest('.catalog-detail-trailers-wrap');
+            }
+        } else {
+            container = getEl('detail-view');
+        }
+    } else if (s === 'player') {
+        container = getEl('episodes-list') || getEl('audio-list');
+    }
 
     if (!isElementFullyVisible(element, container)) {
         scrollToElementIfNeeded(element, container, !fastNavigation);
