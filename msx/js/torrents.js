@@ -1565,11 +1565,12 @@ async function showDetail(torrent) {
                     if (focusableElements[lastField+2].classList && focusableElements[lastField+2].classList.contains('file-item')) {
                         setFocus(lastField+2);
                     }  
-                }
-                for (var i = 0; i < focusLen; i++) {
-                    if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) {
-                        setFocus(i);
-                        break;
+                } else {
+                    for (var i = 0; i < focusLen; i++) {
+                        if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) {
+                            setFocus(i);
+                            break;
+                        }
                     }
                 }
             } else {
