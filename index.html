@@ -1,299 +1,406 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
-    <meta charset="UTF-8">
-    <title>Доступ запрещён! 🚫</title>
-    <style>
-        body {
-            background: #000;
-            color: #ff0;
-            font-family: 'Comic Sans MS', cursive, sans-serif;
-            text-align: center;
-            padding: 20px;
-            margin: 0;
-            overflow: auto;
-            animation: glitch-effect 3s infinite linear;
-        }
+  <meta charset="UTF-8">
+  <title>Доступ запрещён! 🚫</title>
+  <style>
+    body {
+      background: #000;
+      color: #ff0;
+      font-family: 'Comic Sans MS', cursive, sans-serif;
+      text-align: center;
+      padding: 20px;
+      margin: 0;
+      overflow: auto;
+      animation: glitch-effect 3s infinite linear;
+    }
 
-        @keyframes glitch-effect {
-            0% { transform: translate(0); text-shadow: none; }
-            2% { transform: translate(-2px, 2px); text-shadow: -1px 1px red; }
-            4% { transform: translate(2px, -2px); text-shadow: 2px -1px blue; }
-            6% { transform: translate(-1px, 1px); text-shadow: -1px 1px green; }
-            8% { transform: translate(1px, -1px); text-shadow: 1px -1px yellow; }
-            10% { transform: translate(0); text-shadow: none; }
-            100% { transform: translate(0); text-shadow: none; }
-        }
+    @keyframes glitch-effect {
+      0% {
+        transform: translate(0);
+        text-shadow: none;
+      }
 
-        .container {
-            max-width: 90%;
-            margin: 0 auto;
-            position: relative;
-            z-index: 1;
-        }
+      2% {
+        transform: translate(-2px, 2px);
+        text-shadow: -1px 1px red;
+      }
 
-        h1 {
-            font-size: 2em;
-            animation: pulse 2s infinite;
-            background: linear-gradient(to right, #ff0000, #ffcc00);
-            -webkit-background-clip: text;
-            color: transparent;
-            margin: 20px 0;
-        }
+      4% {
+        transform: translate(2px, -2px);
+        text-shadow: 2px -1px blue;
+      }
 
-        @keyframes pulse {
-            0% {transform: scale(1);}
-            50% {transform: scale(1.03);}
-            100% {transform: scale(1);}
-        }
+      6% {
+        transform: translate(-1px, 1px);
+        text-shadow: -1px 1px green;
+      }
 
-        img {
-            width: 150px;
-            margin: 15px 0;
-            animation: shake 3s infinite;
-        }
+      8% {
+        transform: translate(1px, -1px);
+        text-shadow: 1px -1px yellow;
+      }
 
-        @keyframes shake {
-            0% {transform: rotate(-5deg);}
-            10% {transform: rotate(5deg);}
-            20% {transform: rotate(-5deg);}
-            30% {transform: rotate(5deg);}
-            40% {transform: rotate(-5deg);}
-            50% {transform: rotate(5deg);}
-            60% {transform: rotate(0deg);}
-        }
+      10% {
+        transform: translate(0);
+        text-shadow: none;
+      }
 
-        .warning {
-            background: #333;
-            border: 2px dashed #ff0;
-            padding: 15px;
-            margin: 20px 0;
-            animation: blink 1.5s infinite;
-            font-size: 0.9em;
-        }
+      100% {
+        transform: translate(0);
+        text-shadow: none;
+      }
+    }
 
-        @keyframes blink {
-            0%, 100% {opacity: 1;}
-            50% {opacity: 0.3;}
-        }
+    .container {
+      max-width: 90%;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
 
-        .button {
-            display: inline-block;
-            padding: 12px 25px;
-            background: #f00;
-            color: #fff;
-            text-decoration: none;
-            font-weight: bold;
-            margin: 20px 0;
-            animation: pulse 2s infinite;
-            border-radius: 5px;
-            box-shadow: 0 0 20px #f00;
-            cursor: pointer;
-            font-size: 0.9em;
-        }
+    h1 {
+      font-size: 2em;
+      animation: pulse 2s infinite;
+      background: linear-gradient(to right, #ff0000, #ffcc00);
+      -webkit-background-clip: text;
+      color: transparent;
+      margin: 20px 0;
+    }
 
-        .button:hover {
-            box-shadow: 0 0 30px #f0f000;
-            transform: scale(1.1);
-        }
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+      }
 
-        /* Стили для страшного экрана */
-        .scary-overlay {
-    	    position: fixed;
-    	    top: 0;
-    	    left: 0;
-    	    width: 100vw;
-    	    height: 100vh;
-    	    background: black;
-	    display: none;
-	    justify-content: center;
-	    align-items: center;
-	    z-index: 9999;
-	}
-        .scary-image {
-    	    width: 100%;
-    	    height: 100%;
-    	    object-fit: cover;
-    	    animation: jumpscare 0.5s ease-out;
-	}
-        @keyframes jumpscare {
-            0% {transform: scale(0.5); opacity: 0;}
-            100% {transform: scale(1); opacity: 1;}
-        }
+      50% {
+        transform: scale(1.03);
+      }
 
-        .flash {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: white;
-            opacity: 0;
-            z-index: 9998;
-            pointer-events: none;
-        }
+      100% {
+        transform: scale(1);
+      }
+    }
 
-        @keyframes flash-effect {
-            0% {opacity: 0;}
-            50% {opacity: 1;}
-            100% {opacity: 0;}
-        }
+    img {
+      width: 150px;
+      margin: 15px 0;
+      animation: shake 3s infinite;
+    }
 
-        /* Стили для блока сбора средств */
-        .donation-section {
-            margin: 25px 0;
-            padding: 15px;
-            background: rgba(255, 255, 0, 0.1);
-            border-radius: 10px;
-            border: 2px solid #ff0;
-        }
+    @keyframes shake {
+      0% {
+        transform: rotate(-5deg);
+      }
 
-        .donation-title {
-            font-size: 1.1em;
-            margin-bottom: 12px;
-            color: #ffcc00;
-            text-shadow: 0 0 8px #ff0;
-            line-height: 1.3;
-        }
+      10% {
+        transform: rotate(5deg);
+      }
 
-        .donation-iframe {
-            margin: 0 auto;
-            display: block;
-            border-radius: 5px;
-            box-shadow: 0 0 12px #ff0;
-            max-width: 100%;
-        }
+      20% {
+        transform: rotate(-5deg);
+      }
 
-        p {
-            font-size: 0.9em;
-            margin: 15px 0;
-            line-height: 1.4;
-        }
+      30% {
+        transform: rotate(5deg);
+      }
 
-        /* Адаптивность для мобильных устройств */
-        @media (max-width: 768px) {
-            .container {
-                max-width: 95%;
-            }
-            
-            h1 {
-                font-size: 1.5em;
-            }
-            
-            img {
-                width: 120px;
-            }
-            
-            .donation-iframe {
-                width: 100%;
-                height: 400px;
-            }
-            
-            .donation-title {
-                font-size: 1em;
-            }
-            
-            .button {
-                padding: 10px 20px;
-                font-size: 0.8em;
-            }
-        }
+      40% {
+        transform: rotate(-5deg);
+      }
 
-        @media (max-width: 480px) {
-            body {
-                padding: 10px;
-            }
-            
-            h1 {
-                font-size: 1.2em;
-            }
-            
-            .donation-iframe {
-                height: 350px;
-            }
-            
-            .donation-title {
-                font-size: 0.9em;
-            }
-        }
-    </style>
+      50% {
+        transform: rotate(5deg);
+      }
+
+      60% {
+        transform: rotate(0deg);
+      }
+    }
+
+    .warning {
+      background: #333;
+      border: 2px dashed #ff0;
+      padding: 15px;
+      margin: 20px 0;
+      animation: blink 1.5s infinite;
+      font-size: 0.9em;
+    }
+
+    @keyframes blink {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.3;
+      }
+    }
+
+    .button {
+      display: inline-block;
+      padding: 12px 25px;
+      background: #f00;
+      color: #fff;
+      text-decoration: none;
+      font-weight: bold;
+      margin: 20px 0;
+      animation: pulse 2s infinite;
+      border-radius: 5px;
+      box-shadow: 0 0 20px #f00;
+      cursor: pointer;
+      font-size: 0.9em;
+    }
+
+    .button:hover {
+      box-shadow: 0 0 30px #f0f000;
+      transform: scale(1.1);
+    }
+
+    /* Стили для страшного экрана */
+    .scary-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: black;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+
+    .scary-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      animation: jumpscare 0.5s ease-out;
+    }
+
+    @keyframes jumpscare {
+      0% {
+        transform: scale(0.5);
+        opacity: 0;
+      }
+
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .flash {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: white;
+      opacity: 0;
+      z-index: 9998;
+      pointer-events: none;
+    }
+
+    @keyframes flash-effect {
+      0% {
+        opacity: 0;
+      }
+
+      50% {
+        opacity: 1;
+      }
+
+      100% {
+        opacity: 0;
+      }
+    }
+
+    /* Стили для блока сбора средств */
+    .donation-section {
+      margin: 25px 0;
+      padding: 15px;
+      background: rgba(255, 255, 0, 0.1);
+      border-radius: 10px;
+      border: 2px solid #ff0;
+    }
+
+    .donation-title {
+      font-size: 1.1em;
+      margin-bottom: 12px;
+      color: #ffcc00;
+      text-shadow: 0 0 8px #ff0;
+      line-height: 1.3;
+    }
+
+    .donation-iframe {
+      margin: 0 auto;
+      display: block;
+      border-radius: 5px;
+      box-shadow: 0 0 12px #ff0;
+      max-width: 100%;
+    }
+
+    p {
+      font-size: 0.9em;
+      margin: 15px 0;
+      line-height: 1.4;
+    }
+
+    /* Адаптивность для мобильных устройств */
+    @media (max-width: 768px) {
+      .container {
+        max-width: 95%;
+      }
+
+      h1 {
+        font-size: 1.5em;
+      }
+
+      img {
+        width: 120px;
+      }
+
+      .donation-iframe {
+        width: 100%;
+        height: 400px;
+      }
+
+      .donation-title {
+        font-size: 1em;
+      }
+
+      .button {
+        padding: 10px 20px;
+        font-size: 0.8em;
+      }
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 10px;
+      }
+
+      h1 {
+        font-size: 1.2em;
+      }
+
+      .donation-iframe {
+        height: 350px;
+      }
+
+      .donation-title {
+        font-size: 0.9em;
+      }
+    }
+
+    .donation-qr {
+      max-width: 100%;
+      width: 300px;
+      height: auto;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(255, 255, 0, 0.3);
+      display: block;
+      margin: 0 auto;
+      transition: transform 0.3s ease;
+    }
+
+    .donation-qr:hover {
+      transform: scale(1.05);
+    }
+
+    /* Адаптивность для мобильных устройств */
+    @media (max-width: 768px) {
+      .donation-qr {
+        width: 250px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .donation-qr {
+        width: 200px;
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-<div class="container">
+  <div class="container">
     <h1>🔥 ЕСЛИ ВЫ ВИДИТЕ ЭТУ СТРАНИЦУ, ТО ВСЕ У ВАС ХОРОШО И ДОСТУП К РЕСУРСУ ИМЕЕТСЯ! 🔥</h1>
-    
+
     <!-- Кнопка "Открыть поиск" -->
-    <a href="https://nmjc.duckdns.org/index2.html" target="_blank" class="button" style="margin-top: 10px; display: inline-block;">ОТКРЫТЬ ПОИСК</a>
-        
+    <a href="https://nmjc.duckdns.org/index2.html" target="_blank" class="button"
+      style="margin-top: 10px; display: inline-block;">ОТКРЫТЬ ПОИСК</a>
+
     <!-- Блок сбора средств -->
     <div class="donation-section">
-        <div class="donation-title">СБОР СРЕДСТВ ДЛЯ ПОДДЕРЖАНИЯ СЕРВЕРОВ, ВОЗМОЖНО ИМЕННО ВАШ ДОНАТ ПРОДЛИТ НА МЕСЯЦ ИЛИ БОЛЕЕ</div>
-        <iframe src="https://yoomoney.ru/quickpay/fundraise/widget?billNumber=1DI4CHGIO40.251022&" 
-                width="500" height="480" 
-                frameborder="0" 
-                allowtransparency="true" 
-                scrolling="no"
-                class="donation-iframe">
-        </iframe>
+      <div class="donation-title">СБОР СРЕДСТВ ДЛЯ ПОДДЕРЖАНИЯ СЕРВЕРОВ, ВОЗМОЖНО ИМЕННО ВАШ ДОНАТ ПРОДЛИТ НА МЕСЯЦ ИЛИ
+        БОЛЕЕ</div>
+      <img src="https://cash94.github.io/msx/qr-code.png" alt="QR-код для доната" class="donation-qr"
+        style="max-width: 100%; width: 300px; height: auto; border-radius: 10px; box-shadow: 0 0 20px rgba(255, 255, 0, 0.3); display: block; margin: 0 auto;">
+      <p style="color: #ffcc00; font-size: 0.8em; margin-top: 10px;">📱 Отсканируйте QR-код для поддержки проекта</p>
     </div>
 
-    <p>Если вы не сделаете пожертвование, <span style="color:red; font-weight:bold;">ваш браузер будет проклят</span> анимацией бесконечного гиф-танца!</p>
+    <p>Если вы не сделаете пожертвование, <span style="color:red; font-weight:bold;">ваш браузер будет проклят</span>
+      анимацией бесконечного гиф-танца!</p>
 
     <p style="margin-top:20px;">Нажмите сюда, если вы <em>действительно</em> хотите покинуть сайт:</p>
     <a href="/" class="button" onclick="triggerJumpscare(event)">ПОКИНУТЬ САЙТ (НА СВОЙ СТРАХ И РИСК)</a>
-</div>
+  </div>
 
-<!-- Страшный экран -->
-<div class="scary-overlay" id="scaryOverlay">
-    <img src="./web/a63bcc28949f4cddbf116076dded.jpg" 
-         alt="Страшное лицо!" 
-         class="scary-image">
-</div>
+  <!-- Страшный экран -->
+  <div class="scary-overlay" id="scaryOverlay">
+    <img src="./web/a63bcc28949f4cddbf116076dded.jpg" alt="Страшное лицо!" class="scary-image">
+  </div>
 
-<!-- Вспышка света -->
-<div class="flash" id="flash"></div>
+  <!-- Вспышка света -->
+  <div class="flash" id="flash"></div>
 
-<!-- Аудио -->
-<audio id="glitchSound" src="./web/strashnye-zvuki-2.mp3"></audio>
-<audio id="screamSound" src="./web/strashnye-zvuki-dyavolskiy-smeh.mp3"></audio>
+  <!-- Аудио -->
+  <audio id="glitchSound" src="./web/strashnye-zvuki-2.mp3"></audio>
+  <audio id="screamSound" src="./web/strashnye-zvuki-dyavolskiy-smeh.mp3"></audio>
 
-<script>
+  <script>
     let glitchPlayed = false;
 
     // Запуск фонового звука при первом клике на страницу
     document.addEventListener('click', function playGlitchSound() {
-        const glitch = document.getElementById('glitchSound');
-        if (!glitchPlayed) {
-            glitch.loop = true;
-            glitch.volume = 0.2;
-            glitch.play().catch(() => {});
-            glitchPlayed = true;
-        }
-        document.removeEventListener('click', playGlitchSound);
+      const glitch = document.getElementById('glitchSound');
+      if (!glitchPlayed) {
+        glitch.loop = true;
+        glitch.volume = 0.2;
+        glitch.play().catch(() => { });
+        glitchPlayed = true;
+      }
+      document.removeEventListener('click', playGlitchSound);
     });
 
     function triggerJumpscare(event) {
-    event.preventDefault();
+      event.preventDefault();
 
-    const glitch = document.getElementById('glitchSound');
-    glitch.pause();
+      const glitch = document.getElementById('glitchSound');
+      glitch.pause();
 
-    document.querySelector('.container').style.display = 'none';
-    const overlay = document.getElementById('scaryOverlay');
-    overlay.style.display = 'flex';
+      document.querySelector('.container').style.display = 'none';
+      const overlay = document.getElementById('scaryOverlay');
+      overlay.style.display = 'flex';
 
-    const flash = document.getElementById('flash');
-    flash.style.animation = 'flash-effect 0.5s';
+      const flash = document.getElementById('flash');
+      flash.style.animation = 'flash-effect 0.5s';
 
-    const scream = document.getElementById('screamSound');
-    scream.play();
+      const scream = document.getElementById('screamSound');
+      scream.play();
 
-    setTimeout(() => {
+      setTimeout(() => {
         location.reload();
-    }, 5000);
-  }
-</script>
+      }, 5000);
+    }
+  </script>
 
 </body>
+
 </html>
