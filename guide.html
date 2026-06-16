@@ -1739,13 +1739,13 @@
 
     <div class="problem-buttons" id="problemButtons" role="group" aria-label="Выбор проблемы">
       <button class="problem-btn" id="problem1Btn" type="button" aria-label="Проблема с отображением постеров">У меня не
-        отображаются постеры в приложении или каналах
+        отображаются постеры в приложении или каналах, или есть дата обновления подборок но названия у карточек отсутствуют.
         android</button>
       <button class="problem-btn" id="problem2Btn" type="button" aria-label="Проблема с поиском торрентов">У меня не
         работает или долго осуществляется поиск торрентов</button>
       <button class="problem-btn" id="problem3Btn" type="button" aria-label="Проблема с отображением названий">У меня не
         отображаются названия фильмов, сериалов и т.д или не
-        актуальная дата обновления фильмов, сериалов и т.д.</button>
+        актуальная дата обновления фильмов, сериалов или вообще в подборках 0.</button>
       <button class="problem-btn" id="problem4Btn" type="button"
         aria-label="Проблема с зависанием на стадии аутентификация">У меня зависает на стадии "Аутентификация"</button>
     </div>
@@ -1758,13 +1758,14 @@
       <p>Перейдите в <strong>Настройки → Информация о видео</strong> и установите одну из следующих комбинаций:</p>
       <p style="color: orange;"><strong>ВНИМАНИЕ! ПОСЛЕ СМЕНЫ НАСТРОЕК ТРЕБУЕТСЯ ПЕРЕЗАПУСК ПРИЛОЖЕНИЯ!</strong></p>
       <p style="color: orange;"><strong>ДВОЙНЫМ НАЖАТИЕМ КЛАВИШИ "НАЗАД" ИЛИ ДОЛГИМ УДЕРЖАНИЕМ КЛАВИШИ "НАЗАД", ИЛИ "НАСТРОЙКИ ANDROID -> ПРИЛОЖЕНИЯ -> NUM -> ОСТАНОВИТЬ", ИЛИ ВЫКЛЮЧИТЬ УСТРОЙСТВО ИЗ РОЗЕТКИ!</strong></p>
+      <p style="color: orange;"><strong>ВНИМАНИЕ! ПЕРЕД ПРОВЕРКОЙ ССЫЛОК ТРЕБУЕТСЯ ОТКЛЮЧИТЬ VPN!</strong></p>
       <p style="color: orange;"><strong>Чтобы проверить какая комбинация у вас будет рабочая попробуйте открыть ссылки ниже</strong></p>
       <!-- Блок со ссылками, расположенный снизу -->
       <p style="color: yellow;">
-      <a href="https://tmdb.torrs.ru/tmdbimg/3//t/p//w342/ilgFnREE6Md30RbDdAZfx4U4Iiy.jpg" style="color: yellow;">Torrs</a> |
-      <a href="https://nmtmdb.duckdns.org/t/p/w342/ilgFnREE6Md30RbDdAZfx4U4Iiy.jpg" style="color: yellow;">Johnny</a> |
-      <a href="https://nl.imagetmdb.com/t/p//w342/ilgFnREE6Md30RbDdAZfx4U4Iiy.jpg" style="color: yellow;">Lampa</a> |
-      <a href="https://image.tmdb.org/t/p//w342/ilgFnREE6Md30RbDdAZfx4U4Iiy.jpg" style="color: yellow;">TMDB</a>
+      <a href="https://TMDB.torrs.ru/TMDBimg/3/t/p//w342/ilgFnREE6Md30RbDdAZfx4U4Iiy.jpg" style="color: yellow;">Torrs</a> |
+      <a href="https://nmTMDB.duckdns.org/t/p/w342/ilgFnREE6Md30RbDdAZfx4U4Iiy.jpg" style="color: yellow;">Johnny</a> |
+      <a href="https://nl.imageTMDB.com/t/p//w342/ilgFnREE6Md30RbDdAZfx4U4Iiy.jpg" style="color: yellow;">Lampa</a> |
+      <a href="https://image.TMDB.org/t/p//w342/ilgFnREE6Md30RbDdAZfx4U4Iiy.jpg" style="color: yellow;">TMDB</a>
       <a href="https://memchik.ru//images/memes/5e207919b1c7e3387613d45e.jpg" style="color: yellow;">← нажимать на эти надписи!</a>
       
       </p>
@@ -1779,22 +1780,22 @@
       <div class="config-option" style="color: yellow;">TMDB, Johnny, num dns</div>
       <div class="config-option" style="color: yellow;">TMDB, Johnny, quad9 doh</div>
       <p style="color: orange;"><strong>Если открылась ссылка с названием "Lampa" тогда ваша комбинация одна из</strong></p>
-      <div class="config-option" style="color: yellow;">tmdb, Lampa, num dns</div>
+      <div class="config-option" style="color: yellow;">TMDB, Lampa, num dns</div>
       <div class="config-option" style="color: yellow;">torrs, Lampa, num dns</div>
       <div class="config-option" style="color: yellow;">Johnny, Lampa, num dns</div>
-      <div class="config-option" style="color: yellow;">tmdb, Lampa, quad9 doh</div>
+      <div class="config-option" style="color: yellow;">TMDB, Lampa, quad9 doh</div>
       <div class="config-option" style="color: yellow;">torrs, Lampa, quad9 doh</div>
       <div class="config-option" style="color: yellow;">Johnny, Lampa, quad9 doh</div>
       <p style="color: orange;"><strong>Если открылась ссылка с названием "TMDB" тогда ваша комбинация одна из</strong></p>
-      <div class="config-option" style="color: yellow;">tmdb, tmdb, num dns</div>
-      <div class="config-option" style="color: yellow;">tmdb, tmdb, quad9 doh</div>
+      <div class="config-option" style="color: yellow;">TMDB, TMDB, num dns</div>
+      <div class="config-option" style="color: yellow;">TMDB, TMDB, quad9 doh</div>
 
       <h4>Способ 2: Использование прокси-серверов</h4>
       <p>Для отображения постеров можно использовать прокси:</p>
       <ul>
-        <li><strong>Сервер Api Tmdb</strong> - Tmdb</li>
-        <li><strong>Сервер изображений</strong> - Tmdb</li>
-        <li><strong>Доступ к Tmdb</strong> - использовать прокси-сервер</li>
+        <li><strong>Сервер Api TMDB</strong> - TMDB</li>
+        <li><strong>Сервер изображений</strong> - TMDB</li>
+        <li><strong>Доступ к TMDB</strong> - использовать прокси-сервер</li>
       </ul>
 
       <h4>Список доступных прокси-серверов:</h4>
