@@ -18,7 +18,7 @@ var clickableElements = document.querySelectorAll(
   '#torrserver-tab-content, #torrents-tab-content, #player-tab-content, #sync-tab-content'+
   '.menu-item'
 );
-
+var detailView = getEl('detail-view');
 var controls = document.querySelectorAll('.control-btn, #seek-slider, #volume-slider');
 var controlBtns = document.querySelectorAll('.control-btn');
 
@@ -588,7 +588,7 @@ function setupNavigation() {
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
       if (AppState && !AppState.isSearch && !AppState.playFromHash) {
-        var detailView = getEl('detail-view');
+        //var detailView = getEl('detail-view');
         if (detailView) detailView.style.display = 'none';
       }
       if (mainContainer) {
@@ -621,13 +621,13 @@ function setupNavigation() {
             AppState.backupScroll = 0;
             AppState.currentScreen = 'catalog';
             window.ensureCatalogFocus(true);
-            var detailView = getEl('detail-view');
+            //var detailView = getEl('detail-view');
             if (detailView) detailView.style.display = 'none';
             return;
           }
           if (typeof window.focusFirstCatalogCard === 'function') {
             window.focusFirstCatalogCard();
-            var detailView = getEl('detail-view');
+            //var detailView = getEl('detail-view');
             if (detailView) detailView.style.display = 'none';
             return;
           }
@@ -638,7 +638,7 @@ function setupNavigation() {
           } else {
             if (typeof window.clearSearchResults === 'function') window.clearSearchResults();
           }
-          var detailView = getEl('detail-view');
+          //var detailView = getEl('detail-view');
           if (detailView) detailView.style.display = 'none';
           return;
         } else if (returnTo === 'torrents') {
@@ -653,7 +653,7 @@ function setupNavigation() {
           updateFocusableElements();
           if (typeof window.ensureTorrentFocus === 'function') {
             var focused = window.ensureTorrentFocus(true);
-            var detailView = getEl('detail-view');
+            //var detailView = getEl('detail-view');
             if (detailView) detailView.style.display = 'none';
             console.log('🎯 Фокус восстановлен через ensureTorrentFocus');
             return;
@@ -701,7 +701,7 @@ function setupNavigation() {
             console.log('⚠️ Используем первую карточку, индекс:', targetIndex);
           }
           setFocus(targetIndex);
-          var detailView = getEl('detail-view');
+          //var detailView = getEl('detail-view');
           if (detailView) detailView.style.display = 'none';
         } else {
           if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
@@ -720,7 +720,7 @@ function setupNavigation() {
             }
             setFocus(firstCardIndex !== -1 ? firstCardIndex : 0);
           }
-          var detailView = getEl('detail-view');
+          //var detailView = getEl('detail-view');
           if (detailView) detailView.style.display = 'none';
         }
         if (typeof Animations !== 'undefined') {
