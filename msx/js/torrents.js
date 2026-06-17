@@ -1129,42 +1129,88 @@ function resetDetailBackground() {
         detailTitleText.textContent = '';
     }
 
-    // === ПОЛНОСТЬЮ УДАЛЯЕМ И ПЕРЕСОЗДАЕМ catalog-detail-extra ===
+    // === ОЧИСТКА catalog-detail-extra ===
+
+    // Скрываем весь блок
     var detailExtra = getEl('catalog-detail-extra');
     if (detailExtra) {
-        // Сохраняем ссылку на родителя
-        var parent = detailExtra.parentNode;
-        // Удаляем старый элемент
-        detailExtra.remove();
+        detailExtra.classList.add('hidden');
+        detailExtra.style.display = 'none';
+    }
 
-        // Создаем новый
-        var newDetailExtra = document.createElement('div');
-        newDetailExtra.id = 'catalog-detail-extra';
-        newDetailExtra.className = 'catalog-detail-extra hidden';
-        newDetailExtra.style.display = 'none';
+    // Очищаем backdrop
+    var detailBackdrop = getEl('catalog-detail-backdrop');
+    if (detailBackdrop) {
+        detailBackdrop.style.backgroundImage = '';
+        detailBackdrop.classList.add('hidden');
+    }
 
-        // Создаем внутреннюю структуру
-        newDetailExtra.innerHTML = `
-            <div id="catalog-detail-backdrop" class="catalog-detail-backdrop hidden"></div>
-            <div class="catalog-detail-panel">
-                <div id="catalog-detail-meta" class="catalog-detail-meta hidden"></div>
-                <div id="catalog-detail-overview" class="catalog-detail-overview"></div>
-                <div id="catalog-detail-actions" class="catalog-detail-actions">
-                    <button id="catalog-watch-btn" class="catalog-watch-btn">Торренты</button>
-                </div>
-                <div id="catalog-detail-trailers-wrap" class="catalog-detail-section hidden">
-                    <h3>Трейлеры</h3>
-                    <div id="catalog-detail-trailers" class="catalog-detail-trailers"></div>
-                </div>
-                <div id="catalog-detail-screenshots-wrap" class="catalog-detail-section hidden">
-                    <h3>Скриншоты</h3>
-                    <div id="catalog-detail-screenshots" class="catalog-detail-screenshots"></div>
-                </div>
-            </div>
-        `;
+    // Очищаем overview
+    var detailOverview = getEl('catalog-detail-overview');
+    if (detailOverview) {
+        detailOverview.textContent = '';
+    }
 
-        // Вставляем новый элемент на место старого
-        parent.appendChild(newDetailExtra);
+    // Очищаем трейлеры
+    var trailersWrap = getEl('catalog-detail-trailers-wrap');
+    if (trailersWrap) {
+        trailersWrap.classList.add('hidden');
+    }
+
+    var trailersContainer = getEl('catalog-detail-trailers');
+    if (trailersContainer) {
+        trailersContainer.innerHTML = '';
+        trailersContainer.style.display = '';
+        trailersContainer.style.gridTemplateColumns = '';
+        trailersContainer.style.gap = '';
+        trailersContainer.style.padding = '';
+    }
+
+    // Очищаем скриншоты
+    var screenshotsWrap = getEl('catalog-detail-screenshots-wrap');
+    if (screenshotsWrap) {
+        screenshotsWrap.classList.add('hidden');
+    }
+
+    var screenshotsContainer = getEl('catalog-detail-screenshots');
+    if (screenshotsContainer) {
+        screenshotsContainer.innerHTML = '';
+    }
+
+    // === ОЧИЩАЕМ АКТЕРОВ ===
+    var actorsWrap = getEl('catalog-detail-actors-wrap');
+    if (actorsWrap) {
+        actorsWrap.innerHTML = ''; // Полностью очищаем
+        actorsWrap.style.display = 'none';
+    }
+
+    // Или если нужно сохранить структуру, а очистить только содержимое:
+    var actorsContainer = getEl('catalog-detail-actors');
+    if (actorsContainer) {
+        actorsContainer.innerHTML = '';
+        actorsContainer.style.scrollSnapType = '';
+    }
+
+    // === ОЧИЩАЕМ ПОХОЖИЕ ФИЛЬМЫ ===
+    var recommendationsWrap = getEl('catalog-detail-recommendations-wrap');
+    if (recommendationsWrap) {
+        recommendationsWrap.innerHTML = ''; // Полностью очищаем
+        recommendationsWrap.style.display = 'none';
+    }
+
+    // Или если нужно сохранить структуру:
+    var recommendationsContainer = getEl('catalog-detail-recommendations');
+    if (recommendationsContainer) {
+        recommendationsContainer.innerHTML = '';
+        recommendationsContainer.style.scrollSnapType = '';
+    }
+
+    // Сбрасываем кнопку
+    var watchBtn = getEl('catalog-watch-btn');
+    if (watchBtn) {
+        watchBtn.textContent = 'Торренты';
+        watchBtn.classList.remove('focused');
+        watchBtn.disabled = false;
     }
 }
 
