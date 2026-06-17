@@ -654,7 +654,7 @@ function updatePosterDOM(div, rating, url) {
 
 // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР ====================
 async function showCatalogDetail(item, index, posterUrl) {
-    if (typeof window.initHorizontalScroll === 'function') window.initHorizontalScroll();
+    //if (typeof window.initHorizontalScroll === 'function') window.initHorizontalScroll();
     catalogState.lastSelectedIndex = index; catalogState.lastSelectedId = item.id;
     var dv = getEl('detail-view'), mc = getEl('main-container');
     var pe = getEl('detail-poster'), te = getEl('detail-title-text');
@@ -682,7 +682,7 @@ async function showCatalogDetail(item, index, posterUrl) {
 
     var title = getCatalogItemTitle(item), mt = item.media_type || 'movie';
     AppState.currentDetailItem = item; AppState.currentScreen = 'detail'; AppState.detailReturnTo = 'catalog';
-    if (typeof Animations !== 'undefined') Animations.animateDetailShow();
+    //if (typeof Animations !== 'undefined') Animations.animateDetailShow();
     dv.style.pointerEvents = 'auto'; if (mc) mc.style.pointerEvents = 'none';
     if (typeof window.hideCatalogDetailExtra === 'function') window.hideCatalogDetailExtra();
     te.textContent = title; se.textContent = getCatalogItemSubtitle(item);
