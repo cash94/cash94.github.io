@@ -103,36 +103,40 @@ var Animations = (function () {
         var detailView = getEl('detail-view');
         if (!detailView) return;
 
-        // Сначала делаем видимым
+        // Убиваем все предыдущие анимации на этом элементе
+        gsap.killTweensOf(detailView);
+
         detailView.style.display = 'block';
         detailView.style.zIndex = '100';
         detailView.style.pointerEvents = 'auto';
 
-        // Используем transform: translateY вместо y для лучшей производительности
-        // и избегаем willChange (экономия памяти)
+        // Сбрасываем свойства до начальных
         gsap.set(detailView, {
             opacity: 0,
             y: 8,
             scale: 0.99,
-            force3D: false  // Отключаем 3D для слабых устройств (экономит память GPU)
+            force3D: false,
+            clearProps: 'all' // Очищаем все предыдущие inline-стили от GSAP
         });
 
-        var tl = gsap.timeline({
-            defaults: {
-                duration: 0.3,
-                ease: "power2.out"  // Самый производительный и плавный ease
-            }
+        // Ждем следующего кадра для применения стилей
+        requestAnimationFrame(function () {
+            var tl = gsap.timeline({
+                defaults: {
+                    duration: 0.3,
+                    ease: "power2.out"
+                }
+            });
+
+            tl.to(detailView, {
+                opacity: 1,
+                y: 0,
+                scale: 1,
+                duration: 0.2
+            }, 0);
+
+            return tl;
         });
-
-        // Основной контейнер
-        tl.to(detailView, {
-            opacity: 1,
-            y: 0,
-            scale: 1,
-            duration: 0.2
-        }, 0);
-
-        return tl;
     }
 
     // Анимация скрытия детального просмотра
