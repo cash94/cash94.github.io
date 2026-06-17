@@ -682,7 +682,7 @@ async function showCatalogDetail(item, index, posterUrl) {
 
     var title = getCatalogItemTitle(item), mt = item.media_type || 'movie';
     AppState.currentDetailItem = item; AppState.currentScreen = 'detail'; AppState.detailReturnTo = 'catalog';
-    //if (typeof Animations !== 'undefined') Animations.animateDetailShow();
+    if (typeof Animations !== 'undefined') Animations.animateDetailShow();
     dv.style.pointerEvents = 'auto'; if (mc) mc.style.pointerEvents = 'none';
     if (typeof window.hideCatalogDetailExtra === 'function') window.hideCatalogDetailExtra();
     te.textContent = title; se.textContent = getCatalogItemSubtitle(item);
