@@ -1129,56 +1129,42 @@ function resetDetailBackground() {
         detailTitleText.textContent = '';
     }
 
-    // === ОЧИСТКА catalog-detail-extra ===
-
-    // Скрываем весь блок
+    // === ПОЛНОСТЬЮ УДАЛЯЕМ И ПЕРЕСОЗДАЕМ catalog-detail-extra ===
     var detailExtra = getEl('catalog-detail-extra');
     if (detailExtra) {
-        detailExtra.classList.add('hidden');
-        detailExtra.style.display = 'none';
-    }
+        // Сохраняем ссылку на родителя
+        var parent = detailExtra.parentNode;
+        // Удаляем старый элемент
+        detailExtra.remove();
 
-    // Очищаем backdrop
-    var detailBackdrop = getEl('catalog-detail-backdrop');
-    if (detailBackdrop) {
-        detailBackdrop.style.backgroundImage = '';
-        detailBackdrop.classList.add('hidden');
-    }
+        // Создаем новый
+        var newDetailExtra = document.createElement('div');
+        newDetailExtra.id = 'catalog-detail-extra';
+        newDetailExtra.className = 'catalog-detail-extra hidden';
+        newDetailExtra.style.display = 'none';
 
-    // Очищаем overview
-    var detailOverview = getEl('catalog-detail-overview');
-    if (detailOverview) {
-        detailOverview.textContent = '';
-    }
+        // Создаем внутреннюю структуру
+        newDetailExtra.innerHTML = `
+            <div id="catalog-detail-backdrop" class="catalog-detail-backdrop hidden"></div>
+            <div class="catalog-detail-panel">
+                <div id="catalog-detail-meta" class="catalog-detail-meta hidden"></div>
+                <div id="catalog-detail-overview" class="catalog-detail-overview"></div>
+                <div id="catalog-detail-actions" class="catalog-detail-actions">
+                    <button id="catalog-watch-btn" class="catalog-watch-btn">Торренты</button>
+                </div>
+                <div id="catalog-detail-trailers-wrap" class="catalog-detail-section hidden">
+                    <h3>Трейлеры</h3>
+                    <div id="catalog-detail-trailers" class="catalog-detail-trailers"></div>
+                </div>
+                <div id="catalog-detail-screenshots-wrap" class="catalog-detail-section hidden">
+                    <h3>Скриншоты</h3>
+                    <div id="catalog-detail-screenshots" class="catalog-detail-screenshots"></div>
+                </div>
+            </div>
+        `;
 
-    // Очищаем трейлеры
-    var trailersWrap = getEl('catalog-detail-trailers-wrap');
-    if (trailersWrap) {
-        trailersWrap.classList.add('hidden');
-    }
-
-    var trailersContainer = getEl('catalog-detail-trailers');
-    if (trailersContainer) {
-        trailersContainer.innerHTML = '';
-    }
-
-    // Очищаем скриншоты
-    var screenshotsWrap = getEl('catalog-detail-screenshots-wrap');
-    if (screenshotsWrap) {
-        screenshotsWrap.classList.add('hidden');
-    }
-
-    var screenshotsContainer = getEl('catalog-detail-screenshots');
-    if (screenshotsContainer) {
-        screenshotsContainer.innerHTML = '';
-    }
-
-    // Сбрасываем кнопку
-    var watchBtn = getEl('catalog-watch-btn');
-    if (watchBtn) {
-        watchBtn.textContent = 'Торренты';
-        watchBtn.classList.remove('focused');
-        watchBtn.disabled = false;
+        // Вставляем новый элемент на место старого
+        parent.appendChild(newDetailExtra);
     }
 }
 
