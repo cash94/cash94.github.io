@@ -129,6 +129,7 @@ var Animations = (function () {
 
             tl.to(detailView, {
                 opacity: 1,
+                backgroundColor: 'rgb(0, 0, 0)',
                 y: 0,
                 scale: 1,
                 duration: 0.2
