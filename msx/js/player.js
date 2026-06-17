@@ -601,50 +601,50 @@ function updatePlayPauseButton() {
 
   if (videoPlayer.paused) {
     btn.innerHTML = '<i class="fi fi-rr-play"></i>';
-    pauseStartTime = Date.now();
-    wasImmediatePause = false;
+    // pauseStartTime = Date.now();
+    // wasImmediatePause = false;
 
-    if (pauseTimer) clearTimeout(pauseTimer);
+    // if (pauseTimer) clearTimeout(pauseTimer);
 
-    if (currentBufferAhead > 20) {
-      console.log('📊 Буфер ' + currentBufferAhead.toFixed(1) + 'с > 20с, пауза немедленно');
-      wasImmediatePause = true;
-      fetch(SERVER_URL + '/api/stream/pause', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ streamId: AppState.currentStreamId })
-      }).catch(function (e) { console.error('Ошибка паузы:', e); });
-    } else {
-      console.log('📊 Буфер ' + currentBufferAhead.toFixed(1) + 'с < 20с, пауза через минуту');
-      pauseTimer = setTimeout(async function () {
-        console.log('⏸️ Пауза больше минуты, приостанавливаем поток');
-        await fetch(SERVER_URL + '/api/stream/pause', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ streamId: AppState.currentStreamId })
-        });
-      }, PAUSE_THRESHOLD);
-    }
+    // if (currentBufferAhead > 20) {
+    //   console.log('📊 Буфер ' + currentBufferAhead.toFixed(1) + 'с > 20с, пауза немедленно');
+    //   wasImmediatePause = true;
+    //   fetch(SERVER_URL + '/api/stream/pause', {
+    //     method: 'POST',
+    //     headers: { 'Content-Type': 'application/json' },
+    //     body: JSON.stringify({ streamId: AppState.currentStreamId })
+    //   }).catch(function (e) { console.error('Ошибка паузы:', e); });
+    // } else {
+    //   console.log('📊 Буфер ' + currentBufferAhead.toFixed(1) + 'с < 20с, пауза через минуту');
+    //   pauseTimer = setTimeout(async function () {
+    //     console.log('⏸️ Пауза больше минуты, приостанавливаем поток');
+    //     await fetch(SERVER_URL + '/api/stream/pause', {
+    //       method: 'POST',
+    //       headers: { 'Content-Type': 'application/json' },
+    //       body: JSON.stringify({ streamId: AppState.currentStreamId })
+    //     });
+    //   }, PAUSE_THRESHOLD);
+    // }
   } else {
     btn.innerHTML = '<i class="fi fi-rr-pause"></i>';
-    if (pauseStartTime) {
-      var pauseDuration = Date.now() - pauseStartTime;
-      if (wasImmediatePause || pauseDuration >= PAUSE_THRESHOLD) {
-        console.log('▶️ Возобновляем поток (' + (wasImmediatePause ? 'мгновенная пауза' : 'пауза ' + (pauseDuration / 1000).toFixed(0) + ' сек') + ')');
-        fetch(SERVER_URL + '/api/stream/resume', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ streamId: AppState.currentStreamId })
-        }).catch(function (e) { console.error('Ошибка возобновления:', e); });
-      } else {
-        console.log('▶️ Короткая пауза (' + (pauseDuration / 1000).toFixed(0) + ' сек), возобновление не требуется');
-      }
-    }
+    // if (pauseStartTime) {
+    //   var pauseDuration = Date.now() - pauseStartTime;
+    //   if (wasImmediatePause || pauseDuration >= PAUSE_THRESHOLD) {
+    //     console.log('▶️ Возобновляем поток (' + (wasImmediatePause ? 'мгновенная пауза' : 'пауза ' + (pauseDuration / 1000).toFixed(0) + ' сек') + ')');
+    //     fetch(SERVER_URL + '/api/stream/resume', {
+    //       method: 'POST',
+    //       headers: { 'Content-Type': 'application/json' },
+    //       body: JSON.stringify({ streamId: AppState.currentStreamId })
+    //     }).catch(function (e) { console.error('Ошибка возобновления:', e); });
+    //   } else {
+    //     console.log('▶️ Короткая пауза (' + (pauseDuration / 1000).toFixed(0) + ' сек), возобновление не требуется');
+    //   }
+    // }
 
-    if (pauseTimer) clearTimeout(pauseTimer);
-    pauseStartTime = null;
-    pauseTimer = null;
-    wasImmediatePause = false;
+    // if (pauseTimer) clearTimeout(pauseTimer);
+    // pauseStartTime = null;
+    // pauseTimer = null;
+    // wasImmediatePause = false;
   }
 }
 
