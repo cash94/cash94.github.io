@@ -1084,133 +1084,43 @@ async function getTmdbDetailsWithCache(tmdbId, mediaType) {
 function resetDetailBackground() {
     var detailView = getEl('detail-view');
     if (!detailView) return;
-
     // Очищаем фон
     detailView.style.backgroundImage = '';
     detailView.style.backgroundColor = '#000000';
-
     // Удаляем overlay затемнения
     var existingOverlay = getEl('detail-backdrop-overlay');
     if (existingOverlay) {
         existingOverlay.remove();
     }
-
     // Очищаем subtitle
     var detailSubtitle = getEl('detail-subtitle');
     if (detailSubtitle) {
         detailSubtitle.textContent = '';
         detailSubtitle.style.display = 'none';
     }
-
     // Очищаем meta информацию
     var metaContainer = getEl('catalog-detail-meta');
     if (metaContainer) {
         metaContainer.innerHTML = '';
         metaContainer.classList.add('hidden');
     }
-
     // Очищаем список файлов
     var filesList = getEl('files-list');
     if (filesList) {
         filesList.innerHTML = '';
+        // Сбрасываем стили, если нужно
         filesList.style.display = '';
         filesList.style.flexDirection = '';
     }
-
     // Очищаем постер
     var detailPoster = getEl('detail-poster');
     if (detailPoster) {
         detailPoster.innerHTML = '';
     }
-
     // Очищаем название
     var detailTitleText = getEl('detail-title-text');
     if (detailTitleText) {
         detailTitleText.textContent = '';
-    }
-
-    // === ОЧИСТКА catalog-detail-extra ===
-
-    // Скрываем весь блок
-    var detailExtra = getEl('catalog-detail-extra');
-    if (detailExtra) {
-        detailExtra.classList.add('hidden');
-        detailExtra.style.display = 'none';
-    }
-
-    // Очищаем backdrop
-    var detailBackdrop = getEl('catalog-detail-backdrop');
-    if (detailBackdrop) {
-        detailBackdrop.style.backgroundImage = '';
-        detailBackdrop.classList.add('hidden');
-    }
-
-    // Очищаем overview
-    var detailOverview = getEl('catalog-detail-overview');
-    if (detailOverview) {
-        detailOverview.textContent = '';
-    }
-
-    // Очищаем трейлеры
-    var trailersWrap = getEl('catalog-detail-trailers-wrap');
-    if (trailersWrap) {
-        trailersWrap.classList.add('hidden');
-    }
-
-    var trailersContainer = getEl('catalog-detail-trailers');
-    if (trailersContainer) {
-        trailersContainer.innerHTML = '';
-        trailersContainer.style.display = '';
-        trailersContainer.style.gridTemplateColumns = '';
-        trailersContainer.style.gap = '';
-        trailersContainer.style.padding = '';
-    }
-
-    // Очищаем скриншоты
-    var screenshotsWrap = getEl('catalog-detail-screenshots-wrap');
-    if (screenshotsWrap) {
-        screenshotsWrap.classList.add('hidden');
-    }
-
-    var screenshotsContainer = getEl('catalog-detail-screenshots');
-    if (screenshotsContainer) {
-        screenshotsContainer.innerHTML = '';
-    }
-
-    // === ОЧИЩАЕМ АКТЕРОВ ===
-    var actorsWrap = getEl('catalog-detail-actors-wrap');
-    if (actorsWrap) {
-        actorsWrap.innerHTML = ''; // Полностью очищаем
-        actorsWrap.style.display = 'none';
-    }
-
-    // Или если нужно сохранить структуру, а очистить только содержимое:
-    var actorsContainer = getEl('catalog-detail-actors');
-    if (actorsContainer) {
-        actorsContainer.innerHTML = '';
-        actorsContainer.style.scrollSnapType = '';
-    }
-
-    // === ОЧИЩАЕМ ПОХОЖИЕ ФИЛЬМЫ ===
-    var recommendationsWrap = getEl('catalog-detail-recommendations-wrap');
-    if (recommendationsWrap) {
-        recommendationsWrap.innerHTML = ''; // Полностью очищаем
-        recommendationsWrap.style.display = 'none';
-    }
-
-    // Или если нужно сохранить структуру:
-    var recommendationsContainer = getEl('catalog-detail-recommendations');
-    if (recommendationsContainer) {
-        recommendationsContainer.innerHTML = '';
-        recommendationsContainer.style.scrollSnapType = '';
-    }
-
-    // Сбрасываем кнопку
-    var watchBtn = getEl('catalog-watch-btn');
-    if (watchBtn) {
-        watchBtn.textContent = 'Торренты';
-        watchBtn.classList.remove('focused');
-        watchBtn.disabled = false;
     }
 }
 
