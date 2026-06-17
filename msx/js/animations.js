@@ -115,8 +115,7 @@ var Animations = (function () {
             opacity: 0,
             y: 8,
             scale: 0.99,
-            force3D: false,
-            clearProps: 'all' // Очищаем все предыдущие inline-стили от GSAP
+            force3D: false
         });
 
         // Ждем следующего кадра для применения стилей
