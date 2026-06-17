@@ -1005,7 +1005,7 @@ body.detail-open {
   /* Вместо 100vw - используем 100% */
   min-width: 100% !important;
   /* Вместо 100vw */
-  height: 120% !important;
+  height: 100% !important;
   /* Вместо 100vh */
   background-size: contain !important;
   background-position: center center !important;
