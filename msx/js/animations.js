@@ -114,7 +114,7 @@ var Animations = (function () {
         gsap.set(detailView, {
             opacity: 0.9,
             y: 8,
-            scale: 0.99,
+            scale: 1,
             force3D: false
         });
 
