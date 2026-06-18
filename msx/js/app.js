@@ -610,6 +610,21 @@ function setupNavigation() {
           console.error('❌ Функции навигации еще не загружены');
           return;
         }
+        if (detailHistory.length > 1) {
+          // Удаляем последний элемент
+          detailHistory.pop();
+
+          // Берем последний элемент из массива
+          var lastItem = detailHistory[detailHistory.length - 1];
+
+          // Показываем его
+          window.showCatalogDetail(lastItem, 0, null);
+
+          console.log('🔙 Возврат к элементу:', lastItem.title || lastItem.name);
+          return true;
+        } else {
+          clearDetailHistory();
+        }
         if (returnTo === 'catalog' && AppState.playFromHash && AppState.isCatalogSerials) {
           AppState.playFromHash = false;
           AppState.isCatalogSerials = false;
