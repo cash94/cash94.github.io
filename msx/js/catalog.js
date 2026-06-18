@@ -22,6 +22,8 @@ var TMDB_CACHE_CONFIG = {
     cleanupInterval: 300000,
     enabled: true
 };
+var detailHistory = [];
+var MAX_DETAIL_HISTORY = 50; // Максимальный размер истории
 
 function getTmdbCacheKey(endpoint, params) {
     var keys = Object.keys(params).sort();
@@ -653,8 +655,26 @@ function updatePosterDOM(div, rating, url) {
 }
 
 // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР ====================
+function pushDetailHistory(item) {
+    // Проверяем, не дублируется ли текущая запись
+    var last = detailHistory[detailHistory.length - 1];
+    if (last && last.id === item.id) {
+        return; // Не добавляем дубликат
+    }
+
+    // Добавляем новый item
+    detailHistory.push(item);
+
+    // Ограничиваем размер истории
+    if (detailHistory.length > MAX_DETAIL_HISTORY) {
+        detailHistory.shift();
+    }
+
+    console.log('📜 История деталей:', detailHistory.length, 'записей');
+}
 async function showCatalogDetail(item, index, posterUrl) {
     //if (typeof window.initHorizontalScroll === 'function') window.initHorizontalScroll();
+    pushDetailHistory(item);
     catalogState.lastSelectedIndex = index; catalogState.lastSelectedId = item.id;
     var dv = getEl('detail-view'), mc = getEl('main-container');
     var pe = getEl('detail-poster'), te = getEl('detail-title-text');
