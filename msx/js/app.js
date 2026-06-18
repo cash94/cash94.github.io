@@ -587,7 +587,7 @@ function setupNavigation() {
       //}
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
-      if (AppState && !AppState.isSearch && !AppState.playFromHash) {
+      if (AppState && !AppState.isSearch && !AppState.playFromHash && detailHistory.length <= 1) {
         //var detailView = getEl('detail-view');
         if (detailView) detailView.style.display = 'none';
       }
