@@ -147,8 +147,8 @@ var Animations = (function () {
         return gsap.to(detailView, {
             opacity: 0,
             scale: 0.95,
-            duration: 0.25,
-            ease: config.ease.smooth
+            duration: 0.1,
+            ease: "power1.out"
         });
     }
 
