@@ -132,7 +132,7 @@ var Animations = (function () {
                 backgroundColor: 'rgb(0, 0, 0)',
                 y: 0,
                 scale: 1,
-                duration: 0.4
+                duration: 0.45
             }, 0);
 
             return tl;
@@ -147,7 +147,7 @@ var Animations = (function () {
         return gsap.to(detailView, {
             opacity: 0,
             scale: 0.95,
-            duration: config.duration.normal,
+            duration: 0.45,
             ease: config.ease.smooth
         });
     }
