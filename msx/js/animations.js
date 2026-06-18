@@ -112,7 +112,7 @@ var Animations = (function () {
 
         // Сбрасываем свойства до начальных
         gsap.set(detailView, {
-            opacity: 0.7,
+            opacity: 0.85,
             y: 8,
             scale: 0.99,
             force3D: false
@@ -132,7 +132,7 @@ var Animations = (function () {
                 backgroundColor: 'rgb(0, 0, 0)',
                 y: 0,
                 scale: 1,
-                duration: 0.2
+                duration: 0.4
             }, 0);
 
             return tl;
@@ -147,7 +147,7 @@ var Animations = (function () {
         return gsap.to(detailView, {
             opacity: 0,
             scale: 0.95,
-            duration: config.duration.fast,
+            duration: config.duration.normal,
             ease: config.ease.smooth
         });
     }
