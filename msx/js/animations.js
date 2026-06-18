@@ -122,7 +122,7 @@ var Animations = (function () {
         requestAnimationFrame(function () {
             var tl = gsap.timeline({
                 defaults: {
-                    duration: 0.3,
+                    duration: 0.2,
                     ease: "power2.out"
                 }
             });
@@ -132,7 +132,7 @@ var Animations = (function () {
                 backgroundColor: 'rgb(0, 0, 0)',
                 y: 0,
                 scale: 1,
-                duration: 0.45
+                duration: 0.25
             }, 0);
 
             return tl;
@@ -147,7 +147,7 @@ var Animations = (function () {
         return gsap.to(detailView, {
             opacity: 0,
             scale: 0.95,
-            duration: 0.45,
+            duration: 0.35,
             ease: config.ease.smooth
         });
     }
