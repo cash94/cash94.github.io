@@ -3066,6 +3066,7 @@ async function playFromHash(hash, magnet, searchResult) {
 
         if (!window.AndroidJS) {
             AppState.currentDetailItem = addedTorrent;
+            clearDetailHistory();
         }
 
         if (!isSerial) {
