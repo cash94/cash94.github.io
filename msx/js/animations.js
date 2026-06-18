@@ -132,7 +132,7 @@ var Animations = (function () {
                 backgroundColor: 'rgb(0, 0, 0)',
                 y: 0,
                 scale: 1,
-                duration: 0.2
+                duration: 0.15
             }, 0);
 
             return tl;
