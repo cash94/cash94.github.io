@@ -475,9 +475,9 @@ var Animations = (function () {
         // (Если нужна проверка только по вертикали, можно убрать условия для left/right)
         return (
             elRect.top >= containerRect.top &&
-            elRect.bottom <= containerRect.bottom &&
-            elRect.left >= containerRect.left &&
-            elRect.right <= containerRect.right
+            elRect.bottom <= containerRect.bottom // &&
+            //elRect.left >= containerRect.left &&
+            //elRect.right <= containerRect.right
         );
     }
 
