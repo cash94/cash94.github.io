@@ -236,7 +236,7 @@ async function init() {
     setupAuth();
     setupPlayerAutoHide();
     setupTouchControls(seekSlider, volumeSlider);
-    setupAutoRefresh();
+    //setupAutoRefresh();
     setupFullscreen();
     setupAutoFullscreen();
     setupSpeedTest();
