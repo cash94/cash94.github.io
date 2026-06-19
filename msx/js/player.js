@@ -1560,7 +1560,7 @@ function preloadTorrents(hash, fileId) {
     .then(function (response) {
       if (response.ok) console.log('✅ Торрент отправлен на предзагрузку:', hash);
       else console.log('⚠️ Ошибка предзагрузки торрента:', response.status);
-      return new Promise(function (resolve) { setTimeout(resolve, 4500); });
+      return new Promise(function (resolve) { setTimeout(resolve, 4000); });
     })
     .catch(function (error) {
       console.error('❌ Ошибка при предзагрузке торрента:', error);
@@ -1683,9 +1683,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId)
     ];
 
-    //if (initialSeek === null || initialSeek === 0) {
-      //preloadTorrents(currentTimecodeData.hash, currentTimecodeData.fileId);
-    //}
+    if (initialSeek === null || initialSeek === 0) {
+      preloadTorrents(currentTimecodeData.hash, currentTimecodeData.fileId);
+    }
 
     var timecodePromise = null;
     if (initialSeek === null) {
