@@ -1683,9 +1683,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId)
     ];
 
-    //if (initialSeek === null || initialSeek === 0) {
-      //preloadTorrents(currentTimecodeData.hash, currentTimecodeData.fileId);
-    //}
+    if (initialSeek === null || initialSeek === 0) {
+      preloadTorrents(currentTimecodeData.hash, currentTimecodeData.fileId);
+    }
 
     var timecodePromise = null;
     if (initialSeek === null) {
