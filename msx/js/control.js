@@ -152,12 +152,12 @@ function setFocus(index) {
     //requestAnimationFrame(function () {
     //var focused = document.querySelectorAll('.focused');
     //for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
-    clearFocused();
+    //clearFocused();
 
     var element = focusableElements[currentFocusIndex];
     if (!element) return;
-    //focusEl(element);
-    element.classList.add('focused');
+    focusEl(element);
+    //element.classList.add('focused');
 
     if (AppState.currentScreen === 'config') {
         switchConfigTab(element.id);
@@ -183,49 +183,49 @@ function setFocus(index) {
     }
 
     // Скролл
-    var container = null;
-    var s = AppState.currentScreen;
-    var isFI = element.classList && element.classList.contains('file-item');
-    var isAC = element.classList && element.classList.contains('catalog-actor-card');
-    var isRC = element.classList && element.classList.contains('catalog-recommendation-card');
-    var isTC = element.classList && element.classList.contains('catalog-trailer-card-item');
+    // var container = null;
+    // var s = AppState.currentScreen;
+    // var isFI = element.classList && element.classList.contains('file-item');
+    // var isAC = element.classList && element.classList.contains('catalog-actor-card');
+    // var isRC = element.classList && element.classList.contains('catalog-recommendation-card');
+    // var isTC = element.classList && element.classList.contains('catalog-trailer-card-item');
 
-    if (s === 'catalog' || s === 'torrents' || s === 'config') {
-        container = getEl('main-container');
-    } else if (s === 'search') {
-        container = getEl('search-results');
-    } else if (s === 'detail') {
-        if (isFI) {
-            container = getEl('files-list');
-        } else if (isAC) {
-            // Для актеров используем wrap контейнер (который реально скроллится)
-            container = getEl('catalog-detail-actors-wrap');
-            // Если wrap не найден, пробуем найти родителя
-            if (!container && el.closest) {
-                container = el.closest('.catalog-detail-actors-wrap');
-            }
-        } else if (isRC) {
-            // Для рекомендаций используем wrap контейнер
-            container = getEl('catalog-detail-recommendations-wrap');
-            if (!container && el.closest) {
-                container = el.closest('.catalog-detail-recommendations-wrap');
-            }
-        } else if (isTC) {
-            // Для трейлеров используем wrap контейнер
-            container = getEl('catalog-detail-trailers-wrap');
-            if (!container && el.closest) {
-                container = el.closest('.catalog-detail-trailers-wrap');
-            }
-        } else {
-            container = getEl('detail-view');
-        }
-    } else if (s === 'player') {
-        container = getEl('episodes-list') || getEl('audio-list');
-    }
+    // if (s === 'catalog' || s === 'torrents' || s === 'config') {
+    //     container = getEl('main-container');
+    // } else if (s === 'search') {
+    //     container = getEl('search-results');
+    // } else if (s === 'detail') {
+    //     if (isFI) {
+    //         container = getEl('files-list');
+    //     } else if (isAC) {
+    //         // Для актеров используем wrap контейнер (который реально скроллится)
+    //         container = getEl('catalog-detail-actors-wrap');
+    //         // Если wrap не найден, пробуем найти родителя
+    //         if (!container && el.closest) {
+    //             container = el.closest('.catalog-detail-actors-wrap');
+    //         }
+    //     } else if (isRC) {
+    //         // Для рекомендаций используем wrap контейнер
+    //         container = getEl('catalog-detail-recommendations-wrap');
+    //         if (!container && el.closest) {
+    //             container = el.closest('.catalog-detail-recommendations-wrap');
+    //         }
+    //     } else if (isTC) {
+    //         // Для трейлеров используем wrap контейнер
+    //         container = getEl('catalog-detail-trailers-wrap');
+    //         if (!container && el.closest) {
+    //             container = el.closest('.catalog-detail-trailers-wrap');
+    //         }
+    //     } else {
+    //         container = getEl('detail-view');
+    //     }
+    // } else if (s === 'player') {
+    //     container = getEl('episodes-list') || getEl('audio-list');
+    // }
 
-    if (!isElementFullyVisible(element, container)) {
-        scrollToElementIfNeeded(element, container, !fastNavigation);
-    }
+    // if (!isElementFullyVisible(element, container)) {
+    //     scrollToElementIfNeeded(element, container, !fastNavigation);
+    // }
     //});
 }
 
