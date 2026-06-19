@@ -113,7 +113,7 @@ var Animations = (function () {
         // Сбрасываем свойства до начальных
         gsap.set(detailView, {
             opacity: 0.9,
-            y: 8,
+            y: 0,
             scale: 1,
             force3D: false
         });
@@ -123,7 +123,7 @@ var Animations = (function () {
             var tl = gsap.timeline({
                 defaults: {
                     duration: 0.1,
-                    ease: "power1.out"
+                    ease: "power0.out"
                 }
             });
 
@@ -148,7 +148,7 @@ var Animations = (function () {
             opacity: 0,
             scale: 0.95,
             duration: 0.1,
-            ease: "power1.out"
+            ease: "power0.out"
         });
     }
 
