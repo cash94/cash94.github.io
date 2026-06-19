@@ -124,7 +124,7 @@ var Animations = (function () {
             var tl = gsap.timeline({
                 defaults: {
                     duration: 0.1,
-                    ease: "power0.out"
+                    ease: "power2.out"
                 }
             });
 
@@ -149,7 +149,7 @@ var Animations = (function () {
             opacity: 0,
             scale: 0.95,
             duration: 0.1,
-            ease: "power0.out"
+            ease: "power2.out"
         });
     }
 
