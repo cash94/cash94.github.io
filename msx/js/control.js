@@ -588,10 +588,11 @@ function scrollToElementIfNeeded(el, container, smooth) {
                 targetScrollTop = Math.max(0, Math.min(targetScrollTop, detailView.scrollHeight - detailRect.height));
 
                 if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                    //gsap.killTweensOf(detailView);
+                    gsap.killTweensOf(detailView);
                     gsap.to(detailView, {
                         scrollTo: { y: targetScrollTop },
                         duration: 0.1,
+                        backgroundColor: 'rgb(0, 0, 0)',
                         ease: "power0.out",
                         overwrite: true
                     });
