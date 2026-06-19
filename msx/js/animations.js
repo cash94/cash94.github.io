@@ -115,6 +115,7 @@ var Animations = (function () {
             opacity: 1,
             y: 0,
             scale: 1,
+            backgroundColor: 'rgb(0, 0, 0)',
             force3D: false
         });
 
