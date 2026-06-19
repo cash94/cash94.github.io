@@ -886,12 +886,20 @@ async function openYoutubeInPlayer(url, title) {
         if (data.formats && Array.isArray(data.formats)) {
             var format = data.formats.find(f => f.protocol === 'm3u8_native' && f.label === '1080p');
             if (format && format.url) {
-                m3u8Url = 'https://tube.vidaapp.cfd' + format.url;
+                if (format.url.startsWith('https://')) {
+                    m3u8Url = format.url;
+                } else {
+                    m3u8Url = 'https://tube.vidaapp.cfd' + format.url;
+                }
             } else {
                 // Если 1080p не найден, пробуем взять любой m3u8_native
                 var anyM3u8 = data.formats.find(f => f.protocol === 'm3u8_native');
                 if (anyM3u8 && anyM3u8.url) {
-                    m3u8Url = 'https://tube.vidaapp.cfd' + anyM3u8.url;
+                    if (format.url.startsWith('https://')) {
+                        m3u8Url = anyM3u8.url;
+                    }else {
+                        m3u8Url = 'https://tube.vidaapp.cfd' + anyM3u8.url;
+                    }
                 }
             }
         }
