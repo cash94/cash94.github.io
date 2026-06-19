@@ -112,7 +112,7 @@ var Animations = (function () {
 
         // Сбрасываем свойства до начальных
         gsap.set(detailView, {
-            opacity: 0.9,
+            opacity: 1,
             y: 0,
             scale: 1,
             force3D: false
