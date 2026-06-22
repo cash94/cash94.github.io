@@ -1791,7 +1791,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
     if (AppState.transcodingOnOff) {
       var playURL = AppState.currentTorrserverUrl + "/gst/" + currentTimecodeData.hash + "/master.m3u8?index=" + currentTimecodeData.fileId + "&audio=" + currentAudioTrack;
-      startGstPlayback(playURL);
+
       AppState.currentScreen = 'player';
 
       getEl('config-screen').style.display = 'none';
@@ -1814,6 +1814,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       var videoPlayer = getEl('video-player');
       videoPlayer.removeEventListener('ended', handleVideoEnded);
       videoPlayer.addEventListener('ended', handleVideoEnded);
+
+      startGstPlayback(playURL);
+
       return true;
     }
 
