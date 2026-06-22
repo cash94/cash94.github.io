@@ -476,18 +476,18 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
     localStorage.setItem('playerVolume', videoPlayer.volume);
   });
-  //videoPlayer.addEventListener('timeupdate', function () {
-    //if (typeof isSeekHoldActive !== 'undefined' && isSeekHoldActive) return;
-    //if (AppState && (AppState.isSliderDragging || AppState.suppressTimeUpdate)) return;
+  videoPlayer.addEventListener('timeupdate', function () {
+    if (typeof isSeekHoldActive !== 'undefined' && isSeekHoldActive) return;
+    if (AppState && (AppState.isSliderDragging || AppState.suppressTimeUpdate)) return;
 
-    //var totalDuration = (AppState && (AppState.originalDuration || AppState.expectedDuration)) || videoPlayer.duration;
-    //if (totalDuration && isFinite(totalDuration) && totalDuration > 0) {
-      //if (seekSlider) seekSlider.max = totalDuration;
-      //var absoluteTime = videoPlayer.currentTime + (AppState && AppState.seekOffset || 0);
-      //if (seekSlider) seekSlider.value = Math.min(absoluteTime, totalDuration);
-      //if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
-    //}
-  //});
+    var totalDuration = (AppState && (AppState.originalDuration || AppState.expectedDuration)) || videoPlayer.duration;
+    if (totalDuration && isFinite(totalDuration) && totalDuration > 0) {
+      if (seekSlider) seekSlider.max = totalDuration;
+      var absoluteTime = videoPlayer.currentTime + (AppState && AppState.seekOffset || 0);
+      if (seekSlider) seekSlider.value = Math.min(absoluteTime, totalDuration);
+      if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
+    }
+  });
   videoPlayer.addEventListener('loadedmetadata', function () {
     console.log('📊 loadedmeta', videoPlayer.duration);
     if (AppState && AppState.expectedDuration && typeof forceUpdateDuration === 'function') {
