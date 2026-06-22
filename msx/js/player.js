@@ -55,22 +55,22 @@ function createSkipButton() {
   skipButton.className = 'skip-button hidden';
   skipButton.innerHTML = '⏩ Пропустить';
   //skipButton.style.cssText = `
-    //position: fixed;
-    //bottom: 80px;
-    //right: 20px;
-    //background: rgba(255, 87, 34, 0.1);
-    //color: white;
-    //padding: 12px 24px;
-    //border-radius: 8px;
-    //font-size: 16px;
-    //font-weight: bold;
-    //cursor: pointer;
-    //z-index: 1000;
-    //transition: background 10s linear;
-    //border: 2px solid #ff5722;
-    //backdrop-filter: blur(4px);
-    //box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    //letter-spacing: 0.5px;
+  //position: fixed;
+  //bottom: 80px;
+  //right: 20px;
+  //background: rgba(255, 87, 34, 0.1);
+  //color: white;
+  //padding: 12px 24px;
+  //border-radius: 8px;
+  //font-size: 16px;
+  //font-weight: bold;
+  //cursor: pointer;
+  //z-index: 1000;
+  //transition: background 10s linear;
+  //border: 2px solid #ff5722;
+  //backdrop-filter: blur(4px);
+  //box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  //letter-spacing: 0.5px;
   //`;
 
   // Обработчик клика будет добавлен из control.js
@@ -1037,8 +1037,8 @@ async function seekStream(absoluteSeekTime, source) {
 
       //var btnLen = controlBtns.length;
       //for (var i = 0; i < btnLen; i++) {
-        //controlBtns[i].style.pointerEvents = 'none';
-        //controlBtns[i].style.opacity = '0.5';
+      //controlBtns[i].style.pointerEvents = 'none';
+      //controlBtns[i].style.opacity = '0.5';
       //}
 
       if (wasPlaying) {
@@ -1114,8 +1114,8 @@ async function seekStream(absoluteSeekTime, source) {
             playbackOverlay.classList.remove('active');
             playbackText.textContent = 'Воспроизведение...';
             //for (var j = 0; j < btnLen; j++) {
-              //controlBtns[j].style.pointerEvents = 'auto';
-              //controlBtns[j].style.opacity = '1';
+            //controlBtns[j].style.pointerEvents = 'auto';
+            //controlBtns[j].style.opacity = '1';
             //}
             hidePlayerLoading();
             videoPlayer.removeEventListener('loadedmetadata', onMetaData);
@@ -1153,8 +1153,8 @@ async function seekStream(absoluteSeekTime, source) {
           playbackOverlay.classList.remove('active');
           playbackText.textContent = 'Воспроизведение...';
           //for (var k = 0; k < btnLen; k++) {
-            //controlBtns[k].style.pointerEvents = 'auto';
-            //controlBtns[k].style.opacity = '1';
+          //controlBtns[k].style.pointerEvents = 'auto';
+          //controlBtns[k].style.opacity = '1';
           //}
         }, 2000);
 
@@ -1448,8 +1448,8 @@ async function switchToEpisode(index, fileId) {
   //var controlBtns = document.querySelectorAll('.control-btn');
   //var btnLen = controlBtns.length;
   //for (var i = 0; i < btnLen; i++) {
-    //controlBtns[i].style.pointerEvents = 'none';
-    //controlBtns[i].style.opacity = '0.5';
+  //controlBtns[i].style.pointerEvents = 'none';
+  //controlBtns[i].style.opacity = '0.5';
   //}
 
   try {
@@ -1487,8 +1487,8 @@ async function switchToEpisode(index, fileId) {
     getEl('playback-overlay').classList.remove('active');
     document.querySelector('.playback-text').textContent = 'Воспроизведение...';
     //for (var j = 0; j < btnLen; j++) {
-      //controlBtns[j].style.pointerEvents = 'auto';
-      //controlBtns[j].style.opacity = '1';
+    //controlBtns[j].style.pointerEvents = 'auto';
+    //controlBtns[j].style.opacity = '1';
     //}
     hidePlayerLoading();
     startHeartbeat();
@@ -1632,6 +1632,30 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
   }
 }
 
+function startGstPlayback(m3u8Url) {
+  var videoPlayer = getEl('video-player');
+  if (!videoPlayer) return false;
+
+  if (Hls.isSupported()) {
+    AppState.hls = new Hls({
+      maxBufferSize: 80 * 1024 * 1024,
+      maxBufferLength: 30,
+      backBufferLength: 20,
+      startLevel: -1,
+      abrEwmaDefaultEstimate: 500000,
+      fragLoadingTimeOut: 10000,
+      manifestLoadingTimeOut: 10000,
+      enableWorker: true,
+      progressive: true
+    });
+
+    AppState.hls.loadSource(m3u8Url);
+    AppState.hls.attachMedia(videoPlayer);
+    return true;
+  }
+  return false;
+}
+
 // Обновленная функция startHLSPlayback с ожиданием буфера (видео на паузе)
 async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack) {
   if (initialSeek === undefined) initialSeek = null;
@@ -1653,7 +1677,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   currentPlaybackController = new AbortController();
   var signal = currentPlaybackController.signal;
 
-  
+
   currentBufferAhead = 0;
   wasImmediatePause = false;
   pauseTimer = null;
@@ -1764,6 +1788,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     var audioParam = audioTrack !== null ? ('&audio=' + audioTrack) : '';
     var multiChannelParam = (AppState.multiChannelEnabled === true) ? '&multiChannel=true' : '';
     var savedClientId = localStorage.getItem('clientId');
+
+    if (AppState.transcodingOnOff) {
+      var playURL = AppState.currentTorrserverUrl + "/gst/" + torrentHash + "/master.m3u8?index=" + fileId + "&audio=0";
+      startGstPlayback(playURL);
+      return true;
+    }
 
     var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam, {
       signal: signal
@@ -2069,14 +2099,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         } catch (e) { }
       };
       videoPlayer.addEventListener('timeupdate', timeUpdateHandler);
-
-      var levelSwitchedHandler = function (event, data) {
-        if (signal.aborted) return;
-        console.log('📊 Качество переключено на уровень ' + data.level);
-      };
-      AppState.hls.off(Hls.Events.LEVEL_SWITCHED, levelSwitchedHandler);
-      AppState.hls.on(Hls.Events.LEVEL_SWITCHED, levelSwitchedHandler);
-
       var errorHandler = function (event, data) {
         if (signal.aborted) return;
         console.log('HLS событие ошибки:', { type: data.type, details: data.details, fatal: data.fatal, error: data.error ? data.error.message : 'Unknown error' });
@@ -2136,79 +2158,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       AppState.hls.loadSource(data.playlistUrl);
       AppState.hls.attachMedia(videoPlayer);
 
-    } else if (videoPlayer.canPlayType('application/vnd.apple.mpegurl')) {
-      videoPlayer.src = data.playlistUrl;
-      videoPlayer.removeEventListener('ended', handleVideoEnded);
-      videoPlayer.addEventListener('ended', handleVideoEnded);
-
-      var isPlaybackCancelled = false;
-      var bufferCheckInterval = null;
-
-      var loadedMetadataHandler = function () {
-        if (signal.aborted || isPlaybackCancelled) return;
-        forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
-        videoPlayer.currentTime = 0;
-        videoPlayer.pause();
-        //updatePlayPauseButton();
-
-        console.log('⏳ Ожидание накопления буфера 10 секунд... (Safari, видео на паузе)');
-        showPlayerLoading('Буферизация... 0/10 сек', null);
-
-        bufferCheckInterval = setInterval(function () {
-          if (signal.aborted || isPlaybackCancelled) {
-            clearInterval(bufferCheckInterval);
-            return;
-          }
-          if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
-            var bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
-            var currentTimeVar = videoPlayer.currentTime;
-            var bufferAhead = bufferedEnd - currentTimeVar;
-            showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек', null);
-            if (bufferAhead >= 10) {
-              clearInterval(bufferCheckInterval);
-              hidePlayerLoading();
-              if (!signal.aborted && !isPlaybackCancelled) {
-                videoPlayer.play()['catch'](function (err) {
-                  videoPlayer.muted = true;
-                  videoPlayer.play()['catch'](function () { });
-                  updateMuteButton();
-                });
-              }
-              videoPlayer.muted = false;
-              updateMuteButton();
-              startTimecodeSaving();
-              resetMouseIdleTimer();
-              if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
-              startNearEndCheck();
-              startHeartbeat();
-            }
-          }
-        }, 500);
-
-        AppState.bufferCheckInterval = bufferCheckInterval;
-        setTimeout(function () {
-          if (!signal.aborted && !isPlaybackCancelled && AppState.bufferCheckInterval) {
-            console.log('⚠️ Таймаут ожидания буфера (Safari)');
-            clearInterval(bufferCheckInterval);
-            hidePlayerLoading();
-            videoPlayer.play()['catch'](function (err) {
-              videoPlayer.muted = true;
-              videoPlayer.play()['catch'](function () { });
-              updateMuteButton();
-            });
-            videoPlayer.muted = false;
-            updateMuteButton();
-            startTimecodeSaving();
-            resetMouseIdleTimer();
-            if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
-            startNearEndCheck();
-            startHeartbeat();
-          }
-        }, 30000);
-      };
-
-      videoPlayer.addEventListener('loadedmetadata', loadedMetadataHandler, { once: true });
-      AppState.isPlaying = true;
     } else {
       throw new Error('Ваш браузер не поддерживает HLS');
     }
@@ -2257,8 +2206,8 @@ function cancelCurrentPlayback() {
   //var controlBtns = document.querySelectorAll('.control-btn');
   //var btnLen = controlBtns.length;
   //for (var i = 0; i < btnLen; i++) {
-    //controlBtns[i].style.pointerEvents = 'auto';
-    //controlBtns[i].style.opacity = '1';
+  //controlBtns[i].style.pointerEvents = 'auto';
+  //controlBtns[i].style.opacity = '1';
   //}
 }
 
@@ -2722,8 +2671,8 @@ async function handleVideoEnded() {
     //var controlBtns = document.querySelectorAll('.control-btn');
     //var btnLen = controlBtns.length;
     //for (var i = 0; i < btnLen; i++) {
-      //controlBtns[i].style.pointerEvents = 'none';
-      //controlBtns[i].style.opacity = '0.5';
+    //controlBtns[i].style.pointerEvents = 'none';
+    //controlBtns[i].style.opacity = '0.5';
     //}
 
     try {
@@ -2733,8 +2682,8 @@ async function handleVideoEnded() {
       getEl('playback-overlay').classList.remove('active');
       document.querySelector('.playback-text').textContent = 'Воспроизведение...';
       //for (var j = 0; j < btnLen; j++) {
-        //controlBtns[j].style.pointerEvents = 'auto';
-        //controlBtns[j].style.opacity = '1';
+      //controlBtns[j].style.pointerEvents = 'auto';
+      //controlBtns[j].style.opacity = '1';
       //}
     }
   } else {
@@ -2833,120 +2782,120 @@ setInterval(updateClock, 60000);
 
 // Глобальная функция для получения таймкода из Android
 function updatePlayerTimeline(timelineData) {
-    console.log('📊 Получен timeline из Android:', timelineData);
+  console.log('📊 Получен timeline из Android:', timelineData);
 
-    try {
-        // Парсим данные (могут прийти как строка или объект)
-        var data = typeof timelineData === 'string' ? JSON.parse(timelineData) : timelineData;
+  try {
+    // Парсим данные (могут прийти как строка или объект)
+    var data = typeof timelineData === 'string' ? JSON.parse(timelineData) : timelineData;
 
-        // Проверка на 100% завершение воспроизведения
-        var isCompleted = data.percent === 100;
+    // Проверка на 100% завершение воспроизведения
+    var isCompleted = data.percent === 100;
 
-        if (isCompleted) {
-            console.log('✅ Воспроизведение завершено на 100%');
-        }
-
-        // Проверяем валидность данных
-        if (!data.hash || data.hash === '0') {
-            console.log('⚠️ Некорректный hash, пробуем извлечь из currentUrl');
-
-            // Если hash == 0, но есть currentUrl - парсим из URL
-            if (data.currentUrl) {
-                var urlData = parseHashFromUrl(data.currentUrl);
-                if (urlData) {
-                    data.hash = urlData.hash;
-                    data.torrentHash = urlData.torrentHash;
-                    data.fileId = urlData.fileId;
-                    console.log('✅ Hash извлечен из URL:', data.hash);
-                } else {
-                    console.log('⚠️ Не удалось извлечь hash из URL');
-                    return;
-                }
-            } else {
-                return;
-            }
-        }
-
-        // Обновляем глобальные переменные вашего плеера
-        if (currentTimecodeData) {
-            // При завершении (100%) устанавливаем timecode = duration (или 0 если нужно сбросить)
-            if (isCompleted) {
-                currentTimecodeData.timecode = 100;
-                currentTimecodeData.duration = 100;
-            } else {
-                currentTimecodeData.timecode = data.time;
-                currentTimecodeData.duration = data.duration;
-            }
-
-            // Если hash содержит torrentHash и fileId (формат "torrentHash_fileId")
-            var hashParts = data.hash.split('_');
-            if (hashParts.length >= 2) {
-                currentTimecodeData.hash = hashParts[0];
-                currentTimecodeData.fileId = hashParts[1];
-            } else {
-                currentTimecodeData.hash = data.hash;
-            }
-        }
-
-        // Если есть currentUrl и не удалось распарсить hash из data.hash
-        if (data.currentUrl && (!currentTimecodeData.hash || !currentTimecodeData.fileId)) {
-            var urlData = parseHashFromUrl(data.currentUrl);
-            if (urlData) {
-                currentTimecodeData.hash = urlData.torrentHash;
-                currentTimecodeData.fileId = urlData.fileId;
-                console.log('✅ Hash и fileId извлечены из URL:', urlData);
-            }
-        }
-
-        // Сохраняем на сервер
-        var savedClientId = localStorage.getItem('clientId');
-        if (savedClientId && currentTimecodeData.hash && currentTimecodeData.fileId) {
-            // При завершении (100%) сохраняем timecode = duration
-            var timecodeToSave;
-            if (isCompleted) {
-                timecodeToSave = Math.floor(currentTimecodeData.duration);
-                console.log('💾 Сохраняем завершенный таймкод (100%):', timecodeToSave);
-            } else {
-                timecodeToSave = Math.floor(data.time);
-            }
-
-            fetch(SERVER_URL + '/api/timecode/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    clientId: savedClientId,
-                    hash: currentTimecodeData.hash,
-                    fileId: currentTimecodeData.fileId,
-                    timecode: timecodeToSave,
-                    duration: currentTimecodeData.duration,
-                    completed: isCompleted // Добавляем флаг завершения
-                })
-            }).catch(function (e) {
-                console.error('Ошибка сохранения таймкода:', e);
-            });
-        }
-
-        if (AppState.playFromHash && AppState.isCatalogSerials) {
-            //AppState.playFromHash = false;
-            //AppState.isCatalogSerials = false;
-            AppState.isCatalogSearch = false;
-            //window.loadCatalog(AppState.backCurrentCatalog);
-            //window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
-            return;
-        } else if (AppState.playFromHash) {
-            AppState.playFromHash = false;
-            AppState.isCatalogSearch = false;
-            return;
-        }
-
-        showDetailView(currentTimecodeData.fileId);
-        // Обновляем прогресс в UI
-        if (AppState && AppState.currentDetailItem && currentTimecodeData.hash) {
-            updateDetailProgress(AppState.currentDetailItem);
-        }
-    } catch (error) {
-        console.error('❌ Ошибка в updatePlayerTimeline:', error);
+    if (isCompleted) {
+      console.log('✅ Воспроизведение завершено на 100%');
     }
+
+    // Проверяем валидность данных
+    if (!data.hash || data.hash === '0') {
+      console.log('⚠️ Некорректный hash, пробуем извлечь из currentUrl');
+
+      // Если hash == 0, но есть currentUrl - парсим из URL
+      if (data.currentUrl) {
+        var urlData = parseHashFromUrl(data.currentUrl);
+        if (urlData) {
+          data.hash = urlData.hash;
+          data.torrentHash = urlData.torrentHash;
+          data.fileId = urlData.fileId;
+          console.log('✅ Hash извлечен из URL:', data.hash);
+        } else {
+          console.log('⚠️ Не удалось извлечь hash из URL');
+          return;
+        }
+      } else {
+        return;
+      }
+    }
+
+    // Обновляем глобальные переменные вашего плеера
+    if (currentTimecodeData) {
+      // При завершении (100%) устанавливаем timecode = duration (или 0 если нужно сбросить)
+      if (isCompleted) {
+        currentTimecodeData.timecode = 100;
+        currentTimecodeData.duration = 100;
+      } else {
+        currentTimecodeData.timecode = data.time;
+        currentTimecodeData.duration = data.duration;
+      }
+
+      // Если hash содержит torrentHash и fileId (формат "torrentHash_fileId")
+      var hashParts = data.hash.split('_');
+      if (hashParts.length >= 2) {
+        currentTimecodeData.hash = hashParts[0];
+        currentTimecodeData.fileId = hashParts[1];
+      } else {
+        currentTimecodeData.hash = data.hash;
+      }
+    }
+
+    // Если есть currentUrl и не удалось распарсить hash из data.hash
+    if (data.currentUrl && (!currentTimecodeData.hash || !currentTimecodeData.fileId)) {
+      var urlData = parseHashFromUrl(data.currentUrl);
+      if (urlData) {
+        currentTimecodeData.hash = urlData.torrentHash;
+        currentTimecodeData.fileId = urlData.fileId;
+        console.log('✅ Hash и fileId извлечены из URL:', urlData);
+      }
+    }
+
+    // Сохраняем на сервер
+    var savedClientId = localStorage.getItem('clientId');
+    if (savedClientId && currentTimecodeData.hash && currentTimecodeData.fileId) {
+      // При завершении (100%) сохраняем timecode = duration
+      var timecodeToSave;
+      if (isCompleted) {
+        timecodeToSave = Math.floor(currentTimecodeData.duration);
+        console.log('💾 Сохраняем завершенный таймкод (100%):', timecodeToSave);
+      } else {
+        timecodeToSave = Math.floor(data.time);
+      }
+
+      fetch(SERVER_URL + '/api/timecode/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: savedClientId,
+          hash: currentTimecodeData.hash,
+          fileId: currentTimecodeData.fileId,
+          timecode: timecodeToSave,
+          duration: currentTimecodeData.duration,
+          completed: isCompleted // Добавляем флаг завершения
+        })
+      }).catch(function (e) {
+        console.error('Ошибка сохранения таймкода:', e);
+      });
+    }
+
+    if (AppState.playFromHash && AppState.isCatalogSerials) {
+      //AppState.playFromHash = false;
+      //AppState.isCatalogSerials = false;
+      AppState.isCatalogSearch = false;
+      //window.loadCatalog(AppState.backCurrentCatalog);
+      //window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+      return;
+    } else if (AppState.playFromHash) {
+      AppState.playFromHash = false;
+      AppState.isCatalogSearch = false;
+      return;
+    }
+
+    showDetailView(currentTimecodeData.fileId);
+    // Обновляем прогресс в UI
+    if (AppState && AppState.currentDetailItem && currentTimecodeData.hash) {
+      updateDetailProgress(AppState.currentDetailItem);
+    }
+  } catch (error) {
+    console.error('❌ Ошибка в updatePlayerTimeline:', error);
+  }
 }
 
 // Функция для парсинга hash и fileId из URL
