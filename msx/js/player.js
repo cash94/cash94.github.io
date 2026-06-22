@@ -1790,7 +1790,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     var savedClientId = localStorage.getItem('clientId');
 
     if (AppState.transcodingOnOff) {
-      var playURL = AppState.currentTorrserverUrl + "/gst/" + torrentHash + "/master.m3u8?index=" + fileId + "&audio=0";
+      var playURL = AppState.currentTorrserverUrl + "/gst/" + currentTimecodeData.hash + "/master.m3u8?index=" + currentTimecodeData.fileId + "&audio=" + currentAudioTrack;
       startGstPlayback(playURL);
       return true;
     }
