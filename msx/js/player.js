@@ -1792,6 +1792,28 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     if (AppState.transcodingOnOff) {
       var playURL = AppState.currentTorrserverUrl + "/gst/" + currentTimecodeData.hash + "/master.m3u8?index=" + currentTimecodeData.fileId + "&audio=" + currentAudioTrack;
       startGstPlayback(playURL);
+      AppState.currentScreen = 'player';
+
+      getEl('config-screen').style.display = 'none';
+      getEl('torrserver-section').style.display = 'none';
+      getEl('detail-view').style.display = 'none';
+      getEl('player-screen').style.display = 'block';
+
+      var focusedElements = document.querySelectorAll('.focused');
+      var focusedLen = focusedElements.length;
+      for (var i = 0; i < focusedLen; i++) focusedElements[i].classList.remove('focused');
+
+      var controlsContainer = getEl('controls-container');
+      if (controlsContainer) controlsContainer.classList.add('idle-hidden');
+
+      if (typeof currentFocusIndex !== 'undefined') currentFocusIndex = 0;
+      if (typeof updateFocusableElements === 'function') updateFocusableElements();
+
+      destroyHls();
+
+      var videoPlayer = getEl('video-player');
+      videoPlayer.removeEventListener('ended', handleVideoEnded);
+      videoPlayer.addEventListener('ended', handleVideoEnded);
       return true;
     }
 
