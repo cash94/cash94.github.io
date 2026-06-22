@@ -1122,6 +1122,9 @@ function resetDetailBackground() {
     if (detailTitleText) {
         detailTitleText.textContent = '';
     }
+    // Удаляем старый прогресс если есть
+    var oldProgress = getEl('detail-progress');
+    if (oldProgress) oldProgress.remove();
 }
 
 // Функция для извлечения номера сезона из названия
