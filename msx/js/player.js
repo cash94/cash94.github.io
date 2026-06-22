@@ -2146,7 +2146,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
       var loadedMetadataHandler = function () {
         if (signal.aborted || isPlaybackCancelled) return;
-        forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
+        //forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
         videoPlayer.currentTime = 0;
         videoPlayer.pause();
         //updatePlayPauseButton();
