@@ -2304,7 +2304,7 @@ function showDetailView(field = null) {
       stopTimecodeSaving();
       if (AppState.currentDetailItem) {
         console.log('🔄 Обновляем прогресс в текущей карточке:', AppState.currentDetailItem.title);
-        updateDetailProgress(AppState.currentDetailItem);
+        //updateDetailProgress(AppState.currentDetailItem);
       }
     });
 
