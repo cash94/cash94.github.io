@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', function () {
 var checkServerTimeout = null;
 var hideClockEnabled = false;
 var addToDbEnabled = false;
+var transcodingOnOff = false;
 var multiChannelEnabled = false;
 var clickableElements = document.querySelectorAll(
   'button, .control-btn, .play-btn, .torrent-card, .file-item, ' +
@@ -1304,6 +1305,23 @@ function setupCheckboxes() {
         AppState.addToDbEnabled = addToDbEnabled;
       }
       console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
+    });
+  }
+  var transcodingCheckbox = getEl('transcoding-off');
+  if (transcodingCheckbox) {
+    var savedTranscoding = localStorage.getItem('transcodingOnOff') === 'true';
+    transcodingOnOff = savedTranscoding;
+    transcodingCheckbox.checked = savedTranscoding;
+    if (typeof AppState !== 'undefined') {
+      AppState.transcodingOnOff = transcodingOnOff;
+    }
+    transcodingCheckbox.addEventListener('change', function (e) {
+      transcodingOnOff = e.target.checked;
+      localStorage.setItem('transcodingOnOff', transcodingOnOff);
+      if (typeof AppState !== 'undefined') {
+        AppState.transcodingOnOff = transcodingOnOff;
+      }
+      console.log('🎬 Транскодирование:', transcodingOnOff ? 'включено' : 'выключено');
     });
   }
   var multiChannelCheckbox = getEl('multi-channel-audio');
