@@ -2433,11 +2433,9 @@ async function updateDetailProgress(torrent) {
   var cacheKey = torrent.hash;
   if (progressCache.has(cacheKey)) progressCache.delete(cacheKey);
 
-  var oldProgresses = document.querySelectorAll('#detail-progress, .detail-progress');
-  for (var i = 0; i < oldProgresses.length; i++) {
-    console.log('🗑️ Удаляем старый блок прогресса');
-    oldProgresses[i].remove();
-  }
+  // Удаляем старый прогресс если есть
+  var oldProgress = getEl('detail-progress');
+  if (oldProgress) oldProgress.remove();
 
   var progress = await loadProgressForTorrent(torrent);
   if (!progress) { console.log('📭 Нет прогресса для отображения'); return; }
