@@ -765,7 +765,28 @@ function forceUpdateDuration(duration, origDur, offset) {
 
 function destroyHls() {
   hidePlayerLoading();
-  
+
+  // ★ СБРАСЫВАЕМ ПОЛЗУНОК НА 0
+  var seekSlider = getEl('seek-slider');
+  if (seekSlider) {
+    seekSlider.value = 0;
+  }
+
+  // ★ СБРАСЫВАЕМ ОТОБРАЖЕНИЕ ВРЕМЕНИ
+  var currentTimeSpan = getEl('current-time');
+  if (currentTimeSpan) {
+    currentTimeSpan.textContent = '00:00';
+  }
+
+  // ★ СБРАСЫВАЕМ ОЧЕРЕДЬ SEEK И ФЛАГИ
+  if (AppState) {
+    AppState.seekQueue = [];
+    AppState.isSeeking = false;
+    AppState.previewTime = null;
+    AppState.suppressTimeUpdate = false;
+  }
+
+  // ★ ОЧИЩАЕМ ОБРАБОТЧИКИ ТРАНСКОДИРОВАНИЯ
   if (AppState._timeUpdateHandler) {
     var videoPlayer = getEl('video-player');
     if (videoPlayer) {
@@ -773,11 +794,21 @@ function destroyHls() {
     }
     AppState._timeUpdateHandler = null;
   }
+  if (AppState._canPlayHandler) {
+    var videoPlayer = getEl('video-player');
+    if (videoPlayer) {
+      videoPlayer.removeEventListener('canplay', AppState._canPlayHandler);
+    }
+    AppState._canPlayHandler = null;
+  }
   if (AppState._loadingTimeout) {
     clearTimeout(AppState._loadingTimeout);
     AppState._loadingTimeout = null;
   }
-  
+  if (AppState._seekExecuted) {
+    AppState._seekExecuted = false;
+  }
+
   if (AppState.hls) {
     AppState.expectedDuration = null;
     AppState.originalDuration = null;
@@ -1896,7 +1927,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           console.log('🎯 Выполняем перемотку на ' + formatTime(initialSeek));
 
           // ★ СНАЧАЛА ПРИНУДИТЕЛЬНО УСТАНАВЛИВАЕМ currentTime
-          // Это быстрый способ перемотать, даже если HLS.js еще не готов
           try {
             var relativeTime = initialSeek - (AppState.seekOffset || 0);
             if (relativeTime > 0) {
@@ -1908,7 +1938,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           }
 
           // ★ ЗАТЕМ ВЫЗЫВАЕМ seekStream ДЛЯ СИНХРОНИЗАЦИИ
-          // Используем увеличенную задержку, чтобы HLS.js успел инициализироваться
           setTimeout(function () {
             seekStream(initialSeek, 'slider');
           }, 800);
@@ -1939,13 +1968,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       };
       videoPlayer.addEventListener('timeupdate', timeUpdateHandler);
 
-      // ★ ДОПОЛНИТЕЛЬНЫЙ ОБРАБОТЧИК НА CANPLAY - ТОЖЕ ТРИГГЕРИМ ПЕРЕМОТКУ
+      // ★ ДОПОЛНИТЕЛЬНЫЙ ОБРАБОТЧИК НА CANPLAY
       var canPlayHandler = function () {
         if (!isTimeUpdated) {
           console.log('🎬 Событие canplay, запускаем перемотку');
-          // Не скрываем индикатор, но пытаемся перемотать
           if (initialSeek > 0 && !seekExecuted) {
-            // Пробуем перемотать через canplay
             try {
               var relativeTime = initialSeek - (AppState.seekOffset || 0);
               if (relativeTime > 0) {
@@ -1954,7 +1981,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               }
             } catch (e) { }
 
-            // Запускаем seekStream с небольшой задержкой
             setTimeout(function () {
               if (!seekExecuted) {
                 seekExecuted = true;
@@ -1972,7 +1998,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           console.log('⚠️ Таймаут ожидания начала воспроизведения, скрываем индикатор принудительно');
           hidePlayerLoading();
 
-          // ★ ПРИ ТАЙМАУТЕ ТОЖЕ ВЫПОЛНЯЕМ ПЕРЕМОТКУ
           if (initialSeek > 0 && !seekExecuted) {
             seekExecuted = true;
             console.log('🎯 Выполняем перемотку на ' + formatTime(initialSeek) + ' по таймауту');
@@ -1990,7 +2015,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
           videoPlayer.removeEventListener('canplay', canPlayHandler);
         }
-      }, 15000); // 15 секунд таймаут
+      }, 15000);
 
       // Проверяем поддержку HLS
       if (Hls.isSupported()) {
@@ -2013,22 +2038,17 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         var manifestHandler = function () {
           console.log('📜 Манифест загружен, запускаем воспроизведение');
           videoPlayer.play()['catch'](function (err) {
-            // Автоплей может быть заблокирован, пробуем с muted
             videoPlayer.muted = true;
             videoPlayer.play()['catch'](function () { });
             updateMuteButton();
           });
 
-          // Запускаем все таймеры и обновления
           startTimecodeSaving();
           resetMouseIdleTimer();
           startNearEndCheck();
           startHeartbeat();
           startTorrentStatsUpdates();
 
-          // ★ НЕ СКРЫВАЕМ ЗДЕСЬ, ТАК КАК ЭТО СДЕЛАЕТ ОБРАБОТЧИК timeupdate
-
-          // Отписываемся, чтобы не сработало дважды
           AppState.hls.off(Hls.Events.MANIFEST_PARSED, manifestHandler);
         };
         AppState.hls.on(Hls.Events.MANIFEST_PARSED, manifestHandler);
@@ -2037,7 +2057,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         AppState.hls.on(Hls.Events.ERROR, function (event, data) {
           if (data.fatal) {
             console.error('❌ Фатальная ошибка HLS:', data);
-            // ★ ПРИ ОШИБКЕ ТОЖЕ СКРЫВАЕМ ИНДИКАТОР
             hidePlayerLoading();
             videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
             videoPlayer.removeEventListener('canplay', canPlayHandler);
@@ -2082,7 +2101,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         throw new Error('Ваш браузер не поддерживает HLS');
       }
     }
-    
+
     var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam, {
       signal: signal
     });
@@ -2511,6 +2530,25 @@ function showDetailView(field = null) {
     pauseTimer = null;
     pauseStartTime = null;
     thisisseek = false;
+
+    var seekSlider = getEl('seek-slider');
+    if (seekSlider) {
+      seekSlider.value = 0;
+    }
+
+    // ★ СБРАСЫВАЕМ ОТОБРАЖЕНИЕ ВРЕМЕНИ
+    var currentTimeSpan = getEl('current-time');
+    if (currentTimeSpan) {
+      currentTimeSpan.textContent = '00:00';
+    }
+
+    // ★ СБРАСЫВАЕМ ОЧЕРЕДЬ SEEK
+    if (AppState) {
+      AppState.seekQueue = [];
+      AppState.isSeeking = false;
+      AppState.previewTime = null;
+      AppState.suppressTimeUpdate = false;
+    }
 
     if (AppState.isYoutubePlayback) {
       console.log('Выход из YouTube плеера');
