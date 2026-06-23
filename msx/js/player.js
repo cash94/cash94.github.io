@@ -1809,7 +1809,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         focusedElements[i].classList.remove('focused');
       }
 
-      // Скрываем контролы по умолчанию (через 3 секунды они скроются)
+      // Скрываем контролы по умолчанию
       var controlsContainer = getEl('controls-container');
       if (controlsContainer) {
         controlsContainer.classList.add('idle-hidden');
@@ -1833,27 +1833,15 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
       // Проверяем поддержку HLS
       if (Hls.isSupported()) {
-        // ★ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Минимальные настройки, приближенные к нативному воспроизведению
         AppState.hls = new Hls({
-          // Отключаем адаптивный битрейт (он часто вызывает перезагрузку сегментов)
           enableABR: false,
-          // Фиксируем стартовый уровень (0 - самый первый)
           startLevel: 0,
-          // Увеличиваем лимиты, чтобы HLS.js не пытался "подчищать" буфер
           maxBufferLength: 30,
           maxMaxBufferLength: 60,
-          // Отключаем предзагрузку фрагментов, чтобы не было лишних запросов
           startFragPrefetch: false,
-          // Таймауты
           fragLoadingTimeOut: 20000,
           manifestLoadingTimeOut: 20000,
-          // Не используем worker, чтобы избежать накладных расходов
           enableWorker: false,
-          // Отключаем "живой" режим, так как это VOD
-          liveSyncDurationCount: 1,
-          liveMaxLatencyDurationCount: 1,
-          liveDurationInfinity: false,
-          // Кэширование
           cache: true
         });
 
@@ -1861,8 +1849,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         AppState.hls.loadSource(playURL);
         AppState.hls.attachMedia(videoPlayer);
 
-        // --- УПРОЩЕННАЯ ЛОГИКА ВОСПРОИЗВЕДЕНИЯ ---
-        // Как только манифест загружен - просто запускаем видео
         var manifestHandler = function () {
           console.log('📜 Манифест загружен, запускаем воспроизведение');
           videoPlayer.play()['catch'](function (err) {
@@ -1885,11 +1871,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         };
         AppState.hls.on(Hls.Events.MANIFEST_PARSED, manifestHandler);
 
-        // Обработчик ошибок (только для критических)
+        // Обработчик ошибок
         AppState.hls.on(Hls.Events.ERROR, function (event, data) {
           if (data.fatal) {
             console.error('❌ Фатальная ошибка HLS:', data);
-            // Попытка восстановления
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
                 AppState.hls.startLoad();
