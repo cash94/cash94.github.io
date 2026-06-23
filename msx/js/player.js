@@ -1891,14 +1891,14 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       // ★ ФУНКЦИЯ ДЛЯ ВЫПОЛНЕНИЯ ПЕРЕМОТКИ
       var executeSeek = function () {
         if (seekExecuted) return;
-        if (seekParam > 0) {
+        if (initialSeek > 0) {
           seekExecuted = true;
-          console.log('🎯 Выполняем перемотку на ' + formatTime(seekParam));
+          console.log('🎯 Выполняем перемотку на ' + formatTime(initialSeek));
 
           // ★ СНАЧАЛА ПРИНУДИТЕЛЬНО УСТАНАВЛИВАЕМ currentTime
           // Это быстрый способ перемотать, даже если HLS.js еще не готов
           try {
-            var relativeTime = seekParam - (AppState.seekOffset || 0);
+            var relativeTime = initialSeek - (AppState.seekOffset || 0);
             if (relativeTime > 0) {
               videoPlayer.currentTime = relativeTime;
               console.log('📌 Принудительная установка currentTime на ' + formatTime(relativeTime));
@@ -1910,14 +1910,14 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           // ★ ЗАТЕМ ВЫЗЫВАЕМ seekStream ДЛЯ СИНХРОНИЗАЦИИ
           // Используем увеличенную задержку, чтобы HLS.js успел инициализироваться
           setTimeout(function () {
-            seekStream(seekParam, 'slider');
+            seekStream(initialSeek, 'slider');
           }, 800);
 
           // ★ ДОПОЛНИТЕЛЬНАЯ ПЕРЕМОТКА ЧЕРЕЗ 2 СЕКУНДЫ ДЛЯ НАДЕЖНОСТИ
           setTimeout(function () {
-            if (Math.abs(videoPlayer.currentTime + (AppState.seekOffset || 0) - seekParam) > 2) {
+            if (Math.abs(videoPlayer.currentTime + (AppState.seekOffset || 0) - initialSeek) > 2) {
               console.log('🔄 Повторная перемотка для надежности');
-              seekStream(seekParam, 'slider');
+              seekStream(initialSeek, 'slider');
             }
           }, 2000);
         }
@@ -1944,10 +1944,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         if (!isTimeUpdated) {
           console.log('🎬 Событие canplay, запускаем перемотку');
           // Не скрываем индикатор, но пытаемся перемотать
-          if (seekParam > 0 && !seekExecuted) {
+          if (initialSeek > 0 && !seekExecuted) {
             // Пробуем перемотать через canplay
             try {
-              var relativeTime = seekParam - (AppState.seekOffset || 0);
+              var relativeTime = initialSeek - (AppState.seekOffset || 0);
               if (relativeTime > 0) {
                 videoPlayer.currentTime = relativeTime;
                 console.log('📌 Принудительная установка currentTime через canplay на ' + formatTime(relativeTime));
@@ -1958,7 +1958,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             setTimeout(function () {
               if (!seekExecuted) {
                 seekExecuted = true;
-                seekStream(seekParam, 'slider');
+                seekStream(initialSeek, 'slider');
               }
             }, 300);
           }
@@ -1973,17 +1973,17 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           hidePlayerLoading();
 
           // ★ ПРИ ТАЙМАУТЕ ТОЖЕ ВЫПОЛНЯЕМ ПЕРЕМОТКУ
-          if (seekParam > 0 && !seekExecuted) {
+          if (initialSeek > 0 && !seekExecuted) {
             seekExecuted = true;
-            console.log('🎯 Выполняем перемотку на ' + formatTime(seekParam) + ' по таймауту');
+            console.log('🎯 Выполняем перемотку на ' + formatTime(initialSeek) + ' по таймауту');
             try {
-              var relativeTime = seekParam - (AppState.seekOffset || 0);
+              var relativeTime = initialSeek - (AppState.seekOffset || 0);
               if (relativeTime > 0) {
                 videoPlayer.currentTime = relativeTime;
               }
             } catch (e) { }
             setTimeout(function () {
-              seekStream(seekParam, 'slider');
+              seekStream(initialSeek, 'slider');
             }, 500);
           }
 
