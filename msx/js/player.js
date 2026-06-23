@@ -1833,6 +1833,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       // Устанавливаем текущий экран как плеер
       AppState.currentScreen = 'player';
       AppState.videoUrl = originalUrl;
+
       // Скрываем все остальные экраны
       getEl('config-screen').style.display = 'none';
       getEl('torrserver-section').style.display = 'none';
@@ -1869,6 +1870,30 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       videoPlayer.removeEventListener('ended', handleVideoEnded);
       videoPlayer.addEventListener('ended', handleVideoEnded);
 
+      // ★ ФЛАГ ДЛЯ ОТСЛЕЖИВАНИЯ ПЕРВОГО ОБНОВЛЕНИЯ ВРЕМЕНИ
+      var isTimeUpdated = false;
+
+      // ★ ОБРАБОТЧИК ДЛЯ ОТСЛЕЖИВАНИЯ НАЧАЛА ВОСПРОИЗВЕДЕНИЯ
+      var timeUpdateHandler = function () {
+        if (!isTimeUpdated && videoPlayer.currentTime > 0) {
+          isTimeUpdated = true;
+          console.log('⏱️ Время начало обновляться, скрываем индикатор загрузки');
+          hidePlayerLoading();
+          // Отписываемся, чтобы не срабатывало повторно
+          videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
+        }
+      };
+      videoPlayer.addEventListener('timeupdate', timeUpdateHandler);
+
+      // ★ ТАЙМАУТ НА СЛУЧАЙ, ЕСЛИ ВРЕМЯ НЕ НАЧАЛО ОБНОВЛЯТЬСЯ
+      var loadingTimeout = setTimeout(function () {
+        if (!isTimeUpdated) {
+          console.log('⚠️ Таймаут ожидания начала воспроизведения, скрываем индикатор принудительно');
+          hidePlayerLoading();
+          videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
+        }
+      }, 15000); // 15 секунд таймаут
+
       // Проверяем поддержку HLS
       if (Hls.isSupported()) {
         AppState.hls = new Hls({
@@ -1887,6 +1912,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         AppState.hls.loadSource(playURL);
         AppState.hls.attachMedia(videoPlayer);
 
+        // ★ УСТАНАВЛИВАЕМ НАЧАЛЬНУЮ ПОЗИЦИЮ (если есть)
+        if (seekParam > 0) {
+          videoPlayer.currentTime = seekParam;
+        }
+
         var manifestHandler = function () {
           console.log('📜 Манифест загружен, запускаем воспроизведение');
           videoPlayer.play()['catch'](function (err) {
@@ -1902,7 +1932,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           startNearEndCheck();
           startHeartbeat();
           startTorrentStatsUpdates();
-          hidePlayerLoading();
+
+          // ★ НЕ СКРЫВАЕМ ЗДЕСЬ, ТАК КАК ЭТО СДЕЛАЕТ ОБРАБОТЧИК timeupdate
+
           // Отписываемся, чтобы не сработало дважды
           AppState.hls.off(Hls.Events.MANIFEST_PARSED, manifestHandler);
         };
@@ -1912,6 +1944,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         AppState.hls.on(Hls.Events.ERROR, function (event, data) {
           if (data.fatal) {
             console.error('❌ Фатальная ошибка HLS:', data);
+            // ★ ПРИ ОШИБКЕ ТОЖЕ СКРЫВАЕМ ИНДИКАТОР
+            hidePlayerLoading();
+            videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
+            clearTimeout(loadingTimeout);
+
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
                 AppState.hls.startLoad();
@@ -1924,6 +1961,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             }
           }
         });
+
+        // ★ СОХРАНЯЕМ ССЫЛКИ ДЛЯ ОЧИСТКИ
+        AppState._timeUpdateHandler = timeUpdateHandler;
+        AppState._loadingTimeout = loadingTimeout;
 
         // Показываем индикатор загрузки
         showPlayerLoading('Подготовка потока...', null);
@@ -1940,9 +1981,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           }, 4000);
         }
 
-        if (seekParam > 0) {
-          videoPlayer.currentTime = seekParam;
-        }
         return true;
       } else {
         throw new Error('Ваш браузер не поддерживает HLS');
