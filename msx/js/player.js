@@ -976,207 +976,210 @@ async function seekStream(absoluteSeekTime, source) {
 
   if (source === 'slider' && AppState.seekTimeout) clearTimeout(AppState.seekTimeout);
 
-  return new Promise(function (resolve) {
-    var executeSeek = async function () {
-      var targetTime = AppState.seekQueue[AppState.seekQueue.length - 1];
-      AppState.seekQueue = [];
-      if (targetTime === undefined) {
-        hidePlayerLoading();
-        resolve(false);
-        return;
-      }
+  if (!AppState.transcodingOnOff) {
 
-      var wasPlaying = !videoPlayer.paused;
-      var episodesPanel = getEl('episodes-panel');
-      var episodesBtn = getEl('episodes-btn');
-      if (episodesPanel && !episodesPanel.classList.contains('hidden')) {
-        episodesPanel.classList.add('hidden');
-        if (episodesBtn) episodesBtn.classList.remove('active');
-      }
-
-      AppState.isSeeking = true;
-      AppState.suppressTimeUpdate = true;
-      AppState.previewTime = targetTime;
-      console.log('🔍 SEEK: ' + formatTime(targetTime));
-
-      var positionInBuffer = isPositionInBuffer(targetTime);
-
-      if (positionInBuffer) {
-        console.log('🎯 Перемотка в пределах буфера - используем простой seek');
-        var relativeTime = targetTime - AppState.seekOffset;
-        videoPlayer.currentTime = relativeTime;
-
-        if (wasPlaying) {
-          videoPlayer.play()['catch'](function (err) { console.log('🔇 Ошибка автоплея после перемотки:', err); });
+    return new Promise(function (resolve) {
+      var executeSeek = async function () {
+        var targetTime = AppState.seekQueue[AppState.seekQueue.length - 1];
+        AppState.seekQueue = [];
+        if (targetTime === undefined) {
+          hidePlayerLoading();
+          resolve(false);
+          return;
         }
 
-        AppState.previewTime = null;
-        AppState.suppressTimeUpdate = false;
-        AppState.isSeeking = false;
+        var wasPlaying = !videoPlayer.paused;
+        var episodesPanel = getEl('episodes-panel');
+        var episodesBtn = getEl('episodes-btn');
+        if (episodesPanel && !episodesPanel.classList.contains('hidden')) {
+          episodesPanel.classList.add('hidden');
+          if (episodesBtn) episodesBtn.classList.remove('active');
+        }
 
-        var seekSlider = getEl('seek-slider');
-        if (seekSlider) seekSlider.value = targetTime;
+        AppState.isSeeking = true;
+        AppState.suppressTimeUpdate = true;
+        AppState.previewTime = targetTime;
+        console.log('🔍 SEEK: ' + formatTime(targetTime));
 
-        updateTimeDisplay();
-        console.log('✅ Простая перемотка выполнена');
-        resolve(true);
-        return;
-      }
+        var positionInBuffer = isPositionInBuffer(targetTime);
 
-      console.log('🎯 Перемотка вне буфера - перезапуск ffmpeg');
-      if (typeof lastCleanedSegment !== 'undefined') {
-        console.log('🔄 Сброс lastCleanedSegment: ' + lastCleanedSegment + ' -> -1');
-        lastCleanedSegment = -1;
-      }
+        if (positionInBuffer) {
+          console.log('🎯 Перемотка в пределах буфера - используем простой seek');
+          var relativeTime = targetTime - AppState.seekOffset;
+          videoPlayer.currentTime = relativeTime;
 
-      var playbackOverlay = getEl('playback-overlay');
-      var playbackText = document.querySelector('.playback-text');
-      playbackOverlay.classList.add('active');
-      playbackText.textContent = 'Перемотка на ' + formatTime(targetTime) + '...';
+          if (wasPlaying) {
+            videoPlayer.play()['catch'](function (err) { console.log('🔇 Ошибка автоплея после перемотки:', err); });
+          }
+
+          AppState.previewTime = null;
+          AppState.suppressTimeUpdate = false;
+          AppState.isSeeking = false;
+
+          var seekSlider = getEl('seek-slider');
+          if (seekSlider) seekSlider.value = targetTime;
+
+          updateTimeDisplay();
+          console.log('✅ Простая перемотка выполнена');
+          resolve(true);
+          return;
+        }
+
+        console.log('🎯 Перемотка вне буфера - перезапуск ffmpeg');
+        if (typeof lastCleanedSegment !== 'undefined') {
+          console.log('🔄 Сброс lastCleanedSegment: ' + lastCleanedSegment + ' -> -1');
+          lastCleanedSegment = -1;
+        }
+
+        var playbackOverlay = getEl('playback-overlay');
+        var playbackText = document.querySelector('.playback-text');
+        playbackOverlay.classList.add('active');
+        playbackText.textContent = 'Перемотка на ' + formatTime(targetTime) + '...';
 
 
-      //var btnLen = controlBtns.length;
-      //for (var i = 0; i < btnLen; i++) {
-      //controlBtns[i].style.pointerEvents = 'none';
-      //controlBtns[i].style.opacity = '0.5';
-      //}
+        //var btnLen = controlBtns.length;
+        //for (var i = 0; i < btnLen; i++) {
+        //controlBtns[i].style.pointerEvents = 'none';
+        //controlBtns[i].style.opacity = '0.5';
+        //}
 
-      if (wasPlaying) {
-        videoPlayer.pause();
-        //updatePlayPauseButton();
-      }
+        if (wasPlaying) {
+          videoPlayer.pause();
+          //updatePlayPauseButton();
+        }
 
-      var retrySeek = async function (retryCount, maxRetries) {
-        if (retryCount === undefined) retryCount = 0;
-        if (maxRetries === undefined) maxRetries = 2;
+        var retrySeek = async function (retryCount, maxRetries) {
+          if (retryCount === undefined) retryCount = 0;
+          if (maxRetries === undefined) maxRetries = 2;
+
+          try {
+            var savedClientId = localStorage.getItem('clientId');
+            var seekResponse = await fetch(SERVER_URL + '/hls/stream/seek', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                streamId: AppState.currentStreamId,
+                seekTime: targetTime,
+                multiChannel: AppState.multiChannelEnabled,
+                clientId: savedClientId,
+                duration: AppState.originalDuration
+              })
+            });
+
+            if (!seekResponse.ok) throw new Error('HTTP ' + seekResponse.status);
+            var seekData = await seekResponse.json();
+            if (!seekData.success) throw new Error(seekData.error || 'Ошибка перемотки');
+
+            console.log('✅ Ответ сервера:', seekData);
+            AppState.expectedDuration = seekData.duration;
+            AppState.originalDuration = seekData.originalDuration;
+            AppState.seekOffset = seekData.seekOffset;
+            AppState.currentStreamId = seekData.streamId;
+            AppState.lastSuccessfulSeek = targetTime;
+
+            if (videoPlayer) {
+              videoPlayer.dataset.expectedDuration = AppState.expectedDuration;
+              videoPlayer.dataset.originalDuration = AppState.originalDuration;
+              videoPlayer.dataset.seekOffset = AppState.seekOffset;
+            }
+
+            playbackText.textContent = 'Загрузка потока...';
+            var playlistReady = await checkPlaylistExists(seekData.playlistUrl, 60);
+            if (!playlistReady) throw new Error('Таймаут ожидания плейлиста');
+
+            playbackText.textContent = 'Загрузка видео...';
+            await reloadHlsPlaylist(seekData.playlistUrl);
+
+            var onMetaData = function () {
+              console.log('📦 Метаданные загружены');
+              videoPlayer.currentTime = 0;
+
+              if (wasPlaying) {
+                videoPlayer.play()['catch'](function (err) {
+                  console.log('🔇 Автоплей после перемотки заблокирован');
+                  videoPlayer.muted = true;
+                  videoPlayer.play()['catch'](function () { });
+                  updateMuteButton();
+                });
+              }
+              videoPlayer.muted = false;
+              updateMuteButton();
+              forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
+              //updatePlayPauseButton();
+
+              var seekSlider = getEl('seek-slider');
+              if (seekSlider) seekSlider.value = Math.min(targetTime, parseFloat(seekSlider.max) || targetTime);
+
+              AppState.previewTime = null;
+              AppState.suppressTimeUpdate = false;
+
+              playbackOverlay.classList.remove('active');
+              playbackText.textContent = 'Воспроизведение...';
+              //for (var j = 0; j < btnLen; j++) {
+              //controlBtns[j].style.pointerEvents = 'auto';
+              //controlBtns[j].style.opacity = '1';
+              //}
+              hidePlayerLoading();
+              videoPlayer.removeEventListener('loadedmetadata', onMetaData);
+            };
+
+            videoPlayer.addEventListener('loadedmetadata', onMetaData, { once: true });
+
+            setTimeout(function () {
+              var loadingOverlay = getEl('loading-player-overlay');
+              if (loadingOverlay && loadingOverlay.classList.contains('active')) {
+                console.log('⚠️ Таймаут загрузки метаданных');
+                hidePlayerLoading();
+                if (wasPlaying) videoPlayer.play()['catch'](function () { });
+              }
+            }, 10000);
+            return true;
+          } catch (error) {
+            console.error('❌ Ошибка перемотки (попытка ' + (retryCount + 1) + '/' + (maxRetries + 1) + '):', error);
+            if (retryCount < maxRetries) {
+              playbackText.textContent = '⚠️ Ошибка перемотки. Попытка ' + (retryCount + 1) + '/' + (maxRetries + 1) + '...';
+              await new Promise(function (resolve) { setTimeout(resolve, 1000); });
+              return retrySeek(retryCount + 1, maxRetries);
+            }
+            throw error;
+          }
+        };
 
         try {
-          var savedClientId = localStorage.getItem('clientId');
-          var seekResponse = await fetch(SERVER_URL + '/hls/stream/seek', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              streamId: AppState.currentStreamId,
-              seekTime: targetTime,
-              multiChannel: AppState.multiChannelEnabled,
-              clientId: savedClientId,
-              duration: AppState.originalDuration
-            })
-          });
-
-          if (!seekResponse.ok) throw new Error('HTTP ' + seekResponse.status);
-          var seekData = await seekResponse.json();
-          if (!seekData.success) throw new Error(seekData.error || 'Ошибка перемотки');
-
-          console.log('✅ Ответ сервера:', seekData);
-          AppState.expectedDuration = seekData.duration;
-          AppState.originalDuration = seekData.originalDuration;
-          AppState.seekOffset = seekData.seekOffset;
-          AppState.currentStreamId = seekData.streamId;
-          AppState.lastSuccessfulSeek = targetTime;
-
-          if (videoPlayer) {
-            videoPlayer.dataset.expectedDuration = AppState.expectedDuration;
-            videoPlayer.dataset.originalDuration = AppState.originalDuration;
-            videoPlayer.dataset.seekOffset = AppState.seekOffset;
-          }
-
-          playbackText.textContent = 'Загрузка потока...';
-          var playlistReady = await checkPlaylistExists(seekData.playlistUrl, 60);
-          if (!playlistReady) throw new Error('Таймаут ожидания плейлиста');
-
-          playbackText.textContent = 'Загрузка видео...';
-          await reloadHlsPlaylist(seekData.playlistUrl);
-
-          var onMetaData = function () {
-            console.log('📦 Метаданные загружены');
-            videoPlayer.currentTime = 0;
-
-            if (wasPlaying) {
-              videoPlayer.play()['catch'](function (err) {
-                console.log('🔇 Автоплей после перемотки заблокирован');
-                videoPlayer.muted = true;
-                videoPlayer.play()['catch'](function () { });
-                updateMuteButton();
-              });
-            }
-            videoPlayer.muted = false;
-            updateMuteButton();
-            forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
-            //updatePlayPauseButton();
-
-            var seekSlider = getEl('seek-slider');
-            if (seekSlider) seekSlider.value = Math.min(targetTime, parseFloat(seekSlider.max) || targetTime);
-
-            AppState.previewTime = null;
-            AppState.suppressTimeUpdate = false;
-
+          var success = await retrySeek(0, 2);
+          resolve(success);
+        } catch (error) {
+          console.error('❌ Финальная ошибка перемотки:', error);
+          playbackText.textContent = '❌ Ошибка перемотки!';
+          setTimeout(function () {
             playbackOverlay.classList.remove('active');
             playbackText.textContent = 'Воспроизведение...';
-            //for (var j = 0; j < btnLen; j++) {
-            //controlBtns[j].style.pointerEvents = 'auto';
-            //controlBtns[j].style.opacity = '1';
+            //for (var k = 0; k < btnLen; k++) {
+            //controlBtns[k].style.pointerEvents = 'auto';
+            //controlBtns[k].style.opacity = '1';
             //}
-            hidePlayerLoading();
-            videoPlayer.removeEventListener('loadedmetadata', onMetaData);
-          };
+          }, 2000);
 
-          videoPlayer.addEventListener('loadedmetadata', onMetaData, { once: true });
-
-          setTimeout(function () {
-            var loadingOverlay = getEl('loading-player-overlay');
-            if (loadingOverlay && loadingOverlay.classList.contains('active')) {
-              console.log('⚠️ Таймаут загрузки метаданных');
-              hidePlayerLoading();
-              if (wasPlaying) videoPlayer.play()['catch'](function () { });
-            }
-          }, 10000);
-          return true;
-        } catch (error) {
-          console.error('❌ Ошибка перемотки (попытка ' + (retryCount + 1) + '/' + (maxRetries + 1) + '):', error);
-          if (retryCount < maxRetries) {
-            playbackText.textContent = '⚠️ Ошибка перемотки. Попытка ' + (retryCount + 1) + '/' + (maxRetries + 1) + '...';
-            await new Promise(function (resolve) { setTimeout(resolve, 1000); });
-            return retrySeek(retryCount + 1, maxRetries);
+          if (wasPlaying) {
+            setTimeout(function () { videoPlayer.play()['catch'](function () { }); }, 1000);
           }
-          throw error;
+
+          AppState.previewTime = null;
+          AppState.suppressTimeUpdate = false;
+          resolve(false);
+        } finally {
+          AppState.isSeeking = false;
         }
       };
 
-      try {
-        var success = await retrySeek(0, 2);
-        resolve(success);
-      } catch (error) {
-        console.error('❌ Финальная ошибка перемотки:', error);
-        playbackText.textContent = '❌ Ошибка перемотки!';
-        setTimeout(function () {
-          playbackOverlay.classList.remove('active');
-          playbackText.textContent = 'Воспроизведение...';
-          //for (var k = 0; k < btnLen; k++) {
-          //controlBtns[k].style.pointerEvents = 'auto';
-          //controlBtns[k].style.opacity = '1';
-          //}
-        }, 2000);
-
-        if (wasPlaying) {
-          setTimeout(function () { videoPlayer.play()['catch'](function () { }); }, 1000);
-        }
-
-        AppState.previewTime = null;
-        AppState.suppressTimeUpdate = false;
-        resolve(false);
-      } finally {
-        AppState.isSeeking = false;
+      if (source === 'slider') {
+        if (AppState.seekTimeout) clearTimeout(AppState.seekTimeout);
+        AppState.seekTimeout = setTimeout(executeSeek, 300);
+      } else {
+        executeSeek();
       }
-    };
-
-    if (source === 'slider') {
-      if (AppState.seekTimeout) clearTimeout(AppState.seekTimeout);
-      AppState.seekTimeout = setTimeout(executeSeek, 300);
-    } else {
-      executeSeek();
-    }
-  });
+    });
+  }
 }
 
 function extractVideoFiles(files) {
