@@ -575,6 +575,10 @@ function updateTimeDisplay() {
   var videoPlayer = getEl('video-player');
   if (!currentTimeSpan || !durationSpan || !videoPlayer) return;
 
+  if (AppState.isSeeking) {
+    return;
+  }
+
   if (AppState.isSliderDragging && AppState.previewTime !== null) {
     currentTimeSpan.textContent = formatTime(AppState.previewTime);
   } else {
@@ -1015,6 +1019,12 @@ async function seekStream(absoluteSeekTime, source) {
   if (AppState.transcodingOnOff) {
     console.log('🎯 Перемотка в режиме транскодирования (GST)');
 
+    // ★ ОСТАНАВЛИВАЕМ ИНТЕРВАЛ ОБНОВЛЕНИЯ ВРЕМЕНИ ВО ВРЕМЯ ПЕРЕМОТКИ
+    if (window._seekTimeUpdateInterval) {
+      clearInterval(window._seekTimeUpdateInterval);
+      window._seekTimeUpdateInterval = null;
+    }
+
     // Показываем индикатор загрузки
     showPlayerLoading('Перемотка...', absoluteSeekTime);
 
@@ -1022,13 +1032,31 @@ async function seekStream(absoluteSeekTime, source) {
     var relativeTime = absoluteSeekTime - (AppState.seekOffset || 0);
     if (relativeTime < 0) relativeTime = 0;
 
+    // ★ ДОБАВЛЯЕМ В ОЧЕРЕДЬ С БЛОКИРОВКОЙ
     AppState.seekQueue.push(absoluteSeekTime);
     if (AppState.isSeeking) {
       console.log('⏳ В очереди: ' + formatTime(absoluteSeekTime));
+      // ★ ВОССТАНАВЛИВАЕМ ИНТЕРВАЛ, ТАК КАК МЫ ЕГО ОСТАНОВИЛИ
+      if (!window._seekTimeUpdateInterval) {
+        window._seekTimeUpdateInterval = setInterval(function () {
+          if (AppState.transcodingOnOff && AppState.currentScreen === 'player' && !AppState.isSeeking) {
+            var currentVideoTime = videoPlayer.currentTime + (AppState.seekOffset || 0);
+            if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+              currentTimecodeData.timecode = currentVideoTime;
+            }
+            updateTimeDisplay();
+          }
+        }, 200);
+      }
       return false;
     }
 
     if (source === 'slider' && AppState.seekTimeout) clearTimeout(AppState.seekTimeout);
+
+    // ★ УСТАНАВЛИВАЕМ ФЛАГ SEEKING
+    AppState.isSeeking = true;
+    AppState.suppressTimeUpdate = true;
+    AppState.previewTime = absoluteSeekTime;
 
     // Перематываем видео
     videoPlayer.currentTime = relativeTime;
@@ -1044,24 +1072,29 @@ async function seekStream(absoluteSeekTime, source) {
       seekSlider.value = Math.min(absoluteSeekTime, totalDuration);
     }
 
+    // ★ ОБНОВЛЯЕМ ВРЕМЯ БЕЗ ИНТЕРВАЛА
     updateTimeDisplay();
 
-    if (!window._seekTimeUpdateInterval) {
-      window._seekTimeUpdateInterval = setInterval(function () {
-        if (AppState.transcodingOnOff && AppState.currentScreen === 'player') {
-          // Обновляем время каждые 200ms
-          var currentVideoTime = videoPlayer.currentTime + (AppState.seekOffset || 0);
-          if (currentTimecodeData.hash && currentTimecodeData.fileId) {
-            currentTimecodeData.timecode = currentVideoTime;
-          }
-          updateTimeDisplay();
-        }
-      }, 200);
-    }
-
-    // Скрываем индикатор через небольшую задержку
+    // ★ ВОССТАНАВЛИВАЕМ ИНТЕРВАЛ ЧЕРЕЗ ЗАДЕРЖКУ
     setTimeout(function () {
       hidePlayerLoading();
+      AppState.isSeeking = false;
+      AppState.previewTime = null;
+      AppState.suppressTimeUpdate = false;
+
+      // ★ ЗАПУСКАЕМ ИНТЕРВАЛ ЗАНОВО
+      if (!window._seekTimeUpdateInterval) {
+        window._seekTimeUpdateInterval = setInterval(function () {
+          // ★ НЕ ОБНОВЛЯЕМ ВО ВРЕМЯ ПЕРЕМОТКИ
+          if (AppState.transcodingOnOff && AppState.currentScreen === 'player' && !AppState.isSeeking) {
+            var currentVideoTime = videoPlayer.currentTime + (AppState.seekOffset || 0);
+            if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+              currentTimecodeData.timecode = currentVideoTime;
+            }
+            updateTimeDisplay();
+          }
+        }, 200);
+      }
     }, 500);
 
     return true;
