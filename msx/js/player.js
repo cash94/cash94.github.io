@@ -1903,6 +1903,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           startHeartbeat();
           startTorrentStatsUpdates();
           hidePlayerLoading();
+          if (seekParam > 0) {
+            videoPlayer.currentTime = seekParam;
+          }
 
           // Отписываемся, чтобы не сработало дважды
           AppState.hls.off(Hls.Events.MANIFEST_PARSED, manifestHandler);
