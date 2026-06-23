@@ -1020,9 +1020,6 @@ async function seekStream(absoluteSeekTime, source) {
   if (AppState.transcodingOnOff) {
     console.log('🎯 Перемотка в режиме транскодирования (GST)');
 
-    // ОСТАНАВЛИВАЕМ ИНТЕРВАЛ
-    //stopSeekTimeUpdateInterval();
-
     // Показываем индикатор загрузки
     showPlayerLoading('Перемотка...', absoluteSeekTime);
 
@@ -1034,8 +1031,6 @@ async function seekStream(absoluteSeekTime, source) {
     AppState.seekQueue.push(absoluteSeekTime);
     if (AppState.isSeeking) {
       console.log('⏳ В очереди: ' + formatTime(absoluteSeekTime));
-      // ВОССТАНАВЛИВАЕМ ИНТЕРВАЛ
-      //startSeekTimeUpdateInterval();
       return false;
     }
 
@@ -1063,17 +1058,42 @@ async function seekStream(absoluteSeekTime, source) {
     // ОБНОВЛЯЕМ ВРЕМЯ БЕЗ ИНТЕРВАЛА
     updateTimeDisplay();
 
-    // ВОССТАНАВЛИВАЕМ ИНТЕРВАЛ ЧЕРЕЗ ЗАДЕРЖКУ
-    setTimeout(function () {
+    // ★ ОБРАБОТЧИК ДЛЯ ОТСЛЕЖИВАНИЯ НАЧАЛА ВОСПРОИЗВЕДЕНИЯ ПОСЛЕ ПЕРЕМОТКИ
+    var timeUpdateHandler = function () {
+      // Проверяем, что время действительно начало обновляться
+      if (videoPlayer.currentTime > 0) {
+        console.log('⏱️ Время начало обновляться после перемотки (currentTime=' + videoPlayer.currentTime.toFixed(2) + ')');
+
+        // Скрываем индикатор загрузки
+        hidePlayerLoading();
+
+        // Сбрасываем флаги
+        AppState.isSeeking = false;
+        AppState.isSliderDragging = false;
+        AppState.previewTime = null;
+        AppState.suppressTimeUpdate = false;
+
+        // Отписываемся, чтобы не срабатывало повторно
+        videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
+      }
+    };
+    videoPlayer.addEventListener('timeupdate', timeUpdateHandler);
+
+    // ★ ТАЙМАУТ НА СЛУЧАЙ, ЕСЛИ ВРЕМЯ НЕ НАЧАЛО ОБНОВЛЯТЬСЯ
+    var seekTimeout = setTimeout(function () {
+      console.log('⚠️ Таймаут ожидания начала воспроизведения после перемотки, сбрасываем принудительно');
       hidePlayerLoading();
       AppState.isSeeking = false;
       AppState.isSliderDragging = false;
       AppState.previewTime = null;
       AppState.suppressTimeUpdate = false;
 
-      // ЗАПУСКАЕМ ИНТЕРВАЛ
-      //startSeekTimeUpdateInterval();
-    }, 500);
+      videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
+    }, 3000);
+
+    // ★ СОХРАНЯЕМ ССЫЛКИ ДЛЯ ОЧИСТКИ
+    AppState._seekTimeUpdateHandler = timeUpdateHandler;
+    AppState._seekTimeout = seekTimeout;
 
     return true;
   }
