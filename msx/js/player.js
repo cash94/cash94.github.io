@@ -1832,7 +1832,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
       // Устанавливаем текущий экран как плеер
       AppState.currentScreen = 'player';
-
+      AppState.videoUrl = originalUrl;
       // Скрываем все остальные экраны
       getEl('config-screen').style.display = 'none';
       getEl('torrserver-section').style.display = 'none';
@@ -1903,10 +1903,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           startHeartbeat();
           startTorrentStatsUpdates();
           hidePlayerLoading();
-          if (seekParam > 0) {
-            videoPlayer.currentTime = seekParam;
-          }
-
           // Отписываемся, чтобы не сработало дважды
           AppState.hls.off(Hls.Events.MANIFEST_PARSED, manifestHandler);
         };
@@ -1944,6 +1940,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           }, 4000);
         }
 
+        if (seekParam > 0) {
+          videoPlayer.currentTime = seekParam;
+        }
         return true;
       } else {
         throw new Error('Ваш браузер не поддерживает HLS');
