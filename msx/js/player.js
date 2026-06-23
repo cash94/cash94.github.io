@@ -769,6 +769,7 @@ function forceUpdateDuration(duration, origDur, offset) {
 
 function destroyHls() {
   hidePlayerLoading();
+  stopSeekTimeUpdateInterval();
 
   // ★ СБРАСЫВАЕМ ПОЛЗУНОК НА 0
   var seekSlider = getEl('seek-slider');
@@ -1019,11 +1020,8 @@ async function seekStream(absoluteSeekTime, source) {
   if (AppState.transcodingOnOff) {
     console.log('🎯 Перемотка в режиме транскодирования (GST)');
 
-    // ★ ОСТАНАВЛИВАЕМ ИНТЕРВАЛ ОБНОВЛЕНИЯ ВРЕМЕНИ ВО ВРЕМЯ ПЕРЕМОТКИ
-    if (window._seekTimeUpdateInterval) {
-      clearInterval(window._seekTimeUpdateInterval);
-      window._seekTimeUpdateInterval = null;
-    }
+    // ОСТАНАВЛИВАЕМ ИНТЕРВАЛ
+    stopSeekTimeUpdateInterval();
 
     // Показываем индикатор загрузки
     showPlayerLoading('Перемотка...', absoluteSeekTime);
@@ -1032,28 +1030,18 @@ async function seekStream(absoluteSeekTime, source) {
     var relativeTime = absoluteSeekTime - (AppState.seekOffset || 0);
     if (relativeTime < 0) relativeTime = 0;
 
-    // ★ ДОБАВЛЯЕМ В ОЧЕРЕДЬ С БЛОКИРОВКОЙ
+    // ДОБАВЛЯЕМ В ОЧЕРЕДЬ С БЛОКИРОВКОЙ
     AppState.seekQueue.push(absoluteSeekTime);
     if (AppState.isSeeking) {
       console.log('⏳ В очереди: ' + formatTime(absoluteSeekTime));
-      // ★ ВОССТАНАВЛИВАЕМ ИНТЕРВАЛ, ТАК КАК МЫ ЕГО ОСТАНОВИЛИ
-      if (!window._seekTimeUpdateInterval) {
-        window._seekTimeUpdateInterval = setInterval(function () {
-          if (AppState.transcodingOnOff && AppState.currentScreen === 'player' && !AppState.isSeeking) {
-            var currentVideoTime = videoPlayer.currentTime + (AppState.seekOffset || 0);
-            if (currentTimecodeData.hash && currentTimecodeData.fileId) {
-              currentTimecodeData.timecode = currentVideoTime;
-            }
-            updateTimeDisplay();
-          }
-        }, 200);
-      }
+      // ВОССТАНАВЛИВАЕМ ИНТЕРВАЛ
+      startSeekTimeUpdateInterval();
       return false;
     }
 
     if (source === 'slider' && AppState.seekTimeout) clearTimeout(AppState.seekTimeout);
 
-    // ★ УСТАНАВЛИВАЕМ ФЛАГ SEEKING
+    // УСТАНАВЛИВАЕМ ФЛАГ SEEKING
     AppState.isSeeking = true;
     AppState.suppressTimeUpdate = true;
     AppState.previewTime = absoluteSeekTime;
@@ -1072,29 +1060,18 @@ async function seekStream(absoluteSeekTime, source) {
       seekSlider.value = Math.min(absoluteSeekTime, totalDuration);
     }
 
-    // ★ ОБНОВЛЯЕМ ВРЕМЯ БЕЗ ИНТЕРВАЛА
+    // ОБНОВЛЯЕМ ВРЕМЯ БЕЗ ИНТЕРВАЛА
     updateTimeDisplay();
 
-    // ★ ВОССТАНАВЛИВАЕМ ИНТЕРВАЛ ЧЕРЕЗ ЗАДЕРЖКУ
+    // ВОССТАНАВЛИВАЕМ ИНТЕРВАЛ ЧЕРЕЗ ЗАДЕРЖКУ
     setTimeout(function () {
       hidePlayerLoading();
       AppState.isSeeking = false;
       AppState.previewTime = null;
       AppState.suppressTimeUpdate = false;
 
-      // ★ ЗАПУСКАЕМ ИНТЕРВАЛ ЗАНОВО
-      if (!window._seekTimeUpdateInterval) {
-        window._seekTimeUpdateInterval = setInterval(function () {
-          // ★ НЕ ОБНОВЛЯЕМ ВО ВРЕМЯ ПЕРЕМОТКИ
-          if (AppState.transcodingOnOff && AppState.currentScreen === 'player' && !AppState.isSeeking) {
-            var currentVideoTime = videoPlayer.currentTime + (AppState.seekOffset || 0);
-            if (currentTimecodeData.hash && currentTimecodeData.fileId) {
-              currentTimecodeData.timecode = currentVideoTime;
-            }
-            updateTimeDisplay();
-          }
-        }, 200);
-      }
+      // ЗАПУСКАЕМ ИНТЕРВАЛ
+      startSeekTimeUpdateInterval();
     }, 500);
 
     return true;
@@ -1521,6 +1498,7 @@ function renderEpisodesList() {
 // Функция переключения на другую серию
 async function switchToEpisode(index, fileId) {
   stopTorrentStatsUpdates();
+  stopSeekTimeUpdateInterval();
   console.log('🔄 Переключение на серию ' + (index + 1) + ', fileId: ' + fileId);
   console.log('Текущий hash:', currentTorrentHash);
 
@@ -1771,6 +1749,35 @@ function startGstPlayback(m3u8Url) {
   return false;
 }
 
+// ФУНКЦИЯ ДЛЯ ЗАПУСКА ИНТЕРВАЛА ОБНОВЛЕНИЯ ВРЕМЕНИ
+function startSeekTimeUpdateInterval() {
+  // Останавливаем старый интервал
+  stopSeekTimeUpdateInterval();
+
+  // Создаем новый
+  window._seekTimeUpdateInterval = setInterval(function () {
+    var videoPlayer = getEl('video-player');
+    if (!videoPlayer) return;
+
+    // НЕ ОБНОВЛЯЕМ ВО ВРЕМЯ ПЕРЕМОТКИ
+    if (AppState.transcodingOnOff && AppState.currentScreen === 'player' && !AppState.isSeeking) {
+      var currentVideoTime = videoPlayer.currentTime + (AppState.seekOffset || 0);
+      if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+        currentTimecodeData.timecode = currentVideoTime;
+      }
+      updateTimeDisplay();
+    }
+  }, 200);
+}
+
+// ФУНКЦИЯ ДЛЯ ОСТАНОВКИ ИНТЕРВАЛА
+function stopSeekTimeUpdateInterval() {
+  if (window._seekTimeUpdateInterval) {
+    clearInterval(window._seekTimeUpdateInterval);
+    window._seekTimeUpdateInterval = null;
+  }
+}
+
 // Обновленная функция startHLSPlayback с ожиданием буфера (видео на паузе)
 async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack) {
   if (initialSeek === undefined) initialSeek = null;
@@ -1947,6 +1954,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       videoPlayer.removeEventListener('ended', handleVideoEnded);
       videoPlayer.addEventListener('ended', handleVideoEnded);
 
+      // ★ ОСТАНАВЛИВАЕМ ИНТЕРВАЛ ОБНОВЛЕНИЯ ВРЕМЕНИ (на случай если был)
+      stopSeekTimeUpdateInterval();
+
       // ★ ФЛАГ ДЛЯ ОТСЛЕЖИВАНИЯ ПЕРВОГО ОБНОВЛЕНИЯ ВРЕМЕНИ
       var isTimeUpdated = false;
       // ★ ФЛАГ ДЛЯ ПРЕДОТВРАЩЕНИЯ ПОВТОРНОГО ВЫЗОВА SEEK
@@ -1994,6 +2004,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
           // ★ ВЫПОЛНЯЕМ ПЕРЕМОТКУ
           executeSeek();
+
+          // ★ ЗАПУСКАЕМ ИНТЕРВАЛ ОБНОВЛЕНИЯ ВРЕМЕНИ
+          startSeekTimeUpdateInterval();
 
           // Отписываемся, чтобы не срабатывало повторно
           videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
@@ -2045,6 +2058,9 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             }, 500);
           }
 
+          // ★ ЗАПУСКАЕМ ИНТЕРВАЛ ДАЖЕ ПРИ ТАЙМАУТЕ
+          startSeekTimeUpdateInterval();
+
           videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
           videoPlayer.removeEventListener('canplay', canPlayHandler);
         }
@@ -2091,6 +2107,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           if (data.fatal) {
             console.error('❌ Фатальная ошибка HLS:', data);
             hidePlayerLoading();
+            // ★ ОСТАНАВЛИВАЕМ ИНТЕРВАЛ ПРИ ОШИБКЕ
+            stopSeekTimeUpdateInterval();
             videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
             videoPlayer.removeEventListener('canplay', canPlayHandler);
             clearTimeout(loadingTimeout);
@@ -2556,6 +2574,7 @@ function showDetailView(field = null) {
   if (!window.AndroidJS) {
     stopTorrentStatsUpdates();
     hideSkipButton();
+    stopSeekTimeUpdateInterval();
     skipIntro = 0;
     skipCredits = 0;
     currentBufferAhead = 0;
@@ -2888,6 +2907,7 @@ function renderAudioTracks() {
 async function switchAudioTrack(trackIndex) {
   if (trackIndex === currentAudioTrack) { toggleAudioPanel(); return; }
   thisisseek = false;
+  stopSeekTimeUpdateInterval();
   console.log('🔊 Переключение на аудиодорожку ' + trackIndex);
 
   await saveTimecodeToServer();
