@@ -974,16 +974,38 @@ async function seekStream(absoluteSeekTime, source) {
     // Показываем индикатор загрузки
     showPlayerLoading('Перемотка...', absoluteSeekTime);
 
-    // Просто перематываем HLS.js
+    // Вычисляем относительное время для video.currentTime
     var relativeTime = absoluteSeekTime - (AppState.seekOffset || 0);
+    if (relativeTime < 0) relativeTime = 0;
+
+    // Перематываем видео
     videoPlayer.currentTime = relativeTime;
+
+    if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+      currentTimecodeData.timecode = absoluteSeekTime;
+    }
 
     // Обновляем слайдер
     var seekSlider = getEl('seek-slider');
-    if (seekSlider) seekSlider.value = absoluteSeekTime;
+    if (seekSlider) {
+      var totalDuration = AppState.originalDuration || AppState.expectedDuration || videoPlayer.duration;
+      seekSlider.value = Math.min(absoluteSeekTime, totalDuration);
+    }
 
-    // Обновляем отображение времени
     updateTimeDisplay();
+
+    if (!window._seekTimeUpdateInterval) {
+      window._seekTimeUpdateInterval = setInterval(function () {
+        if (AppState.transcodingOnOff && AppState.currentScreen === 'player') {
+          // Обновляем время каждые 200ms
+          var currentVideoTime = videoPlayer.currentTime + (AppState.seekOffset || 0);
+          if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+            currentTimecodeData.timecode = currentVideoTime;
+          }
+          updateTimeDisplay();
+        }
+      }, 200);
+    }
 
     // Скрываем индикатор через небольшую задержку
     setTimeout(function () {
