@@ -765,6 +765,19 @@ function forceUpdateDuration(duration, origDur, offset) {
 
 function destroyHls() {
   hidePlayerLoading();
+  
+  if (AppState._timeUpdateHandler) {
+    var videoPlayer = getEl('video-player');
+    if (videoPlayer) {
+      videoPlayer.removeEventListener('timeupdate', AppState._timeUpdateHandler);
+    }
+    AppState._timeUpdateHandler = null;
+  }
+  if (AppState._loadingTimeout) {
+    clearTimeout(AppState._loadingTimeout);
+    AppState._loadingTimeout = null;
+  }
+  
   if (AppState.hls) {
     AppState.expectedDuration = null;
     AppState.originalDuration = null;
@@ -1872,6 +1885,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
       // ★ ФЛАГ ДЛЯ ОТСЛЕЖИВАНИЯ ПЕРВОГО ОБНОВЛЕНИЯ ВРЕМЕНИ
       var isTimeUpdated = false;
+      // ★ ФЛАГ ДЛЯ ПРЕДОТВРАЩЕНИЯ ПОВТОРНОГО ВЫЗОВА SEEK
+      var seekExecuted = false;
 
       // ★ ОБРАБОТЧИК ДЛЯ ОТСЛЕЖИВАНИЯ НАЧАЛА ВОСПРОИЗВЕДЕНИЯ
       var timeUpdateHandler = function () {
@@ -1879,10 +1894,17 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           isTimeUpdated = true;
           console.log('⏱️ Время начало обновляться, скрываем индикатор загрузки');
           hidePlayerLoading();
-          // ★ УСТАНАВЛИВАЕМ НАЧАЛЬНУЮ ПОЗИЦИЮ (если есть)
-          if (seekParam > 0) {
-            seekStream(seekParam, 'slider');
+
+          // ★ ПРОВЕРЯЕМ seekParam И ВЫПОЛНЯЕМ SEEK
+          if (seekParam > 0 && !seekExecuted) {
+            seekExecuted = true;
+            console.log('🎯 Выполняем перемотку на ' + formatTime(seekParam) + ' после запуска');
+            // Используем setTimeout, чтобы дать видео стабилизироваться
+            setTimeout(function () {
+              seekStream(seekParam, 'slider');
+            }, 500);
           }
+
           // Отписываемся, чтобы не срабатывало повторно
           videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
         }
@@ -1894,6 +1916,16 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         if (!isTimeUpdated) {
           console.log('⚠️ Таймаут ожидания начала воспроизведения, скрываем индикатор принудительно');
           hidePlayerLoading();
+
+          // ★ ПРИ ТАЙМАУТЕ ТОЖЕ ПРОВЕРЯЕМ seekParam
+          if (seekParam > 0 && !seekExecuted) {
+            seekExecuted = true;
+            console.log('🎯 Выполняем перемотку на ' + formatTime(seekParam) + ' по таймауту');
+            setTimeout(function () {
+              seekStream(seekParam, 'slider');
+            }, 500);
+          }
+
           videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
         }
       }, 15000); // 15 секунд таймаут
