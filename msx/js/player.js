@@ -1879,6 +1879,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           isTimeUpdated = true;
           console.log('⏱️ Время начало обновляться, скрываем индикатор загрузки');
           hidePlayerLoading();
+          // ★ УСТАНАВЛИВАЕМ НАЧАЛЬНУЮ ПОЗИЦИЮ (если есть)
+          if (seekParam > 0) {
+            seekStream(seekParam, 'slider');
+          }
           // Отписываемся, чтобы не срабатывало повторно
           videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
         }
@@ -1911,11 +1915,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         // Загружаем плейлист и прикрепляем медиа
         AppState.hls.loadSource(playURL);
         AppState.hls.attachMedia(videoPlayer);
-
-        // ★ УСТАНАВЛИВАЕМ НАЧАЛЬНУЮ ПОЗИЦИЮ (если есть)
-        if (seekParam > 0) {
-          videoPlayer.currentTime = seekParam;
-        }
 
         var manifestHandler = function () {
           console.log('📜 Манифест загружен, запускаем воспроизведение');
@@ -1986,7 +1985,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         throw new Error('Ваш браузер не поддерживает HLS');
       }
     }
-
+    
     var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam, {
       signal: signal
     });
