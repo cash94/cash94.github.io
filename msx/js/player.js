@@ -978,6 +978,14 @@ async function seekStream(absoluteSeekTime, source) {
     var relativeTime = absoluteSeekTime - (AppState.seekOffset || 0);
     if (relativeTime < 0) relativeTime = 0;
 
+    AppState.seekQueue.push(absoluteSeekTime);
+    if (AppState.isSeeking) {
+      console.log('⏳ В очереди: ' + formatTime(absoluteSeekTime));
+      return false;
+    }
+
+    if (source === 'slider' && AppState.seekTimeout) clearTimeout(AppState.seekTimeout);
+
     // Перематываем видео
     videoPlayer.currentTime = relativeTime;
 
