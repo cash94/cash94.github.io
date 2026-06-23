@@ -769,7 +769,7 @@ function forceUpdateDuration(duration, origDur, offset) {
 
 function destroyHls() {
   hidePlayerLoading();
-  stopSeekTimeUpdateInterval();
+  //stopSeekTimeUpdateInterval();
 
   // ★ СБРАСЫВАЕМ ПОЛЗУНОК НА 0
   var seekSlider = getEl('seek-slider');
@@ -1021,7 +1021,7 @@ async function seekStream(absoluteSeekTime, source) {
     console.log('🎯 Перемотка в режиме транскодирования (GST)');
 
     // ОСТАНАВЛИВАЕМ ИНТЕРВАЛ
-    stopSeekTimeUpdateInterval();
+    //stopSeekTimeUpdateInterval();
 
     // Показываем индикатор загрузки
     showPlayerLoading('Перемотка...', absoluteSeekTime);
@@ -1035,7 +1035,7 @@ async function seekStream(absoluteSeekTime, source) {
     if (AppState.isSeeking) {
       console.log('⏳ В очереди: ' + formatTime(absoluteSeekTime));
       // ВОССТАНАВЛИВАЕМ ИНТЕРВАЛ
-      startSeekTimeUpdateInterval();
+      //startSeekTimeUpdateInterval();
       return false;
     }
 
@@ -1072,7 +1072,7 @@ async function seekStream(absoluteSeekTime, source) {
       AppState.suppressTimeUpdate = false;
 
       // ЗАПУСКАЕМ ИНТЕРВАЛ
-      startSeekTimeUpdateInterval();
+      //startSeekTimeUpdateInterval();
     }, 500);
 
     return true;
@@ -1499,7 +1499,7 @@ function renderEpisodesList() {
 // Функция переключения на другую серию
 async function switchToEpisode(index, fileId) {
   stopTorrentStatsUpdates();
-  stopSeekTimeUpdateInterval();
+  //stopSeekTimeUpdateInterval();
   console.log('🔄 Переключение на серию ' + (index + 1) + ', fileId: ' + fileId);
   console.log('Текущий hash:', currentTorrentHash);
 
@@ -1753,7 +1753,7 @@ function startGstPlayback(m3u8Url) {
 // ФУНКЦИЯ ДЛЯ ЗАПУСКА ИНТЕРВАЛА ОБНОВЛЕНИЯ ВРЕМЕНИ
 function startSeekTimeUpdateInterval() {
   // Останавливаем старый интервал
-  stopSeekTimeUpdateInterval();
+  //stopSeekTimeUpdateInterval();
 
   // Создаем новый
   window._seekTimeUpdateInterval = setInterval(function () {
@@ -1956,7 +1956,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       videoPlayer.addEventListener('ended', handleVideoEnded);
 
       // ★ ОСТАНАВЛИВАЕМ ИНТЕРВАЛ ОБНОВЛЕНИЯ ВРЕМЕНИ (на случай если был)
-      stopSeekTimeUpdateInterval();
+      //stopSeekTimeUpdateInterval();
 
       // ★ ФЛАГ ДЛЯ ОТСЛЕЖИВАНИЯ ПЕРВОГО ОБНОВЛЕНИЯ ВРЕМЕНИ
       var isTimeUpdated = false;
@@ -2007,7 +2007,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           executeSeek();
 
           // ★ ЗАПУСКАЕМ ИНТЕРВАЛ ОБНОВЛЕНИЯ ВРЕМЕНИ
-          startSeekTimeUpdateInterval();
+          //startSeekTimeUpdateInterval();
 
           // Отписываемся, чтобы не срабатывало повторно
           videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
@@ -2060,7 +2060,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           }
 
           // ★ ЗАПУСКАЕМ ИНТЕРВАЛ ДАЖЕ ПРИ ТАЙМАУТЕ
-          startSeekTimeUpdateInterval();
+          //startSeekTimeUpdateInterval();
 
           videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
           videoPlayer.removeEventListener('canplay', canPlayHandler);
@@ -2109,7 +2109,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             console.error('❌ Фатальная ошибка HLS:', data);
             hidePlayerLoading();
             // ★ ОСТАНАВЛИВАЕМ ИНТЕРВАЛ ПРИ ОШИБКЕ
-            stopSeekTimeUpdateInterval();
+            //stopSeekTimeUpdateInterval();
             videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
             videoPlayer.removeEventListener('canplay', canPlayHandler);
             clearTimeout(loadingTimeout);
@@ -2575,7 +2575,7 @@ function showDetailView(field = null) {
   if (!window.AndroidJS) {
     stopTorrentStatsUpdates();
     hideSkipButton();
-    stopSeekTimeUpdateInterval();
+    //stopSeekTimeUpdateInterval();
     skipIntro = 0;
     skipCredits = 0;
     currentBufferAhead = 0;
@@ -2908,7 +2908,7 @@ function renderAudioTracks() {
 async function switchAudioTrack(trackIndex) {
   if (trackIndex === currentAudioTrack) { toggleAudioPanel(); return; }
   thisisseek = false;
-  stopSeekTimeUpdateInterval();
+  //stopSeekTimeUpdateInterval();
   console.log('🔊 Переключение на аудиодорожку ' + trackIndex);
 
   await saveTimecodeToServer();
