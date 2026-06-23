@@ -575,7 +575,7 @@ function updateTimeDisplay() {
   var videoPlayer = getEl('video-player');
   if (!currentTimeSpan || !durationSpan || !videoPlayer) return;
 
-  if (AppState.isSeeking) {
+  if (AppState.isSeeking || AppState.isSliderDragging) {
     return;
   }
 
@@ -1067,6 +1067,7 @@ async function seekStream(absoluteSeekTime, source) {
     setTimeout(function () {
       hidePlayerLoading();
       AppState.isSeeking = false;
+      AppState.isSliderDragging = false;
       AppState.previewTime = null;
       AppState.suppressTimeUpdate = false;
 
@@ -1759,8 +1760,8 @@ function startSeekTimeUpdateInterval() {
     var videoPlayer = getEl('video-player');
     if (!videoPlayer) return;
 
-    // НЕ ОБНОВЛЯЕМ ВО ВРЕМЯ ПЕРЕМОТКИ
-    if (AppState.transcodingOnOff && AppState.currentScreen === 'player' && !AppState.isSeeking) {
+    // ★ НЕ ОБНОВЛЯЕМ ВО ВРЕМЯ ПЕРЕМОТКИ ИЛИ ПЕРЕТАСКИВАНИЯ СЛАЙДЕРА
+    if (AppState.transcodingOnOff && AppState.currentScreen === 'player' && !AppState.isSeeking && !AppState.isSliderDragging) {
       var currentVideoTime = videoPlayer.currentTime + (AppState.seekOffset || 0);
       if (currentTimecodeData.hash && currentTimecodeData.fileId) {
         currentTimecodeData.timecode = currentVideoTime;
