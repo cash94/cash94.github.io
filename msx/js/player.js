@@ -1792,32 +1792,136 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     if (AppState.transcodingOnOff) {
       var playURL = AppState.currentTorrserverUrl + "/gst/" + currentTimecodeData.hash + "/master.m3u8?index=" + currentTimecodeData.fileId + "&audio=" + currentAudioTrack;
 
+      // Устанавливаем текущий экран как плеер
       AppState.currentScreen = 'player';
 
+      // Скрываем все остальные экраны
       getEl('config-screen').style.display = 'none';
       getEl('torrserver-section').style.display = 'none';
       getEl('detail-view').style.display = 'none';
+      // Показываем экран плеера
       getEl('player-screen').style.display = 'block';
 
+      // Убираем фокус со всех элементов
       var focusedElements = document.querySelectorAll('.focused');
       var focusedLen = focusedElements.length;
-      for (var i = 0; i < focusedLen; i++) focusedElements[i].classList.remove('focused');
+      for (var i = 0; i < focusedLen; i++) {
+        focusedElements[i].classList.remove('focused');
+      }
 
+      // Скрываем контролы по умолчанию (через 3 секунды они скроются)
       var controlsContainer = getEl('controls-container');
-      if (controlsContainer) controlsContainer.classList.add('idle-hidden');
+      if (controlsContainer) {
+        controlsContainer.classList.add('idle-hidden');
+      }
 
-      if (typeof currentFocusIndex !== 'undefined') currentFocusIndex = 0;
-      if (typeof updateFocusableElements === 'function') updateFocusableElements();
+      // Сбрасываем индекс фокуса
+      if (typeof currentFocusIndex !== 'undefined') {
+        currentFocusIndex = 0;
+      }
+      if (typeof updateFocusableElements === 'function') {
+        updateFocusableElements();
+      }
 
+      // Уничтожаем старый HLS экземпляр, если есть
       destroyHls();
 
+      // Получаем видео-элемент и настраиваем обработчик окончания
       var videoPlayer = getEl('video-player');
       videoPlayer.removeEventListener('ended', handleVideoEnded);
       videoPlayer.addEventListener('ended', handleVideoEnded);
 
-      startGstPlayback(playURL);
+      // Проверяем поддержку HLS
+      if (Hls.isSupported()) {
+        // ★ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Минимальные настройки, приближенные к нативному воспроизведению
+        AppState.hls = new Hls({
+          // Отключаем адаптивный битрейт (он часто вызывает перезагрузку сегментов)
+          enableABR: false,
+          // Фиксируем стартовый уровень (0 - самый первый)
+          startLevel: 0,
+          // Увеличиваем лимиты, чтобы HLS.js не пытался "подчищать" буфер
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
+          // Отключаем предзагрузку фрагментов, чтобы не было лишних запросов
+          startFragPrefetch: false,
+          // Таймауты
+          fragLoadingTimeOut: 20000,
+          manifestLoadingTimeOut: 20000,
+          // Не используем worker, чтобы избежать накладных расходов
+          enableWorker: false,
+          // Отключаем "живой" режим, так как это VOD
+          liveSyncDurationCount: 1,
+          liveMaxLatencyDurationCount: 1,
+          liveDurationInfinity: false,
+          // Кэширование
+          cache: true
+        });
 
-      return true;
+        // Загружаем плейлист и прикрепляем медиа
+        AppState.hls.loadSource(playURL);
+        AppState.hls.attachMedia(videoPlayer);
+
+        // --- УПРОЩЕННАЯ ЛОГИКА ВОСПРОИЗВЕДЕНИЯ ---
+        // Как только манифест загружен - просто запускаем видео
+        var manifestHandler = function () {
+          console.log('📜 Манифест загружен, запускаем воспроизведение');
+          videoPlayer.play()['catch'](function (err) {
+            // Автоплей может быть заблокирован, пробуем с muted
+            videoPlayer.muted = true;
+            videoPlayer.play()['catch'](function () { });
+            updateMuteButton();
+          });
+
+          // Запускаем все таймеры и обновления
+          startTimecodeSaving();
+          resetMouseIdleTimer();
+          startNearEndCheck();
+          startHeartbeat();
+          startTorrentStatsUpdates();
+          hidePlayerLoading();
+
+          // Отписываемся, чтобы не сработало дважды
+          AppState.hls.off(Hls.Events.MANIFEST_PARSED, manifestHandler);
+        };
+        AppState.hls.on(Hls.Events.MANIFEST_PARSED, manifestHandler);
+
+        // Обработчик ошибок (только для критических)
+        AppState.hls.on(Hls.Events.ERROR, function (event, data) {
+          if (data.fatal) {
+            console.error('❌ Фатальная ошибка HLS:', data);
+            // Попытка восстановления
+            switch (data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                AppState.hls.startLoad();
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                AppState.hls.recoverMediaError();
+                break;
+              default:
+                break;
+            }
+          }
+        });
+
+        // Показываем индикатор загрузки
+        showPlayerLoading('Подготовка потока...', null);
+
+        // Показываем подсказку
+        var playerHint = getEl('player-hint');
+        if (playerHint) {
+          playerHint.style.opacity = '1';
+          if (AppState.hintTimeout) {
+            clearTimeout(AppState.hintTimeout);
+          }
+          AppState.hintTimeout = setTimeout(function () {
+            playerHint.style.opacity = '0';
+          }, 4000);
+        }
+
+        return true;
+      } else {
+        throw new Error('Ваш браузер не поддерживает HLS');
+      }
     }
 
     var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam, {
