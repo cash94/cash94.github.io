@@ -80,7 +80,7 @@ setup_ramdisk() {
     echo "=========================================="
     echo "  Настройка RAM-диска"
     echo "=========================================="
-    echo -e "${BLUE}Доступно памяти (RAM + Swap): ${available_gb} GB${NC}"
+    echo -e "${YELLOW}Доступно памяти (RAM + Swap): ${available_gb} GB${NC}"
     
     local available_int=$(echo "$available_gb" | cut -d. -f1)
     
