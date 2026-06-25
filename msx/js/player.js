@@ -1994,7 +1994,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           try {
             var relativeTime = initialSeek - (AppState.seekOffset || 0);
             if (relativeTime > 0) {
-              videoPlayer.currentTime = relativeTime;
+              videoPlayer.currentTime = parseInt(relativeTime);
               console.log('📌 Принудительная установка currentTime на ' + formatTime(relativeTime));
             }
           } catch (e) {
@@ -2003,14 +2003,14 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
           // ★ ЗАТЕМ ВЫЗЫВАЕМ seekStream ДЛЯ СИНХРОНИЗАЦИИ
           setTimeout(function () {
-            seekStream(initialSeek, 'slider');
+            seekStream(parseInt(relativeTime), 'slider');
           }, 800);
 
           // ★ ДОПОЛНИТЕЛЬНАЯ ПЕРЕМОТКА ЧЕРЕЗ 2 СЕКУНДЫ ДЛЯ НАДЕЖНОСТИ
           setTimeout(function () {
             if (Math.abs(videoPlayer.currentTime + (AppState.seekOffset || 0) - initialSeek) > 2) {
               console.log('🔄 Повторная перемотка для надежности');
-              seekStream(initialSeek, 'slider');
+              seekStream(parseInt(relativeTime), 'slider');
             }
           }, 2000);
         }
@@ -2043,7 +2043,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             try {
               var relativeTime = initialSeek - (AppState.seekOffset || 0);
               if (relativeTime > 0) {
-                videoPlayer.currentTime = relativeTime;
+                videoPlayer.currentTime = parseInt(relativeTime);
                 console.log('📌 Принудительная установка currentTime через canplay на ' + formatTime(relativeTime));
               }
             } catch (e) { }
@@ -2051,7 +2051,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             setTimeout(function () {
               if (!seekExecuted) {
                 seekExecuted = true;
-                seekStream(initialSeek, 'slider');
+                seekStream(parseInt(relativeTime), 'slider');
               }
             }, 300);
           }
@@ -2071,11 +2071,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             try {
               var relativeTime = initialSeek - (AppState.seekOffset || 0);
               if (relativeTime > 0) {
-                videoPlayer.currentTime = relativeTime;
+                videoPlayer.currentTime = parseInt(relativeTime);
               }
             } catch (e) { }
             setTimeout(function () {
-              seekStream(initialSeek, 'slider');
+              seekStream(parseInt(relativeTime), 'slider');
             }, 500);
           }
 
