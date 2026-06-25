@@ -2152,7 +2152,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
         // ★ СОХРАНЯЕМ ССЫЛКИ ДЛЯ ОЧИСТКИ
         AppState._timeUpdateHandler = timeUpdateHandler;
-        AppState._canPlayHandler = canPlayHandler;
+        //AppState._canPlayHandler = canPlayHandler;
         AppState._loadingTimeout = loadingTimeout;
         AppState._seekExecuted = seekExecuted;
 
