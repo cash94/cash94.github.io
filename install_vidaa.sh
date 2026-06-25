@@ -213,19 +213,63 @@ install_vidaa() {
         exit 1
     fi
     
+    # Распаковываем tar.xz
     echo "Распаковка ffmpeg..."
     tar -xf jellyfin-ffmpeg_*.tar.xz
-    
+
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ошибка при распаковке ffmpeg${NC}"
         exit 1
     fi
-    
-    # ИСПРАВЛЕНИЕ 2: Удаляем старые файлы перед копированием, чтобы избежать ошибки "same file"
-    rm -f /opt/Vidaa/ffmpeg/ffmpeg /opt/Vidaa/ffmpeg/ffprobe
-    find . -name "ffmpeg" -type f -exec cp {} /opt/Vidaa/ffmpeg/ \;
-    find . -name "ffprobe" -type f -exec cp {} /opt/Vidaa/ffmpeg/ \;
-    
+
+    # Ищем распакованную папку (она может называться по-разному)
+    FFMPEG_DIR=$(find . -maxdepth 1 -type d -name "jellyfin-ffmpeg*" | head -n 1)
+
+    if [ -z "$FFMPEG_DIR" ]; then
+        # Если папка не найдена, возможно файлы распаковались в текущую директорию
+        FFMPEG_DIR="."
+    fi
+
+    echo "Найдена папка ffmpeg: $FFMPEG_DIR"
+
+    # Копируем бинарники (проверяем разные возможные имена)
+    COPIED=0
+
+    # Ищем ffmpeg
+    if [ -f "$FFMPEG_DIR/ffmpeg" ]; then
+        cp "$FFMPEG_DIR/ffmpeg" /opt/Vidaa/ffmpeg/
+        COPIED=$((COPIED + 1))
+        echo "Скопирован: $FFMPEG_DIR/ffmpeg"
+    elif [ -f "$FFMPEG_DIR/bin/ffmpeg" ]; then
+        cp "$FFMPEG_DIR/bin/ffmpeg" /opt/Vidaa/ffmpeg/
+        COPIED=$((COPIED + 1))
+        echo "Скопирован: $FFMPEG_DIR/bin/ffmpeg"
+    else
+        echo -e "${YELLOW}ffmpeg не найден в $FFMPEG_DIR${NC}"
+        ls -la "$FFMPEG_DIR"
+    fi
+
+    # Ищем ffprobe
+    if [ -f "$FFMPEG_DIR/ffprobe" ]; then
+        cp "$FFMPEG_DIR/ffprobe" /opt/Vidaa/ffmpeg/
+        COPIED=$((COPIED + 1))
+        echo "Скопирован: $FFMPEG_DIR/ffprobe"
+    elif [ -f "$FFMPEG_DIR/bin/ffprobe" ]; then
+        cp "$FFMPEG_DIR/bin/ffprobe" /opt/Vidaa/ffmpeg/
+        COPIED=$((COPIED + 1))
+        echo "Скопирован: $FFMPEG_DIR/bin/ffprobe"
+    else
+        echo -e "${YELLOW}ffprobe не найден в $FFMPEG_DIR${NC}"
+    fi
+
+    if [ $COPIED -eq 0 ]; then
+        echo -e "${RED}Не удалось найти бинарники ffmpeg${NC}"
+        echo "Содержимое архива:"
+        tar -tf jellyfin-ffmpeg_*.tar.xz | head -20
+        exit 1
+    fi
+
+    # Удаляем распакованную папку и архив
     rm -rf jellyfin-ffmpeg_* && rm -f jellyfin-ffmpeg_*.tar.xz
     
     echo "Скачивание yt-dlp..."
