@@ -7,6 +7,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Глобальная переменная для RAM disk
+RAMDISK_SIZE=""
+
 # Функция для определения архитектуры
 detect_architecture() {
     local arch=$(uname -m)
@@ -56,38 +59,39 @@ check_and_install_unzip() {
 
 # Функция для проверки доступной памяти (RAM + Swap) через free -m
 check_available_memory() {
-    # Получаем доступную память в MB
     local avail_mem=$(free -m | grep "Mem:" | awk '{print $7}')
     local swap_free=$(free -m | grep "Swap:" | awk '{print $4}')
     
-    # Защита от пустых значений
     avail_mem=${avail_mem:-0}
     swap_free=${swap_free:-0}
     
-    # Считаем общую доступную память в MB
     local total_available_mb=$((avail_mem + swap_free))
-    
-    # Конвертируем в GB (целое число)
     local available_gb=$((total_available_mb / 1024))
     
     echo "$available_gb"
 }
 
-# Функция для настройки RAM disk
+# Функция для настройки RAM disk (использует глобальную переменную)
 setup_ramdisk() {
     local available_gb=$(check_available_memory)
-    local ramdisk_size=""
+    RAMDISK_SIZE=""
     
+    echo ""
+    echo "=========================================="
+    echo "  Настройка RAM-диска"
+    echo "=========================================="
     echo -e "${BLUE}Доступно памяти (RAM + Swap): ${available_gb} GB${NC}"
     
-    if [ "$available_gb" -ge 3 ]; then
+    local available_int=$(echo "$available_gb" | cut -d. -f1)
+    
+    if [ "$available_int" -ge 3 ]; then
         echo -e "${YELLOW}Хотите создать RAM disk для HLS сегментов (рекомендуется 2 GB)?${NC}"
         echo -e "${YELLOW}Это ускорит работу сервера и снизит износ диска.${NC}"
         echo -n "Создать RAM disk на 2 GB? (y/n): "
         read -r create_ramdisk
         
         if [[ "$create_ramdisk" =~ ^[YyДд]$ ]]; then
-            ramdisk_size="2G"
+            RAMDISK_SIZE="2G"
         else
             echo -e "${YELLOW}RAM disk не будет создан${NC}"
         fi
@@ -99,8 +103,8 @@ setup_ramdisk() {
         
         if [ -n "$custom_size" ]; then
             if [[ "$custom_size" =~ ^[0-9]+[GM]$ ]]; then
-                ramdisk_size="$custom_size"
-                echo -e "${GREEN}RAM disk будет создан размером: $ramdisk_size${NC}"
+                RAMDISK_SIZE="$custom_size"
+                echo -e "${GREEN}RAM disk будет создан размером: $RAMDISK_SIZE${NC}"
             else
                 echo -e "${RED}Некорректный формат. Используйте формат: 1G, 2G, 512M и т.д.${NC}"
                 echo -e "${YELLOW}RAM disk не будет создан${NC}"
@@ -109,17 +113,16 @@ setup_ramdisk() {
             echo -e "${YELLOW}RAM disk не будет создан${NC}"
         fi
     fi
-    
-    echo "$ramdisk_size"
+    echo ""
 }
 
 # Функция для проверки доступности порта
 check_port() {
     local port=$1
     if ss -tuln | grep -q ":$port "; then
-        return 1 # порт занят
+        return 1
     else
-        return 0 # порт свободен
+        return 0
     fi
 }
 
@@ -140,14 +143,11 @@ get_free_port() {
 install_vidaa() {
     echo -e "${GREEN}Начинаем установку Vidaa...${NC}"
     
-    # Проверяем и устанавливаем unzip
     check_and_install_unzip
     
-    # Определяем архитектуру
     local arch=$(detect_architecture)
     echo -e "${GREEN}Обнаружена архитектура: $arch${NC}"
     
-    # Выбираем версию приложения
     local app_file=""
     if [ "$arch" = "amd64" ]; then
         app_file="TorrStream-linux-amd64"
@@ -155,11 +155,9 @@ install_vidaa() {
         app_file="TorrStream-linux-arm64"
     fi
     
-    # Создаем директорию
     mkdir -p /opt/Vidaa/
     cd /opt/Vidaa/ || exit 1
     
-    # Скачиваем архив приложения
     echo "Скачивание архива приложения..."
     wget -q --show-progress "https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-linux.zip"
     
@@ -168,19 +166,17 @@ install_vidaa() {
         exit 1
     fi
     
-    # Распаковываем
+    # ИСПРАВЛЕНИЕ 1: Добавлен флаг -o для автоматической перезаписи
     echo "Распаковка архива..."
-    unzip -q TorrStream-linux.zip
+    unzip -q -o TorrStream-linux.zip
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Ошибка при распаковке архива${NC}"
         exit 1
     fi
     
-    # Удаляем архив
-    rm -rf /opt/Vidaa/TorrStream-linux.zip
+    rm -f /opt/Vidaa/TorrStream-linux.zip
     
-    # Переименовываем бинарник в соответствии с архитектурой
     if [ -f "/opt/Vidaa/$app_file" ]; then
         mv "/opt/Vidaa/$app_file" "/opt/Vidaa/myapp-linux-x64"
     else
@@ -188,11 +184,9 @@ install_vidaa() {
         exit 1
     fi
     
-    # Создаем директорию для ffmpeg
     mkdir -p /opt/Vidaa/ffmpeg
     cd /opt/Vidaa/ffmpeg || exit 1
     
-    # Выбираем версию ffmpeg
     local ffmpeg_url=""
     if [ "$arch" = "amd64" ]; then
         ffmpeg_url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_linux64-gpl.tar.xz"
@@ -200,7 +194,6 @@ install_vidaa() {
         ffmpeg_url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_linuxarm64-gpl.tar.xz"
     fi
     
-    # Скачиваем ffmpeg
     echo "Скачивание ffmpeg..."
     wget -q --show-progress "$ffmpeg_url"
     
@@ -209,7 +202,6 @@ install_vidaa() {
         exit 1
     fi
     
-    # Распаковываем tar.xz
     echo "Распаковка ffmpeg..."
     tar -xf jellyfin-ffmpeg_*.tar.xz
     
@@ -218,14 +210,13 @@ install_vidaa() {
         exit 1
     fi
     
-    # Копируем бинарники из распакованной папки
+    # ИСПРАВЛЕНИЕ 2: Удаляем старые файлы перед копированием, чтобы избежать ошибки "same file"
+    rm -f /opt/Vidaa/ffmpeg/ffmpeg /opt/Vidaa/ffmpeg/ffprobe
     find . -name "ffmpeg" -type f -exec cp {} /opt/Vidaa/ffmpeg/ \;
     find . -name "ffprobe" -type f -exec cp {} /opt/Vidaa/ffmpeg/ \;
     
-    # Удаляем распакованную папку и архив
     rm -rf jellyfin-ffmpeg_* && rm -f jellyfin-ffmpeg_*.tar.xz
     
-    # Скачиваем yt-dlp
     echo "Скачивание yt-dlp..."
     wget -q --show-progress "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux" -O yt-dlp
     
@@ -234,24 +225,17 @@ install_vidaa() {
         exit 1
     fi
     
-    # Устанавливаем права
     chmod 775 /opt/Vidaa/myapp-linux-x64
     chmod 775 /opt/Vidaa/ffmpeg/ffmpeg
     chmod 775 /opt/Vidaa/ffmpeg/ffprobe
     chmod 775 /opt/Vidaa/ffmpeg/yt-dlp
     
-    # ==========================================
-    # ВОПРОС ПРО RAM DISK (ДО ВЫБОРА ПОРТА)
-    # ==========================================
-    echo ""
-    echo "=========================================="
-    echo "  Настройка RAM-диска"
-    echo "=========================================="
-    local ramdisk_size=$(setup_ramdisk)
-    echo ""
+    # ИСПРАВЛЕНИЕ 3: Вызываем setup_ramdisk (он устанавливает глобальную переменную RAMDISK_SIZE)
+    setup_ramdisk
+    local ramdisk_size="$RAMDISK_SIZE"
     
     # ==========================================
-    # ВЫБОР ПОРТА (ПОСЛЕ RAM DISK)
+    # ВЫБОР ПОРТА
     # ==========================================
     echo "=========================================="
     echo "  Настройка порта"
@@ -302,8 +286,8 @@ LimitNOFILE=65536
 [Install]
 WantedBy=multi-user.target"
     
-    # Если выбран RAM disk, добавляем ExecStartPre и ExecStopPost
-    if [ -n "$ramdisk_size" ]; then
+    # ИСПРАВЛЕНИЕ 4: Правильная проверка ramdisk_size
+    if [ -n "$ramdisk_size" ] && [ "$ramdisk_size" != "" ]; then
         mkdir -p /mnt/hls-ram
         
         service_content="[Unit]
@@ -344,7 +328,6 @@ WantedBy=multi-user.target"
     
     echo -e "${GREEN}Файл сервиса создан${NC}"
     
-    # Включаем и запускаем сервис
     systemctl daemon-reload
     systemctl enable vidaa
     systemctl start vidaa
@@ -360,6 +343,7 @@ WantedBy=multi-user.target"
         echo -e "${GREEN}========================================${NC}"
     else
         echo -e "${RED}Ошибка при запуске сервиса${NC}"
+        echo -e "${YELLOW}Проверьте логи: journalctl -xeu vidaa.service${NC}"
         exit 1
     fi
 }
@@ -501,7 +485,7 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Проверка наличия необходимых утилит (убрали bc)
+# Проверка наличия необходимых утилит
 for cmd in wget systemctl tar free; do
     if ! command -v $cmd &> /dev/null; then
         echo -e "${RED}Утилита $cmd не найдена. Пожалуйста, установите её.${NC}"
