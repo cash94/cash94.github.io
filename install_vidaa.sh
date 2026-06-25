@@ -533,9 +533,10 @@ update_vidaa() {
         echo -e "${BLUE}Добавление поддержки RAM-диска в службу...${NC}"
         
         # Получаем текущий порт из службы
-        local current_port=$(grep "Environment=PORT=" /etc/systemd/system/vidaa.service | cut -d= -f2)
-        if [ -z "$current_port" ]; then
+        local current_port=$(grep "Environment=PORT=" /etc/systemd/system/vidaa.service | cut -d= -f3)
+        if [ -z "$current_port" ] || ! [[ "$current_port" =~ ^[0-9]+$ ]]; then
             current_port="3000"
+            echo -e "${YELLOW}Не удалось определить порт, используется значение по умолчанию: $current_port${NC}"
         fi
         
         # Создаем директорию для RAM-диска
