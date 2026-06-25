@@ -29,7 +29,6 @@ check_and_install_unzip() {
     if ! command -v unzip &> /dev/null; then
         echo -e "${YELLOW}Пакет unzip не найден. Устанавливаю...${NC}"
         
-        # Определяем пакетный менеджер
         if command -v apt-get &> /dev/null; then
             apt-get update -qq
             apt-get install -y unzip
@@ -55,18 +54,21 @@ check_and_install_unzip() {
     fi
 }
 
-# Функция для проверки доступной памяти (RAM + Swap)
+# Функция для проверки доступной памяти (RAM + Swap) через free -m
 check_available_memory() {
-    # Получаем доступную память в KB
-    local avail_mem=$(grep MemAvailable /proc/meminfo | awk '{print $2}')
-    local swap_total=$(grep SwapTotal /proc/meminfo | awk '{print $2}')
-    local swap_free=$(grep SwapFree /proc/meminfo | awk '{print $2}')
+    # Получаем доступную память в MB
+    local avail_mem=$(free -m | grep "Mem:" | awk '{print $7}')
+    local swap_free=$(free -m | grep "Swap:" | awk '{print $4}')
     
-    # Считаем общую доступную память (RAM available + Swap free)
-    local total_available=$((avail_mem + swap_free))
+    # Защита от пустых значений
+    avail_mem=${avail_mem:-0}
+    swap_free=${swap_free:-0}
     
-    # Конвертируем в GB
-    local available_gb=$(echo "scale=2; $total_available / 1048576" | bc)
+    # Считаем общую доступную память в MB
+    local total_available_mb=$((avail_mem + swap_free))
+    
+    # Конвертируем в GB (целое число)
+    local available_gb=$((total_available_mb / 1024))
     
     echo "$available_gb"
 }
@@ -78,10 +80,7 @@ setup_ramdisk() {
     
     echo -e "${BLUE}Доступно памяти (RAM + Swap): ${available_gb} GB${NC}"
     
-    # Проверяем, достаточно ли памяти
-    local available_int=$(echo "$available_gb" | cut -d. -f1)
-    
-    if [ "$available_int" -ge 3 ]; then
+    if [ "$available_gb" -ge 3 ]; then
         echo -e "${YELLOW}Хотите создать RAM disk для HLS сегментов (рекомендуется 2 GB)?${NC}"
         echo -e "${YELLOW}Это ускорит работу сервера и снизит износ диска.${NC}"
         echo -n "Создать RAM disk на 2 GB? (y/n): "
@@ -99,7 +98,6 @@ setup_ramdisk() {
         read -r custom_size
         
         if [ -n "$custom_size" ]; then
-            # Проверяем формат (должен заканчиваться на G или M)
             if [[ "$custom_size" =~ ^[0-9]+[GM]$ ]]; then
                 ramdisk_size="$custom_size"
                 echo -e "${GREEN}RAM disk будет создан размером: $ramdisk_size${NC}"
@@ -242,14 +240,28 @@ install_vidaa() {
     chmod 775 /opt/Vidaa/ffmpeg/ffprobe
     chmod 775 /opt/Vidaa/ffmpeg/yt-dlp
     
-    # Запрос порта
+    # ==========================================
+    # ВОПРОС ПРО RAM DISK (ДО ВЫБОРА ПОРТА)
+    # ==========================================
+    echo ""
+    echo "=========================================="
+    echo "  Настройка RAM-диска"
+    echo "=========================================="
+    local ramdisk_size=$(setup_ramdisk)
+    echo ""
+    
+    # ==========================================
+    # ВЫБОР ПОРТА (ПОСЛЕ RAM DISK)
+    # ==========================================
+    echo "=========================================="
+    echo "  Настройка порта"
+    echo "=========================================="
     local selected_port=""
     while true; do
         echo -e "${YELLOW}Введите порт для Vidaa сервера (или нажмите Enter для автоматического выбора):${NC}"
         read -r user_port
         
         if [ -z "$user_port" ]; then
-            # Автоматический выбор свободного порта
             selected_port=$(get_free_port)
             echo -e "${GREEN}Выбран свободный порт: $selected_port${NC}"
             break
@@ -265,9 +277,6 @@ install_vidaa() {
             echo -e "${RED}Пожалуйста, введите корректный номер порта (1-65535)${NC}"
         fi
     done
-    
-    # Настраиваем RAM disk
-    local ramdisk_size=$(setup_ramdisk)
     
     # Создаем systemd сервис
     local service_content="[Unit]
@@ -295,7 +304,6 @@ WantedBy=multi-user.target"
     
     # Если выбран RAM disk, добавляем ExecStartPre и ExecStopPost
     if [ -n "$ramdisk_size" ]; then
-        # Создаем директорию для RAM disk
         mkdir -p /mnt/hls-ram
         
         service_content="[Unit]
@@ -342,7 +350,6 @@ WantedBy=multi-user.target"
     systemctl start vidaa
     
     if [ $? -eq 0 ]; then
-        # Получаем IP адрес
         local ip_addr=$(hostname -I | awk '{print $1}')
         echo -e "${GREEN}========================================${NC}"
         echo -e "${GREEN}Установка завершена успешно!${NC}"
@@ -361,20 +368,16 @@ WantedBy=multi-user.target"
 update_vidaa() {
     echo -e "${GREEN}Начинаем обновление Vidaa...${NC}"
     
-    # Проверяем и устанавливаем unzip если нужно
     check_and_install_unzip
     
-    # Проверяем существование директории
     if [ ! -d "/opt/Vidaa/" ]; then
         echo -e "${RED}Директория /opt/Vidaa/ не существует. Сначала выполните установку.${NC}"
         exit 1
     fi
     
-    # Определяем архитектуру
     local arch=$(detect_architecture)
     echo -e "${GREEN}Обнаружена архитектура: $arch${NC}"
     
-    # Выбираем версию приложения
     local app_file=""
     if [ "$arch" = "amd64" ]; then
         app_file="TorrStream-linux-amd64"
@@ -384,7 +387,6 @@ update_vidaa() {
     
     cd /opt/Vidaa/ || exit 1
     
-    # Скачиваем архив
     echo "Скачивание обновления..."
     wget -q --show-progress "https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-linux.zip"
     
@@ -393,7 +395,6 @@ update_vidaa() {
         exit 1
     fi
     
-    # Распаковываем с заменой файлов
     echo "Распаковка обновления..."
     rm -rf /opt/Vidaa/public
     unzip -q -o TorrStream-linux.zip
@@ -403,10 +404,8 @@ update_vidaa() {
         exit 1
     fi
     
-    # Удаляем архив
     rm -rf /opt/Vidaa/TorrStream-linux.zip
     
-    # Переименовываем бинарник
     if [ -f "/opt/Vidaa/$app_file" ]; then
         mv "/opt/Vidaa/$app_file" "/opt/Vidaa/myapp-linux-x64"
     else
@@ -414,27 +413,15 @@ update_vidaa() {
         exit 1
     fi
     
-    # Обновляем yt-dlp (без ffmpeg, так как он обновляется реже)
-    #echo "Обновление yt-dlp..."
-    #wget -q --show-progress "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux" -O /opt/Vidaa/ffmpeg/yt-dlp
-    
-    #if [ $? -ne 0 ]; then
-        #echo -e "${RED}Ошибка при скачивании yt-dlp${NC}"
-        #exit 1
-    #fi
-    
-    # Обновляем права
     chmod 775 /opt/Vidaa/myapp-linux-x64
     chmod 775 /opt/Vidaa/ffmpeg/ffmpeg
     chmod 775 /opt/Vidaa/ffmpeg/ffprobe
     chmod 775 /opt/Vidaa/ffmpeg/yt-dlp
     
-    # Перезапускаем сервис
     echo "Перезапуск сервиса..."
     systemctl restart vidaa
     
     if [ $? -eq 0 ]; then
-        # Получаем информацию о сервисе
         local port=$(systemctl show vidaa -p Environment | grep -oP 'PORT=\K\d+')
         local ip_addr=$(hostname -I | awk '{print $1}')
         echo -e "${GREEN}========================================${NC}"
@@ -451,7 +438,6 @@ update_vidaa() {
 uninstall_vidaa() {
     echo -e "${YELLOW}Начинаем удаление Vidaa...${NC}"
     
-    # Запрашиваем подтверждение
     echo -e "${RED}ВНИМАНИЕ: Это действие полностью удалит Vidaa и все его данные!${NC}"
     echo -n "Вы уверены, что хотите продолжить? (y/n): "
     read -r confirm
@@ -461,33 +447,27 @@ uninstall_vidaa() {
         return 0
     fi
     
-    # Останавливаем и отключаем сервис
     echo "Остановка сервиса vidaa..."
     systemctl stop vidaa 2>/dev/null
     
     echo "Отключение сервиса vidaa..."
     systemctl disable vidaa 2>/dev/null
     
-    # Удаляем файл сервиса
     echo "Удаление файла сервиса..."
     rm -f /etc/systemd/system/vidaa.service
     
-    # Перезагружаем systemd
     systemctl daemon-reload
     
-    # Размонтируем RAM disk если он был создан
     if mountpoint -q /mnt/hls-ram 2>/dev/null; then
         echo "Размонтирование RAM disk..."
         umount /mnt/hls-ram 2>/dev/null
     fi
     
-    # Удаляем директорию RAM disk
     if [ -d "/mnt/hls-ram" ]; then
         echo "Удаление /mnt/hls-ram..."
         rmdir /mnt/hls-ram 2>/dev/null
     fi
     
-    # Удаляем директорию установки
     if [ -d "/opt/Vidaa/" ]; then
         echo "Удаление /opt/Vidaa/..."
         rm -rf /opt/Vidaa/
@@ -495,17 +475,13 @@ uninstall_vidaa() {
         echo -e "${YELLOW}Директория /opt/Vidaa/ не найдена${NC}"
     fi
     
-    # Определяем домашнюю директорию пользователя
     local home_dir=""
     if [ -n "$SUDO_USER" ]; then
-        # Если запущено через sudo
         home_dir=$(getent passwd "$SUDO_USER" | cut -d: -f6)
     else
-        # Если запущено от root напрямую
         home_dir="$HOME"
     fi
     
-    # Удаляем конфигурационную директорию в домашнем каталоге
     local config_dir="$home_dir/.videoloop-server"
     if [ -d "$config_dir" ]; then
         echo "Удаление $config_dir..."
@@ -525,8 +501,8 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Проверка наличия необходимых утилит
-for cmd in wget systemctl tar bc; do
+# Проверка наличия необходимых утилит (убрали bc)
+for cmd in wget systemctl tar free; do
     if ! command -v $cmd &> /dev/null; then
         echo -e "${RED}Утилита $cmd не найдена. Пожалуйста, установите её.${NC}"
         exit 1
