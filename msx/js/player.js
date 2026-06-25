@@ -1934,9 +1934,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
     if (AppState.transcodingOnOff) {
       var playURL = AppState.currentTorrserverUrl + "/gst/" + currentTimecodeData.hash + "/master.m3u8?index=" + currentTimecodeData.fileId + "&audio=" + currentAudioTrack;
-      if (initialSeek > 0) {
-        playURL = playURL + '&seconds=' +parseInt(initialSeek);
-      }
 
       // Устанавливаем текущий экран как плеер
       AppState.currentScreen = 'player';
@@ -1987,51 +1984,47 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       var seekExecuted = false;
 
       // ★ ФУНКЦИЯ ДЛЯ ВЫПОЛНЕНИЯ ПЕРЕМОТКИ
-      // var executeSeek = function () {
-      //   if (seekExecuted) return;
-      //   if (initialSeek > 0) {
-      //     seekExecuted = true;
-      //     console.log('🎯 Выполняем перемотку на ' + formatTime(initialSeek));
+      var executeSeek = function () {
+        if (seekExecuted) return;
+        if (initialSeek > 0) {
+          seekExecuted = true;
+          console.log('🎯 Выполняем перемотку на ' + formatTime(initialSeek));
 
-      //     // ★ СНАЧАЛА ПРИНУДИТЕЛЬНО УСТАНАВЛИВАЕМ currentTime
-      //     try {
-      //       var relativeTime = initialSeek - (AppState.seekOffset || 0);
-      //       if (relativeTime > 0) {
-      //         videoPlayer.currentTime = relativeTime;
-      //         console.log('📌 Принудительная установка currentTime на ' + formatTime(relativeTime));
-      //       }
-      //     } catch (e) {
-      //       console.log('⚠️ Не удалось принудительно установить currentTime:', e);
-      //     }
+          // ★ СНАЧАЛА ПРИНУДИТЕЛЬНО УСТАНАВЛИВАЕМ currentTime
+          try {
+            var relativeTime = initialSeek - (AppState.seekOffset || 0);
+            if (relativeTime > 0) {
+              videoPlayer.currentTime = relativeTime;
+              console.log('📌 Принудительная установка currentTime на ' + formatTime(relativeTime));
+            }
+          } catch (e) {
+            console.log('⚠️ Не удалось принудительно установить currentTime:', e);
+          }
 
-      //     // ★ ЗАТЕМ ВЫЗЫВАЕМ seekStream ДЛЯ СИНХРОНИЗАЦИИ
-      //     setTimeout(function () {
-      //       seekStream(initialSeek, 'slider');
-      //     }, 800);
+          // ★ ЗАТЕМ ВЫЗЫВАЕМ seekStream ДЛЯ СИНХРОНИЗАЦИИ
+          setTimeout(function () {
+            seekStream(initialSeek, 'slider');
+          }, 800);
 
-      //     // ★ ДОПОЛНИТЕЛЬНАЯ ПЕРЕМОТКА ЧЕРЕЗ 2 СЕКУНДЫ ДЛЯ НАДЕЖНОСТИ
-      //     setTimeout(function () {
-      //       if (Math.abs(videoPlayer.currentTime + (AppState.seekOffset || 0) - initialSeek) > 2) {
-      //         console.log('🔄 Повторная перемотка для надежности');
-      //         seekStream(initialSeek, 'slider');
-      //       }
-      //     }, 2000);
-      //   }
-      // };
+          // ★ ДОПОЛНИТЕЛЬНАЯ ПЕРЕМОТКА ЧЕРЕЗ 2 СЕКУНДЫ ДЛЯ НАДЕЖНОСТИ
+          setTimeout(function () {
+            if (Math.abs(videoPlayer.currentTime + (AppState.seekOffset || 0) - initialSeek) > 2) {
+              console.log('🔄 Повторная перемотка для надежности');
+              seekStream(initialSeek, 'slider');
+            }
+          }, 2000);
+        }
+      };
 
       // ★ ОБРАБОТЧИК ДЛЯ ОТСЛЕЖИВАНИЯ НАЧАЛА ВОСПРОИЗВЕДЕНИЯ
       var timeUpdateHandler = function () {
         if (!isTimeUpdated && videoPlayer.currentTime > 0) {
           isTimeUpdated = true;
           console.log('⏱️ Время начало обновляться (currentTime=' + videoPlayer.currentTime.toFixed(2) + '), скрываем индикатор загрузки');
-          if (initialSeek > 0) {
-            videoPlayer.currentTime = parseInt(initialSeek);
-          }
           hidePlayerLoading();
-          
 
           // ★ ВЫПОЛНЯЕМ ПЕРЕМОТКУ
-          //executeSeek();
+          executeSeek();
 
           // ★ ЗАПУСКАЕМ ИНТЕРВАЛ ОБНОВЛЕНИЯ ВРЕМЕНИ
           //startSeekTimeUpdateInterval();
@@ -2043,28 +2036,28 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       videoPlayer.addEventListener('timeupdate', timeUpdateHandler);
 
       // ★ ДОПОЛНИТЕЛЬНЫЙ ОБРАБОТЧИК НА CANPLAY
-      // var canPlayHandler = function () {
-      //   if (!isTimeUpdated) {
-      //     console.log('🎬 Событие canplay, запускаем перемотку');
-      //     if (initialSeek > 0 && !seekExecuted) {
-      //       try {
-      //         var relativeTime = initialSeek - (AppState.seekOffset || 0);
-      //         if (relativeTime > 0) {
-      //           videoPlayer.currentTime = relativeTime;
-      //           console.log('📌 Принудительная установка currentTime через canplay на ' + formatTime(relativeTime));
-      //         }
-      //       } catch (e) { }
+      var canPlayHandler = function () {
+        if (!isTimeUpdated) {
+          console.log('🎬 Событие canplay, запускаем перемотку');
+          if (initialSeek > 0 && !seekExecuted) {
+            try {
+              var relativeTime = initialSeek - (AppState.seekOffset || 0);
+              if (relativeTime > 0) {
+                videoPlayer.currentTime = relativeTime;
+                console.log('📌 Принудительная установка currentTime через canplay на ' + formatTime(relativeTime));
+              }
+            } catch (e) { }
 
-      //       setTimeout(function () {
-      //         if (!seekExecuted) {
-      //           seekExecuted = true;
-      //           seekStream(initialSeek, 'slider');
-      //         }
-      //       }, 300);
-      //     }
-      //   }
-      // };
-      // videoPlayer.addEventListener('canplay', canPlayHandler);
+            setTimeout(function () {
+              if (!seekExecuted) {
+                seekExecuted = true;
+                seekStream(initialSeek, 'slider');
+              }
+            }, 300);
+          }
+        }
+      };
+      videoPlayer.addEventListener('canplay', canPlayHandler);
 
       // ★ ТАЙМАУТ НА СЛУЧАЙ, ЕСЛИ ВРЕМЯ НЕ НАЧАЛО ОБНОВЛЯТЬСЯ
       var loadingTimeout = setTimeout(function () {
@@ -2156,7 +2149,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
         // ★ СОХРАНЯЕМ ССЫЛКИ ДЛЯ ОЧИСТКИ
         AppState._timeUpdateHandler = timeUpdateHandler;
-        //AppState._canPlayHandler = canPlayHandler;
+        AppState._canPlayHandler = canPlayHandler;
         AppState._loadingTimeout = loadingTimeout;
         AppState._seekExecuted = seekExecuted;
 
