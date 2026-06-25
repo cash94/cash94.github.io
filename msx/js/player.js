@@ -1935,7 +1935,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     if (AppState.transcodingOnOff) {
       var playURL = AppState.currentTorrserverUrl + "/gst/" + currentTimecodeData.hash + "/master.m3u8?index=" + currentTimecodeData.fileId + "&audio=" + currentAudioTrack;
       if (initialSeek > 0) {
-        playURL = playURL + '&seconds=' +initialSeek;
+        playURL = playURL + '&seconds=' +parseInt(initialSeek);
       }
 
       // Устанавливаем текущий экран как плеер
