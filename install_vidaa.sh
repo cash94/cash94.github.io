@@ -80,39 +80,50 @@ setup_ramdisk() {
     echo "=========================================="
     echo "  Настройка RAM-диска"
     echo "=========================================="
-    echo -e "${YELLOW}Доступно памяти (RAM + Swap): ${available_gb} GB${NC}"
+    echo -e "${BLUE}Доступно памяти (RAM + Swap): ${available_gb} GB${NC}"
     
     local available_int=$(echo "$available_gb" | cut -d. -f1)
     
-    if [ "$available_int" -ge 3 ]; then
-        echo -e "${YELLOW}Хотите создать RAM disk для HLS сегментов (рекомендуется 2 GB)?${NC}"
-        echo -e "${YELLOW}Это ускорит работу сервера и снизит износ диска.${NC}"
-        echo -n "Создать RAM disk на 2 GB? (y/n): "
-        read -r create_ramdisk
-        
-        if [[ "$create_ramdisk" =~ ^[YyДд]$ ]]; then
-            RAMDISK_SIZE="2G"
-        else
-            echo -e "${YELLOW}RAM disk не будет создан${NC}"
-        fi
-    else
-        echo -e "${YELLOW}Доступно менее 3 GB памяти.${NC}"
-        echo -e "${YELLOW}Хотите указать размер RAM disk вручную?${NC}"
-        echo -n "Введите размер RAM disk (например, 1G, 512M) или нажмите Enter чтобы пропустить: "
-        read -r custom_size
-        
-        if [ -n "$custom_size" ]; then
-            if [[ "$custom_size" =~ ^[0-9]+[GM]$ ]]; then
-                RAMDISK_SIZE="$custom_size"
-                echo -e "${GREEN}RAM disk будет создан размером: $RAMDISK_SIZE${NC}"
-            else
-                echo -e "${RED}Некорректный формат. Используйте формат: 1G, 2G, 512M и т.д.${NC}"
-                echo -e "${YELLOW}RAM disk не будет создан${NC}"
-            fi
-        else
-            echo -e "${YELLOW}RAM disk не будет создан${NC}"
-        fi
+    # Если свободно меньше 2 GB - RAM-диск создавать нельзя
+    if [ "$available_int" -lt 2 ]; then
+        echo -e "${YELLOW}Свободно менее 2 GB памяти. RAM-диск не будет создан.${NC}"
+        echo ""
+        return
     fi
+    
+    # Вычисляем максимальный размер (свободно - 1 GB)
+    local max_gb=$((available_int - 1))
+    
+    echo -e "${YELLOW}Вы можете указать размер RAM-диска от 1 до ${max_gb} GB.${NC}"
+    echo -e "${YELLOW}(1 GB будет зарезервирован для системы)${NC}"
+    echo ""
+    echo -n "Введите размер RAM-диска в GB (1-${max_gb}) или нажмите Enter чтобы пропустить: "
+    read -r user_size
+    
+    # Если пользователь нажал Enter - пропускаем
+    if [ -z "$user_size" ]; then
+        echo -e "${YELLOW}RAM-диск не будет создан${NC}"
+        echo ""
+        return
+    fi
+    
+    # Проверяем, что введено число
+    if ! [[ "$user_size" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED}Некорректный ввод. RAM-диск не будет создан.${NC}"
+        echo ""
+        return
+    fi
+    
+    # Проверяем диапазон
+    if [ "$user_size" -lt 1 ] || [ "$user_size" -gt "$max_gb" ]; then
+        echo -e "${RED}Размер должен быть от 1 до ${max_gb} GB. RAM-диск не будет создан.${NC}"
+        echo ""
+        return
+    fi
+    
+    # Всё ок, устанавливаем размер
+    RAMDISK_SIZE="${user_size}G"
+    echo -e "${GREEN}RAM-диск будет создан размером: ${RAMDISK_SIZE}${NC}"
     echo ""
 }
 
