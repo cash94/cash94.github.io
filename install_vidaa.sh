@@ -404,6 +404,7 @@ WantedBy=multi-user.target"
 }
 
 # Функция для обновления
+# Функция для обновления
 update_vidaa() {
     echo -e "${GREEN}Начинаем обновление Vidaa...${NC}"
     
@@ -426,6 +427,70 @@ update_vidaa() {
     
     cd /opt/Vidaa/ || exit 1
     
+    # ==========================================
+    # ПРОВЕРКА RAM-ДИСКА
+    # ==========================================
+    echo ""
+    echo "=========================================="
+    echo "  Проверка RAM-диска"
+    echo "=========================================="
+    
+    local create_ramdisk="N"
+    local ramdisk_size=""
+    
+    # Проверяем, существует ли RAM-диск
+    if mountpoint -q /mnt/hls-ram 2>/dev/null; then
+        echo -e "${GREEN}RAM-диск /mnt/hls-ram уже существует и примонтирован${NC}"
+        ramdisk_size=$(df -h /mnt/hls-ram | tail -n 1 | awk '{print $2}')
+        echo -e "${BLUE}Размер: ${ramdisk_size}${NC}"
+    else
+        echo -e "${YELLOW}RAM-диск /mnt/hls-ram не обнаружен${NC}"
+        echo ""
+        
+        # Проверяем, есть ли служба с RAM-диском
+        local service_has_ramdisk="N"
+        if [ -f "/etc/systemd/system/vidaa.service" ]; then
+            if grep -q "ExecStartPre=/bin/mount.*tmpfs.*/mnt/hls-ram" "/etc/systemd/system/vidaa.service" 2>/dev/null; then
+                service_has_ramdisk="Y"
+                echo -e "${YELLOW}Служба настроена на создание RAM-диска, но он не примонтирован${NC}"
+            fi
+        fi
+        
+        if [ "$service_has_ramdisk" = "N" ]; then
+            echo -e "${YELLOW}Хотите создать RAM-диск для HLS сегментов?${NC}"
+            echo -e "${YELLOW}Это ускорит работу сервера и снизит износ диска.${NC}"
+            echo -n "Создать RAM-диск? (y/n): "
+            read -r create_ramdisk
+            
+            if [[ "$create_ramdisk" =~ ^[YyДд]$ ]]; then
+                setup_ramdisk
+                ramdisk_size="$RAMDISK_SIZE"
+            else
+                echo -e "${YELLOW}RAM-диск не будет создан${NC}"
+            fi
+        else
+            echo -e "${YELLOW}Служба уже настроена на создание RAM-диска при запуске${NC}"
+            echo -e "${YELLOW}Попробуем примонтировать его вручную...${NC}"
+            
+            # Пытаемся примонтировать существующую конфигурацию
+            local size_from_service=$(grep "ExecStartPre=/bin/mount" /etc/systemd/system/vidaa.service | grep -oP 'size=\K[^,]+')
+            if [ -n "$size_from_service" ]; then
+                mkdir -p /mnt/hls-ram
+                mount -t tmpfs -o size=$size_from_service,uid=root,gid=root tmpfs /mnt/hls-ram
+                if [ $? -eq 0 ]; then
+                    echo -e "${GREEN}RAM-диск успешно примонтирован${NC}"
+                    ramdisk_size="$size_from_service"
+                else
+                    echo -e "${RED}Не удалось примонтировать RAM-диск${NC}"
+                fi
+            fi
+        fi
+    fi
+    echo ""
+    
+    # ==========================================
+    # ОБНОВЛЕНИЕ ПРИЛОЖЕНИЯ
+    # ==========================================
     echo "Скачивание обновления..."
     wget -q --show-progress "https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-linux.zip"
     
@@ -457,18 +522,82 @@ update_vidaa() {
     chmod 775 /opt/Vidaa/ffmpeg/ffprobe
     chmod 775 /opt/Vidaa/ffmpeg/yt-dlp
     
+    # ==========================================
+    # ОБНОВЛЕНИЕ СИСТЕМНОЙ СЛУЖБЫ (ЕСЛИ НУЖНО)
+    # ==========================================
+    if [[ "$create_ramdisk" =~ ^[YyДд]$ ]] && [ -n "$ramdisk_size" ]; then
+        echo ""
+        echo "=========================================="
+        echo "  Обновление системной службы"
+        echo "=========================================="
+        echo -e "${BLUE}Добавление поддержки RAM-диска в службу...${NC}"
+        
+        # Получаем текущий порт из службы
+        local current_port=$(grep "Environment=PORT=" /etc/systemd/system/vidaa.service | cut -d= -f2)
+        if [ -z "$current_port" ]; then
+            current_port="3000"
+        fi
+        
+        # Создаем директорию для RAM-диска
+        mkdir -p /mnt/hls-ram
+        
+        # Создаем новую версию службы с RAM-диском
+        cat > /etc/systemd/system/vidaa.service << EOF
+[Unit]
+Description=VidaaVideo HLS Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/Vidaa/
+Environment=NODE_ENV=production
+Environment=PORT=$current_port
+Environment=HOST=0.0.0.0
+ExecStartPre=/bin/mkdir -p /mnt/hls-ram
+ExecStartPre=/bin/mount -t tmpfs -o size=$ramdisk_size,uid=root,gid=root tmpfs /mnt/hls-ram
+ExecStart=/opt/Vidaa/myapp-linux-x64
+ExecStopPost=/bin/umount /mnt/hls-ram
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=Vidaa
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        
+        echo -e "${GREEN}Служба обновлена с поддержкой RAM-диска${NC}"
+    fi
+    
+    # ==========================================
+    # ПЕРЕЗАПУСК СЛУЖБЫ
+    # ==========================================
     echo "Перезапуск сервиса..."
+    systemctl daemon-reload
     systemctl restart vidaa
     
     if [ $? -eq 0 ]; then
         local port=$(systemctl show vidaa -p Environment | grep -oP 'PORT=\K\d+')
         local ip_addr=$(hostname -I | awk '{print $1}')
+        
+        echo ""
         echo -e "${GREEN}========================================${NC}"
         echo -e "${GREEN}Обновление завершено успешно!${NC}"
         echo -e "${GREEN}Vidaa сервер доступен по адресу: http://$ip_addr:$port${NC}"
+        
+        if mountpoint -q /mnt/hls-ram 2>/dev/null; then
+            local ramdisk_info=$(df -h /mnt/hls-ram | tail -n 1 | awk '{print $2}')
+            echo -e "${GREEN}RAM-диск активен: $ramdisk_info${NC}"
+        fi
+        
         echo -e "${GREEN}========================================${NC}"
     else
         echo -e "${RED}Ошибка при перезапуске сервиса${NC}"
+        echo -e "${YELLOW}Проверьте логи: journalctl -xeu vidaa.service${NC}"
         exit 1
     fi
 }
