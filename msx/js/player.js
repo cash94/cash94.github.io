@@ -2024,7 +2024,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         if (!isTimeUpdated && videoPlayer.currentTime > 0) {
           isTimeUpdated = true;
           console.log('⏱️ Время начало обновляться (currentTime=' + videoPlayer.currentTime.toFixed(2) + '), скрываем индикатор загрузки');
+          if (initialSeek > 0) {
+            videoPlayer.currentTime = parseInt(initialSeek);
+          }
           hidePlayerLoading();
+          
 
           // ★ ВЫПОЛНЯЕМ ПЕРЕМОТКУ
           //executeSeek();
