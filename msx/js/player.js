@@ -2219,35 +2219,15 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
     if (Hls.isSupported()) {
       AppState.hls = new Hls({
-        maxBufferSize: 64 * 1024 * 1024,
-        maxBufferLength: 20,
-        maxMaxBufferLength: 30,
-        backBufferLength: 5,
-        startFragPrefetch: true,
-        startLevel: -1,
-        abrEwmaDefaultEstimate: 500000,
-        abrBandWidthFactor: 0.8,
-        abrBandWidthUpFactor: 0.7,
-        fragLoadingTimeOut: 10000,
-        fragLoadingMaxRetry: 6,
-        fragLoadingRetryDelay: 500,
-        manifestLoadingTimeOut: 10000,
-        manifestLoadingMaxRetry: 4,
-        maxFragLookUpTolerance: 0.25,
-        lowLatencyMode: false,
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: Infinity,
-        maxLiveSyncPlaybackRate: 1,
-        liveDurationInfinity: false,
-        liveBackBufferLength: 20,
-        abrEwmaSlowVoD: 4000,
-        abrEwmaFastVoD: 1000,
-        enableWorker: !navigator.userAgent.includes('Firefox'),
-        progressive: false,
-        fetchSetup: function (context, initParams) {
-          initParams.headers = { 'Connection': 'keep-alive', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' };
-          return new Request(context.url, initParams);
-        }
+        enableABR: false,
+        startLevel: 0,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        startFragPrefetch: false,
+        fragLoadingTimeOut: 20000,
+        manifestLoadingTimeOut: 20000,
+        enableWorker: false,
+        cache: true
       });
 
       var isPlaybackCancelled = false;
