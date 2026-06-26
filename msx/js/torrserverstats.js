@@ -58,17 +58,6 @@ async function fetchTorrentStatsForBuffer(hash) {
             : 0
         };
 
-        console.log('📊 Статистика торрента:', {
-          percent: torrentData.percent + '%',
-          preloaded: formatSize(torrentData.preloaded_bytes),
-          total: formatSize(torrentData.preload_size),
-          download_speed_bps: torrentData.download_speed + ' B/s',
-          download_speed_readable: formatSpeed(torrentData.download_speed),
-          active_peers: torrentData.active_peers,
-          total_peers: torrentData.total_peers,
-          seeders: torrentData.connected_seeders
-        });
-
         return torrentData;
       }
     }
