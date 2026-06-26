@@ -2221,13 +2221,15 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       AppState.hls = new Hls({
         enableABR: false,
         startLevel: 0,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        startFragPrefetch: false,
-        fragLoadingTimeOut: 20000,
-        manifestLoadingTimeOut: 20000,
-        enableWorker: false,
-        cache: true
+        maxBufferLength: 15, 
+        maxMaxBufferLength: 25,
+        startFragPrefetch: true,
+        fragLoadingTimeOut: 15000,
+        manifestLoadingTimeOut: 10000,
+        enableWorker: true,
+        progressive: true, 
+        maxBufferSize: 60 * 1000 * 1000,
+        maxBufferHole: 0.5
       });
 
       var isPlaybackCancelled = false;
