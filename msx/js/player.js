@@ -2289,7 +2289,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
           return;
         }
 
-        console.log('⏳ Ожидание накопления буфера 10 секунд... (видео на паузе)');
+        console.log('⏳ Ожидание накопления буфера 10 секунд...');
         showPlayerLoading('Буферизация... 0/10 сек', null);
 
         var bufferCheckInterval = setInterval(function () {
@@ -2361,7 +2361,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         }, 5000);
       };
 
-      // 🔒 Явная отписка перед навешиванием для предотвращения дубликатов
+      // Явная отписка перед навешиванием для предотвращения дубликатов
       AppState.hls.off(Hls.Events.MANIFEST_PARSED, manifestParsedHandler);
       AppState.hls.on(Hls.Events.MANIFEST_PARSED, manifestParsedHandler);
 
@@ -2373,29 +2373,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       };
       AppState.hls.off(Hls.Events.FRAG_LOADING, fragLoadingHandler);
       AppState.hls.on(Hls.Events.FRAG_LOADING, fragLoadingHandler);
-
-      var fragLoadedHandler = function (event, data) {
-        if (signal.aborted) return;
-        try {
-          if (!data || !data.frag || !data.stats) return;
-          var stats = data.stats;
-          if (stats && stats.loading && stats.loading.end && stats.loading.start && stats.loaded) {
-            var loadTimeMs = stats.loading.end - stats.loading.start;
-            if (loadTimeMs > 0) {
-              var sizeKB = stats.loaded / 1024;
-              var speedKBps = (sizeKB / loadTimeMs) * 1000;
-              console.log('✅ Сегмент ' + data.frag.sn + ' загружен: ' + sizeKB.toFixed(2) + ' KB за ' + loadTimeMs + 'ms (' + speedKBps.toFixed(2) + ' KB/s)');
-            } else {
-              console.log('✅ Сегмент ' + data.frag.sn + ' загружен (мгновенно)');
-            }
-          } else {
-            console.log('✅ Сегмент ' + data.frag.sn + ' загружен');
-          }
-        } catch (e) { console.log('⚠️ Ошибка при обработке статистики загрузки сегмента'); }
-      };
-      AppState.hls.off(Hls.Events.FRAG_LOADED, fragLoadedHandler);
-      AppState.hls.on(Hls.Events.FRAG_LOADED, fragLoadedHandler);
-
+      
       var bufferAppendedHandler = function (event, data) {
         if (signal.aborted) return;
         try {
@@ -2412,8 +2390,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       AppState.hls.on(Hls.Events.BUFFER_APPENDED, bufferAppendedHandler);
 
       var currentPlayingSegment = -1;
-      var lastLogTime = 0;
-      var localLastCleanedSegment = -1;
+      //var localLastCleanedSegment = -1;
 
       var fragChangedHandler = function (event, data) {
         if (signal.aborted) return;
@@ -2425,11 +2402,17 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
             // Удаляем все сегменты до текущего
             if (segmentNumber > 0) {
-              fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ keepFromSegment: segmentNumber })
-              }).catch(function () { });
+              // Throttle: не чаще чем раз в 2 секунды
+              var now = Date.now();
+              if (!window._lastCleanupTime || (now - window._lastCleanupTime) > 2000) {
+                window._lastCleanupTime = now;
+
+                fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ keepFromSegment: segmentNumber })
+                }).catch(function () { });
+              }
             }
           }
         }
@@ -2437,28 +2420,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       AppState.hls.off(Hls.Events.FRAG_CHANGED, fragChangedHandler);
       AppState.hls.on(Hls.Events.FRAG_CHANGED, fragChangedHandler);
 
-      var timeUpdateHandler = function () {
-        if (signal.aborted) return;
-        try {
-          var currentTimeVar = videoPlayer.currentTime;
-          if (Date.now() - lastLogTime > 30000) {
-            if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
-              var bufLen = videoPlayer.buffered.length;
-              for (var idx = 0; idx < bufLen; idx++) {
-                var start = videoPlayer.buffered.start(idx);
-                var end = videoPlayer.buffered.end(idx);
-                if (currentTimeVar >= start && currentTimeVar <= end) {
-                  var segmentEstimate = Math.floor(currentTimeVar / 10);
-                  console.log('⏱️ Текущая позиция: ' + formatTime(currentTimeVar) + ' (примерно сегмент # ' + segmentEstimate + ')');
-                  lastLogTime = Date.now();
-                  break;
-                }
-              }
-            }
-          }
-        } catch (e) { }
-      };
-      videoPlayer.addEventListener('timeupdate', timeUpdateHandler);
       var errorHandler = function (event, data) {
         if (signal.aborted) return;
         console.log('HLS событие ошибки:', { type: data.type, details: data.details, fatal: data.fatal, error: data.error ? data.error.message : 'Unknown error' });
