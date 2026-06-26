@@ -2092,8 +2092,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         AppState.hls = new Hls({
           enableABR: false,
           startLevel: 0,
-          maxBufferLength: 30,
-          maxMaxBufferLength: 60,
+          maxBufferLength: 20,
+          maxMaxBufferLength: 40,
           startFragPrefetch: false,
           fragLoadingTimeOut: 20000,
           manifestLoadingTimeOut: 20000,
