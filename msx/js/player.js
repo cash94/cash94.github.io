@@ -2432,18 +2432,18 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
                 console.log('Время сегмента: ' + date.toLocaleTimeString());
               }
 
-              var segmentToDelete = segmentNumber - 3;
+              var segmentToDelete = segmentNumber;
               if (segmentToDelete >= 0 && segmentToDelete > localLastCleanedSegment) {
-                console.log('🧹 Запускаем очистку: текущий сегмент ' + segmentNumber + ', удаляем сегменты до ' + (segmentNumber - 3));
+                console.log('🧹 Запускаем очистку: текущий сегмент ' + segmentNumber + ', удаляем сегменты до ' + (segmentNumber));
                 fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ keepFromSegment: segmentNumber - 3 })
+                  body: JSON.stringify({ keepFromSegment: segmentNumber})
                 }).then(function (response) { return response.json(); })
                   .then(function (data) {
                     if (data.success) {
                       console.log('Очистка выполнена: удалено ' + data.deleted + ' сегментов');
-                      localLastCleanedSegment = segmentNumber - 3;
+                      localLastCleanedSegment = segmentNumber;
                     } else {
                       console.error('Ошибка очистки:', data.error);
                     }
