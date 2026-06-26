@@ -2389,7 +2389,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
                   console.log('⚡ Принудительный reload плейлиста после segment0');
                   AppState.hls.loadSource(AppState.currentPlaylistUrl);
                 }
-              }, 100);
+              }, 4000);
             }
 
             // Удаляем все сегменты до текущего
