@@ -92,12 +92,6 @@ async function updateTorrentStatsCache() {
     torrentStatsCache.activePeers = stats.active_peers || 0;
     torrentStatsCache.totalPeers = stats.total_peers || 0;
     torrentStatsCache.connectedSeeders = stats.connected_seeders || 0;
-
-    console.log('📊 Статистика обновлена:',
-      torrentStatsCache.percent + '%, ' +
-      formatSpeed(torrentStatsCache.downloadSpeed) +
-      ', пиры: ' + torrentStatsCache.activePeers + '/' + torrentStatsCache.totalPeers +
-      ', сидеры: ' + torrentStatsCache.connectedSeeders);
   }
 }
 
