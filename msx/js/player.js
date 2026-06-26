@@ -2417,41 +2417,22 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
       var fragChangedHandler = function (event, data) {
         if (signal.aborted) return;
-        try {
-          if (data && data.frag) {
-            var frag = data.frag;
-            var segmentNumber = frag.sn;
-            var segmentDuration = frag.duration || 0;
-            var segmentStart = frag.start || 0;
+        if (data && data.frag) {
+          var segmentNumber = data.frag.sn;
 
-            if (currentPlayingSegment !== segmentNumber) {
-              currentPlayingSegment = segmentNumber;
-              console.log('ВОСПРОИЗВЕДЕНИЕ: Сегмент #' + segmentNumber + ' | Начало: ' + formatTime(segmentStart) + ' | Длительность: ' + segmentDuration.toFixed(2) + 'с | Уровень: ' + frag.level);
-              if (frag.programDateTime) {
-                var date = new Date(frag.programDateTime);
-                console.log('Время сегмента: ' + date.toLocaleTimeString());
-              }
+          if (currentPlayingSegment !== segmentNumber) {
+            currentPlayingSegment = segmentNumber;
 
-              var segmentToDelete = segmentNumber - 1;
-              if (segmentToDelete >= 0 && segmentToDelete > localLastCleanedSegment) {
-                console.log('🧹 Запускаем очистку: текущий сегмент ' + segmentNumber + ', удаляем сегменты до ' + (segmentNumber - 1));
-                fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ keepFromSegment: segmentNumber - 1 })
-                }).then(function (response) { return response.json(); })
-                  .then(function (data) {
-                    if (data.success) {
-                      console.log('Очистка выполнена: удалено ' + data.deleted + ' сегментов');
-                      localLastCleanedSegment = segmentNumber - 1;
-                    } else {
-                      console.error('Ошибка очистки:', data.error);
-                    }
-                  })['catch'](function (error) { console.error('Ошибка при вызове cleanup:', error); });
-              }
+            // Удаляем все сегменты до текущего
+            if (segmentNumber > 0) {
+              fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ keepFromSegment: segmentNumber })
+              }).catch(function () { });
             }
           }
-        } catch (e) { console.log('⚠️ Ошибка при отслеживании сегмента:', e); }
+        }
       };
       AppState.hls.off(Hls.Events.FRAG_CHANGED, fragChangedHandler);
       AppState.hls.on(Hls.Events.FRAG_CHANGED, fragChangedHandler);
