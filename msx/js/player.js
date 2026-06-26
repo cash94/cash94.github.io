@@ -2192,7 +2192,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     AppState.originalDuration = data.originalDuration || data.duration;
     AppState.seekOffset = data.seekOffset || initialSeek || 0;
     AppState.lastSuccessfulSeek = AppState.seekOffset;
-    AppState.currentPlaylistUrl = data.playlistUrl;
 
     console.log('📊 Длительность: полная=' + formatTime(AppState.originalDuration) + ', offset=' + AppState.seekOffset.toFixed(2) + 's');
     AppState.currentScreen = 'player';
@@ -2382,16 +2381,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
           if (currentPlayingSegment !== segmentNumber) {
             currentPlayingSegment = segmentNumber;
-
-            if (segmentNumber === 0 && AppState.hls) {
-              setTimeout(() => {
-                if (AppState.hls) {
-                  console.log('⚡ Принудительный reload плейлиста после segment0');
-                  AppState.hls.loadSource(AppState.currentPlaylistUrl);
-                }
-              }, 4000);
-            }
-
             // Удаляем все сегменты до текущего
             if (segmentNumber > 0) {
               // Throttle: не чаще чем раз в 2 секунды
