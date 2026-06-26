@@ -720,7 +720,7 @@ function updateBufferDisplay() {
       if (currentTimecodeData.hash && typeof torrentStatsCache !== 'undefined' && torrentStatsCache.preloadSize > 0) {
         torrServerText = 'TorrServer: ' + formatSize(torrentStatsCache.preloaded) + ' | скорость: ' + formatSpeed(torrentStatsCache.downloadSpeed);
         if (torrentStatsCache.activePeers > 0) {
-          torrServerText += ' | пиры: ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
+          torrServerText += ' | пиры: ' + torrentStatsCache.activePeers + ' / ' + torrentStatsCache.totalPeers  + ' - ' + torrentStatsCache.connectedSeeders;
         }
       }
 
@@ -2307,7 +2307,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             if (currentTimecodeData.hash && torrentStatsCache.preloadSize > 0) {
               torrServerText = formatSize(torrentStatsCache.preloaded) + ' ' + formatSpeed(torrentStatsCache.downloadSpeed);
               if (torrentStatsCache.activePeers > 0) {
-                torrServerText += ' | пиры: ' + torrentStatsCache.totalPeers + ' / ' + torrentStatsCache.activePeers + ' - ' + torrentStatsCache.connectedSeeders;
+                torrServerText += ' | пиры: ' + torrentStatsCache.activePeers + ' / ' + torrentStatsCache.totalPeers  + ' - ' + torrentStatsCache.connectedSeeders;
               }
             }
             showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек ' + torrServerText, null);
