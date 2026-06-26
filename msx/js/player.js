@@ -2192,6 +2192,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     AppState.originalDuration = data.originalDuration || data.duration;
     AppState.seekOffset = data.seekOffset || initialSeek || 0;
     AppState.lastSuccessfulSeek = AppState.seekOffset;
+    AppState.currentPlaylistUrl = data.playlistUrl;
 
     console.log('📊 Длительность: полная=' + formatTime(AppState.originalDuration) + ', offset=' + AppState.seekOffset.toFixed(2) + 's');
     AppState.currentScreen = 'player';
@@ -2386,7 +2387,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
               setTimeout(() => {
                 if (AppState.hls) {
                   console.log('⚡ Принудительный reload плейлиста после segment0');
-                  AppState.hls.loadSource(data.playlistUrl);
+                  AppState.hls.loadSource(AppState.currentPlaylistUrl);
                 }
               }, 100);
             }
