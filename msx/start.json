@@ -1,9 +1,9 @@
 {
-  "name": "TorrStream",
+  "name": "Alcopac",
   "type": "list",
-  "headline": "TorrStream",
+  "headline": "Alcopac",
   "version": "1.0.0",
-  "parameter": "content:http://appvidaa.hnar.online/msx/start.json",
+  "parameter": "content:https://cash94.github.io/msx/start.json",
   "action": "[settings:validate_links:0|home]",
   "template": {
     "type": "separate",
@@ -14,7 +14,7 @@
     {
       "image": "http://appvidaa.hnar.online/msx/favicon.ico",
       "label": "Запустить TorrStream",
-      "action": "link:http://appvidaa.hnar.online/msx/torrstream.html"
+      "action": "link:https://tv.alcopa.cc"
     }
   ]
 }
