@@ -12,8 +12,8 @@
   },
   "items": [
     {
-      "image": "http://appvidaa.hnar.online/msx/favicon.ico",
-      "label": "Запустить TorrStream",
+      "image": "",
+      "label": "Запустить Alcopac",
       "action": "link:https://tv.alcopa.cc"
     }
   ]
