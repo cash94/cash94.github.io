@@ -1,1 +1,20 @@
-{                                                                                                               "name": "TorrStream",                                                                                         "type": "list",                                                                                               "headline": "TorrStream",                                                                                     "version": "1.0.0",                                                                                           "parameter": "content:http://appvidaa.hnar.online/msx/start.json",                                            "action": "[settings:validate_links:0|home]",                                                                 "template": {                                                                                                   "type": "separate",                                                                                           "layout": "0,0,2,3",                                                                                          "color": "msx-glass"                                                                                        },                                                                                                            "items": [                                                                                                      {                                                                                                               "image": "http://appvidaa.hnar.online/msx/favicon.ico",                                                       "label": "Запустить TorrStream",                                                                              "action": "link:http://appvidaa.hnar.online/msx/torrstream.html"                                            }                                                                                                           ]                                                                                                           }
+{
+  "name": "TorrStream",
+  "type": "list",
+  "headline": "TorrStream",
+  "version": "1.0.0",
+  "parameter": "content:http://appvidaa.hnar.online/msx/start.json",
+  "action": "[settings:validate_links:0|home]",
+  "template": {
+    "type": "separate",
+    "layout": "0,0,2,3",
+    "color": "msx-glass"
+  },
+  "items": [
+    {
+      "image": "http://appvidaa.hnar.online/msx/favicon.ico",
+      "label": "Запустить TorrStream",
+      "action": "link:http://appvidaa.hnar.online/msx/torrstream.html"
+    }
+  ]
+}
