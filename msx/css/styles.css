@@ -3031,11 +3031,6 @@ html {
   /* GSAP будет управлять анимацией */
 }
 
-/* Для обратной совместимости - если GSAP не загрузился */
-.no-gsap .torrent-card {
-  animation: fadeInScale 0.3s ease forwards;
-}
-
 .search-result-meta-item:not(:first-child)::before {
   content: "•";
   margin: 0 6px;
