@@ -793,6 +793,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+  border: 1px rgba(0, 0, 0, 0.3);
 }
 
 .detail-progress-btn:hover {
