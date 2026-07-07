@@ -1068,7 +1068,6 @@ body.detail-open {
   border-radius: 12px;
   overflow: hidden;
   cursor: pointer;
-  border: 1px solid #4a9eff;
 }
 
 .catalog-trailer-poster {
@@ -1862,7 +1861,6 @@ body.detail-open {
 .catalog-header,
 .catalog-detail-extra,
 .catalog-meta-chip,
-.catalog-trailer-card-item,
 .global-search-card,
 .catalog-detail-section-title {
   border-color: #000000 !important;
