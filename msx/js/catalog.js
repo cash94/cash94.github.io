@@ -871,93 +871,62 @@ function showCatalogSearch(q, pu, item) {
 }
 
 async function openYoutubeInPlayer(url, title) {
-    var po = getEl('playback-overlay');
-    if (po) {
-        po.classList.add('active');
-        var pt = po.querySelector('.playback-text');
-        if (pt) pt.textContent = 'Загрузка трейлера: ' + title + '...';
-    }
-
-    // Сохраняем ссылки на DOM элементы для блока catch
-    var dv = getEl('detail-view'), mc = getEl('main-container');
-
+    var po = getEl('playback-overlay'); if (po) { po.classList.add('active'); var pt = po.querySelector('.playback-text'); if (pt) pt.textContent = 'Загрузка трейлера: ' + title + '...'; }
     try {
+        // Извлекаем ID видео из URL
         var videoId = url;
 
-        // API запрос
+        // Новый API запрос
         var apiUrl = 'https://tube.vidaapp.cfd/api/v1/video?v=' + videoId + '&device=vidaa-968394708';
         var response = await fetch(apiUrl);
         var data = await response.json();
 
+        // Ищем m3u8_native с качеством 480p
         var m3u8Url = null;
-
-        // 🟢 1. НОВАЯ ЛОГИКА: Динамическое создание плейлиста из msePairs (Video + Audio)
-        if (data.msePairs && Array.isArray(data.msePairs) && data.msePairs.length > 0) {
-            // Ищем лучшее доступное качество (1080p -> 720p -> первое доступное)
-            var pair = data.msePairs.find(p => p.quality === '1080p') ||
-                data.msePairs.find(p => p.quality === '720p') ||
-                data.msePairs[0];
-
-            if (pair && pair.video && pair.audio && pair.video.url && pair.audio.url) {
-                var videoStreamUrl = pair.video.url;
-                var audioStreamUrl = pair.audio.url;
-
-                // Формируем M3U8 мастер-плейлист с привязкой отдельной аудиодорожки
-                var m3u8Playlist = [
-                    '#EXTM3U',
-                    '#EXT-X-VERSION:6',
-                    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",NAME="Audio",DEFAULT=YES,AUTOSELECT=YES,URI="' + audioStreamUrl + '"',
-                    '#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=' + (pair.video.width || 1920) + 'x' + (pair.video.height || 1080) + ',AUDIO="audio"',
-                    videoStreamUrl
-                ].join('\n');
-
-                // Создаем Blob URL для передачи в hls.js или нативный плеер
-                var blob = new Blob([m3u8Playlist], { type: 'application/vnd.apple.mpegurl' });
-                m3u8Url = URL.createObjectURL(blob);
-            }
-        }
-
-        // 🟡 2. FALLBACK: Старая логика поиска m3u8_native в formats (если msePairs отсутствует или не сработал)
-        if (!m3u8Url && data.formats && Array.isArray(data.formats)) {
+        if (data.formats && Array.isArray(data.formats)) {
             var format = data.formats.find(f => f.protocol === 'https' && f.label === '1080p');
             if (format && format.url) {
-                m3u8Url = format.url.startsWith('https://') ? format.url : 'https://tube.vidaapp.cfd' + format.url;
+                if (format.url.startsWith('https://')) {
+                    m3u8Url = format.url;
+                } else {
+                    m3u8Url = 'https://tube.vidaapp.cfd' + format.url;
+                }
             } else {
+                // Если 1080p не найден, пробуем взять любой m3u8_native
                 var anyM3u8 = data.formats.find(f => f.protocol === 'https');
                 if (anyM3u8 && anyM3u8.url) {
-                    m3u8Url = anyM3u8.url.startsWith('https://') ? anyM3u8.url : 'https://tube.vidaapp.cfd' + anyM3u8.url;
+                    if (anyM3u8.url.startsWith('https://')) {
+                        m3u8Url = anyM3u8.url;
+                    }else {
+                        m3u8Url = 'https://tube.vidaapp.cfd' + anyM3u8.url;
+                    }
                 }
             }
         }
 
         if (!m3u8Url) {
-            throw new Error('Не найден поток для воспроизведения (ни msePairs, ни m3u8_native)');
+            throw new Error('Не найден HLS поток для видео');
         }
 
         if (window.AndroidJS) {
+
+            // Скрываем оверлей перед запуском внешнего плеера
             if (po) po.classList.remove('active');
-
-            // ⚠️ ВАЖНО: Нативные Android-плееры часто не умеют читать "blob:" URL.
-            // Если внешний плеер отказывается играть Blob, раскомментируйте передачу dashManifestUrl (DASH .mpd)
-            var playerUrl = m3u8Url;
-            if (playerUrl.startsWith('blob:') && data.msePairs && data.msePairs[0] && data.msePairs[0].dashManifestUrl) {
-                // playerUrl = data.msePairs[0].dashManifestUrl; 
-            }
-
+            // Формируем данные
             var playerData = {
-                url: playerUrl,
+                url: m3u8Url,
                 title: title || 'Видео',
                 iptv: false
             };
 
             console.log('📱 Запуск внешнего плеера:', playerData);
-            AndroidJS.openPlayer(playerUrl, JSON.stringify(playerData));
+            AndroidJS.openPlayer(m3u8Url, JSON.stringify(playerData));
         } else {
             var cd = AppState.currentDetailItem, cn = catalogState.currentCatalog, ci = catalogState.lastSelectedIndex;
+            var dv = getEl('detail-view'), mc = getEl('main-container');
+            if (dv) { dv.style.display = 'none'; dv.style.pointerEvents = 'none'; } if (mc) mc.style.pointerEvents = 'none';
 
-            if (dv) { dv.style.display = 'none'; dv.style.pointerEvents = 'none'; }
-            if (mc) mc.style.pointerEvents = 'none';
-
+            // Сохраняем состояние
             var old = AppState.currentStreamId;
             AppState.videoUrl = url;
             AppState.isYoutubePlayback = true;
@@ -969,7 +938,7 @@ async function openYoutubeInPlayer(url, title) {
 
             var vp = getEl('video-player');
 
-            if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+            if (Hls.isSupported()) {
                 AppState.hls = new Hls({
                     maxBufferSize: 80 * 1024 * 1024,
                     maxBufferLength: 30,
@@ -1013,15 +982,13 @@ async function openYoutubeInPlayer(url, title) {
                 });
 
                 AppState.hls.on(Hls.Events.ERROR, function (ev, d) {
-                    console.warn('HLS Error:', d);
                     if (d.fatal) {
                         if (po) po.classList.remove('active');
-                        // alert('Ошибка воспроизведения HLS');
+                        alert('Ошибка воспроизведения');
                     }
                 });
 
             } else if (vp.canPlayType('application/vnd.apple.mpegurl')) {
-                // Нативная поддержка HLS (Safari / iOS)
                 vp.src = m3u8Url;
                 vp.addEventListener('loadedmetadata', function () {
                     if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
@@ -1038,7 +1005,7 @@ async function openYoutubeInPlayer(url, title) {
     } catch (e) {
         console.error('YouTube error:', e);
         if (po) po.classList.remove('active');
-        // alert('Ошибка: ' + e.message);
+        alert('Ошибка: ' + e.message);
         if (dv) { dv.style.display = 'block'; dv.style.pointerEvents = 'auto'; }
         if (mc) mc.style.pointerEvents = 'auto';
     }
