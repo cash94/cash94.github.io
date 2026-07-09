@@ -884,7 +884,7 @@ async function openYoutubeInPlayer(url, title) {
         // Ищем m3u8_native с качеством 480p
         var m3u8Url = null;
         if (data.formats && Array.isArray(data.formats)) {
-            var format = data.formats.find(f => f.protocol === 'm3u8_native' && f.label === '1080p');
+            var format = data.formats.find(f => f.protocol === 'https' && f.label === '1080p');
             if (format && format.url) {
                 if (format.url.startsWith('https://')) {
                     m3u8Url = format.url;
@@ -893,7 +893,7 @@ async function openYoutubeInPlayer(url, title) {
                 }
             } else {
                 // Если 1080p не найден, пробуем взять любой m3u8_native
-                var anyM3u8 = data.formats.find(f => f.protocol === 'm3u8_native');
+                var anyM3u8 = data.formats.find(f => f.protocol === 'https');
                 if (anyM3u8 && anyM3u8.url) {
                     if (format.url.startsWith('https://')) {
                         m3u8Url = anyM3u8.url;
