@@ -352,9 +352,9 @@
             background: #1a2332;
             border-radius: 12px;
             padding: 25px;
-            max-width: 800px;
+            max-width: 900px;
             width: 100%;
-            max-height: 85vh;
+            max-height: 90vh;
             overflow-y: auto;
             border: 1px solid #3a4a5c;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
@@ -557,6 +557,43 @@
             background: #c0392b;
         }
 
+        .history-list {
+            margin-top: 15px;
+        }
+
+        .history-entry {
+            background: #0f1419;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            border: 1px solid #2a3a4c;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-entry-info {
+            flex: 1;
+        }
+
+        .history-entry-title {
+            color: #fff;
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .history-entry-meta {
+            color: #8899a6;
+            font-size: 12px;
+        }
+
+        .history-entry-date {
+            color: #8899a6;
+            font-size: 12px;
+            text-align: right;
+        }
+
         @media (max-width: 768px) {
             .header {
                 padding: 15px;
@@ -580,6 +617,16 @@
             .info-label {
                 width: 110px;
                 font-size: 12px;
+            }
+
+            .history-entry {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .history-entry-date {
+                text-align: left;
             }
         }
     </style>
@@ -605,7 +652,6 @@
         <button class="tab-btn active" onclick="switchTab('streams', event)">🎬 Активные потоки</button>
         <button class="tab-btn" onclick="switchTab('clients', event)">👥 Клиенты</button>
         <button class="tab-btn" onclick="switchTab('catalogs', event)">📀 Каталоги</button>
-        <button class="tab-btn" onclick="switchTab('history', event)">📜 История просмотров</button>
         <button class="tab-btn" onclick="switchTab('traffic', event)">📊 Трафик</button>
         <button class="tab-btn" onclick="switchTab('monitoring', event)">📊 Мониторинг</button>
         <button class="tab-btn" onclick="switchTab('system', event)">⚙️ Система</button>
@@ -630,7 +676,8 @@
             <div class="section">
                 <div class="section-header">
                     <h2>👥 Все клиенты (устройства)</h2>
-                    <div style="color:#8899a6; font-size:12px;">💡 Кликните на строку для просмотра конфигурации</div>
+                    <div style="color:#8899a6; font-size:12px;">💡 Кликните на строку для просмотра настроек и истории
+                    </div>
                 </div>
                 <div id="clientsList" class="table-wrap">
                     <div class="loading">Загрузка...</div>
@@ -646,19 +693,6 @@
                     <button class="btn" onclick="updateAllCatalogs()">🔄 Обновить все</button>
                 </div>
                 <div id="catalogsList" class="table-wrap">
-                    <div class="loading">Загрузка...</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- История просмотров -->
-        <div class="tab-content" id="tab-history">
-            <div class="section">
-                <div class="section-header">
-                    <h2>📜 Статистика истории (все клиенты)</h2>
-                    <button class="btn btn-danger" onclick="clearAllHistory()">🧹 Очистить всю историю</button>
-                </div>
-                <div id="historyList" class="table-wrap">
                     <div class="loading">Загрузка...</div>
                 </div>
             </div>
@@ -740,11 +774,11 @@
 
     </div>
 
-    <!-- Модальное окно конфигурации клиента -->
+    <!-- Модальное окно клиента (конфигурация + история) -->
     <div class="modal" id="clientConfigModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>🔧 Конфигурация клиента</h3>
+                <h3>👤 Информация о клиенте</h3>
                 <button class="close-btn" onclick="closeClientConfigModal()">×</button>
             </div>
             <div id="clientConfigContent">
@@ -829,7 +863,6 @@
             if (id === 'streams') loadStreams();
             else if (id === 'clients') loadClients();
             else if (id === 'catalogs') loadCatalogs();
-            else if (id === 'history') loadHistory();
             else if (id === 'traffic') loadTrafficMonths();
             else if (id === 'monitoring') loadMonitoring();
             else if (id === 'system') loadSystemInfo();
@@ -927,7 +960,7 @@
             }
         }
 
-        // ====== КЛИЕНТЫ (полный ID + конфиг) ======
+        // ====== КЛИЕНТЫ (полный ID + конфиг + история) ======
         async function loadClients() {
             const el = document.getElementById('clientsList');
             el.innerHTML = '<div class="loading">Загрузка...</div>';
@@ -963,9 +996,13 @@
             content.innerHTML = '<div class="loading">Загрузка...</div>';
 
             try {
-                const res = await fetch(SERVER_URL + '/api/client/config?clientId=' + encodeURIComponent(clientId));
-                const data = await res.json();
-                const c = data.config || {};
+                // Загружаем конфигурацию и историю параллельно
+                const [configRes, historyRes] = await Promise.all([
+                    fetch(SERVER_URL + '/api/client/config?clientId=' + encodeURIComponent(clientId)).then(r => r.json()),
+                    apiFetch('/api/admin/history/' + clientId)
+                ]);
+
+                const c = configRes.config || {};
 
                 let html = `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
       <div class="info-row">
@@ -977,10 +1014,11 @@
       </div>
     </div>`;
 
+                // Конфигурация TorrServer
                 html += `<div class="config-block">
       <h4>🌐 Конфигурация TorrServer</h4>`;
 
-                if (data.hasSavedConfig) {
+                if (configRes.hasSavedConfig) {
                     html += `
         <div class="info-row">
           <div class="info-label">URL:</div>
@@ -1021,6 +1059,38 @@
                 }
 
                 html += `</div>`;
+
+                // История просмотров
+                html += `<div class="config-block">
+      <h4>📜 История просмотров (${historyRes.total || 0} записей)</h4>`;
+
+                if (historyRes.history && historyRes.history.length > 0) {
+                    html += '<div class="history-list">';
+                    historyRes.history.forEach(entry => {
+                        const mediaTypeLabel = entry.mediaType === 'movie' ? '🎬 Фильм' : entry.mediaType === 'tv' ? '📺 Сериал' : '🎞️ ' + entry.mediaType;
+                        html += `<div class="history-entry">
+          <div class="history-entry-info">
+            <div class="history-entry-title">${entry.title}</div>
+            <div class="history-entry-meta">
+              <span class="badge badge-info">${mediaTypeLabel}</span>
+              ${entry.tmdbId ? `<span class="mono" style="margin-left:8px;">ID: ${entry.tmdbId}</span>` : ''}
+            </div>
+          </div>
+          <div class="history-entry-date">
+            ${entry.watchedAt ? formatDate(new Date(entry.watchedAt).getTime()) : '—'}
+          </div>
+        </div>`;
+                    });
+                    html += '</div>';
+                } else {
+                    html += `<div style="color:#5a6c7d; padding:20px; text-align:center;">
+        <div class="icon">📜</div>
+        История просмотров пуста
+      </div>`;
+                }
+
+                html += `</div>`;
+
                 content.innerHTML = html;
             } catch (e) {
                 content.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
@@ -1035,7 +1105,7 @@
             if (e.target.id === 'clientConfigModal') closeClientConfigModal();
         });
 
-        // ====== КАТАЛОГИ (размер + кнопка загрузить) ======
+        // ====== КАТАЛОГИ ======
         async function loadCatalogs() {
             const el = document.getElementById('catalogsList');
             el.innerHTML = '<div class="loading">Загрузка...</div>';
@@ -1045,7 +1115,6 @@
       <th>Каталог</th><th>Размер</th><th>Элементов</th><th>Обновлён</th><th>Действие</th>
     </tr></thead><tbody>`;
 
-                // Сначала показываем загруженные каталоги
                 if (data.loaded && data.loaded.length > 0) {
                     data.loaded.forEach(c => {
                         html += `<tr>
@@ -1058,7 +1127,6 @@
                     });
                 }
 
-                // Затем показываем отсутствующие каталоги с кнопкой загрузки
                 if (data.missing && data.missing.length > 0) {
                     data.missing.forEach(c => {
                         html += `<tr style="opacity:0.7">
@@ -1110,42 +1178,7 @@
             }
         }
 
-        // ====== ИСТОРИЯ (полный Client ID) ======
-        async function loadHistory() {
-            const el = document.getElementById('historyList');
-            el.innerHTML = '<div class="loading">Загрузка...</div>';
-            try {
-                const data = await apiFetch('/api/history/stats');
-                const clients = Object.entries(data.stats || {});
-                if (clients.length === 0) {
-                    el.innerHTML = '<div class="empty-state"><div class="icon">📜</div>История пуста</div>';
-                    return;
-                }
-                let html = `<table><thead><tr>
-      <th>Client ID</th><th>Просмотров</th><th>Последние 5</th><th>Обновлено</th>
-    </tr></thead><tbody>`;
-                clients.forEach(([cId, stat]) => {
-                    const recent = stat.recentWatched.map(r => r.title).slice(0, 3).join(', ');
-                    html += `<tr>
-        <td class="mono"><span class="client-id-full" title="Нажмите для копирования" onclick="copyToClipboard('${cId}')">${cId}</span></td>
-        <td><span class="badge badge-info">${stat.totalWatched}</span></td>
-        <td style="max-width:400px; overflow:hidden; text-overflow:ellipsis;">${recent || '—'}</td>
-        <td>${timeAgo(stat.lastUpdated)}</td>
-      </tr>`;
-                });
-                html += '</tbody></table>';
-                el.innerHTML = html;
-            } catch (e) {
-                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
-            }
-        }
-
-        async function clearAllHistory() {
-            if (!confirm('⚠️ Удалить историю ВСЕХ клиентов безвозвратно?')) return;
-            alert('Функция массовой очистки требует подтверждения через сервер');
-        }
-
-        // ====== ТРАФИК (полный Client ID) ======
+        // ====== ТРАФИК ======
         async function loadTrafficMonths() {
             const select = document.getElementById('trafficMonthSelect');
             try {
