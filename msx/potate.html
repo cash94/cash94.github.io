@@ -145,7 +145,7 @@
   }
   tbody tr:hover { background: rgba(29, 161, 242, 0.05); }
   tbody tr { cursor: pointer; transition: background 0.15s; }
-  .mono { font-family: 'SF Mono', Consolas, monospace; font-size: 12px; color: #8899a6; }
+  .mono { font-family: 'SF Mono', Consolas, monospace; font-size: 12px; color: #8899a6; word-break: break-all; }
   .badge {
     display: inline-block;
     padding: 3px 8px;
@@ -212,7 +212,7 @@
     background: #1a2332;
     border-radius: 12px;
     padding: 25px;
-    max-width: 700px;
+    max-width: 800px;
     width: 100%;
     max-height: 85vh;
     overflow-y: auto;
@@ -284,22 +284,80 @@
   .history-bytes { color: #1da1f2; font-weight: 700; font-size: 16px; }
   .info-row {
     display: flex;
-    padding: 8px 0;
+    padding: 10px 0;
     border-bottom: 1px solid #2a3a4c;
+    align-items: flex-start;
+    gap: 10px;
   }
   .info-row:last-child { border-bottom: none; }
   .info-label {
     color: #8899a6;
     font-size: 13px;
-    width: 120px;
+    width: 140px;
     flex-shrink: 0;
+    font-weight: 600;
   }
-  .info-value { color: #fff; font-size: 13px; word-break: break-all; }
+  .info-value { color: #fff; font-size: 13px; word-break: break-all; flex: 1; }
+  .client-id-full {
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 12px;
+    color: #1da1f2;
+    background: rgba(29, 161, 242, 0.1);
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    word-break: break-all;
+    cursor: pointer;
+  }
+  .client-id-full:hover { background: rgba(29, 161, 242, 0.2); }
+  .config-block {
+    background: #0f1419;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 15px;
+    border: 1px solid #2a3a4c;
+  }
+  .config-block h4 {
+    color: #fff;
+    margin-bottom: 10px;
+    font-size: 15px;
+  }
+  .btn-copy {
+    background: #3a4a5c;
+    color: #fff;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    margin-left: 6px;
+  }
+  .btn-copy:hover { background: #4a5a6c; }
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #27ae60;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 2000;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.3s;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .toast.error { background: #c0392b; }
   @media (max-width: 768px) {
     .header { padding: 15px; }
     .content { padding: 15px; }
     .tab-btn { padding: 12px 14px; font-size: 13px; }
     th, td { padding: 8px 6px; font-size: 12px; }
+    .info-label { width: 110px; font-size: 12px; }
   }
 </style>
 </head>
@@ -320,13 +378,13 @@
 </div>
 
 <div class="tabs">
-  <button class="tab-btn active" onclick="switchTab('streams')">🎬 Активные потоки</button>
-  <button class="tab-btn" onclick="switchTab('clients')">👥 Клиенты</button>
-  <button class="tab-btn" onclick="switchTab('catalogs')">📀 Каталоги</button>
-  <button class="tab-btn" onclick="switchTab('history')">📜 История просмотров</button>
-  <button class="tab-btn" onclick="switchTab('traffic')">📊 Трафик</button>
-  <button class="tab-btn" onclick="switchTab('monitoring')">📊 Мониторинг</button>
-  <button class="tab-btn" onclick="switchTab('system')">⚙️ Система</button>
+  <button class="tab-btn active" onclick="switchTab('streams', event)">🎬 Активные потоки</button>
+  <button class="tab-btn" onclick="switchTab('clients', event)">👥 Клиенты</button>
+  <button class="tab-btn" onclick="switchTab('catalogs', event)">📀 Каталоги</button>
+  <button class="tab-btn" onclick="switchTab('history', event)">📜 История просмотров</button>
+  <button class="tab-btn" onclick="switchTab('traffic', event)">📊 Трафик</button>
+  <button class="tab-btn" onclick="switchTab('monitoring', event)">📊 Мониторинг</button>
+  <button class="tab-btn" onclick="switchTab('system', event)">⚙️ Система</button>
 </div>
 
 <div class="content">
@@ -348,6 +406,7 @@
     <div class="section">
       <div class="section-header">
         <h2>👥 Все клиенты (устройства)</h2>
+        <div style="color:#8899a6; font-size:12px;">💡 Кликните на строку для просмотра конфигурации</div>
       </div>
       <div id="clientsList" class="table-wrap">
         <div class="loading">Загрузка...</div>
@@ -381,7 +440,7 @@
     </div>
   </div>
 
-  <!-- === НОВАЯ ВКЛАДКА: ПОТРЕБЛЕНИЕ ТРАФИКА === -->
+  <!-- Трафик -->
   <div class="tab-content" id="tab-traffic">
     <div class="section">
       <div class="section-header">
@@ -395,7 +454,6 @@
         </div>
       </div>
       
-      <!-- Общая статистика за месяц -->
       <div class="stat-grid" id="trafficStats">
         <div class="stat-card">
           <div class="label">Всего трафика</div>
@@ -458,6 +516,19 @@
 
 </div>
 
+<!-- Модальное окно конфигурации клиента -->
+<div class="modal" id="clientConfigModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>🔧 Конфигурация клиента</h3>
+      <button class="close-btn" onclick="closeClientConfigModal()">×</button>
+    </div>
+    <div id="clientConfigContent">
+      <div class="loading">Загрузка...</div>
+    </div>
+  </div>
+</div>
+
 <!-- Модальное окно истории трафика клиента -->
 <div class="modal" id="clientTrafficModal">
   <div class="modal-content">
@@ -471,6 +542,9 @@
   </div>
 </div>
 
+<!-- Toast уведомления -->
+<div class="toast" id="toast"></div>
+
 <script>
 let SERVER_URL = localStorage.getItem('torrstream_server') || 'http://localhost:3000';
 let connected = false;
@@ -478,6 +552,13 @@ let monitoringTimer = null;
 const ADMIN_TOKEN = 'videoloop-admin';
 
 document.getElementById('serverUrl').value = SERVER_URL;
+
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => { t.className = 'toast'; }, 3000);
+}
 
 function setConnected(state) {
   connected = state;
@@ -509,10 +590,10 @@ function connectToServer() {
     });
 }
 
-function switchTab(tab) {
+function switchTab(tab, evt) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  event.target.classList.add('active');
+  if (evt && evt.target) evt.target.classList.add('active');
   document.getElementById('tab-' + tab).classList.add('active');
   refreshCurrentTab();
 }
@@ -525,7 +606,7 @@ function refreshCurrentTab() {
   else if (id === 'clients') loadClients();
   else if (id === 'catalogs') loadCatalogs();
   else if (id === 'history') loadHistory();
-  else if (id === 'traffic') { loadTrafficMonths(); }
+  else if (id === 'traffic') loadTrafficMonths();
   else if (id === 'monitoring') loadMonitoring();
   else if (id === 'system') loadSystemInfo();
 }
@@ -545,7 +626,6 @@ async function apiFetch(path, options = {}) {
   return res.json();
 }
 
-// ====== Форматирование байт ======
 function formatBytes(bytes) {
   if (!bytes || bytes === 0) return '0 B';
   const k = 1024;
@@ -580,6 +660,20 @@ function timeAgo(ts) {
   return d + ' дн назад';
 }
 
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('📋 Скопировано: ' + text.substring(0, 20) + (text.length > 20 ? '...' : ''));
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('📋 Скопировано');
+  });
+}
+
 // ====== ПОТОКИ ======
 async function loadStreams() {
   const el = document.getElementById('streamsList');
@@ -595,8 +689,8 @@ async function loadStreams() {
     </tr></thead><tbody>`;
     data.streams.forEach(s => {
       html += `<tr>
-        <td class="mono">${s.id.substring(0,12)}...</td>
-        <td class="mono">${(s.clientId || '').substring(0,12)}...</td>
+        <td class="mono">${s.id}</td>
+        <td class="mono">${s.clientId || '—'}</td>
         <td class="mono" style="max-width:300px; overflow:hidden; text-overflow:ellipsis;">${s.url || '—'}</td>
         <td>${Math.floor(s.uptime / 1000)}с</td>
         <td>${s.duration ? Math.floor(s.duration) + 'с' : '—'}</td>
@@ -609,7 +703,7 @@ async function loadStreams() {
   }
 }
 
-// ====== КЛИЕНТЫ ======
+// ====== КЛИЕНТЫ (полный ID + конфиг) ======
 async function loadClients() {
   const el = document.getElementById('clientsList');
   el.innerHTML = '<div class="loading">Загрузка...</div>';
@@ -623,13 +717,13 @@ async function loadClients() {
       <th>Client ID</th><th>IP</th><th>User-Agent</th><th>Первый визит</th><th>Последний визит</th><th>Конфиг</th>
     </tr></thead><tbody>`;
     data.clients.forEach(c => {
-      html += `<tr>
-        <td class="mono">${c.id.substring(0,16)}...</td>
+      html += `<tr onclick="showClientConfig('${c.id}')">
+        <td class="mono"><span class="client-id-full" title="Нажмите для копирования" onclick="event.stopPropagation(); copyToClipboard('${c.id}')">${c.id}</span></td>
         <td>${c.ip}</td>
-        <td class="mono" style="max-width:250px; overflow:hidden; text-overflow:ellipsis;">${c.userAgent || '—'}</td>
+        <td class="mono" style="max-width:250px; overflow:hidden; text-overflow:ellipsis;" title="${(c.userAgent || '').replace(/"/g, '&quot;')}">${c.userAgent || '—'}</td>
         <td>${formatDate(c.firstSeen)}</td>
         <td>${timeAgo(c.lastSeen)}</td>
-        <td>${c.hasConfig ? '<span class="badge badge-success">✓</span>' : '<span class="badge badge-warning">✗</span>'}</td>
+        <td>${c.hasConfig ? '<span class="badge badge-success">✓ TorrServer</span>' : '<span class="badge badge-warning">✗ нет</span>'}</td>
       </tr>`;
     });
     html += '</tbody></table>';
@@ -639,7 +733,85 @@ async function loadClients() {
   }
 }
 
-// ====== КАТАЛОГИ ======
+async function showClientConfig(clientId) {
+  document.getElementById('clientConfigModal').classList.add('active');
+  const content = document.getElementById('clientConfigContent');
+  content.innerHTML = '<div class="loading">Загрузка...</div>';
+  
+  try {
+    const res = await fetch(SERVER_URL + '/api/client/config?clientId=' + encodeURIComponent(clientId));
+    const data = await res.json();
+    const c = data.config || {};
+    
+    let html = `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
+      <div class="info-row">
+        <div class="info-label">Client ID:</div>
+        <div class="info-value mono" style="color:#1da1f2;">
+          ${clientId}
+          <button class="btn-copy" onclick="copyToClipboard('${clientId}')">📋</button>
+        </div>
+      </div>
+    </div>`;
+    
+    html += `<div class="config-block">
+      <h4>🌐 Конфигурация TorrServer</h4>`;
+    
+    if (data.hasSavedConfig) {
+      html += `
+        <div class="info-row">
+          <div class="info-label">URL:</div>
+          <div class="info-value mono">
+            ${c.url || '—'}
+            ${c.url ? `<button class="btn-copy" onclick="copyToClipboard('${(c.url || '').replace(/'/g, "\\'")}')">📋</button>` : ''}
+          </div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">Авторизация:</div>
+          <div class="info-value">
+            ${c.authEnabled ? '<span class="badge badge-success">Включена</span>' : '<span class="badge badge-warning">Выключена</span>'}
+          </div>
+        </div>`;
+      
+      if (c.authEnabled && c.login) {
+        html += `
+          <div class="info-row">
+            <div class="info-label">Логин:</div>
+            <div class="info-value mono">
+              ${c.login}
+              <button class="btn-copy" onclick="copyToClipboard('${(c.login || '').replace(/'/g, "\\'")}')">📋</button>
+            </div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">Пароль:</div>
+            <div class="info-value mono">
+              ${c.hasPassword ? '••••••••' : '—'}
+              ${c.hasPassword ? `<span style="color:#27ae60; margin-left:8px;">✓ установлен</span>` : ''}
+            </div>
+          </div>`;
+      }
+    } else {
+      html += `<div style="color:#5a6c7d; padding:10px; text-align:center;">
+        ❌ Конфигурация TorrServer не настроена<br>
+        <small>Клиент ещё не задал адрес своего TorrServer</small>
+      </div>`;
+    }
+    
+    html += `</div>`;
+    content.innerHTML = html;
+  } catch (e) {
+    content.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+  }
+}
+
+function closeClientConfigModal() {
+  document.getElementById('clientConfigModal').classList.remove('active');
+}
+
+document.getElementById('clientConfigModal').addEventListener('click', (e) => {
+  if (e.target.id === 'clientConfigModal') closeClientConfigModal();
+});
+
+// ====== КАТАЛОГИ (размер + кнопка загрузить) ======
 async function loadCatalogs() {
   const el = document.getElementById('catalogsList');
   el.innerHTML = '<div class="loading">Загрузка...</div>';
@@ -648,22 +820,33 @@ async function loadCatalogs() {
     let html = `<table><thead><tr>
       <th>Каталог</th><th>Размер</th><th>Элементов</th><th>Обновлён</th><th>Действие</th>
     </tr></thead><tbody>`;
-    data.loaded.forEach(c => {
-      html += `<tr>
-        <td><strong>${c.displayName}</strong></td>
-        <td>${c.sizeFormatted}</td>
-        <td>${c.itemCount || '—'}</td>
-        <td>${formatDate(c.lastModified)}</td>
-        <td><button class="btn" onclick="updateCatalog('${c.name}')">🔄</button></td>
-      </tr>`;
-    });
-    data.missing.forEach(c => {
-      html += `<tr style="opacity:0.5">
-        <td>${c.displayName}</td>
-        <td colspan="3" style="color:#e74c3c;">Отсутствует</td>
-        <td><button class="btn" onclick="updateCatalog('${c.name}')">📥 Загрузить</button></td>
-      </tr>`;
-    });
+    
+    if (data.loaded && data.loaded.length > 0) {
+      data.loaded.forEach(c => {
+        html += `<tr>
+          <td><strong>${c.displayName}</strong></td>
+          <td><span class="badge badge-info">${c.sizeFormatted}</span></td>
+          <td>${c.itemCount || '—'}</td>
+          <td>${formatDate(c.lastModified)}</td>
+          <td><button class="btn" onclick="updateCatalog('${c.name}')">🔄 Обновить</button></td>
+        </tr>`;
+      });
+    }
+    
+    if (data.missing && data.missing.length > 0) {
+      data.missing.forEach(c => {
+        html += `<tr style="opacity:0.6">
+          <td>${c.displayName}</td>
+          <td colspan="3" style="color:#e74c3c;">⚠️ Отсутствует на сервере</td>
+          <td><button class="btn btn-success" onclick="updateCatalog('${c.name}')">📥 Загрузить</button></td>
+        </tr>`;
+      });
+    }
+    
+    if ((!data.loaded || data.loaded.length === 0) && (!data.missing || data.missing.length === 0)) {
+      html += `<tr><td colspan="5" style="text-align:center; color:#5a6c7d; padding:20px;">Нет данных</td></tr>`;
+    }
+    
     html += '</tbody></table>';
     el.innerHTML = html;
   } catch (e) {
@@ -672,28 +855,30 @@ async function loadCatalogs() {
 }
 
 async function updateCatalog(name) {
-  if (!confirm(`Обновить каталог "${name}"?`)) return;
+  if (!confirm(`Обновить/загрузить каталог "${name}"?`)) return;
+  showToast('⏳ Загрузка каталога ' + name + '...');
   try {
     await apiFetch('/api/catalog/' + name + '/update', { method: 'POST' });
-    alert('✅ Каталог обновлён');
-    loadCatalogs();
+    showToast('✅ Каталог ' + name + ' успешно загружен');
+    setTimeout(loadCatalogs, 500);
   } catch (e) {
-    alert('❌ Ошибка: ' + e.message);
+    showToast('❌ Ошибка: ' + e.message, true);
   }
 }
 
 async function updateAllCatalogs() {
-  if (!confirm('Обновить ВСЕ каталоги?')) return;
+  if (!confirm('Обновить ВСЕ каталоги? Это может занять несколько минут.')) return;
+  showToast('⏳ Обновление всех каталогов...');
   try {
     await apiFetch('/api/catalogs/update-all', { method: 'POST' });
-    alert('✅ Все каталоги обновлены');
-    loadCatalogs();
+    showToast('✅ Все каталоги обновлены');
+    setTimeout(loadCatalogs, 500);
   } catch (e) {
-    alert('❌ Ошибка: ' + e.message);
+    showToast('❌ Ошибка: ' + e.message, true);
   }
 }
 
-// ====== ИСТОРИЯ ======
+// ====== ИСТОРИЯ (полный Client ID) ======
 async function loadHistory() {
   const el = document.getElementById('historyList');
   el.innerHTML = '<div class="loading">Загрузка...</div>';
@@ -710,7 +895,7 @@ async function loadHistory() {
     clients.forEach(([cId, stat]) => {
       const recent = stat.recentWatched.map(r => r.title).slice(0,3).join(', ');
       html += `<tr>
-        <td class="mono">${cId.substring(0,16)}...</td>
+        <td class="mono"><span class="client-id-full" title="Нажмите для копирования" onclick="copyToClipboard('${cId}')">${cId}</span></td>
         <td><span class="badge badge-info">${stat.totalWatched}</span></td>
         <td style="max-width:400px; overflow:hidden; text-overflow:ellipsis;">${recent || '—'}</td>
         <td>${timeAgo(stat.lastUpdated)}</td>
@@ -728,7 +913,7 @@ async function clearAllHistory() {
   alert('Функция массовой очистки требует подтверждения через сервер');
 }
 
-// ====== 🆕 ТРАФИК ======
+// ====== ТРАФИК (полный Client ID) ======
 async function loadTrafficMonths() {
   const select = document.getElementById('trafficMonthSelect');
   try {
@@ -744,7 +929,6 @@ async function loadTrafficMonths() {
     select.innerHTML = months.map(m => 
       `<option value="${m}">${formatMonth(m)}</option>`
     ).join('');
-    // Сохраняем выбранный месяц, если он ещё доступен
     if (prevValue && months.includes(prevValue)) {
       select.value = prevValue;
     }
@@ -776,7 +960,6 @@ async function loadTrafficClients() {
     const data = await apiFetch('/api/traffic/clients?month=' + month);
     const clients = data.clients || [];
     
-    // Обновляем статистику
     document.getElementById('trafficTotal').textContent = data.totalFormatted || '0 B';
     document.getElementById('trafficClientsCount').textContent = clients.length;
     
@@ -808,7 +991,7 @@ async function loadTrafficClients() {
       const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
       html += `<tr onclick="showClientTrafficHistory('${c.clientId}')">
         <td style="font-weight:700; color:${idx < 3 ? '#f39c12' : '#8899a6'}">${medal}</td>
-        <td class="mono">${c.clientId.substring(0,16)}...</td>
+        <td class="mono"><span class="client-id-full" title="Нажмите для копирования" onclick="event.stopPropagation(); copyToClipboard('${c.clientId}')">${c.clientId}</span></td>
         <td>${c.ip}</td>
         <td class="mono" style="max-width:200px; overflow:hidden; text-overflow:ellipsis;" title="${(c.userAgent || '').replace(/"/g, '&quot;')}">${c.userAgent || '—'}</td>
         <td class="traffic-cell">
@@ -840,11 +1023,13 @@ async function showClientTrafficHistory(clientId) {
     const data = await apiFetch('/api/traffic/client/' + clientId);
     let html = '';
     
-    // Шапка с информацией о клиенте
     html += `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
       <div class="info-row">
         <div class="info-label">Client ID:</div>
-        <div class="info-value mono">${data.clientId}</div>
+        <div class="info-value mono" style="color:#1da1f2;">
+          ${data.clientId}
+          <button class="btn-copy" onclick="copyToClipboard('${data.clientId}')">📋</button>
+        </div>
       </div>
       <div class="info-row">
         <div class="info-label">IP-адрес:</div>
@@ -889,7 +1074,6 @@ function closeClientTrafficModal() {
   document.getElementById('clientTrafficModal').classList.remove('active');
 }
 
-// Закрытие модалки по клику на фон
 document.getElementById('clientTrafficModal').addEventListener('click', (e) => {
   if (e.target.id === 'clientTrafficModal') closeClientTrafficModal();
 });
@@ -959,7 +1143,7 @@ async function loadSystemInfo() {
     html += '<h4 style="color:#fff; margin:15px 0 10px;">💾 Использование диска</h4>';
     html += '<table><thead><tr><th>Директория</th><th>Размер</th><th>Файлов</th></tr></thead><tbody>';
     const storage = load.storage || {};
-    ['catalog','hls','cache','fileInfoCache','clients','timecodes','audioPrefs','history','sync'].forEach(k => {
+    ['catalog','hls','cache','fileInfoCache','clients','timecodes','audioPrefs','history','sync','traffic'].forEach(k => {
       if (storage[k]) {
         html += `<tr><td>${storage[k].path || k}</td><td>${storage[k].sizeFormatted}</td><td>${storage[k].fileCount || '—'}</td></tr>`;
       }
@@ -975,7 +1159,6 @@ async function loadSystemInfo() {
   }
 }
 
-// Автоматическое подключение при загрузке
 window.addEventListener('load', () => {
   if (SERVER_URL) {
     setTimeout(connectToServer, 500);
