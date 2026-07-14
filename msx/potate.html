@@ -390,30 +390,6 @@
             color: #fff;
         }
 
-        .traffic-bar-wrap {
-            background: #0f1419;
-            border-radius: 4px;
-            height: 8px;
-            overflow: hidden;
-            margin-top: 4px;
-        }
-
-        .traffic-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #1da1f2, #2ecc71);
-            border-radius: 4px;
-            transition: width 0.3s;
-        }
-
-        .traffic-cell {
-            min-width: 180px;
-        }
-
-        .traffic-amount {
-            font-weight: 600;
-            color: #1da1f2;
-        }
-
         select {
             padding: 8px 12px;
             border-radius: 6px;
@@ -422,43 +398,6 @@
             color: #fff;
             cursor: pointer;
             font-size: 14px;
-        }
-
-        .filter-row {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            flex-wrap: wrap;
-            margin-bottom: 15px;
-        }
-
-        .filter-row label {
-            color: #8899a6;
-            font-size: 13px;
-        }
-
-        .history-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 12px;
-            border-bottom: 1px solid #2a3a4c;
-            align-items: center;
-        }
-
-        .history-item:last-child {
-            border-bottom: none;
-        }
-
-        .history-month {
-            font-weight: 600;
-            color: #fff;
-            font-size: 15px;
-        }
-
-        .history-bytes {
-            color: #1da1f2;
-            font-weight: 700;
-            font-size: 16px;
         }
 
         .info-row {
@@ -594,6 +533,202 @@
             text-align: right;
         }
 
+        /* === НОВЫЕ СТИЛИ ДЛЯ ТРАФИКА === */
+        .traffic-top-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .traffic-podium-card {
+            background: linear-gradient(135deg, #2a3a4c 0%, #1a2332 100%);
+            padding: 25px;
+            border-radius: 12px;
+            border: 2px solid #3a4a5c;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .traffic-podium-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        .traffic-podium-card.gold {
+            border-color: #f39c12;
+            background: linear-gradient(135deg, #3d3520 0%, #1a2332 100%);
+        }
+
+        .traffic-podium-card.silver {
+            border-color: #95a5a6;
+            background: linear-gradient(135deg, #2c3e50 0%, #1a2332 100%);
+        }
+
+        .traffic-podium-card.bronze {
+            border-color: #cd6133;
+            background: linear-gradient(135deg, #3d2817 0%, #1a2332 100%);
+        }
+
+        .traffic-podium-rank {
+            font-size: 48px;
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            opacity: 0.3;
+        }
+
+        .traffic-podium-medal {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .traffic-podium-bytes {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1da1f2;
+            margin: 10px 0;
+        }
+
+        .traffic-podium-card.gold .traffic-podium-bytes {
+            color: #f39c12;
+        }
+
+        .traffic-podium-card.silver .traffic-podium-bytes {
+            color: #bdc3c7;
+        }
+
+        .traffic-podium-card.bronze .traffic-podium-bytes {
+            color: #cd6133;
+        }
+
+        .traffic-podium-id {
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 11px;
+            color: #8899a6;
+            margin-top: 8px;
+            word-break: break-all;
+            cursor: pointer;
+            padding: 4px 8px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .traffic-podium-id:hover {
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        .traffic-podium-ip {
+            color: #8899a6;
+            font-size: 12px;
+            margin-top: 6px;
+        }
+
+        .traffic-summary-card {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid #3a7ab8;
+            grid-column: 1 / -1;
+        }
+
+        .traffic-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .traffic-summary-item {
+            text-align: center;
+        }
+
+        .traffic-summary-item .label {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.7);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .traffic-summary-item .value {
+            font-size: 22px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        /* === Стили для блока трафика в модалке клиента === */
+        .client-traffic-block {
+            background: linear-gradient(135deg, #2a3a4c 0%, #1a2332 100%);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #3a4a5c;
+            margin-bottom: 15px;
+        }
+
+        .client-traffic-block h4 {
+            color: #fff;
+            margin-bottom: 15px;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .client-traffic-total {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: rgba(29, 161, 242, 0.1);
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 1px solid rgba(29, 161, 242, 0.3);
+        }
+
+        .client-traffic-total .label {
+            color: #8899a6;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .client-traffic-total .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1da1f2;
+        }
+
+        .client-traffic-history-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .client-traffic-month {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-bottom: 1px solid #2a3a4c;
+        }
+
+        .client-traffic-month:last-child {
+            border-bottom: none;
+        }
+
+        .client-traffic-month .month {
+            color: #fff;
+            font-weight: 500;
+            font-size: 13px;
+        }
+
+        .client-traffic-month .bytes {
+            color: #1da1f2;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
         @media (max-width: 768px) {
             .header {
                 padding: 15px;
@@ -627,6 +762,14 @@
 
             .history-entry-date {
                 text-align: left;
+            }
+
+            .traffic-podium-rank {
+                font-size: 36px;
+            }
+
+            .traffic-podium-bytes {
+                font-size: 22px;
             }
         }
     </style>
@@ -676,8 +819,8 @@
             <div class="section">
                 <div class="section-header">
                     <h2>👥 Все клиенты (устройства)</h2>
-                    <div style="color:#8899a6; font-size:12px;">💡 Кликните на строку для просмотра настроек и истории
-                    </div>
+                    <div style="color:#8899a6; font-size:12px;">💡 Кликните на строку для просмотра настроек, трафика и
+                        истории</div>
                 </div>
                 <div id="clientsList" class="table-wrap">
                     <div class="loading">Загрузка...</div>
@@ -698,41 +841,46 @@
             </div>
         </div>
 
-        <!-- Трафик -->
+        <!-- === ТРАФИК (ТОП-3 + ОБЩАЯ СТАТИСТИКА) === -->
         <div class="tab-content" id="tab-traffic">
             <div class="section">
                 <div class="section-header">
-                    <h2>📊 Потребление трафика клиентами</h2>
+                    <h2>📊 Топ-3 потребителей трафика</h2>
                     <div style="display:flex; gap:10px; align-items:center;">
                         <label style="color:#8899a6; font-size:13px;">Месяц:</label>
-                        <select id="trafficMonthSelect" onchange="loadTrafficClients()">
+                        <select id="trafficMonthSelect" onchange="loadTrafficTop3()">
                             <option value="">Загрузка...</option>
                         </select>
                         <button class="btn" onclick="loadTrafficMonths()">🔄</button>
                     </div>
                 </div>
 
-                <div class="stat-grid" id="trafficStats">
-                    <div class="stat-card">
-                        <div class="label">Всего трафика</div>
-                        <div class="value" id="trafficTotal">0 B</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="label">Активных клиентов</div>
-                        <div class="value green" id="trafficClientsCount">0</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="label">Среднее на клиента</div>
-                        <div class="value orange" id="trafficAverage">0 B</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="label">Топ-клиент</div>
-                        <div class="value red" id="trafficTopClient">—</div>
+                <!-- Общая статистика -->
+                <div class="traffic-summary-card" id="trafficSummary">
+                    <h3 style="color:#fff; margin-bottom:5px;">📊 Общая статистика за месяц</h3>
+                    <div class="traffic-summary-grid">
+                        <div class="traffic-summary-item">
+                            <div class="label">Всего трафика</div>
+                            <div class="value" id="trafficTotal">—</div>
+                        </div>
+                        <div class="traffic-summary-item">
+                            <div class="label">Клиентов</div>
+                            <div class="value" id="trafficClientsCount">0</div>
+                        </div>
+                        <div class="traffic-summary-item">
+                            <div class="label">Топ-3 потребление</div>
+                            <div class="value" id="trafficTop3Total">—</div>
+                        </div>
+                        <div class="traffic-summary-item">
+                            <div class="label">Доля топ-3</div>
+                            <div class="value" id="trafficTop3Percent">—</div>
+                        </div>
                     </div>
                 </div>
 
-                <div id="trafficList" class="table-wrap">
-                    <div class="loading">Выберите месяц для просмотра статистики</div>
+                <!-- Топ-3 подиум -->
+                <div class="traffic-top-grid" id="trafficPodium" style="margin-top:20px;">
+                    <div class="loading" style="grid-column:1/-1;">Выберите месяц для просмотра</div>
                 </div>
             </div>
         </div>
@@ -774,7 +922,7 @@
 
     </div>
 
-    <!-- Модальное окно клиента (конфигурация + история) -->
+    <!-- Модальное окно клиента (конфигурация + трафик + история) -->
     <div class="modal" id="clientConfigModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -782,19 +930,6 @@
                 <button class="close-btn" onclick="closeClientConfigModal()">×</button>
             </div>
             <div id="clientConfigContent">
-                <div class="loading">Загрузка...</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Модальное окно истории трафика клиента -->
-    <div class="modal" id="clientTrafficModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>📈 История трафика клиента</h3>
-                <button class="close-btn" onclick="closeClientTrafficModal()">×</button>
-            </div>
-            <div id="clientTrafficContent">
                 <div class="loading">Загрузка...</div>
             </div>
         </div>
@@ -960,7 +1095,7 @@
             }
         }
 
-        // ====== КЛИЕНТЫ (полный ID + конфиг + история) ======
+        // ====== КЛИЕНТЫ ======
         async function loadClients() {
             const el = document.getElementById('clientsList');
             el.innerHTML = '<div class="loading">Загрузка...</div>';
@@ -990,16 +1125,18 @@
             }
         }
 
+        // ====== МОДАЛКА КЛИЕНТА (Конфиг + Трафик + История) ======
         async function showClientConfig(clientId) {
             document.getElementById('clientConfigModal').classList.add('active');
             const content = document.getElementById('clientConfigContent');
             content.innerHTML = '<div class="loading">Загрузка...</div>';
 
             try {
-                // Загружаем конфигурацию и историю параллельно
-                const [configRes, historyRes] = await Promise.all([
+                // Параллельно загружаем: конфиг, историю просмотров и трафик
+                const [configRes, historyRes, trafficRes] = await Promise.all([
                     fetch(SERVER_URL + '/api/client/config?clientId=' + encodeURIComponent(clientId)).then(r => r.json()),
-                    apiFetch('/api/admin/history/' + clientId)
+                    apiFetch('/api/admin/history/' + clientId),
+                    apiFetch('/api/traffic/client/' + clientId).catch(() => ({ totalBytes: 0, totalFormatted: '0 B', history: [] }))
                 ]);
 
                 const c = configRes.config || {};
@@ -1014,7 +1151,7 @@
       </div>
     </div>`;
 
-                // Конфигурация TorrServer
+                // === БЛОК 1: КОНФИГУРАЦИЯ TORRSERVER ===
                 html += `<div class="config-block">
       <h4>🌐 Конфигурация TorrServer</h4>`;
 
@@ -1057,10 +1194,31 @@
         <small>Клиент ещё не задал адрес своего TorrServer</small>
       </div>`;
                 }
-
                 html += `</div>`;
 
-                // История просмотров
+                // === БЛОК 2: ТРАФИК КЛИЕНТА (НОВЫЙ) ===
+                html += `<div class="client-traffic-block">
+      <h4>📊 Потребление трафика</h4>
+      <div class="client-traffic-total">
+        <div class="label">Всего за всё время</div>
+        <div class="value">${trafficRes.totalFormatted || '0 B'}</div>
+      </div>`;
+
+                if (trafficRes.history && trafficRes.history.length > 0) {
+                    html += '<div class="client-traffic-history-list">';
+                    trafficRes.history.forEach(h => {
+                        html += `<div class="client-traffic-month">
+          <span class="month">📆 ${formatMonth(h.month)}</span>
+          <span class="bytes">${h.formatted}</span>
+        </div>`;
+                    });
+                    html += '</div>';
+                } else {
+                    html += '<div style="color:#5a6c7d; text-align:center; padding:10px;">Нет данных о трафике</div>';
+                }
+                html += `</div>`;
+
+                // === БЛОК 3: ИСТОРИЯ ПРОСМОТРОВ ===
                 html += `<div class="config-block">
       <h4>📜 История просмотров (${historyRes.total || 0} записей)</h4>`;
 
@@ -1088,7 +1246,6 @@
         История просмотров пуста
       </div>`;
                 }
-
                 html += `</div>`;
 
                 content.innerHTML = html;
@@ -1178,7 +1335,7 @@
             }
         }
 
-        // ====== ТРАФИК ======
+        // ====== ТРАФИК (ТОП-3) ======
         async function loadTrafficMonths() {
             const select = document.getElementById('trafficMonthSelect');
             try {
@@ -1186,8 +1343,8 @@
                 const months = data.months || [];
                 if (months.length === 0) {
                     select.innerHTML = '<option value="">Нет данных</option>';
-                    document.getElementById('trafficList').innerHTML = '<div class="empty-state"><div class="icon">📊</div>Данных о трафике пока нет<br><small style="color:#5a6c7d;">Начните просмотр видео для накопления статистики</small></div>';
-                    resetTrafficStats();
+                    document.getElementById('trafficPodium').innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="icon">📊</div>Данных о трафике пока нет</div>';
+                    resetTrafficSummary();
                     return;
                 }
                 const prevValue = select.value;
@@ -1197,151 +1354,99 @@
                 if (prevValue && months.includes(prevValue)) {
                     select.value = prevValue;
                 }
-                loadTrafficClients();
+                loadTrafficTop3();
             } catch (e) {
                 select.innerHTML = '<option value="">Ошибка</option>';
-                document.getElementById('trafficList').innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
             }
         }
 
-        function resetTrafficStats() {
-            document.getElementById('trafficTotal').textContent = '0 B';
+        function resetTrafficSummary() {
+            document.getElementById('trafficTotal').textContent = '—';
             document.getElementById('trafficClientsCount').textContent = '0';
-            document.getElementById('trafficAverage').textContent = '0 B';
-            document.getElementById('trafficTopClient').textContent = '—';
+            document.getElementById('trafficTop3Total').textContent = '—';
+            document.getElementById('trafficTop3Percent').textContent = '—';
         }
 
-        async function loadTrafficClients() {
+        async function loadTrafficTop3() {
             const month = document.getElementById('trafficMonthSelect').value;
-            const el = document.getElementById('trafficList');
+            const podium = document.getElementById('trafficPodium');
+
             if (!month) {
-                el.innerHTML = '<div class="empty-state">Выберите месяц</div>';
-                resetTrafficStats();
+                podium.innerHTML = '<div class="loading" style="grid-column:1/-1;">Выберите месяц</div>';
+                resetTrafficSummary();
                 return;
             }
-            el.innerHTML = '<div class="loading">Загрузка статистики...</div>';
+
+            podium.innerHTML = '<div class="loading" style="grid-column:1/-1;">Загрузка статистики...</div>';
 
             try {
                 const data = await apiFetch('/api/traffic/clients?month=' + month);
                 const clients = data.clients || [];
+                const top3 = clients.slice(0, 3);
 
+                // Обновляем общую статистику
                 document.getElementById('trafficTotal').textContent = data.totalFormatted || '0 B';
                 document.getElementById('trafficClientsCount').textContent = clients.length;
 
-                const avg = clients.length > 0 ? Math.floor(data.totalBytes / clients.length) : 0;
-                document.getElementById('trafficAverage').textContent = formatBytes(avg);
+                const top3Bytes = top3.reduce((sum, c) => sum + c.bytes, 0);
+                document.getElementById('trafficTop3Total').textContent = formatBytes(top3Bytes);
 
-                const topClient = clients[0];
-                document.getElementById('trafficTopClient').textContent =
-                    topClient ? formatBytes(topClient.bytes) : '—';
+                const top3Percent = data.totalBytes > 0 ? ((top3Bytes / data.totalBytes) * 100).toFixed(1) : 0;
+                document.getElementById('trafficTop3Percent').textContent = top3Percent + '%';
 
-                if (clients.length === 0) {
-                    el.innerHTML = '<div class="empty-state"><div class="icon">📊</div>За этот месяц нет данных о трафике</div>';
+                if (top3.length === 0) {
+                    podium.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="icon">📊</div>За этот месяц нет данных о трафике</div>';
                     return;
                 }
 
-                const maxBytes = clients[0]?.bytes || 1;
+                // Рендерим подиум (топ-3)
+                const medals = [
+                    { medal: '🥇', rank: '1', class: 'gold', title: 'Лидер' },
+                    { medal: '🥈', rank: '2', class: 'silver', title: 'Второе место' },
+                    { medal: '🥉', rank: '3', class: 'bronze', title: 'Третье место' }
+                ];
 
-                let html = `<table><thead><tr>
-      <th>#</th>
-      <th>Client ID</th>
-      <th>IP</th>
-      <th>User-Agent</th>
-      <th style="min-width:220px;">Трафик</th>
-      <th>Последний визит</th>
-    </tr></thead><tbody>`;
-
-                clients.forEach((c, idx) => {
-                    const percent = (c.bytes / maxBytes) * 100;
-                    const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
-                    html += `<tr onclick="showClientTrafficHistory('${c.clientId}')">
-        <td style="font-weight:700; color:${idx < 3 ? '#f39c12' : '#8899a6'}">${medal}</td>
-        <td class="mono"><span class="client-id-full" title="Нажмите для копирования" onclick="event.stopPropagation(); copyToClipboard('${c.clientId}')">${c.clientId}</span></td>
-        <td>${c.ip}</td>
-        <td class="mono" style="max-width:200px; overflow:hidden; text-overflow:ellipsis;" title="${(c.userAgent || '').replace(/"/g, '&quot;')}">${c.userAgent || '—'}</td>
-        <td class="traffic-cell">
-          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-            <span class="traffic-amount">${c.formatted}</span>
-            <span class="mono" style="color:#8899a6; font-size:11px;">${((c.bytes / data.totalBytes) * 100).toFixed(1)}%</span>
-          </div>
-          <div class="traffic-bar-wrap">
-            <div class="traffic-bar" style="width:${percent}%"></div>
-          </div>
-        </td>
-        <td>${timeAgo(c.lastSeen)}</td>
-      </tr>`;
-                });
-                html += '</tbody></table>';
-                html += '<div style="text-align:center; padding:10px; color:#5a6c7d; font-size:12px;">💡 Кликните по строке для просмотра полной истории клиента</div>';
-                el.innerHTML = html;
-            } catch (e) {
-                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
-            }
-        }
-
-        async function showClientTrafficHistory(clientId) {
-            document.getElementById('clientTrafficModal').classList.add('active');
-            const content = document.getElementById('clientTrafficContent');
-            content.innerHTML = '<div class="loading">Загрузка истории...</div>';
-
-            try {
-                const data = await apiFetch('/api/traffic/client/' + clientId);
                 let html = '';
 
-                html += `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
-      <div class="info-row">
-        <div class="info-label">Client ID:</div>
-        <div class="info-value mono" style="color:#1da1f2;">
-          ${data.clientId}
-          <button class="btn-copy" onclick="copyToClipboard('${data.clientId}')">📋</button>
-        </div>
-      </div>
-      <div class="info-row">
-        <div class="info-label">IP-адрес:</div>
-        <div class="info-value">${data.ip}</div>
-      </div>
-      <div class="info-row">
-        <div class="info-label">User-Agent:</div>
-        <div class="info-value mono" style="font-size:11px;">${data.userAgent}</div>
-      </div>
-      <div class="info-row">
-        <div class="info-label">Всего трафика:</div>
-        <div class="info-value" style="color:#1da1f2; font-size:18px; font-weight:700;">${data.totalFormatted}</div>
-      </div>
-    </div>`;
+                // Общая статистика (сводка)
+                // Топ-3 карточки
+                top3.forEach((c, idx) => {
+                    const m = medals[idx];
+                    const percent = data.totalBytes > 0 ? ((c.bytes / data.totalBytes) * 100).toFixed(1) : 0;
 
-                if (!data.history || data.history.length === 0) {
-                    html += '<div class="empty-state"><div class="icon">📊</div>Нет данных о трафике</div>';
-                } else {
-                    const maxBytes = Math.max(...data.history.map(h => h.bytes));
-                    html += '<h4 style="color:#fff; margin-bottom:10px;">📅 Помесячная статистика</h4>';
-                    data.history.forEach(h => {
-                        const percent = (h.bytes / maxBytes) * 100;
-                        html += `<div class="history-item">
-          <div style="flex:1;">
-            <div class="history-month">📆 ${formatMonth(h.month)}</div>
-            <div class="traffic-bar-wrap" style="margin-top:8px; max-width:300px;">
-              <div class="traffic-bar" style="width:${percent}%"></div>
-            </div>
-          </div>
-          <div class="history-bytes">${h.formatted}</div>
-        </div>`;
-                    });
+                    html += `<div class="traffic-podium-card ${m.class}" onclick="showClientConfig('${c.clientId}')" style="cursor:pointer;">
+        <div class="traffic-podium-rank">#${m.rank}</div>
+        <div class="traffic-podium-medal">${m.medal}</div>
+        <div style="color:#8899a6; font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">${m.title}</div>
+        <div class="traffic-podium-bytes">${c.formatted}</div>
+        <div style="color:#8899a6; font-size:12px;">${percent}% от общего</div>
+        <div class="traffic-podium-ip">🌐 ${c.ip}</div>
+        <div class="traffic-podium-id" onclick="event.stopPropagation(); copyToClipboard('${c.clientId}')" title="Нажмите для копирования">
+          ${c.clientId.substring(0, 24)}...
+        </div>
+        <div style="color:#5a6c7d; font-size:11px; margin-top:8px;">
+          ${timeAgo(c.lastSeen)}
+        </div>
+      </div>`;
+                });
+
+                // Если меньше 3 клиентов, добавляем пустые карточки
+                for (let i = top3.length; i < 3; i++) {
+                    const m = medals[i];
+                    html += `<div class="traffic-podium-card ${m.class}" style="opacity:0.4;">
+        <div class="traffic-podium-rank">#${m.rank}</div>
+        <div class="traffic-podium-medal">${m.medal}</div>
+        <div style="color:#8899a6; font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">${m.title}</div>
+        <div class="traffic-podium-bytes" style="color:#5a6c7d;">—</div>
+        <div style="color:#5a6c7d; font-size:12px; margin-top:10px;">Нет данных</div>
+      </div>`;
                 }
 
-                content.innerHTML = html;
+                podium.innerHTML = html;
             } catch (e) {
-                content.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+                podium.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">❌ Ошибка: ' + e.message + '</div>';
             }
         }
-
-        function closeClientTrafficModal() {
-            document.getElementById('clientTrafficModal').classList.remove('active');
-        }
-
-        document.getElementById('clientTrafficModal').addEventListener('click', (e) => {
-            if (e.target.id === 'clientTrafficModal') closeClientTrafficModal();
-        });
 
         // ====== МОНИТОРИНГ ======
         async function loadMonitoring() {
