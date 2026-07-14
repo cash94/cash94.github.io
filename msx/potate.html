@@ -1,723 +1,947 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TorrStream Админка</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #0f1419;
-    color: #e1e8ed;
-    min-height: 100vh;
-  }
-  .header {
-    background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
-    padding: 20px 30px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 15px;
-  }
-  .header h1 { font-size: 24px; color: #fff; }
-  .server-controls {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .server-controls input {
-    padding: 8px 12px;
-    border-radius: 6px;
-    border: 1px solid #3a4a5c;
-    background: #1a2332;
-    color: #fff;
-    min-width: 250px;
-  }
-  .btn {
-    padding: 8px 16px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    transition: all 0.2s;
-    background: #2d5a87;
-    color: #fff;
-  }
-  .btn:hover { background: #3a7ab8; transform: translateY(-1px); }
-  .btn-danger { background: #c0392b; }
-  .btn-danger:hover { background: #e74c3c; }
-  .btn-success { background: #27ae60; }
-  .btn-success:hover { background: #2ecc71; }
-  .btn-secondary { background: #5a6c7d; }
-  .btn-secondary:hover { background: #6b7d8e; }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .connection-status {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    padding: 4px 10px;
-    border-radius: 12px;
-    background: rgba(0,0,0,0.2);
-  }
-  .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #e74c3c;
-  }
-  .status-dot.connected { background: #2ecc71; box-shadow: 0 0 8px #2ecc71; }
-  .tabs {
-    display: flex;
-    background: #1a2332;
-    padding: 0 20px;
-    border-bottom: 1px solid #2a3a4c;
-    overflow-x: auto;
-    scrollbar-width: thin;
-  }
-  .tab-btn {
-    padding: 14px 20px;
-    background: none;
-    border: none;
-    color: #8899a6;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    border-bottom: 3px solid transparent;
-    transition: all 0.2s;
-    white-space: nowrap;
-  }
-  .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.05); }
-  .tab-btn.active {
-    color: #1da1f2;
-    border-bottom-color: #1da1f2;
-  }
-  .content { padding: 25px 30px; }
-  .tab-content { display: none; }
-  .tab-content.active { display: block; animation: fadeIn 0.3s; }
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .section {
-    background: #1a2332;
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 20px;
-    border: 1px solid #2a3a4c;
-  }
-  .section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid #2a3a4c;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  .section-header h2 { font-size: 18px; color: #fff; }
-  .table-wrap { overflow-x: auto; }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-  th, td {
-    padding: 10px 12px;
-    text-align: left;
-    border-bottom: 1px solid #2a3a4c;
-  }
-  th {
-    background: #0f1419;
-    color: #8899a6;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: 0.5px;
-    position: sticky;
-    top: 0;
-  }
-  tbody tr:hover { background: rgba(29, 161, 242, 0.05); }
-  tbody tr { cursor: pointer; transition: background 0.15s; }
-  .mono { font-family: 'SF Mono', Consolas, monospace; font-size: 12px; color: #8899a6; word-break: break-all; }
-  .badge {
-    display: inline-block;
-    padding: 3px 8px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 600;
-  }
-  .badge-info { background: #1da1f2; color: #fff; }
-  .badge-success { background: #27ae60; color: #fff; }
-  .badge-warning { background: #f39c12; color: #fff; }
-  .badge-danger { background: #c0392b; color: #fff; }
-  .stat-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 15px;
-    margin-bottom: 20px;
-  }
-  .stat-card {
-    background: linear-gradient(135deg, #2a3a4c 0%, #1a2332 100%);
-    padding: 18px;
-    border-radius: 10px;
-    border: 1px solid #3a4a5c;
-  }
-  .stat-card .label {
-    font-size: 12px;
-    color: #8899a6;
-    text-transform: uppercase;
-    margin-bottom: 6px;
-    letter-spacing: 0.5px;
-  }
-  .stat-card .value {
-    font-size: 24px;
-    font-weight: 700;
-    color: #1da1f2;
-  }
-  .stat-card .value.green { color: #2ecc71; }
-  .stat-card .value.orange { color: #f39c12; }
-  .stat-card .value.red { color: #e74c3c; }
-  .loading {
-    text-align: center;
-    padding: 30px;
-    color: #8899a6;
-    font-size: 14px;
-  }
-  .empty-state {
-    text-align: center;
-    padding: 40px 20px;
-    color: #5a6c7d;
-  }
-  .empty-state .icon { font-size: 48px; margin-bottom: 10px; }
-  .modal {
-    display: none;
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background: rgba(0,0,0,0.7);
-    z-index: 1000;
-    justify-content: center;
-    align-items: center;
-    padding: 20px;
-  }
-  .modal.active { display: flex; }
-  .modal-content {
-    background: #1a2332;
-    border-radius: 12px;
-    padding: 25px;
-    max-width: 800px;
-    width: 100%;
-    max-height: 85vh;
-    overflow-y: auto;
-    border: 1px solid #3a4a5c;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-  }
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 15px;
-    border-bottom: 1px solid #2a3a4c;
-  }
-  .modal-header h3 { color: #fff; font-size: 18px; }
-  .close-btn {
-    background: none;
-    border: none;
-    color: #8899a6;
-    font-size: 24px;
-    cursor: pointer;
-    padding: 0;
-    width: 30px;
-    height: 30px;
-    line-height: 1;
-  }
-  .close-btn:hover { color: #fff; }
-  .traffic-bar-wrap {
-    background: #0f1419;
-    border-radius: 4px;
-    height: 8px;
-    overflow: hidden;
-    margin-top: 4px;
-  }
-  .traffic-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #1da1f2, #2ecc71);
-    border-radius: 4px;
-    transition: width 0.3s;
-  }
-  .traffic-cell { min-width: 180px; }
-  .traffic-amount { font-weight: 600; color: #1da1f2; }
-  select {
-    padding: 8px 12px;
-    border-radius: 6px;
-    border: 1px solid #3a4a5c;
-    background: #1a2332;
-    color: #fff;
-    cursor: pointer;
-    font-size: 14px;
-  }
-  .filter-row {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-    margin-bottom: 15px;
-  }
-  .filter-row label { color: #8899a6; font-size: 13px; }
-  .history-item {
-    display: flex;
-    justify-content: space-between;
-    padding: 12px;
-    border-bottom: 1px solid #2a3a4c;
-    align-items: center;
-  }
-  .history-item:last-child { border-bottom: none; }
-  .history-month { font-weight: 600; color: #fff; font-size: 15px; }
-  .history-bytes { color: #1da1f2; font-weight: 700; font-size: 16px; }
-  .info-row {
-    display: flex;
-    padding: 10px 0;
-    border-bottom: 1px solid #2a3a4c;
-    align-items: flex-start;
-    gap: 10px;
-  }
-  .info-row:last-child { border-bottom: none; }
-  .info-label {
-    color: #8899a6;
-    font-size: 13px;
-    width: 140px;
-    flex-shrink: 0;
-    font-weight: 600;
-  }
-  .info-value { color: #fff; font-size: 13px; word-break: break-all; flex: 1; }
-  .client-id-full {
-    font-family: 'SF Mono', Consolas, monospace;
-    font-size: 12px;
-    color: #1da1f2;
-    background: rgba(29, 161, 242, 0.1);
-    padding: 4px 8px;
-    border-radius: 4px;
-    display: inline-block;
-    word-break: break-all;
-    cursor: pointer;
-  }
-  .client-id-full:hover { background: rgba(29, 161, 242, 0.2); }
-  .config-block {
-    background: #0f1419;
-    padding: 15px;
-    border-radius: 8px;
-    margin-top: 15px;
-    border: 1px solid #2a3a4c;
-  }
-  .config-block h4 {
-    color: #fff;
-    margin-bottom: 10px;
-    font-size: 15px;
-  }
-  .btn-copy {
-    background: #3a4a5c;
-    color: #fff;
-    border: none;
-    padding: 4px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    margin-left: 6px;
-  }
-  .btn-copy:hover { background: #4a5a6c; }
-  .toast {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background: #27ae60;
-    color: #fff;
-    padding: 12px 20px;
-    border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    z-index: 2000;
-    opacity: 0;
-    transform: translateY(20px);
-    transition: all 0.3s;
-  }
-  .toast.show {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  .toast.error { background: #c0392b; }
-  @media (max-width: 768px) {
-    .header { padding: 15px; }
-    .content { padding: 15px; }
-    .tab-btn { padding: 12px 14px; font-size: 13px; }
-    th, td { padding: 8px 6px; font-size: 12px; }
-    .info-label { width: 110px; font-size: 12px; }
-  }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TorrStream Админка</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1419;
+            color: #e1e8ed;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            padding: 20px 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: #fff;
+        }
+
+        .server-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .server-controls input {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #3a4a5c;
+            background: #1a2332;
+            color: #fff;
+            min-width: 250px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            background: #2d5a87;
+            color: #fff;
+        }
+
+        .btn:hover {
+            background: #3a7ab8;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: #c0392b;
+        }
+
+        .btn-danger:hover {
+            background: #e74c3c;
+        }
+
+        .btn-success {
+            background: #27ae60;
+        }
+
+        .btn-success:hover {
+            background: #2ecc71;
+        }
+
+        .btn-secondary {
+            background: #5a6c7d;
+        }
+
+        .btn-secondary:hover {
+            background: #6b7d8e;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #e74c3c;
+        }
+
+        .status-dot.connected {
+            background: #2ecc71;
+            box-shadow: 0 0 8px #2ecc71;
+        }
+
+        .tabs {
+            display: flex;
+            background: #1a2332;
+            padding: 0 20px;
+            border-bottom: 1px solid #2a3a4c;
+            overflow-x: auto;
+            scrollbar-width: thin;
+        }
+
+        .tab-btn {
+            padding: 14px 20px;
+            background: none;
+            border: none;
+            color: #8899a6;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .tab-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-btn.active {
+            color: #1da1f2;
+            border-bottom-color: #1da1f2;
+        }
+
+        .content {
+            padding: 25px 30px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .section {
+            background: #1a2332;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #2a3a4c;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #2a3a4c;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .section-header h2 {
+            font-size: 18px;
+            color: #fff;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th,
+        td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #2a3a4c;
+        }
+
+        th {
+            background: #0f1419;
+            color: #8899a6;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+        }
+
+        tbody tr:hover {
+            background: rgba(29, 161, 242, 0.05);
+        }
+
+        tbody tr {
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .mono {
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 12px;
+            color: #8899a6;
+            word-break: break-all;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-info {
+            background: #1da1f2;
+            color: #fff;
+        }
+
+        .badge-success {
+            background: #27ae60;
+            color: #fff;
+        }
+
+        .badge-warning {
+            background: #f39c12;
+            color: #fff;
+        }
+
+        .badge-danger {
+            background: #c0392b;
+            color: #fff;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #2a3a4c 0%, #1a2332 100%);
+            padding: 18px;
+            border-radius: 10px;
+            border: 1px solid #3a4a5c;
+        }
+
+        .stat-card .label {
+            font-size: 12px;
+            color: #8899a6;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1da1f2;
+        }
+
+        .stat-card .value.green {
+            color: #2ecc71;
+        }
+
+        .stat-card .value.orange {
+            color: #f39c12;
+        }
+
+        .stat-card .value.red {
+            color: #e74c3c;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 30px;
+            color: #8899a6;
+            font-size: 14px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #5a6c7d;
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1a2332;
+            border-radius: 12px;
+            padding: 25px;
+            max-width: 800px;
+            width: 100%;
+            max-height: 85vh;
+            overflow-y: auto;
+            border: 1px solid #3a4a5c;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #2a3a4c;
+        }
+
+        .modal-header h3 {
+            color: #fff;
+            font-size: 18px;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: #8899a6;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            line-height: 1;
+        }
+
+        .close-btn:hover {
+            color: #fff;
+        }
+
+        .traffic-bar-wrap {
+            background: #0f1419;
+            border-radius: 4px;
+            height: 8px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+
+        .traffic-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #1da1f2, #2ecc71);
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        .traffic-cell {
+            min-width: 180px;
+        }
+
+        .traffic-amount {
+            font-weight: 600;
+            color: #1da1f2;
+        }
+
+        select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #3a4a5c;
+            background: #1a2332;
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        .filter-row label {
+            color: #8899a6;
+            font-size: 13px;
+        }
+
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px;
+            border-bottom: 1px solid #2a3a4c;
+            align-items: center;
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+        }
+
+        .history-month {
+            font-weight: 600;
+            color: #fff;
+            font-size: 15px;
+        }
+
+        .history-bytes {
+            color: #1da1f2;
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        .info-row {
+            display: flex;
+            padding: 10px 0;
+            border-bottom: 1px solid #2a3a4c;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: #8899a6;
+            font-size: 13px;
+            width: 140px;
+            flex-shrink: 0;
+            font-weight: 600;
+        }
+
+        .info-value {
+            color: #fff;
+            font-size: 13px;
+            word-break: break-all;
+            flex: 1;
+        }
+
+        .client-id-full {
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 12px;
+            color: #1da1f2;
+            background: rgba(29, 161, 242, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+            word-break: break-all;
+            cursor: pointer;
+        }
+
+        .client-id-full:hover {
+            background: rgba(29, 161, 242, 0.2);
+        }
+
+        .config-block {
+            background: #0f1419;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 1px solid #2a3a4c;
+        }
+
+        .config-block h4 {
+            color: #fff;
+            margin-bottom: 10px;
+            font-size: 15px;
+        }
+
+        .btn-copy {
+            background: #3a4a5c;
+            color: #fff;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 6px;
+        }
+
+        .btn-copy:hover {
+            background: #4a5a6c;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #27ae60;
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 2000;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.error {
+            background: #c0392b;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                padding: 15px;
+            }
+
+            .content {
+                padding: 15px;
+            }
+
+            .tab-btn {
+                padding: 12px 14px;
+                font-size: 13px;
+            }
+
+            th,
+            td {
+                padding: 8px 6px;
+                font-size: 12px;
+            }
+
+            .info-label {
+                width: 110px;
+                font-size: 12px;
+            }
+        }
+    </style>
 </head>
+
 <body>
 
-<div class="header">
-  <h1>🎬 TorrStream Админка</h1>
-  <div class="server-controls">
-    <span>🌐 Адрес сервера</span>
-    <input type="text" id="serverUrl" placeholder="http://localhost:3000">
-    <button class="btn btn-success" onclick="connectToServer()">🔌 Подключиться</button>
-    <button class="btn" onclick="refreshCurrentTab()">🔄 Обновить</button>
-    <div class="connection-status">
-      <div class="status-dot" id="statusDot"></div>
-      <span id="statusText">Не подключено</span>
-    </div>
-  </div>
-</div>
-
-<div class="tabs">
-  <button class="tab-btn active" onclick="switchTab('streams', event)">🎬 Активные потоки</button>
-  <button class="tab-btn" onclick="switchTab('clients', event)">👥 Клиенты</button>
-  <button class="tab-btn" onclick="switchTab('catalogs', event)">📀 Каталоги</button>
-  <button class="tab-btn" onclick="switchTab('history', event)">📜 История просмотров</button>
-  <button class="tab-btn" onclick="switchTab('traffic', event)">📊 Трафик</button>
-  <button class="tab-btn" onclick="switchTab('monitoring', event)">📊 Мониторинг</button>
-  <button class="tab-btn" onclick="switchTab('system', event)">⚙️ Система</button>
-</div>
-
-<div class="content">
-
-  <!-- Активные потоки -->
-  <div class="tab-content active" id="tab-streams">
-    <div class="section">
-      <div class="section-header">
-        <h2>🎬 Активные HLS потоки (FFmpeg)</h2>
-      </div>
-      <div id="streamsList" class="table-wrap">
-        <div class="loading">Загрузка...</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Клиенты -->
-  <div class="tab-content" id="tab-clients">
-    <div class="section">
-      <div class="section-header">
-        <h2>👥 Все клиенты (устройства)</h2>
-        <div style="color:#8899a6; font-size:12px;">💡 Кликните на строку для просмотра конфигурации</div>
-      </div>
-      <div id="clientsList" class="table-wrap">
-        <div class="loading">Загрузка...</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Каталоги -->
-  <div class="tab-content" id="tab-catalogs">
-    <div class="section">
-      <div class="section-header">
-        <h2>📀 Загруженные медиа-каталоги</h2>
-        <button class="btn" onclick="updateAllCatalogs()">🔄 Обновить все</button>
-      </div>
-      <div id="catalogsList" class="table-wrap">
-        <div class="loading">Загрузка...</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- История просмотров -->
-  <div class="tab-content" id="tab-history">
-    <div class="section">
-      <div class="section-header">
-        <h2>📜 Статистика истории (все клиенты)</h2>
-        <button class="btn btn-danger" onclick="clearAllHistory()">🧹 Очистить всю историю</button>
-      </div>
-      <div id="historyList" class="table-wrap">
-        <div class="loading">Загрузка...</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Трафик -->
-  <div class="tab-content" id="tab-traffic">
-    <div class="section">
-      <div class="section-header">
-        <h2>📊 Потребление трафика клиентами</h2>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <label style="color:#8899a6; font-size:13px;">Месяц:</label>
-          <select id="trafficMonthSelect" onchange="loadTrafficClients()">
-            <option value="">Загрузка...</option>
-          </select>
-          <button class="btn" onclick="loadTrafficMonths()">🔄</button>
+    <div class="header">
+        <h1>🎬 TorrStream Админка</h1>
+        <div class="server-controls">
+            <span>🌐 Адрес сервера</span>
+            <input type="text" id="serverUrl" placeholder="http://localhost:3000">
+            <button class="btn btn-success" onclick="connectToServer()">🔌 Подключиться</button>
+            <button class="btn" onclick="refreshCurrentTab()">🔄 Обновить</button>
+            <div class="connection-status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Не подключено</span>
+            </div>
         </div>
-      </div>
-      
-      <div class="stat-grid" id="trafficStats">
-        <div class="stat-card">
-          <div class="label">Всего трафика</div>
-          <div class="value" id="trafficTotal">0 B</div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('streams', event)">🎬 Активные потоки</button>
+        <button class="tab-btn" onclick="switchTab('clients', event)">👥 Клиенты</button>
+        <button class="tab-btn" onclick="switchTab('catalogs', event)">📀 Каталоги</button>
+        <button class="tab-btn" onclick="switchTab('history', event)">📜 История просмотров</button>
+        <button class="tab-btn" onclick="switchTab('traffic', event)">📊 Трафик</button>
+        <button class="tab-btn" onclick="switchTab('monitoring', event)">📊 Мониторинг</button>
+        <button class="tab-btn" onclick="switchTab('system', event)">⚙️ Система</button>
+    </div>
+
+    <div class="content">
+
+        <!-- Активные потоки -->
+        <div class="tab-content active" id="tab-streams">
+            <div class="section">
+                <div class="section-header">
+                    <h2>🎬 Активные HLS потоки (FFmpeg)</h2>
+                </div>
+                <div id="streamsList" class="table-wrap">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
         </div>
-        <div class="stat-card">
-          <div class="label">Активных клиентов</div>
-          <div class="value green" id="trafficClientsCount">0</div>
+
+        <!-- Клиенты -->
+        <div class="tab-content" id="tab-clients">
+            <div class="section">
+                <div class="section-header">
+                    <h2>👥 Все клиенты (устройства)</h2>
+                    <div style="color:#8899a6; font-size:12px;">💡 Кликните на строку для просмотра конфигурации</div>
+                </div>
+                <div id="clientsList" class="table-wrap">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
         </div>
-        <div class="stat-card">
-          <div class="label">Среднее на клиента</div>
-          <div class="value orange" id="trafficAverage">0 B</div>
+
+        <!-- Каталоги -->
+        <div class="tab-content" id="tab-catalogs">
+            <div class="section">
+                <div class="section-header">
+                    <h2>📀 Загруженные медиа-каталоги</h2>
+                    <button class="btn" onclick="updateAllCatalogs()">🔄 Обновить все</button>
+                </div>
+                <div id="catalogsList" class="table-wrap">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
         </div>
-        <div class="stat-card">
-          <div class="label">Топ-клиент</div>
-          <div class="value red" id="trafficTopClient">—</div>
+
+        <!-- История просмотров -->
+        <div class="tab-content" id="tab-history">
+            <div class="section">
+                <div class="section-header">
+                    <h2>📜 Статистика истории (все клиенты)</h2>
+                    <button class="btn btn-danger" onclick="clearAllHistory()">🧹 Очистить всю историю</button>
+                </div>
+                <div id="historyList" class="table-wrap">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
         </div>
-      </div>
 
-      <div id="trafficList" class="table-wrap">
-        <div class="loading">Выберите месяц для просмотра статистики</div>
-      </div>
-    </div>
-  </div>
+        <!-- Трафик -->
+        <div class="tab-content" id="tab-traffic">
+            <div class="section">
+                <div class="section-header">
+                    <h2>📊 Потребление трафика клиентами</h2>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <label style="color:#8899a6; font-size:13px;">Месяц:</label>
+                        <select id="trafficMonthSelect" onchange="loadTrafficClients()">
+                            <option value="">Загрузка...</option>
+                        </select>
+                        <button class="btn" onclick="loadTrafficMonths()">🔄</button>
+                    </div>
+                </div>
 
-  <!-- Мониторинг -->
-  <div class="tab-content" id="tab-monitoring">
-    <div class="section">
-      <div class="section-header">
-        <h2>📊 Мониторинг ресурсов сервера</h2>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <label style="color:#8899a6; font-size:13px;">Автообновление:</label>
-          <select id="monitoringInterval" onchange="setMonitoringInterval()">
-            <option value="0">Выкл</option>
-            <option value="5000">5 сек</option>
-            <option value="10000">10 сек</option>
-            <option value="30000" selected>30 сек</option>
-            <option value="60000">1 мин</option>
-          </select>
-          <button class="btn" onclick="loadMonitoring()">🔄 Обновить</button>
+                <div class="stat-grid" id="trafficStats">
+                    <div class="stat-card">
+                        <div class="label">Всего трафика</div>
+                        <div class="value" id="trafficTotal">0 B</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Активных клиентов</div>
+                        <div class="value green" id="trafficClientsCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Среднее на клиента</div>
+                        <div class="value orange" id="trafficAverage">0 B</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Топ-клиент</div>
+                        <div class="value red" id="trafficTopClient">—</div>
+                    </div>
+                </div>
+
+                <div id="trafficList" class="table-wrap">
+                    <div class="loading">Выберите месяц для просмотра статистики</div>
+                </div>
+            </div>
         </div>
-      </div>
-      <div id="monitoringData">
-        <div class="loading">Загрузка...</div>
-      </div>
+
+        <!-- Мониторинг -->
+        <div class="tab-content" id="tab-monitoring">
+            <div class="section">
+                <div class="section-header">
+                    <h2>📊 Мониторинг ресурсов сервера</h2>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <label style="color:#8899a6; font-size:13px;">Автообновление:</label>
+                        <select id="monitoringInterval" onchange="setMonitoringInterval()">
+                            <option value="0">Выкл</option>
+                            <option value="5000">5 сек</option>
+                            <option value="10000">10 сек</option>
+                            <option value="30000" selected>30 сек</option>
+                            <option value="60000">1 мин</option>
+                        </select>
+                        <button class="btn" onclick="loadMonitoring()">🔄 Обновить</button>
+                    </div>
+                </div>
+                <div id="monitoringData">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Система -->
+        <div class="tab-content" id="tab-system">
+            <div class="section">
+                <div class="section-header">
+                    <h2>⚙️ Информация о сервере</h2>
+                </div>
+                <div id="systemInfo">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
+        </div>
+
     </div>
-  </div>
 
-  <!-- Система -->
-  <div class="tab-content" id="tab-system">
-    <div class="section">
-      <div class="section-header">
-        <h2>⚙️ Информация о сервере</h2>
-      </div>
-      <div id="systemInfo">
-        <div class="loading">Загрузка...</div>
-      </div>
+    <!-- Модальное окно конфигурации клиента -->
+    <div class="modal" id="clientConfigModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔧 Конфигурация клиента</h3>
+                <button class="close-btn" onclick="closeClientConfigModal()">×</button>
+            </div>
+            <div id="clientConfigContent">
+                <div class="loading">Загрузка...</div>
+            </div>
+        </div>
     </div>
-  </div>
 
-</div>
-
-<!-- Модальное окно конфигурации клиента -->
-<div class="modal" id="clientConfigModal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3>🔧 Конфигурация клиента</h3>
-      <button class="close-btn" onclick="closeClientConfigModal()">×</button>
+    <!-- Модальное окно истории трафика клиента -->
+    <div class="modal" id="clientTrafficModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📈 История трафика клиента</h3>
+                <button class="close-btn" onclick="closeClientTrafficModal()">×</button>
+            </div>
+            <div id="clientTrafficContent">
+                <div class="loading">Загрузка...</div>
+            </div>
+        </div>
     </div>
-    <div id="clientConfigContent">
-      <div class="loading">Загрузка...</div>
-    </div>
-  </div>
-</div>
 
-<!-- Модальное окно истории трафика клиента -->
-<div class="modal" id="clientTrafficModal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3>📈 История трафика клиента</h3>
-      <button class="close-btn" onclick="closeClientTrafficModal()">×</button>
-    </div>
-    <div id="clientTrafficContent">
-      <div class="loading">Загрузка...</div>
-    </div>
-  </div>
-</div>
+    <!-- Toast уведомления -->
+    <div class="toast" id="toast"></div>
 
-<!-- Toast уведомления -->
-<div class="toast" id="toast"></div>
+    <script>
+        let SERVER_URL = localStorage.getItem('torrstream_server') || 'http://localhost:3000';
+        let connected = false;
+        let monitoringTimer = null;
+        const ADMIN_TOKEN = 'videoloop-admin';
 
-<script>
-let SERVER_URL = localStorage.getItem('torrstream_server') || 'http://localhost:3000';
-let connected = false;
-let monitoringTimer = null;
-const ADMIN_TOKEN = 'videoloop-admin';
+        document.getElementById('serverUrl').value = SERVER_URL;
 
-document.getElementById('serverUrl').value = SERVER_URL;
+        function showToast(msg, isError = false) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = 'toast show' + (isError ? ' error' : '');
+            setTimeout(() => { t.className = 'toast'; }, 3000);
+        }
 
-function showToast(msg, isError = false) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast show' + (isError ? ' error' : '');
-  setTimeout(() => { t.className = 'toast'; }, 3000);
-}
+        function setConnected(state) {
+            connected = state;
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            if (state) {
+                dot.classList.add('connected');
+                text.textContent = 'Подключено';
+            } else {
+                dot.classList.remove('connected');
+                text.textContent = 'Не подключено';
+            }
+        }
 
-function setConnected(state) {
-  connected = state;
-  const dot = document.getElementById('statusDot');
-  const text = document.getElementById('statusText');
-  if (state) {
-    dot.classList.add('connected');
-    text.textContent = 'Подключено';
-  } else {
-    dot.classList.remove('connected');
-    text.textContent = 'Не подключено';
-  }
-}
+        function connectToServer() {
+            SERVER_URL = document.getElementById('serverUrl').value.replace(/\/$/, '');
+            localStorage.setItem('torrstream_server', SERVER_URL);
 
-function connectToServer() {
-  SERVER_URL = document.getElementById('serverUrl').value.replace(/\/$/, '');
-  localStorage.setItem('torrstream_server', SERVER_URL);
-  
-  fetch(SERVER_URL + '/api/version')
-    .then(r => r.json())
-    .then(data => {
-      setConnected(true);
-      console.log('✅ Подключено к серверу версии:', data.version);
-      refreshCurrentTab();
-    })
-    .catch(e => {
-      setConnected(false);
-      alert('❌ Не удалось подключиться: ' + e.message);
-    });
-}
+            fetch(SERVER_URL + '/api/version')
+                .then(r => r.json())
+                .then(data => {
+                    setConnected(true);
+                    console.log('✅ Подключено к серверу версии:', data.version);
+                    refreshCurrentTab();
+                })
+                .catch(e => {
+                    setConnected(false);
+                    alert('❌ Не удалось подключиться: ' + e.message);
+                });
+        }
 
-function switchTab(tab, evt) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  if (evt && evt.target) evt.target.classList.add('active');
-  document.getElementById('tab-' + tab).classList.add('active');
-  refreshCurrentTab();
-}
+        function switchTab(tab, evt) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            if (evt && evt.target) evt.target.classList.add('active');
+            document.getElementById('tab-' + tab).classList.add('active');
+            refreshCurrentTab();
+        }
 
-function refreshCurrentTab() {
-  const activeTab = document.querySelector('.tab-content.active');
-  if (!activeTab) return;
-  const id = activeTab.id.replace('tab-', '');
-  if (id === 'streams') loadStreams();
-  else if (id === 'clients') loadClients();
-  else if (id === 'catalogs') loadCatalogs();
-  else if (id === 'history') loadHistory();
-  else if (id === 'traffic') loadTrafficMonths();
-  else if (id === 'monitoring') loadMonitoring();
-  else if (id === 'system') loadSystemInfo();
-}
+        function refreshCurrentTab() {
+            const activeTab = document.querySelector('.tab-content.active');
+            if (!activeTab) return;
+            const id = activeTab.id.replace('tab-', '');
+            if (id === 'streams') loadStreams();
+            else if (id === 'clients') loadClients();
+            else if (id === 'catalogs') loadCatalogs();
+            else if (id === 'history') loadHistory();
+            else if (id === 'traffic') loadTrafficMonths();
+            else if (id === 'monitoring') loadMonitoring();
+            else if (id === 'system') loadSystemInfo();
+        }
 
-async function apiFetch(path, options = {}) {
-  if (!connected) {
-    alert('Сначала подключитесь к серверу');
-    throw new Error('Not connected');
-  }
-  const headers = options.headers || {};
-  headers['x-admin-token'] = ADMIN_TOKEN;
-  if (options.body && typeof options.body === 'string') {
-    headers['Content-Type'] = 'application/json';
-  }
-  const res = await fetch(SERVER_URL + path, { ...options, headers });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
+        async function apiFetch(path, options = {}) {
+            if (!connected) {
+                alert('Сначала подключитесь к серверу');
+                throw new Error('Not connected');
+            }
+            const headers = options.headers || {};
+            headers['x-admin-token'] = ADMIN_TOKEN;
+            if (options.body && typeof options.body === 'string') {
+                headers['Content-Type'] = 'application/json';
+            }
+            const res = await fetch(SERVER_URL + path, { ...options, headers });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        }
 
-function formatBytes(bytes) {
-  if (!bytes || bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
+        function formatBytes(bytes) {
+            if (!bytes || bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
 
-function formatMonth(monthKey) {
-  if (!monthKey) return '';
-  const [y, m] = monthKey.split('-');
-  const months = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-  return months[parseInt(m, 10) - 1] + ' ' + y;
-}
+        function formatMonth(monthKey) {
+            if (!monthKey) return '';
+            const [y, m] = monthKey.split('-');
+            const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+            return months[parseInt(m, 10) - 1] + ' ' + y;
+        }
 
-function formatDate(ts) {
-  if (!ts) return '—';
-  const d = new Date(ts);
-  return d.toLocaleString('ru-RU');
-}
+        function formatDate(ts) {
+            if (!ts) return '—';
+            const d = new Date(ts);
+            return d.toLocaleString('ru-RU');
+        }
 
-function timeAgo(ts) {
-  if (!ts) return '—';
-  const diff = Date.now() - ts;
-  const sec = Math.floor(diff / 1000);
-  if (sec < 60) return sec + ' сек назад';
-  const min = Math.floor(sec / 60);
-  if (min < 60) return min + ' мин назад';
-  const h = Math.floor(min / 60);
-  if (h < 24) return h + ' ч назад';
-  const d = Math.floor(h / 24);
-  return d + ' дн назад';
-}
+        function timeAgo(ts) {
+            if (!ts) return '—';
+            const diff = Date.now() - ts;
+            const sec = Math.floor(diff / 1000);
+            if (sec < 60) return sec + ' сек назад';
+            const min = Math.floor(sec / 60);
+            if (min < 60) return min + ' мин назад';
+            const h = Math.floor(min / 60);
+            if (h < 24) return h + ' ч назад';
+            const d = Math.floor(h / 24);
+            return d + ' дн назад';
+        }
 
-function copyToClipboard(text) {
-  navigator.clipboard.writeText(text).then(() => {
-    showToast('📋 Скопировано: ' + text.substring(0, 20) + (text.length > 20 ? '...' : ''));
-  }).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    showToast('📋 Скопировано');
-  });
-}
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('📋 Скопировано: ' + text.substring(0, 20) + (text.length > 20 ? '...' : ''));
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast('📋 Скопировано');
+            });
+        }
 
-// ====== ПОТОКИ ======
-async function loadStreams() {
-  const el = document.getElementById('streamsList');
-  el.innerHTML = '<div class="loading">Загрузка...</div>';
-  try {
-    const data = await apiFetch('/status');
-    if (!data.streams || data.streams.length === 0) {
-      el.innerHTML = '<div class="empty-state"><div class="icon">🎬</div>Нет активных потоков</div>';
-      return;
-    }
-    let html = `<table><thead><tr>
+        // ====== ПОТОКИ ======
+        async function loadStreams() {
+            const el = document.getElementById('streamsList');
+            el.innerHTML = '<div class="loading">Загрузка...</div>';
+            try {
+                const data = await apiFetch('/status');
+                if (!data.streams || data.streams.length === 0) {
+                    el.innerHTML = '<div class="empty-state"><div class="icon">🎬</div>Нет активных потоков</div>';
+                    return;
+                }
+                let html = `<table><thead><tr>
       <th>Stream ID</th><th>Клиент</th><th>URL</th><th>Uptime</th><th>Длит.</th>
     </tr></thead><tbody>`;
-    data.streams.forEach(s => {
-      html += `<tr>
+                data.streams.forEach(s => {
+                    html += `<tr>
         <td class="mono">${s.id}</td>
         <td class="mono">${s.clientId || '—'}</td>
         <td class="mono" style="max-width:300px; overflow:hidden; text-overflow:ellipsis;">${s.url || '—'}</td>
         <td>${Math.floor(s.uptime / 1000)}с</td>
         <td>${s.duration ? Math.floor(s.duration) + 'с' : '—'}</td>
       </tr>`;
-    });
-    html += '</tbody></table>';
-    el.innerHTML = html;
-  } catch (e) {
-    el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
-  }
-}
+                });
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
 
-// ====== КЛИЕНТЫ (полный ID + конфиг) ======
-async function loadClients() {
-  const el = document.getElementById('clientsList');
-  el.innerHTML = '<div class="loading">Загрузка...</div>';
-  try {
-    const data = await apiFetch('/api/clients');
-    if (!data.clients || data.clients.length === 0) {
-      el.innerHTML = '<div class="empty-state"><div class="icon">👥</div>Нет клиентов</div>';
-      return;
-    }
-    let html = `<table><thead><tr>
+        // ====== КЛИЕНТЫ (полный ID + конфиг) ======
+        async function loadClients() {
+            const el = document.getElementById('clientsList');
+            el.innerHTML = '<div class="loading">Загрузка...</div>';
+            try {
+                const data = await apiFetch('/api/clients');
+                if (!data.clients || data.clients.length === 0) {
+                    el.innerHTML = '<div class="empty-state"><div class="icon">👥</div>Нет клиентов</div>';
+                    return;
+                }
+                let html = `<table><thead><tr>
       <th>Client ID</th><th>IP</th><th>User-Agent</th><th>Первый визит</th><th>Последний визит</th><th>Конфиг</th>
     </tr></thead><tbody>`;
-    data.clients.forEach(c => {
-      html += `<tr onclick="showClientConfig('${c.id}')">
+                data.clients.forEach(c => {
+                    html += `<tr onclick="showClientConfig('${c.id}')">
         <td class="mono"><span class="client-id-full" title="Нажмите для копирования" onclick="event.stopPropagation(); copyToClipboard('${c.id}')">${c.id}</span></td>
         <td>${c.ip}</td>
         <td class="mono" style="max-width:250px; overflow:hidden; text-overflow:ellipsis;" title="${(c.userAgent || '').replace(/"/g, '&quot;')}">${c.userAgent || '—'}</td>
@@ -725,25 +949,25 @@ async function loadClients() {
         <td>${timeAgo(c.lastSeen)}</td>
         <td>${c.hasConfig ? '<span class="badge badge-success">✓ TorrServer</span>' : '<span class="badge badge-warning">✗ нет</span>'}</td>
       </tr>`;
-    });
-    html += '</tbody></table>';
-    el.innerHTML = html;
-  } catch (e) {
-    el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
-  }
-}
+                });
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
 
-async function showClientConfig(clientId) {
-  document.getElementById('clientConfigModal').classList.add('active');
-  const content = document.getElementById('clientConfigContent');
-  content.innerHTML = '<div class="loading">Загрузка...</div>';
-  
-  try {
-    const res = await fetch(SERVER_URL + '/api/client/config?clientId=' + encodeURIComponent(clientId));
-    const data = await res.json();
-    const c = data.config || {};
-    
-    let html = `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
+        async function showClientConfig(clientId) {
+            document.getElementById('clientConfigModal').classList.add('active');
+            const content = document.getElementById('clientConfigContent');
+            content.innerHTML = '<div class="loading">Загрузка...</div>';
+
+            try {
+                const res = await fetch(SERVER_URL + '/api/client/config?clientId=' + encodeURIComponent(clientId));
+                const data = await res.json();
+                const c = data.config || {};
+
+                let html = `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
       <div class="info-row">
         <div class="info-label">Client ID:</div>
         <div class="info-value mono" style="color:#1da1f2;">
@@ -752,12 +976,12 @@ async function showClientConfig(clientId) {
         </div>
       </div>
     </div>`;
-    
-    html += `<div class="config-block">
+
+                html += `<div class="config-block">
       <h4>🌐 Конфигурация TorrServer</h4>`;
-    
-    if (data.hasSavedConfig) {
-      html += `
+
+                if (data.hasSavedConfig) {
+                    html += `
         <div class="info-row">
           <div class="info-label">URL:</div>
           <div class="info-value mono">
@@ -771,9 +995,9 @@ async function showClientConfig(clientId) {
             ${c.authEnabled ? '<span class="badge badge-success">Включена</span>' : '<span class="badge badge-warning">Выключена</span>'}
           </div>
         </div>`;
-      
-      if (c.authEnabled && c.login) {
-        html += `
+
+                    if (c.authEnabled && c.login) {
+                        html += `
           <div class="info-row">
             <div class="info-label">Логин:</div>
             <div class="info-value mono">
@@ -788,196 +1012,204 @@ async function showClientConfig(clientId) {
               ${c.hasPassword ? `<span style="color:#27ae60; margin-left:8px;">✓ установлен</span>` : ''}
             </div>
           </div>`;
-      }
-    } else {
-      html += `<div style="color:#5a6c7d; padding:10px; text-align:center;">
+                    }
+                } else {
+                    html += `<div style="color:#5a6c7d; padding:10px; text-align:center;">
         ❌ Конфигурация TorrServer не настроена<br>
         <small>Клиент ещё не задал адрес своего TorrServer</small>
       </div>`;
-    }
-    
-    html += `</div>`;
-    content.innerHTML = html;
-  } catch (e) {
-    content.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
-  }
-}
+                }
 
-function closeClientConfigModal() {
-  document.getElementById('clientConfigModal').classList.remove('active');
-}
+                html += `</div>`;
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
 
-document.getElementById('clientConfigModal').addEventListener('click', (e) => {
-  if (e.target.id === 'clientConfigModal') closeClientConfigModal();
-});
+        function closeClientConfigModal() {
+            document.getElementById('clientConfigModal').classList.remove('active');
+        }
 
-// ====== КАТАЛОГИ (размер + кнопка загрузить) ======
-async function loadCatalogs() {
-  const el = document.getElementById('catalogsList');
-  el.innerHTML = '<div class="loading">Загрузка...</div>';
-  try {
-    const data = await apiFetch('/api/catalogs/status');
-    let html = `<table><thead><tr>
+        document.getElementById('clientConfigModal').addEventListener('click', (e) => {
+            if (e.target.id === 'clientConfigModal') closeClientConfigModal();
+        });
+
+        // ====== КАТАЛОГИ (размер + кнопка загрузить) ======
+        async function loadCatalogs() {
+            const el = document.getElementById('catalogsList');
+            el.innerHTML = '<div class="loading">Загрузка...</div>';
+            try {
+                const data = await apiFetch('/api/catalogs/status');
+                let html = `<table><thead><tr>
       <th>Каталог</th><th>Размер</th><th>Элементов</th><th>Обновлён</th><th>Действие</th>
     </tr></thead><tbody>`;
-    
-    if (data.loaded && data.loaded.length > 0) {
-      data.loaded.forEach(c => {
-        html += `<tr>
+
+                // Сначала показываем загруженные каталоги
+                if (data.loaded && data.loaded.length > 0) {
+                    data.loaded.forEach(c => {
+                        html += `<tr>
           <td><strong>${c.displayName}</strong></td>
           <td><span class="badge badge-info">${c.sizeFormatted}</span></td>
           <td>${c.itemCount || '—'}</td>
           <td>${formatDate(c.lastModified)}</td>
           <td><button class="btn" onclick="updateCatalog('${c.name}')">🔄 Обновить</button></td>
         </tr>`;
-      });
-    }
-    
-    if (data.missing && data.missing.length > 0) {
-      data.missing.forEach(c => {
-        html += `<tr style="opacity:0.6">
-          <td>${c.displayName}</td>
-          <td colspan="3" style="color:#e74c3c;">⚠️ Отсутствует на сервере</td>
-          <td><button class="btn btn-success" onclick="updateCatalog('${c.name}')">📥 Загрузить</button></td>
+                    });
+                }
+
+                // Затем показываем отсутствующие каталоги с кнопкой загрузки
+                if (data.missing && data.missing.length > 0) {
+                    data.missing.forEach(c => {
+                        html += `<tr style="opacity:0.7">
+          <td><strong>${c.displayName}</strong></td>
+          <td colspan="3" style="color:#e74c3c;">
+            <span class="badge badge-warning">⚠️ Отсутствует</span>
+          </td>
+          <td>
+            <button class="btn btn-success" onclick="updateCatalog('${c.name}')">
+              📥 Загрузить
+            </button>
+          </td>
         </tr>`;
-      });
-    }
-    
-    if ((!data.loaded || data.loaded.length === 0) && (!data.missing || data.missing.length === 0)) {
-      html += `<tr><td colspan="5" style="text-align:center; color:#5a6c7d; padding:20px;">Нет данных</td></tr>`;
-    }
-    
-    html += '</tbody></table>';
-    el.innerHTML = html;
-  } catch (e) {
-    el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
-  }
-}
+                    });
+                }
 
-async function updateCatalog(name) {
-  if (!confirm(`Обновить/загрузить каталог "${name}"?`)) return;
-  showToast('⏳ Загрузка каталога ' + name + '...');
-  try {
-    await apiFetch('/api/catalog/' + name + '/update', { method: 'POST' });
-    showToast('✅ Каталог ' + name + ' успешно загружен');
-    setTimeout(loadCatalogs, 500);
-  } catch (e) {
-    showToast('❌ Ошибка: ' + e.message, true);
-  }
-}
+                if ((!data.loaded || data.loaded.length === 0) && (!data.missing || data.missing.length === 0)) {
+                    html += `<tr><td colspan="5" style="text-align:center; color:#5a6c7d; padding:20px;">Нет данных</td></tr>`;
+                }
 
-async function updateAllCatalogs() {
-  if (!confirm('Обновить ВСЕ каталоги? Это может занять несколько минут.')) return;
-  showToast('⏳ Обновление всех каталогов...');
-  try {
-    await apiFetch('/api/catalogs/update-all', { method: 'POST' });
-    showToast('✅ Все каталоги обновлены');
-    setTimeout(loadCatalogs, 500);
-  } catch (e) {
-    showToast('❌ Ошибка: ' + e.message, true);
-  }
-}
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
 
-// ====== ИСТОРИЯ (полный Client ID) ======
-async function loadHistory() {
-  const el = document.getElementById('historyList');
-  el.innerHTML = '<div class="loading">Загрузка...</div>';
-  try {
-    const data = await apiFetch('/api/history/stats');
-    const clients = Object.entries(data.stats || {});
-    if (clients.length === 0) {
-      el.innerHTML = '<div class="empty-state"><div class="icon">📜</div>История пуста</div>';
-      return;
-    }
-    let html = `<table><thead><tr>
+        async function updateCatalog(name) {
+            if (!confirm(`Обновить/загрузить каталог "${name}"?`)) return;
+            showToast('⏳ Загрузка каталога ' + name + '...');
+            try {
+                await apiFetch('/api/catalog/' + name + '/update', { method: 'POST' });
+                showToast('✅ Каталог ' + name + ' успешно загружен');
+                setTimeout(loadCatalogs, 500);
+            } catch (e) {
+                showToast('❌ Ошибка: ' + e.message, true);
+            }
+        }
+
+        async function updateAllCatalogs() {
+            if (!confirm('Обновить ВСЕ каталоги? Это может занять несколько минут.')) return;
+            showToast('⏳ Обновление всех каталогов...');
+            try {
+                await apiFetch('/api/catalogs/update-all', { method: 'POST' });
+                showToast('✅ Все каталоги обновлены');
+                setTimeout(loadCatalogs, 500);
+            } catch (e) {
+                showToast('❌ Ошибка: ' + e.message, true);
+            }
+        }
+
+        // ====== ИСТОРИЯ (полный Client ID) ======
+        async function loadHistory() {
+            const el = document.getElementById('historyList');
+            el.innerHTML = '<div class="loading">Загрузка...</div>';
+            try {
+                const data = await apiFetch('/api/history/stats');
+                const clients = Object.entries(data.stats || {});
+                if (clients.length === 0) {
+                    el.innerHTML = '<div class="empty-state"><div class="icon">📜</div>История пуста</div>';
+                    return;
+                }
+                let html = `<table><thead><tr>
       <th>Client ID</th><th>Просмотров</th><th>Последние 5</th><th>Обновлено</th>
     </tr></thead><tbody>`;
-    clients.forEach(([cId, stat]) => {
-      const recent = stat.recentWatched.map(r => r.title).slice(0,3).join(', ');
-      html += `<tr>
+                clients.forEach(([cId, stat]) => {
+                    const recent = stat.recentWatched.map(r => r.title).slice(0, 3).join(', ');
+                    html += `<tr>
         <td class="mono"><span class="client-id-full" title="Нажмите для копирования" onclick="copyToClipboard('${cId}')">${cId}</span></td>
         <td><span class="badge badge-info">${stat.totalWatched}</span></td>
         <td style="max-width:400px; overflow:hidden; text-overflow:ellipsis;">${recent || '—'}</td>
         <td>${timeAgo(stat.lastUpdated)}</td>
       </tr>`;
-    });
-    html += '</tbody></table>';
-    el.innerHTML = html;
-  } catch (e) {
-    el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
-  }
-}
+                });
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
 
-async function clearAllHistory() {
-  if (!confirm('⚠️ Удалить историю ВСЕХ клиентов безвозвратно?')) return;
-  alert('Функция массовой очистки требует подтверждения через сервер');
-}
+        async function clearAllHistory() {
+            if (!confirm('⚠️ Удалить историю ВСЕХ клиентов безвозвратно?')) return;
+            alert('Функция массовой очистки требует подтверждения через сервер');
+        }
 
-// ====== ТРАФИК (полный Client ID) ======
-async function loadTrafficMonths() {
-  const select = document.getElementById('trafficMonthSelect');
-  try {
-    const data = await apiFetch('/api/traffic/months');
-    const months = data.months || [];
-    if (months.length === 0) {
-      select.innerHTML = '<option value="">Нет данных</option>';
-      document.getElementById('trafficList').innerHTML = '<div class="empty-state"><div class="icon">📊</div>Данных о трафике пока нет<br><small style="color:#5a6c7d;">Начните просмотр видео для накопления статистики</small></div>';
-      resetTrafficStats();
-      return;
-    }
-    const prevValue = select.value;
-    select.innerHTML = months.map(m => 
-      `<option value="${m}">${formatMonth(m)}</option>`
-    ).join('');
-    if (prevValue && months.includes(prevValue)) {
-      select.value = prevValue;
-    }
-    loadTrafficClients();
-  } catch (e) {
-    select.innerHTML = '<option value="">Ошибка</option>';
-    document.getElementById('trafficList').innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
-  }
-}
+        // ====== ТРАФИК (полный Client ID) ======
+        async function loadTrafficMonths() {
+            const select = document.getElementById('trafficMonthSelect');
+            try {
+                const data = await apiFetch('/api/traffic/months');
+                const months = data.months || [];
+                if (months.length === 0) {
+                    select.innerHTML = '<option value="">Нет данных</option>';
+                    document.getElementById('trafficList').innerHTML = '<div class="empty-state"><div class="icon">📊</div>Данных о трафике пока нет<br><small style="color:#5a6c7d;">Начните просмотр видео для накопления статистики</small></div>';
+                    resetTrafficStats();
+                    return;
+                }
+                const prevValue = select.value;
+                select.innerHTML = months.map(m =>
+                    `<option value="${m}">${formatMonth(m)}</option>`
+                ).join('');
+                if (prevValue && months.includes(prevValue)) {
+                    select.value = prevValue;
+                }
+                loadTrafficClients();
+            } catch (e) {
+                select.innerHTML = '<option value="">Ошибка</option>';
+                document.getElementById('trafficList').innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
 
-function resetTrafficStats() {
-  document.getElementById('trafficTotal').textContent = '0 B';
-  document.getElementById('trafficClientsCount').textContent = '0';
-  document.getElementById('trafficAverage').textContent = '0 B';
-  document.getElementById('trafficTopClient').textContent = '—';
-}
+        function resetTrafficStats() {
+            document.getElementById('trafficTotal').textContent = '0 B';
+            document.getElementById('trafficClientsCount').textContent = '0';
+            document.getElementById('trafficAverage').textContent = '0 B';
+            document.getElementById('trafficTopClient').textContent = '—';
+        }
 
-async function loadTrafficClients() {
-  const month = document.getElementById('trafficMonthSelect').value;
-  const el = document.getElementById('trafficList');
-  if (!month) {
-    el.innerHTML = '<div class="empty-state">Выберите месяц</div>';
-    resetTrafficStats();
-    return;
-  }
-  el.innerHTML = '<div class="loading">Загрузка статистики...</div>';
-  
-  try {
-    const data = await apiFetch('/api/traffic/clients?month=' + month);
-    const clients = data.clients || [];
-    
-    document.getElementById('trafficTotal').textContent = data.totalFormatted || '0 B';
-    document.getElementById('trafficClientsCount').textContent = clients.length;
-    
-    const avg = clients.length > 0 ? Math.floor(data.totalBytes / clients.length) : 0;
-    document.getElementById('trafficAverage').textContent = formatBytes(avg);
-    
-    const topClient = clients[0];
-    document.getElementById('trafficTopClient').textContent = 
-      topClient ? formatBytes(topClient.bytes) : '—';
-    
-    if (clients.length === 0) {
-      el.innerHTML = '<div class="empty-state"><div class="icon">📊</div>За этот месяц нет данных о трафике</div>';
-      return;
-    }
-    
-    const maxBytes = clients[0]?.bytes || 1;
-    
-    let html = `<table><thead><tr>
+        async function loadTrafficClients() {
+            const month = document.getElementById('trafficMonthSelect').value;
+            const el = document.getElementById('trafficList');
+            if (!month) {
+                el.innerHTML = '<div class="empty-state">Выберите месяц</div>';
+                resetTrafficStats();
+                return;
+            }
+            el.innerHTML = '<div class="loading">Загрузка статистики...</div>';
+
+            try {
+                const data = await apiFetch('/api/traffic/clients?month=' + month);
+                const clients = data.clients || [];
+
+                document.getElementById('trafficTotal').textContent = data.totalFormatted || '0 B';
+                document.getElementById('trafficClientsCount').textContent = clients.length;
+
+                const avg = clients.length > 0 ? Math.floor(data.totalBytes / clients.length) : 0;
+                document.getElementById('trafficAverage').textContent = formatBytes(avg);
+
+                const topClient = clients[0];
+                document.getElementById('trafficTopClient').textContent =
+                    topClient ? formatBytes(topClient.bytes) : '—';
+
+                if (clients.length === 0) {
+                    el.innerHTML = '<div class="empty-state"><div class="icon">📊</div>За этот месяц нет данных о трафике</div>';
+                    return;
+                }
+
+                const maxBytes = clients[0]?.bytes || 1;
+
+                let html = `<table><thead><tr>
       <th>#</th>
       <th>Client ID</th>
       <th>IP</th>
@@ -985,11 +1217,11 @@ async function loadTrafficClients() {
       <th style="min-width:220px;">Трафик</th>
       <th>Последний визит</th>
     </tr></thead><tbody>`;
-    
-    clients.forEach((c, idx) => {
-      const percent = (c.bytes / maxBytes) * 100;
-      const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
-      html += `<tr onclick="showClientTrafficHistory('${c.clientId}')">
+
+                clients.forEach((c, idx) => {
+                    const percent = (c.bytes / maxBytes) * 100;
+                    const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
+                    html += `<tr onclick="showClientTrafficHistory('${c.clientId}')">
         <td style="font-weight:700; color:${idx < 3 ? '#f39c12' : '#8899a6'}">${medal}</td>
         <td class="mono"><span class="client-id-full" title="Нажмите для копирования" onclick="event.stopPropagation(); copyToClipboard('${c.clientId}')">${c.clientId}</span></td>
         <td>${c.ip}</td>
@@ -1005,25 +1237,25 @@ async function loadTrafficClients() {
         </td>
         <td>${timeAgo(c.lastSeen)}</td>
       </tr>`;
-    });
-    html += '</tbody></table>';
-    html += '<div style="text-align:center; padding:10px; color:#5a6c7d; font-size:12px;">💡 Кликните по строке для просмотра полной истории клиента</div>';
-    el.innerHTML = html;
-  } catch (e) {
-    el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
-  }
-}
+                });
+                html += '</tbody></table>';
+                html += '<div style="text-align:center; padding:10px; color:#5a6c7d; font-size:12px;">💡 Кликните по строке для просмотра полной истории клиента</div>';
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
 
-async function showClientTrafficHistory(clientId) {
-  document.getElementById('clientTrafficModal').classList.add('active');
-  const content = document.getElementById('clientTrafficContent');
-  content.innerHTML = '<div class="loading">Загрузка истории...</div>';
-  
-  try {
-    const data = await apiFetch('/api/traffic/client/' + clientId);
-    let html = '';
-    
-    html += `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
+        async function showClientTrafficHistory(clientId) {
+            document.getElementById('clientTrafficModal').classList.add('active');
+            const content = document.getElementById('clientTrafficContent');
+            content.innerHTML = '<div class="loading">Загрузка истории...</div>';
+
+            try {
+                const data = await apiFetch('/api/traffic/client/' + clientId);
+                let html = '';
+
+                html += `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
       <div class="info-row">
         <div class="info-label">Client ID:</div>
         <div class="info-value mono" style="color:#1da1f2;">
@@ -1044,15 +1276,15 @@ async function showClientTrafficHistory(clientId) {
         <div class="info-value" style="color:#1da1f2; font-size:18px; font-weight:700;">${data.totalFormatted}</div>
       </div>
     </div>`;
-    
-    if (!data.history || data.history.length === 0) {
-      html += '<div class="empty-state"><div class="icon">📊</div>Нет данных о трафике</div>';
-    } else {
-      const maxBytes = Math.max(...data.history.map(h => h.bytes));
-      html += '<h4 style="color:#fff; margin-bottom:10px;">📅 Помесячная статистика</h4>';
-      data.history.forEach(h => {
-        const percent = (h.bytes / maxBytes) * 100;
-        html += `<div class="history-item">
+
+                if (!data.history || data.history.length === 0) {
+                    html += '<div class="empty-state"><div class="icon">📊</div>Нет данных о трафике</div>';
+                } else {
+                    const maxBytes = Math.max(...data.history.map(h => h.bytes));
+                    html += '<h4 style="color:#fff; margin-bottom:10px;">📅 Помесячная статистика</h4>';
+                    data.history.forEach(h => {
+                        const percent = (h.bytes / maxBytes) * 100;
+                        html += `<div class="history-item">
           <div style="flex:1;">
             <div class="history-month">📆 ${formatMonth(h.month)}</div>
             <div class="traffic-bar-wrap" style="margin-top:8px; max-width:300px;">
@@ -1061,29 +1293,29 @@ async function showClientTrafficHistory(clientId) {
           </div>
           <div class="history-bytes">${h.formatted}</div>
         </div>`;
-      });
-    }
-    
-    content.innerHTML = html;
-  } catch (e) {
-    content.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
-  }
-}
+                    });
+                }
 
-function closeClientTrafficModal() {
-  document.getElementById('clientTrafficModal').classList.remove('active');
-}
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
 
-document.getElementById('clientTrafficModal').addEventListener('click', (e) => {
-  if (e.target.id === 'clientTrafficModal') closeClientTrafficModal();
-});
+        function closeClientTrafficModal() {
+            document.getElementById('clientTrafficModal').classList.remove('active');
+        }
 
-// ====== МОНИТОРИНГ ======
-async function loadMonitoring() {
-  const el = document.getElementById('monitoringData');
-  try {
-    const data = await apiFetch('/api/status/quick');
-    let html = `<div class="stat-grid">
+        document.getElementById('clientTrafficModal').addEventListener('click', (e) => {
+            if (e.target.id === 'clientTrafficModal') closeClientTrafficModal();
+        });
+
+        // ====== МОНИТОРИНГ ======
+        async function loadMonitoring() {
+            const el = document.getElementById('monitoringData');
+            try {
+                const data = await apiFetch('/api/status/quick');
+                let html = `<div class="stat-grid">
       <div class="stat-card">
         <div class="label">CPU (процесс)</div>
         <div class="value ${data.cpu.percent > 80 ? 'red' : data.cpu.percent > 50 ? 'orange' : 'green'}">${data.cpu.percent}%</div>
@@ -1109,29 +1341,29 @@ async function loadMonitoring() {
         <div class="value">${data.clients}</div>
       </div>
     </div>`;
-    el.innerHTML = html;
-  } catch (e) {
-    el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
-  }
-}
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
 
-function setMonitoringInterval() {
-  if (monitoringTimer) clearInterval(monitoringTimer);
-  const ms = parseInt(document.getElementById('monitoringInterval').value);
-  if (ms > 0) {
-    monitoringTimer = setInterval(loadMonitoring, ms);
-  }
-}
+        function setMonitoringInterval() {
+            if (monitoringTimer) clearInterval(monitoringTimer);
+            const ms = parseInt(document.getElementById('monitoringInterval').value);
+            if (ms > 0) {
+                monitoringTimer = setInterval(loadMonitoring, ms);
+            }
+        }
 
-// ====== СИСТЕМА ======
-async function loadSystemInfo() {
-  const el = document.getElementById('systemInfo');
-  try {
-    const [ver, load] = await Promise.all([
-      apiFetch('/api/version'),
-      apiFetch('/api/status/load')
-    ]);
-    let html = `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
+        // ====== СИСТЕМА ======
+        async function loadSystemInfo() {
+            const el = document.getElementById('systemInfo');
+            try {
+                const [ver, load] = await Promise.all([
+                    apiFetch('/api/version'),
+                    apiFetch('/api/status/load')
+                ]);
+                let html = `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
       <div class="info-row"><div class="info-label">Версия:</div><div class="info-value"><span class="badge badge-info">${ver.version}</span></div></div>
       <div class="info-row"><div class="info-label">Платформа:</div><div class="info-value">${load.system.platform} (${load.system.arch})</div></div>
       <div class="info-row"><div class="info-label">Node.js:</div><div class="info-value mono">${load.system.nodeVersion}</div></div>
@@ -1139,32 +1371,33 @@ async function loadSystemInfo() {
       <div class="info-row"><div class="info-label">CPU:</div><div class="info-value">${load.system.cpus.count}× ${load.system.cpus.model}</div></div>
       <div class="info-row"><div class="info-label">RAM:</div><div class="info-value">${load.system.memory.usedFormatted} / ${load.system.memory.totalFormatted} (${load.system.memory.usagePercent}%)</div></div>
     </div>`;
-    
-    html += '<h4 style="color:#fff; margin:15px 0 10px;">💾 Использование диска</h4>';
-    html += '<table><thead><tr><th>Директория</th><th>Размер</th><th>Файлов</th></tr></thead><tbody>';
-    const storage = load.storage || {};
-    ['catalog','hls','cache','fileInfoCache','clients','timecodes','audioPrefs','history','sync','traffic'].forEach(k => {
-      if (storage[k]) {
-        html += `<tr><td>${storage[k].path || k}</td><td>${storage[k].sizeFormatted}</td><td>${storage[k].fileCount || '—'}</td></tr>`;
-      }
-    });
-    if (storage.total) {
-      html += `<tr style="background:#0f1419; font-weight:700;"><td>ИТОГО</td><td>${storage.total.sizeFormatted}</td><td>—</td></tr>`;
-    }
-    html += '</tbody></table>';
-    
-    el.innerHTML = html;
-  } catch (e) {
-    el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
-  }
-}
 
-window.addEventListener('load', () => {
-  if (SERVER_URL) {
-    setTimeout(connectToServer, 500);
-  }
-});
-</script>
+                html += '<h4 style="color:#fff; margin:15px 0 10px;">💾 Использование диска</h4>';
+                html += '<table><thead><tr><th>Директория</th><th>Размер</th><th>Файлов</th></tr></thead><tbody>';
+                const storage = load.storage || {};
+                ['catalog', 'hls', 'cache', 'fileInfoCache', 'clients', 'timecodes', 'audioPrefs', 'history', 'sync', 'traffic'].forEach(k => {
+                    if (storage[k]) {
+                        html += `<tr><td>${storage[k].path || k}</td><td>${storage[k].sizeFormatted}</td><td>${storage[k].fileCount || '—'}</td></tr>`;
+                    }
+                });
+                if (storage.total) {
+                    html += `<tr style="background:#0f1419; font-weight:700;"><td>ИТОГО</td><td>${storage.total.sizeFormatted}</td><td>—</td></tr>`;
+                }
+                html += '</tbody></table>';
+
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
+
+        window.addEventListener('load', () => {
+            if (SERVER_URL) {
+                setTimeout(connectToServer, 500);
+            }
+        });
+    </script>
 
 </body>
+
 </html>
