@@ -676,6 +676,7 @@ function focusEl(el, opts) {
     } else if (s === 'detail') {
         if (isFI) {
             container = getEl('files-list');
+            fastNavigation = true;
         } else if (isAC) {
             // Для актеров используем wrap контейнер (который реально скроллится)
             container = getEl('catalog-detail-actors-wrap');
