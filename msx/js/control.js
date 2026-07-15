@@ -593,7 +593,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
                         scrollTo: { y: targetScrollTop },
                         duration: 0.1,
                         backgroundColor: 'rgb(0, 0, 0)',
-                        ease: "power0.out",
+                        ease: "power1.out",
                         overwrite: true
                     });
                 } else if (smooth) {
