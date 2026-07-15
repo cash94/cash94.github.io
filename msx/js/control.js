@@ -550,7 +550,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
             if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                 gsap.killTweensOf(con);
                 gsap.to(con, {
-                    scrollTo: { x: targetLeft, y: 'max' },
+                    scrollTo: { x: targetLeft}, //, y: 'max' },
                     duration: 0.1,
                     ease: "power0.out",
                     overwrite: true
