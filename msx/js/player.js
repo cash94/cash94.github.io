@@ -2340,7 +2340,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             startNearEndCheck();
             startHeartbeat();
           }
-        }, 5000);
+        }, 3000);
       };
 
       // Явная отписка перед навешиванием для предотвращения дубликатов
