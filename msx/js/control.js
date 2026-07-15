@@ -699,7 +699,12 @@ function focusEl(el, opts) {
             container = getEl('detail-view');
         }
     } else if (s === 'player') {
-        container = getEl('episodes-list') || getEl('audio-list');
+        var parent = el.parentElement;
+        if (parent) {
+            container = getEl(parent.id);
+        } else {
+            console.log('У элемента нет родителя или родитель не является HTML-элементом');
+        }
     }
 
     // Проверяем видимость и скроллим если нужно
