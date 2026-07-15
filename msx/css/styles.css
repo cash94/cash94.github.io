@@ -813,16 +813,6 @@ body {
   scrollbar-width: none;
 }
 
-/* Добавляем отступ первому элементу */
-.file-item:first-child {
-  margin-left: 20px;
-}
-
-/* Добавляем отступ последнему элементу */
-.file-item:last-child {
-  margin-right: 20px;
-}
-
 /* Скрываем скроллбары для всех контейнеров */
 .files-list::-webkit-scrollbar,
 .catalog-detail-actors-grid::-webkit-scrollbar,
