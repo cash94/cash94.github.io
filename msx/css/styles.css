@@ -970,7 +970,7 @@ body {
 }
 
 .play-btn {
-  font-size: 0;
+  font-size: 1;
 }
 
 body.detail-open {
