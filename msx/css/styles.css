@@ -808,7 +808,7 @@ body {
   overflow-y: hidden;
   gap: 12px;
   padding: 8px 0;
-  scroll-snap-type: x mandatory;
+  scroll-snap-type: none !important;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
@@ -2949,7 +2949,7 @@ html {
 .catalog-detail-trailers-grid {
   scroll-padding-left: 30px;
   scroll-padding-right: 30px;
-  scroll-snap-type: x mandatory;
+  scroll-snap-type: none !important;
   overflow-x: auto;
   overflow-y: hidden;
 }
