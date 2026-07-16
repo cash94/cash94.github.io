@@ -1112,7 +1112,7 @@ async function seekStream(absoluteSeekTime, source) {
 
     return true;
   }
-
+  destroyHls();
   AppState.seekQueue.push(absoluteSeekTime);
   if (AppState.isSeeking) {
     console.log('⏳ В очереди: ' + formatTime(absoluteSeekTime));
