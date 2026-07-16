@@ -1017,23 +1017,18 @@ async function seekStream(absoluteSeekTime, source) {
   pauseTimer = null;
   pauseStartTime = null;
   thisisseek = true;
-
   if (source === undefined) source = 'user';
-
   if (!AppState.currentStreamId && !AppState.transcodingOnOff) {
     console.warn('⚠️ Нет активного потока для перемотки');
     return false;
   }
-
   var videoPlayer = getEl('video-player');
   var totalDuration = AppState.originalDuration || AppState.expectedDuration || 0;
   if (absoluteSeekTime < 0) absoluteSeekTime = 0;
-
   if (totalDuration > 0 && absoluteSeekTime >= totalDuration - 1) {
     console.log('⚠️ Попытка перемотки за конец видео');
     return false;
   }
-
   if (AppState.transcodingOnOff) {
     console.log('🎯 Перемотка в режиме транскодирования (GST)');
     showPlayerLoading('Перемотка...', absoluteSeekTime);
@@ -1083,14 +1078,12 @@ async function seekStream(absoluteSeekTime, source) {
     AppState._seekTimeout = seekTimeout;
     return true;
   }
-
   AppState.seekQueue.push(absoluteSeekTime);
   if (AppState.isSeeking) {
     console.log('⏳ В очереди: ' + formatTime(absoluteSeekTime));
     return false;
   }
   if (source === 'slider' && AppState.seekTimeout) clearTimeout(AppState.seekTimeout);
-
   return new Promise(function (resolve) {
     var executeSeek = async function () {
       var targetTime = AppState.seekQueue[AppState.seekQueue.length - 1];
@@ -1100,7 +1093,6 @@ async function seekStream(absoluteSeekTime, source) {
         resolve(false);
         return;
       }
-
       var wasPlaying = !videoPlayer.paused;
       var episodesPanel = getEl('episodes-panel');
       var episodesBtn = getEl('episodes-btn');
@@ -1108,12 +1100,10 @@ async function seekStream(absoluteSeekTime, source) {
         episodesPanel.classList.add('hidden');
         if (episodesBtn) episodesBtn.classList.remove('active');
       }
-
       AppState.isSeeking = true;
       AppState.suppressTimeUpdate = true;
       AppState.previewTime = targetTime;
       console.log('🔍 SEEK: ' + formatTime(targetTime));
-
       var positionInBuffer = isPositionInBuffer(targetTime);
       if (positionInBuffer) {
         console.log('🎯 Перемотка в пределах буфера - используем простой seek');
@@ -1132,26 +1122,21 @@ async function seekStream(absoluteSeekTime, source) {
         resolve(true);
         return;
       }
-
       console.log('🎯 Перемотка вне буфера - перезапуск ffmpeg');
       if (typeof lastCleanedSegment !== 'undefined') {
         console.log('🔄 Сброс lastCleanedSegment: ' + lastCleanedSegment + ' -> -1');
         lastCleanedSegment = -1;
       }
-
       var playbackOverlay = getEl('playback-overlay');
       var playbackText = document.querySelector('.playback-text');
       playbackOverlay.classList.add('active');
       playbackText.textContent = 'Перемотка на ' + formatTime(targetTime) + '...';
-
       if (wasPlaying) {
         videoPlayer.pause();
       }
-
       var retrySeek = async function (retryCount, maxRetries) {
         if (retryCount === undefined) retryCount = 0;
         if (maxRetries === undefined) maxRetries = 2;
-
         try {
           var savedClientId = localStorage.getItem('clientId');
           var seekResponse = await fetch(SERVER_URL + '/hls/stream/seek', {
@@ -1170,45 +1155,77 @@ async function seekStream(absoluteSeekTime, source) {
           var seekData = await seekResponse.json();
           if (!seekData.success) throw new Error(seekData.error || 'Ошибка перемотки');
           console.log('✅ Ответ сервера:', seekData);
-
           AppState.expectedDuration = seekData.duration;
           AppState.originalDuration = seekData.originalDuration;
           AppState.seekOffset = seekData.seekOffset;
           AppState.currentStreamId = seekData.streamId;
           AppState.lastSuccessfulSeek = targetTime;
-
           if (videoPlayer) {
             videoPlayer.dataset.expectedDuration = AppState.expectedDuration;
             videoPlayer.dataset.originalDuration = AppState.originalDuration;
             videoPlayer.dataset.seekOffset = AppState.seekOffset;
           }
-
           playbackText.textContent = 'Загрузка потока...';
           var playlistReady = await checkPlaylistExists(seekData.playlistUrl, 60);
           if (!playlistReady) throw new Error('Таймаут ожидания плейлиста');
           playbackText.textContent = 'Загрузка видео...';
-          await reloadHlsPlaylist(seekData.playlistUrl);
 
-          // === ВОССТАНОВЛЕНИЕ СУБТИТРОВ ПОСЛЕ ПЕРЕМОТКИ ===
-          // Подписываемся на SUBTITLE_TRACKS_UPDATED - это событие срабатывает когда hls.js загрузил subtitle tracks
-          var subtitleTracksHandler = function () {
-            console.log('📊 Subtitle tracks обновлены после seek:', AppState.hls.subtitleTracks.length);
-            if (currentSubtitleTrack >= 0 && AppState.hls.subtitleTracks && AppState.hls.subtitleTracks.length > currentSubtitleTrack) {
-              setTimeout(function () {
-                if (AppState.hls && AppState.hls.subtitleTracks && AppState.hls.subtitleTracks.length > currentSubtitleTrack) {
-                  AppState.hls.subtitleTrack = currentSubtitleTrack;
-                  console.log('✅ Субтитры восстановлены после seek:', currentSubtitleTrack);
-                }
-              }, 300);
-            } else if (currentSubtitleTrack === -1) {
-              console.log('🚫 Субтитры должны быть выключены');
-              if (AppState.hls) AppState.hls.subtitleTrack = -1;
-            }
-            AppState.hls.off(Hls.Events.SUBTITLE_TRACKS_UPDATED, subtitleTracksHandler);
-          };
-
+          // === ПОЛНОЕ ПЕРЕСОЗДАНИЕ HLS INSTANCE ДЛЯ КОРРЕКТНОЙ ЗАГРУЗКИ СУБТИТРОВ ===
           if (AppState.hls) {
+            AppState.hls.destroy();
+            AppState.hls = null;
+          }
+
+          if (Hls.isSupported()) {
+            AppState.hls = new Hls({
+              enableABR: false,
+              startLevel: 0,
+              maxBufferLength: 15,
+              maxMaxBufferLength: 25,
+              startFragPrefetch: true,
+              fragLoadingTimeOut: 15000,
+              manifestLoadingTimeOut: 10000,
+              enableWorker: true,
+              progressive: true,
+              maxBufferSize: 60 * 1000 * 1000,
+              maxBufferHole: 0.5
+            });
+
+            // === ОБРАБОТЧИК СУБТИТРОВ: ждём SUBTITLE_TRACKS_UPDATED ===
+            var subtitleTracksHandler = function () {
+              console.log('📊 Subtitle tracks обновлены после seek:', AppState.hls.subtitleTracks.length);
+              if (currentSubtitleTrack >= 0 && AppState.hls.subtitleTracks.length > currentSubtitleTrack) {
+                setTimeout(function () {
+                  if (AppState.hls) {
+                    AppState.hls.subtitleTrack = currentSubtitleTrack;
+                    console.log('✅ Субтитры установлены после seek:', currentSubtitleTrack);
+                  }
+                }, 200);
+              } else if (currentSubtitleTrack === -1) {
+                console.log('🚫 Субтитры выключены (track=-1)');
+                if (AppState.hls) AppState.hls.subtitleTrack = -1;
+              }
+              AppState.hls.off(Hls.Events.SUBTITLE_TRACKS_UPDATED, subtitleTracksHandler);
+            };
             AppState.hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, subtitleTracksHandler);
+
+            // === ОБРАБОТЧИК ОШИБОК ===
+            AppState.hls.on(Hls.Events.ERROR, function (event, data) {
+              if (data.fatal) {
+                console.error('❌ Фатальная ошибка HLS после seek:', data);
+                switch (data.type) {
+                  case Hls.ErrorTypes.NETWORK_ERROR:
+                    AppState.hls.startLoad();
+                    break;
+                  case Hls.ErrorTypes.MEDIA_ERROR:
+                    AppState.hls.recoverMediaError();
+                    break;
+                }
+              }
+            });
+
+            AppState.hls.loadSource(seekData.playlistUrl);
+            AppState.hls.attachMedia(videoPlayer);
           }
 
           var onMetaData = function () {
@@ -1232,10 +1249,13 @@ async function seekStream(absoluteSeekTime, source) {
             playbackOverlay.classList.remove('active');
             playbackText.textContent = 'Воспроизведение...';
             hidePlayerLoading();
+            startTimecodeSaving();
+            resetMouseIdleTimer();
+            startNearEndCheck();
+            startHeartbeat();
             videoPlayer.removeEventListener('loadedmetadata', onMetaData);
           };
           videoPlayer.addEventListener('loadedmetadata', onMetaData, { once: true });
-
           setTimeout(function () {
             var loadingOverlay = getEl('loading-player-overlay');
             if (loadingOverlay && loadingOverlay.classList.contains('active')) {
@@ -1244,7 +1264,6 @@ async function seekStream(absoluteSeekTime, source) {
               if (wasPlaying) videoPlayer.play()['catch'](function () { });
             }
           }, 10000);
-
           return true;
         } catch (error) {
           console.error('❌ Ошибка перемотки (попытка ' + (retryCount + 1) + '/' + (maxRetries + 1) + '):', error);
@@ -1256,7 +1275,6 @@ async function seekStream(absoluteSeekTime, source) {
           throw error;
         }
       };
-
       try {
         var success = await retrySeek(0, 2);
         resolve(success);
@@ -1277,7 +1295,6 @@ async function seekStream(absoluteSeekTime, source) {
         AppState.isSeeking = false;
       }
     };
-
     if (source === 'slider') {
       if (AppState.seekTimeout) clearTimeout(AppState.seekTimeout);
       AppState.seekTimeout = setTimeout(executeSeek, 300);
