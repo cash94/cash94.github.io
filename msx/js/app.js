@@ -12,11 +12,11 @@ var clickableElements = document.querySelectorAll(
   'button, .control-btn, .play-btn, .torrent-card, .file-item, ' +
   '.search-result-item, .back-btn, .settings-btn, .view-tab, ' +
   '#play-pause-btn, #mute-btn, #prev-episode-btn, #next-episode-btn, ' +
-  '#episodes-btn, #audio-btn, #exit-player-btn, #toggle-buffer-btn, ' +
-  '.episode-item, .audio-item, .close-panel-btn, .filter-select, ' +
+  '#episodes-btn, #audio-btn, #subtitles-btn, #exit-player-btn, #toggle-buffer-btn, ' +
+  '.episode-item, .audio-item, .subtitle-item, .close-panel-btn, .filter-select, ' +
   '.filter-reset-btn, .progress-continue-btn, .detail-progress-btn, ' +
-  '#close-search, #filter-toggle, #search-btn, '+
-  '#torrserver-tab-content, #torrents-tab-content, #player-tab-content, #sync-tab-content'+
+  '#close-search, #filter-toggle, #search-btn, ' +
+  '#torrserver-tab-content, #torrents-tab-content, #player-tab-content, #sync-tab-content, ' +
   '.menu-item'
 );
 var detailView = getEl('detail-view');
