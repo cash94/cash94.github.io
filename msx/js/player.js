@@ -497,7 +497,7 @@ function resetMouseIdleTimer() {
         episodesPanel.style.opacity = '0';
         episodesPanel.style.pointerEvents = 'none';
       }
-      
+
       if (subtitlesPanel && subtitlesPanel.classList.contains('hidden')) {
         subtitlesPanel.style.opacity = '0';
         subtitlesPanel.style.pointerEvents = 'none';
@@ -1197,7 +1197,8 @@ async function seekStream(absoluteSeekTime, source) {
               seekTime: targetTime,
               multiChannel: AppState.multiChannelEnabled,
               clientId: savedClientId,
-              duration: AppState.originalDuration
+              duration: AppState.originalDuration,
+              sub: currentSubtitleTrack
             })
           });
 
@@ -1948,6 +1949,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     var seekParam = (initialSeek && initialSeek > 0) ? ('&start=' + initialSeek.toFixed(2)) : '';
     var durationParam = (fileInfo.duration && fileInfo.duration > 0) ? ('&duration=' + fileInfo.duration.toFixed(0)) : '';
     var audioParam = audioTrack !== null ? ('&audio=' + audioTrack) : '';
+    var subParam = '&sub=' + currentSubtitleTrack;
     var multiChannelParam = (AppState.multiChannelEnabled === true) ? '&multiChannel=true' : '';
     var savedClientId = localStorage.getItem('clientId');
 
@@ -2193,7 +2195,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       }
     }
 
-    var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam, {
+    var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(originalUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam + subParam, {
       signal: signal
     });
 
