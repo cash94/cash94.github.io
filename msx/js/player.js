@@ -3161,6 +3161,46 @@ function setupSubtitlesButton() {
   console.log('✅ Кнопка субтитров настроена');
 }
 
+// НОВАЯ ФУНКЦИЯ: Сохранение предпочтения субтитров
+async function saveSubtitlePreference(hash, fileId, subtitleTrack) {
+  try {
+    var savedClientId = localStorage.getItem('clientId');
+    var response = await fetch(SERVER_URL + '/api/subtitle/pref/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hash: hash,
+        fileId: fileId,
+        subtitleTrack: subtitleTrack,
+        clientId: savedClientId
+      })
+    });
+    if (response.ok) {
+      console.log('💬 Предпочтение субтитров сохранено:', subtitleTrack);
+    }
+  } catch (error) {
+    console.error('Ошибка сохранения предпочтения субтитров:', error);
+  }
+}
+
+// НОВАЯ ФУНКЦИЯ: Загрузка предпочтения субтитров
+async function loadSubtitlePreference(hash, fileId) {
+  try {
+    var savedClientId = localStorage.getItem('clientId');
+    var response = await fetch(SERVER_URL + '/api/subtitle/pref/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
+    if (response.ok) {
+      var data = await response.json();
+      if (data.success && data.subtitleTrack !== null) {
+        console.log('💬 Загружено предпочтение субтитров:', data.subtitleTrack);
+        return data.subtitleTrack;
+      }
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки предпочтения субтитров:', error);
+  }
+  return -1; // По умолчанию выключены
+}
+
 async function handleVideoEnded() {
   console.log('🏁 Видео завершено');
   stopHeartbeat();
