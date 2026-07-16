@@ -83,7 +83,7 @@ function updateFocusableElements() {
             var seek = getEl('seek-slider');
             // Добавляем кнопку пропуска в список, если она видима
             var skipBtn = getEl('skip-button');
-            var btns = document.querySelectorAll('#prev-episode-btn, #play-pause-btn, #next-episode-btn, #audio-btn, #episodes-btn, #mute-btn, #zoom-mode-btn, #toggle-buffer-btn');
+            var btns = document.querySelectorAll('#prev-episode-btn, #play-pause-btn, #next-episode-btn, #audio-btn, #subtitles-btn, #episodes-btn, #mute-btn, #zoom-mode-btn, #toggle-buffer-btn');
             for (var i = 0; i < btns.length; i++) if (btns[i] && btns[i].offsetParent !== null) list.push(btns[i]);
             if (seek && seek.offsetParent !== null) list.unshift(seek);
             // Добавляем кнопку пропуска, если она видима
