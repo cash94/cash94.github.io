@@ -1864,7 +1864,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     var requests = [
       loadFileInfo(currentTimecodeData.hash, currentTimecodeData.fileId),
       loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId),
-      getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId)
+      getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId),
+      loadSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId)
     ];
 
     if (initialSeek === null || initialSeek === 0) {
@@ -1886,7 +1887,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     var fileInfo = promiseResults[0];
     var savedAudioTrack = promiseResults[1];
     var fileName = promiseResults[2];
-    var savedTimecode = promiseResults[3];
+    var savedSubTrack = promiseResults[3];
+    var savedTimecode = null;
 
     if (fileInfo && fileInfo.audio) {
       currentAudioTracks = fileInfo.audio;
@@ -1903,6 +1905,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       console.log('🎵 Используем сохраненное предпочтение: дорожка ' + currentAudioTrack);
     } else {
       currentAudioTrack = audioTrack !== null ? audioTrack : 0;
+    }
+
+    if (savedSubTrack !== null && savedSubTrack < currentSubTracks.length) {
+      currentSubtitleTrack = savedSubTrack;
+      if (audioTrack !== savedSubTrack) audioTrack = savedSubTrack;
+      console.log('Используем сохраненные субтитры: ' + currentSubtitleTrack);
     }
 
     console.log('🎵 Загружено аудиодорожек:', currentAudioTracks.length);
