@@ -1017,7 +1017,7 @@ async function seekStream(absoluteSeekTime, source) {
   pauseTimer = null;
   pauseStartTime = null;
   thisisseek = true;
-  //currentSubtitleTrack = -1;
+  currentSubtitleTrack = -1;
   if (source === undefined) source = 'user';
 
   if (!AppState.currentStreamId && !AppState.transcodingOnOff) {
@@ -1230,6 +1230,7 @@ async function seekStream(absoluteSeekTime, source) {
           var onMetaData = function () {
             console.log('📦 Метаданные загружены');
             videoPlayer.currentTime = 0;
+
             if (wasPlaying) {
               videoPlayer.play()['catch'](function (err) {
                 console.log('🔇 Автоплей после перемотки заблокирован');
@@ -1241,23 +1242,13 @@ async function seekStream(absoluteSeekTime, source) {
             videoPlayer.muted = false;
             updateMuteButton();
             forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
+
             var seekSlider = getEl('seek-slider');
             if (seekSlider) seekSlider.value = Math.min(targetTime, parseFloat(seekSlider.max) || targetTime);
 
-            // === ВОССТАНОВЛЕНИЕ СУБТИТРОВ ПОСЛЕ ПЕРЕМОТКИ ===
-            if (AppState.hls && currentSubtitleTrack !== -1) {
-              setTimeout(function () {
-                try {
-                  AppState.hls.subtitleTrack = currentSubtitleTrack;
-                  console.log('💬 Субтитры восстановлены после перемотки:', currentSubtitleTrack);
-                } catch (e) {
-                  console.error('Ошибка восстановления субтитров:', e);
-                }
-              }, 500);
-            }
-
             AppState.previewTime = null;
             AppState.suppressTimeUpdate = false;
+
             playbackOverlay.classList.remove('active');
             playbackText.textContent = 'Воспроизведение...';
             hidePlayerLoading();
