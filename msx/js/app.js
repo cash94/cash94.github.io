@@ -17,7 +17,7 @@ var clickableElements = document.querySelectorAll(
   '.filter-reset-btn, .progress-continue-btn, .detail-progress-btn, ' +
   '#close-search, #filter-toggle, #search-btn, ' +
   '#torrserver-tab-content, #torrents-tab-content, #player-tab-content, #sync-tab-content, ' +
-  '.menu-item'
+  '.menu-item, .skip-button'
 );
 var detailView = getEl('detail-view');
 var controls = document.querySelectorAll('.control-btn, #seek-slider, #volume-slider');
