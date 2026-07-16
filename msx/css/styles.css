@@ -3111,3 +3111,133 @@ article {
     background: #1a1a20 !important;
     border-left: 3px solid #ff8c00;
 }
+
+/* Панель субтитров */
+.subtitles-panel {
+  position: fixed;
+  bottom: 150px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 320px;
+  max-height: 380px;
+  background: #14141e;
+  border: 1px solid #000000;
+  border-radius: 16px;
+  z-index: 240;
+  overflow: hidden;
+}
+
+.subtitles-panel.hidden {
+  display: none;
+}
+
+.subtitles-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: #000000;
+  border-bottom: 1px solid #000000;
+}
+
+.subtitles-panel-header h3 {
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.subtitles-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.subtitle-item {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: #282837;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.subtitle-item:hover {
+  background: #3a3a4a;
+}
+
+.subtitle-item.active {
+  background: #1e3a5f;
+  border: 1px solid #000000;
+}
+
+.subtitle-icon {
+  width: 36px;
+  height: 36px;
+  background: #4a9eff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 12px;
+  font-size: 16px;
+  color: #fff;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.subtitle-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.subtitle-title {
+  color: white;
+  font-size: 13px;
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subtitle-details {
+  color: #aaa;
+  font-size: 11px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.subtitle-language {
+  background: #3a3a4a;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.subtitle-format {
+  color: #888;
+  font-size: 10px;
+}
+
+.subtitle-check {
+  margin-left: 10px;
+  color: #4a9eff;
+  font-size: 18px;
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.subtitle-item.active .subtitle-check {
+  opacity: 1;
+}
+
+/* Мобильная адаптация */
+@media (max-width: 768px) {
+  .subtitles-panel {
+    width: 280px;
+  }
+}
