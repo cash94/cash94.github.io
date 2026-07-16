@@ -207,6 +207,12 @@ async function init() {
         console.warn('⚠️ setupAudioButton не определена');
       }
 
+      if (typeof setupSubtitlesButton === 'function') {
+        setupSubtitlesButton();
+      } else {
+        console.warn('⚠️ setupSubtitlesButton не определена');
+      }
+
       setupEpisodeNavigation();
 
       if (videoPlayer) {
