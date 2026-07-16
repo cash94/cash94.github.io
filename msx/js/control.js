@@ -50,7 +50,7 @@ function updateFocusableElements() {
     var audioPanel = getEl('audio-panel');
     var isEpisodesOpen = episodesPanel && !episodesPanel.classList.contains('hidden');
     var isAudioOpen = audioPanel && !audioPanel.classList.contains('hidden');
-
+    var isSubtitlesOpen = subtitlesPanel && !subtitlesPanel.classList.contains('hidden');
     var list = [];
 
     if (isEpisodesOpen) {
