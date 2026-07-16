@@ -19,7 +19,9 @@ var mouseIdleTimer = null;
 var IDLE_TIMEOUT = 3000; // 3 секунды
 // Переменные для хранения информации об аудиодорожках
 var currentAudioTracks = [];
+var currentSubTracks = [];
 var currentAudioTrack = 0;
+var currentSubtitleTrack = -1; // -1 означает "выключены"
 var currentFileInfo = null;
 var heartbeatInterval = null;
 var currentBufferAhead = 0;
@@ -720,7 +722,7 @@ function updateBufferDisplay() {
       if (currentTimecodeData.hash && typeof torrentStatsCache !== 'undefined' && torrentStatsCache.preloadSize > 0) {
         torrServerText = 'TorrServer: ' + formatSize(torrentStatsCache.preloaded) + ' | скорость: ' + formatSpeed(torrentStatsCache.downloadSpeed);
         if (torrentStatsCache.activePeers > 0) {
-          torrServerText += ' | пиры: ' + torrentStatsCache.activePeers + ' / ' + torrentStatsCache.totalPeers  + ' - ' + torrentStatsCache.connectedSeeders;
+          torrServerText += ' | пиры: ' + torrentStatsCache.activePeers + ' / ' + torrentStatsCache.totalPeers + ' - ' + torrentStatsCache.connectedSeeders;
         }
       }
 
@@ -1876,6 +1878,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       currentAudioTrack = audioTrack !== null ? audioTrack : 0;
     }
 
+    if (fileInfo && fileInfo.audio) {
+      currentSubTracks = fileInfo.subtitles;
+    }
+
     if (savedAudioTrack !== null && savedAudioTrack < currentAudioTracks.length) {
       currentAudioTrack = savedAudioTrack;
       if (audioTrack !== savedAudioTrack) audioTrack = savedAudioTrack;
@@ -2221,13 +2227,13 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       AppState.hls = new Hls({
         enableABR: false,
         startLevel: 0,
-        maxBufferLength: 15, 
+        maxBufferLength: 15,
         maxMaxBufferLength: 25,
         startFragPrefetch: true,
         fragLoadingTimeOut: 15000,
         manifestLoadingTimeOut: 10000,
         enableWorker: true,
-        progressive: true, 
+        progressive: true,
         maxBufferSize: 60 * 1000 * 1000,
         maxBufferHole: 0.5
       });
@@ -2289,7 +2295,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
             if (currentTimecodeData.hash && torrentStatsCache.preloadSize > 0) {
               torrServerText = formatSize(torrentStatsCache.preloaded) + ' ' + formatSpeed(torrentStatsCache.downloadSpeed);
               if (torrentStatsCache.activePeers > 0) {
-                torrServerText += ' | пиры: ' + torrentStatsCache.activePeers + ' / ' + torrentStatsCache.totalPeers  + ' - ' + torrentStatsCache.connectedSeeders;
+                torrServerText += ' | пиры: ' + torrentStatsCache.activePeers + ' / ' + torrentStatsCache.totalPeers + ' - ' + torrentStatsCache.connectedSeeders;
               }
             }
             showPlayerLoading('Буферизация... ' + Math.min(10, Math.floor(bufferAhead)) + '/10 сек ' + torrServerText, null);
@@ -2355,7 +2361,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       };
       AppState.hls.off(Hls.Events.FRAG_LOADING, fragLoadingHandler);
       AppState.hls.on(Hls.Events.FRAG_LOADING, fragLoadingHandler);
-      
+
       var bufferAppendedHandler = function (event, data) {
         if (signal.aborted) return;
         try {
@@ -2978,6 +2984,181 @@ async function loadAudioPreference(hash, fileId) {
     }
   } catch (error) { console.error('Ошибка загрузки предпочтения аудиодорожки:', error); }
   return null;
+}
+
+// НОВАЯ ФУНКЦИЯ: Отображение списка субтитров
+function renderSubtitleTracks() {
+  var subtitlesList = getEl('subtitles-list');
+  if (!subtitlesList) return;
+
+  if (!currentSubTracks || currentSubTracks.length === 0) {
+    subtitlesList.innerHTML = '<div class="search-result-empty">Нет субтитров</div>';
+    return;
+  }
+
+  var html = '';
+
+  // Добавляем опцию "Выключить субтитры"
+  var isOff = currentSubtitleTrack === -1;
+  html += '<div class="subtitle-item ' + (isOff ? 'active' : '') + '" data-track-index="-1">' +
+    '<div class="subtitle-icon">🚫</div>' +
+    '<div class="subtitle-info">' +
+    '<div class="subtitle-title">Выключить субтитры</div>' +
+    '</div>' +
+    '<div class="subtitle-check">✓</div>' +
+    '</div>';
+
+  // Рендерим список субтитров
+  var len = currentSubTracks.length;
+  for (var idx = 0; idx < len; idx++) {
+    var sub = currentSubTracks[idx];
+    var isActive = idx === currentSubtitleTrack;
+    var language = sub.language || 'unknown';
+    var format = sub.format || sub.codec || '';
+    var title = sub.title || ('Субтитры ' + (idx + 1));
+
+    // Добавляем метки для default и forced
+    var badges = '';
+    if (sub.default) badges += ' <span style="color: #4eff6a; font-size: 9px;">[DEFAULT]</span>';
+    if (sub.forced) badges += ' <span style="color: #ffd966; font-size: 9px;">[FORCED]</span>';
+
+    html += '<div class="subtitle-item ' + (isActive ? 'active' : '') + '" data-track-index="' + idx + '">' +
+      '<div class="subtitle-icon">💬</div>' +
+      '<div class="subtitle-info">' +
+      '<div class="subtitle-title">' + escapeHtml(title) + badges + '</div>' +
+      '<div class="subtitle-details">' +
+      '<span class="subtitle-language">' + language.toUpperCase() + '</span>' +
+      (format ? '<span class="subtitle-format">' + escapeHtml(format) + '</span>' : '') +
+      '</div>' +
+      '</div>' +
+      '<div class="subtitle-check">✓</div>' +
+      '</div>';
+  }
+
+  subtitlesList.innerHTML = html;
+
+  // Добавляем обработчики кликов
+  var subtitleItems = subtitlesList.querySelectorAll('.subtitle-item');
+  var itemsLen = subtitleItems.length;
+  for (var i = 0; i < itemsLen; i++) {
+    (function (item) {
+      item.addEventListener('click', function () {
+        var trackIndex = parseInt(item.dataset.trackIndex);
+        switchSubtitleTrack(trackIndex);
+      });
+    })(subtitleItems[i]);
+  }
+}
+
+// НОВАЯ ФУНКЦИЯ: Переключение субтитров
+async function switchSubtitleTrack(trackIndex) {
+  if (trackIndex === currentSubtitleTrack) {
+    toggleSubtitlesPanel();
+    return;
+  }
+
+  console.log('💬 Переключение на субтитры:', trackIndex);
+
+  var subtitlesPanel = getEl('subtitles-panel');
+  var subtitlesBtn = getEl('subtitles-btn');
+
+  if (subtitlesPanel) {
+    subtitlesPanel.classList.add('hidden');
+    if (subtitlesBtn) subtitlesBtn.classList.remove('active');
+  }
+
+  // Если используем HLS
+  if (AppState.hls) {
+    try {
+      if (trackIndex === -1) {
+        // Выключаем субтитры
+        AppState.hls.subtitleTrack = -1;
+        console.log('🚫 Субтитры выключены');
+      } else {
+        // Включаем выбранные субтитры
+        AppState.hls.subtitleTrack = trackIndex;
+        console.log('💬 Включены субтитры:', trackIndex);
+      }
+
+      currentSubtitleTrack = trackIndex;
+      renderSubtitleTracks();
+
+      // Сохраняем предпочтение
+      if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+        await saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
+      }
+    } catch (error) {
+      console.error('❌ Ошибка переключения субтитров:', error);
+    }
+  }
+}
+
+// НОВАЯ ФУНКЦИЯ: Открытие/закрытие панели субтитров
+function toggleSubtitlesPanel() {
+  var panel = getEl('subtitles-panel');
+  var btn = getEl('subtitles-btn');
+  var audioPanel = getEl('audio-panel');
+  var audioBtn = getEl('audio-btn');
+
+  if (!panel || !btn) return;
+
+  // Закрываем панель аудио если открыта
+  if (audioPanel && !audioPanel.classList.contains('hidden')) {
+    audioPanel.classList.add('hidden');
+    if (audioBtn) audioBtn.classList.remove('active');
+  }
+
+  if (panel.classList.contains('hidden')) {
+    // Закрываем панель серий если открыта
+    var episodesPanel = getEl('episodes-panel');
+    var episodesBtn = getEl('episodes-btn');
+    if (episodesPanel && !episodesPanel.classList.contains('hidden')) {
+      episodesPanel.classList.add('hidden');
+      if (episodesBtn) episodesBtn.classList.remove('active');
+    }
+
+    panel.classList.remove('hidden');
+    btn.classList.add('active');
+    renderSubtitleTracks();
+  } else {
+    panel.classList.add('hidden');
+    btn.classList.remove('active');
+  }
+}
+
+// НОВАЯ ФУНКЦИЯ: Настройка кнопки субтитров
+function setupSubtitlesButton() {
+  console.log('🔄 Настройка кнопки субтитров...');
+
+  var subtitlesBtn = getEl('subtitles-btn');
+  var closeSubtitlesBtn = getEl('close-subtitles');
+  var subtitlesPanel = getEl('subtitles-panel');
+
+  if (!subtitlesBtn || !closeSubtitlesBtn || !subtitlesPanel) {
+    console.error('❌ Не найдены элементы для кнопки субтитров');
+    return;
+  }
+
+  subtitlesBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    toggleSubtitlesPanel();
+    resetMouseIdleTimer();
+  });
+
+  closeSubtitlesBtn.addEventListener('click', function () {
+    subtitlesPanel.classList.add('hidden');
+    subtitlesBtn.classList.remove('active');
+    resetMouseIdleTimer();
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!subtitlesPanel.contains(e.target) && !subtitlesBtn.contains(e.target)) {
+      subtitlesPanel.classList.add('hidden');
+      subtitlesBtn.classList.remove('active');
+    }
+  });
+
+  console.log('✅ Кнопка субтитров настроена');
 }
 
 async function handleVideoEnded() {
