@@ -1017,7 +1017,7 @@ async function seekStream(absoluteSeekTime, source) {
   pauseTimer = null;
   pauseStartTime = null;
   thisisseek = true;
-  currentSubtitleTrack = -1;
+
   if (source === undefined) source = 'user';
 
   if (!AppState.currentStreamId && !AppState.transcodingOnOff) {
@@ -1028,6 +1028,7 @@ async function seekStream(absoluteSeekTime, source) {
   var videoPlayer = getEl('video-player');
   var totalDuration = AppState.originalDuration || AppState.expectedDuration || 0;
   if (absoluteSeekTime < 0) absoluteSeekTime = 0;
+
   if (totalDuration > 0 && absoluteSeekTime >= totalDuration - 1) {
     console.log('⚠️ Попытка перемотки за конец видео');
     return false;
@@ -1035,67 +1036,40 @@ async function seekStream(absoluteSeekTime, source) {
 
   if (AppState.transcodingOnOff) {
     console.log('🎯 Перемотка в режиме транскодирования (GST)');
-
-    // Показываем индикатор загрузки
     showPlayerLoading('Перемотка...', absoluteSeekTime);
-
-    // Вычисляем относительное время для video.currentTime
     var relativeTime = absoluteSeekTime - (AppState.seekOffset || 0);
     if (relativeTime < 0) relativeTime = 0;
-
-    // ДОБАВЛЯЕМ В ОЧЕРЕДЬ С БЛОКИРОВКОЙ
     AppState.seekQueue.push(absoluteSeekTime);
     if (AppState.isSeeking) {
       console.log('⏳ В очереди: ' + formatTime(absoluteSeekTime));
       return false;
     }
-
     if (source === 'slider' && AppState.seekTimeout) clearTimeout(AppState.seekTimeout);
-
-    // УСТАНАВЛИВАЕМ ФЛАГ SEEKING
     AppState.isSeeking = true;
     AppState.suppressTimeUpdate = true;
     AppState.previewTime = absoluteSeekTime;
-
-    // Перематываем видео
     videoPlayer.currentTime = relativeTime;
-
     if (currentTimecodeData.hash && currentTimecodeData.fileId) {
       currentTimecodeData.timecode = absoluteSeekTime;
     }
-
-    // Обновляем слайдер
     var seekSlider = getEl('seek-slider');
     if (seekSlider) {
       var totalDuration = AppState.originalDuration || AppState.expectedDuration || videoPlayer.duration;
       seekSlider.value = Math.min(absoluteSeekTime, totalDuration);
     }
-
-    // ОБНОВЛЯЕМ ВРЕМЯ БЕЗ ИНТЕРВАЛА
     updateTimeDisplay();
-
-    // ★ ОБРАБОТЧИК ДЛЯ ОТСЛЕЖИВАНИЯ НАЧАЛА ВОСПРОИЗВЕДЕНИЯ ПОСЛЕ ПЕРЕМОТКИ
     var timeUpdateHandler = function () {
-      // Проверяем, что время действительно начало обновляться
       if (videoPlayer.currentTime > 0) {
         console.log('⏱️ Время начало обновляться после перемотки (currentTime=' + videoPlayer.currentTime.toFixed(2) + ')');
-
-        // Скрываем индикатор загрузки
         hidePlayerLoading();
-
-        // Сбрасываем флаги
         AppState.isSeeking = false;
         AppState.isSliderDragging = false;
         AppState.previewTime = null;
         AppState.suppressTimeUpdate = false;
-
-        // Отписываемся, чтобы не срабатывало повторно
         videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
       }
     };
     videoPlayer.addEventListener('timeupdate', timeUpdateHandler);
-
-    // ★ ТАЙМАУТ НА СЛУЧАЙ, ЕСЛИ ВРЕМЯ НЕ НАЧАЛО ОБНОВЛЯТЬСЯ
     var seekTimeout = setTimeout(function () {
       console.log('⚠️ Таймаут ожидания начала воспроизведения после перемотки, сбрасываем принудительно');
       hidePlayerLoading();
@@ -1103,14 +1077,10 @@ async function seekStream(absoluteSeekTime, source) {
       AppState.isSliderDragging = false;
       AppState.previewTime = null;
       AppState.suppressTimeUpdate = false;
-
       videoPlayer.removeEventListener('timeupdate', timeUpdateHandler);
     }, 3000);
-
-    // ★ СОХРАНЯЕМ ССЫЛКИ ДЛЯ ОЧИСТКИ
     AppState._seekTimeUpdateHandler = timeUpdateHandler;
     AppState._seekTimeout = seekTimeout;
-
     return true;
   }
 
@@ -1119,7 +1089,6 @@ async function seekStream(absoluteSeekTime, source) {
     console.log('⏳ В очереди: ' + formatTime(absoluteSeekTime));
     return false;
   }
-
   if (source === 'slider' && AppState.seekTimeout) clearTimeout(AppState.seekTimeout);
 
   return new Promise(function (resolve) {
@@ -1146,23 +1115,18 @@ async function seekStream(absoluteSeekTime, source) {
       console.log('🔍 SEEK: ' + formatTime(targetTime));
 
       var positionInBuffer = isPositionInBuffer(targetTime);
-
       if (positionInBuffer) {
         console.log('🎯 Перемотка в пределах буфера - используем простой seek');
         var relativeTime = targetTime - AppState.seekOffset;
         videoPlayer.currentTime = relativeTime;
-
         if (wasPlaying) {
           videoPlayer.play()['catch'](function (err) { console.log('🔇 Ошибка автоплея после перемотки:', err); });
         }
-
         AppState.previewTime = null;
         AppState.suppressTimeUpdate = false;
         AppState.isSeeking = false;
-
         var seekSlider = getEl('seek-slider');
         if (seekSlider) seekSlider.value = targetTime;
-
         updateTimeDisplay();
         console.log('✅ Простая перемотка выполнена');
         resolve(true);
@@ -1202,12 +1166,11 @@ async function seekStream(absoluteSeekTime, source) {
               sub: currentSubtitleTrack
             })
           });
-
           if (!seekResponse.ok) throw new Error('HTTP ' + seekResponse.status);
           var seekData = await seekResponse.json();
           if (!seekData.success) throw new Error(seekData.error || 'Ошибка перемотки');
-
           console.log('✅ Ответ сервера:', seekData);
+
           AppState.expectedDuration = seekData.duration;
           AppState.originalDuration = seekData.originalDuration;
           AppState.seekOffset = seekData.seekOffset;
@@ -1223,14 +1186,34 @@ async function seekStream(absoluteSeekTime, source) {
           playbackText.textContent = 'Загрузка потока...';
           var playlistReady = await checkPlaylistExists(seekData.playlistUrl, 60);
           if (!playlistReady) throw new Error('Таймаут ожидания плейлиста');
-
           playbackText.textContent = 'Загрузка видео...';
           await reloadHlsPlaylist(seekData.playlistUrl);
+
+          // === ВОССТАНОВЛЕНИЕ СУБТИТРОВ ПОСЛЕ ПЕРЕМОТКИ ===
+          // Подписываемся на SUBTITLE_TRACKS_UPDATED - это событие срабатывает когда hls.js загрузил subtitle tracks
+          var subtitleTracksHandler = function () {
+            console.log('📊 Subtitle tracks обновлены после seek:', AppState.hls.subtitleTracks.length);
+            if (currentSubtitleTrack >= 0 && AppState.hls.subtitleTracks && AppState.hls.subtitleTracks.length > currentSubtitleTrack) {
+              setTimeout(function () {
+                if (AppState.hls && AppState.hls.subtitleTracks && AppState.hls.subtitleTracks.length > currentSubtitleTrack) {
+                  AppState.hls.subtitleTrack = currentSubtitleTrack;
+                  console.log('✅ Субтитры восстановлены после seek:', currentSubtitleTrack);
+                }
+              }, 300);
+            } else if (currentSubtitleTrack === -1) {
+              console.log('🚫 Субтитры должны быть выключены');
+              if (AppState.hls) AppState.hls.subtitleTrack = -1;
+            }
+            AppState.hls.off(Hls.Events.SUBTITLE_TRACKS_UPDATED, subtitleTracksHandler);
+          };
+
+          if (AppState.hls) {
+            AppState.hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, subtitleTracksHandler);
+          }
 
           var onMetaData = function () {
             console.log('📦 Метаданные загружены');
             videoPlayer.currentTime = 0;
-
             if (wasPlaying) {
               videoPlayer.play()['catch'](function (err) {
                 console.log('🔇 Автоплей после перемотки заблокирован');
@@ -1242,19 +1225,15 @@ async function seekStream(absoluteSeekTime, source) {
             videoPlayer.muted = false;
             updateMuteButton();
             forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
-
             var seekSlider = getEl('seek-slider');
             if (seekSlider) seekSlider.value = Math.min(targetTime, parseFloat(seekSlider.max) || targetTime);
-
             AppState.previewTime = null;
             AppState.suppressTimeUpdate = false;
-
             playbackOverlay.classList.remove('active');
             playbackText.textContent = 'Воспроизведение...';
             hidePlayerLoading();
             videoPlayer.removeEventListener('loadedmetadata', onMetaData);
           };
-
           videoPlayer.addEventListener('loadedmetadata', onMetaData, { once: true });
 
           setTimeout(function () {
@@ -1265,6 +1244,7 @@ async function seekStream(absoluteSeekTime, source) {
               if (wasPlaying) videoPlayer.play()['catch'](function () { });
             }
           }, 10000);
+
           return true;
         } catch (error) {
           console.error('❌ Ошибка перемотки (попытка ' + (retryCount + 1) + '/' + (maxRetries + 1) + '):', error);
@@ -1287,11 +1267,9 @@ async function seekStream(absoluteSeekTime, source) {
           playbackOverlay.classList.remove('active');
           playbackText.textContent = 'Воспроизведение...';
         }, 2000);
-
         if (wasPlaying) {
           setTimeout(function () { videoPlayer.play()['catch'](function () { }); }, 1000);
         }
-
         AppState.previewTime = null;
         AppState.suppressTimeUpdate = false;
         resolve(false);
