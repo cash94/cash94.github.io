@@ -48,6 +48,7 @@ function updateFocusableElements() {
     var screen = AppState.currentScreen;
     var episodesPanel = getEl('episodes-panel');
     var audioPanel = getEl('audio-panel');
+    var subtitlesPanel = getEl('subtitles-panel');
     var isEpisodesOpen = episodesPanel && !episodesPanel.classList.contains('hidden');
     var isAudioOpen = audioPanel && !audioPanel.classList.contains('hidden');
     var isSubtitlesOpen = subtitlesPanel && !subtitlesPanel.classList.contains('hidden');
