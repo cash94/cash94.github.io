@@ -2537,6 +2537,7 @@ function cancelCurrentPlayback() {
 // функция выхода из плеера
 function showDetailView(field = null) {
   if (!window.AndroidJS) {
+    currentSubtitleTrack = -1;
     stopTorrentStatsUpdates();
     hideSkipButton();
     //stopSeekTimeUpdateInterval();
@@ -3305,6 +3306,7 @@ function exitPlayer() {
 
 function setupPageUnloadHandler() {
   if (!window.AndroidJS) {
+    currentSubtitleTrack = -1;
     window.addEventListener('unload', function () {
       console.log('🔄 Приложение закрывается, останавливаем HLS поток...');
       if (AppState && AppState.currentStreamId) {
