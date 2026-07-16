@@ -1904,7 +1904,6 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
     if (savedSubTrack !== null && savedSubTrack < currentSubTracks.length) {
       currentSubtitleTrack = savedSubTrack;
-      if (audioTrack !== savedSubTrack) audioTrack = savedSubTrack;
       console.log('Используем сохраненные субтитры: ' + currentSubtitleTrack);
     }
 
