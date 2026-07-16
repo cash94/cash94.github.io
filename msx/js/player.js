@@ -1017,6 +1017,7 @@ async function seekStream(absoluteSeekTime, source) {
   pauseTimer = null;
   pauseStartTime = null;
   thisisseek = true;
+  currentSubtitleTrack = -1;
   if (source === undefined) source = 'user';
 
   if (!AppState.currentStreamId && !AppState.transcodingOnOff) {
@@ -1112,7 +1113,7 @@ async function seekStream(absoluteSeekTime, source) {
 
     return true;
   }
-  destroyHls();
+
   AppState.seekQueue.push(absoluteSeekTime);
   if (AppState.isSeeking) {
     console.log('⏳ В очереди: ' + formatTime(absoluteSeekTime));
