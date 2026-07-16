@@ -440,6 +440,8 @@ function resetMouseIdleTimer() {
   var exitPlayerBtn = getEl('exit-player-btn');
   var episodesBtn = getEl('episodes-btn');
   var episodesPanel = getEl('episodes-panel');
+  var subtitlesBtn = getEl('subtitles-btn');
+  var subtitlesPanel = getEl('subtitles-panel');
   var prevBtn = getEl('prev-episode-btn');
   var nextBtn = getEl('next-episode-btn');
   var playerTitle = getEl('player-title');
@@ -450,6 +452,7 @@ function resetMouseIdleTimer() {
   var controlElements = [
     controlsContainer, bufferStats, playerHint,
     toggleBufferBtn, exitPlayerBtn, episodesBtn,
+    subtitlesBtn,
     prevBtn, nextBtn, playerTitle
   ];
 
@@ -470,6 +473,11 @@ function resetMouseIdleTimer() {
     episodesPanel.style.pointerEvents = 'auto';
   }
 
+  if (subtitlesPanel && !subtitlesPanel.classList.contains('hidden')) {
+    subtitlesPanel.style.opacity = '1';
+    subtitlesPanel.style.pointerEvents = 'auto';
+  }
+
   if (mouseIdleTimer) clearTimeout(mouseIdleTimer);
 
   mouseIdleTimer = setTimeout(function () {
@@ -488,6 +496,11 @@ function resetMouseIdleTimer() {
       if (episodesPanel && episodesPanel.classList.contains('hidden')) {
         episodesPanel.style.opacity = '0';
         episodesPanel.style.pointerEvents = 'none';
+      }
+      
+      if (subtitlesPanel && subtitlesPanel.classList.contains('hidden')) {
+        subtitlesPanel.style.opacity = '0';
+        subtitlesPanel.style.pointerEvents = 'none';
       }
     }
   }, IDLE_TIMEOUT);
