@@ -3071,40 +3071,66 @@ async function switchSubtitleTrack(trackIndex) {
     toggleSubtitlesPanel();
     return;
   }
-
+  thisisseek = false;
   console.log('💬 Переключение на субтитры:', trackIndex);
 
+  // 1. Сохраняем текущий таймкод и предпочтение субтитров
+  await saveTimecodeToServer();
+  if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+    await saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
+  }
+
+  // 2. Скрываем панель субтитров
   var subtitlesPanel = getEl('subtitles-panel');
   var subtitlesBtn = getEl('subtitles-btn');
-
   if (subtitlesPanel) {
     subtitlesPanel.classList.add('hidden');
     if (subtitlesBtn) subtitlesBtn.classList.remove('active');
   }
 
-  // Если используем HLS
-  if (AppState.hls) {
-    try {
-      if (trackIndex === -1) {
-        // Выключаем субтитры
-        AppState.hls.subtitleTrack = -1;
-        console.log('🚫 Субтитры выключены');
-      } else {
-        // Включаем выбранные субтитры
-        AppState.hls.subtitleTrack = trackIndex;
-        console.log('💬 Включены субтитры:', trackIndex);
-      }
+  // 3. Запоминаем текущее время воспроизведения
+  var videoPlayer = getEl('video-player');
+  var currentTime = videoPlayer ? (videoPlayer.currentTime + AppState.seekOffset) : 0;
 
-      currentSubtitleTrack = trackIndex;
-      renderSubtitleTracks();
+  // 4. Показываем оверлей загрузки
+  getEl('playback-overlay').classList.add('active');
+  document.querySelector('.playback-text').textContent = 'Переключение субтитров...';
 
-      // Сохраняем предпочтение
-      if (currentTimecodeData.hash && currentTimecodeData.fileId) {
-        await saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
-      }
-    } catch (error) {
-      console.error('❌ Ошибка переключения субтитров:', error);
+  try {
+    // 5. Получаем hash и fileId из текущего URL
+    var parsed = AppState.videoUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
+    if (!parsed) return;
+
+    var hash = parsed[1];
+    var fileId = parsed[2];
+    var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
+
+    // 6. Останавливаем текущий поток на сервере
+    if (AppState.currentStreamId) {
+      await fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' });
+      AppState.currentStreamId = null;
     }
+
+    // 7. Уничтожаем текущий HLS
+    destroyHls();
+
+    // 8. ВАЖНО: Обновляем глобальную переменную ДО вызова startHLSPlayback.
+    // Внутри startHLSPlayback формируется параметр subParam = '&sub=' + currentSubtitleTrack
+    currentSubtitleTrack = trackIndex;
+
+    // 9. Перезапускаем поток. 
+    // Передаем currentAudioTrack, чтобы аудиодорожка не сбросилась на дефолтную!
+    await startHLSPlayback(playUrl, currentTime, lastPlaybackFromSearch, currentEpisodeIndex, currentAudioTrack);
+
+    // 10. Обновляем UI
+    renderSubtitleTracks();
+  } catch (error) {
+    console.error('❌ Ошибка переключения субтитров:', error);
+    alert('Ошибка при переключении субтитров');
+  } finally {
+    // 11. Скрываем оверлей в любом случае
+    getEl('playback-overlay').classList.remove('active');
+    document.querySelector('.playback-text').textContent = 'Воспроизведение...';
   }
 }
 
