@@ -64,6 +64,12 @@ function updateFocusableElements() {
         focusableElements = list; return;
     }
 
+    if (isSubtitlesOpen) {
+        var items = document.querySelectorAll('.subtitle-item, .close-panel-btn');
+        for (var i = 0; i < items.length; i++) if (items[i] && items[i].offsetParent !== null) list.push(items[i]);
+        focusableElements = list; return;
+    }
+
     if (screen === 'sync') {
         var btn = getEl('sync-close-btn'); if (btn && btn.offsetParent !== null) list.push(btn);
         var inp = getEl('sync-code-input'); if (inp && inp.offsetParent !== null) list.push(inp);
@@ -258,7 +264,7 @@ function focusSearchHome(preferQuery) {
 
 function showPlayerControls(preferredFocusId) {
     if (preferredFocusId === undefined) preferredFocusId = 'play-pause-btn';
-    var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn', 'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn', 'audio-btn', 'player-title'];
+    var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn', 'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn', 'audio-btn', 'subtitles-btn', 'player-title'];
     for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e) e.classList.remove('idle-hidden'); }
     if (typeof window.syncPlayerTitleVisibility === 'function') window.syncPlayerTitleVisibility(true);
     var pt = getEl('player-title'); if (pt) pt.classList.remove('hidden');
@@ -273,7 +279,7 @@ function showPlayerControls(preferredFocusId) {
 
 function hidePlayerControls() {
     if (typeof Animations !== 'undefined') Animations.animateControlsHide();
-    var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn', 'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn', 'audio-btn', 'player-title'];
+    var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn', 'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn', 'audio-btn', 'subtitles-btn', 'player-title'];
     for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e) e.classList.add('idle-hidden'); }
     if (typeof window.syncPlayerTitleVisibility === 'function') window.syncPlayerTitleVisibility(false);
     var pt = getEl('player-title'); if (pt) pt.classList.add('hidden');
@@ -287,6 +293,7 @@ function hidePlayerPanelsOnly() {
     var hidden = false;
     var ep = getEl('episodes-panel'); if (ep && !ep.classList.contains('hidden')) { ep.classList.add('hidden'); var b = getEl('episodes-btn'); if (b) b.classList.remove('active'); hidden = true; }
     var ap = getEl('audio-panel'); if (ap && !ap.classList.contains('hidden')) { ap.classList.add('hidden'); var b = getEl('audio-btn'); if (b) b.classList.remove('active'); hidden = true; }
+    var sp = getEl('subtitles-panel'); if (sp && !sp.classList.contains('hidden')) { sp.classList.add('hidden'); var b = getEl('subtitles-btn'); if (b) b.classList.remove('active'); hidden = true; }
     return hidden;
 }
 function hidePlayerUi() { var p = hidePlayerPanelsOnly(); var c = isPlayerControlsVisible(); if (c) hidePlayerControls(); var pt = getEl('player-title'); if ((p || c) && pt) pt.classList.add('hidden'); return p || c; }
@@ -348,8 +355,8 @@ function navigate(direction) {
     // PLAYER NAV
     if (AppState.currentScreen === 'player') {
         var cc = getEl('controls-container'); if (!cc || cc.classList.contains('idle-hidden')) return;
-        var ep = getEl('episodes-panel'), ap = getEl('audio-panel');
-        var isOpen = (ep && !ep.classList.contains('hidden')) || (ap && !ap.classList.contains('hidden'));
+        var ep = getEl('episodes-panel'), ap = getEl('audio-panel'), sp = getEl('subtitles-panel'); // 🆕 sp
+        var isOpen = (ep && !ep.classList.contains('hidden')) || (ap && !ap.classList.contains('hidden')) || (sp && !sp.classList.contains('hidden')); // 🆕 + sp
         if (isOpen) { if (direction === 'up' && currentFocusIndex > 0) setFocus(currentFocusIndex - 1); else if (direction === 'down' && currentFocusIndex < focusableElements.length - 1) setFocus(currentFocusIndex + 1); return; }
         if (cur && cur.id === 'seek-slider') { if (direction === 'down' && focusableElements.length > 1) setFocus(1); return; }
         if (direction === 'up') setFocus(0); else if (direction === 'left' && currentFocusIndex > 1) setFocus(currentFocusIndex - 1); else if (direction === 'right' && currentFocusIndex < focusableElements.length - 1) setFocus(currentFocusIndex + 1);
@@ -378,7 +385,14 @@ function stopSeeking() { if (seekHoldInterval) { clearInterval(seekHoldInterval)
 // ==================== ОБРАБОТЧИКИ КЛАВИШ ====================
 function focusActivePanelItem(panelType) {
     setTimeout(function () {
-        var sel = panelType === 'episodes' ? '.episode-item.active' : '.audio-item.active';
+        var sel = panelType === 'episodes' ? '.subtitle-item.active'
+            : panelType === 'subtitles' ? '.subtitle-item.active'
+                : '.audio-item.active';
+        // Исправление: для episodes должно быть .episode-item.active
+        if (panelType === 'episodes') sel = '.episode-item.active';
+        else if (panelType === 'subtitles') sel = '.subtitle-item.active';
+        else sel = '.audio-item.active';
+
         var active = document.querySelector(sel); if (!active) return;
         var focused = document.querySelectorAll('.focused'); for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
         active.classList.add('focused'); active.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -426,14 +440,14 @@ function setupKeyboardHandlers() {
         }
 
         //if (AppState.currentScreen === 'config') {
-            //var inp = active && (active.id === 'torrserver-url' || active.id === 'auth-login' || active.id === 'auth-password' || f.id === 'jacred-url');
-            //if (inp) { if (isKeyPressed('OK', k)) { e.preventDefault(); active.blur(); updateFocusableElements(); var ci = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].id === active.id) { ci = i; break; } setFocus(ci !== -1 && ci < focusableElements.length - 1 ? ci + 1 : 0); return; } return; }
-            //updateFocusableElements();
-            //if (isKeyPressed('UP', k)) { e.preventDefault(); setFocus(currentFocusIndex - 1); return; }
-            //if (isKeyPressed('DOWN', k)) { e.preventDefault(); setFocus(currentFocusIndex + 1); return; }
-            //if (isKeyPressed('LEFT', k)) { e.preventDefault(); setFocus(currentFocusIndex - 1); return; }
-            //if (isKeyPressed('RIGHT', k)) { e.preventDefault(); setFocus(currentFocusIndex + 1); return; }
-            //if (isKeyPressed('OK', k)) { e.preventDefault(); var f = document.querySelector('.focused'); if (f) { if (f.id === 'torrserver-url' || f.id === 'auth-login' || f.id === 'auth-password' || f.id === 'jacred-url') f.focus(); else f.click(); } return; }
+        //var inp = active && (active.id === 'torrserver-url' || active.id === 'auth-login' || active.id === 'auth-password' || f.id === 'jacred-url');
+        //if (inp) { if (isKeyPressed('OK', k)) { e.preventDefault(); active.blur(); updateFocusableElements(); var ci = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].id === active.id) { ci = i; break; } setFocus(ci !== -1 && ci < focusableElements.length - 1 ? ci + 1 : 0); return; } return; }
+        //updateFocusableElements();
+        //if (isKeyPressed('UP', k)) { e.preventDefault(); setFocus(currentFocusIndex - 1); return; }
+        //if (isKeyPressed('DOWN', k)) { e.preventDefault(); setFocus(currentFocusIndex + 1); return; }
+        //if (isKeyPressed('LEFT', k)) { e.preventDefault(); setFocus(currentFocusIndex - 1); return; }
+        //if (isKeyPressed('RIGHT', k)) { e.preventDefault(); setFocus(currentFocusIndex + 1); return; }
+        //if (isKeyPressed('OK', k)) { e.preventDefault(); var f = document.querySelector('.focused'); if (f) { if (f.id === 'torrserver-url' || f.id === 'auth-login' || f.id === 'auth-password' || f.id === 'jacred-url') f.focus(); else f.click(); } return; }
         //}
 
         if (AppState.currentScreen === 'search') {
@@ -448,7 +462,26 @@ function setupKeyboardHandlers() {
         if (AppState.currentScreen === 'player') {
             var vp = getEl('video-player'), cc = getEl('controls-container'), cv = !cc.classList.contains('idle-hidden');
             if (isKeyPressed('UP', k) && !cv) { e.preventDefault(); showPlayerControls('play-pause-btn'); return; }
-            if (isKeyPressed('OK', k)) { e.preventDefault(); var f = document.querySelector('.focused'); if (!cv) { showPlayerControls('play-pause-btn'); return; } if (f) { var done = false; if (f.id === 'play-pause-btn') { vp.paused ? vp.play() : vp.pause(); if (typeof window.updatePlayPauseButton === 'function') window.updatePlayPauseButton(); done = true; } else if (f.id === 'mute-btn') { vp.muted = !vp.muted; if (typeof window.updateMuteButton === 'function') window.updateMuteButton(); done = true; } else if (f.id === 'prev-episode-btn') { if (typeof window.prevEpisode === 'function') window.prevEpisode(); done = true; } else if (f.id === 'next-episode-btn') { if (typeof window.nextEpisode === 'function') window.nextEpisode(); done = true; } else if (f.id === 'episodes-btn') { var eb = getEl('episodes-btn'); if (eb) eb.click(); updateFocusableElements(); focusActivePanelItem('episodes'); } else if (f.id === 'audio-btn') { var ab = getEl('audio-btn'); if (ab) ab.click(); updateFocusableElements(); focusActivePanelItem('audio'); } else if (f.id === 'exit-player-btn') { if (typeof window.showDetailView === 'function') window.showDetailView(); return; } else if (f.id === 'toggle-buffer-btn') { var tb = getEl('toggle-buffer-btn'); if (tb) tb.click(); done = true; } else if (f.id === 'seek-slider') { var t = parseFloat(f.value); if (typeof window.showPlayerLoading === 'function') window.showPlayerLoading('⏱️ ' + formatTime(t)); setTimeout(function () { if (typeof window.hidePlayerLoading === 'function') window.hidePlayerLoading(); }, 1000); done = true; } else { f.click(); done = true; } if (done) setTimeout(function () { hidePlayerControls(); }, 400); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; } if (cv) hidePlayerControls(); return; }
+            if (isKeyPressed('OK', k)) {
+                e.preventDefault(); var f = document.querySelector('.focused'); if (!cv) { showPlayerControls('play-pause-btn'); return; } if (f) {
+                    var done = false;
+                    if (f.id === 'play-pause-btn') { vp.paused ? vp.play() : vp.pause(); if (typeof window.updatePlayPauseButton === 'function') window.updatePlayPauseButton(); done = true; }
+                    else if (f.id === 'mute-btn') { vp.muted = !vp.muted; if (typeof window.updateMuteButton === 'function') window.updateMuteButton(); done = true; }
+                    else if (f.id === 'prev-episode-btn') { if (typeof window.prevEpisode === 'function') window.prevEpisode(); done = true; }
+                    else if (f.id === 'next-episode-btn') { if (typeof window.nextEpisode === 'function') window.nextEpisode(); done = true; }
+                    else if (f.id === 'episodes-btn') { var eb = getEl('episodes-btn'); if (eb) eb.click(); updateFocusableElements(); focusActivePanelItem('episodes'); }
+                    else if (f.id === 'audio-btn') { var ab = getEl('audio-btn'); if (ab) ab.click(); updateFocusableElements(); focusActivePanelItem('audio'); }
+                    // 🆕 ОБРАБОТКА КНОПКИ СУБТИТРОВ
+                    else if (f.id === 'subtitles-btn') { var sb = getEl('subtitles-btn'); if (sb) sb.click(); updateFocusableElements(); focusActivePanelItem('subtitles'); }
+                    else if (f.id === 'exit-player-btn') { if (typeof window.showDetailView === 'function') window.showDetailView(); return; }
+                    else if (f.id === 'toggle-buffer-btn') { var tb = getEl('toggle-buffer-btn'); if (tb) tb.click(); done = true; }
+                    else if (f.id === 'seek-slider') { var t = parseFloat(f.value); if (typeof window.showPlayerLoading === 'function') window.showPlayerLoading('⏱️ ' + formatTime(t)); setTimeout(function () { if (typeof window.hidePlayerLoading === 'function') window.hidePlayerLoading(); }, 1000); done = true; }
+                    else { f.click(); done = true; }
+                    if (done) setTimeout(function () { hidePlayerControls(); }, 400);
+                    if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+                    return;
+                }
+            }
             if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) { var cc = getEl('controls-container'); if (cc.classList.contains('idle-hidden')) { e.preventDefault(); return; } e.preventDefault(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); var fe = focusableElements[currentFocusIndex]; if (fe && fe.id === 'seek-slider') { var s = getEl('seek-slider'), dir = isKeyPressed('LEFT', k) ? -1 : 1, hd = 0, cs = seekHoldStep, ms = 120, ac = [{ t: 0, s: 5 }, { t: 500, s: 10 }, { t: 1000, s: 20 }, { t: 1500, s: 30 }, { t: 2000, s: 45 }, { t: 2500, s: 60 }, { t: 3000, s: 90 }, { t: 4000, s: 120 }], lu = Date.now(), at = null, us = function () { var el = Date.now() - lu, ns = seekHoldStep; for (var i = ac.length - 1; i >= 0; i--) if (el >= ac[i].t) { ns = ac[i].s; break; } if (ns !== cs) { cs = ns; console.log('⚡ Ускорение перемотки: ' + cs + ' сек'); } }, ps = function () { var cv = parseFloat(s.value), mx = parseFloat(s.max), st = cs * dir, nv = cv + st; if (nv < 0) nv = 0; if (nv > mx) nv = mx; s.value = nv; if (typeof AppState !== 'undefined') AppState.previewTime = nv; var ct = getEl('current-time'); if (ct) ct.textContent = formatTime(nv); if (AppState.isSeeking || getEl('loading-player-overlay').classList.contains('active')) { var lt = getEl('loading-time'); if (lt) lt.textContent = formatTime(nv); } }; if (!seekHoldInterval) { isSeekHoldActive = true; hd = 0; cs = seekHoldStep; lu = Date.now(); ps(); seekHoldInterval = setInterval(ps, seekHoldDelay); at = setInterval(function () { if (seekHoldInterval) us(); else if (at) { clearInterval(at); at = null; } }, 200); } return; } else { navigate(keyToDirection(k)); return; } }
             if (cv) { updateFocusableElements(); if (isKeyPressed('UP', k)) { e.preventDefault(); navigate('up'); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; } if (isKeyPressed('DOWN', k)) { e.preventDefault(); navigate('down'); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; } }
             if (isKeyPressed('PLAY', k) || isKeyPressed('PAUSE', k) || isKeyPressed('PLAY_PAUSE', k)) { e.preventDefault(); vp.paused ? vp.play() : vp.pause(); if (typeof window.updatePlayPauseButton === 'function') window.updatePlayPauseButton(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
@@ -550,7 +583,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
             if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                 gsap.killTweensOf(con);
                 gsap.to(con, {
-                    scrollTo: { x: targetLeft}, //, y: 'max' },
+                    scrollTo: { x: targetLeft }, //, y: 'max' },
                     duration: 0.1,
                     ease: "power0.out",
                     overwrite: true
@@ -1148,7 +1181,7 @@ function setupFocusRescue() {
                 return true;
             }
 
-            if (dir === 'back') {      
+            if (dir === 'back') {
                 // Назад - возвращаемся на меню
                 configState.isOnMenu = true;
                 return focusEl(getEl(configState.activeTabId));
@@ -1167,7 +1200,7 @@ function setupFocusRescue() {
     function isOkKey(kc) { return kc === 13 || (typeof isKeyPressed === 'function' && isKeyPressed('OK', kc)); }
     function isBackKey(kc) { return [4, 8, 27, 461, 111, 10009].indexOf(kc) !== -1 || (typeof isKeyPressed === 'function' && (isKeyPressed('BACK', kc) || isKeyPressed('EXIT', kc))); }
 
-    document.addEventListener('keydown', function (e) { var s = currentScreen(); if (s === 'player') return; if (['torrents', 'catalog', 'search', 'detail', 'config', 'donate'].indexOf(s) === -1) return; var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT'); if (isBackKey(e.keyCode)) { if (ed) { var isEmpty = false; if (a.tagName === 'SELECT') { isEmpty = (a.selectedIndex === -1 || a.value === ''); } else { isEmpty = (a.value === '' || a.value === null); } if (!isEmpty && e.keyCode != 27) { return; } else { a.blur(); return;} }; e.preventDefault(); e.stopImmediatePropagation(); var po = getEl('playback-overlay'), ip = po && po.classList.contains('active'); if (ip) { cancelCurrentPlayback(); return; } if (isCustomFilterMenuOpen()) { closeCustomFilterMenu(); return; } if (s === 'catalog' && window.catalogState && window.catalogState.currentCatalog) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); } if (ed) { blurEditor(); if (s === 'search') ensureSearchFocus(true, true); else if (s === 'catalog') ensureCatalogFocus(true); else if (s === 'config') ensureConfigFocus(true); else if (s === 'detail') ensureDetailFocus(true); else ensureTorrentFocus(true); return; } onBack(); return; } if (isArrowKey(e.keyCode)) { e.preventDefault(); e.stopImmediatePropagation(); var d = arrowDir(e.keyCode); if (isCustomFilterMenuOpen()) { if (d === 'up') moveCustomFilterMenu(-1); else if (d === 'down') moveCustomFilterMenu(1); return; } if (s === 'torrents') torrentHandle(d); else if (s === 'catalog') catalogHandle(d); else if (s === 'search') searchHandle(d); else if (s === 'detail') detailHandle(d); else if (s === 'config') configHandle(d); return; } if (isOkKey(e.keyCode)) { e.preventDefault(); e.stopImmediatePropagation(); if (isCustomFilterMenuOpen()) { applyCustomFilterMenuSelection(); return; } if (s === 'torrents') { var f = document.querySelector('.focused'); if (f && f.classList.contains('torrent-card')) { if (!e.repeat) { okHoldHandled = false; okHoldFocused = f; clearOkHold(); okHoldTimer = setTimeout(async function () { okHoldHandled = true; var h = okHoldFocused && okHoldFocused.dataset ? okHoldFocused.dataset.hash : null; if (typeof window.setTorrentClickSuppressed === 'function') window.setTorrentClickSuppressed(1500); if (okHoldFocused) okHoldFocused.dataset.suppressClick = '1'; if (h && typeof window.removeTorrentByHash === 'function') await window.removeTorrentByHash(h, { skipConfirm: true }); setTimeout(function () { if (okHoldFocused) delete okHoldFocused.dataset.suppressClick; }, 1500); }, 900); } return; } } onOk(); return; } }, true);
+    document.addEventListener('keydown', function (e) { var s = currentScreen(); if (s === 'player') return; if (['torrents', 'catalog', 'search', 'detail', 'config', 'donate'].indexOf(s) === -1) return; var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT'); if (isBackKey(e.keyCode)) { if (ed) { var isEmpty = false; if (a.tagName === 'SELECT') { isEmpty = (a.selectedIndex === -1 || a.value === ''); } else { isEmpty = (a.value === '' || a.value === null); } if (!isEmpty && e.keyCode != 27) { return; } else { a.blur(); return; } }; e.preventDefault(); e.stopImmediatePropagation(); var po = getEl('playback-overlay'), ip = po && po.classList.contains('active'); if (ip) { cancelCurrentPlayback(); return; } if (isCustomFilterMenuOpen()) { closeCustomFilterMenu(); return; } if (s === 'catalog' && window.catalogState && window.catalogState.currentCatalog) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); } if (ed) { blurEditor(); if (s === 'search') ensureSearchFocus(true, true); else if (s === 'catalog') ensureCatalogFocus(true); else if (s === 'config') ensureConfigFocus(true); else if (s === 'detail') ensureDetailFocus(true); else ensureTorrentFocus(true); return; } onBack(); return; } if (isArrowKey(e.keyCode)) { e.preventDefault(); e.stopImmediatePropagation(); var d = arrowDir(e.keyCode); if (isCustomFilterMenuOpen()) { if (d === 'up') moveCustomFilterMenu(-1); else if (d === 'down') moveCustomFilterMenu(1); return; } if (s === 'torrents') torrentHandle(d); else if (s === 'catalog') catalogHandle(d); else if (s === 'search') searchHandle(d); else if (s === 'detail') detailHandle(d); else if (s === 'config') configHandle(d); return; } if (isOkKey(e.keyCode)) { e.preventDefault(); e.stopImmediatePropagation(); if (isCustomFilterMenuOpen()) { applyCustomFilterMenuSelection(); return; } if (s === 'torrents') { var f = document.querySelector('.focused'); if (f && f.classList.contains('torrent-card')) { if (!e.repeat) { okHoldHandled = false; okHoldFocused = f; clearOkHold(); okHoldTimer = setTimeout(async function () { okHoldHandled = true; var h = okHoldFocused && okHoldFocused.dataset ? okHoldFocused.dataset.hash : null; if (typeof window.setTorrentClickSuppressed === 'function') window.setTorrentClickSuppressed(1500); if (okHoldFocused) okHoldFocused.dataset.suppressClick = '1'; if (h && typeof window.removeTorrentByHash === 'function') await window.removeTorrentByHash(h, { skipConfirm: true }); setTimeout(function () { if (okHoldFocused) delete okHoldFocused.dataset.suppressClick; }, 1500); }, 900); } return; } } onOk(); return; } }, true);
 
     document.addEventListener('keyup', function (e) { var s = currentScreen(); if (isCustomFilterMenuOpen()) return; if (!isOkKey(e.keyCode) || s !== 'torrents') return; var f = document.querySelector('.focused'), cs = f && okHoldFocused && f === okHoldFocused; clearOkHold(); if (!okHoldHandled && cs && f.classList.contains('torrent-card')) f.click(); okHoldHandled = false; okHoldFocused = null; }, true);
 
