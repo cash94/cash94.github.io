@@ -1895,7 +1895,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       currentAudioTrack = audioTrack !== null ? audioTrack : 0;
     }
 
-    if (fileInfo && fileInfo.audio) {
+    if (fileInfo && fileInfo.subtitles) {
       currentSubTracks = fileInfo.subtitles;
     }
 
