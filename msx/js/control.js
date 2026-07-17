@@ -1945,6 +1945,9 @@ function initControl() {
     window.focusSearchHome = focusSearchHome;
     window.focusEl = focusEl;
     window.invalidateFocusCache = invalidateFocusCache;
+    window.showSeekOverlay = showSeekOverlay;
+    window.hideSeekOverlay = hideSeekOverlay;
+    window.scheduleHideSeekOverlay = scheduleHideSeekOverlay;
     window.openNativeSearchControl = window.openNativeSearchControl || function (el) { if (el && (el.tagName === 'SELECT' || el.id === 'filter-year')) { el.focus(); try { el.click(); } catch (e) { } } };
 }
 
