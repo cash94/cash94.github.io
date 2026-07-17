@@ -188,7 +188,7 @@ function getTorrentGridColumns() {
 
 function getColumns() { return 6; }
 
-// 🆕 ЭТАП 3: Функция для инвалидации кэша фокуса
+// Функция для инвалидации кэша фокуса
 function invalidateFocusCache() {
     _focusCache.timestamp = 0;
     _focusCache.elements = [];
@@ -728,12 +728,12 @@ var ScreenStrategies = {
 };
 
 // ==================== УПРАВЛЕНИЕ ФОКУСОМ ====================
-// 🆕 ЭТАП 3: updateFocusableElements с кэшированием
+// updateFocusableElements с кэшированием
 function updateFocusableElements() {
     var now = Date.now();
     var screen = AppState.currentScreen;
 
-    // 🆕 Проверяем кэш
+    // Проверяем кэш
     if (now - _focusCache.timestamp < _focusCache.ttl &&
         _focusCache.screen === screen &&
         _focusCache.elements.length > 0) {
@@ -873,7 +873,7 @@ function updateFocusableElements() {
     _focusCache.elements = focusableElements.slice();
 }
 
-// 🆕 ЭТАП 3: setFocus с requestAnimationFrame для плавности
+// setFocus с requestAnimationFrame для плавности
 function setFocus(index) {
     if (focusableElements.length === 0) {
         updateFocusableElements();
@@ -1196,7 +1196,7 @@ function setupKeyboardHandlers() {
                     isSeekHoldActive = false;
                 }, 500);
 
-                // 🆕 СКРЫВАЕМ ОВЕРЛЕЙ С ЗАДЕРЖКОЙ
+                // СКРЫВАЕМ ОВЕРЛЕЙ С ЗАДЕРЖКОЙ
                 scheduleHideSeekOverlay();
             }
             stopSeeking();
@@ -1327,7 +1327,7 @@ function setupKeyboardHandlers() {
                             if (lt) lt.textContent = formatTime(nv);
                         }
 
-                        // 🆕 ПОКАЗЫВАЕМ ОВЕРЛЕЙ С ТЕКУЩИМ ВРЕМЕНЕМ
+                        // ПОКАЗЫВАЕМ ОВЕРЛЕЙ С ТЕКУЩИМ ВРЕМЕНЕМ
                         showSeekOverlay(nv, dir);
                     };
 
@@ -1383,7 +1383,7 @@ function setupKeyboardHandlers() {
 // ==================== LONG PRESS & FOCUS RESCUE ====================
 function clearOkHold() { if (okHoldTimer) { clearTimeout(okHoldTimer); okHoldTimer = null; } }
 
-// 🆕 ЭТАП 3: Исправлена критическая ошибка - убран return false в начале функции
+// Исправлена критическая ошибка - убран return false в начале функции
 function isElementFullyVisible(el, container) {
     if (!el || !container) return true;
     var r = el.getBoundingClientRect();
