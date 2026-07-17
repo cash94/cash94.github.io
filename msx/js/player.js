@@ -8,11 +8,11 @@ var nearEndCheckInterval = null;
 var thisisseek = false;
 
 // Константы конфигурации
-const BUFFER_TARGET_SEC = 10;
-const LOADING_TIMEOUT_MS = 15000;
-const EPISODES_LOAD_DELAY_MS = 1000;
-const EPISODES_LOAD_DELAY_SEARCH_MS = 1600;
-const MAX_PLAYBACK_RETRIES = 3;
+var BUFFER_TARGET_SEC = 10;
+var LOADING_TIMEOUT_MS = 15000;
+var EPISODES_LOAD_DELAY_MS = 1000;
+var EPISODES_LOAD_DELAY_SEARCH_MS = 1600;
+var MAX_PLAYBACK_RETRIES = 3;
 
 // Переменные для таймкода
 var timecodeSaveInterval = null;
