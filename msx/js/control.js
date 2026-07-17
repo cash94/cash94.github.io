@@ -1038,51 +1038,54 @@ function isBackKey(kc) { return KEY_CODES.BACK.indexOf(kc) !== -1 || (typeof isK
 
 function focusActivePanelItem(panelType) {
     setTimeout(function () {
-        // Определяем селектор для активного элемента
         var sel = panelType === 'episodes' ? '.episode-item.active'
             : panelType === 'subtitles' ? '.subtitle-item.active'
                 : '.audio-item.active';
 
-        // СНАЧАЛА обновляем список фокусируемых элементов
-        updateFocusableElements();
-
         var active = document.querySelector(sel);
 
-        // Если активного элемента нет - фокусируемся на первом
+        // Если активного элемента нет - берем первый элемент панели
         if (!active) {
-            if (focusableElements.length > 0) {
-                setFocus(0);
-            }
-            return;
+            var firstItem = document.querySelector(
+                panelType === 'episodes' ? '.episode-item' :
+                    panelType === 'subtitles' ? '.subtitle-item' :
+                        '.audio-item'
+            );
+            if (firstItem) active = firstItem;
+            else return;
         }
 
-        // Убираем фокус со всех элементов
-        var focused = document.querySelectorAll('.focused');
-        for (var i = 0; i < focused.length; i++) {
-            focused[i].classList.remove('focused');
-        }
-
-        // Добавляем фокус на активный элемент
-        active.classList.add('focused');
-        active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Обновляем список фокусируемых элементов
+        updateFocusableElements();
 
         // Ищем индекс активного элемента в focusableElements
-        var foundIndex = -1;
+        var targetIndex = -1;
         for (var i = 0; i < focusableElements.length; i++) {
             if (focusableElements[i] === active) {
-                foundIndex = i;
+                targetIndex = i;
                 break;
             }
         }
 
-        // Устанавливаем currentFocusIndex через setFocus для корректной синхронизации
-        if (foundIndex !== -1) {
-            setFocus(foundIndex);
-        } else if (focusableElements.length > 0) {
-            // Если не нашли точное совпадение - фокусируемся на первом элементе
-            setFocus(0);
+        // Если нашли - используем setFocus (правильно синхронизирует currentFocusIndex)
+        if (targetIndex !== -1) {
+            setFocus(targetIndex);
+        } else {
+            // Fallback: устанавливаем визуальный фокус вручную
+            var focused = document.querySelectorAll('.focused');
+            for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
+            active.classList.add('focused');
+            active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            // Но всё равно пытаемся синхронизировать currentFocusIndex
+            for (var i = 0; i < focusableElements.length; i++) {
+                if (focusableElements[i].contains(active)) {
+                    currentFocusIndex = i;
+                    break;
+                }
+            }
         }
-    }, 50);
+    }, 100); // Увеличиваем задержку до 100мс для надежности
 }
 
 function setupKeyboardHandlers() {
@@ -1378,9 +1381,8 @@ function showPlayerControls(preferredFocusId) {
     var pt = getEl('player-title'); if (pt) pt.classList.remove('hidden');
     if (typeof Animations !== 'undefined') Animations.animateControlsShow();
     if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+
     setTimeout(function () {
-        // Если открыта панель (эпизоды/аудио/субтитры) - не трогаем фокус
-        // Он уже правильно установлен функцией focusActivePanelItem
         var ep = getEl('episodes-panel');
         var ap = getEl('audio-panel');
         var sp = getEl('subtitles-panel');
@@ -1388,15 +1390,36 @@ function showPlayerControls(preferredFocusId) {
             (ap && !ap.classList.contains('hidden')) ||
             (sp && !sp.classList.contains('hidden'));
 
+        // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: есть ли элемент с классом focused внутри открытой панели
+        var hasPanelFocus = false;
         if (isPanelOpen) {
-            // Панель открыта, фокус уже на нужном элементе - выходим
+            var panelFocused = (ep && ep.querySelector('.focused')) ||
+                (ap && ap.querySelector('.focused')) ||
+                (sp && sp.querySelector('.focused'));
+            hasPanelFocus = !!panelFocused;
+        }
+
+        // Если панель открыта И в ней есть элемент с фокусом - не трогаем
+        if (isPanelOpen && hasPanelFocus) {
+            return;
+        }
+
+        // Если панель открыта, но фокуса в ней нет - всё равно не трогаем
+        // (возможно, focusActivePanelItem еще не успел установить фокус)
+        if (isPanelOpen) {
             return;
         }
 
         updateFocusableElements();
-        var ti = -1; for (var j = 0; j < focusableElements.length; j++) if (focusableElements[j].id === preferredFocusId) { ti = j; break; }
+        var ti = -1;
+        for (var j = 0; j < focusableElements.length; j++) {
+            if (focusableElements[j].id === preferredFocusId) {
+                ti = j;
+                break;
+            }
+        }
         setFocus(ti !== -1 ? ti : 0);
-    }, 60);
+    }, 150); // Увеличиваем задержку до 150мс
 }
 
 function hidePlayerControls() {
