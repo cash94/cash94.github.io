@@ -486,7 +486,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
                 gsap.to(con, {
                     scrollTo: { x: targetLeft },
                     duration: 0.1,
-                    ease: "power0.out",
+                    ease: "power1.out",
                     overwrite: true
                 });
             } else if (smooth) {
@@ -540,7 +540,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
                 gsap.to(container, {
                     scrollTo: { y: targetScrollTop },
                     duration: 0.1,
-                    ease: "power0.out",
+                    ease: "power1.out",
                     overwrite: true
                 });
             } else if (smooth) {
@@ -557,7 +557,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
             gsap.to(container, {
                 scrollTo: { y: targetScrollTop },
                 duration: 0.1,
-                ease: "power0.out",
+                ease: "power1.out",
                 overwrite: true
             });
         } else if (smooth) {
