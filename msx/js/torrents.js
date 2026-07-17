@@ -592,13 +592,25 @@ function showDetailByHash(hash) {
 }
 
 function hideCatalogDetailExtra() {
-    var ids = ['catalog-detail-extra', 'detail-subtitle', 'catalog-detail-backdrop', 'catalog-detail-meta', 'catalog-detail-overview', 'catalog-detail-trailers-wrap', 'catalog-detail-trailers', 'catalog-detail-screenshots-wrap', 'catalog-detail-screenshots'];
-    ids.forEach(id => {
+    var ids = [
+        'catalog-detail-extra', 'detail-subtitle', 'catalog-detail-backdrop',
+        'catalog-detail-meta', 'catalog-detail-overview',
+        'catalog-detail-trailers-wrap', 'catalog-detail-trailers',
+        'catalog-detail-screenshots-wrap', 'catalog-detail-screenshots'
+    ];
+
+    ids.forEach(function (id) {
         var el = getEl(id);
         if (el) {
-            if (id === 'catalog-detail-backdrop') { el.style.backgroundImage = ''; }
-            else if (id === 'catalog-detail-meta' || id === 'catalog-detail-trailers' || id === 'catalog-detail-screenshots') { el.innerHTML = ''; }
-            else if (id === 'detail-subtitle' || id === 'catalog-detail-overview') { el.textContent = ''; }
+            if (id === 'catalog-detail-backdrop') {
+                el.style.backgroundImage = '';
+            } else if (id === 'catalog-detail-meta' || id === 'catalog-detail-trailers' || id === 'catalog-detail-screenshots') {
+                el.innerHTML = '';
+            } else if (id === 'detail-subtitle' || id === 'catalog-detail-overview') {
+                el.textContent = '';
+                el.style.display = 'none';
+            }
+            // Гарантированно скрываем
             el.classList.add('hidden');
         }
     });
@@ -816,18 +828,42 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
         var mediaType = isTvSeries ? 'tv' : 'movie';
         getTmdbDetailsWithCache(tmdbId, mediaType).then(function (details) {
             if (details) {
+                // 1. Обработка фона (Backdrop)
                 if (details.backdrop_path && elements.detailViewDiv) {
-                    elements.detailViewDiv.style.backgroundImage = 'url(' + AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path + ')';
+                    var backdropPath = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
+                    elements.detailViewDiv.style.backgroundImage = 'url(' + backdropPath + ')';
                     elements.detailViewDiv.style.backgroundSize = 'cover';
+                    elements.detailViewDiv.style.backgroundPosition = 'center';
+                    elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
+
                     var existingOverlay = getEl('detail-backdrop-overlay');
                     if (!existingOverlay && elements.detailViewDiv) {
-                        var overlay = document.createElement('div'); overlay.id = 'detail-backdrop-overlay';
+                        var overlay = document.createElement('div');
+                        overlay.id = 'detail-backdrop-overlay';
                         overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.08);box-shadow:0 4px 20px rgba(0,0,0,0.25);border-radius:14.89px;z-index:-1;';
                         elements.detailViewDiv.appendChild(overlay);
                     }
                 }
-                if (details.overview && elements.detailSubtitle) { elements.detailSubtitle.textContent = details.overview; elements.detailSubtitle.style.display = 'block'; }
-                if (typeof updateDetailMetaInfo === 'function') updateDetailMetaInfo(details);
+
+                // 2. Обработка Описания (Overview / Subtitle) - СНИМАЕМ hidden!
+                if (details.overview) {
+                    if (elements.detailSubtitle) {
+                        elements.detailSubtitle.textContent = details.overview;
+                        elements.detailSubtitle.style.display = 'block';
+                        elements.detailSubtitle.classList.remove('hidden');
+                    }
+                    var overviewEl = getEl('catalog-detail-overview');
+                    if (overviewEl) {
+                        overviewEl.textContent = details.overview;
+                        overviewEl.style.display = 'block';
+                        overviewEl.classList.remove('hidden');
+                    }
+                }
+
+                // 3. Обработка метаданных (Жанры, год, рейтинг)
+                if (typeof updateDetailMetaInfo === 'function') {
+                    updateDetailMetaInfo(details);
+                }
             }
         });
     }
@@ -849,12 +885,46 @@ function updateFileItemStill(fileItem, stillImage) {
 }
 
 function updateDetailMetaInfo(tmdbData) {
-    var metaContainer = getEl('catalog-detail-meta'); if (!metaContainer) return;
-    metaContainer.innerHTML = ''; metaContainer.classList.remove('hidden');
-    if (tmdbData.release_date || tmdbData.first_air_date) { var yearChip = document.createElement('div'); yearChip.className = 'catalog-meta-chip'; yearChip.textContent = (tmdbData.release_date || tmdbData.first_air_date).substring(0, 4); metaContainer.appendChild(yearChip); }
-    if (tmdbData.vote_average) { var ratingChip = document.createElement('div'); ratingChip.className = 'catalog-meta-chip'; ratingChip.textContent = '⭐ ' + tmdbData.vote_average.toFixed(1); metaContainer.appendChild(ratingChip); }
-    var typeChip = document.createElement('div'); typeChip.className = 'catalog-meta-chip'; typeChip.textContent = (tmdbData.media_type === 'tv' || tmdbData.number_of_seasons !== undefined) ? 'Сериал' : 'Фильм'; metaContainer.appendChild(typeChip);
-    if (tmdbData.genres && Array.isArray(tmdbData.genres)) { for (var i = 0; i < Math.min(tmdbData.genres.length, 3); i++) { var genreChip = document.createElement('div'); genreChip.className = 'catalog-meta-chip'; genreChip.textContent = tmdbData.genres[i].name; metaContainer.appendChild(genreChip); } }
+    var metaContainer = getEl('catalog-detail-meta');
+    if (!metaContainer) return;
+
+    metaContainer.innerHTML = '';
+
+    // Год
+    if (tmdbData.release_date || tmdbData.first_air_date) {
+        var year = (tmdbData.release_date || tmdbData.first_air_date).substring(0, 4);
+        var yearChip = document.createElement('div');
+        yearChip.className = 'catalog-meta-chip';
+        yearChip.textContent = year;
+        metaContainer.appendChild(yearChip);
+    }
+    // Рейтинг
+    if (tmdbData.vote_average) {
+        var ratingChip = document.createElement('div');
+        ratingChip.className = 'catalog-meta-chip';
+        ratingChip.textContent = '⭐ ' + tmdbData.vote_average.toFixed(1);
+        metaContainer.appendChild(ratingChip);
+    }
+    // Тип контента
+    var typeChip = document.createElement('div');
+    typeChip.className = 'catalog-meta-chip';
+    typeChip.textContent = (tmdbData.media_type === 'tv' || tmdbData.number_of_seasons !== undefined) ? 'Сериал' : 'Фильм';
+    metaContainer.appendChild(typeChip);
+    // Жанры
+    if (tmdbData.genres && Array.isArray(tmdbData.genres)) {
+        var genresLen = Math.min(tmdbData.genres.length, 3);
+        for (var i = 0; i < genresLen; i++) {
+            var genreChip = document.createElement('div');
+            genreChip.className = 'catalog-meta-chip';
+            genreChip.textContent = tmdbData.genres[i].name;
+            metaContainer.appendChild(genreChip);
+        }
+    }
+
+    // Если мы добавили хотя бы один чип, показываем контейнер
+    if (metaContainer.children.length > 0) {
+        metaContainer.classList.remove('hidden');
+    }
 }
 
 function addFileItem(file, hash, name, episodeIndex, stillImage, returnOnly = false) {
