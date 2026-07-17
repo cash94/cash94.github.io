@@ -1019,6 +1019,16 @@ function renderDetailHeader(item, posterUrl, details) {
         oe.classList.remove('hidden');
         oe.style.display = 'block';
     }
+    var twInit = getEl('catalog-detail-trailers-wrap');
+    var te2Init = getEl('catalog-detail-trailers');
+    if (twInit) {
+        twInit.classList.add('hidden');
+        twInit.style.display = 'none';
+    }
+    if (te2Init) {
+        te2Init.classList.add('hidden');
+        te2Init.style.display = 'none';
+    }
     getEl('catalog-detail-trailers-wrap').classList.add('hidden');
     var temp = posterUrl || catalogState.posterCache.get(item.id + '_' + mt) || '';
     pe.innerHTML = temp ? '<img src="' + temp + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
@@ -1130,6 +1140,10 @@ function renderDetailTrailers(src) {
     if (vids.length > 0) {
         tw.classList.remove('hidden');
         tw.style.display = 'block';
+
+        te2.classList.remove('hidden');
+        te2.style.display = 'grid';
+
         te2.classList.add('catalog-detail-trailers-grid');
         te2.classList.remove('catalog-detail-trailers-links');
         te2.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:16px;padding:10px;';
@@ -1148,6 +1162,9 @@ function renderDetailTrailers(src) {
         te2.appendChild(frag);
     } else {
         tw.classList.add('hidden');
+        tw.style.display = 'none';
+        te2.classList.add('hidden');
+        te2.style.display = 'none';
     }
 }
 
