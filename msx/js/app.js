@@ -127,6 +127,7 @@ async function init() {
       console.log('📦 AppState.addToDbEnabled =', AppState.addToDbEnabled);
       console.log('🎵 AppState.multiChannelEnabled =', AppState.multiChannelEnabled);
     }
+    initDolbyVisionCheck();
 
     console.log('✅ Инициализация приложения завершена');
   } catch (error) {
@@ -1384,6 +1385,175 @@ function initJacredUrlStorage() {
     localStorage.setItem('jacred-url', value);
   });
 }
+// ==================== ПРОВЕРКА DOLBY VISION ====================
+function checkDolbyVisionSupport() {
+  // Проверка для старых браузеров
+  if (typeof MediaSource === 'undefined' || !MediaSource.isTypeSupported) {
+    console.log('⚠️ MediaSource не поддерживается');
+    return {
+      supported: false,
+      codecs: []
+    };
+  }
+
+  var tests = [
+    { name: 'HEVC Main 10', codec: 'video/mp4; codecs="hvc1.2.4.L150.B0"' },
+    { name: 'H.264 (AVC)', codec: 'video/mp4; codecs="avc1.640028"' },
+    { name: 'Dolby Vision Profile 5', codec: 'video/mp4; codecs="dvh1.05.01"' },
+    { name: 'Dolby Vision Profile 8 (HEVC)', codec: 'video/mp4; codecs="dvh1.08.06"' },
+    { name: 'Dolby Vision Profile 8 (AV1)', codec: 'video/mp4; codecs="dav1.08.06"' },
+    { name: 'HDR10 (HEVC)', codec: 'video/mp4; codecs="hvc1.2.4.L150.B0"' },
+    { name: 'AV1 Main', codec: 'video/mp4; codecs="av01.0.08M.08"' }
+  ];
+
+  var results = [];
+  var dvSupported = false;
+
+  console.log('🔍 Проверка поддержки кодеков:');
+  for (var i = 0; i < tests.length; i++) {
+    var test = tests[i];
+    var supported = MediaSource.isTypeSupported(test.codec);
+    results.push({
+      name: test.name,
+      codec: test.codec,
+      supported: supported
+    });
+    console.log('   ' + (supported ? '✅' : '❌') + ' ' + test.name + ': ' + (supported ? 'поддерживается' : 'НЕ поддерживается'));
+
+    // Проверяем поддержку Dolby Vision Profile 8 (самый распространённый)
+    if (test.name.indexOf('Dolby Vision Profile 8') !== -1 && supported) {
+      dvSupported = true;
+    }
+  }
+
+  return {
+    supported: dvSupported,
+    codecs: results
+  };
+}
+
+function updateDolbyVisionUI(result) {
+  var statusIcon = getEl('dv-status-icon');
+  var statusText = getEl('dv-status-text');
+  var codecsList = getEl('dv-codecs-list');
+
+  if (!statusIcon || !statusText) return;
+
+  if (result.supported) {
+    statusIcon.textContent = '✅';
+    statusIcon.style.color = '#4caf50';
+    statusText.innerHTML = '<span style="color: #4caf50; font-weight: 600;">Dolby Vision поддерживается</span>';
+    statusText.innerHTML += '<div style="font-size: 12px; color: #aaa; margin-top: 4px;">Ваше устройство может воспроизводить контент в Dolby Vision</div>';
+  } else {
+    statusIcon.textContent = '❌';
+    statusIcon.style.color = '#ff6a6a';
+    statusText.innerHTML = '<span style="color: #ff6a6a; font-weight: 600;">Dolby Vision НЕ поддерживается</span>';
+    statusText.innerHTML += '<div style="font-size: 12px; color: #aaa; margin-top: 4px;">Будет использоваться стандартное HDR или SDR</div>';
+  }
+
+  // Показываем детальную информацию о кодеках
+  if (codecsList && result.codecs && result.codecs.length > 0) {
+    var html = '<div style="color: #888; margin-bottom: 8px;">Поддержка кодеков:</div>';
+    for (var i = 0; i < result.codecs.length; i++) {
+      var codec = result.codecs[i];
+      var icon = codec.supported ? '✅' : '❌';
+      var color = codec.supported ? '#4caf50' : '#ff6a6a';
+      html += '<div style="margin: 4px 0; color: ' + color + ';">';
+      html += icon + ' ' + codec.name;
+      html += '</div>';
+    }
+    codecsList.innerHTML = html;
+    codecsList.style.display = 'block';
+  }
+
+  // Сохраняем результат в AppState для использования в плеере
+  if (typeof AppState !== 'undefined') {
+    AppState.dolbyVisionSupported = result.supported;
+    AppState.supportedCodecs = result.codecs;
+  }
+
+  // Сохраняем в localStorage
+  try {
+    localStorage.setItem('dolbyVisionSupported', result.supported ? 'true' : 'false');
+    localStorage.setItem('supportedCodecs', JSON.stringify(result.codecs));
+  } catch (e) {
+    console.warn('Не удалось сохранить результаты проверки DV:', e);
+  }
+}
+
+function initDolbyVisionCheck() {
+  var checkBtn = getEl('dv-check-btn');
+  if (!checkBtn) return;
+
+  // Загружаем сохранённые результаты при старте
+  try {
+    var savedSupported = localStorage.getItem('dolbyVisionSupported');
+    var savedCodecs = localStorage.getItem('supportedCodecs');
+
+    if (savedSupported !== null && savedCodecs) {
+      var result = {
+        supported: savedSupported === 'true',
+        codecs: JSON.parse(savedCodecs)
+      };
+      updateDolbyVisionUI(result);
+    }
+  } catch (e) {
+    console.warn('Не удалось загрузить сохранённые результаты DV:', e);
+  }
+
+  // Обработчик кнопки проверки
+  checkBtn.addEventListener('click', function () {
+    checkBtn.disabled = true;
+    checkBtn.textContent = '⏳ Проверка...';
+
+    // Небольшая задержка для обновления UI
+    setTimeout(function () {
+      try {
+        var result = checkDolbyVisionSupport();
+        updateDolbyVisionUI(result);
+
+        // Показываем уведомление
+        if (typeof showPlayerHint === 'function') {
+          var msg = result.supported
+            ? '✅ Dolby Vision поддерживается на вашем устройстве'
+            : '❌ Dolby Vision не поддерживается, будет использоваться HDR/SDR';
+          showPlayerHint(msg);
+        }
+      } catch (e) {
+        console.error('Ошибка проверки DV:', e);
+        alert('Ошибка при проверке: ' + e.message);
+      }
+
+      checkBtn.disabled = false;
+      checkBtn.textContent = '🔄 Проверить снова';
+    }, 100);
+  });
+}
+
+// Автоматическая проверка при загрузке (один раз)
+(function () {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      // Проверяем автоматически только если нет сохранённых результатов
+      if (!localStorage.getItem('dolbyVisionSupported')) {
+        setTimeout(function () {
+          var result = checkDolbyVisionSupport();
+          updateDolbyVisionUI(result);
+        }, 1000);
+      }
+    });
+  } else {
+    if (!localStorage.getItem('dolbyVisionSupported')) {
+      setTimeout(function () {
+        var result = checkDolbyVisionSupport();
+        updateDolbyVisionUI(result);
+      }, 1000);
+    }
+  }
+})();
+
+
+window.checkDolbyVisionSupport = checkDolbyVisionSupport;
 
 // ==================== ЭКСПОРТ ====================
 window.setupSpeedTest = setupSpeedTest;
