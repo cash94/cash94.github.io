@@ -910,12 +910,35 @@ function navigate(direction) {
         var cc = getEl('controls-container'); if (!cc || cc.classList.contains('idle-hidden')) return;
         var ep = getEl('episodes-panel'), ap = getEl('audio-panel'), sp = getEl('subtitles-panel');
         var isOpen = (ep && !ep.classList.contains('hidden')) || (ap && !ap.classList.contains('hidden')) || (sp && !sp.classList.contains('hidden'));
-        if (isOpen) { if (direction === 'up' && currentFocusIndex > 0) setFocus(currentFocusIndex - 1); else if (direction === 'down' && currentFocusIndex < focusableElements.length - 1) setFocus(currentFocusIndex + 1); return; }
+
+        if (isOpen) {
+            //Синхронизируем currentFocusIndex с реально сфокусированным элементом в DOM
+            var actualFocused = document.querySelector('.focused');
+            if (actualFocused) {
+                var actualIndex = focusableElements.indexOf(actualFocused);
+                if (actualIndex !== -1) {
+                    currentFocusIndex = actualIndex;
+                }
+            }
+
+            // Дополнительная проверка границ (если фокус в DOM вообще потерян)
+            if (currentFocusIndex < 0 || currentFocusIndex >= focusableElements.length) {
+                currentFocusIndex = 0;
+            }
+
+            // Навигация внутри панели
+            if (direction === 'up' && currentFocusIndex > 0) {
+                setFocus(currentFocusIndex - 1);
+            } else if (direction === 'down' && currentFocusIndex < focusableElements.length - 1) {
+                setFocus(currentFocusIndex + 1);
+            }
+            return;
+        }
+
         if (cur && cur.id === 'seek-slider') { if (direction === 'down' && focusableElements.length > 1) setFocus(1); return; }
         if (direction === 'up') setFocus(0); else if (direction === 'left' && currentFocusIndex > 1) setFocus(currentFocusIndex - 1); else if (direction === 'right' && currentFocusIndex < focusableElements.length - 1) setFocus(currentFocusIndex + 1);
         return;
     }
-
     // SEARCH NAV
     if (AppState.currentScreen === 'search') {
         var q = getEl('search-query'), fl = [], res = [];
@@ -1015,14 +1038,50 @@ function isBackKey(kc) { return KEY_CODES.BACK.indexOf(kc) !== -1 || (typeof isK
 
 function focusActivePanelItem(panelType) {
     setTimeout(function () {
+        // Определяем селектор для активного элемента
         var sel = panelType === 'episodes' ? '.episode-item.active'
             : panelType === 'subtitles' ? '.subtitle-item.active'
                 : '.audio-item.active';
-        var active = document.querySelector(sel); if (!active) return;
-        var focused = document.querySelectorAll('.focused'); for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
-        active.classList.add('focused'); active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // СНАЧАЛА обновляем список фокусируемых элементов
         updateFocusableElements();
-        for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i] === active || focusableElements[i].parentElement === active) { currentFocusIndex = i; break; }
+
+        var active = document.querySelector(sel);
+
+        // Если активного элемента нет - фокусируемся на первом
+        if (!active) {
+            if (focusableElements.length > 0) {
+                setFocus(0);
+            }
+            return;
+        }
+
+        // Убираем фокус со всех элементов
+        var focused = document.querySelectorAll('.focused');
+        for (var i = 0; i < focused.length; i++) {
+            focused[i].classList.remove('focused');
+        }
+
+        // Добавляем фокус на активный элемент
+        active.classList.add('focused');
+        active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Ищем индекс активного элемента в focusableElements
+        var foundIndex = -1;
+        for (var i = 0; i < focusableElements.length; i++) {
+            if (focusableElements[i] === active) {
+                foundIndex = i;
+                break;
+            }
+        }
+
+        // Устанавливаем currentFocusIndex через setFocus для корректной синхронизации
+        if (foundIndex !== -1) {
+            setFocus(foundIndex);
+        } else if (focusableElements.length > 0) {
+            // Если не нашли точное совпадение - фокусируемся на первом элементе
+            setFocus(0);
+        }
     }, 50);
 }
 
