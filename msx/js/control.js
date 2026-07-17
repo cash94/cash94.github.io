@@ -70,7 +70,7 @@ function createSeekOverlay() {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: rgba(0, 0, 0, 0.85);
+        background: rgba(0, 0, 0, 0.35);
         color: white;
         padding: 30px 50px;
         border-radius: 20px;
@@ -87,7 +87,7 @@ function createSeekOverlay() {
     `;
     seekOverlay.innerHTML = `
         <div id="seek-time" style="font-size: 96px; line-height: 1; margin-bottom: 10px;">00:00</div>
-        <div id="seek-direction" style="font-size: 24px; opacity: 0.8;">⏩ Перемотка</div>
+        <div id="seek-direction" style="font-size: 24px; opacity: 0.8;">Перемотка</div>
     `;
     document.body.appendChild(seekOverlay);
     return seekOverlay;
@@ -104,10 +104,10 @@ function showSeekOverlay(time, direction) {
 
     if (dirEl) {
         if (direction > 0) {
-            dirEl.textContent = '⏩ Вперёд';
+            dirEl.textContent = 'Вперёд';
             dirEl.style.color = '#4caf50';
         } else {
-            dirEl.textContent = '⏪ Назад';
+            dirEl.textContent = 'Назад';
             dirEl.style.color = '#ff9800';
         }
     }
