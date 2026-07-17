@@ -48,13 +48,97 @@ var configState = {
 
 var customFilterMenuState = null;
 
-// 🆕 ЭТАП 3: Кэш для updateFocusableElements
+// Кэш для updateFocusableElements
 var _focusCache = {
     timestamp: 0,
     screen: null,
     elements: [],
     ttl: 100 // мс
 };
+
+// ==================== OVERLAY ПЕРЕМОТКИ ====================
+var seekOverlay = null;
+var seekOverlayTimeout = null;
+
+function createSeekOverlay() {
+    if (seekOverlay) return seekOverlay;
+
+    seekOverlay = document.createElement('div');
+    seekOverlay.id = 'seek-overlay';
+    seekOverlay.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.85);
+        color: white;
+        padding: 30px 50px;
+        border-radius: 20px;
+        font-size: 72px;
+        font-weight: bold;
+        font-family: monospace;
+        z-index: 10000;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        text-align: center;
+        backdrop-filter: blur(10px);
+    `;
+    seekOverlay.innerHTML = `
+        <div id="seek-time" style="font-size: 96px; line-height: 1; margin-bottom: 10px;">00:00</div>
+        <div id="seek-direction" style="font-size: 24px; opacity: 0.8;">⏩ Перемотка</div>
+    `;
+    document.body.appendChild(seekOverlay);
+    return seekOverlay;
+}
+
+function showSeekOverlay(time, direction) {
+    var overlay = createSeekOverlay();
+    var timeEl = overlay.querySelector('#seek-time');
+    var dirEl = overlay.querySelector('#seek-direction');
+
+    if (timeEl) {
+        timeEl.textContent = formatTime(time);
+    }
+
+    if (dirEl) {
+        if (direction > 0) {
+            dirEl.textContent = '⏩ Вперёд';
+            dirEl.style.color = '#4caf50';
+        } else {
+            dirEl.textContent = '⏪ Назад';
+            dirEl.style.color = '#ff9800';
+        }
+    }
+
+    overlay.style.opacity = '1';
+
+    // Сбрасываем таймер скрытия
+    if (seekOverlayTimeout) {
+        clearTimeout(seekOverlayTimeout);
+    }
+}
+
+function hideSeekOverlay() {
+    if (seekOverlay) {
+        seekOverlay.style.opacity = '0';
+    }
+    if (seekOverlayTimeout) {
+        clearTimeout(seekOverlayTimeout);
+        seekOverlayTimeout = null;
+    }
+}
+
+// Скрываем оверлей с задержкой после окончания перемотки
+function scheduleHideSeekOverlay() {
+    if (seekOverlayTimeout) {
+        clearTimeout(seekOverlayTimeout);
+    }
+    seekOverlayTimeout = setTimeout(function () {
+        hideSeekOverlay();
+    }, 800); // Скрываем через 800мс после последнего обновления
+}
 
 // ==================== УТИЛИТЫ ====================
 function setFastNavigation() {
@@ -1092,7 +1176,29 @@ function setupKeyboardHandlers() {
     document.addEventListener('keyup', function (e) {
         var k = e.keyCode;
         if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) {
-            if (seekHoldInterval) { clearInterval(seekHoldInterval); seekHoldInterval = null; if (typeof accelerationTimer !== 'undefined' && accelerationTimer) { clearInterval(accelerationTimer); accelerationTimer = null; } var s = getEl('seek-slider'); if (s) { var ev = document.createEvent('Event'); ev.initEvent('change', true, true); s.dispatchEvent(ev); } setTimeout(function () { isSeekHoldActive = false; }, 500); }
+            if (seekHoldInterval) {
+                clearInterval(seekHoldInterval);
+                seekHoldInterval = null;
+
+                if (typeof accelerationTimer !== 'undefined' && accelerationTimer) {
+                    clearInterval(accelerationTimer);
+                    accelerationTimer = null;
+                }
+
+                var s = getEl('seek-slider');
+                if (s) {
+                    var ev = document.createEvent('Event');
+                    ev.initEvent('change', true, true);
+                    s.dispatchEvent(ev);
+                }
+
+                setTimeout(function () {
+                    isSeekHoldActive = false;
+                }, 500);
+
+                // 🆕 СКРЫВАЕМ ОВЕРЛЕЙ С ЗАДЕРЖКОЙ
+                scheduleHideSeekOverlay();
+            }
             stopSeeking();
         }
     });
@@ -1154,60 +1260,64 @@ function setupKeyboardHandlers() {
             }
             if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) {
                 var cc = getEl('controls-container');
-                if (cc.classList.contains('idle-hidden')) { e.preventDefault(); return; }
+                if (cc.classList.contains('idle-hidden')) {
+                    e.preventDefault();
+                    return;
+                }
                 e.preventDefault();
                 if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+
                 var fe = focusableElements[currentFocusIndex];
-
-                // Возвращаем проверку - перемотка работает ТОЛЬКО на seek-slider
                 if (fe && fe.id === 'seek-slider') {
-                    var s = getEl('seek-slider'),
-                        dir = isKeyPressed('LEFT', k) ? -1 : 1,
-                        cs = seekHoldStep,  // current step - начинается с 5
-                        ac = [
-                            { t: 0, s: 5 },
-                            { t: 500, s: 10 },
-                            { t: 1000, s: 20 },
-                            { t: 1500, s: 30 },
-                            { t: 2000, s: 45 },
-                            { t: 2500, s: 60 },
-                            { t: 3000, s: 90 },
-                            { t: 4000, s: 120 }
-                        ],
-                        lu = Date.now();  // last update time
+                    var s = getEl('seek-slider');
+                    var dir = isKeyPressed('LEFT', k) ? -1 : 1;
+                    var hd = 0;
+                    var cs = seekHoldStep;
+                    var ms = 120;
+                    var ac = [
+                        { t: 0, s: 5 },
+                        { t: 500, s: 10 },
+                        { t: 1000, s: 20 },
+                        { t: 1500, s: 30 },
+                        { t: 2000, s: 45 },
+                        { t: 2500, s: 60 },
+                        { t: 3000, s: 90 },
+                        { t: 4000, s: 120 }
+                    ];
+                    var lu = Date.now();
+                    var at = null;
 
-                    // Функция обновления шага (вызывается каждые 200мс)
-                    var updateStep = function () {
-                        var elapsed = Date.now() - lu;
-                        var newStep = seekHoldStep;  // default 5
-
-                        // Находим подходящий шаг на основе времени удержания
+                    // Функция обновления шага
+                    var us = function () {
+                        var el = Date.now() - lu;
+                        var ns = seekHoldStep;
                         for (var i = ac.length - 1; i >= 0; i--) {
-                            if (elapsed >= ac[i].t) {
-                                newStep = ac[i].s;
+                            if (el >= ac[i].t) {
+                                ns = ac[i].s;
                                 break;
                             }
                         }
-
-                        // Если шаг изменился - обновляем
-                        if (newStep !== cs) {
-                            cs = newStep;
-                            console.log('⚡ Ускорение перемотки: ' + cs + ' сек (удержание ' + Math.floor(elapsed / 1000) + ' сек)');
+                        if (ns !== cs) {
+                            cs = ns;
+                            console.log('⚡ Ускорение перемотки: ' + cs + ' сек');
                         }
                     };
 
-                    // Функция перемотки (вызывается каждые 150мс)
-                    var doSeek = function () {
-                        var cv = parseFloat(s.value),
-                            mx = parseFloat(s.max),
-                            step = cs * dir,  // используем текущий шаг
-                            nv = cv + step;
+                    // Функция перемотки с показом оверлея
+                    var ps = function () {
+                        var cv = parseFloat(s.value);
+                        var mx = parseFloat(s.max);
+                        var st = cs * dir;
+                        var nv = cv + st;
 
                         if (nv < 0) nv = 0;
                         if (nv > mx) nv = mx;
 
                         s.value = nv;
-                        if (typeof AppState !== 'undefined') AppState.previewTime = nv;
+
+                        if (typeof AppState !== 'undefined') {
+                            AppState.previewTime = nv;
+                        }
 
                         var ct = getEl('current-time');
                         if (ct) ct.textContent = formatTime(nv);
@@ -1216,21 +1326,32 @@ function setupKeyboardHandlers() {
                             var lt = getEl('loading-time');
                             if (lt) lt.textContent = formatTime(nv);
                         }
+
+                        // 🆕 ПОКАЗЫВАЕМ ОВЕРЛЕЙ С ТЕКУЩИМ ВРЕМЕНЕМ
+                        showSeekOverlay(nv, dir);
                     };
 
                     if (!seekHoldInterval) {
                         isSeekHoldActive = true;
-                        cs = seekHoldStep;  // начинаем с 5 секунд
+                        hd = 0;
+                        cs = seekHoldStep;
                         lu = Date.now();
 
                         // Первая перемотка
-                        doSeek();
+                        ps();
 
-                        // Интервал перемотки (каждые 150мс)
-                        seekHoldInterval = setInterval(doSeek, seekHoldDelay);
+                        // Интервал перемотки
+                        seekHoldInterval = setInterval(ps, seekHoldDelay);
 
-                        // Интервал обновления скорости (каждые 200мс)
-                        accelerationTimer = setInterval(updateStep, 200);
+                        // Интервал обновления скорости
+                        at = setInterval(function () {
+                            if (seekHoldInterval) {
+                                us();
+                            } else if (at) {
+                                clearInterval(at);
+                                at = null;
+                            }
+                        }, 200);
                     }
                     return;
                 } else {
