@@ -382,6 +382,25 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
   });
 }
 
+function setupPlayPauseButton(playPauseBtn, videoPlayer) {
+  playPauseBtn.addEventListener('click', function (e) {
+    var loadingOverlay = getEl('loading-player-overlay');
+    if (AppState && (AppState.isSeeking || (loadingOverlay && loadingOverlay.classList.contains('active')))) {
+      e.preventDefault();
+      return;
+    }
+    if (videoPlayer.paused) {
+      videoPlayer.play().then(function () {
+        if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
+      }).catch(function () { });
+    } else {
+      videoPlayer.pause();
+      if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
+    }
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+}
+
 function setupMuteButton(muteBtn, videoPlayer, volumeSlider) {
   muteBtn.addEventListener('click', function () {
     var loadingOverlay = getEl('loading-player-overlay');
