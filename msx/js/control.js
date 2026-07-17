@@ -1379,6 +1379,20 @@ function showPlayerControls(preferredFocusId) {
     if (typeof Animations !== 'undefined') Animations.animateControlsShow();
     if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
     setTimeout(function () {
+        // Если открыта панель (эпизоды/аудио/субтитры) - не трогаем фокус
+        // Он уже правильно установлен функцией focusActivePanelItem
+        var ep = getEl('episodes-panel');
+        var ap = getEl('audio-panel');
+        var sp = getEl('subtitles-panel');
+        var isPanelOpen = (ep && !ep.classList.contains('hidden')) ||
+            (ap && !ap.classList.contains('hidden')) ||
+            (sp && !sp.classList.contains('hidden'));
+
+        if (isPanelOpen) {
+            // Панель открыта, фокус уже на нужном элементе - выходим
+            return;
+        }
+
         updateFocusableElements();
         var ti = -1; for (var j = 0; j < focusableElements.length; j++) if (focusableElements[j].id === preferredFocusId) { ti = j; break; }
         setFocus(ti !== -1 ? ti : 0);
