@@ -575,30 +575,18 @@ function restoreFocusAfterNavigation(returnTo, context) {
   }
 
   if (returnTo === 'catalog') {
-    AppState.backupScroll = 0;
-    AppState.currentScreen = 'catalog';
-    if (detailView) detailView.style.display = 'none';
-
-    // Retry-механизм для установки фокуса
-    var focusAttempts = 0;
-    var maxAttempts = 6;
-    var attemptInterval = setInterval(function () {
-      focusAttempts++;
-      if (typeof window.ensureCatalogFocus === 'function') {
-        var result = window.ensureCatalogFocus(true);
-        if (result || focusAttempts >= maxAttempts) {
-          clearInterval(attemptInterval);
-        }
-      } else if (typeof window.focusFirstCatalogCard === 'function') {
-        var result = window.focusFirstCatalogCard();
-        if (result || focusAttempts >= maxAttempts) {
-          clearInterval(attemptInterval);
-        }
-      } else if (focusAttempts >= maxAttempts) {
-        clearInterval(attemptInterval);
-      }
-    }, 100);
-    return;
+    if (typeof window.ensureCatalogFocus === 'function') {
+      AppState.backupScroll = 0;
+      AppState.currentScreen = 'catalog';
+      window.ensureCatalogFocus(true);
+      if (detailView) detailView.style.display = 'none';
+      return;
+    }
+    if (typeof window.focusFirstCatalogCard === 'function') {
+      window.focusFirstCatalogCard();
+      if (detailView) detailView.style.display = 'none';
+      return;
+    }
   }
 
   if (returnTo === 'search') {
