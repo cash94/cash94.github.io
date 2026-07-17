@@ -256,24 +256,45 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
   var loadingOverlay = getEl('loading-player-overlay');
   var loadingTimeEl = getEl('loading-time');
 
-  var startDrag = function () {
+  // Переменная для отслеживания начального значения ползунка при начале перетаскивания
+  var seekStartValue = 0;
+
+  seekSlider.addEventListener('mousedown', function () {
     if (typeof AppState !== 'undefined') {
       AppState.isSliderDragging = true;
       AppState.suppressTimeUpdate = true;
     }
+    // Запоминаем значение в момент начала перетаскивания
+    seekStartValue = parseFloat(seekSlider.value) || 0;
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
-  };
+  });
 
-  seekSlider.addEventListener('mousedown', startDrag);
-  seekSlider.addEventListener('touchstart', startDrag);
+  seekSlider.addEventListener('touchstart', function () {
+    if (typeof AppState !== 'undefined') {
+      AppState.isSliderDragging = true;
+      AppState.suppressTimeUpdate = true;
+    }
+    // Запоминаем значение в момент начала перетаскивания
+    seekStartValue = parseFloat(seekSlider.value) || 0;
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
 
   seekSlider.addEventListener('input', function (e) {
     var newPreviewTime = parseFloat(e.target.value);
     if (isFinite(newPreviewTime)) {
-      if (typeof AppState !== 'undefined') AppState.previewTime = newPreviewTime;
+      if (typeof AppState !== 'undefined') {
+        AppState.previewTime = newPreviewTime;
+      }
       if (currentTimeEl) currentTimeEl.textContent = formatTime(newPreviewTime);
       if (typeof AppState !== 'undefined' && (AppState.isSeeking || (loadingOverlay && loadingOverlay.classList.contains('active')))) {
         if (loadingTimeEl) loadingTimeEl.textContent = formatTime(newPreviewTime);
+      }
+
+      // ПОКАЗЫВАЕМ ОВЕРЛЕЙ ПЕРЕМОТКИ ПРИ ПЕРЕТАСКИВАНИИ ПОЛЗУНКА
+      if (typeof window.showSeekOverlay === 'function') {
+        // Определяем направление на основе сравнения с начальным значением
+        var direction = newPreviewTime >= seekStartValue ? 1 : -1;
+        window.showSeekOverlay(newPreviewTime, direction);
       }
     }
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
@@ -286,6 +307,12 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
       AppState.previewTime = targetAbsoluteTime;
       AppState.suppressTimeUpdate = true;
     }
+
+    // СКРЫВАЕМ ОВЕРЛЕЙ С ЗАДЕРЖКОЙ после окончания перетаскивания
+    if (typeof window.scheduleHideSeekOverlay === 'function') {
+      window.scheduleHideSeekOverlay();
+    }
+
     if (!isFinite(targetAbsoluteTime) || targetAbsoluteTime < 0) {
       if (typeof AppState !== 'undefined') {
         AppState.previewTime = null;
@@ -296,7 +323,9 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
     console.log('🎚️ Seek to: ' + formatTime(targetAbsoluteTime));
 
     if (!AppState || !AppState.hls) {
-      if (videoPlayer) videoPlayer.currentTime = targetAbsoluteTime - (AppState && AppState.seekOffset || 0);
+      if (videoPlayer) {
+        videoPlayer.currentTime = targetAbsoluteTime - (AppState && AppState.seekOffset || 0);
+      }
       if (typeof AppState !== 'undefined') {
         AppState.previewTime = null;
         AppState.suppressTimeUpdate = false;
@@ -306,11 +335,18 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
       return;
     }
 
-    if (typeof seekStream === 'function') await seekStream(targetAbsoluteTime, 'slider');
+    if (typeof seekStream === 'function') {
+      await seekStream(targetAbsoluteTime, 'slider');
+    }
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 
-  var endDrag = function () {
+  seekSlider.addEventListener('mouseup', function () {
+    // СКРЫВАЕМ ОВЕРЛЕЙ С ЗАДЕРЖКОЙ
+    if (typeof window.scheduleHideSeekOverlay === 'function') {
+      window.scheduleHideSeekOverlay();
+    }
+
     setTimeout(function () {
       if (!AppState || !AppState.isSliderDragging) return;
       if (typeof AppState !== 'undefined') {
@@ -321,29 +357,27 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
         }
       }
       if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
-    }, APP_CONSTANTS.SEEK_RESET_DELAY_MS);
+    }, 200);
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
-  };
+  });
 
-  seekSlider.addEventListener('mouseup', endDrag);
-  seekSlider.addEventListener('touchend', endDrag);
-}
+  seekSlider.addEventListener('touchend', function () {
+    // СКРЫВАЕМ ОВЕРЛЕЙ С ЗАДЕРЖКОЙ
+    if (typeof window.scheduleHideSeekOverlay === 'function') {
+      window.scheduleHideSeekOverlay();
+    }
 
-function setupPlayPauseButton(playPauseBtn, videoPlayer) {
-  playPauseBtn.addEventListener('click', function (e) {
-    var loadingOverlay = getEl('loading-player-overlay');
-    if (AppState && (AppState.isSeeking || (loadingOverlay && loadingOverlay.classList.contains('active')))) {
-      e.preventDefault();
-      return;
-    }
-    if (videoPlayer.paused) {
-      videoPlayer.play().then(function () {
-        if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
-      }).catch(function () { });
-    } else {
-      videoPlayer.pause();
-      if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
-    }
+    setTimeout(function () {
+      if (!AppState || !AppState.isSliderDragging) return;
+      if (typeof AppState !== 'undefined') {
+        AppState.isSliderDragging = false;
+        if (!AppState.isSeeking) {
+          AppState.previewTime = null;
+          AppState.suppressTimeUpdate = false;
+        }
+      }
+      if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
+    }, 200);
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 }
