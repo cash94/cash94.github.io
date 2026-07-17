@@ -1006,10 +1006,19 @@ function renderDetailHeader(item, posterUrl, details) {
     var title = getCatalogItemTitle(item);
     var mt = item.media_type || 'movie';
     te.textContent = title;
-    se.textContent = getCatalogItemSubtitle(item);
+    if (se) {
+        se.textContent = getCatalogItemSubtitle(item);
+        se.classList.remove('hidden');
+        se.style.display = 'block';
+    }
     getEl('files-list').style.display = 'none';
     getEl('catalog-detail-extra').classList.remove('hidden');
-    oe.textContent = 'Загрузка...';
+
+    if (oe) {
+        oe.textContent = 'Загрузка...';
+        oe.classList.remove('hidden');
+        oe.style.display = 'block';
+    }
     getEl('catalog-detail-trailers-wrap').classList.add('hidden');
     var temp = posterUrl || catalogState.posterCache.get(item.id + '_' + mt) || '';
     pe.innerHTML = temp ? '<img src="' + temp + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
@@ -1028,8 +1037,16 @@ function renderDetailHeader(item, posterUrl, details) {
             pe.innerHTML = '<img src="' + u + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\\\"no-poster\\\">Нет постера</div>\'">';
         }
     }
-    se.textContent = getCatalogItemSubtitle(item, src);
-    oe.textContent = src.overview || item.overview || 'Описание пока недоступно';
+    if (se) {
+        se.textContent = getCatalogItemSubtitle(item, src);
+        se.classList.remove('hidden');
+        se.style.display = 'block';
+    }
+    if (oe) {
+        oe.textContent = src.overview || item.overview || 'Описание пока недоступно';
+        oe.classList.remove('hidden');
+        oe.style.display = 'block';
+    }
     var bp = src.backdrop_path || (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
     if (bp) {
         be.style.backgroundImage = 'url(' + (bp.indexOf('http') === 0 ? bp : AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.BACKDROP + bp) + ')';
@@ -1112,6 +1129,7 @@ function renderDetailTrailers(src) {
     var te2 = getEl('catalog-detail-trailers');
     if (vids.length > 0) {
         tw.classList.remove('hidden');
+        tw.style.display = 'block';
         te2.classList.add('catalog-detail-trailers-grid');
         te2.classList.remove('catalog-detail-trailers-links');
         te2.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:16px;padding:10px;';
