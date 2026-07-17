@@ -161,12 +161,39 @@
               </div>
               <div class="checkbox-container">
                 <input type="checkbox" id="multi-channel-audio">
-                <span>Включить многоканальный звук (работает только если отключено транскодирование через TorrServer)</span>
+                <span>Включить многоканальный звук (работает только если отключено транскодирование через
+                  TorrServer)</span>
               </div>
               <div class="checkbox-container" hidden>
                 <input type="checkbox" id="out-player">
                 <span>Использовать внешний плеер (только android)</span>
               </div>
+            </div>
+            <!-- Блок проверки поддержки Dolby Vision -->
+            <div class="settings-group"
+              style="margin-top: 20px; padding: 15px; background: rgba(74, 158, 255, 0.1); border-radius: 12px; border: 1px solid rgba(74, 158, 255, 0.3);">
+              <div class="settings-group-title"
+                style="font-size: 16px; font-weight: 600; color: #4a9eff; margin-bottom: 12px;">
+                🎬 Поддержка Dolby Vision
+              </div>
+              <div class="settings-group-description" style="font-size: 13px; color: #aaa; margin-bottom: 15px;">
+                Автоматическая проверка поддержки HDR10, Dolby Vision и кодеков на вашем устройстве
+              </div>
+
+              <div id="dv-check-status" style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                <div id="dv-status-icon" style="font-size: 24px;">⏳</div>
+                <div id="dv-status-text" style="font-size: 14px; color: #aaa;">Проверка не выполнена</div>
+              </div>
+
+              <div id="dv-codecs-list"
+                style="display: none; margin-top: 10px; padding: 10px; background: rgba(0, 0, 0, 0.3); border-radius: 8px; font-family: monospace; font-size: 12px;">
+                <!-- Сюда будут добавлены результаты проверки кодеков -->
+              </div>
+
+              <button id="dv-check-btn" class="settings-btn"
+                style="margin-top: 10px; padding: 8px 16px; background: #4a9eff; border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 13px;">
+                🔄 Проверить поддержку
+              </button>
             </div>
           </div>
 
@@ -180,7 +207,8 @@
               </div>
 
               <div class="help-text" style="margin-top: 20px; color: #666;">
-                • Нажмите кнопку "Синхронизация" чтобы сихнронизировать это устройство или чтобы получить код для синхронизации другого устройства.<br>
+                • Нажмите кнопку "Синхронизация" чтобы сихнронизировать это устройство или чтобы получить код для
+                синхронизации другого устройства.<br>
               </div>
             </div>
           </div>
@@ -424,7 +452,7 @@
     <div id="subtitles-panel" class="subtitles-panel hidden">
       <div class="subtitles-panel-header">
         <h3>Субтитры</h3>
-        <button id="close-subtitles" class="close-panel-btn">✕</button>
+        <button id="close-subtitles" class="close-panel-btn">X</button>
       </div>
       <div id="subtitles-list" class="subtitles-list"></div>
     </div>
