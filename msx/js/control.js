@@ -1152,7 +1152,92 @@ function setupKeyboardHandlers() {
                     return;
                 }
             }
-            if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) { var cc = getEl('controls-container'); if (cc.classList.contains('idle-hidden')) { e.preventDefault(); return; } e.preventDefault(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); var fe = focusableElements[currentFocusIndex]; if (fe && fe.id === 'seek-slider') { var s = getEl('seek-slider'), dir = isKeyPressed('LEFT', k) ? -1 : 1, hd = 0, cs = seekHoldStep, ms = 120, lu = Date.now(), at = null, us = function () { var el = Date.now() - lu, ns = seekHoldStep; for (var i = SEEK_ACCELERATION_STEPS.length - 1; i >= 0; i--) if (el >= SEEK_ACCELERATION_STEPS[i].t) { ns = SEEK_ACCELERATION_STEPS[i].s; break; } if (ns !== cs) { cs = ns; console.log('⚡ Ускорение перемотки: ' + cs + ' сек'); } }, ps = function () { var cv = parseFloat(s.value), mx = parseFloat(s.max), st = cs * dir, nv = cv + st; if (nv < 0) nv = 0; if (nv > mx) nv = mx; s.value = nv; if (typeof AppState !== 'undefined') AppState.previewTime = nv; var ct = getEl('current-time'); if (ct) ct.textContent = formatTime(nv); if (AppState.isSeeking || getEl('loading-player-overlay').classList.contains('active')) { var lt = getEl('loading-time'); if (lt) lt.textContent = formatTime(nv); } }; if (!seekHoldInterval) { isSeekHoldActive = true; hd = 0; cs = seekHoldStep; lu = Date.now(); ps(); seekHoldInterval = setInterval(ps, seekHoldDelay); at = setInterval(function () { if (seekHoldInterval) us(); else if (at) { clearInterval(at); at = null; } }, 200); } return; } else { navigate(keyToDirection(k)); return; } }
+            if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) {
+                var cc = getEl('controls-container');
+                if (cc.classList.contains('idle-hidden')) { e.preventDefault(); return; }
+                e.preventDefault();
+                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+                var fe = focusableElements[currentFocusIndex];
+
+                // Возвращаем проверку - перемотка работает ТОЛЬКО на seek-slider
+                if (fe && fe.id === 'seek-slider') {
+                    var s = getEl('seek-slider'),
+                        dir = isKeyPressed('LEFT', k) ? -1 : 1,
+                        cs = seekHoldStep,  // current step - начинается с 5
+                        ac = [
+                            { t: 0, s: 5 },
+                            { t: 500, s: 10 },
+                            { t: 1000, s: 20 },
+                            { t: 1500, s: 30 },
+                            { t: 2000, s: 45 },
+                            { t: 2500, s: 60 },
+                            { t: 3000, s: 90 },
+                            { t: 4000, s: 120 }
+                        ],
+                        lu = Date.now();  // last update time
+
+                    // Функция обновления шага (вызывается каждые 200мс)
+                    var updateStep = function () {
+                        var elapsed = Date.now() - lu;
+                        var newStep = seekHoldStep;  // default 5
+
+                        // Находим подходящий шаг на основе времени удержания
+                        for (var i = ac.length - 1; i >= 0; i--) {
+                            if (elapsed >= ac[i].t) {
+                                newStep = ac[i].s;
+                                break;
+                            }
+                        }
+
+                        // Если шаг изменился - обновляем
+                        if (newStep !== cs) {
+                            cs = newStep;
+                            console.log('⚡ Ускорение перемотки: ' + cs + ' сек (удержание ' + Math.floor(elapsed / 1000) + ' сек)');
+                        }
+                    };
+
+                    // Функция перемотки (вызывается каждые 150мс)
+                    var doSeek = function () {
+                        var cv = parseFloat(s.value),
+                            mx = parseFloat(s.max),
+                            step = cs * dir,  // используем текущий шаг
+                            nv = cv + step;
+
+                        if (nv < 0) nv = 0;
+                        if (nv > mx) nv = mx;
+
+                        s.value = nv;
+                        if (typeof AppState !== 'undefined') AppState.previewTime = nv;
+
+                        var ct = getEl('current-time');
+                        if (ct) ct.textContent = formatTime(nv);
+
+                        if (AppState.isSeeking || getEl('loading-player-overlay').classList.contains('active')) {
+                            var lt = getEl('loading-time');
+                            if (lt) lt.textContent = formatTime(nv);
+                        }
+                    };
+
+                    if (!seekHoldInterval) {
+                        isSeekHoldActive = true;
+                        cs = seekHoldStep;  // начинаем с 5 секунд
+                        lu = Date.now();
+
+                        // Первая перемотка
+                        doSeek();
+
+                        // Интервал перемотки (каждые 150мс)
+                        seekHoldInterval = setInterval(doSeek, seekHoldDelay);
+
+                        // Интервал обновления скорости (каждые 200мс)
+                        accelerationTimer = setInterval(updateStep, 200);
+                    }
+                    return;
+                } else {
+                    navigate(keyToDirection(k));
+                    return;
+                }
+            }
             if (cv) { updateFocusableElements(); if (isKeyPressed('UP', k)) { e.preventDefault(); navigate('up'); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; } if (isKeyPressed('DOWN', k)) { e.preventDefault(); navigate('down'); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; } }
             if (isKeyPressed('PLAY', k) || isKeyPressed('PAUSE', k) || isKeyPressed('PLAY_PAUSE', k)) { e.preventDefault(); vp.paused ? vp.play() : vp.pause(); if (typeof window.updatePlayPauseButton === 'function') window.updatePlayPauseButton(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
             if (isKeyPressed('VOL_UP', k)) { e.preventDefault(); vp.volume = Math.min(1, vp.volume + 0.1); var vs = getEl('volume-slider'); if (vs) vs.value = vp.volume; if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
