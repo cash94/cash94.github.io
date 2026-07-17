@@ -1,6 +1,4 @@
 // control.js - Модуль управления навигацией, фокусом и обработкой клавиш
-// Этап 3: Оптимизация производительности + исправление бага с потерей фокуса
-
 // ==================== КОНСТАНТЫ ====================
 var KEY_CODES = {
     OK: 13,
@@ -341,7 +339,12 @@ var ScreenStrategies = {
             if (currentScreen() !== 'catalog') return false;
             var f = document.querySelector('.focused');
             if (!force && f && belongsToScreen(f, 'catalog')) return true;
-            var c = this.getItems();
+
+            // ИСПРАВЛЕНО: используем прямой вызов вместо this.getItems()
+            var ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+            var c = [];
+            for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
+
             if (!c.length) return false;
             var si = localStorage.getItem('lastCatalogCardIndex'), tc = null;
             if (si !== null) {
@@ -359,7 +362,13 @@ var ScreenStrategies = {
         },
         handleNavigation: function (dir) {
             var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
-            var c = this.getItems(), h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns();
+
+            // ИСПРАВЛЕНО: используем прямой вызов вместо this.getItems()
+            var ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+            var c = [];
+            for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
+
+            var h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns();
             if (!f) return this.ensureFocus(true);
             var ci = -1, hi = -1, ti = -1;
             for (var i = 0; i < c.length; i++) if (f === c[i]) { ci = i; break; }
@@ -515,10 +524,15 @@ var ScreenStrategies = {
             if (currentScreen() !== 'detail') return false;
             var f = document.querySelector('.focused');
             if (!force && belongsToScreen(f, 'detail')) return true;
-            return focusEl(this.getItems()[0] || getEl('back-from-detail'));
+
+            // ИСПРАВЛЕНО: используем прямой вызов getDetailItems() вместо this.getItems()
+            var items = getDetailItems();
+            return focusEl(items[0] || getEl('back-from-detail'));
         },
         handleNavigation: function (dir) {
-            var items = this.getItems(), f = (belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null);
+            // ИСПРАВЛЕНО: используем прямой вызов getDetailItems() вместо this.getItems()
+            var items = getDetailItems();
+            var f = (belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null);
             if (!f) return this.ensureFocus(true);
             var idx = -1; for (var i = 0; i < items.length; i++) if (f === items[i]) { idx = i; break; }
             if (idx === -1) return this.ensureFocus(true);
