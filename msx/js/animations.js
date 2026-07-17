@@ -13,7 +13,7 @@ var Animations = (function () {
         ease: {
             bounce: "back.out(1.2)",
             elastic: "elastic.out(1, 0.5)",
-            smooth: "power0.out",
+            smooth: "power1.out",
             soft: "sine.inOut"
         }
     };
@@ -494,7 +494,7 @@ var Animations = (function () {
         // Если не виден, выполняем прокрутку
         options = options || {};
         var duration = options.duration || 0.15;
-        var ease = options.ease || "power0.out";
+        var ease = options.ease || "power1.out";
         var offset = options.offset || 10; // Отступ от нижнего края
 
         var targetContainer = container || window;
