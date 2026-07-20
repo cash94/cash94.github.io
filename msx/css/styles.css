@@ -39,13 +39,14 @@ body {
   padding: 30px 24px;
   max-width: 100%;
   width: 100%;
-  min-width: 600px; /* Фиксируем минимальную ширину */
+  min-width: 600px;
+  /* Фиксируем минимальную ширину */
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   box-sizing: border-box;
 }
 
 /* Контент внутри config-card */
-.config-card > div {
+.config-card>div {
   width: 100%;
   box-sizing: border-box;
 }
@@ -65,14 +66,14 @@ body {
 }
 
 /* Правая колонка */
-.config-card > div[style*="flex: 2"] {
+.config-card>div[style*="flex: 2"] {
   min-width: 0;
   width: 100%;
   overflow: hidden;
 }
 
 /* Левая колонка с меню */
-.config-card > div[style*="flex: 0.8"] {
+.config-card>div[style*="flex: 0.8"] {
   flex-shrink: 0;
 }
 
@@ -238,7 +239,8 @@ body {
 }
 
 .back-btn {
-  background: rgba(0, 0, 0, 0.01); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.01);
+  /* Тёмный фон */
   color: #ff8c00;
   padding: 8px 16px;
   border-radius: 24px;
@@ -706,7 +708,8 @@ body {
   align-items: center;
   margin-bottom: 18.42px;
   position: relative;
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   backdrop-filter: none;
   box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.25);
@@ -749,7 +752,8 @@ body {
 
 .detail-progress {
   padding: 12.9px;
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   backdrop-filter: none;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   border-radius: 12px;
@@ -783,7 +787,8 @@ body {
 }
 
 .detail-progress-btn {
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   backdrop-filter: none;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   color: #ff8c00;
@@ -846,7 +851,8 @@ body {
 .file-item {
   margin-right: 5px;
   margin-left: 5px;
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   backdrop-filter: none;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   border-radius: 12px;
@@ -932,7 +938,8 @@ body {
 
 /* Кнопка почти прозрачная */
 .play-btn {
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   backdrop-filter: none;
   color: #ff8c00;
   border: 2px solid rgba(255, 140, 0, 0.4);
@@ -950,7 +957,8 @@ body {
 }
 
 .play-btn:hover {
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   backdrop-filter: none;
   border-color: rgba(255, 140, 0, 0.9);
   transform: scale(1.05);
@@ -972,7 +980,8 @@ body.detail-open {
 .catalog-detail-extra {
   position: relative;
   border-radius: 14.89px;
-  background: rgba(255, 255, 255, 0.08); /* Светлый фон */
+  background: rgba(255, 255, 255, 0.08);
+  /* Светлый фон */
   backdrop-filter: none;
   box-shadow:
     0 4px 20px rgba(0, 0, 0, 0.25);
@@ -1326,7 +1335,8 @@ body.detail-open {
   bottom: 120px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   color: #4a9eff;
   padding: 6px 12px;
   border-radius: 20px;
@@ -1379,7 +1389,8 @@ body.detail-open {
 
 /* Основной заголовок */
 .player-title {
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   color: #fff;
   padding: 8px 20px;
   border-radius: 30px;
@@ -1398,7 +1409,8 @@ body.detail-open {
 
 /* Вторая строка (субтитр) */
 .player-subtitle {
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   color: rgba(255, 255, 255, 0.8);
   padding: 6px 16px;
   border-radius: 30px;
@@ -1430,7 +1442,8 @@ body.detail-open {
   z-index: 225;
   opacity: 0;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   padding: 12px 16px;
   border-radius: 24px;
   border: 1px solid rgba(74, 158, 255, 0.5);
@@ -1516,7 +1529,8 @@ body.detail-open {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   padding: 4px 12px;
   border-radius: 20px;
   flex: 1;
@@ -1689,7 +1703,8 @@ body.detail-open {
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   border: 1px solid rgba(74, 158, 255, 0.5);
   color: rgba(74, 158, 255, 0.8);
   font-size: 22px;
@@ -1761,9 +1776,10 @@ body.detail-open {
   #torrents-grid {
     grid-template-columns: repeat(4, 1fr);
   }
+
   .catalog-trailer-card-item {
-        width: 170px;
-        height: 150px;
+    width: 170px;
+    height: 150px;
   }
 
   .search-overlay {
@@ -2874,7 +2890,8 @@ body.detail-open {
 }
 
 .files-loading-indicator {
-  background: rgba(0, 0, 0, 0.3); /* Тёмный фон */
+  background: rgba(0, 0, 0, 0.3);
+  /* Тёмный фон */
   border-radius: 16px;
   margin: 40px 20px;
   backdrop-filter: none;
@@ -3056,188 +3073,205 @@ article {
 
 /* Базовый стиль кнопки пропуска */
 .skip-button {
-    position: fixed;
-    bottom: 80px;
-    right: 20px;
-    background: rgba(0, 0, 0, 0.7);
-    color: white;
-    padding: 12px 24px;
-    border-radius: 8px;
-    font-size: 16px;
-    font-weight: bold;
-    cursor: pointer;
-    z-index: 1000;
-    border: 2px solid #ff5722;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    letter-spacing: 0.5px;
-    transition: background 10s linear;
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 1000;
+  border: 2px solid #ff5722;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  letter-spacing: 0.5px;
+  transition: background 10s linear;
 }
 
 .skip-button.hidden {
-    display: none;
-}
-
-.skip-button.visible {
-    display: flex;
-    animation: slideIn 0.3s ease;
-}
-
-.skip-button.filled {
-    background: linear-gradient(135deg, #ff5722, #e64a19);
-    transition: background 0.3s ease;
-}
-
-.skip-button.focused {
-    outline: none;
-    border-color: #ffeb3b;
-    box-shadow: 0 0 10px #ffeb3b, 0 2px 8px rgba(0,0,0,0.2);
-}
-
-.skip-button.focused.filled {
-    box-shadow: 0 0 15px #ffeb3b, 0 4px 15px rgba(0,0,0,0.3);
-}
-
-@keyframes slideIn {
-    from {
-        transform: translateX(100px);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-.menu-item.active {
-    background: #1a1a20 !important;
-    border-left: 3px solid #ff8c00;
-}
-
-/* Панель субтитров */
-.subtitles-panel {
-  position: fixed;
-  bottom: 150px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 320px;
-  max-height: 380px;
-  background: #14141e;
-  border: 1px solid #000000;
-  border-radius: 16px;
-  z-index: 240;
-  overflow: hidden;
-}
-
-.subtitles-panel.hidden {
   display: none;
 }
 
+.skip-button.visible {
+  display: flex;
+  animation: slideIn 0.3s ease;
+}
+
+.skip-button.filled {
+  background: linear-gradient(135deg, #ff5722, #e64a19);
+  transition: background 0.3s ease;
+}
+
+.skip-button.focused {
+  outline: none;
+  border-color: #ffeb3b;
+  box-shadow: 0 0 10px #ffeb3b, 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.skip-button.focused.filled {
+  box-shadow: 0 0 15px #ffeb3b, 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.menu-item.active {
+  background: #1a1a20 !important;
+  border-left: 3px solid #ff8c00;
+}
+
+/* ===== ПАНЕЛИ (Эпизоды, Аудио, Субтитры) ===== */
+.audio-panel,
+.episodes-panel,
+.subtitles-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 33.33vw;
+  height: 100vh;
+  max-height: 100vh;
+  background: rgba(10, 10, 15, 0.65);
+  border-left: 1px solid rgba(74, 158, 255, 0.3);
+  border-radius: 0;
+  z-index: 240;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  /* Анимация выезда справа */
+  transform: translateX(0);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+}
+
+/* Когда панель скрыта - уезжает за правый край */
+.audio-panel.hidden,
+.episodes-panel.hidden,
+.subtitles-panel.hidden {
+  display: flex !important;
+  transform: translateX(100%);
+  pointer-events: none;
+}
+
+/* Заголовки панелей */
+.audio-panel-header,
+.episodes-panel-header,
 .subtitles-panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 16px;
-  background: #000000;
-  border-bottom: 1px solid #000000;
-}
-
-.subtitles-panel-header h3 {
-  color: white;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.subtitles-list {
-  max-height: 320px;
-  overflow-y: auto;
-  padding: 10px;
-}
-
-.subtitle-item {
-  display: flex;
-  align-items: center;
-  padding: 12px;
-  margin-bottom: 8px;
-  background: #282837;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.subtitle-item:hover {
-  background: #3a3a4a;
-}
-
-.subtitle-item.active {
-  background: #1e3a5f;
-  border: 1px solid #000000;
-}
-
-.subtitle-icon {
-  width: 36px;
-  height: 36px;
-  background: #4a9eff;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 12px;
-  font-size: 16px;
-  color: #fff;
-  font-weight: bold;
+  padding: 18px 20px;
+  background: rgba(0, 0, 0, 0.4);
+  border-bottom: 1px solid rgba(74, 158, 255, 0.3);
   flex-shrink: 0;
 }
 
+.audio-panel-header h3,
+.episodes-panel-header h3,
+.subtitles-panel-header h3 {
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Списки внутри панелей - растягиваются на всё место */
+.audio-list,
+.episodes-list,
+.subtitles-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 158, 255, 0.4) transparent;
+}
+
+.audio-list::-webkit-scrollbar,
+.episodes-list::-webkit-scrollbar,
+.subtitles-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.audio-list::-webkit-scrollbar-thumb,
+.episodes-list::-webkit-scrollbar-thumb,
+.subtitles-list::-webkit-scrollbar-thumb {
+  background: rgba(74, 158, 255, 0.4);
+  border-radius: 3px;
+}
+
+/* Элементы списков - растягиваются по ширине */
+.audio-item,
+.episode-item,
+.subtitle-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  margin-bottom: 6px;
+  background: rgba(40, 40, 55, 0.5);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.audio-item:hover,
+.episode-item:hover,
+.subtitle-item:hover {
+  background: rgba(60, 60, 80, 0.7);
+}
+
+.audio-item.active,
+.episode-item.active,
+.subtitle-item.active {
+  background: rgba(30, 58, 95, 0.8);
+  border: 1px solid rgba(74, 158, 255, 0.6);
+}
+
+/* Информация в элементе - занимает всё доступное место */
+.audio-info,
+.episode-info,
 .subtitle-info {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
 }
 
+.audio-title,
+.episode-title,
 .subtitle-title {
   color: white;
-  font-size: 13px;
+  font-size: 14px;
   margin-bottom: 3px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.subtitle-details {
-  color: #aaa;
-  font-size: 11px;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.subtitle-language {
-  background: #3a3a4a;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.subtitle-format {
-  color: #888;
-  font-size: 10px;
-}
-
-.subtitle-check {
-  margin-left: 10px;
-  color: #4a9eff;
-  font-size: 18px;
-  opacity: 0;
-  flex-shrink: 0;
-}
-
-.subtitle-item.active .subtitle-check {
-  opacity: 1;
-}
-
-/* Мобильная адаптация */
+/* Адаптивность для мобильных */
 @media (max-width: 768px) {
+
+  .audio-panel,
+  .episodes-panel,
   .subtitles-panel {
-    width: 280px;
+    width: 85vw;
+  }
+}
+
+@media (max-width: 480px) {
+
+  .audio-panel,
+  .episodes-panel,
+  .subtitles-panel {
+    width: 95vw;
   }
 }
