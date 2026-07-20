@@ -534,7 +534,7 @@ var ScreenStrategies = {
                 if (ti !== -1) {
                     if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f);
                     if (dir === 'right') return focusEl(t[Math.min(t.length - 1, ti + 1)] || f);
-                    if (dir === 'down') return focusEl(r[Math.min(r.length - 1, ri + 1)] || f);
+                    if (dir === 'down') return focusEl(r[Math.min(r.length - 1, ri + 1)] || f, { direction: 'down' });
                     if (dir === 'up') return true;
                     return true;
                 }
@@ -542,12 +542,26 @@ var ScreenStrategies = {
                     if (dir === 'left') return focusEl(fl[Math.max(0, fi - 1)] || f);
                     if (dir === 'right') return focusEl(fl[Math.min(fl.length - 1, fi + 1)] || f);
                     if (dir === 'up') { closeFiltersPanel(); return focusEl(q); }
-                    if (dir === 'down') { closeFiltersPanel(); if (r.length > 0) return focusEl(r[0]); return true; }
+                    if (dir === 'down') { closeFiltersPanel(); if (r.length > 0) { return focusEl(r[0], { direction: 'down' }); } return true; }
                     return true;
                 }
                 if (ri !== -1) {
-                    if (dir === 'up') { if (ri === 1) return focusEl(r[ri - 1] || f); else if (ri > 1) return focusEl(r[ri - 1] || f); return focusEl(q); }
-                    if (dir === 'down') { var ar = r.length; if (ar === ri + 1) return focusEl(r[Math.min(r.length - 1, ri + 1)] || f); else return focusEl(r[Math.min(r.length - 1, ri + 1)] || f); }
+                    if (dir === 'up') {
+                        if (ri === 1) {
+                            return focusEl(r[ri - 1] || f, { direction: 'up' });
+                        } else if (ri > 1) {
+                            return focusEl(r[ri - 1] || f, { direction: 'up' });
+                        }
+                        return focusEl(q);
+                    }
+                    if (dir === 'down') {
+                        var ar = r.length;
+                        if (ar === ri + 1) {
+                            return focusEl(r[Math.min(r.length - 1, ri + 1)] || f, { direction: 'down' });
+                        } else {
+                            return focusEl(r[Math.min(r.length - 1, ri + 1)] || f, { direction: 'down' });
+                        }
+                    }
                     if (dir === 'left') { openFiltersPanelAndFocus(); return true; }
                     if (dir === 'right') {
                         if (f && (f.classList.contains('search-result-item') || f.classList.contains('global-search-card'))) {
@@ -1544,7 +1558,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         if (typeof Animations !== 'undefined') Animations.scrollToIfNotVisible(el, container);
     }
     if (!scrollContainer) return;
-    if (typeof Animations !== 'undefined') Animations.scrollToIfNotVisible(el, container);
+    Animations.scrollToIfNotVisible(el, container, { direction: direction });
 }
 
 function byId(id) { return getEl(id); };
