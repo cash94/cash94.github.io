@@ -750,7 +750,7 @@ function updateFocusableElements() {
     var list = [];
 
     if (isEpisodesOpen) {
-        var items = document.querySelectorAll('.episode-item, .close-panel-btn');
+        var items = episodesPanel.querySelectorAll('.episode-item, .close-panel-btn');
         for (var i = 0; i < items.length; i++) if (items[i] && items[i].offsetParent !== null) list.push(items[i]);
         focusableElements = list;
         _focusCache.timestamp = now;
@@ -759,7 +759,7 @@ function updateFocusableElements() {
         return;
     }
     if (isAudioOpen) {
-        var items = document.querySelectorAll('.audio-item, .close-panel-btn');
+        var items = audioPanel.querySelectorAll('.audio-item, .close-panel-btn');
         for (var i = 0; i < items.length; i++) if (items[i] && items[i].offsetParent !== null) list.push(items[i]);
         focusableElements = list;
         _focusCache.timestamp = now;
@@ -768,7 +768,7 @@ function updateFocusableElements() {
         return;
     }
     if (isSubtitlesOpen) {
-        var items = document.querySelectorAll('.subtitle-item, .close-panel-btn');
+        var items = subtitlesPanel.querySelectorAll('.subtitle-item, .close-panel-btn');
         for (var i = 0; i < items.length; i++) if (items[i] && items[i].offsetParent !== null) list.push(items[i]);
         focusableElements = list;
         _focusCache.timestamp = now;
