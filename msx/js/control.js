@@ -996,7 +996,14 @@ function navigate(direction) {
         var isOpen = (ep && !ep.classList.contains('hidden')) || (ap && !ap.classList.contains('hidden')) || (sp && !sp.classList.contains('hidden'));
 
         if (isOpen) {
-            //Синхронизируем currentFocusIndex с реально сфокусированным элементом в DOM
+            // Инвалидируем кэш для получения актуального списка элементов панели
+            if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+            updateFocusableElements();
+
+            var panelLen = focusableElements.length;
+            if (panelLen === 0) return;
+
+            // Синхронизируем currentFocusIndex с реально сфокусированным элементом
             var actualFocused = document.querySelector('.focused');
             if (actualFocused) {
                 var actualIndex = focusableElements.indexOf(actualFocused);
@@ -1005,16 +1012,21 @@ function navigate(direction) {
                 }
             }
 
-            // Дополнительная проверка границ (если фокус в DOM вообще потерян)
-            if (currentFocusIndex < 0 || currentFocusIndex >= focusableElements.length) {
-                currentFocusIndex = 0;
-            }
+            // принудительно загоняем индекс в допустимые границы
+            if (currentFocusIndex < 0) currentFocusIndex = 0;
+            if (currentFocusIndex >= panelLen) currentFocusIndex = panelLen - 1;
 
-            // Навигация внутри панели
-            if (direction === 'up' && currentFocusIndex > 0) {
-                setFocus(currentFocusIndex - 1);
-            } else if (direction === 'down' && currentFocusIndex < focusableElements.length - 1) {
-                setFocus(currentFocusIndex + 1);
+            // Навигация с защитой от выхода за пределы
+            if (direction === 'up') {
+                if (currentFocusIndex > 0) {
+                    setFocus(currentFocusIndex - 1);
+                }
+                // Если currentFocusIndex === 0 — ничего не делаем, стоим на первом элементе
+            } else if (direction === 'down') {
+                if (currentFocusIndex < panelLen - 1) {
+                    setFocus(currentFocusIndex + 1);
+                }
+                // Если currentFocusIndex === panelLen - 1 — ничего не делаем, стоим на последнем
             }
             return;
         }
@@ -1122,25 +1134,30 @@ function isBackKey(kc) { return KEY_CODES.BACK.indexOf(kc) !== -1 || (typeof isK
 
 function focusActivePanelItem(panelType) {
     setTimeout(function () {
-        var sel = panelType === 'episodes' ? '.episode-item.active'
-            : panelType === 'subtitles' ? '.subtitle-item.active'
-                : '.audio-item.active';
+        var sel;
+        if (panelType === 'episodes') sel = '.episode-item.active';
+        else if (panelType === 'subtitles') sel = '.subtitle-item.active';
+        else sel = '.audio-item.active';
+
+        // Обязательно инвалидируем кэш, чтобы получить свежий список элементов панели
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        updateFocusableElements();
 
         var active = document.querySelector(sel);
 
-        // Если активного элемента нет - берем первый элемент панели
+        // Если активного элемента нет — берём первый элемент списка
         if (!active) {
-            var firstItem = document.querySelector(
-                panelType === 'episodes' ? '.episode-item' :
-                    panelType === 'subtitles' ? '.subtitle-item' :
-                        '.audio-item'
-            );
-            if (firstItem) active = firstItem;
-            else return;
+            var fallbackSel = panelType === 'episodes' ? '.episode-item'
+                : panelType === 'subtitles' ? '.subtitle-item'
+                    : '.audio-item';
+            active = document.querySelector(fallbackSel);
         }
 
-        // Обновляем список фокусируемых элементов
-        updateFocusableElements();
+        if (!active) {
+            // Совсем ничего нет — фокусируемся на close-panel-btn или первом элементе
+            if (focusableElements.length > 0) setFocus(0);
+            return;
+        }
 
         // Ищем индекс активного элемента в focusableElements
         var targetIndex = -1;
@@ -1151,25 +1168,13 @@ function focusActivePanelItem(panelType) {
             }
         }
 
-        // Если нашли - используем setFocus (правильно синхронизирует currentFocusIndex)
         if (targetIndex !== -1) {
             setFocus(targetIndex);
-        } else {
-            // Fallback: устанавливаем визуальный фокус вручную
-            var focused = document.querySelectorAll('.focused');
-            for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
-            active.classList.add('focused');
-            active.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-            // Но всё равно пытаемся синхронизировать currentFocusIndex
-            for (var i = 0; i < focusableElements.length; i++) {
-                if (focusableElements[i].contains(active)) {
-                    currentFocusIndex = i;
-                    break;
-                }
-            }
+        } else if (focusableElements.length > 0) {
+            // Fallback: первый элемент
+            setFocus(0);
         }
-    }, 100); // Увеличиваем задержку до 100мс для надежности
+    }, 100);
 }
 
 function setupKeyboardHandlers() {
