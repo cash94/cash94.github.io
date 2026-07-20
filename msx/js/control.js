@@ -38,6 +38,7 @@ var fastNavigation = false;
 var fastNavigationTimer = null;
 var lastPopStateTime = 0;
 var isProcessingBack = false;
+var lastNavDirection = 'right';
 
 var configState = {
     activeTabId: 'torrserver-tab',
@@ -614,9 +615,7 @@ var ScreenStrategies = {
             return focusEl(items[0] || getEl('back-from-detail'));
         },
         handleNavigation: function (dir) {
-            // ИСПРАВЛЕНО: используем прямой вызов getDetailItems() вместо this.getItems()
-            var items = getDetailItems();
-            var f = (belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null);
+            var items = getDetailItems(), f = (belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null);
             if (!f) return this.ensureFocus(true);
             var idx = -1; for (var i = 0; i < items.length; i++) if (f === items[i]) { idx = i; break; }
             if (idx === -1) return this.ensureFocus(true);
@@ -639,47 +638,47 @@ var ScreenStrategies = {
             for (var i = 0; i < fi.length; i++) if (f === fi[i]) { fii = i; break; }
 
             if (isF && fii !== -1) {
-                if (dir === 'left') { if (fii > 0) focusEl(fi[fii - 1]); return true; }
-                if (dir === 'right') { if (fii < fi.length - 1) focusEl(fi[fii + 1]); return true; }
-                if (dir === 'up') { var prevItems = []; for (var k = idx - 1; k >= 0; k--) { if (!items[k].classList || !items[k].classList.contains('file-item')) prevItems.push(items[k]); } if (prevItems.length > 0) focusEl(prevItems[0]); return true; }
+                if (dir === 'left') { if (fii > 0) { focusEl(fi[fii - 1], { direction: 'left' }); } return true; }
+                if (dir === 'right') { if (fii < fi.length - 1) { focusEl(fi[fii + 1], { direction: 'right' }); } return true; }
+                if (dir === 'up') { var prevItems = []; for (var k = idx - 1; k >= 0; k--) { if (!items[k].classList || !items[k].classList.contains('file-item')) { prevItems.push(items[k]); } } if (prevItems.length > 0) focusEl(prevItems[0], { direction: 'up' }); return true; }
                 if (dir === 'down') return true;
                 return true;
             }
             if (isT && ti !== -1) {
-                if (dir === 'left') return focusEl(tl[Math.max(0, ti - 1)] || f);
-                if (dir === 'right') return focusEl(tl[Math.min(tl.length - 1, ti + 1)] || f);
-                if (dir === 'up') { if (wb && wb.offsetParent !== null) { focusEl(wb); return true; } return focusEl(items[Math.max(0, idx - 1)] || f); }
-                if (dir === 'down') { if (ac.length > 0) { focusEl(ac[0]); return true; } else if (rc.length > 0) { focusEl(rc[0]); return true; } else if (fi.length > 0) { focusEl(fi[0]); return true; } return true; }
+                if (dir === 'left') return focusEl(tl[Math.max(0, ti - 1)] || f, { direction: 'left' });
+                if (dir === 'right') return focusEl(tl[Math.min(tl.length - 1, ti + 1)] || f, { direction: 'right' });
+                if (dir === 'up') { if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
+                if (dir === 'down') { if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 return true;
             }
             if (isA && ai !== -1) {
-                if (dir === 'left') return focusEl(ac[Math.max(0, ai - 1)] || f);
-                if (dir === 'right') return focusEl(ac[Math.min(ac.length - 1, ai + 1)] || f);
-                if (dir === 'up') { if (tl.length > 0) { focusEl(tl[tl.length - 1]); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb); return true; } return focusEl(items[Math.max(0, idx - 1)] || f); }
-                if (dir === 'down') { if (rc.length > 0) { var t = ai < rc.length ? ai : rc.length - 1; focusEl(rc[t]); return true; } else if (fi.length > 0) { focusEl(fi[0]); return true; } return true; }
+                if (dir === 'left') return focusEl(ac[Math.max(0, ai - 1)] || f, { direction: 'left' });
+                if (dir === 'right') return focusEl(ac[Math.min(ac.length - 1, ai + 1)] || f, { direction: 'right' });
+                if (dir === 'up') { if (tl.length > 0) { focusEl(tl[tl.length - 1], { direction: 'up' }); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
+                if (dir === 'down') { if (rc.length > 0) { var t = ai < rc.length ? ai : rc.length - 1; focusEl(rc[t], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 return true;
             }
             if (isR && ri !== -1) {
-                if (dir === 'left') return focusEl(rc[Math.max(0, ri - 1)] || f);
-                if (dir === 'right') return focusEl(rc[Math.min(rc.length - 1, ri + 1)] || f);
-                if (dir === 'up') { if (ac.length > 0) { var t = ri < ac.length ? ri : ac.length - 1; focusEl(ac[t]); return true; } else if (tl.length > 0) { var t = ri < tl.length ? ri : tl.length - 1; focusEl(tl[t]); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb); return true; } return focusEl(items[Math.max(0, idx - 1)] || f); }
-                if (dir === 'down') { if (fi.length > 0) { focusEl(fi[0]); return true; } return true; }
+                if (dir === 'left') return focusEl(rc[Math.max(0, ri - 1)] || f, { direction: 'left' });
+                if (dir === 'right') return focusEl(rc[Math.min(rc.length - 1, ri + 1)] || f, { direction: 'right' });
+                if (dir === 'up') { if (ac.length > 0) { var t = ri < ac.length ? ri : ac.length - 1; focusEl(ac[t], { direction: 'up' }); return true; } else if (tl.length > 0) { var t = ri < tl.length ? ri : tl.length - 1; focusEl(tl[t], { direction: 'up' }); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
+                if (dir === 'down') { if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 return true;
             }
             if (isW) {
-                if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0]); return true; } else if (ac.length > 0) { focusEl(ac[0]); return true; } else if (rc.length > 0) { focusEl(rc[0]); return true; } else if (fi.length > 0) { focusEl(fi[0]); return true; } return true; }
+                if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 if (dir === 'left' || dir === 'right') return true;
-                if (dir === 'up') return focusEl(bb || f);
+                if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
                 return true;
             }
             if (isB) {
-                if (dir === 'down') { if (wb && wb.offsetParent !== null) { focusEl(wb); return true; } return focusEl(items[Math.min(items.length - 1, idx + 1)] || f); }
+                if (dir === 'down') { if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'down' }); return true; } return focusEl(items[Math.min(items.length - 1, idx + 1)] || f, { direction: 'down' }); }
                 if (dir === 'up') return true;
                 if (dir === 'left' || dir === 'right') return true;
                 return true;
             }
-            if (dir === 'up') { var t = items[Math.max(0, idx - 1)] || f; focusEl(t); return true; }
-            if (dir === 'down') { var t = items[Math.min(items.length - 1, idx + 1)] || f; focusEl(t); return true; }
+            if (dir === 'up') { var t = items[Math.max(0, idx - 1)] || f; focusEl(t, { direction: 'up' }); return true; }
+            if (dir === 'down') { var t = items[Math.min(items.length - 1, idx + 1)] || f; focusEl(t, { direction: 'down' }); return true; }
             return true;
         },
         onOk: function (f) {
@@ -875,40 +874,33 @@ function updateFocusableElements() {
 
 // setFocus с requestAnimationFrame для плавности
 function setFocus(index) {
-    if (focusableElements.length === 0) {
-        updateFocusableElements();
-        if (focusableElements.length === 0) return;
-    }
+    if (focusableElements.length === 0) { updateFocusableElements(); if (focusableElements.length === 0) return; }
     if (index < 0) index = focusableElements.length - 1;
     if (index >= focusableElements.length) index = 0;
     currentFocusIndex = index;
-
     var element = focusableElements[currentFocusIndex];
     if (!element) return;
 
-    requestAnimationFrame(function () {
-        focusEl(element);
+    // Передаём направление навигации в focusEl
+    focusEl(element, { direction: lastNavDirection });
 
-        if (AppState.currentScreen === 'config') {
-            switchConfigTab(element.id);
-        }
-
-        if (AppState.currentScreen === 'torrents' && element.classList.contains('torrent-card')) {
-            var row1Len = (window.torrentRows && window.torrentRows.row1 ? window.torrentRows.row1.length : 0);
-            var row2Len = (window.torrentRows && window.torrentRows.row2 ? window.torrentRows.row2.length : 0);
-            var torrentIndex = currentFocusIndex - (row1Len + row2Len);
-            var t = AppState.torrents[torrentIndex];
-            if (t && t.hash) { lastSelectedTorrentHash = t.hash; lastSelectedTorrentIndex = torrentIndex; }
-            else if (element.dataset.hash) { lastSelectedTorrentHash = element.dataset.hash; lastSelectedTorrentIndex = torrentIndex >= 0 ? torrentIndex : 0; }
-            window.lastSelectedTorrentHash = lastSelectedTorrentHash;
-            window.lastSelectedTorrentIndex = lastSelectedTorrentIndex;
-        }
-
-        if (document.activeElement && document.activeElement.tagName === 'INPUT') {
-            var allowed = ['search-query', 'torrserver-url', 'auth-login', 'auth-password', 'jacred-url'];
-            if (allowed.indexOf(element.id) === -1) document.activeElement.blur();
-        }
-    });
+    if (AppState.currentScreen === 'config') {
+        switchConfigTab(element.id);
+    }
+    if (AppState.currentScreen === 'torrents' && element.classList.contains('torrent-card')) {
+        var row1Len = (window.torrentRows && window.torrentRows.row1 ? window.torrentRows.row1.length : 0);
+        var row2Len = (window.torrentRows && window.torrentRows.row2 ? window.torrentRows.row2.length : 0);
+        var torrentIndex = currentFocusIndex - (row1Len + row2Len);
+        var t = AppState.torrents[torrentIndex];
+        if (t && t.hash) { lastSelectedTorrentHash = t.hash; lastSelectedTorrentIndex = torrentIndex; }
+        else if (element.dataset.hash) { lastSelectedTorrentHash = element.dataset.hash; lastSelectedTorrentIndex = torrentIndex >= 0 ? torrentIndex : 0; }
+        window.lastSelectedTorrentHash = lastSelectedTorrentHash;
+        window.lastSelectedTorrentIndex = lastSelectedTorrentIndex;
+    }
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') {
+        var allowed = ['search-query', 'torrserver-url', 'auth-login', 'auth-password', 'jacred-url'];
+        if (allowed.indexOf(element.id) === -1) document.activeElement.blur();
+    }
 }
 
 function focusFirstTorrentCard(retries, delay) {
@@ -939,6 +931,7 @@ function focusSearchHome(preferQuery) {
 // ==================== НАВИГАЦИЯ ====================
 function navigate(direction) {
     if (typeof setFastNavigation === 'function') setFastNavigation();
+    lastNavDirection = direction;
     var active = document.activeElement;
     if (active && active.id === 'search-query') {
         active.blur(); updateFocusableElements();
@@ -1415,7 +1408,7 @@ function isElementFullyVisible(el, container) {
         r.left >= cr.left + 20 && r.right <= cr.right - 20;
 }
 
-function scrollToElementIfNeeded(el, container, smooth) {
+function scrollToElementIfNeeded(el, container, smooth, direction) {
     if (smooth === undefined) smooth = !fastNavigation;
     if (!el || !container) return;
     var r = el.getBoundingClientRect();
@@ -1426,6 +1419,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap' ||
         container.id === 'files-list';
+
     if (isH) {
         var con = "";
         if (container.id === 'catalog-detail-actors-wrap' ||
@@ -1436,16 +1430,32 @@ function scrollToElementIfNeeded(el, container, smooth) {
         } else {
             con = container;
         }
-        var targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
+
+        // НАПРАВЛЕННЫЙ СКРОЛЛ: позиционируем элемент в зависимости от направления
+        var hp = 30; // Горизонтальный отступ
+        var targetLeft;
+
+        if (direction === 'left') {
+            // Двигаемся влево → элемент должен появиться у левого края видимой области
+            targetLeft = con.scrollLeft + (r.left - cr.left) - hp;
+        } else if (direction === 'right') {
+            // Двигаемся вправо → элемент должен появиться у правого края видимой области
+            targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width - r.width - hp);
+        } else {
+            // По умолчанию (up/down/без направления) → центрируем
+            targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
+        }
+
         targetLeft = Math.max(0, targetLeft);
         var needsHScroll = Math.abs(con.scrollLeft - targetLeft) > 10;
+
         if (needsHScroll) {
             if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                 gsap.killTweensOf(con);
                 gsap.to(con, {
                     scrollTo: { x: targetLeft },
-                    duration: 0.1,
-                    ease: "power1.out",
+                    duration: 0.25,
+                    ease: "power2.out",
                     overwrite: true
                 });
             } else if (smooth) {
@@ -1454,6 +1464,8 @@ function scrollToElementIfNeeded(el, container, smooth) {
                 con.scrollLeft = targetLeft;
             }
         }
+
+        // Вертикальный скролл detail-view (для wrap-контейнеров)
         var detailView = getEl('detail-view');
         if (detailView) {
             var containerRect = container.getBoundingClientRect();
@@ -1465,22 +1477,35 @@ function scrollToElementIfNeeded(el, container, smooth) {
             var detailViewportBottom = detailViewportTop + detailRect.height;
             var needsVertScroll = false;
             var targetScrollTop = detailView.scrollTop;
+
+            // НАПРАВЛЕННЫЙ ВЕРТИКАЛЬНЫЙ СКРОЛЛ
             if (containerTopRelative < detailViewportTop + 50) {
-                targetScrollTop = Math.max(0, containerTopRelative - 20);
+                if (direction === 'up') {
+                    // Двигаемся вверх → элемент прижимаем к верху
+                    targetScrollTop = Math.max(0, containerTopRelative - 30);
+                } else {
+                    targetScrollTop = Math.max(0, containerTopRelative - 50);
+                }
                 needsVertScroll = true;
             } else if (containerBottomRelative > detailViewportBottom - 50) {
-                targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 20);
+                if (direction === 'down') {
+                    // Двигаемся вниз → элемент прижимаем к низу
+                    targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 30);
+                } else {
+                    targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 50);
+                }
                 needsVertScroll = true;
             }
+
             if (needsVertScroll) {
                 targetScrollTop = Math.max(0, Math.min(targetScrollTop, detailView.scrollHeight - detailRect.height));
                 if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                     gsap.killTweensOf(detailView);
                     gsap.to(detailView, {
                         scrollTo: { y: targetScrollTop },
-                        duration: 0.1,
+                        duration: 0.25,
                         backgroundColor: 'rgb(0, 0, 0)',
-                        ease: "power1.out",
+                        ease: "power2.out",
                         overwrite: true
                     });
                 } else if (smooth) {
@@ -1496,12 +1521,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
             var targetScrollTop = 0;
             if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                 gsap.killTweensOf(container);
-                gsap.to(container, {
-                    scrollTo: { y: targetScrollTop },
-                    duration: 0.1,
-                    ease: "power1.out",
-                    overwrite: true
-                });
+                gsap.to(container, { scrollTo: { y: targetScrollTop }, duration: 0.1, ease: "power0.out", overwrite: true });
             } else if (smooth) {
                 container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
             } else {
@@ -1513,12 +1533,7 @@ function scrollToElementIfNeeded(el, container, smooth) {
         var targetScrollTop = 0;
         if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
             gsap.killTweensOf(container);
-            gsap.to(container, {
-                scrollTo: { y: targetScrollTop },
-                duration: 0.1,
-                ease: "power1.out",
-                overwrite: true
-            });
+            gsap.to(container, { scrollTo: { y: targetScrollTop }, duration: 0.1, ease: "power0.out", overwrite: true });
         } else if (smooth) {
             container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
         } else {
@@ -1539,12 +1554,14 @@ function focusEl(el, opts) {
     clearFocused();
     el.classList.add('focused');
     if (opts.nativeFocus) try { el.focus(); } catch (e) { } else blurEditor();
+
     var container = null;
     var s = AppState.currentScreen;
     var isFI = el.classList && el.classList.contains('file-item');
     var isAC = el.classList && el.classList.contains('catalog-actor-card');
     var isRC = el.classList && el.classList.contains('catalog-recommendation-card');
     var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
+
     if (s === 'catalog' || s === 'torrents' || s === 'config') {
         container = getEl('main-container');
     } else if (s === 'search') {
@@ -1554,32 +1571,25 @@ function focusEl(el, opts) {
             container = getEl('files-list');
         } else if (isAC) {
             container = getEl('catalog-detail-actors-wrap');
-            if (!container && el.closest) {
-                container = el.closest('.catalog-detail-actors-wrap');
-            }
+            if (!container && el.closest) container = el.closest('.catalog-detail-actors-wrap');
         } else if (isRC) {
             container = getEl('catalog-detail-recommendations-wrap');
-            if (!container && el.closest) {
-                container = el.closest('.catalog-detail-recommendations-wrap');
-            }
+            if (!container && el.closest) container = el.closest('.catalog-detail-recommendations-wrap');
         } else if (isTC) {
             container = getEl('catalog-detail-trailers-wrap');
-            if (!container && el.closest) {
-                container = el.closest('.catalog-detail-trailers-wrap');
-            }
+            if (!container && el.closest) container = el.closest('.catalog-detail-trailers-wrap');
         } else {
             container = getEl('detail-view');
         }
     } else if (s === 'player') {
         var parent = el.parentElement;
-        if (parent) {
-            container = getEl(parent.id);
-        } else {
-            console.log('У элемента нет родителя или родитель не является HTML-элементом');
-        }
+        if (parent) container = getEl(parent.id);
     }
+
+    // Передаём direction в scrollToElementIfNeeded
+    var scrollDirection = opts.direction || lastNavDirection;
     if (container && !isElementFullyVisible(el, container) || el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'tab-catalog') {
-        scrollToElementIfNeeded(el, container, !fastNavigation);
+        scrollToElementIfNeeded(el, container, !fastNavigation, scrollDirection);
     }
     return true;
 }
