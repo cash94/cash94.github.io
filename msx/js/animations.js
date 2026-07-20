@@ -491,24 +491,32 @@ var Animations = (function () {
             return;
         }
 
-        // Если не виден, выполняем прокрутку
         options = options || {};
         var duration = options.duration || 0.15;
         var ease = options.ease || "power1.out";
-        var offset = options.offset || 10; // Отступ от нижнего края
-
+        var offset = options.offset || 10;
+        var direction = options.direction || null; //Добавляем параметр направления
         var targetContainer = container || window;
 
         if (targetContainer !== window && targetContainer.scrollTop !== undefined) {
             var rect = element.getBoundingClientRect();
             var containerRect = targetContainer.getBoundingClientRect();
+            var targetTop;
 
-            // Логика для нижнего края:
-            // Мы хотим, чтобы низ элемента (rect.bottom) оказался на уровне низа контейнера (containerRect.bottom) минус offset.
-            // Формула: targetTop = currentScroll + (позиция_низа_элемента - позиция_низа_контейнера) - offset
-
-            var positionDiff = rect.bottom - containerRect.bottom;
-            var targetTop = targetContainer.scrollTop + positionDiff + offset;
+            // Разная логика в зависимости от направления
+            if (direction === 'down') {
+                // При навигации вниз - прижимаем элемент к НИЖНЕМУ краю
+                var positionDiff = rect.bottom - containerRect.bottom;
+                targetTop = targetContainer.scrollTop + positionDiff + offset;
+            } else if (direction === 'up') {
+                // При навигации вверх - прижимаем элемент к ВЕРХНЕМУ краю
+                var positionDiff = rect.top - containerRect.top;
+                targetTop = targetContainer.scrollTop + positionDiff - offset;
+            } else {
+                // По умолчанию - прижимаем к нижнему краю (старая логика)
+                var positionDiff = rect.bottom - containerRect.bottom;
+                targetTop = targetContainer.scrollTop + positionDiff + offset;
+            }
 
             // Ограничиваем значения, чтобы не выйти за пределы скролла
             targetTop = Math.max(0, Math.min(targetContainer.scrollHeight - containerRect.height, targetTop));
@@ -522,7 +530,14 @@ var Animations = (function () {
             });
         } else {
             // Для окна браузера логика аналогичная
-            var targetY = window.scrollY + (element.getBoundingClientRect().bottom - window.innerHeight) + offset;
+            var targetY;
+            if (direction === 'down') {
+                targetY = window.scrollY + (element.getBoundingClientRect().bottom - window.innerHeight) + offset;
+            } else if (direction === 'up') {
+                targetY = window.scrollY + element.getBoundingClientRect().top - offset;
+            } else {
+                targetY = window.scrollY + (element.getBoundingClientRect().bottom - window.innerHeight) + offset;
+            }
             targetY = Math.max(0, targetY);
 
             gsap.killTweensOf(window);
