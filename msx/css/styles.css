@@ -1446,7 +1446,6 @@ body.detail-open {
   /* Тёмный фон */
   padding: 12px 16px;
   border-radius: 24px;
-  border: 1px solid rgba(74, 158, 255, 0.5);
   backdrop-filter: none;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   transition: opacity 0.3s ease;
@@ -1872,7 +1871,6 @@ body.detail-open {
 .playback-text,
 .loading-text,
 .loading-player-text,
-#controls-container,
 .audio-panel,
 .episodes-panel,
 .close-panel-btn,
