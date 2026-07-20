@@ -3206,3 +3206,41 @@ article {
     width: 95vw;
   }
 }
+
+.subtitle-details {
+  color: #aaa;
+  font-size: 11px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.subtitle-language {
+  background: #3a3a4a;
+  color: #fff;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  display: inline-block;
+}
+
+.subtitle-format {
+  color: #888;
+  font-size: 10px;
+  background: rgba(58, 58, 74, 0.5);
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* Добавляем разделитель между language и format */
+.subtitle-language::after {
+  content: "•";
+  margin-left: 8px;
+  color: #666;
+  font-weight: normal;
+}
