@@ -1468,7 +1468,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                 gsap.killTweensOf(con);
                 gsap.to(con, {
                     scrollTo: { x: targetLeft },
-                    duration: 0.25,
+                    duration: 0.1,
                     ease: "power1.out",
                     overwrite: true
                 });
@@ -1517,7 +1517,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                     gsap.killTweensOf(detailView);
                     gsap.to(detailView, {
                         scrollTo: { y: targetScrollTop },
-                        duration: 0.25,
+                        duration: 0.15,
                         backgroundColor: 'rgb(0, 0, 0)',
                         ease: "power1.out",
                         overwrite: true
