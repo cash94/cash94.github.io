@@ -878,8 +878,30 @@ async function fetchSkipData(tmdbId, season, episode) {
 function renderEpisodesList() {
   var episodesList = getEl('episodes-list');
   if (!episodesList) return;
-  if (currentEpisodeFiles.length === 0) { episodesList.innerHTML = '<div class="search-result-empty">Нет доступных серий</div>'; return; }
-  var html = '<div class="current-episode-info"><span class="current-episode-badge">Текущая</span><span>Серия ' + (currentEpisodeIndex + 1) + ' из ' + currentEpisodeFiles.length + '</span></div>';
+
+  // Находим или создаем current-episode-info
+  var currentInfo = getEl('current-episode-info');
+  if (!currentInfo) {
+    // Создаем элемент, если его нет
+    currentInfo = document.createElement('div');
+    currentInfo.id = 'current-episode-info';
+    currentInfo.className = 'current-episode-info';
+    // Вставляем перед episodes-list
+    episodesList.parentNode.insertBefore(currentInfo, episodesList);
+  }
+
+  // Обновляем current-episode-info
+  if (currentEpisodeFiles.length === 0) {
+    currentInfo.innerHTML = '<span class="current-episode-badge">Пусто</span><span>Нет доступных серий</span>';
+    episodesList.innerHTML = '<div class="search-result-empty">Нет доступных серий</div>';
+    return;
+  }
+
+  // Обновляем информацию о текущей серии
+  currentInfo.innerHTML = '<span class="current-episode-badge">Текущая</span><span>Серия ' + (currentEpisodeIndex + 1) + ' из ' + currentEpisodeFiles.length + '</span>';
+
+  // Рендерим список серий (без current-episode-info внутри)
+  var html = '';
   for (var idx = 0; idx < currentEpisodeFiles.length; idx++) {
     var file = currentEpisodeFiles[idx];
     var isActive = idx === currentEpisodeIndex;
@@ -891,14 +913,22 @@ function renderEpisodesList() {
       '<button class="episode-play" title="Воспроизвести">▶</button></div>';
   }
   episodesList.innerHTML = html;
+
+  // Добавляем обработчики событий
   var episodeItems = episodesList.querySelectorAll('.episode-item');
   for (var i = 0; i < episodeItems.length; i++) {
     (function (item) {
       var index = parseInt(item.dataset.index);
       var fileId = item.dataset.fileId;
-      item.addEventListener('click', function (e) { if (e.target.classList && e.target.classList.contains('episode-play')) return; switchToEpisode(index, fileId); });
+      item.addEventListener('click', function (e) {
+        if (e.target.classList && e.target.classList.contains('episode-play')) return;
+        switchToEpisode(index, fileId);
+      });
       var playBtn = item.querySelector('.episode-play');
-      if (playBtn) playBtn.addEventListener('click', function (e) { e.stopPropagation(); switchToEpisode(index, fileId); });
+      if (playBtn) playBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        switchToEpisode(index, fileId);
+      });
     })(episodeItems[i]);
   }
 }
