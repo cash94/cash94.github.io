@@ -1554,7 +1554,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             container.scrollTop = targetScrollTop;
         }
         return;
-    } else if (container.id == 'episodes-panel' || container.id == 'audio-panel') {
+    } else if (container.id == 'episodes-panel' || container.id == 'audio-panel' || container.id == 'subtitles-panel') {
         if (typeof Animations !== 'undefined') Animations.scrollToIfNotVisible(el, container);
     }
     if (!scrollContainer) return;
