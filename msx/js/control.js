@@ -1469,7 +1469,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                 gsap.to(con, {
                     scrollTo: { x: targetLeft },
                     duration: 0.25,
-                    ease: "power2.out",
+                    ease: "power1.out",
                     overwrite: true
                 });
             } else if (smooth) {
@@ -1519,7 +1519,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                         scrollTo: { y: targetScrollTop },
                         duration: 0.25,
                         backgroundColor: 'rgb(0, 0, 0)',
-                        ease: "power2.out",
+                        ease: "power1.out",
                         overwrite: true
                     });
                 } else if (smooth) {
