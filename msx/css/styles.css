@@ -1617,17 +1617,6 @@ body.detail-open {
   margin-left: 8px;
 }
 
-.current-episode-info {
-  padding: 10px 14px;
-  background: #1e3a5f;
-  border-bottom: 1px solid #4a9eff;
-  color: white;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .current-episode-badge {
   background: #4a9eff;
   color: white;
@@ -3085,6 +3074,17 @@ article {
   transform: translateX(0);
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.current-episode-info {
+  padding: 10px 14px;
+  background: rgba(10, 10, 15, 0.65);
+  border-bottom: 1px solid #000000;
+  color: white;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 /* Когда панель скрыта - уезжает за правый край */
