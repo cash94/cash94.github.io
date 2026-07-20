@@ -492,8 +492,8 @@ var Animations = (function () {
         }
 
         options = options || {};
-        var duration = options.duration || 0.25;
-        var ease = options.ease || "power2.out";
+        var duration = options.duration || 0.15;
+        var ease = options.ease || "power1.out";
         var offset = options.offset || 10;
         var direction = options.direction || null; //Добавляем параметр направления
         var targetContainer = container || window;
