@@ -627,7 +627,7 @@ function renderCatalogGrid() {
     if (catalogState.hasMore) addLoadMoreTrigger(grid);
     catalogState.loadedPostersCount = 0;
     initPosterLazyLoading();
-    initPosterUnloading();
+    //initPosterUnloading();
     initLoadMoreObserver();
     loadInitialPosters();
     requestAnimationFrame(function () {
@@ -678,7 +678,7 @@ function appendCatalogItems(newItems) {
             if (catalogState.hasMore) addLoadMoreTrigger(grid);
 
             updatePosterObservers();
-            initPosterUnloading();
+            //initPosterUnloading();
             initLoadMoreObserver();
 
             if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
