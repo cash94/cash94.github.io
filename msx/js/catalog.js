@@ -930,7 +930,7 @@ function loadPosterBatch(indices) {
 async function loadPosterForIndex(index) {
     var item = catalogState.items[index];
     if (!item) return;
-    var card = document.querySelector('.torrent-card.catalog-card[data-catalog-index="' + index + '"]');
+    var card = catalogState.cardElements[index];
     if (!card) return;
     await loadCatalogPoster(card, getCatalogItemTitle(item), item.media_type || 'movie', item.id, index);
 }
