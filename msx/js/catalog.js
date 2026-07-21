@@ -872,7 +872,7 @@ function loadPosterBatch(indices) {
             catalogState.isPosterLoading = false;
             if (catalogState.posterLoadQueue.length > 0) {
                 // Небольшая пауза перед следующей партией
-                setTimeout(loadNextPosterBatch, 200);
+                setTimeout(loadNextPosterBatch, 50);
             }
             return;
         }
@@ -880,10 +880,10 @@ function loadPosterBatch(indices) {
         loadPosterForIndex(indices[i]).then(function () {
             i++;
             // Пауза 100-150мс между постерами дает главному потоку время на отрисовку кадров (60 FPS)
-            setTimeout(processNext, 120);
+            setTimeout(processNext, 30);
         }).catch(function () {
             i++;
-            setTimeout(processNext, 120);
+            setTimeout(processNext, 30);
         });
     }
     processNext();
