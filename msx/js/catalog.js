@@ -16,7 +16,7 @@ var CATALOG_CONSTANTS = {
     MAX_RECOMMENDATIONS: 12,
     MAX_TRAILERS: 6,
     LOAD_MORE_MARGIN_PX: 200,
-    POSTER_OBSERVER_MARGIN_PX: 50,
+    POSTER_OBSERVER_MARGIN_PX: 300,
     CATALOG_UPDATE_THRESHOLD_HOURS: 6,
     FOCUS_DELAY_MS: 100,
     IMG_SIZES: {
@@ -865,11 +865,28 @@ function loadNextPosterBatch() {
 function loadPosterBatch(indices) {
     if (indices.length === 0) return;
     catalogState.isPosterLoading = true;
-    var promises = indices.map(function (i) { return loadPosterForIndex(i); });
-    Promise.allSettled(promises).then(function (res) {
-        catalogState.isPosterLoading = false;
-        if (catalogState.posterLoadQueue.length > 0) loadNextPosterBatch();
-    });
+
+    var i = 0;
+    function processNext() {
+        if (i >= indices.length) {
+            catalogState.isPosterLoading = false;
+            if (catalogState.posterLoadQueue.length > 0) {
+                // Небольшая пауза перед следующей партией
+                setTimeout(loadNextPosterBatch, 200);
+            }
+            return;
+        }
+
+        loadPosterForIndex(indices[i]).then(function () {
+            i++;
+            // Пауза 100-150мс между постерами дает главному потоку время на отрисовку кадров (60 FPS)
+            setTimeout(processNext, 120);
+        }).catch(function () {
+            i++;
+            setTimeout(processNext, 120);
+        });
+    }
+    processNext();
 }
 
 async function loadPosterForIndex(index) {
@@ -945,10 +962,38 @@ function updatePosterDOM(div, rating, url) {
         var c = getRatingColor(parseFloat(rating));
         rHtml = '<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + c + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + c + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);">' + rating + '</div>';
     }
-    var img = url ?
-        '<img src="' + url + '" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">' :
-        '<div class="no-poster">Нет постера</div>';
-    div.innerHTML = img + rHtml;
+
+    if (!url) {
+        div.innerHTML = '<div class="no-poster">Нет постера</div>' + rHtml;
+        return;
+    }
+
+    // Создаем картинку в памяти, а не через innerHTML
+    var img = new Image();
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.objectFit = 'cover';
+
+    var insertToDom = function () {
+        // Проверяем, не уничтожена ли карточка к этому моменту
+        if (!div.isConnected) return;
+        div.innerHTML = rHtml; // Очищаем от плейсхолдера ⏳ и ставим рейтинг
+        div.appendChild(img);  // Вставляем уже декодированную картинку (без фризов)
+    };
+
+    img.onerror = function () {
+        if (div.isConnected) div.innerHTML = '<div class="no-poster">Нет постера</div>' + rHtml;
+    };
+
+    img.src = url;
+
+    if (typeof img.decode === 'function') {
+        // Chrome 64+: декодируем JPEG в фоновом потоке, разгружая CPU
+        img.decode().then(insertToDom).catch(insertToDom);
+    } else {
+        // Фоллбек для очень старых браузеров
+        img.onload = insertToDom;
+    }
 }
 
 // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР ====================
