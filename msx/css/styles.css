@@ -1338,7 +1338,7 @@ body.detail-open {
   transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.3);
   /* Тёмный фон */
-  color: #4a9eff;
+  color: #e7e4e4;
   padding: 6px 12px;
   border-radius: 20px;
   font-size: 11px;
@@ -1721,10 +1721,10 @@ body.detail-open {
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.01);
   /* Тёмный фон */
   border: 1px solid rgba(74, 158, 255, 0.5);
-  color: rgba(74, 158, 255, 0.8);
+  color: #e7e4e4;
   font-size: 22px;
   display: flex;
   align-items: center;
