@@ -3332,3 +3332,16 @@ article {
   color: #666;
   font-weight: normal;
 }
+.torrent-card.catalog-card {
+    /* Изолируем карточку: браузер понимает, что изменение внутри карточки 
+       (например, загрузка постера) не требует пересчета всей страницы */
+    contain: layout style paint;
+    
+    /* Аппаратное ускорение (GPU) для плавного скроллинга */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+.torrent-poster {
+    contain: strict; /* Жесткая изоляция зоны постера */
+}
