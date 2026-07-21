@@ -1038,12 +1038,16 @@ function addMovieItem(torrent) {
 }
 
 function normalizeSearchResult(item) {
-    // Поддержка нового API v2.0 (Jackett) + совместимость со старым форматом
+
     var info = item.info || {};
 
-    // Извлекаем tracker (берём первый, если их несколько "bitru, rutor")
     var rawTracker = item.Tracker || item.tracker || '';
-    var tracker = String(rawTracker).split(',')[0].trim().toLowerCase();
+    var tracker = String(rawTracker).trim();
+
+    var title = item.Title || item.title || info.name || info.originalname || item.name || 'Без названия';
+
+    // Сохраняем "чистое" название отдельно для внутреннего использования (добавление в TorrServer)
+    var cleanName = info.name || item.name || title;
 
     // Определяем released/year из разных возможных источников
     var releasedRaw = info.relased || info.released || item.PublishDate || null;
@@ -1075,9 +1079,6 @@ function normalizeSearchResult(item) {
         sizeName = formatBytes(size);
     }
 
-    // Определяем название (приоритет: info.name → Title → title)
-    var title = info.name || item.Title || item.title || info.originalname || item.name || 'Без названия';
-
     // Вычисляем createTime (timestamp для сортировки по дате)
     var createTime = item.createTime || 0;
     if (!createTime && item.PublishDate) {
@@ -1090,7 +1091,7 @@ function normalizeSearchResult(item) {
 
     var normalized = {
         title: title,
-        name: info.name || item.Title || item.title || item.name || title,
+        name: cleanName,
         originalname: info.originalname || '',
         magnet: magnet,
         size: size,
@@ -1103,7 +1104,7 @@ function normalizeSearchResult(item) {
         voices: Array.isArray(info.voices) ? info.voices : (Array.isArray(item.voices) ? item.voices : []),
         types: types,
         released: releasedYear,
-        relased: releasedYear, // для обратной совместимости
+        relased: releasedYear,
         year: releasedYear,
         languages: Array.isArray(info.languages) ? info.languages : (Array.isArray(item.languages) ? item.languages : []),
         createTime: createTime,
@@ -1189,16 +1190,33 @@ function initSearchModeToggle() {
 }
 
 function updateAvailableTrackers() {
-    var trackerSet = {}; searchResults.forEach(r => { if (r.tracker) trackerSet[r.tracker] = true; });
+    var trackerSet = {};
+
+    searchResults.forEach(function (r) {
+        if (r.tracker) {
+            var trackers = String(r.tracker).split(',');
+            for (var i = 0; i < trackers.length; i++) {
+                var t = trackers[i].trim().toLowerCase();
+                if (t) trackerSet[t] = true;
+            }
+        }
+    });
+
     availableTrackers = Object.keys(trackerSet).sort();
     if (!availableTrackers.includes(currentTrackerFilter)) currentTrackerFilter = 'all';
-    syncSearchFilterButtons(); updateAvailableSeasons(); updateAvailableVoices(); updateAvailableVideotype();
+    syncSearchFilterButtons();
+    updateAvailableSeasons();
+    updateAvailableVoices();
+    updateAvailableVideotype();
 }
 
 function applyFiltersAndSort() {
     filteredResults = searchResults.filter(item => {
         if (currentQualityFilter !== 'all' && (item.quality || 0) !== parseInt(currentQualityFilter, 10)) return false;
-        if (currentTrackerFilter !== 'all' && (item.tracker || '').toLowerCase() !== currentTrackerFilter) return false;
+        if (currentTrackerFilter !== 'all') {
+            var trackerField = (item.tracker || '').toLowerCase();
+            if (trackerField.indexOf(currentTrackerFilter.toLowerCase()) === -1) return false;
+        }
         if (currentYearFilter && currentYearFilter !== 'all' && item.released !== parseInt(currentYearFilter, 10)) return false;
         if (currentSeasonFilter && currentSeasonFilter !== 'all' && (!item.seasons || !item.seasons.includes(parseInt(currentSeasonFilter, 10)))) return false;
         if (currentVoiceFilter && currentVoiceFilter !== 'all' && (!item.voices || !item.voices.includes(currentVoiceFilter))) return false;
@@ -1435,36 +1453,43 @@ function clearSearchResults() {
 window.clearSearchResults = clearSearchResults;
 
 function renderSearchResults() {
-    var searchResultsDiv = getEl('search-results'); if (!searchResultsDiv) return;
+    var searchResultsDiv = getEl('search-results');
+    if (!searchResultsDiv) return;
+
     if (filteredResults.length === 0) {
-        searchResultsDiv.innerHTML = `<div class="filter-stats">Всего найдено: <span>${searchResults.length}</span></div><div class="search-result-empty">${currentSearchQuery ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"' : 'Введите запрос для поиска'}</div>`;
+        searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>' + searchResults.length + '</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"' : 'Введите запрос для поиска') + '</div>';
         return;
     }
-    var html = `<div class="filter-stats">Показано: <span>${filteredResults.length}</span> из <span>${searchResults.length}</span></div>`;
+
+    var html = '<div class="filter-stats">Показано: <span>' + filteredResults.length + '</span> из <span>' + searchResults.length + '</span></div>';
+
     for (var idx = 0; idx < filteredResults.length; idx++) {
         var result = filteredResults[idx];
         var voices = Array.isArray(result.voices) ? result.voices : [];
         var hash = extractHashFromMagnet(result.magnet);
-        var trackerDisplay = (result.tracker || 'Unknown').replace(/^./, c => c.toUpperCase());
+
+        // 🆕 TRACKER: выводим ПОЛНОСТЬЮ как есть (например "bitru, rutor")
+        var trackerDisplay = result.tracker || 'Unknown';
+
         var resultJsonEncoded = encodeURIComponent(JSON.stringify(result));
-        html += `
-            <div class="search-result-item" data-index="${idx}">
-                <div class="search-result-info">
-                    <div class="search-result-title">${escapeHtml(result.title || result.name || 'Без названия')}</div>
-                    <div class="search-result-meta">
-                        <div class="search-result-meta-item">${escapeHtml(trackerDisplay)}</div>
-                        <div class="search-result-meta-item">${escapeHtml(result.sizeName || formatBytes(result.size))}</div>
-                        <div class="search-result-meta-item">${result.released || 'N/A'} (${result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A'})</div>
-                        <div class="search-result-meta-item">${(result.types && result.types.indexOf('tv') !== -1) ? 'Сериал' : 'Фильм'} / ${result.quality || 'N/A'}p</div>
-                        <div class="search-result-meta-item">сиды: ${result.sid !== undefined ? result.sid : 0}</div>
-                        <div class="search-result-meta-item">пиры: ${result.pir !== undefined ? result.pir : 0}</div>
-                    </div>
-                    ${voices.length > 0 ? `<div class="search-result-voices">${voices.map(v => `<span class="search-result-voice">${escapeHtml(v)}</span>`).join('')}</div>` : ''}
-                </div>
-                <button class="search-result-play" data-hash="${hash}" data-magnet="${escapeHtml(result.magnet)}" data-result="${resultJsonEncoded}" ${!hash ? 'disabled' : ''}>${hash ? '▶' : '❌ Нет hash'}</button>
-            </div>
-        `;
+
+        html += '<div class="search-result-item" data-index="' + idx + '">' +
+            '<div class="search-result-info">' +
+            '<div class="search-result-title">' + escapeHtml(result.title || 'Без названия') + '</div>' +
+            '<div class="search-result-meta">' +
+            '<div class="search-result-meta-item">' + escapeHtml(trackerDisplay) + '</div>' +
+            '<div class="search-result-meta-item">' + escapeHtml(result.sizeName || formatBytes(result.size)) + '</div>' +
+            '<div class="search-result-meta-item">' + (result.released || 'N/A') + ' (' + (result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A') + ')</div>' +
+            '<div class="search-result-meta-item">' + ((result.types && result.types.indexOf('tv') !== -1) ? 'Сериал' : 'Фильм') + ' / ' + (result.quality || 'N/A') + 'p</div>' +
+            '<div class="search-result-meta-item">сиды: ' + (result.sid !== undefined ? result.sid : 0) + '</div>' +
+            '<div class="search-result-meta-item">пиры: ' + (result.pir !== undefined ? result.pir : 0) + '</div>' +
+            '</div>' +
+            (voices.length > 0 ? '<div class="search-result-voices">' + voices.map(function (v) { return '<span class="search-result-voice">' + escapeHtml(v) + '</span>'; }).join('') + '</div>' : '') +
+            '</div>' +
+            '<button class="search-result-play" data-hash="' + hash + '" data-magnet="' + escapeHtml(result.magnet) + '" data-result="' + resultJsonEncoded + '" ' + (!hash ? 'disabled' : '') + '>' + (hash ? '▶' : '❌ Нет hash') + '</button>' +
+            '</div>';
     }
+
     searchResultsDiv.innerHTML = html;
 
     // Делегирование событий
@@ -1472,16 +1497,26 @@ function renderSearchResults() {
         var playBtn = e.target.closest('.search-result-play');
         if (playBtn && !playBtn.disabled) {
             e.stopPropagation();
-            var hash = playBtn.dataset.hash; var magnet = playBtn.dataset.magnet; var resultJsonEncoded = playBtn.dataset.result;
+            var hash = playBtn.dataset.hash;
+            var magnet = playBtn.dataset.magnet;
+            var resultJsonEncoded = playBtn.dataset.result;
             if (hash) {
                 var searchResult = null;
-                if (resultJsonEncoded) { try { searchResult = JSON.parse(decodeURIComponent(resultJsonEncoded)); if (window.pendingCatalogPoster) searchResult.poster = window.pendingCatalogPoster; } catch (e) { } }
+                if (resultJsonEncoded) {
+                    try {
+                        searchResult = JSON.parse(decodeURIComponent(resultJsonEncoded));
+                        if (window.pendingCatalogPoster) searchResult.poster = window.pendingCatalogPoster;
+                    } catch (e) { }
+                }
                 if (window.AndroidJS) AppState.playFromHash = true;
                 playFromHash(hash, magnet, searchResult);
             }
         } else {
             var item = e.target.closest('.search-result-item');
-            if (item) { var btn = item.querySelector('.search-result-play'); if (btn && !btn.disabled) btn.click(); }
+            if (item) {
+                var btn = item.querySelector('.search-result-play');
+                if (btn && !btn.disabled) btn.click();
+            }
         }
     };
 }
