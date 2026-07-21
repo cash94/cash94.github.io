@@ -1038,12 +1038,78 @@ function addMovieItem(torrent) {
 }
 
 function normalizeSearchResult(item) {
-    var normalized = { ...item };
-    var releasedRaw = normalized.released || normalized.relased || normalized.year || null;
-    var releasedYear = parseInt(releasedRaw, 10);
-    normalized.released = Number.isFinite(releasedYear) ? releasedYear : null;
-    normalized.relased = normalized.released;
-    normalized.tracker = (normalized.tracker || '').toString().trim().toLowerCase();
+    // Поддержка нового API v2.0 (Jackett) + совместимость со старым форматом
+    var info = item.info || {};
+
+    // Извлекаем tracker (берём первый, если их несколько "bitru, rutor")
+    var rawTracker = item.Tracker || item.tracker || '';
+    var tracker = String(rawTracker).split(',')[0].trim().toLowerCase();
+
+    // Определяем released/year из разных возможных источников
+    var releasedRaw = info.relased || info.released || item.PublishDate || null;
+    var releasedYear = null;
+    if (typeof releasedRaw === 'number') {
+        releasedYear = releasedRaw;
+    } else if (typeof releasedRaw === 'string') {
+        var match = releasedRaw.match(/(19|20)\d{2}/);
+        releasedYear = match ? parseInt(match[0], 10) : null;
+    }
+
+    // Определяем types (movie/tv)
+    var types = Array.isArray(info.types) ? info.types.slice() : [];
+    var categoryDesc = (item.CategoryDesc || '').toLowerCase();
+    if (categoryDesc.includes('tv') || categoryDesc.includes('сериал') || categoryDesc.includes('series')) {
+        if (types.indexOf('tv') === -1) types.push('tv');
+    }
+    if (categoryDesc.includes('movie') || categoryDesc.includes('фильм') || categoryDesc.includes('film')) {
+        if (types.indexOf('movie') === -1) types.push('movie');
+    }
+
+    // Нормализуем magnet
+    var magnet = item.MagnetUri || item.magnet || null;
+
+    // Вычисляем sizeName если не указан
+    var size = item.Size || item.size || 0;
+    var sizeName = info.sizeName || item.sizeName;
+    if (!sizeName && size > 0) {
+        sizeName = formatBytes(size);
+    }
+
+    // Определяем название (приоритет: info.name → Title → title)
+    var title = info.name || item.Title || item.title || info.originalname || item.name || 'Без названия';
+
+    // Вычисляем createTime (timestamp для сортировки по дате)
+    var createTime = item.createTime || 0;
+    if (!createTime && item.PublishDate) {
+        try {
+            createTime = new Date(item.PublishDate).getTime() || 0;
+        } catch (e) {
+            createTime = 0;
+        }
+    }
+
+    var normalized = {
+        title: title,
+        name: info.name || item.Title || item.title || item.name || title,
+        originalname: info.originalname || '',
+        magnet: magnet,
+        size: size,
+        sizeName: sizeName || '0 B',
+        tracker: tracker,
+        sid: item.Seeders !== undefined ? parseInt(item.Seeders, 10) : (item.sid || 0),
+        pir: item.Peers !== undefined ? parseInt(item.Peers, 10) : (item.pir || 0),
+        quality: info.quality || item.quality || 0,
+        videotype: info.videotype || item.videotype || '',
+        voices: Array.isArray(info.voices) ? info.voices : (Array.isArray(item.voices) ? item.voices : []),
+        types: types,
+        released: releasedYear,
+        relased: releasedYear, // для обратной совместимости
+        year: releasedYear,
+        languages: Array.isArray(info.languages) ? info.languages : (Array.isArray(item.languages) ? item.languages : []),
+        createTime: createTime,
+        details: item.Details || item.details || null
+    };
+
     return normalized;
 }
 
@@ -1058,17 +1124,41 @@ async function searchTorrentsLegacy(query) {
     var encodedQuery = encodeURIComponent(query.trim());
     var jacred = getEl('jacred-url');
     var jacDefault = (jacred && jacred.value !== "") ? jacred.value : "jac.red";
-    var searchUrl = AppState.protocol + '//' + jacDefault + '/api/v1.0/torrents?search=' + encodedQuery + '&apikey=null&exact=true';
+
+    // Новый API Jackett v2.0
+    var searchUrl = AppState.protocol + '//' + jacDefault + '/api/v2.0/indexers/all/results?Query=' + encodedQuery + '&exact=true';
+
     showLoading('Поиск...');
     try {
         var response = await fetch(searchUrl);
-        if (!response.ok) throw new Error('Ошибка поиска');
+        if (!response.ok) throw new Error('Ошибка поиска: HTTP ' + response.status);
         var data = await response.json();
-        searchResults = (Array.isArray(data) ? data : []).map(normalizeSearchResult);
+
+        // Новый формат: {Results: [...]}, старый формат был просто массивом
+        var rawResults = [];
+        if (data && Array.isArray(data.Results)) {
+            rawResults = data.Results;
+        } else if (Array.isArray(data)) {
+            // Обратная совместимость со старым API
+            rawResults = data;
+        }
+
+        searchResults = rawResults.map(normalizeSearchResult);
         currentSearchQuery = query;
-        var searchInput = getEl('search-query'); if (searchInput) searchInput.value = '';
-        updateAvailableTrackers(); updateAvailableYears(); applyFiltersAndSort(); showSearchResults();
-    } catch (error) { console.error('Ошибка поиска:', error); alert('Ошибка при поиске: ' + error.message); } finally { hideLoading(); }
+
+        var searchInput = getEl('search-query');
+        if (searchInput) searchInput.value = '';
+
+        updateAvailableTrackers();
+        updateAvailableYears();
+        applyFiltersAndSort();
+        showSearchResults();
+    } catch (error) {
+        console.error('Ошибка поиска:', error);
+        alert('Ошибка при поиске: ' + error.message);
+    } finally {
+        hideLoading();
+    }
 }
 
 function updateAvailableYears() {
