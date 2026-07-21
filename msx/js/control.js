@@ -1958,11 +1958,81 @@ window.blockSwipe = function (ms) {
     }, ms || 500);
 };
 
+// ==================== УПРАВЛЕНИЕ ГРОМКОСТЬЮ КОЛЕСОМ МЫШИ ====================
+function setupPlayerWheelControl() {
+    var STEP = 0.02; // Шаг 2%
+    var lastWheelTime = 0;
+    var WHEEL_THROTTLE = 50; // Минимальный интервал между обработками (мс)
+
+    document.addEventListener('wheel', function (e) {
+        // Работаем только на экране плеера
+        if (!AppState || AppState.currentScreen !== 'player') return;
+
+        // Throttling - не обрабатываем слишком частые события
+        var now = Date.now();
+        if (now - lastWheelTime < WHEEL_THROTTLE) return;
+        lastWheelTime = now;
+
+        // Предотвращаем скролл страницы
+        e.preventDefault();
+
+        var videoPlayer = getEl('video-player');
+        var volumeSlider = getEl('volume-slider');
+
+        if (!videoPlayer) return;
+
+        // Определяем направление: вверх = громче, вниз = тише
+        var delta = e.deltaY < 0 ? STEP : -STEP;
+
+        // Получаем текущую громкость
+        var currentVolume = videoPlayer.volume;
+        var newVolume = currentVolume + delta;
+
+        // Ограничиваем диапазон [0, 1]
+        newVolume = Math.max(0, Math.min(1, newVolume));
+
+        // Округляем до 2 знаков
+        newVolume = Math.round(newVolume * 100) / 100;
+
+        // Применяем новую громкость
+        videoPlayer.volume = newVolume;
+
+        // Обновляем ползунок
+        if (volumeSlider) {
+            volumeSlider.value = newVolume;
+        }
+
+        // Если громкость > 0 и видео было замьючено - размьючиваем
+        if (newVolume > 0 && videoPlayer.muted) {
+            videoPlayer.muted = false;
+            if (typeof window.updateMuteButton === 'function') {
+                window.updateMuteButton();
+            }
+        }
+
+        // Сбрасываем таймер скрытия UI
+        if (typeof window.resetMouseIdleTimer === 'function') {
+            window.resetMouseIdleTimer();
+        }
+
+        // Сохраняем в localStorage
+        try {
+            localStorage.setItem('playerVolume', newVolume);
+        } catch (err) { /* ignore */ }
+
+        console.log('🔊 Громкость: ' + Math.round(newVolume * 100) + '%');
+
+    }, { passive: false }); // passive: false необходим для preventDefault
+
+    console.log('✅ Глобальное управление громкостью колесом мыши активировано для экрана плеера');
+}
+
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 function initControl() {
-    console.log('Модуль управления инициализирован (Этап 3: Оптимизация производительности)');
+    console.log('Модуль управления инициализирован');
     setupKeyboardHandlers();
     setupFocusRescue();
+    setupPlayerWheelControl();
     window.updateFocusableElements = updateFocusableElements;
     window.setFocus = setFocus;
     window.navigate = navigate;
