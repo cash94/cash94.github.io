@@ -1395,29 +1395,26 @@ function setupKeyboardHandlers() {
 // ==================== LONG PRESS & FOCUS RESCUE ====================
 function clearOkHold() { if (okHoldTimer) { clearTimeout(okHoldTimer); okHoldTimer = null; } }
 
-// Исправлена критическая ошибка - убран return false в начале функции
 function isElementFullyVisible(el, container) {
     if (!el || !container) return true;
+
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
+
+    // Определяем тип контейнта
     var isH = container.id === 'files-list' ||
         container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap';
+
     if (isH) {
-        var hp = 30;
-        var vp = 20;
+        // Для горизонтальных списков проверяем ТОЛЬКО горизонтальную видимость элемента
+        var hp = 30; // Горизонталь отступ от краёв контейнта
         var isHorizVisible = r.left >= cr.left + hp && r.right <= cr.right - hp;
-        if (container.id && container.id.includes('-wrap')) {
-            var detailView = getEl('detail-view');
-            if (detailView) {
-                var detailRect = detailView.getBoundingClientRect();
-                var isVertVisible = cr.top >= detailRect.top + vp && cr.bottom <= detailRect.bottom - vp;
-                return isHorizVisible && isVertVisible;
-            }
-        }
         return isHorizVisible;
     }
+
+    // Для вертикальных списков проверяем вертикальную видимость
     return r.top >= cr.top + 20 && r.bottom <= cr.bottom - 20 &&
         r.left >= cr.left + 20 && r.right <= cr.right - 20;
 }
