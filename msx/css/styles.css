@@ -570,6 +570,7 @@ body {
   grid-template-columns: repeat(6, 1fr);
   gap: 10px;
   padding: 8px;
+  contain: layout paint;
 }
 
 .torrent-card {
