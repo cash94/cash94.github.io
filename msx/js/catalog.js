@@ -852,12 +852,12 @@ function updatePosterObservers() {
 function addToPosterQueue(idx) {
     if (catalogState.posterLoadQueue.indexOf(idx) !== -1) return;
     catalogState.posterLoadQueue.push(idx);
-    catalogState.posterLoadQueue.sort(function (a, b) { return a - b; });
     if (!catalogState.isPosterLoading) loadNextPosterBatch();
 }
 
 function loadNextPosterBatch() {
     if (catalogState.isPosterLoading || catalogState.posterLoadQueue.length === 0) return;
+    catalogState.posterLoadQueue.sort(function (a, b) { return a - b; });
     var next = catalogState.posterLoadQueue.splice(0, catalogState.postersPerBatch);
     loadPosterBatch(next);
 }
