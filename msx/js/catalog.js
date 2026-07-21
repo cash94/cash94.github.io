@@ -844,24 +844,34 @@ function initLoadMoreObserver() {
 function initPosterUnloading() {
     if (catalogState.unloadObserver) catalogState.unloadObserver.disconnect();
 
-    // Следим за зоной: экран + 1500px вверх и вниз
+    // Один наблюдатель на оба случая: выгрузка (далеко за экраном)
+    // и повторная загрузка (карточка возвращается в зону видимости).
+    // threshold: 0 — самый надёжный триггер, гарантированно срабатывает в обе стороны.
     catalogState.unloadObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
             var entry = entries[i];
-            if (!entry.isIntersecting) {
-                var posterDiv = entry.target.querySelector('.torrent-poster');
-                var img = posterDiv ? posterDiv.querySelector('img') : null;
-                if (img) {
-                    // Картинка далеко за экраном - убиваем её, освобождая RAM
-                    posterDiv.innerHTML = '<div class="no-poster catalog-poster-loading">⏳</div>';
-                    // Снова ставим карточку в очередь на наблюдение за загрузкой
-                    if (catalogState.posterObserver) {
-                        catalogState.posterObserver.observe(entry.target);
+            var card = entry.target;
+            var posterDiv = card.querySelector('.torrent-poster');
+            if (!posterDiv) continue;
+            var img = posterDiv.querySelector('img');
+
+            if (entry.isIntersecting) {
+                // Карточка вернулась в зону видимости. Если постер был выгружен
+                // (нет <img>) — ставим её в очередь на повторную загрузку.
+                if (!img) {
+                    var idx = parseInt(card.dataset.catalogIndex, 10);
+                    if (!isNaN(idx) && catalogState.items[idx]) {
+                        addToPosterQueue(idx);
                     }
+                }
+            } else {
+                // Карточка далеко за пределами экрана — выгружаем постер, освобождая RAM.
+                if (img) {
+                    posterDiv.innerHTML = '<div class="no-poster catalog-poster-loading">⏳</div>';
                 }
             }
         }
-    }, { rootMargin: '300px 0px', threshold: 0 });
+    }, { rootMargin: '1500px 0px', threshold: 0 });
 
     var cards = document.querySelectorAll('.torrent-card.catalog-card');
     for (var i = 0; i < cards.length; i++) {
