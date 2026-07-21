@@ -861,7 +861,7 @@ function initPosterUnloading() {
                 }
             }
         }
-    }, { rootMargin: '1500px 0px', threshold: 0 });
+    }, { rootMargin: '300px 0px', threshold: 0 });
 
     var cards = document.querySelectorAll('.torrent-card.catalog-card');
     for (var i = 0; i < cards.length; i++) {
