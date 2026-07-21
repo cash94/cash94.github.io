@@ -22,7 +22,7 @@ var CATALOG_CONSTANTS = {
     IMG_SIZES: {
         POSTER_SMALL: 'w185',
         POSTER_MEDIUM: 'w342',
-        BACKDROP: 'w1280'
+        BACKDROP: 'w1920'
     }
 };
 
@@ -950,7 +950,7 @@ function loadPosterBatch(indices) {
             catalogState.isPosterLoading = false;
             if (catalogState.posterLoadQueue.length > 0) {
                 // Небольшая пауза перед следующей партией
-                setTimeout(loadNextPosterBatch, 50);
+                setTimeout(loadNextPosterBatch, 30);
             }
             return;
         }
@@ -958,10 +958,10 @@ function loadPosterBatch(indices) {
         loadPosterForIndex(indices[i]).then(function () {
             i++;
             // Пауза 100-150мс между постерами дает главному потоку время на отрисовку кадров (60 FPS)
-            setTimeout(processNext, 30);
+            setTimeout(processNext, 15);
         }).catch(function () {
             i++;
-            setTimeout(processNext, 30);
+            setTimeout(processNext, 15);
         });
     }
     processNext();
