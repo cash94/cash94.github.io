@@ -615,49 +615,25 @@ function renderCatalogGrid() {
     if (!grid) return;
     grid.innerHTML = '';
     if (catalogState.items.length === 0) { showEmptyCatalog(); return; }
-
     addCatalogHeader(grid);
-
-    // рендерим пачками через requestAnimationFrame
-    var BATCH_SIZE = 30; // По 30 карточек за кадр
-    var totalItems = catalogState.items.length;
-    var currentIndex = 0;
-
-    function renderBatch() {
-        var frag = document.createDocumentFragment();
-        var end = Math.min(currentIndex + BATCH_SIZE, totalItems);
-
-        for (var i = currentIndex; i < end; i++) {
-            frag.appendChild(createCatalogCard(catalogState.items[i], i));
-        }
-
-        grid.appendChild(frag);
-        currentIndex = end;
-
-        if (currentIndex < totalItems) {
-            // Продолжаем в следующем кадре
-            requestAnimationFrame(renderBatch);
-        } else {
-            // Рендеринг завершён — инициализируем observers
-            if (catalogState.hasMore) addLoadMoreTrigger(grid);
-            catalogState.loadedPostersCount = 0;
-            initPosterLazyLoading();
-            initLoadMoreObserver();
-            loadInitialPosters();
-
-            requestAnimationFrame(function () {
-                if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
-                    if (typeof updateFocusableElements === 'function') updateFocusableElements();
-                    setTimeout(function () {
-                        if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
-                    }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
-                }
-            });
-        }
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < catalogState.items.length; i++) {
+        frag.appendChild(createCatalogCard(catalogState.items[i], i));
     }
-
-    // Запускаем первую пачку
-    requestAnimationFrame(renderBatch);
+    grid.appendChild(frag);
+    if (catalogState.hasMore) addLoadMoreTrigger(grid);
+    catalogState.loadedPostersCount = 0;
+    initPosterLazyLoading();
+    initLoadMoreObserver();
+    loadInitialPosters();
+    requestAnimationFrame(function () {
+        if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            setTimeout(function () {
+                if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+        }
+    });
 }
 
 function appendCatalogItems(newItems) {
@@ -838,11 +814,7 @@ function loadInitialPosters() {
 
 function initPosterLazyLoading() {
     if (catalogState.posterObserver) catalogState.posterObserver.disconnect();
-
-    // ПРИОРИТЕТНЫЙ OBSERVER: разные rootMargin для разных приоритетов
-
-    // Высокий приоритет: в пределах 200px от viewport (грузим сразу)
-    var highPriorityObserver = new IntersectionObserver(function (entries) {
+    catalogState.posterObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
             if (entries[i].isIntersecting) {
                 var idx = parseInt(entries[i].target.dataset.catalogIndex, 10);
@@ -850,77 +822,18 @@ function initPosterLazyLoading() {
                 if (!it) continue;
                 var key = it.id + '_' + (it.media_type || 'movie');
                 if (!catalogState.posterCache.has(key) && catalogState.posterLoadQueue.indexOf(idx) === -1) {
-                    // Добавляем в начало очереди (высокий приоритет)
-                    catalogState.posterLoadQueue.unshift(idx);
-                    if (!catalogState.isPosterLoading) loadNextPosterBatch();
+                    addToPosterQueue(idx);
                 }
-                highPriorityObserver.unobserve(entries[i].target);
             }
         }
-    }, { rootMargin: '200px', threshold: 0.1 });
-
-    // Низкий приоритет: в пределах 800px (грузим через requestIdleCallback)
-    var lowPriorityObserver = new IntersectionObserver(function (entries) {
-        for (var i = 0; i < entries.length; i++) {
-            if (entries[i].isIntersecting) {
-                var idx = parseInt(entries[i].target.dataset.catalogIndex, 10);
-                var it = catalogState.items[idx];
-                if (!it) continue;
-                var key = it.id + '_' + (it.media_type || 'movie');
-                if (!catalogState.posterCache.has(key) && catalogState.posterLoadQueue.indexOf(idx) === -1) {
-                    // Добавляем в конец очереди (низкий приоритет)
-                    catalogState.posterLoadQueue.push(idx);
-                    // Запускаем фоновую загрузку через requestIdleCallback
-                    scheduleIdlePosterLoad();
-                }
-                lowPriorityObserver.unobserve(entries[i].target);
-            }
-        }
-    }, { rootMargin: '800px', threshold: 0.1 });
-
-    // Сохраняем основной observer (будет high priority)
-    catalogState.posterObserver = highPriorityObserver;
-    catalogState.lowPriorityObserver = lowPriorityObserver;
-
+    }, { rootMargin: CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX + 'px', threshold: 0.1 });
     var cards = document.querySelectorAll('.torrent-card.catalog-card');
     for (var i = 0; i < cards.length; i++) {
         var it = catalogState.items[i];
         if (!it) continue;
         if (!catalogState.posterCache.has(it.id + '_' + (it.media_type || 'movie'))) {
-            // Все карточки подписываем на low priority observer
-            lowPriorityObserver.observe(cards[i]);
+            catalogState.posterObserver.observe(cards[i]);
         }
-    }
-}
-
-// Фоновая загрузка через requestIdleCallback
-var idlePosterLoadScheduled = false;
-function scheduleIdlePosterLoad() {
-    if (idlePosterLoadScheduled) return;
-    idlePosterLoadScheduled = true;
-
-    if ('requestIdleCallback' in window) {
-        requestIdleCallback(function (deadline) {
-            idlePosterLoadScheduled = false;
-            // Загружаем только если браузер свободен (timeRemaining > 10ms)
-            if (deadline.timeRemaining() > 10 || deadline.didTimeout) {
-                if (catalogState.posterLoadQueue.length > 0 && !catalogState.isPosterLoading) {
-                    loadNextPosterBatch();
-                }
-            }
-            // Если очередь не пуста, планируем следующую итерацию
-            if (catalogState.posterLoadQueue.length > 0) {
-                scheduleIdlePosterLoad();
-            }
-        }, { timeout: 2000 }); // Максимум ждём 2 секунды
-    } else {
-        // Fallback для браузеров без requestIdleCallback
-        setTimeout(function () {
-            idlePosterLoadScheduled = false;
-            if (catalogState.posterLoadQueue.length > 0 && !catalogState.isPosterLoading) {
-                loadNextPosterBatch();
-            }
-        }, 100);
     }
 }
 
@@ -1027,58 +940,15 @@ async function loadCatalogPoster(card, title, mt, id, index) {
 }
 
 function updatePosterDOM(div, rating, url) {
-    if (!div) return;
-
-    // Удаляем старый контент через removeChild (быстрее чем innerHTML = '')
-    while (div.firstChild) {
-        div.removeChild(div.firstChild);
-    }
-
-    if (url) {
-        var img = document.createElement('img');
-        img.src = url;
-        img.loading = 'lazy';
-        img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
-        img.alt = 'poster';
-
-        // Fallback при ошибке
-        img.onerror = function () {
-            var fallback = document.createElement('div');
-            fallback.className = 'no-poster';
-            fallback.textContent = 'Нет постера';
-            if (this.parentNode) {
-                this.parentNode.replaceChild(fallback, this);
-            }
-        };
-
-        // Предварительное декодирование изображения
-        // Это переносит декодирование в фоновый поток, не блокируя UI
-        if (img.decode) {
-            img.decode().then(function () {
-                div.appendChild(img);
-            }).catch(function () {
-                // Если decode() не сработал, добавляем как есть
-                div.appendChild(img);
-            });
-        } else {
-            // Fallback для старых браузеров
-            div.appendChild(img);
-        }
-    } else {
-        var noPoster = document.createElement('div');
-        noPoster.className = 'no-poster';
-        noPoster.textContent = 'Нет постера';
-        div.appendChild(noPoster);
-    }
-
-    // Добавляем рейтинг
+    var rHtml = '';
     if (rating && rating !== 'null' && rating !== 'undefined') {
         var c = getRatingColor(parseFloat(rating));
-        var ratingDiv = document.createElement('div');
-        ratingDiv.style.cssText = 'position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + c + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + c + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);';
-        ratingDiv.textContent = rating;
-        div.appendChild(ratingDiv);
+        rHtml = '<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + c + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + c + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);">' + rating + '</div>';
     }
+    var img = url ?
+        '<img src="' + url + '" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">' :
+        '<div class="no-poster">Нет постера</div>';
+    div.innerHTML = img + rHtml;
 }
 
 // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР ====================
