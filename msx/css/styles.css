@@ -3334,19 +3334,13 @@ article {
 }
 
 .torrent-card.catalog-card {
-    /* Для новых браузеров (Chrome 85+) - встроенная виртуализация */
     content-visibility: auto;
     contain-intrinsic-size: 280px 400px;
-    
-    /* Для старых браузеров (Chromium 70) - изоляция пересчета макета */
     contain: layout style paint;
-    
-    /* Аппаратное ускорение (GPU) для плавного скроллинга */
-    transform: translateZ(0);
-    backface-visibility: hidden;
+
 }
 
 .torrent-poster {
-    /* Изоляция зоны постера (безопасный вариант, не сжимает блок до 0px) */
-    contain: layout paint; 
+    contain: layout paint;
+    overflow: hidden;
 }
