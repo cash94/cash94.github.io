@@ -627,6 +627,7 @@ function renderCatalogGrid() {
     if (catalogState.hasMore) addLoadMoreTrigger(grid);
     catalogState.loadedPostersCount = 0;
     initPosterLazyLoading();
+    initPosterUnloading();
     initLoadMoreObserver();
     loadInitialPosters();
     requestAnimationFrame(function () {
@@ -677,6 +678,7 @@ function appendCatalogItems(newItems) {
             if (catalogState.hasMore) addLoadMoreTrigger(grid);
 
             updatePosterObservers();
+            initPosterUnloading();
             initLoadMoreObserver();
 
             if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
@@ -838,6 +840,34 @@ function initLoadMoreObserver() {
 }
 
 // ==================== ПОСТЕРЫ ====================
+
+function initPosterUnloading() {
+    if (catalogState.unloadObserver) catalogState.unloadObserver.disconnect();
+
+    // Следим за зоной: экран + 1500px вверх и вниз
+    catalogState.unloadObserver = new IntersectionObserver(function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+            var entry = entries[i];
+            if (!entry.isIntersecting) {
+                var posterDiv = entry.target.querySelector('.torrent-poster');
+                var img = posterDiv ? posterDiv.querySelector('img') : null;
+                if (img) {
+                    // Картинка далеко за экраном - убиваем её, освобождая RAM
+                    posterDiv.innerHTML = '<div class="no-poster catalog-poster-loading">⏳</div>';
+                    // Снова ставим карточку в очередь на наблюдение за загрузкой
+                    if (catalogState.posterObserver) {
+                        catalogState.posterObserver.observe(entry.target);
+                    }
+                }
+            }
+        }
+    }, { rootMargin: '1500px 0px', threshold: 0 });
+
+    var cards = document.querySelectorAll('.torrent-card.catalog-card');
+    for (var i = 0; i < cards.length; i++) {
+        catalogState.unloadObserver.observe(cards[i]);
+    }
+}
 
 function loadInitialPosters() {
     var idxs = [];
