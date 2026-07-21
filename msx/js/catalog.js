@@ -639,20 +639,51 @@ function renderCatalogGrid() {
 function appendCatalogItems(newItems) {
     var grid = getEl('torrents-grid');
     if (!grid) return;
+
     var old = getEl('load-more-trigger');
     if (old) old.remove();
+
     var start = catalogState.items.length - newItems.length;
-    var frag = document.createDocumentFragment();
-    for (var i = 0; i < newItems.length; i++) {
-        frag.appendChild(createCatalogCard(newItems[i], start + i));
+
+    // Защита: запоминаем, какой каталог мы рендерим прямо сейчас
+    var currentCatalogKey = catalogState.currentCatalog;
+    var i = 0;
+    var CHUNK_SIZE = 6; // Размер порции: 6 карточек за один кадр
+
+    function renderChunk() {
+        // ВАЖНО: Если пользователь нажал "Назад" или быстро сменил каталог,
+        // пока карточки дорисовывались — немедленно прерываем цикл, 
+        // чтобы не вставить старые карточки в новый каталог.
+        if (catalogState.currentCatalog !== currentCatalogKey) return;
+
+        var frag = document.createDocumentFragment();
+        var end = Math.min(i + CHUNK_SIZE, newItems.length);
+
+        // Создаем порцию карточек
+        for (; i < end; i++) {
+            frag.appendChild(createCatalogCard(newItems[i], start + i));
+        }
+        grid.appendChild(frag); // Вставляем порцию в DOM
+
+        if (i < newItems.length) {
+            // Карточки еще остались. Отдаем управление браузеру (чтобы он отрисовал кадр),
+            // и планируем следующую порцию на следующий кадр.
+            requestAnimationFrame(renderChunk);
+        } else {
+            // Все 18 карточек успешно добавлены. Выполняем финальные действия:
+            if (catalogState.hasMore) addLoadMoreTrigger(grid);
+
+            updatePosterObservers();
+            initLoadMoreObserver();
+
+            if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
+                if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            }
+        }
     }
-    grid.appendChild(frag);
-    if (catalogState.hasMore) addLoadMoreTrigger(grid);
-    updatePosterObservers();
-    initLoadMoreObserver();
-    if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
-        if (typeof updateFocusableElements === 'function') updateFocusableElements();
-    }
+
+    // Запускаем отрисовку первой порции
+    requestAnimationFrame(renderChunk);
 }
 
 function createCatalogCard(item, index) {
