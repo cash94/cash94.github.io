@@ -1636,9 +1636,47 @@ function createCatalogFolderCard(key, cfg) {
     c.className = 'torrent-card catalog-folder-card';
     c.dataset.catalogKey = key;
     var src = POSTER_URLS[key] || '';
-    c.innerHTML = '<div class="torrent-poster catalog-folder-poster">' +
-        (src ? '<img src="' + src + '" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">' : '<div class="no-poster" style="display:flex;align-items:center;justify-content:center;height:100%;font-size:64px">🎬</div>') +
-        '</div><div class="torrent-info"><div class="torrent-title">' + cfg.name + '</div><div class="torrent-meta"><span></span><span class="torrent-badge catalog-badge"></span></div></div>';
+
+    // Плейсхолдер показывается МГНОВЕННО (CSS-градиент, без сети)
+    var posterHtml = src
+        ? '<div class="catalog-folder-poster-placeholder"></div>'
+        : '<div class="no-poster" style="display:flex;align-items:center;justify-content:center;height:100%;font-size:64px">🎬</div>';
+
+    c.innerHTML = '<div class="torrent-poster catalog-folder-poster">' + posterHtml +
+        '</div><div class="torrent-info"><div class="torrent-title">' + cfg.name +
+        '</div><div class="torrent-meta"><span></span><span class="torrent-badge catalog-badge"></span></div></div>';
+
+    // Асинхронная загрузка и декодирование картинки ПОСЛЕ рендеринга карточки
+    if (src) {
+        var posterDiv = c.querySelector('.torrent-poster');
+        var img = new Image();
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
+
+        var insertImage = function () {
+            // Проверяем, не уничтожена ли карточка к этому моменту
+            if (!posterDiv.isConnected) return;
+            var ph = posterDiv.querySelector('.catalog-folder-poster-placeholder');
+            if (ph) ph.remove();
+            img.style.opacity = '1';
+            posterDiv.appendChild(img);
+        };
+
+        img.onerror = function () {
+            if (!posterDiv.isConnected) return;
+            posterDiv.innerHTML = '<div class="no-poster">Нет постера</div>';
+        };
+
+        img.src = src;
+
+        if (typeof img.decode === 'function') {
+            // Chromium 64+: декодируем JPEG в фоновом потоке, не блокируя main thread
+            img.decode().then(insertImage).catch(insertImage);
+        } else {
+            // Фоллбек для очень старых браузеров
+            img.onload = insertImage;
+        }
+    }
+
     return c;
 }
 
