@@ -123,8 +123,8 @@ var Animations = (function () {
         requestAnimationFrame(function () {
             var tl = gsap.timeline({
                 defaults: {
-                    duration: 0.1,
-                    ease: "power2.out"
+                    duration: 0.25,
+                    ease: "power1.out"
                 }
             });
 
@@ -148,8 +148,8 @@ var Animations = (function () {
         return gsap.to(detailView, {
             opacity: 0,
             scale: 0.95,
-            duration: 0.1,
-            ease: "power2.out"
+            duration: 0.5,
+            ease: "power1.out"
         });
     }
 
