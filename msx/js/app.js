@@ -623,8 +623,9 @@ function restoreFocusAfterNavigation(returnTo, context) {
   if (returnTo === 'catalog' && AppState.playFromHash && AppState.isCatalogSerials) {
     AppState.playFromHash = false;
     AppState.isCatalogSerials = false;
-    window.loadCatalog(AppState.backCurrentCatalog);
-    window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+    window.loadCatalog(AppState.backCurrentCatalog).then(function () {
+      window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+    });
     return;
   }
 
