@@ -6,7 +6,7 @@ var CATALOG_CONSTANTS = {
     CACHE_TTL_MS: 3600000,              // 1 час
     FETCH_TIMEOUT_MS: 5000,             // 5 секунд
     CATALOG_CACHE_TTL_MS: 3600000,      // 1 час для каталогов
-    ITEMS_PER_PAGE: 18,
+    ITEMS_PER_PAGE: 64,
     MAX_POSTER_CACHE: 150,
     MAX_DETAIL_HISTORY: 50,
     POSTER_BATCH_SIZE: 18,
