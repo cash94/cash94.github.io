@@ -417,6 +417,12 @@ async function addProgressToDetail(torrent) {
     if (!progress) return;
     var detailHeader = document.querySelector('.detail-header');
     if (!detailHeader) return;
+
+    var oldProgressBlocks = document.querySelectorAll('#detail-progress');
+    for (var i = 0; i < oldProgressBlocks.length; i++) {
+        oldProgressBlocks[i].remove();
+    }
+
     var progressDiv = document.createElement('div');
     progressDiv.id = 'detail-progress';
     progressDiv.className = 'detail-progress';
@@ -426,22 +432,19 @@ async function addProgressToDetail(torrent) {
     var episodeInfo = '';
     if (progress.isSeries) {
         var episodeNum = progress.episodeIndex + 1;
-        if (episodeNum > 1) episodeInfo = `<span class="detail-progress-episode">📺 Серия ${episodeNum}</span>`;
+        if (episodeNum > 1) episodeInfo = '<span class="detail-progress-episode">📺 Серия ' + episodeNum + '</span>';
     }
-
-    progressDiv.innerHTML = `
-        <div class="detail-progress-content">
-            <div class="detail-progress-info">
-                <span class="detail-progress-label">Продолжить просмотр:</span>
-                ${episodeInfo}
-                <span class="detail-progress-time">⏱️ ${timeStr} / ${totalStr}</span>
-            </div>
-            <button class="detail-progress-btn" data-hash="${progress.hash}" data-file-id="${progress.fileId}" data-timecode="${progress.timecode}" data-episode-index="${progress.episodeIndex || 0}">
-                ▶ Продолжить с ${timeStr}
-            </button>
-        </div>
-    `;
-
+    progressDiv.innerHTML =
+        '<div class="detail-progress-content">' +
+        '<div class="detail-progress-info">' +
+        '<span class="detail-progress-label">Продолжить просмотр:</span>' +
+        episodeInfo +
+        '<span class="detail-progress-time">⏱️ ' + timeStr + ' / ' + totalStr + '</span>' +
+        '</div>' +
+        '<button class="detail-progress-btn" data-hash="' + progress.hash + '" data-file-id="' + progress.fileId + '" data-timecode="' + progress.timecode + '" data-episode-index="' + (progress.episodeIndex || 0) + '">' +
+        '▶ Продолжить с ' + timeStr +
+        '</button>' +
+        '</div>';
     progressDiv.querySelector('.detail-progress-btn').addEventListener('click', function (e) {
         e.stopPropagation();
         var playUrl = AppState.currentTorrserverUrl + '/play/' + progress.hash + '/' + progress.fileId;
@@ -653,7 +656,9 @@ function resetDetailBackground() {
     var filesList = getEl('files-list'); if (filesList) { filesList.innerHTML = ''; filesList.style.display = ''; filesList.style.flexDirection = ''; }
     var detailPoster = getEl('detail-poster'); if (detailPoster) detailPoster.innerHTML = '';
     var detailTitleText = getEl('detail-title-text'); if (detailTitleText) detailTitleText.textContent = '';
-    var oldProgress = getEl('detail-progress'); if (oldProgress) oldProgress.remove();
+    for (var i = 0; i < oldProgressBlocks.length; i++) {
+        oldProgressBlocks[i].remove();
+    }
 }
 window.resetDetailBackground = resetDetailBackground;
 
@@ -760,7 +765,9 @@ async function showDetail(torrent) {
     if (typeof Animations !== 'undefined') Animations.animateDetailShow();
     var tmdbPromise = loadAllTmdbDataForTorrent(torrent, { titleEl: titleEl, detailViewDiv: detailViewDiv, detailSubtitle: detailSubtitle });
     titleEl.textContent = (torrent.title || 'Без названия').replace(/[\d+]/, '').trim();
-    var oldProgress = getEl('detail-progress'); if (oldProgress) oldProgress.remove();
+    for (var i = 0; i < oldProgressBlocks.length; i++) {
+        oldProgressBlocks[i].remove();
+    }
     var lastField = await addProgressToDetail(torrent);
     try {
         var files = await getTorrentFilesWithCache(torrent, false);
