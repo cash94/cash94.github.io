@@ -7,71 +7,60 @@ var CatalogWorker = (function () {
     var requestCounter = 0;
     var isReady = false;
     var readyQueue = [];
-    var initFailed = false;
-
-    // URL Worker-скрипта (GitHub Pages)
-    var WORKER_REMOTE_URL = 'https://cash94.github.io/msx/js/catalog-worker.js';
 
     function init() {
-        if (worker || initFailed) return;
+        if (worker) return;
 
-        fetch(WORKER_REMOTE_URL)
-            .then(function (resp) {
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                return resp.text();
-            })
-            .then(function (code) {
-                var blob = new Blob([code], { type: 'application/javascript' });
-                var blobUrl = URL.createObjectURL(blob);
+        try {
+            worker = new Worker('catalog-worker.js');
+        } catch (e) {
+            console.error('❌ Не удалось создать Worker:', e);
+            worker = null;
+            return;
+        }
 
-                try {
-                    worker = new Worker(blobUrl);
-                } catch (e) {
-                    console.error('❌ Worker creation failed:', e);
-                    initFailed = true;
-                    return;
+        worker.onmessage = function (e) {
+            var msg = e.data;
+
+            if (msg.type === 'WORKER_READY') {
+                isReady = true;
+                // Выполняем накопленные запросы
+                for (var i = 0; i < readyQueue.length; i++) {
+                    worker.postMessage(readyQueue[i]);
                 }
+                readyQueue = [];
+                return;
+            }
 
-                URL.revokeObjectURL(blobUrl);
+            var cb = pendingCallbacks[msg.id];
+            if (cb) {
+                delete pendingCallbacks[msg.id];
+                if (msg.type === 'ERROR') {
+                    cb.reject(new Error(msg.error));
+                } else {
+                    cb.resolve(msg.data);
+                }
+            }
+        };
 
-                worker.onmessage = function (e) {
-                    var msg = e.data;
-
-                    if (msg.type === 'WORKER_READY') {
-                        isReady = true;
-                        for (var i = 0; i < readyQueue.length; i++) {
-                            worker.postMessage(readyQueue[i]);
-                        }
-                        readyQueue = [];
-                        return;
-                    }
-
-                    var cb = pendingCallbacks[msg.id];
-                    if (cb) {
-                        delete pendingCallbacks[msg.id];
-                        if (msg.type === 'ERROR') cb.reject(new Error(msg.error));
-                        else cb.resolve(msg.data);
-                    }
-                };
-
-                worker.onerror = function (e) {
-                    console.error('❌ Worker runtime error:', e.message);
-                };
-            })
-            .catch(function (e) {
-                console.error('❌ Worker fetch failed:', e.message);
-                console.warn('⚠️ Работаем без Worker (main thread fallback)');
-                initFailed = true;
-            });
+        worker.onerror = function (e) {
+            console.error('❌ Worker error:', e.message);
+        };
     }
 
+    /**
+     * Отправить запрос в Worker и получить Promise
+     * @param {string} type - тип операции
+     * @param {object} payload - данные
+     * @param {number} [timeout] - таймаут мс (по умолчанию 10000)
+     * @returns {Promise}
+     */
     function request(type, payload, timeout) {
         timeout = timeout || 10000;
 
         return new Promise(function (resolve, reject) {
-            // Worker не инициализирован — отклоняем (патч вызовет оригинал)
-            if (!worker || initFailed) {
-                reject(new Error('Worker not available'));
+            if (!worker) {
+                reject(new Error('Worker not initialized'));
                 return;
             }
 
@@ -86,8 +75,14 @@ var CatalogWorker = (function () {
             }, timeout);
 
             pendingCallbacks[id] = {
-                resolve: function (data) { clearTimeout(timer); resolve(data); },
-                reject: function (err) { clearTimeout(timer); reject(err); }
+                resolve: function (data) {
+                    clearTimeout(timer);
+                    resolve(data);
+                },
+                reject: function (err) {
+                    clearTimeout(timer);
+                    reject(err);
+                }
             };
 
             if (isReady) {
