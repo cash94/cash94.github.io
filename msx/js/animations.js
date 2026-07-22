@@ -123,7 +123,7 @@ var Animations = (function () {
         requestAnimationFrame(function () {
             var tl = gsap.timeline({
                 defaults: {
-                    duration: 0.25,
+                    duration: 0.5,
                     ease: "power1.out"
                 }
             });
@@ -133,7 +133,7 @@ var Animations = (function () {
                 backgroundColor: 'rgb(0, 0, 0)',
                 y: 0,
                 scale: 1,
-                duration: 0.15
+                duration: 0.35
             }, 0);
 
             return tl;
