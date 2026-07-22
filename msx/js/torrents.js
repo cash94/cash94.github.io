@@ -766,6 +766,7 @@ async function showDetail(torrent) {
     if (typeof Animations !== 'undefined') Animations.animateDetailShow();
     var tmdbPromise = loadAllTmdbDataForTorrent(torrent, { titleEl: titleEl, detailViewDiv: detailViewDiv, detailSubtitle: detailSubtitle });
     titleEl.textContent = (torrent.title || 'Без названия').replace(/[\d+]/, '').trim();
+    var oldProgressBlocks = document.querySelectorAll('#detail-progress');
     for (var i = 0; i < oldProgressBlocks.length; i++) {
         oldProgressBlocks[i].remove();
     }
