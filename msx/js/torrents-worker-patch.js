@@ -1,7 +1,9 @@
-// torrents-worker-patch.js — перехватывает 2 функции
+// torrents-worker-patch.js — перехват функций torrents.js → делегирование в Worker
+// Подключается ПОСЛЕ torrents.js и torrents-worker-bridge.js
 (function () {
     'use strict';
 
+    // ==================== СОХРАНЕНИЕ ОРИГИНАЛОВ ====================
     var _origSearchLegacy = window.searchTorrentsLegacy || searchTorrentsLegacy;
     var _origApplyFilters = window.applyFiltersAndSort || applyFiltersAndSort;
     var _origUpdateTrackers = window.updateAvailableTrackers || updateAvailableTrackers;
@@ -9,6 +11,7 @@
     var _origUpdateSeasons = window.updateAvailableSeasons || updateAvailableSeasons;
     var _origUpdateVoices = window.updateAvailableVoices || updateAvailableVoices;
     var _origUpdateVideotype = window.updateAvailableVideotype || updateAvailableVideotype;
+    var _origLoadAllTmdbData = window.loadAllTmdbDataForTorrent || loadAllTmdbDataForTorrent;
 
     // ==================== searchTorrentsLegacy ====================
     window.searchTorrentsLegacy = searchTorrentsLegacy = async function (query) {
@@ -144,5 +147,89 @@
         }
     }
 
-    console.log('✅ Torrents Worker patches applied (compute-only)');
+    // ==================== loadAllTmdbDataForTorrent ====================
+    window.loadAllTmdbDataForTorrent = loadAllTmdbDataForTorrent = async function (torrent, elements) {
+        // Быстрое обновление заголовка на main thread (без ожидания Worker)
+        var quickTitle = torrent.title || 'Без названия';
+        var qb = quickTitle.match(/\[(\d+)\]/);
+        if (qb) quickTitle = quickTitle.replace(/\[\d+\]/, '').trim();
+        if (elements.titleEl) elements.titleEl.textContent = quickTitle;
+
+        try {
+            var r = await TorrentsWorker.loadAllTmdbData(torrent);
+
+            // Заголовок (Worker мог очистить сезоны)
+            if (elements.titleEl && r.cleanTitle) elements.titleEl.textContent = r.cleanTitle;
+
+            // AppState
+            AppState.isSerials = r.isTvSeries;
+            if (r.seasonNumbers.length === 1 && r.isTvSeries) {
+                AppState.currentTMDB = r.tmdbId;
+                AppState.currentSeason = r.seasonNumbers[0];
+            }
+
+            // Season stills → DOM
+            if (r.tmdbId && r.isTvSeries && r.seasonNumbers.length > 0 && Object.keys(r.allSeasonEpisodes).length > 0) {
+                loadStillsAndUpdateFiles(r.seasonNumbers, r.allSeasonEpisodes, null, r.videoFilesCount);
+            }
+
+            // Movie still → DOM (формируем URL на main thread)
+            if (r.movieStillPosterPath) {
+                var stillUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + r.movieStillPosterPath;
+                var fileItem = document.querySelector('.file-item');
+                if (fileItem) updateFileItemStill(fileItem, stillUrl);
+            }
+
+            // TMDB Details → DOM
+            if (r.details) {
+                _applyTmdbDetailsToDOM(r.details, elements);
+            }
+
+            return r;
+        } catch (e) {
+            console.warn('⚠️ Worker loadAllTmdbData failed, fallback:', e.message);
+            return _origLoadAllTmdbData.call(window, torrent, elements);
+        }
+    };
+
+    // ==================== DOM-обновления из TMDB details ====================
+    function _applyTmdbDetailsToDOM(details, elements) {
+        // Backdrop
+        if (details.backdrop_path && elements.detailViewDiv) {
+            var bp = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
+            elements.detailViewDiv.style.backgroundImage = 'url(' + bp + ')';
+            elements.detailViewDiv.style.backgroundSize = 'cover';
+            elements.detailViewDiv.style.backgroundPosition = 'center';
+            elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
+
+            if (!getEl('detail-backdrop-overlay')) {
+                var ov = document.createElement('div');
+                ov.id = 'detail-backdrop-overlay';
+                ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.08);box-shadow:0 4px 20px rgba(0,0,0,0.25);border-radius:14.89px;z-index:-1;';
+                elements.detailViewDiv.appendChild(ov);
+            }
+        }
+
+        // Overview
+        if (details.overview) {
+            if (elements.detailSubtitle) {
+                elements.detailSubtitle.textContent = details.overview;
+                elements.detailSubtitle.style.display = 'block';
+                elements.detailSubtitle.classList.remove('hidden');
+            }
+            var ovEl = getEl('catalog-detail-overview');
+            if (ovEl) {
+                ovEl.textContent = details.overview;
+                ovEl.style.display = 'block';
+                ovEl.classList.remove('hidden');
+            }
+        }
+
+        // Meta (жанры, год, рейтинг)
+        if (typeof updateDetailMetaInfo === 'function') {
+            updateDetailMetaInfo(details);
+        }
+    }
+
+    console.log('✅ Torrents Worker patches applied (v2 — compute + TMDB data)');
 })();
