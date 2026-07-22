@@ -656,7 +656,10 @@ function resetDetailBackground() {
     var filesList = getEl('files-list'); if (filesList) { filesList.innerHTML = ''; filesList.style.display = ''; filesList.style.flexDirection = ''; }
     var detailPoster = getEl('detail-poster'); if (detailPoster) detailPoster.innerHTML = '';
     var detailTitleText = getEl('detail-title-text'); if (detailTitleText) detailTitleText.textContent = '';
-    var oldProgress = getEl('detail-progress'); if (oldProgress) oldProgress.remove();
+    var oldProgressBlocks = document.querySelectorAll('#detail-progress');
+    for (var i = 0; i < oldProgressBlocks.length; i++) {
+        oldProgressBlocks[i].remove();
+    }
 }
 window.resetDetailBackground = resetDetailBackground;
 
