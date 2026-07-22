@@ -703,7 +703,7 @@ function createCatalogCard(item, index) {
         '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + ratingColor + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + ratingColor + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);">' + rating + '</div>' : '';
 
     var posterHtml = cached ?
-        '<img src="' + cached + '" loading="lazy" style="width:100%;height:100%;object-fit:cover">' :
+        '<img src="' + cached + '" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover">' :
         '<div class="no-poster catalog-poster-loading"></div>';
 
     var year = getCatalogItemYear(item);
@@ -1128,6 +1128,7 @@ function renderDetailHeader(item, posterUrl, details) {
     var be = getEl('catalog-detail-backdrop');
     var title = getCatalogItemTitle(item);
     var mt = item.media_type || 'movie';
+
     te.textContent = title;
     if (se) {
         se.textContent = getCatalogItemSubtitle(item);
@@ -1136,7 +1137,6 @@ function renderDetailHeader(item, posterUrl, details) {
     }
     getEl('files-list').style.display = 'none';
     getEl('catalog-detail-extra').classList.remove('hidden');
-
     if (oe) {
         oe.textContent = 'Загрузка...';
         oe.classList.remove('hidden');
@@ -1144,32 +1144,34 @@ function renderDetailHeader(item, posterUrl, details) {
     }
     var twInit = getEl('catalog-detail-trailers-wrap');
     var te2Init = getEl('catalog-detail-trailers');
-    if (twInit) {
-        twInit.classList.add('hidden');
-        twInit.style.display = 'none';
-    }
-    if (te2Init) {
-        te2Init.classList.add('hidden');
-        te2Init.style.display = 'none';
-    }
+    if (twInit) { twInit.classList.add('hidden'); twInit.style.display = 'none'; }
+    if (te2Init) { te2Init.classList.add('hidden'); te2Init.style.display = 'none'; }
     getEl('catalog-detail-trailers-wrap').classList.add('hidden');
+
+    // ★ ПЛЕЙСХОЛДЕР для постера (мгновенно, без сети)
     var temp = posterUrl || catalogState.posterCache.get(item.id + '_' + mt) || '';
-    pe.innerHTML = temp ? '<img src="' + temp + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
+    pe.innerHTML = temp
+        ? '<div class="catalog-poster-loading" style="width:100%;height:100%"></div>'
+        : '<div class="no-poster">Нет постера</div>';
+
     updateCatalogWatchButton(title);
     var src = details || item || {};
+
+    // ★ ПОСТЕР через img.decode()
+    var posterSrc = null;
     if (src.poster_path) {
-        var u = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + src.poster_path;
-        if (!temp || pe.innerHTML.indexOf('Нет постера') !== -1) {
-            pe.innerHTML = '<img src="' + u + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\\\"no-poster\\\">Нет постера</div>\'">';
-        } else {
-            catalogState.posterCache.set(item.id + '_' + mt, u);
-        }
+        posterSrc = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + src.poster_path;
+        catalogState.posterCache.set(item.id + '_' + mt, posterSrc);
     } else if (src.image && (src.image.original || src.image.medium)) {
-        var u = src.image.original || src.image.medium;
-        if (!temp || pe.innerHTML.indexOf('Нет постера') !== -1) {
-            pe.innerHTML = '<img src="' + u + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\\\"no-poster\\\">Нет постера</div>\'">';
-        }
+        posterSrc = src.image.original || src.image.medium;
+    } else if (temp) {
+        posterSrc = temp;
     }
+
+    if (posterSrc) {
+        _loadImageDecoded(pe, posterSrc, 'poster');
+    }
+
     if (se) {
         se.textContent = getCatalogItemSubtitle(item, src);
         se.classList.remove('hidden');
@@ -1180,13 +1182,58 @@ function renderDetailHeader(item, posterUrl, details) {
         oe.classList.remove('hidden');
         oe.style.display = 'block';
     }
+
+    // ★ BACKDROP через img.decode() (предзагрузка, потом CSS background)
     var bp = src.backdrop_path || (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
     if (bp) {
-        be.style.backgroundImage = 'url(' + (bp.indexOf('http') === 0 ? bp : AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.BACKDROP + bp) + ')';
-        be.classList.remove('hidden');
+        var bpUrl = bp.indexOf('http') === 0 ? bp : AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.BACKDROP + bp;
+        _loadBackdropDecoded(be, bpUrl);
     } else {
         be.classList.add('hidden');
         be.style.backgroundImage = '';
+    }
+}
+
+// ★ Вспомогательная: загрузка <img> с decode()
+function _loadImageDecoded(container, src, alt) {
+    var img = new Image();
+    img.alt = alt || '';
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
+
+    var insert = function () {
+        if (!container.isConnected) return;
+        container.innerHTML = '';
+        img.style.opacity = '1';
+        container.appendChild(img);
+    };
+
+    img.onerror = function () {
+        if (container.isConnected) container.innerHTML = '<div class="no-poster">Нет постера</div>';
+    };
+    img.src = src;
+
+    if (typeof img.decode === 'function') {
+        img.decode().then(insert).catch(insert);
+    } else {
+        img.onload = insert;
+    }
+}
+
+// ★ Вспомогательная: предзагрузка backdrop с decode(), потом CSS background
+function _loadBackdropDecoded(container, url) {
+    var img = new Image();
+    img.src = url;
+
+    var apply = function () {
+        if (!container.isConnected) return;
+        container.style.backgroundImage = 'url(' + url + ')';
+        container.classList.remove('hidden');
+    };
+
+    if (typeof img.decode === 'function') {
+        img.decode().then(apply).catch(apply);
+    } else {
+        img.onload = apply;
     }
 }
 
@@ -1205,7 +1252,7 @@ async function renderDetailActors(item, aw) {
             var d = document.createElement('div');
             d.className = 'catalog-actor-card';
             d.innerHTML = '<div class="catalog-actor-photo">' +
-                (a.profilePath ? '<img src="' + AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL + a.profilePath + '" loading="lazy" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') +
+                (a.profilePath ? '<img src="' + AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL + a.profilePath + '" loading="lazy" decoding="async" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') +
                 '</div><div class="catalog-actor-info"><div class="catalog-actor-name">' + escapeHtml(a.name) + '</div><div class="catalog-actor-character">' + escapeHtml(a.character || '') + '</div></div>';
             frag.appendChild(d);
         });
@@ -1235,7 +1282,7 @@ function renderDetailRecommendations(src, rw, mt) {
             d.dataset.title = r.title || r.name || 'Без названия';
             var pu = r.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL + r.poster_path : null;
             d.innerHTML = '<div class="catalog-recommendation-poster">' +
-                (pu ? '<img src="' + pu + '" loading="lazy" alt="' + escapeHtml(d.dataset.title) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-recommendation-no-poster\\\'> </div>\'">' : '<div class="catalog-recommendation-no-poster"> </div>') +
+                (pu ? '<img src="' + pu + '" loading="lazy" decoding="async" alt="' + escapeHtml(d.dataset.title) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-recommendation-no-poster\\\'> </div>\'">' : '<div class="catalog-recommendation-no-poster"> </div>') +
                 (r.vote_average ? '<div class="catalog-recommendation-rating">' + Math.round(r.vote_average * 10) / 10 + '</div>' : '') +
                 '</div><div class="catalog-recommendation-info"><div class="catalog-recommendation-title">' + escapeHtml(d.dataset.title) + '</div>' +
                 (r.release_date ? '<div class="catalog-recommendation-year">' + r.release_date.substring(0, 4) + '</div>' : '') +
@@ -1276,7 +1323,7 @@ function renderDetailTrailers(src) {
             d.className = 'catalog-trailer-card-item';
             d.dataset.videoUrl = v.key;
             d.dataset.videoTitle = v.name || 'Трейлер';
-            d.innerHTML = '<div class="catalog-trailer-poster" style="position:relative;aspect-ratio:4/3;overflow:hidden;border-radius:12px;background:linear-gradient(135deg,#1a1a2e,#16213e)"><img src="https://img.youtube.com/vi/' + v.key + '/mqdefault.jpg" alt="' + escapeHtml(v.name || 'Трейлер') + '" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'></div>\'"><div class="catalog-trailer-play-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s;cursor:pointer"><div style="width:60px;height:60px;background:rgba(74,158,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;color:white">▶</div></div>' +
+            d.innerHTML = '<div class="catalog-trailer-poster" style="position:relative;aspect-ratio:4/3;overflow:hidden;border-radius:12px;background:linear-gradient(135deg,#1a1a2e,#16213e)"><img src="https://img.youtube.com/vi/' + v.key + '/mqdefault.jpg" alt="' + escapeHtml(v.name || 'Трейлер') + '" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'></div>\'"><div class="catalog-trailer-play-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s;cursor:pointer"><div style="width:60px;height:60px;background:rgba(74,158,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;color:white">▶</div></div>' +
                 (v.duration ? '<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:white;font-size:12px;padding:3px 8px;border-radius:12px;font-family:monospace">' + formatDuration(v.duration) + '</div>' : '') +
                 '</div><div class="catalog-trailer-info hidden" style="padding:10px"><div class="catalog-trailer-title" style="font-size:14px;font-weight:600;color:#fff;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(v.name || 'Трейлер') + '</div><div class="catalog-trailer-meta" style="display:flex;gap:10px;font-size:12px;color:#aaa"><span>Трейлер</span>' + (v.duration ? '<span>⏱️ ' + formatDuration(v.duration) + '</span>' : '') + '</div></div>';
             frag.appendChild(d);
