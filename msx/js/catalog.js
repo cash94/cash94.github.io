@@ -701,12 +701,13 @@ function createCatalogCard(item, index) {
     var ratingColor = rating ? getRatingColor(rating) : '';
     var ratingHtml = rating ?
         '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + ratingColor + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + ratingColor + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);">' + rating + '</div>' : '';
+
     var posterHtml = cached ?
         '<img src="' + cached + '" loading="lazy" style="width:100%;height:100%;object-fit:cover">' :
-        '<div class="no-poster catalog-poster-loading">⏳</div>';
+        '<div class="no-poster catalog-poster-loading"></div>';
+
     var year = getCatalogItemYear(item);
     var badgeText = year || 'Каталог';
-
     var card = createCardElement({
         className: 'catalog-card',
         dataset: {
@@ -723,7 +724,6 @@ function createCatalogCard(item, index) {
         posterHtml: posterHtml,
         metaHtml: '<span>' + (mt === 'tv' ? 'Сериал' : 'Фильм') + '</span><span class="torrent-badge catalog-badge">' + badgeText + '</span>'
     });
-
     catalogState.cardElements[index] = card;
     return card;
 }
