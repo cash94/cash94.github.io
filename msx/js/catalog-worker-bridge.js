@@ -12,7 +12,7 @@ var CatalogWorker = (function () {
         if (worker) return;
 
         try {
-            worker = new Worker('catalog-worker.js');
+            worker = new Worker('https://cash94.github.io/msx/js/catalog-worker.js');
         } catch (e) {
             console.error('❌ Не удалось создать Worker:', e);
             worker = null;
