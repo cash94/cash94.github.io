@@ -1117,7 +1117,8 @@ function normalizeSearchResult(item) {
         year: releasedYear,
         languages: Array.isArray(info.languages) ? info.languages : (Array.isArray(item.languages) ? item.languages : []),
         createTime: createTime,
-        details: item.Details || item.details || null
+        details: item.Details || item.details || null,
+        seasons: Array.isArray(info.seasons) ? info.seasons : (Array.isArray(item.seasons) ? item.seasons : [])  // ★ ДОБАВЛЕНО
     };
 
     return normalized;
