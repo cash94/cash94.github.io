@@ -124,6 +124,7 @@ var Animations = (function () {
             var tl = gsap.timeline({
                 defaults: {
                     duration: 0.5,
+                    backgroundColor: 'rgb(0, 0, 0)',
                     ease: "power1.out"
                 }
             });
