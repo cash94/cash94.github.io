@@ -7,11 +7,11 @@
     var _origFallbackLoadAll = window.fallbackLoadAllCatalogItems || fallbackLoadAllCatalogItems;
     var _origLoadHistoryCatalog = window.loadHistoryCatalog || loadHistoryCatalog;
     var _origFetchAvailableCatalogs = window.fetchAvailableCatalogs || fetchAvailableCatalogs;
-    //var _origFetchTmdbDetails = window.fetchTmdbDetails || fetchTmdbDetails;
-    //var _origFetchCatalogActors = window.fetchCatalogActors || fetchCatalogActors;
-    //var _origFetchCatalogItemDetails = window.fetchCatalogItemDetails || fetchCatalogItemDetails;
-    //var _origFetchCatalogItemMeta = window.fetchCatalogItemMeta || fetchCatalogItemMeta;
-    //var _origAddToWatchHistory = window.addToWatchHistory;
+    var _origFetchTmdbDetails = window.fetchTmdbDetails || fetchTmdbDetails;
+    var _origFetchCatalogActors = window.fetchCatalogActors || fetchCatalogActors;
+    var _origFetchCatalogItemDetails = window.fetchCatalogItemDetails || fetchCatalogItemDetails;
+    var _origFetchCatalogItemMeta = window.fetchCatalogItemMeta || fetchCatalogItemMeta;
+    var _origAddToWatchHistory = window.addToWatchHistory;
     var _origCheckAndUpdate = window.checkAndUpdateCatalogIfNeeded || checkAndUpdateCatalogIfNeeded;
 
     // Флаг: идёт ли обновление каталога (защита от цикла)
