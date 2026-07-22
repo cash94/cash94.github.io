@@ -279,7 +279,10 @@
     // ==================== fetchAvailableCatalogs ====================
     window.fetchAvailableCatalogs = fetchAvailableCatalogs = function () {
         return CatalogWorker.fetchCatalogs()
-            .then(function (catalogs) { return catalogs || []; })
+            .then(function (data) {
+                // Worker возвращает полный ответ — извлекаем массив
+                return (data && data.success && data.catalogs) ? data.catalogs : [];
+            })
             .catch(function () { return []; });
     };
 
