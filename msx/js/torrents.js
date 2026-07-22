@@ -1363,7 +1363,7 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
         if (window.AndroidJS && !AppState.isCatalogSerials) return true;
         await response.json();
         window.pendingCatalogPoster = null; window.pendingCatalogItem = null; lastAddedTorrentHash = hash.toLowerCase();
-        if (refreshList && !window.AndroidJS) {
+        if (refreshList) { // && !window.AndroidJS) {
             await refreshTorrentsList();
             return AppState.torrents.find(t => t.hash && t.hash.toLowerCase() === lastAddedTorrentHash) || true;
         }
