@@ -1464,7 +1464,6 @@ function checkDolbyVisionSupport() {
     { name: 'H.264 (AVC)', codec: 'video/mp4; codecs="avc1.640028"' },
     { name: 'Dolby Vision Profile 5', codec: 'video/mp4; codecs="dvh1.05.01"' },
     { name: 'Dolby Vision Profile 8 (HEVC)', codec: 'video/mp4; codecs="dvh1.08.06"' },
-    { name: 'Dolby Vision Profile 8 (AV1)', codec: 'video/mp4; codecs="dav1.08.06"' },
     { name: 'HDR10 (HEVC)', codec: 'video/mp4; codecs="hvc1.2.4.L150.B0"' },
     { name: 'AV1 Main', codec: 'video/mp4; codecs="av01.0.08M.08"' }
   ];
