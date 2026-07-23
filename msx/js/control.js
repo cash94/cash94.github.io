@@ -87,7 +87,7 @@ function createSeekOverlay() {
         backdrop-filter: blur(10px);
     `;
     seekOverlay.innerHTML = `
-        <div id="seek-time" style="font-size: 96px; line-height: 1; margin-bottom: 10px;">00:00</div>
+        <div id="seek-time" style="font-size: 9px; line-height: 1; margin-bottom: 10px;">00:00</div>
         <div id="seek-direction" style="font-size: 24px; opacity: 0.8;">Перемотка</div>
     `;
     document.body.appendChild(seekOverlay);
@@ -179,15 +179,15 @@ function isPlayerControlsVisible() {
 var _cachedColumns = 0;
 function getTorrentGridColumns() {
     var grid = getEl('torrents-grid');
-    if (!grid) return 6;
+    if (!grid) return 5;
     try {
         var cols = (window.getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
-        _cachedColumns = cols || 6;
-    } catch (e) { _cachedColumns = 6; }
+        _cachedColumns = cols || 5;
+    } catch (e) { _cachedColumns = 5; }
     return _cachedColumns;
 }
 
-function getColumns() { return 6; }
+function getColumns() { return 5; }
 
 // Функция для инвалидации кэша фокуса
 function invalidateFocusCache() {
