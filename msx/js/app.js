@@ -1546,7 +1546,7 @@ function updateDolbyVisionUI(result) {
 
 function initDolbyVisionCheck() {
   var checkBtn = getEl('dv-check-btn');
-  var dvCheckboxContainer = document.getElementById('dvOnOff')?.closest('.checkbox-container');
+  var dvCheckboxContainer = getEl('dvOnOff')?.closest('.checkbox-container');
   var dvCheckbox = getEl('dvOnOff');
 
   // Загружаем сохранённые результаты проверки DV при старте
@@ -1653,7 +1653,7 @@ function initDolbyVisionCheck() {
           var result = checkDolbyVisionSupport();
           updateDolbyVisionUI(result);
 
-          var dvCheckboxContainer = document.getElementById('dvOnOff')?.closest('.checkbox-container');
+          var dvCheckboxContainer = getEl('dvOnOff')?.closest('.checkbox-container');
           if (dvCheckboxContainer) {
             if (result.supported) {
               dvCheckboxContainer.classList.remove('hidden');
@@ -1670,7 +1670,7 @@ function initDolbyVisionCheck() {
         var result = checkDolbyVisionSupport();
         updateDolbyVisionUI(result);
 
-        var dvCheckboxContainer = document.getElementById('dvOnOff')?.closest('.checkbox-container');
+        var dvCheckboxContainer = getEl('dvOnOff')?.closest('.checkbox-container');
         if (dvCheckboxContainer) {
           if (result.supported) {
             dvCheckboxContainer.classList.remove('hidden');
