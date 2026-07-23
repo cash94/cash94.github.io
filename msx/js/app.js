@@ -1482,7 +1482,6 @@ function checkDolbyVisionSupport() {
     });
     console.log('   ' + (supported ? '✅' : '❌') + ' ' + test.name + ': ' + (supported ? 'поддерживается' : 'НЕ поддерживается'));
 
-    // Проверяем поддержку Dolby Vision Profile 8 (самый распространённый)
     if (test.name.indexOf('Dolby Vision Profile 8') !== -1 && supported) {
       dvSupported = true;
     }
@@ -1513,7 +1512,6 @@ function updateDolbyVisionUI(result) {
     statusText.innerHTML += '<div style="font-size: 12px; color: #aaa; margin-top: 4px;">Будет использоваться стандартное HDR или SDR</div>';
   }
 
-  // Показываем детальную информацию о кодеках
   if (codecsList && result.codecs && result.codecs.length > 0) {
     var html = '<div style="color: #888; margin-bottom: 8px;">Поддержка кодеков:</div>';
     for (var i = 0; i < result.codecs.length; i++) {
@@ -1528,13 +1526,11 @@ function updateDolbyVisionUI(result) {
     codecsList.style.display = 'block';
   }
 
-  // Сохраняем результат в AppState для использования в плеере
   if (typeof AppState !== 'undefined') {
     AppState.dolbyVisionSupported = result.supported;
     AppState.supportedCodecs = result.codecs;
   }
 
-  // Сохраняем в localStorage
   try {
     localStorage.setItem('dolbyVisionSupported', result.supported ? 'true' : 'false');
     localStorage.setItem('supportedCodecs', JSON.stringify(result.codecs));
@@ -1545,10 +1541,12 @@ function updateDolbyVisionUI(result) {
 
 function initDolbyVisionCheck() {
   var checkBtn = getEl('dv-check-btn');
-  var dvCheckboxContainer = getEl('dvOnOff')?.closest('.checkbox-container');
-  var dvCheckbox = getEl('dvOnOff');
 
-  // Загружаем сохранённые результаты проверки DV при старте
+  // ИСПРАВЛЕНО: убран Optional Chaining (?.)
+  var dvOnOffEl = getEl('dvOnOff');
+  var dvCheckboxContainer = dvOnOffEl ? dvOnOffEl.closest('.checkbox-container') : null;
+  var dvCheckbox = dvOnOffEl;
+
   var dvSupported = false;
   try {
     var savedSupported = localStorage.getItem('dolbyVisionSupported');
@@ -1585,10 +1583,13 @@ function initDolbyVisionCheck() {
     }
     console.log('🎬 Предпочтение Dolby Vision:', dvPreferred ? 'включено' : 'выключено');
 
-    // Обработчик изменения чекбокса
     dvCheckbox.addEventListener('change', function (e) {
       dvPreferred = e.target.checked;
-      localStorage.setItem('dvPreferred', dvPreferred);
+      try {
+        localStorage.setItem('dvPreferred', dvPreferred);
+      } catch (err) {
+        console.warn('Не удалось сохранить предпочтение DV:', err);
+      }
 
       if (typeof AppState !== 'undefined') {
         AppState.dvPreferred = dvPreferred;
@@ -1596,7 +1597,6 @@ function initDolbyVisionCheck() {
 
       console.log('🎬 Предпочтение Dolby Vision:', dvPreferred ? 'включено' : 'выключено');
 
-      // Показываем подсказку пользователю
       if (typeof showPlayerHint === 'function') {
         var msg = dvPreferred
           ? '🎬 Dolby Vision будет предпочитаться при наличии'
@@ -1606,7 +1606,6 @@ function initDolbyVisionCheck() {
     });
   }
 
-  // Обработчик кнопки проверки (если есть)
   if (checkBtn) {
     checkBtn.addEventListener('click', function () {
       checkBtn.disabled = true;
@@ -1644,32 +1643,24 @@ function initDolbyVisionCheck() {
 
 // Автоматическая проверка при загрузке (один раз)
 (function () {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () {
-      // Проверяем автоматически только если нет сохранённых результатов
-      if (!localStorage.getItem('dolbyVisionSupported')) {
-        setTimeout(function () {
-          var result = checkDolbyVisionSupport();
-          updateDolbyVisionUI(result);
-
-          var dvCheckboxContainer = getEl('dvOnOff')?.closest('.checkbox-container');
-          if (dvCheckboxContainer) {
-            if (result.supported) {
-              dvCheckboxContainer.classList.remove('hidden');
-            } else {
-              dvCheckboxContainer.classList.add('hidden');
-            }
-          }
-        }, 1000);
+  function runAutoCheck() {
+    try {
+      if (localStorage.getItem('dolbyVisionSupported')) {
+        return; // Уже есть сохранённые результаты
       }
-    });
-  } else {
-    if (!localStorage.getItem('dolbyVisionSupported')) {
-      setTimeout(function () {
+    } catch (e) {
+      // localStorage недоступен
+    }
+
+    setTimeout(function () {
+      try {
         var result = checkDolbyVisionSupport();
         updateDolbyVisionUI(result);
 
-        var dvCheckboxContainer = getEl('dvOnOff')?.closest('.checkbox-container');
+        // ИСПРАВЛЕНО: убран Optional Chaining
+        var dvOnOffEl = getEl('dvOnOff');
+        var dvCheckboxContainer = dvOnOffEl ? dvOnOffEl.closest('.checkbox-container') : null;
+
         if (dvCheckboxContainer) {
           if (result.supported) {
             dvCheckboxContainer.classList.remove('hidden');
@@ -1677,11 +1668,18 @@ function initDolbyVisionCheck() {
             dvCheckboxContainer.classList.add('hidden');
           }
         }
-      }, 1000);
-    }
+      } catch (e) {
+        console.warn('Ошибка автоматической проверки DV:', e);
+      }
+    }, 1000);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', runAutoCheck);
+  } else {
+    runAutoCheck();
   }
 })();
-
 
 window.checkDolbyVisionSupport = checkDolbyVisionSupport;
 
