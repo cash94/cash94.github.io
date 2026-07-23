@@ -567,7 +567,7 @@ body {
 
 #torrents-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 10px;
   padding: 8px;
   contain: layout paint;
@@ -1792,7 +1792,7 @@ body.detail-open {
 
 @media (max-width: 768px) {
   #torrents-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .catalog-trailer-card-item {
