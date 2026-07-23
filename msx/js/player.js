@@ -721,6 +721,15 @@ async function seekStream(absoluteSeekTime, source) {
           if (AppState.hls) { AppState.hls.destroy(); AppState.hls = null; }
           if (Hls.isSupported()) {
             AppState.hls = createHlsInstance();
+
+            if (currentPlaybackController) currentPlaybackController.abort();
+            currentPlaybackController = new AbortController();
+            var newSignal = currentPlaybackController.signal;
+
+            // Используем существующую функцию привязки всех обработчиков
+            attachHlsEventListeners(AppState.hls, videoPlayer, newSignal, 0);
+
+            // Обработчик субтитров
             var subtitleTracksHandler = function () {
               if (currentSubtitleTrack >= 0 && AppState.hls.subtitleTracks.length > currentSubtitleTrack) {
                 setTimeout(function () { if (AppState.hls) AppState.hls.subtitleTrack = currentSubtitleTrack; }, 200);
@@ -730,12 +739,7 @@ async function seekStream(absoluteSeekTime, source) {
               AppState.hls.off(Hls.Events.SUBTITLE_TRACKS_UPDATED, subtitleTracksHandler);
             };
             AppState.hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, subtitleTracksHandler);
-            AppState.hls.on(Hls.Events.ERROR, function (event, data) {
-              if (data.fatal) {
-                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) AppState.hls.startLoad();
-                else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) AppState.hls.recoverMediaError();
-              }
-            });
+
             AppState.hls.loadSource(seekData.playlistUrl);
             AppState.hls.attachMedia(videoPlayer);
           }
