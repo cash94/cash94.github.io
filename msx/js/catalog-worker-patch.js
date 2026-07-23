@@ -198,15 +198,29 @@
     // ==================== checkAndUpdateCatalogIfNeeded ====================
     window.checkAndUpdateCatalogIfNeeded = checkAndUpdateCatalogIfNeeded = function (id, iso) {
         if (!iso || _isUpdating) return Promise.resolve(false);
+
         var h = (new Date() - new Date(iso)) / 3600000;
         if (h > CATALOG_CONSTANTS.CATALOG_UPDATE_THRESHOLD_HOURS) {
             _isUpdating = true;
+
             return CatalogWorker.checkCatalogUpdate(id, iso)
                 .then(function (result) {
                     if (result && result.updated) {
                         catalogCache.delete(id);
+
+                        // чтобы следующий addCatalogHeader получил СВЕЖИЙ lastModifiedISO
+                        _catalogsCache = null;
+                        _catalogsCacheTime = 0;
+
                         if (catalogState.currentCatalog === id) {
-                            setTimeout(function () { _isUpdating = false; loadCatalog(id); }, 500);
+                            // Держим _isUpdating до завершения перезагрузки каталога
+                            setTimeout(function () {
+                                loadCatalog(id).then(function () {
+                                    _isUpdating = false;
+                                }).catch(function () {
+                                    _isUpdating = false;
+                                });
+                            }, 500);
                         } else {
                             _isUpdating = false;
                         }
@@ -215,7 +229,10 @@
                     _isUpdating = false;
                     return false;
                 })
-                .catch(function () { _isUpdating = false; return false; });
+                .catch(function () {
+                    _isUpdating = false;
+                    return false;
+                });
         }
         return Promise.resolve(false);
     };
