@@ -6,7 +6,7 @@ var AppState = {
   // Настройки сервера
   protocol: window.location.protocol,
   currentTorrserverUrl: '',
-  currentVersion: 'TorrStream.1.0.33',
+  currentVersion: 'TorrStream.1.0.34',
   authEnabled: false,
   serverOnline: false,
   clientId: null,
@@ -72,7 +72,8 @@ var AppState = {
   catalogPu: null,
   backCurrentCatalog: '',
   isCatalogSerials: false,
-  isCatalogSearch: false
+  isCatalogSearch: false,
+  dvPreferred: false
 };
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
