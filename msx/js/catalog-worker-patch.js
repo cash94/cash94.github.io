@@ -248,7 +248,8 @@
         }
 
         CatalogWorker.fetchCatalogs()
-            .then(function (catalogs) {
+            .then(function (data) {
+                var catalogs = (data && data.success && data.catalogs) ? data.catalogs : [];
                 _catalogsCache = catalogs;
                 _catalogsCacheTime = Date.now();
                 _applyCatalogInfo(header, catalogs);
