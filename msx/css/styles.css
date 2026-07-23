@@ -1792,7 +1792,7 @@ body.detail-open {
 
 @media (max-width: 768px) {
   #torrents-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .catalog-trailer-card-item {
