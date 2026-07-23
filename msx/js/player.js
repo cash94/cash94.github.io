@@ -700,7 +700,7 @@ async function seekStream(absoluteSeekTime, source) {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               streamId: AppState.currentStreamId, seekTime: targetTime, multiChannel: AppState.multiChannelEnabled,
-              clientId: savedClientId, duration: AppState.originalDuration, sub: currentSubtitleTrack
+              clientId: savedClientId, duration: AppState.originalDuration, sub: currentSubtitleTrack, dv: AppState.dvPreferred
             })
           });
           if (!seekResponse.ok) throw new Error('HTTP ' + seekResponse.status);
@@ -1175,7 +1175,8 @@ async function initServerProxyPlayback(metadata, initialSeek, signal) {
   var subParam = currentSubtitleTrack >= 0 ? ('&sub=' + currentSubtitleTrack) : '';
   var multiChannelParam = (AppState.multiChannelEnabled === true) ? '&multiChannel=true' : '';
   var savedClientId = localStorage.getItem('clientId');
-  var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(AppState.videoUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam + subParam, { signal: signal });
+  var dvParam = '&dv=' + AppState.dvPreferred;
+  var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(AppState.videoUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam + subParam + dvParam, { signal: signal });
   if (!response.ok) throw new Error('HTTP ' + response.status);
   var data = await response.json();
   if (!data.success) throw new Error(data.error || 'Ошибка создания потока');
