@@ -147,14 +147,21 @@ function safeFetch(url, options, fallback) {
   var controller = new AbortController();
   var timeoutId = setTimeout(function () { controller.abort(); }, timeout);
 
-  return fetch(url, { signal: controller.signal })
+  // Копируем options (method, headers, body), исключая служебный timeout
+  var fetchOptions = {};
+  for (var k in options) {
+    if (options.hasOwnProperty(k) && k !== 'timeout') fetchOptions[k] = options[k];
+  }
+  fetchOptions.signal = controller.signal;
+
+  return fetch(url, fetchOptions)
     .then(function (resp) {
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       return resp.json();
     })
     .catch(function (e) {
       if (e.name === 'AbortError') {
-        // timeout
+        // timeout — молча
       }
       return fallback !== undefined ? fallback : null;
     })
