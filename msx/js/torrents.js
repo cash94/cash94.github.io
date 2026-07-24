@@ -968,30 +968,7 @@ async function showDetail(torrent) {
             // Meta chips
             if (metaEl) {
                 metaEl.innerHTML = '';
-                if (year) {
-                    var yc = document.createElement('div');
-                    yc.className = 'catalog-meta-chip';
-                    yc.textContent = year;
-                    metaEl.appendChild(yc);
-                }
-                if (details.vote_average) {
-                    var rc = document.createElement('div');
-                    rc.className = 'catalog-meta-chip';
-                    rc.textContent = '⭐ ' + details.vote_average.toFixed(1);
-                    metaEl.appendChild(rc);
-                }
-                var tc = document.createElement('div');
-                tc.className = 'catalog-meta-chip';
-                tc.textContent = tmdbData.isTvSeries ? 'Сериал' : 'Фильм';
-                metaEl.appendChild(tc);
-                var allGenres = getGenreNames(details, mediaType);
-                for (var gi = 0; gi < Math.min(allGenres.length, 3); gi++) {
-                    var gc = document.createElement('div');
-                    gc.className = 'catalog-meta-chip';
-                    gc.textContent = allGenres[gi];
-                    metaEl.appendChild(gc);
-                }
-                if (metaEl.children.length > 0) metaEl.classList.remove('hidden');
+                metaEl.classList.add('hidden');
             }
 
             // Trailers
@@ -1268,20 +1245,9 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
         getTmdbDetailsWithCache(tmdbId, mediaType).then(function (details) {
             if (details) {
                 // 1. Обработка фона (Backdrop)
-                if (details.backdrop_path && elements.detailViewDiv) {
-                    var backdropPath = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
-                    elements.detailViewDiv.style.backgroundImage = 'url(' + backdropPath + ')';
-                    elements.detailViewDiv.style.backgroundSize = 'cover';
-                    elements.detailViewDiv.style.backgroundPosition = 'center';
-                    elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
-
-                    var existingOverlay = getEl('detail-backdrop-overlay');
-                    if (!existingOverlay && elements.detailViewDiv) {
-                        var overlay = document.createElement('div');
-                        overlay.id = 'detail-backdrop-overlay';
-                        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.08);box-shadow:0 4px 20px rgba(0,0,0,0.25);border-radius:14.89px;z-index:-1;';
-                        elements.detailViewDiv.appendChild(overlay);
-                    }
+                if (elements.detailViewDiv) {
+                    elements.detailViewDiv.style.backgroundImage = '';
+                    elements.detailViewDiv.style.backgroundColor = '#000000';
                 }
 
                 // 2. Обработка Описания (Overview / Subtitle) - СНИМАЕМ hidden!
@@ -1300,9 +1266,9 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
                 }
 
                 // 3. Обработка метаданных (Жанры, год, рейтинг)
-                if (typeof updateDetailMetaInfo === 'function') {
-                    updateDetailMetaInfo(details);
-                }
+                // if (typeof updateDetailMetaInfo === 'function') {
+                //     updateDetailMetaInfo(details);
+                // }
             }
         });
     }
