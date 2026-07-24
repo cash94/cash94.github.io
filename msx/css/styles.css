@@ -3658,7 +3658,7 @@ article {
 }
 
 .catalog-recommendation-card {
-  background: #1a1a2e !important;
+  background: transparent !important;
   border-radius: 8px !important;
   transition: transform 0.2s, box-shadow 0.2s;
 }
@@ -3666,6 +3666,12 @@ article {
 .catalog-recommendation-card:hover {
   transform: scale(1.06);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+}
+
+.catalog-recommendation-poster {
+  background: #1a1a2e !important;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .catalog-recommendation-rating {
