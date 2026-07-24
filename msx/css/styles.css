@@ -3849,3 +3849,25 @@ article {
   margin-top: -10px;
   margin-bottom: 14px;
 }
+
+.detail-progress-btn {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.12) !important;
+    color: #fff !important;
+    border: 1px solid rgba(255,255,255,0.25) !important;
+    border-radius: 6px !important;
+    padding: 11px 22px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.detail-progress-btn:hover {
+    background: rgba(255,255,255,0.22) !important;
+}
+.detail-progress-btn.focused {
+    box-shadow: 0 0 0 3px #ff8c00 !important;
+    background: rgba(255,255,255,0.22) !important;
+}
