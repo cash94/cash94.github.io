@@ -1359,10 +1359,13 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
     var poster = window.pendingCatalogPoster || null;
     if (!poster && searchResult) poster = await tmdb.findPosterFromSearchResult(searchResult);
     var torrname = '';
-    if (AppState.mediaType === 'tv' && searchResult && searchResult.seasons && searchResult.seasons.length > 0) {
+    //if (AppState.mediaType === 'tv' && searchResult && searchResult.seasons && searchResult.seasons.length > 0) {
+    if (searchResult && searchResult.seasons && searchResult.seasons.length > 0) {
         var seasons = searchResult.seasons;
+        AppState.mediaType = 'tv'; 
         torrname = `[${catalogState.lastSelectedId}] ${searchResult.name} [сезон ${seasons.length > 1 ? seasons[0] + '-' + seasons[seasons.length - 1] : seasons[0]}]`;
     } else {
+        AppState.mediaType = 'movie'; 
         torrname = `[${catalogState.lastSelectedId}] ${searchResult ? searchResult.name : 'Без названия'}`;
     }
     var requestBody = { action: 'add', link: magnet, title: torrname, save_to_db: AppState.addToDbEnabled };
