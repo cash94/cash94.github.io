@@ -6,10 +6,10 @@ var CATALOG_CONSTANTS = {
     CACHE_TTL_MS: 3600000,              // 1 час
     FETCH_TIMEOUT_MS: 5000,             // 5 секунд
     CATALOG_CACHE_TTL_MS: 3600000,      // 1 час для каталогов
-    ITEMS_PER_PAGE: 18,
+    ITEMS_PER_PAGE: 100,
     MAX_POSTER_CACHE: 150,
     MAX_DETAIL_HISTORY: 50,
-    POSTER_BATCH_SIZE: 6,
+    POSTER_BATCH_SIZE: 30,
     TMDB_MAX_CACHE_SIZE: 75,
     TMDB_CLEANUP_INTERVAL_MS: 300000,   // 5 минут
     MAX_ACTORS: 12,
@@ -627,7 +627,7 @@ function renderCatalogGrid() {
     if (catalogState.hasMore) addLoadMoreTrigger(grid);
     catalogState.loadedPostersCount = 0;
     initPosterLazyLoading();
-    initPosterUnloading();
+    //initPosterUnloading();
     initLoadMoreObserver();
     loadInitialPosters();
     requestAnimationFrame(function () {
@@ -678,7 +678,7 @@ function appendCatalogItems(newItems) {
             if (catalogState.hasMore) addLoadMoreTrigger(grid);
 
             updatePosterObservers();
-            initPosterUnloading();
+            //initPosterUnloading();
             initLoadMoreObserver();
 
             if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
@@ -701,12 +701,13 @@ function createCatalogCard(item, index) {
     var ratingColor = rating ? getRatingColor(rating) : '';
     var ratingHtml = rating ?
         '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + ratingColor + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + ratingColor + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);">' + rating + '</div>' : '';
+
     var posterHtml = cached ?
-        '<img src="' + cached + '" loading="lazy" style="width:100%;height:100%;object-fit:cover">' :
-        '<div class="no-poster catalog-poster-loading">⏳</div>';
+        '<img src="' + cached + '" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover">' :
+        '<div class="no-poster catalog-poster-loading"></div>';
+
     var year = getCatalogItemYear(item);
     var badgeText = year || 'Каталог';
-
     var card = createCardElement({
         className: 'catalog-card',
         dataset: {
@@ -723,7 +724,6 @@ function createCatalogCard(item, index) {
         posterHtml: posterHtml,
         metaHtml: '<span>' + (mt === 'tv' ? 'Сериал' : 'Фильм') + '</span><span class="torrent-badge catalog-badge">' + badgeText + '</span>'
     });
-
     catalogState.cardElements[index] = card;
     return card;
 }
@@ -1157,28 +1157,29 @@ function renderDetailHeader(item, posterUrl, details) {
         te2Init.style.display = 'none';
     }
 
-    // Постер
+    // ★ Плейсхолдер для постера (мгновенно, без сети)
     var temp = posterUrl || catalogState.posterCache.get(item.id + '_' + mt) || '';
     pe.innerHTML = temp
-        ? '<img src="' + temp + '" alt="poster">'
+        ? '<div class="catalog-poster-loading" style="width:100%;height:100%"></div>'
         : '<div class="no-poster">Нет постера</div>';
 
     updateCatalogWatchButton(title);
 
     var src = details || item || {};
 
+    // ★ Постер через img.decode()
+    var posterSrc = null;
     if (src.poster_path) {
-        var u = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + src.poster_path;
-        if (!temp || pe.innerHTML.indexOf('Нет постера') !== -1) {
-            pe.innerHTML = '<img src="' + u + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-        } else {
-            catalogState.posterCache.set(item.id + '_' + mt, u);
-        }
+        posterSrc = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + src.poster_path;
+        catalogState.posterCache.set(item.id + '_' + mt, posterSrc);
     } else if (src.image && (src.image.original || src.image.medium)) {
-        var u2 = src.image.original || src.image.medium;
-        if (!temp || pe.innerHTML.indexOf('Нет постера') !== -1) {
-            pe.innerHTML = '<img src="' + u2 + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
-        }
+        posterSrc = src.image.original || src.image.medium;
+    } else if (temp) {
+        posterSrc = temp;
+    }
+
+    if (posterSrc) {
+        _loadImageDecoded(pe, posterSrc, 'poster');
     }
 
     if (se) {
@@ -1193,15 +1194,17 @@ function renderDetailHeader(item, posterUrl, details) {
         oe.style.display = 'block';
     }
 
-    // Backdrop
+    // ★ Backdrop через img.decode()
     var bp = src.backdrop_path || (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
     if (bp) {
-        be.style.backgroundImage = 'url(' + (bp.indexOf('http') === 0 ? bp : AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.BACKDROP + bp) + ')';
-        be.classList.remove('hidden');
+        var bpUrl = bp.indexOf('http') === 0 ? bp : AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.BACKDROP + bp;
+        _loadBackdropDecoded(be, bpUrl);
     } else {
         be.classList.add('hidden');
         be.style.backgroundImage = '';
     }
+
+    // ★ Кнопка «Подробнее» для описания
     var actionsEl = getEl('catalog-detail-actions');
     if (actionsEl && !getEl('catalog-toggle-overview-btn')) {
         var togBtn = document.createElement('button');
@@ -1215,6 +1218,49 @@ function renderDetailHeader(item, posterUrl, details) {
             togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
         };
         actionsEl.appendChild(togBtn);
+    }
+}
+
+// ★ Вспомогательная: загрузка <img> с decode()
+function _loadImageDecoded(container, src, alt) {
+    var img = new Image();
+    img.alt = alt || '';
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
+
+    var insert = function () {
+        if (!container.isConnected) return;
+        container.innerHTML = '';
+        img.style.opacity = '1';
+        container.appendChild(img);
+    };
+
+    img.onerror = function () {
+        if (container.isConnected) container.innerHTML = '<div class="no-poster">Нет постера</div>';
+    };
+    img.src = src;
+
+    if (typeof img.decode === 'function') {
+        img.decode().then(insert).catch(insert);
+    } else {
+        img.onload = insert;
+    }
+}
+
+// ★ Вспомогательная: предзагрузка backdrop с decode(), потом CSS background
+function _loadBackdropDecoded(container, url) {
+    var img = new Image();
+    img.src = url;
+
+    var apply = function () {
+        if (!container.isConnected) return;
+        container.style.backgroundImage = 'url(' + url + ')';
+        container.classList.remove('hidden');
+    };
+
+    if (typeof img.decode === 'function') {
+        img.decode().then(apply).catch(apply);
+    } else {
+        img.onload = apply;
     }
 }
 
@@ -1233,7 +1279,7 @@ async function renderDetailActors(item, aw) {
             var d = document.createElement('div');
             d.className = 'catalog-actor-card';
             d.innerHTML = '<div class="catalog-actor-photo">' +
-                (a.profilePath ? '<img src="' + AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL + a.profilePath + '" loading="lazy" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') +
+                (a.profilePath ? '<img src="' + AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL + a.profilePath + '" loading="lazy" decoding="async" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') +
                 '</div><div class="catalog-actor-info"><div class="catalog-actor-name">' + escapeHtml(a.name) + '</div><div class="catalog-actor-character">' + escapeHtml(a.character || '') + '</div></div>';
             frag.appendChild(d);
         });
@@ -1263,7 +1309,7 @@ function renderDetailRecommendations(src, rw, mt) {
             d.dataset.title = r.title || r.name || 'Без названия';
             var pu = r.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL + r.poster_path : null;
             d.innerHTML = '<div class="catalog-recommendation-poster">' +
-                (pu ? '<img src="' + pu + '" loading="lazy" alt="' + escapeHtml(d.dataset.title) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-recommendation-no-poster\\\'> </div>\'">' : '<div class="catalog-recommendation-no-poster"> </div>') +
+                (pu ? '<img src="' + pu + '" loading="lazy" decoding="async" alt="' + escapeHtml(d.dataset.title) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-recommendation-no-poster\\\'> </div>\'">' : '<div class="catalog-recommendation-no-poster"> </div>') +
                 (r.vote_average ? '<div class="catalog-recommendation-rating">' + Math.round(r.vote_average * 10) / 10 + '</div>' : '') +
                 '</div><div class="catalog-recommendation-info"><div class="catalog-recommendation-title">' + escapeHtml(d.dataset.title) + '</div>' +
                 (r.release_date ? '<div class="catalog-recommendation-year">' + r.release_date.substring(0, 4) + '</div>' : '') +
@@ -1304,7 +1350,7 @@ function renderDetailTrailers(src) {
             d.className = 'catalog-trailer-card-item';
             d.dataset.videoUrl = v.key;
             d.dataset.videoTitle = v.name || 'Трейлер';
-            d.innerHTML = '<div class="catalog-trailer-poster" style="position:relative;aspect-ratio:4/3;overflow:hidden;border-radius:12px;background:linear-gradient(135deg,#1a1a2e,#16213e)"><img src="https://img.youtube.com/vi/' + v.key + '/mqdefault.jpg" alt="' + escapeHtml(v.name || 'Трейлер') + '" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'></div>\'"><div class="catalog-trailer-play-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s;cursor:pointer"><div style="width:60px;height:60px;background:rgba(74,158,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;color:white">▶</div></div>' +
+            d.innerHTML = '<div class="catalog-trailer-poster" style="position:relative;aspect-ratio:4/3;overflow:hidden;border-radius:12px;background:linear-gradient(135deg,#1a1a2e,#16213e)"><img src="https://img.youtube.com/vi/' + v.key + '/mqdefault.jpg" alt="' + escapeHtml(v.name || 'Трейлер') + '" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'></div>\'"><div class="catalog-trailer-play-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s;cursor:pointer"><div style="width:60px;height:60px;background:rgba(74,158,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;color:white">▶</div></div>' +
                 (v.duration ? '<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:white;font-size:12px;padding:3px 8px;border-radius:12px;font-family:monospace">' + formatDuration(v.duration) + '</div>' : '') +
                 '</div><div class="catalog-trailer-info hidden" style="padding:10px"><div class="catalog-trailer-title" style="font-size:14px;font-weight:600;color:#fff;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(v.name || 'Трейлер') + '</div><div class="catalog-trailer-meta" style="display:flex;gap:10px;font-size:12px;color:#aaa"><span>Трейлер</span>' + (v.duration ? '<span>⏱️ ' + formatDuration(v.duration) + '</span>' : '') + '</div></div>';
             frag.appendChild(d);
@@ -1664,9 +1710,47 @@ function createCatalogFolderCard(key, cfg) {
     c.className = 'torrent-card catalog-folder-card';
     c.dataset.catalogKey = key;
     var src = POSTER_URLS[key] || '';
-    c.innerHTML = '<div class="torrent-poster catalog-folder-poster">' +
-        (src ? '<img src="' + src + '" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">' : '<div class="no-poster" style="display:flex;align-items:center;justify-content:center;height:100%;font-size:64px">🎬</div>') +
-        '</div><div class="torrent-info"><div class="torrent-title">' + cfg.name + '</div><div class="torrent-meta"><span></span><span class="torrent-badge catalog-badge"></span></div></div>';
+
+    // Плейсхолдер показывается МГНОВЕННО (CSS-градиент, без сети)
+    var posterHtml = src
+        ? '<div class="catalog-folder-poster-placeholder"></div>'
+        : '<div class="no-poster" style="display:flex;align-items:center;justify-content:center;height:100%;font-size:64px">🎬</div>';
+
+    c.innerHTML = '<div class="torrent-poster catalog-folder-poster">' + posterHtml +
+        '</div><div class="torrent-info"><div class="torrent-title">' + cfg.name +
+        '</div><div class="torrent-meta"><span></span><span class="torrent-badge catalog-badge"></span></div></div>';
+
+    // Асинхронная загрузка и декодирование картинки ПОСЛЕ рендеринга карточки
+    if (src) {
+        var posterDiv = c.querySelector('.torrent-poster');
+        var img = new Image();
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
+
+        var insertImage = function () {
+            // Проверяем, не уничтожена ли карточка к этому моменту
+            if (!posterDiv.isConnected) return;
+            var ph = posterDiv.querySelector('.catalog-folder-poster-placeholder');
+            if (ph) ph.remove();
+            img.style.opacity = '1';
+            posterDiv.appendChild(img);
+        };
+
+        img.onerror = function () {
+            if (!posterDiv.isConnected) return;
+            posterDiv.innerHTML = '<div class="no-poster">Нет постера</div>';
+        };
+
+        img.src = src;
+
+        if (typeof img.decode === 'function') {
+            // Chromium 64+: декодируем JPEG в фоновом потоке, не блокируя main thread
+            img.decode().then(insertImage).catch(insertImage);
+        } else {
+            // Фоллбек для очень старых браузеров
+            img.onload = insertImage;
+        }
+    }
+
     return c;
 }
 
