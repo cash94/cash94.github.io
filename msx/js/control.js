@@ -1408,10 +1408,14 @@ function isElementFullyVisible(el, container) {
         container.id === 'catalog-detail-trailers-wrap';
 
     if (isH) {
-        // Для горизонтальных списков проверяем ТОЛЬКО горизонтальную видимость элемента
-        var hp = 30; // Горизонталь отступ от краёв контейнта
+        // Для горизонтальных списков проверяем горизонтальную И вертикальную видимость
+        var hp = 30;  // горизонтальный отступ от краёв контейнера
+        var vp = 50;  // вертикальный отступ от краёв экрана
+
         var isHorizVisible = r.left >= cr.left + hp && r.right <= cr.right - hp;
-        return isHorizVisible;
+        var isVertVisible = r.top >= vp && r.bottom <= (window.innerHeight - vp);
+
+        return isHorizVisible && isVertVisible;
     }
 
     // Для вертикальных списков проверяем вертикальную видимость
