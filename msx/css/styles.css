@@ -3503,9 +3503,13 @@ article {
 .detail-subtitle,
 #detail-subtitle {
   font-size: 20px !important;
-  color: rgba(255, 255, 255, 0.7) !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: rgba(255,255,255,0.7) !important;
   margin: 0 !important;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
 }
 
 /* ============================================================
