@@ -3361,155 +3361,146 @@ article {
 }
 
 /* ============================================================
-   NETFLIX-STYLE DETAIL VIEW  (v2 — компактный)
+   NETFLIX-STYLE DETAIL VIEW — V2 (финальный)
    ============================================================ */
 
-/* --- Backdrop --- */
+/* --- Backdrop: cover, фиксированный --- */
 .catalog-detail-backdrop {
-  background-size: cover !important;
-  background-position: center 20% !important;
-  opacity: 0.5 !important;
-  z-index: 0 !important;
+    background-size: cover !important;
+    background-position: center 20% !important;
+    opacity: 0.5 !important;
+    z-index: 0 !important;
 }
 
 /* --- Градиент (sticky — не зависит от transform GSAP) --- */
 #detail-view::before {
-  content: '';
-  position: sticky;
-  top: 0;
-  display: block;
-  height: 100vh;
-  margin-bottom: -100vh;
-  background: linear-gradient(to top,
-      rgba(0, 0, 0, 1) 0%,
-      rgba(0, 0, 0, 0.92) 12%,
-      rgba(0, 0, 0, 0.55) 35%,
-      rgba(0, 0, 0, 0.18) 60%,
-      transparent 82%);
-  z-index: 1;
-  pointer-events: none;
+    content: '';
+    position: sticky;
+    top: 0;
+    display: block;
+    height: 100vh;
+    margin-bottom: -100vh;
+    background: linear-gradient(
+        to top,
+        rgba(0,0,0,1) 0%,
+        rgba(0,0,0,0.92) 12%,
+        rgba(0,0,0,0.55) 35%,
+        rgba(0,0,0,0.18) 60%,
+        transparent 82%
+    );
+    z-index: 1;
+    pointer-events: none;
 }
 
 /* --- Контент поверх градиента --- */
-#detail-view>.detail-header,
-#detail-view>.files-list {
-  position: relative;
-  z-index: 2;
+#detail-view > .detail-header,
+#detail-view > .files-list {
+    position: relative;
+    z-index: 2;
 }
-
 #catalog-detail-extra,
 .catalog-detail-extra {
-  position: relative;
-  z-index: auto !important;
-  background: transparent !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  margin: 0 !important;
+    position: relative;
+    z-index: auto !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    margin: 0 !important;
 }
-
 .catalog-detail-panel {
-  position: relative;
-  z-index: 2;
-  padding: 16px 48px 20px 48px !important;
-  max-width: 900px;
+    position: relative;
+    z-index: 2;
+    padding: 16px 48px 20px 48px !important;
+    max-width: 900px;
 }
-
 #catalog-detail-actors-wrap,
 .catalog-detail-actors-wrap {
-  position: relative;
-  z-index: 2;
+    position: relative;
+    z-index: 2;
 }
-
 #catalog-detail-recommendations-wrap,
 .catalog-detail-recommendations-wrap {
-  position: relative;
-  z-index: 2;
+    position: relative;
+    z-index: 2;
 }
 
 /* ============================================================
    HEADER — компактный, всё в одну строку
    ============================================================ */
 .detail-header {
-  display: flex !important;
-  align-items: center !important;
-  gap: 18px;
-  padding: 18px 48px !important;
-  margin-bottom: 0 !important;
-  /* НИКАКОГО min-height — высота по контенту */
-  background: transparent !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 18px;
+    padding: 18px 48px !important;
+    margin-bottom: 0 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
 }
 
 /* Кнопка «Назад» — inline, слева от постера */
 #back-from-detail,
 .detail-header .back-btn {
-  position: relative !important;
-  /* НЕ absolute */
-  top: auto !important;
-  left: auto !important;
-  margin: 0 4px 0 0 !important;
-  width: 40px;
-  height: 40px;
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.5) !important;
-  border-radius: 50% !important;
-  color: #fff !important;
-  font-size: 18px;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: background 0.2s;
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    margin: 0 4px 0 0 !important;
+    width: 40px;
+    height: 40px;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.5) !important;
+    border-radius: 50% !important;
+    color: #fff !important;
+    font-size: 18px;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: background 0.2s;
 }
-
 #back-from-detail:hover,
 .detail-header .back-btn:hover {
-  background: rgba(255, 255, 255, 0.15) !important;
+    background: rgba(255,255,255,0.15) !important;
 }
 
 /* Постер — средний */
 .detail-poster {
-  width: 130px !important;
-  height: 195px !important;
-  border-radius: 8px !important;
-  margin-right: 0 !important;
-  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.6);
-  flex-shrink: 0;
-  overflow: hidden;
-  background: #1a1a2e;
+    width: 130px !important;
+    height: 195px !important;
+    border-radius: 8px !important;
+    margin-right: 0 !important;
+    box-shadow: 0 6px 30px rgba(0,0,0,0.6);
+    flex-shrink: 0;
+    overflow: hidden;
+    background: #1a1a2e;
 }
-
 .detail-poster img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+    width: 100%; height: 100%;
+    object-fit: cover;
 }
 
 /* Заголовок */
 .detail-title {
-  flex: 1;
-  min-width: 0;
+    flex: 1;
+    min-width: 0;
 }
-
 .detail-title h2,
 #detail-title-text {
-  font-size: 60px !important;
-  font-weight: 700 !important;
-  color: #fff !important;
-  margin: 0 0 6px 0 !important;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
-  line-height: 1.2;
+    font-size: 30px !important;
+    font-weight: 700 !important;
+    color: #fff !important;
+    margin: 0 0 6px 0 !important;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+    line-height: 1.2;
 }
-
 .detail-subtitle,
 #detail-subtitle {
-  font-size: 25px !important;
-  color: rgba(255, 255, 255, 0.7) !important;
-  margin: 0 !important;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    font-size: 14px !important;
+    color: rgba(255,255,255,0.7) !important;
+    margin: 0 !important;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.6);
 }
 
 /* ============================================================
@@ -3517,88 +3508,83 @@ article {
    ============================================================ */
 .catalog-detail-overview,
 #catalog-detail-overview {
-  display: -webkit-box !important;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  font-size: 15px !important;
-  line-height: 1.6 !important;
-  color: rgba(255, 255, 255, 0.85) !important;
-  margin-bottom: 18px !important;
-  max-width: 680px;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    display: -webkit-box !important;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 15px !important;
+    line-height: 1.6 !important;
+    color: rgba(255,255,255,0.85) !important;
+    margin-bottom: 18px !important;
+    max-width: 680px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
-
 .catalog-detail-overview.expanded,
 #catalog-detail-overview.expanded {
-  display: block !important;
-  -webkit-line-clamp: unset;
-  overflow: visible;
+    display: block !important;
+    -webkit-line-clamp: unset;
+    overflow: visible;
 }
 
 /* ============================================================
-   КНОПКИ — единый стиль (полупрозрачные)
+   КНОПКИ: «Поиск торрентов» + «Подробнее» — одинаковый стиль
    ============================================================ */
 #catalog-detail-actions,
 .catalog-detail-actions {
-  display: flex !important;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
+    display: flex !important;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
 }
 
-/* Обе кнопки — одинаковый стиль */
-.,
-#,
+.catalog-watch-btn,
+#catalog-watch-btn,
 .catalog-toggle-overview-btn,
 #catalog-toggle-overview-btn {
-  display: inline-flex !important;
-  align-items: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.12) !important;
-  color: #fff !important;
-  border: 1px solid rgba(255, 255, 255, 0.25) !important;
-  border-radius: 6px !important;
-  padding: 11px 22px !important;
-  font-size: 14px !important;
-  font-weight: 600 !important;
-  cursor: pointer;
-  transition: background 0.2s;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.12) !important;
+    color: #fff !important;
+    border: 1px solid rgba(255,255,255,0.25) !important;
+    border-radius: 6px !important;
+    padding: 11px 22px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    transition: background 0.2s;
 }
-
-.:hover,
-#:hover,
+.catalog-watch-btn:hover,
+#catalog-watch-btn:hover,
 .catalog-toggle-overview-btn:hover,
 #catalog-toggle-overview-btn:hover {
-  background: rgba(255, 255, 255, 0.22) !important;
+    background: rgba(255,255,255,0.22) !important;
 }
-
-/* Иконка ▶ только у watch-кнопки */
-.::before,
-#::before {
-  content: '▶';
-  font-size: 12px;
+/* Убираем иконку ▶ у watch-кнопки */
+.catalog-watch-btn::before,
+#catalog-watch-btn::before {
+    content: none !important;
 }
 
 /* ============================================================
    ТРЕЙЛЕРЫ — скрыты
    ============================================================ */
 #catalog-detail-trailers-wrap {
-  display: none !important;
+    display: none !important;
 }
 
 /* ============================================================
    ЗАГОЛОВКИ СЕКЦИЙ
    ============================================================ */
 .catalog-detail-section-title {
-  font-size: 18px !important;
-  font-weight: 700 !important;
-  color: #fff !important;
-  border-bottom: none !important;
-  padding-bottom: 0 !important;
-  margin-bottom: 12px !important;
-  padding-left: 48px;
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    color: #fff !important;
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
+    margin-bottom: 12px !important;
+    padding-left: 48px;
 }
 
 /* ============================================================
@@ -3606,45 +3592,38 @@ article {
    ============================================================ */
 #catalog-detail-actors-wrap,
 .catalog-detail-actors-wrap {
-  margin-top: 24px !important;
-  padding: 0 !important;
-  overflow: visible !important;
+    margin-top: 24px !important;
+    padding: 0 !important;
+    overflow: visible !important;
 }
-
 .catalog-detail-actors-grid,
 #catalog-detail-actors {
-  padding: 4px 48px 12px 48px !important;
+    padding: 4px 48px 12px 48px !important;
 }
-
 .catalog-actor-card {
-  background: transparent !important;
-  border-radius: 12px !important;
-  transition: transform 0.2s;
+    background: transparent !important;
+    border-radius: 12px !important;
+    transition: transform 0.2s;
 }
-
 .catalog-actor-card:hover {
-  transform: scale(1.06);
+    transform: scale(1.06);
 }
-
 .catalog-actor-photo {
-  border-radius: 50% !important;
-  border: 2px solid rgba(255, 255, 255, 0.12) !important;
-  overflow: hidden;
+    border-radius: 50% !important;
+    border: 2px solid rgba(255,255,255,0.12) !important;
+    overflow: hidden;
 }
-
 .catalog-actor-no-photo {
-  border-radius: 50% !important;
+    border-radius: 50% !important;
 }
-
 .catalog-actor-name {
-  font-size: 11px !important;
-  font-weight: 600 !important;
-  color: #fff !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: #fff !important;
 }
-
 .catalog-actor-character {
-  font-size: 9px !important;
-  color: rgba(255, 255, 255, 0.45) !important;
+    font-size: 9px !important;
+    color: rgba(255,255,255,0.45) !important;
 }
 
 /* ============================================================
@@ -3652,154 +3631,145 @@ article {
    ============================================================ */
 #catalog-detail-recommendations-wrap,
 .catalog-detail-recommendations-wrap {
-  margin-top: 24px !important;
-  padding: 0 0 40px 0 !important;
-  overflow: visible !important;
+    margin-top: 24px !important;
+    padding: 0 0 40px 0 !important;
+    overflow: visible !important;
 }
-
 .catalog-detail-recommendations-grid,
 #catalog-detail-recommendations {
-  padding: 4px 48px 12px 48px !important;
+    padding: 4px 48px 12px 48px !important;
 }
-
 .catalog-recommendation-card {
-  background: #1a1a2e !important;
-  border-radius: 8px !important;
-  transition: transform 0.2s, box-shadow 0.2s;
+    background: #1a1a2e !important;
+    border-radius: 8px !important;
+    transition: transform 0.2s, box-shadow 0.2s;
 }
-
 .catalog-recommendation-card:hover {
-  transform: scale(1.06);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+    transform: scale(1.06);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
 }
-
 .catalog-recommendation-rating {
-  color: #46d369 !important;
-  background: rgba(0, 0, 0, 0.78) !important;
-  font-weight: 700 !important;
-  border-radius: 4px !important;
+    color: #46d369 !important;
+    background: rgba(0,0,0,0.78) !important;
+    font-weight: 700 !important;
+    border-radius: 4px !important;
+}
+.catalog-recommendation-title {
+    font-weight: 600 !important;
+}
+.catalog-recommendation-year {
+    color: rgba(255,255,255,0.5) !important;
 }
 
 /* ============================================================
    FILES-LIST
    ============================================================ */
 .files-list {
-  padding: 0 48px !important;
+    padding: 0 48px !important;
+}
+
+/* ============================================================
+   СКРИНШОТЫ
+   ============================================================ */
+#catalog-detail-screenshots-wrap {
+    padding: 0 48px;
 }
 
 /* ============================================================
    FOCUSED — ОРАНЖЕВЫЙ (как везде)
    ============================================================ */
 #detail-view .focused {
-  box-shadow: 0 0 0 3px #ff8c00 !important;
-  border-radius: 8px;
+    box-shadow: 0 0 0 3px #ff8c00 !important;
+    border-radius: 8px;
 }
-
 #catalog-watch-btn.focused,
-.catalog-watch-btn.focused {
-  box-shadow: 0 0 0 3px #ff8c00 !important;
-  background: rgba(255, 255, 255, 0.22) !important;
-}
-
+.catalog-watch-btn.focused,
 #catalog-toggle-overview-btn.focused,
 .catalog-toggle-overview-btn.focused {
-  box-shadow: 0 0 0 3px #ff8c00 !important;
-  background: rgba(255, 255, 255, 0.22) !important;
+    box-shadow: 0 0 0 3px #ff8c00 !important;
+    background: rgba(255,255,255,0.22) !important;
 }
-
 #back-from-detail.focused,
 .detail-header .back-btn.focused {
-  box-shadow: 0 0 0 3px #ff8c00 !important;
-  background: rgba(255, 140, 0, 0.2) !important;
+    box-shadow: 0 0 0 3px #ff8c00 !important;
+    background: rgba(255,140,0,0.2) !important;
 }
-
 .catalog-actor-card.focused {
-  box-shadow: 0 0 0 3px #ff8c00 !important;
-  border-radius: 12px;
+    box-shadow: 0 0 0 3px #ff8c00 !important;
+    border-radius: 12px;
 }
-
 .catalog-recommendation-card.focused {
-  box-shadow: 0 0 0 3px #ff8c00 !important;
+    box-shadow: 0 0 0 3px #ff8c00 !important;
 }
 
 /* ============================================================
-   АДАПТИВ
+   АДАПТИВ: планшеты / узкие экраны
    ============================================================ */
 @media screen and (max-width: 1024px) {
-  .detail-header {
-    padding: 14px 28px !important;
-    gap: 14px;
-  }
-
-  .detail-poster {
-    width: 100px !important;
-    height: 150px !important;
-  }
-
-  .detail-title h2,
-  #detail-title-text {
-    font-size: 24px !important;
-  }
-
-  .catalog-detail-panel {
-    padding: 14px 28px 16px 28px !important;
-  }
-
-  .catalog-detail-section-title {
-    padding-left: 28px;
-  }
-
-  .catalog-detail-actors-grid,
-  #catalog-detail-actors {
-    padding: 4px 28px 12px 28px !important;
-  }
-
-  .catalog-detail-recommendations-grid,
-  #catalog-detail-recommendations {
-    padding: 4px 28px 12px 28px !important;
-  }
+    .detail-header {
+        padding: 14px 28px !important;
+        gap: 14px;
+    }
+    .detail-poster {
+        width: 100px !important;
+        height: 150px !important;
+    }
+    .detail-title h2,
+    #detail-title-text {
+        font-size: 24px !important;
+    }
+    .catalog-detail-panel {
+        padding: 14px 28px 16px 28px !important;
+    }
+    .catalog-detail-section-title {
+        padding-left: 28px;
+    }
+    .catalog-detail-actors-grid,
+    #catalog-detail-actors {
+        padding: 4px 28px 12px 28px !important;
+    }
+    .catalog-detail-recommendations-grid,
+    #catalog-detail-recommendations {
+        padding: 4px 28px 12px 28px !important;
+    }
 }
 
+/* ============================================================
+   АДАПТИВ: мобильные
+   ============================================================ */
 @media screen and (max-width: 600px) {
-  .detail-header {
-    padding: 12px 16px !important;
-    gap: 10px;
-  }
-
-  .detail-poster {
-    width: 80px !important;
-    height: 120px !important;
-  }
-
-  .detail-title h2,
-  #detail-title-text {
-    font-size: 20px !important;
-  }
-
-  .catalog-detail-panel {
-    padding: 12px 16px 14px 16px !important;
-  }
-
-  .catalog-detail-section-title {
-    padding-left: 16px;
-    font-size: 16px !important;
-  }
-
-  .catalog-detail-actors-grid,
-  #catalog-detail-actors {
-    padding: 4px 16px 12px 16px !important;
-  }
-
-  .catalog-detail-recommendations-grid,
-  #catalog-detail-recommendations {
-    padding: 4px 16px 12px 16px !important;
-  }
-
-  .catalog-watch-btn,
-  #catalog-watch-btn,
-  .catalog-toggle-overview-btn,
-  #catalog-toggle-overview-btn {
-    flex: 1;
-    justify-content: center;
-  }
+    .detail-header {
+        padding: 12px 16px !important;
+        gap: 10px;
+    }
+    .detail-poster {
+        width: 80px !important;
+        height: 120px !important;
+    }
+    .detail-title h2,
+    #detail-title-text {
+        font-size: 20px !important;
+    }
+    .catalog-detail-panel {
+        padding: 12px 16px 14px 16px !important;
+    }
+    .catalog-detail-section-title {
+        padding-left: 16px;
+        font-size: 16px !important;
+    }
+    .catalog-detail-actors-grid,
+    #catalog-detail-actors {
+        padding: 4px 16px 12px 16px !important;
+    }
+    .catalog-detail-recommendations-grid,
+    #catalog-detail-recommendations {
+        padding: 4px 16px 12px 16px !important;
+    }
+    .catalog-watch-btn,
+    #catalog-watch-btn,
+    .catalog-toggle-overview-btn,
+    #catalog-toggle-overview-btn {
+        flex: 1;
+        justify-content: center;
+    }
 }
