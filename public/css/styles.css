@@ -1046,7 +1046,7 @@ body.detail-open {
   margin-bottom: 18.42px;
 }
 
-.catalog-watch-btn {
+. {
   padding: 11.04px 21.96px;
   border: none;
   border-radius: 25.5px;
@@ -2145,7 +2145,7 @@ body.detail-open {
     margin-bottom: 18.97px;
   }
 
-  .catalog-watch-btn {
+  . {
     padding: 11.37px 22.62px;
     border-radius: 26.27px;
     font-size: 15.19px;
@@ -2461,7 +2461,7 @@ body.detail-open {
     margin-bottom: 23.03px;
   }
 
-  .catalog-watch-btn {
+  . {
     padding: 13.8px 27.45px;
     border-radius: 31.88px;
     font-size: 18.44px;
@@ -3549,8 +3549,8 @@ article {
 }
 
 /* Обе кнопки — одинаковый стиль */
-.catalog-watch-btn,
-#catalog-watch-btn,
+.,
+#,
 .catalog-toggle-overview-btn,
 #catalog-toggle-overview-btn {
   display: inline-flex !important;
@@ -3567,16 +3567,16 @@ article {
   transition: background 0.2s;
 }
 
-.catalog-watch-btn:hover,
-#catalog-watch-btn:hover,
+.:hover,
+#:hover,
 .catalog-toggle-overview-btn:hover,
 #catalog-toggle-overview-btn:hover {
   background: rgba(255, 255, 255, 0.22) !important;
 }
 
 /* Иконка ▶ только у watch-кнопки */
-.catalog-watch-btn::before,
-#catalog-watch-btn::before {
+.::before,
+#::before {
   content: '▶';
   font-size: 12px;
 }
@@ -3697,14 +3697,14 @@ article {
 
 #catalog-watch-btn.focused,
 .catalog-watch-btn.focused {
-  box-shadow: 0 0 0 3px #ff8c00, 0 4px 18px rgba(255, 140, 0, 0.35) !important;
-  background: rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 0 0 3px #ff8c00 !important;
+  background: rgba(255, 140, 0, 0.2) !important;
 }
 
 #catalog-toggle-overview-btn.focused,
 .catalog-toggle-overview-btn.focused {
   box-shadow: 0 0 0 3px #ff8c00 !important;
-  background: rgba(255, 255, 255, 0.22) !important;
+  background: rgba(255, 140, 0, 0.2) !important;
 }
 
 #back-from-detail.focused,
@@ -3795,8 +3795,8 @@ article {
     padding: 4px 16px 12px 16px !important;
   }
 
-  .catalog-watch-btn,
-  #catalog-watch-btn,
+  .,
+  #,
   .catalog-toggle-overview-btn,
   #catalog-toggle-overview-btn {
     flex: 1;
