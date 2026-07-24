@@ -3615,7 +3615,6 @@ article {
 .catalog-actor-card {
   background: transparent !important;
   border-radius: 12px !important;
-  transition: transform 0.2s;
 }
 
 .catalog-actor-card:hover {
@@ -3661,7 +3660,6 @@ article {
 .catalog-recommendation-card {
   background: transparent !important;
   border-radius: 8px !important;
-  transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .catalog-recommendation-card:hover {
