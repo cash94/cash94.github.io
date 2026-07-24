@@ -2024,12 +2024,37 @@ function setupPlayerWheelControl() {
     console.log('✅ Глобальное управление громкостью колесом мыши активировано для экрана плеера');
 }
 
+// ==================== УПРАВЛЕНИЕ МЫШЬЮ ====================
+function setupMouseControls() {
+    document.addEventListener('contextmenu', function (e) {
+        // Не блокируем контекстное меню в полях ввода
+        var target = e.target;
+        if (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.isContentEditable) {
+            return;
+        }
+
+        // Предотвращаем стандартное контекстное меню
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Вызываем функцию "Назад"
+        onBack();
+
+        return false;
+    });
+
+    console.log('✅ Управление правой кнопкой мыши активировано');
+}
+
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 function initControl() {
     console.log('Модуль управления инициализирован');
     setupKeyboardHandlers();
     setupFocusRescue();
     setupPlayerWheelControl();
+    setupMouseControls();
     window.updateFocusableElements = updateFocusableElements;
     window.setFocus = setFocus;
     window.navigate = navigate;
