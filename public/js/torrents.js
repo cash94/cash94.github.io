@@ -649,43 +649,17 @@ async function getTmdbDetailsWithCache(tmdbId, mediaType) {
 function resetDetailBackground() {
     var detailView = getEl('detail-view');
     if (!detailView) return;
-    detailView.style.backgroundImage = '';
-    detailView.style.backgroundColor = '#000000';
-
-    // ★ Очищаем catalog-detail-backdrop (Netflix)
-    var backdrop = getEl('catalog-detail-backdrop');
-    if (backdrop) {
-        backdrop.style.backgroundImage = '';
-        backdrop.classList.add('hidden');
-    }
-
-    // Убираем старый overlay
-    var existingOverlay = getEl('detail-backdrop-overlay');
-    if (existingOverlay) existingOverlay.remove();
-
-    var detailSubtitle = getEl('detail-subtitle');
-    if (detailSubtitle) { detailSubtitle.textContent = ''; detailSubtitle.style.display = 'none'; }
-
-    var metaContainer = getEl('catalog-detail-meta');
-    if (metaContainer) { metaContainer.innerHTML = ''; metaContainer.classList.add('hidden'); }
-
-    var filesList = getEl('files-list');
-    if (filesList) { filesList.innerHTML = ''; filesList.style.display = ''; filesList.style.flexDirection = ''; }
-
-    var detailPoster = getEl('detail-poster');
-    if (detailPoster) detailPoster.innerHTML = '';
-
-    var detailTitleText = getEl('detail-title-text');
-    if (detailTitleText) detailTitleText.textContent = '';
-
-    // ★ Очищаем overview и кнопку «Подробнее»
-    var overviewEl = getEl('catalog-detail-overview');
-    if (overviewEl) { overviewEl.textContent = ''; overviewEl.classList.remove('expanded'); }
-    var togBtn = getEl('catalog-toggle-overview-btn');
-    if (togBtn) togBtn.remove();
-
+    detailView.style.backgroundImage = ''; detailView.style.backgroundColor = '#000000';
+    var existingOverlay = getEl('detail-backdrop-overlay'); if (existingOverlay) existingOverlay.remove();
+    var detailSubtitle = getEl('detail-subtitle'); if (detailSubtitle) { detailSubtitle.textContent = ''; detailSubtitle.style.display = 'none'; }
+    var metaContainer = getEl('catalog-detail-meta'); if (metaContainer) { metaContainer.innerHTML = ''; metaContainer.classList.add('hidden'); }
+    var filesList = getEl('files-list'); if (filesList) { filesList.innerHTML = ''; filesList.style.display = ''; filesList.style.flexDirection = ''; }
+    var detailPoster = getEl('detail-poster'); if (detailPoster) detailPoster.innerHTML = '';
+    var detailTitleText = getEl('detail-title-text'); if (detailTitleText) detailTitleText.textContent = '';
     var oldProgressBlocks = document.querySelectorAll('#detail-progress');
-    for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
+    for (var i = 0; i < oldProgressBlocks.length; i++) {
+        oldProgressBlocks[i].remove();
+    }
 }
 window.resetDetailBackground = resetDetailBackground;
 
@@ -780,117 +754,38 @@ async function showDetail(torrent) {
     if (torrent && torrent.hash) window.lastSelectedTorrentHash = torrent.hash;
     if (typeof currentFocusIndex !== 'undefined') window.lastSelectedTorrentIndex = currentFocusIndex;
     resetDetailBackground();
-
-    var mainContainer = getEl('main-container');
-    if (mainContainer) mainContainer.style.pointerEvents = 'none';
+    var mainContainer = getEl('main-container'); if (mainContainer) mainContainer.style.pointerEvents = 'none';
     AppState.currentScreen = 'detail';
-
-    if (!window.AndroidJS) {
-        AppState.detailReturnTo = 'torrents';
-        AppState.currentDetailItem = torrent;
-    } else {
-        if (AppState.playFromHash) {
-            AppState.currentDetailItem = AppState.androidBackCatalog;
-            AppState.detailReturnTo = 'catalog';
-        } else {
-            AppState.detailReturnTo = 'torrents';
-            AppState.currentDetailItem = torrent;
-        }
-    }
-
-    // ★ Netflix: показываем catalog-detail-extra (для backdrop + overview)
-    var extra = getEl('catalog-detail-extra');
-    if (extra) extra.classList.remove('hidden');
-
-    // ★ Скрываем секции, не нужные для torrent detail
-    var hideIds = [
-        'catalog-detail-actors-wrap',
-        'catalog-detail-recommendations-wrap',
-        'catalog-detail-trailers-wrap',
-        'catalog-detail-screenshots-wrap',
-        'catalog-detail-actions',
-        'catalog-detail-meta'
-    ];
-    for (var h = 0; h < hideIds.length; h++) {
-        var hel = getEl(hideIds[h]);
-        if (hel) { hel.classList.add('hidden'); hel.style.display = 'none'; }
-    }
-
-    // ★ Показываем overview
-    var oe = getEl('catalog-detail-overview');
-    if (oe) {
-        oe.textContent = 'Загрузка...';
-        oe.classList.remove('hidden');
-        oe.style.display = 'block';
-    }
-
-    var posterImg = getEl('detail-poster');
-    var titleEl = getEl('detail-title-text');
-    var filesList = getEl('files-list');
-    var detailSubtitle = getEl('detail-subtitle');
-    var detailViewDiv = getEl('detail-view');
-
-    // ★ НЕ ставим inline background на .detail-header (Netflix CSS !important)
-
-    if (filesList) {
-        filesList.style.display = 'flex';
-        filesList.style.flexDirection = 'row';
-    }
-    filesList.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:15px;"><div class="spinner"></div><div style="font-size:16px;color:#aaa;">Загрузка файлов...</div></div>';
-
+    if (!window.AndroidJS) { AppState.detailReturnTo = 'torrents'; AppState.currentDetailItem = torrent; }
+    else { if (AppState.playFromHash) { AppState.currentDetailItem = AppState.androidBackCatalog; AppState.detailReturnTo = 'catalog'; } else { AppState.detailReturnTo = 'torrents'; AppState.currentDetailItem = torrent; } }
+    hideCatalogDetailExtra();
+    var posterImg = getEl('detail-poster'); var titleEl = getEl('detail-title-text'); var filesList = getEl('files-list'); var detailSubtitle = getEl('detail-subtitle'); var detailViewDiv = getEl('detail-view');
+    var dh = document.querySelector('.detail-header'); if (dh) dh.style.background = "rgba(0, 0, 0, 0.3)";
+    if (filesList) { filesList.style.display = 'flex'; filesList.style.flexDirection = 'row'; }
+    filesList.innerHTML = `<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;"><div class="spinner"></div><div style="font-size: 16px; color: #aaa;">Загрузка файлов...</div></div>`;
     if (typeof Animations !== 'undefined') Animations.animateDetailShow();
-
-    var tmdbPromise = loadAllTmdbDataForTorrent(torrent, {
-        titleEl: titleEl,
-        detailViewDiv: detailViewDiv,
-        detailSubtitle: detailSubtitle
-    });
-
+    var tmdbPromise = loadAllTmdbDataForTorrent(torrent, { titleEl: titleEl, detailViewDiv: detailViewDiv, detailSubtitle: detailSubtitle });
     titleEl.textContent = (torrent.title || 'Без названия').replace(/[\d+]/, '').trim();
-
     var oldProgressBlocks = document.querySelectorAll('#detail-progress');
-    for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
+    for (var i = 0; i < oldProgressBlocks.length; i++) {
+        oldProgressBlocks[i].remove();
+    }
     var lastField = await addProgressToDetail(torrent);
-
     try {
         var files = await getTorrentFilesWithCache(torrent, false);
         var poster = torrent.poster || '';
-        if (!poster && torrent.data) {
-            try {
-                var data = JSON.parse(torrent.data);
-                if (data.movie) poster = data.movie.img || (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : '');
-            } catch (e) { }
-        }
-
-        // ★ Постер через decode() если доступна
-        if (poster) {
-            if (typeof _loadImageDecoded === 'function') {
-                posterImg.innerHTML = '<div class="catalog-poster-loading" style="width:100%;height:100%"></div>';
-                _loadImageDecoded(posterImg, poster, 'poster');
-            } else {
-                posterImg.innerHTML = '<img src="' + poster + '" alt="poster">';
-            }
-        } else {
-            posterImg.innerHTML = '<div class="no-poster">Нет постера</div>';
-        }
-
-        if (files.length === 0) {
-            filesList.innerHTML = '<div style="text-align:center;padding:20px;color:#aaa;">📁 Нет файлов</div>';
-        } else {
-            var videoFiles = files.filter(function (f) {
-                var n = f.path.split('/').pop().toLowerCase();
-                return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(function (ext) { return n.includes(ext); });
-            });
+        if (!poster && torrent.data) { try { var data = JSON.parse(torrent.data); if (data.movie) poster = data.movie.img || (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : ''); } catch (e) { } }
+        posterImg.innerHTML = poster ? `<img src="${poster}" alt="poster">` : '<div class="no-poster">Нет постера</div>';
+        if (files.length === 0) { filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">📁 Нет файлов</div>'; }
+        else {
+            var videoFiles = files.filter(f => { var n = f.path.split('/').pop().toLowerCase(); return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext)); });
             filesList.innerHTML = '';
             var fragment = document.createDocumentFragment();
             for (var i = 0; i < videoFiles.length; i++) {
-                var item = addFileItem(videoFiles[i], torrent.hash,
-                    videoFiles.length === 1 ? torrent.title : 'Серия ' + (i + 1),
-                    videoFiles.length === 1 ? null : i, null, true);
+                var item = addFileItem(videoFiles[i], torrent.hash, videoFiles.length === 1 ? torrent.title : 'Серия ' + (i + 1), videoFiles.length === 1 ? null : i, null, true);
                 if (item) fragment.appendChild(item);
             }
             filesList.appendChild(fragment);
-
             tmdbPromise.then(function (tmdbData) {
                 if (tmdbData.cleanTitle && tmdbData.cleanTitle !== 'Без названия') titleEl.textContent = tmdbData.cleanTitle;
                 if (tmdbData.seasonNumbers && tmdbData.seasonNumbers.length > 1) {
@@ -898,41 +793,16 @@ async function showDetail(torrent) {
                     if (!seasonsText.includes('сезон')) titleEl.textContent = seasonsText + ' [сезон ' + tmdbData.seasonNumbers.join(', ') + ']';
                 }
                 loadStillsAndUpdateFiles(tmdbData.seasonNumbers || [], tmdbData.allSeasonEpisodes || {}, tmdbData.movieStill, videoFiles.length);
-            }).catch(function (error) {
-                console.error('Ошибка загрузки TMDB данных:', error);
-            });
+            }).catch(function (error) { console.error('Ошибка загрузки TMDB данных:', error); });
         }
-    } catch (e) {
-        console.error('Ошибка:', e);
-        filesList.innerHTML = '<div style="text-align:center;padding:20px;color:#ff6a6a;">❌ Ошибка загрузки файлов: ' + e.message + '</div>';
-    }
-
-    // ★ Кнопка «Подробнее» для описания (вставляем после overview)
-    if (oe && !getEl('catalog-toggle-overview-btn')) {
-        var togBtn = document.createElement('button');
-        togBtn.id = 'catalog-toggle-overview-btn';
-        togBtn.className = 'catalog-toggle-overview-btn';
-        togBtn.textContent = 'Подробнее';
-        togBtn.onclick = function () {
-            var ov = getEl('catalog-detail-overview');
-            if (!ov) return;
-            var exp = ov.classList.toggle('expanded');
-            togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
-        };
-        oe.parentNode.insertBefore(togBtn, oe.nextSibling);
-    }
-
+    } catch (e) { console.error('Ошибка:', e); filesList.innerHTML = `<div style="text-align: center; padding: 20px; color: #ff6a6a;">❌ Ошибка загрузки файлов: ${e.message}</div>`; }
     setTimeout(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
             updateFocusableElements();
             var fileItems = document.querySelectorAll('.file-item');
             if (fileItems.length > 0) {
                 if (lastField > 0 && focusableElements[lastField + 1] && focusableElements[lastField + 1].classList.contains('file-item')) setFocus(lastField + 1);
-                else {
-                    for (var i = 0; i < focusableElements.length; i++) {
-                        if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) { setFocus(i); break; }
-                    }
-                }
+                else { for (var i = 0; i < focusableElements.length; i++) { if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) { setFocus(i); break; } } }
             } else setFocus(0);
         }
     }, 200);
@@ -941,114 +811,74 @@ async function showDetail(torrent) {
 
 async function loadAllTmdbDataForTorrent(torrent, elements) {
     var cleanTitle = torrent.title || 'Без названия';
-    var tmdbId = null;
-    var seasonNumbers = [];
-    var bracketMatch = cleanTitle.match(/[(\d+)]/);
-    if (bracketMatch && bracketMatch[1]) {
-        tmdbId = bracketMatch[1];
-        cleanTitle = cleanTitle.replace(/[\d+]/, '').trim();
-    }
+    var tmdbId = null; var seasonNumbers = [];
+    var bracketMatch = cleanTitle.match(/\[(\d+)\]/);
+    if (bracketMatch && bracketMatch[1]) { tmdbId = bracketMatch[1]; cleanTitle = cleanTitle.replace(/\[\d+\]/, '').trim(); }
     seasonNumbers = extractSeasonsFromTitle(cleanTitle);
     if (seasonNumbers.length > 0) cleanTitle = cleanTitleFromSeasons(cleanTitle, seasonNumbers);
     if (elements.titleEl) elements.titleEl.textContent = cleanTitle;
-
     var isTvSeries = false;
     try {
         if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 1) isTvSeries = true;
-        else if (torrent.data) {
-            var data = JSON.parse(torrent.data);
-            if (data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 1) isTvSeries = true;
-        }
+        else if (torrent.data) { var data = JSON.parse(torrent.data); if (data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 1) isTvSeries = true; }
     } catch (e) { }
-
-    var allSeasonEpisodes = {};
-    var movieStill = null;
-
+    var allSeasonEpisodes = {}; var movieStill = null;
     if (tmdbId && isTvSeries && seasonNumbers.length > 0) {
-        seasonNumbers.forEach(function (seasonNum) {
+        seasonNumbers.forEach(seasonNum => {
             loadSeasonStills(tmdbId, seasonNum).then(function (episodes) {
-                if (episodes && episodes.length > 0) {
-                    allSeasonEpisodes[seasonNum] = episodes;
-                    loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieStill, getVideoFilesFromTorrent(torrent).length);
-                }
+                if (episodes && episodes.length > 0) { allSeasonEpisodes[seasonNum] = episodes; loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieStill, getVideoFilesFromTorrent(torrent).length); }
             });
         });
     }
-
     if (tmdbId && !isTvSeries && seasonNumbers.length === 0) {
-        loadMovieStill(tmdbId).then(function (still) {
-            if (still) {
-                movieStill = still;
-                var fileItem = document.querySelector('.file-item');
-                if (fileItem) updateFileItemStill(fileItem, movieStill);
-            }
-        });
+        loadMovieStill(tmdbId).then(function (still) { if (still) { movieStill = still; var fileItem = document.querySelector('.file-item'); if (fileItem) updateFileItemStill(fileItem, movieStill); } });
     }
-
     if (tmdbId) {
         var mediaType = isTvSeries ? 'tv' : 'movie';
         getTmdbDetailsWithCache(tmdbId, mediaType).then(function (details) {
-            if (!details) return;
+            if (details) {
+                // 1. Обработка фона (Backdrop)
+                if (details.backdrop_path && elements.detailViewDiv) {
+                    var backdropPath = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
+                    elements.detailViewDiv.style.backgroundImage = 'url(' + backdropPath + ')';
+                    elements.detailViewDiv.style.backgroundSize = 'cover';
+                    elements.detailViewDiv.style.backgroundPosition = 'center';
+                    elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
 
-            // ★ 1. Backdrop → на #catalog-detail-backdrop (Netflix)
-            if (details.backdrop_path) {
-                var bpUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w1920' + details.backdrop_path;
-                var be = getEl('catalog-detail-backdrop');
-                if (be) {
-                    if (typeof _loadBackdropDecoded === 'function') {
-                        _loadBackdropDecoded(be, bpUrl);
-                    } else {
-                        be.style.backgroundImage = 'url(' + bpUrl + ')';
-                        be.classList.remove('hidden');
+                    var existingOverlay = getEl('detail-backdrop-overlay');
+                    if (!existingOverlay && elements.detailViewDiv) {
+                        var overlay = document.createElement('div');
+                        overlay.id = 'detail-backdrop-overlay';
+                        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.08);box-shadow:0 4px 20px rgba(0,0,0,0.25);border-radius:14.89px;z-index:-1;';
+                        elements.detailViewDiv.appendChild(overlay);
                     }
                 }
-            }
 
-            // ★ 2. Subtitle → мета-информация в Netflix-формате
-            if (elements.detailSubtitle) {
-                var type = (details.media_type === 'tv' || details.number_of_seasons !== undefined) ? 'Сериал' : 'Фильм';
-                var year = (details.release_date || details.first_air_date || '').substring(0, 4);
-                var rating = details.vote_average ? (Math.round(details.vote_average * 10) / 10).toFixed(1) : '';
-                var genre = '';
-                if (details.genres && details.genres[0]) {
-                    genre = typeof details.genres[0] === 'string' ? details.genres[0] : details.genres[0].name;
+                // 2. Обработка Описания (Overview / Subtitle) - СНИМАЕМ hidden!
+                if (details.overview) {
+                    if (elements.detailSubtitle) {
+                        elements.detailSubtitle.textContent = details.overview;
+                        elements.detailSubtitle.style.display = 'block';
+                        elements.detailSubtitle.classList.remove('hidden');
+                    }
+                    var overviewEl = getEl('catalog-detail-overview');
+                    if (overviewEl) {
+                        overviewEl.textContent = details.overview;
+                        overviewEl.style.display = 'block';
+                        overviewEl.classList.remove('hidden');
+                    }
                 }
-                var parts = [type, year, rating, genre].filter(Boolean);
-                elements.detailSubtitle.textContent = parts.join(' • ');
-                elements.detailSubtitle.style.display = 'block';
-                elements.detailSubtitle.classList.remove('hidden');
-            }
 
-            // ★ 3. Overview → на #catalog-detail-overview (Netflix)
-            if (details.overview) {
-                var overviewEl = getEl('catalog-detail-overview');
-                if (overviewEl) {
-                    overviewEl.textContent = details.overview;
-                    overviewEl.style.display = 'block';
-                    overviewEl.classList.remove('hidden');
+                // 3. Обработка метаданных (Жанры, год, рейтинг)
+                if (typeof updateDetailMetaInfo === 'function') {
+                    updateDetailMetaInfo(details);
                 }
-            }
-
-            // 4. Мета-чипы (если контейнер видим)
-            if (typeof updateDetailMetaInfo === 'function') {
-                updateDetailMetaInfo(details);
             }
         });
     }
-
     AppState.isSerials = isTvSeries;
-    if (seasonNumbers.length == 1 && isTvSeries) {
-        AppState.currentTMDB = tmdbId;
-        AppState.currentSeason = seasonNumbers[0];
-    }
-    return {
-        tmdbId: tmdbId,
-        cleanTitle: cleanTitle,
-        seasonNumbers: seasonNumbers,
-        isTvSeries: isTvSeries,
-        allSeasonEpisodes: allSeasonEpisodes,
-        movieStill: movieStill
-    };
+    if (seasonNumbers.length == 1 && isTvSeries) { AppState.currentTMDB = tmdbId; AppState.currentSeason = seasonNumbers[0]; }
+    return { tmdbId: tmdbId, cleanTitle: cleanTitle, seasonNumbers: seasonNumbers, isTvSeries: isTvSeries, allSeasonEpisodes: allSeasonEpisodes, movieStill: movieStill };
 }
 
 function updateFileItemStill(fileItem, stillImage) {
@@ -1532,10 +1362,10 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
     //if (AppState.mediaType === 'tv' && searchResult && searchResult.seasons && searchResult.seasons.length > 0) {
     if (searchResult && searchResult.seasons && searchResult.seasons.length > 0) {
         var seasons = searchResult.seasons;
-        AppState.mediaType = 'tv';
+        AppState.mediaType = 'tv'; 
         torrname = `[${catalogState.lastSelectedId}] ${searchResult.name} [сезон ${seasons.length > 1 ? seasons[0] + '-' + seasons[seasons.length - 1] : seasons[0]}]`;
     } else {
-        AppState.mediaType = 'movie';
+        AppState.mediaType = 'movie'; 
         torrname = `[${catalogState.lastSelectedId}] ${searchResult ? searchResult.name : 'Без названия'}`;
     }
     var requestBody = { action: 'add', link: magnet, title: torrname, save_to_db: AppState.addToDbEnabled };
