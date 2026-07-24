@@ -3813,11 +3813,6 @@ article {
   }
 }
 
-/* Убираем оригинальный gradient с #detail-view ( backdrop идёт через #catalog-detail-backdrop ) */
-#detail-view {
-  background: #000 !important;
-}
-
 /* Progress-блок в Netflix-стиле */
 .detail-progress {
   margin: 0 48px 8px 48px;
