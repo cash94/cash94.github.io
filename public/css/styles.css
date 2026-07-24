@@ -3361,10 +3361,10 @@ article {
 }
 
 /* ============================================================
-   NETFLIX-STYLE DETAIL VIEW (исправленная версия)
+   NETFLIX-STYLE DETAIL VIEW  (v2 — компактный)
    ============================================================ */
 
-/* --- Backdrop: cover, фиксированный, в контексте #detail-view --- */
+/* --- Backdrop --- */
 .catalog-detail-backdrop {
     background-size: cover !important;
     background-position: center 20% !important;
@@ -3372,7 +3372,7 @@ article {
     z-index: 0 !important;
 }
 
-/* --- Градиент: sticky (не зависит от transform родителя) --- */
+/* --- Градиент (sticky — не зависит от transform GSAP) --- */
 #detail-view::before {
     content: '';
     position: sticky;
@@ -3392,15 +3392,12 @@ article {
     pointer-events: none;
 }
 
-/* --- Прямые потомки #detail-view поверх градиента --- */
+/* --- Контент поверх градиента --- */
 #detail-view > .detail-header,
 #detail-view > .files-list {
     position: relative;
     z-index: 2;
 }
-
-/* --- #catalog-detail-extra: БЕЗ z-index, чтобы backdrop
-       оставался в контексте #detail-view --- */
 #catalog-detail-extra,
 .catalog-detail-extra {
     position: relative;
@@ -3411,13 +3408,11 @@ article {
     backdrop-filter: none !important;
     margin: 0 !important;
 }
-
-/* --- Внутренности extra: поверх градиента --- */
 .catalog-detail-panel {
     position: relative;
     z-index: 2;
-    padding: 20px 48px 24px 48px !important;
-    max-width: 880px;
+    padding: 16px 48px 20px 48px !important;
+    max-width: 900px;
 }
 #catalog-detail-actors-wrap,
 .catalog-detail-actors-wrap {
@@ -3431,37 +3426,39 @@ article {
 }
 
 /* ============================================================
-   HEADER — Netflix Hero
+   HEADER — компактный, всё в одну строку
    ============================================================ */
 .detail-header {
-    align-items: flex-end !important;
-    gap: 28px;
-    padding: 0 48px 32px 48px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 18px;
+    padding: 18px 48px !important;
     margin-bottom: 0 !important;
-    min-height: 52vh;
+    /* НИКАКОГО min-height — высота по контенту */
     background: transparent !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
 }
 
-/* Кнопка «Назад» — полупрозрачный круг */
+/* Кнопка «Назад» — inline, слева от постера */
 #back-from-detail,
 .detail-header .back-btn {
-    position: absolute !important;
-    top: 20px;
-    left: 20px;
-    margin: 0 !important;
-    width: 44px;
-    height: 44px;
+    position: relative !important;   /* НЕ absolute */
+    top: auto !important;
+    left: auto !important;
+    margin: 0 4px 0 0 !important;
+    width: 40px;
+    height: 40px;
     display: flex !important;
     align-items: center;
     justify-content: center;
-    background: rgba(0,0,0,0.55) !important;
+    background: rgba(0,0,0,0.5) !important;
     border-radius: 50% !important;
     color: #fff !important;
-    font-size: 20px;
-    z-index: 10;
+    font-size: 18px;
+    flex-shrink: 0;
+    cursor: pointer;
     transition: background 0.2s;
 }
 #back-from-detail:hover,
@@ -3469,14 +3466,16 @@ article {
     background: rgba(255,255,255,0.15) !important;
 }
 
-/* Постер — крупный */
+/* Постер — средний */
 .detail-poster {
-    width: 185px !important;
-    height: 278px !important;
+    width: 130px !important;
+    height: 195px !important;
     border-radius: 8px !important;
     margin-right: 0 !important;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+    box-shadow: 0 6px 30px rgba(0,0,0,0.6);
     flex-shrink: 0;
+    overflow: hidden;
+    background: #1a1a2e;
 }
 .detail-poster img {
     width: 100%; height: 100%;
@@ -3486,42 +3485,60 @@ article {
 /* Заголовок */
 .detail-title {
     flex: 1;
-    padding-bottom: 6px;
+    min-width: 0;
 }
 .detail-title h2,
 #detail-title-text {
-    font-size: 40px !important;
+    font-size: 30px !important;
     font-weight: 700 !important;
     color: #fff !important;
-    margin: 0 0 10px 0 !important;
-    text-shadow: 0 2px 14px rgba(0,0,0,0.85);
-    line-height: 1.15;
+    margin: 0 0 6px 0 !important;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+    line-height: 1.2;
 }
 .detail-subtitle,
 #detail-subtitle {
-    font-size: 15px !important;
-    color: rgba(255,255,255,0.72) !important;
+    font-size: 14px !important;
+    color: rgba(255,255,255,0.7) !important;
     margin: 0 !important;
-    letter-spacing: 0.3px;
-    text-shadow: 0 1px 6px rgba(0,0,0,0.7);
+    text-shadow: 0 1px 4px rgba(0,0,0,0.6);
 }
 
 /* ============================================================
-   ОПИСАНИЕ
+   ОПИСАНИЕ — clamp 3 строки + кнопка «Подробнее»
    ============================================================ */
 .catalog-detail-overview,
 #catalog-detail-overview {
-    font-size: 16px !important;
-    line-height: 1.65 !important;
-    color: rgba(255,255,255,0.88) !important;
-    margin-bottom: 22px !important;
-    max-width: 660px;
-    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    display: -webkit-box !important;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 15px !important;
+    line-height: 1.6 !important;
+    color: rgba(255,255,255,0.85) !important;
+    margin-bottom: 18px !important;
+    max-width: 680px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+.catalog-detail-overview.expanded,
+#catalog-detail-overview.expanded {
+    display: block !important;
+    -webkit-line-clamp: unset;
+    overflow: visible;
 }
 
 /* ============================================================
-   КНОПКА «Поиск торрентов» → Netflix Play
+   КНОПКИ: «Поиск торрентов» + «Подробнее»
    ============================================================ */
+#catalog-detail-actions,
+.catalog-detail-actions {
+    display: flex !important;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
 .catalog-watch-btn,
 #catalog-watch-btn {
     display: inline-flex !important;
@@ -3531,12 +3548,11 @@ article {
     color: #000 !important;
     border: none !important;
     border-radius: 6px !important;
-    padding: 13px 34px !important;
-    font-size: 17px !important;
+    padding: 11px 28px !important;
+    font-size: 15px !important;
     font-weight: 700 !important;
-    letter-spacing: 0.4px;
     cursor: pointer;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.45);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
     transition: background 0.2s, transform 0.15s;
 }
 .catalog-watch-btn:hover,
@@ -3544,56 +3560,51 @@ article {
     background: rgba(255,255,255,0.8) !important;
     transform: scale(1.03);
 }
-/* Иконка ▶ перед текстом */
 .catalog-watch-btn::before,
 #catalog-watch-btn::before {
     content: '▶';
-    font-size: 14px;
+    font-size: 13px;
+}
+
+/* Кнопка «Подробнее» */
+.catalog-toggle-overview-btn,
+#catalog-toggle-overview-btn {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.12) !important;
+    color: #fff !important;
+    border: 1px solid rgba(255,255,255,0.25) !important;
+    border-radius: 6px !important;
+    padding: 11px 22px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.catalog-toggle-overview-btn:hover,
+#catalog-toggle-overview-btn:hover {
+    background: rgba(255,255,255,0.22) !important;
+}
+
+/* ============================================================
+   ТРЕЙЛЕРЫ — скрыты
+   ============================================================ */
+#catalog-detail-trailers-wrap {
+    display: none !important;
 }
 
 /* ============================================================
    ЗАГОЛОВКИ СЕКЦИЙ
    ============================================================ */
 .catalog-detail-section-title {
-    font-size: 20px !important;
+    font-size: 18px !important;
     font-weight: 700 !important;
     color: #fff !important;
     border-bottom: none !important;
     padding-bottom: 0 !important;
-    margin-bottom: 14px !important;
+    margin-bottom: 12px !important;
     padding-left: 48px;
-}
-
-/* ============================================================
-   ТРЕЙЛЕРЫ
-   ============================================================ */
-#catalog-detail-trailers-wrap {
-    margin-top: 28px;
-}
-#catalog-detail-trailers-wrap h3 {
-    font-size: 20px !important;
-    font-weight: 700 !important;
-    color: #fff !important;
-    padding: 0 48px !important;
-    margin: 0 0 14px 0 !important;
-}
-/* Перебиваем inline grid-template-columns из JS */
-#catalog-detail-trailers,
-.catalog-detail-trailers-grid {
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)) !important;
-    gap: 16px !important;
-    padding: 0 48px !important;
-}
-.catalog-trailer-card-item {
-    background: #1a1a2e !important;
-    border-radius: 10px !important;
-    overflow: hidden;
-    cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-.catalog-trailer-card-item:hover {
-    transform: scale(1.04);
-    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
 }
 
 /* ============================================================
@@ -3601,13 +3612,13 @@ article {
    ============================================================ */
 #catalog-detail-actors-wrap,
 .catalog-detail-actors-wrap {
-    margin-top: 32px !important;
+    margin-top: 24px !important;
     padding: 0 !important;
     overflow: visible !important;
 }
 .catalog-detail-actors-grid,
 #catalog-detail-actors {
-    padding: 4px 48px 14px 48px !important;
+    padding: 4px 48px 12px 48px !important;
 }
 .catalog-actor-card {
     background: transparent !important;
@@ -3640,13 +3651,13 @@ article {
    ============================================================ */
 #catalog-detail-recommendations-wrap,
 .catalog-detail-recommendations-wrap {
-    margin-top: 32px !important;
-    padding: 0 0 48px 0 !important;
+    margin-top: 24px !important;
+    padding: 0 0 40px 0 !important;
     overflow: visible !important;
 }
 .catalog-detail-recommendations-grid,
 #catalog-detail-recommendations {
-    padding: 4px 48px 14px 48px !important;
+    padding: 4px 48px 12px 48px !important;
 }
 .catalog-recommendation-card {
     background: #1a1a2e !important;
@@ -3663,139 +3674,109 @@ article {
     font-weight: 700 !important;
     border-radius: 4px !important;
 }
-.catalog-recommendation-title {
-    font-weight: 600 !important;
-}
-.catalog-recommendation-year {
-    color: rgba(255,255,255,0.5) !important;
-}
 
 /* ============================================================
-   FILES-LIST (на всякий случай)
+   FILES-LIST
    ============================================================ */
 .files-list {
     padding: 0 48px !important;
 }
 
 /* ============================================================
-   СКРИНШОТЫ
-   ============================================================ */
-#catalog-detail-screenshots-wrap {
-    padding: 0 48px;
-}
-
-/* ============================================================
-   FOCUSED — Netflix (белый outline)
+   FOCUSED — ОРАНЖЕВЫЙ (как везде)
    ============================================================ */
 #detail-view .focused {
-    box-shadow: 0 0 0 3px #fff !important;
+    box-shadow: 0 0 0 3px #ff8c00 !important;
     border-radius: 8px;
 }
 #catalog-watch-btn.focused,
 .catalog-watch-btn.focused {
-    box-shadow: 0 0 0 3px #fff, 0 4px 22px rgba(255,255,255,0.3) !important;
+    box-shadow: 0 0 0 3px #ff8c00, 0 4px 18px rgba(255,140,0,0.35) !important;
     background: rgba(255,255,255,0.88) !important;
+}
+#catalog-toggle-overview-btn.focused,
+.catalog-toggle-overview-btn.focused {
+    box-shadow: 0 0 0 3px #ff8c00 !important;
+    background: rgba(255,255,255,0.22) !important;
 }
 #back-from-detail.focused,
 .detail-header .back-btn.focused {
-    box-shadow: 0 0 0 3px #fff !important;
-    background: rgba(255,255,255,0.2) !important;
+    box-shadow: 0 0 0 3px #ff8c00 !important;
+    background: rgba(255,140,0,0.2) !important;
 }
 .catalog-actor-card.focused {
-    box-shadow: 0 0 0 3px #fff !important;
+    box-shadow: 0 0 0 3px #ff8c00 !important;
     border-radius: 12px;
 }
 .catalog-recommendation-card.focused {
-    box-shadow: 0 0 0 3px #fff !important;
-}
-.catalog-trailer-card-item.focused {
-    box-shadow: 0 0 0 3px #fff !important;
+    box-shadow: 0 0 0 3px #ff8c00 !important;
 }
 
 /* ============================================================
-   АДАПТИВ: планшеты / узкие экраны
+   АДАПТИВ
    ============================================================ */
 @media screen and (max-width: 1024px) {
     .detail-header {
-        padding: 0 28px 24px 28px !important;
-        min-height: 42vh;
-        gap: 20px;
+        padding: 14px 28px !important;
+        gap: 14px;
     }
     .detail-poster {
-        width: 140px !important;
-        height: 210px !important;
+        width: 100px !important;
+        height: 150px !important;
     }
     .detail-title h2,
     #detail-title-text {
-        font-size: 28px !important;
+        font-size: 24px !important;
     }
     .catalog-detail-panel {
-        padding: 16px 28px 20px 28px !important;
+        padding: 14px 28px 16px 28px !important;
     }
     .catalog-detail-section-title {
         padding-left: 28px;
     }
-    #catalog-detail-trailers-wrap h3 {
-        padding: 0 28px !important;
-    }
-    #catalog-detail-trailers,
-    .catalog-detail-trailers-grid {
-        padding: 0 28px !important;
-    }
     .catalog-detail-actors-grid,
     #catalog-detail-actors {
-        padding: 4px 28px 14px 28px !important;
+        padding: 4px 28px 12px 28px !important;
     }
     .catalog-detail-recommendations-grid,
     #catalog-detail-recommendations {
-        padding: 4px 28px 14px 28px !important;
+        padding: 4px 28px 12px 28px !important;
     }
 }
 
-/* ============================================================
-   АДАПТИВ: мобильные
-   ============================================================ */
 @media screen and (max-width: 600px) {
     .detail-header {
-        flex-direction: column !important;
-        align-items: flex-start !important;
-        padding: 56px 20px 20px 20px !important;
-        min-height: auto;
-        gap: 14px;
+        padding: 12px 16px !important;
+        gap: 10px;
     }
     .detail-poster {
-        width: 110px !important;
-        height: 165px !important;
+        width: 80px !important;
+        height: 120px !important;
     }
     .detail-title h2,
     #detail-title-text {
-        font-size: 22px !important;
+        font-size: 20px !important;
     }
     .catalog-detail-panel {
-        padding: 14px 20px 16px 20px !important;
+        padding: 12px 16px 14px 16px !important;
     }
     .catalog-detail-section-title {
-        padding-left: 20px;
-        font-size: 17px !important;
-    }
-    #catalog-detail-trailers-wrap h3 {
-        padding: 0 20px !important;
-    }
-    #catalog-detail-trailers,
-    .catalog-detail-trailers-grid {
-        padding: 0 20px !important;
+        padding-left: 16px;
+        font-size: 16px !important;
     }
     .catalog-detail-actors-grid,
     #catalog-detail-actors {
-        padding: 4px 20px 14px 20px !important;
+        padding: 4px 16px 12px 16px !important;
     }
     .catalog-detail-recommendations-grid,
     #catalog-detail-recommendations {
-        padding: 4px 20px 14px 20px !important;
+        padding: 4px 16px 12px 16px !important;
     }
     .catalog-watch-btn,
-    #catalog-watch-btn {
-        width: 100%;
+    #catalog-watch-btn,
+    .catalog-toggle-overview-btn,
+    #catalog-toggle-overview-btn {
+        flex: 1;
         justify-content: center;
     }
 }
