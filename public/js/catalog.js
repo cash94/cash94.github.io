@@ -384,12 +384,9 @@ function getCatalogItemSubtitle(item, details) {
     var parts = [];
     if (type) parts.push(type);
     if (year) parts.push(year);
-    if (safe) parts.push(safe);
+    if (safe) parts.push('<span class="match-score">' + safe + '</span>'); // Зеленый рейтинг как в Netflix
     if (genres[0]) parts.push(genres[0]);
-    var txt = parts.join(' • ');
-    var el = getEl('detail-subtitle');
-    if (el) { el.textContent = txt; el.style.display = 'block'; }
-    return txt;
+    return parts.join(' • ');
 }
 
 async function fetchCatalogItemMeta(item, mediaType) {
@@ -1089,105 +1086,123 @@ function setupDetailLayout(item, index, posterUrl) {
     pushDetailHistory(item);
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
-    var dv = getEl('detail-view'), mc = getEl('main-container');
+
+    var dv = getEl('detail-view');
+    var mc = getEl('main-container');
     var savedScroll = mc ? mc.scrollTop : 0;
     AppState.backupScroll = savedScroll;
+
     var oldP = document.querySelector('.detail-progress');
     if (oldP) oldP.remove();
-    var dh = document.querySelector('.detail-header');
-    if (dh) dh.style.background = "rgba(255, 255, 255, 0.08)";
+
+    // Создаем Hero-секцию в стиле Netflix, если её еще нет
+    var hero = getEl('catalog-detail-hero');
+    if (!hero) {
+        hero = document.createElement('div');
+        hero.id = 'catalog-detail-hero';
+        hero.className = 'catalog-detail-hero';
+        hero.innerHTML = `
+            <div id="catalog-detail-backdrop" class="catalog-detail-backdrop"></div>
+            <div class="back-btn" id="back-from-detail">
+                <i class="fi fi-rr-left"></i>
+            </div>
+            <div class="hero-content">
+                <h2 id="detail-title-text"></h2>
+                <div id="detail-subtitle" class="detail-subtitle"></div>
+                <div id="catalog-detail-overview" class="catalog-detail-overview"></div>
+                <div id="catalog-detail-actions" class="catalog-detail-actions">
+                    <button id="catalog-watch-btn" class="catalog-watch-btn">
+                        <i class="fi fi-rr-play"></i> Поиск торрентов
+                    </button>
+                </div>
+            </div>
+        `;
+        var extra = getEl('catalog-detail-extra');
+        if (extra) {
+            dv.insertBefore(hero, extra);
+            // Удаляем старый detail-header, если он остался, чтобы не дублировать
+            var oldHeader = dv.querySelector('.detail-header');
+            if (oldHeader) oldHeader.remove();
+        } else {
+            dv.appendChild(hero);
+        }
+    }
+
     var aw = getEl('catalog-detail-actors-wrap');
     var rw = getEl('catalog-detail-recommendations-wrap');
-    if (!aw && getEl('catalog-detail-overview')) {
-        var c = document.createElement('div');
-        c.id = 'catalog-detail-actors-wrap';
-        c.className = 'catalog-detail-actors-wrap';
-        c.innerHTML = '<div class="catalog-detail-section-title">В главных ролях</div><div id="catalog-detail-actors" class="catalog-detail-actors-grid"></div>';
-        getEl('catalog-detail-overview').parentElement.insertAdjacentElement('afterend', c);
-        aw = c;
+    var tw = getEl('catalog-detail-trailers-wrap');
+
+    if (!aw) {
+        aw = document.createElement('div');
+        aw.id = 'catalog-detail-actors-wrap';
+        aw.className = 'catalog-detail-actors-wrap catalog-detail-section';
+        aw.innerHTML = '<div class="catalog-detail-section-title">В главных ролях</div><div id="catalog-detail-actors" class="catalog-detail-actors-grid"></div>';
+        dv.appendChild(aw);
     }
-    if (!rw && aw) {
-        var c = document.createElement('div');
-        c.id = 'catalog-detail-recommendations-wrap';
-        c.className = 'catalog-detail-recommendations-wrap';
-        c.innerHTML = '<div class="catalog-detail-section-title">Похожие фильмы</div><div id="catalog-detail-recommendations" class="catalog-detail-recommendations-grid"></div>';
-        aw.insertAdjacentElement('afterend', c);
-        rw = c;
+    if (!rw) {
+        rw = document.createElement('div');
+        rw.id = 'catalog-detail-recommendations-wrap';
+        rw.className = 'catalog-detail-recommendations-wrap catalog-detail-section';
+        rw.innerHTML = '<div class="catalog-detail-section-title">Похожие фильмы</div><div id="catalog-detail-recommendations" class="catalog-detail-recommendations-grid"></div>';
+        dv.appendChild(rw);
     }
-    return { dv: dv, mc: mc, aw: aw, rw: rw, savedScroll: savedScroll };
+    if (!tw) {
+        tw = document.createElement('div');
+        tw.id = 'catalog-detail-trailers-wrap';
+        tw.className = 'catalog-detail-trailers-wrap catalog-detail-section';
+        tw.innerHTML = '<div class="catalog-detail-section-title">Трейлеры</div><div id="catalog-detail-trailers" class="catalog-detail-trailers-grid"></div>';
+        dv.appendChild(tw);
+    }
+
+    return { dv: dv, mc: mc, aw: aw, rw: rw, tw: tw, savedScroll: savedScroll };
 }
 
-/**
- * Рендер шапки детального просмотра (постер, заголовок, фон)
- */
 function renderDetailHeader(item, posterUrl, details) {
-    var pe = getEl('detail-poster');
     var te = getEl('detail-title-text');
     var se = getEl('detail-subtitle');
     var oe = getEl('catalog-detail-overview');
     var be = getEl('catalog-detail-backdrop');
+
     var title = getCatalogItemTitle(item);
     var mt = item.media_type || 'movie';
-    te.textContent = title;
+
+    if (te) te.textContent = title;
+
     if (se) {
-        se.textContent = getCatalogItemSubtitle(item);
-        se.classList.remove('hidden');
-        se.style.display = 'block';
+        se.innerHTML = getCatalogItemSubtitle(item, details || item);
+        se.style.display = 'flex';
     }
-    getEl('files-list').style.display = 'none';
-    getEl('catalog-detail-extra').classList.remove('hidden');
+
+    var fl = getEl('files-list');
+    if (fl) fl.style.display = 'none';
+
+    var cde = getEl('catalog-detail-extra');
+    if (cde) cde.classList.remove('hidden');
 
     if (oe) {
-        oe.textContent = 'Загрузка...';
-        oe.classList.remove('hidden');
+        oe.textContent = (details && details.overview) || item.overview || 'Описание пока недоступно';
         oe.style.display = 'block';
     }
-    var twInit = getEl('catalog-detail-trailers-wrap');
-    var te2Init = getEl('catalog-detail-trailers');
-    if (twInit) {
-        twInit.classList.add('hidden');
-        twInit.style.display = 'none';
-    }
-    if (te2Init) {
-        te2Init.classList.add('hidden');
-        te2Init.style.display = 'none';
-    }
-    getEl('catalog-detail-trailers-wrap').classList.add('hidden');
-    var temp = posterUrl || catalogState.posterCache.get(item.id + '_' + mt) || '';
-    pe.innerHTML = temp ? '<img src="' + temp + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
-    updateCatalogWatchButton(title);
+
     var src = details || item || {};
-    if (src.poster_path) {
-        var u = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + src.poster_path;
-        if (!temp || pe.innerHTML.indexOf('Нет постера') !== -1) {
-            pe.innerHTML = '<img src="' + u + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\\\"no-poster\\\">Нет постера</div>\'">';
-        } else {
-            catalogState.posterCache.set(item.id + '_' + mt, u);
-        }
-    } else if (src.image && (src.image.original || src.image.medium)) {
-        var u = src.image.original || src.image.medium;
-        if (!temp || pe.innerHTML.indexOf('Нет постера') !== -1) {
-            pe.innerHTML = '<img src="' + u + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\\\"no-poster\\\">Нет постера</div>\'">';
-        }
-    }
-    if (se) {
-        se.textContent = getCatalogItemSubtitle(item, src);
-        se.classList.remove('hidden');
-        se.style.display = 'block';
-    }
-    if (oe) {
-        oe.textContent = src.overview || item.overview || 'Описание пока недоступно';
-        oe.classList.remove('hidden');
-        oe.style.display = 'block';
-    }
     var bp = src.backdrop_path || (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
-    if (bp) {
-        be.style.backgroundImage = 'url(' + (bp.indexOf('http') === 0 ? bp : AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.BACKDROP + bp) + ')';
-        be.classList.remove('hidden');
+
+    if (bp && be) {
+        var imgUrl = bp.indexOf('http') === 0 ? bp : (AppState.protocol + '//tsimg.hnar.online/t/p/w1920' + bp);
+        be.style.backgroundImage = 'url("' + imgUrl + '")';
+        be.style.display = 'block';
     } else {
-        be.classList.add('hidden');
-        be.style.backgroundImage = '';
+        // Fallback на постер, если нет фона
+        var pp = posterUrl || catalogState.posterCache.get(item.id + '_' + mt) || (src.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/w1920' + src.poster_path : '');
+        if (pp && be) {
+            be.style.backgroundImage = 'url("' + pp + '")';
+            be.style.display = 'block';
+        } else {
+            be.style.display = 'none';
+        }
     }
+
+    updateCatalogWatchButton(title);
 }
 
 /**
@@ -1196,35 +1211,45 @@ function renderDetailHeader(item, posterUrl, details) {
 async function renderDetailActors(item, aw) {
     if (!aw) return;
     var ae = getEl('catalog-detail-actors');
+    if (!ae) return;
+
     ae.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>';
     aw.classList.remove('hidden');
+    aw.style.display = 'block';
+
     var actors = await fetchCatalogActors(item);
     if (actors.length > 0) {
         var frag = document.createDocumentFragment();
         actors.forEach(function (a) {
             var d = document.createElement('div');
             d.className = 'catalog-actor-card';
-            d.innerHTML = '<div class="catalog-actor-photo">' +
-                (a.profilePath ? '<img src="' + AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL + a.profilePath + '" loading="lazy" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') +
-                '</div><div class="catalog-actor-info"><div class="catalog-actor-name">' + escapeHtml(a.name) + '</div><div class="catalog-actor-character">' + escapeHtml(a.character || '') + '</div></div>';
+            d.innerHTML =
+                '<div class="catalog-actor-photo">' +
+                (a.profilePath ? '<img src="' + AppState.protocol + '//tsimg.hnar.online/t/p/w185' + a.profilePath + '" loading="lazy" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') +
+                '</div>' +
+                '<div class="catalog-actor-info">' +
+                '<div class="catalog-actor-name">' + escapeHtml(a.name) + '</div>' +
+                '<div class="catalog-actor-character">' + escapeHtml(a.character || '') + '</div>' +
+                '</div>';
             frag.appendChild(d);
         });
         ae.innerHTML = '';
         ae.appendChild(frag);
     } else {
-        ae.innerHTML = '<div class="catalog-empty">Актеры не найдены</div>';
+        aw.style.display = 'none';
     }
 }
 
-/**
- * Рендер похожих фильмов
- */
 function renderDetailRecommendations(src, rw, mt) {
     if (!rw) return;
     var re = getEl('catalog-detail-recommendations');
+    if (!re) return;
+
     if (src.recommendations && src.recommendations.length > 0) {
-        re.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка похожих фильмов...</span></div>';
+        re.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка...</span></div>';
         rw.classList.remove('hidden');
+        rw.style.display = 'block';
+
         var recs = src.recommendations.slice(0, CATALOG_CONSTANTS.MAX_RECOMMENDATIONS);
         var frag = document.createDocumentFragment();
         recs.forEach(function (r) {
@@ -1233,11 +1258,17 @@ function renderDetailRecommendations(src, rw, mt) {
             d.dataset.tmdbId = r.id;
             d.dataset.mediaType = mt;
             d.dataset.title = r.title || r.name || 'Без названия';
-            var pu = r.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL + r.poster_path : null;
-            d.innerHTML = '<div class="catalog-recommendation-poster">' +
+
+            var pu = r.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/w185' + r.poster_path : null;
+            var rating = r.vote_average ? (Math.round(r.vote_average * 10) / 10) : null;
+
+            d.innerHTML =
+                '<div class="catalog-recommendation-poster">' +
                 (pu ? '<img src="' + pu + '" loading="lazy" alt="' + escapeHtml(d.dataset.title) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-recommendation-no-poster\\\'> </div>\'">' : '<div class="catalog-recommendation-no-poster"> </div>') +
-                (r.vote_average ? '<div class="catalog-recommendation-rating">' + Math.round(r.vote_average * 10) / 10 + '</div>' : '') +
-                '</div><div class="catalog-recommendation-info"><div class="catalog-recommendation-title">' + escapeHtml(d.dataset.title) + '</div>' +
+                (rating ? '<div class="catalog-recommendation-rating">' + rating + '</div>' : '') +
+                '</div>' +
+                '<div class="catalog-recommendation-info">' +
+                '<div class="catalog-recommendation-title">' + escapeHtml(d.dataset.title) + '</div>' +
                 (r.release_date ? '<div class="catalog-recommendation-year">' + r.release_date.substring(0, 4) + '</div>' : '') +
                 '</div>';
             frag.appendChild(d);
@@ -1245,10 +1276,9 @@ function renderDetailRecommendations(src, rw, mt) {
         re.innerHTML = '';
         re.appendChild(frag);
     } else {
-        rw.classList.add('hidden');
+        rw.style.display = 'none';
     }
 }
-
 /**
  * Рендер трейлеров
  */
@@ -1258,36 +1288,41 @@ function renderDetailTrailers(src) {
             var t = (v.type || '').toLowerCase();
             return t.indexOf('trailer') !== -1 || t.indexOf('teaser') !== -1;
         }).slice(0, CATALOG_CONSTANTS.MAX_TRAILERS) : []);
+
     var tw = getEl('catalog-detail-trailers-wrap');
     var te2 = getEl('catalog-detail-trailers');
+
+    if (!tw || !te2) return;
+
     if (vids.length > 0) {
         tw.classList.remove('hidden');
         tw.style.display = 'block';
-
         te2.classList.remove('hidden');
-        te2.style.display = 'grid';
-
+        te2.style.display = 'flex';
         te2.classList.add('catalog-detail-trailers-grid');
         te2.classList.remove('catalog-detail-trailers-links');
-        te2.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:16px;padding:10px;';
+
         var frag = document.createDocumentFragment();
         vids.forEach(function (v) {
             var d = document.createElement('div');
             d.className = 'catalog-trailer-card-item';
             d.dataset.videoUrl = v.key;
             d.dataset.videoTitle = v.name || 'Трейлер';
-            d.innerHTML = '<div class="catalog-trailer-poster" style="position:relative;aspect-ratio:4/3;overflow:hidden;border-radius:12px;background:linear-gradient(135deg,#1a1a2e,#16213e)"><img src="https://img.youtube.com/vi/' + v.key + '/mqdefault.jpg" alt="' + escapeHtml(v.name || 'Трейлер') + '" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'></div>\'"><div class="catalog-trailer-play-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s;cursor:pointer"><div style="width:60px;height:60px;background:rgba(74,158,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;color:white">▶</div></div>' +
-                (v.duration ? '<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:white;font-size:12px;padding:3px 8px;border-radius:12px;font-family:monospace">' + formatDuration(v.duration) + '</div>' : '') +
-                '</div><div class="catalog-trailer-info hidden" style="padding:10px"><div class="catalog-trailer-title" style="font-size:14px;font-weight:600;color:#fff;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(v.name || 'Трейлер') + '</div><div class="catalog-trailer-meta" style="display:flex;gap:10px;font-size:12px;color:#aaa"><span>Трейлер</span>' + (v.duration ? '<span>⏱️ ' + formatDuration(v.duration) + '</span>' : '') + '</div></div>';
+            d.innerHTML =
+                '<div class="catalog-trailer-poster">' +
+                '<img src="https://img.youtube.com/vi/' + v.key + '/mqdefault.jpg" alt="' + escapeHtml(v.name || 'Трейлер') + '" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'></div>\'">' +
+                '<div class="catalog-trailer-play-overlay"><div style="width:50px;height:50px;background:rgba(255,255,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;color:#000">▶</div></div>' +
+                (v.duration ? '<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:#fff;font-size:12px;padding:2px 6px;border-radius:4px;font-family:monospace">' + formatDuration(v.duration) + '</div>' : '') +
+                '</div>' +
+                '<div class="catalog-trailer-info">' +
+                '<div class="catalog-trailer-title">' + escapeHtml(v.name || 'Трейлер') + '</div>' +
+                '</div>';
             frag.appendChild(d);
         });
         te2.innerHTML = '';
         te2.appendChild(frag);
     } else {
-        tw.classList.add('hidden');
         tw.style.display = 'none';
-        te2.classList.add('hidden');
-        te2.style.display = 'none';
     }
 }
 
@@ -1325,355 +1360,56 @@ function setupDetailDelegation(dv) {
 /**
  * Главная функция показа деталей каталога
  */
-/**
-Главная функция показа деталей каталога в стиле Netflix
-*/
 async function showCatalogDetail(item, index, posterUrl) {
-    // Сохраняем состояние для навигации
-    AppState.currentScreen = 'detail';
-    AppState.currentCatalogItem = item;
-    AppState.catalogIndex = index;
-
-    var detailView = getEl('detail-view');
-    if (!detailView) return;
-
-    // Подготавливаем layout
     var layout = setupDetailLayout(item, index, posterUrl);
-
-    // Очищаем предыдущий контент
-    resetDetailBackground();
-    hideCatalogDetailExtra();
-
-    // Основной контейнер
-    detailView.innerHTML = '';
-    detailView.style.display = 'block';
-    detailView.style.background = '#141414';
-    detailView.style.overflowY = 'auto';
-
-    // === HERO SECTION (Фоновый баннер в стиле Netflix) ===
-    var heroSection = document.createElement('div');
-    heroSection.className = 'netflix-hero';
-    heroSection.style.cssText = `
-        position: relative;
-        width: 100%;
-        height: 70vh;
-        min-height: 500px;
-        overflow: hidden;
-        margin-bottom: 40px;
-    `;
-
-    // Фоновое изображение (backdrop)
-    var backdropUrl = null;
-    if (item.backdrop_path) {
-        backdropUrl = AppState.protocol + '//tsimg.hnar.online/t/p/original' + item.backdrop_path;
-    } else if (posterUrl) {
-        backdropUrl = posterUrl;
+    var dv = layout.dv, mc = layout.mc, aw = layout.aw, rw = layout.rw, savedScroll = layout.savedScroll;
+    var title = getCatalogItemTitle(item), mt = item.media_type || 'movie';
+    AppState.currentDetailItem = item;
+    AppState.currentScreen = 'detail';
+    AppState.detailReturnTo = 'catalog';
+    if (typeof Animations !== 'undefined') Animations.animateDetailShow();
+    dv.style.pointerEvents = 'auto';
+    if (mc) mc.style.pointerEvents = 'none';
+    if (typeof window.hideCatalogDetailExtra === 'function') window.hideCatalogDetailExtra();
+    var wb = getEl('catalog-watch-btn');
+    if (aw) aw.classList.add('hidden');
+    if (rw) rw.classList.add('hidden');
+    if (wb) {
+        wb.onclick = function () {
+            dv.style.display = 'none';
+            dv.style.pointerEvents = 'none';
+            if (mc) mc.style.pointerEvents = 'auto';
+            AppState.currentScreen = 'search';
+            AppState.isSearch = false;
+            showCatalogSearch(wb.dataset.searchTitle || title, posterUrl, item);
+        };
     }
-
-    if (backdropUrl) {
-        heroSection.style.backgroundImage = `url(${backdropUrl})`;
-        heroSection.style.backgroundSize = 'cover';
-        heroSection.style.backgroundPosition = 'center';
-    } else {
-        heroSection.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)';
-    }
-
-    // Градиент поверх фона
-    var gradient = document.createElement('div');
-    gradient.style.cssText = `
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: linear-gradient(to top, #141414 0%, rgba(20, 20, 20, 0.8) 50%, rgba(20, 20, 20, 0.4) 100%);
-    `;
-    heroSection.appendChild(gradient);
-
-    // Контент поверх градиента
-    var heroContent = document.createElement('div');
-    heroContent.className = 'netflix-hero-content';
-    heroContent.style.cssText = `
-        position: absolute;
-        bottom: 80px;
-        left: 60px;
-        right: 60px;
-        z-index: 2;
-    `;
-
-    // Название
-    var title = document.createElement('h1');
-    title.textContent = item.title || item.name || 'Без названия';
-    title.style.cssText = `
-        font-size: 48px;
-        font-weight: 700;
-        color: white;
-        margin: 0 0 20px 0;
-        text-shadow: 2px 2px 8px rgba(0,0,0,0.8);
-    `;
-    heroContent.appendChild(title);
-
-    // Мета-информация (год, рейтинг, тип)
-    var metaRow = document.createElement('div');
-    metaRow.style.cssText = `
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        margin-bottom: 20px;
-    `;
-
-    if (item.release_date || item.first_air_date) {
-        var year = (item.release_date || item.first_air_date).substring(0, 4);
-        var yearBadge = document.createElement('span');
-        yearBadge.textContent = year;
-        yearBadge.style.cssText = 'color: #46d369; font-weight: 600; font-size: 18px;';
-        metaRow.appendChild(yearBadge);
-    }
-
-    if (item.vote_average) {
-        var rating = document.createElement('span');
-        rating.textContent = '⭐ ' + item.vote_average.toFixed(1);
-        rating.style.cssText = 'color: white; font-size: 16px;';
-        metaRow.appendChild(rating);
-    }
-
-    var type = document.createElement('span');
-    type.textContent = (item.media_type === 'tv' || item.number_of_seasons) ? 'Сериал' : 'Фильм';
-    type.style.cssText = 'color: #999; font-size: 16px;';
-    metaRow.appendChild(type);
-
-    heroContent.appendChild(metaRow);
-
-    // Описание
-    if (item.overview) {
-        var overview = document.createElement('p');
-        overview.textContent = item.overview;
-        overview.style.cssText = `
-            color: #ddd;
-            font-size: 18px;
-            line-height: 1.6;
-            max-width: 800px;
-            margin: 0 0 30px 0;
-            text-shadow: 1px 1px 4px rgba(0,0,0,0.6);
-        `;
-        heroContent.appendChild(overview);
-    }
-
-    // Кнопки действий
-    var buttonsRow = document.createElement('div');
-    buttonsRow.style.cssText = `
-        display: flex;
-        gap: 16px;
-    `;
-
-    // Кнопка "Смотреть"
-    var watchBtn = document.createElement('button');
-    watchBtn.id = 'catalog-watch-btn';
-    watchBtn.className = 'netflix-btn netflix-btn-primary';
-    watchBtn.innerHTML = '<span style="font-size: 24px;">▶</span> Смотреть';
-    watchBtn.style.cssText = `
-        background: white;
-        color: black;
-        border: none;
-        padding: 12px 32px;
-        font-size: 18px;
-        font-weight: 600;
-        border-radius: 4px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        transition: all 0.2s;
-    `;
-    watchBtn.onmouseover = function () { this.style.background = '#e5e5e5'; };
-    watchBtn.onmouseout = function () { this.style.background = 'white'; };
-    watchBtn.onclick = function (e) {
-        e.stopPropagation();
-        // Ваша логика запуска воспроизведения
-        if (typeof window.playCatalogItem === 'function') {
-            window.playCatalogItem(item);
-        }
+    var restore = function () {
+        if (mc && savedScroll > 0) setTimeout(function () { mc.scrollTop = savedScroll; }, 50);
     };
-    buttonsRow.appendChild(watchBtn);
-
-    // Кнопка "Подробнее" (опционально)
-    var moreBtn = document.createElement('button');
-    moreBtn.className = 'netflix-btn netflix-btn-secondary';
-    moreBtn.innerHTML = '<span style="font-size: 20px;">ℹ️</span> Подробнее';
-    moreBtn.style.cssText = `
-        background: rgba(109, 109, 110, 0.7);
-        color: white;
-        border: none;
-        padding: 12px 32px;
-        font-size: 18px;
-        font-weight: 600;
-        border-radius: 4px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        transition: all 0.2s;
-    `;
-    moreBtn.onmouseover = function () { this.style.background = 'rgba(109, 109, 110, 0.9)'; };
-    moreBtn.onmouseout = function () { this.style.background = 'rgba(109, 109, 110, 0.7)'; };
-    moreBtn.onclick = function (e) {
-        e.stopPropagation();
-        // Скроллим вниз к дополнительной информации
-        detailView.scrollTo({ top: 500, behavior: 'smooth' });
-    };
-    buttonsRow.appendChild(moreBtn);
-
-    heroContent.appendChild(buttonsRow);
-    heroSection.appendChild(heroContent);
-    detailView.appendChild(heroSection);
-
-    // === КОНТЕНТ НИЖЕ (Используем существующие функции) ===
-    var contentWrapper = document.createElement('div');
-    contentWrapper.style.cssText = `
-        padding: 0 60px 60px 60px;
-    `;
-
-    // Жанры (если есть)
-    if (item.genres && item.genres.length > 0) {
-        var genresSection = document.createElement('div');
-        genresSection.style.cssText = 'margin-bottom: 40px;';
-        genresSection.innerHTML = `
-            <h2 style="color: white; font-size: 24px; font-weight: 700; margin: 0 0 16px 0;">Жанры</h2>
-            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                ${item.genres.map(g => `
-                    <span style="
-                        background: rgba(74, 158, 255, 0.2);
-                        color: #4a9eff;
-                        padding: 8px 16px;
-                        border-radius: 20px;
-                        font-size: 14px;
-                        border: 1px solid rgba(74, 158, 255, 0.3);
-                    ">${g.name || g}</span>
-                `).join('')}
-            </div>
-        `;
-        contentWrapper.appendChild(genresSection);
-    }
-
-    // Трейлеры (используем существующую функцию)
-    var trailersWrap = document.createElement('div');
-    trailersWrap.id = 'catalog-detail-trailers-wrap';
-    trailersWrap.className = 'netflix-section';
-    trailersWrap.style.cssText = 'margin-bottom: 40px;';
-
-    var trailersTitle = document.createElement('h2');
-    trailersTitle.textContent = 'Трейлеры';
-    trailersTitle.style.cssText = 'color: white; font-size: 24px; font-weight: 700; margin: 0 0 16px 0;';
-    trailersWrap.appendChild(trailersTitle);
-
-    var trailersGrid = document.createElement('div');
-    trailersGrid.id = 'catalog-detail-trailers';
-    trailersGrid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px;';
-    trailersWrap.appendChild(trailersGrid);
-    contentWrapper.appendChild(trailersWrap);
-
-    // Актёры (используем существующую функцию)
-    var actorsWrap = document.createElement('div');
-    actorsWrap.id = 'catalog-detail-actors-wrap';
-    actorsWrap.className = 'netflix-section';
-    actorsWrap.style.cssText = 'margin-bottom: 40px;';
-
-    var actorsTitle = document.createElement('h2');
-    actorsTitle.textContent = 'В главных ролях';
-    actorsTitle.style.cssText = 'color: white; font-size: 24px; font-weight: 700; margin: 0 0 16px 0;';
-    actorsWrap.appendChild(actorsTitle);
-
-    var actorsGrid = document.createElement('div');
-    actorsGrid.id = 'catalog-detail-actors';
-    actorsGrid.className = 'catalog-detail-actors-grid';
-    actorsGrid.style.cssText = 'display: flex; gap: 16px; overflow-x: auto; padding-bottom: 20px;';
-    actorsWrap.appendChild(actorsGrid);
-    contentWrapper.appendChild(actorsWrap);
-
-    // Рекомендации (используем существующую функцию)
-    var recsWrap = document.createElement('div');
-    recsWrap.id = 'catalog-detail-recommendations-wrap';
-    recsWrap.className = 'netflix-section';
-    recsWrap.style.cssText = 'margin-bottom: 40px;';
-
-    var recsTitle = document.createElement('h2');
-    recsTitle.textContent = 'Похожие фильмы';
-    recsTitle.style.cssText = 'color: white; font-size: 24px; font-weight: 700; margin: 0 0 16px 0;';
-    recsWrap.appendChild(recsTitle);
-
-    var recsGrid = document.createElement('div');
-    recsGrid.id = 'catalog-detail-recommendations';
-    recsGrid.className = 'catalog-detail-recommendations-grid';
-    recsGrid.style.cssText = 'display: flex; gap: 16px; overflow-x: auto; padding-bottom: 20px;';
-    recsWrap.appendChild(recsGrid);
-    contentWrapper.appendChild(recsWrap);
-
-    detailView.appendChild(contentWrapper);
-
-    // Кнопка "Назад"
-    var backBtn = document.createElement('button');
-    backBtn.id = 'back-from-detail';
-    backBtn.className = 'netflix-back-btn';
-    backBtn.innerHTML = '← Назад';
-    backBtn.style.cssText = `
-        position: fixed;
-        top: 40px;
-        left: 40px;
-        background: rgba(0, 0, 0, 0.7);
-        color: white;
-        border: none;
-        padding: 12px 24px;
-        font-size: 16px;
-        border-radius: 4px;
-        cursor: pointer;
-        z-index: 1000;
-        transition: background 0.2s;
-    `;
-    backBtn.onmouseover = function () { this.style.background = 'rgba(0, 0, 0, 0.9)'; };
-    backBtn.onmouseout = function () { this.style.background = 'rgba(0, 0, 0, 0.7)'; };
-    backBtn.onclick = function () {
-        detailView.style.display = 'none';
-        AppState.currentScreen = 'catalog';
-        if (typeof ScreenStrategies !== 'undefined') {
-            ScreenStrategies.catalog.ensureFocus(true);
-        }
-    };
-    detailView.appendChild(backBtn);
-
-    // Загружаем детальную информацию из TMDB
     var details = await fetchCatalogItemDetails(item);
-    if (details) {
-        // Обновляем описание, если есть более полное
-        if (details.overview && !item.overview) {
-            overview.textContent = details.overview;
+    restore();
+    // Рендерим все части
+    renderDetailHeader(item, posterUrl, details);
+    await renderDetailActors(item, aw);
+    var src = details || item || {};
+    renderDetailRecommendations(src, rw, mt);
+    renderDetailTrailers(src);
+    // Делегирование событий
+    setupDetailDelegation(dv);
+    // Фокус на кнопку просмотра
+    requestAnimationFrame(function () {
+        if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+            updateFocusableElements();
+            var idx = -1;
+            if (typeof focusableElements !== 'undefined') {
+                for (var i = 0; i < focusableElements.length; i++) {
+                    if (focusableElements[i].id === 'catalog-watch-btn') { idx = i; break; }
+                }
+            }
+            setFocus(idx !== -1 ? idx : 0);
         }
-
-        // Рендерим трейлеры (используем существующую функцию)
-        if (details.videos && details.videos.length > 0) {
-            renderDetailTrailers(details);
-        } else {
-            trailersWrap.style.display = 'none';
-        }
-
-        // Рендерим актёров (используем существующую функцию)
-        renderDetailActors(item, actorsWrap);
-
-        // Рендерим рекомендации (используем существующую функцию)
-        if (details.recommendations && details.recommendations.length > 0) {
-            renderDetailRecommendations(details, recsWrap, item.media_type || 'movie');
-        } else {
-            recsWrap.style.display = 'none';
-        }
-    }
-
-    // Настраиваем делегирование событий
-    setupDetailDelegation(detailView);
-
-    // Устанавливаем фокус на кнопку "Смотреть"
-    setTimeout(function () {
-        updateFocusableElements();
-        if (watchBtn) focusEl(watchBtn);
-    }, 200);
+    });
 }
 
 function hideCatalogDetailView() {
@@ -1688,7 +1424,7 @@ function hideCatalogDetailView() {
 
 function updateCatalogWatchButton(t) {
     var b = getEl('catalog-watch-btn');
-    if (b) b.textContent = 'Поиск торрентов';
+    if (b) b.innerHTML = '<i class="fi fi-rr-play"></i> Поиск торрентов';
 }
 
 function onCatalogItemClick(item, index) {
