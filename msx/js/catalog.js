@@ -1148,22 +1148,57 @@ function renderDetailHeader(item, posterUrl, details) {
 
     var twInit = getEl('catalog-detail-trailers-wrap');
     var te2Init = getEl('catalog-detail-trailers');
-    if (twInit) {
-        twInit.classList.add('hidden');
-        twInit.style.display = 'none';
-    }
-    if (te2Init) {
-        te2Init.classList.add('hidden');
-        te2Init.style.display = 'none';
-    }
+    if (twInit) { twInit.classList.add('hidden'); twInit.style.display = 'none'; }
+    if (te2Init) { te2Init.classList.add('hidden'); te2Init.style.display = 'none'; }
 
-    // ★ Плейсхолдер для постера (мгновенно, без сети)
+    // ★ Плейсхолдер постера
     var temp = posterUrl || catalogState.posterCache.get(item.id + '_' + mt) || '';
     pe.innerHTML = temp
         ? '<div class="catalog-poster-loading" style="width:100%;height:100%"></div>'
         : '<div class="no-poster">Нет постера</div>';
 
-    updateCatalogWatchButton(title);
+    // ★★★ ВОССТАНАВЛИВАЕМ КНОПКИ В ACTIONS ★★★
+    var actionsEl = getEl('catalog-detail-actions');
+    if (actionsEl) {
+        actionsEl.innerHTML = '';
+
+        // Кнопка "Поиск торрентов"
+        var watchBtn = document.createElement('button');
+        watchBtn.id = 'catalog-watch-btn';
+        watchBtn.className = 'catalog-watch-btn';
+        watchBtn.textContent = 'Поиск торрентов';
+        watchBtn.dataset.searchTitle = title;
+        actionsEl.appendChild(watchBtn);
+
+        // Кнопка "Подробнее"
+        var togBtn = document.createElement('button');
+        togBtn.id = 'catalog-toggle-overview-btn';
+        togBtn.className = 'catalog-toggle-overview-btn';
+        togBtn.textContent = 'Подробнее';
+        togBtn.onclick = function () {
+            var ov = getEl('catalog-detail-overview');
+            if (!ov) return;
+            var exp = ov.classList.toggle('expanded');
+            togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
+        };
+        actionsEl.appendChild(togBtn);
+    }
+
+    // Привязываем onclick к watch-кнопке
+    var wb = getEl('catalog-watch-btn');
+    if (wb) {
+        wb.style.display = '';
+        wb.onclick = function () {
+            var dv = getEl('detail-view');
+            var mc = getEl('main-container');
+            dv.style.display = 'none';
+            dv.style.pointerEvents = 'none';
+            if (mc) mc.style.pointerEvents = 'auto';
+            AppState.currentScreen = 'search';
+            AppState.isSearch = false;
+            showCatalogSearch(wb.dataset.searchTitle || title, posterUrl, item);
+        };
+    }
 
     var src = details || item || {};
 
@@ -1177,7 +1212,6 @@ function renderDetailHeader(item, posterUrl, details) {
     } else if (temp) {
         posterSrc = temp;
     }
-
     if (posterSrc) {
         _loadImageDecoded(pe, posterSrc, 'poster');
     }
@@ -1202,22 +1236,6 @@ function renderDetailHeader(item, posterUrl, details) {
     } else {
         be.classList.add('hidden');
         be.style.backgroundImage = '';
-    }
-
-    // ★ Кнопка «Подробнее» для описания
-    var actionsEl = getEl('catalog-detail-actions');
-    if (actionsEl && !getEl('catalog-toggle-overview-btn')) {
-        var togBtn = document.createElement('button');
-        togBtn.id = 'catalog-toggle-overview-btn';
-        togBtn.className = 'catalog-toggle-overview-btn';
-        togBtn.textContent = 'Подробнее';
-        togBtn.onclick = function () {
-            var ov = getEl('catalog-detail-overview');
-            if (!ov) return;
-            var exp = ov.classList.toggle('expanded');
-            togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
-        };
-        actionsEl.appendChild(togBtn);
     }
 }
 
@@ -1403,41 +1421,41 @@ async function showCatalogDetail(item, index, posterUrl) {
     var layout = setupDetailLayout(item, index, posterUrl);
     var dv = layout.dv, mc = layout.mc, aw = layout.aw, rw = layout.rw, savedScroll = layout.savedScroll;
     var title = getCatalogItemTitle(item), mt = item.media_type || 'movie';
+
     AppState.currentDetailItem = item;
     AppState.currentScreen = 'detail';
     AppState.detailReturnTo = 'catalog';
+
     if (typeof Animations !== 'undefined') Animations.animateDetailShow();
+
     dv.style.pointerEvents = 'auto';
     if (mc) mc.style.pointerEvents = 'none';
+
     if (typeof window.hideCatalogDetailExtra === 'function') window.hideCatalogDetailExtra();
-    var wb = getEl('catalog-watch-btn');
+
+    // Скрываем actors/recommendations на время загрузки
     if (aw) aw.classList.add('hidden');
     if (rw) rw.classList.add('hidden');
-    if (wb) {
-        wb.style.display = ''; 
-        wb.onclick = function () {
-            dv.style.display = 'none';
-            dv.style.pointerEvents = 'none';
-            if (mc) mc.style.pointerEvents = 'auto';
-            AppState.currentScreen = 'search';
-            AppState.isSearch = false;
-            showCatalogSearch(wb.dataset.searchTitle || title, posterUrl, item);
-        };
-    }
+
     var restore = function () {
         if (mc && savedScroll > 0) setTimeout(function () { mc.scrollTop = savedScroll; }, 50);
     };
+
     var details = await fetchCatalogItemDetails(item);
     restore();
-    // Рендерим все части
+
+    // Рендерим все части (кнопки создаются внутри renderDetailHeader)
     renderDetailHeader(item, posterUrl, details);
     await renderDetailActors(item, aw);
+
     var src = details || item || {};
     renderDetailRecommendations(src, rw, mt);
     renderDetailTrailers(src);
+
     // Делегирование событий
     setupDetailDelegation(dv);
-    // Фокус на кнопку просмотра
+
+    // Фокус на кнопку "Поиск торрентов"
     requestAnimationFrame(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
             updateFocusableElements();
