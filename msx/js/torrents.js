@@ -1581,7 +1581,7 @@ function renderFilteredGlobalResults(results) {
         searchResultsDiv.innerHTML = `<div class="filter-stats">Всего найдено: <span>0</span></div><div class="search-result-empty">${currentSearchQuery ? 'Ничего не найдено для "' + escapeHtml(currentSearchQuery) + '" в TMDB' : 'Введите запрос для поиска'}</div>`;
         return;
     }
-    var html = `<div class="filter-stats">Найдено в TMDB: <span>${results.length}</span></div><div class="global-search-grid" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; padding: 20px 0;">`;
+    var html = `<div class="filter-stats">Найдено в TMDB: <span>${results.length}</span></div><div class="global-search-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; padding: 20px 0;">`;
     for (var idx = 0; idx < results.length; idx++) {
         var result = results[idx];
         var title = result.title || result.name || 'Без названия';
