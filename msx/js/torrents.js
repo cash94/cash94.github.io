@@ -944,21 +944,21 @@ async function showDetail(torrent) {
             detailSubtitle.textContent = parts.join(' • ');
 
             // Backdrop
-            if (details.backdrop_path && backdropEl) {
-                var bpUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w1920' + details.backdrop_path;
-                var bpImg = new Image();
-                bpImg.src = bpUrl;
-                var applyBp = function () {
-                    if (!backdropEl.isConnected) return;
-                    backdropEl.style.backgroundImage = 'url(' + bpUrl + ')';
-                    backdropEl.classList.remove('hidden');
-                };
-                if (typeof bpImg.decode === 'function') {
-                    bpImg.decode().then(applyBp).catch(applyBp);
-                } else {
-                    bpImg.onload = applyBp;
-                }
-            }
+            // if (details.backdrop_path && backdropEl) {
+            //     var bpUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w1920' + details.backdrop_path;
+            //     var bpImg = new Image();
+            //     bpImg.src = bpUrl;
+            //     var applyBp = function () {
+            //         if (!backdropEl.isConnected) return;
+            //         backdropEl.style.backgroundImage = 'url(' + bpUrl + ')';
+            //         backdropEl.classList.remove('hidden');
+            //     };
+            //     if (typeof bpImg.decode === 'function') {
+            //         bpImg.decode().then(applyBp).catch(applyBp);
+            //     } else {
+            //         bpImg.onload = applyBp;
+            //     }
+            // }
 
             // Overview
             if (details.overview && overviewEl) {
