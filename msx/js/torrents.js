@@ -830,7 +830,7 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
         var mediaType = isTvSeries ? 'tv' : 'movie';
         getTmdbDetailsWithCache(tmdbId, mediaType).then(function (details) {
             if (details) {
-                // 1. Backdrop → catalog-detail-backdrop (Netflix), а не на detail-view
+                // 1. Backdrop → catalog-detail-backdrop (Netflix)
                 if (details.backdrop_path) {
                     var backdropEl = getEl('catalog-detail-backdrop');
                     if (backdropEl) {
@@ -841,17 +841,28 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
                 }
                 if (elements.detailViewDiv) elements.detailViewDiv.style.backgroundImage = '';
 
-                // 2. Субтитр = мета-строка (как в catalog.js), описание → catalog-detail-overview
-                var subtitleParts = [mediaType === 'tv' ? 'Сериал' : 'Фильм'];
+                // 2. ВСЁ из catalog-detail-meta → в detail-subtitle одной строкой
+                var metaContainer = getEl('catalog-detail-meta');
+                if (metaContainer) { metaContainer.innerHTML = ''; metaContainer.classList.add('hidden'); }
+
+                var subtitleParts = [];
                 var yearStr = (details.release_date || details.first_air_date || '').substring(0, 4);
                 if (yearStr) subtitleParts.push(yearStr);
-                if (details.vote_average) subtitleParts.push((Math.round(details.vote_average * 10) / 10).toFixed(1));
-                if (details.genres && details.genres[0] && details.genres[0].name) subtitleParts.push(details.genres[0].name);
+                if (details.vote_average) subtitleParts.push('⭐ ' + (Math.round(details.vote_average * 10) / 10).toFixed(1));
+                subtitleParts.push(mediaType === 'tv' ? 'Сериал' : 'Фильм');
+                if (details.genres && Array.isArray(details.genres)) {
+                    var gLen = Math.min(details.genres.length, 3);
+                    for (var g = 0; g < gLen; g++) {
+                        if (details.genres[g] && details.genres[g].name) subtitleParts.push(details.genres[g].name);
+                    }
+                }
                 if (elements.detailSubtitle) {
                     elements.detailSubtitle.textContent = subtitleParts.join(' • ');
                     elements.detailSubtitle.style.display = 'block';
                     elements.detailSubtitle.classList.remove('hidden');
                 }
+
+                // 3. Описание → catalog-detail-overview
                 if (details.overview) {
                     var overviewEl = getEl('catalog-detail-overview');
                     if (overviewEl) {
@@ -859,13 +870,14 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
                         overviewEl.style.display = 'block';
                         overviewEl.classList.remove('hidden');
                     }
-                    ensureToggleOverviewButton();
                 }
 
-                // 3. Чипы (год, рейтинг, жанры)
-                if (typeof updateDetailMetaInfo === 'function') updateDetailMetaInfo(details);
+                // 4. Вместо catalog-watch-btn → кнопка «Подробнее»
+                var watchBtn = getEl('catalog-watch-btn');
+                if (watchBtn) watchBtn.style.display = 'none';
+                ensureToggleOverviewButton();
 
-                // 4. Актёры
+                // 5. Актёры
                 renderTorrentDetailActors(tmdbId, mediaType);
             } else {
                 var awNull = getEl('catalog-detail-actors-wrap');
@@ -873,7 +885,6 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
             }
         });
     } else {
-        // нет TMDB ID — скрываем актёров
         var awNoId = getEl('catalog-detail-actors-wrap');
         if (awNoId) awNoId.classList.add('hidden');
     }
