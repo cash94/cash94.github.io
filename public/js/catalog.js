@@ -1325,6 +1325,9 @@ function setupDetailDelegation(dv) {
 /**
  * Главная функция показа деталей каталога
  */
+/**
+Главная функция показа деталей каталога в стиле Netflix
+*/
 async function showCatalogDetail(item, index, posterUrl) {
     // Сохраняем состояние для навигации
     AppState.currentScreen = 'detail';
@@ -1334,6 +1337,9 @@ async function showCatalogDetail(item, index, posterUrl) {
     var detailView = getEl('detail-view');
     if (!detailView) return;
 
+    // Подготавливаем layout
+    var layout = setupDetailLayout(item, index, posterUrl);
+
     // Очищаем предыдущий контент
     resetDetailBackground();
     hideCatalogDetailExtra();
@@ -1342,6 +1348,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     detailView.innerHTML = '';
     detailView.style.display = 'block';
     detailView.style.background = '#141414';
+    detailView.style.overflowY = 'auto';
 
     // === HERO SECTION (Фоновый баннер в стиле Netflix) ===
     var heroSection = document.createElement('div');
@@ -1355,15 +1362,20 @@ async function showCatalogDetail(item, index, posterUrl) {
         margin-bottom: 40px;
     `;
 
-    // Фоновое изображение
-    var backdropUrl = item.backdrop_path
-        ? AppState.protocol + '//tsimg.hnar.online/t/p/original' + item.backdrop_path
-        : (posterUrl || '');
+    // Фоновое изображение (backdrop)
+    var backdropUrl = null;
+    if (item.backdrop_path) {
+        backdropUrl = AppState.protocol + '//tsimg.hnar.online/t/p/original' + item.backdrop_path;
+    } else if (posterUrl) {
+        backdropUrl = posterUrl;
+    }
 
     if (backdropUrl) {
         heroSection.style.backgroundImage = `url(${backdropUrl})`;
         heroSection.style.backgroundSize = 'cover';
         heroSection.style.backgroundPosition = 'center';
+    } else {
+        heroSection.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)';
     }
 
     // Градиент поверх фона
@@ -1475,7 +1487,6 @@ async function showCatalogDetail(item, index, posterUrl) {
     `;
     watchBtn.onmouseover = function () { this.style.background = '#e5e5e5'; };
     watchBtn.onmouseout = function () { this.style.background = 'white'; };
-
     watchBtn.onclick = function (e) {
         e.stopPropagation();
         // Ваша логика запуска воспроизведения
@@ -1505,7 +1516,6 @@ async function showCatalogDetail(item, index, posterUrl) {
     `;
     moreBtn.onmouseover = function () { this.style.background = 'rgba(109, 109, 110, 0.9)'; };
     moreBtn.onmouseout = function () { this.style.background = 'rgba(109, 109, 110, 0.7)'; };
-
     moreBtn.onclick = function (e) {
         e.stopPropagation();
         // Скроллим вниз к дополнительной информации
@@ -1517,7 +1527,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     heroSection.appendChild(heroContent);
     detailView.appendChild(heroSection);
 
-    // === КОНТЕНТ НИЖЕ (Горизонтальные ряды) ===
+    // === КОНТЕНТ НИЖЕ (Используем существующие функции) ===
     var contentWrapper = document.createElement('div');
     contentWrapper.style.cssText = `
         padding: 0 60px 60px 60px;
@@ -1525,22 +1535,78 @@ async function showCatalogDetail(item, index, posterUrl) {
 
     // Жанры (если есть)
     if (item.genres && item.genres.length > 0) {
-        var genresSection = createNetflixSection('Жанры', item.genres.map(g => ({
-            title: g.name,
-            type: 'genre'
-        })));
+        var genresSection = document.createElement('div');
+        genresSection.style.cssText = 'margin-bottom: 40px;';
+        genresSection.innerHTML = `
+            <h2 style="color: white; font-size: 24px; font-weight: 700; margin: 0 0 16px 0;">Жанры</h2>
+            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                ${item.genres.map(g => `
+                    <span style="
+                        background: rgba(74, 158, 255, 0.2);
+                        color: #4a9eff;
+                        padding: 8px 16px;
+                        border-radius: 20px;
+                        font-size: 14px;
+                        border: 1px solid rgba(74, 158, 255, 0.3);
+                    ">${g.name || g}</span>
+                `).join('')}
+            </div>
+        `;
         contentWrapper.appendChild(genresSection);
     }
 
-    // Актёры (загружаем асинхронно)
-    var actorsSection = document.createElement('div');
-    actorsSection.id = 'netflix-actors';
-    contentWrapper.appendChild(actorsSection);
+    // Трейлеры (используем существующую функцию)
+    var trailersWrap = document.createElement('div');
+    trailersWrap.id = 'catalog-detail-trailers-wrap';
+    trailersWrap.className = 'netflix-section';
+    trailersWrap.style.cssText = 'margin-bottom: 40px;';
 
-    // Похожие (загружаем асинхронно)
-    var similarSection = document.createElement('div');
-    similarSection.id = 'netflix-similar';
-    contentWrapper.appendChild(similarSection);
+    var trailersTitle = document.createElement('h2');
+    trailersTitle.textContent = 'Трейлеры';
+    trailersTitle.style.cssText = 'color: white; font-size: 24px; font-weight: 700; margin: 0 0 16px 0;';
+    trailersWrap.appendChild(trailersTitle);
+
+    var trailersGrid = document.createElement('div');
+    trailersGrid.id = 'catalog-detail-trailers';
+    trailersGrid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px;';
+    trailersWrap.appendChild(trailersGrid);
+    contentWrapper.appendChild(trailersWrap);
+
+    // Актёры (используем существующую функцию)
+    var actorsWrap = document.createElement('div');
+    actorsWrap.id = 'catalog-detail-actors-wrap';
+    actorsWrap.className = 'netflix-section';
+    actorsWrap.style.cssText = 'margin-bottom: 40px;';
+
+    var actorsTitle = document.createElement('h2');
+    actorsTitle.textContent = 'В главных ролях';
+    actorsTitle.style.cssText = 'color: white; font-size: 24px; font-weight: 700; margin: 0 0 16px 0;';
+    actorsWrap.appendChild(actorsTitle);
+
+    var actorsGrid = document.createElement('div');
+    actorsGrid.id = 'catalog-detail-actors';
+    actorsGrid.className = 'catalog-detail-actors-grid';
+    actorsGrid.style.cssText = 'display: flex; gap: 16px; overflow-x: auto; padding-bottom: 20px;';
+    actorsWrap.appendChild(actorsGrid);
+    contentWrapper.appendChild(actorsWrap);
+
+    // Рекомендации (используем существующую функцию)
+    var recsWrap = document.createElement('div');
+    recsWrap.id = 'catalog-detail-recommendations-wrap';
+    recsWrap.className = 'netflix-section';
+    recsWrap.style.cssText = 'margin-bottom: 40px;';
+
+    var recsTitle = document.createElement('h2');
+    recsTitle.textContent = 'Похожие фильмы';
+    recsTitle.style.cssText = 'color: white; font-size: 24px; font-weight: 700; margin: 0 0 16px 0;';
+    recsWrap.appendChild(recsTitle);
+
+    var recsGrid = document.createElement('div');
+    recsGrid.id = 'catalog-detail-recommendations';
+    recsGrid.className = 'catalog-detail-recommendations-grid';
+    recsGrid.style.cssText = 'display: flex; gap: 16px; overflow-x: auto; padding-bottom: 20px;';
+    recsWrap.appendChild(recsGrid);
+    contentWrapper.appendChild(recsWrap);
 
     detailView.appendChild(contentWrapper);
 
@@ -1574,8 +1640,34 @@ async function showCatalogDetail(item, index, posterUrl) {
     };
     detailView.appendChild(backBtn);
 
-    // Загружаем дополнительную информацию
-    loadNetflixExtraContent(item);
+    // Загружаем детальную информацию из TMDB
+    var details = await fetchCatalogItemDetails(item);
+    if (details) {
+        // Обновляем описание, если есть более полное
+        if (details.overview && !item.overview) {
+            overview.textContent = details.overview;
+        }
+
+        // Рендерим трейлеры (используем существующую функцию)
+        if (details.videos && details.videos.length > 0) {
+            renderDetailTrailers(details);
+        } else {
+            trailersWrap.style.display = 'none';
+        }
+
+        // Рендерим актёров (используем существующую функцию)
+        renderDetailActors(item, actorsWrap);
+
+        // Рендерим рекомендации (используем существующую функцию)
+        if (details.recommendations && details.recommendations.length > 0) {
+            renderDetailRecommendations(details, recsWrap, item.media_type || 'movie');
+        } else {
+            recsWrap.style.display = 'none';
+        }
+    }
+
+    // Настраиваем делегирование событий
+    setupDetailDelegation(detailView);
 
     // Устанавливаем фокус на кнопку "Смотреть"
     setTimeout(function () {
@@ -1583,171 +1675,6 @@ async function showCatalogDetail(item, index, posterUrl) {
         if (watchBtn) focusEl(watchBtn);
     }, 200);
 }
-
-// Функция создания горизонтального ряда в стиле Netflix
-function createNetflixSection(title, items) {
-    var section = document.createElement('div');
-    section.className = 'netflix-section';
-    section.style.cssText = 'margin-bottom: 40px;';
-
-    var sectionTitle = document.createElement('h2');
-    sectionTitle.textContent = title;
-    sectionTitle.style.cssText = `
-        color: white;
-        font-size: 24px;
-        font-weight: 700;
-        margin: 0 0 16px 0;
-    `;
-    section.appendChild(sectionTitle);
-
-    var row = document.createElement('div');
-    row.className = 'netflix-row';
-    row.style.cssText = `
-        display: flex;
-        gap: 12px;
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding-bottom: 20px;
-        scroll-behavior: smooth;
-    `;
-
-    // Скроллбар в стиле Netflix
-    row.style.scrollbarWidth = 'thin';
-    row.style.scrollbarColor = '#555 transparent';
-
-    items.forEach(function (item) {
-        var card = createNetflixCard(item);
-        row.appendChild(card);
-    });
-
-    section.appendChild(row);
-    return section;
-}
-
-// Функция создания карточки в стиле Netflix
-function createNetflixCard(item) {
-    var card = document.createElement('div');
-    card.className = 'netflix-card';
-    card.style.cssText = `
-        flex: 0 0 auto;
-        width: 200px;
-        cursor: pointer;
-        transition: transform 0.3s, z-index 0s 0.3s;
-        position: relative;
-    `;
-
-    card.onmouseover = function () {
-        this.style.transform = 'scale(1.15)';
-        this.style.zIndex = '10';
-        this.style.transition = 'transform 0.3s, z-index 0s';
-    };
-
-    card.onmouseout = function () {
-        this.style.transform = 'scale(1)';
-        this.style.zIndex = '1';
-        this.style.transition = 'transform 0.3s, z-index 0s 0.3s';
-    };
-
-    var imageContainer = document.createElement('div');
-    imageContainer.style.cssText = `
-        width: 100%;
-        aspect-ratio: 2/3;
-        background: #2a2a2a;
-        border-radius: 4px;
-        overflow: hidden;
-        position: relative;
-    `;
-
-    if (item.poster_path) {
-        var img = document.createElement('img');
-        img.src = AppState.protocol + '//tsimg.hnar.online/t/p/w342' + item.poster_path;
-        img.alt = item.title || item.name;
-        img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
-        img.onerror = function () {
-            this.parentElement.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #666;">🎬</div>';
-        };
-        imageContainer.appendChild(img);
-    } else {
-        imageContainer.innerHTML = `
-            <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: #666; font-size: 48px;">
-                🎬
-            </div>
-        `;
-    }
-
-    card.appendChild(imageContainer);
-
-    var titleEl = document.createElement('div');
-    titleEl.textContent = item.title || item.name || 'Без названия';
-    titleEl.style.cssText = `
-        color: white;
-        font-size: 14px;
-        margin-top: 8px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    `;
-    card.appendChild(titleEl);
-
-    card.onclick = function (e) {
-        e.stopPropagation();
-        if (item.type === 'genre') {
-            // Фильтрация по жанру
-            console.log('Фильтр по жанру:', item.title);
-        } else {
-            // Открыть детали
-            if (typeof showCatalogDetail === 'function') {
-                showCatalogDetail(item, 0, null);
-            }
-        }
-    };
-
-    return card;
-}
-
-// Функция загрузки дополнительного контента (актёры, похожие)
-async function loadNetflixExtraContent(item) {
-    try {
-        // Загружаем актёров
-        var creditsResponse = await fetch(`/api/tmdb/credits?id=${item.id}&type=${item.media_type || 'movie'}`);
-        if (creditsResponse.ok) {
-            var credits = await creditsResponse.json();
-            if (credits.cast && credits.cast.length > 0) {
-                var actorsSection = getEl('netflix-actors');
-                if (actorsSection) {
-                    var section = createNetflixSection('В ролях', credits.cast.slice(0, 10).map(actor => ({
-                        title: actor.name,
-                        poster_path: actor.profile_path,
-                        character: actor.character
-                    })));
-                    actorsSection.appendChild(section);
-                }
-            }
-        }
-
-        // Загружаем похожие
-        var similarResponse = await fetch(`/api/tmdb/similar?id=${item.id}&type=${item.media_type || 'movie'}`);
-        if (similarResponse.ok) {
-            var similar = await similarResponse.json();
-            if (similar.results && similar.results.length > 0) {
-                var similarSection = getEl('netflix-similar');
-                if (similarSection) {
-                    var section = createNetflixSection('Похожие', similar.results.slice(0, 10).map(s => ({
-                        id: s.id,
-                        title: s.title || s.name,
-                        poster_path: s.poster_path,
-                        media_type: s.media_type || item.media_type
-                    })));
-                    similarSection.appendChild(section);
-                    updateFocusableElements();
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Ошибка загрузки дополнительного контента:', error);
-    }
-}
-
 
 function hideCatalogDetailView() {
     var dv = getEl('detail-view');
