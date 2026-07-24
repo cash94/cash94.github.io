@@ -754,8 +754,6 @@ body {
 
 .detail-progress {
   padding: 12.9px;
-  background: rgba(0, 0, 0, 0.3);
-  /* Тёмный фон */
   backdrop-filter: none;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   border-radius: 12px;
@@ -3823,7 +3821,6 @@ article {
 /* Progress-блок в Netflix-стиле */
 .detail-progress {
   margin: 0 48px 8px 48px;
-  background: rgba(255, 255, 255, 0.06) !important;
   border-radius: 10px !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
