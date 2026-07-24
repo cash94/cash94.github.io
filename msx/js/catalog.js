@@ -1414,6 +1414,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     if (aw) aw.classList.add('hidden');
     if (rw) rw.classList.add('hidden');
     if (wb) {
+        wb.style.display = ''; 
         wb.onclick = function () {
             dv.style.display = 'none';
             dv.style.pointerEvents = 'none';
