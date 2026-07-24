@@ -3359,38 +3359,334 @@ article {
     background: linear-gradient(135deg, #1a1a2e 0%, #252540 50%, #1a1a2e 100%);
 }
 
-.netflix-hero {
-    animation: fadeIn 0.5s ease-in;
+/* === NETFLIX-STYLE DETAIL VIEW === */
+#detail-view {
+    background-color: #141414;
+    color: #fff;
+    overflow-y: auto;
+    height: 100vh;
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+/* Hero Section */
+.catalog-detail-hero {
+    position: relative;
+    height: 75vh;
+    min-height: 500px;
+    width: 100%;
+    display: flex;
+    align-items: flex-end;
+    padding: 0 4%;
+    padding-bottom: 8vh;
 }
 
-.netflix-row::-webkit-scrollbar {
-    height: 8px;
+#catalog-detail-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center top;
+    z-index: 1;
 }
 
-.netflix-row::-webkit-scrollbar-track {
-    background: transparent;
+/* Градиенты для читаемости текста поверх фона */
+.catalog-detail-hero::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 70%;
+    background: linear-gradient(to top, #141414 5%, rgba(20, 20, 20, 0.8) 40%, transparent 100%);
+    z-index: 2;
 }
 
-.netflix-row::-webkit-scrollbar-thumb {
-    background: #555;
+.catalog-detail-hero::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(to right, rgba(20, 20, 20, 0.9) 0%, transparent 100%);
+    z-index: 2;
+}
+
+.hero-content {
+    position: relative;
+    z-index: 3;
+    max-width: 650px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+#back-from-detail {
+    position: absolute;
+    top: 30px;
+    left: 4%;
+    z-index: 10;
+    background: rgba(0,0,0,0.5);
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s, background 0.2s;
+    font-size: 20px;
+}
+#back-from-detail.focused {
+    background: #fff;
+    color: #000;
+    transform: scale(1.15);
+    outline: none;
+}
+
+#detail-title-text {
+    font-size: 3.5rem;
+    font-weight: 800;
+    line-height: 1.1;
+    margin: 0;
+    text-shadow: 2px 2px 8px rgba(0,0,0,0.9);
+}
+
+#detail-subtitle {
+    font-size: 1.1rem;
+    color: #a3a3a3;
+    font-weight: 500;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+#detail-subtitle .match-score {
+    color: #46d369; /* Фирменный зеленый цвет Netflix */
+    font-weight: 700;
+}
+
+#catalog-detail-overview {
+    font-size: 1.15rem;
+    line-height: 1.5;
+    color: #d2d2d2;
+    max-width: 550px;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.9);
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+#catalog-detail-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+#catalog-watch-btn {
+    background-color: #fff;
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    padding: 12px 28px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: transform 0.2s, background-color 0.2s;
+}
+#catalog-watch-btn.focused {
+    background-color: #e6e6e6;
+    transform: scale(1.05);
+    outline: 3px solid #fff;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+}
+
+/* === Горизонтальные карусели (как в Netflix) === */
+.catalog-detail-section {
+    padding: 30px 4%;
+    position: relative;
+    z-index: 3;
+}
+
+.catalog-detail-section-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #e5e5e5;
+    margin-bottom: 16px;
+}
+
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid,
+.catalog-detail-trailers-grid {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    padding-bottom: 20px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.catalog-detail-actors-grid::-webkit-scrollbar,
+.catalog-detail-recommendations-grid::-webkit-scrollbar,
+.catalog-detail-trailers-grid::-webkit-scrollbar {
+    display: none;
+}
+
+/* Карточка актера */
+.catalog-actor-card {
+    flex: 0 0 130px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     border-radius: 4px;
 }
-
-.netflix-row::-webkit-scrollbar-thumb:hover {
-    background: #777;
+.catalog-actor-card.focused {
+    transform: scale(1.15);
+    z-index: 10;
+    outline: 2px solid #fff;
+}
+.catalog-actor-photo {
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: #2f2f2f;
+    border: 2px solid transparent;
+    transition: border-color 0.2s;
+}
+.catalog-actor-card.focused .catalog-actor-photo {
+    border-color: #fff;
+}
+.catalog-actor-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.catalog-actor-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #fff;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.catalog-actor-character {
+    font-size: 0.8rem;
+    color: #a3a3a3;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.netflix-card:focus {
-    outline: 2px solid #e50914;
-    outline-offset: 2px;
+/* Карточка рекомендации */
+.catalog-recommendation-card {
+    flex: 0 0 170px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    border-radius: 4px;
+    cursor: pointer;
+}
+.catalog-recommendation-card.focused {
+    transform: scale(1.1);
+    z-index: 10;
+    outline: 2px solid #fff;
+}
+.catalog-recommendation-poster {
+    width: 170px;
+    height: 255px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #2f2f2f;
+    position: relative;
+}
+.catalog-recommendation-poster img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.catalog-recommendation-rating {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0,0,0,0.75);
+    color: #46d369;
+    font-weight: 700;
+    font-size: 0.8rem;
+    padding: 3px 6px;
+    border-radius: 4px;
+    border: 1px solid #46d369;
+    backdrop-filter: blur(4px);
+}
+.catalog-recommendation-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.catalog-recommendation-year {
+    font-size: 0.85rem;
+    color: #a3a3a3;
 }
 
-.netflix-btn:focus {
-    outline: 2px solid #e50914;
-    outline-offset: 2px;
+/* Карточка трейлера */
+.catalog-trailer-card-item {
+    flex: 0 0 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    border-radius: 4px;
+    cursor: pointer;
+}
+.catalog-trailer-card-item.focused {
+    transform: scale(1.05);
+    z-index: 10;
+    outline: 2px solid #fff;
+}
+.catalog-trailer-poster {
+    width: 300px;
+    height: 169px; /* 16:9 */
+    border-radius: 4px;
+    overflow: hidden;
+    background: #2f2f2f;
+    position: relative;
+}
+.catalog-trailer-poster img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.catalog-trailer-play-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.catalog-trailer-card-item.focused .catalog-trailer-play-overlay {
+    opacity: 1;
+    background: rgba(0,0,0,0.5);
+}
+.catalog-trailer-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
