@@ -3698,13 +3698,13 @@ article {
 #catalog-watch-btn.focused,
 .catalog-watch-btn.focused {
   box-shadow: 0 0 0 3px #ff8c00 !important;
-  background: rgba(255, 140, 0, 0.2) !important;
+  background: rgba(255, 255, 255, 0.22) !important;
 }
 
 #catalog-toggle-overview-btn.focused,
 .catalog-toggle-overview-btn.focused {
   box-shadow: 0 0 0 3px #ff8c00 !important;
-  background: rgba(255, 140, 0, 0.2) !important;
+  background: rgba(255, 255, 255, 0.22) !important;
 }
 
 #back-from-detail.focused,
