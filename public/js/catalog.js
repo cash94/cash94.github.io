@@ -384,9 +384,12 @@ function getCatalogItemSubtitle(item, details) {
     var parts = [];
     if (type) parts.push(type);
     if (year) parts.push(year);
-    if (safe) parts.push('<span class="match-score">' + safe + '</span>'); // Зеленый рейтинг как в Netflix
+    if (safe) parts.push(safe);
     if (genres[0]) parts.push(genres[0]);
-    return parts.join(' • ');
+    var txt = parts.join(' • ');
+    var el = getEl('detail-subtitle');
+    if (el) { el.textContent = txt; el.style.display = 'block'; }
+    return txt;
 }
 
 async function fetchCatalogItemMeta(item, mediaType) {
@@ -1086,123 +1089,119 @@ function setupDetailLayout(item, index, posterUrl) {
     pushDetailHistory(item);
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
-
-    var dv = getEl('detail-view');
-    var mc = getEl('main-container');
+    var dv = getEl('detail-view'), mc = getEl('main-container');
     var savedScroll = mc ? mc.scrollTop : 0;
     AppState.backupScroll = savedScroll;
-
     var oldP = document.querySelector('.detail-progress');
     if (oldP) oldP.remove();
-
-    // Создаем Hero-секцию в стиле Netflix, если её еще нет
-    var hero = getEl('catalog-detail-hero');
-    if (!hero) {
-        hero = document.createElement('div');
-        hero.id = 'catalog-detail-hero';
-        hero.className = 'catalog-detail-hero';
-        hero.innerHTML = `
-            <div id="catalog-detail-backdrop" class="catalog-detail-backdrop"></div>
-            <div class="back-btn" id="back-from-detail">
-                <i class="fi fi-rr-left"></i>
-            </div>
-            <div class="hero-content">
-                <h2 id="detail-title-text"></h2>
-                <div id="detail-subtitle" class="detail-subtitle"></div>
-                <div id="catalog-detail-overview" class="catalog-detail-overview"></div>
-                <div id="catalog-detail-actions" class="catalog-detail-actions">
-                    <button id="catalog-watch-btn" class="catalog-watch-btn">
-                        <i class="fi fi-rr-play"></i> Поиск торрентов
-                    </button>
-                </div>
-            </div>
-        `;
-        var extra = getEl('catalog-detail-extra');
-        if (extra) {
-            dv.insertBefore(hero, extra);
-            // Удаляем старый detail-header, если он остался, чтобы не дублировать
-            var oldHeader = dv.querySelector('.detail-header');
-            if (oldHeader) oldHeader.remove();
-        } else {
-            dv.appendChild(hero);
-        }
-    }
-
+    var dh = document.querySelector('.detail-header');
+    if (dh) dh.style.background = "rgba(255, 255, 255, 0.08)";
     var aw = getEl('catalog-detail-actors-wrap');
     var rw = getEl('catalog-detail-recommendations-wrap');
-    var tw = getEl('catalog-detail-trailers-wrap');
-
-    if (!aw) {
-        aw = document.createElement('div');
-        aw.id = 'catalog-detail-actors-wrap';
-        aw.className = 'catalog-detail-actors-wrap catalog-detail-section';
-        aw.innerHTML = '<div class="catalog-detail-section-title">В главных ролях</div><div id="catalog-detail-actors" class="catalog-detail-actors-grid"></div>';
-        dv.appendChild(aw);
+    if (!aw && getEl('catalog-detail-overview')) {
+        var c = document.createElement('div');
+        c.id = 'catalog-detail-actors-wrap';
+        c.className = 'catalog-detail-actors-wrap';
+        c.innerHTML = '<div class="catalog-detail-section-title">В главных ролях</div><div id="catalog-detail-actors" class="catalog-detail-actors-grid"></div>';
+        getEl('catalog-detail-overview').parentElement.insertAdjacentElement('afterend', c);
+        aw = c;
     }
-    if (!rw) {
-        rw = document.createElement('div');
-        rw.id = 'catalog-detail-recommendations-wrap';
-        rw.className = 'catalog-detail-recommendations-wrap catalog-detail-section';
-        rw.innerHTML = '<div class="catalog-detail-section-title">Похожие фильмы</div><div id="catalog-detail-recommendations" class="catalog-detail-recommendations-grid"></div>';
-        dv.appendChild(rw);
+    if (!rw && aw) {
+        var c = document.createElement('div');
+        c.id = 'catalog-detail-recommendations-wrap';
+        c.className = 'catalog-detail-recommendations-wrap';
+        c.innerHTML = '<div class="catalog-detail-section-title">Похожие фильмы</div><div id="catalog-detail-recommendations" class="catalog-detail-recommendations-grid"></div>';
+        aw.insertAdjacentElement('afterend', c);
+        rw = c;
     }
-    if (!tw) {
-        tw = document.createElement('div');
-        tw.id = 'catalog-detail-trailers-wrap';
-        tw.className = 'catalog-detail-trailers-wrap catalog-detail-section';
-        tw.innerHTML = '<div class="catalog-detail-section-title">Трейлеры</div><div id="catalog-detail-trailers" class="catalog-detail-trailers-grid"></div>';
-        dv.appendChild(tw);
-    }
-
-    return { dv: dv, mc: mc, aw: aw, rw: rw, tw: tw, savedScroll: savedScroll };
+    return { dv: dv, mc: mc, aw: aw, rw: rw, savedScroll: savedScroll };
 }
 
+/**
+ * Рендер шапки детального просмотра (постер, заголовок, фон)
+ */
 function renderDetailHeader(item, posterUrl, details) {
+    var pe = getEl('detail-poster');
     var te = getEl('detail-title-text');
     var se = getEl('detail-subtitle');
     var oe = getEl('catalog-detail-overview');
     var be = getEl('catalog-detail-backdrop');
-
     var title = getCatalogItemTitle(item);
     var mt = item.media_type || 'movie';
 
-    if (te) te.textContent = title;
+    te.textContent = title;
 
     if (se) {
-        se.innerHTML = getCatalogItemSubtitle(item, details || item);
-        se.style.display = 'flex';
+        se.textContent = getCatalogItemSubtitle(item);
+        se.classList.remove('hidden');
+        se.style.display = 'block';
     }
 
-    var fl = getEl('files-list');
-    if (fl) fl.style.display = 'none';
-
-    var cde = getEl('catalog-detail-extra');
-    if (cde) cde.classList.remove('hidden');
+    getEl('files-list').style.display = 'none';
+    getEl('catalog-detail-extra').classList.remove('hidden');
 
     if (oe) {
-        oe.textContent = (details && details.overview) || item.overview || 'Описание пока недоступно';
+        oe.textContent = 'Загрузка...';
+        oe.classList.remove('hidden');
         oe.style.display = 'block';
     }
 
-    var src = details || item || {};
-    var bp = src.backdrop_path || (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
+    var twInit = getEl('catalog-detail-trailers-wrap');
+    var te2Init = getEl('catalog-detail-trailers');
+    if (twInit) {
+        twInit.classList.add('hidden');
+        twInit.style.display = 'none';
+    }
+    if (te2Init) {
+        te2Init.classList.add('hidden');
+        te2Init.style.display = 'none';
+    }
 
-    if (bp && be) {
-        var imgUrl = bp.indexOf('http') === 0 ? bp : (AppState.protocol + '//tsimg.hnar.online/t/p/w1920' + bp);
-        be.style.backgroundImage = 'url("' + imgUrl + '")';
-        be.style.display = 'block';
-    } else {
-        // Fallback на постер, если нет фона
-        var pp = posterUrl || catalogState.posterCache.get(item.id + '_' + mt) || (src.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/w1920' + src.poster_path : '');
-        if (pp && be) {
-            be.style.backgroundImage = 'url("' + pp + '")';
-            be.style.display = 'block';
+    // Постер
+    var temp = posterUrl || catalogState.posterCache.get(item.id + '_' + mt) || '';
+    pe.innerHTML = temp
+        ? '<img src="' + temp + '" alt="poster">'
+        : '<div class="no-poster">Нет постера</div>';
+
+    updateCatalogWatchButton(title);
+
+    var src = details || item || {};
+
+    if (src.poster_path) {
+        var u = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + src.poster_path;
+        if (!temp || pe.innerHTML.indexOf('Нет постера') !== -1) {
+            pe.innerHTML = '<img src="' + u + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
         } else {
-            be.style.display = 'none';
+            catalogState.posterCache.set(item.id + '_' + mt, u);
+        }
+    } else if (src.image && (src.image.original || src.image.medium)) {
+        var u2 = src.image.original || src.image.medium;
+        if (!temp || pe.innerHTML.indexOf('Нет постера') !== -1) {
+            pe.innerHTML = '<img src="' + u2 + '" alt="poster" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'>Нет постера</div>\'">';
         }
     }
 
-    updateCatalogWatchButton(title);
+    if (se) {
+        se.textContent = getCatalogItemSubtitle(item, src);
+        se.classList.remove('hidden');
+        se.style.display = 'block';
+    }
+
+    if (oe) {
+        oe.textContent = src.overview || item.overview || 'Описание пока недоступно';
+        oe.classList.remove('hidden');
+        oe.style.display = 'block';
+    }
+
+    // Backdrop
+    var bp = src.backdrop_path || (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
+    if (bp) {
+        be.style.backgroundImage = 'url(' + (bp.indexOf('http') === 0 ? bp : AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.BACKDROP + bp) + ')';
+        be.classList.remove('hidden');
+    } else {
+        be.classList.add('hidden');
+        be.style.backgroundImage = '';
+    }
 }
 
 /**
@@ -1211,45 +1210,35 @@ function renderDetailHeader(item, posterUrl, details) {
 async function renderDetailActors(item, aw) {
     if (!aw) return;
     var ae = getEl('catalog-detail-actors');
-    if (!ae) return;
-
     ae.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>';
     aw.classList.remove('hidden');
-    aw.style.display = 'block';
-
     var actors = await fetchCatalogActors(item);
     if (actors.length > 0) {
         var frag = document.createDocumentFragment();
         actors.forEach(function (a) {
             var d = document.createElement('div');
             d.className = 'catalog-actor-card';
-            d.innerHTML =
-                '<div class="catalog-actor-photo">' +
-                (a.profilePath ? '<img src="' + AppState.protocol + '//tsimg.hnar.online/t/p/w185' + a.profilePath + '" loading="lazy" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') +
-                '</div>' +
-                '<div class="catalog-actor-info">' +
-                '<div class="catalog-actor-name">' + escapeHtml(a.name) + '</div>' +
-                '<div class="catalog-actor-character">' + escapeHtml(a.character || '') + '</div>' +
-                '</div>';
+            d.innerHTML = '<div class="catalog-actor-photo">' +
+                (a.profilePath ? '<img src="' + AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL + a.profilePath + '" loading="lazy" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') +
+                '</div><div class="catalog-actor-info"><div class="catalog-actor-name">' + escapeHtml(a.name) + '</div><div class="catalog-actor-character">' + escapeHtml(a.character || '') + '</div></div>';
             frag.appendChild(d);
         });
         ae.innerHTML = '';
         ae.appendChild(frag);
     } else {
-        aw.style.display = 'none';
+        ae.innerHTML = '<div class="catalog-empty">Актеры не найдены</div>';
     }
 }
 
+/**
+ * Рендер похожих фильмов
+ */
 function renderDetailRecommendations(src, rw, mt) {
     if (!rw) return;
     var re = getEl('catalog-detail-recommendations');
-    if (!re) return;
-
     if (src.recommendations && src.recommendations.length > 0) {
-        re.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка...</span></div>';
+        re.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка похожих фильмов...</span></div>';
         rw.classList.remove('hidden');
-        rw.style.display = 'block';
-
         var recs = src.recommendations.slice(0, CATALOG_CONSTANTS.MAX_RECOMMENDATIONS);
         var frag = document.createDocumentFragment();
         recs.forEach(function (r) {
@@ -1258,17 +1247,11 @@ function renderDetailRecommendations(src, rw, mt) {
             d.dataset.tmdbId = r.id;
             d.dataset.mediaType = mt;
             d.dataset.title = r.title || r.name || 'Без названия';
-
-            var pu = r.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/w185' + r.poster_path : null;
-            var rating = r.vote_average ? (Math.round(r.vote_average * 10) / 10) : null;
-
-            d.innerHTML =
-                '<div class="catalog-recommendation-poster">' +
+            var pu = r.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL + r.poster_path : null;
+            d.innerHTML = '<div class="catalog-recommendation-poster">' +
                 (pu ? '<img src="' + pu + '" loading="lazy" alt="' + escapeHtml(d.dataset.title) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-recommendation-no-poster\\\'> </div>\'">' : '<div class="catalog-recommendation-no-poster"> </div>') +
-                (rating ? '<div class="catalog-recommendation-rating">' + rating + '</div>' : '') +
-                '</div>' +
-                '<div class="catalog-recommendation-info">' +
-                '<div class="catalog-recommendation-title">' + escapeHtml(d.dataset.title) + '</div>' +
+                (r.vote_average ? '<div class="catalog-recommendation-rating">' + Math.round(r.vote_average * 10) / 10 + '</div>' : '') +
+                '</div><div class="catalog-recommendation-info"><div class="catalog-recommendation-title">' + escapeHtml(d.dataset.title) + '</div>' +
                 (r.release_date ? '<div class="catalog-recommendation-year">' + r.release_date.substring(0, 4) + '</div>' : '') +
                 '</div>';
             frag.appendChild(d);
@@ -1276,9 +1259,10 @@ function renderDetailRecommendations(src, rw, mt) {
         re.innerHTML = '';
         re.appendChild(frag);
     } else {
-        rw.style.display = 'none';
+        rw.classList.add('hidden');
     }
 }
+
 /**
  * Рендер трейлеров
  */
@@ -1288,41 +1272,36 @@ function renderDetailTrailers(src) {
             var t = (v.type || '').toLowerCase();
             return t.indexOf('trailer') !== -1 || t.indexOf('teaser') !== -1;
         }).slice(0, CATALOG_CONSTANTS.MAX_TRAILERS) : []);
-
     var tw = getEl('catalog-detail-trailers-wrap');
     var te2 = getEl('catalog-detail-trailers');
-
-    if (!tw || !te2) return;
-
     if (vids.length > 0) {
         tw.classList.remove('hidden');
         tw.style.display = 'block';
+
         te2.classList.remove('hidden');
-        te2.style.display = 'flex';
+        te2.style.display = 'grid';
+
         te2.classList.add('catalog-detail-trailers-grid');
         te2.classList.remove('catalog-detail-trailers-links');
-
+        te2.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:16px;padding:10px;';
         var frag = document.createDocumentFragment();
         vids.forEach(function (v) {
             var d = document.createElement('div');
             d.className = 'catalog-trailer-card-item';
             d.dataset.videoUrl = v.key;
             d.dataset.videoTitle = v.name || 'Трейлер';
-            d.innerHTML =
-                '<div class="catalog-trailer-poster">' +
-                '<img src="https://img.youtube.com/vi/' + v.key + '/mqdefault.jpg" alt="' + escapeHtml(v.name || 'Трейлер') + '" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'></div>\'">' +
-                '<div class="catalog-trailer-play-overlay"><div style="width:50px;height:50px;background:rgba(255,255,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;color:#000">▶</div></div>' +
-                (v.duration ? '<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:#fff;font-size:12px;padding:2px 6px;border-radius:4px;font-family:monospace">' + formatDuration(v.duration) + '</div>' : '') +
-                '</div>' +
-                '<div class="catalog-trailer-info">' +
-                '<div class="catalog-trailer-title">' + escapeHtml(v.name || 'Трейлер') + '</div>' +
-                '</div>';
+            d.innerHTML = '<div class="catalog-trailer-poster" style="position:relative;aspect-ratio:4/3;overflow:hidden;border-radius:12px;background:linear-gradient(135deg,#1a1a2e,#16213e)"><img src="https://img.youtube.com/vi/' + v.key + '/mqdefault.jpg" alt="' + escapeHtml(v.name || 'Трейлер') + '" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'></div>\'"><div class="catalog-trailer-play-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s;cursor:pointer"><div style="width:60px;height:60px;background:rgba(74,158,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;color:white">▶</div></div>' +
+                (v.duration ? '<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:white;font-size:12px;padding:3px 8px;border-radius:12px;font-family:monospace">' + formatDuration(v.duration) + '</div>' : '') +
+                '</div><div class="catalog-trailer-info hidden" style="padding:10px"><div class="catalog-trailer-title" style="font-size:14px;font-weight:600;color:#fff;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(v.name || 'Трейлер') + '</div><div class="catalog-trailer-meta" style="display:flex;gap:10px;font-size:12px;color:#aaa"><span>Трейлер</span>' + (v.duration ? '<span>⏱️ ' + formatDuration(v.duration) + '</span>' : '') + '</div></div>';
             frag.appendChild(d);
         });
         te2.innerHTML = '';
         te2.appendChild(frag);
     } else {
+        tw.classList.add('hidden');
         tw.style.display = 'none';
+        te2.classList.add('hidden');
+        te2.style.display = 'none';
     }
 }
 
@@ -1424,7 +1403,7 @@ function hideCatalogDetailView() {
 
 function updateCatalogWatchButton(t) {
     var b = getEl('catalog-watch-btn');
-    if (b) b.innerHTML = '<i class="fi fi-rr-play"></i> Поиск торрентов';
+    if (b) b.textContent = 'Поиск торрентов';
 }
 
 function onCatalogItemClick(item, index) {
