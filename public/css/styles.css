@@ -3489,7 +3489,7 @@ article {
 }
 .detail-title h2,
 #detail-title-text {
-    font-size: 30px !important;
+    font-size: 60px !important;
     font-weight: 700 !important;
     color: #fff !important;
     margin: 0 0 6px 0 !important;
@@ -3498,7 +3498,7 @@ article {
 }
 .detail-subtitle,
 #detail-subtitle {
-    font-size: 14px !important;
+    font-size: 25px !important;
     color: rgba(255,255,255,0.7) !important;
     margin: 0 !important;
     text-shadow: 0 1px 4px rgba(0,0,0,0.6);
