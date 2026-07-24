@@ -1130,34 +1130,44 @@ function renderDetailHeader(item, posterUrl, details) {
     var mt = item.media_type || 'movie';
 
     te.textContent = title;
+
     if (se) {
         se.textContent = getCatalogItemSubtitle(item);
         se.classList.remove('hidden');
         se.style.display = 'block';
     }
+
     getEl('files-list').style.display = 'none';
     getEl('catalog-detail-extra').classList.remove('hidden');
+
     if (oe) {
         oe.textContent = 'Загрузка...';
         oe.classList.remove('hidden');
         oe.style.display = 'block';
     }
+
     var twInit = getEl('catalog-detail-trailers-wrap');
     var te2Init = getEl('catalog-detail-trailers');
-    if (twInit) { twInit.classList.add('hidden'); twInit.style.display = 'none'; }
-    if (te2Init) { te2Init.classList.add('hidden'); te2Init.style.display = 'none'; }
-    getEl('catalog-detail-trailers-wrap').classList.add('hidden');
+    if (twInit) {
+        twInit.classList.add('hidden');
+        twInit.style.display = 'none';
+    }
+    if (te2Init) {
+        te2Init.classList.add('hidden');
+        te2Init.style.display = 'none';
+    }
 
-    // ★ ПЛЕЙСХОЛДЕР для постера (мгновенно, без сети)
+    // ★ Плейсхолдер для постера (мгновенно, без сети)
     var temp = posterUrl || catalogState.posterCache.get(item.id + '_' + mt) || '';
     pe.innerHTML = temp
         ? '<div class="catalog-poster-loading" style="width:100%;height:100%"></div>'
         : '<div class="no-poster">Нет постера</div>';
 
     updateCatalogWatchButton(title);
+
     var src = details || item || {};
 
-    // ★ ПОСТЕР через img.decode()
+    // ★ Постер через img.decode()
     var posterSrc = null;
     if (src.poster_path) {
         posterSrc = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + src.poster_path;
@@ -1177,13 +1187,14 @@ function renderDetailHeader(item, posterUrl, details) {
         se.classList.remove('hidden');
         se.style.display = 'block';
     }
+
     if (oe) {
         oe.textContent = src.overview || item.overview || 'Описание пока недоступно';
         oe.classList.remove('hidden');
         oe.style.display = 'block';
     }
 
-    // ★ BACKDROP через img.decode() (предзагрузка, потом CSS background)
+    // ★ Backdrop через img.decode()
     var bp = src.backdrop_path || (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
     if (bp) {
         var bpUrl = bp.indexOf('http') === 0 ? bp : AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.BACKDROP + bp;
@@ -1191,6 +1202,22 @@ function renderDetailHeader(item, posterUrl, details) {
     } else {
         be.classList.add('hidden');
         be.style.backgroundImage = '';
+    }
+
+    // ★ Кнопка «Подробнее» для описания
+    var actionsEl = getEl('catalog-detail-actions');
+    if (actionsEl && !getEl('catalog-toggle-overview-btn')) {
+        var togBtn = document.createElement('button');
+        togBtn.id = 'catalog-toggle-overview-btn';
+        togBtn.className = 'catalog-toggle-overview-btn';
+        togBtn.textContent = 'Подробнее';
+        togBtn.onclick = function () {
+            var ov = getEl('catalog-detail-overview');
+            if (!ov) return;
+            var exp = ov.classList.toggle('expanded');
+            togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
+        };
+        actionsEl.appendChild(togBtn);
     }
 }
 
