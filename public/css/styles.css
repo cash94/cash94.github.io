@@ -3361,7 +3361,7 @@ article {
 }
 
 /* ============================================================
-   NETFLIX-STYLE DETAIL VIEW  (v2 — компактный)
+   NETFLIX-STYLE DETAIL VIEW  (v3 — фикс скролла)
    ============================================================ */
 
 /* --- Backdrop --- */
@@ -3372,27 +3372,20 @@ article {
     z-index: 0 !important;
 }
 
-/* --- Градиент (sticky — не зависит от transform GSAP) --- */
-#detail-view::before {
-    content: '';
-    position: sticky;
-    top: 0;
-    display: block;
-    height: 100vh;
-    margin-bottom: -100vh;
-    background: linear-gradient(
+/* --- Градиент через background (НЕ ::before — не ломает скролл) --- */
+#detail-view {
+    background-color: #000 !important;
+    background-image: linear-gradient(
         to top,
         rgba(0,0,0,1) 0%,
         rgba(0,0,0,0.92) 12%,
         rgba(0,0,0,0.55) 35%,
         rgba(0,0,0,0.18) 60%,
         transparent 82%
-    );
-    z-index: 1;
-    pointer-events: none;
+    ) !important;
 }
 
-/* --- Контент поверх градиента --- */
+/* --- Контент поверх фона --- */
 #detail-view > .detail-header,
 #detail-view > .files-list {
     position: relative;
@@ -3426,7 +3419,7 @@ article {
 }
 
 /* ============================================================
-   HEADER — компактный, всё в одну строку
+   HEADER — компактный
    ============================================================ */
 .detail-header {
     display: flex !important;
@@ -3434,7 +3427,6 @@ article {
     gap: 18px;
     padding: 18px 48px !important;
     margin-bottom: 0 !important;
-    /* НИКАКОГО min-height — высота по контенту */
     background: transparent !important;
     border-radius: 0 !important;
     box-shadow: none !important;
@@ -3444,7 +3436,7 @@ article {
 /* Кнопка «Назад» — inline, слева от постера */
 #back-from-detail,
 .detail-header .back-btn {
-    position: relative !important;   /* НЕ absolute */
+    position: relative !important;
     top: auto !important;
     left: auto !important;
     margin: 0 4px 0 0 !important;
@@ -3466,7 +3458,7 @@ article {
     background: rgba(255,255,255,0.15) !important;
 }
 
-/* Постер — средний */
+/* Постер */
 .detail-poster {
     width: 130px !important;
     height: 195px !important;
@@ -3489,7 +3481,7 @@ article {
 }
 .detail-title h2,
 #detail-title-text {
-    font-size: 60px !important;
+    font-size: 30px !important;
     font-weight: 700 !important;
     color: #fff !important;
     margin: 0 0 6px 0 !important;
@@ -3498,14 +3490,14 @@ article {
 }
 .detail-subtitle,
 #detail-subtitle {
-    font-size: 25px !important;
+    font-size: 14px !important;
     color: rgba(255,255,255,0.7) !important;
     margin: 0 !important;
     text-shadow: 0 1px 4px rgba(0,0,0,0.6);
 }
 
 /* ============================================================
-   ОПИСАНИЕ — clamp 3 строки + кнопка «Подробнее»
+   ОПИСАНИЕ — clamp 3 строки
    ============================================================ */
 .catalog-detail-overview,
 #catalog-detail-overview {
@@ -3528,7 +3520,7 @@ article {
 }
 
 /* ============================================================
-   КНОПКИ: «Поиск торрентов» + «Подробнее»
+   КНОПКИ — единый стиль (полупрозрачные)
    ============================================================ */
 #catalog-detail-actions,
 .catalog-detail-actions {
@@ -3539,34 +3531,9 @@ article {
     margin-bottom: 8px;
 }
 
+/* Обе кнопки — одинаковый стиль */
 .catalog-watch-btn,
-#catalog-watch-btn {
-    display: inline-flex !important;
-    align-items: center;
-    gap: 8px;
-    background: #fff !important;
-    color: #000 !important;
-    border: none !important;
-    border-radius: 6px !important;
-    padding: 11px 28px !important;
-    font-size: 15px !important;
-    font-weight: 700 !important;
-    cursor: pointer;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
-    transition: background 0.2s, transform 0.15s;
-}
-.catalog-watch-btn:hover,
-#catalog-watch-btn:hover {
-    background: rgba(255,255,255,0.8) !important;
-    transform: scale(1.03);
-}
-.catalog-watch-btn::before,
-#catalog-watch-btn::before {
-    content: '▶';
-    font-size: 13px;
-}
-
-/* Кнопка «Подробнее» */
+#catalog-watch-btn,
 .catalog-toggle-overview-btn,
 #catalog-toggle-overview-btn {
     display: inline-flex !important;
@@ -3582,9 +3549,17 @@ article {
     cursor: pointer;
     transition: background 0.2s;
 }
+.catalog-watch-btn:hover,
+#catalog-watch-btn:hover,
 .catalog-toggle-overview-btn:hover,
 #catalog-toggle-overview-btn:hover {
     background: rgba(255,255,255,0.22) !important;
+}
+/* Иконка ▶ только у watch-кнопки */
+.catalog-watch-btn::before,
+#catalog-watch-btn::before {
+    content: '▶';
+    font-size: 12px;
 }
 
 /* ============================================================
@@ -3683,17 +3658,14 @@ article {
 }
 
 /* ============================================================
-   FOCUSED — ОРАНЖЕВЫЙ (как везде)
+   FOCUSED — ОРАНЖЕВЫЙ
    ============================================================ */
 #detail-view .focused {
     box-shadow: 0 0 0 3px #ff8c00 !important;
     border-radius: 8px;
 }
 #catalog-watch-btn.focused,
-.catalog-watch-btn.focused {
-    box-shadow: 0 0 0 3px #ff8c00, 0 4px 18px rgba(255,140,0,0.35) !important;
-    background: rgba(255,255,255,0.88) !important;
-}
+.catalog-watch-btn.focused,
 #catalog-toggle-overview-btn.focused,
 .catalog-toggle-overview-btn.focused {
     box-shadow: 0 0 0 3px #ff8c00 !important;
