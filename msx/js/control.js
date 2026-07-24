@@ -641,10 +641,11 @@ var ScreenStrategies = {
                 if (e.classList.contains('catalog-recommendation-card')) rc.push(e);
                 if (e.classList && e.classList.contains('file-item')) fi.push(e);
             }
-            var wb = getEl('catalog-watch-btn'), bb = getEl('back-from-detail'); var ovw = getEl('catalog-toggle-overview-btn');
+            var wb = getEl('catalog-watch-btn'), bb = getEl('back-from-detail'), dp = getEl('detail-progress-btn'); var ovw = getEl('catalog-toggle-overview-btn'); 
             var isT = f.classList.contains('catalog-trailer-play') || f.classList.contains('catalog-trailer-link') || f.classList.contains('catalog-trailer-card-item');
             var isA = f.classList.contains('catalog-actor-card'), isR = f.classList.contains('catalog-recommendation-card');
-            var isW = f.id === 'catalog-watch-btn', isOv = f.id === 'catalog-toggle-overview-btn', isB = f.id === 'back-from-detail', isF = f.classList && f.classList.contains('file-item'); 
+            var isW = f.id === 'catalog-watch-btn', isOv = f.id === 'catalog-toggle-overview-btn', isB = f.id === 'back-from-detail', isF = f.classList && f.classList.contains('file-item');
+            var isDp = f.id === 'detail-progress-btn'; 
             var ti = -1, ai = -1, ri = -1, fii = -1;
             for (var i = 0; i < tl.length; i++) if (f === tl[i]) { ti = i; break; }
             for (var i = 0; i < ac.length; i++) if (f === ac[i]) { ai = i; break; }
@@ -686,10 +687,17 @@ var ScreenStrategies = {
                 if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
                 return true;
             }
+            if (isDp) {
+                if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
+                if (dir === 'left') return true;
+                if (dir === 'right') return focusEl(ovw);
+                if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
+                return true;
+            }
             if (isOv) {
                 if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 if (dir === 'right') return true;
-                if (dir === 'left') return focusEl(wb);
+                if (dir === 'left') return focusEl(wb || dp);
                 if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
                 return true;
             }
