@@ -1202,6 +1202,20 @@ function renderDetailHeader(item, posterUrl, details) {
         be.classList.add('hidden');
         be.style.backgroundImage = '';
     }
+    var actionsEl = getEl('catalog-detail-actions');
+    if (actionsEl && !getEl('catalog-toggle-overview-btn')) {
+        var togBtn = document.createElement('button');
+        togBtn.id = 'catalog-toggle-overview-btn';
+        togBtn.className = 'catalog-toggle-overview-btn';
+        togBtn.textContent = 'Подробнее';
+        togBtn.onclick = function () {
+            var ov = getEl('catalog-detail-overview');
+            if (!ov) return;
+            var exp = ov.classList.toggle('expanded');
+            togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
+        };
+        actionsEl.appendChild(togBtn);
+    }
 }
 
 /**
