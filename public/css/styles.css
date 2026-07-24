@@ -3452,7 +3452,6 @@ article {
     display: flex !important;
     align-items: center;
     justify-content: center;
-    background: rgba(0,0,0,0.5) !important;
     border-radius: 50% !important;
     color: #fff !important;
     font-size: 18px;
