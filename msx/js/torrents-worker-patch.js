@@ -195,20 +195,20 @@
     // ==================== DOM-обновления из TMDB details ====================
     function _applyTmdbDetailsToDOM(details, elements) {
         // Backdrop
-        if (details.backdrop_path && elements.detailViewDiv) {
-            var bp = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
-            elements.detailViewDiv.style.backgroundImage = 'url(' + bp + ')';
-            elements.detailViewDiv.style.backgroundSize = 'cover';
-            elements.detailViewDiv.style.backgroundPosition = 'center';
-            elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
+        // if (details.backdrop_path && elements.detailViewDiv) {
+        //     var bp = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
+        //     elements.detailViewDiv.style.backgroundImage = 'url(' + bp + ')';
+        //     elements.detailViewDiv.style.backgroundSize = 'cover';
+        //     elements.detailViewDiv.style.backgroundPosition = 'center';
+        //     elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
 
-            if (!getEl('detail-backdrop-overlay')) {
-                var ov = document.createElement('div');
-                ov.id = 'detail-backdrop-overlay';
-                ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.08);box-shadow:0 4px 20px rgba(0,0,0,0.25);border-radius:14.89px;z-index:-1;';
-                elements.detailViewDiv.appendChild(ov);
-            }
-        }
+        //     if (!getEl('detail-backdrop-overlay')) {
+        //         var ov = document.createElement('div');
+        //         ov.id = 'detail-backdrop-overlay';
+        //         ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.08);box-shadow:0 4px 20px rgba(0,0,0,0.25);border-radius:14.89px;z-index:-1;';
+        //         elements.detailViewDiv.appendChild(ov);
+        //     }
+        // }
 
         // Overview
         if (details.overview) {
