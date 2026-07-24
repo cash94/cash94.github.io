@@ -3687,7 +3687,9 @@ article {
    FILES-LIST
    ============================================================ */
 .files-list {
-  padding: 0 48px !important;
+  padding: 10px 48px 14px 48px !important;
+  overflow-x: auto !important;
+  overflow-y: visible !important;
 }
 
 /* ============================================================
