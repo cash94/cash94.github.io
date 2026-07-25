@@ -649,18 +649,6 @@ async function getTmdbDetailsWithCache(tmdbId, mediaType) {
 function resetDetailBackground() {
     var detailView = getEl('detail-view');
     if (!detailView) return;
-    detailView.style.backgroundImage = '';
-    detailView.style.backgroundSize = '';
-    detailView.style.backgroundPosition = '';
-    detailView.style.backgroundRepeat = '';
-    detailView.style.backgroundColor = '#000000';
-    // очищаем внутренний слой фона
-    var innerBackdrop = getEl('catalog-detail-backdrop');
-    if (innerBackdrop) {
-        innerBackdrop.style.backgroundImage = '';
-        innerBackdrop.classList.add('hidden');
-    }
-    var existingOverlay = getEl('detail-backdrop-overlay'); if (existingOverlay) existingOverlay.remove();
     detailView.style.backgroundImage = ''; detailView.style.backgroundColor = '#000000';
     var existingOverlay = getEl('detail-backdrop-overlay'); if (existingOverlay) existingOverlay.remove();
     var detailSubtitle = getEl('detail-subtitle'); if (detailSubtitle) { detailSubtitle.textContent = ''; detailSubtitle.style.display = 'none'; }
@@ -850,46 +838,18 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
         getTmdbDetailsWithCache(tmdbId, mediaType).then(function (details) {
             if (details) {
                 // 1. Обработка фона (Backdrop)
-                // 1. Обработка фона (Backdrop) — фон теперь ВНУТРИ detail-view,
-                //    на слое catalog-detail-backdrop, а не на самом detail-view
                 if (details.backdrop_path && elements.detailViewDiv) {
                     var backdropPath = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
-
-                    // очищаем фон с самого detail-view
-                    elements.detailViewDiv.style.backgroundImage = '';
-                    elements.detailViewDiv.style.backgroundSize = '';
-                    elements.detailViewDiv.style.backgroundPosition = '';
-                    elements.detailViewDiv.style.backgroundRepeat = '';
-                    // изолированный контекст наложения: без него внутренний слой
-                    // с z-index:-1 провалится ПОД собственный фон родителя
-                    elements.detailViewDiv.style.isolation = 'isolate';
-
-                    // внутренний слой фона
-                    var innerBackdrop = getEl('catalog-detail-backdrop');
-                    if (!innerBackdrop) {
-                        innerBackdrop = document.createElement('div');
-                        innerBackdrop.id = 'catalog-detail-backdrop';
-                        elements.detailViewDiv.insertBefore(innerBackdrop, elements.detailViewDiv.firstChild);
-                    }
-                    innerBackdrop.style.position = 'absolute';
-                    innerBackdrop.style.top = '0';
-                    innerBackdrop.style.left = '0';
-                    innerBackdrop.style.right = '0';
-                    innerBackdrop.style.bottom = '0';
-                    innerBackdrop.style.zIndex = '-1';
-                    innerBackdrop.style.pointerEvents = 'none';
-                    innerBackdrop.style.backgroundSize = 'cover';
-                    innerBackdrop.style.backgroundPosition = 'center';
-                    innerBackdrop.style.backgroundRepeat = 'no-repeat';
-                    innerBackdrop.style.backgroundImage = 'url(' + backdropPath + ')';
-                    innerBackdrop.classList.remove('hidden');
-                    innerBackdrop.style.display = '';
+                    elements.detailViewDiv.style.backgroundImage = 'url(' + backdropPath + ')';
+                    elements.detailViewDiv.style.backgroundSize = 'cover';
+                    elements.detailViewDiv.style.backgroundPosition = 'center';
+                    elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
 
                     var existingOverlay = getEl('detail-backdrop-overlay');
                     if (!existingOverlay && elements.detailViewDiv) {
                         var overlay = document.createElement('div');
                         overlay.id = 'detail-backdrop-overlay';
-                        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.08);box-shadow:0 4px 20px rgba(0,0,0,0.25);border-radius:14.89px;z-index:-1;pointer-events:none;';
+                        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.08);box-shadow:0 4px 20px rgba(0,0,0,0.25);border-radius:14.89px;z-index:-1;';
                         elements.detailViewDiv.appendChild(overlay);
                     }
                 }
@@ -935,74 +895,44 @@ function updateFileItemStill(fileItem, stillImage) {
 
 function updateDetailMetaInfo(tmdbData) {
     var metaContainer = getEl('catalog-detail-meta');
-    var metaParts = []; // текстовая копия меты для detail-subtitle
+    if (!metaContainer) return;
 
-    if (metaContainer) metaContainer.innerHTML = '';
+    metaContainer.innerHTML = '';
 
     // Год
     if (tmdbData.release_date || tmdbData.first_air_date) {
         var year = (tmdbData.release_date || tmdbData.first_air_date).substring(0, 4);
-        if (metaContainer) {
-            var yearChip = document.createElement('div');
-            yearChip.className = 'catalog-meta-chip';
-            yearChip.textContent = year;
-            metaContainer.appendChild(yearChip);
-        }
-        metaParts.push(year);
+        var yearChip = document.createElement('div');
+        yearChip.className = 'catalog-meta-chip';
+        yearChip.textContent = year;
+        metaContainer.appendChild(yearChip);
     }
-
     // Рейтинг
     if (tmdbData.vote_average) {
-        var ratingText = '⭐ ' + tmdbData.vote_average.toFixed(1);
-        if (metaContainer) {
-            var ratingChip = document.createElement('div');
-            ratingChip.className = 'catalog-meta-chip';
-            ratingChip.textContent = ratingText;
-            metaContainer.appendChild(ratingChip);
-        }
-        metaParts.push(ratingText);
+        var ratingChip = document.createElement('div');
+        ratingChip.className = 'catalog-meta-chip';
+        ratingChip.textContent = '⭐ ' + tmdbData.vote_average.toFixed(1);
+        metaContainer.appendChild(ratingChip);
     }
-
     // Тип контента
-    var typeLabel = (tmdbData.media_type === 'tv' || tmdbData.number_of_seasons !== undefined) ? 'Сериал' : 'Фильм';
-    if (metaContainer) {
-        var typeChip = document.createElement('div');
-        typeChip.className = 'catalog-meta-chip';
-        typeChip.textContent = typeLabel;
-        metaContainer.appendChild(typeChip);
-    }
-    metaParts.push(typeLabel);
-
+    var typeChip = document.createElement('div');
+    typeChip.className = 'catalog-meta-chip';
+    typeChip.textContent = (tmdbData.media_type === 'tv' || tmdbData.number_of_seasons !== undefined) ? 'Сериал' : 'Фильм';
+    metaContainer.appendChild(typeChip);
     // Жанры
     if (tmdbData.genres && Array.isArray(tmdbData.genres)) {
         var genresLen = Math.min(tmdbData.genres.length, 3);
-        var genreNames = [];
         for (var i = 0; i < genresLen; i++) {
-            if (metaContainer) {
-                var genreChip = document.createElement('div');
-                genreChip.className = 'catalog-meta-chip';
-                genreChip.textContent = tmdbData.genres[i].name;
-                metaContainer.appendChild(genreChip);
-            }
-            genreNames.push(tmdbData.genres[i].name);
+            var genreChip = document.createElement('div');
+            genreChip.className = 'catalog-meta-chip';
+            genreChip.textContent = tmdbData.genres[i].name;
+            metaContainer.appendChild(genreChip);
         }
-        if (genreNames.length) metaParts.push(genreNames.join(', '));
     }
 
-    // catalog-detail-meta ВСЕГДА скрыт
-    if (metaContainer) metaContainer.classList.add('hidden');
-
-    // Дублируем мету в detail-subtitle (строка над описанием)
-    var detailSubtitle = getEl('detail-subtitle');
-    if (detailSubtitle && metaParts.length) {
-        var oldMetaLine = detailSubtitle.querySelector('.detail-subtitle-meta');
-        if (oldMetaLine) oldMetaLine.remove();
-        var metaLine = document.createElement('div');
-        metaLine.className = 'detail-subtitle-meta';
-        metaLine.textContent = metaParts.join('  •  ');
-        detailSubtitle.insertBefore(metaLine, detailSubtitle.firstChild);
-        detailSubtitle.style.display = 'block';
-        detailSubtitle.classList.remove('hidden');
+    // Если мы добавили хотя бы один чип, показываем контейнер
+    if (metaContainer.children.length > 0) {
+        metaContainer.classList.remove('hidden');
     }
 }
 
@@ -1429,10 +1359,13 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
     var poster = window.pendingCatalogPoster || null;
     if (!poster && searchResult) poster = await tmdb.findPosterFromSearchResult(searchResult);
     var torrname = '';
-    if (AppState.mediaType === 'tv' && searchResult && searchResult.seasons && searchResult.seasons.length > 0) {
+    //if (AppState.mediaType === 'tv' && searchResult && searchResult.seasons && searchResult.seasons.length > 0) {
+    if (searchResult && searchResult.seasons && searchResult.seasons.length > 0) {
         var seasons = searchResult.seasons;
+        AppState.mediaType = 'tv'; 
         torrname = `[${catalogState.lastSelectedId}] ${searchResult.name} [сезон ${seasons.length > 1 ? seasons[0] + '-' + seasons[seasons.length - 1] : seasons[0]}]`;
     } else {
+        AppState.mediaType = 'movie'; 
         torrname = `[${catalogState.lastSelectedId}] ${searchResult ? searchResult.name : 'Без названия'}`;
     }
     var requestBody = { action: 'add', link: magnet, title: torrname, save_to_db: AppState.addToDbEnabled };
@@ -1642,43 +1575,120 @@ function getRatingColor(rating) { if (rating >= 8) return '#4caf50'; if (rating 
 function showGlobalSearchResults() { renderFilteredGlobalResults(globalSearchResults); }
 
 function renderFilteredGlobalResults(results) {
-    var searchResultsDiv = getEl('search-results'); var searchOverlay = getEl('search-overlay'); if (!searchResultsDiv) return;
+    var searchResultsDiv = getEl('search-results');
+    var searchOverlay = getEl('search-overlay');
+    if (!searchResultsDiv) return;
     if (searchOverlay) searchOverlay.classList.remove('hidden');
+
     if (results.length === 0) {
-        searchResultsDiv.innerHTML = `<div class="filter-stats">Всего найдено: <span>0</span></div><div class="search-result-empty">${currentSearchQuery ? 'Ничего не найдено для "' + escapeHtml(currentSearchQuery) + '" в TMDB' : 'Введите запрос для поиска'}</div>`;
+        searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>0</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Ничего не найдено для "' + escapeHtml(currentSearchQuery) + '" в TMDB' : 'Введите запрос для поиска') + '</div>';
         return;
     }
-    var html = `<div class="filter-stats">Найдено в TMDB: <span>${results.length}</span></div><div class="global-search-grid" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; padding: 20px 0;">`;
-    for (var idx = 0; idx < results.length; idx++) {
+
+    // Ограничиваем рендер, чтобы не вешать DOM на слабых ТВ
+    var limit = Math.min(results.length, 40);
+    searchResultsDiv.innerHTML = ''; // Очищаем безопасно
+
+    var statsDiv = document.createElement('div');
+    statsDiv.className = 'filter-stats';
+    statsDiv.innerHTML = 'Найдено в TMDB: <span>' + results.length + '</span>' + (results.length > limit ? ' (показано ' + limit + ')' : '');
+    searchResultsDiv.appendChild(statsDiv);
+
+    var grid = document.createElement('div');
+    grid.className = 'global-search-grid';
+    grid.style.cssText = 'display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; padding: 20px 0;';
+
+    var fragment = document.createDocumentFragment();
+
+    for (var idx = 0; idx < limit; idx++) {
         var result = results[idx];
         var title = result.title || result.name || 'Без названия';
         var yearStr = (result.release_date || result.first_air_date) ? new Date(result.release_date || result.first_air_date).getFullYear() : 'N/A';
         var mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
         var rating = result.vote_average ? result.vote_average.toFixed(1) : null;
         var posterUrl = result.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/w342' + result.poster_path : null;
-        html += `
-            <div class="global-search-card" data-tmdb-id="${result.id}" data-media-type="${result.media_type}" style="background: rgba(30, 30, 40, 0.9); border-radius: 12px; overflow: hidden; cursor: pointer; border: 1px solid rgba(74, 158, 255, 0.3);">
-                <div class="global-search-poster" style="position: relative; aspect-ratio: 2/3; overflow: hidden; background: linear-gradient(135deg, #1a1a2e, #16213e);">
-                    ${posterUrl ? `<img src="${posterUrl}" alt="${escapeHtml(title)}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.parentElement.innerHTML='<div style=\\'display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;\\'>🎬</div>'">` : `<div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">${mediaType}</div>`}
-                    ${rating ? `<div style="position: absolute; top: 8px; right: 8px; background: rgba(0, 0, 0, 0.8); color: ${getRatingColor(parseFloat(rating))}; font-weight: bold; font-size: 12px; padding: 4px 8px; border-radius: 12px; border: 1px solid ${getRatingColor(parseFloat(rating))};">${rating}</div>` : ''}
-                </div>
-                <div class="global-search-info" style="padding: 12px;">
-                    <div class="global-search-title" style="font-weight: 600; font-size: 14px; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(title)}</div>
-                    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #aaa;"><span>${mediaType}</span><span>${yearStr}</span></div>
-                </div>
-            </div>
-        `;
-    }
-    html += '</div>';
-    searchResultsDiv.innerHTML = html;
 
-    // Делегирование событий
-    searchResultsDiv.onclick = async function (e) {
+        var card = document.createElement('div');
+        card.className = 'global-search-card';
+        card.dataset.tmdbId = result.id;
+        card.dataset.mediaType = result.mediaType;
+        card.style.cssText = 'background: rgba(30, 30, 40, 0.9); border-radius: 12px; overflow: hidden; cursor: pointer; border: 1px solid rgba(74, 158, 255, 0.3);';
+
+        var posterDiv = document.createElement('div');
+        posterDiv.className = 'global-search-poster';
+        posterDiv.style.cssText = 'position: relative; aspect-ratio: 2/3; overflow: hidden; background: linear-gradient(135deg, #1a1a2e, #16213e);';
+
+        if (posterUrl) {
+            var img = document.createElement('img');
+            img.dataset.src = posterUrl; // Картинка не грузится сразу!
+            img.alt = title;
+            img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.3s;';
+            img.className = 'lazy-poster';
+            posterDiv.appendChild(img);
+        } else {
+            posterDiv.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">' + mediaType + '</div>';
+        }
+
+        if (rating) {
+            var ratingDiv = document.createElement('div');
+            ratingDiv.style.cssText = 'position: absolute; top: 8px; right: 8px; background: rgba(0, 0, 0, 0.8); color: ' + getRatingColor(parseFloat(rating)) + '; font-weight: bold; font-size: 12px; padding: 4px 8px; border-radius: 12px; border: 1px solid ' + getRatingColor(parseFloat(rating)) + ';';
+            ratingDiv.textContent = rating;
+            posterDiv.appendChild(ratingDiv);
+        }
+
+        var infoDiv = document.createElement('div');
+        infoDiv.className = 'global-search-info';
+        infoDiv.style.cssText = 'padding: 12px;';
+        infoDiv.innerHTML = '<div class="global-search-title" style="font-weight: 600; font-size: 14px; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + escapeHtml(title) + '</div>' +
+            '<div style="display: flex; justify-content: space-between; font-size: 12px; color: #aaa;"><span>' + mediaType + '</span><span>' + yearStr + '</span></div>';
+
+        card.appendChild(posterDiv);
+        card.appendChild(infoDiv);
+        fragment.appendChild(card);
+    }
+
+    grid.appendChild(fragment);
+    searchResultsDiv.appendChild(grid);
+
+    // IntersectionObserver для ленивой загрузки картинок (поддерживается в Chrome 51+)
+    if ('IntersectionObserver' in window) {
+        var lazyImages = grid.querySelectorAll('.lazy-poster');
+        var imageObserver = new IntersectionObserver(function (entries, observer) {
+            entries.forEach(function (entry) {
+                if (entry.isIntersecting) {
+                    var img = entry.target;
+                    img.src = img.dataset.src;
+                    img.onload = function () { img.style.opacity = '1'; };
+                    img.onerror = function () {
+                        img.parentElement.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">🎬</div>';
+                    };
+                    observer.unobserve(img);
+                }
+            });
+        }, {
+            rootMargin: '300px 0px' // Начинаем грузить за 300px до появления на экране
+        });
+
+        lazyImages.forEach(function (img) { imageObserver.observe(img); });
+    } else {
+        // Фоллбэк для совсем старых браузеров
+        var lazyImages = grid.querySelectorAll('.lazy-poster');
+        lazyImages.forEach(function (img) {
+            img.src = img.dataset.src;
+            img.onload = function () { img.style.opacity = '1'; };
+        });
+    }
+
+    // Делегирование клика (вешается на grid, а не на каждую карточку)
+    grid.onclick = function (e) {
         var card = e.target.closest('.global-search-card');
         if (card) {
             var tmdbId = card.dataset.tmdbId;
-            var result = results.find(r => String(r.id) === tmdbId);
-            if (result) { AppState.isSearch = true; await showGlobalSearchDetail(result); }
+            var result = results.find(function (r) { return String(r.id) === tmdbId; });
+            if (result) {
+                AppState.isSearch = true;
+                showGlobalSearchDetail(result);
+            }
         }
     };
 }
