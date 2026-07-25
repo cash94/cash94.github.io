@@ -641,11 +641,10 @@ var ScreenStrategies = {
                 if (e.classList.contains('catalog-recommendation-card')) rc.push(e);
                 if (e.classList && e.classList.contains('file-item')) fi.push(e);
             }
-            var wb = getEl('catalog-watch-btn'), bb = getEl('back-from-detail'), dp = getEl('detail-progress-btn'); var ovw = getEl('catalog-toggle-overview-btn');
+            var wb = getEl('catalog-watch-btn'), bb = getEl('back-from-detail'); var ovw = getEl('catalog-toggle-overview-btn');
             var isT = f.classList.contains('catalog-trailer-play') || f.classList.contains('catalog-trailer-link') || f.classList.contains('catalog-trailer-card-item');
             var isA = f.classList.contains('catalog-actor-card'), isR = f.classList.contains('catalog-recommendation-card');
-            var isW = f.id === 'catalog-watch-btn', isOv = f.id === 'catalog-toggle-overview-btn', isB = f.id === 'back-from-detail', isF = f.classList && f.classList.contains('file-item');
-            var isDp = f.id === 'detail-progress-btn';
+            var isW = f.id === 'catalog-watch-btn', isOv = f.id === 'catalog-toggle-overview-btn', isB = f.id === 'back-from-detail', isF = f.classList && f.classList.contains('file-item'); 
             var ti = -1, ai = -1, ri = -1, fii = -1;
             for (var i = 0; i < tl.length; i++) if (f === tl[i]) { ti = i; break; }
             for (var i = 0; i < ac.length; i++) if (f === ac[i]) { ai = i; break; }
@@ -669,34 +668,15 @@ var ScreenStrategies = {
             if (isA && ai !== -1) {
                 if (dir === 'left') return focusEl(ac[Math.max(0, ai - 1)] || f, { direction: 'left' });
                 if (dir === 'right') return focusEl(ac[Math.min(ac.length - 1, ai + 1)] || f, { direction: 'right' });
-                if (dir === 'up') {
-                    // ★ Приоритет: трейлеры → watch-btn → progress-btn → предыдущий элемент
-                    if (tl.length > 0) { focusEl(tl[tl.length - 1], { direction: 'up' }); return true; }
-                    if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; }
-                    if (dp && dp.offsetParent !== null) { focusEl(dp, { direction: 'up' }); return true; }
-                    return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' });
-                }
-                if (dir === 'down') {
-                    if (rc.length > 0) { var t = ai < rc.length ? ai : rc.length - 1; focusEl(rc[t], { direction: 'down' }); return true; }
-                    else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; }
-                    return true;
-                }
+                if (dir === 'up') { if (tl.length > 0) { focusEl(tl[tl.length - 1], { direction: 'up' }); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
+                if (dir === 'down') { if (rc.length > 0) { var t = ai < rc.length ? ai : rc.length - 1; focusEl(rc[t], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 return true;
             }
             if (isR && ri !== -1) {
                 if (dir === 'left') return focusEl(rc[Math.max(0, ri - 1)] || f, { direction: 'left' });
                 if (dir === 'right') return focusEl(rc[Math.min(rc.length - 1, ri + 1)] || f, { direction: 'right' });
-                if (dir === 'up') {
-                    if (ac.length > 0) { var t = ri < ac.length ? ri : ac.length - 1; focusEl(ac[t], { direction: 'up' }); return true; }
-                    else if (tl.length > 0) { var t2 = ri < tl.length ? ri : tl.length - 1; focusEl(tl[t2], { direction: 'up' }); return true; }
-                    else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; }
-                    else if (dp && dp.offsetParent !== null) { focusEl(dp, { direction: 'up' }); return true; }
-                    return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' });
-                }
-                if (dir === 'down') {
-                    if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; }
-                    return true;
-                }
+                if (dir === 'up') { if (ac.length > 0) { var t = ri < ac.length ? ri : ac.length - 1; focusEl(ac[t], { direction: 'up' }); return true; } else if (tl.length > 0) { var t = ri < tl.length ? ri : tl.length - 1; focusEl(tl[t], { direction: 'up' }); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
+                if (dir === 'down') { if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 return true;
             }
             if (isW) {
@@ -706,38 +686,10 @@ var ScreenStrategies = {
                 if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
                 return true;
             }
-            if (isDp) {
-                if (dir === 'down') {
-                    if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; }
-                    else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; }
-                    else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; }
-                    else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; }
-                    return true;
-                }
-                if (dir === 'left') return true;
-                if (dir === 'right') {
-                    // ★ Проверяем, что кнопка существует и видима
-                    if (ovw && ovw.offsetParent !== null) { focusEl(ovw, { direction: 'right' }); return true; }
-                    return true;
-                }
-                if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
-                return true;
-            }
             if (isOv) {
-                if (dir === 'down') {
-                    if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; }
-                    else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; }
-                    else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; }
-                    else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; }
-                    return true;
-                }
+                if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 if (dir === 'right') return true;
-                if (dir === 'left') {
-                    // ★ Возврат на watch-btn ИЛИ progress-btn
-                    if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'left' }); return true; }
-                    if (dp && dp.offsetParent !== null) { focusEl(dp, { direction: 'left' }); return true; }
-                    return true;
-                }
+                if (dir === 'left') return focusEl(wb);
                 if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
                 return true;
             }
@@ -1453,27 +1405,28 @@ function clearOkHold() { if (okHoldTimer) { clearTimeout(okHoldTimer); okHoldTim
 
 function isElementFullyVisible(el, container) {
     if (!el || !container) return true;
+
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
 
+    // Определяем тип контейнта
     var isH = container.id === 'files-list' ||
         container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap';
 
     if (isH) {
-        var hp = 30;
-        // ★ Для files-list проверяем ТОЛЬКО горизонтальную видимость
-        if (container.id === 'files-list') {
-            return r.left >= cr.left + hp && r.right <= cr.right - hp;
-        }
-        // Для wrap-контейнеров проверяем и горизонталь, и вертикаль
-        var vp = 50;
+        // Для горизонтальных списков проверяем горизонтальную И вертикальную видимость
+        var hp = 30;  // горизонтальный отступ от краёв контейнера
+        var vp = 50;  // вертикальный отступ от краёв экрана
+
         var isHorizVisible = r.left >= cr.left + hp && r.right <= cr.right - hp;
         var isVertVisible = r.top >= vp && r.bottom <= (window.innerHeight - vp);
+
         return isHorizVisible && isVertVisible;
     }
 
+    // Для вертикальных списков проверяем вертикальную видимость
     return r.top >= cr.top + 20 && r.bottom <= cr.bottom - 20 &&
         r.left >= cr.left + 20 && r.right <= cr.right - 20;
 }
@@ -1498,18 +1451,24 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             con = container.id.replace('-wrap', '');
             con = getEl(con);
         } else {
-            con = container; // files-list
+            con = container;
         }
 
-        var hp = 30;
+        // НАПРАВЛЕННЫЙ СКРОЛЛ: позиционируем элемент в зависимости от направления
+        var hp = 30; // Горизонтальный отступ
         var targetLeft;
+
         if (direction === 'left') {
+            // Двигаемся влево → элемент должен появиться у левого края видимой области
             targetLeft = con.scrollLeft + (r.left - cr.left) - hp;
         } else if (direction === 'right') {
+            // Двигаемся вправо → элемент должен появиться у правого края видимой области
             targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width - r.width - hp);
         } else {
+            // По умолчанию (up/down/без направления) → центрируем
             targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
         }
+
         targetLeft = Math.max(0, targetLeft);
         var needsHScroll = Math.abs(con.scrollLeft - targetLeft) > 10;
 
@@ -1529,47 +1488,53 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             }
         }
 
-        // ★ Вертикальный скролл detail-view — ТОЛЬКО для wrap-контейнеров, НЕ для files-list
-        if (container.id !== 'files-list') {
-            var detailView = getEl('detail-view');
-            if (detailView) {
-                var containerRect = container.getBoundingClientRect();
-                var detailRect = detailView.getBoundingClientRect();
-                var detailScrollTop = detailView.scrollTop;
-                var containerTopRelative = containerRect.top - detailRect.top + detailScrollTop;
-                var containerBottomRelative = containerTopRelative + containerRect.height;
-                var detailViewportTop = detailView.scrollTop;
-                var detailViewportBottom = detailViewportTop + detailRect.height;
-                var needsVertScroll = false;
-                var targetScrollTop = detailView.scrollTop;
+        // Вертикальный скролл detail-view (для wrap-контейнеров)
+        var detailView = getEl('detail-view');
+        if (detailView) {
+            var containerRect = container.getBoundingClientRect();
+            var detailRect = detailView.getBoundingClientRect();
+            var detailScrollTop = detailView.scrollTop;
+            var containerTopRelative = containerRect.top - detailRect.top + detailScrollTop;
+            var containerBottomRelative = containerTopRelative + containerRect.height;
+            var detailViewportTop = detailView.scrollTop;
+            var detailViewportBottom = detailViewportTop + detailRect.height;
+            var needsVertScroll = false;
+            var targetScrollTop = detailView.scrollTop;
 
-                if (containerTopRelative < detailViewportTop + 50) {
-                    targetScrollTop = direction === 'up'
-                        ? Math.max(0, containerTopRelative - 30)
-                        : Math.max(0, containerTopRelative - 50);
-                    needsVertScroll = true;
-                } else if (containerBottomRelative > detailViewportBottom - 50) {
-                    targetScrollTop = direction === 'down'
-                        ? Math.max(0, containerBottomRelative - detailRect.height + 30)
-                        : Math.max(0, containerBottomRelative - detailRect.height + 50);
-                    needsVertScroll = true;
+            // НАПРАВЛЕННЫЙ ВЕРТИКАЛЬНЫЙ СКРОЛЛ
+            if (containerTopRelative < detailViewportTop + 50) {
+                if (direction === 'up') {
+                    // Двигаемся вверх → элемент прижимаем к верху
+                    targetScrollTop = Math.max(0, containerTopRelative - 30);
+                } else {
+                    targetScrollTop = Math.max(0, containerTopRelative - 50);
                 }
+                needsVertScroll = true;
+            } else if (containerBottomRelative > detailViewportBottom - 50) {
+                if (direction === 'down') {
+                    // Двигаемся вниз → элемент прижимаем к низу
+                    targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 30);
+                } else {
+                    targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 50);
+                }
+                needsVertScroll = true;
+            }
 
-                if (needsVertScroll) {
-                    targetScrollTop = Math.max(0, Math.min(targetScrollTop, detailView.scrollHeight - detailRect.height));
-                    if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                        gsap.killTweensOf(detailView);
-                        gsap.to(detailView, {
-                            scrollTo: { y: targetScrollTop },
-                            duration: 0.15,
-                            ease: "power1.out",
-                            overwrite: true
-                        });
-                    } else if (smooth) {
-                        detailView.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-                    } else {
-                        detailView.scrollTop = targetScrollTop;
-                    }
+            if (needsVertScroll) {
+                targetScrollTop = Math.max(0, Math.min(targetScrollTop, detailView.scrollHeight - detailRect.height));
+                if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
+                    gsap.killTweensOf(detailView);
+                    gsap.to(detailView, {
+                        scrollTo: { y: targetScrollTop },
+                        duration: 0.15,
+                        backgroundColor: 'rgb(0, 0, 0)',
+                        ease: "power1.out",
+                        overwrite: true
+                    });
+                } else if (smooth) {
+                    detailView.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+                } else {
+                    detailView.scrollTop = targetScrollTop;
                 }
             }
         }
