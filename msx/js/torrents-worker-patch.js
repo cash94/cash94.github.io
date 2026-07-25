@@ -195,42 +195,17 @@
     // ==================== DOM-обновления из TMDB details ====================
     function _applyTmdbDetailsToDOM(details, elements) {
         // Backdrop
-        // 1. Обработка фона (Backdrop) — фон ВНУТРИ detail-view, на слое catalog-detail-backdrop
         if (details.backdrop_path && elements.detailViewDiv) {
             var bp = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
-
-            // очищаем фон с самого detail-view
-            elements.detailViewDiv.style.backgroundImage = '';
-            elements.detailViewDiv.style.backgroundSize = '';
-            elements.detailViewDiv.style.backgroundPosition = '';
-            elements.detailViewDiv.style.backgroundRepeat = '';
-            elements.detailViewDiv.style.isolation = 'isolate';
-
-            // внутренний слой фона
-            var innerBackdrop = getEl('catalog-detail-backdrop');
-            if (!innerBackdrop) {
-                innerBackdrop = document.createElement('div');
-                innerBackdrop.id = 'catalog-detail-backdrop';
-                elements.detailViewDiv.insertBefore(innerBackdrop, elements.detailViewDiv.firstChild);
-            }
-            innerBackdrop.style.position = 'absolute';
-            innerBackdrop.style.top = '0';
-            innerBackdrop.style.left = '0';
-            innerBackdrop.style.right = '0';
-            innerBackdrop.style.bottom = '0';
-            innerBackdrop.style.zIndex = '-1';
-            innerBackdrop.style.pointerEvents = 'none';
-            innerBackdrop.style.backgroundSize = 'cover';
-            innerBackdrop.style.backgroundPosition = 'center';
-            innerBackdrop.style.backgroundRepeat = 'no-repeat';
-            innerBackdrop.style.backgroundImage = 'url(' + bp + ')';
-            innerBackdrop.classList.remove('hidden');
-            innerBackdrop.style.display = '';
+            elements.detailViewDiv.style.backgroundImage = 'url(' + bp + ')';
+            elements.detailViewDiv.style.backgroundSize = 'cover';
+            elements.detailViewDiv.style.backgroundPosition = 'center';
+            elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
 
             if (!getEl('detail-backdrop-overlay')) {
                 var ov = document.createElement('div');
                 ov.id = 'detail-backdrop-overlay';
-                ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.08);box-shadow:0 4px 20px rgba(0,0,0,0.25);border-radius:14.89px;z-index:-1;pointer-events:none;';
+                ov.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.08);box-shadow:0 4px 20px rgba(0,0,0,0.25);border-radius:14.89px;z-index:-1;';
                 elements.detailViewDiv.appendChild(ov);
             }
         }
