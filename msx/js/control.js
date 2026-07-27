@@ -689,7 +689,10 @@ var ScreenStrategies = {
             }
             if (isOv) {
                 if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
-                if (dir === 'right') return focusEl(rut);
+                if (dir === 'right') {
+                    if (VISIBLE(rut)) return focusEl(rut);
+                    return true;
+                }
                 if (dir === 'left') return focusEl(wb);
                 if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
                 return true;
