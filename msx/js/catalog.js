@@ -1458,7 +1458,7 @@ function startTrailerBackground(url) {
     video.loop = true;
     video.autoplay = true;
     video.playsInline = true;
-    video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;transition:opacity 2s ease;';
+    video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;transition:opacity 6s ease;';
 
     var backdrop = getEl('catalog-detail-backdrop');
     var cde = getEl('catalog-detail-extra');
