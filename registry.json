@@ -2,10 +2,10 @@
   "modules": {
     "rutube-proxy": {
       "name": "rutube-proxy",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "description": "Прокси для RuTube API с cookie",
       "url": "https://cash94.github.io/torrstream-modules/rutube-proxy/module.js",
-      "sha256": "9f77034b1eb57d24f21ac7deb65c9cc99f63b72775e311f1f280ab2b6c2e06a2"
+      "sha256": "206620a657f1ccc8af72b866fdcef20e641c48f39ce27f338ce8313949c63e53"
     }
   }
 }
