@@ -3886,16 +3886,3 @@ article {
 #catalog-trailer-btn.hidden {
   display: none !important;
 }
-
-/* Скрываем нативные контролы и кнопку Play на Android WebView */
-#trailer-bg-video::-webkit-media-controls,
-#trailer-bg-video::-webkit-media-controls-enclosure,
-#trailer-bg-video::-webkit-media-controls-panel,
-#trailer-bg-video::-webkit-media-controls-start-playback-button {
-  display: none !important;
-  -webkit-appearance: none !important;
-  opacity: 0 !important;
-}
-
-/* На всякий случай — для всех фоновых видео */
-video::-webkit-media-controls-start-playback-button
