@@ -104,9 +104,93 @@ LRUCache.prototype.size = function () {
 var rutubeTrailerState = {
     currentUrl: null,
     currentTitle: null,
-    bgVideo: null,
-    isBgPlaying: false
+    bgVideo: null
 };
+
+// Кэш найденных трейлеров (ключ: id_mediaType)
+var rutubeTrailerCache = {};
+
+/**
+ * Инициализация статичных кнопок детального просмотра.
+ * Вызывается ОДИН раз.
+ */
+function initCatalogDetailButtons() {
+    // --- Кнопка «Подробнее» ---
+    var togBtn = getEl('catalog-toggle-overview-btn');
+    if (togBtn && !togBtn._initialized) {
+        togBtn._initialized = true;
+        togBtn.onclick = function () {
+            var ov = getEl('catalog-detail-overview');
+            if (!ov) return;
+            var exp = ov.classList.toggle('expanded');
+            togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
+        };
+    }
+
+    // --- Кнопка «Трейлер» ---
+    var trailerBtn = getEl('catalog-trailer-btn');
+    if (trailerBtn && !trailerBtn._initialized) {
+        trailerBtn._initialized = true;
+
+        // Клик — открыть плеер
+        trailerBtn.onclick = function () {
+            if (rutubeTrailerState.currentUrl) {
+                openRutubeTrailerInPlayer(
+                    rutubeTrailerState.currentUrl,
+                    rutubeTrailerState.currentTitle || 'Трейлер'
+                );
+            }
+        };
+
+        // Отслеживаем класс "focused" (навигация с пульта не вызывает нативный focus)
+        var observer = new MutationObserver(function (mutations) {
+            for (var i = 0; i < mutations.length; i++) {
+                if (mutations[i].attributeName !== 'class') continue;
+                var hasFocus = trailerBtn.classList.contains('focused');
+                if (hasFocus && rutubeTrailerState.currentUrl) {
+                    startTrailerBackground(rutubeTrailerState.currentUrl);
+                } else if (!hasFocus) {
+                    stopTrailerBackground();
+                }
+            }
+        });
+        observer.observe(trailerBtn, { attributes: true, attributeFilter: ['class'] });
+
+        // Для управления мышью — нативные события
+        trailerBtn.addEventListener('focus', function () {
+            if (rutubeTrailerState.currentUrl) startTrailerBackground(rutubeTrailerState.currentUrl);
+        });
+        trailerBtn.addEventListener('blur', function () {
+            stopTrailerBackground();
+        });
+    }
+}
+
+/**
+ * Сброс состояния кнопок при открытии новой карточки
+ */
+function resetDetailButtons() {
+    var togBtn = getEl('catalog-toggle-overview-btn');
+    if (togBtn) togBtn.textContent = 'Подробнее';
+
+    var ov = getEl('catalog-detail-overview');
+    if (ov) ov.classList.remove('expanded');
+
+    var trailerBtn = getEl('catalog-trailer-btn');
+    if (trailerBtn) trailerBtn.style.display = 'none';
+}
+
+/**
+ * Показать кнопку «Трейлер» и обновить фокус-список
+ */
+function showTrailerButton() {
+    var btn = getEl('catalog-trailer-btn');
+    if (!btn) return;
+    btn.style.display = 'inline-block';
+    // control.js кэширует список фокуса — инвалидируем и обновляем
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+}
 
 /**
  * Парсит максимальное разрешение из m3u8 URL (параметр guids)
@@ -1339,64 +1423,8 @@ function renderDetailHeader(item, posterUrl, details) {
         be.style.backgroundImage = '';
     }
 
-    // ★ Кнопка «Подробнее» и «Трейлер» для описания
-    var actionsEl = getEl('catalog-detail-actions');
-    if (actionsEl) {
-        // Удаляем старые кнопки если есть
-        var oldTogBtn = getEl('catalog-toggle-overview-btn');
-        if (oldTogBtn) oldTogBtn.remove();
-        var oldTrailerBtn = getEl('catalog-trailer-btn');
-        if (oldTrailerBtn) oldTrailerBtn.remove();
-
-        // Кнопка «Подробнее»
-        var togBtn = document.createElement('button');
-        togBtn.id = 'catalog-toggle-overview-btn';
-        togBtn.className = 'catalog-toggle-overview-btn';
-        togBtn.textContent = 'Подробнее';
-        togBtn.onclick = function () {
-            var ov = getEl('catalog-detail-overview');
-            if (!ov) return;
-            var exp = ov.classList.toggle('expanded');
-            togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
-        };
-        actionsEl.appendChild(togBtn);
-
-        // Кнопка «Трейлер» (изначально скрыта)
-        var trailerBtn = document.createElement('button');
-        trailerBtn.id = 'catalog-trailer-btn';
-        trailerBtn.className = 'catalog-trailer-btn';
-        trailerBtn.textContent = '▶ Трейлер';
-        trailerBtn.style.display = 'none';
-        trailerBtn.style.marginLeft = '10px';
-        trailerBtn.style.background = 'linear-gradient(135deg, #e53935, #b71c1c)';
-        trailerBtn.style.color = '#fff';
-        trailerBtn.style.border = 'none';
-        trailerBtn.style.padding = '10px 20px';
-        trailerBtn.style.borderRadius = '8px';
-        trailerBtn.style.cursor = 'pointer';
-        trailerBtn.style.fontSize = '14px';
-        trailerBtn.style.fontWeight = '600';
-        trailerBtn.style.transition = 'transform 0.2s, box-shadow 0.2s';
-
-        // Клик — открыть плеер с трейлером
-        trailerBtn.onclick = function () {
-            if (rutubeTrailerState.currentUrl) {
-                openRutubeTrailerInPlayer(rutubeTrailerState.currentUrl, rutubeTrailerState.currentTitle || 'Трейлер');
-            }
-        };
-
-        // Фокус — фоновое воспроизведение без звука
-        trailerBtn.addEventListener('focus', function () {
-            startTrailerBackground(rutubeTrailerState.currentUrl);
-        });
-
-        // Потеря фокуса — остановить фоновое видео
-        trailerBtn.addEventListener('blur', function () {
-            stopTrailerBackground();
-        });
-
-        actionsEl.appendChild(trailerBtn);
-    }
+    // ★ Сброс кнопок для новой карточки
+    resetDetailButtons();
 }
 
 // ==================== ФОНОВОЕ ВОСПРОИЗВЕДЕНИЕ ТРЕЙЛЕРА ====================
@@ -1793,29 +1821,42 @@ async function showCatalogDetail(item, index, posterUrl) {
     renderDetailRecommendations(src, rw, mt);
     renderDetailTrailers(src);
 
-    rutubeTrailerState.currentUrl = null;
-    rutubeTrailerState.currentTitle = null;
-    var trailerBtn = getEl('catalog-trailer-btn');
-    if (trailerBtn) trailerBtn.style.display = 'none';
+    // ★★★ RUTUBE ТРЕЙЛЕР ★★★
+    stopTrailerBackground();
 
     var trailerTitle = src.title || src.name || title;
     var trailerOriginal = src.original_title || src.original_name || '';
     var trailerDate = src.release_date || src.first_air_date || '';
+    var trailerCacheKey = String(item.id || '') + '_' + mt;
 
-    fetchRutubeTrailer(trailerTitle, trailerOriginal, trailerDate).then(function (result) {
-        if (result && result.url) {
-            rutubeTrailerState.currentUrl = result.url;
-            rutubeTrailerState.currentTitle = result.title || trailerTitle;
-            // Показываем кнопку только если трейлер найден
-            var btn = getEl('catalog-trailer-btn');
-            if (btn && AppState.currentScreen === 'detail') {
-                btn.style.display = 'inline-block';
-                if (typeof updateFocusableElements === 'function') updateFocusableElements();
+    if (rutubeTrailerCache[trailerCacheKey]) {
+        // Уже искали — показываем мгновенно (важно при возврате из плеера)
+        rutubeTrailerState.currentUrl = rutubeTrailerCache[trailerCacheKey].url;
+        rutubeTrailerState.currentTitle = rutubeTrailerCache[trailerCacheKey].title;
+        showTrailerButton();
+    } else {
+        rutubeTrailerState.currentUrl = null;
+        rutubeTrailerState.currentTitle = null;
+
+        fetchRutubeTrailer(trailerTitle, trailerOriginal, trailerDate).then(function (result) {
+            if (!result || !result.url) return;
+            rutubeTrailerCache[trailerCacheKey] = {
+                url: result.url,
+                title: result.title || trailerTitle
+            };
+            // Показываем, только если пользователь всё ещё на этой карточке
+            if (AppState.currentScreen === 'detail' &&
+                AppState.currentDetailItem &&
+                String(AppState.currentDetailItem.id) === String(item.id)) {
+                rutubeTrailerState.currentUrl = result.url;
+                rutubeTrailerState.currentTitle = result.title || trailerTitle;
+                showTrailerButton();
             }
-        }
-    }).catch(function (e) {
-        console.warn('RuTube trailer search failed:', e);
-    });
+        }).catch(function (e) {
+            console.warn('RuTube trailer search failed:', e);
+        });
+    }
+    // ★★★ КОНЕЦ БЛОКА ★★★
 
     // Делегирование событий
     setupDetailDelegation(dv);
@@ -1840,8 +1881,6 @@ function hideCatalogDetailView() {
     if (!dv) return;
 
     stopTrailerBackground();
-    rutubeTrailerState.currentUrl = null;
-    rutubeTrailerState.currentTitle = null;
 
     dv.classList.remove('catalog-detail-mode');
     dv.style.backgroundImage = '';
@@ -2262,6 +2301,7 @@ function stopTmdbCleanup() {
 
 function initCatalog() {
     startTmdbCleanup();
+    initCatalogDetailButtons();
     window.tmdbCache = {
         clear: clearTmdbCache,
         stats: getTmdbCacheStats,
