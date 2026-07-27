@@ -227,7 +227,7 @@ function parseMaxQualityFromM3u8Url(url) {
 function extractBalancerUrl(playData) {
     if (!playData || !playData.video_balancer) return null;
     var vb = playData.video_balancer;
-    return vb.m3u8 || vb.default || null;
+    return vb.default || vb.m3u8 || null;
 }
 
 /**
