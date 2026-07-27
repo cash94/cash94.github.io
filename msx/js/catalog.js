@@ -100,6 +100,225 @@ LRUCache.prototype.size = function () {
     return this.cache.size;
 };
 
+// ==================== RUTUBE ТРЕЙЛЕРЫ ====================
+var rutubeTrailerState = {
+    currentUrl: null,
+    currentTitle: null,
+    bgVideo: null
+};
+
+// Кэш найденных трейлеров (ключ: id_mediaType)
+var rutubeTrailerCache = {};
+
+/**
+ * Инициализация статичных кнопок детального просмотра.
+ * Вызывается ОДИН раз.
+ */
+function initCatalogDetailButtons() {
+    // --- Кнопка «Подробнее» ---
+    var togBtn = getEl('catalog-toggle-overview-btn');
+    if (togBtn && !togBtn._initialized) {
+        togBtn._initialized = true;
+        togBtn.onclick = function () {
+            var ov = getEl('catalog-detail-overview');
+            if (!ov) return;
+            var exp = ov.classList.toggle('expanded');
+            togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
+        };
+    }
+
+    // --- Кнопка «Трейлер» ---
+    var trailerBtn = getEl('catalog-trailer-btn');
+    if (trailerBtn && !trailerBtn._initialized) {
+        trailerBtn._initialized = true;
+
+        // Клик — открыть плеер
+        trailerBtn.onclick = function () {
+            if (rutubeTrailerState.currentUrl) {
+                openRutubeTrailerInPlayer(
+                    rutubeTrailerState.currentUrl,
+                    rutubeTrailerState.currentTitle || 'Трейлер'
+                );
+            }
+        };
+
+        // Отслеживаем класс "focused" (навигация с пульта не вызывает нативный focus)
+        var observer = new MutationObserver(function (mutations) {
+            for (var i = 0; i < mutations.length; i++) {
+                if (mutations[i].attributeName !== 'class') continue;
+                var hasFocus = trailerBtn.classList.contains('focused');
+                if (hasFocus && rutubeTrailerState.currentUrl) {
+                    startTrailerBackground(rutubeTrailerState.currentUrl);
+                } else if (!hasFocus) {
+                    stopTrailerBackground();
+                }
+            }
+        });
+        observer.observe(trailerBtn, { attributes: true, attributeFilter: ['class'] });
+
+        // Для управления мышью — нативные события
+        trailerBtn.addEventListener('focus', function () {
+            if (rutubeTrailerState.currentUrl) startTrailerBackground(rutubeTrailerState.currentUrl);
+        });
+        trailerBtn.addEventListener('blur', function () {
+            stopTrailerBackground();
+        });
+    }
+}
+
+/**
+ * Сброс состояния кнопок при открытии новой карточки
+ */
+function resetDetailButtons() {
+    var togBtn = getEl('catalog-toggle-overview-btn');
+    if (togBtn) togBtn.textContent = 'Подробнее';
+
+    var ov = getEl('catalog-detail-overview');
+    if (ov) ov.classList.remove('expanded');
+
+    var trailerBtn = getEl('catalog-trailer-btn');
+    if (trailerBtn) trailerBtn.style.display = 'none';
+}
+
+/**
+ * Показать кнопку «Трейлер» и обновить фокус-список
+ */
+function showTrailerButton() {
+    var btn = getEl('catalog-trailer-btn');
+    if (!btn) return;
+    btn.style.display = 'inline-block';
+    // control.js кэширует список фокуса — инвалидируем и обновляем
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+}
+
+/**
+ * Парсит максимальное разрешение из m3u8 URL (параметр guids)
+ * Возвращает { width, height, pixels } или null
+ */
+function parseMaxQualityFromM3u8Url(url) {
+    if (!url) return null;
+    try {
+        // Ищем все пары WxH в URL (формат: 1920x1080, 1280x720 и т.д.)
+        var matches = url.match(/(\d{2,4})x(\d{2,4})/g);
+        if (!matches || matches.length === 0) return null;
+        var max = { width: 0, height: 0, pixels: 0 };
+        for (var i = 0; i < matches.length; i++) {
+            var parts = matches[i].split('x');
+            var w = parseInt(parts[0], 10);
+            var h = parseInt(parts[1], 10);
+            var pixels = w * h;
+            if (pixels > max.pixels) {
+                max.width = w;
+                max.height = h;
+                max.pixels = pixels;
+            }
+        }
+        return max.pixels > 0 ? max : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Извлекает video_balancer URL из ответа play/options
+ * Приоритет: m3u8 > default
+ */
+function extractBalancerUrl(playData) {
+    if (!playData || !playData.video_balancer) return null;
+    var vb = playData.video_balancer;
+    return vb.m3u8 || vb.default || null;
+}
+
+/**
+ * Основная функция: поиск трейлера на RuTube
+ * @param {string} title - название фильма
+ * @param {string} originalTitle - оригинальное название
+ * @param {string} releaseDate - дата релиза (используется только год)
+ * @returns {Promise<{url: string, quality: object, title: string}|null>}
+ */
+async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
+    if (!title) return null;
+
+    var year = '';
+    if (releaseDate) {
+        var yearMatch = String(releaseDate).match(/(19|20)\d{2}/);
+        if (yearMatch) year = yearMatch[0];
+    }
+
+    var queryParts = ['Трейлер', title];
+    if (originalTitle && originalTitle !== title) {
+        queryParts.push('|', originalTitle);
+    }
+    if (year) queryParts.push(year);
+    var query = queryParts.join(' ');
+
+    //   Запрос через прокси
+    var searchApiUrl = 'https://rutube.ru/api/search/combined/video_playlist?query=' +
+        encodeURIComponent(query) + '&duration=short&client=wdp&page=1';
+
+    var searchUrl = '/api/rutube/proxy?url=' + encodeURIComponent(searchApiUrl);
+
+    try {
+        // Шаг 1: Поиск
+        var searchData = await safeFetch(searchUrl, { timeout: 10000 });
+        if (!searchData || !Array.isArray(searchData.results) || searchData.results.length === 0) {
+            return null;
+        }
+
+        // Шаг 2: Фильтрация
+        var matchedIds = [];
+        var titleLower = title.toLowerCase().trim();
+
+        for (var i = 0; i < searchData.results.length; i++) {
+            if (matchedIds.length >= 3) break;
+            var resultTitle = (searchData.results[i].title || '').toLowerCase().trim();
+            var titleMatch = resultTitle.indexOf(titleLower) !== -1;
+            var yearMatch = year ? resultTitle.indexOf(year) !== -1 : true;
+
+            if (titleMatch && yearMatch) {
+                var id = searchData.results[i].id;
+                if (id) matchedIds.push(id);
+            }
+        }
+
+        if (matchedIds.length === 0) return null;
+
+        // Шаг 3: Запросы play/options через прокси
+        var bestUrl = null;
+        var bestQuality = null;
+        var bestTitle = '';
+
+        for (var j = 0; j < matchedIds.length; j++) {
+            var playApiUrl = 'https://rutube.ru/api/play/options/' + matchedIds[j];
+            var playProxyUrl = '/api/rutube/proxy?url=' + encodeURIComponent(playApiUrl);
+
+            var playData = await safeFetch(playProxyUrl, { timeout: 10000 });
+            if (!playData) continue;
+
+            var balancerUrl = extractBalancerUrl(playData);
+            if (!balancerUrl) continue;
+
+            var quality = parseMaxQualityFromM3u8Url(balancerUrl);
+            if (!quality) continue;
+
+            if (!bestQuality || quality.pixels > bestQuality.pixels) {
+                bestUrl = balancerUrl;
+                bestQuality = quality;
+                bestTitle = playData.title || title;
+            }
+        }
+
+        if (!bestUrl) return null;
+
+        return { url: bestUrl, quality: bestQuality, title: bestTitle };
+
+    } catch (e) {
+        console.warn('❌ RuTube trailer error:', e.message);
+        return null;
+    }
+}
+
 // ==================== TMDB КЭШ ====================
 var tmdbCache = {};
 var cats = [];
@@ -1157,7 +1376,7 @@ function renderDetailHeader(item, posterUrl, details) {
         te2Init.style.display = 'none';
     }
 
-    // ★ Плейсхолдер для постера (мгновенно, без сети)
+    //   Плейсхолдер для постера (мгновенно, без сети)
     var temp = posterUrl || catalogState.posterCache.get(item.id + '_' + mt) || '';
     pe.innerHTML = temp
         ? '<div class="catalog-poster-loading" style="width:100%;height:100%"></div>'
@@ -1167,7 +1386,7 @@ function renderDetailHeader(item, posterUrl, details) {
 
     var src = details || item || {};
 
-    // ★ Постер через img.decode()
+    //   Постер через img.decode()
     var posterSrc = null;
     if (src.poster_path) {
         posterSrc = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + src.poster_path;
@@ -1194,7 +1413,7 @@ function renderDetailHeader(item, posterUrl, details) {
         oe.style.display = 'block';
     }
 
-    // ★ Backdrop через img.decode()
+    // Backdrop через img.decode()
     var bp = src.backdrop_path || (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
     if (bp) {
         var bpUrl = bp.indexOf('http') === 0 ? bp : AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.BACKDROP + bp;
@@ -1204,24 +1423,208 @@ function renderDetailHeader(item, posterUrl, details) {
         be.style.backgroundImage = '';
     }
 
-    // ★ Кнопка «Подробнее» для описания
-    var actionsEl = getEl('catalog-detail-actions');
-    if (actionsEl && !getEl('catalog-toggle-overview-btn')) {
-        var togBtn = document.createElement('button');
-        togBtn.id = 'catalog-toggle-overview-btn';
-        togBtn.className = 'catalog-toggle-overview-btn';
-        togBtn.textContent = 'Подробнее';
-        togBtn.onclick = function () {
-            var ov = getEl('catalog-detail-overview');
-            if (!ov) return;
-            var exp = ov.classList.toggle('expanded');
-            togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
-        };
-        actionsEl.appendChild(togBtn);
+    // Сброс кнопок для новой карточки
+    resetDetailButtons();
+}
+
+// ==================== ФОНОВОЕ ВОСПРОИЗВЕДЕНИЕ ТРЕЙЛЕРА ====================
+
+/**
+ * Создаёт/показывает фоновое видео без звука
+ */
+function startTrailerBackground(url) {
+    if (!url) return;
+    stopTrailerBackground();
+
+    var dv = getEl('detail-view');
+    if (!dv) return;
+
+    var video = document.createElement('video');
+    video.id = 'trailer-bg-video';
+    video.muted = true;
+    video.loop = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;transition:opacity 0.5s ease;';
+
+    var backdrop = getEl('catalog-detail-backdrop');
+    var cde = getEl('catalog-detail-extra');
+    if (backdrop && backdrop.parentNode === dv) {
+        dv.insertBefore(video, backdrop);
+    } else {
+        dv.insertBefore(video, dv.firstChild);
+    }
+
+    //   Скрываем backdrop, пока играет трейлер
+    if (backdrop) backdrop.classList.add('hidden');
+    if (cde) {
+        cde.style.opacity = '0.4';
+    }
+
+    rutubeTrailerState.bgVideo = video;
+
+    // Плавное проявление
+    requestAnimationFrame(function () {
+        video.style.opacity = '1';
+    });
+
+    // Запуск HLS или прямого URL
+    if (window.Hls && Hls.isSupported()) {
+        var hls = new Hls({
+            maxBufferSize: 30 * 1024 * 1024,
+            maxBufferLength: 10,
+            startLevel: 2,          // среднее качество — это только фон
+            enableWorker: true
+        });
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, function () {
+            video.play().catch(function () { });
+        });
+        video._hls = hls;
+    } else {
+        video.src = url;
+        video.play().catch(function () { });
     }
 }
 
-// ★ Вспомогательная: загрузка <img> с decode()
+/**
+ * Останавливает и удаляет фоновое видео, возвращает backdrop
+ */
+function stopTrailerBackground() {
+    var video = rutubeTrailerState.bgVideo || getEl('trailer-bg-video');
+    if (video) {
+        if (video._hls) {
+            video._hls.destroy();
+            video._hls = null;
+        }
+        try { video.pause(); } catch (e) { }
+        video.removeAttribute('src');
+        try { video.load(); } catch (e) { }
+        if (video.parentNode) video.parentNode.removeChild(video);
+    }
+    rutubeTrailerState.bgVideo = null;
+
+    //   Возвращаем backdrop
+    var backdrop = getEl('catalog-detail-backdrop');
+    var cde = getEl('catalog-detail-extra');
+    if (cde) {
+        cde.style.opacity = '1';
+    }
+    if (backdrop) backdrop.classList.remove('hidden');
+}
+
+/**
+ * Открывает трейлер RuTube в основном плеере
+ */
+async function openRutubeTrailerInPlayer(m3u8Url, title) {
+    // Останавливаем фоновое видео
+    stopTrailerBackground();
+
+    var po = getEl('playback-overlay');
+    if (po) {
+        po.classList.add('active');
+        var pt = po.querySelector('.playback-text');
+        if (pt) pt.textContent = 'Загрузка трейлера: ' + title + '...';
+    }
+
+    try {
+        // Сохраняем контекст для возврата
+        var cd = AppState.currentDetailItem;
+        var cn = catalogState.currentCatalog;
+        var ci = catalogState.lastSelectedIndex;
+
+        // Скрываем детальный просмотр
+        var dv = getEl('detail-view');
+        var mc = getEl('main-container');
+        if (dv) { dv.style.display = 'none'; dv.style.pointerEvents = 'none'; }
+        if (mc) mc.style.pointerEvents = 'none';
+
+        // Останавливаем предыдущий поток
+        var old = AppState.currentStreamId;
+        if (old) fetch(SERVER_URL + '/hls/stop/' + old, { method: 'POST' }).catch(function () { });
+        if (window.destroyHls) window.destroyHls();
+
+        AppState.videoUrl = m3u8Url;
+        AppState.isYoutubePlayback = true; // переиспользуем механизм возврата
+        AppState.youtubeContext = { currentDetailItem: cd, catalogName: cn, itemIndex: ci };
+        AppState.currentDetailItem = { title: title, hash: null, isYoutube: true, youtubeUrl: m3u8Url };
+
+        var vp = getEl('video-player');
+
+        if (window.Hls && Hls.isSupported()) {
+            AppState.hls = new Hls({
+                maxBufferSize: 80 * 1024 * 1024,
+                maxBufferLength: 30,
+                backBufferLength: 20,
+                startLevel: -1,
+                abrEwmaDefaultEstimate: 500000,
+                fragLoadingTimeOut: 10000,
+                manifestLoadingTimeOut: 10000,
+                enableWorker: true,
+                progressive: true
+            });
+            AppState.hls.loadSource(m3u8Url);
+            AppState.hls.attachMedia(vp);
+
+            var started = false;
+            AppState.hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
+                vp.currentTime = 0;
+                vp.pause();
+
+                var iv = setInterval(function () {
+                    if (started) return clearInterval(iv);
+                    if (vp.buffered && vp.buffered.length > 0 && vp.buffered.end(vp.buffered.length - 1) - vp.currentTime >= 3) {
+                        clearInterval(iv);
+                        if (po) po.classList.remove('active');
+                        vp.play().catch(function () {
+                            vp.muted = true;
+                            vp.play().catch(function () { });
+                            if (typeof window.updateMuteButton === 'function') window.updateMuteButton();
+                        });
+                        started = true;
+                        getEl('player-screen').style.display = 'block';
+                        getEl('config-screen').style.display = 'none';
+                        getEl('torrserver-section').style.display = 'none';
+                        var focused = document.querySelectorAll('.focused');
+                        for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
+                        if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+                    }
+                }, 500);
+            });
+
+            AppState.hls.on(Hls.Events.ERROR, function (ev, d) {
+                if (d.fatal) {
+                    if (po) po.classList.remove('active');
+                    alert('Ошибка воспроизведения трейлера');
+                }
+            });
+        } else if (vp.canPlayType('application/vnd.apple.mpegurl')) {
+            vp.src = m3u8Url;
+            vp.addEventListener('loadedmetadata', function () {
+                if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
+                if (po) po.classList.remove('active');
+                vp.play().catch(function () { });
+                getEl('player-screen').style.display = 'block';
+            });
+        } else {
+            throw new Error('Браузер не поддерживает HLS');
+        }
+
+        AppState.currentScreen = 'player';
+
+    } catch (e) {
+        console.error('RuTube trailer player error:', e);
+        if (po) po.classList.remove('active');
+        alert('Ошибка: ' + e.message);
+        var dv = getEl('detail-view'), mc = getEl('main-container');
+        if (dv) { dv.style.display = 'block'; dv.style.pointerEvents = 'auto'; }
+        if (mc) mc.style.pointerEvents = 'auto';
+    }
+}
+
+//   Вспомогательная: загрузка <img> с decode()
 function _loadImageDecoded(container, src, alt) {
     var img = new Image();
     img.alt = alt || '';
@@ -1246,7 +1649,7 @@ function _loadImageDecoded(container, src, alt) {
     }
 }
 
-// ★ Вспомогательная: предзагрузка backdrop с decode(), потом CSS background
+//   Вспомогательная: предзагрузка backdrop с decode(), потом CSS background
 function _loadBackdropDecoded(container, url) {
     var img = new Image();
     img.src = url;
@@ -1426,16 +1829,57 @@ async function showCatalogDetail(item, index, posterUrl) {
     var restore = function () {
         if (mc && savedScroll > 0) setTimeout(function () { mc.scrollTop = savedScroll; }, 50);
     };
+
     var details = await fetchCatalogItemDetails(item);
     restore();
+
     // Рендерим все части
     renderDetailHeader(item, posterUrl, details);
     await renderDetailActors(item, aw);
     var src = details || item || {};
     renderDetailRecommendations(src, rw, mt);
-    renderDetailTrailers(src);
+    //renderDetailTrailers(src);
+
+    //     RUTUBE ТРЕЙЛЕР    
+    stopTrailerBackground();
+
+    var trailerTitle = src.title || src.name || title;
+    var trailerOriginal = src.original_title || src.original_name || '';
+    var trailerDate = src.release_date || src.first_air_date || '';
+    var trailerCacheKey = String(item.id || '') + '_' + mt;
+
+    if (rutubeTrailerCache[trailerCacheKey]) {
+        // Уже искали — показываем мгновенно (важно при возврате из плеера)
+        rutubeTrailerState.currentUrl = rutubeTrailerCache[trailerCacheKey].url;
+        rutubeTrailerState.currentTitle = rutubeTrailerCache[trailerCacheKey].title;
+        showTrailerButton();
+    } else {
+        rutubeTrailerState.currentUrl = null;
+        rutubeTrailerState.currentTitle = null;
+
+        fetchRutubeTrailer(trailerTitle, trailerOriginal, trailerDate).then(function (result) {
+            if (!result || !result.url) return;
+            rutubeTrailerCache[trailerCacheKey] = {
+                url: result.url,
+                title: result.title || trailerTitle
+            };
+            // Показываем, только если пользователь всё ещё на этой карточке
+            if (AppState.currentScreen === 'detail' &&
+                AppState.currentDetailItem &&
+                String(AppState.currentDetailItem.id) === String(item.id)) {
+                rutubeTrailerState.currentUrl = result.url;
+                rutubeTrailerState.currentTitle = result.title || trailerTitle;
+                showTrailerButton();
+            }
+        }).catch(function (e) {
+            console.warn('RuTube trailer search failed:', e);
+        });
+    }
+    //     КОНЕЦ БЛОКА    
+
     // Делегирование событий
     setupDetailDelegation(dv);
+
     // Фокус на кнопку просмотра
     requestAnimationFrame(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
@@ -1454,6 +1898,9 @@ async function showCatalogDetail(item, index, posterUrl) {
 function hideCatalogDetailView() {
     var dv = getEl('detail-view');
     if (!dv) return;
+
+    stopTrailerBackground();
+
     dv.classList.remove('catalog-detail-mode');
     dv.style.backgroundImage = '';
     var se = getEl('detail-title-subtitle');
@@ -1873,6 +2320,7 @@ function stopTmdbCleanup() {
 
 function initCatalog() {
     startTmdbCleanup();
+    initCatalogDetailButtons();
     window.tmdbCache = {
         clear: clearTmdbCache,
         stats: getTmdbCacheStats,
