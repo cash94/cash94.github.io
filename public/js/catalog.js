@@ -169,45 +169,28 @@ async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
     if (year) queryParts.push(year);
     var query = queryParts.join(' ');
 
-    var searchUrl = 'https://rutube.ru/api/search/combined/video_playlist?query=' +
+    // ★ Запрос через прокси
+    var searchApiUrl = 'https://rutube.ru/api/search/combined/video_playlist?query=' +
         encodeURIComponent(query) + '&duration=short&client=wdp&page=1';
 
-    // ★ Настройки fetch с cookie
-    var fetchOpts = {
-        timeout: 8000,
-        credentials: 'include',  // ← отправлять cookie
-        headers: {
-            'Accept': 'application/json',
-            'Referer': 'https://rutube.ru/',
-            'Origin': 'https://rutube.ru'
-        }
-    };
+    var searchUrl = '/api/rutube/proxy?url=' + encodeURIComponent(searchApiUrl);
 
     try {
         // Шаг 1: Поиск
-        var searchData = await safeFetch(searchUrl, { timeout: 8000 });
+        var searchData = await safeFetch(searchUrl, { timeout: 10000 });
         if (!searchData || !Array.isArray(searchData.results) || searchData.results.length === 0) {
             return null;
         }
 
-        // Шаг 2: Фильтрация по совпадению title и year
+        // Шаг 2: Фильтрация
         var matchedIds = [];
         var titleLower = title.toLowerCase().trim();
-        var yearStr = year || '';
 
         for (var i = 0; i < searchData.results.length; i++) {
             if (matchedIds.length >= 3) break;
-
             var resultTitle = (searchData.results[i].title || '').toLowerCase().trim();
-
-            // Проверяем совпадение по title
             var titleMatch = resultTitle.indexOf(titleLower) !== -1;
-
-            // Проверяем совпадение по году (если год есть)
-            var yearMatch = true;
-            if (yearStr) {
-                yearMatch = resultTitle.indexOf(yearStr) !== -1;
-            }
+            var yearMatch = year ? resultTitle.indexOf(year) !== -1 : true;
 
             if (titleMatch && yearMatch) {
                 var id = searchData.results[i].id;
@@ -217,15 +200,16 @@ async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
 
         if (matchedIds.length === 0) return null;
 
-        // Шаг 3: Запросы к play/options для каждого id
+        // Шаг 3: Запросы play/options через прокси
         var bestUrl = null;
         var bestQuality = null;
         var bestTitle = '';
 
         for (var j = 0; j < matchedIds.length; j++) {
-            var playUrl = 'https://rutube.ru/api/play/options/' + matchedIds[j];
-            var playData = await safeFetch(playUrl, { timeout: 8000 });
+            var playApiUrl = 'https://rutube.ru/api/play/options/' + matchedIds[j];
+            var playProxyUrl = '/api/rutube/proxy?url=' + encodeURIComponent(playApiUrl);
 
+            var playData = await safeFetch(playProxyUrl, { timeout: 10000 });
             if (!playData) continue;
 
             var balancerUrl = extractBalancerUrl(playData);
@@ -234,7 +218,6 @@ async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
             var quality = parseMaxQualityFromM3u8Url(balancerUrl);
             if (!quality) continue;
 
-            // Сравниваем с текущим лучшим
             if (!bestQuality || quality.pixels > bestQuality.pixels) {
                 bestUrl = balancerUrl;
                 bestQuality = quality;
@@ -244,11 +227,7 @@ async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
 
         if (!bestUrl) return null;
 
-        return {
-            url: bestUrl,
-            quality: bestQuality,
-            title: bestTitle
-        };
+        return { url: bestUrl, quality: bestQuality, title: bestTitle };
 
     } catch (e) {
         console.warn('❌ RuTube trailer error:', e.message);
