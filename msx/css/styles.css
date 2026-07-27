@@ -3507,9 +3507,9 @@ article {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  color: rgba(255,255,255,0.7) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
   margin: 0 !important;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 
 /* ============================================================
@@ -3550,6 +3550,8 @@ article {
 
 .catalog-watch-btn,
 #catalog-watch-btn,
+.catalog-trailer-btn,
+#catalog-trailer-btn,
 .catalog-toggle-overview-btn,
 #catalog-toggle-overview-btn {
   display: inline-flex !important;
@@ -3568,6 +3570,8 @@ article {
 
 .catalog-watch-btn:hover,
 #catalog-watch-btn:hover,
+.catalog-trailer-btn:hover,
+#catalog-trailer-btn:hover,
 .catalog-toggle-overview-btn:hover,
 #catalog-toggle-overview-btn:hover {
   background: rgba(255, 255, 255, 0.22) !important;
@@ -3716,6 +3720,8 @@ article {
 
 #catalog-watch-btn.focused,
 .catalog-watch-btn.focused,
+.catalog-trailer-btn.focused,
+#catalog-trailer-btn.focused,
 #catalog-toggle-overview-btn.focused,
 .catalog-toggle-overview-btn.focused {
   box-shadow: 0 0 0 3px #ff8c00 !important;
@@ -3815,6 +3821,8 @@ article {
 
   .catalog-watch-btn,
   #catalog-watch-btn,
+  .catalog-trailer-btn,
+  #catalog-trailer-btn,
   .catalog-toggle-overview-btn,
   #catalog-toggle-overview-btn {
     flex: 1;
@@ -3851,23 +3859,25 @@ article {
 }
 
 .detail-progress-btn {
-    display: inline-flex !important;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255,255,255,0.12) !important;
-    color: #fff !important;
-    border: 1px solid rgba(255,255,255,0.25) !important;
-    border-radius: 6px !important;
-    padding: 11px 22px !important;
-    font-size: 14px !important;
-    font-weight: 600 !important;
-    cursor: pointer;
-    transition: background 0.2s;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: 6px !important;
+  padding: 11px 22px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  transition: background 0.2s;
 }
+
 .detail-progress-btn:hover {
-    background: rgba(255,255,255,0.22) !important;
+  background: rgba(255, 255, 255, 0.22) !important;
 }
+
 .detail-progress-btn.focused {
-    box-shadow: 0 0 0 3px #ff8c00 !important;
-    background: rgba(255,255,255,0.22) !important;
+  box-shadow: 0 0 0 3px #ff8c00 !important;
+  background: rgba(255, 255, 255, 0.22) !important;
 }
