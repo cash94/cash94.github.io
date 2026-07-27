@@ -626,7 +626,7 @@ body {
 .torrent-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 8px;
+  font-size: 13px;
   color: #888;
 }
 
@@ -635,7 +635,7 @@ body {
   color: #fff;
   padding: 2px 5px;
   border-radius: 8px;
-  font-size: 8px;
+  font-size: 13px;
 }
 
 .progress-badge {
@@ -695,6 +695,7 @@ body {
   padding: 18.42px;
   display: none;
   background-color: rgb(0, 0, 0);
+  padding: 0 !important;
 }
 
 #detail-view.catalog-detail-mode {
@@ -753,8 +754,6 @@ body {
 
 .detail-progress {
   padding: 12.9px;
-  background: rgba(0, 0, 0, 0.3);
-  /* Тёмный фон */
   backdrop-filter: none;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
   border-radius: 12px;
@@ -3504,6 +3503,10 @@ article {
 .detail-subtitle,
 #detail-subtitle {
   font-size: 20px !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   color: rgba(255, 255, 255, 0.7) !important;
   margin: 0 !important;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
@@ -3547,6 +3550,8 @@ article {
 
 .catalog-watch-btn,
 #catalog-watch-btn,
+.catalog-trailer-btn,
+#catalog-trailer-btn,
 .catalog-toggle-overview-btn,
 #catalog-toggle-overview-btn {
   display: inline-flex !important;
@@ -3565,6 +3570,8 @@ article {
 
 .catalog-watch-btn:hover,
 #catalog-watch-btn:hover,
+.catalog-trailer-btn:hover,
+#catalog-trailer-btn:hover,
 .catalog-toggle-overview-btn:hover,
 #catalog-toggle-overview-btn:hover {
   background: rgba(255, 255, 255, 0.22) !important;
@@ -3614,7 +3621,6 @@ article {
 .catalog-actor-card {
   background: transparent !important;
   border-radius: 12px !important;
-  transition: transform 0.2s;
 }
 
 .catalog-actor-card:hover {
@@ -3658,14 +3664,19 @@ article {
 }
 
 .catalog-recommendation-card {
-  background: #1a1a2e !important;
+  background: transparent !important;
   border-radius: 8px !important;
-  transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .catalog-recommendation-card:hover {
   transform: scale(1.06);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+}
+
+.catalog-recommendation-poster {
+  background: #1a1a2e !important;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .catalog-recommendation-rating {
@@ -3709,6 +3720,8 @@ article {
 
 #catalog-watch-btn.focused,
 .catalog-watch-btn.focused,
+.catalog-trailer-btn.focused,
+#catalog-trailer-btn.focused,
 #catalog-toggle-overview-btn.focused,
 .catalog-toggle-overview-btn.focused {
   box-shadow: 0 0 0 3px #ff8c00 !important;
@@ -3808,6 +3821,8 @@ article {
 
   .catalog-watch-btn,
   #catalog-watch-btn,
+  .catalog-trailer-btn,
+  #catalog-trailer-btn,
   .catalog-toggle-overview-btn,
   #catalog-toggle-overview-btn {
     flex: 1;
@@ -3818,7 +3833,6 @@ article {
 /* Progress-блок в Netflix-стиле */
 .detail-progress {
   margin: 0 48px 8px 48px;
-  background: rgba(255, 255, 255, 0.06) !important;
   border-radius: 10px !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
@@ -3842,4 +3856,28 @@ article {
 .catalog-detail-panel>.catalog-toggle-overview-btn {
   margin-top: -10px;
   margin-bottom: 14px;
+}
+
+.detail-progress-btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #fff !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: 6px !important;
+  padding: 11px 22px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.detail-progress-btn:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+}
+
+.detail-progress-btn.focused {
+  box-shadow: 0 0 0 3px #ff8c00 !important;
+  background: rgba(255, 255, 255, 0.22) !important;
 }
