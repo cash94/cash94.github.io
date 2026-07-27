@@ -156,14 +156,12 @@ function extractBalancerUrl(playData) {
 async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
     if (!title) return null;
 
-    // Извлекаем год из release_date
     var year = '';
     if (releaseDate) {
         var yearMatch = String(releaseDate).match(/(19|20)\d{2}/);
         if (yearMatch) year = yearMatch[0];
     }
 
-    // Формируем поисковый запрос
     var queryParts = ['Трейлер', title];
     if (originalTitle && originalTitle !== title) {
         queryParts.push('|', originalTitle);
@@ -173,6 +171,17 @@ async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
 
     var searchUrl = 'https://rutube.ru/api/search/combined/video_playlist?query=' +
         encodeURIComponent(query) + '&duration=short&client=wdp&page=1';
+
+    // ★ Настройки fetch с cookie
+    var fetchOpts = {
+        timeout: 8000,
+        credentials: 'include',  // ← отправлять cookie
+        headers: {
+            'Accept': 'application/json',
+            'Referer': 'https://rutube.ru/',
+            'Origin': 'https://rutube.ru'
+        }
+    };
 
     try {
         // Шаг 1: Поиск
