@@ -3881,3 +3881,7 @@ article {
   box-shadow: 0 0 0 3px #ff8c00 !important;
   background: rgba(255, 255, 255, 0.22) !important;
 }
+
+.catalog-trailer-btn.hidden {
+  display: none !important;
+}
