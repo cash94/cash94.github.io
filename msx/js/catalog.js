@@ -1454,10 +1454,20 @@ function startTrailerBackground(url) {
 
     var video = document.createElement('video');
     video.id = 'trailer-bg-video';
+
+    // ★ Всё, что отключает нативный оверлей — ДО подключения источника
     video.muted = true;
+    video.defaultMuted = true;
     video.loop = true;
     video.autoplay = true;
     video.playsInline = true;
+    video.controls = false;                       // ★ явно без контролов
+    video.disablePictureInPicture = true;         // ★ без PiP-кнопки
+    video.setAttribute('muted', '');
+    video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
+    video.setAttribute('controlslist', 'nodownload nofullscreen noremoteplayback noplaybackrate');
+
     video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;transition:opacity 0.5s ease;';
 
     var backdrop = getEl('catalog-detail-backdrop');
@@ -1468,36 +1478,43 @@ function startTrailerBackground(url) {
         dv.insertBefore(video, dv.firstChild);
     }
 
-    //   Скрываем backdrop, пока играет трейлер
     if (backdrop) backdrop.classList.add('hidden');
-    if (cde) {
-        cde.style.opacity = '0.4';
-    }
+    if (cde) cde.style.opacity = '0.4';
 
     rutubeTrailerState.bgVideo = video;
 
-    // Плавное проявление
     requestAnimationFrame(function () {
         video.style.opacity = '1';
     });
 
-    // Запуск HLS или прямого URL
+    // ★ Единая функция старта — ждём, пока видео реально готово
+    var started = false;
+    function tryPlay() {
+        if (started) return;
+        started = true;
+        video.play().catch(function () {
+            // Фолбэк: принудительно muted и ещё раз
+            video.muted = true;
+            video.play().catch(function () { });
+        });
+    }
+    video.addEventListener('canplay', tryPlay);
+    video.addEventListener('loadeddata', tryPlay);
+
     if (window.Hls && Hls.isSupported()) {
         var hls = new Hls({
             maxBufferSize: 30 * 1024 * 1024,
             maxBufferLength: 10,
-            startLevel: 2,          // среднее качество — это только фон
+            startLevel: 2,
             enableWorker: true
         });
         hls.loadSource(wrapRutubeHls(url));
         hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, function () {
-            video.play().catch(function () { });
-        });
+        hls.on(Hls.Events.MANIFEST_PARSED, tryPlay);   // ★ не play() сразу, а tryPlay
         video._hls = hls;
     } else {
         video.src = wrapRutubeHls(url);
-        video.play().catch(function () { });
+        // play() сработает через canplay/loadeddata
     }
 }
 
