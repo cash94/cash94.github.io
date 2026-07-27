@@ -297,7 +297,7 @@ function getSearchResults() {
 }
 
 function getDetailItems() {
-    var s = ['.back-btn', '.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
+    var s = ['.back-btn', '.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
     var a = [];
     for (var i = 0; i < s.length; i++) {
         var it = document.querySelectorAll(s[i]);
@@ -641,10 +641,11 @@ var ScreenStrategies = {
                 if (e.classList.contains('catalog-recommendation-card')) rc.push(e);
                 if (e.classList && e.classList.contains('file-item')) fi.push(e);
             }
-            var wb = getEl('catalog-watch-btn'), bb = getEl('back-from-detail'); var ovw = getEl('catalog-toggle-overview-btn');
+            var wb = getEl('catalog-watch-btn'), bb = getEl('back-from-detail'); var ovw = getEl('catalog-toggle-overview-btn'); var rut = getEl('catalog-trailer-btn');
             var isT = f.classList.contains('catalog-trailer-play') || f.classList.contains('catalog-trailer-link') || f.classList.contains('catalog-trailer-card-item');
             var isA = f.classList.contains('catalog-actor-card'), isR = f.classList.contains('catalog-recommendation-card');
-            var isW = f.id === 'catalog-watch-btn', isOv = f.id === 'catalog-toggle-overview-btn', isB = f.id === 'back-from-detail', isF = f.classList && f.classList.contains('file-item'); 
+            var isW = f.id === 'catalog-watch-btn', isOv = f.id === 'catalog-toggle-overview-btn', isB = f.id === 'back-from-detail', isF = f.classList && f.classList.contains('file-item');
+            var isRut = f.id === 'catalog-trailer-btn';
             var ti = -1, ai = -1, ri = -1, fii = -1;
             for (var i = 0; i < tl.length; i++) if (f === tl[i]) { ti = i; break; }
             for (var i = 0; i < ac.length; i++) if (f === ac[i]) { ai = i; break; }
@@ -688,8 +689,15 @@ var ScreenStrategies = {
             }
             if (isOv) {
                 if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
-                if (dir === 'right') return true;
+                if (dir === 'right') return focusEl(rut);
                 if (dir === 'left') return focusEl(wb);
+                if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
+                return true;
+            }
+            if (isRut) {
+                if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
+                if (dir === 'right') return true;
+                if (dir === 'left') return focusEl(ovw);
                 if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
                 return true;
             }
@@ -823,7 +831,7 @@ function updateFocusableElements() {
         return;
     }
     if (screen === 'detail') {
-        var sel = '.detail-progress-btn, .file-item, .back-btn, .catalog-watch-btn, .catalog-toggle-overview-btn';
+        var sel = '.detail-progress-btn, .file-item, .back-btn, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn';
         var els = document.querySelectorAll(sel);
         for (var i = 0; i < els.length; i++) if (els[i] && els[i].offsetParent !== null) list.push(els[i]);
         focusableElements = list;
