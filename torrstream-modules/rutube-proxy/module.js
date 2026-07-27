@@ -1,5 +1,5 @@
 // Модуль: RuTube Proxy
-// version: '1.2.0'
+// version: '1.2.1'
 // Проксирует запросы к RuTube API и HLS-потоки, добавляя заголовки и cookie (обход CORS)
 
 // ★ Cookie для RuTube — обновляйте при необходимости
@@ -52,34 +52,55 @@ function wrapToProxy(url) {
   return HLS_PROXY_PATH + '?u=' + encodeURIComponent(url);
 }
 
-// Переписывает абсолютные URL внутри m3u8-плейлиста на прокси-URL
-// Переписывает абсолютные URL внутри m3u8-плейлиста на прокси-URL
-function rewriteRutubePlaylist(text) {
+// Переписывает URL внутри m3u8 (абсолютные И относительные) на прокси
+function rewriteRutubePlaylist(text, baseUrl) {
   var lines = text.split('\n');
   var result = [];
+
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
     var trimmed = line.trim();
 
-    // Строка-URL сегмента или вложенного плейлиста (не комментарий #EXT...)
-    if (trimmed && trimmed.indexOf('http') === 0 && isRutubeUrl(trimmed)) {
-      result.push(wrapToProxy(trimmed));
+    // Пустые строки
+    if (!trimmed) { result.push(line); continue; }
+
+    // Строка-URI сегмента или вложенного плейлиста (не комментарий)
+    if (trimmed.indexOf('#') !== 0) {
+      var absoluteUrl = resolveUrl(trimmed, baseUrl);
+      if (absoluteUrl && isRutubeUrl(absoluteUrl)) {
+        result.push(wrapToProxy(absoluteUrl));
+      } else {
+        result.push(line);
+      }
       continue;
     }
 
     // URI="..." внутри тегов (#EXT-X-KEY, субтитры, аудио)
     if (trimmed.indexOf('URI="') !== -1) {
-      line = line.replace(/URI="(https?:\/\/[^"]*)"/g, function (m, url) {
-        if (isRutubeUrl(url)) {
-          return 'URI="' + wrapToProxy(url) + '"';
+      line = line.replace(/URI="([^"]*)"/g, function (m, url) {
+        var absoluteUrl = resolveUrl(url, baseUrl);
+        if (absoluteUrl && isRutubeUrl(absoluteUrl)) {
+          return 'URI="' + wrapToProxy(absoluteUrl) + '"';
         }
-        return m; // чужие URL не трогаем
+        return m;
       });
     }
 
     result.push(line);
   }
   return result.join('\n');
+}
+
+// Резолвит URL: абсолютный возвращает как есть, относительный — относительно base
+function resolveUrl(url, baseUrl) {
+  if (!url) return null;
+  if (url.indexOf('http') === 0) return url;
+  if (!baseUrl) return null;
+  try {
+    return new URL(url, baseUrl).toString();
+  } catch (e) {
+    return null;
+  }
 }
 
 // ==================== МОДУЛЬ ====================
@@ -160,9 +181,9 @@ module.exports = {
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 
           if (isPlaylist) {
-            // Плейлист: читаем текст, переписываем URL, отдаём
             return upstream.text().then(function (text) {
-              var rewritten = rewriteRutubePlaylist(text);
+              // ★ передаём targetUrl как base для резолва относительных путей
+              var rewritten = rewriteRutubePlaylist(text, targetUrl);
               res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
               res.send(rewritten);
             });
