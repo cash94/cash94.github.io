@@ -1448,7 +1448,6 @@ function startTrailerBackground(url) {
     video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:0;opacity:0.3;pointer-events:none;';
 
     // Вставляем видео как фон
-    dv.style.position = 'relative';
     dv.insertBefore(video, dv.firstChild);
 
     rutubeTrailerState.bgVideo = video;
