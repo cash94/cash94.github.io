@@ -1468,7 +1468,7 @@ function startTrailerBackground(url) {
 
     // Плавное проявление
     requestAnimationFrame(function () {
-        video.style.opacity = '0.35';
+        video.style.opacity = '0.7';
     });
 
     // Запуск HLS или прямого URL
