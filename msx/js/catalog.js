@@ -1458,7 +1458,7 @@ function startTrailerBackground(url) {
     video.loop = true;
     video.autoplay = true;
     video.playsInline = true;
-    video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;transition:opacity 0.5s ease;';
+    video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;transition:opacity 1.5s ease;';
 
     var backdrop = getEl('catalog-detail-backdrop');
     var cde = getEl('catalog-detail-extra');
@@ -1478,27 +1478,27 @@ function startTrailerBackground(url) {
 
     // Плавное проявление
     requestAnimationFrame(function () {
+        // Запуск HLS или прямого URL
+        if (window.Hls && Hls.isSupported()) {
+            var hls = new Hls({
+                maxBufferSize: 30 * 1024 * 1024,
+                maxBufferLength: 10,
+                startLevel: 2,          // среднее качество — это только фон
+                enableWorker: true
+            });
+            hls.loadSource(wrapRutubeHls(url));
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                video.play().catch(function () { });
+            });
+            video._hls = hls;
+        } else {
+            video.src = wrapRutubeHls(url);
+            video.play().catch(function () { });
+        }
         video.style.opacity = '1';
     });
 
-    // Запуск HLS или прямого URL
-    if (window.Hls && Hls.isSupported()) {
-        var hls = new Hls({
-            maxBufferSize: 30 * 1024 * 1024,
-            maxBufferLength: 10,
-            startLevel: 2,          // среднее качество — это только фон
-            enableWorker: true
-        });
-        hls.loadSource(wrapRutubeHls(url));
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, function () {
-            video.play().catch(function () { });
-        });
-        video._hls = hls;
-    } else {
-        video.src = wrapRutubeHls(url);
-        video.play().catch(function () { });
-    }
 }
 
 /**
