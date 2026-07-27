@@ -3882,6 +3882,7 @@ article {
   background: rgba(255, 255, 255, 0.22) !important;
 }
 
-.catalog-trailer-btn.hidden {
-  display: none;
+.catalog-trailer-btn.hidden,
+#catalog-trailer-btn.hidden {
+  display: none !important;
 }
