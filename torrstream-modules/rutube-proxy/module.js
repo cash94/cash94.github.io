@@ -1,6 +1,12 @@
 // Модуль: RuTube Proxy
-// version: '1.2.1'
-// Проксирует запросы к RuTube API и HLS-потоки, добавляя заголовки и cookie (обход CORS)
+// version: '1.2.3'
+// Проксирует запросы к RuTube API и HLS-потоки, добавляя заголовки и cookie.
+// Обходит CORS на Android TV: все запросы hls.js идут same-origin через сервер.
+//
+// Эндпоинты:
+//   GET /api/rutube/proxy?url=<rutube api url>      — JSON API (поиск, play/options)
+//   GET /api/rutube/hls/proxy?u=<m3u8/segment url>  — HLS плейлисты и сегменты
+//   GET /api/rutube/status                          — проверка модуля
 
 // ★ Cookie для RuTube — обновляйте при необходимости
 var RUTUBE_COOKIE = 'spid=1766485521715_a77f23010cdb2d595b1554114fb6f689_lpeubwr8l73rbj7b; uuid=0cab4513-d084-416d-8089-9b792761c06e; uxs_uid=fd74f680-f2c7-11f0-9a79-41744765d973; canary1={"tags_predicto":{"active":"A","term":[{"id":44,"label":"A","percent":100},{"id":45,"label":"B","percent":100}]},"new_player":{"active":"A","term":[{"id":50,"label":"A","percent":100},{"id":51,"label":"B","percent":100}]},"ds_player":{"active":"A","term":[{"id":87,"label":"A","percent":100},{"id":88,"label":"B","percent":100}]},"current_stage_ds":{"active":"A","term":[{"id":120,"label":"A","percent":100},{"id":121,"label":"B","percent":100}]}}; _ym_uid=1776148732703051562; _ym_d=1776148732; spsc=1780471971036_1b41a6459433b1f447b9b16f43105aaa_ixPogLLQJLgcsdfdWhT4SmL3kLAYYYZ.rEh5YDrdsM8Z; csrftoken=3f0a7800e9fa4e25841271c8d831019c; session_id=56394752411768560119_1785129481972; _ym_isad=1; eg=bd9935fc; cid=56394752411768560119; ea=d26cbd9a; qrator_msid2=v2.0.1785133427.827.53efb7baWQaS0gGR|u8D0UAjJB1ZSn0PV|JQKRXAcgWlZb5s2gvzKrVWgyJtl+eLKMaCE6UHhwqjtDTpSB0tNTUwUZwwvRFWLHZSpg4/m4FdT0JSL0/CRhbA==-B1r8pT0cR1AzsGSzQeg3OmOuK3o=';
@@ -13,7 +19,7 @@ var HEADERS = {
   'Cookie': RUTUBE_COOKIE
 };
 
-// Заголовки для HLS (сегменты/плейлисты) — Accept шире
+// Заголовки для HLS (плейлисты/сегменты) — Accept шире, добавлен Origin
 var HLS_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Linux; Android 10; Android TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.110 Safari/537.36',
   'Accept': '*/*',
@@ -25,31 +31,35 @@ var HLS_HEADERS = {
 var REQUEST_TIMEOUT = 10000;
 var HLS_PROXY_PATH = '/api/rutube/hls/proxy';
 
+// ★ Домены RuTube: основной + CDN для HLS-сегментов
+var RUTUBE_DOMAINS = ['rutube.ru', 'rtbcdn.ru'];
+
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
 // Проверка, что URL принадлежит RuTube (защита от SSRF)
-var RUTUBE_HOSTS = ['rutube.ru', 'rtbcdn.ru'];
-
 function isRutubeUrl(url) {
   if (!url) return false;
-  try {
-    var host = new URL(url).hostname;          // "bl.rutube.ru"
-    for (var i = 0; i < RUTUBE_HOSTS.length; i++) {
-      var allowed = RUTUBE_HOSTS[i];
-      // точное совпадение ИЛИ поддомен (.rutube.ru)
-      if (host === allowed || host.slice(-allowed.length - 1) === '.' + allowed) {
-        return true;
-      }
-    }
-    return false;
-  } catch (e) {
-    return false;   // битый URL — отклоняем
+  for (var i = 0; i < RUTUBE_DOMAINS.length; i++) {
+    if (url.indexOf(RUTUBE_DOMAINS[i]) !== -1) return true;
   }
+  return false;
 }
 
 // Оборачивает URL сегмента/плейлиста в прокси
 function wrapToProxy(url) {
   return HLS_PROXY_PATH + '?u=' + encodeURIComponent(url);
+}
+
+// Резолвит URL: абсолютный возвращает как есть, относительный — относительно base
+function resolveUrl(url, baseUrl) {
+  if (!url) return null;
+  if (url.indexOf('http') === 0) return url;   // уже абсолютный
+  if (!baseUrl) return null;
+  try {
+    return new URL(url, baseUrl).toString();     // относительный → абсолютный
+  } catch (e) {
+    return null;
+  }
 }
 
 // Переписывает URL внутри m3u8 (абсолютные И относительные) на прокси
@@ -64,7 +74,7 @@ function rewriteRutubePlaylist(text, baseUrl) {
     // Пустые строки
     if (!trimmed) { result.push(line); continue; }
 
-    // Строка-URI сегмента или вложенного плейлиста (не комментарий)
+    // Строка-URI сегмента или вложенного плейлиста (не комментарий #EXT...)
     if (trimmed.indexOf('#') !== 0) {
       var absoluteUrl = resolveUrl(trimmed, baseUrl);
       if (absoluteUrl && isRutubeUrl(absoluteUrl)) {
@@ -91,28 +101,16 @@ function rewriteRutubePlaylist(text, baseUrl) {
   return result.join('\n');
 }
 
-// Резолвит URL: абсолютный возвращает как есть, относительный — относительно base
-function resolveUrl(url, baseUrl) {
-  if (!url) return null;
-  if (url.indexOf('http') === 0) return url;
-  if (!baseUrl) return null;
-  try {
-    return new URL(url, baseUrl).toString();
-  } catch (e) {
-    return null;
-  }
-}
-
 // ==================== МОДУЛЬ ====================
 
 module.exports = {
   name: 'rutube-proxy',
-  version: '1.1.0',
+  version: '1.5.0',
 
   init: function (app, ctx) {
     ctx.log.log('Инициализация RuTube proxy...');
 
-    // ---------- 1. JSON API прокси (существующий) ----------
+    // ---------- 1. JSON API прокси ----------
     app.get('/api/rutube/proxy', function (req, res) {
       var targetUrl = req.query.url;
 
@@ -181,9 +179,20 @@ module.exports = {
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 
           if (isPlaylist) {
+            // Плейлист: читаем, переписываем URL (абсолютные и относительные), отдаём
             return upstream.text().then(function (text) {
-              // ★ передаём targetUrl как base для резолва относительных путей
+              // ★ targetUrl — база для резолва относительных путей сегментов
               var rewritten = rewriteRutubePlaylist(text, targetUrl);
+
+              // Отладка: сколько URL переписано / осталось прямыми
+              var proxied = (rewritten.match(/\/api\/rutube\/hls\/proxy\?u=/g) || []).length;
+              var direct = (rewritten.match(/https?:\/\/[^\s"']*(rutube\.ru|rtbcdn\.ru)[^\s"']*/g) || []).length;
+              ctx.log.log('HLS playlist: переписано=' + proxied + ', прямых RuTube осталось=' + direct);
+              if (direct > 0) {
+                var leftover = rewritten.match(/https?:\/\/[^\s"']*(rutube\.ru|rtbcdn\.ru)[^\s"']*/g) || [];
+                ctx.log.warn('⚠️ Непереписанные URL:\n' + leftover.join('\n'));
+              }
+
               res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
               res.send(rewritten);
             });
@@ -204,7 +213,7 @@ module.exports = {
 
     // ---------- 3. Проверка работоспособности ----------
     app.get('/api/rutube/status', function (req, res) {
-      res.json({ module: 'rutube-proxy', version: '1.1.0', ok: true });
+      res.json({ module: 'rutube-proxy', version: '1.5.0', ok: true });
     });
 
     ctx.log.log('RuTube proxy зарегистрирован: /api/rutube/proxy, ' + HLS_PROXY_PATH);
