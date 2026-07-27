@@ -319,6 +319,13 @@ async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
     }
 }
 
+function wrapRutubeHls(url) {
+    if (!url) return url;
+    // Уже обёрнут — не оборачиваем повторно
+    if (url.indexOf('/api/rutube/hls/proxy') === 0) return url;
+    return '/api/rutube/hls/proxy?u=' + encodeURIComponent(url);
+}
+
 // ==================== TMDB КЭШ ====================
 var tmdbCache = {};
 var cats = [];
@@ -1476,14 +1483,14 @@ function startTrailerBackground(url) {
             startLevel: 2,          // среднее качество — это только фон
             enableWorker: true
         });
-        hls.loadSource(url);
+        hls.loadSource(wrapRutubeHls(url));
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, function () {
             video.play().catch(function () { });
         });
         video._hls = hls;
     } else {
-        video.src = url;
+        video.src = wrapRutubeHls(url);
         video.play().catch(function () { });
     }
 }
@@ -1564,7 +1571,7 @@ async function openRutubeTrailerInPlayer(m3u8Url, title) {
                 enableWorker: true,
                 progressive: true
             });
-            AppState.hls.loadSource(m3u8Url);
+            AppState.hls.loadSource(wrapRutubeHls(m3u8Url));
             AppState.hls.attachMedia(vp);
 
             var started = false;
@@ -1601,7 +1608,7 @@ async function openRutubeTrailerInPlayer(m3u8Url, title) {
                 }
             });
         } else if (vp.canPlayType('application/vnd.apple.mpegurl')) {
-            vp.src = m3u8Url;
+            vp.src = wrapRutubeHls(m3u8Url);
             vp.addEventListener('loadedmetadata', function () {
                 if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
                 if (po) po.classList.remove('active');
