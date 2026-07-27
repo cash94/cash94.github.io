@@ -177,7 +177,10 @@ function resetDetailButtons() {
     if (ov) ov.classList.remove('expanded');
 
     var trailerBtn = getEl('catalog-trailer-btn');
-    if (trailerBtn) trailerBtn.style.display = 'none';
+    if (trailerBtn) {
+        trailerBtn.classList.add('hidden');      // ★ возвращаем hidden
+        trailerBtn.style.display = 'none';
+    }
 }
 
 /**
@@ -186,7 +189,10 @@ function resetDetailButtons() {
 function showTrailerButton() {
     var btn = getEl('catalog-trailer-btn');
     if (!btn) return;
+
+    btn.classList.remove('hidden');          // ★ убираем hidden
     btn.style.display = 'inline-block';
+
     // control.js кэширует список фокуса — инвалидируем и обновляем
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     if (typeof updateFocusableElements === 'function') updateFocusableElements();
