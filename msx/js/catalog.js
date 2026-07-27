@@ -1454,8 +1454,8 @@ function startTrailerBackground(url) {
 
     var video = document.createElement('video');
     video.id = 'trailer-bg-video';
-    video.muted = true;       // стартуем muted — иначе autoplay может не сработать
-    video.volume = 0;         // громкость начнём с нуля
+    video.muted = true;
+    video.volume = 0;
     video.loop = true;
     video.autoplay = true;
     video.playsInline = true;
@@ -1463,6 +1463,9 @@ function startTrailerBackground(url) {
 
     var backdrop = getEl('catalog-detail-backdrop');
     var cde = getEl('catalog-detail-extra');
+    var sub = getEl('detail-subtitle');          // ★ подзаголовок
+    var bb = getEl('back-from-detail');          // ★ кнопка «Назад»
+
     if (backdrop && backdrop.parentNode === dv) {
         dv.insertBefore(video, backdrop);
     } else {
@@ -1472,24 +1475,28 @@ function startTrailerBackground(url) {
     // Скрываем backdrop, пока играет трейлер
     if (backdrop) backdrop.classList.add('hidden');
 
-    // ★ Плавное угасание cde за 10 секунд (синхронно с появлением видео)
-    if (cde) {
-        cde.style.transition = 'opacity 10s ease';
-        requestAnimationFrame(function () {
+    // ★ Плавное угасание cde / subtitle / back-btn за 10 секунд
+    var fadeOutEls = [cde, sub, bb];
+    for (var i = 0; i < fadeOutEls.length; i++) {
+        (function (el) {
+            if (!el) return;
+            el.style.transition = 'opacity 10s ease';
             requestAnimationFrame(function () {
-                cde.style.opacity = '0';
+                requestAnimationFrame(function () {
+                    el.style.opacity = '0';
+                });
             });
-        });
+        })(fadeOutEls[i]);
     }
 
     rutubeTrailerState.bgVideo = video;
 
-    // ★ Плавное нарастание громкости: 0 → 100, по 10% за шаг, 10 шагов = 10 секунд
+    // ★ Плавное нарастание громкости: 0 → 100 за 10 секунд
     var volumeStarted = false;
     function startVolumeFade() {
         if (volumeStarted) return;
         volumeStarted = true;
-        video.muted = false;      // снимаем mute, когда видео уже играет
+        video.muted = false;
         video.volume = 0;
         var vol = 0;
         video._volumeTimer = setInterval(function () {
@@ -1499,7 +1506,7 @@ function startTrailerBackground(url) {
                 clearInterval(video._volumeTimer);
                 video._volumeTimer = null;
             }
-        }, 1000);   // 10 шагов × 1000 мс = 10 секунд (в такт анимации opacity)
+        }, 1000);
     }
 
     // Запуск HLS или прямого URL
@@ -1526,7 +1533,7 @@ function startTrailerBackground(url) {
         video.style.opacity = '1';
     });
 
-    // ★ Нарастание звука — когда видео реально заиграло (timeupdate — подстраховка)
+    // ★ Нарастание звука — когда видео реально заиграло
     video.addEventListener('playing', startVolumeFade);
     video.addEventListener('timeupdate', startVolumeFade);
 }
@@ -1537,7 +1544,6 @@ function startTrailerBackground(url) {
 function stopTrailerBackground() {
     var video = rutubeTrailerState.bgVideo || getEl('trailer-bg-video');
     if (video) {
-        // ★ Останавливаем нарастание громкости
         if (video._volumeTimer) {
             clearInterval(video._volumeTimer);
             video._volumeTimer = null;
@@ -1555,15 +1561,21 @@ function stopTrailerBackground() {
 
     var backdrop = getEl('catalog-detail-backdrop');
     var cde = getEl('catalog-detail-extra');
+    var sub = getEl('detail-subtitle');          // ★ подзаголовок
+    var bb = getEl('back-from-detail');          // ★ кнопка «Назад»
 
-    // ★ Плавное возвращение cde за 3 секунды
-    if (cde) {
-        cde.style.transition = 'opacity 3s ease';
-        requestAnimationFrame(function () {
+    // ★ Плавное возвращение cde / subtitle / back-btn за 3 секунды
+    var fadeInEls = [cde, sub, bb];
+    for (var i = 0; i < fadeInEls.length; i++) {
+        (function (el) {
+            if (!el) return;
+            el.style.transition = 'opacity 3s ease';
             requestAnimationFrame(function () {
-                cde.style.opacity = '1';
+                requestAnimationFrame(function () {
+                    el.style.opacity = '1';
+                });
             });
-        });
+        })(fadeInEls[i]);
     }
 
     if (backdrop) backdrop.classList.remove('hidden');
