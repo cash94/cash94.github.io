@@ -1,5 +1,5 @@
 // Модуль: RuTube Proxy
-// version: '1.1.0'
+// version: '1.2.0'
 // Проксирует запросы к RuTube API и HLS-потоки, добавляя заголовки и cookie (обход CORS)
 
 // ★ Cookie для RuTube — обновляйте при необходимости
@@ -28,9 +28,23 @@ var HLS_PROXY_PATH = '/api/rutube/hls/proxy';
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
 // Проверка, что URL принадлежит RuTube (защита от SSRF)
+var RUTUBE_HOSTS = ['rutube.ru', 'rtbcdn.ru'];
+
 function isRutubeUrl(url) {
   if (!url) return false;
-  return url.indexOf('rutube.ru') !== -1;
+  try {
+    var host = new URL(url).hostname;          // "bl.rutube.ru"
+    for (var i = 0; i < RUTUBE_HOSTS.length; i++) {
+      var allowed = RUTUBE_HOSTS[i];
+      // точное совпадение ИЛИ поддомен (.rutube.ru)
+      if (host === allowed || host.slice(-allowed.length - 1) === '.' + allowed) {
+        return true;
+      }
+    }
+    return false;
+  } catch (e) {
+    return false;   // битый URL — отклоняем
+  }
 }
 
 // Оборачивает URL сегмента/плейлиста в прокси
@@ -38,6 +52,7 @@ function wrapToProxy(url) {
   return HLS_PROXY_PATH + '?u=' + encodeURIComponent(url);
 }
 
+// Переписывает абсолютные URL внутри m3u8-плейлиста на прокси-URL
 // Переписывает абсолютные URL внутри m3u8-плейлиста на прокси-URL
 function rewriteRutubePlaylist(text) {
   var lines = text.split('\n');
@@ -52,10 +67,13 @@ function rewriteRutubePlaylist(text) {
       continue;
     }
 
-    // URI="..." внутри тегов (#EXT-X-KEY, субтитры, аудио-рендер)
-    if (trimmed.indexOf('URI="') !== -1 && isRutubeUrl(trimmed)) {
-      line = line.replace(/URI="(https?:\/\/[^"]*rutube\.ru[^"]*)"/g, function (m, url) {
-        return 'URI="' + wrapToProxy(url) + '"';
+    // URI="..." внутри тегов (#EXT-X-KEY, субтитры, аудио)
+    if (trimmed.indexOf('URI="') !== -1) {
+      line = line.replace(/URI="(https?:\/\/[^"]*)"/g, function (m, url) {
+        if (isRutubeUrl(url)) {
+          return 'URI="' + wrapToProxy(url) + '"';
+        }
+        return m; // чужие URL не трогаем
       });
     }
 
