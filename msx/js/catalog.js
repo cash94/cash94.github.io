@@ -1454,7 +1454,8 @@ function startTrailerBackground(url) {
 
     var video = document.createElement('video');
     video.id = 'trailer-bg-video';
-    video.muted = true;
+    video.muted = true;       // стартуем muted — иначе autoplay может не сработать
+    video.volume = 0;         // громкость начнём с нуля
     video.loop = true;
     video.autoplay = true;
     video.playsInline = true;
@@ -1468,21 +1469,45 @@ function startTrailerBackground(url) {
         dv.insertBefore(video, dv.firstChild);
     }
 
-    //   Скрываем backdrop, пока играет трейлер
+    // Скрываем backdrop, пока играет трейлер
     if (backdrop) backdrop.classList.add('hidden');
+
+    // ★ Плавное угасание cde за 10 секунд (синхронно с появлением видео)
     if (cde) {
-        cde.style.opacity = '0.4';
+        cde.style.transition = 'opacity 10s ease';
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                cde.style.opacity = '0';
+            });
+        });
     }
 
     rutubeTrailerState.bgVideo = video;
-    var started = false;
+
+    // ★ Плавное нарастание громкости: 0 → 100, по 10% за шаг, 10 шагов = 10 секунд
+    var volumeStarted = false;
+    function startVolumeFade() {
+        if (volumeStarted) return;
+        volumeStarted = true;
+        video.muted = false;      // снимаем mute, когда видео уже играет
+        video.volume = 0;
+        var vol = 0;
+        video._volumeTimer = setInterval(function () {
+            vol = Math.min(1, vol + 0.1);
+            try { video.volume = vol; } catch (e) { }
+            if (vol >= 1 && video._volumeTimer) {
+                clearInterval(video._volumeTimer);
+                video._volumeTimer = null;
+            }
+        }, 1000);   // 10 шагов × 1000 мс = 10 секунд (в такт анимации opacity)
+    }
 
     // Запуск HLS или прямого URL
     if (window.Hls && Hls.isSupported()) {
         var hls = new Hls({
             maxBufferSize: 30 * 1024 * 1024,
             maxBufferLength: 10,
-            startLevel: 2,          // среднее качество — это только фон
+            startLevel: 2,
             enableWorker: true
         });
         hls.loadSource(wrapRutubeHls(url));
@@ -1491,19 +1516,19 @@ function startTrailerBackground(url) {
             video.play().catch(function () { });
         });
         video._hls = hls;
-        started = true;
     } else {
         video.src = wrapRutubeHls(url);
         video.play().catch(function () { });
-        started = true;
     }
 
-    if (started) {
-        // Плавное проявление
-        requestAnimationFrame(function () {
-            video.style.opacity = '1';
-        });
-    }
+    // Плавное проявление видео
+    requestAnimationFrame(function () {
+        video.style.opacity = '1';
+    });
+
+    // ★ Нарастание звука — когда видео реально заиграло (timeupdate — подстраховка)
+    video.addEventListener('playing', startVolumeFade);
+    video.addEventListener('timeupdate', startVolumeFade);
 }
 
 /**
@@ -1512,6 +1537,11 @@ function startTrailerBackground(url) {
 function stopTrailerBackground() {
     var video = rutubeTrailerState.bgVideo || getEl('trailer-bg-video');
     if (video) {
+        // ★ Останавливаем нарастание громкости
+        if (video._volumeTimer) {
+            clearInterval(video._volumeTimer);
+            video._volumeTimer = null;
+        }
         if (video._hls) {
             video._hls.destroy();
             video._hls = null;
@@ -1523,12 +1553,19 @@ function stopTrailerBackground() {
     }
     rutubeTrailerState.bgVideo = null;
 
-    //   Возвращаем backdrop
     var backdrop = getEl('catalog-detail-backdrop');
     var cde = getEl('catalog-detail-extra');
+
+    // ★ Плавное возвращение cde за 3 секунды
     if (cde) {
-        cde.style.opacity = '1';
+        cde.style.transition = 'opacity 3s ease';
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                cde.style.opacity = '1';
+            });
+        });
     }
+
     if (backdrop) backdrop.classList.remove('hidden');
 }
 
