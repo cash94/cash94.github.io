@@ -2224,8 +2224,8 @@ async function showCatalogList() {
     var searchTab = getEl('tab-search');
     if (searchTab) searchTab.classList.remove('active');
 
-    grid.className = 'catalog-rows-container';
-    grid.style.display = 'block';
+    //grid.className = 'catalog-rows-container';
+    //grid.style.display = 'block';
     grid.innerHTML = '<div class="catalog-rows-loading"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка каталогов...</div></div>';
 
     // Категории из CATALOG_CONFIG (в порядке объявления)
