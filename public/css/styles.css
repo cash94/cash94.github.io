@@ -3975,3 +3975,19 @@ article {
 .catalog-show-all.focused .show-all-text {
   color: #fff;
 }
+
+.catalog-row-header {
+  border-radius: 12px;
+  transition: background 0.2s ease;
+}
+.catalog-row-header.focused {
+  background: rgba(74, 158, 255, 0.08);
+}
+.catalog-row-header.focused .catalog-row-title {
+  color: #4a9eff;
+  text-shadow: 0 0 20px rgba(74, 158, 255, 0.4);
+}
+.catalog-row-header.focused .catalog-row-title::after {
+  opacity: 1;
+  transform: translateX(4px);
+}
