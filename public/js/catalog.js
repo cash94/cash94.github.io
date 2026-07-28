@@ -2754,7 +2754,7 @@ function stopTmdbCleanup() {
 function initCatalog() {
     startTmdbCleanup();
     initCatalogDetailButtons();
-    setupCatalogRowsNavigation();
+    //setupCatalogRowsNavigation();
     window.tmdbCache = {
         clear: clearTmdbCache,
         stats: getTmdbCacheStats,
