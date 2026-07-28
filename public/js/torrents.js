@@ -755,31 +755,72 @@ async function showDetail(torrent) {
     if (torrent && torrent.hash) window.lastSelectedTorrentHash = torrent.hash;
     if (typeof currentFocusIndex !== 'undefined') window.lastSelectedTorrentIndex = currentFocusIndex;
     resetDetailBackground();
-    var mainContainer = getEl('main-container'); if (mainContainer) mainContainer.style.pointerEvents = 'none';
+    var mainContainer = getEl('main-container');
+    if (mainContainer) mainContainer.style.pointerEvents = 'none';
     AppState.currentScreen = 'detail';
-    if (!window.AndroidJS) { AppState.detailReturnTo = 'torrents'; AppState.currentDetailItem = torrent; }
-    else { if (AppState.playFromHash) { AppState.currentDetailItem = AppState.androidBackCatalog; AppState.detailReturnTo = 'catalog'; } else { AppState.detailReturnTo = 'torrents'; AppState.currentDetailItem = torrent; } }
+    if (!window.AndroidJS) {
+        AppState.detailReturnTo = 'torrents';
+        AppState.currentDetailItem = torrent;
+    } else {
+        if (AppState.playFromHash) {
+            AppState.currentDetailItem = AppState.androidBackCatalog;
+            AppState.detailReturnTo = 'catalog';
+        } else {
+            AppState.detailReturnTo = 'torrents';
+            AppState.currentDetailItem = torrent;
+        }
+    }
+
+    // Очищаем контент от предыдущего торрента (трейлеры, скриншоты, описание, мета)
     hideCatalogDetailExtra();
-    var posterImg = getEl('detail-poster'); var titleEl = getEl('detail-title-text'); var filesList = getEl('files-list'); var detailSubtitle = getEl('detail-subtitle'); var detailViewDiv = getEl('detail-view');
-    var dh = document.querySelector('.detail-header'); if (dh) dh.style.background = "rgba(0, 0, 0, 0.3)";
+
+    // === НОВАЯ ЛОГИКА ВИДИМОСТИ ===
+    // Контейнер доп. информации показываем
+    var catalogDetailExtra = getEl('catalog-detail-extra');
+    if (catalogDetailExtra) catalogDetailExtra.classList.remove('hidden');
+    // Мета-чипы скрыты, пока не придут данные TMDB (updateDetailMetaInfo сама снимет hidden)
+    var catalogDetailMeta = getEl('catalog-detail-meta');
+    if (catalogDetailMeta) catalogDetailMeta.classList.add('hidden');
+    // Кнопка «Играть» из каталога больше не нужна — её роль играет detail-progress-btn
+    var catalogWatchBtn = getEl('catalog-watch-btn');
+    if (catalogWatchBtn) catalogWatchBtn.classList.add('hidden');
+    // Кнопку «Играть / Продолжить» показываем
+    var detailProgressBtn = getEl('detail-progress-btn');
+    if (detailProgressBtn) detailProgressBtn.classList.remove('hidden');
+    // ================================
+
+    var posterImg = getEl('detail-poster');
+    var titleEl = getEl('detail-title-text');
+    var filesList = getEl('files-list');
+    var detailSubtitle = getEl('detail-subtitle');
+    var detailViewDiv = getEl('detail-view');
+    var dh = document.querySelector('.detail-header');
+    if (dh) dh.style.background = 'rgba(0, 0, 0, 0.3)';
     if (filesList) { filesList.style.display = 'flex'; filesList.style.flexDirection = 'row'; }
-    filesList.innerHTML = `<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;"><div class="spinner"></div><div style="font-size: 16px; color: #aaa;">Загрузка файлов...</div></div>`;
+    filesList.innerHTML = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;"><div class="spinner"></div><div style="font-size: 16px; color: #aaa;">Загрузка файлов...</div></div>';
     if (typeof Animations !== 'undefined') Animations.animateDetailShow();
     var tmdbPromise = loadAllTmdbDataForTorrent(torrent, { titleEl: titleEl, detailViewDiv: detailViewDiv, detailSubtitle: detailSubtitle });
     titleEl.textContent = (torrent.title || 'Без названия').replace(/[\d+]/, '').trim();
     var oldProgressBlocks = document.querySelectorAll('#detail-progress');
-    for (var i = 0; i < oldProgressBlocks.length; i++) {
-        oldProgressBlocks[i].remove();
-    }
+    for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
     var lastField = await addProgressToDetail(torrent);
     try {
         var files = await getTorrentFilesWithCache(torrent, false);
         var poster = torrent.poster || '';
-        if (!poster && torrent.data) { try { var data = JSON.parse(torrent.data); if (data.movie) poster = data.movie.img || (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : ''); } catch (e) { } }
-        posterImg.innerHTML = poster ? `<img src="${poster}" alt="poster">` : '<div class="no-poster">Нет постера</div>';
-        if (files.length === 0) { filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">📁 Нет файлов</div>'; }
-        else {
-            var videoFiles = files.filter(f => { var n = f.path.split('/').pop().toLowerCase(); return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext)); });
+        if (!poster && torrent.data) {
+            try {
+                var data = JSON.parse(torrent.data);
+                if (data.movie) poster = data.movie.img || (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : '');
+            } catch (e) { }
+        }
+        posterImg.innerHTML = poster ? '<img src="' + poster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
+        if (files.length === 0) {
+            filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">📁 Нет файлов</div>';
+        } else {
+            var videoFiles = files.filter(f => {
+                var n = f.path.split('/').pop().toLowerCase();
+                return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext));
+            });
             filesList.innerHTML = '';
             var fragment = document.createDocumentFragment();
             for (var i = 0; i < videoFiles.length; i++) {
@@ -796,18 +837,25 @@ async function showDetail(torrent) {
                 loadStillsAndUpdateFiles(tmdbData.seasonNumbers || [], tmdbData.allSeasonEpisodes || {}, tmdbData.movieStill, videoFiles.length);
             }).catch(function (error) { console.error('Ошибка загрузки TMDB данных:', error); });
         }
-    } catch (e) { console.error('Ошибка:', e); filesList.innerHTML = `<div style="text-align: center; padding: 20px; color: #ff6a6a;">❌ Ошибка загрузки файлов: ${e.message}</div>`; }
+    } catch (e) {
+        console.error('Ошибка:', e);
+        filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #ff6a6a;">❌ Ошибка загрузки файлов: ' + e.message + '</div>';
+    }
     setTimeout(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
             updateFocusableElements();
             var fileItems = document.querySelectorAll('.file-item');
             if (fileItems.length > 0) {
                 if (lastField > 0 && focusableElements[lastField + 1] && focusableElements[lastField + 1].classList.contains('file-item')) setFocus(lastField + 1);
-                else { for (var i = 0; i < focusableElements.length; i++) { if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) { setFocus(i); break; } } }
+                else {
+                    for (var i = 0; i < focusableElements.length; i++) {
+                        if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) { setFocus(i); break; }
+                    }
+                }
             } else setFocus(0);
         }
     }, 200);
-    AppState.mediaType = "";
+    AppState.mediaType = '';
 }
 
 async function loadAllTmdbDataForTorrent(torrent, elements) {
