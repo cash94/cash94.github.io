@@ -3833,7 +3833,6 @@ article {
 }
 
 /* ===== Каталог: ряды-карусели (стиль ivi) ===== */
-/* ===== Каталог: ряды-карусели (стиль ivi) ===== */
 .catalog-rows-container {
   display: block;
   padding: 10px 0 50px;
@@ -3990,4 +3989,141 @@ article {
 .catalog-row-header.focused .catalog-row-title::after {
   opacity: 1;
   transform: translateX(4px);
+}
+
+/* ===================================================== */
+/* ===== АДАПТАЦИЯ ДЛЯ ЭКРАНОВ 480px ===== */
+/* ===================================================== */
+@media (max-width: 480px) {
+  /* Уменьшаем отступы контейнера */
+  .catalog-rows-container {
+    padding: 8px 0 30px;
+  }
+
+  /* Уменьшаем отступы между рядами */
+  .catalog-row {
+    margin-bottom: 24px;
+  }
+
+  /* Заголовок ряда */
+  .catalog-row-header {
+    padding: 0 12px 10px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .catalog-row-title {
+    font-size: 18px;
+    gap: 6px;
+  }
+
+  .catalog-row-title::after {
+    font-size: 16px;
+  }
+
+  .catalog-row-showall-hint {
+    font-size: 12px;
+    opacity: 0.7;
+  }
+
+  /* Контейнер карусели - уменьшаем отступы */
+  .catalog-row-viewport {
+    gap: 12px;
+    padding: 8px 12px 16px;
+  }
+
+  /* ===== Карточка в ряду (уменьшенная 160×280) ===== */
+  .catalog-row-card {
+    width: 160px;
+  }
+
+  .catalog-row-card .torrent-poster {
+    width: 160px;
+    height: 280px;
+    border-radius: 10px;
+  }
+
+  /* Уменьшаем эффект фокуса для маленьких карточек */
+  .catalog-row-card.focused .torrent-poster {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 2px #4a9eff, 0 8px 20px rgba(0, 0, 0, 0.5);
+  }
+
+  /* ===== Карточка «Показать все» (уменьшенная 160×280) ===== */
+  .catalog-show-all .show-all-inner {
+    width: 160px;
+    height: 280px;
+    border-radius: 10px;
+    gap: 8px;
+    border-width: 1.5px;
+  }
+
+  .catalog-show-all .show-all-icon {
+    font-size: 36px;
+  }
+
+  .catalog-show-all .show-all-text {
+    font-size: 14px;
+  }
+
+  .catalog-show-all.focused .show-all-inner {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 2px #4a9eff;
+  }
+
+  /* Фокус на заголовке ряда */
+  .catalog-row-header.focused .catalog-row-title {
+    font-size: 18px;
+  }
+
+  .catalog-row-header.focused .catalog-row-title::after {
+    transform: translateX(2px);
+  }
+}
+
+/* ===================================================== */
+/* ===== ДОПОЛНИТЕЛЬНАЯ АДАПТАЦИЯ ДЛЯ ОЧЕНЬ МАЛЕНЬКИХ ЭКРАНОВ (320px) ===== */
+/* ===================================================== */
+@media (max-width: 380px) {
+  .catalog-row-viewport {
+    gap: 10px;
+    padding: 6px 8px 12px;
+  }
+
+  .catalog-row-header {
+    padding: 0 8px 8px;
+  }
+
+  /* Ещё более уменьшенные карточки 130×230 */
+  .catalog-row-card {
+    width: 130px;
+  }
+
+  .catalog-row-card .torrent-poster {
+    width: 130px;
+    height: 230px;
+    border-radius: 8px;
+  }
+
+  .catalog-show-all .show-all-inner {
+    width: 130px;
+    height: 230px;
+    border-radius: 8px;
+  }
+
+  .catalog-show-all .show-all-icon {
+    font-size: 28px;
+  }
+
+  .catalog-show-all .show-all-text {
+    font-size: 12px;
+  }
+
+  .catalog-row-title {
+    font-size: 16px;
+  }
+
+  .catalog-row-showall-hint {
+    font-size: 11px;
+  }
 }
