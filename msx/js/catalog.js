@@ -29,12 +29,12 @@ var CATALOG_CONSTANTS = {
 // ==================== КОНФИГУРАЦИЯ КАТАЛОГОВ ====================
 var CATALOG_CONFIG = {
     movie: { name: 'Фильмы', url: SERVER_URL + '/api/catalog/movie', mediaType: 'movie' },
-    quadhd: { name: 'Фильмы в 4K', url: SERVER_URL + '/api/catalog/quadhd', mediaType: 'movie' },
-    legends: { name: 'Лучшие фильмы', url: SERVER_URL + '/api/catalog/legends', mediaType: 'movie' },
     tv: { name: 'Сериалы', url: SERVER_URL + '/api/catalog/tv', mediaType: 'tv' },
     cartoons: { name: 'Мультфильмы', url: SERVER_URL + '/api/catalog/cartoons', mediaType: 'movie' },
     cartoons_tv: { name: 'Мультсериалы', url: SERVER_URL + '/api/catalog/cartoons_tv', mediaType: 'tv' },
     anime: { name: 'Аниме', url: SERVER_URL + '/api/catalog/anime', mediaType: 'tv' },
+    quadhd: { name: 'Фильмы в 4K', url: SERVER_URL + '/api/catalog/quadhd', mediaType: 'movie' },
+    legends: { name: 'Лучшие фильмы', url: SERVER_URL + '/api/catalog/legends', mediaType: 'movie' },
     history: { name: 'История', url: null, mediaType: 'history', isHistory: true }
 };
 
@@ -848,6 +848,7 @@ function createCardElement(config) {
 function renderCatalogGrid() {
     var grid = getEl('torrents-grid');
     if (!grid) return;
+    grid.style.display = '';
     grid.innerHTML = '';
     if (catalogState.items.length === 0) { showEmptyCatalog(); return; }
     addCatalogHeader(grid);
@@ -965,17 +966,31 @@ document.addEventListener('DOMContentLoaded', function () {
     var grid = getEl('torrents-grid');
     if (!grid) return;
     grid.addEventListener('click', function (e) {
+        // Карточка «Показать все» / папка категории
+        var folder = e.target.closest('.catalog-folder-card');
+        if (folder) {
+            var fkey = folder.dataset.catalogKey;
+            if (fkey === 'history') loadHistoryCatalog();
+            else loadCatalog(fkey);
+            return;
+        }
+
         var card = e.target.closest('.torrent-card.catalog-card');
-        if (card && catalogState.currentCatalog) {
+        if (!card) return;
+
+        // Режим сетки (открыт конкретный каталог)
+        if (catalogState.currentCatalog) {
             var idx = parseInt(card.dataset.catalogIndex, 10);
             if (!isNaN(idx) && catalogState.items[idx]) onCatalogItemClick(catalogState.items[idx], idx);
             return;
         }
-        var folder = e.target.closest('.catalog-folder-card');
-        if (folder) {
-            var key = folder.dataset.catalogKey;
-            if (key === 'history') loadHistoryCatalog();
-            else loadCatalog(key);
+
+        // Режим рядов (список каталогов)
+        var rkey = card.dataset.catalogKey;
+        var itemIdx = parseInt(card.dataset.itemIndex, 10);
+        if (rkey && !isNaN(itemIdx) && window.catalogRowsData &&
+            window.catalogRowsData[rkey] && window.catalogRowsData[rkey][itemIdx]) {
+            onRowItemClick(window.catalogRowsData[rkey][itemIdx], rkey, itemIdx);
         }
     });
 });
@@ -1885,7 +1900,6 @@ async function showCatalogDetail(item, index, posterUrl) {
     dv.style.pointerEvents = 'auto';
     if (mc) mc.style.pointerEvents = 'none';
     if (typeof window.hideCatalogDetailExtra === 'function') window.hideCatalogDetailExtra();
-    if (typeof window.visibleItemsforDetail === 'function') window.visibleItemsforDetail('showCatalogDetail');
     var wb = getEl('catalog-watch-btn');
     if (aw) aw.classList.add('hidden');
     if (rw) rw.classList.add('hidden');
@@ -2190,39 +2204,385 @@ async function showCatalogList() {
     var grid = getEl('torrents-grid');
     if (!grid) return;
     abortCatalogRequests();
+
     catalogState.currentCatalog = null;
     catalogState.items = [];
+    catalogState.cardElements = {};
     catalogState.loading = false;
     catalogState.loadedPostersCount = 0;
     catalogState.posterLoadQueue = [];
     catalogState.lastSelectedIndex = 0;
     catalogState.lastSelectedId = null;
+    window.catalogRows = [];
+    window.catalogRowsData = {};
+
     var catalogTab = getEl('tab-catalog');
     if (catalogTab) catalogTab.classList.add('active');
     var torrentsTab = getEl('tab-torrents');
     if (torrentsTab) torrentsTab.classList.remove('active');
     var searchTab = getEl('tab-search');
     if (searchTab) searchTab.classList.remove('active');
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка списка каталогов...</div></div>';
-    if (cats.length === 0) cats = await fetchAvailableCatalogs();
+
+    grid.className = 'catalog-rows-container';
+    grid.style.display = 'block';
+    grid.innerHTML = '<div class="catalog-rows-loading"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка каталогов...</div></div>';
+
+    // Категории из CATALOG_CONFIG (в порядке объявления)
+    var keys = [];
+    for (var k in CATALOG_CONFIG) {
+        if (CATALOG_CONFIG.hasOwnProperty(k)) keys.push(k);
+    }
+
+    // Параллельная загрузка всех рядов
+    var loadPromises = keys.map(function (key) {
+        return loadRowItems(key).then(function (items) {
+            return { key: key, items: items };
+        }).catch(function () {
+            return { key: key, items: [] };
+        });
+    });
+
+    var results = await Promise.all(loadPromises);
+
     if (AppState.currentScreen !== 'catalog') return;
+
     grid.innerHTML = '';
-    if (cats.length === 0) {
-        for (var k in CATALOG_CONFIG) {
-            if (CATALOG_CONFIG.hasOwnProperty(k) && k !== 'history') {
-                grid.appendChild(createCatalogFolderCard(k, CATALOG_CONFIG[k]));
-            }
+    window.catalogRows = [];
+    window.catalogRowsData = {};
+
+    var frag = document.createDocumentFragment();
+    var renderedRows = 0;
+    for (var i = 0; i < results.length; i++) {
+        var res = results[i];
+        if (!res.items || res.items.length === 0) continue; // пустые категории пропускаем
+        var row = createCatalogRow(res.key, res.items);
+        if (row) { frag.appendChild(row); renderedRows++; }
+    }
+
+    if (renderedRows === 0) {
+        grid.innerHTML = '<div class="catalog-rows-loading"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталоги пусты</div></div>';
+        return;
+    }
+
+    grid.appendChild(frag);
+
+    requestAnimationFrame(function () {
+        if (AppState.currentScreen === 'catalog' && !catalogState.currentCatalog) {
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            setTimeout(function () {
+                if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
         }
-    } else {
-        for (var i = 0; i < cats.length; i++) {
-            var c = cats[i];
-            grid.appendChild(createCatalogFolderCard(c.id, CATALOG_CONFIG[c.id] || {
-                name: c.displayName || c.id,
-                mediaType: c.id.indexOf('tv') !== -1 ? 'tv' : 'movie'
-            }));
+    });
+}
+
+// ==================== РЯДЫ-КАРУСЕЛИ (список каталогов) ====================
+
+/**
+ * Загружает до 19 элементов для ряда категории
+ */
+async function loadRowItems(key) {
+    var LIMIT = 19;
+    if (key === 'history') {
+        var data = await safeFetch(SERVER_URL + '/api/history', { timeout: 10000 });
+        if (data && data.success && data.history && data.history.length) {
+            return data.history.slice(0, LIMIT).map(function (item) {
+                var pp = item.posterPath;
+                if (pp && pp.indexOf('http') !== 0) pp = (pp.indexOf('/') === 0 ? pp : '/' + pp);
+                return {
+                    id: item.tmdbId, title: item.title, name: item.title,
+                    media_type: item.mediaType, poster_path: pp,
+                    vote_average: null, isHistoryItem: true
+                };
+            });
+        }
+        return [];
+    }
+    var cfg = CATALOG_CONFIG[key];
+    if (!cfg || !cfg.url) return [];
+    var d = await safeFetch(cfg.url + '/items?from=0&limit=' + LIMIT, { timeout: 10000 });
+    if (d && d.success && d.items) return d.items.slice(0, LIMIT);
+    return [];
+}
+
+/**
+ * Создаёт DOM-структуру одного ряда
+ */
+function createCatalogRow(key, items) {
+    var cfg = CATALOG_CONFIG[key];
+    if (!cfg) return null;
+
+    var row = document.createElement('section');
+    row.className = 'catalog-row';
+    row.dataset.catalogKey = key;
+
+    // Заголовок ряда
+    var header = document.createElement('div');
+    header.className = 'catalog-row-header';
+    header.innerHTML =
+        '<h2 class="catalog-row-title">' + escapeHtml(cfg.name) + '</h2>' +
+        '<div class="catalog-row-showall-hint">Показать все →</div>';
+    header.addEventListener('click', function () {
+        if (key === 'history') loadHistoryCatalog();
+        else loadCatalog(key);
+    });
+    row.appendChild(header);
+
+    // Карусель
+    var carousel = document.createElement('div');
+    carousel.className = 'catalog-row-carousel';
+    var viewport = document.createElement('div');
+    viewport.className = 'catalog-row-viewport';
+
+    var rowCards = [];
+    window.catalogRowsData[key] = items;
+
+    // Карточки фильмов (до 19)
+    for (var i = 0; i < items.length; i++) {
+        var card = createRowCard(items[i], key, i);
+        viewport.appendChild(card);
+        rowCards.push(card);
+    }
+
+    // 20-я карточка — «Показать все»
+    var showAll = createShowAllCard(key);
+    viewport.appendChild(showAll);
+    rowCards.push(showAll);
+
+    carousel.appendChild(viewport);
+    row.appendChild(carousel);
+
+    window.catalogRows.push(rowCards);
+    return row;
+}
+
+/**
+ * Карточка фильма в ряду
+ */
+function createRowCard(item, key, index) {
+    var title = getCatalogItemTitle(item);
+    var mt = item.media_type || 'movie';
+    var id = item.id;
+    var rating = item.vote_average ? Math.round(item.vote_average * 10) / 10 : null;
+    var year = getCatalogItemYear(item);
+    var ratingColor = rating ? getRatingColor(rating) : '';
+
+    var ratingHtml = rating ?
+        '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.55);color:' + ratingColor +
+        ';font-weight:bold;font-size:13px;padding:3px 7px;border-radius:10px;z-index:10;border:1px solid ' + ratingColor + '">' + rating + '</div>' : '';
+
+    var card = document.createElement('div');
+    card.className = 'torrent-card catalog-card catalog-row-card';
+    card.dataset.catalogKey = key;
+    card.dataset.itemIndex = index;
+    card.dataset.itemId = id;
+    card.dataset.mediaType = mt;
+    card.dataset.title = title;
+
+    card.innerHTML =
+        '<div class="torrent-poster">' +
+        '<div class="row-poster-img"><div class="no-poster catalog-poster-loading"></div></div>' +
+        ratingHtml +
+        '</div>' +
+        '<div class="torrent-info">' +
+        '<div class="torrent-title">' + escapeHtml(title.length > 40 ? title.substring(0, 40) + '...' : title) + '</div>' +
+        '<div class="torrent-meta"><span>' + (mt === 'tv' ? 'Сериал' : 'Фильм') + '</span>' +
+        (year ? '<span>' + year + '</span>' : '') + '</div>' +
+        '</div>';
+
+    loadRowPoster(card, item);
+    return card;
+}
+
+/**
+ * Карточка «Показать все» (20-я)
+ */
+function createShowAllCard(key) {
+    var card = document.createElement('div');
+    card.className = 'torrent-card catalog-folder-card catalog-row-card catalog-show-all';
+    card.dataset.catalogKey = key;
+    card.innerHTML =
+        '<div class="show-all-inner">' +
+        '<div class="show-all-icon">→</div>' +
+        '<div class="show-all-text">Показать<br>все</div>' +
+        '</div>';
+    return card;
+}
+
+/**
+ * Загрузка постера для карточки ряда
+ */
+async function loadRowPoster(card, item) {
+    var imgBox = card.querySelector('.row-poster-img');
+    if (!imgBox) return;
+    var id = item.id;
+    var mt = item.media_type || 'movie';
+    var cacheKey = id + '_' + mt;
+
+    var cached = catalogState.posterCache.get(cacheKey);
+    if (cached) { setRowPosterImg(imgBox, cached); return; }
+
+    if (item.poster_path) {
+        var url = item.poster_path.indexOf('http') === 0 ? item.poster_path :
+            AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM +
+            (item.poster_path.indexOf('/') === 0 ? item.poster_path : '/' + item.poster_path);
+        catalogState.posterCache.set(cacheKey, url);
+        setRowPosterImg(imgBox, url);
+        return;
+    }
+
+    if (id && id !== 'undefined' && id !== 'null') {
+        try {
+            var d = await safeFetch('/api/tmdb/item?id=' + id + '&type=' + mt);
+            if (d && d.poster_path) {
+                var url2 = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + d.poster_path;
+                catalogState.posterCache.set(cacheKey, url2);
+                if (card.isConnected) setRowPosterImg(imgBox, url2);
+                return;
+            }
+        } catch (e) { }
+    }
+
+    if (card.isConnected) imgBox.innerHTML = '<div class="no-poster">Нет постера</div>';
+}
+
+function setRowPosterImg(box, url) {
+    var img = new Image();
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
+    var insert = function () {
+        if (!box.isConnected) return;
+        box.innerHTML = '';
+        img.style.opacity = '1';
+        box.appendChild(img);
+    };
+    img.onerror = function () {
+        if (box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
+    };
+    img.src = url;
+    if (typeof img.decode === 'function') img.decode().then(insert).catch(insert);
+    else img.onload = insert;
+}
+
+/**
+ * Клик по карточке фильма в ряду
+ */
+function onRowItemClick(item, key, index) {
+    catalogState.lastSelectedIndex = index;
+    catalogState.lastSelectedId = item.id;
+    AppState.catalogIndex = index;
+    AppState.androidBackCatalog = item;
+    showCatalogDetail(item, index, null);
+}
+
+// ==================== НАВИГАЦИЯ ПО РЯДАМ ====================
+
+function focusRowCard(ri, ci) {
+    var rows = window.catalogRows;
+    if (!rows || !rows[ri] || !rows[ri][ci]) return true;
+    var card = rows[ri][ci];
+    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+    var idx = (typeof focusableElements !== 'undefined') ? focusableElements.indexOf(card) : -1;
+    if (idx !== -1 && typeof setFocus === 'function') setFocus(idx);
+    else if (typeof focusEl === 'function') focusEl(card);
+    scrollRowToCard(card);
+    return true;
+}
+
+function findRowPosition(el) {
+    var rows = window.catalogRows || [];
+    for (var i = 0; i < rows.length; i++) {
+        for (var j = 0; j < rows[i].length; j++) {
+            if (rows[i][j] === el) return { row: i, col: j };
         }
     }
-    if (CATALOG_CONFIG.history) grid.appendChild(createCatalogFolderCard('history', CATALOG_CONFIG.history));
+    return null;
+}
+
+function handleRowsNavigation(dir) {
+    var rows = window.catalogRows;
+    if (!rows || !rows.length) return false;
+
+    var f = document.querySelector('.focused');
+    var pos = f ? findRowPosition(f) : null;
+
+    if (!pos) return focusRowCard(0, 0);
+
+    if (dir === 'left') {
+        if (pos.col > 0) return focusRowCard(pos.row, pos.col - 1);
+        return true;
+    }
+    if (dir === 'right') {
+        if (pos.col < rows[pos.row].length - 1) return focusRowCard(pos.row, pos.col + 1);
+        return true;
+    }
+    if (dir === 'up') {
+        if (pos.row > 0) {
+            var tc = Math.min(pos.col, rows[pos.row - 1].length - 1);
+            return focusRowCard(pos.row - 1, tc);
+        }
+        // верхний ряд → на табы
+        if (typeof getTorrentTabs === 'function') {
+            var t = getTorrentTabs();
+            if (t.length && typeof focusEl === 'function') { focusEl(t[0]); return true; }
+        }
+        return true;
+    }
+    if (dir === 'down') {
+        if (pos.row < rows.length - 1) {
+            var tc2 = Math.min(pos.col, rows[pos.row + 1].length - 1);
+            return focusRowCard(pos.row + 1, tc2);
+        }
+        return true;
+    }
+    return true;
+}
+
+function scrollRowToCard(card) {
+    var viewport = card.closest ? card.closest('.catalog-row-viewport') : null;
+    if (!viewport) return;
+    var cr = card.getBoundingClientRect();
+    var vr = viewport.getBoundingClientRect();
+    var pad = 50;
+    if (cr.left < vr.left + pad) {
+        viewport.scrollBy({ left: cr.left - vr.left - pad, behavior: 'smooth' });
+    } else if (cr.right > vr.right - pad) {
+        viewport.scrollBy({ left: cr.right - vr.right + pad, behavior: 'smooth' });
+    }
+}
+
+/**
+ * Переопределяет стратегию catalog для поддержки режима рядов.
+ * Режим сетки (открыт конкретный каталог) сохраняет старую логику.
+ */
+function setupCatalogRowsNavigation() {
+    if (typeof ScreenStrategies === 'undefined' || !ScreenStrategies.catalog) {
+        setTimeout(setupCatalogRowsNavigation, 100); // control.js ещё не готов
+        return;
+    }
+    if (ScreenStrategies.catalog._rowsPatched) return;
+
+    var _origHandleNav = ScreenStrategies.catalog.handleNavigation;
+    var _origEnsureFocus = ScreenStrategies.catalog.ensureFocus;
+
+    ScreenStrategies.catalog.handleNavigation = function (dir) {
+        if (!catalogState.currentCatalog && window.catalogRows && window.catalogRows.length) {
+            return handleRowsNavigation(dir);
+        }
+        return _origHandleNav.call(this, dir);
+    };
+
+    ScreenStrategies.catalog.ensureFocus = function (force) {
+        if (force === undefined) force = false;
+        if (!catalogState.currentCatalog && window.catalogRows && window.catalogRows.length) {
+            if (typeof currentScreen === 'function' && currentScreen() !== 'catalog') return false;
+            var f = document.querySelector('.focused');
+            if (!force && f && typeof belongsToScreen === 'function' && belongsToScreen(f, 'catalog')) return true;
+            return focusRowCard(0, 0);
+        }
+        return _origEnsureFocus.call(this, force);
+    };
+
+    ScreenStrategies.catalog._rowsPatched = true;
 }
 
 function createCatalogFolderCard(key, cfg) {
@@ -2394,6 +2754,7 @@ function stopTmdbCleanup() {
 function initCatalog() {
     startTmdbCleanup();
     initCatalogDetailButtons();
+    //setupCatalogRowsNavigation();
     window.tmdbCache = {
         clear: clearTmdbCache,
         stats: getTmdbCacheStats,
