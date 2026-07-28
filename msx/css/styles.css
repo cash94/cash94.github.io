@@ -3831,3 +3831,163 @@ article {
 #catalog-detail-overview.hidden {
   display: none !important;
 }
+
+/* ===== Каталог: ряды-карусели (стиль ivi) ===== */
+/* ===== Каталог: ряды-карусели (стиль ivi) ===== */
+.catalog-rows-container {
+  display: block;
+  padding: 10px 0 50px;
+}
+
+.catalog-rows-loading {
+  text-align: center;
+  padding: 80px 20px;
+  color: #aaa;
+}
+
+.catalog-row {
+  margin-bottom: 38px;
+}
+
+.catalog-row-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 40px 14px;
+  cursor: pointer;
+}
+
+.catalog-row-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.catalog-row-title::after {
+  content: '→';
+  font-size: 20px;
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.catalog-row-header:hover .catalog-row-title::after {
+  opacity: 0.7;
+  transform: translateX(0);
+}
+
+.catalog-row-showall-hint {
+  font-size: 14px;
+  color: #4a9eff;
+  opacity: 0.85;
+}
+
+.catalog-row-carousel {
+  position: relative;
+}
+
+.catalog-row-viewport {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 10px 40px 20px;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+
+.catalog-row-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+/* ===== Карточка в ряду (260×460) ===== */
+.catalog-row-card {
+  flex: 0 0 auto;
+  width: 260px;
+}
+
+.catalog-row-card .torrent-poster {
+  width: 260px;
+  height: 460px;
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+  background: #1a1a2e;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.row-poster-img {
+  width: 100%;
+  height: 100%;
+}
+
+/* ★ Убираем синюю информационную полосу под постером */
+.catalog-row-card .torrent-info {
+  display: none;
+}
+
+/* Фокус на карточке ряда */
+.catalog-row-card.focused .torrent-poster {
+  transform: scale(1.05);
+  box-shadow: 0 0 0 3px #4a9eff, 0 16px 40px rgba(0, 0, 0, 0.6);
+  z-index: 5;
+}
+
+/* ===== Карточка «Показать все» (260×460) ===== */
+.catalog-show-all .show-all-inner {
+  width: 260px;
+  height: 460px;
+  border-radius: 14px;
+  background: rgba(74, 158, 255, 0.10);
+  border: 2px dashed rgba(74, 158, 255, 0.4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+.catalog-show-all .show-all-icon {
+  font-size: 56px;
+  color: #4a9eff;
+  line-height: 1;
+}
+
+.catalog-show-all .show-all-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ccc;
+  text-align: center;
+}
+
+.catalog-show-all.focused .show-all-inner {
+  background: rgba(74, 158, 255, 0.22);
+  border-color: #4a9eff;
+  transform: scale(1.05);
+  box-shadow: 0 0 0 3px #4a9eff;
+}
+
+.catalog-show-all.focused .show-all-text {
+  color: #fff;
+}
+
+.catalog-row-header {
+  border-radius: 12px;
+  transition: background 0.2s ease;
+}
+.catalog-row-header.focused {
+  background: rgba(74, 158, 255, 0.08);
+}
+.catalog-row-header.focused .catalog-row-title {
+  color: #4a9eff;
+  text-shadow: 0 0 20px rgba(74, 158, 255, 0.4);
+}
+.catalog-row-header.focused .catalog-row-title::after {
+  opacity: 1;
+  transform: translateX(4px);
+}
