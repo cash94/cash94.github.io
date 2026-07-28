@@ -2151,61 +2151,61 @@ function focusRowCard(ri, ci, rows) {
 function handleRowsNavigation(dir) {
     lastNavDirection = dir;
     var rows = getCatalogRows();
-    var headers = getCatalogRowHeaders();
     if (!rows.length) return false;
     var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
+    var h = getTorrentHeader(), t = getTorrentTabs();
     if (!f) return focusRowCard(0, 0, rows);
 
-    // 1) Фокус на заголовке ряда
-    var hi = -1;
-    for (var i = 0; i < headers.length; i++) if (f === headers[i]) { hi = i; break; }
-    if (hi !== -1) {
-        if (dir === 'down') return focusRowCard(hi, 0, rows);       // в свой ряд
-        if (dir === 'up') {
-            if (hi === 0) {
-                var t = getTorrentTabs();
-                if (t.length) { focusEl(t[0], { direction: 'up' }); return true; }
-                return true;
-            }
-            return focusRowCard(hi - 1, 0, rows);                    // в предыдущий ряд
-        }
-        return true;                                                 // ←/→ — стоим
-    }
-
-    // 2) Фокус на карточке
+    // Фокус на карточке ряда
     var pos = findRowPosition(f, rows);
     if (pos) {
         if (dir === 'left') {
             if (pos.col > 0) return focusRowCard(pos.row, pos.col - 1, rows);
-            return true;
+            return true; // левый край — стоим
         }
         if (dir === 'right') {
             if (pos.col < rows[pos.row].length - 1) return focusRowCard(pos.row, pos.col + 1, rows);
-            return true;
+            return true; // правый край («Показать все») — стоим
         }
-        if (dir === 'up') return focusRowHeader(pos.row);            // ★ на заголовок своего ряда
+        if (dir === 'up') {
+            if (pos.row > 0) {
+                var tc = Math.min(pos.col, rows[pos.row - 1].length - 1);
+                return focusRowCard(pos.row - 1, tc, rows);
+            }
+            return focusEl(t[0] || h[0] || f); // верхний ряд → на табы
+        }
         if (dir === 'down') {
             if (pos.row < rows.length - 1) {
-                var tc = Math.min(pos.col, rows[pos.row + 1].length - 1);
-                return focusRowCard(pos.row + 1, tc, rows);
+                var tc2 = Math.min(pos.col, rows[pos.row + 1].length - 1);
+                return focusRowCard(pos.row + 1, tc2, rows);
             }
-            return true;
+            return true; // последний ряд — стоим
         }
         return true;
     }
 
-    // 3) Фокус на табах
-    var t2 = getTorrentTabs();
-    for (var k = 0; k < t2.length; k++) {
-        if (f === t2[k]) {
-            if (dir === 'down') return focusRowHeader(0);            // на первый заголовок
-            if (dir === 'left') return focusEl(t2[Math.max(0, k - 1)] || f);
-            if (dir === 'right') return focusEl(t2[Math.min(t2.length - 1, k + 1)] || f);
-            return true;
-        }
+    // Фокус на табах
+    var ti = -1;
+    for (var i = 0; i < t.length; i++) if (f === t[i]) { ti = i; break; }
+    if (ti !== -1) {
+        if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f);
+        if (dir === 'right') return focusEl(t[Math.min(t.length - 1, ti + 1)] || f);
+        if (dir === 'down') return focusRowCard(0, 0, rows);
+        if (dir === 'up') return focusEl(h[Math.min(ti, h.length - 1)] || h[0] || f);
+        return true;
     }
 
-    // 4) Иначе — первая карточка
+    // Фокус на шапке (настройки)
+    var hi = -1;
+    for (var i = 0; i < h.length; i++) if (f === h[i]) { hi = i; break; }
+    if (hi !== -1) {
+        if (dir === 'left') return focusEl(h[Math.max(0, hi - 1)] || f);
+        if (dir === 'right') return focusEl(h[Math.min(h.length - 1, hi + 1)] || f);
+        if (dir === 'down') return focusRowCard(0, 0, rows);
+        return true;
+    }
+
+    // Фокус вне рядов — на первую карточку
     return focusRowCard(0, 0, rows);
 }
 
