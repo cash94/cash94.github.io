@@ -223,8 +223,8 @@
             var ovEl = getEl('catalog-detail-overview');
             if (ovEl) {
                 ovEl.textContent = details.overview;
-                ovEl.style.display = 'block';
-                ovEl.classList.remove('hidden');
+                ovEl.style.display = 'none';
+                ovEl.classList.add('hidden');
             }
         }
 
