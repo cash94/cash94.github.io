@@ -3826,7 +3826,7 @@ article {
 .catalog-watch-btn.hidden,
 #catalog-watch-btn.hidden,
 .catalog-toggle-overview-btn.hidden,
-.catalog-toggle-overview-btn.hidden,
+#catalog-toggle-overview-btn.hidden,
 .catalog-detail-overview.hidden,
 #catalog-detail-overview.hidden {
   display: none !important;
