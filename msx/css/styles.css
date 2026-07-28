@@ -3521,7 +3521,7 @@ article {
 #detail-progress-btn,
 .catalog-toggle-overview-btn,
 #catalog-toggle-overview-btn {
-  display: inline-flex !important;
+  display: flex !important;
   align-items: center;
   gap: 6px;
   background: rgba(255, 255, 255, 0.12) !important;
