@@ -3552,6 +3552,8 @@ article {
 #catalog-watch-btn,
 .catalog-trailer-btn,
 #catalog-trailer-btn,
+.detail-progress-btn,
+#detail-progress-btn,
 .catalog-toggle-overview-btn,
 #catalog-toggle-overview-btn {
   display: inline-flex !important;
@@ -3572,6 +3574,8 @@ article {
 #catalog-watch-btn:hover,
 .catalog-trailer-btn:hover,
 #catalog-trailer-btn:hover,
+.detail-progress-btn:hover,
+#detail-progress-btn:hover,
 .catalog-toggle-overview-btn:hover,
 #catalog-toggle-overview-btn:hover {
   background: rgba(255, 255, 255, 0.22) !important;
@@ -3722,6 +3726,8 @@ article {
 .catalog-watch-btn.focused,
 .catalog-trailer-btn.focused,
 #catalog-trailer-btn.focused,
+.detail-progress-btn.focused,
+#detail-progress-btn.focused,
 #catalog-toggle-overview-btn.focused,
 .catalog-toggle-overview-btn.focused {
   box-shadow: 0 0 0 3px #ff8c00 !important;
@@ -3823,6 +3829,8 @@ article {
   #catalog-watch-btn,
   .catalog-trailer-btn,
   #catalog-trailer-btn,
+  .detail-progress-btn,
+  #detail-progress-btn,
   .catalog-toggle-overview-btn,
   #catalog-toggle-overview-btn {
     flex: 1;
@@ -3881,3 +3889,13 @@ article {
   box-shadow: 0 0 0 3px #ff8c00 !important;
   background: rgba(255, 255, 255, 0.22) !important;
 }
+
+.catalog-trailer-btn.hidden,
+#catalog-trailer-btn.hidden,
+.detail-progress-btn,
+#detail-progress-btn,
+.catalog-watch-btn,
+#catalog-watch-btn {
+  display: none !important;
+}
+
