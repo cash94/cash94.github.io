@@ -788,17 +788,36 @@ async function showDetail(torrent) {
     // Очищаем контент от предыдущего торрента (трейлеры, скриншоты, описание, мета)
     hideCatalogDetailExtra();
 
-    // === НОВАЯ ЛОГИКА ВИДИМОСТИ ===
-    // Контейнер доп. информации показываем
     var catalogDetailExtra = getEl('catalog-detail-extra');
     if (catalogDetailExtra) catalogDetailExtra.classList.remove('hidden');
-    // Мета-чипы скрыты, пока не придут данные TMDB (updateDetailMetaInfo сама снимет hidden)
+
+    var catalogDetailBackdrop = getEl('catalog-detail-backdrop');
+    if (catalogDetailBackdrop) catalogDetailBackdrop.classList.remove('hidden');
+
+    var catalogDetailMeta = getEl('catalog-detail-meta');
+    if (catalogDetailMeta) catalogDetailMeta.classList.add('hidden');
+
+    var catalogDetailOverview = getEl('catalog-detail-overview');
+    if (catalogDetailOverview) {
+        catalogDetailOverview.classList.add('hidden');
+        catalogDetailOverview.style.display = 'none';
+    }
+
     var catalogWatchBtn = getEl('catalog-watch-btn');
     if (catalogWatchBtn) catalogWatchBtn.classList.add('hidden');
-    // Кнопку «Играть / Продолжить» показываем
+
     var detailProgressBtn = getEl('detail-progress-btn');
     if (detailProgressBtn) detailProgressBtn.classList.remove('hidden');
-    // ================================
+
+    var catalogToggleOverviewBtn = getEl('catalog-toggle-overview-btn');
+    if (catalogToggleOverviewBtn) catalogToggleOverviewBtn.classList.add('hidden');
+
+    var catalogTrailerBtn = getEl('catalog-trailer-btn');
+    if (catalogTrailerBtn) catalogTrailerBtn.classList.add('hidden');
+
+    // Постер в шапке скрыт — фон идёт через backdrop на detail-view
+    var posterImg = getEl('detail-poster');
+    if (posterImg) posterImg.classList.add('hidden');
 
     var posterImg = getEl('detail-poster');
     var titleEl = getEl('detail-title-text');
