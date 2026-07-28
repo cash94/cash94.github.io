@@ -3821,10 +3821,10 @@ article {
 
 .catalog-trailer-btn.hidden,
 #catalog-trailer-btn.hidden,
-.detail-progress-btn,
-#detail-progress-btn,
-.catalog-watch-btn,
-#catalog-watch-btn {
+.detail-progress-btn.hidden,
+#detail-progress-btn.hidden,
+.catalog-watch-btn.hidden,
+#catalog-watch-btn.hidden {
   display: none !important;
 }
 
