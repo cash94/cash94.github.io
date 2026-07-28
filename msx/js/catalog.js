@@ -1584,7 +1584,7 @@ function stopTrailerBackground() {
     for (var i = 0; i < fadeInEls.length; i++) {
         (function (el) {
             if (!el) return;
-            el.style.transition = 'opacity 3s ease';
+            el.style.transition = 'opacity 1.5s ease';
             requestAnimationFrame(function () {
                 requestAnimationFrame(function () {
                     el.style.opacity = '1';
