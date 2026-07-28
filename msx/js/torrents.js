@@ -820,6 +820,20 @@ async function showDetail(torrent) {
     // Очищаем контент от предыдущего торрента (трейлеры, скриншоты, описание, мета)
     hideCatalogDetailExtra();
     visibleItemsforDetail('showDetail');
+    setTimeout(function () {
+        var btn = getEl('detail-progress-btn');
+        console.log('BTN exists:', !!btn);
+        if (btn) {
+            console.log('BTN offsetParent:', btn.offsetParent);   // null = скрыт предок
+            console.log('BTN innerHTML:', btn.innerHTML);
+            console.log('BTN computed display:', getComputedStyle(btn).display);
+            var p = btn.parentElement;
+            while (p) {
+                if (getComputedStyle(p).display === 'none') console.log('HIDDEN PARENT:', p.id || p.className);
+                p = p.parentElement;
+            }
+        }
+    }, 500);
     var posterImg = getEl('detail-poster');
     var titleEl = getEl('detail-title-text');
     var filesList = getEl('files-list');
