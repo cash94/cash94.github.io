@@ -854,6 +854,7 @@ async function showDetail(torrent) {
         if (files.length === 0) {
             filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">📁 Нет файлов</div>';
         } else {
+            var lastField = await addProgressToDetail(torrent);
             var videoFiles = files.filter(f => {
                 var n = f.path.split('/').pop().toLowerCase();
                 return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext));
@@ -873,7 +874,7 @@ async function showDetail(torrent) {
                 }
                 loadStillsAndUpdateFiles(tmdbData.seasonNumbers || [], tmdbData.allSeasonEpisodes || {}, tmdbData.movieStill, videoFiles.length);
             }).catch(function (error) { console.error('Ошибка загрузки TMDB данных:', error); });
-            var lastField = await addProgressToDetail(torrent);
+            
         }
     } catch (e) {
         console.error('Ошибка:', e);
