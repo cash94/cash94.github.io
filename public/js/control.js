@@ -422,14 +422,22 @@ var ScreenStrategies = {
         ensureFocus: function (force) {
             if (force === undefined) force = false;
             if (currentScreen() !== 'catalog') return false;
+
+            // ★ Новый вид: ряды-карусели
+            if (isCatalogRowsMode()) {
+                var fr = document.querySelector('.focused');
+                if (!force && fr && belongsToScreen(fr, 'catalog')) return true;
+                var rows = getCatalogRows();
+                if (!rows.length) return false;
+                return focusRowCard(0, 0, rows);
+            }
+
+            // Старый вид: сетка (без изменений)
             var f = document.querySelector('.focused');
             if (!force && f && belongsToScreen(f, 'catalog')) return true;
-
-            // ИСПРАВЛЕНО: используем прямой вызов вместо this.getItems()
             var ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
             var c = [];
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
-
             if (!c.length) return false;
             var si = localStorage.getItem('lastCatalogCardIndex'), tc = null;
             if (si !== null) {
@@ -446,13 +454,16 @@ var ScreenStrategies = {
             return focusEl(tc);
         },
         handleNavigation: function (dir) {
-            var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
+            // ★ Новый вид: ряды-карусели
+            if (isCatalogRowsMode()) {
+                return handleRowsNavigation(dir);
+            }
 
-            // ИСПРАВЛЕНО: используем прямой вызов вместо this.getItems()
+            // Старый вид: сетка (без изменений)
+            var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
             var ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
             var c = [];
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
-
             var h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns();
             if (!f) return this.ensureFocus(true);
             var ci = -1, hi = -1, ti = -1;
@@ -471,8 +482,8 @@ var ScreenStrategies = {
                             setTimeout(function () {
                                 var nc = [], nac = document.querySelectorAll('.torrent-card.catalog-card,.torrent-card.catalog-folder-card');
                                 for (var m = 0; m < nac.length; m++) if (VISIBLE(nac[m])) nc.push(nac[m]);
-                                var ti = Math.min(ci + cols, nc.length - 1);
-                                if (ti >= 0 && ti < nc.length && nc[ti]) focusEl(nc[ti]);
+                                var tix = Math.min(ci + cols, nc.length - 1);
+                                if (tix >= 0 && tix < nc.length && nc[tix]) focusEl(nc[tix]);
                             }, 50);
                         });
                         return true;
@@ -689,7 +700,10 @@ var ScreenStrategies = {
             }
             if (isOv) {
                 if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
-                if (dir === 'right') return focusEl(rut);
+                if (dir === 'right') {
+                    if (VISIBLE(rut)) return focusEl(rut);
+                    return true;
+                }
                 if (dir === 'left') return focusEl(wb);
                 if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
                 return true;
@@ -2066,6 +2080,126 @@ function setupMouseControls() {
     });
 
     console.log('✅ Управление правой кнопкой мыши активировано');
+}
+
+// ==================== НАВИГАЦИЯ ПО РЯДАМ-КАРУСЕЛЯМ (новый вид каталога) ====================
+
+// Режим рядов: открыт список каталогов (не конкретный каталог) и ряды отрендерены
+function isCatalogRowsMode() {
+    return !window.catalogState.currentCatalog &&
+        document.querySelector('.catalog-row') !== null;
+}
+
+// Массив массивов видимых карточек: rows[ряд][колонка]
+function getCatalogRows() {
+    var rows = [];
+    var rowEls = document.querySelectorAll('.catalog-row');
+    for (var i = 0; i < rowEls.length; i++) {
+        var cards = rowEls[i].querySelectorAll('.catalog-row-card');
+        if (!cards.length) cards = rowEls[i].querySelectorAll('.torrent-card'); // фолбэк
+        var visible = [];
+        for (var j = 0; j < cards.length; j++) if (VISIBLE(cards[j])) visible.push(cards[j]);
+        if (visible.length > 0) rows.push(visible);
+    }
+    return rows;
+}
+
+// Позиция карточки в рядах
+function findRowPosition(el, rows) {
+    for (var i = 0; i < rows.length; i++) {
+        for (var j = 0; j < rows[i].length; j++) {
+            if (rows[i][j] === el) return { row: i, col: j };
+        }
+    }
+    return null;
+}
+
+// Горизонтальный скролл карусели к карточке
+function scrollRowToCard(card) {
+    var viewport = card.closest ? card.closest('.catalog-row-viewport') : null;
+    if (!viewport) return;
+    var cr = card.getBoundingClientRect();
+    var vr = viewport.getBoundingClientRect();
+    var pad = 50;
+    if (cr.left < vr.left + pad) {
+        viewport.scrollBy({ left: cr.left - vr.left - pad, behavior: 'smooth' });
+    } else if (cr.right > vr.right - pad) {
+        viewport.scrollBy({ left: cr.right - vr.right + pad, behavior: 'smooth' });
+    }
+}
+
+// Фокус карточки в ряду + скролл карусели
+function focusRowCard(ri, ci, rows) {
+    if (!rows || !rows[ri] || !rows[ri][ci]) return true;
+    var card = rows[ri][ci];
+    invalidateFocusCache();
+    updateFocusableElements();
+    var idx = focusableElements.indexOf(card);
+    if (idx !== -1) setFocus(idx);
+    else focusEl(card);
+    scrollRowToCard(card);
+    return true;
+}
+
+// Навигация по рядам (←/→ внутри ряда, ↑/↓ между рядами)
+function handleRowsNavigation(dir) {
+    var rows = getCatalogRows();
+    if (!rows.length) return false;
+    var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
+    var h = getTorrentHeader(), t = getTorrentTabs();
+    if (!f) return focusRowCard(0, 0, rows);
+
+    // Фокус на карточке ряда
+    var pos = findRowPosition(f, rows);
+    if (pos) {
+        if (dir === 'left') {
+            if (pos.col > 0) return focusRowCard(pos.row, pos.col - 1, rows);
+            return true; // левый край — стоим
+        }
+        if (dir === 'right') {
+            if (pos.col < rows[pos.row].length - 1) return focusRowCard(pos.row, pos.col + 1, rows);
+            return true; // правый край («Показать все») — стоим
+        }
+        if (dir === 'up') {
+            if (pos.row > 0) {
+                var tc = Math.min(pos.col, rows[pos.row - 1].length - 1);
+                return focusRowCard(pos.row - 1, tc, rows);
+            }
+            return focusEl(t[0] || h[0] || f); // верхний ряд → на табы
+        }
+        if (dir === 'down') {
+            if (pos.row < rows.length - 1) {
+                var tc2 = Math.min(pos.col, rows[pos.row + 1].length - 1);
+                return focusRowCard(pos.row + 1, tc2, rows);
+            }
+            return true; // последний ряд — стоим
+        }
+        return true;
+    }
+
+    // Фокус на табах
+    var ti = -1;
+    for (var i = 0; i < t.length; i++) if (f === t[i]) { ti = i; break; }
+    if (ti !== -1) {
+        if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f);
+        if (dir === 'right') return focusEl(t[Math.min(t.length - 1, ti + 1)] || f);
+        if (dir === 'down') return focusRowCard(0, 0, rows);
+        if (dir === 'up') return focusEl(h[Math.min(ti, h.length - 1)] || h[0] || f);
+        return true;
+    }
+
+    // Фокус на шапке (настройки)
+    var hi = -1;
+    for (var i = 0; i < h.length; i++) if (f === h[i]) { hi = i; break; }
+    if (hi !== -1) {
+        if (dir === 'left') return focusEl(h[Math.max(0, hi - 1)] || f);
+        if (dir === 'right') return focusEl(h[Math.min(h.length - 1, hi + 1)] || f);
+        if (dir === 'down') return focusRowCard(0, 0, rows);
+        return true;
+    }
+
+    // Фокус вне рядов — на первую карточку
+    return focusRowCard(0, 0, rows);
 }
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
