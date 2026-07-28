@@ -840,7 +840,7 @@ async function showDetail(torrent) {
     titleEl.textContent = (torrent.title || 'Без названия').replace(/[\d+]/, '').trim();
     var oldProgressBlocks = document.querySelectorAll('#detail-progress');
     for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
-    var lastField = await addProgressToDetail(torrent);
+    //var lastField = await addProgressToDetail(torrent);
     try {
         var files = await getTorrentFilesWithCache(torrent, false);
         var poster = torrent.poster || '';
@@ -873,6 +873,7 @@ async function showDetail(torrent) {
                 }
                 loadStillsAndUpdateFiles(tmdbData.seasonNumbers || [], tmdbData.allSeasonEpisodes || {}, tmdbData.movieStill, videoFiles.length);
             }).catch(function (error) { console.error('Ошибка загрузки TMDB данных:', error); });
+            var lastField = await addProgressToDetail(torrent);
         }
     } catch (e) {
         console.error('Ошибка:', e);
