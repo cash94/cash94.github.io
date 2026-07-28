@@ -756,47 +756,34 @@ function visibleItemsforDetail(change) {
         var massHidden = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
             'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'detail-poster'
         ];
-
         massHidden.forEach(function (id) {
             var el = getEl(id);
-            if (el) {
-                // Гарантированно скрываем
-                el.classList.add('hidden');
-            }
+            if (el) el.classList.add('hidden');
         });
 
         var massVisible = ['catalog-detail-extra', 'detail-progress-btn'];
-
         massVisible.forEach(function (id) {
             var el = getEl(id);
             if (el) {
-                // Гарантированно скрываем
                 el.classList.remove('hidden');
+                el.style.removeProperty('display');
             }
         });
-
     } else if (change === 'showCatalogDetail') {
-
-        var massVisible = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
+        var massVisible2 = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
             'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'catalog-detail-extra'
         ];
-
-        massVisible.forEach(function (id) {
+        massVisible2.forEach(function (id) {
             var el = getEl(id);
             if (el) {
-                // Гарантированно скрываем
                 el.classList.remove('hidden');
+                el.style.removeProperty('display');
             }
         });
-
-        var massHidden = ['detail-progress-btn'];
-
-        massHidden.forEach(function (id) {
+        var massHidden2 = ['detail-progress-btn'];
+        massHidden2.forEach(function (id) {
             var el = getEl(id);
-            if (el) {
-                // Гарантированно скрываем
-                el.classList.add('hidden');
-            }
+            if (el) el.classList.add('hidden');
         });
     }
 }
