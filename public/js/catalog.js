@@ -848,6 +848,7 @@ function createCardElement(config) {
 function renderCatalogGrid() {
     var grid = getEl('torrents-grid');
     if (!grid) return;
+    grid.style.display = '';
     grid.innerHTML = '';
     if (catalogState.items.length === 0) { showEmptyCatalog(); return; }
     addCatalogHeader(grid);
@@ -2223,6 +2224,7 @@ async function showCatalogList() {
     if (searchTab) searchTab.classList.remove('active');
 
     grid.className = 'catalog-rows-container';
+    grid.style.display = 'block';
     grid.innerHTML = '<div class="catalog-rows-loading"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка каталогов...</div></div>';
 
     // Категории из CATALOG_CONFIG (в порядке объявления)
