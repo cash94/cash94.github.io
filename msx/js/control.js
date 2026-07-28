@@ -422,14 +422,22 @@ var ScreenStrategies = {
         ensureFocus: function (force) {
             if (force === undefined) force = false;
             if (currentScreen() !== 'catalog') return false;
+
+            // ★ Новый вид: ряды-карусели
+            if (isCatalogRowsMode()) {
+                var fr = document.querySelector('.focused');
+                if (!force && fr && belongsToScreen(fr, 'catalog')) return true;
+                var rows = getCatalogRows();
+                if (!rows.length) return false;
+                return focusRowCard(0, 0, rows);
+            }
+
+            // Старый вид: сетка (без изменений)
             var f = document.querySelector('.focused');
             if (!force && f && belongsToScreen(f, 'catalog')) return true;
-
-            // ИСПРАВЛЕНО: используем прямой вызов вместо this.getItems()
             var ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
             var c = [];
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
-
             if (!c.length) return false;
             var si = localStorage.getItem('lastCatalogCardIndex'), tc = null;
             if (si !== null) {
@@ -446,13 +454,16 @@ var ScreenStrategies = {
             return focusEl(tc);
         },
         handleNavigation: function (dir) {
-            var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
+            // ★ Новый вид: ряды-карусели
+            if (isCatalogRowsMode()) {
+                return handleRowsNavigation(dir);
+            }
 
-            // ИСПРАВЛЕНО: используем прямой вызов вместо this.getItems()
+            // Старый вид: сетка (без изменений)
+            var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
             var ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
             var c = [];
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
-
             var h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns();
             if (!f) return this.ensureFocus(true);
             var ci = -1, hi = -1, ti = -1;
@@ -471,8 +482,8 @@ var ScreenStrategies = {
                             setTimeout(function () {
                                 var nc = [], nac = document.querySelectorAll('.torrent-card.catalog-card,.torrent-card.catalog-folder-card');
                                 for (var m = 0; m < nac.length; m++) if (VISIBLE(nac[m])) nc.push(nac[m]);
-                                var ti = Math.min(ci + cols, nc.length - 1);
-                                if (ti >= 0 && ti < nc.length && nc[ti]) focusEl(nc[ti]);
+                                var tix = Math.min(ci + cols, nc.length - 1);
+                                if (tix >= 0 && tix < nc.length && nc[tix]) focusEl(nc[tix]);
                             }, 50);
                         });
                         return true;
@@ -867,6 +878,8 @@ function updateFocusableElements() {
     if (screen === 'catalog') {
         var cards = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
         for (var i = 0; i < cards.length; i++) if (cards[i] && cards[i].offsetParent !== null) list.push(cards[i]);
+        var rowHeaders = document.querySelectorAll('.catalog-row-header');
+        for (var rh = 0; rh < rowHeaders.length; rh++) if (rowHeaders[rh] && rowHeaders[rh].offsetParent !== null) list.push(rowHeaders[rh]);
         focusableElements = list; window.catalogCards = list;
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
@@ -1421,7 +1434,8 @@ function isElementFullyVisible(el, container) {
     var cr = container.getBoundingClientRect();
 
     // Определяем тип контейнта
-    var isH = container.id === 'files-list' ||
+    var isH = (container.classList && container.classList.contains('catalog-row-viewport')) ||
+        container.id === 'files-list' ||
         container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap';
@@ -1449,7 +1463,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
     var cr = container.getBoundingClientRect();
     var isWindow = container === window || container === document.body;
     var scrollContainer = isWindow ? (window.scrollingElement || document.documentElement) : container;
-    var isH = container.id === 'catalog-detail-actors-wrap' ||
+
+    // ★ ряд-карусель
+    var isRowViewport = !!(container.classList && container.classList.contains('catalog-row-viewport'));
+
+    var isH = isRowViewport ||
+        container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap' ||
         container.id === 'files-list';
@@ -1462,36 +1481,25 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             con = container.id.replace('-wrap', '');
             con = getEl(con);
         } else {
-            con = container;
+            con = container;   // ★ карусель ряда и files-list скроллятся сами
         }
 
-        // НАПРАВЛЕННЫЙ СКРОЛЛ: позиционируем элемент в зависимости от направления
-        var hp = 30; // Горизонтальный отступ
+        // НАПРАВЛЕННЫЙ ГОРИЗОНТАЛЬНЫЙ СКРОЛЛ (без изменений)
+        var hp = 30;
         var targetLeft;
-
         if (direction === 'left') {
-            // Двигаемся влево → элемент должен появиться у левого края видимой области
             targetLeft = con.scrollLeft + (r.left - cr.left) - hp;
         } else if (direction === 'right') {
-            // Двигаемся вправо → элемент должен появиться у правого края видимой области
             targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width - r.width - hp);
         } else {
-            // По умолчанию (up/down/без направления) → центрируем
             targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
         }
-
         targetLeft = Math.max(0, targetLeft);
         var needsHScroll = Math.abs(con.scrollLeft - targetLeft) > 10;
-
         if (needsHScroll) {
             if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                 gsap.killTweensOf(con);
-                gsap.to(con, {
-                    scrollTo: { x: targetLeft },
-                    duration: 0.1,
-                    ease: "power1.out",
-                    overwrite: true
-                });
+                gsap.to(con, { scrollTo: { x: targetLeft }, duration: 0.1, ease: "power1.out", overwrite: true });
             } else if (smooth) {
                 con.scrollTo({ left: targetLeft, behavior: 'smooth' });
             } else {
@@ -1499,53 +1507,41 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             }
         }
 
-        // Вертикальный скролл detail-view (для wrap-контейнеров)
-        var detailView = getEl('detail-view');
-        if (detailView) {
+        // ★ ВЕРТИКАЛЬНЫЙ СКРОЛЛ: для рядов — main-container, для деталей — detail-view
+        var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
+        if (vertEl) {
             var containerRect = container.getBoundingClientRect();
-            var detailRect = detailView.getBoundingClientRect();
-            var detailScrollTop = detailView.scrollTop;
-            var containerTopRelative = containerRect.top - detailRect.top + detailScrollTop;
+            var vertRect = vertEl.getBoundingClientRect();
+            var containerTopRelative = containerRect.top - vertRect.top + vertEl.scrollTop;
             var containerBottomRelative = containerTopRelative + containerRect.height;
-            var detailViewportTop = detailView.scrollTop;
-            var detailViewportBottom = detailViewportTop + detailRect.height;
+            var vertViewportTop = vertEl.scrollTop;
+            var vertViewportBottom = vertViewportTop + vertRect.height;
             var needsVertScroll = false;
-            var targetScrollTop = detailView.scrollTop;
+            var targetScrollTop = vertEl.scrollTop;
 
-            // НАПРАВЛЕННЫЙ ВЕРТИКАЛЬНЫЙ СКРОЛЛ
-            if (containerTopRelative < detailViewportTop + 50) {
-                if (direction === 'up') {
-                    // Двигаемся вверх → элемент прижимаем к верху
-                    targetScrollTop = Math.max(0, containerTopRelative - 30);
-                } else {
-                    targetScrollTop = Math.max(0, containerTopRelative - 50);
-                }
+            if (containerTopRelative < vertViewportTop + 50) {
+                targetScrollTop = (direction === 'up')
+                    ? Math.max(0, containerTopRelative - 30)
+                    : Math.max(0, containerTopRelative - 50);
                 needsVertScroll = true;
-            } else if (containerBottomRelative > detailViewportBottom - 50) {
-                if (direction === 'down') {
-                    // Двигаемся вниз → элемент прижимаем к низу
-                    targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 30);
-                } else {
-                    targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 50);
-                }
+            } else if (containerBottomRelative > vertViewportBottom - 50) {
+                targetScrollTop = (direction === 'down')
+                    ? Math.max(0, containerBottomRelative - vertRect.height + 30)
+                    : Math.max(0, containerBottomRelative - vertRect.height + 50);
                 needsVertScroll = true;
             }
 
             if (needsVertScroll) {
-                targetScrollTop = Math.max(0, Math.min(targetScrollTop, detailView.scrollHeight - detailRect.height));
+                targetScrollTop = Math.max(0, Math.min(targetScrollTop, vertEl.scrollHeight - vertRect.height));
                 if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                    gsap.killTweensOf(detailView);
-                    gsap.to(detailView, {
-                        scrollTo: { y: targetScrollTop },
-                        duration: 0.15,
-                        backgroundColor: 'rgb(0, 0, 0)',
-                        ease: "power1.out",
-                        overwrite: true
-                    });
+                    gsap.killTweensOf(vertEl);
+                    var tweenVars = { scrollTo: { y: targetScrollTop }, duration: 0.15, ease: "power1.out", overwrite: true };
+                    if (vertEl.id === 'detail-view') tweenVars.backgroundColor = 'rgb(0, 0, 0)'; // как было
+                    gsap.to(vertEl, tweenVars);
                 } else if (smooth) {
-                    detailView.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+                    vertEl.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
                 } else {
-                    detailView.scrollTop = targetScrollTop;
+                    vertEl.scrollTop = targetScrollTop;
                 }
             }
         }
@@ -1595,9 +1591,12 @@ function focusEl(el, opts) {
     var isAC = el.classList && el.classList.contains('catalog-actor-card');
     var isRC = el.classList && el.classList.contains('catalog-recommendation-card');
     var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
+    var isRowCard = el.classList && el.classList.contains('catalog-row-card');
+
 
     if (s === 'catalog' || s === 'torrents' || s === 'config') {
-        container = getEl('main-container');
+        var rowVp = (isRowCard && el.closest) ? el.closest('.catalog-row-viewport') : null;
+        container = rowVp || getEl('main-container');
     } else if (s === 'search') {
         container = getEl('search-results');
     } else if (s === 'detail') {
@@ -2069,6 +2068,145 @@ function setupMouseControls() {
     });
 
     console.log('✅ Управление правой кнопкой мыши активировано');
+}
+
+// ==================== НАВИГАЦИЯ ПО РЯДАМ-КАРУСЕЛЯМ (новый вид каталога) ====================
+
+// Режим рядов: открыт список каталогов (не конкретный каталог) и ряды отрендерены
+function isCatalogRowsMode() {
+    return !window.catalogState.currentCatalog &&
+        document.querySelector('.catalog-row') !== null;
+}
+
+// Массив массивов видимых карточек: rows[ряд][колонка]
+function getCatalogRows() {
+    var rows = [];
+    var rowEls = document.querySelectorAll('.catalog-row');
+    for (var i = 0; i < rowEls.length; i++) {
+        var cards = rowEls[i].querySelectorAll('.catalog-row-card');
+        if (!cards.length) cards = rowEls[i].querySelectorAll('.torrent-card'); // фолбэк
+        var visible = [];
+        for (var j = 0; j < cards.length; j++) if (VISIBLE(cards[j])) visible.push(cards[j]);
+        if (visible.length > 0) rows.push(visible);
+    }
+    return rows;
+}
+
+function getCatalogRowHeaders() {
+    var headers = document.querySelectorAll('.catalog-row-header');
+    var visible = [];
+    for (var i = 0; i < headers.length; i++) if (VISIBLE(headers[i])) visible.push(headers[i]);
+    return visible;
+}
+
+function focusRowHeader(ri) {
+    var headers = getCatalogRowHeaders();
+    if (!headers[ri]) return true;
+    var header = headers[ri];
+    invalidateFocusCache();
+    updateFocusableElements();
+    var idx = focusableElements.indexOf(header);
+    if (idx !== -1) setFocus(idx);
+    else focusEl(header);
+    return true;
+}
+
+// Позиция карточки в рядах
+function findRowPosition(el, rows) {
+    for (var i = 0; i < rows.length; i++) {
+        for (var j = 0; j < rows[i].length; j++) {
+            if (rows[i][j] === el) return { row: i, col: j };
+        }
+    }
+    return null;
+}
+
+// Горизонтальный скролл карусели к карточке
+function scrollRowToCard(card) {
+    var viewport = card.closest ? card.closest('.catalog-row-viewport') : null;
+    if (!viewport) return;
+    var cr = card.getBoundingClientRect();
+    var vr = viewport.getBoundingClientRect();
+    var pad = 50;
+    if (cr.left < vr.left + pad) {
+        viewport.scrollBy({ left: cr.left - vr.left - pad, behavior: 'smooth' });
+    } else if (cr.right > vr.right - pad) {
+        viewport.scrollBy({ left: cr.right - vr.right + pad, behavior: 'smooth' });
+    }
+}
+
+// Фокус карточки в ряду + скролл карусели
+function focusRowCard(ri, ci, rows) {
+    if (!rows || !rows[ri] || !rows[ri][ci]) return true;
+    var card = rows[ri][ci];
+    invalidateFocusCache();
+    updateFocusableElements();
+    var idx = focusableElements.indexOf(card);
+    if (idx !== -1) setFocus(idx);
+    else focusEl(card);
+    return true;
+}
+
+// Навигация по рядам (←/→ внутри ряда, ↑/↓ между рядами)
+function handleRowsNavigation(dir) {
+    lastNavDirection = dir;
+    var rows = getCatalogRows();
+    var headers = getCatalogRowHeaders();
+    if (!rows.length) return false;
+    var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
+    if (!f) return focusRowCard(0, 0, rows);
+
+    // 1) Фокус на заголовке ряда
+    var hi = -1;
+    for (var i = 0; i < headers.length; i++) if (f === headers[i]) { hi = i; break; }
+    if (hi !== -1) {
+        if (dir === 'down') return focusRowCard(hi, 0, rows);       // в свой ряд
+        if (dir === 'up') {
+            if (hi === 0) {
+                var t = getTorrentTabs();
+                if (t.length) { focusEl(t[0], { direction: 'up' }); return true; }
+                return true;
+            }
+            return focusRowCard(hi - 1, 0, rows);                    // в предыдущий ряд
+        }
+        return true;                                                 // ←/→ — стоим
+    }
+
+    // 2) Фокус на карточке
+    var pos = findRowPosition(f, rows);
+    if (pos) {
+        if (dir === 'left') {
+            if (pos.col > 0) return focusRowCard(pos.row, pos.col - 1, rows);
+            return true;
+        }
+        if (dir === 'right') {
+            if (pos.col < rows[pos.row].length - 1) return focusRowCard(pos.row, pos.col + 1, rows);
+            return true;
+        }
+        if (dir === 'up') return focusRowHeader(pos.row);            // ★ на заголовок своего ряда
+        if (dir === 'down') {
+            if (pos.row < rows.length - 1) {
+                var tc = Math.min(pos.col, rows[pos.row + 1].length - 1);
+                return focusRowCard(pos.row + 1, tc, rows);
+            }
+            return true;
+        }
+        return true;
+    }
+
+    // 3) Фокус на табах
+    var t2 = getTorrentTabs();
+    for (var k = 0; k < t2.length; k++) {
+        if (f === t2[k]) {
+            if (dir === 'down') return focusRowHeader(0);            // на первый заголовок
+            if (dir === 'left') return focusEl(t2[Math.max(0, k - 1)] || f);
+            if (dir === 'right') return focusEl(t2[Math.min(t2.length - 1, k + 1)] || f);
+            return true;
+        }
+    }
+
+    // 4) Иначе — первая карточка
+    return focusRowCard(0, 0, rows);
 }
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
