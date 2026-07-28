@@ -1481,33 +1481,37 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             con = container.id.replace('-wrap', '');
             con = getEl(con);
         } else {
-            con = container;   // ★ карусель ряда и files-list скроллятся сами
+            con = container;
         }
 
-        // НАПРАВЛЕННЫЙ ГОРИЗОНТАЛЬНЫЙ СКРОЛЛ (без изменений)
         var hp = 30;
-        var targetLeft;
-        if (direction === 'left') {
-            targetLeft = con.scrollLeft + (r.left - cr.left) - hp;
-        } else if (direction === 'right') {
-            targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width - r.width - hp);
-        } else {
-            targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
-        }
-        targetLeft = Math.max(0, targetLeft);
-        var needsHScroll = Math.abs(con.scrollLeft - targetLeft) > 10;
-        if (needsHScroll) {
-            if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                gsap.killTweensOf(con);
-                gsap.to(con, { scrollTo: { x: targetLeft }, duration: 0.1, ease: "power1.out", overwrite: true });
-            } else if (smooth) {
-                con.scrollTo({ left: targetLeft, behavior: 'smooth' });
+
+        var isHorizVisible = r.left >= cr.left + hp && r.right <= cr.right - hp;
+
+        if (!isHorizVisible) {
+            var targetLeft;
+            if (direction === 'left') {
+                targetLeft = con.scrollLeft + (r.left - cr.left) - hp;
+            } else if (direction === 'right') {
+                targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width - r.width - hp);
             } else {
-                con.scrollLeft = targetLeft;
+                targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
+            }
+            targetLeft = Math.max(0, targetLeft);
+            var needsHScroll = Math.abs(con.scrollLeft - targetLeft) > 10;
+            if (needsHScroll) {
+                if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
+                    gsap.killTweensOf(con);
+                    gsap.to(con, { scrollTo: { x: targetLeft }, duration: 0.1, ease: "power1.out", overwrite: true });
+                } else if (smooth) {
+                    con.scrollTo({ left: targetLeft, behavior: 'smooth' });
+                } else {
+                    con.scrollLeft = targetLeft;
+                }
             }
         }
 
-        // ★ ВЕРТИКАЛЬНЫЙ СКРОЛЛ: для рядов — main-container, для деталей — detail-view
+        // Вертикальный скролл — без изменений (для рядов — main-container)
         var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
         if (vertEl) {
             var containerRect = container.getBoundingClientRect();
