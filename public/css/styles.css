@@ -3824,7 +3824,9 @@ article {
 .detail-progress-btn.hidden,
 #detail-progress-btn.hidden,
 .catalog-watch-btn.hidden,
-#catalog-watch-btn.hidden {
+#catalog-watch-btn.hidden,
+.catalog-toggle-overview-btn.hidden,
+.catalog-toggle-overview-btn.hidden {
   display: none !important;
 }
 
