@@ -3845,7 +3845,7 @@ article {
 }
 
 .catalog-row {
-  margin-bottom: 38px;
+  grid-column: 1 / -1;
 }
 
 .catalog-row-header {
@@ -3998,7 +3998,7 @@ article {
   }
 
   .catalog-row {
-    margin-bottom: 26px;
+    grid-column: 1 / -1;
   }
 
   /* --- Заголовок ряда --- */
