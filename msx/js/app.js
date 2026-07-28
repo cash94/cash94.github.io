@@ -579,6 +579,9 @@ function setupNavigation() {
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
 
+      torrentsGrid = getEl('torrents-grid');
+      if (torrentsGrid) torrentsGrid.style.display = 'grid';
+
       if (AppState && !AppState.isSearch && !AppState.playFromHash && detailHistory.length <= 1) {
         if (detailView) detailView.style.display = 'none';
       }
