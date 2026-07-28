@@ -630,16 +630,22 @@ function restoreFocusAfterNavigation(returnTo, context) {
   }
 
   if (returnTo === 'catalog') {
+    AppState.backupScroll = 0;
+    AppState.currentScreen = 'catalog';
+    if (detailView) detailView.style.display = 'none';
+
+    if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
+      restoreRowFocus();
+      return;
+    }
+
+    // Режим сетки (открыт конкретный каталог) — как раньше
     if (typeof window.ensureCatalogFocus === 'function') {
-      AppState.backupScroll = 0;
-      AppState.currentScreen = 'catalog';
       window.ensureCatalogFocus(true);
-      if (detailView) detailView.style.display = 'none';
       return;
     }
     if (typeof window.focusFirstCatalogCard === 'function') {
       window.focusFirstCatalogCard();
-      if (detailView) detailView.style.display = 'none';
       return;
     }
   }
