@@ -3854,6 +3854,7 @@ article {
   justify-content: space-between;
   padding: 0 40px 14px;
   cursor: pointer;
+  border-radius: 12px;
 }
 
 .catalog-row-title {
@@ -3871,7 +3872,6 @@ article {
   font-size: 20px;
   opacity: 0;
   transform: translateX(-6px);
-  transition: opacity 0.2s, transform 0.2s;
 }
 
 .catalog-row-header:hover .catalog-row-title::after {
@@ -3895,7 +3895,6 @@ article {
   overflow-x: auto;
   overflow-y: hidden;
   padding: 10px 40px 20px;
-  scroll-behavior: smooth;
   scrollbar-width: none;
 }
 
@@ -3916,7 +3915,6 @@ article {
   overflow: hidden;
   position: relative;
   background: #1a1a2e;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .row-poster-img {
@@ -3948,7 +3946,6 @@ article {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  transition: background 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 
 .catalog-show-all .show-all-icon {
@@ -3975,17 +3972,15 @@ article {
   color: #fff;
 }
 
-.catalog-row-header {
-  border-radius: 12px;
-  transition: background 0.2s ease;
-}
 .catalog-row-header.focused {
   background: rgba(74, 158, 255, 0.08);
 }
+
 .catalog-row-header.focused .catalog-row-title {
   color: #4a9eff;
   text-shadow: 0 0 20px rgba(74, 158, 255, 0.4);
 }
+
 .catalog-row-header.focused .catalog-row-title::after {
   opacity: 1;
   transform: translateX(4px);
@@ -4068,12 +4063,12 @@ article {
   }
 
   .catalog-row-viewport .catalog-row-card {
-    flex: 0 0 180px;              /* явный basis — фикс бага первой раскладки */
+    flex: 0 0 180px;
     width: 180px;
-    height: 320px;                /* ровно по постер — убирает синюю полосу */
+    height: 320px;
     min-height: 0;
-    padding: 0;                   /* глобальный padding .torrent-card */
-    background: transparent;      /* глобальный фон .torrent-card */
+    padding: 0;
+    background: transparent;
     box-sizing: border-box;
     overflow: hidden;
   }
@@ -4085,7 +4080,7 @@ article {
   }
 
   .catalog-row-viewport .catalog-row-card .torrent-info {
-    display: none;                /* страховка: инфо-блок под постером */
+    display: none;
   }
 
   /* ===== Карточка «Показать все» — те же размеры ===== */
@@ -4097,6 +4092,7 @@ article {
     background: transparent;
     box-sizing: border-box;
   }
+
   .catalog-row-viewport .catalog-show-all .show-all-inner {
     width: 100%;
     height: 100%;
