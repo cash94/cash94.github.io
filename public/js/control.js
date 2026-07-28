@@ -1589,6 +1589,7 @@ function focusEl(el, opts) {
     var isAC = el.classList && el.classList.contains('catalog-actor-card');
     var isRC = el.classList && el.classList.contains('catalog-recommendation-card');
     var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
+    var isRowCard = el.classList && el.classList.contains('catalog-row-card');
 
     if (s === 'catalog' || s === 'torrents' || s === 'config') {
         var rowVp = (isRowCard && el.closest) ? el.closest('.catalog-row-viewport') : null;
