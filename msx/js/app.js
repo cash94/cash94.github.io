@@ -771,7 +771,6 @@ function setupSearch() {
         if (typeof AppState !== 'undefined') AppState.inSearch = 'torrents';
         hideSearchResults();
         tabTorrents.classList.add('active');
-        tabTorrents.style.display = 'grid';
         if (tabSearch) tabSearch.classList.remove('active');
         if (tabCatalog) tabCatalog.classList.remove('active');
         var searchOverlay = getEl('search-overlay');
@@ -779,6 +778,7 @@ function setupSearch() {
         if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
         var torrentsGrid = getEl('torrents-grid');
         if (torrentsGrid) {
+          torrentsGrid.style.display = 'grid';
           torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div class="loading-spinner" style="margin: 0 auto 20px;"></div><div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div></div>';
         }
         loadTorrents(true).catch(function (error) {
