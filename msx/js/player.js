@@ -1395,29 +1395,103 @@ function showDetailView(field = null) {
 }
 
 async function updateDetailProgress(torrent) {
-  if (!torrent || !torrent.hash) return;
-  var cacheKey = torrent.hash; if (progressCache.has(cacheKey)) progressCache.delete(cacheKey);
-  var oldProgress = getEl('detail-progress'); if (oldProgress) oldProgress.remove();
-  var progress = await loadProgressForTorrent(torrent); if (!progress) return;
-  var detailHeader = document.querySelector('.detail-header'); if (!detailHeader) return;
-  var progressDiv = document.createElement('div'); progressDiv.id = 'detail-progress'; progressDiv.className = 'detail-progress'; progressDiv.dataset.hash = torrent.hash;
-  var timeStr = formatTime(progress.timecode); var totalStr = progress.duration ? formatTime(progress.duration) : '??:??';
-  if (progress.isSeries) {
-    var episodeNum = progress.episodeIndex + 1;
-    progressDiv.innerHTML = '<div class="detail-progress-content"><div class="detail-progress-info"><span class="detail-progress-label">Продолжить просмотр:</span><span class="detail-progress-episode">📺 Серия ' + episodeNum + '</span><span class="detail-progress-time">⏱️ ' + timeStr + ' / ' + totalStr + '</span></div><button class="detail-progress-btn" data-hash="' + progress.hash + '" data-file-id="' + progress.fileId + '" data-timecode="' + progress.timecode + '" data-episode-index="' + progress.episodeIndex + '">▶ Продолжить с ' + timeStr + '</button></div>';
-  } else {
-    progressDiv.innerHTML = '<div class="detail-progress-content"><div class="detail-progress-info"><span class="detail-progress-label">Продолжить просмотр:</span><span class="detail-progress-time">⏱️ ' + timeStr + ' / ' + totalStr + '</span></div><button class="detail-progress-btn" data-hash="' + progress.hash + '" data-file-id="' + progress.fileId + '" data-timecode="' + progress.timecode + '" data-episode-index="0">▶ Продолжить с ' + timeStr + '</button></div>';
+  if (!torrent || !torrent.hash) return null;
+
+  var btn = getEl('detail-progress-btn');
+  if (!btn) return null;
+
+  // Принудительное обновление: сбрасываем кэш прогресса
+  var cacheKey = torrent.hash;
+  if (progressCache.has(cacheKey)) progressCache.delete(cacheKey);
+
+  // Чистим старые блоки (могли остаться от предыдущей версии)
+  var oldProgressBlocks = document.querySelectorAll('#detail-progress');
+  for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
+
+  // Обработчик вешаем один раз (флаг общий с addProgressToDetail — кнопка одна),
+  // читает dataset в момент клика
+  if (!btn.dataset.bound) {
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var hash = btn.dataset.hash || '';
+      var fileId = parseInt(btn.dataset.fileId || '1', 10) || 1;
+      var timecode = parseInt(btn.dataset.timecode || '0', 10) || 0;
+      var episodeIndex = parseInt(btn.dataset.episodeIndex || '0', 10) || 0;
+      if (!hash || !AppState.currentTorrserverUrl) return;
+      var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
+      getEl('playback-overlay').classList.add('active');
+      var detailView = getEl('detail-view');
+      if (detailView) detailView.style.pointerEvents = 'none';
+      var done = function () {
+        getEl('playback-overlay').classList.remove('active');
+        if (detailView) detailView.style.pointerEvents = 'auto';
+      };
+      startHLSPlayback(playUrl, timecode, false, episodeIndex).then(done)['catch'](done);
+    });
   }
-  var progressBtn = progressDiv.querySelector('.detail-progress-btn');
-  progressBtn.addEventListener('click', function (e) {
-    e.stopPropagation(); var hash = progress.hash; var fileId = progress.fileId; var timecode = progress.timecode; var episodeIndex = parseInt(progressBtn.dataset.episodeIndex || 0);
-    var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
-    getEl('playback-overlay').classList.add('active'); getEl('detail-view').style.pointerEvents = 'none';
-    startHLSPlayback(playUrl, timecode, false, episodeIndex).then(function () { getEl('playback-overlay').classList.remove('active'); getEl('detail-view').style.pointerEvents = 'auto'; })['catch'](function () { getEl('playback-overlay').classList.remove('active'); getEl('detail-view').style.pointerEvents = 'auto'; });
-  });
-  var existingProgress = getEl('detail-progress'); if (existingProgress) existingProgress.remove();
-  detailHeader.parentNode.insertBefore(progressDiv, detailHeader.nextSibling);
+
+  // === Состояние по умолчанию: «Играть» → первое видео (fileId = 1) ===
+  btn.dataset.hash = torrent.hash;
+  btn.dataset.fileId = '1';
+  btn.dataset.timecode = '0';
+  btn.dataset.episodeIndex = '0';
+  btn.classList.remove('has-progress');
+  btn.innerHTML = '<span class="btn-label">▶ Играть</span>';
+
+  var progress = await loadProgressForTorrent(torrent);
+  if (!progress || !(progress.timecode > 0)) return null; // прогресса нет — остаётся «Играть»
+
+  // === Есть прогресс: «Продолжить» ===
+  var fileId = parseInt(progress.fileId, 10) || 1;
+  var timecode = progress.timecode;
+  var episodeIndex = progress.episodeIndex || 0;
+
+  var percent = progress.duration > 0 ? (timecode / progress.duration) * 100 : 0;
+  var remaining = 100 - percent;
+  var isNextFile = false;
+
+  // Осталось ≤ 5% — запускаем следующий файл
+  if (remaining <= 5) {
+    var videoFiles = getVideoFilesFromTorrent(torrent);
+    var nextFile = videoFiles.length ? videoFiles[episodeIndex + 1] : null;
+    if (nextFile) {
+      fileId = nextFile.id || (fileId + 1);
+      timecode = 0;
+      episodeIndex = episodeIndex + 1;
+      isNextFile = true;
+    } else if (progress.isSeries && episodeIndex + 1 < (progress.totalEpisodes || 0)) {
+      fileId = fileId + 1; // фоллбэк, если список файлов ещё не загружен
+      timecode = 0;
+      episodeIndex = episodeIndex + 1;
+      isNextFile = true;
+    } else {
+      timecode = 0; // это последний файл — начинаем с начала
+    }
+  }
+
+  btn.dataset.fileId = String(fileId);
+  btn.dataset.timecode = String(timecode);
+  btn.dataset.episodeIndex = String(episodeIndex);
+  btn.classList.add('has-progress');
+
+  var timeStr = formatTime(progress.timecode);
+  var totalStr = progress.duration ? formatTime(progress.duration) : '??:??';
+  var hint = '';
+  if (isNextFile) {
+    hint = 'Серия ' + (episodeIndex + 1);
+  } else {
+    hint = timeStr + ' / ' + totalStr;
+    if (progress.isSeries) hint = 'Серия ' + (episodeIndex + 1) + ' · ' + hint;
+  }
+  btn.innerHTML =
+    '<span class="btn-label">▶ Продолжить</span>' +
+    '<span class="btn-hint">' + hint + '</span>';
+
+  // Обновляем полосу прогресса на элементе файла (как в оригинале)
   await updateCurrentFileProgress(torrent.hash, progress.fileId, progress.episodeIndex);
+
+  return fileId;
 }
 
 async function updateCurrentFileProgress(hash, fileId, episodeIndex) {
