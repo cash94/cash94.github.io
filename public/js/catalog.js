@@ -177,7 +177,10 @@ function resetDetailButtons() {
     if (ov) ov.classList.remove('expanded');
 
     var trailerBtn = getEl('catalog-trailer-btn');
-    if (trailerBtn) trailerBtn.style.display = 'none';
+    if (trailerBtn) {
+        trailerBtn.classList.add('hidden');      // ★ возвращаем hidden
+        trailerBtn.style.display = 'none';
+    }
 }
 
 /**
@@ -186,7 +189,10 @@ function resetDetailButtons() {
 function showTrailerButton() {
     var btn = getEl('catalog-trailer-btn');
     if (!btn) return;
+
+    btn.classList.remove('hidden');          // ★ убираем hidden
     btn.style.display = 'inline-block';
+
     // control.js кэширует список фокуса — инвалидируем и обновляем
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     if (typeof updateFocusableElements === 'function') updateFocusableElements();
@@ -227,7 +233,7 @@ function parseMaxQualityFromM3u8Url(url) {
 function extractBalancerUrl(playData) {
     if (!playData || !playData.video_balancer) return null;
     var vb = playData.video_balancer;
-    return vb.m3u8 || vb.default || null;
+    return vb.default || vb.m3u8 || null;
 }
 
 /**
@@ -317,6 +323,13 @@ async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
         console.warn('❌ RuTube trailer error:', e.message);
         return null;
     }
+}
+
+function wrapRutubeHls(url) {
+    if (!url) return url;
+    // Уже обёрнут — не оборачиваем повторно
+    if (url.indexOf('/api/rutube/hls/proxy') === 0) return url;
+    return '/api/rutube/hls/proxy?u=' + encodeURIComponent(url);
 }
 
 // ==================== TMDB КЭШ ====================
@@ -952,17 +965,31 @@ document.addEventListener('DOMContentLoaded', function () {
     var grid = getEl('torrents-grid');
     if (!grid) return;
     grid.addEventListener('click', function (e) {
+        // Карточка «Показать все» / папка категории
+        var folder = e.target.closest('.catalog-folder-card');
+        if (folder) {
+            var fkey = folder.dataset.catalogKey;
+            if (fkey === 'history') loadHistoryCatalog();
+            else loadCatalog(fkey);
+            return;
+        }
+
         var card = e.target.closest('.torrent-card.catalog-card');
-        if (card && catalogState.currentCatalog) {
+        if (!card) return;
+
+        // Режим сетки (открыт конкретный каталог)
+        if (catalogState.currentCatalog) {
             var idx = parseInt(card.dataset.catalogIndex, 10);
             if (!isNaN(idx) && catalogState.items[idx]) onCatalogItemClick(catalogState.items[idx], idx);
             return;
         }
-        var folder = e.target.closest('.catalog-folder-card');
-        if (folder) {
-            var key = folder.dataset.catalogKey;
-            if (key === 'history') loadHistoryCatalog();
-            else loadCatalog(key);
+
+        // Режим рядов (список каталогов)
+        var rkey = card.dataset.catalogKey;
+        var itemIdx = parseInt(card.dataset.itemIndex, 10);
+        if (rkey && !isNaN(itemIdx) && window.catalogRowsData &&
+            window.catalogRowsData[rkey] && window.catalogRowsData[rkey][itemIdx]) {
+            onRowItemClick(window.catalogRowsData[rkey][itemIdx], rkey, itemIdx);
         }
     });
 });
@@ -1442,50 +1469,87 @@ function startTrailerBackground(url) {
     var video = document.createElement('video');
     video.id = 'trailer-bg-video';
     video.muted = true;
+    video.volume = 0;
     video.loop = true;
     video.autoplay = true;
     video.playsInline = true;
-    video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;transition:opacity 0.5s ease;';
+    video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;transition:opacity 10s ease;';
 
     var backdrop = getEl('catalog-detail-backdrop');
     var cde = getEl('catalog-detail-extra');
+    var sub = getEl('detail-subtitle');          // ★ подзаголовок
+    var bb = getEl('back-from-detail');          // ★ кнопка «Назад»
+
     if (backdrop && backdrop.parentNode === dv) {
         dv.insertBefore(video, backdrop);
     } else {
         dv.insertBefore(video, dv.firstChild);
     }
 
-    //   Скрываем backdrop, пока играет трейлер
+    // Скрываем backdrop, пока играет трейлер
     if (backdrop) backdrop.classList.add('hidden');
-    if (cde) {
-        cde.style.opacity = '0.4';
+
+    // ★ Плавное угасание cde / subtitle / back-btn за 10 секунд
+    var fadeOutEls = [cde, sub, bb];
+    for (var i = 0; i < fadeOutEls.length; i++) {
+        (function (el) {
+            if (!el) return;
+            el.style.transition = 'opacity 10s ease';
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    el.style.opacity = '0';
+                });
+            });
+        })(fadeOutEls[i]);
     }
 
     rutubeTrailerState.bgVideo = video;
 
-    // Плавное проявление
-    requestAnimationFrame(function () {
-        video.style.opacity = '1';
-    });
+    // ★ Плавное нарастание громкости: 0 → 100 за 10 секунд
+    var volumeStarted = false;
+    function startVolumeFade() {
+        if (volumeStarted) return;
+        volumeStarted = true;
+        video.muted = false;
+        video.volume = 0;
+        var vol = 0;
+        video._volumeTimer = setInterval(function () {
+            vol = Math.min(1, vol + 0.1);
+            try { video.volume = vol; } catch (e) { }
+            if (vol >= 1 && video._volumeTimer) {
+                clearInterval(video._volumeTimer);
+                video._volumeTimer = null;
+            }
+        }, 1000);
+    }
 
     // Запуск HLS или прямого URL
     if (window.Hls && Hls.isSupported()) {
         var hls = new Hls({
             maxBufferSize: 30 * 1024 * 1024,
             maxBufferLength: 10,
-            startLevel: 2,          // среднее качество — это только фон
+            startLevel: 2,
             enableWorker: true
         });
-        hls.loadSource(url);
+        hls.loadSource(wrapRutubeHls(url));
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, function () {
             video.play().catch(function () { });
         });
         video._hls = hls;
     } else {
-        video.src = url;
+        video.src = wrapRutubeHls(url);
         video.play().catch(function () { });
     }
+
+    // Плавное проявление видео
+    requestAnimationFrame(function () {
+        video.style.opacity = '1';
+    });
+
+    // ★ Нарастание звука — когда видео реально заиграло
+    video.addEventListener('playing', startVolumeFade);
+    video.addEventListener('timeupdate', startVolumeFade);
 }
 
 /**
@@ -1494,6 +1558,10 @@ function startTrailerBackground(url) {
 function stopTrailerBackground() {
     var video = rutubeTrailerState.bgVideo || getEl('trailer-bg-video');
     if (video) {
+        if (video._volumeTimer) {
+            clearInterval(video._volumeTimer);
+            video._volumeTimer = null;
+        }
         if (video._hls) {
             video._hls.destroy();
             video._hls = null;
@@ -1505,12 +1573,25 @@ function stopTrailerBackground() {
     }
     rutubeTrailerState.bgVideo = null;
 
-    //   Возвращаем backdrop
     var backdrop = getEl('catalog-detail-backdrop');
     var cde = getEl('catalog-detail-extra');
-    if (cde) {
-        cde.style.opacity = '1';
+    var sub = getEl('detail-subtitle');          // ★ подзаголовок
+    var bb = getEl('back-from-detail');          // ★ кнопка «Назад»
+
+    // ★ Плавное возвращение cde / subtitle / back-btn за 3 секунды
+    var fadeInEls = [cde, sub, bb];
+    for (var i = 0; i < fadeInEls.length; i++) {
+        (function (el) {
+            if (!el) return;
+            el.style.transition = 'opacity 3s ease';
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    el.style.opacity = '1';
+                });
+            });
+        })(fadeInEls[i]);
     }
+
     if (backdrop) backdrop.classList.remove('hidden');
 }
 
@@ -1521,106 +1602,111 @@ async function openRutubeTrailerInPlayer(m3u8Url, title) {
     // Останавливаем фоновое видео
     stopTrailerBackground();
 
-    var po = getEl('playback-overlay');
-    if (po) {
-        po.classList.add('active');
-        var pt = po.querySelector('.playback-text');
-        if (pt) pt.textContent = 'Загрузка трейлера: ' + title + '...';
-    }
-
-    try {
-        // Сохраняем контекст для возврата
-        var cd = AppState.currentDetailItem;
-        var cn = catalogState.currentCatalog;
-        var ci = catalogState.lastSelectedIndex;
-
-        // Скрываем детальный просмотр
-        var dv = getEl('detail-view');
-        var mc = getEl('main-container');
-        if (dv) { dv.style.display = 'none'; dv.style.pointerEvents = 'none'; }
-        if (mc) mc.style.pointerEvents = 'none';
-
-        // Останавливаем предыдущий поток
-        var old = AppState.currentStreamId;
-        if (old) fetch(SERVER_URL + '/hls/stop/' + old, { method: 'POST' }).catch(function () { });
-        if (window.destroyHls) window.destroyHls();
-
-        AppState.videoUrl = m3u8Url;
-        AppState.isYoutubePlayback = true; // переиспользуем механизм возврата
-        AppState.youtubeContext = { currentDetailItem: cd, catalogName: cn, itemIndex: ci };
-        AppState.currentDetailItem = { title: title, hash: null, isYoutube: true, youtubeUrl: m3u8Url };
-
-        var vp = getEl('video-player');
-
-        if (window.Hls && Hls.isSupported()) {
-            AppState.hls = new Hls({
-                maxBufferSize: 80 * 1024 * 1024,
-                maxBufferLength: 30,
-                backBufferLength: 20,
-                startLevel: -1,
-                abrEwmaDefaultEstimate: 500000,
-                fragLoadingTimeOut: 10000,
-                manifestLoadingTimeOut: 10000,
-                enableWorker: true,
-                progressive: true
-            });
-            AppState.hls.loadSource(m3u8Url);
-            AppState.hls.attachMedia(vp);
-
-            var started = false;
-            AppState.hls.on(Hls.Events.MANIFEST_PARSED, function () {
-                if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
-                vp.currentTime = 0;
-                vp.pause();
-
-                var iv = setInterval(function () {
-                    if (started) return clearInterval(iv);
-                    if (vp.buffered && vp.buffered.length > 0 && vp.buffered.end(vp.buffered.length - 1) - vp.currentTime >= 3) {
-                        clearInterval(iv);
-                        if (po) po.classList.remove('active');
-                        vp.play().catch(function () {
-                            vp.muted = true;
-                            vp.play().catch(function () { });
-                            if (typeof window.updateMuteButton === 'function') window.updateMuteButton();
-                        });
-                        started = true;
-                        getEl('player-screen').style.display = 'block';
-                        getEl('config-screen').style.display = 'none';
-                        getEl('torrserver-section').style.display = 'none';
-                        var focused = document.querySelectorAll('.focused');
-                        for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
-                        if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                    }
-                }, 500);
-            });
-
-            AppState.hls.on(Hls.Events.ERROR, function (ev, d) {
-                if (d.fatal) {
-                    if (po) po.classList.remove('active');
-                    alert('Ошибка воспроизведения трейлера');
-                }
-            });
-        } else if (vp.canPlayType('application/vnd.apple.mpegurl')) {
-            vp.src = m3u8Url;
-            vp.addEventListener('loadedmetadata', function () {
-                if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
-                if (po) po.classList.remove('active');
-                vp.play().catch(function () { });
-                getEl('player-screen').style.display = 'block';
-            });
-        } else {
-            throw new Error('Браузер не поддерживает HLS');
+    if (window.AndroidJS) {
+        var playerData = { url: m3u8Url, title: title || 'Видео', iptv: false };
+        AndroidJS.openPlayer(m3u8Url, JSON.stringify(playerData));
+    } else {
+        var po = getEl('playback-overlay');
+        if (po) {
+            po.classList.add('active');
+            var pt = po.querySelector('.playback-text');
+            if (pt) pt.textContent = 'Загрузка трейлера: ' + title + '...';
         }
 
-        AppState.currentScreen = 'player';
+        try {
+            // Сохраняем контекст для возврата
+            var cd = AppState.currentDetailItem;
+            var cn = catalogState.currentCatalog;
+            var ci = catalogState.lastSelectedIndex;
 
-    } catch (e) {
-        console.error('RuTube trailer player error:', e);
-        if (po) po.classList.remove('active');
-        alert('Ошибка: ' + e.message);
-        var dv = getEl('detail-view'), mc = getEl('main-container');
-        if (dv) { dv.style.display = 'block'; dv.style.pointerEvents = 'auto'; }
-        if (mc) mc.style.pointerEvents = 'auto';
+            // Скрываем детальный просмотр
+            var dv = getEl('detail-view');
+            var mc = getEl('main-container');
+            if (dv) { dv.style.display = 'none'; dv.style.pointerEvents = 'none'; }
+            if (mc) mc.style.pointerEvents = 'none';
+
+            // Останавливаем предыдущий поток
+            var old = AppState.currentStreamId;
+            if (old) fetch(SERVER_URL + '/hls/stop/' + old, { method: 'POST' }).catch(function () { });
+            if (window.destroyHls) window.destroyHls();
+
+            AppState.videoUrl = m3u8Url;
+            AppState.isYoutubePlayback = true; // переиспользуем механизм возврата
+            AppState.youtubeContext = { currentDetailItem: cd, catalogName: cn, itemIndex: ci };
+            AppState.currentDetailItem = { title: title, hash: null, isYoutube: true, youtubeUrl: m3u8Url };
+
+            var vp = getEl('video-player');
+
+            if (window.Hls && Hls.isSupported()) {
+                AppState.hls = new Hls({
+                    maxBufferSize: 80 * 1024 * 1024,
+                    maxBufferLength: 30,
+                    backBufferLength: 20,
+                    startLevel: -1,
+                    abrEwmaDefaultEstimate: 500000,
+                    fragLoadingTimeOut: 10000,
+                    manifestLoadingTimeOut: 10000,
+                    enableWorker: true,
+                    progressive: true
+                });
+                AppState.hls.loadSource(wrapRutubeHls(m3u8Url));
+                AppState.hls.attachMedia(vp);
+
+                var started = false;
+                AppState.hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                    if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
+                    vp.currentTime = 0;
+                    vp.pause();
+
+                    var iv = setInterval(function () {
+                        if (started) return clearInterval(iv);
+                        if (vp.buffered && vp.buffered.length > 0 && vp.buffered.end(vp.buffered.length - 1) - vp.currentTime >= 3) {
+                            clearInterval(iv);
+                            if (po) po.classList.remove('active');
+                            vp.play().catch(function () {
+                                vp.muted = true;
+                                vp.play().catch(function () { });
+                                if (typeof window.updateMuteButton === 'function') window.updateMuteButton();
+                            });
+                            started = true;
+                            getEl('player-screen').style.display = 'block';
+                            getEl('config-screen').style.display = 'none';
+                            getEl('torrserver-section').style.display = 'none';
+                            var focused = document.querySelectorAll('.focused');
+                            for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
+                            if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+                        }
+                    }, 500);
+                });
+
+                AppState.hls.on(Hls.Events.ERROR, function (ev, d) {
+                    if (d.fatal) {
+                        if (po) po.classList.remove('active');
+                        alert('Ошибка воспроизведения трейлера');
+                    }
+                });
+            } else if (vp.canPlayType('application/vnd.apple.mpegurl')) {
+                vp.src = wrapRutubeHls(m3u8Url);
+                vp.addEventListener('loadedmetadata', function () {
+                    if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
+                    if (po) po.classList.remove('active');
+                    vp.play().catch(function () { });
+                    getEl('player-screen').style.display = 'block';
+                });
+            } else {
+                throw new Error('Браузер не поддерживает HLS');
+            }
+
+            AppState.currentScreen = 'player';
+
+        } catch (e) {
+            console.error('RuTube trailer player error:', e);
+            if (po) po.classList.remove('active');
+            alert('Ошибка: ' + e.message);
+            var dv = getEl('detail-view'), mc = getEl('main-container');
+            if (dv) { dv.style.display = 'block'; dv.style.pointerEvents = 'auto'; }
+            if (mc) mc.style.pointerEvents = 'auto';
+        }
     }
 }
 
@@ -2117,39 +2203,384 @@ async function showCatalogList() {
     var grid = getEl('torrents-grid');
     if (!grid) return;
     abortCatalogRequests();
+
     catalogState.currentCatalog = null;
     catalogState.items = [];
+    catalogState.cardElements = {};
     catalogState.loading = false;
     catalogState.loadedPostersCount = 0;
     catalogState.posterLoadQueue = [];
     catalogState.lastSelectedIndex = 0;
     catalogState.lastSelectedId = null;
+    window.catalogRows = [];
+    window.catalogRowsData = {};
+
     var catalogTab = getEl('tab-catalog');
     if (catalogTab) catalogTab.classList.add('active');
     var torrentsTab = getEl('tab-torrents');
     if (torrentsTab) torrentsTab.classList.remove('active');
     var searchTab = getEl('tab-search');
     if (searchTab) searchTab.classList.remove('active');
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка списка каталогов...</div></div>';
-    if (cats.length === 0) cats = await fetchAvailableCatalogs();
+
+    grid.className = 'catalog-rows-container';
+    grid.innerHTML = '<div class="catalog-rows-loading"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка каталогов...</div></div>';
+
+    // Категории из CATALOG_CONFIG (в порядке объявления)
+    var keys = [];
+    for (var k in CATALOG_CONFIG) {
+        if (CATALOG_CONFIG.hasOwnProperty(k)) keys.push(k);
+    }
+
+    // Параллельная загрузка всех рядов
+    var loadPromises = keys.map(function (key) {
+        return loadRowItems(key).then(function (items) {
+            return { key: key, items: items };
+        }).catch(function () {
+            return { key: key, items: [] };
+        });
+    });
+
+    var results = await Promise.all(loadPromises);
+
     if (AppState.currentScreen !== 'catalog') return;
+
     grid.innerHTML = '';
-    if (cats.length === 0) {
-        for (var k in CATALOG_CONFIG) {
-            if (CATALOG_CONFIG.hasOwnProperty(k) && k !== 'history') {
-                grid.appendChild(createCatalogFolderCard(k, CATALOG_CONFIG[k]));
-            }
+    window.catalogRows = [];
+    window.catalogRowsData = {};
+
+    var frag = document.createDocumentFragment();
+    var renderedRows = 0;
+    for (var i = 0; i < results.length; i++) {
+        var res = results[i];
+        if (!res.items || res.items.length === 0) continue; // пустые категории пропускаем
+        var row = createCatalogRow(res.key, res.items);
+        if (row) { frag.appendChild(row); renderedRows++; }
+    }
+
+    if (renderedRows === 0) {
+        grid.innerHTML = '<div class="catalog-rows-loading"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталоги пусты</div></div>';
+        return;
+    }
+
+    grid.appendChild(frag);
+
+    requestAnimationFrame(function () {
+        if (AppState.currentScreen === 'catalog' && !catalogState.currentCatalog) {
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            setTimeout(function () {
+                if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
         }
-    } else {
-        for (var i = 0; i < cats.length; i++) {
-            var c = cats[i];
-            grid.appendChild(createCatalogFolderCard(c.id, CATALOG_CONFIG[c.id] || {
-                name: c.displayName || c.id,
-                mediaType: c.id.indexOf('tv') !== -1 ? 'tv' : 'movie'
-            }));
+    });
+}
+
+// ==================== РЯДЫ-КАРУСЕЛИ (список каталогов) ====================
+
+/**
+ * Загружает до 19 элементов для ряда категории
+ */
+async function loadRowItems(key) {
+    var LIMIT = 19;
+    if (key === 'history') {
+        var data = await safeFetch(SERVER_URL + '/api/history', { timeout: 10000 });
+        if (data && data.success && data.history && data.history.length) {
+            return data.history.slice(0, LIMIT).map(function (item) {
+                var pp = item.posterPath;
+                if (pp && pp.indexOf('http') !== 0) pp = (pp.indexOf('/') === 0 ? pp : '/' + pp);
+                return {
+                    id: item.tmdbId, title: item.title, name: item.title,
+                    media_type: item.mediaType, poster_path: pp,
+                    vote_average: null, isHistoryItem: true
+                };
+            });
+        }
+        return [];
+    }
+    var cfg = CATALOG_CONFIG[key];
+    if (!cfg || !cfg.url) return [];
+    var d = await safeFetch(cfg.url + '/items?from=0&limit=' + LIMIT, { timeout: 10000 });
+    if (d && d.success && d.items) return d.items.slice(0, LIMIT);
+    return [];
+}
+
+/**
+ * Создаёт DOM-структуру одного ряда
+ */
+function createCatalogRow(key, items) {
+    var cfg = CATALOG_CONFIG[key];
+    if (!cfg) return null;
+
+    var row = document.createElement('section');
+    row.className = 'catalog-row';
+    row.dataset.catalogKey = key;
+
+    // Заголовок ряда
+    var header = document.createElement('div');
+    header.className = 'catalog-row-header';
+    header.innerHTML =
+        '<h2 class="catalog-row-title">' + escapeHtml(cfg.name) + '</h2>' +
+        '<div class="catalog-row-showall-hint">Показать все →</div>';
+    header.addEventListener('click', function () {
+        if (key === 'history') loadHistoryCatalog();
+        else loadCatalog(key);
+    });
+    row.appendChild(header);
+
+    // Карусель
+    var carousel = document.createElement('div');
+    carousel.className = 'catalog-row-carousel';
+    var viewport = document.createElement('div');
+    viewport.className = 'catalog-row-viewport';
+
+    var rowCards = [];
+    window.catalogRowsData[key] = items;
+
+    // Карточки фильмов (до 19)
+    for (var i = 0; i < items.length; i++) {
+        var card = createRowCard(items[i], key, i);
+        viewport.appendChild(card);
+        rowCards.push(card);
+    }
+
+    // 20-я карточка — «Показать все»
+    var showAll = createShowAllCard(key);
+    viewport.appendChild(showAll);
+    rowCards.push(showAll);
+
+    carousel.appendChild(viewport);
+    row.appendChild(carousel);
+
+    window.catalogRows.push(rowCards);
+    return row;
+}
+
+/**
+ * Карточка фильма в ряду
+ */
+function createRowCard(item, key, index) {
+    var title = getCatalogItemTitle(item);
+    var mt = item.media_type || 'movie';
+    var id = item.id;
+    var rating = item.vote_average ? Math.round(item.vote_average * 10) / 10 : null;
+    var year = getCatalogItemYear(item);
+    var ratingColor = rating ? getRatingColor(rating) : '';
+
+    var ratingHtml = rating ?
+        '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.55);color:' + ratingColor +
+        ';font-weight:bold;font-size:13px;padding:3px 7px;border-radius:10px;z-index:10;border:1px solid ' + ratingColor + '">' + rating + '</div>' : '';
+
+    var card = document.createElement('div');
+    card.className = 'torrent-card catalog-card catalog-row-card';
+    card.dataset.catalogKey = key;
+    card.dataset.itemIndex = index;
+    card.dataset.itemId = id;
+    card.dataset.mediaType = mt;
+    card.dataset.title = title;
+
+    card.innerHTML =
+        '<div class="torrent-poster">' +
+        '<div class="row-poster-img"><div class="no-poster catalog-poster-loading"></div></div>' +
+        ratingHtml +
+        '</div>' +
+        '<div class="torrent-info">' +
+        '<div class="torrent-title">' + escapeHtml(title.length > 40 ? title.substring(0, 40) + '...' : title) + '</div>' +
+        '<div class="torrent-meta"><span>' + (mt === 'tv' ? 'Сериал' : 'Фильм') + '</span>' +
+        (year ? '<span>' + year + '</span>' : '') + '</div>' +
+        '</div>';
+
+    loadRowPoster(card, item);
+    return card;
+}
+
+/**
+ * Карточка «Показать все» (20-я)
+ */
+function createShowAllCard(key) {
+    var card = document.createElement('div');
+    card.className = 'torrent-card catalog-folder-card catalog-row-card catalog-show-all';
+    card.dataset.catalogKey = key;
+    card.innerHTML =
+        '<div class="show-all-inner">' +
+        '<div class="show-all-icon">→</div>' +
+        '<div class="show-all-text">Показать<br>все</div>' +
+        '</div>';
+    return card;
+}
+
+/**
+ * Загрузка постера для карточки ряда
+ */
+async function loadRowPoster(card, item) {
+    var imgBox = card.querySelector('.row-poster-img');
+    if (!imgBox) return;
+    var id = item.id;
+    var mt = item.media_type || 'movie';
+    var cacheKey = id + '_' + mt;
+
+    var cached = catalogState.posterCache.get(cacheKey);
+    if (cached) { setRowPosterImg(imgBox, cached); return; }
+
+    if (item.poster_path) {
+        var url = item.poster_path.indexOf('http') === 0 ? item.poster_path :
+            AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM +
+            (item.poster_path.indexOf('/') === 0 ? item.poster_path : '/' + item.poster_path);
+        catalogState.posterCache.set(cacheKey, url);
+        setRowPosterImg(imgBox, url);
+        return;
+    }
+
+    if (id && id !== 'undefined' && id !== 'null') {
+        try {
+            var d = await safeFetch('/api/tmdb/item?id=' + id + '&type=' + mt);
+            if (d && d.poster_path) {
+                var url2 = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + d.poster_path;
+                catalogState.posterCache.set(cacheKey, url2);
+                if (card.isConnected) setRowPosterImg(imgBox, url2);
+                return;
+            }
+        } catch (e) { }
+    }
+
+    if (card.isConnected) imgBox.innerHTML = '<div class="no-poster">Нет постера</div>';
+}
+
+function setRowPosterImg(box, url) {
+    var img = new Image();
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
+    var insert = function () {
+        if (!box.isConnected) return;
+        box.innerHTML = '';
+        img.style.opacity = '1';
+        box.appendChild(img);
+    };
+    img.onerror = function () {
+        if (box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
+    };
+    img.src = url;
+    if (typeof img.decode === 'function') img.decode().then(insert).catch(insert);
+    else img.onload = insert;
+}
+
+/**
+ * Клик по карточке фильма в ряду
+ */
+function onRowItemClick(item, key, index) {
+    catalogState.lastSelectedIndex = index;
+    catalogState.lastSelectedId = item.id;
+    AppState.catalogIndex = index;
+    AppState.androidBackCatalog = item;
+    showCatalogDetail(item, index, null);
+}
+
+// ==================== НАВИГАЦИЯ ПО РЯДАМ ====================
+
+function focusRowCard(ri, ci) {
+    var rows = window.catalogRows;
+    if (!rows || !rows[ri] || !rows[ri][ci]) return true;
+    var card = rows[ri][ci];
+    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+    var idx = (typeof focusableElements !== 'undefined') ? focusableElements.indexOf(card) : -1;
+    if (idx !== -1 && typeof setFocus === 'function') setFocus(idx);
+    else if (typeof focusEl === 'function') focusEl(card);
+    scrollRowToCard(card);
+    return true;
+}
+
+function findRowPosition(el) {
+    var rows = window.catalogRows || [];
+    for (var i = 0; i < rows.length; i++) {
+        for (var j = 0; j < rows[i].length; j++) {
+            if (rows[i][j] === el) return { row: i, col: j };
         }
     }
-    if (CATALOG_CONFIG.history) grid.appendChild(createCatalogFolderCard('history', CATALOG_CONFIG.history));
+    return null;
+}
+
+function handleRowsNavigation(dir) {
+    var rows = window.catalogRows;
+    if (!rows || !rows.length) return false;
+
+    var f = document.querySelector('.focused');
+    var pos = f ? findRowPosition(f) : null;
+
+    if (!pos) return focusRowCard(0, 0);
+
+    if (dir === 'left') {
+        if (pos.col > 0) return focusRowCard(pos.row, pos.col - 1);
+        return true;
+    }
+    if (dir === 'right') {
+        if (pos.col < rows[pos.row].length - 1) return focusRowCard(pos.row, pos.col + 1);
+        return true;
+    }
+    if (dir === 'up') {
+        if (pos.row > 0) {
+            var tc = Math.min(pos.col, rows[pos.row - 1].length - 1);
+            return focusRowCard(pos.row - 1, tc);
+        }
+        // верхний ряд → на табы
+        if (typeof getTorrentTabs === 'function') {
+            var t = getTorrentTabs();
+            if (t.length && typeof focusEl === 'function') { focusEl(t[0]); return true; }
+        }
+        return true;
+    }
+    if (dir === 'down') {
+        if (pos.row < rows.length - 1) {
+            var tc2 = Math.min(pos.col, rows[pos.row + 1].length - 1);
+            return focusRowCard(pos.row + 1, tc2);
+        }
+        return true;
+    }
+    return true;
+}
+
+function scrollRowToCard(card) {
+    var viewport = card.closest ? card.closest('.catalog-row-viewport') : null;
+    if (!viewport) return;
+    var cr = card.getBoundingClientRect();
+    var vr = viewport.getBoundingClientRect();
+    var pad = 50;
+    if (cr.left < vr.left + pad) {
+        viewport.scrollBy({ left: cr.left - vr.left - pad, behavior: 'smooth' });
+    } else if (cr.right > vr.right - pad) {
+        viewport.scrollBy({ left: cr.right - vr.right + pad, behavior: 'smooth' });
+    }
+}
+
+/**
+ * Переопределяет стратегию catalog для поддержки режима рядов.
+ * Режим сетки (открыт конкретный каталог) сохраняет старую логику.
+ */
+function setupCatalogRowsNavigation() {
+    if (typeof ScreenStrategies === 'undefined' || !ScreenStrategies.catalog) {
+        setTimeout(setupCatalogRowsNavigation, 100); // control.js ещё не готов
+        return;
+    }
+    if (ScreenStrategies.catalog._rowsPatched) return;
+
+    var _origHandleNav = ScreenStrategies.catalog.handleNavigation;
+    var _origEnsureFocus = ScreenStrategies.catalog.ensureFocus;
+
+    ScreenStrategies.catalog.handleNavigation = function (dir) {
+        if (!catalogState.currentCatalog && window.catalogRows && window.catalogRows.length) {
+            return handleRowsNavigation(dir);
+        }
+        return _origHandleNav.call(this, dir);
+    };
+
+    ScreenStrategies.catalog.ensureFocus = function (force) {
+        if (force === undefined) force = false;
+        if (!catalogState.currentCatalog && window.catalogRows && window.catalogRows.length) {
+            if (typeof currentScreen === 'function' && currentScreen() !== 'catalog') return false;
+            var f = document.querySelector('.focused');
+            if (!force && f && typeof belongsToScreen === 'function' && belongsToScreen(f, 'catalog')) return true;
+            return focusRowCard(0, 0);
+        }
+        return _origEnsureFocus.call(this, force);
+    };
+
+    ScreenStrategies.catalog._rowsPatched = true;
 }
 
 function createCatalogFolderCard(key, cfg) {
@@ -2321,6 +2752,7 @@ function stopTmdbCleanup() {
 function initCatalog() {
     startTmdbCleanup();
     initCatalogDetailButtons();
+    setupCatalogRowsNavigation();
     window.tmdbCache = {
         clear: clearTmdbCache,
         stats: getTmdbCacheStats,
