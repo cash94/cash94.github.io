@@ -907,18 +907,18 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
                         elements.detailSubtitle.style.display = 'block';
                         elements.detailSubtitle.classList.remove('hidden');
                     }
-                    // var overviewEl = getEl('catalog-detail-overview');
-                    // if (overviewEl) {
-                    //     overviewEl.textContent = details.overview;
-                    //     overviewEl.style.display = 'block';
-                    //     overviewEl.classList.remove('hidden');
-                    // }
+                    var overviewEl = getEl('catalog-detail-overview');
+                    if (overviewEl) {
+                        overviewEl.textContent = details.overview;
+                        overviewEl.style.display = 'none';
+                        overviewEl.classList.add('hidden');
+                    }
                 }
 
                 // 3. Обработка метаданных (Жанры, год, рейтинг)
-                // if (typeof updateDetailMetaInfo === 'function') {
-                //     updateDetailMetaInfo(details);
-                // }
+                if (typeof updateDetailMetaInfo === 'function') {
+                    updateDetailMetaInfo(details);
+                }
             }
         });
     }
@@ -978,7 +978,8 @@ function updateDetailMetaInfo(tmdbData) {
 
     // Если мы добавили хотя бы один чип, показываем контейнер
     if (metaContainer.children.length > 0) {
-        metaContainer.classList.remove('hidden');
+        metaContainer.classList.add('hidden');
+        metaContainer.style.display = 'none';
     }
 }
 
