@@ -373,6 +373,13 @@ async function addProgressToDetail(torrent) {
 
     var btn = getEl('detail-progress-btn');
     if (!btn) return null;
+    btn.classList.remove('hidden');
+    btn.style.removeProperty('display');
+    var extra = getEl('catalog-detail-extra');
+    if (extra) {
+        extra.classList.remove('hidden');
+        extra.style.removeProperty('display');
+    }
 
     // Чистим старые блоки (могли остаться от предыдущей версии)
     var oldProgressBlocks = document.querySelectorAll('#detail-progress');
