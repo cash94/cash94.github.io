@@ -778,7 +778,7 @@ function visibleItemsforDetail(change) {
     } else if (change === 'showCatalogDetail') {
 
         var massVisible = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
-            'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'detail-poster'
+            'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn'
         ];
 
         massVisible.forEach(function (id) {
