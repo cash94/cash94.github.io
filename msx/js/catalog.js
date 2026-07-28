@@ -2470,9 +2470,56 @@ function setRowPosterImg(box, url) {
 function onRowItemClick(item, key, index) {
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
+    catalogState.lastSelectedRowKey = key;
+    catalogState.lastSelectedColIndex = index;
     AppState.catalogIndex = index;
     AppState.androidBackCatalog = item;
     showCatalogDetail(item, index, null);
+}
+
+// Фокус на конкретную карточку ряда + скролл карусели
+function focusRowCardByElement(card) {
+    if (!card) return;
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+    var idx = (typeof focusableElements !== 'undefined') ? focusableElements.indexOf(card) : -1;
+    if (idx !== -1 && typeof setFocus === 'function') {
+        setFocus(idx);
+    } else if (typeof focusEl === 'function') {
+        focusEl(card);
+    }
+    if (typeof scrollRowToCard === 'function') scrollRowToCard(card);
+}
+
+// Возврат фокуса на кликнутую карточку ряда
+function restoreRowFocus() {
+    var savedKey = catalogState.lastSelectedRowKey;
+    var savedCol = catalogState.lastSelectedColIndex;
+
+    if (savedKey != null) {
+        // 1) Точное совпадение: нужный ряд + нужная колонка
+        var card = document.querySelector(
+            '.catalog-row-card[data-catalog-key="' + savedKey + '"][data-item-index="' + savedCol + '"]'
+        );
+        if (card && card.offsetParent !== null) {
+            focusRowCardByElement(card);
+            return;
+        }
+        // 2) Ряд есть, но колонка недоступна — первая карточка этого ряда
+        var firstInRow = document.querySelector(
+            '.catalog-row-card[data-catalog-key="' + savedKey + '"]'
+        );
+        if (firstInRow && firstInRow.offsetParent !== null) {
+            focusRowCardByElement(firstInRow);
+            return;
+        }
+    }
+
+    // 3) Fallback — первая карточка первого ряда
+    if (typeof getCatalogRows === 'function' && typeof focusRowCard === 'function') {
+        var rows = getCatalogRows();
+        if (rows.length) focusRowCard(0, 0, rows);
+    }
 }
 
 // ==================== НАВИГАЦИЯ ПО РЯДАМ ====================
