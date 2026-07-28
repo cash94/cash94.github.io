@@ -765,6 +765,60 @@ async function getTorrentFilesWithCache(torrent, forceRefresh = false) {
 function clearTorrentFilesCache(hash) { if (hash && torrentFilesCache.has(hash)) torrentFilesCache.delete(hash); }
 function clearAllTorrentFilesCache() { torrentFilesCache.clear(); }
 
+function visibleItemsforDetail(change) {
+    if (change === 'showDetail') {
+
+        var massHidden = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
+            'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'detail-poster'
+        ];
+
+        massHidden.forEach(function (id) {
+            var el = getEl(id);
+            if (el) {
+                // Гарантированно скрываем
+                el.classList.add('hidden');
+            }
+        });
+
+        var massVisible = ['catalog-detail-extra', 'detail-progress-btn'];
+
+        massVisible.forEach(function (id) {
+            var el = getEl(id);
+            if (el) {
+                // Гарантированно скрываем
+                el.classList.remove('hidden');
+            }
+        });
+
+    } else if (change === 'showCatalogDetail') {
+
+        var massVisible = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
+            'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'detail-poster'
+        ];
+
+        massVisible.forEach(function (id) {
+            var el = getEl(id);
+            if (el) {
+                // Гарантированно скрываем
+                el.classList.add('hidden');
+            }
+        });
+
+        var massHidden = ['catalog-detail-extra', 'detail-progress-btn'];
+
+        massHidden.forEach(function (id) {
+            var el = getEl(id);
+            if (el) {
+                // Гарантированно скрываем
+                el.classList.remove('hidden');
+            }
+        });
+    }
+
+}
+
+window.visibleItemsforDetail = visibleItemsforDetail;
+
 async function showDetail(torrent) {
     if (torrent && torrent.hash) window.lastSelectedTorrentHash = torrent.hash;
     if (typeof currentFocusIndex !== 'undefined') window.lastSelectedTorrentIndex = currentFocusIndex;
@@ -787,38 +841,7 @@ async function showDetail(torrent) {
 
     // Очищаем контент от предыдущего торрента (трейлеры, скриншоты, описание, мета)
     hideCatalogDetailExtra();
-
-    var catalogDetailExtra = getEl('catalog-detail-extra');
-    if (catalogDetailExtra) catalogDetailExtra.classList.remove('hidden');
-
-    var catalogDetailBackdrop = getEl('catalog-detail-backdrop');
-    if (catalogDetailBackdrop) catalogDetailBackdrop.classList.remove('hidden');
-
-    var catalogDetailMeta = getEl('catalog-detail-meta');
-    if (catalogDetailMeta) catalogDetailMeta.classList.add('hidden');
-
-    var catalogDetailOverview = getEl('catalog-detail-overview');
-    if (catalogDetailOverview) {
-        catalogDetailOverview.classList.add('hidden');
-        catalogDetailOverview.style.display = 'none';
-    }
-
-    var catalogWatchBtn = getEl('catalog-watch-btn');
-    if (catalogWatchBtn) catalogWatchBtn.classList.add('hidden');
-
-    var detailProgressBtn = getEl('detail-progress-btn');
-    if (detailProgressBtn) detailProgressBtn.classList.remove('hidden');
-
-    var catalogToggleOverviewBtn = getEl('catalog-toggle-overview-btn');
-    if (catalogToggleOverviewBtn) catalogToggleOverviewBtn.classList.add('hidden');
-
-    var catalogTrailerBtn = getEl('catalog-trailer-btn');
-    if (catalogTrailerBtn) catalogTrailerBtn.classList.add('hidden');
-
-    // Постер в шапке скрыт — фон идёт через backdrop на detail-view
-    var posterImg = getEl('detail-poster');
-    if (posterImg) posterImg.classList.add('hidden');
-
+    visibleItemsforDetail('showDetail');
     var posterImg = getEl('detail-poster');
     var titleEl = getEl('detail-title-text');
     var filesList = getEl('files-list');
