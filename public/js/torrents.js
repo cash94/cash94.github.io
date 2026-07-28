@@ -36,7 +36,7 @@ var SORT_OPTIONS = [
     { value: 'size-desc', label: 'Размер ↓' },
     { value: 'size-asc', label: 'Размер ↑' },
     { value: 'sid-desc', label: 'Сиды ↓' },
-    { value: 'sid-asc', label: 'Си ды ↑' },
+    { value: 'sid-asc', label: 'Сиды ↑' },
     { value: 'pir-desc', label: 'Пиры ↓' },
     { value: 'pir-asc', label: 'Пиры ↑' }
 ];
@@ -779,9 +779,6 @@ async function showDetail(torrent) {
     var catalogDetailExtra = getEl('catalog-detail-extra');
     if (catalogDetailExtra) catalogDetailExtra.classList.remove('hidden');
     // Мета-чипы скрыты, пока не придут данные TMDB (updateDetailMetaInfo сама снимет hidden)
-    var catalogDetailMeta = getEl('catalog-detail-meta');
-    if (catalogDetailMeta) catalogDetailMeta.classList.add('hidden');
-    // Кнопка «Играть» из каталога больше не нужна — её роль играет detail-progress-btn
     var catalogWatchBtn = getEl('catalog-watch-btn');
     if (catalogWatchBtn) catalogWatchBtn.classList.add('hidden');
     // Кнопку «Играть / Продолжить» показываем
@@ -910,18 +907,18 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
                         elements.detailSubtitle.style.display = 'block';
                         elements.detailSubtitle.classList.remove('hidden');
                     }
-                    var overviewEl = getEl('catalog-detail-overview');
-                    if (overviewEl) {
-                        overviewEl.textContent = details.overview;
-                        overviewEl.style.display = 'block';
-                        overviewEl.classList.remove('hidden');
-                    }
+                    // var overviewEl = getEl('catalog-detail-overview');
+                    // if (overviewEl) {
+                    //     overviewEl.textContent = details.overview;
+                    //     overviewEl.style.display = 'block';
+                    //     overviewEl.classList.remove('hidden');
+                    // }
                 }
 
                 // 3. Обработка метаданных (Жанры, год, рейтинг)
-                if (typeof updateDetailMetaInfo === 'function') {
-                    updateDetailMetaInfo(details);
-                }
+                // if (typeof updateDetailMetaInfo === 'function') {
+                //     updateDetailMetaInfo(details);
+                // }
             }
         });
     }
