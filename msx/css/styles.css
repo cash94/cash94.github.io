@@ -786,26 +786,6 @@ body {
   font-size: 12px;
 }
 
-.detail-progress-btn {
-  background: rgba(0, 0, 0, 0.3);
-  /* Тёмный фон */
-  backdrop-filter: none;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  color: #ff8c00;
-  padding: 7.4px 18.42px;
-  border-radius: 21.96px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px rgba(0, 0, 0, 0.3);
-}
-
-.detail-progress-btn:hover {
-  background: rgba(60, 60, 70, 0.95);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
 .files-list {
   margin-top: 18.42px;
   display: flex;
@@ -1844,9 +1824,6 @@ body.detail-open {
     align-items: flex-start;
   }
 
-  .detail-progress-btn {
-    width: 100%;
-  }
 }
 
 /* Замена всех border с #4a9eff на #000000 */
@@ -2094,12 +2071,6 @@ body.detail-open {
 
   .detail-progress-episode,
   .detail-progress-time {
-    font-size: 12.36px;
-  }
-
-  .detail-progress-btn {
-    padding: 7.62px 18.97px;
-    border-radius: 22.62px;
     font-size: 12.36px;
   }
 
@@ -2410,12 +2381,6 @@ body.detail-open {
 
   .detail-progress-episode,
   .detail-progress-time {
-    font-size: 15px;
-  }
-
-  .detail-progress-btn {
-    padding: 9.25px 23.03px;
-    border-radius: 27.45px;
     font-size: 15px;
   }
 
@@ -3552,6 +3517,8 @@ article {
 #catalog-watch-btn,
 .catalog-trailer-btn,
 #catalog-trailer-btn,
+.detail-progress-btn,
+#detail-progress-btn,
 .catalog-toggle-overview-btn,
 #catalog-toggle-overview-btn {
   display: inline-flex !important;
@@ -3572,6 +3539,8 @@ article {
 #catalog-watch-btn:hover,
 .catalog-trailer-btn:hover,
 #catalog-trailer-btn:hover,
+.detail-progress-btn:hover,
+#detail-progress-btn:hover,
 .catalog-toggle-overview-btn:hover,
 #catalog-toggle-overview-btn:hover {
   background: rgba(255, 255, 255, 0.22) !important;
@@ -3722,6 +3691,8 @@ article {
 .catalog-watch-btn.focused,
 .catalog-trailer-btn.focused,
 #catalog-trailer-btn.focused,
+.detail-progress-btn.focused,
+#detail-progress-btn.focused,
 #catalog-toggle-overview-btn.focused,
 .catalog-toggle-overview-btn.focused {
   box-shadow: 0 0 0 3px #ff8c00 !important;
@@ -3823,6 +3794,8 @@ article {
   #catalog-watch-btn,
   .catalog-trailer-btn,
   #catalog-trailer-btn,
+  .detail-progress-btn,
+  #detail-progress-btn,
   .catalog-toggle-overview-btn,
   #catalog-toggle-overview-btn {
     flex: 1;
@@ -3840,49 +3813,21 @@ article {
   z-index: 2;
 }
 
-.detail-progress-btn {
-  background: rgba(255, 255, 255, 0.12) !important;
-  color: #fff !important;
-  border: 1px solid rgba(255, 255, 255, 0.25) !important;
-  box-shadow: none !important;
-}
-
-.detail-progress-btn.focused {
-  box-shadow: 0 0 0 3px #ff8c00 !important;
-  background: rgba(255, 255, 255, 0.22) !important;
-}
-
 /* Кнопка «Подробнее» внутри panel (torrent detail) */
 .catalog-detail-panel>.catalog-toggle-overview-btn {
   margin-top: -10px;
   margin-bottom: 14px;
 }
 
-.detail-progress-btn {
-  display: inline-flex !important;
-  align-items: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.12) !important;
-  color: #fff !important;
-  border: 1px solid rgba(255, 255, 255, 0.25) !important;
-  border-radius: 6px !important;
-  padding: 11px 22px !important;
-  font-size: 14px !important;
-  font-weight: 600 !important;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.detail-progress-btn:hover {
-  background: rgba(255, 255, 255, 0.22) !important;
-}
-
-.detail-progress-btn.focused {
-  box-shadow: 0 0 0 3px #ff8c00 !important;
-  background: rgba(255, 255, 255, 0.22) !important;
-}
-
 .catalog-trailer-btn.hidden,
-#catalog-trailer-btn.hidden {
+#catalog-trailer-btn.hidden,
+.detail-progress-btn.hidden,
+#detail-progress-btn.hidden,
+.catalog-watch-btn.hidden,
+#catalog-watch-btn.hidden,
+.catalog-toggle-overview-btn.hidden,
+#catalog-toggle-overview-btn.hidden,
+.catalog-detail-overview.hidden,
+#catalog-detail-overview.hidden {
   display: none !important;
 }
