@@ -2283,7 +2283,7 @@ async function showCatalogList() {
  * Загружает до 19 элементов для ряда категории
  */
 async function loadRowItems(key) {
-    var LIMIT = 19;
+    var LIMIT = 10;
     if (key === 'history') {
         var data = await safeFetch(SERVER_URL + '/api/history', { timeout: 10000 });
         if (data && data.success && data.history && data.history.length) {
