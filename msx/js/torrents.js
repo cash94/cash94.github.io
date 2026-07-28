@@ -778,7 +778,7 @@ function visibleItemsforDetail(change) {
     } else if (change === 'showCatalogDetail') {
 
         var massVisible = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
-            'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn'
+            'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'catalog-detail-extra'
         ];
 
         massVisible.forEach(function (id) {
@@ -789,7 +789,7 @@ function visibleItemsforDetail(change) {
             }
         });
 
-        var massHidden = ['catalog-detail-extra', 'detail-progress-btn'];
+        var massHidden = ['detail-progress-btn'];
 
         massHidden.forEach(function (id) {
             var el = getEl(id);
