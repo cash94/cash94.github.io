@@ -771,6 +771,7 @@ function setupSearch() {
         if (typeof AppState !== 'undefined') AppState.inSearch = 'torrents';
         hideSearchResults();
         tabTorrents.classList.add('active');
+        tabTorrents.style.display = 'grid';
         if (tabSearch) tabSearch.classList.remove('active');
         if (tabCatalog) tabCatalog.classList.remove('active');
         var searchOverlay = getEl('search-overlay');
