@@ -1432,7 +1432,8 @@ function isElementFullyVisible(el, container) {
     var cr = container.getBoundingClientRect();
 
     // Определяем тип контейнта
-    var isH = container.id === 'files-list' ||
+    var isH = (container.classList && container.classList.contains('catalog-row-viewport')) ||
+        container.id === 'files-list' ||
         container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap';
@@ -1460,7 +1461,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
     var cr = container.getBoundingClientRect();
     var isWindow = container === window || container === document.body;
     var scrollContainer = isWindow ? (window.scrollingElement || document.documentElement) : container;
-    var isH = container.id === 'catalog-detail-actors-wrap' ||
+
+    // ★ ряд-карусель
+    var isRowViewport = !!(container.classList && container.classList.contains('catalog-row-viewport'));
+
+    var isH = isRowViewport ||
+        container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap' ||
         container.id === 'files-list';
@@ -1473,36 +1479,25 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             con = container.id.replace('-wrap', '');
             con = getEl(con);
         } else {
-            con = container;
+            con = container;   // ★ карусель ряда и files-list скроллятся сами
         }
 
-        // НАПРАВЛЕННЫЙ СКРОЛЛ: позиционируем элемент в зависимости от направления
-        var hp = 30; // Горизонтальный отступ
+        // НАПРАВЛЕННЫЙ ГОРИЗОНТАЛЬНЫЙ СКРОЛЛ (без изменений)
+        var hp = 30;
         var targetLeft;
-
         if (direction === 'left') {
-            // Двигаемся влево → элемент должен появиться у левого края видимой области
             targetLeft = con.scrollLeft + (r.left - cr.left) - hp;
         } else if (direction === 'right') {
-            // Двигаемся вправо → элемент должен появиться у правого края видимой области
             targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width - r.width - hp);
         } else {
-            // По умолчанию (up/down/без направления) → центрируем
             targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
         }
-
         targetLeft = Math.max(0, targetLeft);
         var needsHScroll = Math.abs(con.scrollLeft - targetLeft) > 10;
-
         if (needsHScroll) {
             if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                 gsap.killTweensOf(con);
-                gsap.to(con, {
-                    scrollTo: { x: targetLeft },
-                    duration: 0.1,
-                    ease: "power1.out",
-                    overwrite: true
-                });
+                gsap.to(con, { scrollTo: { x: targetLeft }, duration: 0.1, ease: "power1.out", overwrite: true });
             } else if (smooth) {
                 con.scrollTo({ left: targetLeft, behavior: 'smooth' });
             } else {
@@ -1510,53 +1505,41 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             }
         }
 
-        // Вертикальный скролл detail-view (для wrap-контейнеров)
-        var detailView = getEl('detail-view');
-        if (detailView) {
+        // ★ ВЕРТИКАЛЬНЫЙ СКРОЛЛ: для рядов — main-container, для деталей — detail-view
+        var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
+        if (vertEl) {
             var containerRect = container.getBoundingClientRect();
-            var detailRect = detailView.getBoundingClientRect();
-            var detailScrollTop = detailView.scrollTop;
-            var containerTopRelative = containerRect.top - detailRect.top + detailScrollTop;
+            var vertRect = vertEl.getBoundingClientRect();
+            var containerTopRelative = containerRect.top - vertRect.top + vertEl.scrollTop;
             var containerBottomRelative = containerTopRelative + containerRect.height;
-            var detailViewportTop = detailView.scrollTop;
-            var detailViewportBottom = detailViewportTop + detailRect.height;
+            var vertViewportTop = vertEl.scrollTop;
+            var vertViewportBottom = vertViewportTop + vertRect.height;
             var needsVertScroll = false;
-            var targetScrollTop = detailView.scrollTop;
+            var targetScrollTop = vertEl.scrollTop;
 
-            // НАПРАВЛЕННЫЙ ВЕРТИКАЛЬНЫЙ СКРОЛЛ
-            if (containerTopRelative < detailViewportTop + 50) {
-                if (direction === 'up') {
-                    // Двигаемся вверх → элемент прижимаем к верху
-                    targetScrollTop = Math.max(0, containerTopRelative - 30);
-                } else {
-                    targetScrollTop = Math.max(0, containerTopRelative - 50);
-                }
+            if (containerTopRelative < vertViewportTop + 50) {
+                targetScrollTop = (direction === 'up')
+                    ? Math.max(0, containerTopRelative - 30)
+                    : Math.max(0, containerTopRelative - 50);
                 needsVertScroll = true;
-            } else if (containerBottomRelative > detailViewportBottom - 50) {
-                if (direction === 'down') {
-                    // Двигаемся вниз → элемент прижимаем к низу
-                    targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 30);
-                } else {
-                    targetScrollTop = Math.max(0, containerBottomRelative - detailRect.height + 50);
-                }
+            } else if (containerBottomRelative > vertViewportBottom - 50) {
+                targetScrollTop = (direction === 'down')
+                    ? Math.max(0, containerBottomRelative - vertRect.height + 30)
+                    : Math.max(0, containerBottomRelative - vertRect.height + 50);
                 needsVertScroll = true;
             }
 
             if (needsVertScroll) {
-                targetScrollTop = Math.max(0, Math.min(targetScrollTop, detailView.scrollHeight - detailRect.height));
+                targetScrollTop = Math.max(0, Math.min(targetScrollTop, vertEl.scrollHeight - vertRect.height));
                 if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                    gsap.killTweensOf(detailView);
-                    gsap.to(detailView, {
-                        scrollTo: { y: targetScrollTop },
-                        duration: 0.15,
-                        backgroundColor: 'rgb(0, 0, 0)',
-                        ease: "power1.out",
-                        overwrite: true
-                    });
+                    gsap.killTweensOf(vertEl);
+                    var tweenVars = { scrollTo: { y: targetScrollTop }, duration: 0.15, ease: "power1.out", overwrite: true };
+                    if (vertEl.id === 'detail-view') tweenVars.backgroundColor = 'rgb(0, 0, 0)'; // как было
+                    gsap.to(vertEl, tweenVars);
                 } else if (smooth) {
-                    detailView.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+                    vertEl.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
                 } else {
-                    detailView.scrollTop = targetScrollTop;
+                    vertEl.scrollTop = targetScrollTop;
                 }
             }
         }
@@ -1608,7 +1591,8 @@ function focusEl(el, opts) {
     var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
 
     if (s === 'catalog' || s === 'torrents' || s === 'config') {
-        container = getEl('main-container');
+        var rowVp = (isRowCard && el.closest) ? el.closest('.catalog-row-viewport') : null;
+        container = rowVp || getEl('main-container');
     } else if (s === 'search') {
         container = getEl('search-results');
     } else if (s === 'detail') {
@@ -2137,12 +2121,12 @@ function focusRowCard(ri, ci, rows) {
     var idx = focusableElements.indexOf(card);
     if (idx !== -1) setFocus(idx);
     else focusEl(card);
-    scrollRowToCard(card);
     return true;
 }
 
 // Навигация по рядам (←/→ внутри ряда, ↑/↓ между рядами)
 function handleRowsNavigation(dir) {
+    lastNavDirection = dir;
     var rows = getCatalogRows();
     if (!rows.length) return false;
     var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
