@@ -603,20 +603,6 @@ function hideCatalogDetailExtra() {
         'catalog-detail-screenshots-wrap', 'catalog-detail-screenshots'
     ];
 
-    var detailProgressBtn = getEl('detail-progress-btn');
-    if (detailProgressBtn) {
-        detailProgressBtn.classList.add('hidden');
-        detailProgressBtn.classList.remove('has-progress');
-        detailProgressBtn.dataset.hash = '';
-        detailProgressBtn.dataset.fileId = '1';
-        detailProgressBtn.dataset.timecode = '0';
-        detailProgressBtn.dataset.episodeIndex = '0';
-        detailProgressBtn.innerHTML = '<span class="btn-label">▶ Играть</span>';
-    }
-    // Кнопку «Играть» из каталога возвращаем
-    var catalogWatchBtn = getEl('catalog-watch-btn');
-    if (catalogWatchBtn) catalogWatchBtn.classList.remove('hidden');
-
     ids.forEach(function (id) {
         var el = getEl(id);
         if (el) {
@@ -799,7 +785,7 @@ function visibleItemsforDetail(change) {
             var el = getEl(id);
             if (el) {
                 // Гарантированно скрываем
-                el.classList.add('hidden');
+                el.classList.remove('hidden');
             }
         });
 
@@ -809,7 +795,7 @@ function visibleItemsforDetail(change) {
             var el = getEl(id);
             if (el) {
                 // Гарантированно скрываем
-                el.classList.remove('hidden');
+                el.classList.add('hidden');
             }
         });
     }
