@@ -1900,6 +1900,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     dv.style.pointerEvents = 'auto';
     if (mc) mc.style.pointerEvents = 'none';
     if (typeof window.hideCatalogDetailExtra === 'function') window.hideCatalogDetailExtra();
+    if (typeof window.visibleItemsforDetail === 'function') window.visibleItemsforDetail('showCatalogDetail');
     var wb = getEl('catalog-watch-btn');
     if (aw) aw.classList.add('hidden');
     if (rw) rw.classList.add('hidden');
