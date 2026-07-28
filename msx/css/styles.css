@@ -3991,30 +3991,30 @@ article {
   transform: translateX(4px);
 }
 
-/* ===================================================== */
-/* ===== АДАПТАЦИЯ ДЛЯ ЭКРАНОВ 480px ===== */
-/* ===================================================== */
+/* ===== Адаптация рядов каталога для 720–960px ===== */
 @media (min-width: 720px) and (max-width: 960px) {
-  /* Уменьшаем отступы контейнера */
+
   .catalog-rows-container {
-    padding: 8px 0 30px;
+    padding: 8px 0 36px;
   }
 
-  /* Уменьшаем отступы между рядами */
+  .catalog-rows-loading {
+    padding: 50px 16px;
+  }
+
   .catalog-row {
-    margin-bottom: 24px;
+    margin-bottom: 26px;
   }
 
-  /* Заголовок ряда */
+  /* --- Заголовок ряда --- */
   .catalog-row-header {
-    padding: 0 12px 10px;
-    flex-wrap: wrap;
-    gap: 4px;
+    padding: 0 24px 10px;
+    border-radius: 10px;
   }
 
   .catalog-row-title {
-    font-size: 18px;
-    gap: 6px;
+    font-size: 19px;
+    gap: 8px;
   }
 
   .catalog-row-title::after {
@@ -4023,107 +4023,47 @@ article {
 
   .catalog-row-showall-hint {
     font-size: 12px;
-    opacity: 0.7;
   }
 
-  /* Контейнер карусели - уменьшаем отступы */
+  /* --- Карусель --- */
   .catalog-row-viewport {
-    gap: 12px;
-    padding: 8px 12px 16px;
+    gap: 14px;
+    padding: 8px 24px 16px;
   }
 
-  /* ===== Карточка в ряду (уменьшенная 160×280) ===== */
+  /* --- Карточка фильма (180×320) --- */
   .catalog-row-card {
-    width: 160px;
+    width: 180px;
   }
 
   .catalog-row-card .torrent-poster {
-    width: 160px;
-    height: 280px;
+    width: 180px;
+    height: 320px;
     border-radius: 10px;
   }
 
-  /* Уменьшаем эффект фокуса для маленьких карточек */
-  .catalog-row-card.focused .torrent-poster {
-    transform: scale(1.04);
-    box-shadow: 0 0 0 2px #4a9eff, 0 8px 20px rgba(0, 0, 0, 0.5);
+  /* Бейдж рейтинга задан инлайном в JS — перебиваем через !important */
+  .catalog-row-card .rating-badge {
+    top: 6px !important;
+    right: 6px !important;
+    font-size: 11px !important;
+    padding: 2px 6px !important;
+    border-radius: 8px !important;
   }
 
-  /* ===== Карточка «Показать все» (уменьшенная 160×280) ===== */
+  /* --- Карточка «Показать все» (180×320) --- */
   .catalog-show-all .show-all-inner {
-    width: 160px;
-    height: 280px;
+    width: 180px;
+    height: 320px;
     border-radius: 10px;
-    gap: 8px;
-    border-width: 1.5px;
+    gap: 10px;
   }
 
   .catalog-show-all .show-all-icon {
-    font-size: 36px;
+    font-size: 40px;
   }
 
   .catalog-show-all .show-all-text {
     font-size: 14px;
-  }
-
-  .catalog-show-all.focused .show-all-inner {
-    transform: scale(1.04);
-    box-shadow: 0 0 0 2px #4a9eff;
-  }
-
-  /* Фокус на заголовке ряда */
-  .catalog-row-header.focused .catalog-row-title {
-    font-size: 18px;
-  }
-
-  .catalog-row-header.focused .catalog-row-title::after {
-    transform: translateX(2px);
-  }
-}
-
-/* ===================================================== */
-/* ===== ДОПОЛНИТЕЛЬНАЯ АДАПТАЦИЯ ДЛЯ ОЧЕНЬ МАЛЕНЬКИХ ЭКРАНОВ (320px) ===== */
-/* ===================================================== */
-@media (max-width: 380px) {
-  .catalog-row-viewport {
-    gap: 10px;
-    padding: 6px 8px 12px;
-  }
-
-  .catalog-row-header {
-    padding: 0 8px 8px;
-  }
-
-  /* Ещё более уменьшенные карточки 130×230 */
-  .catalog-row-card {
-    width: 130px;
-  }
-
-  .catalog-row-card .torrent-poster {
-    width: 130px;
-    height: 230px;
-    border-radius: 8px;
-  }
-
-  .catalog-show-all .show-all-inner {
-    width: 130px;
-    height: 230px;
-    border-radius: 8px;
-  }
-
-  .catalog-show-all .show-all-icon {
-    font-size: 28px;
-  }
-
-  .catalog-show-all .show-all-text {
-    font-size: 12px;
-  }
-
-  .catalog-row-title {
-    font-size: 16px;
-  }
-
-  .catalog-row-showall-hint {
-    font-size: 11px;
   }
 }
