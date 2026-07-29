@@ -91,7 +91,7 @@ function createSeekOverlay() {
         text-align: center;
     `;
     seekOverlay.innerHTML = `
-        <div id="seek-time" style="font-size: 9px; line-height: 1; margin-bottom: 10px;">00:00</div>
+        <div id="seek-time" style="font-size: 96px; line-height: 1; margin-bottom: 10px;">00:00</div>
         <div id="seek-direction" style="font-size: 24px; opacity: 0.8;">Перемотка</div>
     `;
     document.body.appendChild(seekOverlay);
