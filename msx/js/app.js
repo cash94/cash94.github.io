@@ -1,15 +1,4 @@
 // app.js - Инициализация приложения и обработчики событий
-// Оптимизированная версия
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', function () {
-    init();
-  });
-} else {
-  // DOM уже готов (скрипт загружен асинхронно) — запускаем сразу
-  init();
-}
-
 // ==================== КОНСТАНТЫ ====================
 var APP_CONSTANTS = {
   DEBOUNCE_DELAY_MS: 300,
@@ -1732,3 +1721,12 @@ window.renderAudioTracks = renderAudioTracks;
 window.loadFileInfo = loadFileInfo;
 window.saveAudioPreference = saveAudioPreference;
 window.loadAudioPreference = loadAudioPreference;
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function () {
+    init();
+  });
+} else {
+  // DOM уже готов (скрипт загружен асинхронно) — запускаем сразу
+  init();
+}
