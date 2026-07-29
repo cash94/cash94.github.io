@@ -19,6 +19,7 @@ var CATALOG_CONSTANTS = {
     POSTER_OBSERVER_MARGIN_PX: 300,
     CATALOG_UPDATE_THRESHOLD_HOURS: 6,
     FOCUS_DELAY_MS: 100,
+    ROW_POSTER_CONCURRENCY: 2,
     IMG_SIZES: {
         POSTER_SMALL: 'w185',
         POSTER_MEDIUM: 'w342',
@@ -418,7 +419,10 @@ var catalogState = {
     posterLoadQueue: [], posterObserver: null, loadMoreObserver: null,
     cardElements: {},
     posterCache: new LRUCache(CATALOG_CONSTANTS.MAX_POSTER_CACHE),
-    maxPosterCacheSize: CATALOG_CONSTANTS.MAX_POSTER_CACHE
+    maxPosterCacheSize: CATALOG_CONSTANTS.MAX_POSTER_CACHE,
+    rowPosterObserver: null,
+    rowPosterQueue: [],
+    activeRowPosterLoads: 0
 };
 
 var catalogCache = new Map();
@@ -428,6 +432,7 @@ function abortCatalogRequests() {
     if (catalogState.abortController) { catalogState.abortController.abort(); catalogState.abortController = null; }
     if (catalogState.posterObserver) { catalogState.posterObserver.disconnect(); catalogState.posterObserver = null; }
     if (catalogState.loadMoreObserver) { catalogState.loadMoreObserver.disconnect(); catalogState.loadMoreObserver = null; }
+    if (catalogState.rowPosterObserver) { catalogState.rowPosterObserver.disconnect(); catalogState.rowPosterObserver = null; }
 }
 
 function getRatingColor(r) {
@@ -2266,6 +2271,7 @@ async function showCatalogList() {
     }
 
     grid.appendChild(frag);
+    initRowPosterLazyLoading();
 
     requestAnimationFrame(function () {
         if (AppState.currentScreen === 'catalog' && !catalogState.currentCatalog) {
@@ -2391,7 +2397,7 @@ function createRowCard(item, key, index) {
         (year ? '<span>' + year + '</span>' : '') + '</div>' +
         '</div>';
 
-    loadRowPoster(card, item);
+    //loadRowPoster(card, item);
     return card;
 }
 
@@ -2421,14 +2427,14 @@ async function loadRowPoster(card, item) {
     var cacheKey = id + '_' + mt;
 
     var cached = catalogState.posterCache.get(cacheKey);
-    if (cached) { setRowPosterImg(imgBox, cached); return; }
+    if (cached) { await setRowPosterImg(imgBox, cached); return; }
 
     if (item.poster_path) {
         var url = item.poster_path.indexOf('http') === 0 ? item.poster_path :
             AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM +
             (item.poster_path.indexOf('/') === 0 ? item.poster_path : '/' + item.poster_path);
         catalogState.posterCache.set(cacheKey, url);
-        setRowPosterImg(imgBox, url);
+        await setRowPosterImg(imgBox, url);
         return;
     }
 
@@ -2438,7 +2444,7 @@ async function loadRowPoster(card, item) {
             if (d && d.poster_path) {
                 var url2 = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + d.poster_path;
                 catalogState.posterCache.set(cacheKey, url2);
-                if (card.isConnected) setRowPosterImg(imgBox, url2);
+                if (card.isConnected) await setRowPosterImg(imgBox, url2);
                 return;
             }
         } catch (e) { }
@@ -2447,21 +2453,88 @@ async function loadRowPoster(card, item) {
     if (card.isConnected) imgBox.innerHTML = '<div class="no-poster">Нет постера</div>';
 }
 
+// ==================== ЛЕНИВАЯ ЗАГРУЗКА ПОСТЕРОВ РЯДОВ ====================
+/**
+ * Наблюдает за карточками рядов и ставит в очередь постеры тех,
+ * что попали в зону видимости (+300px предзагрузки).
+ */
+function initRowPosterLazyLoading() {
+    if (catalogState.rowPosterObserver) catalogState.rowPosterObserver.disconnect();
+    catalogState.rowPosterQueue = [];
+    catalogState.activeRowPosterLoads = 0;
+
+    catalogState.rowPosterObserver = new IntersectionObserver(function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+            if (!entries[i].isIntersecting) continue;
+            var card = entries[i].target;
+            if (card.dataset.posterLoaded === '1') continue;
+
+            var key = card.dataset.catalogKey;
+            var idx = parseInt(card.dataset.itemIndex, 10);
+            if (isNaN(idx)) continue;                       // «Показать все» — без постера
+            var items = window.catalogRowsData && window.catalogRowsData[key];
+            if (!items || !items[idx]) continue;
+
+            card.dataset.posterLoaded = '1';                // защита от повторной постановки
+            catalogState.rowPosterQueue.push({ card: card, item: items[idx] });
+            catalogState.rowPosterObserver.unobserve(card);
+        }
+        processRowPosterQueue();
+    }, { rootMargin: CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX + 'px', threshold: 0.1 });
+
+    var cards = document.querySelectorAll('.catalog-row-card');
+    for (var i = 0; i < cards.length; i++) {
+        if (cards[i].dataset.itemIndex !== undefined && cards[i].dataset.posterLoaded !== '1') {
+            catalogState.rowPosterObserver.observe(cards[i]);
+        }
+    }
+}
+
+/**
+ * Обрабатывает очередь: не более ROW_POSTER_CONCURRENCY загрузок одновременно.
+ * Как только одна завершается (загрузка + декод), берётся следующая.
+ */
+function processRowPosterQueue() {
+    while (catalogState.activeRowPosterLoads < CATALOG_CONSTANTS.ROW_POSTER_CONCURRENCY &&
+        catalogState.rowPosterQueue.length > 0) {
+        var task = catalogState.rowPosterQueue.shift();
+        if (!task.card.isConnected) continue;               // карточку могли удалить
+        catalogState.activeRowPosterLoads++;
+        loadRowPoster(task.card, task.item)
+            .catch(function () { })
+            .then(function () {
+                catalogState.activeRowPosterLoads--;
+                setTimeout(processRowPosterQueue, 5);       // дать главному потоку отрисовать кадр
+            });
+    }
+}
+
 function setRowPosterImg(box, url) {
-    var img = new Image();
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
-    var insert = function () {
-        if (!box.isConnected) return;
-        box.innerHTML = '';
-        img.style.opacity = '1';
-        box.appendChild(img);
-    };
-    img.onerror = function () {
-        if (box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
-    };
-    img.src = url;
-    if (typeof img.decode === 'function') img.decode().then(insert).catch(insert);
-    else img.onload = insert;
+    return new Promise(function (resolve) {
+        var img = new Image();
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
+        var settled = false;
+        var settle = function () { if (!settled) { settled = true; resolve(); } };
+        var insert = function () {
+            if (box.isConnected && img.naturalWidth > 0) {
+                box.innerHTML = '';
+                img.style.opacity = '1';
+                box.appendChild(img);
+            }
+            settle();
+        };
+        var fail = function () {
+            if (box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
+            settle();
+        };
+        img.onload = function () {
+            // Декодируем в фоновом потоке (Chromium 64+), не блокируя main thread
+            if (typeof img.decode === 'function') img.decode().then(insert).catch(insert);
+            else insert();
+        };
+        img.onerror = fail;
+        img.src = url;
+    });
 }
 
 /**
