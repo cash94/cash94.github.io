@@ -34,6 +34,7 @@ var CATALOG_CONFIG = {
     cartoons: { name: 'Мультфильмы', url: SERVER_URL + '/api/catalog/cartoons', mediaType: 'movie' },
     cartoons_tv: { name: 'Мультсериалы', url: SERVER_URL + '/api/catalog/cartoons_tv', mediaType: 'tv' },
     anime: { name: 'Аниме', url: SERVER_URL + '/api/catalog/anime', mediaType: 'tv' },
+    rus: { name: 'Русские', url: SERVER_URL + '/api/catalog/rus', mediaType: 'movie' }, 
     quadhd: { name: 'Фильмы в 4K', url: SERVER_URL + '/api/catalog/quadhd', mediaType: 'movie' },
     legends: { name: 'Лучшие фильмы', url: SERVER_URL + '/api/catalog/legends', mediaType: 'movie' },
     history: { name: 'История', url: null, mediaType: 'history', isHistory: true }
