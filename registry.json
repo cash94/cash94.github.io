@@ -9,10 +9,10 @@
     },
     "rus-catalog": {
       "name": "rus-catalog",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "description": "Подборка русских фильмов и сериалов.",
       "url": "https://cash94.github.io/torrstream-modules/rus-catalog/rus-catalog.js",
-      "sha256": "bfec2e34583ada7e6af2cb73993fb75a3f7147a6c943e5ff5f5c4294fc577b90"
+      "sha256": "20d2cb096d1ab41a4140246d12f07bf6b8cb743fd48122b72532c03d44c5c14a"
     }
   }
 }
