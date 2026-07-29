@@ -1486,6 +1486,9 @@ function startTrailerBackground(url) {
     var cde = getEl('catalog-detail-extra');
     var sub = getEl('detail-subtitle');          // ★ подзаголовок
     var bb = getEl('back-from-detail');          // ★ кнопка «Назад»
+    if (AppState) {
+        AppState.trailerPlay = true;
+    }
 
     if (backdrop && backdrop.parentNode === dv) {
         dv.insertBefore(video, backdrop);
@@ -1564,6 +1567,9 @@ function startTrailerBackground(url) {
  */
 function stopTrailerBackground() {
     var video = rutubeTrailerState.bgVideo || getEl('trailer-bg-video');
+    if (AppState) {
+        AppState.trailerPlay = false;
+    }
     if (video) {
         if (video._volumeTimer) {
             clearInterval(video._volumeTimer);
@@ -1601,6 +1607,7 @@ function stopTrailerBackground() {
 
     if (backdrop) backdrop.classList.remove('hidden');
 }
+window.stopTrailerBackground = stopTrailerBackground;
 
 /**
  * Открывает трейлер RuTube в основном плеере
