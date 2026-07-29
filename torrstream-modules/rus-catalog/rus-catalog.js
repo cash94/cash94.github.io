@@ -15,7 +15,9 @@ var rusState = {
     building: false
 };
 var updateTimer = null;
-var serverUrl = 'http://127.0.0.1:3000';
+var serverUrl = (typeof process !== 'undefined' && process.env && process.env.PORT
+    ? 'http://127.0.0.1:' + process.env.PORT
+    : 'http://127.0.0.1:3000');
 
 // ==================== УТИЛИТЫ ====================
 
@@ -140,7 +142,7 @@ async function buildRusCatalog(log, retryCount) {
     }
 }
 
-// Опционально: физически записываем rus.json (только если доступен fs)
+// Оп��ионально: физически записываем rus.json (только если доступен fs)
 function tryWriteRusJson(items, log) {
     try {
         if (typeof require === 'undefined') return;
@@ -159,7 +161,7 @@ function tryWriteRusJson(items, log) {
 
 module.exports = {
     name: 'rus-catalog',
-    version: '1.0.1',
+    version: '1.0.2',
 
     init: function (app, ctx) {
         var log = ctx.log;
