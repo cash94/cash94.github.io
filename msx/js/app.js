@@ -2,8 +2,11 @@
 // Оптимизированная версия
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', function () {
+    init();
+  });
 } else {
+  // DOM уже готов (скрипт загружен асинхронно) — запускаем сразу
   init();
 }
 
