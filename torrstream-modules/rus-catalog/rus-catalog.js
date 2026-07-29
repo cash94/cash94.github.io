@@ -75,18 +75,14 @@ function loadItemsDirect(name) {
 // Способ 2: внутренний HTTP API
 async function loadItemsHttp(name, log) {
     var url = serverUrl + '/api/catalog/' + name + '/items?from=0&limit=100000';
-    var controller = new AbortController();
-    var timeoutId = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT);
     try {
-        var resp = await fetch(url, { signal: controller.signal });
+        var resp = await fetch(url);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var data = await resp.json();
         return (data && data.success && Array.isArray(data.items)) ? data.items : [];
     } catch (e) {
         log.error('[' + name + '] HTTP-загрузка: ' + e.message);
         return [];
-    } finally {
-        clearTimeout(timeoutId);
     }
 }
 
@@ -163,7 +159,7 @@ function tryWriteRusJson(items, log) {
 
 module.exports = {
     name: 'rus-catalog',
-    version: '1.0.0',
+    version: '1.0.1',
 
     init: function (app, ctx) {
         var log = ctx.log;
@@ -176,7 +172,7 @@ module.exports = {
                 : 'http://127.0.0.1:3000');
 
         // Элементы с пагинацией (формат совместим с /api/catalog/:name/items)
-        app.get('/api/catalog/rus/items', function (req, res) {
+        app.get('/api/rus/items', function (req, res) {
             var from = parseInt(req.query.from, 10) || 0;
             var limit = parseInt(req.query.limit, 10) || 50;
 
@@ -204,7 +200,7 @@ module.exports = {
         });
 
         // Метаданные каталога
-        app.get('/api/catalog/rus', function (req, res) {
+        app.get('/api/rus', function (req, res) {
             res.json({
                 success: true,
                 name: 'rus',
@@ -216,7 +212,7 @@ module.exports = {
         });
 
         // Принудительное обновление
-        app.post('/api/catalog/rus/update', function (req, res) {
+        app.post('/api/rus/update', function (req, res) {
             buildRusCatalog(log, 0).then(function () {
                 res.json({ success: true, count: rusState.allIndex });
             });
@@ -228,7 +224,7 @@ module.exports = {
         // Автообновление
         updateTimer = setInterval(function () { buildRusCatalog(log, 0); }, UPDATE_INTERVAL_MS);
 
-        log.log('Модуль «Русские» зарегистрирован: /api/catalog/rus/items');
+        log.log('Модуль «Русские» зарегистрирован: /api/rus/items');
         return { ready: true };
     },
 
