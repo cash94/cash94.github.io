@@ -77,7 +77,6 @@ function createSeekOverlay() {
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        background: rgba(0, 0, 0, 0.35);
         color: white;
         border-radius: 20px;
         font-size: 72px;
@@ -87,7 +86,6 @@ function createSeekOverlay() {
         pointer-events: none;
         opacity: 0;
         transition: opacity 0.2s ease;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
         text-align: center;
     `;
     seekOverlay.innerHTML = `
