@@ -71,9 +71,14 @@ function createSeekOverlay() {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
+        width: 50vw;
+        height: 50vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
         background: rgba(0, 0, 0, 0.35);
         color: white;
-        padding: 30px 50px;
         border-radius: 20px;
         font-size: 72px;
         font-weight: bold;
@@ -84,7 +89,6 @@ function createSeekOverlay() {
         transition: opacity 0.2s ease;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
         text-align: center;
-        backdrop-filter: blur(10px);
     `;
     seekOverlay.innerHTML = `
         <div id="seek-time" style="font-size: 9px; line-height: 1; margin-bottom: 10px;">00:00</div>
