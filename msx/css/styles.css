@@ -689,7 +689,7 @@ body {
 #detail-view {
   position: fixed;
   inset: 0;
-  background: linear-gradient(142deg, rgba(255, 255, 255, 0.15), rgba(0, 0, 0, 0.25));
+  /* background: linear-gradient(142deg, rgba(255, 255, 255, 0.15), rgba(0, 0, 0, 0.25)); */
   z-index: 100;
   overflow-y: auto;
   padding: 18.42px;
