@@ -15,9 +15,21 @@ var rusState = {
     building: false
 };
 var updateTimer = null;
-var serverUrl = (typeof process !== 'undefined' && process.env && process.env.PORT
-    ? 'http://127.0.0.1:' + process.env.PORT
-    : 'http://127.0.0.1:3000');
+var serverUrl = '';
+
+var detectedPort = null;
+
+function getServerUrl() {
+    return 'http://127.0.0.1:' + (detectedPort || 3000);
+}
+
+// Функция захвата — вызывается в каждом обработчике
+function capturePort(req) {
+    if (!detectedPort && req.socket && req.socket.localPort) {
+        detectedPort = req.socket.localPort;
+        log.log('Порт сервера определён: ' + detectedPort);
+    }
+}
 
 // ==================== УТИЛИТЫ ====================
 
@@ -76,7 +88,7 @@ function loadItemsDirect(name) {
 
 // Способ 2: внутренний HTTP API
 async function loadItemsHttp(name, log) {
-    var url = serverUrl + '/api/catalog/' + name + '/items?from=0&limit=100000';
+    var url = getServerUrl() + '/api/catalog/' + name + '/items?from=0&limit=100000';
     try {
         var resp = await fetch(url);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -165,13 +177,6 @@ module.exports = {
 
     init: function (app, ctx) {
         var log = ctx.log;
-        log.log('Инициализация модуля «Русские»...');
-
-        // Базовый URL сервера (для HTTP-fallback)
-        serverUrl = (ctx && ctx.serverUrl) ||
-            (typeof process !== 'undefined' && process.env && process.env.PORT
-                ? 'http://127.0.0.1:' + process.env.PORT
-                : 'http://127.0.0.1:3000');
 
         // Элементы с пагинацией (формат совместим с /api/catalog/:name/items)
         app.get('/api/rus/items', function (req, res) {
@@ -226,7 +231,7 @@ module.exports = {
         // Автообновление
         updateTimer = setInterval(function () { buildRusCatalog(log, 0); }, UPDATE_INTERVAL_MS);
 
-        log.log('Модуль «Русские» зарегистрирован: /api/rus/items');
+        log.log('Модуль «Русские» зарегистрирован.');
         return { ready: true };
     },
 
