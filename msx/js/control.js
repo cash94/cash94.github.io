@@ -1144,6 +1144,12 @@ function onBack() {
         return true;
     }
     if (d && getComputedStyle(d).display !== 'none') {
+        if (AppState.trailerPlay) {
+            ovh = getEl('catalog-toggle-overview-btn');
+            stopTrailerBackground();
+            focusEl(ovh);
+            return true;
+        }
         clickEl(getEl('back-from-detail') || document.querySelector('.back-btn'));
         return true;
     }
