@@ -20,14 +20,16 @@ var serverUrl = '';
 var detectedPort = null;
 
 function getServerUrl() {
-    return 'http://127.0.0.1:' + (detectedPort || 3000);
+    return 'http://127.0.0.1:' + (detectedPort || 4000);
 }
 
 // Функция захвата — вызывается в каждом обработчике
 function capturePort(req) {
     if (!detectedPort && req.socket && req.socket.localPort) {
         detectedPort = req.socket.localPort;
-        log.log('Порт сервера определён: ' + detectedPort);
+        //log.log('Порт сервера определён: ' + detectedPort);
+    } else {
+        //log.log('Порт сервера неопределён');
     }
 }
 
@@ -173,13 +175,14 @@ function tryWriteRusJson(items, log) {
 
 module.exports = {
     name: 'rus-catalog',
-    version: '1.0.2',
+    version: '1.0.3',
 
     init: function (app, ctx) {
         var log = ctx.log;
 
         // Элементы с пагинацией (формат совместим с /api/catalog/:name/items)
         app.get('/api/rus/items', function (req, res) {
+            capturePort(req);
             var from = parseInt(req.query.from, 10) || 0;
             var limit = parseInt(req.query.limit, 10) || 50;
 
@@ -208,6 +211,7 @@ module.exports = {
 
         // Метаданные каталога
         app.get('/api/rus', function (req, res) {
+            capturePort(req);
             res.json({
                 success: true,
                 name: 'rus',
@@ -220,6 +224,7 @@ module.exports = {
 
         // Принудительное обновление
         app.post('/api/rus/update', function (req, res) {
+            capturePort(req);
             buildRusCatalog(log, 0).then(function () {
                 res.json({ success: true, count: rusState.allIndex });
             });
