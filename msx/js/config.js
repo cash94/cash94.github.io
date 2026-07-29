@@ -73,7 +73,8 @@ var AppState = {
   backCurrentCatalog: '',
   isCatalogSerials: false,
   isCatalogSearch: false,
-  dvPreferred: false
+  dvPreferred: false,
+  trailerPlay: false
 };
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
