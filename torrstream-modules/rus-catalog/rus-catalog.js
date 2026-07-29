@@ -27,9 +27,6 @@ function getServerUrl() {
 function capturePort(req) {
     if (!detectedPort && req.socket && req.socket.localPort) {
         detectedPort = req.socket.localPort;
-        //log.log('Порт сервера определён: ' + detectedPort);
-    } else {
-        //log.log('Порт сервера неопределён');
     }
 }
 
@@ -73,7 +70,7 @@ function isRussian(item) {
 
 // ==================== ЗАГРУЗКА ИСХОДНЫХ КАТАЛОГОВ ====================
 
-// Способ 1: прямое чтение файла (нативный режим, не зависит от порта/готовности HTTP)
+// Способ 1: прямое чтение файла (нативный режим, не зависит от порта/гот��вности HTTP)
 function loadItemsDirect(name) {
     if (typeof require === 'undefined') return null;
     try {
@@ -175,7 +172,7 @@ function tryWriteRusJson(items, log) {
 
 module.exports = {
     name: 'rus-catalog',
-    version: '1.0.3',
+    version: '1.0.4',
 
     init: function (app, ctx) {
         var log = ctx.log;
@@ -231,7 +228,7 @@ module.exports = {
         });
 
         // Первая сборка (с задержкой — даём серверу загрузить исходные каталоги)
-        setTimeout(function () { buildRusCatalog(log, 0); }, INIT_DELAY_MS);
+        //setTimeout(function () { buildRusCatalog(log, 0); }, INIT_DELAY_MS);
 
         // Автообновление
         updateTimer = setInterval(function () { buildRusCatalog(log, 0); }, UPDATE_INTERVAL_MS);
