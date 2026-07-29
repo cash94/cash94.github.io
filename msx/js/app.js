@@ -1,9 +1,11 @@
 // app.js - Инициализация приложения и обработчики событий
 // Оптимизированная версия
 
-document.addEventListener('DOMContentLoaded', function () {
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
   init();
-});
+}
 
 // ==================== КОНСТАНТЫ ====================
 var APP_CONSTANTS = {
