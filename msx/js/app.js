@@ -1237,6 +1237,7 @@ function setupCheckboxes() {
 
   // 4. Транскодирование
   var transcodingCheckbox = getEl('transcoding-off');
+  if (window.AndroidJS) transcodingCheckbox.classList.add('hidden');
   if (transcodingCheckbox) {
     var savedTranscoding = localStorage.getItem('transcodingOnOff') === 'true';
     transcodingOnOff = savedTranscoding;
@@ -1256,6 +1257,7 @@ function setupCheckboxes() {
 
   // 5. Многоканальный звук
   var multiChannelCheckbox = getEl('multi-channel-audio');
+  if (window.AndroidJS) multiChannelCheckbox.classList.add('hidden');
   if (multiChannelCheckbox) {
     var savedMultiChannel = localStorage.getItem('multiChannelEnabled') === 'true';
     multiChannelEnabled = savedMultiChannel;
@@ -1287,6 +1289,7 @@ function setupCheckboxes() {
 
   // 6. Включить или отключить полностью транскодинг
   var transcodingCheckboxOnOff = getEl('transcoding-on-off');
+  if (window.AndroidJS) transcodingCheckboxOnOff.classList.add('hidden');
   if (transcodingCheckboxOnOff) {
     var savedTranscodingFull = localStorage.getItem('transcodingFullOnOff') === 'true';
     transcodingFullOnOff = savedTranscodingFull;
