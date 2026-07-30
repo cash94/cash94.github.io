@@ -620,13 +620,13 @@ function isPositionInBuffer(targetTime) {
 async function seekStream(absoluteSeekTime, source) {
   currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; thisisseek = true;
   if (source === undefined) source = 'user';
-  if (!AppState.currentStreamId && !AppState.transcodingOnOff && !AppState.transcodingFullOnOff) return false;
+  if (!AppState.currentStreamId && !AppState.transcodingOnOff) return false;
   var videoPlayer = getEl('video-player');
   var totalDuration = AppState.originalDuration || AppState.expectedDuration || 0;
   if (absoluteSeekTime < 0) absoluteSeekTime = 0;
   if (totalDuration > 0 && absoluteSeekTime >= totalDuration - 1) return false;
 
-  if (AppState.transcodingOnOff || AppState.transcodingFullOnOff) {
+  if (AppState.transcodingOnOff) {
     showPlayerLoading('Перемотка...', absoluteSeekTime);
     var relativeTime = absoluteSeekTime - (AppState.seekOffset || 0);
     if (relativeTime < 0) relativeTime = 0;
@@ -1082,9 +1082,6 @@ async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, sig
     return null;
   }
   currentTimecodeData.hash = match[1]; currentTimecodeData.fileId = match[2]; currentTimecodeData.timecode = 0;
-  if (!AppState.transcodingFullOnOff) {
-    return true;
-  }
   var requests = [
     loadFileInfo(currentTimecodeData.hash, currentTimecodeData.fileId),
     loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId),
@@ -1169,69 +1166,6 @@ async function initGstPlayback(metadata, initialSeek, signal) {
     AppState._timeUpdateHandler = timeUpdateHandler; AppState._canPlayHandler = canPlayHandler; AppState._seekExecuted = seekExecuted;
     showPlayerLoading('Подготовка потока...', null);
   } else throw new Error('Ваш браузер не поддерживает HLS');
-}
-
-async function initTranscodingOffPlayback(initialSeek, signal) {
-  var playURL = AppState.currentTorrserverUrl + '/stream?link=' + currentTimecodeData.hash + '&index=' + currentTimecodeData.fileId + '&play=play';
-  var videoPlayer = getEl('video-player');
-  destroyHls();
-
-  // Прямой файл — без hls.js, отдаём ссылку нативному <video>
-  AppState.seekOffset = 0;
-  AppState.expectedDuration = null;
-  AppState.originalDuration = null;
-
-  showPlayerLoading('Подготовка потока...', null);
-
-  var started = false;
-  var startPlayback = function () {
-    if (started || signal.aborted) return;
-    started = true;
-    if (AppState._loadingTimeout) clearTimeout(AppState._loadingTimeout);
-    hidePlayerLoading();
-    if (initialSeek > 0) {
-      try { videoPlayer.currentTime = initialSeek; } catch (e) { }
-    }
-    videoPlayer.play()['catch'](function () {
-      videoPlayer.muted = true;
-      videoPlayer.play()['catch'](function () { });
-      updateMuteButton();
-    });
-    videoPlayer.muted = false; updateMuteButton();
-    startTimecodeSaving(); resetMouseIdleTimer(); startNearEndCheck(); startHeartbeat(); startTorrentStatsUpdates();
-  };
-
-  var onLoadedMetadata = function () {
-    videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
-    AppState.expectedDuration = videoPlayer.duration;
-    AppState.originalDuration = videoPlayer.duration;
-    forceUpdateDuration(videoPlayer.duration, videoPlayer.duration, 0);
-  };
-
-  var onCanPlay = function () {
-    videoPlayer.removeEventListener('canplay', onCanPlay);
-    startPlayback();
-    hidePlayerLoading();
-  };
-
-  var onError = function () {
-    videoPlayer.removeEventListener('error', onError);
-    if (signal.aborted || AppState.currentScreen !== 'player') return;
-    hidePlayerLoading();
-    alert('Файл не воспроизводится напрямую: кодек/контейнер не поддерживается устройством');
-  };
-
-  videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
-  videoPlayer.addEventListener('canplay', onCanPlay);
-  videoPlayer.addEventListener('error', onError);
-
-  AppState._loadingTimeout = setTimeout(function () {
-    if (!started && !signal.aborted) startPlayback();
-  }, LOADING_TIMEOUT_MS);
-
-  videoPlayer.src = playURL;
-  videoPlayer.load();
-  hidePlayerLoading();
 }
 
 async function initServerProxyPlayback(metadata, initialSeek, signal) {
@@ -1354,18 +1288,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; AppState.playbackRetryCount = 0;
   if (!originalUrl || !originalUrl.trim()) { alert('Ошибка: URL не указан'); return false; }
   lastPlaybackFromSearch = fromSearch;
-  if (!AppState.transcodingFullOnOff) {
-    var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
-    if (!metadata || signal.aborted) return false;
-    var { fileInfo, savedAudioTrack, fileName, savedSubTrack, savedTimecode, seekTime } = metadata;
-    initialSeek = seekTime;
-  } else {
-    var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
-    if (metadata) {
-      if (initialSeek === null) initialSeek = 0;
-      var fileName = '';
-    }
-  }
+  var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
+  if (!metadata || signal.aborted) return false;
+  var { fileInfo, savedAudioTrack, fileName, savedSubTrack, savedTimecode, seekTime } = metadata;
+  initialSeek = seekTime;
   if (fileName) updatePlayerTitle(fileName);
   else if (AppState.currentDetailItem && AppState.currentDetailItem.title) updatePlayerTitle(AppState.currentDetailItem.title);
   if (AppState.currentDetailItem.hash) {
@@ -1376,13 +1302,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   var videoPlayer = getEl('video-player');
   videoPlayer.removeEventListener('ended', handleVideoEnded); videoPlayer.addEventListener('ended', handleVideoEnded);
   try {
-    if (AppState.transcodingOnOff) {
-      await initGstPlayback(metadata, initialSeek, signal);
-    } else if (AppState.transcodingFullOnOff) {
-      await initTranscodingOffPlayback(initialSeek, signal);
-    } else {
-      await initServerProxyPlayback(metadata, initialSeek, signal);
-    }
+    if (AppState.transcodingOnOff) await initGstPlayback(metadata, initialSeek, signal);
+    else await initServerProxyPlayback(metadata, initialSeek, signal);
     showPlayerHint(); return true;
   } catch (error) {
     if (error.name === 'AbortError') return false;
@@ -1436,32 +1357,7 @@ function showDetailView(field = null) {
     videoPlayer.removeEventListener('ended', handleVideoEnded); videoPlayer.pause(); videoPlayer.removeAttribute('src'); videoPlayer.load();
     destroyHls(); hidePlayerLoading();
     if (AppState.currentStreamId) { fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { }); AppState.currentStreamId = null; }
-    getEl('player-screen').style.display = 'none';
-    getEl('config-screen').style.display = 'none';
-
-    // Пришли из поиска (transcodingFullOnOff) — просто возвращаем оверлей с результатами
-    if (AppState.returnToSearchResults) {
-      AppState.returnToSearchResults = false;
-      lastPlaybackFromSearch = false;
-      AppState.playFromHash = false;
-      AppState.isCatalogSearch = false;
-      AppState.currentScreen = 'search';
-      var searchOverlay = getEl('search-overlay');
-      if (searchOverlay) searchOverlay.classList.remove('hidden');
-      var mainContainer = getEl('main-container');
-      if (mainContainer) mainContainer.style.pointerEvents = 'auto';
-      setTimeout(function () {
-        if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-          updateFocusableElements();
-          for (var i = 0; i < focusableElements.length; i++) {
-            if (focusableElements[i].classList && focusableElements[i].classList.contains('search-result-item')) { setFocus(i); break; }
-          }
-        }
-      }, 100);
-      return; // не открываем detail и не дропаем торрент
-    }
-
-    getEl('torrserver-section').style.display = 'block';
+    getEl('player-screen').style.display = 'none'; getEl('config-screen').style.display = 'none'; getEl('torrserver-section').style.display = 'block';
   }
   dropTorrentToServer(AppState.currentDetailItem.hash).then(function (result) { })['catch'](function (error) { });
   refreshTorrentsList().then(function () {
@@ -1628,7 +1524,6 @@ async function loadFileInfo(hash, fileId) {
 
 function renderAudioTracks() {
   var audioList = getEl('audio-list'); if (!audioList) return;
-  if (AppState.transcodingFullOnOff) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
   if (!currentAudioTracks || currentAudioTracks.length === 0) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
   var html = '';
   for (var idx = 0; idx < currentAudioTracks.length; idx++) {
@@ -1699,7 +1594,6 @@ async function loadAudioPreference(hash, fileId) {
 
 function renderSubtitleTracks() {
   var subtitlesList = getEl('subtitles-list'); if (!subtitlesList) return;
-  if (AppState.transcodingFullOnOff) { subtitlesList.innerHTML = '<div class="search-result-empty">Нет субтитров</div>'; return; }
   if (!currentSubTracks || currentSubTracks.length === 0) { subtitlesList.innerHTML = '<div class="search-result-empty">Нет субтитров</div>'; return; }
   var html = ''; var isOff = currentSubtitleTrack === -1;
   html += '<div class="subtitle-item ' + (isOff ? 'active' : '') + '" data-track-index="-1"><div class="subtitle-icon">🚫</div><div class="subtitle-info"><div class="subtitle-title">Выключить субтитры</div></div><div class="subtitle-check">✓</div></div>';
