@@ -658,6 +658,10 @@ function restoreFocusAfterNavigation(returnTo, context) {
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
       restoreRowFocus();
       return;
+    } else {
+      showCatalogList();
+      restoreRowFocus();
+      return;
     }
 
     // Режим сетки (открыт конкретный каталог) — как раньше
