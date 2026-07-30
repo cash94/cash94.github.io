@@ -1169,7 +1169,7 @@ async function initGstPlayback(metadata, initialSeek, signal) {
 }
 
 async function initTranscodingOffPlayback(metadata, initialSeek, signal) {
-  var playURL = AppState.currentTorrserverUrl + "/stream?link=" + currentTimecodeData.hash + "&index=" + currentTimecodeData.fileId;
+  var playURL = AppState.currentTorrserverUrl + "/stream?link=" + currentTimecodeData.hash + "&index=" + currentTimecodeData.fileId+"&m3u=m3u&play=play";
   var videoPlayer = getEl('video-player');
   destroyHls();
   var isTimeUpdated = false; var seekExecuted = false;
