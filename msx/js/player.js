@@ -1082,6 +1082,9 @@ async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, sig
     return null;
   }
   currentTimecodeData.hash = match[1]; currentTimecodeData.fileId = match[2]; currentTimecodeData.timecode = 0;
+  if (!AppState.transcodingFullOnOff) {
+    return true;
+  }
   var requests = [
     loadFileInfo(currentTimecodeData.hash, currentTimecodeData.fileId),
     loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId),
@@ -1355,8 +1358,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     var { fileInfo, savedAudioTrack, fileName, savedSubTrack, savedTimecode, seekTime } = metadata;
     initialSeek = seekTime;
   } else {
-    if (initialSeek === null) initialSeek = 0;
-    var fileName = '';
+    var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
+    if (metadata) {
+      if (initialSeek === null) initialSeek = 0;
+      var fileName = '';
+    }
   }
   if (fileName) updatePlayerTitle(fileName);
   else if (AppState.currentDetailItem && AppState.currentDetailItem.title) updatePlayerTitle(AppState.currentDetailItem.title);
