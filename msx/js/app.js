@@ -664,6 +664,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
       window.showCatalogList().then(function () {
         restoreRowFocus();
       });
+      AppState.clearLastSelected = true;
       return;
     }
 
