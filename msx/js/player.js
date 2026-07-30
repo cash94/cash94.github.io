@@ -1371,7 +1371,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     if (AppState.transcodingOnOff) {
       await initGstPlayback(metadata, initialSeek, signal);
     } else if (AppState.transcodingFullOnOff) {
-      await initTranscodingOffPlayback(metadata, initialSeek, signal);
+      await initTranscodingOffPlayback(initialSeek, signal);
     } else {
       await initServerProxyPlayback(metadata, initialSeek, signal);
     }
