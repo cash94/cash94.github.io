@@ -1436,7 +1436,32 @@ function showDetailView(field = null) {
     videoPlayer.removeEventListener('ended', handleVideoEnded); videoPlayer.pause(); videoPlayer.removeAttribute('src'); videoPlayer.load();
     destroyHls(); hidePlayerLoading();
     if (AppState.currentStreamId) { fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { }); AppState.currentStreamId = null; }
-    getEl('player-screen').style.display = 'none'; getEl('config-screen').style.display = 'none'; getEl('torrserver-section').style.display = 'block';
+    getEl('player-screen').style.display = 'none';
+    getEl('config-screen').style.display = 'none';
+
+    // Пришли из поиска (transcodingFullOnOff) — просто возвращаем оверлей с результатами
+    if (AppState.returnToSearchResults) {
+      AppState.returnToSearchResults = false;
+      lastPlaybackFromSearch = false;
+      AppState.playFromHash = false;
+      AppState.isCatalogSearch = false;
+      AppState.currentScreen = 'search';
+      var searchOverlay = getEl('search-overlay');
+      if (searchOverlay) searchOverlay.classList.remove('hidden');
+      var mainContainer = getEl('main-container');
+      if (mainContainer) mainContainer.style.pointerEvents = 'auto';
+      setTimeout(function () {
+        if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+          updateFocusableElements();
+          for (var i = 0; i < focusableElements.length; i++) {
+            if (focusableElements[i].classList && focusableElements[i].classList.contains('search-result-item')) { setFocus(i); break; }
+          }
+        }
+      }, 100);
+      return; // не открываем detail и не дропаем торрент
+    }
+
+    getEl('torrserver-section').style.display = 'block';
   }
   dropTorrentToServer(AppState.currentDetailItem.hash).then(function (result) { })['catch'](function (error) { });
   refreshTorrentsList().then(function () {
