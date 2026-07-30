@@ -1349,10 +1349,15 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; AppState.playbackRetryCount = 0;
   if (!originalUrl || !originalUrl.trim()) { alert('Ошибка: URL не указан'); return false; }
   lastPlaybackFromSearch = fromSearch;
-  var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
-  if (!metadata || signal.aborted) return false;
-  var { fileInfo, savedAudioTrack, fileName, savedSubTrack, savedTimecode, seekTime } = metadata;
-  initialSeek = seekTime;
+  if (!AppState.transcodingFullOnOff) {
+    var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
+    if (!metadata || signal.aborted) return false;
+    var { fileInfo, savedAudioTrack, fileName, savedSubTrack, savedTimecode, seekTime } = metadata;
+    initialSeek = seekTime;
+  } else {
+    if (initialSeek === null) initialSeek = 0;
+    var fileName = '';
+  }
   if (fileName) updatePlayerTitle(fileName);
   else if (AppState.currentDetailItem && AppState.currentDetailItem.title) updatePlayerTitle(AppState.currentDetailItem.title);
   if (AppState.currentDetailItem.hash) {
