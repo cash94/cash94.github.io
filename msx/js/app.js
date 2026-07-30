@@ -579,6 +579,7 @@ function setupNavigation() {
         AppState.playFromHash = false;
         AppState.isCatalogSerials = false;
         AppState.isCatalogSearch = false;
+        AppState.clearLastSelected = false;
         if (detailView) detailView.style.display = 'none';
         if (mainContainer) mainContainer.style.pointerEvents = 'auto';
         AppState.currentScreen = 'search';
@@ -659,7 +660,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
       restoreRowFocus();
       return;
-    } else {
+    } else if (!AppState.clearLastSelected){
       window.showCatalogList().then(function () {
         restoreRowFocus();
       });
