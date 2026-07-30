@@ -1590,6 +1590,7 @@ async function loadFileInfo(hash, fileId) {
 
 function renderAudioTracks() {
   var audioList = getEl('audio-list'); if (!audioList) return;
+  if (AppState.transcodingFullOnOff) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
   if (!currentAudioTracks || currentAudioTracks.length === 0) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
   var html = '';
   for (var idx = 0; idx < currentAudioTracks.length; idx++) {
@@ -1660,6 +1661,7 @@ async function loadAudioPreference(hash, fileId) {
 
 function renderSubtitleTracks() {
   var subtitlesList = getEl('subtitles-list'); if (!subtitlesList) return;
+  if (AppState.transcodingFullOnOff) { subtitlesList.innerHTML = '<div class="search-result-empty">Нет субтитров</div>'; return; }
   if (!currentSubTracks || currentSubTracks.length === 0) { subtitlesList.innerHTML = '<div class="search-result-empty">Нет субтитров</div>'; return; }
   var html = ''; var isOff = currentSubtitleTrack === -1;
   html += '<div class="subtitle-item ' + (isOff ? 'active' : '') + '" data-track-index="-1"><div class="subtitle-icon">🚫</div><div class="subtitle-info"><div class="subtitle-title">Выключить субтитры</div></div><div class="subtitle-check">✓</div></div>';
@@ -1678,21 +1680,6 @@ function renderSubtitleTracks() {
 
 async function switchSubtitleTrack(trackIndex) {
   if (trackIndex === currentSubtitleTrack) { toggleSubtitlesPanel(); return; }
-  if (AppState.transcodingFullOnOff) {
-    var videoPlayer = getEl('video-player');
-    var tracks = videoPlayer ? videoPlayer.textTracks : null;
-    if (tracks) {
-      for (var i = 0; i < tracks.length; i++) tracks[i].mode = 'disabled';
-      if (trackIndex >= 0 && tracks[trackIndex]) tracks[trackIndex].mode = 'showing';
-    }
-    currentSubtitleTrack = trackIndex;
-    if (currentTimecodeData.hash && currentTimecodeData.fileId) {
-      await saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
-    }
-    renderSubtitleTracks();
-    toggleSubtitlesPanel();
-    return;
-  }
   thisisseek = false; await saveTimecodeToServer();
   if (currentTimecodeData.hash && currentTimecodeData.fileId) await saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
   var subtitlesPanel = getEl('subtitles-panel'); var subtitlesBtn = getEl('subtitles-btn');
