@@ -1401,7 +1401,7 @@ function cancelCurrentPlayback() {
 }
 
 function showDetailView(field = null) {
-  if (!window.AndroidJS || !AppState.transcodingFullOnOff) {
+  if (!window.AndroidJS) {
     currentSubtitleTrack = -1; stopTorrentStatsUpdates(); hideSkipButton(); skipIntro = 0; skipCredits = 0;
     currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; thisisseek = false;
     var seekSlider = getEl('seek-slider'); if (seekSlider) seekSlider.value = 0;
