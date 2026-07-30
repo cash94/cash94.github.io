@@ -1528,7 +1528,7 @@ async function playFromHash(hash, magnet, searchResult = null) {
             if (AppState.transcodingFullOnOff) {
                 getEl('playback-overlay').classList.remove('active');
                 var playURL = AppState.currentTorrserverUrl + "/stream?link=" + hash + "&index=" + fileId + "&play=play";
-                await startHLSPlayback(playUrl, null, true, fileId);
+                await startHLSPlayback(playURL, null, true, fileId);
                 return true;
             }
             var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
