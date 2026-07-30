@@ -1169,61 +1169,64 @@ async function initGstPlayback(metadata, initialSeek, signal) {
 }
 
 async function initTranscodingOffPlayback(metadata, initialSeek, signal) {
-  var playURL = AppState.currentTorrserverUrl + "/stream?link=" + currentTimecodeData.hash + "&index=" + currentTimecodeData.fileId + "&play=play";
+  var playURL = AppState.currentTorrserverUrl + '/stream?link=' + currentTimecodeData.hash + '&index=' + currentTimecodeData.fileId + '&play=play';
   var videoPlayer = getEl('video-player');
   destroyHls();
-  var isTimeUpdated = false; var seekExecuted = false;
-  var executeSeek = function () {
-    if (seekExecuted) return;
+
+  // Прямой файл — без hls.js, отдаём ссылку нативному <video>
+  AppState.seekOffset = 0;
+  AppState.expectedDuration = null;
+  AppState.originalDuration = null;
+
+  showPlayerLoading('Подготовка потока...', null);
+
+  var started = false;
+  var startPlayback = function () {
+    if (started || signal.aborted) return;
+    started = true;
+    if (AppState._loadingTimeout) clearTimeout(AppState._loadingTimeout);
+    hidePlayerLoading();
     if (initialSeek > 0) {
-      seekExecuted = true;
-      try { var relativeTime = initialSeek - (AppState.seekOffset || 0); if (relativeTime > 0) videoPlayer.currentTime = parseInt(relativeTime); } catch (e) { }
-      setTimeout(function () { seekStream(parseInt(initialSeek - (AppState.seekOffset || 0)), 'slider'); }, 800);
-      setTimeout(function () { if (Math.abs(videoPlayer.currentTime + (AppState.seekOffset || 0) - initialSeek) > 2) seekStream(parseInt(initialSeek - (AppState.seekOffset || 0)), 'slider'); }, 2000);
+      try { videoPlayer.currentTime = initialSeek; } catch (e) { }
     }
-  };
-  var timeUpdateHandler = function () {
-    if (!isTimeUpdated && videoPlayer.currentTime > 0) { isTimeUpdated = true; hidePlayerLoading(); executeSeek(); videoPlayer.removeEventListener('timeupdate', timeUpdateHandler); }
-  };
-  videoPlayer.addEventListener('timeupdate', timeUpdateHandler);
-  var canPlayHandler = function () {
-    if (!isTimeUpdated && initialSeek > 0 && !seekExecuted) {
-      try { var relativeTime = initialSeek - (AppState.seekOffset || 0); if (relativeTime > 0) videoPlayer.currentTime = parseInt(relativeTime); } catch (e) { }
-      setTimeout(function () { if (!seekExecuted) { seekExecuted = true; seekStream(parseInt(initialSeek - (AppState.seekOffset || 0)), 'slider'); } }, 300);
-    }
-  };
-  videoPlayer.addEventListener('canplay', canPlayHandler);
-  AppState._loadingTimeout = setTimeout(function () {
-    if (!isTimeUpdated) {
-      hidePlayerLoading();
-      if (initialSeek > 0 && !seekExecuted) {
-        seekExecuted = true;
-        try { var relativeTime = initialSeek - (AppState.seekOffset || 0); if (relativeTime > 0) videoPlayer.currentTime = parseInt(relativeTime); } catch (e) { }
-        setTimeout(function () { seekStream(parseInt(initialSeek - (AppState.seekOffset || 0)), 'slider'); }, 500);
-      }
-      videoPlayer.removeEventListener('timeupdate', timeUpdateHandler); videoPlayer.removeEventListener('canplay', canPlayHandler);
-    }
-  }, LOADING_TIMEOUT_MS);
-  if (Hls.isSupported()) {
-    AppState.hls = createHlsInstance({ maxBufferLength: 20, maxMaxBufferLength: 40, startFragPrefetch: false, fragLoadingTimeOut: 20000, manifestLoadingTimeOut: 20000, enableWorker: false, cache: true });
-    AppState.hls.loadSource(playURL); AppState.hls.attachMedia(videoPlayer);
-    var manifestHandler = function () {
-      videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
-      startTimecodeSaving(); resetMouseIdleTimer(); startNearEndCheck(); startHeartbeat(); startTorrentStatsUpdates();
-      AppState.hls.off(Hls.Events.MANIFEST_PARSED, manifestHandler);
-    };
-    AppState.hls.on(Hls.Events.MANIFEST_PARSED, manifestHandler);
-    AppState.hls.on(Hls.Events.ERROR, function (event, data) {
-      if (data.fatal) {
-        hidePlayerLoading(); videoPlayer.removeEventListener('timeupdate', timeUpdateHandler); videoPlayer.removeEventListener('canplay', canPlayHandler);
-        clearTimeout(AppState._loadingTimeout);
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) AppState.hls.startLoad();
-        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) AppState.hls.recoverMediaError();
-      }
+    videoPlayer.play()['catch'](function () {
+      videoPlayer.muted = true;
+      videoPlayer.play()['catch'](function () { });
+      updateMuteButton();
     });
-    AppState._timeUpdateHandler = timeUpdateHandler; AppState._canPlayHandler = canPlayHandler; AppState._seekExecuted = seekExecuted;
-    showPlayerLoading('Подготовка потока...', null);
-  } else throw new Error('Ваш браузер не поддерживает HLS');
+    videoPlayer.muted = false; updateMuteButton();
+    startTimecodeSaving(); resetMouseIdleTimer(); startNearEndCheck(); startHeartbeat(); startTorrentStatsUpdates();
+  };
+
+  var onLoadedMetadata = function () {
+    videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
+    AppState.expectedDuration = videoPlayer.duration;
+    AppState.originalDuration = videoPlayer.duration;
+    forceUpdateDuration(videoPlayer.duration, videoPlayer.duration, 0);
+  };
+
+  var onCanPlay = function () {
+    videoPlayer.removeEventListener('canplay', onCanPlay);
+    startPlayback();
+  };
+
+  var onError = function () {
+    videoPlayer.removeEventListener('error', onError);
+    if (signal.aborted || AppState.currentScreen !== 'player') return;
+    hidePlayerLoading();
+    alert('Файл не воспроизводится напрямую: кодек/контейнер не поддерживается устройством');
+  };
+
+  videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
+  videoPlayer.addEventListener('canplay', onCanPlay);
+  videoPlayer.addEventListener('error', onError);
+
+  AppState._loadingTimeout = setTimeout(function () {
+    if (!started && !signal.aborted) startPlayback();
+  }, LOADING_TIMEOUT_MS);
+
+  videoPlayer.src = playURL;
+  videoPlayer.load();
 }
 
 async function initServerProxyPlayback(metadata, initialSeek, signal) {
