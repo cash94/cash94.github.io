@@ -1360,9 +1360,13 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   var videoPlayer = getEl('video-player');
   videoPlayer.removeEventListener('ended', handleVideoEnded); videoPlayer.addEventListener('ended', handleVideoEnded);
   try {
-    if (AppState.transcodingOnOff) await initGstPlayback(metadata, initialSeek, signal);
-    if(AppState.transcodingFullOnOff) await initTranscodingOffPlayback(metadata, initialSeek, signal); 
-    else await initServerProxyPlayback(metadata, initialSeek, signal);
+    if (AppState.transcodingOnOff) {
+      await initGstPlayback(metadata, initialSeek, signal);
+    } else if (AppState.transcodingFullOnOff) {
+      await initTranscodingOffPlayback(metadata, initialSeek, signal);
+    } else {
+      await initServerProxyPlayback(metadata, initialSeek, signal);
+    }
     showPlayerHint(); return true;
   } catch (error) {
     if (error.name === 'AbortError') return false;
