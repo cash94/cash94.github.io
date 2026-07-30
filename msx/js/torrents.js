@@ -868,7 +868,7 @@ async function showDetail(torrent) {
                 }
                 loadStillsAndUpdateFiles(tmdbData.seasonNumbers || [], tmdbData.allSeasonEpisodes || {}, tmdbData.movieStill, videoFiles.length);
             }).catch(function (error) { console.error('Ошибка загрузки TMDB данных:', error); });
-            
+
         }
     } catch (e) {
         console.error('Ошибка:', e);
@@ -1412,6 +1412,7 @@ function hideSearchResults() {
     }
     if (searchInput && document.activeElement === searchInput) searchInput.blur();
     AppState.searchReturnTo = null;
+    AppState.openCatalogDetailOnSearchClose = null;
 }
 
 function resetFilters() {
@@ -1481,7 +1482,7 @@ async function refreshTorrentsList() {
             var data = await response.json();
             AppState.torrents = Array.isArray(data) ? data : [];
             if (!window.AndroidJS || !AppState.transcodingFullOnOff || !AppState.isCatalogSearch || AppState.isCatalogSerials) renderTorrents();
-            if (!window.AndroidJS && !AppState.transcodingFullOnOff &&!AppState.playFromHash && AppState.currentScreen === 'torrents') {
+            if (!window.AndroidJS && !AppState.transcodingFullOnOff && !AppState.playFromHash && AppState.currentScreen === 'torrents') {
                 setTimeout(function () {
                     if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
                         updateFocusableElements();
@@ -1503,6 +1504,7 @@ window.refreshTorrentsList = refreshTorrentsList;
 async function playFromHash(hash, magnet, searchResult = null) {
     if (!hash) { alert('Ошибка: hash не найден'); return; }
     if (!AppState.currentTorrserverUrl) { alert('Сначала подключитесь к TorrServer'); return; }
+    AppState.androidBackCatalog = AppState.currentDetailItem;
     if (window.addToWatchHistory && AppState.pendingDetailItem && AppState.pendingDetailItem.id) {
         await window.addToWatchHistory(String(AppState.pendingDetailItem.id), currentSearchQuery, AppState.pendingDetailItem.media_type, AppState.pendingDetailPoster || null);
     }
@@ -1541,8 +1543,16 @@ async function playFromHash(hash, magnet, searchResult = null) {
             hideSearchResults(); AppState.inSearch = "torrents";
             await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
         } else {
-            AppState.androidBackCatalog = AppState.currentDetailItem; AppState.currentDetailItem = addedTorrent; AppState.isCatalogSerials = true;
-            hideSearchResults(); 
+            AppState.currentDetailItem = addedTorrent; AppState.isCatalogSerials = true;
+            if (window.AndroidJS || AppState.transcodingFullOnOff) {
+                // Результаты поиска не уничтожаем — только прячем оверлей.
+                // Вернёмся к ним при выходе из detail (back-from-detail)
+                var searchOverlay = getEl('search-overlay');
+                if (searchOverlay) searchOverlay.classList.add('hidden');
+                AppState.searchResultsHidden = true;
+            } else {
+                hideSearchResults();
+            }
             AppState.inSearch = (window.AndroidJS || AppState.transcodingFullOnOff) ? "catalog" : "torrents";
             showDetail(addedTorrent);
         }
