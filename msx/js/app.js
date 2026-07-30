@@ -580,8 +580,6 @@ function setupNavigation() {
           AppState.playFromHash = false;
           AppState.isCatalogSerials = false;
         }
-        AppState.playFromHash = false;
-        AppState.isCatalogSerials = false;
         AppState.isCatalogSearch = false;
         if (detailView) detailView.style.display = 'none';
         if (mainContainer) mainContainer.style.pointerEvents = 'auto';
