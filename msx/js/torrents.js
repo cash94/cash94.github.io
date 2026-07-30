@@ -1481,7 +1481,7 @@ async function refreshTorrentsList() {
             var data = await response.json();
             AppState.torrents = Array.isArray(data) ? data : [];
             if (!window.AndroidJS || !AppState.transcodingFullOnOff || !AppState.isCatalogSearch || AppState.isCatalogSerials) renderTorrents();
-            if (!window.AndroidJS && !AppState.playFromHash && AppState.currentScreen === 'torrents' || !AppState.transcodingFullOnOff && !AppState.playFromHash && AppState.currentScreen === 'torrents' ) {
+            if (!window.AndroidJS && !AppState.transcodingFullOnOff &&!AppState.playFromHash && AppState.currentScreen === 'torrents') {
                 setTimeout(function () {
                     if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
                         updateFocusableElements();
