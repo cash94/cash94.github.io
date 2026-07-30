@@ -1171,7 +1171,7 @@ async function initGstPlayback(metadata, initialSeek, signal) {
   } else throw new Error('Ваш браузер не поддерживает HLS');
 }
 
-async function initTranscodingOffPlayback(metadata, initialSeek, signal) {
+async function initTranscodingOffPlayback(initialSeek, signal) {
   var playURL = AppState.currentTorrserverUrl + '/stream?link=' + currentTimecodeData.hash + '&index=' + currentTimecodeData.fileId + '&play=play';
   var videoPlayer = getEl('video-player');
   destroyHls();
@@ -1211,6 +1211,7 @@ async function initTranscodingOffPlayback(metadata, initialSeek, signal) {
   var onCanPlay = function () {
     videoPlayer.removeEventListener('canplay', onCanPlay);
     startPlayback();
+    hidePlayerLoading();
   };
 
   var onError = function () {
@@ -1230,6 +1231,7 @@ async function initTranscodingOffPlayback(metadata, initialSeek, signal) {
 
   videoPlayer.src = playURL;
   videoPlayer.load();
+  hidePlayerLoading();
 }
 
 async function initServerProxyPlayback(metadata, initialSeek, signal) {
