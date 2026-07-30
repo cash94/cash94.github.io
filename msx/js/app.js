@@ -58,6 +58,7 @@ function safeExecute(fn, errorMessage) {
 var hideClockEnabled = false;
 var addToDbEnabled = false;
 var transcodingOnOff = false;
+var transcodingFullOnOff = false;
 var multiChannelEnabled = false;
 var dvPreferred = false;
 var detailView = getEl('detail-view');
@@ -1198,102 +1199,121 @@ function setupCheckboxWithStorage(elementId, storageKey, stateKey, onChange) {
 }
 
 function setupCheckboxes() {
-    // 1. Внешний плеер
-    setupExternalPlayerCheckbox();
+  // 1. Внешний плеер
+  setupExternalPlayerCheckbox();
 
-    // 2. Скрытие часов
-    var hideClockCheckbox = getEl('hide-clock');
-    if (hideClockCheckbox) {
-        var savedHideClock = localStorage.getItem('hideClockEnabled') === 'true';
-        hideClockEnabled = savedHideClock;
-        hideClockCheckbox.checked = savedHideClock;
-        hideClockCheckbox.addEventListener('change', function (e) {
-            hideClockEnabled = e.target.checked;
-            localStorage.setItem('hideClockEnabled', hideClockEnabled);
-            setupClockVisibility();
-            console.log('🕐 Скрытие часов:', hideClockEnabled ? 'включено' : 'выключено');
-        });
+  // 2. Скрытие часов
+  var hideClockCheckbox = getEl('hide-clock');
+  if (hideClockCheckbox) {
+    var savedHideClock = localStorage.getItem('hideClockEnabled') === 'true';
+    hideClockEnabled = savedHideClock;
+    hideClockCheckbox.checked = savedHideClock;
+    hideClockCheckbox.addEventListener('change', function (e) {
+      hideClockEnabled = e.target.checked;
+      localStorage.setItem('hideClockEnabled', hideClockEnabled);
+      setupClockVisibility();
+      console.log('🕐 Скрытие часов:', hideClockEnabled ? 'включено' : 'выключено');
+    });
+  }
+
+  // 3. Добавление в базу
+  var addToDbCheckbox = getEl('add-to-db');
+  if (addToDbCheckbox) {
+    var savedAddToDb = localStorage.getItem('addToDbEnabled') === 'true';
+    addToDbEnabled = savedAddToDb;
+    addToDbCheckbox.checked = savedAddToDb;
+    if (typeof AppState !== 'undefined') {
+      AppState.addToDbEnabled = addToDbEnabled;
     }
+    addToDbCheckbox.addEventListener('change', function (e) {
+      addToDbEnabled = e.target.checked;
+      localStorage.setItem('addToDbEnabled', addToDbEnabled);
+      if (typeof AppState !== 'undefined') {
+        AppState.addToDbEnabled = addToDbEnabled;
+      }
+      console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
+    });
+  }
 
-    // 3. Добавление в базу
-    var addToDbCheckbox = getEl('add-to-db');
-    if (addToDbCheckbox) {
-        var savedAddToDb = localStorage.getItem('addToDbEnabled') === 'true';
-        addToDbEnabled = savedAddToDb;
-        addToDbCheckbox.checked = savedAddToDb;
-        if (typeof AppState !== 'undefined') {
-            AppState.addToDbEnabled = addToDbEnabled;
+  // 4. Транскодирование
+  var transcodingCheckbox = getEl('transcoding-off');
+  if (transcodingCheckbox) {
+    var savedTranscoding = localStorage.getItem('transcodingOnOff') === 'true';
+    transcodingOnOff = savedTranscoding;
+    transcodingCheckbox.checked = savedTranscoding;
+    if (typeof AppState !== 'undefined') {
+      AppState.transcodingOnOff = transcodingOnOff;
+    }
+    transcodingCheckbox.addEventListener('change', function (e) {
+      transcodingOnOff = e.target.checked;
+      localStorage.setItem('transcodingOnOff', transcodingOnOff);
+      if (typeof AppState !== 'undefined') {
+        AppState.transcodingOnOff = transcodingOnOff;
+      }
+      console.log('🎬 Транскодирование:', transcodingOnOff ? 'включено' : 'выключено');
+    });
+  }
+
+  // 5. Многоканальный звук
+  var multiChannelCheckbox = getEl('multi-channel-audio');
+  if (multiChannelCheckbox) {
+    var savedMultiChannel = localStorage.getItem('multiChannelEnabled') === 'true';
+    multiChannelEnabled = savedMultiChannel;
+    multiChannelCheckbox.checked = savedMultiChannel;
+    if (typeof AppState !== 'undefined') {
+      AppState.multiChannelEnabled = multiChannelEnabled;
+    }
+    multiChannelCheckbox.addEventListener('change', function (e) {
+      multiChannelEnabled = e.target.checked;
+      localStorage.setItem('multiChannelEnabled', multiChannelEnabled);
+      if (typeof AppState !== 'undefined') {
+        AppState.multiChannelEnabled = multiChannelEnabled;
+      }
+      console.log('🎵 Многоканальный звук:', multiChannelEnabled ? 'включен' : 'выключен');
+      if (multiChannelEnabled) {
+        var hint = getEl('player-hint');
+        if (hint) {
+          var originalText = hint.textContent;
+          hint.textContent = 'Многоканальный звук включен. Новые потоки будут использовать оригинальные аудиодорожки (AC3/E-AC3/AAC)';
+          hint.style.opacity = '1';
+          setTimeout(function () {
+            hint.textContent = originalText;
+            hint.style.opacity = '0';
+          }, 3000);
         }
-        addToDbCheckbox.addEventListener('change', function (e) {
-            addToDbEnabled = e.target.checked;
-            localStorage.setItem('addToDbEnabled', addToDbEnabled);
-            if (typeof AppState !== 'undefined') {
-                AppState.addToDbEnabled = addToDbEnabled;
-            }
-            console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
-        });
-    }
+      }
+    });
+  }
 
-    // 4. Транскодирование
-    var transcodingCheckbox = getEl('transcoding-off');
-    if (transcodingCheckbox) {
-        var savedTranscoding = localStorage.getItem('transcodingOnOff') === 'true';
-        transcodingOnOff = savedTranscoding;
-        transcodingCheckbox.checked = savedTranscoding;
-        if (typeof AppState !== 'undefined') {
-            AppState.transcodingOnOff = transcodingOnOff;
-        }
-        transcodingCheckbox.addEventListener('change', function (e) {
-            transcodingOnOff = e.target.checked;
-            localStorage.setItem('transcodingOnOff', transcodingOnOff);
-            if (typeof AppState !== 'undefined') {
-                AppState.transcodingOnOff = transcodingOnOff;
-            }
-            console.log('🎬 Транскодирование:', transcodingOnOff ? 'включено' : 'выключено');
-        });
+  // 6. Включить или отключить полностью транскодинг
+  var transcodingCheckboxOnOff = getEl('transcoding-on-off');
+  if (transcodingCheckboxOnOff) {
+    var savedTranscodingFull = localStorage.getItem('transcodingFullOnOff') === 'true';
+    transcodingFullOnOff = savedTranscodingFull;
+    transcodingCheckboxOnOff.checked = savedTranscodingFull;
+    if (typeof AppState !== 'undefined') {
+      AppState.transcodingFullOnOff = transcodingFullOnOff;
     }
+    transcodingCheckboxOnOff.addEventListener('change', function (e) {
+      transcodingFullOnOff = e.target.checked;
+      localStorage.setItem('transcodingFullOnOff', transcodingFullOnOff);
+      if (typeof AppState !== 'undefined') {
+        AppState.transcodingFullOnOff = transcodingFullOnOff;
+      }
+      console.log('🎬 Транскодирование:', transcodingFullOnOff ? 'включено' : 'выключено');
+    });
+  }
 
-    // 5. Многоканальный звук
-    var multiChannelCheckbox = getEl('multi-channel-audio');
-    if (multiChannelCheckbox) {
-        var savedMultiChannel = localStorage.getItem('multiChannelEnabled') === 'true';
-        multiChannelEnabled = savedMultiChannel;
-        multiChannelCheckbox.checked = savedMultiChannel;
-        if (typeof AppState !== 'undefined') {
-            AppState.multiChannelEnabled = multiChannelEnabled;
-        }
-        multiChannelCheckbox.addEventListener('change', function (e) {
-            multiChannelEnabled = e.target.checked;
-            localStorage.setItem('multiChannelEnabled', multiChannelEnabled);
-            if (typeof AppState !== 'undefined') {
-                AppState.multiChannelEnabled = multiChannelEnabled;
-            }
-            console.log('🎵 Многоканальный звук:', multiChannelEnabled ? 'включен' : 'выключен');
-            if (multiChannelEnabled) {
-                var hint = getEl('player-hint');
-                if (hint) {
-                    var originalText = hint.textContent;
-                    hint.textContent = 'Многоканальный звук включен. Новые потоки будут использовать оригинальные аудиодорожки (AC3/E-AC3/AAC)';
-                    hint.style.opacity = '1';
-                    setTimeout(function () {
-                        hint.textContent = originalText;
-                        hint.style.opacity = '0';
-                    }, 3000);
-                }
-            }
-        });
+  // 7. Инициализация проверки Dolby Vision (безопасный вызов)
+  if (typeof initDolbyVisionCheck === 'function') {
+    try {
+      initDolbyVisionCheck();
+    } catch (e) {
+      console.warn('⚠️ Ошибка инициализации Dolby Vision check:', e);
     }
-
-    // 🆕 6. Инициализация проверки Dolby Vision (безопасный вызов)
-    if (typeof initDolbyVisionCheck === 'function') {
-        try {
-            initDolbyVisionCheck();
-        } catch (e) {
-            console.warn('⚠️ Ошибка инициализации Dolby Vision check:', e);
-        }
-    } else {
-        console.log('ℹ️ initDolbyVisionCheck не найдена, пропускаем');
-    }
+  } else {
+    console.log('ℹ️ initDolbyVisionCheck не найдена, пропускаем');
+  }
 }
 
 function setupExternalPlayerCheckbox() {
