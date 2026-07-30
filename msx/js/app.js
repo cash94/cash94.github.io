@@ -1201,9 +1201,14 @@ function setupCheckboxWithStorage(elementId, storageKey, stateKey, onChange) {
 function setupCheckboxes() {
   // 1. Внешний плеер
   setupExternalPlayerCheckbox();
+  var container = '';
 
   // 2. Скрытие часов
   var hideClockCheckbox = getEl('hide-clock');
+  if (window.AndroidJS) {
+    container = hideClockCheckbox.closest('.checkbox-container');
+    if (container) container.classList.add('hidden');
+  }
   if (hideClockCheckbox) {
     var savedHideClock = localStorage.getItem('hideClockEnabled') === 'true';
     hideClockEnabled = savedHideClock;
@@ -1237,7 +1242,10 @@ function setupCheckboxes() {
 
   // 4. Транскодирование
   var transcodingCheckbox = getEl('transcoding-off');
-  if (window.AndroidJS) transcodingCheckbox.classList.add('hidden');
+  if (window.AndroidJS) {
+    container = transcodingCheckbox.closest('.checkbox-container');
+    if (container) container.classList.add('hidden');
+  }
   if (transcodingCheckbox) {
     var savedTranscoding = localStorage.getItem('transcodingOnOff') === 'true';
     transcodingOnOff = savedTranscoding;
@@ -1257,7 +1265,10 @@ function setupCheckboxes() {
 
   // 5. Многоканальный звук
   var multiChannelCheckbox = getEl('multi-channel-audio');
-  if (window.AndroidJS) multiChannelCheckbox.classList.add('hidden');
+  if (window.AndroidJS) {
+    container = multiChannelCheckbox.closest('.checkbox-container');
+    if (container) container.classList.add('hidden');
+  }
   if (multiChannelCheckbox) {
     var savedMultiChannel = localStorage.getItem('multiChannelEnabled') === 'true';
     multiChannelEnabled = savedMultiChannel;
@@ -1289,7 +1300,10 @@ function setupCheckboxes() {
 
   // 6. Включить или отключить полностью транскодинг
   var transcodingCheckboxOnOff = getEl('transcoding-on-off');
-  if (window.AndroidJS) transcodingCheckboxOnOff.classList.add('hidden');
+  if (window.AndroidJS) {
+    container = transcodingCheckboxOnOff.closest('.checkbox-container');
+    if (container) container.classList.add('hidden');
+  }
   if (transcodingCheckboxOnOff) {
     var savedTranscodingFull = localStorage.getItem('transcodingFullOnOff') === 'true';
     transcodingFullOnOff = savedTranscodingFull;
@@ -1307,15 +1321,17 @@ function setupCheckboxes() {
     });
   }
 
-  // 7. Инициализация проверки Dolby Vision (безопасный вызов)
-  if (typeof initDolbyVisionCheck === 'function') {
-    try {
-      initDolbyVisionCheck();
-    } catch (e) {
-      console.warn('⚠️ Ошибка инициализации Dolby Vision check:', e);
+  if (!window.AndroidJS) {
+    // 7. Инициализация проверки Dolby Vision (безопасный вызов)
+    if (typeof initDolbyVisionCheck === 'function') {
+      try {
+        initDolbyVisionCheck();
+      } catch (e) {
+        console.warn('⚠️ Ошибка инициализации Dolby Vision check:', e);
+      }
+    } else {
+      console.log('ℹ️ initDolbyVisionCheck не найдена, пропускаем');
     }
-  } else {
-    console.log('ℹ️ initDolbyVisionCheck не найдена, пропускаем');
   }
 }
 
