@@ -1519,10 +1519,16 @@ async function playFromHash(hash, magnet, searchResult = null) {
         if (!window.AndroidJS || !AppState.transcodingFullOnOff) { AppState.currentDetailItem = addedTorrent; if (typeof clearDetailHistory === 'function') clearDetailHistory(); }
         if (!isSerial) {
             var fileId = 1;
-            if (window.AndroidJS || AppState.transcodingFullOnOff) {
+            if (window.AndroidJS) {
                 getEl('playback-overlay').classList.remove('active');
                 var playURL = AppState.currentTorrserverUrl + "/stream?link=" + hash + "&index=" + fileId + "&play=play";
                 AndroidJS.openPlayer(playURL, JSON.stringify({ url: playURL, title: addedTorrent.title || 'Видео', iptv: false, timeline: { hash: hash + '_' + fileId, time: 0, duration: 0, percent: 0 } }));
+                return true;
+            }
+            if (AppState.transcodingFullOnOff) {
+                getEl('playback-overlay').classList.remove('active');
+                var playURL = AppState.currentTorrserverUrl + "/stream?link=" + hash + "&index=" + fileId + "&play=play";
+                await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
                 return true;
             }
             var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
