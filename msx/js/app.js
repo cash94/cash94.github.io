@@ -574,9 +574,11 @@ function setupNavigation() {
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
 
-      if (AppState && !AppState.isSearch && !AppState.playFromHash && detailHistory.length <= 1) {
+      var playFromHashBlocks = !!(AppState && AppState.playFromHash && window.AndroidJS);
+      if (AppState && !AppState.isSearch && !playFromHashBlocks && detailHistory.length <= 1) {
         if (detailView) detailView.style.display = 'none';
       }
+      if (AppState) AppState.playFromHash = false;
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
 
       var torrserverSection = getEl('torrserver-section');
