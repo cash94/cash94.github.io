@@ -576,10 +576,8 @@ function setupNavigation() {
       if (AppState && AppState.searchResultsHidden) {
         AppState.searchResultsHidden = false;
         AppState.openCatalogDetailOnSearchClose = AppState.androidBackCatalog || null;
-        if (!AppState.isCatalogSerials) {
-          AppState.playFromHash = false;
-          AppState.isCatalogSerials = false;
-        }
+        AppState.playFromHash = false;
+        AppState.isCatalogSerials = false;
         AppState.isCatalogSearch = false;
         if (detailView) detailView.style.display = 'none';
         if (mainContainer) mainContainer.style.pointerEvents = 'auto';
@@ -603,7 +601,7 @@ function setupNavigation() {
       if (AppState && !AppState.isSearch && !playFromHashBlocks && detailHistory.length <= 1) {
         if (detailView) detailView.style.display = 'none';
       }
-      //if (AppState) AppState.playFromHash = false;
+      if (AppState) AppState.playFromHash = false;
 
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
 
@@ -649,8 +647,6 @@ function restoreFocusAfterNavigation(returnTo, context) {
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
       window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
     });
-    AppState.playFromHash = false;
-    AppState.isCatalogSerials = false;
     return;
   }
 
