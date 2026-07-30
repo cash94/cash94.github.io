@@ -620,7 +620,7 @@ function isPositionInBuffer(targetTime) {
 async function seekStream(absoluteSeekTime, source) {
   currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; thisisseek = true;
   if (source === undefined) source = 'user';
-  if (!AppState.currentStreamId && !AppState.transcodingOnOff) return false;
+  if (!AppState.currentStreamId && !AppState.transcodingOnOff && !AppState.transcodingFullOnOff) return false;
   var videoPlayer = getEl('video-player');
   var totalDuration = AppState.originalDuration || AppState.expectedDuration || 0;
   if (absoluteSeekTime < 0) absoluteSeekTime = 0;
