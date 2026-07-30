@@ -58,7 +58,6 @@ function safeExecute(fn, errorMessage) {
 var hideClockEnabled = false;
 var addToDbEnabled = false;
 var transcodingOnOff = false;
-var transcodingFullOnOff = false;
 var multiChannelEnabled = false;
 var dvPreferred = false;
 var detailView = getEl('detail-view');
@@ -573,37 +572,10 @@ function setupNavigation() {
 
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
-      if (AppState && AppState.searchResultsHidden) {
-        AppState.searchResultsHidden = false;
-        AppState.openCatalogDetailOnSearchClose = AppState.androidBackCatalog || null;
-        AppState.playFromHash = false;
-        AppState.isCatalogSerials = false;
-        AppState.isCatalogSearch = false;
-        AppState.clearLastSelected = false;
+
+      if (AppState && !AppState.isSearch && !AppState.playFromHash && detailHistory.length <= 1) {
         if (detailView) detailView.style.display = 'none';
-        if (mainContainer) mainContainer.style.pointerEvents = 'auto';
-        AppState.currentScreen = 'search';
-        var searchOverlay = getEl('search-overlay');
-        if (searchOverlay) searchOverlay.classList.remove('hidden');
-        if (typeof Animations !== 'undefined') Animations.animateDetailHide();
-        setTimeout(function () {
-          if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-            updateFocusableElements();
-            for (var i = 0; i < focusableElements.length; i++) {
-              var cls = focusableElements[i].classList;
-              if (cls && (cls.contains('search-result-item') || cls.contains('global-search-card'))) { setFocus(i); break; }
-            }
-          }
-        }, 100);
-        return;
       }
-
-      var playFromHashBlocks = !!(AppState && AppState.playFromHash && window.AndroidJS);
-      // if (AppState && !AppState.isSearch && !playFromHashBlocks && detailHistory.length <= 1) {
-      //   if (detailView) detailView.style.display = 'none';
-      // }
-      if (AppState) AppState.playFromHash = false;
-
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
 
       var torrserverSection = getEl('torrserver-section');
@@ -645,7 +617,6 @@ function restoreFocusAfterNavigation(returnTo, context) {
   if (returnTo === 'catalog' && AppState.playFromHash && AppState.isCatalogSerials) {
     AppState.playFromHash = false;
     AppState.isCatalogSerials = false;
-    if (detailView) detailView.style.display = 'none';
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
       window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
     });
@@ -659,12 +630,6 @@ function restoreFocusAfterNavigation(returnTo, context) {
 
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
       restoreRowFocus();
-      return;
-    } else if (!AppState.clearLastSelected){
-      window.showCatalogList().then(function () {
-        restoreRowFocus();
-      });
-      AppState.clearLastSelected = true;
       return;
     }
 
@@ -796,23 +761,7 @@ function setupSearch() {
   }
 
   if (closeSearchBtn && typeof hideSearchResults === 'function') {
-    closeSearchBtn.addEventListener('click', function () {
-      // Цепочка: карточка каталога → поиск → detail.
-      // Если вернулись из detail в поиск — закрытие открывает карточку обратно
-      if (AppState && AppState.openCatalogDetailOnSearchClose) {
-        var catalogItem = AppState.openCatalogDetailOnSearchClose;
-        AppState.openCatalogDetailOnSearchClose = null;
-        AppState.searchReturnTo = null;
-        if (catalogItem && catalogItem.id && typeof window.showCatalogDetail === 'function') {
-          var searchOverlay = getEl('search-overlay');
-          if (searchOverlay) searchOverlay.classList.add('hidden');
-          window.showCatalogDetail(catalogItem, AppState.catalogIndex || 0, AppState.catalogPu || null);
-          return;
-        }
-        // пришли не из карточки каталога — обычное закрытие
-      }
-      hideSearchResults();
-    });
+    closeSearchBtn.addEventListener('click', function () { hideSearchResults(); });
   }
 
   if (tabTorrents && typeof hideSearchResults === 'function' && typeof loadTorrents === 'function') {
@@ -1249,140 +1198,102 @@ function setupCheckboxWithStorage(elementId, storageKey, stateKey, onChange) {
 }
 
 function setupCheckboxes() {
-  // 1. Внешний плеер
-  setupExternalPlayerCheckbox();
-  var container = '';
+    // 1. Внешний плеер
+    setupExternalPlayerCheckbox();
 
-  // 2. Скрытие часов
-  var hideClockCheckbox = getEl('hide-clock');
-  if (window.AndroidJS) {
-    container = hideClockCheckbox.closest('.checkbox-container');
-    if (container) container.classList.add('hidden');
-  }
-  if (hideClockCheckbox) {
-    var savedHideClock = localStorage.getItem('hideClockEnabled') === 'true';
-    hideClockEnabled = savedHideClock;
-    hideClockCheckbox.checked = savedHideClock;
-    hideClockCheckbox.addEventListener('change', function (e) {
-      hideClockEnabled = e.target.checked;
-      localStorage.setItem('hideClockEnabled', hideClockEnabled);
-      setupClockVisibility();
-      console.log('🕐 Скрытие часов:', hideClockEnabled ? 'включено' : 'выключено');
-    });
-  }
-
-  // 3. Добавление в базу
-  var addToDbCheckbox = getEl('add-to-db');
-  if (addToDbCheckbox) {
-    var savedAddToDb = localStorage.getItem('addToDbEnabled') === 'true';
-    addToDbEnabled = savedAddToDb;
-    addToDbCheckbox.checked = savedAddToDb;
-    if (typeof AppState !== 'undefined') {
-      AppState.addToDbEnabled = addToDbEnabled;
+    // 2. Скрытие часов
+    var hideClockCheckbox = getEl('hide-clock');
+    if (hideClockCheckbox) {
+        var savedHideClock = localStorage.getItem('hideClockEnabled') === 'true';
+        hideClockEnabled = savedHideClock;
+        hideClockCheckbox.checked = savedHideClock;
+        hideClockCheckbox.addEventListener('change', function (e) {
+            hideClockEnabled = e.target.checked;
+            localStorage.setItem('hideClockEnabled', hideClockEnabled);
+            setupClockVisibility();
+            console.log('🕐 Скрытие часов:', hideClockEnabled ? 'включено' : 'выключено');
+        });
     }
-    addToDbCheckbox.addEventListener('change', function (e) {
-      addToDbEnabled = e.target.checked;
-      localStorage.setItem('addToDbEnabled', addToDbEnabled);
-      if (typeof AppState !== 'undefined') {
-        AppState.addToDbEnabled = addToDbEnabled;
-      }
-      console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
-    });
-  }
 
-  // 4. Транскодирование
-  var transcodingCheckbox = getEl('transcoding-off');
-  if (window.AndroidJS) {
-    container = transcodingCheckbox.closest('.checkbox-container');
-    if (container) container.classList.add('hidden');
-  }
-  if (transcodingCheckbox) {
-    var savedTranscoding = localStorage.getItem('transcodingOnOff') === 'true';
-    transcodingOnOff = savedTranscoding;
-    transcodingCheckbox.checked = savedTranscoding;
-    if (typeof AppState !== 'undefined') {
-      AppState.transcodingOnOff = transcodingOnOff;
-    }
-    transcodingCheckbox.addEventListener('change', function (e) {
-      transcodingOnOff = e.target.checked;
-      localStorage.setItem('transcodingOnOff', transcodingOnOff);
-      if (typeof AppState !== 'undefined') {
-        AppState.transcodingOnOff = transcodingOnOff;
-      }
-      console.log('🎬 Транскодирование:', transcodingOnOff ? 'включено' : 'выключено');
-    });
-  }
-
-  // 5. Многоканальный звук
-  var multiChannelCheckbox = getEl('multi-channel-audio');
-  if (window.AndroidJS) {
-    container = multiChannelCheckbox.closest('.checkbox-container');
-    if (container) container.classList.add('hidden');
-  }
-  if (multiChannelCheckbox) {
-    var savedMultiChannel = localStorage.getItem('multiChannelEnabled') === 'true';
-    multiChannelEnabled = savedMultiChannel;
-    multiChannelCheckbox.checked = savedMultiChannel;
-    if (typeof AppState !== 'undefined') {
-      AppState.multiChannelEnabled = multiChannelEnabled;
-    }
-    multiChannelCheckbox.addEventListener('change', function (e) {
-      multiChannelEnabled = e.target.checked;
-      localStorage.setItem('multiChannelEnabled', multiChannelEnabled);
-      if (typeof AppState !== 'undefined') {
-        AppState.multiChannelEnabled = multiChannelEnabled;
-      }
-      console.log('🎵 Многоканальный звук:', multiChannelEnabled ? 'включен' : 'выключен');
-      if (multiChannelEnabled) {
-        var hint = getEl('player-hint');
-        if (hint) {
-          var originalText = hint.textContent;
-          hint.textContent = 'Многоканальный звук включен. Новые потоки будут использовать оригинальные аудиодорожки (AC3/E-AC3/AAC)';
-          hint.style.opacity = '1';
-          setTimeout(function () {
-            hint.textContent = originalText;
-            hint.style.opacity = '0';
-          }, 3000);
+    // 3. Добавление в базу
+    var addToDbCheckbox = getEl('add-to-db');
+    if (addToDbCheckbox) {
+        var savedAddToDb = localStorage.getItem('addToDbEnabled') === 'true';
+        addToDbEnabled = savedAddToDb;
+        addToDbCheckbox.checked = savedAddToDb;
+        if (typeof AppState !== 'undefined') {
+            AppState.addToDbEnabled = addToDbEnabled;
         }
-      }
-    });
-  }
-
-  // 6. Включить или отключить полностью транскодинг
-  var transcodingCheckboxOnOff = getEl('transcoding-on-off');
-  if (window.AndroidJS) {
-    container = transcodingCheckboxOnOff.closest('.checkbox-container');
-    if (container) container.classList.add('hidden');
-  }
-  if (transcodingCheckboxOnOff) {
-    var savedTranscodingFull = localStorage.getItem('transcodingFullOnOff') === 'true';
-    transcodingFullOnOff = savedTranscodingFull;
-    transcodingCheckboxOnOff.checked = savedTranscodingFull;
-    if (typeof AppState !== 'undefined') {
-      AppState.transcodingFullOnOff = transcodingFullOnOff;
+        addToDbCheckbox.addEventListener('change', function (e) {
+            addToDbEnabled = e.target.checked;
+            localStorage.setItem('addToDbEnabled', addToDbEnabled);
+            if (typeof AppState !== 'undefined') {
+                AppState.addToDbEnabled = addToDbEnabled;
+            }
+            console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
+        });
     }
-    transcodingCheckboxOnOff.addEventListener('change', function (e) {
-      transcodingFullOnOff = e.target.checked;
-      localStorage.setItem('transcodingFullOnOff', transcodingFullOnOff);
-      if (typeof AppState !== 'undefined') {
-        AppState.transcodingFullOnOff = transcodingFullOnOff;
-      }
-      console.log('🎬 Транскодирование:', transcodingFullOnOff ? 'включено' : 'выключено');
-    });
-  }
 
-  if (!window.AndroidJS) {
-    // 7. Инициализация проверки Dolby Vision (безопасный вызов)
+    // 4. Транскодирование
+    var transcodingCheckbox = getEl('transcoding-off');
+    if (transcodingCheckbox) {
+        var savedTranscoding = localStorage.getItem('transcodingOnOff') === 'true';
+        transcodingOnOff = savedTranscoding;
+        transcodingCheckbox.checked = savedTranscoding;
+        if (typeof AppState !== 'undefined') {
+            AppState.transcodingOnOff = transcodingOnOff;
+        }
+        transcodingCheckbox.addEventListener('change', function (e) {
+            transcodingOnOff = e.target.checked;
+            localStorage.setItem('transcodingOnOff', transcodingOnOff);
+            if (typeof AppState !== 'undefined') {
+                AppState.transcodingOnOff = transcodingOnOff;
+            }
+            console.log('🎬 Транскодирование:', transcodingOnOff ? 'включено' : 'выключено');
+        });
+    }
+
+    // 5. Многоканальный звук
+    var multiChannelCheckbox = getEl('multi-channel-audio');
+    if (multiChannelCheckbox) {
+        var savedMultiChannel = localStorage.getItem('multiChannelEnabled') === 'true';
+        multiChannelEnabled = savedMultiChannel;
+        multiChannelCheckbox.checked = savedMultiChannel;
+        if (typeof AppState !== 'undefined') {
+            AppState.multiChannelEnabled = multiChannelEnabled;
+        }
+        multiChannelCheckbox.addEventListener('change', function (e) {
+            multiChannelEnabled = e.target.checked;
+            localStorage.setItem('multiChannelEnabled', multiChannelEnabled);
+            if (typeof AppState !== 'undefined') {
+                AppState.multiChannelEnabled = multiChannelEnabled;
+            }
+            console.log('🎵 Многоканальный звук:', multiChannelEnabled ? 'включен' : 'выключен');
+            if (multiChannelEnabled) {
+                var hint = getEl('player-hint');
+                if (hint) {
+                    var originalText = hint.textContent;
+                    hint.textContent = 'Многоканальный звук включен. Новые потоки будут использовать оригинальные аудиодорожки (AC3/E-AC3/AAC)';
+                    hint.style.opacity = '1';
+                    setTimeout(function () {
+                        hint.textContent = originalText;
+                        hint.style.opacity = '0';
+                    }, 3000);
+                }
+            }
+        });
+    }
+
+    // 🆕 6. Инициализация проверки Dolby Vision (безопасный вызов)
     if (typeof initDolbyVisionCheck === 'function') {
-      try {
-        initDolbyVisionCheck();
-      } catch (e) {
-        console.warn('⚠️ Ошибка инициализации Dolby Vision check:', e);
-      }
+        try {
+            initDolbyVisionCheck();
+        } catch (e) {
+            console.warn('⚠️ Ошибка инициализации Dolby Vision check:', e);
+        }
     } else {
-      console.log('ℹ️ initDolbyVisionCheck не найдена, пропускаем');
+        console.log('ℹ️ initDolbyVisionCheck не найдена, пропускаем');
     }
-  }
 }
 
 function setupExternalPlayerCheckbox() {
