@@ -598,9 +598,9 @@ function setupNavigation() {
       }
 
       var playFromHashBlocks = !!(AppState && AppState.playFromHash && window.AndroidJS);
-      if (AppState && !AppState.isSearch && !playFromHashBlocks && detailHistory.length <= 1) {
-        if (detailView) detailView.style.display = 'none';
-      }
+      // if (AppState && !AppState.isSearch && !playFromHashBlocks && detailHistory.length <= 1) {
+      //   if (detailView) detailView.style.display = 'none';
+      // }
       if (AppState) AppState.playFromHash = false;
 
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
@@ -644,6 +644,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
   if (returnTo === 'catalog' && AppState.playFromHash && AppState.isCatalogSerials) {
     AppState.playFromHash = false;
     AppState.isCatalogSerials = false;
+    if (detailView) detailView.style.display = 'none';
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
       window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
     });
@@ -659,8 +660,9 @@ function restoreFocusAfterNavigation(returnTo, context) {
       restoreRowFocus();
       return;
     } else {
-      showCatalogList();
-      restoreRowFocus();
+      window.showCatalogList().then(function () {
+        restoreRowFocus();
+      });
       return;
     }
 
