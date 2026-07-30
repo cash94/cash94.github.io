@@ -626,7 +626,7 @@ async function seekStream(absoluteSeekTime, source) {
   if (absoluteSeekTime < 0) absoluteSeekTime = 0;
   if (totalDuration > 0 && absoluteSeekTime >= totalDuration - 1) return false;
 
-  if (AppState.transcodingOnOff) {
+  if (AppState.transcodingOnOff || AppState.transcodingFullOnOff) {
     showPlayerLoading('Перемотка...', absoluteSeekTime);
     var relativeTime = absoluteSeekTime - (AppState.seekOffset || 0);
     if (relativeTime < 0) relativeTime = 0;
@@ -1168,6 +1168,64 @@ async function initGstPlayback(metadata, initialSeek, signal) {
   } else throw new Error('Ваш браузер не поддерживает HLS');
 }
 
+async function initTranscodingOffPlayback(metadata, initialSeek, signal) {
+  var playURL = AppState.currentTorrserverUrl + "/stream?link=" + currentTimecodeData.hash + "&index=" + currentTimecodeData.fileId;
+  var videoPlayer = getEl('video-player');
+  destroyHls();
+  var isTimeUpdated = false; var seekExecuted = false;
+  var executeSeek = function () {
+    if (seekExecuted) return;
+    if (initialSeek > 0) {
+      seekExecuted = true;
+      try { var relativeTime = initialSeek - (AppState.seekOffset || 0); if (relativeTime > 0) videoPlayer.currentTime = parseInt(relativeTime); } catch (e) { }
+      setTimeout(function () { seekStream(parseInt(initialSeek - (AppState.seekOffset || 0)), 'slider'); }, 800);
+      setTimeout(function () { if (Math.abs(videoPlayer.currentTime + (AppState.seekOffset || 0) - initialSeek) > 2) seekStream(parseInt(initialSeek - (AppState.seekOffset || 0)), 'slider'); }, 2000);
+    }
+  };
+  var timeUpdateHandler = function () {
+    if (!isTimeUpdated && videoPlayer.currentTime > 0) { isTimeUpdated = true; hidePlayerLoading(); executeSeek(); videoPlayer.removeEventListener('timeupdate', timeUpdateHandler); }
+  };
+  videoPlayer.addEventListener('timeupdate', timeUpdateHandler);
+  var canPlayHandler = function () {
+    if (!isTimeUpdated && initialSeek > 0 && !seekExecuted) {
+      try { var relativeTime = initialSeek - (AppState.seekOffset || 0); if (relativeTime > 0) videoPlayer.currentTime = parseInt(relativeTime); } catch (e) { }
+      setTimeout(function () { if (!seekExecuted) { seekExecuted = true; seekStream(parseInt(initialSeek - (AppState.seekOffset || 0)), 'slider'); } }, 300);
+    }
+  };
+  videoPlayer.addEventListener('canplay', canPlayHandler);
+  AppState._loadingTimeout = setTimeout(function () {
+    if (!isTimeUpdated) {
+      hidePlayerLoading();
+      if (initialSeek > 0 && !seekExecuted) {
+        seekExecuted = true;
+        try { var relativeTime = initialSeek - (AppState.seekOffset || 0); if (relativeTime > 0) videoPlayer.currentTime = parseInt(relativeTime); } catch (e) { }
+        setTimeout(function () { seekStream(parseInt(initialSeek - (AppState.seekOffset || 0)), 'slider'); }, 500);
+      }
+      videoPlayer.removeEventListener('timeupdate', timeUpdateHandler); videoPlayer.removeEventListener('canplay', canPlayHandler);
+    }
+  }, LOADING_TIMEOUT_MS);
+  if (Hls.isSupported()) {
+    AppState.hls = createHlsInstance({ maxBufferLength: 20, maxMaxBufferLength: 40, startFragPrefetch: false, fragLoadingTimeOut: 20000, manifestLoadingTimeOut: 20000, enableWorker: false, cache: true });
+    AppState.hls.loadSource(playURL); AppState.hls.attachMedia(videoPlayer);
+    var manifestHandler = function () {
+      videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
+      startTimecodeSaving(); resetMouseIdleTimer(); startNearEndCheck(); startHeartbeat(); startTorrentStatsUpdates();
+      AppState.hls.off(Hls.Events.MANIFEST_PARSED, manifestHandler);
+    };
+    AppState.hls.on(Hls.Events.MANIFEST_PARSED, manifestHandler);
+    AppState.hls.on(Hls.Events.ERROR, function (event, data) {
+      if (data.fatal) {
+        hidePlayerLoading(); videoPlayer.removeEventListener('timeupdate', timeUpdateHandler); videoPlayer.removeEventListener('canplay', canPlayHandler);
+        clearTimeout(AppState._loadingTimeout);
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) AppState.hls.startLoad();
+        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) AppState.hls.recoverMediaError();
+      }
+    });
+    AppState._timeUpdateHandler = timeUpdateHandler; AppState._canPlayHandler = canPlayHandler; AppState._seekExecuted = seekExecuted;
+    showPlayerLoading('Подготовка потока...', null);
+  } else throw new Error('Ваш браузер не поддерживает HLS');
+}
+
 async function initServerProxyPlayback(metadata, initialSeek, signal) {
   var seekParam = (initialSeek && initialSeek > 0) ? ('&start=' + initialSeek.toFixed(2)) : '';
   var durationParam = (metadata.fileInfo.duration && metadata.fileInfo.duration > 0) ? ('&duration=' + metadata.fileInfo.duration.toFixed(0)) : '';
@@ -1303,6 +1361,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   videoPlayer.removeEventListener('ended', handleVideoEnded); videoPlayer.addEventListener('ended', handleVideoEnded);
   try {
     if (AppState.transcodingOnOff) await initGstPlayback(metadata, initialSeek, signal);
+    if(AppState.transcodingFullOnOff) await initTranscodingOffPlayback(metadata, initialSeek, signal); 
     else await initServerProxyPlayback(metadata, initialSeek, signal);
     showPlayerHint(); return true;
   } catch (error) {
@@ -1322,7 +1381,7 @@ function cancelCurrentPlayback() {
 }
 
 function showDetailView(field = null) {
-  if (!window.AndroidJS) {
+  if (!window.AndroidJS || !AppState.transcodingFullOnOff) {
     currentSubtitleTrack = -1; stopTorrentStatsUpdates(); hideSkipButton(); skipIntro = 0; skipCredits = 0;
     currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; thisisseek = false;
     var seekSlider = getEl('seek-slider'); if (seekSlider) seekSlider.value = 0;
