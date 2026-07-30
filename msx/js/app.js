@@ -573,12 +573,36 @@ function setupNavigation() {
 
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
+      if (AppState && AppState.searchResultsHidden) {
+        AppState.searchResultsHidden = false;
+        AppState.openCatalogDetailOnSearchClose = AppState.androidBackCatalog || null;
+        AppState.playFromHash = false;
+        AppState.isCatalogSerials = false;
+        AppState.isCatalogSearch = false;
+        if (detailView) detailView.style.display = 'none';
+        if (mainContainer) mainContainer.style.pointerEvents = 'auto';
+        AppState.currentScreen = 'search';
+        var searchOverlay = getEl('search-overlay');
+        if (searchOverlay) searchOverlay.classList.remove('hidden');
+        if (typeof Animations !== 'undefined') Animations.animateDetailHide();
+        setTimeout(function () {
+          if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+            updateFocusableElements();
+            for (var i = 0; i < focusableElements.length; i++) {
+              var cls = focusableElements[i].classList;
+              if (cls && (cls.contains('search-result-item') || cls.contains('global-search-card'))) { setFocus(i); break; }
+            }
+          }
+        }, 100);
+        return;
+      }
 
       var playFromHashBlocks = !!(AppState && AppState.playFromHash && window.AndroidJS);
       if (AppState && !AppState.isSearch && !playFromHashBlocks && detailHistory.length <= 1) {
         if (detailView) detailView.style.display = 'none';
       }
       if (AppState) AppState.playFromHash = false;
+
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
 
       var torrserverSection = getEl('torrserver-section');
@@ -764,7 +788,23 @@ function setupSearch() {
   }
 
   if (closeSearchBtn && typeof hideSearchResults === 'function') {
-    closeSearchBtn.addEventListener('click', function () { hideSearchResults(); });
+    closeSearchBtn.addEventListener('click', function () {
+      // Цепочка: карточка каталога → поиск → detail.
+      // Если вернулись из detail в поиск — закрытие открывает карточку обратно
+      if (AppState && AppState.openCatalogDetailOnSearchClose) {
+        var catalogItem = AppState.openCatalogDetailOnSearchClose;
+        AppState.openCatalogDetailOnSearchClose = null;
+        AppState.searchReturnTo = null;
+        if (catalogItem && catalogItem.id && typeof window.showCatalogDetail === 'function') {
+          var searchOverlay = getEl('search-overlay');
+          if (searchOverlay) searchOverlay.classList.add('hidden');
+          window.showCatalogDetail(catalogItem, AppState.catalogIndex || 0, AppState.catalogPu || null);
+          return;
+        }
+        // пришли не из карточки каталога — обычное закрытие
+      }
+      hideSearchResults();
+    });
   }
 
   if (tabTorrents && typeof hideSearchResults === 'function' && typeof loadTorrents === 'function') {
