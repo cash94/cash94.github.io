@@ -74,7 +74,8 @@ var AppState = {
   isCatalogSerials: false,
   isCatalogSearch: false,
   dvPreferred: false,
-  trailerPlay: false
+  trailerPlay: false,
+  clearLastSelected: true
 };
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
