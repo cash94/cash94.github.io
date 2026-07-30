@@ -573,29 +573,16 @@ function setupNavigation() {
 
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
-      if (AppState && AppState.searchResultsHidden && !AppState.isCatalogSerials) {
+      if (AppState && AppState.searchResultsHidden) {
         AppState.searchResultsHidden = false;
         AppState.openCatalogDetailOnSearchClose = AppState.androidBackCatalog || null;
+        if (!AppState.isCatalogSerials) {
+          AppState.playFromHash = false;
+          AppState.isCatalogSerials = false;
+        }
         AppState.playFromHash = false;
         AppState.isCatalogSerials = false;
         AppState.isCatalogSearch = false;
-        if (detailView) detailView.style.display = 'none';
-        if (mainContainer) mainContainer.style.pointerEvents = 'auto';
-        AppState.currentScreen = 'search';
-        var searchOverlay = getEl('search-overlay');
-        if (searchOverlay) searchOverlay.classList.remove('hidden');
-        if (typeof Animations !== 'undefined') Animations.animateDetailHide();
-        setTimeout(function () {
-          if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-            updateFocusableElements();
-            for (var i = 0; i < focusableElements.length; i++) {
-              var cls = focusableElements[i].classList;
-              if (cls && (cls.contains('search-result-item') || cls.contains('global-search-card'))) { setFocus(i); break; }
-            }
-          }
-        }, 100);
-        return;
-      } else if (AppState && AppState.searchResultsHidden && AppState.isCatalogSerials) {
         if (detailView) detailView.style.display = 'none';
         if (mainContainer) mainContainer.style.pointerEvents = 'auto';
         AppState.currentScreen = 'search';
@@ -664,11 +651,8 @@ function restoreFocusAfterNavigation(returnTo, context) {
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
       window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
     });
-    AppState.searchResultsHidden = false;
-    AppState.openCatalogDetailOnSearchClose = AppState.androidBackCatalog || null;
     AppState.playFromHash = false;
     AppState.isCatalogSerials = false;
-    AppState.isCatalogSearch = false;
     return;
   }
 
