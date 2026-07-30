@@ -603,7 +603,7 @@ function setupNavigation() {
       if (AppState && !AppState.isSearch && !playFromHashBlocks && detailHistory.length <= 1) {
         if (detailView) detailView.style.display = 'none';
       }
-      if (AppState) AppState.playFromHash = false;
+      //if (AppState) AppState.playFromHash = false;
 
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
 
