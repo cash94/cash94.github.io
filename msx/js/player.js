@@ -620,13 +620,13 @@ function isPositionInBuffer(targetTime) {
 async function seekStream(absoluteSeekTime, source) {
   currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; thisisseek = true;
   if (source === undefined) source = 'user';
-  if (!AppState.currentStreamId && !AppState.transcodingOnOff) return false;
+  if (!AppState.currentStreamId && !AppState.transcodingOnOff && !AppState.transcodingFullOnOff) return false;
   var videoPlayer = getEl('video-player');
   var totalDuration = AppState.originalDuration || AppState.expectedDuration || 0;
   if (absoluteSeekTime < 0) absoluteSeekTime = 0;
   if (totalDuration > 0 && absoluteSeekTime >= totalDuration - 1) return false;
 
-  if (AppState.transcodingOnOff) {
+  if (AppState.transcodingOnOff || AppState.transcodingFullOnOff) {
     showPlayerLoading('Перемотка...', absoluteSeekTime);
     var relativeTime = absoluteSeekTime - (AppState.seekOffset || 0);
     if (relativeTime < 0) relativeTime = 0;
@@ -1168,6 +1168,67 @@ async function initGstPlayback(metadata, initialSeek, signal) {
   } else throw new Error('Ваш браузер не поддерживает HLS');
 }
 
+async function initTranscodingOffPlayback(metadata, initialSeek, signal) {
+  var playURL = AppState.currentTorrserverUrl + '/stream?link=' + currentTimecodeData.hash + '&index=' + currentTimecodeData.fileId + '&play=play';
+  var videoPlayer = getEl('video-player');
+  destroyHls();
+
+  // Прямой файл — без hls.js, отдаём ссылку нативному <video>
+  AppState.seekOffset = 0;
+  AppState.expectedDuration = null;
+  AppState.originalDuration = null;
+
+  showPlayerLoading('Подготовка потока...', null);
+
+  var started = false;
+  var startPlayback = function () {
+    if (started || signal.aborted) return;
+    started = true;
+    if (AppState._loadingTimeout) clearTimeout(AppState._loadingTimeout);
+    hidePlayerLoading();
+    if (initialSeek > 0) {
+      try { videoPlayer.currentTime = initialSeek; } catch (e) { }
+    }
+    videoPlayer.play()['catch'](function () {
+      videoPlayer.muted = true;
+      videoPlayer.play()['catch'](function () { });
+      updateMuteButton();
+    });
+    videoPlayer.muted = false; updateMuteButton();
+    startTimecodeSaving(); resetMouseIdleTimer(); startNearEndCheck(); startHeartbeat(); startTorrentStatsUpdates();
+  };
+
+  var onLoadedMetadata = function () {
+    videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
+    AppState.expectedDuration = videoPlayer.duration;
+    AppState.originalDuration = videoPlayer.duration;
+    forceUpdateDuration(videoPlayer.duration, videoPlayer.duration, 0);
+  };
+
+  var onCanPlay = function () {
+    videoPlayer.removeEventListener('canplay', onCanPlay);
+    startPlayback();
+  };
+
+  var onError = function () {
+    videoPlayer.removeEventListener('error', onError);
+    if (signal.aborted || AppState.currentScreen !== 'player') return;
+    hidePlayerLoading();
+    alert('Файл не воспроизводится напрямую: кодек/контейнер не поддерживается устройством');
+  };
+
+  videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
+  videoPlayer.addEventListener('canplay', onCanPlay);
+  videoPlayer.addEventListener('error', onError);
+
+  AppState._loadingTimeout = setTimeout(function () {
+    if (!started && !signal.aborted) startPlayback();
+  }, LOADING_TIMEOUT_MS);
+
+  videoPlayer.src = playURL;
+  videoPlayer.load();
+}
+
 async function initServerProxyPlayback(metadata, initialSeek, signal) {
   var seekParam = (initialSeek && initialSeek > 0) ? ('&start=' + initialSeek.toFixed(2)) : '';
   var durationParam = (metadata.fileInfo.duration && metadata.fileInfo.duration > 0) ? ('&duration=' + metadata.fileInfo.duration.toFixed(0)) : '';
@@ -1302,8 +1363,13 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   var videoPlayer = getEl('video-player');
   videoPlayer.removeEventListener('ended', handleVideoEnded); videoPlayer.addEventListener('ended', handleVideoEnded);
   try {
-    if (AppState.transcodingOnOff) await initGstPlayback(metadata, initialSeek, signal);
-    else await initServerProxyPlayback(metadata, initialSeek, signal);
+    if (AppState.transcodingOnOff) {
+      await initGstPlayback(metadata, initialSeek, signal);
+    } else if (AppState.transcodingFullOnOff) {
+      await initTranscodingOffPlayback(metadata, initialSeek, signal);
+    } else {
+      await initServerProxyPlayback(metadata, initialSeek, signal);
+    }
     showPlayerHint(); return true;
   } catch (error) {
     if (error.name === 'AbortError') return false;
@@ -1322,7 +1388,7 @@ function cancelCurrentPlayback() {
 }
 
 function showDetailView(field = null) {
-  if (!window.AndroidJS) {
+  if (!window.AndroidJS || !AppState.transcodingFullOnOff) {
     currentSubtitleTrack = -1; stopTorrentStatsUpdates(); hideSkipButton(); skipIntro = 0; skipCredits = 0;
     currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; thisisseek = false;
     var seekSlider = getEl('seek-slider'); if (seekSlider) seekSlider.value = 0;
@@ -1524,6 +1590,7 @@ async function loadFileInfo(hash, fileId) {
 
 function renderAudioTracks() {
   var audioList = getEl('audio-list'); if (!audioList) return;
+  if (AppState.transcodingFullOnOff) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
   if (!currentAudioTracks || currentAudioTracks.length === 0) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
   var html = '';
   for (var idx = 0; idx < currentAudioTracks.length; idx++) {
@@ -1594,6 +1661,7 @@ async function loadAudioPreference(hash, fileId) {
 
 function renderSubtitleTracks() {
   var subtitlesList = getEl('subtitles-list'); if (!subtitlesList) return;
+  if (AppState.transcodingFullOnOff) { subtitlesList.innerHTML = '<div class="search-result-empty">Нет субтитров</div>'; return; }
   if (!currentSubTracks || currentSubTracks.length === 0) { subtitlesList.innerHTML = '<div class="search-result-empty">Нет субтитров</div>'; return; }
   var html = ''; var isOff = currentSubtitleTrack === -1;
   html += '<div class="subtitle-item ' + (isOff ? 'active' : '') + '" data-track-index="-1"><div class="subtitle-icon">🚫</div><div class="subtitle-info"><div class="subtitle-title">Выключить субтитры</div></div><div class="subtitle-check">✓</div></div>';
