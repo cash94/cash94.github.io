@@ -517,6 +517,7 @@ function destroyHls() {
     AppState.hls.destroy();
     AppState.hls = null;
   }
+  AppState.nativeVideoPlayer = null;
   AppState.isPlaying = false;
 }
 
@@ -1692,16 +1693,18 @@ async function switchAudioTrack(trackIndex) {
 }
 
 function switchNativeAudioTrack(videoPlayer, index) {
-  for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
-    videoPlayer.audioTracks[i].enabled = (i === trackIndex);
+  if (AppState.transcodingFullOnOff && videoPlayer.audioTracks && videoPlayer.audioTracks.length > 0) {
+    for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
+      videoPlayer.audioTracks[i].enabled = (i === trackIndex);
+    }
+    currentAudioTrack = trackIndex;
+    if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+      saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
+    }
+    renderAudioTracks();
+    toggleAudioPanel();
+    return;
   }
-  currentAudioTrack = trackIndex;
-  if (currentTimecodeData.hash && currentTimecodeData.fileId) {
-    saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
-  }
-  renderAudioTracks();
-  toggleAudioPanel();
-  return;
 }
 
 function toggleAudioPanel() {
