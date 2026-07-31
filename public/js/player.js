@@ -1082,7 +1082,7 @@ async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, sig
     return null;
   }
   currentTimecodeData.hash = match[1]; currentTimecodeData.fileId = match[2]; currentTimecodeData.timecode = 0;
-  if (!AppState.transcodingFullOnOff) {
+  if (AppState.transcodingFullOnOff) {
     return true;
   }
   var requests = [
