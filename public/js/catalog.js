@@ -2576,6 +2576,8 @@ function focusRowCardByElement(card) {
 function restoreRowFocus() {
     var savedKey = catalogState.lastSelectedRowKey;
     var savedCol = catalogState.lastSelectedColIndex;
+    catalogState.lastSelectedRowKey = 0;
+    catalogState.lastSelectedColIndex = 0;
 
     if (savedKey != null) {
         // 1) Точное совпадение: нужный ряд + нужная колонка
