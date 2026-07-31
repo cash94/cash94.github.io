@@ -580,7 +580,7 @@ function setupNavigation() {
           AppState.currentScreen = 'search';
           AppState.searchResultsHidden = false;
           setTimeout(function () {
-            if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(options.focusQuery !== false); return; }
+            if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); return; }
             if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
               updateFocusableElements();
               var searchInputIndex = -1, searchBtnIndex = -1, filterToggleIndex = -1, firstFilterIndex = -1;
