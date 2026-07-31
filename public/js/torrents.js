@@ -1390,6 +1390,7 @@ function hideSearchResults() {
     getEl('torrserver-section').style.display = 'block'; searchOverlay.classList.add('hidden'); searchTab.classList.remove('active'); getEl('search-results').innerHTML = ''; toggleSearchFiltersPanel(false);
     if (returnTo === 'detail') {
         AppState.currentScreen = 'detail'; var mainContainer = getEl('main-container'); if (mainContainer && AppState.backupScroll > 0) mainContainer.scrollTop = AppState.backupScroll;
+        AppState.searchReturnTo = null;
         if (catalogTab) catalogTab.classList.remove('active'); torrentsTab.classList.remove('active');
         var detailView = getEl('detail-view'); if (detailView && detailView.style.display !== 'block') { detailView.style.display = 'block'; detailView.style.zIndex = '100'; detailView.style.pointerEvents = 'auto'; }
         setTimeout(function () {
