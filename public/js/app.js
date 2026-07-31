@@ -578,11 +578,13 @@ function setupNavigation() {
           var searchOverlay = getEl('search-overlay');
           if (searchOverlay) searchOverlay.classList.remove('hidden');
           if (detailView) detailView.style.display = 'none';
+          window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+          AppState.playFromHash = false;
+          AppState.isCatalogSerials = false;
           AppState.currentScreen = 'search';
           AppState.searchResultsHidden = false;
           setTimeout(function () {
             if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); return; }
-            window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
           }, 80);
           return;
         }
