@@ -578,8 +578,21 @@ function setupNavigation() {
           var searchOverlay = getEl('search-overlay');
           if (searchOverlay) searchOverlay.classList.remove('hidden');
           AppState.currentScreen = 'search';
-          AppState.isSearch = true;
           AppState.searchResultsHidden = false;
+          setTimeout(function () {
+            if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(options.focusQuery !== false); return; }
+            if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+              updateFocusableElements();
+              var searchInputIndex = -1, searchBtnIndex = -1, filterToggleIndex = -1, firstFilterIndex = -1;
+              for (var i = 0; i < focusableElements.length; i++) {
+                var el = focusableElements[i];
+                if (el.id === 'search-query') searchInputIndex = i; if (el.id === 'search-btn') searchBtnIndex = i; if (el.id === 'filter-toggle') filterToggleIndex = i;
+                if (['sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) firstFilterIndex = i;
+              }
+              var targetIndex = options.focusQuery !== false ? (searchInputIndex !== -1 ? searchInputIndex : (searchBtnIndex !== -1 ? searchBtnIndex : filterToggleIndex)) : (firstFilterIndex !== -1 ? firstFilterIndex : (filterToggleIndex !== -1 ? filterToggleIndex : 0));
+              setFocus(targetIndex !== -1 ? targetIndex : 0);
+            }
+          }, 80);
         }
       }
 
