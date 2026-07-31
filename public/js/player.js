@@ -1636,7 +1636,9 @@ async function loadFileInfo(hash, fileId) {
 
 function renderAudioTracks() {
   var audioList = getEl('audio-list'); if (!audioList) return;
-  //if (AppState.transcodingFullOnOff) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
+  if (AppState.transcodingFullOnOff && (!currentAudioTracks || currentAudioTracks.length === 0)) {
+    audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return;
+  }
   if (!currentAudioTracks || currentAudioTracks.length === 0) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
   var html = '';
   for (var idx = 0; idx < currentAudioTracks.length; idx++) {
@@ -1651,6 +1653,21 @@ function renderAudioTracks() {
   for (var i = 0; i < audioItems.length; i++) {
     (function (item) { item.addEventListener('click', function () { switchAudioTrack(parseInt(item.dataset.trackIndex)); }); })(audioItems[i]);
   }
+}
+
+function collectNativeAudioTracks(videoPlayer) {
+  var list = videoPlayer.audioTracks;
+  if (!list || list.length === 0) return [];
+  var tracks = [];
+  for (var i = 0; i < list.length; i++) {
+    tracks.push({
+      title: list[i].label || ('Дорожка ' + (i + 1)),
+      language: list[i].language || 'und',
+      channels: null,   // audioTracks не отдаёт ни каналы, ни кодек
+      codec: null
+    });
+  }
+  return tracks;
 }
 
 async function switchAudioTrack(trackIndex) {
@@ -1675,12 +1692,16 @@ async function switchAudioTrack(trackIndex) {
 }
 
 function switchNativeAudioTrack(videoPlayer, index) {
-  var list = videoPlayer.audioTracks;
-  if (!list) return false;
-  for (var i = 0; i < list.length; i++) {
-    list[i].enabled = (i === index);   // всем false, нужной — true
+  for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
+    videoPlayer.audioTracks[i].enabled = (i === trackIndex);
   }
-  return true;
+  currentAudioTrack = trackIndex;
+  if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+    saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
+  }
+  renderAudioTracks();
+  toggleAudioPanel();
+  return;
 }
 
 function toggleAudioPanel() {
