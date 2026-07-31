@@ -1206,6 +1206,13 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
     AppState.expectedDuration = videoPlayer.duration;
     AppState.originalDuration = videoPlayer.duration;
     forceUpdateDuration(videoPlayer.duration, videoPlayer.duration, 0);
+    console.log('audioTracks:', videoPlayer.audioTracks);
+    if (videoPlayer.audioTracks) {
+      console.log('Дорожек:', videoPlayer.audioTracks.length);
+      for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
+        console.log(i, videoPlayer.audioTracks[i].label, videoPlayer.audioTracks[i].language, videoPlayer.audioTracks[i].enabled);
+      }
+    }
   };
 
   var onCanPlay = function () {
@@ -1231,6 +1238,7 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
 
   videoPlayer.src = playURL;
   videoPlayer.load();
+  AppState.nativeVideoPlayer = videoPlayer;
   hidePlayerLoading();
 }
 
@@ -1647,6 +1655,9 @@ function renderAudioTracks() {
 
 async function switchAudioTrack(trackIndex) {
   if (trackIndex === currentAudioTrack) { toggleAudioPanel(); return; }
+  if (AppState.transcodingFullOnOff) {
+    switchNativeAudioTrack(AppState.nativeVideoPlayer, trackIndex);
+  }
   thisisseek = false; await saveTimecodeToServer();
   if (currentTimecodeData.hash && currentTimecodeData.fileId) await saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
   var audioPanel = getEl('audio-panel'); var audioBtn = getEl('audio-btn');
@@ -1661,6 +1672,15 @@ async function switchAudioTrack(trackIndex) {
     currentAudioTrack = trackIndex; renderAudioTracks();
   } catch (error) { alert('Ошибка при переключении аудиодорожки'); }
   finally { getEl('playback-overlay').classList.remove('active'); document.querySelector('.playback-text').textContent = 'Воспроизведение...'; }
+}
+
+function switchNativeAudioTrack(videoPlayer, index) {
+  var list = videoPlayer.audioTracks;
+  if (!list) return false;
+  for (var i = 0; i < list.length; i++) {
+    list[i].enabled = (i === index);   // всем false, нужной — true
+  }
+  return true;
 }
 
 function toggleAudioPanel() {
