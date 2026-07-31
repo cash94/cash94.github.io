@@ -2286,6 +2286,7 @@ async function showCatalogList() {
             if (typeof updateFocusableElements === 'function') updateFocusableElements();
             setTimeout(function () {
                 restoreRowFocus();
+                grid.style.display = 'grid';
             }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
         }
     });
