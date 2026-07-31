@@ -517,6 +517,7 @@ function destroyHls() {
     AppState.hls.destroy();
     AppState.hls = null;
   }
+  AppState.nativeVideoPlayer = null;
   AppState.isPlaying = false;
 }
 
@@ -1082,9 +1083,9 @@ async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, sig
     return null;
   }
   currentTimecodeData.hash = match[1]; currentTimecodeData.fileId = match[2]; currentTimecodeData.timecode = 0;
-  if (AppState.transcodingFullOnOff) {
-    return true;
-  }
+  // if (AppState.transcodingFullOnOff) {
+  //   return true;
+  // }
   var requests = [
     loadFileInfo(currentTimecodeData.hash, currentTimecodeData.fileId),
     loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId),
@@ -1206,6 +1207,13 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
     AppState.expectedDuration = videoPlayer.duration;
     AppState.originalDuration = videoPlayer.duration;
     forceUpdateDuration(videoPlayer.duration, videoPlayer.duration, 0);
+    console.log('audioTracks:', videoPlayer.audioTracks);
+    if (videoPlayer.audioTracks) {
+      console.log('Дорожек:', videoPlayer.audioTracks.length);
+      for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
+        console.log(i, videoPlayer.audioTracks[i].label, videoPlayer.audioTracks[i].language, videoPlayer.audioTracks[i].enabled);
+      }
+    }
   };
 
   var onCanPlay = function () {
@@ -1231,6 +1239,7 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
 
   videoPlayer.src = playURL;
   videoPlayer.load();
+  AppState.nativeVideoPlayer = videoPlayer;
   hidePlayerLoading();
 }
 
@@ -1354,18 +1363,18 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; AppState.playbackRetryCount = 0;
   if (!originalUrl || !originalUrl.trim()) { alert('Ошибка: URL не указан'); return false; }
   lastPlaybackFromSearch = fromSearch;
-  if (!AppState.transcodingFullOnOff) {
-    var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
-    if (!metadata || signal.aborted) return false;
-    var { fileInfo, savedAudioTrack, fileName, savedSubTrack, savedTimecode, seekTime } = metadata;
-    initialSeek = seekTime;
-  } else {
-    var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
-    if (metadata) {
-      if (initialSeek === null) initialSeek = 0;
-      var fileName = '';
-    }
-  }
+  //if (!AppState.transcodingFullOnOff) {
+  var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
+  if (!metadata || signal.aborted) return false;
+  var { fileInfo, savedAudioTrack, fileName, savedSubTrack, savedTimecode, seekTime } = metadata;
+  initialSeek = seekTime;
+  // } else {
+  //   var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
+  //   if (metadata) {
+  //     if (initialSeek === null) initialSeek = 0;
+  //     var fileName = '';
+  //   }
+  // }
   if (fileName) updatePlayerTitle(fileName);
   else if (AppState.currentDetailItem && AppState.currentDetailItem.title) updatePlayerTitle(AppState.currentDetailItem.title);
   if (AppState.currentDetailItem.hash) {
@@ -1628,7 +1637,9 @@ async function loadFileInfo(hash, fileId) {
 
 function renderAudioTracks() {
   var audioList = getEl('audio-list'); if (!audioList) return;
-  if (AppState.transcodingFullOnOff) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
+  if (AppState.transcodingFullOnOff && (!currentAudioTracks || currentAudioTracks.length === 0)) {
+    audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return;
+  }
   if (!currentAudioTracks || currentAudioTracks.length === 0) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
   var html = '';
   for (var idx = 0; idx < currentAudioTracks.length; idx++) {
@@ -1645,8 +1656,26 @@ function renderAudioTracks() {
   }
 }
 
+function collectNativeAudioTracks(videoPlayer) {
+  var list = videoPlayer.audioTracks;
+  if (!list || list.length === 0) return [];
+  var tracks = [];
+  for (var i = 0; i < list.length; i++) {
+    tracks.push({
+      title: list[i].label || ('Дорожка ' + (i + 1)),
+      language: list[i].language || 'und',
+      channels: null,   // audioTracks не отдаёт ни каналы, ни кодек
+      codec: null
+    });
+  }
+  return tracks;
+}
+
 async function switchAudioTrack(trackIndex) {
   if (trackIndex === currentAudioTrack) { toggleAudioPanel(); return; }
+  if (AppState.transcodingFullOnOff) {
+    switchNativeAudioTrack(AppState.nativeVideoPlayer, trackIndex);
+  }
   thisisseek = false; await saveTimecodeToServer();
   if (currentTimecodeData.hash && currentTimecodeData.fileId) await saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
   var audioPanel = getEl('audio-panel'); var audioBtn = getEl('audio-btn');
@@ -1661,6 +1690,21 @@ async function switchAudioTrack(trackIndex) {
     currentAudioTrack = trackIndex; renderAudioTracks();
   } catch (error) { alert('Ошибка при переключении аудиодорожки'); }
   finally { getEl('playback-overlay').classList.remove('active'); document.querySelector('.playback-text').textContent = 'Воспроизведение...'; }
+}
+
+function switchNativeAudioTrack(videoPlayer, index) {
+  if (AppState.transcodingFullOnOff && videoPlayer.audioTracks && videoPlayer.audioTracks.length > 0) {
+    for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
+      videoPlayer.audioTracks[i].enabled = (i === trackIndex);
+    }
+    currentAudioTrack = trackIndex;
+    if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+      saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
+    }
+    renderAudioTracks();
+    toggleAudioPanel();
+    return;
+  }
 }
 
 function toggleAudioPanel() {
