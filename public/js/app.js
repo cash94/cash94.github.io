@@ -582,6 +582,7 @@ function setupNavigation() {
           AppState.searchResultsHidden = false;
           setTimeout(function () {
             if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); return; }
+            window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
           }, 80);
           return;
         }
