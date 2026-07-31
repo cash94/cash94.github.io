@@ -583,6 +583,7 @@ function setupNavigation() {
           AppState.isCatalogSerials = false;
           AppState.currentScreen = 'search';
           AppState.searchResultsHidden = false;
+          AppState.clearLastSelected = false;
           setTimeout(function () {
             if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); return; }
           }, 80);
@@ -647,6 +648,12 @@ function restoreFocusAfterNavigation(returnTo, context) {
 
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
       restoreRowFocus();
+      return;
+    } else if (!AppState.clearLastSelected) {
+      window.showCatalogList().then(function () {
+        restoreRowFocus();
+      });
+      AppState.clearLastSelected = true;
       return;
     }
 
