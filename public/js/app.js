@@ -591,7 +591,7 @@ function setupNavigation() {
         }
       }
 
-      if (AppState && !AppState.isSearch && !AppState.playFromHash && detailHistory.length <= 1) {
+      if (AppState && !AppState.isSearch && !AppState.playFromHash && detailHistory.length <= 1 && AppState.clearLastSelected) {
         if (detailView) detailView.style.display = 'none';
       }
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
@@ -649,7 +649,8 @@ function restoreFocusAfterNavigation(returnTo, context) {
       if (detailView) detailView.style.display = 'none';
       restoreRowFocus();
       return;
-    } else if (!AppState.clearLastSelected) {
+    } else if (!AppState.clearLastSelected && AppState.openInRow) {
+      AppState.openInRow = false;
       if (detailView) detailView.style.display = 'none';
       var grid = getEl('torrents-grid');
       if (grid) grid.style.display = 'none';
