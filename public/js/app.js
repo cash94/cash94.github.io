@@ -573,6 +573,14 @@ function setupNavigation() {
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
 
+      if (window.AndroidJS || AppState.transcodingFullOnOff) {
+        if (AppState.searchResultsHidden) {
+          var searchOverlay = getEl('search-overlay');
+          if (searchOverlay) searchOverlay.classList.remove('hidden');
+          AppState.searchResultsHidden = false;
+        }
+      }
+
       if (AppState && !AppState.isSearch && !AppState.playFromHash && detailHistory.length <= 1) {
         if (detailView) detailView.style.display = 'none';
       }
