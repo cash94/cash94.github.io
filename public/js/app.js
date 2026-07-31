@@ -657,6 +657,15 @@ function restoreFocusAfterNavigation(returnTo, context) {
       window.showCatalogList();
       AppState.clearLastSelected = true;
       return;
+    } else {
+      window.loadCatalog(AppState.backCurrentCatalog).then(function () {
+        if (typeof window.ensureCatalogFocus === 'function') {
+          if (detailView) detailView.style.display = 'none';
+          window.ensureCatalogFocus(true);
+          return;
+        }
+      });
+      return;
     }
 
     // Режим сетки (открыт конкретный каталог) — как раньше
