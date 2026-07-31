@@ -578,6 +578,7 @@ function setupNavigation() {
           var searchOverlay = getEl('search-overlay');
           if (searchOverlay) searchOverlay.classList.remove('hidden');
           AppState.currentScreen = 'search';
+          AppState.inSearch = 'search';
           AppState.searchResultsHidden = false;
         }
       }
