@@ -2556,6 +2556,7 @@ function onRowItemClick(item, key, index) {
     catalogState.lastSelectedColIndex = index;
     AppState.catalogIndex = index;
     AppState.androidBackCatalog = item;
+    AppState.openInRow = true;
     showCatalogDetail(item, index, null);
 }
 
