@@ -2285,8 +2285,8 @@ async function showCatalogList() {
         if (AppState.currentScreen === 'catalog' && !catalogState.currentCatalog) {
             if (typeof updateFocusableElements === 'function') updateFocusableElements();
             setTimeout(function () {
-                restoreRowFocus();
                 grid.style.display = 'grid';
+                restoreRowFocus();
             }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
         }
     });
