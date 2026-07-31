@@ -644,12 +644,15 @@ function restoreFocusAfterNavigation(returnTo, context) {
   if (returnTo === 'catalog') {
     AppState.backupScroll = 0;
     AppState.currentScreen = 'catalog';
-    if (detailView) detailView.style.display = 'none';
 
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
+      if (detailView) detailView.style.display = 'none';
       restoreRowFocus();
       return;
     } else if (!AppState.clearLastSelected) {
+      if (detailView) detailView.style.display = 'none';
+      var grid = getEl('torrents-grid');
+      if (grid) grid.style.display = 'none';
       window.showCatalogList();
       AppState.clearLastSelected = true;
       return;
@@ -657,10 +660,12 @@ function restoreFocusAfterNavigation(returnTo, context) {
 
     // Режим сетки (открыт конкретный каталог) — как раньше
     if (typeof window.ensureCatalogFocus === 'function') {
+      if (detailView) detailView.style.display = 'none';
       window.ensureCatalogFocus(true);
       return;
     }
     if (typeof window.focusFirstCatalogCard === 'function') {
+      if (detailView) detailView.style.display = 'none';
       window.focusFirstCatalogCard();
       return;
     }
