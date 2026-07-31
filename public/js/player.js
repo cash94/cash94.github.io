@@ -517,11 +517,6 @@ function destroyHls() {
     AppState.hls.destroy();
     AppState.hls = null;
   }
-
-  if (AppState.shaka) {
-    try { AppState.shaka.destroy(); } catch (e) { }
-    AppState.shaka = null;
-  }
   AppState.isPlaying = false;
 }
 
@@ -1087,9 +1082,9 @@ async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, sig
     return null;
   }
   currentTimecodeData.hash = match[1]; currentTimecodeData.fileId = match[2]; currentTimecodeData.timecode = 0;
-  if (AppState.transcodingFullOnOff) {
-    return true;
-  }
+  // if (AppState.transcodingFullOnOff) {
+  //   return true;
+  // }
   var requests = [
     loadFileInfo(currentTimecodeData.hash, currentTimecodeData.fileId),
     loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId),
@@ -1181,78 +1176,22 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
   var videoPlayer = getEl('video-player');
   destroyHls();
 
-  // Прямой файл — воспроизводим через Shaka Player
+  // Прямой файл — без hls.js, отдаём ссылку нативному <video>
   AppState.seekOffset = 0;
   AppState.expectedDuration = null;
   AppState.originalDuration = null;
+
   showPlayerLoading('Подготовка потока...', null);
 
   var started = false;
-
-  // Уничтожаем предыдущий экземпляр Shaka, если он остался
-  if (AppState.shaka) {
-    try { AppState.shaka.destroy(); } catch (e) { }
-    AppState.shaka = null;
-  }
-
-  // Фолбэк: если Shaka не загрузился (CDN), играем нативным <video>
-  if (typeof shaka === 'undefined') {
-    console.warn('⚠️ Shaka Player не загружен, фолбэк на нативный <video>');
-    var onCanPlayNative = function () {
-      videoPlayer.removeEventListener('canplay', onCanPlayNative);
-      if (started || signal.aborted) return;
-      started = true;
-      hidePlayerLoading();
-      var d = videoPlayer.duration;
-      if (d && isFinite(d) && d > 0) forceUpdateDuration(d, d, 0);
-      if (initialSeek > 0) { try { videoPlayer.currentTime = initialSeek; } catch (e) { } }
-      videoPlayer.play()['catch'](function () { });
-      startTimecodeSaving(); resetMouseIdleTimer(); startNearEndCheck(); startHeartbeat(); startTorrentStatsUpdates();
-    };
-    videoPlayer.addEventListener('canplay', onCanPlayNative);
-    videoPlayer.src = playURL;
-    videoPlayer.load();
-    return;
-  }
-
-  // Создаём Shaka Player и привязываем к <video>
-  var player = new shaka.Player(videoPlayer);
-  AppState.shaka = player;
-
-  // При отмене воспроизведения — уничтожаем плеер
-  var onAbort = function () {
-    if (AppState.shaka === player) {
-      try { player.destroy(); } catch (e) { }
-      AppState.shaka = null;
-    }
-  };
-  signal.addEventListener('abort', onAbort);
-
-  // Обработчик ошибок Shaka
-  player.addEventListener('error', function () {
-    if (signal.aborted || AppState.currentScreen !== 'player') return;
-    if (AppState._loadingTimeout) clearTimeout(AppState._loadingTimeout);
-    hidePlayerLoading();
-    alert('Файл не воспроизводится напрямую: кодек/контейнер не поддерживается устройством');
-  });
-
   var startPlayback = function () {
     if (started || signal.aborted) return;
     started = true;
     if (AppState._loadingTimeout) clearTimeout(AppState._loadingTimeout);
     hidePlayerLoading();
-
-    var duration = videoPlayer.duration;
-    if (duration && isFinite(duration) && duration > 0) {
-      AppState.expectedDuration = duration;
-      AppState.originalDuration = duration;
-      forceUpdateDuration(duration, duration, 0);
-    }
-
     if (initialSeek > 0) {
       try { videoPlayer.currentTime = initialSeek; } catch (e) { }
     }
-
     videoPlayer.play()['catch'](function () {
       videoPlayer.muted = true;
       videoPlayer.play()['catch'](function () { });
@@ -1262,20 +1201,37 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
     startTimecodeSaving(); resetMouseIdleTimer(); startNearEndCheck(); startHeartbeat(); startTorrentStatsUpdates();
   };
 
+  var onLoadedMetadata = function () {
+    videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
+    AppState.expectedDuration = videoPlayer.duration;
+    AppState.originalDuration = videoPlayer.duration;
+    forceUpdateDuration(videoPlayer.duration, videoPlayer.duration, 0);
+  };
+
+  var onCanPlay = function () {
+    videoPlayer.removeEventListener('canplay', onCanPlay);
+    startPlayback();
+    hidePlayerLoading();
+  };
+
+  var onError = function () {
+    videoPlayer.removeEventListener('error', onError);
+    if (signal.aborted || AppState.currentScreen !== 'player') return;
+    hidePlayerLoading();
+    alert('Файл не воспроизводится напрямую: кодек/контейнер не поддерживается устройством');
+  };
+
+  videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
+  videoPlayer.addEventListener('canplay', onCanPlay);
+  videoPlayer.addEventListener('error', onError);
+
   AppState._loadingTimeout = setTimeout(function () {
     if (!started && !signal.aborted) startPlayback();
   }, LOADING_TIMEOUT_MS);
 
-  try {
-    await player.load(playURL);   // Shaka сам определит формат и запустит
-    startPlayback();
-  } catch (error) {
-    if (signal.aborted || AppState.currentScreen !== 'player') return;
-    if (AppState._loadingTimeout) clearTimeout(AppState._loadingTimeout);
-    hidePlayerLoading();
-    console.error('❌ Ошибка загрузки Shaka:', error);
-    alert('Файл не воспроизводится напрямую: кодек/контейнер не поддерживается устройством');
-  }
+  videoPlayer.src = playURL;
+  videoPlayer.load();
+  hidePlayerLoading();
 }
 
 async function initServerProxyPlayback(metadata, initialSeek, signal) {
@@ -1398,18 +1354,18 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; AppState.playbackRetryCount = 0;
   if (!originalUrl || !originalUrl.trim()) { alert('Ошибка: URL не указан'); return false; }
   lastPlaybackFromSearch = fromSearch;
-  if (!AppState.transcodingFullOnOff) {
-    var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
-    if (!metadata || signal.aborted) return false;
-    var { fileInfo, savedAudioTrack, fileName, savedSubTrack, savedTimecode, seekTime } = metadata;
-    initialSeek = seekTime;
-  } else {
-    var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
-    if (metadata) {
-      if (initialSeek === null) initialSeek = 0;
-      var fileName = '';
-    }
-  }
+  //if (!AppState.transcodingFullOnOff) {
+  var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
+  if (!metadata || signal.aborted) return false;
+  var { fileInfo, savedAudioTrack, fileName, savedSubTrack, savedTimecode, seekTime } = metadata;
+  initialSeek = seekTime;
+  // } else {
+  //   var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
+  //   if (metadata) {
+  //     if (initialSeek === null) initialSeek = 0;
+  //     var fileName = '';
+  //   }
+  // }
   if (fileName) updatePlayerTitle(fileName);
   else if (AppState.currentDetailItem && AppState.currentDetailItem.title) updatePlayerTitle(AppState.currentDetailItem.title);
   if (AppState.currentDetailItem.hash) {
@@ -1672,7 +1628,7 @@ async function loadFileInfo(hash, fileId) {
 
 function renderAudioTracks() {
   var audioList = getEl('audio-list'); if (!audioList) return;
-  if (AppState.transcodingFullOnOff) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
+  //if (AppState.transcodingFullOnOff) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
   if (!currentAudioTracks || currentAudioTracks.length === 0) { audioList.innerHTML = '<div class="search-result-empty">Нет аудиодорожек</div>'; return; }
   var html = '';
   for (var idx = 0; idx < currentAudioTracks.length; idx++) {
