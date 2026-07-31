@@ -19,6 +19,7 @@ var CATALOG_CONSTANTS = {
     POSTER_OBSERVER_MARGIN_PX: 300,
     CATALOG_UPDATE_THRESHOLD_HOURS: 6,
     FOCUS_DELAY_MS: 100,
+    ROW_POSTER_CONCURRENCY: 2,
     IMG_SIZES: {
         POSTER_SMALL: 'w185',
         POSTER_MEDIUM: 'w342',
@@ -33,6 +34,7 @@ var CATALOG_CONFIG = {
     cartoons: { name: 'Мультфильмы', url: SERVER_URL + '/api/catalog/cartoons', mediaType: 'movie' },
     cartoons_tv: { name: 'Мультсериалы', url: SERVER_URL + '/api/catalog/cartoons_tv', mediaType: 'tv' },
     anime: { name: 'Аниме', url: SERVER_URL + '/api/catalog/anime', mediaType: 'tv' },
+    rus: { name: 'Русские', url: SERVER_URL + '/api/rus', mediaType: 'movie' },
     quadhd: { name: 'Фильмы в 4K', url: SERVER_URL + '/api/catalog/quadhd', mediaType: 'movie' },
     legends: { name: 'Лучшие фильмы', url: SERVER_URL + '/api/catalog/legends', mediaType: 'movie' },
     history: { name: 'История', url: null, mediaType: 'history', isHistory: true }
@@ -418,7 +420,10 @@ var catalogState = {
     posterLoadQueue: [], posterObserver: null, loadMoreObserver: null,
     cardElements: {},
     posterCache: new LRUCache(CATALOG_CONSTANTS.MAX_POSTER_CACHE),
-    maxPosterCacheSize: CATALOG_CONSTANTS.MAX_POSTER_CACHE
+    maxPosterCacheSize: CATALOG_CONSTANTS.MAX_POSTER_CACHE,
+    rowPosterObserver: null,
+    rowPosterQueue: [],
+    activeRowPosterLoads: 0
 };
 
 var catalogCache = new Map();
@@ -428,6 +433,7 @@ function abortCatalogRequests() {
     if (catalogState.abortController) { catalogState.abortController.abort(); catalogState.abortController = null; }
     if (catalogState.posterObserver) { catalogState.posterObserver.disconnect(); catalogState.posterObserver = null; }
     if (catalogState.loadMoreObserver) { catalogState.loadMoreObserver.disconnect(); catalogState.loadMoreObserver = null; }
+    if (catalogState.rowPosterObserver) { catalogState.rowPosterObserver.disconnect(); catalogState.rowPosterObserver = null; }
 }
 
 function getRatingColor(r) {
@@ -1480,6 +1486,9 @@ function startTrailerBackground(url) {
     var cde = getEl('catalog-detail-extra');
     var sub = getEl('detail-subtitle');          // ★ подзаголовок
     var bb = getEl('back-from-detail');          // ★ кнопка «Назад»
+    if (AppState) {
+        AppState.trailerPlay = true;
+    }
 
     if (backdrop && backdrop.parentNode === dv) {
         dv.insertBefore(video, backdrop);
@@ -1558,6 +1567,9 @@ function startTrailerBackground(url) {
  */
 function stopTrailerBackground() {
     var video = rutubeTrailerState.bgVideo || getEl('trailer-bg-video');
+    if (AppState) {
+        AppState.trailerPlay = false;
+    }
     if (video) {
         if (video._volumeTimer) {
             clearInterval(video._volumeTimer);
@@ -1584,7 +1596,7 @@ function stopTrailerBackground() {
     for (var i = 0; i < fadeInEls.length; i++) {
         (function (el) {
             if (!el) return;
-            el.style.transition = 'opacity 3s ease';
+            el.style.transition = 'opacity 1.5s ease';
             requestAnimationFrame(function () {
                 requestAnimationFrame(function () {
                     el.style.opacity = '1';
@@ -1595,6 +1607,7 @@ function stopTrailerBackground() {
 
     if (backdrop) backdrop.classList.remove('hidden');
 }
+window.stopTrailerBackground = stopTrailerBackground;
 
 /**
  * Открывает трейлер RuTube в основном плеере
@@ -1900,6 +1913,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     dv.style.pointerEvents = 'auto';
     if (mc) mc.style.pointerEvents = 'none';
     if (typeof window.hideCatalogDetailExtra === 'function') window.hideCatalogDetailExtra();
+    if (typeof window.visibleItemsforDetail === 'function') window.visibleItemsforDetail('showCatalogDetail');
     var wb = getEl('catalog-watch-btn');
     if (aw) aw.classList.add('hidden');
     if (rw) rw.classList.add('hidden');
@@ -2223,8 +2237,8 @@ async function showCatalogList() {
     var searchTab = getEl('tab-search');
     if (searchTab) searchTab.classList.remove('active');
 
-    grid.className = 'catalog-rows-container';
-    grid.style.display = 'block';
+    //grid.className = 'catalog-rows-container';
+    //grid.style.display = 'block';
     grid.innerHTML = '<div class="catalog-rows-loading"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка каталогов...</div></div>';
 
     // Категории из CATALOG_CONFIG (в порядке объявления)
@@ -2265,6 +2279,7 @@ async function showCatalogList() {
     }
 
     grid.appendChild(frag);
+    initRowPosterLazyLoading();
 
     requestAnimationFrame(function () {
         if (AppState.currentScreen === 'catalog' && !catalogState.currentCatalog) {
@@ -2282,7 +2297,7 @@ async function showCatalogList() {
  * Загружает до 19 элементов для ряда категории
  */
 async function loadRowItems(key) {
-    var LIMIT = 19;
+    var LIMIT = 10;
     if (key === 'history') {
         var data = await safeFetch(SERVER_URL + '/api/history', { timeout: 10000 });
         if (data && data.success && data.history && data.history.length) {
@@ -2390,7 +2405,7 @@ function createRowCard(item, key, index) {
         (year ? '<span>' + year + '</span>' : '') + '</div>' +
         '</div>';
 
-    loadRowPoster(card, item);
+    //loadRowPoster(card, item);
     return card;
 }
 
@@ -2420,14 +2435,14 @@ async function loadRowPoster(card, item) {
     var cacheKey = id + '_' + mt;
 
     var cached = catalogState.posterCache.get(cacheKey);
-    if (cached) { setRowPosterImg(imgBox, cached); return; }
+    if (cached) { await setRowPosterImg(imgBox, cached); return; }
 
     if (item.poster_path) {
         var url = item.poster_path.indexOf('http') === 0 ? item.poster_path :
             AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM +
             (item.poster_path.indexOf('/') === 0 ? item.poster_path : '/' + item.poster_path);
         catalogState.posterCache.set(cacheKey, url);
-        setRowPosterImg(imgBox, url);
+        await setRowPosterImg(imgBox, url);
         return;
     }
 
@@ -2437,7 +2452,7 @@ async function loadRowPoster(card, item) {
             if (d && d.poster_path) {
                 var url2 = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + d.poster_path;
                 catalogState.posterCache.set(cacheKey, url2);
-                if (card.isConnected) setRowPosterImg(imgBox, url2);
+                if (card.isConnected) await setRowPosterImg(imgBox, url2);
                 return;
             }
         } catch (e) { }
@@ -2446,21 +2461,88 @@ async function loadRowPoster(card, item) {
     if (card.isConnected) imgBox.innerHTML = '<div class="no-poster">Нет постера</div>';
 }
 
+// ==================== ЛЕНИВАЯ ЗАГРУЗКА ПОСТЕРОВ РЯДОВ ====================
+/**
+ * Наблюдает за карточками рядов и ставит в очередь постеры тех,
+ * что попали в зону видимости (+300px предзагрузки).
+ */
+function initRowPosterLazyLoading() {
+    if (catalogState.rowPosterObserver) catalogState.rowPosterObserver.disconnect();
+    catalogState.rowPosterQueue = [];
+    catalogState.activeRowPosterLoads = 0;
+
+    catalogState.rowPosterObserver = new IntersectionObserver(function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+            if (!entries[i].isIntersecting) continue;
+            var card = entries[i].target;
+            if (card.dataset.posterLoaded === '1') continue;
+
+            var key = card.dataset.catalogKey;
+            var idx = parseInt(card.dataset.itemIndex, 10);
+            if (isNaN(idx)) continue;                       // «Показать все» — без постера
+            var items = window.catalogRowsData && window.catalogRowsData[key];
+            if (!items || !items[idx]) continue;
+
+            card.dataset.posterLoaded = '1';                // защита от повторной постановки
+            catalogState.rowPosterQueue.push({ card: card, item: items[idx] });
+            catalogState.rowPosterObserver.unobserve(card);
+        }
+        processRowPosterQueue();
+    }, { rootMargin: CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX + 'px', threshold: 0.1 });
+
+    var cards = document.querySelectorAll('.catalog-row-card');
+    for (var i = 0; i < cards.length; i++) {
+        if (cards[i].dataset.itemIndex !== undefined && cards[i].dataset.posterLoaded !== '1') {
+            catalogState.rowPosterObserver.observe(cards[i]);
+        }
+    }
+}
+
+/**
+ * Обрабатывает очередь: не более ROW_POSTER_CONCURRENCY загрузок одновременно.
+ * Как только одна завершается (загрузка + декод), берётся следующая.
+ */
+function processRowPosterQueue() {
+    while (catalogState.activeRowPosterLoads < CATALOG_CONSTANTS.ROW_POSTER_CONCURRENCY &&
+        catalogState.rowPosterQueue.length > 0) {
+        var task = catalogState.rowPosterQueue.shift();
+        if (!task.card.isConnected) continue;               // карточку могли удалить
+        catalogState.activeRowPosterLoads++;
+        loadRowPoster(task.card, task.item)
+            .catch(function () { })
+            .then(function () {
+                catalogState.activeRowPosterLoads--;
+                setTimeout(processRowPosterQueue, 5);       // дать главному потоку отрисовать кадр
+            });
+    }
+}
+
 function setRowPosterImg(box, url) {
-    var img = new Image();
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
-    var insert = function () {
-        if (!box.isConnected) return;
-        box.innerHTML = '';
-        img.style.opacity = '1';
-        box.appendChild(img);
-    };
-    img.onerror = function () {
-        if (box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
-    };
-    img.src = url;
-    if (typeof img.decode === 'function') img.decode().then(insert).catch(insert);
-    else img.onload = insert;
+    return new Promise(function (resolve) {
+        var img = new Image();
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
+        var settled = false;
+        var settle = function () { if (!settled) { settled = true; resolve(); } };
+        var insert = function () {
+            if (box.isConnected && img.naturalWidth > 0) {
+                box.innerHTML = '';
+                img.style.opacity = '1';
+                box.appendChild(img);
+            }
+            settle();
+        };
+        var fail = function () {
+            if (box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
+            settle();
+        };
+        img.onload = function () {
+            // Декодируем в фоновом потоке (Chromium 64+), не блокируя main thread
+            if (typeof img.decode === 'function') img.decode().then(insert).catch(insert);
+            else insert();
+        };
+        img.onerror = fail;
+        img.src = url;
+    });
 }
 
 /**
@@ -2469,9 +2551,56 @@ function setRowPosterImg(box, url) {
 function onRowItemClick(item, key, index) {
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
+    catalogState.lastSelectedRowKey = key;
+    catalogState.lastSelectedColIndex = index;
     AppState.catalogIndex = index;
     AppState.androidBackCatalog = item;
     showCatalogDetail(item, index, null);
+}
+
+// Фокус на конкретную карточку ряда + скролл карусели
+function focusRowCardByElement(card) {
+    if (!card) return;
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+    var idx = (typeof focusableElements !== 'undefined') ? focusableElements.indexOf(card) : -1;
+    if (idx !== -1 && typeof setFocus === 'function') {
+        setFocus(idx);
+    } else if (typeof focusEl === 'function') {
+        focusEl(card);
+    }
+    if (typeof scrollRowToCard === 'function') scrollRowToCard(card);
+}
+
+// Возврат фокуса на кликнутую карточку ряда
+function restoreRowFocus() {
+    var savedKey = catalogState.lastSelectedRowKey;
+    var savedCol = catalogState.lastSelectedColIndex;
+
+    if (savedKey != null) {
+        // 1) Точное совпадение: нужный ряд + нужная колонка
+        var card = document.querySelector(
+            '.catalog-row-card[data-catalog-key="' + savedKey + '"][data-item-index="' + savedCol + '"]'
+        );
+        if (card && card.offsetParent !== null) {
+            focusRowCardByElement(card);
+            return;
+        }
+        // 2) Ряд есть, но колонка недоступна — первая карточка этого ряда
+        var firstInRow = document.querySelector(
+            '.catalog-row-card[data-catalog-key="' + savedKey + '"]'
+        );
+        if (firstInRow && firstInRow.offsetParent !== null) {
+            focusRowCardByElement(firstInRow);
+            return;
+        }
+    }
+
+    // 3) Fallback — первая карточка первого ряда
+    if (typeof getCatalogRows === 'function' && typeof focusRowCard === 'function') {
+        var rows = getCatalogRows();
+        if (rows.length) focusRowCard(0, 0, rows);
+    }
 }
 
 // ==================== НАВИГАЦИЯ ПО РЯДАМ ====================
