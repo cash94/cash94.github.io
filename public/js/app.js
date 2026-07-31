@@ -650,9 +650,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
       restoreRowFocus();
       return;
     } else if (!AppState.clearLastSelected) {
-      window.showCatalogList().then(function () {
-        restoreRowFocus();
-      });
+      window.showCatalogList();
       AppState.clearLastSelected = true;
       return;
     }
