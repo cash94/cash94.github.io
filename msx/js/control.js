@@ -1139,6 +1139,18 @@ function onBack() {
         return true;
     }
     if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') {
+        // Та же цепочка, что и в closeSearchBtn:
+        // если вернулись из detail в поиск — «назад» открывает карточку каталога
+        if (AppState && AppState.openCatalogDetailOnSearchClose) {
+            var catalogItem = AppState.openCatalogDetailOnSearchClose;
+            AppState.openCatalogDetailOnSearchClose = null;
+            AppState.searchReturnTo = null;
+            if (catalogItem && catalogItem.id && typeof window.showCatalogDetail === 'function') {
+                s.classList.add('hidden');
+                window.showCatalogDetail(catalogItem, AppState.catalogIndex || 0, AppState.catalogPu || null);
+                return true;
+            }
+        }
         if (typeof window.hideSearchResults === 'function') { window.hideSearchResults(); focusEl(getTorrentTabs()[2]); }
         else leaveSearchToTorrents();
         return true;
