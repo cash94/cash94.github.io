@@ -2285,7 +2285,8 @@ async function showCatalogList() {
         if (AppState.currentScreen === 'catalog' && !catalogState.currentCatalog) {
             if (typeof updateFocusableElements === 'function') updateFocusableElements();
             setTimeout(function () {
-                if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+                grid.style.display = 'grid';
+                restoreRowFocus();
             }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
         }
     });
@@ -2555,6 +2556,7 @@ function onRowItemClick(item, key, index) {
     catalogState.lastSelectedColIndex = index;
     AppState.catalogIndex = index;
     AppState.androidBackCatalog = item;
+    AppState.openInRow = true;
     showCatalogDetail(item, index, null);
 }
 
@@ -2576,6 +2578,8 @@ function focusRowCardByElement(card) {
 function restoreRowFocus() {
     var savedKey = catalogState.lastSelectedRowKey;
     var savedCol = catalogState.lastSelectedColIndex;
+    catalogState.lastSelectedRowKey = 0;
+    catalogState.lastSelectedColIndex = 0;
 
     if (savedKey != null) {
         // 1) Точное совпадение: нужный ряд + нужная колонка
