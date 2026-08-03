@@ -2261,7 +2261,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 
 (function () {
     function initHorizontalScroll() {
-        var c = document.querySelectorAll('.files-list,.catalog-detail-actors-grid,.catalog-detail-recommendations-grid');
+        var c = document.querySelectorAll('.files-list,.catalog-detail-actors-grid,.catalog-detail-recommendations-grid, .catalog-row');
         for (var i = 0; i < c.length; i++) {
             (function (cnt) {
                 if (cnt._wh) return;
