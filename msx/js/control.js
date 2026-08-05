@@ -239,8 +239,16 @@ function belongsToScreen(el, screen) {
             ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-catalog', 'tab-donate'].indexOf(el.id) !== -1;
     }
     if (screen === 'search') {
+        // ★ Проверяем панель фильтров
+        var filterPanel = getEl('search-filters-panel');
+        if (filterPanel && filterPanel.classList.contains('active')) {
+            if (filterPanel.contains(el)) return true;
+        }
+
         return el.closest('.search-result-item') || el.closest('.global-search-card') ||
-            ['search-query', 'filter-toggle', 'search-btn', 'close-search', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters'].indexOf(el.id) !== -1;
+            ['search-query', 'filter-toggle', 'search-btn', 'close-search',
+                'filter-back-btn', 'filter-close-btn', 'reset-filters'].indexOf(el.id) !== -1 ||
+            el.classList.contains('filter-item') || el.classList.contains('filter-value-item');
     }
     if (screen === 'detail') {
         return !!(el.closest('#detail-view') || el.closest('.file-item') || el.closest('back-from-detail') ||
@@ -279,9 +287,40 @@ function getSearchTop() {
 }
 
 function getSearchFilters() {
-    var ids = ['torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters'], v = [];
-    for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (VISIBLE(e)) v.push(e); }
-    return v;
+    // Новая структура: элементы внутри панели фильтров
+    var panel = getEl('search-filters-panel');
+    if (!panel || !panel.classList.contains('active')) {
+        // Панель закрыта - возвращаем только кнопку toggle
+        var toggle = getEl('filter-toggle');
+        return toggle && VISIBLE(toggle) ? [toggle] : [];
+    }
+
+    // Панель открыта - собираем элементы
+    var elements = [];
+    var filterItems = panel.querySelectorAll('.filter-item');
+    var filterValueItems = panel.querySelectorAll('.filter-value-item');
+    var backBtn = getEl('filter-back-btn');
+    var closeBtn = getEl('filter-close-btn');
+    var resetBtn = getEl('reset-filters');
+
+    // Кнопки навигации
+    if (backBtn && VISIBLE(backBtn)) elements.push(backBtn);
+    if (closeBtn && VISIBLE(closeBtn)) elements.push(closeBtn);
+
+    // Элементы фильтров (главный экран)
+    for (var i = 0; i < filterItems.length; i++) {
+        if (VISIBLE(filterItems[i])) elements.push(filterItems[i]);
+    }
+
+    // Элементы значений (экран значений)
+    for (var j = 0; j < filterValueItems.length; j++) {
+        if (VISIBLE(filterValueItems[j])) elements.push(filterValueItems[j]);
+    }
+
+    // Кнопка сброса
+    if (resetBtn && VISIBLE(resetBtn)) elements.push(resetBtn);
+
+    return elements;
 }
 
 function getSearchResults() {
@@ -528,21 +567,33 @@ var ScreenStrategies = {
             var f = document.querySelector('.focused');
             if (!force && belongsToScreen(f, 'search')) return true;
             var t = getSearchTop(), fl = getSearchFilters(), r = getSearchResults(), q = getEl('search-query');
+            var panel = getEl('search-filters-panel');
+            if (panel && panel.classList.contains('active')) {
+                var firstItem = panel.querySelector('.filter-item, .filter-value-item');
+                if (firstItem) return focusEl(firstItem);
+            }
             return focusEl((preferInput && q) ? q : (t[0] || fl[0] || r[0] || q));
         },
         handleNavigation: function (dir) {
             var cm = typeof window.getCurrentSearchMode === 'function' ? window.getCurrentSearchMode() : 'torrentsearch';
             var f = belongsToScreen(document.querySelector('.focused'), 'search') ? document.querySelector('.focused') : null;
             var q = getEl('search-query'), t = getSearchTop(), fl = getSearchFilters(), r = getSearchResults();
+            var panel = getEl('search-filters-panel');
+            var isInFilterPanel = panel && panel.classList.contains('active');
+            if (isInFilterPanel) {
+                return handleFilterPanelNavigation(dir, f);
+            }
             var tWQ = []; for (var i = 0; i < t.length; i++) if (t[i] && t[i].id !== 'search-query') tWQ.push(t[i]);
             var te = tWQ[0] || fl[0] || r[0] || q;
             if (!f) return this.ensureFocus(true, false);
-            if (document.activeElement === q && ['left', 'right', 'up', 'down'].indexOf(dir) !== -1) { blurEditor(); return focusEl(te); }
+            if (document.activeElement === q && ['left', 'right', 'up', 'down'].indexOf(dir) !== -1) {
+                blurEditor();
+                return focusEl(te);
+            }
             var ti = -1, fi = -1, ri = -1;
             for (var i = 0; i < t.length; i++) if (f === t[i]) { ti = i; break; }
             for (var i = 0; i < fl.length; i++) if (f === fl[i]) { fi = i; break; }
             for (var i = 0; i < r.length; i++) if (f === r[i]) { ri = i; break; }
-
             if (cm === 'torrentsearch') {
                 if (ti !== -1) {
                     if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f);
@@ -553,29 +604,23 @@ var ScreenStrategies = {
                 }
                 if (fi !== -1) {
                     if (dir === 'left') return focusEl(fl[Math.max(0, fi - 1)] || f);
-                    if (dir === 'right') return focusEl(fl[Math.min(fl.length - 1, fi + 1)] || f);
-                    if (dir === 'up') { closeFiltersPanel(); return focusEl(q); }
-                    if (dir === 'down') { closeFiltersPanel(); if (r.length > 0) { return focusEl(r[0], { direction: 'down' }); } return true; }
+                    if (dir === 'right') {
+                        if (f && f.id === 'filter-toggle') { openFilterPanelAndFocus(); return true; }
+                        return focusEl(fl[Math.min(fl.length - 1, fi + 1)] || f);
+                    }
+                    if (dir === 'up') { return focusEl(q); }
+                    if (dir === 'down') { if (r.length > 0) { return focusEl(r[0], { direction: 'down' }); } return true; }
                     return true;
                 }
                 if (ri !== -1) {
                     if (dir === 'up') {
-                        if (ri === 1) {
-                            return focusEl(r[ri - 1] || f, { direction: 'up' });
-                        } else if (ri > 1) {
-                            return focusEl(r[ri - 1] || f, { direction: 'up' });
-                        }
-                        return focusEl(q);
+                        if (ri === 0) { return focusEl(q); }
+                        return focusEl(r[Math.max(0, ri - 1)] || f, { direction: 'up' });
                     }
                     if (dir === 'down') {
-                        var ar = r.length;
-                        if (ar === ri + 1) {
-                            return focusEl(r[Math.min(r.length - 1, ri + 1)] || f, { direction: 'down' });
-                        } else {
-                            return focusEl(r[Math.min(r.length - 1, ri + 1)] || f, { direction: 'down' });
-                        }
+                        return focusEl(r[Math.min(r.length - 1, ri + 1)] || f, { direction: 'down' });
                     }
-                    if (dir === 'left') { openFiltersPanelAndFocus(); return true; }
+                    if (dir === 'left') { openFilterPanelAndFocus(); return true; }
                     if (dir === 'right') {
                         if (f && (f.classList.contains('search-result-item') || f.classList.contains('global-search-card'))) {
                             var pb = f.querySelector('.search-result-play'), m = pb ? pb.dataset.magnet : null, h = pb ? pb.dataset.hash : null, sr = pb ? pb.dataset.result : null;
@@ -601,9 +646,12 @@ var ScreenStrategies = {
                 }
                 if (fi !== -1) {
                     if (dir === 'left') return focusEl(fl[Math.max(0, fi - 1)] || f);
-                    if (dir === 'right') return focusEl(fl[Math.min(fl.length - 1, fi + 1)] || f);
-                    if (dir === 'up') { closeFiltersPanel(); return focusEl(q); }
-                    if (dir === 'down') { closeFiltersPanel(); if (r.length > 0) return focusEl(r[0]); return true; }
+                    if (dir === 'right') {
+                        if (f && f.id === 'filter-toggle') { openFilterPanelAndFocus(); return true; }
+                        return focusEl(fl[Math.min(fl.length - 1, fi + 1)] || f);
+                    }
+                    if (dir === 'up') { return focusEl(q); }
+                    if (dir === 'down') { if (r.length > 0) return focusEl(r[0]); return true; }
                     return true;
                 }
                 if (ri !== -1) {
@@ -618,17 +666,83 @@ var ScreenStrategies = {
             }
             return false;
         },
+        // ✅ onOk НА ВЕРХНЕМ УРОВНЕ стратегии search
         onOk: function (f) {
             if (!belongsToScreen(f, 'search')) return this.ensureFocus(true, true);
+            var panel = getEl('search-filters-panel');
+            if (panel && panel.classList.contains('active')) {
+                if (f.classList.contains('filter-item')) {
+                    var clickedFilterId = f.dataset.filter; // запоминаем какой фильтр открыли
+                    f.click();
+                    // ★ После click() DOM меняется — ждём и фокусируемся на текущем значении
+                    setTimeout(function () {
+                        invalidateFocusCache();
+                        updateFocusableElements();
+                        var valuesScreen = panel.querySelector('.filter-values-screen');
+                        if (valuesScreen && valuesScreen.style.display !== 'none') {
+                            var valuesList = panel.querySelector('#filter-values-list');
+                            var selectedItem = valuesList ? valuesList.querySelector('.filter-value-item.selected') : null;
+                            if (selectedItem && VISIBLE(selectedItem)) {
+                                focusEl(selectedItem);
+                            } else if (valuesList) {
+                                var firstItem = valuesList.querySelector('.filter-value-item');
+                                if (firstItem) focusEl(firstItem);
+                            }
+                        }
+                    }, 50);
+                    return true;
+                }
+                if (f.classList.contains('filter-value-item')) {
+                    f.click();
+                    // setTimeout(function () {
+                    //     invalidateFocusCache();
+                    //     updateFocusableElements();
+                    //     var mainScreen = panel.querySelector('.filter-main-screen');
+                    //     if (mainScreen && mainScreen.style.display !== 'none') {
+                    //         var items = panel.querySelectorAll('.filter-item');
+                    //         for (var i = 0; i < items.length; i++) {
+                    //             if (VISIBLE(items[i])) { focusEl(items[i]); break; }
+                    //         }
+                    //     }
+                    // }, 50);
+                    return true;
+                }
+                if (f.id === 'filter-back-btn') {
+                    f.click();
+                    setTimeout(function () {
+                        invalidateFocusCache();
+                        updateFocusableElements();
+                        var firstItem = panel.querySelector('.filter-item');
+                        if (firstItem) focusEl(firstItem);
+                    }, 50);
+                    return true;
+                }
+                if (f.id === 'filter-close-btn') {
+                    closeFilterPanel();
+                    return true;
+                }
+                if (f.id === 'reset-filters') {
+                    f.click();
+                    setTimeout(function () {
+                        invalidateFocusCache();
+                        updateFocusableElements();
+                        var firstItem = panel.querySelector('.filter-item');
+                        if (firstItem) focusEl(firstItem);
+                    }, 50);
+                    return true;
+                }
+            }
             if (f.id === 'search-query') { focusEl(f, { nativeFocus: true }); try { f.click(); } catch (e) { } try { f.focus(); } catch (e) { } try { if (f.select) f.select(); } catch (e) { } return true; }
-            var p = getEl('search-filters-panel');
-            if (f.id === 'filter-toggle') { if (p && p.classList.contains('collapsed')) { openFiltersPanelAndFocus(); return true; } else { closeFiltersPanel(); return true; } }
+            if (f.id === 'filter-toggle') {
+                var p = getEl('search-filters-panel');
+                if (p && !p.classList.contains('active')) { openFilterPanelAndFocus(); return true; }
+                else { closeFilterPanel(); return true; }
+            }
             if (f.tagName === 'SELECT' || f.id === 'filter-year') return openNativeSearchControl(f);
             clickEl(f);
             return true;
         }
     },
-
     detail: {
         getItems: getDetailItems,
         ensureFocus: function (force) {
@@ -772,6 +886,88 @@ var ScreenStrategies = {
     }
 };
 
+// ==================== НАВИГАЦИЯ В ПАНЕЛИ ФИЛЬТРОВ ====================
+function handleFilterPanelNavigation(dir, currentElement) {
+    var panel = getEl('search-filters-panel');
+    if (!panel) return false;
+
+    // ★ Обязательно инвалидируем кэш!
+    invalidateFocusCache();
+    updateFocusableElements();
+
+    var filterItems = Array.from(panel.querySelectorAll('.filter-item'));
+    var filterValueItems = Array.from(panel.querySelectorAll('.filter-value-item'));
+    var backBtn = getEl('filter-back-btn');
+    var closeBtn = getEl('filter-close-btn');
+    var resetBtn = getEl('reset-filters');
+
+    // Определяем текущий экран
+    var mainScreen = panel.querySelector('.filter-main-screen');
+    var valuesScreen = panel.querySelector('.filter-values-screen');
+    var isMainScreen = mainScreen && mainScreen.style.display !== 'none';
+    var isValuesScreen = valuesScreen && valuesScreen.style.display !== 'none';
+
+    if (isMainScreen) {
+        // === Навигация на главном экране ===
+        var allItems = [];
+        if (closeBtn && VISIBLE(closeBtn)) allItems.push(closeBtn);
+        for (var i = 0; i < filterItems.length; i++) allItems.push(filterItems[i]);
+        if (resetBtn && VISIBLE(resetBtn)) allItems.push(resetBtn);
+
+        var idx = allItems.indexOf(currentElement);
+
+        if (dir === 'up') {
+            if (idx > 0) return focusEl(allItems[idx - 1], { direction: 'up' });
+            return true;
+        }
+        if (dir === 'down') {
+            if (idx < allItems.length - 1) return focusEl(allItems[idx + 1], { direction: 'down' });
+            return true;
+        }
+        if (dir === 'left') {
+            // Закрыть панель
+            closeFilterPanel();
+            return true;
+        }
+        if (dir === 'right') return true;
+    }
+
+    if (isValuesScreen) {
+        // === Навигация на экране значений ===
+        var allItems = [];
+        if (backBtn && VISIBLE(backBtn)) allItems.push(backBtn);
+        for (var i = 0; i < filterValueItems.length; i++) allItems.push(filterValueItems[i]);
+
+        var idx = allItems.indexOf(currentElement);
+
+        if (dir === 'up') {
+            if (idx > 0) return focusEl(allItems[idx - 1], { direction: 'up' });
+            return true;
+        }
+        if (dir === 'down') {
+            // ★ Если стоим на кнопке "Назад" — прыгаем сразу на selected элемент
+            if (currentElement === backBtn) {
+                var selectedInList = panel.querySelector('.filter-value-item.selected');
+                if (selectedInList && VISIBLE(selectedInList)) {
+                    return focusEl(selectedInList, { direction: 'down' });
+                }
+            }
+            if (idx < allItems.length - 1) return focusEl(allItems[idx + 1], { direction: 'down' });
+            return true; // конец списка — стоим
+        }
+        if (dir === 'left') {
+            // Кнопка "назад" — вернуться на главный экран
+            if (backBtn && VISIBLE(backBtn)) {
+                backBtn.click();
+                return true;
+            }
+        }
+        if (dir === 'right') return true;
+    }
+
+    return true;
+}
+
 // ==================== УПРАВЛЕНИЕ ФОКУСОМ ====================
 // updateFocusableElements с кэшированием
 function updateFocusableElements() {
@@ -890,13 +1086,41 @@ function updateFocusableElements() {
     }
     if (screen === 'search') {
         var q = getEl('search-query'), ft = getEl('filter-toggle'), sb = getEl('search-btn'), cs = getEl('close-search');
-        var fcs = document.querySelectorAll('#torrent-movie, #sort-by, #filter-quality, #filter-content-type, #filter-tracker, #filter-year, #filter-season, #filter-voice, #filter-videotype, #reset-filters');
         var ris = document.querySelectorAll('.search-result-item, .global-search-card');
         var res = []; for (var i = 0; i < ris.length; i++) if (ris[i] && ris[i].offsetParent !== null) res.push(ris[i]);
-        var filters = []; for (var i = 0; i < fcs.length; i++) if (fcs[i] && fcs[i].offsetParent !== null) filters.push(fcs[i]);
+
         var fl = [q, ft, sb, cs];
-        for (var i = 0; i < filters.length; i++) fl.push(filters[i]);
+
+        // ★ НОВАЯ ПАНЕЛЬ ФИЛЬТРОВ — добавляем её элементы
+        var filterPanel = getEl('search-filters-panel');
+        if (filterPanel && filterPanel.classList.contains('active')) {
+            var backBtn = getEl('filter-back-btn');
+            var closeBtn = getEl('filter-close-btn');
+            var resetBtn = getEl('reset-filters');
+
+            // Порядок важен: сначала кнопки навигации, потом элементы
+            if (backBtn && VISIBLE(backBtn)) fl.push(backBtn);
+            if (closeBtn && VISIBLE(closeBtn)) fl.push(closeBtn);
+
+            // Главный экран: .filter-item
+            var filterItems = filterPanel.querySelectorAll('.filter-item');
+            for (var fi = 0; fi < filterItems.length; fi++) {
+                if (filterItems[fi] && filterItems[fi].offsetParent !== null) fl.push(filterItems[fi]);
+            }
+
+            // Экран значений: .filter-value-item
+            var valueItems = filterPanel.querySelectorAll('.filter-value-item');
+            for (var vi = 0; vi < valueItems.length; vi++) {
+                if (valueItems[vi] && valueItems[vi].offsetParent !== null) fl.push(valueItems[vi]);
+            }
+
+            // Кнопка сброса
+            if (resetBtn && VISIBLE(resetBtn)) fl.push(resetBtn);
+        }
+
+        // Результаты поиска (после фильтров)
         for (var i = 0; i < res.length; i++) fl.push(res[i]);
+
         focusableElements = fl.filter(Boolean);
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
@@ -1111,6 +1335,22 @@ function onBack() {
     var cat = currentScreen() === 'catalog', dn = currentScreen() === 'donate';
 
     var configScreen = getEl('config-screen');
+    // Проверяем, открыта ли панель фильтров
+    var filterPanel = getEl('search-filters-panel');
+    if (filterPanel && filterPanel.classList.contains('active')) {
+        // Проверяем, на каком экране панели находимся
+        var valuesScreen = filterPanel.querySelector('.filter-values-screen');
+        if (valuesScreen && valuesScreen.style.display !== 'none') {
+            // На экране значений - вернуться на главный экран
+            var backBtn = getEl('filter-back-btn');
+            if (backBtn) backBtn.click();
+            return true;
+        } else {
+            // На главном экране - закрыть панель
+            closeFilterPanel();
+            return true;
+        }
+    }
     if (configScreen && getComputedStyle(configScreen).display !== 'none') {
         var focusedElement = document.querySelector('.focused');
         var menuItems = getConfigMenuItems();
@@ -1136,6 +1376,20 @@ function onBack() {
     if (AppState.syncCodeScreen == true) { toggleSyncOverlay(); return true; }
     if (typeof window.closeCatalogTrailerOverlay === 'function' && window.closeCatalogTrailerOverlay()) {
         setTimeout(function () { ScreenStrategies.detail.ensureFocus(true); }, 80);
+        return true;
+    }
+    // ★ Панель фильтров — проверяем ПЕРЕД search-overlay
+    var filterPanel = getEl('search-filters-panel');
+    if (filterPanel && filterPanel.classList.contains('active')) {
+        var valuesScreen = filterPanel.querySelector('.filter-values-screen');
+        if (valuesScreen && valuesScreen.style.display !== 'none') {
+            // На экране значений — вернуться на главный
+            var backBtn = getEl('filter-back-btn');
+            if (backBtn) backBtn.click();
+        } else {
+            // На главном экране — закрыть панель
+            closeFilterPanel();
+        }
         return true;
     }
     if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') {
@@ -1617,12 +1871,32 @@ function focusEl(el, opts) {
     var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
     var isRowCard = el.classList && el.classList.contains('catalog-row-card');
 
+    // ★ НОВОЕ: проверка, находится ли элемент внутри панели фильтров
+    var isFilterItem = el.classList && (el.classList.contains('filter-item') || el.classList.contains('filter-value-item'));
+    var filterMainScreen = el.closest && el.closest('.filter-main-screen');
+    var filterValuesScreen = el.closest && el.closest('.filter-values-screen');
+    var isInFilterPanel = filterMainScreen || filterValuesScreen ||
+        el.id === 'filter-back-btn' || el.id === 'filter-close-btn' ||
+        el.id === 'reset-filters';
 
     if (s === 'catalog' || s === 'torrents' || s === 'config') {
         var rowVp = (isRowCard && el.closest) ? el.closest('.catalog-row-viewport') : null;
         container = rowVp || getEl('main-container');
     } else if (s === 'search') {
-        container = getEl('search-results');
+        // ★ Если элемент внутри панели фильтров — используем контейнер панели
+        if (isInFilterPanel) {
+            if (filterValuesScreen) {
+                container = filterValuesScreen;
+            } else if (filterMainScreen) {
+                container = filterMainScreen;
+            } else {
+                // Кнопки шапки панели (back, close, reset) — используем саму панель
+                var panel = getEl('search-filters-panel');
+                container = panel || getEl('search-results');
+            }
+        } else {
+            container = getEl('search-results');
+        }
     } else if (s === 'detail') {
         if (isFI) {
             container = getEl('files-list');
@@ -1741,8 +2015,51 @@ function leaveSearchToTorrents() {
     else { clickEl(getEl('close-search') || getEl('tab-torrents')); setTimeout(function () { var rt = (window.AppState && AppState.searchReturnTo === 'catalog') ? 'catalog' : 'torrents'; if (rt === 'catalog') ScreenStrategies.catalog.ensureFocus(true); else ScreenStrategies.torrents.ensureFocus(true); }, 150); }
 }
 
-function closeFiltersPanel() { var p = getEl('search-filters-panel'), t = getEl('filter-toggle'); if (p && !p.classList.contains('collapsed')) { if (typeof toggleSearchFiltersPanel === 'function') toggleSearchFiltersPanel(false); else if (t) t.click(); } }
-function openFiltersPanelAndFocus() { var p = getEl('search-filters-panel'), t = getEl('filter-toggle'); if (p && p.classList.contains('collapsed')) { if (typeof toggleSearchFiltersPanel === 'function') toggleSearchFiltersPanel(true); else if (t) t.click(); setTimeout(function () { updateFocusableElements(); var ff = document.querySelector('#torrent-movie,#sort-by,#filter-quality,#filter-content-type,#filter-tracker,#filter-year,#filter-season,#filter-voice,#filter-videotype,#reset-filters'); if (ff) { var fi = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i] === ff) { fi = i; break; } if (fi !== -1) setFocus(fi); } }, 50); } }
+function closeFilterPanel() {
+    var panel = getEl('search-filters-panel');
+    var toggleBtn = getEl('filter-toggle');
+    var overlay = getEl('filter-overlay');
+    if (panel) {
+        panel.classList.remove('active');
+        if (toggleBtn) toggleBtn.classList.remove('active');
+        if (overlay) overlay.classList.remove('active');
+        invalidateFocusCache();
+        setTimeout(function () {
+            updateFocusableElements();
+            if (toggleBtn && toggleBtn.offsetParent !== null) {
+                focusEl(toggleBtn);
+            } else {
+                var q = getEl('search-query');
+                if (q) focusEl(q);
+            }
+        }, 200);
+    }
+}
+
+function openFilterPanelAndFocus() {
+    var panel = getEl('search-filters-panel');
+    var toggleBtn = getEl('filter-toggle');
+    var overlay = getEl('filter-overlay');
+
+    if (panel) {
+        panel.classList.add('active');
+        if (toggleBtn) toggleBtn.classList.add('active');
+        if (overlay) overlay.classList.add('active');
+
+        // ★ Инвалидируем кэш и фокусируемся
+        invalidateFocusCache();
+        setTimeout(function () {
+            updateFocusableElements();
+            var closeBtn = getEl('filter-close-btn');
+            if (closeBtn && VISIBLE(closeBtn)) {
+                focusEl(closeBtn);
+            } else {
+                var firstItem = panel.querySelector('.filter-item');
+                if (firstItem) focusEl(firstItem);
+            }
+        }, 150);
+    }
+}
 
 function scrollToActiveConfigItem() { var ai = document.querySelector('#config-screen .focused'), cs = document.querySelector('#config-screen'), it = getConfigItems(); if (!ai || !cs) return; var sc = cs; while (sc && sc.scrollHeight <= sc.clientHeight) { sc = sc.parentElement; if (!sc || sc === document.body) { sc = window; break; } } var iw = (sc === window), cur = iw ? window.scrollY : sc.scrollTop, ci = -1; for (var i = 0; i < it.length; i++) if (ai === it[i]) { ci = i; break; } var ar = ai.getBoundingClientRect(), ct = iw ? 0 : sc.getBoundingClientRect().top, ot = ar.top - ct; if (ci === it.length - 2) { if (iw) window.scrollTo(0, document.body.scrollHeight - window.innerHeight); else sc.scrollTop = sc.scrollHeight - sc.clientHeight; return; } if (ci === 1) { if (iw) window.scrollTo(0, 0); else sc.scrollTop = 0; return; } var ch = iw ? window.innerHeight : sc.clientHeight; if (ot < 0) { var ns = cur + ot - 10; if (iw) window.scrollTo(0, ns); else sc.scrollTop = ns; } else if (ot + ar.height > ch) { var ns = cur + (ot + ar.height - ch) + 10; if (iw) window.scrollTo(0, ns); else sc.scrollTop = ns; } }
 
