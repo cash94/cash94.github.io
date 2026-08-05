@@ -137,15 +137,22 @@ function cycleFilterButton(filterType, direction = 1) {
 function toggleSearchFiltersPanel(forceOpen) {
     var panel = getEl('search-filters-panel');
     var toggleBtn = getEl('filter-toggle');
+    var overlay = getEl('filter-overlay');
+
     if (!panel) return false;
-    var shouldOpen = (forceOpen === undefined) ? panel.classList.contains('collapsed') : !!forceOpen;
+
+    var shouldOpen = (forceOpen === undefined) ? !panel.classList.contains('active') : !!forceOpen;
+
     if (shouldOpen) {
-        panel.classList.remove('collapsed');
+        panel.classList.add('active');
+        if (overlay) overlay.classList.add('active');
         if (toggleBtn) toggleBtn.classList.add('active');
     } else {
-        panel.classList.add('collapsed');
+        panel.classList.remove('active');
+        if (overlay) overlay.classList.remove('active');
         if (toggleBtn) toggleBtn.classList.remove('active');
     }
+
     return shouldOpen;
 }
 window.toggleSearchFiltersPanel = toggleSearchFiltersPanel;
