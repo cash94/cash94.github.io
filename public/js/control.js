@@ -694,17 +694,17 @@ var ScreenStrategies = {
                 }
                 if (f.classList.contains('filter-value-item')) {
                     f.click();
-                    setTimeout(function () {
-                        invalidateFocusCache();
-                        updateFocusableElements();
-                        var mainScreen = panel.querySelector('.filter-main-screen');
-                        if (mainScreen && mainScreen.style.display !== 'none') {
-                            var items = panel.querySelectorAll('.filter-item');
-                            for (var i = 0; i < items.length; i++) {
-                                if (VISIBLE(items[i])) { focusEl(items[i]); break; }
-                            }
-                        }
-                    }, 50);
+                    // setTimeout(function () {
+                    //     invalidateFocusCache();
+                    //     updateFocusableElements();
+                    //     var mainScreen = panel.querySelector('.filter-main-screen');
+                    //     if (mainScreen && mainScreen.style.display !== 'none') {
+                    //         var items = panel.querySelectorAll('.filter-item');
+                    //         for (var i = 0; i < items.length; i++) {
+                    //             if (VISIBLE(items[i])) { focusEl(items[i]); break; }
+                    //         }
+                    //     }
+                    // }, 50);
                     return true;
                 }
                 if (f.id === 'filter-back-btn') {
