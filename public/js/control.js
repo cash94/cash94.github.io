@@ -672,14 +672,22 @@ var ScreenStrategies = {
             var panel = getEl('search-filters-panel');
             if (panel && panel.classList.contains('active')) {
                 if (f.classList.contains('filter-item')) {
+                    var clickedFilterId = f.dataset.filter; // запоминаем какой фильтр открыли
                     f.click();
+                    // ★ После click() DOM меняется — ждём и фокусируемся на текущем значении
                     setTimeout(function () {
                         invalidateFocusCache();
                         updateFocusableElements();
                         var valuesScreen = panel.querySelector('.filter-values-screen');
                         if (valuesScreen && valuesScreen.style.display !== 'none') {
-                            var backBtn = getEl('filter-back-btn');
-                            if (backBtn && VISIBLE(backBtn)) focusEl(backBtn);
+                            var valuesList = panel.querySelector('#filter-values-list');
+                            var selectedItem = valuesList ? valuesList.querySelector('.filter-value-item.selected') : null;
+                            if (selectedItem && VISIBLE(selectedItem)) {
+                                focusEl(selectedItem);
+                            } else if (valuesList) {
+                                var firstItem = valuesList.querySelector('.filter-value-item');
+                                if (firstItem) focusEl(firstItem);
+                            }
                         }
                     }, 50);
                     return true;
@@ -937,6 +945,13 @@ function handleFilterPanelNavigation(dir, currentElement) {
             return true;
         }
         if (dir === 'down') {
+            // ★ Если стоим на кнопке "Назад" — прыгаем сразу на selected элемент
+            if (currentElement === backBtn) {
+                var selectedInList = panel.querySelector('.filter-value-item.selected');
+                if (selectedInList && VISIBLE(selectedInList)) {
+                    return focusEl(selectedInList, { direction: 'down' });
+                }
+            }
             if (idx < allItems.length - 1) return focusEl(allItems[idx + 1], { direction: 'down' });
             return true; // конец списка — стоим
         }
