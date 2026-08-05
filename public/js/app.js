@@ -1032,12 +1032,16 @@ function setupSearchFilters() {
         filterValuesList.appendChild(item);
       }
 
-      // Фокус на кнопке назад или первом элементе
+      // Фокус на текущем выбранном значении
       setTimeout(function () {
         if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
         if (typeof updateFocusableElements === 'function') updateFocusableElements();
-        if (filterBackBtn && filterBackBtn.offsetParent !== null) {
-          focusEl(filterBackBtn);
+        var selectedItem = filterValuesList.querySelector('.filter-value-item.selected');
+        if (selectedItem && selectedItem.offsetParent !== null) {
+          focusEl(selectedItem);
+        } else {
+          var firstItem = filterValuesList.querySelector('.filter-value-item');
+          if (firstItem) focusEl(firstItem);
         }
       }, 50);
     }
