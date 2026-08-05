@@ -1,7 +1,7 @@
 {
-  "name": "Alcopac",
+  "name": "apps",
   "type": "list",
-  "headline": "Alcopac",
+  "headline": "apps",
   "version": "1.0.0",
   "parameter": "content:https://cash94.github.io/msx/start.json",
   "action": "[settings:validate_links:0|home]",
@@ -15,6 +15,10 @@
       "image": "",
       "label": "Запустить Alcopac",
       "action": "link:https://tv.alcopa.cc"
+    },
+    {
+      "label": "Запустить TypeType",
+      "action": "link:https://watch.typetype.video"
     }
   ]
 }
