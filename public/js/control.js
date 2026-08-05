@@ -1871,12 +1871,32 @@ function focusEl(el, opts) {
     var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
     var isRowCard = el.classList && el.classList.contains('catalog-row-card');
 
+    // ★ НОВОЕ: проверка, находится ли элемент внутри панели фильтров
+    var isFilterItem = el.classList && (el.classList.contains('filter-item') || el.classList.contains('filter-value-item'));
+    var filterMainScreen = el.closest && el.closest('.filter-main-screen');
+    var filterValuesScreen = el.closest && el.closest('.filter-values-screen');
+    var isInFilterPanel = filterMainScreen || filterValuesScreen ||
+        el.id === 'filter-back-btn' || el.id === 'filter-close-btn' ||
+        el.id === 'reset-filters';
 
     if (s === 'catalog' || s === 'torrents' || s === 'config') {
         var rowVp = (isRowCard && el.closest) ? el.closest('.catalog-row-viewport') : null;
         container = rowVp || getEl('main-container');
     } else if (s === 'search') {
-        container = getEl('search-results');
+        // ★ Если элемент внутри панели фильтров — используем контейнер панели
+        if (isInFilterPanel) {
+            if (filterValuesScreen) {
+                container = filterValuesScreen;
+            } else if (filterMainScreen) {
+                container = filterMainScreen;
+            } else {
+                // Кнопки шапки панели (back, close, reset) — используем саму панель
+                var panel = getEl('search-filters-panel');
+                container = panel || getEl('search-results');
+            }
+        } else {
+            container = getEl('search-results');
+        }
     } else if (s === 'detail') {
         if (isFI) {
             container = getEl('files-list');
