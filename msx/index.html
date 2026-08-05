@@ -162,7 +162,7 @@
               <div class="checkbox-container">
                 <input type="checkbox" id="transcoding-on-off">
                 <span>Полностью отключить транскодирование видео</span>
-              </div>
+              </div>              
               <div class="checkbox-container">
                 <input type="checkbox" id="multi-channel-audio">
                 <span>Включить многоканальный звук (работает только если отключено транскодирование через
@@ -260,94 +260,66 @@
       <button class="close-search-btn" id="close-search">X</button>
     </div>
 
-    <!-- Панель фильтров (выезжает справа) -->
-    <div id="search-filters-panel" class="filter-panel">
-      <div class="filter-panel-header">
-        <button class="filter-back-btn" id="filter-back-btn" style="display: none;">
-          <i class="fi fi-rr-left"></i>
-        </button>
-        <h3 class="filter-panel-title">Фильтры</h3>
-        <button class="filter-close-btn" id="filter-close-btn">
-          <i class="fi fi-rr-cross"></i>
-        </button>
+    <div class="search-filters collapsed" id="search-filters-panel">
+      <div class="filter-group">
+        <label class="filter-label" for="torrent-movie">Категория</label>
+        <select id="torrent-movie" class="filter-select">
+          <option value="globalsearch">Глобальный поиск</option>
+          <option value="torrentsearch">Торренты</option>
+        </select>
       </div>
 
-      <!-- Главный экран: список фильтров -->
-      <div class="filter-main-screen" id="filter-main-screen">
-        <div class="filter-list">
-          <button class="filter-item" data-filter="torrent-movie">
-            <span class="filter-item-label">Категория</span>
-            <span class="filter-item-value" id="filter-value-torrent-movie">Глобальный поиск</span>
-            <i class="fi fi-rr-angle-right"></i>
-          </button>
-
-          <button class="filter-item" data-filter="sort-by">
-            <span class="filter-item-label">Сортировка</span>
-            <span class="filter-item-value" id="filter-value-sort-by">Сначала новые</span>
-            <i class="fi fi-rr-angle-right"></i>
-          </button>
-
-          <button class="filter-item" data-filter="filter-quality">
-            <span class="filter-item-label">Качество</span>
-            <span class="filter-item-value" id="filter-value-filter-quality">Все</span>
-            <i class="fi fi-rr-angle-right"></i>
-          </button>
-
-          <button class="filter-item" data-filter="filter-tracker">
-            <span class="filter-item-label">Трекер</span>
-            <span class="filter-item-value" id="filter-value-filter-tracker">Все</span>
-            <i class="fi fi-rr-angle-right"></i>
-          </button>
-
-          <button class="filter-item" data-filter="filter-year">
-            <span class="filter-item-label">Год</span>
-            <span class="filter-item-value" id="filter-value-filter-year">Все</span>
-            <i class="fi fi-rr-angle-right"></i>
-          </button>
-
-          <button class="filter-item" data-filter="filter-season">
-            <span class="filter-item-label">Сезон</span>
-            <span class="filter-item-value" id="filter-value-filter-season">Все</span>
-            <i class="fi fi-rr-angle-right"></i>
-          </button>
-
-          <button class="filter-item" data-filter="filter-voice">
-            <span class="filter-item-label">Озвучка</span>
-            <span class="filter-item-value" id="filter-value-filter-voice">Все</span>
-            <i class="fi fi-rr-angle-right"></i>
-          </button>
-
-          <button class="filter-item" data-filter="filter-videotype">
-            <span class="filter-item-label">Тип видео</span>
-            <span class="filter-item-value" id="filter-value-filter-videotype">Все</span>
-            <i class="fi fi-rr-angle-right"></i>
-          </button>
-
-          <button class="filter-reset-btn-new" id="reset-filters">
-            <i class="fi fi-rr-trash"></i>
-            Сбросить все фильтры
-          </button>
-        </div>
+      <div class="filter-group">
+        <label class="filter-label" for="sort-by">Сортировка</label>
+        <select id="sort-by" class="filter-select">
+          <option value="date-desc">Сначала новые</option>
+        </select>
       </div>
 
-      <!-- Экраны значений фильтров -->
-      <div class="filter-values-screen" id="filter-values-screen" style="display: none;">
-        <div class="filter-values-list" id="filter-values-list"></div>
+      <div class="filter-group">
+        <label class="filter-label" for="filter-quality">Качество</label>
+        <select id="filter-quality" class="filter-select">
+          <option value="all">Все</option>
+        </select>
       </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-tracker">Трекер</label>
+        <select id="filter-tracker" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-year">Год</label>
+        <select id="filter-year" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-season">Сезон</label>
+        <select id="filter-season" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-voice">Озвучка</label>
+        <select id="filter-voice" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label" for="filter-videotype">Тип видео</label>
+        <select id="filter-videotype" class="filter-select">
+          <option value="all">Все</option>
+        </select>
+      </div>
+
+      <button class="filter-reset-btn" id="reset-filters">X</button>
     </div>
-
-    <!-- Скрытые select'ы для совместимости -->
-    <select id="torrent-movie" style="display: none;">
-      <option value="globalsearch">Глобальный поиск</option>
-      <option value="torrentsearch">Торренты</option>
-    </select>
-    <select id="sort-by" style="display: none;"></select>
-    <select id="filter-quality" style="display: none;"></select>
-    <select id="filter-tracker" style="display: none;"></select>
-    <select id="filter-year" style="display: none;"></select>
-    <select id="filter-season" style="display: none;"></select>
-    <select id="filter-voice" style="display: none;"></select>
-    <select id="filter-videotype" style="display: none;"></select>
 
     <div id="search-results" class="search-results-list"></div>
   </div>
@@ -375,7 +347,7 @@
           <button id="catalog-watch-btn" class="catalog-watch-btn">Торренты</button>
           <button id="detail-progress-btn" class="detail-progress-btn hidden">Играть</button>
           <button id="catalog-toggle-overview-btn" class="catalog-toggle-overview-btn">Подробнее</button>
-          <button id="catalog-trailer-btn" class="catalog-trailer-btn hidden">
+          <button id="catalog-trailer-btn" class="catalog-trailer-btn hidden" >
             <span class="trailer-btn-icon">▶</span> Трейлер
           </button>
         </div>
