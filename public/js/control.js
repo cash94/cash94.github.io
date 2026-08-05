@@ -239,14 +239,16 @@ function belongsToScreen(el, screen) {
             ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-catalog', 'tab-donate'].indexOf(el.id) !== -1;
     }
     if (screen === 'search') {
-        // Проверяем, находится ли элемент в панели фильтров
+        // ★ Проверяем панель фильтров
         var filterPanel = getEl('search-filters-panel');
         if (filterPanel && filterPanel.classList.contains('active')) {
             if (filterPanel.contains(el)) return true;
         }
 
         return el.closest('.search-result-item') || el.closest('.global-search-card') ||
-            ['search-query', 'filter-toggle', 'search-btn', 'close-search', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters'].indexOf(el.id) !== -1;
+            ['search-query', 'filter-toggle', 'search-btn', 'close-search',
+                'filter-back-btn', 'filter-close-btn', 'reset-filters'].indexOf(el.id) !== -1 ||
+            el.classList.contains('filter-item') || el.classList.contains('filter-value-item');
     }
     if (screen === 'detail') {
         return !!(el.closest('#detail-view') || el.closest('.file-item') || el.closest('back-from-detail') ||
@@ -688,45 +690,90 @@ var ScreenStrategies = {
             }
             return false;
         },
-        onOk: function (f) {
-            if (!belongsToScreen(f, 'search')) return this.ensureFocus(true, true);
+        search: {
+            // ... getItems, ensureFocus, handleNavigation без изменений ...
 
-            // Обработка элементов панели фильтров
-            var panel = getEl('search-filters-panel');
-            if (panel && panel.classList.contains('active')) {
-                if (f.classList.contains('filter-item')) {
-                    // Клик на фильтр - открыть список значений
-                    f.click();
-                    return true;
-                }
-                if (f.classList.contains('filter-value-item')) {
-                    // Клик на значение - выбрать и вернуться
-                    f.click();
-                    return true;
-                }
-                if (f.id === 'filter-back-btn') {
-                    f.click();
-                    return true;
-                }
-                if (f.id === 'filter-close-btn') {
-                    f.click();
-                    return true;
-                }
-                if (f.id === 'reset-filters') {
-                    f.click();
-                    return true;
-                }
-            }
+            onOk: function (f) {
+                if (!belongsToScreen(f, 'search')) return this.ensureFocus(true, true);
 
-            if (f.id === 'search-query') { focusEl(f, { nativeFocus: true }); try { f.click(); } catch (e) { } try { f.focus(); } catch (e) { } try { if (f.select) f.select(); } catch (e) { } return true; }
-            var p = getEl('search-filters-panel');
-            if (f.id === 'filter-toggle') {
-                if (p && !p.classList.contains('active')) { openFilterPanelAndFocus(); return true; }
-                else { closeFilterPanel(); return true; }
+                // ★ Панель фильтров
+                var panel = getEl('search-filters-panel');
+                if (panel && panel.classList.contains('active')) {
+                    if (f.classList.contains('filter-item')) {
+                        f.click();
+                        // ★ После click() DOM меняется — ждём и восстанавливаем фокус
+                        setTimeout(function () {
+                            invalidateFocusCache();
+                            updateFocusableElements();
+                            // Фокус на кнопку "назад" или первый элемент значений
+                            var valuesScreen = panel.querySelector('.filter-values-screen');
+                            if (valuesScreen && valuesScreen.style.display !== 'none') {
+                                var backBtn = getEl('filter-back-btn');
+                                if (backBtn && VISIBLE(backBtn)) {
+                                    focusEl(backBtn);
+                                }
+                            }
+                        }, 50);
+                        return true;
+                    }
+                    if (f.classList.contains('filter-value-item')) {
+                        f.click();
+                        // ★ После выбора значения — возврат на главный экран
+                        setTimeout(function () {
+                            invalidateFocusCache();
+                            updateFocusableElements();
+                            // Фокус на тот фильтр, который мы редактировали
+                            var mainScreen = panel.querySelector('.filter-main-screen');
+                            if (mainScreen && mainScreen.style.display !== 'none') {
+                                // Находим соответствующий filter-item
+                                var items = panel.querySelectorAll('.filter-item');
+                                for (var i = 0; i < items.length; i++) {
+                                    if (VISIBLE(items[i])) {
+                                        focusEl(items[i]);
+                                        break;
+                                    }
+                                }
+                            }
+                        }, 50);
+                        return true;
+                    }
+                    if (f.id === 'filter-back-btn') {
+                        f.click();
+                        setTimeout(function () {
+                            invalidateFocusCache();
+                            updateFocusableElements();
+                            // Фокус на первый filter-item
+                            var firstItem = panel.querySelector('.filter-item');
+                            if (firstItem) focusEl(firstItem);
+                        }, 50);
+                        return true;
+                    }
+                    if (f.id === 'filter-close-btn') {
+                        f.click();
+                        return true;
+                    }
+                    if (f.id === 'reset-filters') {
+                        f.click();
+                        setTimeout(function () {
+                            invalidateFocusCache();
+                            updateFocusableElements();
+                            var firstItem = panel.querySelector('.filter-item');
+                            if (firstItem) focusEl(firstItem);
+                        }, 50);
+                        return true;
+                    }
+                }
+
+                if (f.id === 'search-query') { focusEl(f, { nativeFocus: true }); try { f.click(); } catch (e) { } try { f.focus(); } catch (e) { } try { if (f.select) f.select(); } catch (e) { } return true; }
+                var p = getEl('search-filters-panel');
+                if (f.id === 'filter-toggle') {
+                    if (p && !p.classList.contains('active')) { openFilterPanelAndFocus(); return true; }
+                    else { closeFilterPanel(); return true; }
+                }
+                if (f.tagName === 'SELECT' || f.id === 'filter-year') return openNativeSearchControl(f);
+                clickEl(f);
+                return true;
             }
-            if (f.tagName === 'SELECT' || f.id === 'filter-year') return openNativeSearchControl(f);
-            clickEl(f);
-            return true;
         }
     },
 
@@ -878,75 +925,71 @@ function handleFilterPanelNavigation(dir, currentElement) {
     var panel = getEl('search-filters-panel');
     if (!panel) return false;
 
+    // ★ Обязательно инвалидируем кэш!
+    invalidateFocusCache();
+    updateFocusableElements();
+
     var filterItems = Array.from(panel.querySelectorAll('.filter-item'));
     var filterValueItems = Array.from(panel.querySelectorAll('.filter-value-item'));
     var backBtn = getEl('filter-back-btn');
     var closeBtn = getEl('filter-close-btn');
     var resetBtn = getEl('reset-filters');
 
-    // Определяем, на каком экране находимся
-    var isMainScreen = filterItems.length > 0 && filterValueItems.length === 0;
-    var isValuesScreen = filterValueItems.length > 0;
+    // Определяем текущий экран
+    var mainScreen = panel.querySelector('.filter-main-screen');
+    var valuesScreen = panel.querySelector('.filter-values-screen');
+    var isMainScreen = mainScreen && mainScreen.style.display !== 'none';
+    var isValuesScreen = valuesScreen && valuesScreen.style.display !== 'none';
 
     if (isMainScreen) {
-        // Навигация на главном экране фильтров
-        var idx = filterItems.indexOf(currentElement);
+        // === Навигация на главном экране ===
+        var allItems = [];
+        if (closeBtn && VISIBLE(closeBtn)) allItems.push(closeBtn);
+        for (var i = 0; i < filterItems.length; i++) allItems.push(filterItems[i]);
+        if (resetBtn && VISIBLE(resetBtn)) allItems.push(resetBtn);
 
-        if (currentElement === backBtn || currentElement === closeBtn) {
-            if (dir === 'down') return focusEl(filterItems[0] || resetBtn);
+        var idx = allItems.indexOf(currentElement);
+
+        if (dir === 'up') {
+            if (idx > 0) return focusEl(allItems[idx - 1], { direction: 'up' });
             return true;
         }
-
-        if (currentElement === resetBtn) {
-            if (dir === 'up') return focusEl(filterItems[filterItems.length - 1]);
+        if (dir === 'down') {
+            if (idx < allItems.length - 1) return focusEl(allItems[idx + 1], { direction: 'down' });
             return true;
         }
-
-        if (idx !== -1) {
-            if (dir === 'up') {
-                if (idx === 0) return focusEl(closeBtn || backBtn);
-                return focusEl(filterItems[idx - 1], { direction: 'up' });
-            }
-            if (dir === 'down') {
-                if (idx === filterItems.length - 1) return focusEl(resetBtn);
-                return focusEl(filterItems[idx + 1], { direction: 'down' });
-            }
-            if (dir === 'left') {
-                // Закрыть панель
-                closeFilterPanel();
-                return true;
-            }
-            if (dir === 'right') return true; // Правый край
+        if (dir === 'left') {
+            // Закрыть панель
+            closeFilterPanel();
+            return true;
         }
+        if (dir === 'right') return true;
     }
 
     if (isValuesScreen) {
-        // Навигация на экране значений фильтра
-        var idx = filterValueItems.indexOf(currentElement);
+        // === Навигация на экране значений ===
+        var allItems = [];
+        if (backBtn && VISIBLE(backBtn)) allItems.push(backBtn);
+        for (var i = 0; i < filterValueItems.length; i++) allItems.push(filterValueItems[i]);
 
-        if (currentElement === backBtn) {
-            if (dir === 'down') return focusEl(filterValueItems[0]);
+        var idx = allItems.indexOf(currentElement);
+
+        if (dir === 'up') {
+            if (idx > 0) return focusEl(allItems[idx - 1], { direction: 'up' });
             return true;
         }
-
-        if (idx !== -1) {
-            if (dir === 'up') {
-                if (idx === 0) return focusEl(backBtn);
-                return focusEl(filterValueItems[idx - 1], { direction: 'up' });
-            }
-            if (dir === 'down') {
-                if (idx === filterValueItems.length - 1) return focusEl(filterValueItems[0]); // Циклически
-                return focusEl(filterValueItems[idx + 1], { direction: 'down' });
-            }
-            if (dir === 'left') {
-                // Вернуться назад
-                if (backBtn && VISIBLE(backBtn)) {
-                    backBtn.click();
-                    return true;
-                }
-            }
-            if (dir === 'right') return true;
+        if (dir === 'down') {
+            if (idx < allItems.length - 1) return focusEl(allItems[idx + 1], { direction: 'down' });
+            return true; // конец списка — стоим
         }
+        if (dir === 'left') {
+            // Кнопка "назад" — вернуться на главный экран
+            if (backBtn && VISIBLE(backBtn)) {
+                backBtn.click();
+                return true;
+            }
+        }
+        if (dir === 'right') return true;
     }
 
     return true;
@@ -1075,25 +1118,36 @@ function updateFocusableElements() {
 
         var fl = [q, ft, sb, cs];
 
-        // Добавляем элементы панели фильтров, если она открыта
+        // ★ НОВАЯ ПАНЕЛЬ ФИЛЬТРОВ — добавляем её элементы
         var filterPanel = getEl('search-filters-panel');
         if (filterPanel && filterPanel.classList.contains('active')) {
-            var filterItems = filterPanel.querySelectorAll('.filter-item, .filter-value-item');
             var backBtn = getEl('filter-back-btn');
             var closeBtn = getEl('filter-close-btn');
             var resetBtn = getEl('reset-filters');
 
-            if (backBtn && backBtn.offsetParent !== null) fl.push(backBtn);
-            if (closeBtn && closeBtn.offsetParent !== null) fl.push(closeBtn);
+            // Порядок важен: сначала кнопки навигации, потом элементы
+            if (backBtn && VISIBLE(backBtn)) fl.push(backBtn);
+            if (closeBtn && VISIBLE(closeBtn)) fl.push(closeBtn);
 
+            // Главный экран: .filter-item
+            var filterItems = filterPanel.querySelectorAll('.filter-item');
             for (var fi = 0; fi < filterItems.length; fi++) {
                 if (filterItems[fi] && filterItems[fi].offsetParent !== null) fl.push(filterItems[fi]);
             }
 
-            if (resetBtn && resetBtn.offsetParent !== null) fl.push(resetBtn);
+            // Экран значений: .filter-value-item
+            var valueItems = filterPanel.querySelectorAll('.filter-value-item');
+            for (var vi = 0; vi < valueItems.length; vi++) {
+                if (valueItems[vi] && valueItems[vi].offsetParent !== null) fl.push(valueItems[vi]);
+            }
+
+            // Кнопка сброса
+            if (resetBtn && VISIBLE(resetBtn)) fl.push(resetBtn);
         }
 
+        // Результаты поиска (после фильтров)
         for (var i = 0; i < res.length; i++) fl.push(res[i]);
+
         focusableElements = fl.filter(Boolean);
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
@@ -1349,6 +1403,20 @@ function onBack() {
     if (AppState.syncCodeScreen == true) { toggleSyncOverlay(); return true; }
     if (typeof window.closeCatalogTrailerOverlay === 'function' && window.closeCatalogTrailerOverlay()) {
         setTimeout(function () { ScreenStrategies.detail.ensureFocus(true); }, 80);
+        return true;
+    }
+    // ★ Панель фильтров — проверяем ПЕРЕД search-overlay
+    var filterPanel = getEl('search-filters-panel');
+    if (filterPanel && filterPanel.classList.contains('active')) {
+        var valuesScreen = filterPanel.querySelector('.filter-values-screen');
+        if (valuesScreen && valuesScreen.style.display !== 'none') {
+            // На экране значений — вернуться на главный
+            var backBtn = getEl('filter-back-btn');
+            if (backBtn) backBtn.click();
+        } else {
+            // На главном экране — закрыть панель
+            closeFilterPanel();
+        }
         return true;
     }
     if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') {
@@ -1964,14 +2032,16 @@ function closeFilterPanel() {
         if (toggleBtn) toggleBtn.classList.remove('active');
         if (overlay) overlay.classList.remove('active');
 
-        // Возвращаем фокус на кнопку toggle
+        // ★ Инвалидируем кэш и возвращаем фокус
+        invalidateFocusCache();
         setTimeout(function () {
             updateFocusableElements();
-            if (toggleBtn && typeof setFocus === 'function') {
+            if (toggleBtn) {
                 var idx = focusableElements.indexOf(toggleBtn);
                 if (idx !== -1) setFocus(idx);
+                else focusEl(toggleBtn);
             }
-        }, 100);
+        }, 150);
     }
 }
 
@@ -1985,13 +2055,16 @@ function openFilterPanelAndFocus() {
         if (toggleBtn) toggleBtn.classList.add('active');
         if (overlay) overlay.classList.add('active');
 
+        // ★ Инвалидируем кэш и фокусируемся
+        invalidateFocusCache();
         setTimeout(function () {
             updateFocusableElements();
-            var firstItem = panel.querySelector('.filter-item');
-            if (firstItem && typeof setFocus === 'function') {
-                var idx = focusableElements.indexOf(firstItem);
-                if (idx !== -1) setFocus(idx);
-                else focusEl(firstItem);
+            var closeBtn = getEl('filter-close-btn');
+            if (closeBtn && VISIBLE(closeBtn)) {
+                focusEl(closeBtn);
+            } else {
+                var firstItem = panel.querySelector('.filter-item');
+                if (firstItem) focusEl(firstItem);
             }
         }, 150);
     }
