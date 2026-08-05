@@ -4104,22 +4104,25 @@ article {
 .filter-panel {
   position: fixed;
   top: 0;
-  right: -400px;
+  right: 0;
   width: 400px;
   height: 100vh;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+  background: #1a1a2e;
+  border-left: 1px solid rgba(74, 158, 255, 0.3);
   z-index: 1000;
   display: flex;
   flex-direction: column;
-  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(100%);            /* скрыта за экраном – аппаратное ускорение */
+  transition: transform 0.2s ease;
   overflow: hidden;
+  /* will-change больше не нужен, transform сам создаёт композитный слой */
 }
 
 .filter-panel.active {
-  right: 0;
+  transform: translateX(0);
 }
 
+/* Хедер */
 .filter-panel-header {
   display: flex;
   align-items: center;
@@ -4142,15 +4145,17 @@ article {
   cursor: pointer;
   color: #4a9eff;
   font-size: 20px;
-  transition: all 0.2s;
+  transition: background 0.15s, box-shadow 0.15s;
 }
 
-.filter-back-btn:hover,
-.filter-close-btn:hover,
+/* ВОЗВРАЩАЕМ box-shadow для фокуса */
+.filter-back-btn:focus-visible,
+.filter-close-btn:focus-visible,
 .filter-back-btn.focused,
 .filter-close-btn.focused {
   background: rgba(74, 158, 255, 0.2);
-  transform: scale(1.05);
+  box-shadow: 0 0 0 2px #4a9eff;
+  outline: none;
 }
 
 .filter-panel-title {
@@ -4161,7 +4166,7 @@ article {
   color: #fff;
 }
 
-/* Главный экран фильтров */
+/* Главный экран */
 .filter-main-screen {
   flex: 1;
   overflow-y: auto;
@@ -4181,7 +4186,7 @@ article {
   border: none;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.15s, box-shadow 0.15s;
   text-align: left;
   width: 100%;
   gap: 15px;
@@ -4190,7 +4195,7 @@ article {
 .filter-item:hover,
 .filter-item.focused {
   background: rgba(74, 158, 255, 0.1);
-  transform: translateX(5px);
+  box-shadow: 0 0 0 2px #4a9eff;       /* чёткий фокус */
 }
 
 .filter-item-label {
@@ -4215,6 +4220,7 @@ article {
   font-size: 18px;
 }
 
+/* Кнопка сброса */
 .filter-reset-btn-new {
   display: flex;
   align-items: center;
@@ -4229,16 +4235,16 @@ article {
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.15s, box-shadow 0.15s;
 }
 
 .filter-reset-btn-new:hover,
 .filter-reset-btn-new.focused {
   background: rgba(255, 107, 107, 0.2);
-  transform: scale(1.02);
+  box-shadow: 0 0 0 2px #ff6b6b;
 }
 
-/* Экран значений фильтра */
+/* Экран значений */
 .filter-values-screen {
   flex: 1;
   overflow-y: auto;
@@ -4258,7 +4264,7 @@ article {
   border: none;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.15s, box-shadow 0.15s;
   text-align: left;
   width: 100%;
   gap: 15px;
@@ -4267,7 +4273,7 @@ article {
 .filter-value-item:hover,
 .filter-value-item.focused {
   background: rgba(74, 158, 255, 0.15);
-  transform: translateX(5px);
+  box-shadow: 0 0 0 2px #4a9eff;
 }
 
 .filter-value-item.selected {
@@ -4288,7 +4294,7 @@ article {
   color: #fff;
 }
 
-/* Overlay для затемнения фона */
+/* Оверлей */
 .filter-overlay {
   position: fixed;
   top: 0;
@@ -4299,7 +4305,7 @@ article {
   z-index: 999;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.3s;
+  transition: opacity 0.2s;
 }
 
 .filter-overlay.active {
@@ -4307,7 +4313,7 @@ article {
   pointer-events: auto;
 }
 
-/* Скроллбар для панели */
+/* Скроллбары */
 .filter-main-screen::-webkit-scrollbar,
 .filter-values-screen::-webkit-scrollbar {
   width: 6px;
@@ -4324,15 +4330,10 @@ article {
   border-radius: 3px;
 }
 
-.filter-main-screen::-webkit-scrollbar-thumb:hover,
-.filter-values-screen::-webkit-scrollbar-thumb:hover {
-  background: rgba(74, 158, 255, 0.7);
-}
-
-/* Адаптивность для мобильных */
+/* Мобильная версия */
 @media (max-width: 768px) {
   .filter-panel {
     width: 100%;
-    right: -100%;
+    transform: translateX(100%);    /* полное скрытие */
   }
 }
