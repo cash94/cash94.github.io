@@ -891,190 +891,298 @@ function createFilterHandler(setter) {
 
 function setupSearchFilters() {
   var filterToggleBtn = getEl('filter-toggle');
-  var filterPanel = getEl('search-filters-panel');
-  var filterBackBtn = getEl('filter-back-btn');
-  var filterCloseBtn = getEl('filter-close-btn');
-  var filterMainScreen = getEl('filter-main-screen');
-  var filterValuesScreen = getEl('filter-values-screen');
-  var filterValuesList = getEl('filter-values-list');
+  var torrentmovie = getEl('torrent-movie');
+  var sortBy = getEl('sort-by');
+  var filterQuality = getEl('filter-quality');
+  var filterTracker = getEl('filter-tracker');
+  var filterYear = getEl('filter-year');
   var resetFiltersBtn = getEl('reset-filters');
+  var filterSeason = getEl('filter-season');
+  var filterVoice = getEl('filter-voice');
+  var filtervideotype = getEl('filter-videotype');
 
-  // Создание overlay
-  var filterOverlay = document.createElement('div');
-  filterOverlay.className = 'filter-overlay';
-  filterOverlay.id = 'filter-overlay';
-  document.body.appendChild(filterOverlay);
-
-  var currentFilter = null;
-  var filterHistory = [];
-
-  // Открытие панели
-  function openFilterPanel() {
-    filterPanel.classList.add('active');
-    filterOverlay.classList.add('active');
-    showMainScreen();
-    setTimeout(function () {
-      if (typeof updateFocusableElements === 'function') updateFocusableElements();
-      var firstItem = filterPanel.querySelector('.filter-item');
-      if (firstItem && typeof setFocus === 'function') setFocus(firstItem);
-    }, 100);
-  }
-
-  // Закрытие панели
-  function closeFilterPanel() {
-    filterPanel.classList.remove('active');
-    filterOverlay.classList.remove('active');
-    filterHistory = [];
-    currentFilter = null;
-    if (typeof updateFocusableElements === 'function') updateFocusableElements();
-    if (typeof setFocus === 'function') setFocus(filterToggleBtn);
-  }
-
-  // Показать главный экран
-  function showMainScreen() {
-    filterMainScreen.style.display = 'block';
-    filterValuesScreen.style.display = 'none';
-    filterBackBtn.style.display = 'none';
-    currentFilter = null;
-    updateFilterValues();
-  }
-
-  // Показать экран значений фильтра
-  function showFilterValues(filterId) {
-    var filterSelect = getEl(filterId);
-    if (!filterSelect) return;
-
-    currentFilter = filterId;
-    filterHistory.push('main');
-
-    filterMainScreen.style.display = 'none';
-    filterValuesScreen.style.display = 'block';
-    filterBackBtn.style.display = 'flex';
-
-    // Очистка списка
-    filterValuesList.innerHTML = '';
-
-    // Получение текущего значения
-    var currentValue = filterSelect.value;
-
-    // Создание пунктов значений
-    var options = filterSelect.querySelectorAll('option');
-    options.forEach(function (option) {
-      var item = document.createElement('button');
-      item.className = 'filter-value-item';
-      if (option.value === currentValue) {
-        item.classList.add('selected');
-      }
-
-      var label = document.createElement('span');
-      label.className = 'filter-value-label';
-      label.textContent = option.textContent;
-
-      item.appendChild(label);
-      item.dataset.value = option.value;
-      item.dataset.label = option.textContent;
-
-      item.addEventListener('click', function () {
-        selectFilterValue(filterId, option.value, option.textContent);
-      });
-
-      filterValuesList.appendChild(item);
-    });
-
-    setTimeout(function () {
-      if (typeof updateFocusableElements === 'function') updateFocusableElements();
-      var selectedItem = filterValuesList.querySelector('.selected') || filterValuesList.firstChild;
-      if (selectedItem && typeof setFocus === 'function') setFocus(selectedItem);
-    }, 100);
-  }
-
-  // Выбор значения фильтра
-  function selectFilterValue(filterId, value, label) {
-    var filterSelect = getEl(filterId);
-    if (filterSelect) {
-      filterSelect.value = value;
-
-      // Обновление отображаемого значения
-      var valueDisplay = getEl('filter-value-' + filterId);
-      if (valueDisplay) {
-        valueDisplay.textContent = label || 'Все';
-      }
-
-      // Вызов обработчика изменения
-      var event = new Event('change', { bubbles: true });
-      filterSelect.dispatchEvent(event);
-    }
-    showMainScreen();
-  }
-
-  // Обновление отображаемых значений
-  function updateFilterValues() {
-    var filterIds = [
-      'torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker',
-      'filter-year', 'filter-season', 'filter-voice', 'filter-videotype'
-    ];
-
-    filterIds.forEach(function (filterId) {
-      var filterSelect = getEl(filterId);
-      var valueDisplay = getEl('filter-value-' + filterId);
-
-      if (filterSelect && valueDisplay) {
-        var selectedOption = filterSelect.options[filterSelect.selectedIndex];
-        valueDisplay.textContent = selectedOption ? selectedOption.textContent : 'Все';
-      }
-    });
-  }
-
-  // Обработчики событий
+  // ==================== ОТКРЫТИЕ ПАНЕЛИ ФИЛЬТРОВ ====================
   if (filterToggleBtn) {
-    filterToggleBtn.addEventListener('click', openFilterPanel);
-  }
-
-  if (filterCloseBtn) {
-    filterCloseBtn.addEventListener('click', closeFilterPanel);
-  }
-
-  if (filterBackBtn) {
-    filterBackBtn.addEventListener('click', showMainScreen);
-  }
-
-  if (filterOverlay) {
-    filterOverlay.addEventListener('click', closeFilterPanel);
-  }
-
-  if (resetFiltersBtn) {
-    resetFiltersBtn.addEventListener('click', function () {
-      if (typeof resetFilters === 'function') resetFilters();
-      setTimeout(updateFilterValues, 100);
-    });
-  }
-
-  // Обработчики кликов по пунктам фильтров
-  var filterItems = filterPanel.querySelectorAll('.filter-item');
-  filterItems.forEach(function (item) {
-    item.addEventListener('click', function () {
-      var filterId = item.dataset.filter;
-      if (filterId) {
-        showFilterValues(filterId);
+    filterToggleBtn.addEventListener('click', function () {
+      console.log('🔘 filter-toggle нажат');
+      var opened = false;
+      if (typeof toggleSearchFiltersPanel === 'function') {
+        opened = toggleSearchFiltersPanel();
+        console.log('Панель открыта:', opened);
+      } else {
+        console.warn('toggleSearchFiltersPanel не определена');
+        var panel = getEl('search-filters-panel');
+        if (panel) {
+          if (panel.classList.contains('collapsed')) {
+            panel.classList.remove('collapsed');
+            panel.classList.add('active');
+            filterToggleBtn.classList.add('active');
+            opened = true;
+          } else {
+            panel.classList.add('collapsed');
+            panel.classList.remove('active');
+            filterToggleBtn.classList.remove('active');
+            opened = false;
+          }
+        }
+      }
+      if (opened && typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+        setTimeout(function () {
+          if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+          updateFocusableElements();
+          var panel = getEl('search-filters-panel');
+          if (panel && panel.classList.contains('active')) {
+            var closeBtn = getEl('filter-close-btn');
+            if (closeBtn && closeBtn.offsetParent !== null) {
+              focusEl(closeBtn);
+            } else {
+              var firstItem = panel.querySelector('.filter-item');
+              if (firstItem) focusEl(firstItem);
+            }
+          }
+        }, APP_CONSTANTS.FILTER_PANEL_DELAY_MS);
       }
     });
-  });
+  }
 
-  // Наблюдатель за изменениями select'ов
-  var filterIds = [
-    'torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker',
-    'filter-year', 'filter-season', 'filter-voice', 'filter-videotype'
+  // ==================== ОБРАБОТЧИКИ SELECT'ов (для совместимости) ====================
+  var filterConfigs = [
+    { el: torrentmovie, setter: function (v) { if (typeof currentSearchMode !== 'undefined') currentSearchMode = v; } },
+    { el: sortBy, setter: function (v) { if (typeof currentSort !== 'undefined') currentSort = v; } },
+    { el: filterQuality, setter: function (v) { if (typeof currentQualityFilter !== 'undefined') currentQualityFilter = v; } },
+    { el: filterTracker, setter: function (v) { if (typeof currentTrackerFilter !== 'undefined') currentTrackerFilter = v; } },
+    { el: filterYear, setter: function (v) { if (typeof currentYearFilter !== 'undefined') currentYearFilter = (v === 'all') ? '' : v; } },
+    { el: filterSeason, setter: function (v) { if (typeof currentSeasonFilter !== 'undefined') currentSeasonFilter = v; } },
+    { el: filterVoice, setter: function (v) { if (typeof currentVoiceFilter !== 'undefined') currentVoiceFilter = v; } },
+    { el: filtervideotype, setter: function (v) { if (typeof currentvideotypeFilter !== 'undefined') currentvideotypeFilter = v; } }
   ];
 
-  filterIds.forEach(function (filterId) {
-    var filterSelect = getEl(filterId);
-    if (filterSelect) {
-      filterSelect.addEventListener('change', updateFilterValues);
+  filterConfigs.forEach(function (config) {
+    if (config.el) {
+      config.el.addEventListener('change', createFilterHandler(config.setter));
     }
   });
 
-  // Инициализация значений
-  updateFilterValues();
+  if (resetFiltersBtn && typeof resetFilters === 'function') {
+    resetFiltersBtn.addEventListener('click', function () {
+      resetFilters();
+      setTimeout(function () {
+        updateFilterValueDisplays();
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        if (typeof updateFocusableElements === 'function') updateFocusableElements();
+      }, 100);
+    });
+  }
+
+  // ==================== DRILL-DOWN ПАНЕЛЬ ФИЛЬТРОВ ====================
+  var filterPanel = getEl('search-filters-panel');
+  if (filterPanel) {
+    var filterMainScreen = filterPanel.querySelector('.filter-main-screen');
+    var filterValuesScreen = filterPanel.querySelector('.filter-values-screen');
+    var filterValuesList = filterPanel.querySelector('#filter-values-list');
+    var filterBackBtn = getEl('filter-back-btn');
+    var filterCloseBtn = getEl('filter-close-btn');
+    var currentFilterId = null;
+
+    // Показать главный экран
+    function showFilterMainScreen() {
+      if (filterMainScreen) filterMainScreen.style.display = 'block';
+      if (filterValuesScreen) filterValuesScreen.style.display = 'none';
+      if (filterBackBtn) filterBackBtn.style.display = 'none';
+      currentFilterId = null;
+      updateFilterValueDisplays();
+    }
+
+    // Показать экран значений фильтра
+    function showFilterValuesScreen(filterId) {
+      var filterSelect = getEl(filterId);
+      if (!filterSelect || !filterValuesList) return;
+
+      currentFilterId = filterId;
+      if (filterMainScreen) filterMainScreen.style.display = 'none';
+      if (filterValuesScreen) filterValuesScreen.style.display = 'block';
+      if (filterBackBtn) filterBackBtn.style.display = 'flex';
+
+      filterValuesList.innerHTML = '';
+      var currentValue = filterSelect.value;
+      var options = filterSelect.querySelectorAll('option');
+
+      for (var i = 0; i < options.length; i++) {
+        var option = options[i];
+        var item = document.createElement('button');
+        item.className = 'filter-value-item';
+        if (option.value === currentValue) {
+          item.classList.add('selected');
+        }
+
+        var label = document.createElement('span');
+        label.className = 'filter-value-label';
+        label.textContent = option.textContent;
+        item.appendChild(label);
+        item.dataset.value = option.value;
+        item.dataset.label = option.textContent;
+        item.dataset.filterId = filterId;
+
+        item.addEventListener('click', (function (fid, val, lbl) {
+          return function () {
+            applyFilterValue(fid, val, lbl);
+          };
+        })(filterId, option.value, option.textContent));
+
+        filterValuesList.appendChild(item);
+      }
+
+      // Фокус на кнопке назад или первом элементе
+      setTimeout(function () {
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        if (typeof updateFocusableElements === 'function') updateFocusableElements();
+        if (filterBackBtn && filterBackBtn.offsetParent !== null) {
+          focusEl(filterBackBtn);
+        }
+      }, 50);
+    }
+
+    // Применить значение фильтра
+    function applyFilterValue(filterId, value, label) {
+      var filterSelect = getEl(filterId);
+      if (filterSelect) {
+        filterSelect.value = value;
+
+        // Обновляем переменные фильтров напрямую
+        switch (filterId) {
+          case 'torrent-movie':
+            if (typeof currentSearchMode !== 'undefined') {
+              currentSearchMode = value;
+              if (typeof getCurrentSearchMode === 'function') getCurrentSearchMode();
+            }
+            break;
+          case 'sort-by':
+            if (typeof currentSort !== 'undefined') currentSort = value;
+            break;
+          case 'filter-quality':
+            if (typeof currentQualityFilter !== 'undefined') currentQualityFilter = value;
+            break;
+          case 'filter-tracker':
+            if (typeof currentTrackerFilter !== 'undefined') currentTrackerFilter = value;
+            break;
+          case 'filter-year':
+            if (typeof currentYearFilter !== 'undefined') currentYearFilter = (value === 'all') ? '' : value;
+            break;
+          case 'filter-season':
+            if (typeof currentSeasonFilter !== 'undefined') currentSeasonFilter = value;
+            break;
+          case 'filter-voice':
+            if (typeof currentVoiceFilter !== 'undefined') currentVoiceFilter = value;
+            break;
+          case 'filter-videotype':
+            if (typeof currentvideotypeFilter !== 'undefined') currentvideotypeFilter = value;
+            break;
+        }
+
+        // Dispatch change event для совместимости
+        try {
+          var event = new Event('change', { bubbles: true });
+          filterSelect.dispatchEvent(event);
+        } catch (e) { }
+
+        // Применяем фильтры
+        if (typeof applyFiltersAndSort === 'function') {
+          applyFiltersAndSort();
+        }
+      }
+
+      // Возврат на главный экран
+      showFilterMainScreen();
+
+      // Фокус на filter-item который редактировали
+      setTimeout(function () {
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        if (typeof updateFocusableElements === 'function') updateFocusableElements();
+        var targetItem = filterPanel.querySelector('.filter-item[data-filter="' + filterId + '"]');
+        if (targetItem) {
+          focusEl(targetItem);
+        }
+      }, 50);
+    }
+
+    // Обновить отображаемые значения на главном экране
+    function updateFilterValueDisplays() {
+      var filterIds = [
+        'torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker',
+        'filter-year', 'filter-season', 'filter-voice', 'filter-videotype'
+      ];
+      for (var i = 0; i < filterIds.length; i++) {
+        var fid = filterIds[i];
+        var sel = getEl(fid);
+        var display = getEl('filter-value-' + fid);
+        if (sel && display) {
+          var selectedOption = sel.options[sel.selectedIndex];
+          display.textContent = selectedOption ? selectedOption.textContent : 'Все';
+        }
+      }
+    }
+
+    // Обработчики кликов на filter-item (открытие экрана значений)
+    var filterItems = filterPanel.querySelectorAll('.filter-item');
+    for (var fi = 0; fi < filterItems.length; fi++) {
+      filterItems[fi].addEventListener('click', (function (item) {
+        return function () {
+          var filterId = item.dataset.filter;
+          if (filterId) {
+            showFilterValuesScreen(filterId);
+          }
+        };
+      })(filterItems[fi]));
+    }
+
+    // Обработчик кнопки "Назад"
+    if (filterBackBtn) {
+      filterBackBtn.addEventListener('click', function () {
+        showFilterMainScreen();
+        setTimeout(function () {
+          if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+          if (typeof updateFocusableElements === 'function') updateFocusableElements();
+          var firstItem = filterPanel.querySelector('.filter-item');
+          if (firstItem) focusEl(firstItem);
+        }, 50);
+      });
+    }
+
+    // Обработчик кнопки "Закрыть"
+    if (filterCloseBtn) {
+      filterCloseBtn.addEventListener('click', function () {
+        if (typeof closeFilterPanel === 'function') closeFilterPanel();
+      });
+    }
+
+    // Обработчик кнопки "Сбросить" (новая, внутри панели)
+    var resetBtnNew = filterPanel.querySelector('.filter-reset-btn-new');
+    if (resetBtnNew) {
+      resetBtnNew.addEventListener('click', function () {
+        if (typeof resetFilters === 'function') resetFilters();
+        setTimeout(function () {
+          updateFilterValueDisplays();
+          if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+          if (typeof updateFocusableElements === 'function') updateFocusableElements();
+          var firstItem = filterPanel.querySelector('.filter-item');
+          if (firstItem) focusEl(firstItem);
+        }, 100);
+      });
+    }
+
+    // Инициализация отображаемых значений
+    updateFilterValueDisplays();
+
+    // Наблюдатель за изменениями select'ов (для синхронизации при внешних изменениях)
+    var observeIds = ['torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker',
+      'filter-year', 'filter-season', 'filter-voice', 'filter-videotype'];
+    for (var oi = 0; oi < observeIds.length; oi++) {
+      var obsSel = getEl(observeIds[oi]);
+      if (obsSel) {
+        obsSel.addEventListener('change', updateFilterValueDisplays);
+      }
+    }
+  }
 }
 
 // ==================== ПРОВЕРКА СЕРВЕРА ====================
