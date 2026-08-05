@@ -709,7 +709,10 @@ var ScreenStrategies = {
                     }, 50);
                     return true;
                 }
-                if (f.id === 'filter-close-btn') { f.click(); return true; }
+                if (f.id === 'filter-close-btn') {
+                    closeFilterPanel();
+                    return true;
+                }
                 if (f.id === 'reset-filters') {
                     f.click();
                     setTimeout(function () {
@@ -1981,22 +1984,20 @@ function closeFilterPanel() {
     var panel = getEl('search-filters-panel');
     var toggleBtn = getEl('filter-toggle');
     var overlay = getEl('filter-overlay');
-
     if (panel) {
         panel.classList.remove('active');
         if (toggleBtn) toggleBtn.classList.remove('active');
         if (overlay) overlay.classList.remove('active');
-
-        // ★ Инвалидируем кэш и возвращаем фокус
         invalidateFocusCache();
         setTimeout(function () {
             updateFocusableElements();
-            if (toggleBtn) {
-                var idx = focusableElements.indexOf(toggleBtn);
-                if (idx !== -1) setFocus(idx);
-                else focusEl(toggleBtn);
+            if (toggleBtn && toggleBtn.offsetParent !== null) {
+                focusEl(toggleBtn);
+            } else {
+                var q = getEl('search-query');
+                if (q) focusEl(q);
             }
-        }, 150);
+        }, 200);
     }
 }
 
