@@ -4099,3 +4099,240 @@ article {
     border-radius: 10px;
   }
 }
+
+/* ==================== ПАНЕЛЬ ФИЛЬТРОВ (DRILL-DOWN) ==================== */
+.filter-panel {
+  position: fixed;
+  top: 0;
+  right: -400px;
+  width: 400px;
+  height: 100vh;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.filter-panel.active {
+  right: 0;
+}
+
+.filter-panel-header {
+  display: flex;
+  align-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(74, 158, 255, 0.3);
+  gap: 15px;
+}
+
+.filter-back-btn,
+.filter-close-btn {
+  background: rgba(74, 158, 255, 0.1);
+  border: 1px solid rgba(74, 158, 255, 0.3);
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #4a9eff;
+  font-size: 20px;
+  transition: all 0.2s;
+}
+
+.filter-back-btn:hover,
+.filter-close-btn:hover,
+.filter-back-btn.focused,
+.filter-close-btn.focused {
+  background: rgba(74, 158, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.filter-panel-title {
+  flex: 1;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* Главный экран фильтров */
+.filter-main-screen {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 0;
+}
+
+.filter-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-item {
+  display: flex;
+  align-items: center;
+  padding: 18px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  width: 100%;
+  gap: 15px;
+}
+
+.filter-item:hover,
+.filter-item.focused {
+  background: rgba(74, 158, 255, 0.1);
+  transform: translateX(5px);
+}
+
+.filter-item-label {
+  flex: 1;
+  font-size: 16px;
+  color: #fff;
+  font-weight: 500;
+}
+
+.filter-item-value {
+  font-size: 14px;
+  color: #4a9eff;
+  font-weight: 600;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-item i.fi-rr-angle-right {
+  color: rgba(74, 158, 255, 0.5);
+  font-size: 18px;
+}
+
+.filter-reset-btn-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 20px;
+  padding: 15px;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 12px;
+  color: #ff6b6b;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-reset-btn-new:hover,
+.filter-reset-btn-new.focused {
+  background: rgba(255, 107, 107, 0.2);
+  transform: scale(1.02);
+}
+
+/* Экран значений фильтра */
+.filter-values-screen {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 0;
+}
+
+.filter-values-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-value-item {
+  display: flex;
+  align-items: center;
+  padding: 18px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  width: 100%;
+  gap: 15px;
+}
+
+.filter-value-item:hover,
+.filter-value-item.focused {
+  background: rgba(74, 158, 255, 0.15);
+  transform: translateX(5px);
+}
+
+.filter-value-item.selected {
+  background: rgba(76, 175, 80, 0.15);
+}
+
+.filter-value-item.selected::before {
+  content: '✓';
+  color: #4caf50;
+  font-weight: bold;
+  font-size: 20px;
+  margin-right: 10px;
+}
+
+.filter-value-label {
+  flex: 1;
+  font-size: 16px;
+  color: #fff;
+}
+
+/* Overlay для затемнения фона */
+.filter-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+.filter-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Скроллбар для панели */
+.filter-main-screen::-webkit-scrollbar,
+.filter-values-screen::-webkit-scrollbar {
+  width: 6px;
+}
+
+.filter-main-screen::-webkit-scrollbar-track,
+.filter-values-screen::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.filter-main-screen::-webkit-scrollbar-thumb,
+.filter-values-screen::-webkit-scrollbar-thumb {
+  background: rgba(74, 158, 255, 0.5);
+  border-radius: 3px;
+}
+
+.filter-main-screen::-webkit-scrollbar-thumb:hover,
+.filter-values-screen::-webkit-scrollbar-thumb:hover {
+  background: rgba(74, 158, 255, 0.7);
+}
+
+/* Адаптивность для мобильных */
+@media (max-width: 768px) {
+  .filter-panel {
+    width: 100%;
+    right: -100%;
+  }
+}
