@@ -1786,12 +1786,27 @@ function _loadBackdropDecoded(container, url) {
 /**
  * Рендер списка актёров
  */
-async function renderDetailActors(item, aw) {
+/**
+Рендер списка актёров
+@param {object} item - элемент каталога
+@param {HTMLElement} aw - обёртка для актёров
+@param {Array} [preloadedActors] - если переданы, используем их без запроса
+*/
+async function renderDetailActors(item, aw, preloadedActors) {
     if (!aw) return;
     var ae = getEl('catalog-detail-actors');
-    ae.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>';
-    aw.classList.remove('hidden');
-    var actors = await fetchCatalogActors(item);
+    var actors;
+
+    if (preloadedActors) {
+        // Данные уже загружены параллельно — рендерим сразу
+        actors = preloadedActors;
+    } else {
+        // Фоллбэк: грузим как раньше
+        ae.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>';
+        aw.classList.remove('hidden');
+        actors = await fetchCatalogActors(item);
+    }
+
     if (actors.length > 0) {
         var frag = document.createDocumentFragment();
         actors.forEach(function (a) {
@@ -1804,8 +1819,10 @@ async function renderDetailActors(item, aw) {
         });
         ae.innerHTML = '';
         ae.appendChild(frag);
+        aw.classList.remove('hidden');
     } else {
         ae.innerHTML = '<div class="catalog-empty">Актеры не найдены</div>';
+        aw.classList.remove('hidden');
     }
 }
 
@@ -1947,24 +1964,30 @@ async function showCatalogDetail(item, index, posterUrl) {
         if (mc && savedScroll > 0) setTimeout(function () { mc.scrollTop = savedScroll; }, 50);
     };
 
-    var details = await fetchCatalogItemDetails(item);
-    restore();
+    // ==================== ПАРАЛЛЕЛЬНАЯ ЗАГРУЗКА ====================
+    // Запускаем все независимые запросы одновременно
+    var detailsPromise = fetchCatalogItemDetails(item);
+    var actorsPromise = fetchCatalogActors(item);
 
-    // Рендерим все части
+    // Ждём детали для рендера шапки (обычно самый быстрый запрос)
+    var details = await detailsPromise;
+    restore();
     renderDetailHeader(item, posterUrl, details);
-    await renderDetailActors(item, aw);
+
+    // Ждём актёров (уже загружаются параллельно с деталями)
+    var actors = await actorsPromise;
+    renderDetailActors(item, aw, actors);
+
+    // Рекомендации — рендерим сразу из details
     var src = details || item || {};
     renderDetailRecommendations(src, rw, mt);
-    //renderDetailTrailers(src);
 
-    //     RUTUBE ТРЕЙЛЕР    
+    // ==================== RUTUBE ТРЕЙЛЕР (параллельно) ====================
     stopTrailerBackground();
-
     var trailerTitle = src.title || src.name || title;
     var trailerOriginal = src.original_title || src.original_name || '';
     var trailerDate = src.release_date || src.first_air_date || '';
     var trailerCacheKey = String(item.id || '') + '_' + mt;
-
     if (rutubeTrailerCache[trailerCacheKey]) {
         // Уже искали — показываем мгновенно (важно при возврате из плеера)
         rutubeTrailerState.currentUrl = rutubeTrailerCache[trailerCacheKey].url;
@@ -1973,7 +1996,6 @@ async function showCatalogDetail(item, index, posterUrl) {
     } else {
         rutubeTrailerState.currentUrl = null;
         rutubeTrailerState.currentTitle = null;
-
         fetchRutubeTrailer(trailerTitle, trailerOriginal, trailerDate).then(function (result) {
             if (!result || !result.url) return;
             rutubeTrailerCache[trailerCacheKey] = {
@@ -1992,11 +2014,10 @@ async function showCatalogDetail(item, index, posterUrl) {
             console.warn('RuTube trailer search failed:', e);
         });
     }
-    //     КОНЕЦ БЛОКА    
+    // ==================== КОНЕЦ БЛОКА ====================
 
     // Делегирование событий
     setupDetailDelegation(dv);
-
     // Фокус на кнопку просмотра
     requestAnimationFrame(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
