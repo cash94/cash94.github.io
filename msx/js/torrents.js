@@ -546,60 +546,161 @@ async function refreshTorrents(showLoadingFlag = true) {
 }
 window.refreshTorrents = refreshTorrents;
 
+// ==================== ВСПОМОГАТЕЛЬНАЯ: экранирование для атрибутов ====================
+function escapeAttr(value) {
+    if (!value) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+// ==================== RENDER TORRENTS (оптимизированная версия) ====================
 function renderTorrents() {
     var torrentsGrid = getEl('torrents-grid');
+    if (!torrentsGrid) return;
+
+    // 1. Полная очистка перед рендером
     torrentsGrid.innerHTML = '';
     progressCache.clear();
+
+    // 2. Пустой список
     if (AppState.torrents.length === 0) {
-        torrentsGrid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div style="font-size: 18px; color: #aaa; margin-bottom: 10px;">Нет торрентов</div><div style="font-size: 14px; color: #666;">Используйте поиск выше, чтобы найти и добавить торренты</div></div>`;
+        torrentsGrid.innerHTML =
+            '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">' +
+            '<div style="font-size: 18px; color: #aaa; margin-bottom: 10px;">Нет торрентов</div>' +
+            '<div style="font-size: 14px; color: #666;">Используйте поиск выше, чтобы найти и добавить торренты</div>' +
+            '</div>';
         return;
     }
-    var fragment = document.createDocumentFragment();
-    for (var i = 0; i < AppState.torrents.length; i++) {
-        var torrent = AppState.torrents[i];
-        var poster = ''; var title = torrent.title || 'Без названия'; var category = torrent.category || ''; var isTv = false;
-        try {
-            if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) isTv = torrent.file_stats.length > 1;
-            else if (torrent.data) {
-                var data = JSON.parse(torrent.data);
-                if (data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 0) isTv = data.TorrServer.Files.length > 1;
-                if (data.movie) poster = data.movie.img || (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : '');
+
+    // 3. Защита от гонки: запоминаем, какой экран рендерим
+    var currentScreenSnapshot = AppState.currentScreen;
+
+    // 4. Чанкирование: 8 карточек за один кадр (60 FPS)
+    var CHUNK_SIZE = 8;
+    var index = 0;
+
+    function renderChunk() {
+        // Если пользователь ушёл с экрана торрентов — прерываем рендер
+        if (AppState.currentScreen !== currentScreenSnapshot) return;
+
+        var fragment = document.createDocumentFragment();
+        var end = Math.min(index + CHUNK_SIZE, AppState.torrents.length);
+
+        for (; index < end; index++) {
+            var torrent = AppState.torrents[index];
+            var card = createTorrentCard(torrent);
+            if (card) fragment.appendChild(card);
+        }
+
+        torrentsGrid.appendChild(fragment);
+
+        if (index < AppState.torrents.length) {
+            // Отдаём управление браузеру для отрисовки кадра
+            requestAnimationFrame(renderChunk);
+        } else {
+            // Все карточки отрендерены — восстанавливаем фокус
+            if (AppState.currentScreen === 'torrents' &&
+                !document.querySelector('.torrent-card.focused')) {
+                setTimeout(function () {
+                    if (typeof window.focusFirstTorrentCard === 'function') {
+                        window.focusFirstTorrentCard();
+                    }
+                }, 80);
             }
-        } catch (e) { }
-        if (!poster && torrent.poster) poster = torrent.poster;
-        var displayCategory = isTv ? 'tv' : (category || 'movie');
-        var card = document.createElement('div');
-        card.className = 'torrent-card'; card.dataset.hash = torrent.hash;
-        attachTorrentDeleteLongPress(card, torrent);
-        var playStatus = torrent.stat_string === "Torrent working" ? '<span style="color: #4caf50; font-weight: bold;">▶ Идет просмотр</span>' : formatBytes(torrent.torrent_size);
-
-        card.innerHTML = `
-            <div class="torrent-poster">${poster ? `<img src="${poster}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'no-poster\\'>Нет постера</div>'">` : '<div class="no-poster">Нет постера</div>'}</div>
-            <div class="torrent-info">
-                <div class="torrent-title">${escapeHtml(title)}</div>
-                <div class="torrent-meta">
-                    <span>${playStatus}</span>
-                    <span class="torrent-badge">${displayCategory === 'tv' ? 'Сериал' : 'Фильм'}</span>
-                </div>
-            </div>
-        `;
-        fragment.appendChild(card);
+        }
     }
-    torrentsGrid.appendChild(fragment);
 
-    // Делегирование событий
-    torrentsGrid.onclick = function (e) {
+    requestAnimationFrame(renderChunk);
+}
+
+// ==================== СОЗДАНИЕ ОДНОЙ КАРТОЧКИ ====================
+function createTorrentCard(torrent) {
+    var poster = '';
+    var title = torrent.title || 'Без названия';
+    var category = torrent.category || '';
+    var isTv = false;
+
+    // Определяем тип и постер
+    try {
+        if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) {
+            isTv = torrent.file_stats.length > 1;
+        } else if (torrent.data) {
+            var data = JSON.parse(torrent.data);
+            if (data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 0) {
+                isTv = data.TorrServer.Files.length > 1;
+            }
+            if (data.movie) {
+                poster = data.movie.img ||
+                    (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : '');
+            }
+        }
+    } catch (e) { }
+
+    if (!poster && torrent.poster) poster = torrent.poster;
+
+    var displayCategory = isTv ? 'tv' : (category || 'movie');
+
+    // Статус: просмотр или размер
+    var playStatus;
+    if (torrent.stat_string === 'Torrent working') {
+        playStatus = '<span style="color: #4caf50; font-weight: bold;">▶ Идет просмотр</span>';
+    } else {
+        playStatus = escapeHtml(formatBytes(torrent.torrent_size));
+    }
+
+    // Безопасный постер: экранируем URL для атрибута src
+    var posterHtml;
+    if (poster) {
+        var safePoster = escapeAttr(poster);
+        posterHtml = '<img src="' + safePoster + '" loading="lazy" decoding="async" ' +
+            'onerror="this.parentElement.innerHTML=\'<div class=no-poster>Нет постера</div>\'">';
+    } else {
+        posterHtml = '<div class="no-poster">Нет постера</div>';
+    }
+
+    // Создаём карточку через createElement (безопаснее innerHTML для структуры)
+    var card = document.createElement('div');
+    card.className = 'torrent-card';
+    card.dataset.hash = torrent.hash;
+
+    // Long-press удаление
+    attachTorrentDeleteLongPress(card, torrent);
+
+    card.innerHTML =
+        '<div class="torrent-poster">' + posterHtml + '</div>' +
+        '<div class="torrent-info">' +
+        '<div class="torrent-title">' + escapeHtml(title.length > 60 ? title.substring(0, 60) + '...' : title) + '</div>' +
+        '<div class="torrent-meta">' +
+        '<span>' + playStatus + '</span>' +
+        '<span class="torrent-badge">' + (displayCategory === 'tv' ? 'Сериал' : 'Фильм') + '</span>' +
+        '</div>' +
+        '</div>';
+
+    return card;
+}
+
+// ==================== ДЕЛЕГИРОВАНИЕ СОБЫТИЙ (один раз при инициализации) ====================
+function setupTorrentGridDelegation() {
+    var torrentsGrid = getEl('torrents-grid');
+    if (!torrentsGrid || torrentsGrid._delegationBound) return;
+    torrentsGrid._delegationBound = true;
+
+    torrentsGrid.addEventListener('click', function (e) {
         var card = e.target.closest('.torrent-card');
         if (card && card.dataset.hash) {
-            var torrent = AppState.torrents.find(t => t.hash === card.dataset.hash);
+            var torrent = AppState.torrents.find(function (t) {
+                return t.hash === card.dataset.hash;
+            });
             if (torrent) showDetail(torrent);
         }
-    };
-
-    if (AppState.currentScreen === 'torrents' && !document.querySelector('.torrent-card.focused')) {
-        setTimeout(function () { if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard(); }, 80);
-    }
+    });
 }
+
+window.setupTorrentGridDelegation = setupTorrentGridDelegation;
 
 function showDetailByHash(hash) {
     if (!hash) return false;
@@ -1836,3 +1937,9 @@ function filterGlobalSearchByType(type) {
 
 function clearSearchResultsContainer() { var searchResultsDiv = getEl('search-results'); if (searchResultsDiv) searchResultsDiv.innerHTML = ''; }
 window.clearSearchResultsContainer = clearSearchResultsContainer;
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupTorrentGridDelegation);
+} else {
+    setupTorrentGridDelegation();
+}
