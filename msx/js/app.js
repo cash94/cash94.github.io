@@ -1251,30 +1251,18 @@ function setupTouchControls(seekSlider, volumeSlider) {
   var touchStartY = 0;
   var touchStartTime = 0;
   var touchMoved = false;
-  var observer = null;
 
-  function setupTouchButtons() {
-    var clickableElements = document.querySelectorAll(CLICKABLE_SELECTORS);
-    var elLen = clickableElements.length;
-    for (var i = 0; i < elLen; i++) {
-      var el = clickableElements[i];
-      el.removeEventListener('touchstart', handleTouchStart);
-      el.removeEventListener('touchend', handleTouchEnd);
-      el.removeEventListener('touchcancel', handleTouchCancel);
-      el.addEventListener('touchstart', handleTouchStart, { passive: true });
-      el.addEventListener('touchend', handleTouchEnd, { passive: true });
-      el.addEventListener('touchcancel', handleTouchCancel, { passive: true });
-    }
-  }
-
+  // ============ ОБРАБОТЧИКИ (логика без изменений) ============
   function handleTouchStart(e) {
     var target = e.target;
+
+    // Пропускаем элементы в search-overlay (кроме кнопок)
     var isInSearchOverlay = target.closest && target.closest('#search-overlay');
     var isCloseBtn = target.id === 'close-search' || (target.closest && target.closest('#close-search'));
     var isFilterBtn = target.id === 'filter-toggle' || (target.closest && target.closest('#filter-toggle'));
     if ((isCloseBtn || isFilterBtn) && isInSearchOverlay) return;
 
-    touchTarget = e.target;
+    touchTarget = target;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
     touchStartTime = Date.now();
@@ -1287,6 +1275,7 @@ function setupTouchControls(seekSlider, volumeSlider) {
 
   function handleTouchEnd(e) {
     if (!touchStartX) return;
+
     var deltaX = e.changedTouches[0].clientX - touchStartX;
     var deltaY = e.changedTouches[0].clientY - touchStartY;
     var deltaTime = Date.now() - touchStartTime;
@@ -1299,9 +1288,11 @@ function setupTouchControls(seekSlider, volumeSlider) {
       clickableElement = elementAtTouch.closest(CLICKABLE_SELECTORS);
     }
 
+    // Тап (не свайп, не долгое нажатие)
     if (!touchMoved && deltaTime < APP_CONSTANTS.TOUCH_TAP_THRESHOLD_MS &&
       Math.abs(deltaX) < APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX &&
       Math.abs(deltaY) < APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX) {
+
       var targetToClick = clickableElement || touchTarget;
       if (targetToClick && (
         targetToClick.closest('button') ||
@@ -1312,6 +1303,7 @@ function setupTouchControls(seekSlider, volumeSlider) {
         targetToClick.closest('.search-result-item') ||
         targetToClick.closest('.episode-item') ||
         targetToClick.closest('.audio-item') ||
+        targetToClick.closest('.subtitle-item') ||
         targetToClick.id === 'close-search' ||
         targetToClick.id === 'filter-toggle' ||
         targetToClick.id === 'search-btn'
@@ -1320,6 +1312,7 @@ function setupTouchControls(seekSlider, volumeSlider) {
         targetToClick.click();
       }
     }
+
     touchStartX = 0;
     touchStartY = 0;
   }
@@ -1330,6 +1323,25 @@ function setupTouchControls(seekSlider, volumeSlider) {
     touchStartY = 0;
   }
 
+  // ============ ДЕЛЕГИРОВАНИЕ: один listener на document ============
+  // Работает с ЛЮБЫМИ динамически добавленными элементами.
+  // Не нужен MutationObserver. Не нужен setupTouchButtons.
+  document.addEventListener('touchstart', function (e) {
+    var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
+    if (el) handleTouchStart.call(el, e);
+  }, { passive: true });
+
+  document.addEventListener('touchend', function (e) {
+    var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
+    if (el) handleTouchEnd.call(el, e);
+  }, { passive: true });
+
+  document.addEventListener('touchcancel', function (e) {
+    var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
+    if (el) handleTouchCancel.call(el, e);
+  }, { passive: true });
+
+  // ============ СЛАЙДЕРЫ (без изменений) ============
   if (seekSlider) {
     seekSlider.addEventListener('touchstart', function (e) {
       e.stopPropagation();
@@ -1354,23 +1366,8 @@ function setupTouchControls(seekSlider, volumeSlider) {
     volumeSlider.addEventListener('touchend', function (e) { e.stopPropagation(); }, { passive: true });
   }
 
-  setupTouchButtons();
-
-  // Исправление утечки памяти: observer теперь отключается при необходимости
-  observer = new MutationObserver(function (mutations) {
-    // Проверяем, действительно ли добавлены новые кликабельные элементы
-    var hasNewClickable = mutations.some(function (mutation) {
-      return Array.from(mutation.addedNodes).some(function (node) {
-        return node.nodeType === 1 && node.matches && node.matches(CLICKABLE_SELECTORS);
-      });
-    });
-    if (hasNewClickable) setupTouchButtons();
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  // Сохраняем observer для возможного отключения
-  window._touchObserver = observer;
+  // ============ MutationObserver и setupTouchButtons УДАЛЕНЫ ============
+  // Больше не нужны: делегирование обрабатывает все элементы автоматически.
 }
 
 // ==================== ПОЛНОЭКРАННЫЙ РЕЖИМ ====================
