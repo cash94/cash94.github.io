@@ -662,6 +662,13 @@ async function fetchCatalogItemMeta(item, mediaType) {
 // ==================== ЗАГРУЗКА КАТАЛОГА ====================
 async function loadCatalog(key) {
     if (!CATALOG_CONFIG[key]) return;
+
+    if (catalogState.currentCatalog === key &&
+        catalogState.items.length > 0 &&
+        getEl('torrents-grid').querySelector('.torrent-card.catalog-card')) {
+        return;
+    }
+
     AppState.backCurrentCatalog = key;
     abortCatalogRequests();
     catalogState.abortController = new AbortController();
