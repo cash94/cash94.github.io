@@ -569,6 +569,7 @@ function setupNavigation() {
       console.log('🔙 Возврат из детального просмотра');
       var mainContainer = getEl('main-container');
       resetDetailBackground();
+      var savedScroll = AppState.backupScroll || 0;
 
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
@@ -622,7 +623,7 @@ function setupNavigation() {
           clearDetailHistory();
         }
 
-        restoreFocusAfterNavigation(returnTo, { currentTorrentHash: currentTorrentHash });
+        restoreFocusAfterNavigation(returnTo, { currentTorrentHash: currentTorrentHash, savedScroll: savedScroll });
 
         if (typeof Animations !== 'undefined') Animations.animateDetailHide();
       }, APP_CONSTANTS.DETAIL_HIDE_DELAY_MS);
@@ -642,43 +643,41 @@ function restoreFocusAfterNavigation(returnTo, context) {
   }
 
   if (returnTo === 'catalog') {
-    AppState.backupScroll = 0;
     AppState.currentScreen = 'catalog';
 
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
       if (detailView) detailView.style.display = 'none';
       restoreRowFocus();
       return;
-    } else if (!AppState.clearLastSelected && AppState.openInRow) {
-      AppState.openInRow = false;
+    }
+
+    // ★ ФИКС: если каталог уже загружен и сетка в DOM — НЕ перерендериваем
+    if (catalogState.currentCatalog === AppState.backCurrentCatalog &&
+      catalogState.items.length > 0) {
+
       if (detailView) detailView.style.display = 'none';
-      var grid = getEl('torrents-grid');
-      if (grid) grid.style.display = 'none';
-      window.showCatalogList();
-      AppState.clearLastSelected = true;
-      return;
-    } else {
-      window.loadCatalog(AppState.backCurrentCatalog).then(function () {
-        if (typeof window.ensureCatalogFocus === 'function') {
-          if (detailView) detailView.style.display = 'none';
-          window.ensureCatalogFocus(true);
-          return;
-        }
-      });
+
+      // Восстанавливаем скролл ДО фокусировки
+      var mc = getEl('main-container');
+      if (mc && AppState.backupScroll > 0) {
+        mc.scrollTop = AppState.backupScroll;
+      }
+
+      // Фокус на нужную карточку без перерендера
+      if (typeof window.ensureCatalogFocus === 'function') {
+        window.ensureCatalogFocus(true);
+      }
       return;
     }
 
-    // Режим сетки (открыт конкретный каталог) — как раньше
-    if (typeof window.ensureCatalogFocus === 'function') {
+    // Только если каталог реально нужно загрузить заново
+    window.loadCatalog(AppState.backCurrentCatalog).then(function () {
       if (detailView) detailView.style.display = 'none';
-      window.ensureCatalogFocus(true);
-      return;
-    }
-    if (typeof window.focusFirstCatalogCard === 'function') {
-      if (detailView) detailView.style.display = 'none';
-      window.focusFirstCatalogCard();
-      return;
-    }
+      if (typeof window.ensureCatalogFocus === 'function') {
+        window.ensureCatalogFocus(true);
+      }
+    });
+    return;
   }
 
   if (returnTo === 'search') {
