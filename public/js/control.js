@@ -1879,9 +1879,11 @@ function focusEl(el, opts) {
         el.id === 'filter-back-btn' || el.id === 'filter-close-btn' ||
         el.id === 'reset-filters';
 
-    if (s === 'catalog' || s === 'torrents' || s === 'config') {
+    if (s === 'config') {
+        container = getEl('main-container');
+    } else if (s === 'catalog' || s === 'torrents') {
         var rowVp = (isRowCard && el.closest) ? el.closest('.catalog-row-viewport') : null;
-        container = rowVp || getEl('main-container');
+        container = rowVp || getEl('torrserver-section');
     } else if (s === 'search') {
         // ★ Если элемент внутри панели фильтров — используем контейнер панели
         if (isInFilterPanel) {
