@@ -858,41 +858,25 @@ function renderCatalogGrid() {
     grid.innerHTML = '';
     if (catalogState.items.length === 0) { showEmptyCatalog(); return; }
     addCatalogHeader(grid);
-
-    var CHUNK = 8;
-    var i = 0;
-    var currentCatalogKey = catalogState.currentCatalog;
-
-    function renderChunk() {
-        if (catalogState.currentCatalog !== currentCatalogKey) return;
-        var frag = document.createDocumentFragment();
-        var end = Math.min(i + CHUNK, catalogState.items.length);
-        for (; i < end; i++) {
-            frag.appendChild(createCatalogCard(catalogState.items[i], i));
-        }
-        grid.appendChild(frag);
-
-        if (i < catalogState.items.length) {
-            requestAnimationFrame(renderChunk);
-        } else {
-            // финализация — то что было после цикла
-            if (catalogState.hasMore) addLoadMoreTrigger(grid);
-            catalogState.loadedPostersCount = 0;
-            initPosterLazyLoading();
-            //initPosterUnloading();   // ← раскомментировать!
-            initLoadMoreObserver();
-            loadInitialPosters();
-            requestAnimationFrame(function () {
-                if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
-                    if (typeof updateFocusableElements === 'function') updateFocusableElements();
-                    setTimeout(function () {
-                        if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
-                    }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
-                }
-            });
-        }
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < catalogState.items.length; i++) {
+        frag.appendChild(createCatalogCard(catalogState.items[i], i));
     }
-    requestAnimationFrame(renderChunk);
+    grid.appendChild(frag);
+    if (catalogState.hasMore) addLoadMoreTrigger(grid);
+    catalogState.loadedPostersCount = 0;
+    initPosterLazyLoading();
+    //initPosterUnloading();
+    initLoadMoreObserver();
+    loadInitialPosters();
+    requestAnimationFrame(function () {
+        if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            setTimeout(function () {
+                if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+        }
+    });
 }
 
 function appendCatalogItems(newItems) {
@@ -1786,27 +1770,12 @@ function _loadBackdropDecoded(container, url) {
 /**
  * Рендер списка актёров
  */
-/**
-Рендер списка актёров
-@param {object} item - элемент каталога
-@param {HTMLElement} aw - обёртка для актёров
-@param {Array} [preloadedActors] - если переданы, используем их без запроса
-*/
-async function renderDetailActors(item, aw, preloadedActors) {
+async function renderDetailActors(item, aw) {
     if (!aw) return;
     var ae = getEl('catalog-detail-actors');
-    var actors;
-
-    if (preloadedActors) {
-        // Данные уже загружены параллельно — рендерим сразу
-        actors = preloadedActors;
-    } else {
-        // Фоллбэк: грузим как раньше
-        ae.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>';
-        aw.classList.remove('hidden');
-        actors = await fetchCatalogActors(item);
-    }
-
+    ae.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>';
+    aw.classList.remove('hidden');
+    var actors = await fetchCatalogActors(item);
     if (actors.length > 0) {
         var frag = document.createDocumentFragment();
         actors.forEach(function (a) {
@@ -1819,10 +1788,8 @@ async function renderDetailActors(item, aw, preloadedActors) {
         });
         ae.innerHTML = '';
         ae.appendChild(frag);
-        aw.classList.remove('hidden');
     } else {
         ae.innerHTML = '<div class="catalog-empty">Актеры не найдены</div>';
-        aw.classList.remove('hidden');
     }
 }
 
@@ -1964,30 +1931,24 @@ async function showCatalogDetail(item, index, posterUrl) {
         if (mc && savedScroll > 0) setTimeout(function () { mc.scrollTop = savedScroll; }, 50);
     };
 
-    // ==================== ПАРАЛЛЕЛЬНАЯ ЗАГРУЗКА ====================
-    // Запускаем все независимые запросы одновременно
-    var detailsPromise = fetchCatalogItemDetails(item);
-    var actorsPromise = fetchCatalogActors(item);
-
-    // Ждём детали для рендера шапки (обычно самый быстрый запрос)
-    var details = await detailsPromise;
+    var details = await fetchCatalogItemDetails(item);
     restore();
+
+    // Рендерим все части
     renderDetailHeader(item, posterUrl, details);
-
-    // Ждём актёров (уже загружаются параллельно с деталями)
-    var actors = await actorsPromise;
-    renderDetailActors(item, aw, actors);
-
-    // Рекомендации — рендерим сразу из details
+    await renderDetailActors(item, aw);
     var src = details || item || {};
     renderDetailRecommendations(src, rw, mt);
+    //renderDetailTrailers(src);
 
-    // ==================== RUTUBE ТРЕЙЛЕР (параллельно) ====================
+    //     RUTUBE ТРЕЙЛЕР    
     stopTrailerBackground();
+
     var trailerTitle = src.title || src.name || title;
     var trailerOriginal = src.original_title || src.original_name || '';
     var trailerDate = src.release_date || src.first_air_date || '';
     var trailerCacheKey = String(item.id || '') + '_' + mt;
+
     if (rutubeTrailerCache[trailerCacheKey]) {
         // Уже искали — показываем мгновенно (важно при возврате из плеера)
         rutubeTrailerState.currentUrl = rutubeTrailerCache[trailerCacheKey].url;
@@ -1996,6 +1957,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     } else {
         rutubeTrailerState.currentUrl = null;
         rutubeTrailerState.currentTitle = null;
+
         fetchRutubeTrailer(trailerTitle, trailerOriginal, trailerDate).then(function (result) {
             if (!result || !result.url) return;
             rutubeTrailerCache[trailerCacheKey] = {
@@ -2014,10 +1976,11 @@ async function showCatalogDetail(item, index, posterUrl) {
             console.warn('RuTube trailer search failed:', e);
         });
     }
-    // ==================== КОНЕЦ БЛОКА ====================
+    //     КОНЕЦ БЛОКА    
 
     // Делегирование событий
     setupDetailDelegation(dv);
+
     // Фокус на кнопку просмотра
     requestAnimationFrame(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
