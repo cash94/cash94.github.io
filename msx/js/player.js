@@ -1695,11 +1695,11 @@ async function switchAudioTrack(trackIndex) {
 function switchNativeAudioTrack(videoPlayer, index) {
   if (AppState.transcodingFullOnOff && videoPlayer.audioTracks && videoPlayer.audioTracks.length > 0) {
     for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
-      videoPlayer.audioTracks[i].enabled = (i === trackIndex);
+      videoPlayer.audioTracks[i].enabled = (i === index);
     }
-    currentAudioTrack = trackIndex;
+    currentAudioTrack = index;
     if (currentTimecodeData.hash && currentTimecodeData.fileId) {
-      saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
+      saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, index);
     }
     renderAudioTracks();
     toggleAudioPanel();
