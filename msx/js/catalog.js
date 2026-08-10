@@ -858,25 +858,41 @@ function renderCatalogGrid() {
     grid.innerHTML = '';
     if (catalogState.items.length === 0) { showEmptyCatalog(); return; }
     addCatalogHeader(grid);
-    var frag = document.createDocumentFragment();
-    for (var i = 0; i < catalogState.items.length; i++) {
-        frag.appendChild(createCatalogCard(catalogState.items[i], i));
-    }
-    grid.appendChild(frag);
-    if (catalogState.hasMore) addLoadMoreTrigger(grid);
-    catalogState.loadedPostersCount = 0;
-    initPosterLazyLoading();
-    //initPosterUnloading();
-    initLoadMoreObserver();
-    loadInitialPosters();
-    requestAnimationFrame(function () {
-        if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
-            if (typeof updateFocusableElements === 'function') updateFocusableElements();
-            setTimeout(function () {
-                if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
-            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+
+    var CHUNK = 8;
+    var i = 0;
+    var currentCatalogKey = catalogState.currentCatalog;
+
+    function renderChunk() {
+        if (catalogState.currentCatalog !== currentCatalogKey) return;
+        var frag = document.createDocumentFragment();
+        var end = Math.min(i + CHUNK, catalogState.items.length);
+        for (; i < end; i++) {
+            frag.appendChild(createCatalogCard(catalogState.items[i], i));
         }
-    });
+        grid.appendChild(frag);
+
+        if (i < catalogState.items.length) {
+            requestAnimationFrame(renderChunk);
+        } else {
+            // финализация — то что было после цикла
+            if (catalogState.hasMore) addLoadMoreTrigger(grid);
+            catalogState.loadedPostersCount = 0;
+            initPosterLazyLoading();
+            //initPosterUnloading();   // ← раскомментировать!
+            initLoadMoreObserver();
+            loadInitialPosters();
+            requestAnimationFrame(function () {
+                if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
+                    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+                    setTimeout(function () {
+                        if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+                    }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+                }
+            });
+        }
+    }
+    requestAnimationFrame(renderChunk);
 }
 
 function appendCatalogItems(newItems) {
