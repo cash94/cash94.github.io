@@ -920,22 +920,24 @@ function renderEpisodesList() {
   episodesList.innerHTML = html;
 
   // Добавляем обработчики событий
-  var episodeItems = episodesList.querySelectorAll('.episode-item');
-  for (var i = 0; i < episodeItems.length; i++) {
-    (function (item) {
-      var index = parseInt(item.dataset.index);
-      var fileId = item.dataset.fileId;
-      item.addEventListener('click', function (e) {
-        if (e.target.classList && e.target.classList.contains('episode-play')) return;
-        switchToEpisode(index, fileId);
-      });
-      var playBtn = item.querySelector('.episode-play');
-      if (playBtn) playBtn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        switchToEpisode(index, fileId);
-      });
-    })(episodeItems[i]);
-  }
+  // var episodeItems = episodesList.querySelectorAll('.episode-item');
+  // for (var i = 0; i < episodeItems.length; i++) {
+  //   (function (item) {
+  //     var index = parseInt(item.dataset.index);
+  //     var fileId = item.dataset.fileId;
+  //     item.addEventListener('click', function (e) {
+  //       if (e.target.classList && e.target.classList.contains('episode-play')) return;
+  //       switchToEpisode(index, fileId);
+  //     });
+  //     var playBtn = item.querySelector('.episode-play');
+  //     if (playBtn) playBtn.addEventListener('click', function (e) {
+  //       e.stopPropagation();
+  //       switchToEpisode(index, fileId);
+  //     });
+  //   })(episodeItems[i]);
+  // }
+  // Клики обрабатываются делегированием
+  setupEpisodesListDelegation();
 }
 
 async function switchToEpisode(index, fileId) {
@@ -984,13 +986,100 @@ function toggleEpisodesPanel() {
   } else { panel.classList.add('hidden'); btn.classList.remove('active'); }
 }
 
+// ==================== ДЕЛЕГИРОВАНИЕ СПИСКОВ ПЛЕЕРА ====================
+function setupEpisodesListDelegation() {
+  var episodesList = getEl('episodes-list');
+  if (!episodesList || episodesList._delegated) return;
+
+  episodesList._delegated = true;
+
+  episodesList.addEventListener('click', function (e) {
+    var item = e.target && e.target.closest ? e.target.closest('.episode-item') : null;
+    if (!item) return;
+
+    var index = parseInt(item.dataset.index, 10);
+    var fileId = item.dataset.fileId;
+
+    if (isNaN(index) || !fileId) return;
+
+    switchToEpisode(index, fileId);
+
+    if (typeof resetMouseIdleTimer === 'function') {
+      resetMouseIdleTimer();
+    }
+  });
+}
+
+function setupAudioListDelegation() {
+  var audioList = getEl('audio-list');
+  if (!audioList || audioList._delegated) return;
+
+  audioList._delegated = true;
+
+  audioList.addEventListener('click', function (e) {
+    var item = e.target && e.target.closest ? e.target.closest('.audio-item') : null;
+    if (!item) return;
+
+    var trackIndex = parseInt(item.dataset.trackIndex, 10);
+    if (isNaN(trackIndex)) return;
+
+    switchAudioTrack(trackIndex);
+
+    if (typeof resetMouseIdleTimer === 'function') {
+      resetMouseIdleTimer();
+    }
+  });
+}
+
+function setupSubtitlesListDelegation() {
+  var subtitlesList = getEl('subtitles-list');
+  if (!subtitlesList || subtitlesList._delegated) return;
+
+  subtitlesList._delegated = true;
+
+  subtitlesList.addEventListener('click', function (e) {
+    var item = e.target && e.target.closest ? e.target.closest('.subtitle-item') : null;
+    if (!item) return;
+
+    var trackIndex = parseInt(item.dataset.trackIndex, 10);
+    if (isNaN(trackIndex)) return;
+
+    switchSubtitleTrack(trackIndex);
+
+    if (typeof resetMouseIdleTimer === 'function') {
+      resetMouseIdleTimer();
+    }
+  });
+}
+// ==================== /ДЕЛЕГИРОВАНИЕ СПИСКОВ ПЛЕЕРА ====================
+
 function setupEpisodesButton() {
-  var episodesBtn = getEl('episodes-btn'); var closeEpisodesBtn = getEl('close-episodes'); var episodesPanel = getEl('episodes-panel');
+  var episodesBtn = getEl('episodes-btn');
+  var closeEpisodesBtn = getEl('close-episodes');
+  var episodesPanel = getEl('episodes-panel');
+
   if (!episodesBtn || !closeEpisodesBtn || !episodesPanel) return;
-  episodesBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleEpisodesPanel(); resetMouseIdleTimer(); });
-  closeEpisodesBtn.addEventListener('click', function () { episodesPanel.classList.add('hidden'); episodesBtn.classList.remove('active'); resetMouseIdleTimer(); });
+
+  // Делегирование кликов по списку серий
+  setupEpisodesListDelegation();
+
+  episodesBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    toggleEpisodesPanel();
+    resetMouseIdleTimer();
+  });
+
+  closeEpisodesBtn.addEventListener('click', function () {
+    episodesPanel.classList.add('hidden');
+    episodesBtn.classList.remove('active');
+    resetMouseIdleTimer();
+  });
+
   document.addEventListener('click', function (e) {
-    if (!episodesPanel.contains(e.target) && !episodesBtn.contains(e.target)) { episodesPanel.classList.add('hidden'); episodesBtn.classList.remove('active'); }
+    if (!episodesPanel.contains(e.target) && !episodesBtn.contains(e.target)) {
+      episodesPanel.classList.add('hidden');
+      episodesBtn.classList.remove('active');
+    }
     resetMouseIdleTimer();
   });
 }
@@ -1650,10 +1739,12 @@ function renderAudioTracks() {
       '<div class="audio-details"><span class="audio-language">' + language.toUpperCase() + '</span>' + (channels ? ' <span class="audio-channels">' + channels + '</span>' : '') + (codec ? ' <span class="audio-codec">' + codec + '</span>' : '') + '</div></div><div class="audio-check">✓</div></div>';
   }
   audioList.innerHTML = html;
-  var audioItems = audioList.querySelectorAll('.audio-item');
-  for (var i = 0; i < audioItems.length; i++) {
-    (function (item) { item.addEventListener('click', function () { switchAudioTrack(parseInt(item.dataset.trackIndex)); }); })(audioItems[i]);
-  }
+  // var audioItems = audioList.querySelectorAll('.audio-item');
+  // for (var i = 0; i < audioItems.length; i++) {
+  //   (function (item) { item.addEventListener('click', function () { switchAudioTrack(parseInt(item.dataset.trackIndex)); }); })(audioItems[i]);
+  // }
+  // Клики обрабатываются делегированием
+  setupAudioListDelegation();
 }
 
 function collectNativeAudioTracks(videoPlayer) {
@@ -1675,6 +1766,7 @@ async function switchAudioTrack(trackIndex) {
   if (trackIndex === currentAudioTrack) { toggleAudioPanel(); return; }
   if (AppState.transcodingFullOnOff) {
     switchNativeAudioTrack(AppState.nativeVideoPlayer, trackIndex);
+    return;
   }
   thisisseek = false; await saveTimecodeToServer();
   if (currentTimecodeData.hash && currentTimecodeData.fileId) await saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
@@ -1718,11 +1810,33 @@ function toggleAudioPanel() {
 }
 
 function setupAudioButton() {
-  var audioBtn = getEl('audio-btn'); var closeAudioBtn = getEl('close-audio'); var audioPanel = getEl('audio-panel');
+  var audioBtn = getEl('audio-btn');
+  var closeAudioBtn = getEl('close-audio');
+  var audioPanel = getEl('audio-panel');
+
   if (!audioBtn || !closeAudioBtn || !audioPanel) return;
-  audioBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleAudioPanel(); resetMouseIdleTimer(); });
-  closeAudioBtn.addEventListener('click', function () { audioPanel.classList.add('hidden'); audioBtn.classList.remove('active'); resetMouseIdleTimer(); });
-  document.addEventListener('click', function (e) { if (!audioPanel.contains(e.target) && !audioBtn.contains(e.target)) { audioPanel.classList.add('hidden'); audioBtn.classList.remove('active'); } });
+
+  // Делегирование кликов по списку аудиодорожек
+  setupAudioListDelegation();
+
+  audioBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    toggleAudioPanel();
+    resetMouseIdleTimer();
+  });
+
+  closeAudioBtn.addEventListener('click', function () {
+    audioPanel.classList.add('hidden');
+    audioBtn.classList.remove('active');
+    resetMouseIdleTimer();
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!audioPanel.contains(e.target) && !audioBtn.contains(e.target)) {
+      audioPanel.classList.add('hidden');
+      audioBtn.classList.remove('active');
+    }
+  });
 }
 
 async function saveAudioPreference(hash, fileId, audioTrack) {
@@ -1754,10 +1868,12 @@ function renderSubtitleTracks() {
     html += '<div class="subtitle-item ' + (isActive ? 'active' : '') + '" data-track-index="' + idx + '"><div class="subtitle-icon">💬</div><div class="subtitle-info"><div class="subtitle-title">' + escapeHtml(title) + badges + '</div><div class="subtitle-details"><span class="subtitle-language">' + language.toUpperCase() + '</span>' + (format ? '<span class="subtitle-format">' + escapeHtml(format) + '</span>' : '') + '</div></div><div class="subtitle-check">✓</div></div>';
   }
   subtitlesList.innerHTML = html;
-  var subtitleItems = subtitlesList.querySelectorAll('.subtitle-item');
-  for (var i = 0; i < subtitleItems.length; i++) {
-    (function (item) { item.addEventListener('click', function () { switchSubtitleTrack(parseInt(item.dataset.trackIndex)); }); })(subtitleItems[i]);
-  }
+  // var subtitleItems = subtitlesList.querySelectorAll('.subtitle-item');
+  // for (var i = 0; i < subtitleItems.length; i++) {
+  //   (function (item) { item.addEventListener('click', function () { switchSubtitleTrack(parseInt(item.dataset.trackIndex)); }); })(subtitleItems[i]);
+  // }
+  // Клики обрабатываются делегированием
+  setupSubtitlesListDelegation();
 }
 
 async function switchSubtitleTrack(trackIndex) {
@@ -1792,11 +1908,33 @@ function toggleSubtitlesPanel() {
 }
 
 function setupSubtitlesButton() {
-  var subtitlesBtn = getEl('subtitles-btn'); var closeSubtitlesBtn = getEl('close-subtitles'); var subtitlesPanel = getEl('subtitles-panel');
+  var subtitlesBtn = getEl('subtitles-btn');
+  var closeSubtitlesBtn = getEl('close-subtitles');
+  var subtitlesPanel = getEl('subtitles-panel');
+
   if (!subtitlesBtn || !closeSubtitlesBtn || !subtitlesPanel) return;
-  subtitlesBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleSubtitlesPanel(); resetMouseIdleTimer(); });
-  closeSubtitlesBtn.addEventListener('click', function () { subtitlesPanel.classList.add('hidden'); subtitlesBtn.classList.remove('active'); resetMouseIdleTimer(); });
-  document.addEventListener('click', function (e) { if (!subtitlesPanel.contains(e.target) && !subtitlesBtn.contains(e.target)) { subtitlesPanel.classList.add('hidden'); subtitlesBtn.classList.remove('active'); } });
+
+  // Делегирование кликов по списку субтитров
+  setupSubtitlesListDelegation();
+
+  subtitlesBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    toggleSubtitlesPanel();
+    resetMouseIdleTimer();
+  });
+
+  closeSubtitlesBtn.addEventListener('click', function () {
+    subtitlesPanel.classList.add('hidden');
+    subtitlesBtn.classList.remove('active');
+    resetMouseIdleTimer();
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!subtitlesPanel.contains(e.target) && !subtitlesBtn.contains(e.target)) {
+      subtitlesPanel.classList.add('hidden');
+      subtitlesBtn.classList.remove('active');
+    }
+  });
 }
 
 async function saveSubtitlePreference(hash, fileId, subtitleTrack) {
