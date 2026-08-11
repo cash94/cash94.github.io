@@ -102,6 +102,114 @@ LRUCache.prototype.size = function () {
     return this.cache.size;
 };
 
+// ==================== LRU + TTL КЭШ ====================
+function LRUTTLCache(maxSize, ttl) {
+    this.maxSize = maxSize > 0 ? maxSize : 100;
+    this.ttl = ttl > 0 ? ttl : 0;
+    this.cache = new Map();
+}
+
+LRUTTLCache.prototype._isExpired = function (entry) {
+    if (!entry) return true;
+    if (this.ttl <= 0) return false;
+
+    var ts = (entry.value && entry.value.timestamp)
+        ? entry.value.timestamp
+        : entry.timestamp;
+
+    return (Date.now() - ts) > this.ttl;
+};
+
+LRUTTLCache.prototype.get = function (key) {
+    var entry = this.cache.get(key);
+
+    if (!entry) return undefined;
+
+    if (this._isExpired(entry)) {
+        this.cache.delete(key);
+        return undefined;
+    }
+
+    // LRU: поднимаем запись в конец
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+
+    return entry.value;
+};
+
+LRUTTLCache.prototype.has = function (key) {
+    var entry = this.cache.get(key);
+
+    if (!entry) return false;
+
+    if (this._isExpired(entry)) {
+        this.cache.delete(key);
+        return false;
+    }
+
+    return true;
+};
+
+LRUTTLCache.prototype.set = function (key, value) {
+    if (this.cache.has(key)) {
+        this.cache.delete(key);
+    } else if (this.cache.size >= this.maxSize) {
+        var firstKey = this.cache.keys().next().value;
+        if (firstKey !== undefined) {
+            this.cache.delete(firstKey);
+        }
+    }
+
+    var now = Date.now();
+    var ts = (value && value.timestamp) ? value.timestamp : now;
+
+    this.cache.set(key, {
+        value: value,
+        timestamp: ts
+    });
+};
+
+LRUTTLCache.prototype.delete = function (key) {
+    return this.cache.delete(key);
+};
+
+LRUTTLCache.prototype.clear = function () {
+    this.cache.clear();
+};
+
+LRUTTLCache.prototype.size = function () {
+    return this.cache.size;
+};
+
+LRUTTLCache.prototype.forEach = function (callback, includeExpired) {
+    var self = this;
+
+    this.cache.forEach(function (entry, key) {
+        if (includeExpired || !self._isExpired(entry)) {
+            callback(entry.value, key, entry);
+        }
+    });
+};
+
+LRUTTLCache.prototype.cleanExpired = function () {
+    var self = this;
+
+    this.cache.forEach(function (entry, key) {
+        if (self._isExpired(entry)) {
+            self.cache.delete(key);
+        }
+    });
+};
+
+LRUTTLCache.prototype.trimToMax = function () {
+    while (this.cache.size > this.maxSize) {
+        var firstKey = this.cache.keys().next().value;
+        if (firstKey === undefined) break;
+        this.cache.delete(firstKey);
+    }
+};
+// ==================== /LRU + TTL КЭШ ====================
+
 // ==================== RUTUBE ТРЕЙЛЕРЫ ====================
 var rutubeTrailerState = {
     currentUrl: null,
@@ -335,14 +443,19 @@ function wrapRutubeHls(url) {
 }
 
 // ==================== TMDB КЭШ ====================
-var tmdbCache = {};
 var cats = [];
+
 var TMDB_CACHE_CONFIG = {
     ttl: CATALOG_CONSTANTS.CACHE_TTL_MS,
     maxSize: CATALOG_CONSTANTS.TMDB_MAX_CACHE_SIZE,
     cleanupInterval: CATALOG_CONSTANTS.TMDB_CLEANUP_INTERVAL_MS,
     enabled: true
 };
+
+var tmdbCache = new LRUTTLCache(
+    TMDB_CACHE_CONFIG.maxSize,
+    TMDB_CACHE_CONFIG.ttl
+);
 
 var detailHistory = [];
 
@@ -358,55 +471,82 @@ function getTmdbCacheKey(endpoint, params) {
 }
 
 function getFromTmdbCache(endpoint, params) {
-    if (!TMDB_CACHE_CONFIG.enabled) return null;
+    if (!TMDB_CACHE_CONFIG.enabled || !tmdbCache) return null;
+
     var key = getTmdbCacheKey(endpoint, params);
-    var cached = tmdbCache[key];
-    if (cached && (Date.now() - cached.timestamp < TMDB_CACHE_CONFIG.ttl)) {
-        return cached.data;
-    }
-    if (cached) delete tmdbCache[key];
-    return null;
+    var cached = tmdbCache.get(key);
+
+    if (!cached) return null;
+
+    return cached.data !== undefined ? cached.data : null;
 }
 
 function saveToTmdbCache(endpoint, params, data) {
-    if (!TMDB_CACHE_CONFIG.enabled) return;
+    if (!TMDB_CACHE_CONFIG.enabled || !tmdbCache) return;
+
     var key = getTmdbCacheKey(endpoint, params);
-    if (Object.keys(tmdbCache).length >= TMDB_CACHE_CONFIG.maxSize) cleanOldTmdbCache();
-    tmdbCache[key] = { data: data, timestamp: Date.now() };
+
+    tmdbCache.set(key, {
+        data: data,
+        timestamp: Date.now()
+    });
 }
 
 function cleanOldTmdbCache() {
-    var now = Date.now();
-    var keys = Object.keys(tmdbCache);
-    if (keys.length === 0) return;
-    var expired = [];
-    for (var i = 0; i < keys.length; i++) {
-        if (now - tmdbCache[keys[i]].timestamp >= TMDB_CACHE_CONFIG.ttl) expired.push(keys[i]);
-    }
-    for (var j = 0; j < expired.length; j++) delete tmdbCache[expired[j]];
-    keys = Object.keys(tmdbCache);
-    if (keys.length >= TMDB_CACHE_CONFIG.maxSize) {
-        var entries = keys.map(function (k) { return { k: k, t: tmdbCache[k].timestamp }; });
-        entries.sort(function (a, b) { return a.t - b.t; });
-        var toRemove = keys.length - TMDB_CACHE_CONFIG.maxSize + 15;
-        for (var r = 0; r < toRemove && r < entries.length; r++) delete tmdbCache[entries[r].k];
-    }
+    if (!tmdbCache) return;
+
+    tmdbCache.cleanExpired();
+    tmdbCache.trimToMax();
 }
 
-function clearTmdbCache() { tmdbCache = {}; }
+function clearTmdbCache() {
+    if (tmdbCache) tmdbCache.clear();
+}
 
 function getTmdbCacheStats() {
-    var now = Date.now(), valid = 0, expired = 0, size = 0;
-    var keys = Object.keys(tmdbCache);
-    for (var i = 0; i < keys.length; i++) {
-        var v = tmdbCache[keys[i]];
-        size += JSON.stringify(v.data).length;
-        (now - v.timestamp < TMDB_CACHE_CONFIG.ttl ? valid++ : expired++);
+    var now = Date.now();
+    var valid = 0;
+    var expired = 0;
+    var size = 0;
+
+    if (!tmdbCache) {
+        return {
+            totalEntries: 0,
+            validEntries: 0,
+            expiredEntries: 0,
+            totalSizeMB: '0.00',
+            maxSize: TMDB_CACHE_CONFIG.maxSize,
+            ttlHours: TMDB_CACHE_CONFIG.ttl / 3600000,
+            enabled: TMDB_CACHE_CONFIG.enabled
+        };
     }
+
+    tmdbCache.forEach(function (cached, key, entry) {
+        try {
+            size += JSON.stringify(cached.data).length;
+        } catch (e) {
+            // если данные не сериализуются — просто пропускаем размер
+        }
+
+        var ts = (cached && cached.timestamp)
+            ? cached.timestamp
+            : entry.timestamp;
+
+        if (now - ts < TMDB_CACHE_CONFIG.ttl) {
+            valid++;
+        } else {
+            expired++;
+        }
+    }, true);
+
     return {
-        totalEntries: keys.length, validEntries: valid, expiredEntries: expired,
-        totalSizeMB: (size / 1048576).toFixed(2), maxSize: TMDB_CACHE_CONFIG.maxSize,
-        ttlHours: TMDB_CACHE_CONFIG.ttl / 3600000, enabled: TMDB_CACHE_CONFIG.enabled
+        totalEntries: valid + expired,
+        validEntries: valid,
+        expiredEntries: expired,
+        totalSizeMB: (size / 1048576).toFixed(2),
+        maxSize: TMDB_CACHE_CONFIG.maxSize,
+        ttlHours: TMDB_CACHE_CONFIG.ttl / 3600000,
+        enabled: TMDB_CACHE_CONFIG.enabled
     };
 }
 
@@ -1289,7 +1429,7 @@ async function loadCatalogPoster(card, title, mt, id, index) {
             var d = await safeFetch('/api/tmdb/item?id=' + id + '&type=' + mt);
             if (d && d.poster_path) {
                 url = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + d.poster_path;
-                saveToTmdbCache('poster', p, { posterUrl: url});
+                saveToTmdbCache('poster', p, { posterUrl: url });
             }
         }
         if (!url && window.tmdb && window.tmdb.searchPoster) {
@@ -2937,7 +3077,10 @@ function initCatalog() {
         stats: getTmdbCacheStats,
         setEnabled: function (v) { TMDB_CACHE_CONFIG.enabled = v; },
         isEnabled: function () { return TMDB_CACHE_CONFIG.enabled; },
-        setTtl: function (v) { TMDB_CACHE_CONFIG.ttl = v; }
+        setTtl: function (v) {
+            TMDB_CACHE_CONFIG.ttl = v;
+            if (tmdbCache) tmdbCache.ttl = v;
+        }
     };
 }
 
