@@ -426,7 +426,7 @@ var catalogState = {
     activeRowPosterLoads: 0
 };
 
-var catalogCache = new Map();
+var catalogCache = new LRUCache(12);
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 function abortCatalogRequests() {
@@ -1289,7 +1289,7 @@ async function loadCatalogPoster(card, title, mt, id, index) {
             var d = await safeFetch('/api/tmdb/item?id=' + id + '&type=' + mt);
             if (d && d.poster_path) {
                 url = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + d.poster_path;
-                saveToTmdbCache('poster', p, { posterUrl: url, data: d });
+                saveToTmdbCache('poster', p, { posterUrl: url});
             }
         }
         if (!url && window.tmdb && window.tmdb.searchPoster) {
