@@ -338,34 +338,59 @@ async function loadProgressForTorrent(torrent) {
             }
         }
         if (files.length > 0) {
-            var videoFiles = files.filter(f => {
+            var videoFiles = files.filter(function (f) {
                 var name = f.path.toLowerCase();
-                return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => name.includes(ext));
+                return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(function (ext) { return name.indexOf(ext) !== -1; });
             });
             if (videoFiles.length === 0) return null;
 
-            var progressPromises = videoFiles.map((file, idx) => async () => {
-                try {
-                    var savedClientId = localStorage.getItem('clientId');
-                    var res = await fetch(SERVER_URL + '/api/timecode/get?hash=' + torrent.hash + '&fileId=' + file.id + '&clientId=' + encodeURIComponent(savedClientId));
-                    if (res.ok) {
-                        var data = await res.json();
-                        if (data.success && data.timecode > 0) {
-                            return { hash: torrent.hash, fileId: file.id, timecode: data.timecode, duration: data.duration, index: idx, fileName: file.path.split('/').pop() };
+            // === БАТЧ: один запрос на все файлы ===
+            var savedClientId = localStorage.getItem('clientId');
+            var fileIds = videoFiles.map(function (f) { return f.id; });
+            var results = [];
+
+            try {
+                var batchRes = await fetch(SERVER_URL + '/api/timecode/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hash: torrent.hash, fileIds: fileIds, clientId: savedClientId })
+                });
+
+                if (batchRes.ok) {
+                    var batchData = await batchRes.json();
+                    if (batchData.success && batchData.timecodes) {
+                        for (var fi = 0; fi < videoFiles.length; fi++) {
+                            var file = videoFiles[fi];
+                            var tc = batchData.timecodes[file.id];
+                            if (tc && tc.timecode > 0) {
+                                results.push({
+                                    hash: torrent.hash,
+                                    fileId: file.id,
+                                    timecode: tc.timecode,
+                                    duration: tc.duration,
+                                    index: fi,
+                                    fileName: file.path.split('/').pop()
+                                });
+                            }
                         }
                     }
-                } catch (e) { console.error(e); }
-                return null;
-            });
+                }
+            } catch (e) {
+                console.error('Batch timecode error:', e);
+            }
 
-            var results = await Promise.all(progressPromises.map(p => p()));
-            var validProgress = results.filter(r => r !== null);
-            if (validProgress.length > 0) {
-                validProgress.sort((a, b) => b.index - a.index);
-                var lastWatched = validProgress[0];
+            if (results.length > 0) {
+                results.sort(function (a, b) { return b.index - a.index; });
+                var lastWatched = results[0];
                 var progress = {
-                    hash: torrent.hash, fileId: lastWatched.fileId, timecode: lastWatched.timecode, duration: lastWatched.duration,
-                    episodeIndex: lastWatched.index, totalEpisodes: videoFiles.length, episodeName: lastWatched.fileName, isSeries: true
+                    hash: torrent.hash,
+                    fileId: lastWatched.fileId,
+                    timecode: lastWatched.timecode,
+                    duration: lastWatched.duration,
+                    episodeIndex: lastWatched.index,
+                    totalEpisodes: videoFiles.length,
+                    episodeName: lastWatched.fileName,
+                    isSeries: true
                 };
                 progressCache.set(cacheKey, { data: progress, timestamp: Date.now() });
                 return progress;
@@ -375,9 +400,8 @@ async function loadProgressForTorrent(torrent) {
     } catch (error) { console.error('Ошибка загрузки прогресса:', error); return null; }
 }
 
-async function addProgressToDetail(torrent) {
+async function addProgressToDetail(torrent, preloadedFiles) {
     if (!torrent || !torrent.hash) return null;
-
     var btn = getEl('detail-progress-btn');
     if (!btn) return null;
     btn.classList.remove('hidden');
@@ -387,13 +411,8 @@ async function addProgressToDetail(torrent) {
         extra.classList.remove('hidden');
         extra.style.removeProperty('display');
     }
-
-    // Чистим старые блоки (могли остаться от предыдущей версии)
     var oldProgressBlocks = document.querySelectorAll('#detail-progress');
     for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
-
-    // Обработчик вешаем один раз — он читает dataset кнопки в момент клика,
-    // поэтому при повторных вызовах showDetail дубли не накапливаются
     if (!btn.dataset.bound) {
         btn.dataset.bound = '1';
         btn.addEventListener('click', function (e) {
@@ -413,8 +432,6 @@ async function addProgressToDetail(torrent) {
             });
         });
     }
-
-    // === Состояние по умолчанию: «Играть» → первое видео (fileId = 1) ===
     btn.dataset.hash = torrent.hash;
     btn.dataset.fileId = '1';
     btn.dataset.timecode = '0';
@@ -422,19 +439,15 @@ async function addProgressToDetail(torrent) {
     btn.classList.remove('has-progress');
     btn.innerHTML = '<span class="btn-label">▶ Играть</span>';
 
-    var progress = await loadProgressForTorrent(torrent);
-    if (!progress || !(progress.timecode > 0)) return null; // прогресса нет — остаётся «Играть»
-
-    // === Есть прогресс: «Продолжить» ===
+    // === Передаём файлы, чтобы loadProgressForTorrent не запрашивал повторно ===
+    var progress = await loadProgressForTorrent(torrent, preloadedFiles);
+    if (!progress || !(progress.timecode > 0)) return null;
     var fileId = parseInt(progress.fileId, 10) || 1;
     var timecode = progress.timecode;
     var episodeIndex = progress.episodeIndex || 0;
-
     var percent = progress.duration > 0 ? (timecode / progress.duration) * 100 : 0;
     var remaining = 100 - percent;
     var isNextFile = false;
-
-    // Осталось ≤ 5% — запускаем следующий файл
     if (remaining <= 5) {
         var videoFiles = getVideoFilesFromTorrent(torrent);
         var nextFile = videoFiles.length ? videoFiles[episodeIndex + 1] : null;
@@ -444,20 +457,18 @@ async function addProgressToDetail(torrent) {
             episodeIndex = episodeIndex + 1;
             isNextFile = true;
         } else if (progress.isSeries && episodeIndex + 1 < (progress.totalEpisodes || 0)) {
-            fileId = fileId + 1; // фоллбэк, если список файлов ещё не загружен
+            fileId = fileId + 1;
             timecode = 0;
             episodeIndex = episodeIndex + 1;
             isNextFile = true;
         } else {
-            timecode = 0; // это последний файл — начинаем с начала
+            timecode = 0;
         }
     }
-
     btn.dataset.fileId = String(fileId);
     btn.dataset.timecode = String(timecode);
     btn.dataset.episodeIndex = String(episodeIndex);
     btn.classList.add('has-progress');
-
     var timeStr = formatTime(progress.timecode);
     var totalStr = progress.duration ? formatTime(progress.duration) : '??:??';
     var hint = '';
@@ -470,8 +481,7 @@ async function addProgressToDetail(torrent) {
     btn.innerHTML =
         '<span class="btn-label">▶ Продолжить</span>' +
         '<span class="btn-hint">' + hint + '</span>';
-
-    return fileId; // как и раньше — для логики фокуса в showDetail
+    return fileId;
 }
 
 async function checkServer(shouldLoadTorrents = true) {
@@ -546,60 +556,161 @@ async function refreshTorrents(showLoadingFlag = true) {
 }
 window.refreshTorrents = refreshTorrents;
 
+// ==================== ВСПОМОГАТЕЛЬНАЯ: экранирование для атрибутов ====================
+function escapeAttr(value) {
+    if (!value) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+// ==================== RENDER TORRENTS (оптимизированная версия) ====================
 function renderTorrents() {
     var torrentsGrid = getEl('torrents-grid');
+    if (!torrentsGrid) return;
+
+    // 1. Полная очистка перед рендером
     torrentsGrid.innerHTML = '';
     progressCache.clear();
+
+    // 2. Пустой список
     if (AppState.torrents.length === 0) {
-        torrentsGrid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div style="font-size: 18px; color: #aaa; margin-bottom: 10px;">Нет торрентов</div><div style="font-size: 14px; color: #666;">Используйте поиск выше, чтобы найти и добавить торренты</div></div>`;
+        torrentsGrid.innerHTML =
+            '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">' +
+            '<div style="font-size: 18px; color: #aaa; margin-bottom: 10px;">Нет торрентов</div>' +
+            '<div style="font-size: 14px; color: #666;">Используйте поиск выше, чтобы найти и добавить торренты</div>' +
+            '</div>';
         return;
     }
-    var fragment = document.createDocumentFragment();
-    for (var i = 0; i < AppState.torrents.length; i++) {
-        var torrent = AppState.torrents[i];
-        var poster = ''; var title = torrent.title || 'Без названия'; var category = torrent.category || ''; var isTv = false;
-        try {
-            if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) isTv = torrent.file_stats.length > 1;
-            else if (torrent.data) {
-                var data = JSON.parse(torrent.data);
-                if (data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 0) isTv = data.TorrServer.Files.length > 1;
-                if (data.movie) poster = data.movie.img || (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : '');
+
+    // 3. Защита от гонки: запоминаем, какой экран рендерим
+    var currentScreenSnapshot = AppState.currentScreen;
+
+    // 4. Чанкирование: 8 карточек за один кадр (60 FPS)
+    var CHUNK_SIZE = 8;
+    var index = 0;
+
+    function renderChunk() {
+        // Если пользователь ушёл с экрана торрентов — прерываем рендер
+        if (AppState.currentScreen !== currentScreenSnapshot) return;
+
+        var fragment = document.createDocumentFragment();
+        var end = Math.min(index + CHUNK_SIZE, AppState.torrents.length);
+
+        for (; index < end; index++) {
+            var torrent = AppState.torrents[index];
+            var card = createTorrentCard(torrent);
+            if (card) fragment.appendChild(card);
+        }
+
+        torrentsGrid.appendChild(fragment);
+
+        if (index < AppState.torrents.length) {
+            // Отдаём управление браузеру для отрисовки кадра
+            requestAnimationFrame(renderChunk);
+        } else {
+            // Все карточки отрендерены — восстанавливаем фокус
+            if (AppState.currentScreen === 'torrents' &&
+                !document.querySelector('.torrent-card.focused')) {
+                setTimeout(function () {
+                    if (typeof window.focusFirstTorrentCard === 'function') {
+                        window.focusFirstTorrentCard();
+                    }
+                }, 80);
             }
-        } catch (e) { }
-        if (!poster && torrent.poster) poster = torrent.poster;
-        var displayCategory = isTv ? 'tv' : (category || 'movie');
-        var card = document.createElement('div');
-        card.className = 'torrent-card'; card.dataset.hash = torrent.hash;
-        attachTorrentDeleteLongPress(card, torrent);
-        var playStatus = torrent.stat_string === "Torrent working" ? '<span style="color: #4caf50; font-weight: bold;">▶ Идет просмотр</span>' : formatBytes(torrent.torrent_size);
-
-        card.innerHTML = `
-            <div class="torrent-poster">${poster ? `<img src="${poster}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'no-poster\\'>Нет постера</div>'">` : '<div class="no-poster">Нет постера</div>'}</div>
-            <div class="torrent-info">
-                <div class="torrent-title">${escapeHtml(title)}</div>
-                <div class="torrent-meta">
-                    <span>${playStatus}</span>
-                    <span class="torrent-badge">${displayCategory === 'tv' ? 'Сериал' : 'Фильм'}</span>
-                </div>
-            </div>
-        `;
-        fragment.appendChild(card);
+        }
     }
-    torrentsGrid.appendChild(fragment);
 
-    // Делегирование событий
-    torrentsGrid.onclick = function (e) {
+    requestAnimationFrame(renderChunk);
+}
+
+// ==================== СОЗДАНИЕ ОДНОЙ КАРТОЧКИ ====================
+function createTorrentCard(torrent) {
+    var poster = '';
+    var title = torrent.title || 'Без названия';
+    var category = torrent.category || '';
+    var isTv = false;
+
+    // Определяем тип и постер
+    try {
+        if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) {
+            isTv = torrent.file_stats.length > 1;
+        } else if (torrent.data) {
+            var data = JSON.parse(torrent.data);
+            if (data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 0) {
+                isTv = data.TorrServer.Files.length > 1;
+            }
+            if (data.movie) {
+                poster = data.movie.img ||
+                    (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : '');
+            }
+        }
+    } catch (e) { }
+
+    if (!poster && torrent.poster) poster = torrent.poster;
+
+    var displayCategory = isTv ? 'tv' : (category || 'movie');
+
+    // Статус: просмотр или размер
+    var playStatus;
+    if (torrent.stat_string === 'Torrent working') {
+        playStatus = '<span style="color: #4caf50; font-weight: bold;">▶ Идет просмотр</span>';
+    } else {
+        playStatus = escapeHtml(formatBytes(torrent.torrent_size));
+    }
+
+    // Безопасный постер: экранируем URL для атрибута src
+    var posterHtml;
+    if (poster) {
+        var safePoster = escapeAttr(poster);
+        posterHtml = '<img src="' + safePoster + '" loading="lazy" decoding="async" ' +
+            'onerror="this.parentElement.innerHTML=\'<div class=no-poster>Нет постера</div>\'">';
+    } else {
+        posterHtml = '<div class="no-poster">Нет постера</div>';
+    }
+
+    // Создаём карточку через createElement (безопаснее innerHTML для структуры)
+    var card = document.createElement('div');
+    card.className = 'torrent-card';
+    card.dataset.hash = torrent.hash;
+
+    // Long-press удаление
+    attachTorrentDeleteLongPress(card, torrent);
+
+    card.innerHTML =
+        '<div class="torrent-poster">' + posterHtml + '</div>' +
+        '<div class="torrent-info">' +
+        '<div class="torrent-title">' + escapeHtml(title.length > 60 ? title.substring(0, 60) + '...' : title) + '</div>' +
+        '<div class="torrent-meta">' +
+        '<span>' + playStatus + '</span>' +
+        '<span class="torrent-badge">' + (displayCategory === 'tv' ? 'Сериал' : 'Фильм') + '</span>' +
+        '</div>' +
+        '</div>';
+
+    return card;
+}
+
+// ==================== ДЕЛЕГИРОВАНИЕ СОБЫТИЙ (один раз при инициализации) ====================
+function setupTorrentGridDelegation() {
+    var torrentsGrid = getEl('torrents-grid');
+    if (!torrentsGrid || torrentsGrid._delegationBound) return;
+    torrentsGrid._delegationBound = true;
+
+    torrentsGrid.addEventListener('click', function (e) {
         var card = e.target.closest('.torrent-card');
         if (card && card.dataset.hash) {
-            var torrent = AppState.torrents.find(t => t.hash === card.dataset.hash);
+            var torrent = AppState.torrents.find(function (t) {
+                return t.hash === card.dataset.hash;
+            });
             if (torrent) showDetail(torrent);
         }
-    };
-
-    if (AppState.currentScreen === 'torrents' && !document.querySelector('.torrent-card.focused')) {
-        setTimeout(function () { if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard(); }, 80);
-    }
+    });
 }
+
+window.setupTorrentGridDelegation = setupTorrentGridDelegation;
 
 function showDetailByHash(hash) {
     if (!hash) return false;
@@ -823,8 +934,6 @@ async function showDetail(torrent) {
             AppState.currentDetailItem = torrent;
         }
     }
-
-    // Очищаем контент от предыдущего торрента (трейлеры, скриншоты, описание, мета)
     hideCatalogDetailExtra();
     visibleItemsforDetail('showDetail');
     var posterImg = getEl('detail-poster');
@@ -837,13 +946,16 @@ async function showDetail(torrent) {
     if (filesList) { filesList.style.display = 'flex'; filesList.style.flexDirection = 'row'; }
     filesList.innerHTML = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;"><div class="spinner"></div><div style="font-size: 16px; color: #aaa;">Загрузка файлов...</div></div>';
     if (typeof Animations !== 'undefined') Animations.animateDetailShow();
-    var tmdbPromise = loadAllTmdbDataForTorrent(torrent, { titleEl: titleEl, detailViewDiv: detailViewDiv, detailSubtitle: detailSubtitle });
     titleEl.textContent = (torrent.title || 'Без названия').replace(/[\d+]/, '').trim();
     var oldProgressBlocks = document.querySelectorAll('#detail-progress');
     for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
-    //var lastField = await addProgressToDetail(torrent);
+
+    // === ПАРАЛЛЕЛЬНЫЙ ЗАПУСК: файлы + TMDB ===
+    var filesPromise = getTorrentFilesWithCache(torrent, false);
+    var tmdbPromise = loadAllTmdbDataForTorrent(torrent, { titleEl: titleEl, detailViewDiv: detailViewDiv, detailSubtitle: detailSubtitle });
+
     try {
-        var files = await getTorrentFilesWithCache(torrent, false);
+        var files = await filesPromise;
         var poster = torrent.poster || '';
         if (!poster && torrent.data) {
             try {
@@ -852,10 +964,11 @@ async function showDetail(torrent) {
             } catch (e) { }
         }
         posterImg.innerHTML = poster ? '<img src="' + poster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
+
         if (files.length === 0) {
             filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">📁 Нет файлов</div>';
         } else {
-            var lastField = await addProgressToDetail(torrent);
+            // === РЕНДЕР ФАЙЛОВ СРАЗУ (не ждём прогресс) ===
             var videoFiles = files.filter(f => {
                 var n = f.path.split('/').pop().toLowerCase();
                 return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext));
@@ -867,6 +980,15 @@ async function showDetail(torrent) {
                 if (item) fragment.appendChild(item);
             }
             filesList.appendChild(fragment);
+
+            // === ПРОГРЕСС АСИНХРОННО (передаём файлы, чтобы не запрашивать повторно) ===
+            addProgressToDetail(torrent, files).then(function (lastField) {
+                if (lastField > 0 && typeof updateFocusableElements === 'function') {
+                    updateFocusableElements();
+                }
+            });
+
+            // === TMDB-данные применяем когда готовы ===
             tmdbPromise.then(function (tmdbData) {
                 if (tmdbData.cleanTitle && tmdbData.cleanTitle !== 'Без названия') titleEl.textContent = tmdbData.cleanTitle;
                 if (tmdbData.seasonNumbers && tmdbData.seasonNumbers.length > 1) {
@@ -875,7 +997,6 @@ async function showDetail(torrent) {
                 }
                 loadStillsAndUpdateFiles(tmdbData.seasonNumbers || [], tmdbData.allSeasonEpisodes || {}, tmdbData.movieStill, videoFiles.length);
             }).catch(function (error) { console.error('Ошибка загрузки TMDB данных:', error); });
-
         }
     } catch (e) {
         console.error('Ошибка:', e);
@@ -886,11 +1007,8 @@ async function showDetail(torrent) {
             updateFocusableElements();
             var fileItems = document.querySelectorAll('.file-item');
             if (fileItems.length > 0) {
-                if (lastField > 0 && focusableElements[lastField + 1] && focusableElements[lastField + 1].classList.contains('file-item')) setFocus(lastField + 1);
-                else {
-                    for (var i = 0; i < focusableElements.length; i++) {
-                        if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) { setFocus(i); break; }
-                    }
+                for (var i = 0; i < focusableElements.length; i++) {
+                    if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) { setFocus(i); break; }
                 }
             } else setFocus(0);
         }
@@ -1836,3 +1954,9 @@ function filterGlobalSearchByType(type) {
 
 function clearSearchResultsContainer() { var searchResultsDiv = getEl('search-results'); if (searchResultsDiv) searchResultsDiv.innerHTML = ''; }
 window.clearSearchResultsContainer = clearSearchResultsContainer;
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupTorrentGridDelegation);
+} else {
+    setupTorrentGridDelegation();
+}
