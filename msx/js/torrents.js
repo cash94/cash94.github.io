@@ -26,9 +26,78 @@ var TORRENT_DELETE_HOLD_MS = 900;
 var suppressTorrentClickUntil = 0;
 var pendingRemoteHoldHash = null;
 
+// ==================== LRU CACHE ====================
+function LruCache(max, ttl) {
+    this.max = max > 0 ? max : 100;
+    this.ttl = ttl > 0 ? ttl : 0;
+    this.map = new Map();
+}
+
+LruCache.prototype._isExpired = function (entry) {
+    return this.ttl > 0 && entry.expires > 0 && Date.now() > entry.expires;
+};
+
+LruCache.prototype.get = function (key) {
+    var entry = this.map.get(key);
+
+    if (!entry) return undefined;
+
+    if (this._isExpired(entry)) {
+        this.map.delete(key);
+        return undefined;
+    }
+
+    // LRU: поднимаем запись в конец
+    this.map.delete(key);
+    this.map.set(key, entry);
+
+    return entry.value;
+};
+
+LruCache.prototype.has = function (key) {
+    var entry = this.map.get(key);
+
+    if (!entry) return false;
+
+    if (this._isExpired(entry)) {
+        this.map.delete(key);
+        return false;
+    }
+
+    return true;
+};
+
+LruCache.prototype.set = function (key, value, ttl) {
+    if (this.map.has(key)) {
+        this.map.delete(key);
+    } else if (this.map.size >= this.max) {
+        var oldestKey = this.map.keys().next().value;
+        if (oldestKey !== undefined) {
+            this.map.delete(oldestKey);
+        }
+    }
+
+    var ttlMs = ttl === undefined ? this.ttl : ttl;
+    var expires = ttlMs > 0 ? Date.now() + ttlMs : 0;
+
+    this.map.set(key, {
+        value: value,
+        expires: expires
+    });
+};
+
+LruCache.prototype.delete = function (key) {
+    return this.map.delete(key);
+};
+
+LruCache.prototype.clear = function () {
+    this.map.clear();
+};
+// ==================== /LRU CACHE ====================
+
 // Кэш
-var progressCache = new Map();
-var torrentFilesCache = new Map();
+var progressCache = new LruCache(150, 60 * 1000);
+var torrentFilesCache = new LruCache(80, 60 * 60 * 1000);
 
 var SORT_OPTIONS = [
     { value: 'date-desc', label: 'Сначала новые' },
@@ -758,7 +827,7 @@ async function getTmdbDetailsWithCache(tmdbId, mediaType) {
             if (response.ok) { var data = await response.json(); window.saveToTmdbCache('details', cacheParams, data); return data; }
         } catch (error) { console.error('Ошибка загрузки TMDB данных:', error); }
     } else {
-        if (!window.tmdbDetailsCache) window.tmdbDetailsCache = new Map();
+        if (!window.tmdbDetailsCache) window.tmdbDetailsCache = new LruCache(200, 24 * 60 * 60 * 1000);
         var cacheKey = tmdbId + '_' + mediaType;
         if (window.tmdbDetailsCache.has(cacheKey)) {
             var cached = window.tmdbDetailsCache.get(cacheKey);
@@ -824,7 +893,7 @@ function cleanTitleFromSeasons(title, seasons) {
     return cleaned;
 }
 
-var seasonCache = new Map();
+var seasonCache = new LruCache(200, 24 * 60 * 60 * 1000);
 async function loadSeasonStills(tmdbId, seasonNumber) {
     var cacheKey = tmdbId + 'season' + seasonNumber;
     if (seasonCache.has(cacheKey)) { var cached = seasonCache.get(cacheKey); if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) return cached.data; }
