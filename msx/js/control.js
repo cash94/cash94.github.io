@@ -183,7 +183,7 @@ function getTorrentGridColumns() {
     var grid = getEl('torrents-grid');
     if (!grid) return 5;
     try {
-        var cols = (window.getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
+        var cols = (grid.style.gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
         _cachedColumns = cols || 5;
     } catch (e) { _cachedColumns = 5; }
     return _cachedColumns;
@@ -207,12 +207,12 @@ function currentScreen() {
         var dn = getEl('donate-overlay'), sy = getEl('sync-overlay');
 
         if (ss === 'player') return 'player';
-        if (p && getComputedStyle(p).display !== 'none') return 'player';
-        if (sy && !sy.classList.contains('hidden') && getComputedStyle(sy).display !== 'none') return 'sync';
-        if (c && getComputedStyle(c).display !== 'none') return 'config';
-        if (d && getComputedStyle(d).display !== 'none') return 'detail';
-        if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') return 'search';
-        if (dn && !dn.classList.contains('hidden') && getComputedStyle(dn).display !== 'none') return 'donate';
+        if (p && p.style.display !== 'none') return 'player';
+        if (sy && !sy.classList.contains('hidden') && sy.style.display !== 'none') return 'sync';
+        if (c && c.style.display !== 'none') return 'config';
+        if (d && d.style.display !== 'none') return 'detail';
+        if (s && !s.classList.contains('hidden') && s.style.display !== 'none') return 'search';
+        if (dn && !dn.classList.contains('hidden') && dn.style.display !== 'none') return 'donate';
         if (AppState.inSearch == 'catalog') return 'catalog';
 
         var cg = getEl('torrents-grid');
@@ -1351,7 +1351,7 @@ function onBack() {
             return true;
         }
     }
-    if (configScreen && getComputedStyle(configScreen).display !== 'none') {
+    if (configScreen && configScreen.style.display !== 'none') {
         var focusedElement = document.querySelector('.focused');
         var menuItems = getConfigMenuItems();
         var isOnMenu = false;
@@ -1392,7 +1392,7 @@ function onBack() {
         }
         return true;
     }
-    if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') {
+    if (s && !s.classList.contains('hidden') && s.style.display !== 'none') {
         // Та же цепочка, что и в closeSearchBtn:
         // если вернулись из detail в поиск — «назад» открывает карточку каталога
         if (AppState && AppState.openCatalogDetailOnSearchClose) {
@@ -1409,7 +1409,7 @@ function onBack() {
         else leaveSearchToTorrents();
         return true;
     }
-    if (d && getComputedStyle(d).display !== 'none') {
+    if (d && d.style.display !== 'none') {
         if (AppState.trailerPlay) {
             ovh = getEl('catalog-toggle-overview-btn');
             stopTrailerBackground();
@@ -1429,7 +1429,7 @@ function onBack() {
         setTimeout(function () { ScreenStrategies.catalog.ensureFocus(true); }, 180);
         return true;
     }
-    if (c && getComputedStyle(c).display !== 'none') {
+    if (c && c.style.display !== 'none') {
         var m = getEl('torrserver-section');
         c.style.display = 'none';
         if (m) m.style.display = 'block';
