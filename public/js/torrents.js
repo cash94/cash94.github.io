@@ -975,11 +975,20 @@ async function showDetail(torrent) {
             });
             filesList.innerHTML = '';
             var fragment = document.createDocumentFragment();
+            var addedItems = [];
             for (var i = 0; i < videoFiles.length; i++) {
                 var item = addFileItem(videoFiles[i], torrent.hash, videoFiles.length === 1 ? torrent.title : 'Серия ' + (i + 1), videoFiles.length === 1 ? null : i, null, true);
-                if (item) fragment.appendChild(item);
+                if (item) {
+                    fragment.appendChild(item);
+                    addedItems.push(item);
+                }
             }
             filesList.appendChild(fragment);
+
+            // Один батч-запрос на все файлы вместо N отдельных
+            if (addedItems.length > 0) {
+                loadProgressForFileItems(addedItems, torrent.hash);
+            }
 
             // === ПРОГРЕСС АСИНХРОННО (передаём файлы, чтобы не запрашивать повторно) ===
             addProgressToDetail(torrent, files).then(function (lastField) {
@@ -1162,7 +1171,7 @@ function addFileItem(file, hash, name, episodeIndex, stillImage, returnOnly = fa
         startHLSPlayback(playUrl, 0, false, episodeIndex).finally(function () { getEl('playback-overlay').classList.remove('active'); getEl('detail-view').style.pointerEvents = 'auto'; });
     };
     if (stillImage) item.dataset.pendingStill = stillImage;
-    loadProgressForFileItem(item, hash, file.id, episodeIndex);
+    //loadProgressForFileItem(item, hash, file.id, episodeIndex);
     if (returnOnly) return item;
     var filesList = getEl('files-list'); if (filesList) filesList.appendChild(item);
     return item;
@@ -1239,6 +1248,94 @@ async function loadProgressForFileItem(item, hash, fileId, episodeIndex) {
             }
         }
     } catch (error) { console.error('Ошибка загрузки прогресса для файла:', error); }
+}
+
+async function loadProgressForFileItems(items, hash) {
+    if (!items || !items.length || !hash) return;
+
+    var cacheKey = hash;
+
+    // Проверяем кэш
+    if (progressCache.has(cacheKey)) {
+        var cached = progressCache.get(cacheKey);
+        if (cached && (Date.now() - cached.timestamp < 60000)) {
+            var cachedData = cached.data;
+            if (cachedData && Array.isArray(cachedData)) {
+                // Применяем прогресс из кэша
+                for (var i = 0; i < items.length; i++) {
+                    var item = items[i];
+                    var fileId = item.dataset.fileId;
+                    var fileProgress = null;
+                    for (var j = 0; j < cachedData.length; j++) {
+                        if (String(cachedData[j].fileId) === String(fileId)) {
+                            fileProgress = cachedData[j];
+                            break;
+                        }
+                    }
+                    if (fileProgress && fileProgress.timecode > 0 && fileProgress.duration > 0) {
+                        applyProgressToItem(item, fileProgress.timecode, fileProgress.duration);
+                    }
+                }
+                return;
+            }
+        }
+    }
+
+    try {
+        var savedClientId = localStorage.getItem('clientId');
+        var fileIds = [];
+        for (var i = 0; i < items.length; i++) {
+            fileIds.push(parseInt(items[i].dataset.fileId, 10));
+        }
+
+        var response = await fetch(SERVER_URL + '/api/timecode/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hash: hash, fileIds: fileIds, clientId: savedClientId })
+        });
+
+        if (response.ok) {
+            var batchData = await response.json();
+            if (batchData.success && batchData.timecodes) {
+                var progressArray = [];
+                for (var i = 0; i < items.length; i++) {
+                    var item = items[i];
+                    var fileId = item.dataset.fileId;
+                    var tc = batchData.timecodes[fileId];
+                    if (tc && tc.timecode > 0 && tc.duration > 0) {
+                        applyProgressToItem(item, tc.timecode, tc.duration);
+                        progressArray.push({
+                            hash: hash,
+                            fileId: fileId,
+                            timecode: tc.timecode,
+                            duration: tc.duration
+                        });
+                    }
+                }
+                // Сохраняем массив прогрессов в кэш
+                if (progressArray.length > 0) {
+                    progressCache.set(cacheKey, { data: progressArray, timestamp: Date.now() });
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка батч-загрузки прогресса:', error);
+    }
+}
+
+// Вспомогательная функция применения прогресса к элементу
+function applyProgressToItem(item, timecode, duration) {
+    var progressPercent = Math.min((timecode / duration) * 100, 98);
+    var progressFill = item.querySelector('.file-progress-fill');
+    if (progressFill) {
+        progressFill.style.width = progressPercent + '%';
+        if (progressPercent > 5) {
+            progressFill.style.opacity = '1';
+            item.classList.add('has-progress');
+        }
+    }
+    item.dataset.progressTimecode = timecode;
+    item.dataset.progressDuration = duration;
 }
 
 function addMovieItem(torrent) {
