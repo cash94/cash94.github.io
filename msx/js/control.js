@@ -199,21 +199,32 @@ function invalidateFocusCache() {
 window.invalidateFocusCache = invalidateFocusCache;
 
 // ==================== ХЕЛПЕРЫ ДЛЯ СТРАТЕГИЙ ====================
+function _isScreenVisible(el) {
+    if (!el) return false;
+
+    if (el.hidden) return false;
+
+    if (el.classList && el.classList.contains('hidden')) return false;
+
+    if (el.style.display === 'none') return false;
+
+    return true;
+}
+
 function currentScreen() {
     try {
         var ss = window.AppState && AppState.currentScreen ? AppState.currentScreen : null;
-        var p = getEl('player-screen'), d = getEl('detail-view'), c = getEl('config-screen');
-        var s = getEl('search-overlay'), ct = getEl('tab-catalog');
-        var dn = getEl('donate-overlay'), sy = getEl('sync-overlay');
 
         if (ss === 'player') return 'player';
-        if (p && p.style.display !== 'none') return 'player';
-        if (sy && !sy.classList.contains('hidden') && sy.style.display !== 'none') return 'sync';
-        if (c && c.style.display !== 'none') return 'config';
-        if (d && d.style.display !== 'none') return 'detail';
-        if (s && !s.classList.contains('hidden') && s.style.display !== 'none') return 'search';
-        if (dn && !dn.classList.contains('hidden') && dn.style.display !== 'none') return 'donate';
-        if (AppState.inSearch == 'catalog') return 'catalog';
+
+        if (_isScreenVisible(getEl('player-screen'))) return 'player';
+        if (_isScreenVisible(getEl('sync-overlay'))) return 'sync';
+        if (_isScreenVisible(getEl('config-screen'))) return 'config';
+        if (_isScreenVisible(getEl('detail-view'))) return 'detail';
+        if (_isScreenVisible(getEl('search-overlay'))) return 'search';
+        if (_isScreenVisible(getEl('donate-overlay'))) return 'donate';
+
+        if (window.AppState && AppState.inSearch === 'catalog') return 'catalog';
 
         var cg = getEl('torrents-grid');
         if (cg) {
@@ -221,8 +232,11 @@ function currentScreen() {
             var tc = cg.querySelector('.torrent-card:not(.catalog-card):not(.catalog-folder-card)') !== null;
             if (hc && !tc) return 'catalog';
         }
+
         return ss || 'torrents';
-    } catch (e) { return 'torrents'; }
+    } catch (e) {
+        return 'torrents';
+    }
 }
 
 function belongsToScreen(el, screen) {
