@@ -3071,8 +3071,9 @@ function stopTmdbCleanup() {
 function initCatalog() {
     startTmdbCleanup();
     initCatalogDetailButtons();
-    //setupCatalogRowsNavigation();
-    window.tmdbCache = {
+
+    // Используем другое имя для публичного API
+    window.tmdbCacheAPI = {
         clear: clearTmdbCache,
         stats: getTmdbCacheStats,
         setEnabled: function (v) { TMDB_CACHE_CONFIG.enabled = v; },
