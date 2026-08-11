@@ -183,7 +183,7 @@ function getTorrentGridColumns() {
     var grid = getEl('torrents-grid');
     if (!grid) return 5;
     try {
-        var cols = (grid.style.gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
+        var cols = (window.getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
         _cachedColumns = cols || 5;
     } catch (e) { _cachedColumns = 5; }
     return _cachedColumns;
@@ -208,7 +208,15 @@ function _isScreenVisible(el) {
 
     if (el.style.display === 'none') return false;
 
-    return true;
+    // Если inline display задан — верим ему
+    if (el.style.display !== '') return true;
+
+    // Если inline не задан, один раз проверяем computed style
+    try {
+        return getComputedStyle(el).display !== 'none';
+    } catch (e) {
+        return true;
+    }
 }
 
 function currentScreen() {
@@ -1365,7 +1373,7 @@ function onBack() {
             return true;
         }
     }
-    if (configScreen && configScreen.style.display !== 'none') {
+    if (configScreen && getComputedStyle(configScreen).display !== 'none') {
         var focusedElement = document.querySelector('.focused');
         var menuItems = getConfigMenuItems();
         var isOnMenu = false;
@@ -1406,7 +1414,7 @@ function onBack() {
         }
         return true;
     }
-    if (s && !s.classList.contains('hidden') && s.style.display !== 'none') {
+    if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') {
         // Та же цепочка, что и в closeSearchBtn:
         // если вернулись из detail в поиск — «назад» открывает карточку каталога
         if (AppState && AppState.openCatalogDetailOnSearchClose) {
@@ -1423,7 +1431,7 @@ function onBack() {
         else leaveSearchToTorrents();
         return true;
     }
-    if (d && d.style.display !== 'none') {
+    if (d && getComputedStyle(d).display !== 'none') {
         if (AppState.trailerPlay) {
             ovh = getEl('catalog-toggle-overview-btn');
             stopTrailerBackground();
@@ -1443,7 +1451,7 @@ function onBack() {
         setTimeout(function () { ScreenStrategies.catalog.ensureFocus(true); }, 180);
         return true;
     }
-    if (c && c.style.display !== 'none') {
+    if (c && getComputedStyle(c).display !== 'none') {
         var m = getEl('torrserver-section');
         c.style.display = 'none';
         if (m) m.style.display = 'block';
