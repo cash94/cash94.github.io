@@ -383,34 +383,63 @@ async function saveClientConfig() {
     return false;
 }
 
-async function loadProgressForTorrent(torrent) {
+async function loadProgressForTorrent(torrent, preloadedFiles) {
     if (!torrent || !torrent.hash) return null;
+
     var cacheKey = torrent.hash;
+
     if (progressCache.has(cacheKey)) {
         var cached = progressCache.get(cacheKey);
         if (cached && (Date.now() - cached.timestamp < 60000)) return cached.data;
     }
+
     try {
         var files = [];
-        if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) files = torrent.file_stats;
+
+        // === НОВОЕ: сначала используем уже переданные файлы ===
+        if (Array.isArray(preloadedFiles) && preloadedFiles.length > 0) {
+            files = preloadedFiles;
+        } else if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) {
+            files = torrent.file_stats;
+        }
+
+        // Если файлы пришли снаружи, сохраняем их в torrent.file_stats
+        if (files.length > 0 && (!torrent.file_stats || !torrent.file_stats.length)) {
+            torrent.file_stats = files;
+        }
+
         if (files.length === 0 && AppState.currentTorrserverUrl) {
-            var response = await torrServerFetch('/stream?link=' + cacheKey + '&stat=stat', { method: 'GET', headers: { 'accept': 'application/octet-stream' } });
+            var response = await torrServerFetch('/stream?link=' + torrent.hash + '&stat=stat', {
+                method: 'GET',
+                headers: { 'accept': 'application/octet-stream' }
+            });
+
             if (response.ok) {
                 var apiData = await response.json();
-                if (apiData.file_stats && Array.isArray(apiData.file_stats)) { files = apiData.file_stats; torrent.file_stats = files; }
-                else if (apiData.data) {
+
+                if (apiData.file_stats && Array.isArray(apiData.file_stats)) {
+                    files = apiData.file_stats;
+                    torrent.file_stats = files;
+                } else if (apiData.data) {
                     try {
                         var parsedData = JSON.parse(apiData.data);
-                        if (parsedData.TorrServer && parsedData.TorrServer.Files) { files = parsedData.TorrServer.Files; torrent.file_stats = files; }
+                        if (parsedData.TorrServer && parsedData.TorrServer.Files) {
+                            files = parsedData.TorrServer.Files;
+                            torrent.file_stats = files;
+                        }
                     } catch (e) { }
                 }
             }
         }
+
         if (files.length > 0) {
             var videoFiles = files.filter(function (f) {
-                var name = f.path.toLowerCase();
-                return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(function (ext) { return name.indexOf(ext) !== -1; });
+                var name = (f.path || '').toLowerCase();
+                return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(function (ext) {
+                    return name.indexOf(ext) !== -1;
+                });
             });
+
             if (videoFiles.length === 0) return null;
 
             // === БАТЧ: один запрос на все файлы ===
@@ -427,10 +456,12 @@ async function loadProgressForTorrent(torrent) {
 
                 if (batchRes.ok) {
                     var batchData = await batchRes.json();
+
                     if (batchData.success && batchData.timecodes) {
                         for (var fi = 0; fi < videoFiles.length; fi++) {
                             var file = videoFiles[fi];
                             var tc = batchData.timecodes[file.id];
+
                             if (tc && tc.timecode > 0) {
                                 results.push({
                                     hash: torrent.hash,
@@ -450,6 +481,7 @@ async function loadProgressForTorrent(torrent) {
 
             if (results.length > 0) {
                 results.sort(function (a, b) { return b.index - a.index; });
+
                 var lastWatched = results[0];
                 var progress = {
                     hash: torrent.hash,
@@ -461,12 +493,17 @@ async function loadProgressForTorrent(torrent) {
                     episodeName: lastWatched.fileName,
                     isSeries: true
                 };
+
                 progressCache.set(cacheKey, { data: progress, timestamp: Date.now() });
                 return progress;
             }
         }
+
         return null;
-    } catch (error) { console.error('Ошибка загрузки прогресса:', error); return null; }
+    } catch (error) {
+        console.error('Ошибка загрузки прогресса:', error);
+        return null;
+    }
 }
 
 async function addProgressToDetail(torrent, preloadedFiles) {
