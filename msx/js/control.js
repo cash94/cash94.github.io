@@ -183,8 +183,8 @@ function getTorrentGridColumns() {
     var grid = getEl('torrents-grid');
     if (!grid) return 5;
     try {
-        var cols = (window.getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
-        _cachedColumns = cols || 5;
+        //var cols = (window.getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
+        _cachedColumns = 5; //cols || 5;
     } catch (e) { _cachedColumns = 5; }
     return _cachedColumns;
 }
@@ -1373,7 +1373,7 @@ function onBack() {
             return true;
         }
     }
-    if (configScreen && getComputedStyle(configScreen).display !== 'none') {
+    if (configScreen && _isScreenVisible(configScreen)) {
         var focusedElement = document.querySelector('.focused');
         var menuItems = getConfigMenuItems();
         var isOnMenu = false;
@@ -1414,7 +1414,7 @@ function onBack() {
         }
         return true;
     }
-    if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') {
+    if (s && !s.classList.contains('hidden') && _isScreenVisible(s)) {
         // Та же цепочка, что и в closeSearchBtn:
         // если вернулись из detail в поиск — «назад» открывает карточку каталога
         if (AppState && AppState.openCatalogDetailOnSearchClose) {
@@ -1431,7 +1431,7 @@ function onBack() {
         else leaveSearchToTorrents();
         return true;
     }
-    if (d && getComputedStyle(d).display !== 'none') {
+    if (d && _isScreenVisible(d)) {
         if (AppState.trailerPlay) {
             ovh = getEl('catalog-toggle-overview-btn');
             stopTrailerBackground();
@@ -1451,7 +1451,7 @@ function onBack() {
         setTimeout(function () { ScreenStrategies.catalog.ensureFocus(true); }, 180);
         return true;
     }
-    if (c && getComputedStyle(c).display !== 'none') {
+    if (c && _isScreenVisible(c)) {
         var m = getEl('torrserver-section');
         c.style.display = 'none';
         if (m) m.style.display = 'block';
