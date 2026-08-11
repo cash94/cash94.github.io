@@ -1641,7 +1641,7 @@ async function updateDetailProgress(torrent) {
   btn.classList.remove('has-progress');
   btn.innerHTML = '<span class="btn-label">▶ Играть</span>';
 
-  var progress = await loadProgressForTorrent(torrent);
+  var progress = await loadProgressForTorrent(torrent, getTorrentFiles(torrent));
   if (!progress || !(progress.timecode > 0)) return null; // прогресса нет — остаётся «Играть»
 
   // === Есть прогресс: «Продолжить» ===
