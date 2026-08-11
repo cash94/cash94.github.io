@@ -267,6 +267,149 @@ function clearTorrentDeleteHoldTimer(card) {
 
 window.setTorrentClickSuppressed = function (ms = 1200) { suppressTorrentClickUntil = Date.now() + ms; };
 
+// ==================== ДЕЛЕГИРОВАНИЕ LONG-PRESS УДАЛЕНИЯ ====================
+var torrentHoldState = {
+    timer: null,
+    card: null,
+    hash: null,
+    pointerId: null,
+    startX: 0,
+    startY: 0
+};
+
+function clearTorrentHoldState() {
+    if (torrentHoldState.timer) {
+        clearTimeout(torrentHoldState.timer);
+    }
+
+    torrentHoldState.timer = null;
+    torrentHoldState.card = null;
+    torrentHoldState.hash = null;
+    torrentHoldState.pointerId = null;
+    torrentHoldState.startX = 0;
+    torrentHoldState.startY = 0;
+}
+
+function setupTorrentLongPressDelegation(grid) {
+    if (!grid || grid._longPressBound) return;
+
+    grid._longPressBound = true;
+
+    // Подавление клика после long-press / contextmenu
+    grid.addEventListener('click', function (e) {
+        var card = e.target && e.target.closest ? e.target.closest('.torrent-card') : null;
+        if (!card) return;
+
+        var shouldSuppress = card.dataset.suppressClick === '1' || Date.now() < suppressTorrentClickUntil;
+
+        if (shouldSuppress) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            e.stopPropagation();
+            delete card.dataset.suppressClick;
+            return false;
+        }
+    }, true);
+
+    // Contextmenu: правый клик / долгое нажатие на некоторых устройствах
+    grid.addEventListener('contextmenu', function (e) {
+        var card = e.target && e.target.closest ? e.target.closest('.torrent-card') : null;
+        if (!card || !card.dataset.hash) return;
+
+        e.preventDefault();
+
+        clearTorrentHoldState();
+
+        suppressTorrentClickUntil = Date.now() + 1200;
+        card.dataset.suppressClick = '1';
+
+        removeTorrentByHash(card.dataset.hash, { skipConfirm: true }).finally(function () {
+            setTimeout(function () {
+                if (card) delete card.dataset.suppressClick;
+            }, 1200);
+        });
+    });
+
+    // Pointer down: старт удержания
+    grid.addEventListener('pointerdown', function (e) {
+        if (!e.isPrimary) return;
+
+        // Правая кнопка мыши обрабатывается через contextmenu
+        if (e.button !== undefined && e.button !== 0) return;
+
+        var target = e.target;
+        if (!target || !target.closest) return;
+
+        // Не запускаем long-press на интерактивных элементах
+        if (target.closest('button, input, select, textarea, a')) return;
+
+        var card = target.closest('.torrent-card');
+        if (!card || !card.dataset.hash) return;
+
+        clearTorrentHoldState();
+
+        torrentHoldState.card = card;
+        torrentHoldState.hash = card.dataset.hash;
+        torrentHoldState.pointerId = e.pointerId;
+        torrentHoldState.startX = e.clientX;
+        torrentHoldState.startY = e.clientY;
+
+        torrentHoldState.timer = setTimeout(function () {
+            var holdCard = torrentHoldState.card;
+            var holdHash = torrentHoldState.hash;
+
+            clearTorrentHoldState();
+
+            if (!holdHash) return;
+
+            suppressTorrentClickUntil = Date.now() + 1200;
+            pendingRemoteHoldHash = null;
+
+            if (holdCard) {
+                holdCard.dataset.suppressClick = '1';
+                holdCard.classList.remove('touch-active');
+            }
+
+            removeTorrentByHash(holdHash, { skipConfirm: true }).finally(function () {
+                setTimeout(function () {
+                    if (holdCard) delete holdCard.dataset.suppressClick;
+                }, 1200);
+            });
+        }, TORRENT_DELETE_HOLD_MS);
+    }, { passive: true });
+
+    // Общие обработчики на document, чтобы корректно отменять удержание
+    if (!window._torrentLongPressDocumentBound) {
+        window._torrentLongPressDocumentBound = true;
+
+        document.addEventListener('pointerup', function (e) {
+            if (!torrentHoldState.timer) return;
+            if (e.pointerId !== torrentHoldState.pointerId) return;
+            clearTorrentHoldState();
+        }, { passive: true });
+
+        document.addEventListener('pointercancel', function (e) {
+            if (!torrentHoldState.timer) return;
+            if (e.pointerId !== torrentHoldState.pointerId) return;
+            clearTorrentHoldState();
+        }, { passive: true });
+
+        document.addEventListener('pointermove', function (e) {
+            if (!torrentHoldState.timer) return;
+            if (e.pointerId !== torrentHoldState.pointerId) return;
+
+            var dx = e.clientX - torrentHoldState.startX;
+            var dy = e.clientY - torrentHoldState.startY;
+
+            // Если палец/курсор сдвинулся больше чем на ~12px — отменяем long-press
+            if ((dx * dx + dy * dy) > 144) {
+                clearTorrentHoldState();
+            }
+        }, { passive: true });
+    }
+}
+// ==================== /ДЕЛЕГИРОВАНИЕ LONG-PRESS УДАЛЕНИЯ ====================
+
 async function removeTorrentByHash(hash, options = {}) {
     if (!hash || !AppState.currentTorrserverUrl) return false;
     var torrent = AppState.torrents.find(t => (t.hash || '').toLowerCase() === String(hash).toLowerCase());
@@ -299,43 +442,8 @@ async function removeTorrentByHash(hash, options = {}) {
 window.removeTorrentByHash = removeTorrentByHash;
 
 function attachTorrentDeleteLongPress(card, torrent) {
-    if (!card || !torrent || !torrent.hash) return;
-    var startHold = function (event) {
-        if (event && event.target && event.target.closest && event.target.closest('button, input, select, textarea, a')) return;
-        clearTorrentDeleteHoldTimer(card);
-        var timer = setTimeout(async function () {
-            suppressTorrentClickUntil = Date.now() + 1200;
-            pendingRemoteHoldHash = null;
-            card.dataset.suppressClick = '1';
-            card.classList.remove('touch-active');
-            await removeTorrentByHash(torrent.hash, { skipConfirm: true });
-            setTimeout(function () { if (card) delete card.dataset.suppressClick; }, 1200);
-        }, TORRENT_DELETE_HOLD_MS);
-        torrentDeleteHoldTimers.set(card, timer);
-    };
-    var stopHold = function () { clearTorrentDeleteHoldTimer(card); };
-
-    card.addEventListener('touchstart', startHold, { passive: true });
-    card.addEventListener('touchend', stopHold);
-    card.addEventListener('touchcancel', stopHold);
-    card.addEventListener('touchmove', stopHold);
-    card.addEventListener('mousedown', startHold);
-    card.addEventListener('mouseup', stopHold);
-    card.addEventListener('mouseleave', stopHold);
-
-    card.addEventListener('click', function (e) {
-        var shouldSuppress = card.dataset.suppressClick === '1' || Date.now() < suppressTorrentClickUntil;
-        if (shouldSuppress) { e.preventDefault(); e.stopImmediatePropagation(); e.stopPropagation(); delete card.dataset.suppressClick; return false; }
-    }, true);
-
-    card.addEventListener('contextmenu', function (e) {
-        e.preventDefault();
-        suppressTorrentClickUntil = Date.now() + 1200;
-        card.dataset.suppressClick = '1';
-        removeTorrentByHash(torrent.hash, { skipConfirm: true }).finally(function () {
-            setTimeout(function () { if (card) delete card.dataset.suppressClick; }, 1200);
-        });
-    });
+    // Deprecated: long-press удаление теперь делегировано на torrents-grid.
+    // Функция оставлена только для совместимости, если где-то ещё вызывается.
 }
 
 async function loadClientConfig() {
@@ -784,7 +892,7 @@ function createTorrentCard(torrent) {
     card.dataset.hash = torrent.hash;
 
     // Long-press удаление
-    attachTorrentDeleteLongPress(card, torrent);
+    //attachTorrentDeleteLongPress(card, torrent);
 
     card.innerHTML =
         '<div class="torrent-poster">' + posterHtml + '</div>' +
@@ -803,7 +911,11 @@ function createTorrentCard(torrent) {
 function setupTorrentGridDelegation() {
     var torrentsGrid = getEl('torrents-grid');
     if (!torrentsGrid || torrentsGrid._delegationBound) return;
+
     torrentsGrid._delegationBound = true;
+
+    // Новое делегирование long-press удаления
+    setupTorrentLongPressDelegation(torrentsGrid);
 
     torrentsGrid.addEventListener('click', function (e) {
         var card = e.target.closest('.torrent-card');
@@ -1045,6 +1157,7 @@ async function showDetail(torrent) {
     var posterImg = getEl('detail-poster');
     var titleEl = getEl('detail-title-text');
     var filesList = getEl('files-list');
+    setupFilePlayButtonDelegation();
     var detailSubtitle = getEl('detail-subtitle');
     var detailViewDiv = getEl('detail-view');
     var dh = document.querySelector('.detail-header');
@@ -1259,6 +1372,56 @@ function updateDetailMetaInfo(tmdbData) {
     }
 }
 
+// ==================== ДЕЛЕГИРОВАНИЕ PLAY-КНОПОК В ФАЙЛАХ ====================
+function setupFilePlayButtonDelegation() {
+    var filesList = getEl('files-list');
+    if (!filesList || filesList._playDelegationBound) return;
+
+    filesList._playDelegationBound = true;
+
+    filesList.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('.play-btn') : null;
+        if (!btn) return;
+
+        e.stopPropagation();
+
+        var item = btn.closest('.file-item');
+
+        var hash = btn.dataset.hash || (item && item.dataset.hash) || '';
+
+        var fileId = parseInt(btn.dataset.fileId || (item && item.dataset.fileId) || '1', 10);
+        if (!fileId) fileId = 1;
+
+        var episodeIndex = null;
+        var rawEpisode = btn.dataset.episodeIndex;
+
+        if ((!rawEpisode || rawEpisode === 'null') && item && item.dataset.episodeIndex !== undefined) {
+            rawEpisode = item.dataset.episodeIndex;
+        }
+
+        if (rawEpisode !== undefined && rawEpisode !== '' && rawEpisode !== 'null') {
+            var parsedEpisode = parseInt(rawEpisode, 10);
+            if (!isNaN(parsedEpisode)) episodeIndex = parsedEpisode;
+        }
+
+        if (!hash || !AppState.currentTorrserverUrl) return;
+
+        var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
+
+        var overlay = getEl('playback-overlay');
+        if (overlay) overlay.classList.add('active');
+
+        var detailView = getEl('detail-view');
+        if (detailView) detailView.style.pointerEvents = 'none';
+
+        startHLSPlayback(playUrl, 0, false, episodeIndex).finally(function () {
+            if (overlay) overlay.classList.remove('active');
+            if (detailView) detailView.style.pointerEvents = 'auto';
+        });
+    });
+}
+// ==================== /ДЕЛЕГИРОВАНИЕ PLAY-КНОПОК ====================
+
 function addFileItem(file, hash, name, episodeIndex, stillImage, returnOnly = false) {
     var fileName = file.path.split('/').pop() || ('Файл ' + file.id);
     var fileExt = fileName.split('.').pop().toLowerCase();
@@ -1270,12 +1433,13 @@ function addFileItem(file, hash, name, episodeIndex, stillImage, returnOnly = fa
         <div class="file-info"><div class="file-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div><div class="file-size">${formatBytes(file.length)}</div></div>
         <div class="file-progress-container" style="width:100%;height:3px;background:rgba(255,255,255,0.2);border-radius:0 0 12px 12px;overflow:hidden;position:absolute;bottom:0;left:0;"><div class="file-progress-fill" style="width:0%;height:100%;background:#ff8c00;transition:width 0.2s ease;"></div></div>
     `;
-    item.querySelector('.play-btn').onclick = function (e) {
-        e.stopPropagation();
-        var playUrl = file.id ? AppState.currentTorrserverUrl + '/play/' + hash + '/' + file.id : AppState.currentTorrserverUrl + '/play/' + hash + '/1';
-        getEl('playback-overlay').classList.add('active'); getEl('detail-view').style.pointerEvents = 'none';
-        startHLSPlayback(playUrl, 0, false, episodeIndex).finally(function () { getEl('playback-overlay').classList.remove('active'); getEl('detail-view').style.pointerEvents = 'auto'; });
-    };
+    // item.querySelector('.play-btn').onclick = function (e) {
+    //     e.stopPropagation();
+    //     var playUrl = file.id ? AppState.currentTorrserverUrl + '/play/' + hash + '/' + file.id : AppState.currentTorrserverUrl + '/play/' + hash + '/1';
+    //     getEl('playback-overlay').classList.add('active'); getEl('detail-view').style.pointerEvents = 'none';
+    //     startHLSPlayback(playUrl, 0, false, episodeIndex).finally(function () { getEl('playback-overlay').classList.remove('active'); getEl('detail-view').style.pointerEvents = 'auto'; });
+    // };
+    // Клик по .play-btn обрабатывается делегированием через setupFilePlayButtonDelegation()
     if (stillImage) item.dataset.pendingStill = stillImage;
     //loadProgressForFileItem(item, hash, file.id, episodeIndex);
     if (returnOnly) return item;
@@ -1448,12 +1612,13 @@ function addMovieItem(torrent) {
     var filesList = getEl('files-list'); filesList.innerHTML = '';
     var item = document.createElement('div'); item.className = 'file-item';
     item.innerHTML = `<div class="file-name"><div>${escapeHtml(torrent.title || 'Фильм')}</div><div style="font-size: 12px; color: #888; margin-top: 4px;">${formatBytes(torrent.torrent_size)}</div></div><button class="play-btn" data-hash="${torrent.hash}">▶</button>`;
-    item.querySelector('.play-btn').onclick = function (e) {
-        e.stopPropagation();
-        var playUrl = AppState.currentTorrserverUrl + '/play/' + torrent.hash + '/1';
-        getEl('playback-overlay').classList.add('active'); getEl('detail-view').style.pointerEvents = 'none';
-        startHLSPlayback(playUrl, 0, false).finally(function () { getEl('playback-overlay').classList.remove('active'); getEl('detail-view').style.pointerEvents = 'auto'; });
-    };
+    // item.querySelector('.play-btn').onclick = function (e) {
+    //     e.stopPropagation();
+    //     var playUrl = AppState.currentTorrserverUrl + '/play/' + torrent.hash + '/1';
+    //     getEl('playback-overlay').classList.add('active'); getEl('detail-view').style.pointerEvents = 'none';
+    //     startHLSPlayback(playUrl, 0, false).finally(function () { getEl('playback-overlay').classList.remove('active'); getEl('detail-view').style.pointerEvents = 'auto'; });
+    // };
+    // Клик по .play-btn обрабатывается делегированием через setupFilePlayButtonDelegation()
     filesList.appendChild(item);
 }
 
@@ -2158,8 +2323,13 @@ function filterGlobalSearchByType(type) {
 function clearSearchResultsContainer() { var searchResultsDiv = getEl('search-results'); if (searchResultsDiv) searchResultsDiv.innerHTML = ''; }
 window.clearSearchResultsContainer = clearSearchResultsContainer;
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupTorrentGridDelegation);
-} else {
+function initTorrentDelegations() {
     setupTorrentGridDelegation();
+    setupFilePlayButtonDelegation();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTorrentDelegations);
+} else {
+    initTorrentDelegations();
 }
