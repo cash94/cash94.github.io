@@ -1856,7 +1856,7 @@ function showSearchResults(options = {}) {
     var searchOverlay = getEl('search-overlay'); var searchTab = getEl('tab-search'); var torrentsTab = getEl('tab-torrents'); var catalogTab = getEl('tab-catalog'); var searchInput = getEl('search-query');
     if (!searchOverlay || !searchTab || !torrentsTab) return;
     if (searchInput && document.activeElement === searchInput) searchInput.blur();
-    getEl('torrserver-section').style.display = 'none'; searchOverlay.classList.remove('hidden'); searchOverlay.style.display = 'block'; searchTab.classList.add('active'); torrentsTab.classList.remove('active'); if (catalogTab) catalogTab.classList.remove('active');
+    getEl('torrserver-section').style.display = 'none'; searchOverlay.classList.remove('hidden'); searchOverlay.style.display = 'flex'; searchTab.classList.add('active'); torrentsTab.classList.remove('active'); if (catalogTab) catalogTab.classList.remove('active');
     AppState.currentScreen = 'search'; syncSearchFilterButtons(); toggleSearchFiltersPanel(false);
     if (options.runSearch && searchInput && searchInput.value.trim()) setTimeout(function () { searchTorrents(searchInput.value.trim()); }, 0);
     setTimeout(function () {
