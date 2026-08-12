@@ -21,12 +21,12 @@ var SEEK_ACCELERATION_STEPS = [
 ];
 
 var SCROLL_SMOOTH = {
-    force: true,          // всегда использовать плавный скролл
-    durationX: 0.32,      // горизонтальный скролл
-    durationY: 0.40,      // вертикальный скролл
-    durationFastX: 0.20,  // при быстром движении стрелками
-    durationFastY: 0.26,
-    ease: 'power2.out'
+    force: true,
+    durationX: 0.42,
+    durationY: 0.50,
+    durationFastX: 0.26,
+    durationFastY: 0.32,
+    ease: 'power3.out'
 };
 
 // ==================== СОСТОЯНИЕ ====================
