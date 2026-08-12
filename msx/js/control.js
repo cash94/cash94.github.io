@@ -1909,7 +1909,13 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         if (typeof Animations !== 'undefined') Animations.scrollToIfNotVisible(el, container);
     }
     if (!scrollContainer) return;
-    Animations.scrollToIfNotVisible(el, container, { direction: direction });
+    Animations.scrollToIfNotVisible(el, container, {
+        direction: direction,
+        duration: fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY,
+        ease: SCROLL_SMOOTH.ease,
+        offset: 10,
+        overwrite: true
+    });
 }
 
 function byId(id) { return getEl(id); };
