@@ -576,9 +576,6 @@ function setupNavigation() {
 
       if (window.AndroidJS || AppState.transcodingFullOnOff) {
         if (AppState.searchResultsHidden) {
-
-
-
           // Финальные действия (общие для ветки, где не ждём)
           function finishSearchRestore() {
             AppState.playFromHash = false;
@@ -587,9 +584,6 @@ function setupNavigation() {
             AppState.searchResultsHidden = false;
             AppState.clearLastSelected = false;
             setTimeout(function () {
-              if (AppState.isSerials) {
-                window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
-              }
               if (detailView) detailView.style.display = 'none';
               var searchOverlay = getEl('search-overlay');
               if (searchOverlay) {
@@ -606,6 +600,9 @@ function setupNavigation() {
               if (mc && AppState.backupScroll > 0) {
                 mc.scrollTop = AppState.backupScroll;
               }
+              if (AppState.isSerials) {
+                window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+              }
             });
             finishSearchRestore();
             return;
@@ -613,6 +610,9 @@ function setupNavigation() {
             AppState.currentScreen = 'catalog';
             // Ждём, пока загрузится список
             window.loadCatalogList().then(function () {
+              if (AppState.isSerials) {
+                window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+              }
               finishSearchRestore();
             });
             return;
