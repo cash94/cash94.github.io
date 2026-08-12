@@ -1453,10 +1453,13 @@ async function loadCatalogPoster(card, title, mt, id, index) {
 }
 
 function updatePosterDOM(div, rating, url) {
+    ensureCatalogPosterFadeStyle();
+
     var rHtml = '';
 
     if (rating && rating !== 'null' && rating !== 'undefined') {
         var c = getRatingColor(parseFloat(rating));
+
         rHtml =
             '<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' +
             c +
@@ -1474,8 +1477,7 @@ function updatePosterDOM(div, rating, url) {
 
     var img = new Image();
 
-    img.style.cssText =
-        'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease;';
+    img.className = 'catalog-poster-img';
 
     var insertToDom = function () {
         if (!div.isConnected) return;
@@ -1485,7 +1487,7 @@ function updatePosterDOM(div, rating, url) {
 
         requestAnimationFrame(function () {
             requestAnimationFrame(function () {
-                img.style.opacity = '1';
+                img.classList.add('loaded');
             });
         });
     };
@@ -1498,6 +1500,7 @@ function updatePosterDOM(div, rating, url) {
 
     if (typeof img.decode === 'function') {
         img.src = url;
+
         img.decode()
             .then(insertToDom)
             .catch(function () {
