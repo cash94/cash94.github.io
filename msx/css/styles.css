@@ -4337,3 +4337,16 @@ article {
     transform: translateX(100%);    /* полное скрытие */
   }
 }
+
+.catalog-poster-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.catalog-poster-img.loaded {
+    opacity: 1;
+}
