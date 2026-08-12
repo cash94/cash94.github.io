@@ -20,6 +20,15 @@ var SEEK_ACCELERATION_STEPS = [
     { time: 4000, step: 120 }
 ];
 
+var SCROLL_SMOOTH = {
+    force: true,          // всегда использовать плавный скролл
+    durationX: 0.32,      // горизонтальный скролл
+    durationY: 0.40,      // вертикальный скролл
+    durationFastX: 0.20,  // при быстром движении стрелками
+    durationFastY: 0.26,
+    ease: 'power2.out'
+};
+
 // ==================== СОСТОЯНИЕ ====================
 var focusableElements = [];
 var currentFocusIndex = 0;
@@ -1753,7 +1762,8 @@ function isElementFullyVisible(el, container) {
 }
 
 function scrollToElementIfNeeded(el, container, smooth, direction) {
-    if (smooth === undefined) smooth = !fastNavigation;
+    if (smooth === undefined) smooth = true;
+    if (SCROLL_SMOOTH.force) smooth = true;
     if (!el || !container) return;
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
@@ -1798,7 +1808,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             if (needsHScroll) {
                 if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                     gsap.killTweensOf(con);
-                    gsap.to(con, { scrollTo: { x: targetLeft }, duration: 0.1, ease: "power1.out", overwrite: true });
+                    gsap.to(con, {
+                        scrollTo: { x: targetLeft },
+                        duration: fastNavigation ? SCROLL_SMOOTH.durationFastX : SCROLL_SMOOTH.durationX,
+                        ease: SCROLL_SMOOTH.ease,
+                        overwrite: true
+                    });
                 } else if (smooth) {
                     con.scrollTo({ left: targetLeft, behavior: 'smooth' });
                 } else {
@@ -1835,8 +1850,18 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                 targetScrollTop = Math.max(0, Math.min(targetScrollTop, vertEl.scrollHeight - vertRect.height));
                 if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                     gsap.killTweensOf(vertEl);
-                    var tweenVars = { scrollTo: { y: targetScrollTop }, duration: 0.3, ease: "power1.out", overwrite: true };
-                    if (vertEl.id === 'detail-view') tweenVars.backgroundColor = 'rgb(0, 0, 0)'; // как было
+
+                    var tweenVars = {
+                        scrollTo: { y: targetScrollTop },
+                        duration: fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY,
+                        ease: SCROLL_SMOOTH.ease,
+                        overwrite: true
+                    };
+
+                    if (vertEl.id === 'detail-view') {
+                        tweenVars.backgroundColor = 'rgb(0, 0, 0)';
+                    }
+
                     gsap.to(vertEl, tweenVars);
                 } else if (smooth) {
                     vertEl.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
@@ -1851,7 +1876,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             var targetScrollTop = 0;
             if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                 gsap.killTweensOf(container);
-                gsap.to(container, { scrollTo: { y: targetScrollTop }, duration: 0.3, ease: "power0.out", overwrite: true });
+                gsap.to(container, {
+                    scrollTo: { y: targetScrollTop },
+                    duration: SCROLL_SMOOTH.durationY,
+                    ease: SCROLL_SMOOTH.ease,
+                    overwrite: true
+                });
             } else if (smooth) {
                 container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
             } else {
@@ -1863,7 +1893,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         var targetScrollTop = 0;
         if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
             gsap.killTweensOf(container);
-            gsap.to(container, { scrollTo: { y: targetScrollTop }, duration: 0.3, ease: "power0.out", overwrite: true });
+            gsap.to(container, {
+                scrollTo: { y: targetScrollTop },
+                duration: SCROLL_SMOOTH.durationY,
+                ease: SCROLL_SMOOTH.ease,
+                overwrite: true
+            });
         } else if (smooth) {
             container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
         } else {
@@ -1942,7 +1977,12 @@ function focusEl(el, opts) {
     // Передаём direction в scrollToElementIfNeeded
     var scrollDirection = opts.direction || lastNavDirection;
     if (container && !isElementFullyVisible(el, container) || el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'tab-catalog') {
-        scrollToElementIfNeeded(el, container, !fastNavigation, scrollDirection);
+        scrollToElementIfNeeded(
+            el,
+            container,
+            SCROLL_SMOOTH.force ? true : !fastNavigation,
+            scrollDirection
+        );
     }
     return true;
 }
@@ -2575,6 +2615,9 @@ function handleRowsNavigation(dir) {
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 function initControl() {
     console.log('Модуль управления инициализирован');
+    if (window.gsap && window.ScrollToPlugin && gsap.registerPlugin) {
+        gsap.registerPlugin(ScrollToPlugin);
+    }
     setupKeyboardHandlers();
     setupFocusRescue();
     setupPlayerWheelControl();
