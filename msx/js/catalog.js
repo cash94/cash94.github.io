@@ -1506,8 +1506,11 @@ function setupDetailLayout(item, index, posterUrl) {
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
     var dv = getEl('detail-view'), mc = getEl('main-container');
-    var savedScroll = mc ? mc.scrollTop : 0;
-    AppState.backupScroll = savedScroll;
+    var savedScroll = 0;
+    if (mc && mc.scrollTop > 0) {
+        savedScroll = mc.scrollTop
+        AppState.backupScroll = savedScroll;
+    }
     var oldP = document.querySelector('.detail-progress');
     if (oldP) oldP.remove();
     var dh = document.querySelector('.detail-header');
