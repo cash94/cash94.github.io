@@ -2648,30 +2648,87 @@ function initControl() {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControl); else initControl();
 
 (function () {
-    function initHorizontalScroll() {
-        var c = document.querySelectorAll('.files-list,.catalog-detail-actors-grid,.catalog-detail-recommendations-grid, .catalog-row');
-        for (var i = 0; i < c.length; i++) {
+    function initSmoothHorizontalScroll() {
+        var containers = document.querySelectorAll(
+            '.files-list, ' +
+            '.catalog-detail-actors-grid, ' +
+            '.catalog-detail-recommendations-grid, ' +
+            '.catalog-row-viewport, ' +
+            '.catalog-row'
+        );
+
+        for (var i = 0; i < containers.length; i++) {
             (function (cnt) {
-                if (cnt._wh) return;
-                cnt._wh = true;
-                function wh(e) {
-                    e = e || window.event;
-                    var dy = e.deltaY || e.wheelDeltaY || (e.wheelDelta ? -e.wheelDelta / 40 : 0) || e.detail || 0;
+                if (cnt._smoothWheelInitialized) return;
+                cnt._smoothWheelInitialized = true;
+
+                var target = cnt.scrollLeft;
+                var rafId = null;
+
+                function getMaxScroll() {
+                    return Math.max(0, cnt.scrollWidth - cnt.clientWidth);
+                }
+
+                function clamp(value) {
+                    return Math.max(0, Math.min(getMaxScroll(), value));
+                }
+
+                function animationStep() {
+                    var current = cnt.scrollLeft;
+                    var diff = target - current;
+
+                    if (Math.abs(diff) < 0.6) {
+                        cnt.scrollLeft = target;
+                        rafId = null;
+                        return;
+                    }
+
+                    // Чем меньше коэффициент, тем мягче.
+                    // 0.10 - очень мягко
+                    // 0.16 - оптимально
+                    // 0.22 - быстрее
+                    cnt.scrollLeft = current + diff * 0.16;
+
+                    rafId = requestAnimationFrame(animationStep);
+                }
+
+                function onWheel(e) {
+                    if (cnt.scrollWidth <= cnt.clientWidth) return;
+
+                    var dy =
+                        e.deltaY ||
+                        e.wheelDeltaY ||
+                        (e.wheelDelta ? -e.wheelDelta / 40 : 0) ||
+                        e.detail ||
+                        0;
+
                     var dx = e.deltaX || e.wheelDeltaX || 0;
-                    if (Math.abs(dy) > Math.abs(dx)) {
-                        if (e.preventDefault) e.preventDefault();
-                        if (e.returnValue) e.returnValue = false;
-                        cnt.scrollLeft += dy;
+
+                    if (Math.abs(dy) <= Math.abs(dx)) return;
+
+                    e.preventDefault();
+
+                    if (!rafId) {
+                        target = cnt.scrollLeft;
+                    }
+
+                    target = clamp(target + dy * 0.9);
+
+                    if (!rafId) {
+                        rafId = requestAnimationFrame(animationStep);
                     }
                 }
-                if (cnt.addEventListener) {
-                    cnt.addEventListener('wheel', wh, false);
-                    cnt.addEventListener('mousewheel', wh, false);
-                    if (navigator.userAgent.indexOf('Firefox') !== -1) cnt.addEventListener('DOMMouseScroll', wh, false);
-                } else if (cnt.attachEvent) cnt.attachEvent('onmousewheel', wh);
-            })(c[i]);
+
+                cnt.addEventListener('wheel', onWheel, { passive: false });
+            })(containers[i]);
         }
     }
-    if (document.readyState === 'loading') document.addEventListener ? document.addEventListener('DOMContentLoaded', initHorizontalScroll) : window.attachEvent('onload', initHorizontalScroll); else initHorizontalScroll();
-    window.initHorizontalScroll = initHorizontalScroll;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSmoothHorizontalScroll);
+    } else {
+        initSmoothHorizontalScroll();
+    }
+
+    window.initSmoothHorizontalScroll = initSmoothHorizontalScroll;
 })();
