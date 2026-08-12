@@ -581,20 +581,22 @@ function setupNavigation() {
 
           // Финальные действия (общие для ветки, где не ждём)
           function finishSearchRestore() {
-            var searchOverlay = getEl('search-overlay');
-            if (searchOverlay) {
-              searchOverlay.classList.remove('hidden');
-              searchOverlay.style.display = 'block';
-            }
             AppState.playFromHash = false;
             AppState.isCatalogSerials = false;
             AppState.currentScreen = 'search';
             AppState.searchResultsHidden = false;
             AppState.clearLastSelected = false;
             setTimeout(function () {
+              if (AppState.isSerials) {
+                window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+              }
               if (detailView) detailView.style.display = 'none';
+              var searchOverlay = getEl('search-overlay');
+              if (searchOverlay) {
+                searchOverlay.classList.remove('hidden');
+                searchOverlay.style.display = 'block';
+              }
               if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); }
-              //window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
             }, 80);
           }
 
