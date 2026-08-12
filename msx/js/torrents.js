@@ -1856,7 +1856,7 @@ function showSearchResults(options = {}) {
     var searchOverlay = getEl('search-overlay'); var searchTab = getEl('tab-search'); var torrentsTab = getEl('tab-torrents'); var catalogTab = getEl('tab-catalog'); var searchInput = getEl('search-query');
     if (!searchOverlay || !searchTab || !torrentsTab) return;
     if (searchInput && document.activeElement === searchInput) searchInput.blur();
-    getEl('torrserver-section').style.display = 'none'; searchOverlay.classList.remove('hidden'); searchTab.classList.add('active'); torrentsTab.classList.remove('active'); if (catalogTab) catalogTab.classList.remove('active');
+    getEl('torrserver-section').style.display = 'none'; searchOverlay.classList.remove('hidden'); searchOverlay.style.display = 'block'; searchTab.classList.add('active'); torrentsTab.classList.remove('active'); if (catalogTab) catalogTab.classList.remove('active');
     AppState.currentScreen = 'search'; syncSearchFilterButtons(); toggleSearchFiltersPanel(false);
     if (options.runSearch && searchInput && searchInput.value.trim()) setTimeout(function () { searchTorrents(searchInput.value.trim()); }, 0);
     setTimeout(function () {
@@ -1880,7 +1880,7 @@ function hideSearchResults() {
     if (modeSelect) modeSelect.value = 'globalsearch';
     if (!searchOverlay || !searchTab || !torrentsTab) return;
     var returnTo = AppState.searchReturnTo || AppState.inSearch;
-    getEl('torrserver-section').style.display = 'block'; searchOverlay.classList.add('hidden'); searchTab.classList.remove('active'); getEl('search-results').innerHTML = ''; toggleSearchFiltersPanel(false);
+    getEl('torrserver-section').style.display = 'block'; searchOverlay.classList.add('hidden'); searchOverlay.style.display = 'none'; searchTab.classList.remove('active'); getEl('search-results').innerHTML = ''; toggleSearchFiltersPanel(false);
     if (returnTo === 'detail') {
         AppState.currentScreen = 'detail'; var mainContainer = getEl('main-container'); if (mainContainer && AppState.backupScroll > 0) mainContainer.scrollTop = AppState.backupScroll;
         AppState.searchReturnTo = null;
