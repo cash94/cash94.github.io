@@ -580,13 +580,17 @@ function setupNavigation() {
           if (searchOverlay) searchOverlay.classList.remove('hidden');
           if (detailView) detailView.style.display = 'none';
           window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
-          window.loadCatalog(AppState.backCurrentCatalog).then(function () {
-            // Восстанавливаем скролл ДО фокусировки
-            var mc = getEl('main-container');
-            if (mc && AppState.backupScroll > 0) {
-              mc.scrollTop = AppState.backupScroll;
-            }
-          });
+          if (!AppState.openInRow) {
+            window.loadCatalog(AppState.backCurrentCatalog).then(function () {
+              // Восстанавливаем скролл ДО фокусировки
+              var mc = getEl('main-container');
+              if (mc && AppState.backupScroll > 0) {
+                mc.scrollTop = AppState.backupScroll;
+              }
+            });
+          } else {
+            window.loadCatalogList();
+          }
           AppState.playFromHash = false;
           AppState.isCatalogSerials = false;
           AppState.currentScreen = 'search';
