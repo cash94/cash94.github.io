@@ -3352,6 +3352,12 @@ article {
       transparent 82%);
   z-index: 1;
   pointer-events: none;
+  transition: opacity 10s ease;
+}
+
+#detail-view.hide-before::before {
+    opacity: 0;
+    visibility: hidden;
 }
 
 /* --- Контент поверх градиента --- */
