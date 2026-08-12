@@ -1688,6 +1688,7 @@ function startTrailerBackground(url) {
 
     // Скрываем backdrop, пока играет трейлер
     if (backdrop) backdrop.classList.add('hidden');
+    dv.classList.add('hide-before');
 
     // ★ Плавное угасание cde / subtitle / back-btn за 10 секунд
     var fadeOutEls = [cde, sub, bb];
@@ -1796,6 +1797,8 @@ function stopTrailerBackground() {
     }
 
     if (backdrop) backdrop.classList.remove('hidden');
+    var dv = getEl('detail-view');
+    if (dv) dv.classList.remove('hide-before');
 }
 window.stopTrailerBackground = stopTrailerBackground;
 
