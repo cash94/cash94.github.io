@@ -802,6 +802,7 @@ async function fetchCatalogItemMeta(item, mediaType) {
 // ==================== ЗАГРУЗКА КАТАЛОГА ====================
 async function loadCatalog(key) {
     if (!CATALOG_CONFIG[key]) return;
+    AppState.openInRow = false;
 
     if (catalogState.currentCatalog === key &&
         catalogState.items.length > 0 &&
@@ -844,6 +845,7 @@ async function loadCatalog(key) {
 
 async function loadHistoryCatalog() {
     abortCatalogRequests();
+    AppState.openInRow = false;
     catalogState.currentCatalog = 'history';
     catalogState.cardElements = {};
     catalogState.items = []; catalogState.totalItems = 0; catalogState.currentPage = 0;
