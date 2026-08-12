@@ -600,24 +600,18 @@ function setupNavigation() {
               if (mc && AppState.backupScroll > 0) {
                 mc.scrollTop = AppState.backupScroll;
               }
-              if (AppState.isSerials) {
-                window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
-                  finishSearchRestore();
-                });
-              }
+              window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
+                finishSearchRestore();
+              });
             });
-            finishSearchRestore();
             return;
           } else {
             AppState.currentScreen = 'catalog';
             // Ждём, пока загрузится список
             window.loadCatalogList().then(function () {
-              if (AppState.isSerials) {
-                window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
-                  finishSearchRestore();
-                });
-              }
-              finishSearchRestore();
+              window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
+                finishSearchRestore();
+              });
             });
             return;
           }
