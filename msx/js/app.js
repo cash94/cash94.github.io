@@ -605,7 +605,7 @@ function setupNavigation() {
           } else {
             AppState.currentScreen = 'catalog';
             // Ждём, пока загрузится список
-            window.loadCatalogList().then(() => {
+            window.loadCatalogList().then(function () {
               finishSearchRestore();
             });
             return;
