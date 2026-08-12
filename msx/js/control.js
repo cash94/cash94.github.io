@@ -1835,7 +1835,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                 targetScrollTop = Math.max(0, Math.min(targetScrollTop, vertEl.scrollHeight - vertRect.height));
                 if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                     gsap.killTweensOf(vertEl);
-                    var tweenVars = { scrollTo: { y: targetScrollTop }, duration: 0.15, ease: "power1.out", overwrite: true };
+                    var tweenVars = { scrollTo: { y: targetScrollTop }, duration: 0.3, ease: "power1.out", overwrite: true };
                     if (vertEl.id === 'detail-view') tweenVars.backgroundColor = 'rgb(0, 0, 0)'; // как было
                     gsap.to(vertEl, tweenVars);
                 } else if (smooth) {
@@ -1851,7 +1851,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             var targetScrollTop = 0;
             if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                 gsap.killTweensOf(container);
-                gsap.to(container, { scrollTo: { y: targetScrollTop }, duration: 0.1, ease: "power0.out", overwrite: true });
+                gsap.to(container, { scrollTo: { y: targetScrollTop }, duration: 0.3, ease: "power0.out", overwrite: true });
             } else if (smooth) {
                 container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
             } else {
@@ -1863,7 +1863,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         var targetScrollTop = 0;
         if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
             gsap.killTweensOf(container);
-            gsap.to(container, { scrollTo: { y: targetScrollTop }, duration: 0.1, ease: "power0.out", overwrite: true });
+            gsap.to(container, { scrollTo: { y: targetScrollTop }, duration: 0.3, ease: "power0.out", overwrite: true });
         } else if (smooth) {
             container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
         } else {
