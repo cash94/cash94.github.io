@@ -582,7 +582,10 @@ function setupNavigation() {
           // Финальные действия (общие для ветки, где не ждём)
           function finishSearchRestore() {
             var searchOverlay = getEl('search-overlay');
-            if (searchOverlay) searchOverlay.classList.remove('hidden');
+            if (searchOverlay) {
+              searchOverlay.classList.remove('hidden');
+              searchOverlay.style.display = 'block';
+            }
             AppState.playFromHash = false;
             AppState.isCatalogSerials = false;
             AppState.currentScreen = 'search';
