@@ -589,8 +589,8 @@ function setupNavigation() {
             AppState.searchResultsHidden = false;
             AppState.clearLastSelected = false;
             setTimeout(function () {
-              if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); }
               if (detailView) detailView.style.display = 'none';
+              if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); }
               window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
             }, 80);
           }
