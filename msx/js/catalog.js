@@ -6,7 +6,7 @@ var CATALOG_CONSTANTS = {
     CACHE_TTL_MS: 3600000,              // 1 час
     FETCH_TIMEOUT_MS: 5000,             // 5 секунд
     CATALOG_CACHE_TTL_MS: 3600000,      // 1 час для каталогов
-    ITEMS_PER_PAGE: 100,
+    ITEMS_PER_PAGE: 50,
     MAX_POSTER_CACHE: 150,
     MAX_DETAIL_HISTORY: 50,
     POSTER_BATCH_SIZE: 30,
@@ -802,13 +802,6 @@ async function fetchCatalogItemMeta(item, mediaType) {
 // ==================== ЗАГРУЗКА КАТАЛОГА ====================
 async function loadCatalog(key) {
     if (!CATALOG_CONFIG[key]) return;
-
-    if (catalogState.currentCatalog === key &&
-        catalogState.items.length > 0 &&
-        getEl('torrents-grid').querySelector('.torrent-card.catalog-card')) {
-        return;
-    }
-
     AppState.backCurrentCatalog = key;
     abortCatalogRequests();
     catalogState.abortController = new AbortController();
@@ -821,6 +814,7 @@ async function loadCatalog(key) {
     catalogState.posterCache.clear();
     AppState.mediaType = config.mediaType;
     showCatalogLoading('Загрузка ' + config.name + '...');
+
     if (catalogCache.has(key)) {
         var cached = catalogCache.get(key);
         if (Date.now() - cached.timestamp < CATALOG_CONSTANTS.CATALOG_CACHE_TTL_MS) {
@@ -833,12 +827,13 @@ async function loadCatalog(key) {
             }
             catalogState.loading = false;
             hideCatalogLoading();
-            renderCatalogGrid();
+            await renderCatalogGrid();  // ★ ЖДЁМ ПОЛНЫЙ РЕНДЕРИНГ
             catalogState.abortController = null;
             return;
         }
     }
-    await loadMoreCatalogItems(true);
+
+    await loadMoreCatalogItems(true);     // ★ внутри тоже await renderCatalogGrid()
     catalogState.abortController = null;
 }
 
@@ -902,12 +897,12 @@ async function clearHistory() {
 
 async function loadMoreCatalogItems(reset) {
     reset = reset || false;
-    if (!catalogState.currentCatalog || catalogState.isLoadingMore) return Promise.resolve(false);
+    if (!catalogState.currentCatalog || catalogState.isLoadingMore) return false;
     if (reset) {
         catalogState.currentPage = 0; catalogState.items = []; catalogState.loadedItemIds = {};
         catalogState.hasMore = true; catalogState.totalItems = 0;
     }
-    if (!catalogState.hasMore) return Promise.resolve(false);
+    if (!catalogState.hasMore) return false;
     catalogState.isLoadingMore = true;
     var cfg = CATALOG_CONFIG[catalogState.currentCatalog];
     var from = catalogState.currentPage * catalogState.itemsPerPage;
@@ -929,18 +924,27 @@ async function loadMoreCatalogItems(reset) {
         }
         for (var j = 0; j < unique.length; j++) catalogState.items.push(unique[j]);
         catalogState.currentPage++;
-        if (reset) renderCatalogGrid(); else appendCatalogItems(unique);
+
+        if (reset) {
+            await renderCatalogGrid();  // ★ ЖДЁМ
+        } else {
+            appendCatalogItems(unique); // append — синхронный, чанки не нужны
+        }
+
         catalogCache.set(catalogState.currentCatalog, {
-            data: { items: catalogState.items.slice(), totalItems: catalogState.totalItems, currentPage: catalogState.currentPage, hasMore: catalogState.hasMore },
+            data: {
+                items: catalogState.items.slice(), totalItems: catalogState.totalItems,
+                currentPage: catalogState.currentPage, hasMore: catalogState.hasMore
+            },
             timestamp: Date.now()
         });
-        return Promise.resolve(true);
+        return true;
     } catch (e) {
         if (e.name !== 'AbortError') {
             console.error('Catalog load error:', e);
             await fallbackLoadAllCatalogItems();
         }
-        return Promise.resolve(false);
+        return false;
     } finally {
         catalogState.isLoadingMore = false;
     }
@@ -1000,46 +1004,47 @@ function createCardElement(config) {
 // ==================== ОТОБРАЖЕНИЕ ====================
 function renderCatalogGrid() {
     var grid = getEl('torrents-grid');
-    if (!grid) return;
+    if (!grid) return Promise.resolve();
     grid.style.display = '';
     grid.innerHTML = '';
-    if (catalogState.items.length === 0) { showEmptyCatalog(); return; }
+    if (catalogState.items.length === 0) { showEmptyCatalog(); return Promise.resolve(); }
     addCatalogHeader(grid);
 
-    var CHUNK = 8;
-    var i = 0;
-    var currentCatalogKey = catalogState.currentCatalog;
+    return new Promise(function (resolve) {  // ★ ОБЁРТКА В ПРОМИС
+        var CHUNK = 8;
+        var i = 0;
+        var currentCatalogKey = catalogState.currentCatalog;
 
-    function renderChunk() {
-        if (catalogState.currentCatalog !== currentCatalogKey) return;
-        var frag = document.createDocumentFragment();
-        var end = Math.min(i + CHUNK, catalogState.items.length);
-        for (; i < end; i++) {
-            frag.appendChild(createCatalogCard(catalogState.items[i], i));
+        function renderChunk() {
+            if (catalogState.currentCatalog !== currentCatalogKey) {
+                resolve(); // каталог сменился — выходим
+                return;
+            }
+            var frag = document.createDocumentFragment();
+            var end = Math.min(i + CHUNK, catalogState.items.length);
+            for (; i < end; i++) {
+                frag.appendChild(createCatalogCard(catalogState.items[i], i));
+            }
+            grid.appendChild(frag);
+            if (i < catalogState.items.length) {
+                requestAnimationFrame(renderChunk);
+            } else {
+                // ★ ФИНАЛИЗАЦИЯ — всё отрендерено
+                if (catalogState.hasMore) addLoadMoreTrigger(grid);
+                catalogState.loadedPostersCount = 0;
+                //initPosterLazyLoading();
+                initLoadMoreObserver();
+                loadInitialPosters();
+                requestAnimationFrame(function () {
+                    if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
+                        if (typeof updateFocusableElements === 'function') updateFocusableElements();
+                    }
+                    resolve(); // ★ РЕЗОЛВИМ ТОЛЬКО ПОСЛЕ ВСЕХ ЧАНКОВ
+                });
+            }
         }
-        grid.appendChild(frag);
-
-        if (i < catalogState.items.length) {
-            requestAnimationFrame(renderChunk);
-        } else {
-            // финализация — то что было после цикла
-            if (catalogState.hasMore) addLoadMoreTrigger(grid);
-            catalogState.loadedPostersCount = 0;
-            initPosterLazyLoading();
-            //initPosterUnloading();   // ← раскомментировать!
-            initLoadMoreObserver();
-            loadInitialPosters();
-            requestAnimationFrame(function () {
-                if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
-                    if (typeof updateFocusableElements === 'function') updateFocusableElements();
-                    setTimeout(function () {
-                        if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
-                    }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
-                }
-            });
-        }
-    }
-    requestAnimationFrame(renderChunk);
+        requestAnimationFrame(renderChunk);
+    });
 }
 
 function appendCatalogItems(newItems) {
