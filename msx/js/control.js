@@ -26,7 +26,7 @@ var SCROLL_SMOOTH = {
     durationY: 0.40,      // вертикальный скролл
     durationFastX: 0.20,  // при быстром движении стрелками
     durationFastY: 0.26,
-    ease: 'power2.out'
+    ease: 'power3.out'
 };
 
 // ==================== СОСТОЯНИЕ ====================
