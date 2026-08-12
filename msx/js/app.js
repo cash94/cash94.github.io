@@ -580,27 +580,36 @@ function setupNavigation() {
           if (searchOverlay) searchOverlay.classList.remove('hidden');
           if (detailView) detailView.style.display = 'none';
           window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+
+          // Финальные действия (общие для ветки, где не ждём)
+          function finishSearchRestore() {
+            AppState.playFromHash = false;
+            AppState.isCatalogSerials = false;
+            AppState.currentScreen = 'search';
+            AppState.searchResultsHidden = false;
+            AppState.clearLastSelected = false;
+            setTimeout(function () {
+              if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); }
+            }, 80);
+          }
+
           if (!AppState.openInRow) {
             window.loadCatalog(AppState.backCurrentCatalog).then(function () {
-              // Восстанавливаем скролл ДО фокусировки
               var mc = getEl('main-container');
               if (mc && AppState.backupScroll > 0) {
                 mc.scrollTop = AppState.backupScroll;
               }
             });
+            finishSearchRestore();
+            return;
           } else {
             AppState.currentScreen = 'catalog';
-            window.loadCatalogList();
+            // Ждём, пока загрузится список
+            window.loadCatalogList().then(() => {
+              finishSearchRestore();
+            });
+            return;
           }
-          AppState.playFromHash = false;
-          AppState.isCatalogSerials = false;
-          AppState.currentScreen = 'search';
-          AppState.searchResultsHidden = false;
-          AppState.clearLastSelected = false;
-          setTimeout(function () {
-            if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); return; }
-          }, 80);
-          return;
         }
       }
 
