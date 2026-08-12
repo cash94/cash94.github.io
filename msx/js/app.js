@@ -589,6 +589,7 @@ function setupNavigation() {
               }
             });
           } else {
+            AppState.currentScreen = 'catalog';
             window.loadCatalogList();
           }
           AppState.playFromHash = false;
