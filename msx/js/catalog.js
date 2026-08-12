@@ -1454,9 +1454,17 @@ async function loadCatalogPoster(card, title, mt, id, index) {
 
 function updatePosterDOM(div, rating, url) {
     var rHtml = '';
+
     if (rating && rating !== 'null' && rating !== 'undefined') {
         var c = getRatingColor(parseFloat(rating));
-        rHtml = '<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + c + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + c + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);">' + rating + '</div>';
+        rHtml =
+            '<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' +
+            c +
+            ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' +
+            c +
+            ';box-shadow:0 4px 20px rgba(0,0,0,0.25);">' +
+            rating +
+            '</div>';
     }
 
     if (!url) {
@@ -1464,31 +1472,42 @@ function updatePosterDOM(div, rating, url) {
         return;
     }
 
-    // Создаем картинку в памяти, а не через innerHTML
     var img = new Image();
-    img.style.width = '100%';
-    img.style.height = '100%';
-    img.style.objectFit = 'cover';
+
+    img.style.cssText =
+        'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease;';
 
     var insertToDom = function () {
-        // Проверяем, не уничтожена ли карточка к этому моменту
         if (!div.isConnected) return;
-        div.innerHTML = rHtml; // Очищаем от плейсхолдера ⏳ и ставим рейтинг
-        div.appendChild(img);  // Вставляем уже декодированную картинку (без фризов)
+
+        div.innerHTML = rHtml;
+        div.appendChild(img);
+
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                img.style.opacity = '1';
+            });
+        });
     };
 
     img.onerror = function () {
-        if (div.isConnected) div.innerHTML = '<div class="no-poster">Нет постера</div>' + rHtml;
+        if (div.isConnected) {
+            div.innerHTML = '<div class="no-poster">Нет постера</div>' + rHtml;
+        }
     };
 
-    img.src = url;
-
     if (typeof img.decode === 'function') {
-        // Chrome 64+: декодируем JPEG в фоновом потоке, разгружая CPU
-        img.decode().then(insertToDom).catch(insertToDom);
+        img.src = url;
+        img.decode()
+            .then(insertToDom)
+            .catch(function () {
+                if (img.naturalWidth > 0) {
+                    insertToDom();
+                }
+            });
     } else {
-        // Фоллбек для очень старых браузеров
         img.onload = insertToDom;
+        img.src = url;
     }
 }
 
