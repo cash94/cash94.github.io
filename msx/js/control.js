@@ -1747,8 +1747,8 @@ function isElementFullyVisible(el, container) {
 
     if (isH) {
         // Для горизонтальных списков проверяем горизонтальную И вертикальную видимость
-        var hp = 30;  // горизонтальный отступ от краёв контейнера
-        var vp = 50;  // вертикальный отступ от краёв экрана
+        var hp = 45;  // горизонтальный отступ от краёв контейнера
+        var vp = 65;  // вертикальный отступ от краёв экрана
 
         var isHorizVisible = r.left >= cr.left + hp && r.right <= cr.right - hp;
         var isVertVisible = r.top >= vp && r.bottom <= (window.innerHeight - vp);
@@ -1757,8 +1757,8 @@ function isElementFullyVisible(el, container) {
     }
 
     // Для вертикальных списков проверяем вертикальную видимость
-    return r.top >= cr.top + 20 && r.bottom <= cr.bottom - 20 &&
-        r.left >= cr.left + 20 && r.right <= cr.right - 20;
+    return r.top >= cr.top + 35 && r.bottom <= cr.bottom - 35 &&
+        r.left >= cr.left + 25 && r.right <= cr.right - 25;
 }
 
 function scrollToElementIfNeeded(el, container, smooth, direction) {
