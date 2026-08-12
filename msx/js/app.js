@@ -651,9 +651,10 @@ function restoreFocusAfterNavigation(returnTo, context) {
       return;
     }
 
-    // ★ ФИКС: если каталог уже загружен и сетка в DOM — НЕ перерендериваем
+    // если каталог уже загружен и сетка в DOM — НЕ перерендериваем
+    var torrentsGrid = getEl('torrents-grid');
     if (catalogState.currentCatalog === AppState.backCurrentCatalog &&
-      catalogState.items.length > 0) {
+      catalogState.items.length > 0 && torrentsGrid.length > 0) {
 
       if (detailView) detailView.style.display = 'none';
 
