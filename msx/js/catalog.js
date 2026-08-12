@@ -1453,7 +1453,7 @@ async function loadCatalogPoster(card, title, mt, id, index) {
 }
 
 function updatePosterDOM(div, rating, url) {
-    ensureCatalogPosterFadeStyle();
+    //ensureCatalogPosterFadeStyle();
 
     var rHtml = '';
 
