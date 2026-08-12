@@ -576,13 +576,13 @@ function setupNavigation() {
 
       if (window.AndroidJS || AppState.transcodingFullOnOff) {
         if (AppState.searchResultsHidden) {
-          var searchOverlay = getEl('search-overlay');
-          if (searchOverlay) searchOverlay.classList.remove('hidden');
-          if (detailView) detailView.style.display = 'none';
-          window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+
+
 
           // Финальные действия (общие для ветки, где не ждём)
           function finishSearchRestore() {
+            var searchOverlay = getEl('search-overlay');
+            if (searchOverlay) searchOverlay.classList.remove('hidden');
             AppState.playFromHash = false;
             AppState.isCatalogSerials = false;
             AppState.currentScreen = 'search';
@@ -590,6 +590,8 @@ function setupNavigation() {
             AppState.clearLastSelected = false;
             setTimeout(function () {
               if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); }
+              if (detailView) detailView.style.display = 'none';
+              window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
             }, 80);
           }
 
