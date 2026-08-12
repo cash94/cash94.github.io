@@ -673,6 +673,11 @@ function restoreFocusAfterNavigation(returnTo, context) {
 
     // Только если каталог реально нужно загрузить заново
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
+      // Восстанавливаем скролл ДО фокусировки
+      var mc = getEl('main-container');
+      if (mc && AppState.backupScroll > 0) {
+        mc.scrollTop = AppState.backupScroll;
+      }
       if (detailView) detailView.style.display = 'none';
       if (typeof window.ensureCatalogFocus === 'function') {
         window.ensureCatalogFocus(true);
