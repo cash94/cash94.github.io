@@ -594,7 +594,7 @@ function setupNavigation() {
             setTimeout(function () {
               if (detailView) detailView.style.display = 'none';
               if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); }
-              window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
+              //window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
             }, 80);
           }
 
