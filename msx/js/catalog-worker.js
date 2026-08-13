@@ -253,21 +253,58 @@ function workerFetchTmdbDetails(item) {
   var id = item && item.id, type = (item && item.media_type) || 'movie';
   if (!id) return Promise.resolve(null);
   var p = { id: id, type: type };
+
+  // 1. In-memory LRU кэш (самый быстрый)
   var cached = getFromTmdbCache('details', p);
   if (cached !== null) return Promise.resolve(cached);
 
-  var urls = [
-    '/api/tmdb/details?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type),
-    '/api/tmdb/item?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type)
-  ];
+  var itemKey = id + '_' + type;
+  var detailsUrl = '/api/tmdb/details?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type);
+  var itemUrl = '/api/tmdb/item?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type);
 
-  return tmdbItemGet(id + '_' + type).then(function (row) {
-    if (row && (row.id || row.overview || row.videos || row.backdrops)) {
+  // Функция проверки "достаточно ли данных"
+  function isValidDetails(d) {
+    if (!d) return false;
+    return !!(d.id || d.overview || d.videos || d.backdrops || d.cast ||
+      (d.recommendations && d.recommendations.length > 0));
+  }
+
+  // 2. IndexedDB — проверяем кэшированные данные
+  return tmdbItemGet(itemKey).then(function (row) {
+    if (isValidDetails(row)) {
+      // Данные из IDB хорошие — кешируем в память и возвращаем
+      saveToTmdbCache('details', p, row);
       return row;
     }
-    return safeFetch(urls[1]).then(function (d2) {
-      if (d2) tmdbItemSet(id + '_' + type, d2);
-      return d2;
+
+    // 3. IDB miss или данные неполные — идём в сеть
+    // Сначала пробуем details (он богаче: recommendations, videos, cast)
+    return safeFetch(detailsUrl).then(function (d) {
+      if (isValidDetails(d)) {
+        saveToTmdbCache('details', p, d);
+        tmdbItemSet(itemKey, d);
+        return d;
+      }
+
+      // 4. Fallback на /api/tmdb/item
+      return safeFetch(itemUrl).then(function (d2) {
+        if (d2) {
+          // Объединяем данные: если row из IDB содержал что-то полезное — мерджим
+          var merged = (row && row.poster_path && !d2.poster_path)
+            ? mergeCatalogDetails(row, d2)
+            : d2;
+          saveToTmdbCache('details', p, merged);
+          tmdbItemSet(itemKey, merged);
+          return merged;
+        }
+
+        // Ничего из сети не получили — возвращаем то, что было в IDB (если было)
+        if (row) {
+          saveToTmdbCache('details', p, row);
+          return row;
+        }
+        return null;
+      });
     });
   });
 }
