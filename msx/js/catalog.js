@@ -3201,26 +3201,20 @@ function stopTmdbCleanup() {
 }
 
 function preloadPosterCacheFromDB() {
-    if (!window.PosterDB) return Promise.resolve();
+    if (!window.PosterDB || !window.PosterDB.getAll) return Promise.resolve();
 
-    return runTx('readonly', function (store, resolve) {
-        var all = {};
-        var req = store.openCursor();
-        req.onsuccess = function (e) {
-            var cursor = e.target.result;
-            if (cursor) {
-                all[cursor.value.key] = cursor.value.url;
-                cursor.continue();
-            } else {
-                resolve(all);
-            }
-        };
-        req.onerror = function () { resolve({}); };
-    }).then(function (all) {
+    return PosterDB.getAll().then(function (all) {
+        if (!all) return;
         var keys = Object.keys(all);
         for (var i = 0; i < keys.length; i++) {
-            catalogState.posterCache.set(keys[i], all[keys[i]]);
+            // Не перезаписываем, если уже есть в памяти
+            if (!catalogState.posterCache.has(keys[i])) {
+                catalogState.posterCache.set(keys[i], all[keys[i]]);
+            }
         }
+        console.log('✅ PosterDB: загружено ' + keys.length + ' постеров в память');
+    }).catch(function (e) {
+        console.warn('PosterDB preload error:', e);
     });
 }
 
