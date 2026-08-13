@@ -1442,7 +1442,7 @@ function loadPosterBatch(indices) {
                             setTimeout(next, 0);
                         });
                     } else {
-                        setTimeout(next, 16);
+                        setTimeout(next, 1);
                     }
                 });
         }
