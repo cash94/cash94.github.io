@@ -21,6 +21,7 @@ var CATALOG_CONSTANTS = {
     FOCUS_DELAY_MS: 100,
     ROW_POSTER_CONCURRENCY: 2,
     IMG_SIZES: {
+        POSTER_CARD: 'w342',
         POSTER_SMALL: 'w185',
         POSTER_MEDIUM: 'w342',
         BACKDROP: 'w1920'
@@ -209,6 +210,37 @@ LRUTTLCache.prototype.trimToMax = function () {
     }
 };
 // ==================== /LRU + TTL КЭШ ====================
+
+function getPosterCardSize() {
+    return (
+        CATALOG_CONSTANTS.IMG_SIZES.POSTER_CARD ||
+        CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL ||
+        'w185'
+    );
+}
+
+function getProtocolBase() {
+    var p = (window.AppState && AppState.protocol) || 'https:';
+    p = String(p).replace(/\/+$/, '');
+    if (p.indexOf(':') === -1) p += ':';
+    return p;
+}
+
+function normalizePosterUrl(url) {
+    if (!url) return '';
+
+    if (url.indexOf('http') !== 0) return url;
+
+    var size = getPosterCardSize();
+    var protocol = getProtocolBase();
+
+    if (url.indexOf('tsimg.hnar.online/t/p/') !== -1) {
+        url = url.replace(/^https?:/, protocol);
+        url = url.replace(/\/t\/p\/[^/]+\//, '/t/p/' + size + '/');
+    }
+
+    return url;
+}
 
 // ==================== RUTUBE ТРЕЙЛЕРЫ ====================
 var rutubeTrailerState = {
@@ -1457,14 +1489,27 @@ async function loadCatalogPoster(card, title, mt, id, index) {
     try {
         var url = null;
         var p = { id: id, type: mt };
+
         var cachedTmdb = getFromTmdbCache('poster', p);
+
         if (cachedTmdb && cachedTmdb.posterUrl) {
-            url = cachedTmdb.posterUrl;
-        } else if (id && id !== 'undefined' && id !== 'null') {
-            var d = await safeFetch('/api/tmdb/item?id=' + id + '&type=' + mt);
-            if (d && d.poster_path) {
-                url = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + d.poster_path;
-                saveToTmdbCache('poster', p, { posterUrl: url });
+            url = normalizePosterUrl(cachedTmdb.posterUrl);
+        } else if (id && id !== 'undefined' && id !== 'null' && window.CatalogWorker) {
+            try {
+                var posterResult = await CatalogWorker.fetchPosterUrl(
+                    id,
+                    mt,
+                    title,
+                    getProtocolBase(),
+                    getPosterCardSize()
+                );
+
+                if (posterResult && posterResult.posterUrl) {
+                    url = normalizePosterUrl(posterResult.posterUrl);
+                    saveToTmdbCache('poster', p, { posterUrl: url });
+                }
+            } catch (e) {
+                console.warn('fetchPosterUrl worker error:', e);
             }
         }
         if (!url && window.tmdb && window.tmdb.searchPoster) {
@@ -2707,13 +2752,23 @@ async function loadRowPoster(card, item) {
         return;
     }
 
-    if (id && id !== 'undefined' && id !== 'null') {
+    if (id && id !== 'undefined' && id !== 'null' && window.CatalogWorker) {
         try {
-            var d = await safeFetch('/api/tmdb/item?id=' + id + '&type=' + mt);
-            if (d && d.poster_path) {
-                var url2 = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + d.poster_path;
+            var posterResult = await CatalogWorker.fetchPosterUrl(
+                id,
+                mt,
+                getCatalogItemTitle(item),
+                getProtocolBase(),
+                getPosterCardSize()
+            );
+
+            if (posterResult && posterResult.posterUrl) {
+                var url2 = normalizePosterUrl(posterResult.posterUrl);
+
                 catalogState.posterCache.set(cacheKey, url2);
+
                 if (card.isConnected) await setRowPosterImg(imgBox, url2);
+
                 return;
             }
         } catch (e) { }
