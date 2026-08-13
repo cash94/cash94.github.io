@@ -367,6 +367,20 @@
         }
     };
 
+    var _origFetchRutubeTrailer = window.fetchRutubeTrailer || fetchRutubeTrailer;
+
+    // ==================== fetchRutubeTrailer ====================
+    window.fetchRutubeTrailer = fetchRutubeTrailer = function (title, originalTitle, releaseDate) {
+        return CatalogWorker.fetchRutubeTrailer(title, originalTitle, releaseDate)
+            .then(function (data) {
+                if (data && data.url) return data;
+                return _origFetchRutubeTrailer(title, originalTitle, releaseDate);
+            })
+            .catch(function () {
+                return _origFetchRutubeTrailer(title, originalTitle, releaseDate);
+            });
+    };
+
     // ==================== initCatalog ====================
     var _origInitCatalog = window.initCatalog || initCatalog;
 
