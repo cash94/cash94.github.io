@@ -522,6 +522,118 @@ function workerFetchPosterUrl(payload) {
   });
 }
 
+// ==================== RUTUBE ТРЕЙЛЕРЫ ====================
+function workerParseMaxQualityFromM3u8Url(url) {
+  if (!url) return null;
+  try {
+    var matches = url.match(/(\d{2,4})x(\d{2,4})/g);
+    if (!matches || matches.length === 0) return null;
+    var max = { width: 0, height: 0, pixels: 0 };
+    for (var i = 0; i < matches.length; i++) {
+      var parts = matches[i].split('x');
+      var w = parseInt(parts[0], 10);
+      var h = parseInt(parts[1], 10);
+      var pixels = w * h;
+      if (pixels > max.pixels) {
+        max.width = w;
+        max.height = h;
+        max.pixels = pixels;
+      }
+    }
+    return max.pixels > 0 ? max : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function workerExtractBalancerUrl(playData) {
+  if (!playData || !playData.video_balancer) return null;
+  var vb = playData.video_balancer;
+  return vb.default || vb.m3u8 || null;
+}
+
+function workerFetchRutubeTrailer(payload) {
+  var title = payload.title || '';
+  var originalTitle = payload.originalTitle || '';
+  var releaseDate = payload.releaseDate || '';
+
+  if (!title) return Promise.resolve(null);
+
+  var year = '';
+  if (releaseDate) {
+    var yearMatch = String(releaseDate).match(/(19|20)\d{2}/);
+    if (yearMatch) year = yearMatch[0];
+  }
+
+  var queryParts = ['Трейлер', title];
+  if (originalTitle && originalTitle !== title) {
+    queryParts.push('|', originalTitle);
+  }
+  if (year) queryParts.push(year);
+  var query = queryParts.join(' ');
+
+  var searchApiUrl = 'https://rutube.ru/api/search/combined/video_playlist?query=' +
+    encodeURIComponent(query) + '&duration=short&client=wdp&page=1';
+  var searchUrl = '/api/rutube/proxy?url=' + encodeURIComponent(searchApiUrl);
+
+  return safeFetch(searchUrl, { timeout: 10000 }).then(function (searchData) {
+    if (!searchData || !Array.isArray(searchData.results) || searchData.results.length === 0) {
+      return null;
+    }
+
+    var matchedIds = [];
+    var titleLower = title.toLowerCase().trim();
+    for (var i = 0; i < searchData.results.length; i++) {
+      if (matchedIds.length >= 3) break;
+      var resultTitle = (searchData.results[i].title || '').toLowerCase().trim();
+      var titleMatch = resultTitle.indexOf(titleLower) !== -1;
+      var yearMatch = year ? resultTitle.indexOf(year) !== -1 : true;
+      if (titleMatch && yearMatch) {
+        var id = searchData.results[i].id;
+        if (id) matchedIds.push(id);
+      }
+    }
+
+    if (matchedIds.length === 0) return null;
+
+    // Последовательные запросы play/options
+    var bestUrl = null;
+    var bestQuality = null;
+    var bestTitle = '';
+
+    function fetchPlayOptions(index) {
+      if (index >= matchedIds.length) {
+        if (!bestUrl) return null;
+        return { url: bestUrl, quality: bestQuality, title: bestTitle };
+      }
+
+      var playApiUrl = 'https://rutube.ru/api/play/options/' + matchedIds[index];
+      var playProxyUrl = '/api/rutube/proxy?url=' + encodeURIComponent(playApiUrl);
+
+      return safeFetch(playProxyUrl, { timeout: 10000 }).then(function (playData) {
+        if (playData) {
+          var balancerUrl = workerExtractBalancerUrl(playData);
+          if (balancerUrl) {
+            var quality = workerParseMaxQualityFromM3u8Url(balancerUrl);
+            if (quality) {
+              if (!bestQuality || quality.pixels > bestQuality.pixels) {
+                bestUrl = balancerUrl;
+                bestQuality = quality;
+                bestTitle = playData.title || title;
+              }
+            }
+          }
+        }
+        return fetchPlayOptions(index + 1);
+      });
+    }
+
+    return fetchPlayOptions(0);
+  }).catch(function () {
+    return null;
+  });
+}
+
 // ==================== ЗАГРУЗКА КАТАЛОГА ====================
 function workerLoadCatalogItems(catalogUrl, from, limit, abortSignal) {
   var url = catalogUrl + '/items?from=' + from + '&limit=' + limit;
@@ -781,6 +893,13 @@ self.onmessage = function (e) {
     case 'CATALOG_CACHE_CLEAR':
       catalogDataCache.clear();
       self.postMessage({ id: id, type: 'RESULT', data: { success: true } });
+      break;
+
+    // --- RuTube Trailer ---
+    case 'FETCH_RUTUBE_TRAILER':
+      workerFetchRutubeTrailer(payload).then(function (data) {
+        self.postMessage({ id: id, type: 'RESULT', data: data });
+      });
       break;
 
     default:
