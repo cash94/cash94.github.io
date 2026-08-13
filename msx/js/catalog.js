@@ -3200,9 +3200,34 @@ function stopTmdbCleanup() {
     if (tmdbCleanupIv) { clearInterval(tmdbCleanupIv); tmdbCleanupIv = null; }
 }
 
+function preloadPosterCacheFromDB() {
+    if (!window.PosterDB) return Promise.resolve();
+
+    return runTx('readonly', function (store, resolve) {
+        var all = {};
+        var req = store.openCursor();
+        req.onsuccess = function (e) {
+            var cursor = e.target.result;
+            if (cursor) {
+                all[cursor.value.key] = cursor.value.url;
+                cursor.continue();
+            } else {
+                resolve(all);
+            }
+        };
+        req.onerror = function () { resolve({}); };
+    }).then(function (all) {
+        var keys = Object.keys(all);
+        for (var i = 0; i < keys.length; i++) {
+            catalogState.posterCache.set(keys[i], all[keys[i]]);
+        }
+    });
+}
+
 function initCatalog() {
     startTmdbCleanup();
     initCatalogDetailButtons();
+    preloadPosterCacheFromDB();
 
     // Используем другое имя для публичного API
     window.tmdbCacheAPI = {
@@ -3216,7 +3241,6 @@ function initCatalog() {
         }
     };
 }
-
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initCatalog);
 else initCatalog();
 
