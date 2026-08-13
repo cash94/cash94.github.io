@@ -94,6 +94,8 @@ var CatalogWorker = (function () {
     },
     tmdbItemCacheStats: function () { return request('TMDB_ITEM_CACHE_STATS', {}); },
     tmdbItemCacheClear: function () { return request('TMDB_ITEM_CACHE_CLEAR', {}); },
+    tmdbDetailsCacheStats: function () { return request('TMDB_DETAILS_CACHE_STATS', {}); },
+    tmdbDetailsCacheClear: function () { return request('TMDB_DETAILS_CACHE_CLEAR', {}); },
     loadCatalogItems: function (url, from, limit) { return request('LOAD_CATALOG_ITEMS', { url: url, from: from, limit: limit }); },
     loadAllCatalogItems: function (url) { return request('LOAD_ALL_CATALOG_ITEMS', { url: url }, 15000); },
     loadHistory: function () { return request('LOAD_HISTORY', {}); },
