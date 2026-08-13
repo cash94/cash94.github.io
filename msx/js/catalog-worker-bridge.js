@@ -76,7 +76,15 @@ var CatalogWorker = (function () {
     fetchActors: function (item) { return request('FETCH_ACTORS', { item: item }); },
     fetchItemDetails: function (item) { return request('FETCH_ITEM_DETAILS', { item: item }); },
     fetchItemMeta: function (item, mt) { return request('FETCH_ITEM_META', { item: item, mediaType: mt }); },
-    fetchPosterUrl: function (id, mt, title) { return request('FETCH_POSTER_URL', { id: id, mt: mt, title: title }); },
+    fetchPosterUrl: function (id, mt, title, protocol, size) {
+      return request('FETCH_POSTER_URL', {
+        id: id,
+        mt: mt,
+        title: title,
+        protocol: protocol,
+        size: size
+      });
+    },
     loadCatalogItems: function (url, from, limit) { return request('LOAD_CATALOG_ITEMS', { url: url, from: from, limit: limit }); },
     loadAllCatalogItems: function (url) { return request('LOAD_ALL_CATALOG_ITEMS', { url: url }, 15000); },
     loadHistory: function () { return request('LOAD_HISTORY', {}); },
