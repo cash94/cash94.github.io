@@ -327,6 +327,46 @@
             });
     };
 
+    // ==================== loadRowItems (карусель главной страницы) ====================
+    var _origLoadRowItems = window.loadRowItems || loadRowItems;
+
+    window.loadRowItems = loadRowItems = async function (key) {
+        var LIMIT = 10;
+
+        if (key === 'history') {
+            try {
+                var data = await CatalogWorker.loadHistory();
+                if (data && data.success && data.history && data.history.length) {
+                    return data.history.slice(0, LIMIT).map(function (item) {
+                        var pp = item.posterPath;
+                        if (pp && pp.indexOf('http') !== 0) pp = (pp.indexOf('/') === 0 ? pp : '/' + pp);
+                        return {
+                            id: item.tmdbId, title: item.title, name: item.title,
+                            media_type: item.mediaType, poster_path: pp,
+                            vote_average: null, isHistoryItem: true
+                        };
+                    });
+                }
+                return [];
+            } catch (e) {
+                console.error('History load error (worker):', e);
+                return _origLoadRowItems(key);
+            }
+        }
+
+        var cfg = CATALOG_CONFIG[key];
+        if (!cfg || !cfg.url) return [];
+
+        try {
+            var d = await CatalogWorker.loadCatalogItems(cfg.url, 0, LIMIT);
+            if (d && d.success && d.items) return d.items.slice(0, LIMIT);
+            return [];
+        } catch (e) {
+            console.error('Row items load error (worker):', e);
+            return _origLoadRowItems(key);
+        }
+    };
+
     // ==================== initCatalog ====================
     var _origInitCatalog = window.initCatalog || initCatalog;
 
