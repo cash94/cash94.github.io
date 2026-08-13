@@ -17,6 +17,7 @@ var WORKER_CONSTANTS = {
   MAX_RECOMMENDATIONS: 12,
   MAX_TRAILERS: 6,
   IMG_SIZES: {
+    POSTER_CARD: 'w342',
     POSTER_SMALL: 'w185',
     POSTER_MEDIUM: 'w342',
     BACKDROP: 'w1920'
@@ -342,25 +343,183 @@ function workerFetchCatalogItemMeta(item, mediaType) {
   });
 }
 
-function workerFetchPosterUrl(id, mt, title) {
-  var p = { id: id, type: mt };
-  var cachedTmdb = getFromTmdbCache('poster', p);
-  if (cachedTmdb && cachedTmdb.posterUrl) {
-    return Promise.resolve({ posterUrl: cachedTmdb.posterUrl });
+// ==================== ПОСТЕРЫ: helper'ы ====================
+
+function normalizeProtocol(protocol) {
+  var p = String(protocol || 'https:').replace(/\/+$/, '');
+  if (p.indexOf(':') === -1) p += ':';
+  return p;
+}
+
+function buildPosterUrl(posterPath, protocol, size) {
+  if (!posterPath) return null;
+
+  if (posterPath.indexOf('http') === 0) {
+    return posterPath;
   }
 
-  if (id && id !== 'undefined' && id !== 'null') {
-    return safeFetch('/api/tmdb/item?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(mt))
-      .then(function (d) {
-        if (d && d.poster_path) {
-          var url = 'https://tsimg.hnar.online/t/p/' + WORKER_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + d.poster_path;
-          saveToTmdbCache('poster', p, { posterUrl: url, data: d });
-          return { posterUrl: url, data: d };
-        }
-        return { posterUrl: null };
-      });
+  var path = posterPath.charAt(0) === '/' ? posterPath : '/' + posterPath;
+  var finalSize = size ||
+    WORKER_CONSTANTS.IMG_SIZES.POSTER_CARD ||
+    WORKER_CONSTANTS.IMG_SIZES.POSTER_MEDIUM ||
+    'w185';
+
+  return normalizeProtocol(protocol) + '//tsimg.hnar.online/t/p/' + finalSize + path;
+}
+
+function normalizePosterUrl(url, protocol, size) {
+  if (!url) return '';
+
+  if (url.indexOf('http') !== 0) return url;
+
+  var proto = normalizeProtocol(protocol);
+  var finalSize = size ||
+    WORKER_CONSTANTS.IMG_SIZES.POSTER_CARD ||
+    WORKER_CONSTANTS.IMG_SIZES.POSTER_MEDIUM ||
+    'w185';
+
+  if (url.indexOf('tsimg.hnar.online/t/p/') !== -1) {
+    url = url.replace(/^https?:/, proto);
+    url = url.replace(/\/t\/p\/[^/]+\//, '/t/p/' + finalSize + '/');
   }
-  return Promise.resolve({ posterUrl: null });
+
+  return url;
+}
+
+function pickSearchPosterPath(results, id) {
+  var first = null;
+
+  for (var i = 0; i < results.length; i++) {
+    var r = results[i];
+
+    if (!r || !r.poster_path) continue;
+
+    if (id && String(r.id) === String(id)) {
+      return r.poster_path;
+    }
+
+    if (!first) {
+      first = r.poster_path;
+    }
+  }
+
+  return first;
+}
+
+// ==================== ПОСТЕРЫ: основная функция ====================
+
+function workerFetchPosterUrl(payload) {
+  payload = payload || {};
+
+  var id = payload.id;
+  var mt = payload.mt || 'movie';
+  var title = payload.title || '';
+  var protocol = normalizeProtocol(payload.protocol);
+  var size = payload.size ||
+    WORKER_CONSTANTS.IMG_SIZES.POSTER_CARD ||
+    WORKER_CONSTANTS.IMG_SIZES.POSTER_MEDIUM ||
+    'w185';
+
+  var validId = !!(id && id !== 'undefined' && id !== 'null');
+
+  var cacheKey =
+    (validId ? id : 'title_' + (title || 'unknown')) +
+    '_' + mt +
+    '_' + size +
+    '_' + protocol;
+
+  var cachedUrl = posterUrlCache.get(cacheKey);
+
+  if (cachedUrl) {
+    return Promise.resolve({
+      posterUrl: cachedUrl,
+      source: 'worker-poster-cache'
+    });
+  }
+
+  var tmdbParams = validId
+    ? { id: id, type: mt }
+    : { q: title || '', type: mt };
+
+  var cachedTmdb = getFromTmdbCache('poster', tmdbParams);
+
+  if (cachedTmdb && cachedTmdb.posterUrl) {
+    var normalizedCachedUrl = normalizePosterUrl(
+      cachedTmdb.posterUrl,
+      protocol,
+      size
+    );
+
+    posterUrlCache.set(cacheKey, normalizedCachedUrl);
+
+    return Promise.resolve({
+      posterUrl: normalizedCachedUrl,
+      source: 'worker-tmdb-cache'
+    });
+  }
+
+  function saveAndReturn(url) {
+    if (!url) {
+      return { posterUrl: null };
+    }
+
+    var finalUrl = normalizePosterUrl(url, protocol, size);
+
+    saveToTmdbCache('poster', tmdbParams, {
+      posterUrl: finalUrl
+    });
+
+    posterUrlCache.set(cacheKey, finalUrl);
+
+    return {
+      posterUrl: finalUrl,
+      source: 'worker-fetch'
+    };
+  }
+
+  var byIdPromise = Promise.resolve(null);
+
+  if (validId) {
+    byIdPromise = safeFetch(
+      '/api/tmdb/item?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(mt)
+    ).then(function (d) {
+      if (d && d.poster_path) {
+        return buildPosterUrl(d.poster_path, protocol, size);
+      }
+
+      return null;
+    });
+  }
+
+  return byIdPromise.then(function (url) {
+    if (url) {
+      return saveAndReturn(url);
+    }
+
+    if (!title) {
+      return { posterUrl: null };
+    }
+
+    var searchUrl =
+      '/api/tmdb/search?query=' + encodeURIComponent(title) +
+      '&type=' + encodeURIComponent(mt);
+
+    return safeFetch(searchUrl).then(function (d) {
+      var posterPath = null;
+
+      if (d && Array.isArray(d.results) && d.results.length > 0) {
+        posterPath = pickSearchPosterPath(d.results, validId ? id : null);
+      }
+
+      if (posterPath) {
+        return saveAndReturn(buildPosterUrl(posterPath, protocol, size));
+      }
+
+      return { posterUrl: null };
+    });
+  }).catch(function () {
+    return { posterUrl: null };
+  });
 }
 
 // ==================== ЗАГРУЗКА КАТАЛОГА ====================
@@ -472,8 +631,12 @@ self.onmessage = function (e) {
 
     // --- Poster URL ---
     case 'FETCH_POSTER_URL':
-      workerFetchPosterUrl(payload.id, payload.mt, payload.title).then(function (data) {
-        self.postMessage({ id: id, type: 'RESULT', data: data });
+      workerFetchPosterUrl(payload).then(function (data) {
+        self.postMessage({
+          id: id,
+          type: 'RESULT',
+          data: data
+        });
       });
       break;
 
