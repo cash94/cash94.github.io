@@ -1106,9 +1106,7 @@ function createCatalogCard(item, index) {
     var ratingHtml = rating ?
         '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + ratingColor + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + ratingColor + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);">' + rating + '</div>' : '';
 
-    var posterHtml = cached ?
-        '<img src="' + cached + '" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover">' :
-        '<div class="no-poster catalog-poster-loading"></div>';
+    var posterHtml = '<div class="no-poster catalog-poster-loading"></div>';
 
     var year = getCatalogItemYear(item);
     var badgeText = year || 'Каталог';
@@ -1299,13 +1297,27 @@ function initPosterUnloading() {
 
 function loadInitialPosters() {
     var idxs = [];
-    var limit = Math.min(catalogState.postersPerBatch, catalogState.items.length);
+    var limit = Math.min(
+        CATALOG_CONSTANTS.POSTER_BATCH_SIZE,
+        catalogState.items.length
+    );
+
     for (var i = 0; i < limit; i++) {
         var it = catalogState.items[i];
         if (!it) continue;
-        if (!catalogState.posterCache.has(it.id + '_' + (it.media_type || 'movie'))) idxs.push(i);
+
+        var card = catalogState.cardElements[i];
+        if (!card) continue;
+
+        // Если img ещё нет — ставим в очередь
+        if (!card.querySelector('img.catalog-poster-img')) {
+            idxs.push(i);
+        }
     }
-    if (idxs.length > 0) loadPosterBatch(idxs);
+
+    if (idxs.length > 0) {
+        loadPosterBatch(idxs);
+    }
 }
 
 function initPosterLazyLoading() {
