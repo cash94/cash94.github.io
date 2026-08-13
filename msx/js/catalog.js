@@ -22,7 +22,7 @@ var CATALOG_CONSTANTS = {
     ROW_POSTER_CONCURRENCY: 2,
     IMG_SIZES: {
         POSTER_SMALL: 'w185',
-        POSTER_MEDIUM: 'w185',
+        POSTER_MEDIUM: 'w342',
         BACKDROP: 'w1920'
     }
 };
@@ -1359,30 +1359,51 @@ function loadNextPosterBatch() {
 }
 
 function loadPosterBatch(indices) {
-    if (indices.length === 0) return;
+    if (!indices || indices.length === 0) return;
+
     catalogState.isPosterLoading = true;
 
-    var i = 0;
-    function processNext() {
-        if (i >= indices.length) {
+    var active = 0;
+    var ptr = 0;
+    var maxActive = CATALOG_CONSTANTS.MAX_POSTER_DECODES || 2;
+
+    function next() {
+        if (ptr >= indices.length && active === 0) {
             catalogState.isPosterLoading = false;
+
             if (catalogState.posterLoadQueue.length > 0) {
-                // Небольшая пауза перед следующей партией
-                setTimeout(loadNextPosterBatch, 15);
+                setTimeout(loadNextPosterBatch, 50);
             }
+
             return;
         }
 
-        loadPosterForIndex(indices[i]).then(function () {
-            i++;
-            // Пауза 100-150мс между постерами дает главному потоку время на отрисовку кадров (60 FPS)
-            setTimeout(processNext, 5);
-        }).catch(function () {
-            i++;
-            setTimeout(processNext, 5);
-        });
+        while (active < maxActive && ptr < indices.length) {
+            active++;
+
+            var index = indices[ptr];
+            ptr++;
+
+            loadPosterForIndex(index)
+                .catch(function () {
+                    // игнорируем ошибку отдельного постера
+                })
+                .then(function () {
+                    active--;
+
+                    // Даём браузеру шанс отрисовать кадр
+                    if (window.requestAnimationFrame) {
+                        requestAnimationFrame(function () {
+                            setTimeout(next, 0);
+                        });
+                    } else {
+                        setTimeout(next, 16);
+                    }
+                });
+        }
     }
-    processNext();
+
+    next();
 }
 
 async function loadPosterForIndex(index) {
@@ -1453,65 +1474,78 @@ async function loadCatalogPoster(card, title, mt, id, index) {
 }
 
 function updatePosterDOM(div, rating, url) {
-    //ensureCatalogPosterFadeStyle();
-
-    var rHtml = '';
-
-    if (rating && rating !== 'null' && rating !== 'undefined') {
-        var c = getRatingColor(parseFloat(rating));
-
-        rHtml =
-            '<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' +
-            c +
-            ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' +
-            c +
-            ';box-shadow:0 4px 20px rgba(0,0,0,0.25);">' +
-            rating +
-            '</div>';
-    }
-
-    if (!url) {
-        div.innerHTML = '<div class="no-poster">Нет постера</div>' + rHtml;
-        return;
-    }
-
-    var img = new Image();
-
-    img.className = 'catalog-poster-img';
-
-    var insertToDom = function () {
-        if (!div.isConnected) return;
-
-        div.innerHTML = rHtml;
-        div.appendChild(img);
-
-        requestAnimationFrame(function () {
-            requestAnimationFrame(function () {
-                img.classList.add('loaded');
-            });
-        });
-    };
-
-    img.onerror = function () {
-        if (div.isConnected) {
-            div.innerHTML = '<div class="no-poster">Нет постера</div>' + rHtml;
+    return new Promise(function (resolve) {
+        if (!div) {
+            resolve();
+            return;
         }
-    };
 
-    if (typeof img.decode === 'function') {
-        img.src = url;
+        if (!url) {
+            div.innerHTML = '<div class="no-poster">Нет постера</div>';
+            resolve();
+            return;
+        }
 
-        img.decode()
-            .then(insertToDom)
-            .catch(function () {
-                if (img.naturalWidth > 0) {
-                    insertToDom();
+        var img = new Image();
+
+        img.className = 'catalog-poster-img';
+        img.decoding = 'async';
+        img.alt = '';
+
+        var settled = false;
+
+        function finish(ok) {
+            if (settled) return;
+            settled = true;
+
+            if (ok && div.isConnected) {
+                var oldImg = div.querySelector('img.catalog-poster-img');
+                if (oldImg) oldImg.remove();
+
+                var placeholder = div.querySelector('.no-poster');
+                if (placeholder) placeholder.remove();
+
+                div.appendChild(img);
+
+                // Если есть анимация появления, лучше делать её очень короткой
+                // или вообще отключить во время массовой загрузки.
+                requestAnimationFrame(function () {
+                    img.classList.add('loaded');
+                });
+            } else if (!ok && div.isConnected) {
+                var ph = div.querySelector('.no-poster');
+                if (!ph) {
+                    div.innerHTML = '<div class="no-poster">Нет постера</div>';
                 }
-            });
-    } else {
-        img.onload = insertToDom;
-        img.src = url;
-    }
+            }
+
+            resolve();
+        }
+
+        img.onerror = function () {
+            finish(false);
+        };
+
+        if (typeof img.decode === 'function') {
+            img.src = url;
+            img.decode()
+                .then(function () {
+                    finish(true);
+                })
+                .catch(function () {
+                    if (img.naturalWidth > 0) {
+                        finish(true);
+                    } else {
+                        finish(false);
+                    }
+                });
+        } else {
+            img.onload = function () {
+                finish(true);
+            };
+            img.src = url;
+        }
+    });
 }
 
 // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР ====================
