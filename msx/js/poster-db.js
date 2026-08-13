@@ -145,10 +145,37 @@
         });
     }
 
+    function getAll() {
+        return openDB().then(function (db) {
+            return new Promise(function (resolve) {
+                var tx = db.transaction(STORE_NAME, 'readonly');
+                var store = tx.objectStore(STORE_NAME);
+                var req = store.openCursor();
+                var all = {};
+
+                req.onsuccess = function (e) {
+                    var cursor = e.target.result;
+                    if (cursor) {
+                        all[cursor.value.key] = cursor.value.url;
+                        cursor.continue();
+                    } else {
+                        resolve(all);
+                    }
+                };
+
+                req.onerror = function () { resolve({}); };
+                tx.onerror = function () { resolve({}); };
+            });
+        }).catch(function () {
+            return {};
+        });
+    }
+
     window.PosterDB = {
         get: get,
         set: set,
         setMany: setMany,
-        clear: clear
+        clear: clear,
+        getAll: getAll
     };
 })();
