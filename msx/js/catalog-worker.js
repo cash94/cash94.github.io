@@ -248,60 +248,183 @@ function mergeCatalogDetails(base) {
   return m;
 }
 
+// ==================== IndexedDB: кэш TMDB details ====================
+var TMDB_DETAILS_DB = {
+  name: 'TmdbDetailsCacheDB',
+  version: 1,
+  store: 'details',
+  maxItems: 500,
+  maxAgeMs: 30 * 24 * 60 * 60 * 1000 // 30 дней
+};
+
+var tmdbDetailsDbPromise = null;
+
+function openTmdbDetailsDb() {
+  if (tmdbDetailsDbPromise) return tmdbDetailsDbPromise;
+
+  tmdbDetailsDbPromise = new Promise(function (resolve, reject) {
+    var req = self.indexedDB.open(TMDB_DETAILS_DB.name, TMDB_DETAILS_DB.version);
+
+    req.onupgradeneeded = function (e) {
+      var db = e.target.result;
+      if (!db.objectStoreNames.contains(TMDB_DETAILS_DB.store)) {
+        var store = db.createObjectStore(TMDB_DETAILS_DB.store, { keyPath: 'key' });
+        store.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+    };
+
+    req.onsuccess = function (e) { resolve(e.target.result); };
+    req.onerror = function () {
+      tmdbDetailsDbPromise = null;
+      reject(req.error);
+    };
+  });
+
+  return tmdbDetailsDbPromise;
+}
+
+function tmdbDetailsGet(key) {
+  return openTmdbDetailsDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(TMDB_DETAILS_DB.store, 'readonly');
+      var req = tx.objectStore(TMDB_DETAILS_DB.store).get(key);
+      req.onsuccess = function () {
+        var row = req.result;
+        if (!row) return resolve(null);
+        if (Date.now() - row.timestamp > TMDB_DETAILS_DB.maxAgeMs) return resolve(null);
+        resolve(row.data || null);
+      };
+      req.onerror = function () { resolve(null); };
+    });
+  }).catch(function () { return null; });
+}
+
+function tmdbDetailsSet(key, data) {
+  if (!data) return Promise.resolve();
+  return openTmdbDetailsDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(TMDB_DETAILS_DB.store, 'readwrite');
+      tx.objectStore(TMDB_DETAILS_DB.store).put({
+        key: key,
+        data: data,
+        timestamp: Date.now()
+      });
+      tx.oncomplete = function () { resolve(); };
+      tx.onerror = function () { resolve(); };
+      tx.onabort = function () { resolve(); };
+    });
+  }).then(function () {
+    if (Math.random() < 0.05) tmdbDetailsTrim();
+  }).catch(function () { });
+}
+
+function tmdbDetailsTrim() {
+  return openTmdbDetailsDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(TMDB_DETAILS_DB.store, 'readwrite');
+      var store = tx.objectStore(TMDB_DETAILS_DB.store);
+      var countReq = store.count();
+      countReq.onsuccess = function () {
+        var total = countReq.result;
+        if (total <= TMDB_DETAILS_DB.maxItems) { resolve(); return; }
+        var cursorReq = store.index('timestamp').openCursor();
+        var toDelete = total - TMDB_DETAILS_DB.maxItems + 50;
+        var deleted = 0;
+        cursorReq.onsuccess = function (e) {
+          var cursor = e.target.result;
+          if (cursor && deleted < toDelete) {
+            cursor.delete();
+            deleted++;
+            cursor.continue();
+          } else {
+            resolve();
+          }
+        };
+        cursorReq.onerror = function () { resolve(); };
+      };
+      countReq.onerror = function () { resolve(); };
+    });
+  }).catch(function () { });
+}
+
+function tmdbDetailsClear() {
+  return openTmdbDetailsDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(TMDB_DETAILS_DB.store, 'readwrite');
+      tx.objectStore(TMDB_DETAILS_DB.store).clear();
+      tx.oncomplete = function () { resolve({ success: true }); };
+      tx.onerror = function () { resolve({ success: false }); };
+    });
+  }).catch(function () { return { success: false }; });
+}
+
+function tmdbDetailsStats() {
+  return openTmdbDetailsDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(TMDB_DETAILS_DB.store, 'readonly');
+      var countReq = tx.objectStore(TMDB_DETAILS_DB.store).count();
+      countReq.onsuccess = function () {
+        resolve({ total: countReq.result, max: TMDB_DETAILS_DB.maxItems });
+      };
+      countReq.onerror = function () { resolve({ total: 0, max: TMDB_DETAILS_DB.maxItems }); };
+    });
+  }).catch(function () { return { total: 0, max: TMDB_DETAILS_DB.maxItems }; });
+}
+
 // ==================== TMDB ЗАПРОСЫ ====================
 function workerFetchTmdbDetails(item) {
   var id = item && item.id, type = (item && item.media_type) || 'movie';
   if (!id) return Promise.resolve(null);
+
   var p = { id: id, type: type };
 
-  // 1. In-memory LRU кэш (самый быстрый)
+  // 1. In-memory кэш (мгновенно)
   var cached = getFromTmdbCache('details', p);
   if (cached !== null) return Promise.resolve(cached);
 
-  var itemKey = id + '_' + type;
+  var idbKey = id + '_' + type;
   var detailsUrl = '/api/tmdb/details?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type);
   var itemUrl = '/api/tmdb/item?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type);
 
-  // Функция проверки "достаточно ли данных"
   function isValidDetails(d) {
     if (!d) return false;
     return !!(d.id || d.overview || d.videos || d.backdrops || d.cast ||
       (d.recommendations && d.recommendations.length > 0));
   }
 
-  // 2. IndexedDB — проверяем кэшированные данные
-  return tmdbItemGet(itemKey).then(function (row) {
-    if (isValidDetails(row)) {
-      // Данные из IDB хорошие — кешируем в память и возвращаем
-      saveToTmdbCache('details', p, row);
-      return row;
+  function saveEverywhere(data) {
+    saveToTmdbCache('details', p, data);
+    tmdbDetailsSet(idbKey, data);
+    return data;
+  }
+
+  // 2. IndexedDB
+  return tmdbDetailsGet(idbKey).then(function (idbRow) {
+    if (isValidDetails(idbRow)) {
+      saveToTmdbCache('details', p, idbRow);
+      return idbRow;
     }
 
-    // 3. IDB miss или данные неполные — идём в сеть
-    // Сначала пробуем details (он богаче: recommendations, videos, cast)
+    // 3. Сеть — сначала details (он богаче: recommendations, videos, cast)
     return safeFetch(detailsUrl).then(function (d) {
       if (isValidDetails(d)) {
-        saveToTmdbCache('details', p, d);
-        tmdbItemSet(itemKey, d);
-        return d;
+        return saveEverywhere(d);
       }
 
       // 4. Fallback на /api/tmdb/item
       return safeFetch(itemUrl).then(function (d2) {
-        if (d2) {
-          // Объединяем данные: если row из IDB содержал что-то полезное — мерджим
-          var merged = (row && row.poster_path && !d2.poster_path)
-            ? mergeCatalogDetails(row, d2)
+        if (isValidDetails(d2)) {
+          // Мерджим с IDB, если там было что-то полезное
+          var merged = (idbRow && idbRow.poster_path && !d2.poster_path)
+            ? mergeCatalogDetails(idbRow, d2)
             : d2;
-          saveToTmdbCache('details', p, merged);
-          tmdbItemSet(itemKey, merged);
-          return merged;
+          return saveEverywhere(merged);
         }
 
-        // Ничего из сети не получили — возвращаем то, что было в IDB (если было)
-        if (row) {
-          saveToTmdbCache('details', p, row);
-          return row;
+        // Ничего из сети — возвращаем то, что было в IDB
+        if (idbRow) {
+          saveToTmdbCache('details', p, idbRow);
+          return idbRow;
         }
         return null;
       });
@@ -336,13 +459,14 @@ function workerFetchCatalogItemDetails(item) {
     media_type: (item && item.media_type) || 'movie',
     title: getCatalogItemTitle(item)
   };
+
   var c = getFromTmdbCache('itemDetails', p);
   if (c !== null) return Promise.resolve(c);
 
   return workerFetchTmdbDetails(item).then(function (tmdb) {
     var merged = mergeCatalogDetails(item, tmdb);
 
-    // ★ Если рекомендаций нет — пробуем отдельный запрос
+    // Если рекомендаций нет — пробуем отдельный запрос
     if (!merged.recommendations || merged.recommendations.length === 0) {
       var id = item && item.id;
       var type = (item && item.media_type) || 'movie';
@@ -1098,6 +1222,19 @@ self.onmessage = function (e) {
       break;
     case 'TMDB_ITEM_CACHE_CLEAR':
       tmdbItemClear().then(function (data) {
+        self.postMessage({ id: id, type: 'RESULT', data: data });
+      });
+      break;
+
+    // --- TMDB Details IDB Cache ---
+    case 'TMDB_DETAILS_CACHE_STATS':
+      tmdbDetailsStats().then(function (data) {
+        self.postMessage({ id: id, type: 'RESULT', data: data });
+      });
+      break;
+
+    case 'TMDB_DETAILS_CACHE_CLEAR':
+      tmdbDetailsClear().then(function (data) {
         self.postMessage({ id: id, type: 'RESULT', data: data });
       });
       break;
