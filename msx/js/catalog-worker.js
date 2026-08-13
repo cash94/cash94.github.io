@@ -331,12 +331,37 @@ function workerFetchCatalogActors(item) {
 }
 
 function workerFetchCatalogItemDetails(item) {
-  var p = { id: item && item.id, media_type: (item && item.media_type) || 'movie', title: getCatalogItemTitle(item) };
+  var p = {
+    id: item && item.id,
+    media_type: (item && item.media_type) || 'movie',
+    title: getCatalogItemTitle(item)
+  };
   var c = getFromTmdbCache('itemDetails', p);
   if (c !== null) return Promise.resolve(c);
 
   return workerFetchTmdbDetails(item).then(function (tmdb) {
     var merged = mergeCatalogDetails(item, tmdb);
+
+    // ★ Если рекомендаций нет — пробуем отдельный запрос
+    if (!merged.recommendations || merged.recommendations.length === 0) {
+      var id = item && item.id;
+      var type = (item && item.media_type) || 'movie';
+      if (id) {
+        var recUrl = '/api/tmdb/details?id=' + encodeURIComponent(id) +
+          '&type=' + encodeURIComponent(type);
+        return safeFetch(recUrl).then(function (recData) {
+          if (recData && recData.recommendations && recData.recommendations.length > 0) {
+            merged.recommendations = recData.recommendations;
+          }
+          saveToTmdbCache('itemDetails', p, merged);
+          return merged;
+        }).catch(function () {
+          saveToTmdbCache('itemDetails', p, merged);
+          return merged;
+        });
+      }
+    }
+
     saveToTmdbCache('itemDetails', p, merged);
     return merged;
   });
