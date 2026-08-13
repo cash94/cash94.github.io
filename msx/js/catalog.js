@@ -1417,7 +1417,7 @@ function loadPosterBatch(indices) {
             catalogState.isPosterLoading = false;
 
             if (catalogState.posterLoadQueue.length > 0) {
-                setTimeout(loadNextPosterBatch, 50);
+                setTimeout(loadNextPosterBatch, 10);
             }
 
             return;
@@ -1433,17 +1433,10 @@ function loadPosterBatch(indices) {
                 .catch(function () {
                     // игнорируем ошибку отдельного постера
                 })
+                // loadPosterBatch
                 .then(function () {
                     active--;
-
-                    // Даём браузеру шанс отрисовать кадр
-                    if (window.requestAnimationFrame) {
-                        requestAnimationFrame(function () {
-                            setTimeout(next, 0);
-                        });
-                    } else {
-                        setTimeout(next, 1);
-                    }
+                    setTimeout(next, 0);          // без rAF
                 });
         }
     }
