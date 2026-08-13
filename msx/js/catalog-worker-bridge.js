@@ -85,6 +85,13 @@ var CatalogWorker = (function () {
         size: size
       });
     },
+    fetchRutubeTrailer: function (title, originalTitle, releaseDate) {
+      return request('FETCH_RUTUBE_TRAILER', {
+        title: title,
+        originalTitle: originalTitle,
+        releaseDate: releaseDate
+      }, 15000);
+    },
     loadCatalogItems: function (url, from, limit) { return request('LOAD_CATALOG_ITEMS', { url: url, from: from, limit: limit }); },
     loadAllCatalogItems: function (url) { return request('LOAD_ALL_CATALOG_ITEMS', { url: url }, 15000); },
     loadHistory: function () { return request('LOAD_HISTORY', {}); },
