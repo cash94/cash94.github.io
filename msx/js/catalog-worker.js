@@ -261,21 +261,15 @@ function workerFetchTmdbDetails(item) {
     '/api/tmdb/item?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type)
   ];
 
-  return safeFetch(urls[0])
-    .then(function (d) {
-      if (d && (d.id || d.overview || d.videos || d.backdrops)) {
-        saveToTmdbCache('details', p, d);
-        return d;
-      }
-      return safeFetch(urls[1]);
-    })
-    .then(function (d) {
-      if (d && (d.id || d.overview || d.videos || d.backdrops)) {
-        saveToTmdbCache('details', p, d);
-        return d;
-      }
-      return null;
+  return tmdbItemGet(id + '_' + type).then(function (row) {
+    if (row && (row.id || row.overview || row.videos || row.backdrops)) {
+      return row;
+    }
+    return safeFetch(urls[1]).then(function (d2) {
+      if (d2) tmdbItemSet(id + '_' + type, d2);
+      return d2;
     });
+  });
 }
 
 function workerFetchCatalogActors(item) {
@@ -341,6 +335,129 @@ function workerFetchCatalogItemMeta(item, mediaType) {
     saveToTmdbCache('itemMeta', p, meta);
     return meta;
   });
+}
+
+// ==================== IndexedDB: кэш /api/tmdb/item ====================
+var TMDB_ITEM_DB = {
+  name: 'TmdbItemCacheDB',
+  version: 1,
+  store: 'items',
+  maxItems: 500,
+  maxAgeMs: 30 * 24 * 60 * 60 * 1000 // 30 дней
+};
+
+var tmdbItemDbPromise = null;
+
+function openTmdbItemDb() {
+  if (tmdbItemDbPromise) return tmdbItemDbPromise;
+
+  tmdbItemDbPromise = new Promise(function (resolve, reject) {
+    var req = self.indexedDB.open(TMDB_ITEM_DB.name, TMDB_ITEM_DB.version);
+
+    req.onupgradeneeded = function (e) {
+      var db = e.target.result;
+      if (!db.objectStoreNames.contains(TMDB_ITEM_DB.store)) {
+        var store = db.createObjectStore(TMDB_ITEM_DB.store, { keyPath: 'key' });
+        store.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+    };
+
+    req.onsuccess = function (e) { resolve(e.target.result); };
+    req.onerror = function () {
+      tmdbItemDbPromise = null;
+      reject(req.error);
+    };
+  });
+
+  return tmdbItemDbPromise;
+}
+
+function tmdbItemGet(key) {
+  return openTmdbItemDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(TMDB_ITEM_DB.store, 'readonly');
+      var req = tx.objectStore(TMDB_ITEM_DB.store).get(key);
+      req.onsuccess = function () {
+        var row = req.result;
+        if (!row) return resolve(null);
+        if (Date.now() - row.timestamp > TMDB_ITEM_DB.maxAgeMs) return resolve(null);
+        resolve(row.data || null);
+      };
+      req.onerror = function () { resolve(null); };
+    });
+  }).catch(function () { return null; });
+}
+
+function tmdbItemSet(key, data) {
+  if (!data) return Promise.resolve();
+  return openTmdbItemDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(TMDB_ITEM_DB.store, 'readwrite');
+      tx.objectStore(TMDB_ITEM_DB.store).put({
+        key: key,
+        data: data,
+        timestamp: Date.now()
+      });
+      tx.oncomplete = function () { resolve(); };
+      tx.onerror = function () { resolve(); };
+      tx.onabort = function () { resolve(); };
+    });
+  }).then(function () {
+    if (Math.random() < 0.05) tmdbItemTrim();
+  }).catch(function () { });
+}
+
+function tmdbItemTrim() {
+  return openTmdbItemDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(TMDB_ITEM_DB.store, 'readwrite');
+      var store = tx.objectStore(TMDB_ITEM_DB.store);
+      var countReq = store.count();
+      countReq.onsuccess = function () {
+        var total = countReq.result;
+        if (total <= TMDB_ITEM_DB.maxItems) { resolve(); return; }
+        var cursorReq = store.index('timestamp').openCursor();
+        var toDelete = total - TMDB_ITEM_DB.maxItems + 50;
+        var deleted = 0;
+        cursorReq.onsuccess = function (e) {
+          var cursor = e.target.result;
+          if (cursor && deleted < toDelete) {
+            cursor.delete();
+            deleted++;
+            cursor.continue();
+          } else {
+            resolve();
+          }
+        };
+        cursorReq.onerror = function () { resolve(); };
+      };
+      countReq.onerror = function () { resolve(); };
+    });
+  }).catch(function () { });
+}
+
+function tmdbItemClear() {
+  return openTmdbItemDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(TMDB_ITEM_DB.store, 'readwrite');
+      tx.objectStore(TMDB_ITEM_DB.store).clear();
+      tx.oncomplete = function () { resolve({ success: true }); };
+      tx.onerror = function () { resolve({ success: false }); };
+    });
+  }).catch(function () { return { success: false }; });
+}
+
+function tmdbItemStats() {
+  return openTmdbItemDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(TMDB_ITEM_DB.store, 'readonly');
+      var countReq = tx.objectStore(TMDB_ITEM_DB.store).count();
+      countReq.onsuccess = function () {
+        resolve({ total: countReq.result, max: TMDB_ITEM_DB.maxItems });
+      };
+      countReq.onerror = function () { resolve({ total: 0, max: TMDB_ITEM_DB.maxItems }); };
+    });
+  }).catch(function () { return { total: 0, max: TMDB_ITEM_DB.maxItems }; });
 }
 
 // ==================== ПОСТЕРЫ: helper'ы ====================
@@ -478,16 +595,25 @@ function workerFetchPosterUrl(payload) {
   }
 
   var byIdPromise = Promise.resolve(null);
-
   if (validId) {
-    byIdPromise = safeFetch(
-      '/api/tmdb/item?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(mt)
-    ).then(function (d) {
-      if (d && d.poster_path) {
-        return buildPosterUrl(d.poster_path, protocol, size);
+    var itemKey = id + '_' + mt;
+
+    byIdPromise = tmdbItemGet(itemKey).then(function (cachedItem) {
+      // ★ Сначала IndexedDB — без сети
+      if (cachedItem && cachedItem.poster_path) {
+        return buildPosterUrl(cachedItem.poster_path, protocol, size);
       }
 
-      return null;
+      // ★ Только при miss — сеть, и сразу пишем в IDB
+      return safeFetch(
+        '/api/tmdb/item?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(mt)
+      ).then(function (d) {
+        if (d && d.poster_path) {
+          tmdbItemSet(itemKey, d);
+          return buildPosterUrl(d.poster_path, protocol, size);
+        }
+        return null;
+      });
     });
   }
 
@@ -898,6 +1024,18 @@ self.onmessage = function (e) {
     // --- RuTube Trailer ---
     case 'FETCH_RUTUBE_TRAILER':
       workerFetchRutubeTrailer(payload).then(function (data) {
+        self.postMessage({ id: id, type: 'RESULT', data: data });
+      });
+      break;
+
+    // --- TMDB Item IDB Cache ---
+    case 'TMDB_ITEM_CACHE_STATS':
+      tmdbItemStats().then(function (data) {
+        self.postMessage({ id: id, type: 'RESULT', data: data });
+      });
+      break;
+    case 'TMDB_ITEM_CACHE_CLEAR':
+      tmdbItemClear().then(function (data) {
         self.postMessage({ id: id, type: 'RESULT', data: data });
       });
       break;
