@@ -10,9 +10,9 @@
 */
 @font-face {
     font-family: "uicons-thin-rounded";
-    src: url("https://cdn-uicons.flaticon.com/4.0.0/uicons-thin-rounded/webfonts/uicons-thin-rounded.woff2") format("woff2"),
-    url("https://cdn-uicons.flaticon.com/4.0.0/uicons-thin-rounded/webfonts/uicons-thin-rounded.woff") format("woff"),
-    url("https://cdn-uicons.flaticon.com/4.0.0/uicons-thin-rounded/webfonts/uicons-thin-rounded.eot#iefix") format("embedded-opentype");
+    src: url("https://cash94.github.io/msx/fonts/uicons-thin-rounded.woff2") format("woff2"),
+    url("https://cash94.github.io/msx/fonts/uicons-thin-rounded.woff") format("woff"),
+    url("https://cash94.github.io/msx/fonts/uicons-thin-rounded.eot#iefix") format("embedded-opentype");
     font-display: swap;
 }
     i[class^="fi-tr-"]:before, i[class*=" fi-tr-"]:before, span[class^="fi-tr-"]:before, span[class*="fi-tr-"]:before {
