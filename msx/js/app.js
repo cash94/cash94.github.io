@@ -743,8 +743,8 @@ function restoreFocusAfterNavigation(returnTo, context) {
     updateFocusableElements();
 
     if (typeof window.ensureTorrentFocus === 'function') {
-      window.ensureTorrentFocus(true);
       if (detailView) detailView.style.display = 'none';
+      window.ensureTorrentFocus(true);
       console.log('🎯 Фокус восстановлен через ensureTorrentFocus');
       return;
     }
