@@ -85,6 +85,14 @@ var CatalogWorker = (function () {
         size: size
       });
     },
+    fetchPosterUrlsBatch: function (items, protocol, size) {
+      // items: [{ id, mt, title }]
+      return request('FETCH_POSTER_URLS_BATCH', {
+        items: items,
+        protocol: protocol,
+        size: size
+      }, 15000);
+    },
     fetchRutubeTrailer: function (title, originalTitle, releaseDate) {
       return request('FETCH_RUTUBE_TRAILER', {
         title: title,
