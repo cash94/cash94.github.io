@@ -431,21 +431,22 @@ var ScreenStrategies = {
             if (!force && belongsToScreen(f, 'torrents')) return true;
             var c = getTorrentCards(), t = getTorrentTabs(), h = getTorrentHeader();
             if (!c.length) {
-                refreshTorrents();
-                var tc = null;
-                var sh = (window.AppState && window.AppState.currentDetailItem && window.AppState.currentDetailItem.hash) ? window.AppState.currentDetailItem.hash.toLowerCase() : null;
-                if (sh) for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === sh) { tc = c[i]; break; }
-                if (!tc && typeof window.lastSelectedTorrentHash !== 'undefined' && window.lastSelectedTorrentHash)
-                    for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === window.lastSelectedTorrentHash.toLowerCase()) { tc = c[i]; break; }
-                if (!tc && typeof window.lastSelectedTorrentIndex === 'number' && window.lastSelectedTorrentIndex >= 0) {
-                    var si = window.lastSelectedTorrentIndex; if (si < c.length) tc = c[si];
-                }
-                if (!tc) tc = c[0];
-                if (window.AppState && window.AppState.currentDetailItem) window.AppState.currentDetailItem = null;
-                if (window.lastSelectedTorrentHash) window.lastSelectedTorrentHash = null;
-                if (typeof window.lastSelectedTorrentIndex !== 'undefined') window.lastSelectedTorrentIndex = 0;
-                return focusEl(tc);
-
+                window.refreshTorrents().then(function () {
+                    var tc = null;
+                    var sh = (window.AppState && window.AppState.currentDetailItem && window.AppState.currentDetailItem.hash) ? window.AppState.currentDetailItem.hash.toLowerCase() : null;
+                    if (sh) for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === sh) { tc = c[i]; break; }
+                    if (!tc && typeof window.lastSelectedTorrentHash !== 'undefined' && window.lastSelectedTorrentHash)
+                        for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === window.lastSelectedTorrentHash.toLowerCase()) { tc = c[i]; break; }
+                    if (!tc && typeof window.lastSelectedTorrentIndex === 'number' && window.lastSelectedTorrentIndex >= 0) {
+                        var si = window.lastSelectedTorrentIndex; if (si < c.length) tc = c[si];
+                    }
+                    if (!tc) tc = c[0];
+                    if (window.AppState && window.AppState.currentDetailItem) window.AppState.currentDetailItem = null;
+                    if (window.lastSelectedTorrentHash) window.lastSelectedTorrentHash = null;
+                    if (typeof window.lastSelectedTorrentIndex !== 'undefined') window.lastSelectedTorrentIndex = 0;
+                    return focusEl(tc);
+                });
+                return focusEl(t[0] || h[0]);
             } else {
                 return focusEl(t[0] || h[0]);
             }
