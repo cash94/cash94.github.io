@@ -834,6 +834,225 @@ function workerFetchPosterUrl(payload) {
   });
 }
 
+// ==================== ПОСТЕРЫ: БАТЧ-ЗАГРУЗКА ====================
+var POSTER_BATCH_HTTP_LIMIT = 50;           // макс. id в одном HTTP-запросе
+var POSTER_BATCH_FALLBACK_CONCURRENCY = 6;  // параллельных одиночных, если батч-эндпоинта нет
+var batchEndpointSupported = true;          // сбрасывается при рестарте Worker'а
+
+// Пакетное чтение из IndexedDB в ОДНОЙ транзакции
+function tmdbItemGetMany(keys) {
+  if (!keys || !keys.length) return Promise.resolve({});
+  return openTmdbItemDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var result = {};
+      var pending = keys.length;
+      var tx = db.transaction(TMDB_ITEM_DB.store, 'readonly');
+      var store = tx.objectStore(TMDB_ITEM_DB.store);
+      for (var i = 0; i < keys.length; i++) {
+        (function (key) {
+          var req = store.get(key);
+          req.onsuccess = function () {
+            var row = req.result;
+            if (row && row.data && (Date.now() - row.timestamp <= TMDB_ITEM_DB.maxAgeMs)) {
+              result[key] = row.data;
+            }
+            if (--pending === 0) resolve(result);
+          };
+          req.onerror = function () {
+            if (--pending === 0) resolve(result);
+          };
+        })(keys[i]);
+      }
+    });
+  }).catch(function () { return {}; });
+}
+
+// Толерантный парсинг ответа батч-эндпоинта
+// Поддерживает: {items:[]}, {results:[]}, просто [], или map {"603":{...}}
+function parsePosterBatchResponse(d) {
+  var map = {};
+  if (!d) return map;
+  var list = null;
+  if (Array.isArray(d)) list = d;
+  else if (Array.isArray(d.items)) list = d.items;
+  else if (Array.isArray(d.results)) list = d.results;
+  if (list) {
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i];
+      if (it && it.id !== undefined && it.id !== null) map[String(it.id)] = it;
+    }
+    return map;
+  }
+  for (var k in d) {
+    if (d.hasOwnProperty(k) && d[k] && typeof d[k] === 'object' &&
+      typeof d[k].poster_path !== 'undefined') {
+      map[String(k)] = d[k];
+    }
+  }
+  return map;
+}
+
+// Фоллбэк: параллельные одиночные /api/tmdb/item (если батч-эндпоинта нет)
+function fetchPostersIndividually(entries) {
+  var map = {};
+  var idx = 0;
+  var active = 0;
+  return new Promise(function (resolve) {
+    function next() {
+      if (idx >= entries.length && active === 0) { resolve(map); return; }
+      while (active < POSTER_BATCH_FALLBACK_CONCURRENCY && idx < entries.length) {
+        (function (entry) {
+          active++;
+          safeFetch('/api/tmdb/item?id=' + encodeURIComponent(entry.id) +
+            '&type=' + encodeURIComponent(entry.mt))
+            .then(function (d) {
+              if (d && (d.id || d.poster_path)) {
+                map[String(entry.id)] = d;
+                tmdbItemSet(entry.id + '_' + entry.mt, d);
+              }
+            })
+            .then(function () { active--; next(); });
+        })(entries[idx]);
+        idx++;
+      }
+    }
+    next();
+  });
+}
+
+// Один HTTP-запрос на чанк id
+function fetchPosterChunk(chunk, mt) {
+  if (!batchEndpointSupported) return fetchPostersIndividually(chunk);
+  var ids = [];
+  for (var i = 0; i < chunk.length; i++) ids.push(chunk[i].id);
+  var url = '/api/tmdb/items?ids=' + encodeURIComponent(ids.join(',')) +
+    '&type=' + encodeURIComponent(mt);
+  var controller = new AbortController();
+  var timeoutId = setTimeout(function () { controller.abort(); }, 10000);
+  return fetch(url, { signal: controller.signal })
+    .then(function (resp) {
+      clearTimeout(timeoutId);
+      if (resp.status === 404 || resp.status === 405) {
+        // Эндпоинт ещё не развёрнут — переключаемся на параллельные одиночные
+        batchEndpointSupported = false;
+        return fetchPostersIndividually(chunk);
+      }
+      if (!resp.ok) return {};
+      return resp.json().then(parsePosterBatchResponse);
+    })
+    .catch(function () {
+      clearTimeout(timeoutId);
+      return {};
+    });
+}
+
+// Главная батч-функция: N постеров за минимум запросов
+function workerFetchPosterUrlsBatch(payload) {
+  payload = payload || {};
+  var items = payload.items || [];
+  var protocol = normalizeProtocol(payload.protocol);
+  var size = payload.size ||
+    WORKER_CONSTANTS.IMG_SIZES.POSTER_CARD ||
+    WORKER_CONSTANTS.IMG_SIZES.POSTER_MEDIUM || 'w185';
+  var results = {}; // ключ "id_mt" -> { posterUrl, source }
+  if (!items.length) return Promise.resolve(results);
+
+  var missing = [];
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i] || {};
+    var id = it.id;
+    var mt = it.mt || 'movie';
+    var validId = !!(id && id !== 'undefined' && id !== 'null');
+    if (!validId) continue; // без id батчом нельзя — main thread решит отдельно
+    id = String(id);
+    var key = id + '_' + mt;
+    var cacheKey = id + '_' + mt + '_' + size + '_' + protocol;
+
+    // 1. memory LRU (формат ключа идентичен workerFetchPosterUrl)
+    var cachedUrl = posterUrlCache.get(cacheKey);
+    if (cachedUrl) {
+      results[key] = { posterUrl: cachedUrl, source: 'worker-poster-cache' };
+      continue;
+    }
+    // 2. TMDB-кэш
+    var cachedTmdb = getFromTmdbCache('poster', { id: id, type: mt });
+    if (cachedTmdb && cachedTmdb.posterUrl) {
+      var normCached = normalizePosterUrl(cachedTmdb.posterUrl, protocol, size);
+      posterUrlCache.set(cacheKey, normCached);
+      results[key] = { posterUrl: normCached, source: 'worker-tmdb-cache' };
+      continue;
+    }
+    missing.push({ id: id, mt: mt, key: key, cacheKey: cacheKey });
+  }
+
+  if (!missing.length) return Promise.resolve(results);
+
+  // 3. IndexedDB — одна транзакция на все ключи
+  var idbKeys = [];
+  for (var m = 0; m < missing.length; m++) idbKeys.push(missing[m].id + '_' + missing[m].mt);
+
+  return tmdbItemGetMany(idbKeys).then(function (idbMap) {
+    var networkQueue = [];
+    for (var i = 0; i < missing.length; i++) {
+      var mi = missing[i];
+      var cachedItem = idbMap[mi.id + '_' + mi.mt];
+      if (cachedItem && cachedItem.poster_path) {
+        var url = buildPosterUrl(cachedItem.poster_path, protocol, size);
+        saveToTmdbCache('poster', { id: mi.id, type: mi.mt }, { posterUrl: url });
+        posterUrlCache.set(mi.cacheKey, url);
+        results[mi.key] = { posterUrl: url, source: 'worker-idb' };
+      } else {
+        networkQueue.push(mi);
+      }
+    }
+    if (!networkQueue.length) return results;
+
+    // 4. Сеть: группируем по media_type, режем на чанки по 50 id
+    var groups = {};
+    for (var g = 0; g < networkQueue.length; g++) {
+      var gmt = networkQueue[g].mt;
+      if (!groups[gmt]) groups[gmt] = [];
+      groups[gmt].push(networkQueue[g]);
+    }
+    var chain = Promise.resolve();
+    Object.keys(groups).forEach(function (gmt) {
+      chain = chain.then(function () {
+        var group = groups[gmt];
+        var chunks = [];
+        for (var c = 0; c < group.length; c += POSTER_BATCH_HTTP_LIMIT) {
+          chunks.push(group.slice(c, c + POSTER_BATCH_HTTP_LIMIT));
+        }
+        var innerChain = Promise.resolve();
+        chunks.forEach(function (chunk) {
+          innerChain = innerChain.then(function () {
+            return fetchPosterChunk(chunk, gmt).then(function (map) {
+              for (var n = 0; n < chunk.length; n++) {
+                var nq = chunk[n];
+                var itemData = map[nq.id];
+                if (!itemData) continue;
+                // Сохраняем полный элемент в IDB (пригодится для деталей)
+                if (itemData.id || itemData.overview || itemData.poster_path) {
+                  tmdbItemSet(nq.id + '_' + nq.mt, itemData);
+                }
+                if (itemData.poster_path) {
+                  var url2 = buildPosterUrl(itemData.poster_path, protocol, size);
+                  saveToTmdbCache('poster', { id: nq.id, type: nq.mt }, { posterUrl: url2 });
+                  posterUrlCache.set(nq.cacheKey, url2);
+                  results[nq.key] = { posterUrl: url2, source: 'worker-network' };
+                }
+              }
+            });
+          });
+        });
+        return innerChain;
+      });
+    });
+    return chain.then(function () { return results; });
+  }).catch(function () {
+    return results; // что успели найти — возвращаем
+  });
+}
+
 // ==================== RUTUBE ТРЕЙЛЕРЫ ====================
 function workerParseMaxQualityFromM3u8Url(url) {
   if (!url) return null;
@@ -1064,6 +1283,13 @@ self.onmessage = function (e) {
       });
       break;
 
+    // --- Poster URL Batch ---
+    case 'FETCH_POSTER_URLS_BATCH':
+      workerFetchPosterUrlsBatch(payload).then(function (data) {
+        self.postMessage({ id: id, type: 'RESULT', data: data });
+      });
+      break;
+
     // --- Catalog Items (pagination) ---
     case 'LOAD_CATALOG_ITEMS':
       workerLoadCatalogItems(payload.url, payload.from, payload.limit)
@@ -1248,9 +1474,6 @@ self.onmessage = function (e) {
 setInterval(cleanOldTmdbCache, WORKER_CONSTANTS.TMDB_CLEANUP_INTERVAL_MS);
 
 // Готовность
-try { openTmdbItemDb(); } catch (e) {}
-try { openTmdbDetailsDb(); } catch (e) {}
+try { openTmdbItemDb(); } catch (e) { }
+try { openTmdbDetailsDb(); } catch (e) { }
 self.postMessage({ type: 'WORKER_READY' });
-
-
-
