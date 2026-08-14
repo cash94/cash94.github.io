@@ -1639,6 +1639,18 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
         seasonNumbers = extractSeasonsFromFilesLocal();
     }
 
+    var forcedTv = false;
+
+    if (torrent.media_type === 'tv') forcedTv = true;
+    if (known && known.mediaType === 'tv') forcedTv = true;
+    if (window.AppState && AppState.mediaType === 'tv') forcedTv = true;
+
+    // Если мы точно знаем, что это сериал, но сезон не смогли определить,
+    // берём сезон 1 как fallback, иначе кадры сезонов не загрузятся.
+    if (seasonNumbers.length === 0 && forcedTv) {
+        seasonNumbers = [1];
+    }
+
     result.tmdbId = tmdbId;
     result.cleanTitle = cleanTitle;
     result.seasonNumbers = seasonNumbers;
