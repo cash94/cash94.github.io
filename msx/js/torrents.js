@@ -99,6 +99,96 @@ LruCache.prototype.clear = function () {
 var progressCache = new LruCache(150, 60 * 1000);
 var torrentFilesCache = new LruCache(80, 60 * 60 * 1000);
 
+var knownTorrentMeta = new LruCache(200, 24 * 60 * 60 * 1000);
+
+window.getKnownTorrentMeta = function (hash) {
+    return knownTorrentMeta.get(String(hash || '').toLowerCase());
+};
+
+function buildTmdbPosterUrl(path, size) {
+    if (!path) return null;
+    path = String(path);
+
+    if (path.indexOf('http') === 0) return path;
+
+    size = size || 'w342';
+
+    var protocol = 'https:';
+    if (window.AppState && AppState.protocol) {
+        protocol = String(AppState.protocol).replace(/:+$/, '');
+        if (protocol.indexOf(':') === -1) protocol += ':';
+    }
+
+    return protocol + '//tsimg.hnar.online/t/p/' + size +
+        (path.charAt(0) === '/' ? path : '/' + path);
+}
+
+function getCatalogSearchContext(searchResult) {
+    var item = AppState.pendingDetailItem ||
+        window.pendingCatalogItem ||
+        AppState.androidBackCatalog ||
+        null;
+
+    var id = null;
+
+    if (item) {
+        id = item.id || item.tmdbId || null;
+    }
+
+    if (!id && searchResult) {
+        id = searchResult.tmdbId || null;
+    }
+
+    if (!id && typeof catalogState !== 'undefined' && catalogState.lastSelectedId) {
+        id = catalogState.lastSelectedId;
+    }
+
+    var mediaType = null;
+
+    if (item && item.media_type) mediaType = item.media_type;
+    if (!mediaType && AppState.pendingDetailMediaType) mediaType = AppState.pendingDetailMediaType;
+    if (!mediaType && AppState.mediaType) mediaType = AppState.mediaType;
+
+    if (!mediaType && searchResult && Array.isArray(searchResult.types)) {
+        if (searchResult.types.indexOf('tv') !== -1 || searchResult.types.indexOf('serial') !== -1) {
+            mediaType = 'tv';
+        } else if (searchResult.types.indexOf('movie') !== -1) {
+            mediaType = 'movie';
+        }
+    }
+
+    if (!mediaType && searchResult && Array.isArray(searchResult.seasons) && searchResult.seasons.length > 0) {
+        mediaType = 'tv';
+    }
+
+    if (!mediaType) mediaType = 'movie';
+
+    var poster = AppState.pendingDetailPoster || window.pendingCatalogPoster || null;
+
+    if (!poster && searchResult && searchResult.poster) {
+        poster = searchResult.poster;
+    }
+
+    if (!poster && item && typeof catalogState !== 'undefined' && catalogState.posterCache) {
+        poster = catalogState.posterCache.get((id || item.id || '') + '_' + (item.media_type || mediaType));
+    }
+
+    if (!poster && item && item.poster_path) {
+        poster = buildTmdbPosterUrl(item.poster_path, 'w342');
+    }
+
+    if (!poster && searchResult && searchResult.poster_path) {
+        poster = buildTmdbPosterUrl(searchResult.poster_path, 'w342');
+    }
+
+    return {
+        id: id,
+        mediaType: mediaType,
+        poster: poster,
+        item: item
+    };
+}
+
 var SORT_OPTIONS = [
     { value: 'date-desc', label: 'Сначала новые' },
     { value: 'date-asc', label: 'Сначала старые' },
@@ -1009,37 +1099,79 @@ window.resetDetailBackground = resetDetailBackground;
 
 function extractSeasonsFromTitle(title) {
     if (!title) return [];
+
     var seasons = [];
-    var rangePatterns = [/\[сезон\s*(\d+)\s*[-–]\s*(\d+)\]/i, /\[season\s*(\d+)\s*[-–]\s*(\d+)\]/i, /сезон\s*(\d+)\s*[-–]\s*(\d+)/i, /season\s*(\d+)\s*[-–]\s*(\d+)/i, /S(\d+)\s*[-–]\s*S?(\d+)/i];
+
+    var rangePatterns = [
+        /\[сезон\s*(\d+)\s*[-–]\s*(\d+)\]/i,
+        /\[season\s*(\d+)\s*[-–]\s*(\d+)\]/i,
+        /сезон\s*(\d+)\s*[-–]\s*(\d+)/i,
+        /season\s*(\d+)\s*[-–]\s*(\d+)/i,
+        /\bS(\d+)\s*[-–]\s*S?(\d+)\b/i
+    ];
+
     for (var p = 0; p < rangePatterns.length; p++) {
-        var match = title.match(rangePatterns[p]);
-        if (match && match[1] && match[2]) {
-            for (var s = parseInt(match[1], 10); s <= parseInt(match[2], 10); s++) { if (seasons.indexOf(s) === -1) seasons.push(s); }
-            return seasons.sort((a, b) => a - b);
+        var m = title.match(rangePatterns[p]);
+        if (m && m[1] && m[2]) {
+            for (var s = parseInt(m[1], 10); s <= parseInt(m[2], 10); s++) {
+                if (seasons.indexOf(s) === -1) seasons.push(s);
+            }
+            return seasons.sort(function (a, b) { return a - b; });
         }
     }
-    var listPatterns = [/\[сезон\s*([\d,\s]+)\]/i, /\[season\s*([\d,\s]+)\]/i, /сезон\s*([\d,\s]+)/i, /season\s*([\d,\s]+)/i, /S([\d,\s]+)/i];
-    for (var p = 0; p < listPatterns.length; p++) {
-        var match = title.match(listPatterns[p]);
-        if (match && match[1]) {
-            match[1].split(/[,\s]+/).forEach(part => { var num = parseInt(part, 10); if (!isNaN(num) && seasons.indexOf(num) === -1) seasons.push(num); });
+
+    var listPatterns = [
+        /\[сезон\s*([\d,\s]+)\]/i,
+        /\[season\s*([\d,\s]+)\]/i,
+        /сезон\s*([\d,\s]+)/i,
+        /season\s*([\d,\s]+)/i,
+        /\bS([\d,\s]+)/i
+    ];
+
+    for (var p2 = 0; p2 < listPatterns.length; p2++) {
+        var m2 = title.match(listPatterns[p2]);
+        if (m2 && m2[1]) {
+            m2[1].split(/[,\s]+/).forEach(function (part) {
+                var n = parseInt(part, 10);
+                if (!isNaN(n) && seasons.indexOf(n) === -1) seasons.push(n);
+            });
             if (seasons.length > 0) break;
         }
     }
+
     if (seasons.length === 0) {
-        var singlePatterns = [/\[сезон\s*(\d+)\]/i, /\[season\s*(\d+)\]/i, /сезон\s*(\d+)/i, /season\s*(\d+)/i, /S(\d+)/i];
-        for (var p = 0; p < singlePatterns.length; p++) {
-            var match = title.match(singlePatterns[p]);
-            if (match && match[1]) { var singleNum = parseInt(match[1], 10); if (!isNaN(singleNum)) seasons.push(singleNum); break; }
+        var singlePatterns = [
+            /\[сезон\s*(\d+)\]/i,
+            /\[season\s*(\d+)\]/i,
+            /сезон\s*(\d+)/i,
+            /season\s*(\d+)/i,
+            /\bS(\d+)\b/i
+        ];
+
+        for (var p3 = 0; p3 < singlePatterns.length; p3++) {
+            var m3 = title.match(singlePatterns[p3]);
+            if (m3 && m3[1]) {
+                var n2 = parseInt(m3[1], 10);
+                if (!isNaN(n2)) seasons.push(n2);
+                break;
+            }
         }
     }
-    return seasons.sort((a, b) => a - b);
+
+    return seasons.sort(function (a, b) { return a - b; });
 }
 
 function cleanTitleFromSeasons(title, seasons) {
     if (!title) return title;
-    var cleaned = title.replace(/[\sсезон\s[\d\s,-]+\s*]/gi, '').replace(/[\sseason\s[\d\s,-]+\s*]/gi, '').replace(/сезон\s*[\d\s,-]+/gi, '').replace(/season\s*[\d\s,-]+/gi, '').replace(/S\d+/gi, '').replace(/\s+/g, ' ').trim().replace(/[[]()-]/g, '').trim();
-    return cleaned;
+
+    return title
+        .replace(/\[сезон[^\]]*\]/gi, '')
+        .replace(/\[season[^\]]*\]/gi, '')
+        .replace(/сезон\s*[\d\s,–-]+/gi, '')
+        .replace(/season\s*[\d\s,–-]+/gi, '')
+        .replace(/\bS\d+\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 
 var seasonCache = new LruCache(200, 24 * 60 * 60 * 1000);
@@ -1137,6 +1269,17 @@ async function showDetail(torrent) {
     if (torrent && torrent.hash) window.lastSelectedTorrentHash = torrent.hash;
     if (typeof currentFocusIndex !== 'undefined') window.lastSelectedTorrentIndex = currentFocusIndex;
     resetDetailBackground();
+    var known = knownTorrentMeta.get(String(torrent.hash || '').toLowerCase());
+
+    if (known) {
+        if (!torrent.poster && known.poster) torrent.poster = known.poster;
+        if (!torrent.tmdbId && known.id) torrent.tmdbId = known.id;
+        if (!torrent.media_type && known.mediaType) torrent.media_type = known.mediaType;
+    }
+
+    if (torrent.poster && torrent.poster.indexOf('http') !== 0) {
+        torrent.poster = buildTmdbPosterUrl(torrent.poster, 'w342');
+    }
     var mainContainer = getEl('main-container');
     if (mainContainer) mainContainer.style.pointerEvents = 'none';
     AppState.currentScreen = 'detail';
@@ -1165,7 +1308,10 @@ async function showDetail(torrent) {
     if (filesList) { filesList.style.display = 'flex'; filesList.style.flexDirection = 'row'; }
     filesList.innerHTML = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;"><div class="spinner"></div><div style="font-size: 16px; color: #aaa;">Загрузка файлов...</div></div>';
     if (typeof Animations !== 'undefined') Animations.animateDetailShow();
-    titleEl.textContent = (torrent.title || 'Без названия').replace(/[\d+]/, '').trim();
+    titleEl.textContent = (torrent.title || 'Без названия')
+        .replace(/\[\d+\]/g, '')
+        .replace(/\[сезон[^\]]*\]/gi, '')
+        .trim();
     var oldProgressBlocks = document.querySelectorAll('#detail-progress');
     for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
 
@@ -1932,38 +2078,128 @@ async function dropTorrentToServer(hash) {
 window.dropTorrentToServer = dropTorrentToServer;
 
 async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
-    var { refreshList = true } = options;
-    if (!AppState.currentTorrserverUrl) { alert('Сначала подключитесь к TorrServer'); return null; }
-    var poster = window.pendingCatalogPoster || null;
-    if (!poster && searchResult) poster = await tmdb.findPosterFromSearchResult(searchResult);
-    var torrname = '';
-    //if (AppState.mediaType === 'tv' && searchResult && searchResult.seasons && searchResult.seasons.length > 0) {
-    if (searchResult && searchResult.seasons && searchResult.seasons.length > 0) {
-        var seasons = searchResult.seasons;
-        AppState.mediaType = 'tv';
-        torrname = `[${catalogState.lastSelectedId}] ${searchResult.name} [сезон ${seasons.length > 1 ? seasons[0] + '-' + seasons[seasons.length - 1] : seasons[0]}]`;
-    } else {
-        AppState.mediaType = 'movie';
-        torrname = `[${catalogState.lastSelectedId}] ${searchResult ? searchResult.name : 'Без названия'}`;
+    var refreshList = options.refreshList !== false;
+
+    if (!AppState.currentTorrserverUrl) {
+        alert('Сначала подключитесь к TorrServer');
+        return null;
     }
-    var requestBody = { action: 'add', link: magnet, title: torrname, save_to_db: AppState.addToDbEnabled };
-    if (poster) requestBody.poster = poster;
+
+    var ctx = getCatalogSearchContext(searchResult);
+
+    var poster = options.poster || ctx.poster || null;
+    var tmdbId = options.tmdbId || ctx.id || null;
+    var mediaType = options.mediaType || ctx.mediaType || AppState.mediaType || 'movie';
+
+    var seasons = [];
+
+    if (searchResult && Array.isArray(searchResult.seasons)) {
+        seasons = searchResult.seasons.slice();
+    }
+
+    if (!seasons.length && searchResult && searchResult.title) {
+        seasons = extractSeasonsFromTitle(searchResult.title);
+    }
+
+    if (!seasons.length && ctx.item && (ctx.item.title || ctx.item.name)) {
+        seasons = extractSeasonsFromTitle(ctx.item.title || ctx.item.name);
+    }
+
+    var baseName =
+        (ctx.item && (ctx.item.title || ctx.item.name)) ||
+        (searchResult && (searchResult.name || searchResult.title)) ||
+        'Без названия';
+
+    AppState.mediaType = mediaType;
+
+    var torrname = (tmdbId ? '[' + tmdbId + '] ' : '') + baseName;
+
+    if (mediaType === 'tv' && seasons.length > 0) {
+        torrname += ' [сезон ' +
+            (seasons.length > 1 ? seasons[0] + '-' + seasons[seasons.length - 1] : seasons[0]) +
+            ']';
+    }
+
+    var requestBody = {
+        action: 'add',
+        link: magnet,
+        title: torrname,
+        save_to_db: AppState.addToDbEnabled
+    };
+
+    if (poster) {
+        requestBody.poster = poster;
+    }
+
     try {
-        var response = await torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify(requestBody) });
-        if (!response.ok) throw new Error('Ошибка добавления: ' + response.status);
-        if (window.AndroidJS && !AppState.isCatalogSerials || AppState.transcodingFullOnOff && !AppState.isCatalogSerials) return true;
+        var response = await torrServerFetch('/torrents', {
+            method: 'POST',
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            throw new Error('Ошибка добавления: ' + response.status);
+        }
+
+        var hashLower = hash ? String(hash).toLowerCase() : null;
+
+        if (hashLower) {
+            knownTorrentMeta.set(hashLower, {
+                id: tmdbId,
+                mediaType: mediaType,
+                poster: poster,
+                title: torrname
+            });
+        }
+
+        if (
+            (window.AndroidJS && !AppState.isCatalogSerials) ||
+            (AppState.transcodingFullOnOff && !AppState.isCatalogSerials)
+        ) {
+            return true;
+        }
+
         await response.json();
-        window.pendingCatalogPoster = null; window.pendingCatalogItem = null; lastAddedTorrentHash = hash.toLowerCase();
+
+        window.pendingCatalogPoster = null;
+        window.pendingCatalogItem = null;
+        lastAddedTorrentHash = hashLower;
+
         if (refreshList) {
             await refreshTorrentsList();
-            return AppState.torrents.find(t => t.hash && t.hash.toLowerCase() === lastAddedTorrentHash) || true;
+
+            var found = AppState.torrents.find(function (t) {
+                return t.hash && t.hash.toLowerCase() === hashLower;
+            });
+
+            if (found) {
+                found.poster = found.poster || poster;
+                found.tmdbId = found.tmdbId || tmdbId;
+                found.media_type = found.media_type || mediaType;
+
+                knownTorrentMeta.set(found.hash.toLowerCase(), {
+                    id: tmdbId,
+                    mediaType: mediaType,
+                    poster: poster,
+                    title: found.title
+                });
+            }
+
+            return found || true;
         }
+
         return true;
     } catch (error) {
-        console.error('❌ Ошибка добавления торрента:', error); alert('Ошибка при добавлении торрента: ' + error.message);
-        window.pendingCatalogPoster = null; window.pendingCatalogItem = null; return null;
+        console.error('❌ Ошибка добавления торрента:', error);
+        alert('Ошибка при добавлении торрента: ' + error.message);
+
+        window.pendingCatalogPoster = null;
+        window.pendingCatalogItem = null;
+
+        return null;
     }
 }
+
 window.addTorrentSearchToServer = function (magnet, hash, searchResult) { return addTorrentToServer(magnet, hash, searchResult, { refreshList: false }); };
 
 async function refreshTorrentsList() {
@@ -2004,13 +2240,47 @@ async function playFromHash(hash, magnet, searchResult = null) {
     }
     getEl('playback-overlay').classList.add('active'); document.querySelector('.playback-text').textContent = 'Поиск постера и добавление...';
     try {
-        var isSerial = AppState.mediaType === "tv" || (searchResult && searchResult.types && Array.isArray(searchResult.types) && searchResult.types.includes('serial'));
+        var ctx = getCatalogSearchContext(searchResult);
+
+        AppState.pendingDetailPoster = ctx.poster;
+        window.pendingCatalogPoster = ctx.poster;
+        AppState.pendingDetailTmdbId = ctx.id;
+        AppState.pendingDetailMediaType = ctx.mediaType;
+
+        var isSerial =
+            ctx.mediaType === 'tv' ||
+            AppState.mediaType === 'tv' ||
+            (searchResult && searchResult.types && Array.isArray(searchResult.types) &&
+                (searchResult.types.indexOf('tv') !== -1 || searchResult.types.indexOf('serial') !== -1)) ||
+            (searchResult && Array.isArray(searchResult.seasons) && searchResult.seasons.length > 0);
+
         if (isSerial) AppState.isCatalogSerials = true;
         AppState.isCatalogSearch = true;
-        var addedTorrent = await addTorrentToServer(magnet, hash, searchResult);
-        if (!addedTorrent) {
+
+        var addedTorrent = await addTorrentToServer(magnet, hash, searchResult, {
+            poster: ctx.poster,
+            tmdbId: ctx.id,
+            mediaType: ctx.mediaType
+        });
+
+        if (!addedTorrent || addedTorrent === true) {
             await refreshTorrentsList();
-            addedTorrent = AppState.torrents.find(t => (t.hash || '').toLowerCase() === hash.toLowerCase());
+            addedTorrent = AppState.torrents.find(function (t) {
+                return (t.hash || '').toLowerCase() === hash.toLowerCase();
+            });
+        }
+
+        if (addedTorrent && typeof addedTorrent === 'object') {
+            addedTorrent.poster = addedTorrent.poster || ctx.poster;
+            addedTorrent.tmdbId = addedTorrent.tmdbId || ctx.id;
+            addedTorrent.media_type = addedTorrent.media_type || ctx.mediaType;
+
+            knownTorrentMeta.set(hash.toLowerCase(), {
+                id: ctx.id,
+                mediaType: ctx.mediaType,
+                poster: ctx.poster,
+                title: addedTorrent.title
+            });
         }
         if (!window.AndroidJS || !AppState.transcodingFullOnOff) { AppState.currentDetailItem = addedTorrent; if (typeof clearDetailHistory === 'function') clearDetailHistory(); }
         if (!isSerial) {
