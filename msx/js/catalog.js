@@ -2213,13 +2213,15 @@ async function showCatalogDetail(item, index, posterUrl) {
     if (aw) aw.classList.add('hidden');
     if (rw) rw.classList.add('hidden');
     if (wb) {
+        var knownPoster = getCatalogKnownPosterUrl(item, posterUrl);
+
         wb.onclick = function () {
             dv.style.display = 'none';
             dv.style.pointerEvents = 'none';
             if (mc) mc.style.pointerEvents = 'auto';
             AppState.currentScreen = 'search';
             AppState.isSearch = false;
-            showCatalogSearch(wb.dataset.searchTitle || title, posterUrl, item);
+            showCatalogSearch(wb.dataset.searchTitle || title, knownPoster, item);
         };
     }
     var restore = function () {
@@ -2341,8 +2343,19 @@ function showCatalogSearch(q, pu, item) {
         window.pendingCatalogItem = item;
         AppState.searchReturnTo = 'detail';
         if (item) {
+            pu = getCatalogKnownPosterUrl(item, pu);
+
+            window.pendingCatalogPoster = pu;
+            window.pendingCatalogItem = item;
+
             AppState.pendingDetailItem = item;
             AppState.pendingDetailPoster = pu;
+            AppState.pendingDetailTmdbId = item && (item.id || item.tmdbId) || null;
+            AppState.pendingDetailMediaType = item && item.media_type || null;
+
+            if (item && item.media_type) {
+                AppState.mediaType = item.media_type;
+            }
             AppState.pendingDetailIndex = catalogState.lastSelectedIndex;
         }
         AppState.currentScreen = 'search';
@@ -3180,6 +3193,25 @@ window.addToWatchHistory = async function (id, title, mt, pp) {
         console.error('History save error:', e);
     }
 };
+
+function getCatalogKnownPosterUrl(item, posterUrl) {
+    if (!item) return posterUrl || null;
+
+    var mt = item.media_type || 'movie';
+    var url = posterUrl || null;
+
+    if (!url && catalogState && catalogState.posterCache) {
+        url = catalogState.posterCache.get((item.id || '') + '_' + mt);
+    }
+
+    if (!url && item.poster_path) {
+        url = getProtocolBase() + '//tsimg.hnar.online/t/p/' +
+            CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM +
+            (item.poster_path.indexOf('/') === 0 ? item.poster_path : '/' + item.poster_path);
+    }
+
+    return url;
+}
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 var tmdbCleanupIv = null;
