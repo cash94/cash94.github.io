@@ -1248,4 +1248,9 @@ self.onmessage = function (e) {
 setInterval(cleanOldTmdbCache, WORKER_CONSTANTS.TMDB_CLEANUP_INTERVAL_MS);
 
 // Готовность
+try { openTmdbItemDb(); } catch (e) {}
+try { openTmdbDetailsDb(); } catch (e) {}
 self.postMessage({ type: 'WORKER_READY' });
+
+
+
