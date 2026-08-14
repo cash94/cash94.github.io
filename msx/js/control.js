@@ -432,6 +432,7 @@ var ScreenStrategies = {
             var c = getTorrentCards(), t = getTorrentTabs(), h = getTorrentHeader();
             if (!c.length) {
                 window.refreshTorrents().then(function () {
+                    c = getTorrentCards();
                     var tc = null;
                     var sh = (window.AppState && window.AppState.currentDetailItem && window.AppState.currentDetailItem.hash) ? window.AppState.currentDetailItem.hash.toLowerCase() : null;
                     if (sh) for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === sh) { tc = c[i]; break; }
