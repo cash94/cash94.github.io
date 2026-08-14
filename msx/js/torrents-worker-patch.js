@@ -150,12 +150,24 @@
     // ==================== loadAllTmdbDataForTorrent ====================
     window.loadAllTmdbDataForTorrent = loadAllTmdbDataForTorrent = async function (torrent, elements) {
         // Быстрое обновление заголовка на main thread (без ожидания Worker)
-        var quickTitle = torrent.title || 'Без названия';
+        var quickTitle = (torrent.title || 'Без названия')
+            .replace(/\[\d+\]/g, '')
+            .replace(/\[сезон[^\]]*\]/gi, '')
+            .trim();
         var qb = quickTitle.match(/\[(\d+)\]/);
         if (qb) quickTitle = quickTitle.replace(/\[\d+\]/, '').trim();
         if (elements.titleEl) elements.titleEl.textContent = quickTitle;
 
         try {
+            if (torrent.hash && window.getKnownTorrentMeta) {
+                var known = window.getKnownTorrentMeta(torrent.hash);
+                if (known) {
+                    if (!torrent.tmdbId && known.id) torrent.tmdbId = known.id;
+                    if (!torrent.media_type && known.mediaType) torrent.media_type = known.mediaType;
+                    if (!torrent.poster && known.poster) torrent.poster = known.poster;
+                }
+            }
+
             var r = await TorrentsWorker.loadAllTmdbData(torrent);
 
             // Заголовок (Worker мог очистить сезоны)
@@ -163,6 +175,9 @@
 
             // AppState
             AppState.isSerials = r.isTvSeries;
+            if (r.mediaType) {
+                AppState.mediaType = r.mediaType;
+            }
             if (r.seasonNumbers.length === 1 && r.isTvSeries) {
                 AppState.currentTMDB = r.tmdbId;
                 AppState.currentSeason = r.seasonNumbers[0];
