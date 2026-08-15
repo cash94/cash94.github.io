@@ -316,10 +316,35 @@ function workerGetTmdbDetails(tmdbId, mediaType) {
         });
 }
 
+// ==================== extractSeasonsFromFiles ====================
+function extractSeasonsFromFiles(torrent) {
+    var files = getTorrentFiles(torrent);
+    var seasons = [];
+    var patterns = [
+        /S(\d{1,2})/i,
+        /(\d{1,2})x\d{2}/i,
+        /Season\s*(\d{1,2})/i,
+        /сезон\s*(\d{1,2})/i
+    ];
+    for (var i = 0; i < files.length; i++) {
+        var path = String(files[i].path || '');
+        for (var p = 0; p < patterns.length; p++) {
+            var m = path.match(patterns[p]);
+            if (m && m[1]) {
+                var n = parseInt(m[1], 10);
+                if (!isNaN(n) && n > 0 && n < 1000 && seasons.indexOf(n) === -1) {
+                    seasons.push(n);
+                }
+                break;
+            }
+        }
+    }
+    return seasons.sort(function (a, b) { return a - b; });
+}
+
 // ==================== ГЛАВНАЯ: workerLoadAllTmdbData ====================
 function workerLoadAllTmdbData(torrent) {
     var cleanTitle = torrent.title || 'Без названия';
-
     var tmdbId = torrent.tmdbId || torrent.knownTmdbId || null;
     var knownMediaType = torrent.media_type || torrent.knownMediaType || null;
 
@@ -330,12 +355,14 @@ function workerLoadAllTmdbData(torrent) {
         }
     }
 
+    // ★ FIX: Извлекаем сезоны ИЗ ОРИГИНАЛЬНОГО заголовка ДО очистки
+    var seasonNumbers = extractSeasonsFromTitle(cleanTitle);
+
+    // Теперь очищаем заголовок
     cleanTitle = cleanTitle
         .replace(/\[\d+\]/g, '')
         .replace(/\[сезон[^\]]*\]/gi, '')
         .trim();
-
-    var seasonNumbers = extractSeasonsFromTitle(cleanTitle);
 
     if (seasonNumbers.length > 0) {
         cleanTitle = cleanTitleFromSeasons(cleanTitle, seasonNumbers);
@@ -345,7 +372,6 @@ function workerLoadAllTmdbData(torrent) {
     var videoFilesCount = videoFiles.length;
 
     var isTvSeries;
-
     if (knownMediaType) {
         isTvSeries = knownMediaType === 'tv';
     } else if (seasonNumbers.length > 0) {
@@ -356,6 +382,16 @@ function workerLoadAllTmdbData(torrent) {
         isTvSeries = /(^|[^a-z0-9а-яё])(сезон|season|серия|эпизод|s\d+)([^a-z0-9а-яё]|$)/i.test(torrent.title || '');
     }
 
+    // ★ FIX: Если сезоны не найдены в заголовке — ищем в именах файлов
+    if (seasonNumbers.length === 0 && isTvSeries) {
+        seasonNumbers = extractSeasonsFromFiles(torrent);
+    }
+
+    // ★ FIX: Если это точно сериал, но сезоны так и не определены — берём сезон 1
+    if (seasonNumbers.length === 0 && isTvSeries) {
+        seasonNumbers = [1];
+    }
+
     var mediaType = isTvSeries ? 'tv' : 'movie';
 
     var detailsP = tmdbId
@@ -363,14 +399,12 @@ function workerLoadAllTmdbData(torrent) {
         : Promise.resolve(null);
 
     var seasonStillsP;
-
     if (tmdbId && isTvSeries && seasonNumbers.length > 0) {
         var sp = seasonNumbers.map(function (sn) {
             return workerLoadSeasonStills(tmdbId, sn).then(function (eps) {
                 return { s: sn, e: eps };
             });
         });
-
         seasonStillsP = Promise.all(sp).then(function (arr) {
             var map = {};
             for (var i = 0; i < arr.length; i++) {
@@ -385,7 +419,6 @@ function workerLoadAllTmdbData(torrent) {
     }
 
     var movieStillP;
-
     if (tmdbId && !isTvSeries && seasonNumbers.length === 0) {
         movieStillP = workerLoadMovieStill(tmdbId);
     } else {
@@ -406,7 +439,6 @@ function workerLoadAllTmdbData(torrent) {
         };
     });
 }
-
 // ==================== ОБРАБОТЧИК СООБЩЕНИЙ ====================
 self.onmessage = function (e) {
     var msg = e.data;
