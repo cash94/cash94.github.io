@@ -140,6 +140,15 @@
 
         var key = id + '_' + mt;
 
+        // Перед отправкой в Worker проверить PosterDB
+        if (window.PosterDB) {
+            var cached = await PosterDB.get(key);
+            if (cached) {
+                updatePosterDOM(div, card.dataset.rating, cached);
+                return;
+            }
+        }
+
         // 1. In-memory кэш (мгновенно)
         var cached = catalogState.posterCache.get(key);
         if (cached) {
@@ -220,6 +229,15 @@
         var id = item.id;
         var mt = item.media_type || 'movie';
         var key = id + '_' + mt;
+
+        // Перед отправкой в Worker проверить PosterDB
+        if (window.PosterDB) {
+            var cached = await PosterDB.get(key);
+            if (cached) {
+                await setRowPosterImg(imgBox, cached);
+                return;
+            }
+        }
 
         // 1. Уже есть готовый URL в локальном LRU-кэше постеров
         var cached = catalogState.posterCache.get(key);
