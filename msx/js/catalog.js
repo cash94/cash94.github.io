@@ -1463,6 +1463,13 @@ async function loadCatalogPoster(card, title, mt, id, index) {
         div.innerHTML = '<div class="no-poster">Каталог закрыт</div>';
         return;
     }
+    if (window.PosterDB) {
+        var cached = await PosterDB.get(key);
+        if (cached) {
+            updatePosterDOM(div, rating, cached);
+            return;
+        }
+    }
     // Проверяем LRU-кэш
     var cached = catalogState.posterCache.get(key);
     if (cached) {
