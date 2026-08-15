@@ -1316,8 +1316,24 @@ async function showDetail(torrent) {
     for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
 
     // === ПАРАЛЛЕЛЬНЫЙ ЗАПУСК: файлы + TMDB ===
+    // === ФАЙЛЫ ЗАПУСКАЕМ ПЕРВЫМИ, TMDB ЖДЁТ ФАЙЛЫ ===
     var filesPromise = getTorrentFilesWithCache(torrent, false);
-    var tmdbPromise = loadAllTmdbDataForTorrent(torrent, { titleEl: titleEl, detailViewDiv: detailViewDiv, detailSubtitle: detailSubtitle });
+
+    var tmdbPromise = filesPromise
+        .catch(function () {
+            return [];
+        })
+        .then(function (files) {
+            if (files && files.length) {
+                torrent.file_stats = files;
+            }
+
+            return loadAllTmdbDataForTorrent(torrent, {
+                titleEl: titleEl,
+                detailViewDiv: detailViewDiv,
+                detailSubtitle: detailSubtitle
+            });
+        });
 
     try {
         var files = await filesPromise;
