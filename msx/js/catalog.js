@@ -852,7 +852,7 @@ async function loadCatalog(key) {
     catalogState.items = []; catalogState.totalItems = 0; catalogState.currentPage = 0;
     catalogState.hasMore = true; catalogState.isLoadingMore = false; catalogState.loadedItemIds = {};
     catalogState.loadedPostersCount = 0; catalogState.posterLoadQueue = [];
-    catalogState.posterCache.clear();
+    //catalogState.posterCache.clear();
     AppState.mediaType = config.mediaType;
     showCatalogLoading('Загрузка ' + config.name + '...');
     if (catalogCache.has(key)) {
@@ -3114,7 +3114,7 @@ function backToCatalogList() {
     catalogState.loadedItemIds = {};
     catalogState.loadedPostersCount = 0;
     catalogState.posterLoadQueue = [];
-    catalogState.posterCache.clear();
+    //catalogState.posterCache.clear();
     catalogState.lastSelectedIndex = 0;
     catalogState.lastSelectedId = null;
     localStorage.removeItem('lastCatalogCardIndex');
