@@ -836,7 +836,7 @@ function workerFetchPosterUrl(payload) {
 
 // ==================== ПОСТЕРЫ: БАТЧ-ЗАГРУЗКА ====================
 var POSTER_BATCH_HTTP_LIMIT = 50;           // макс. id в одном HTTP-запросе
-var POSTER_BATCH_FALLBACK_CONCURRENCY = 6;  // параллельных одиночных, если батч-эндпоинта нет
+var POSTER_BATCH_FALLBACK_CONCURRENCY = 10;  // параллельных одиночных, если батч-эндпоинта нет
 var batchEndpointSupported = true;          // сбрасывается при рестарте Worker'а
 
 // Пакетное чтение из IndexedDB в ОДНОЙ транзакции
