@@ -22,9 +22,9 @@ var CATALOG_CONSTANTS = {
     FOCUS_DELAY_MS: 100,
     ROW_POSTER_CONCURRENCY: 10,
     IMG_SIZES: {
-        POSTER_CARD: 'w342',
+        POSTER_CARD: 'w200',
         POSTER_SMALL: 'w185',
-        POSTER_MEDIUM: 'w342',
+        POSTER_MEDIUM: 'w200',
         BACKDROP: 'w1920'
     }
 };
