@@ -1538,6 +1538,14 @@ function updatePosterDOM(div, rating, url) {
             return;
         }
 
+        // --- ДОБАВЛЕННАЯ ЛОГИКА ЗАМЕНЫ ---
+        // Если url начинается на http:// или https://image.tmdb.org/t/p/w342/,
+        // заменяем image.tmdb.org на tsimg.hnar.online, сохраняя протокол (http или https).
+        if (url) {
+            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1tsimg.hnar.online/t/p/w342/');
+        }
+        // --------------------------------
+
         if (!url) {
             div.innerHTML = '<div class="no-poster">Нет постера</div>';
             resolve();
