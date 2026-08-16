@@ -2857,6 +2857,12 @@ function processRowPosterQueue() {
 
 function setRowPosterImg(box, url) {
     return new Promise(function (resolve) {
+        // --- ДОБАВЛЕННАЯ ЛОГИКА ЗАМЕНЫ ---
+        if (url) {
+            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1tsimg.hnar.online/t/p/w342/');
+        }
+        // --------------------------------
+
         var img = new Image();
         img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
         var settled = false;
@@ -2873,12 +2879,13 @@ function setRowPosterImg(box, url) {
             if (box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
             settle();
         };
+
+        img.onerror = fail;
         img.onload = function () {
             // Декодируем в фоновом потоке (Chromium 64+), не блокируя main thread
             if (typeof img.decode === 'function') img.decode().then(insert).catch(insert);
             else insert();
         };
-        img.onerror = fail;
         img.src = url;
     });
 }
