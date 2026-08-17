@@ -1539,10 +1539,10 @@ function updatePosterDOM(div, rating, url) {
         }
 
         // --- ДОБАВЛЕННАЯ ЛОГИКА ЗАМЕНЫ ---
-        // Если url начинается на http:// или https://image.tmdb.org/t/p/w342/,
+        // Если url начинается на http:// или https://image.tmdb.org/t/p/w300/,
         // заменяем image.tmdb.org на tsimg.hnar.online, сохраняя протокол (http или https).
         if (url) {
-            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1tsimg.hnar.online/t/p/w342/');
+            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w300\//, '$1tsimg.hnar.online/t/p/w300/');
         }
         // --------------------------------
 
@@ -2859,7 +2859,7 @@ function setRowPosterImg(box, url) {
     return new Promise(function (resolve) {
         // --- ДОБАВЛЕННАЯ ЛОГИКА ЗАМЕНЫ ---
         if (url) {
-            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1tsimg.hnar.online/t/p/w342/');
+            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w300\//, '$1tsimg.hnar.online/t/p/w300/');
         }
         // --------------------------------
 
