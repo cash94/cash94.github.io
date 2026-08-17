@@ -29,6 +29,13 @@ var CATALOG_CONSTANTS = {
     }
 };
 
+// Массив доменов, который легко расширять
+var mirrors = [
+    'tsimg.hnar.online',
+    'nl.imagetmdb.com'
+    // 'another-mirror.com' // можно добавлять новые через запятую
+];
+
 // ==================== КОНФИГУРАЦИЯ КАТАЛОГОВ ====================
 var CATALOG_CONFIG = {
     movie: { name: 'Фильмы', url: SERVER_URL + '/api/catalog/movie', mediaType: 'movie' },
@@ -1542,7 +1549,11 @@ function updatePosterDOM(div, rating, url) {
         // Если url начинается на http:// или https://image.tmdb.org/t/p/w342/,
         // заменяем image.tmdb.org на tsimg.hnar.online, сохраняя протокол (http или https).
         if (url) {
-            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1tsimg.hnar.online/t/p/w342/');
+            // Случайный выбор элемента из массива
+            var randomDomain = mirrors[Math.floor(Math.random() * mirrors.length)];
+
+            // Замена с использованием конкатенации строк (без шаблонных литералов ES6)
+            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1' + randomDomain + '/t/p/w342/');
         }
         // --------------------------------
 
@@ -2859,7 +2870,11 @@ function setRowPosterImg(box, url) {
     return new Promise(function (resolve) {
         // --- ДОБАВЛЕННАЯ ЛОГИКА ЗАМЕНЫ ---
         if (url) {
-            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1tsimg.hnar.online/t/p/w342/');
+            // Случайный выбор элемента из массива
+            var randomDomain = mirrors[Math.floor(Math.random() * mirrors.length)];
+
+            // Замена с использованием конкатенации строк (без шаблонных литералов ES6)
+            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1' + randomDomain + '/t/p/w342/');
         }
         // --------------------------------
 
