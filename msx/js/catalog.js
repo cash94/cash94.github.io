@@ -32,7 +32,9 @@ var CATALOG_CONSTANTS = {
 // Массив доменов, который легко расширять
 var mirrors = [
     'tsimg.hnar.online',
-    'nl.imagetmdb.com'
+    'nl.imagetmdb.com',
+    'mocha.stull.xyz',
+    'proxy.vokino.pro/image'
     // 'another-mirror.com' // можно добавлять новые через запятую
 ];
 
