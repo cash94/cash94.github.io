@@ -22,9 +22,9 @@ var CATALOG_CONSTANTS = {
     FOCUS_DELAY_MS: 100,
     ROW_POSTER_CONCURRENCY: 10,
     IMG_SIZES: {
-        POSTER_CARD: 'w300',
+        POSTER_CARD: 'w342',
         POSTER_SMALL: 'w185',
-        POSTER_MEDIUM: 'w300',
+        POSTER_MEDIUM: 'w342',
         BACKDROP: 'w1920'
     }
 };
@@ -1539,10 +1539,10 @@ function updatePosterDOM(div, rating, url) {
         }
 
         // --- ДОБАВЛЕННАЯ ЛОГИКА ЗАМЕНЫ ---
-        // Если url начинается на http:// или https://image.tmdb.org/t/p/w300/,
+        // Если url начинается на http:// или https://image.tmdb.org/t/p/w342/,
         // заменяем image.tmdb.org на tsimg.hnar.online, сохраняя протокол (http или https).
         if (url) {
-            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w300\//, '$1tsimg.hnar.online/t/p/w300/');
+            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1tsimg.hnar.online/t/p/w342/');
         }
         // --------------------------------
 
@@ -2859,7 +2859,7 @@ function setRowPosterImg(box, url) {
     return new Promise(function (resolve) {
         // --- ДОБАВЛЕННАЯ ЛОГИКА ЗАМЕНЫ ---
         if (url) {
-            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w300\//, '$1tsimg.hnar.online/t/p/w300/');
+            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1tsimg.hnar.online/t/p/w342/');
         }
         // --------------------------------
 
