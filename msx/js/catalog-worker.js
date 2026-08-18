@@ -10,7 +10,7 @@ var WORKER_CONSTANTS = {
   FETCH_TIMEOUT_MS: 5000,
   CATALOG_CACHE_TTL_MS: 3600000,
   ITEMS_PER_PAGE: 150,
-  MAX_POSTER_CACHE: 300,
+  MAX_POSTER_CACHE: 200,
   TMDB_MAX_CACHE_SIZE: 75,
   TMDB_CLEANUP_INTERVAL_MS: 300000,
   MAX_ACTORS: 12,
@@ -372,7 +372,11 @@ function tmdbDetailsStats() {
 }
 
 // ==================== TMDB ЗАПРОСЫ ====================
-function workerFetchTmdbDetails(item) {
+// Details, cast and recommendations often request the same item together.
+// Keep one in-flight request per item and share its result between consumers.
+var tmdbDetailsInFlight = {};
+
+function workerFetchTmdbDetailsUncached(item) {
   var id = item && item.id, type = (item && item.media_type) || 'movie';
   if (!id) return Promise.resolve(null);
 
@@ -429,6 +433,28 @@ function workerFetchTmdbDetails(item) {
         return null;
       });
     });
+  });
+}
+
+function workerFetchTmdbDetails(item) {
+  var id = item && item.id, type = (item && item.media_type) || 'movie';
+  if (!id) return Promise.resolve(null);
+
+  var p = { id: id, type: type };
+  var cached = getFromTmdbCache('details', p);
+  if (cached !== null) return Promise.resolve(cached);
+
+  var key = String(id) + '_' + type;
+  if (tmdbDetailsInFlight[key]) return tmdbDetailsInFlight[key];
+
+  var request = workerFetchTmdbDetailsUncached(item);
+  tmdbDetailsInFlight[key] = request;
+  return request.then(function (data) {
+    delete tmdbDetailsInFlight[key];
+    return data;
+  }, function (error) {
+    delete tmdbDetailsInFlight[key];
+    throw error;
   });
 }
 
