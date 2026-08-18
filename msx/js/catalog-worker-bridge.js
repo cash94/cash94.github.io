@@ -126,6 +126,37 @@ var CatalogWorker = (function () {
     catalogCacheSet: function (key, data) { return request('CATALOG_CACHE_SET', { key: key, data: data }); },
     catalogCacheDelete: function (key) { return request('CATALOG_CACHE_DELETE', { key: key }); },
     catalogCacheClear: function () { return request('CATALOG_CACHE_CLEAR', {}); },
+    // --- IndexedDB: полный кэш каталогов ---
+    catalogIdbGet: function (key) {
+      return request('CATALOG_IDB_GET', { key: key }, 15000);
+    },
+
+    catalogIdbSet: function (key, data) {
+      return request('CATALOG_IDB_SET', { key: key, data: data }, 20000);
+    },
+
+    catalogIdbDelete: function (key) {
+      return request('CATALOG_IDB_DELETE', { key: key }, 10000);
+    },
+
+    catalogIdbClear: function () {
+      return request('CATALOG_IDB_CLEAR', {}, 10000);
+    },
+
+    catalogGetFresh: function (key, url, limit) {
+      return request('CATALOG_GET_FRESH', {
+        key: key,
+        url: url,
+        limit: limit
+      }, 60000);
+    },
+
+    catalogPrefetchAll: function (entries, limit) {
+      return request('CATALOG_PREFETCH_ALL', {
+        entries: entries,
+        limit: limit
+      }, 240000);
+    },
 
     destroy: function () {
       if (worker) { worker.terminate(); worker = null; }
