@@ -1259,6 +1259,286 @@ function deduplicateItems(newItems, loadedItemIds) {
   return { unique: unique, loadedItemIds: loadedItemIds };
 }
 
+// ==================== IndexedDB: полный кэш каталогов ====================
+
+var CATALOG_IDB_DB = {
+  name: 'CatalogFullCacheDB',
+  version: 1,
+  store: 'catalogs',
+  maxAgeMs: 6 * 60 * 60 * 1000 // 6 часов
+};
+
+var catalogIdbDbPromise = null;
+var catalogFullFetchInFlight = {};
+
+function openCatalogIdb() {
+  if (catalogIdbDbPromise) return catalogIdbDbPromise;
+
+  catalogIdbDbPromise = new Promise(function (resolve, reject) {
+    var req = self.indexedDB.open(CATALOG_IDB_DB.name, CATALOG_IDB_DB.version);
+
+    req.onupgradeneeded = function (e) {
+      var db = e.target.result;
+      if (!db.objectStoreNames.contains(CATALOG_IDB_DB.store)) {
+        db.createObjectStore(CATALOG_IDB_DB.store, { keyPath: 'key' });
+      }
+    };
+
+    req.onsuccess = function (e) {
+      resolve(e.target.result);
+    };
+
+    req.onerror = function () {
+      catalogIdbDbPromise = null;
+      reject(req.error);
+    };
+  });
+
+  return catalogIdbDbPromise;
+}
+
+function catalogIdbGetRecord(key) {
+  if (!key) return Promise.resolve(null);
+
+  return openCatalogIdb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(CATALOG_IDB_DB.store, 'readonly');
+      var store = tx.objectStore(CATALOG_IDB_DB.store);
+      var req = store.get(key);
+
+      req.onsuccess = function () {
+        resolve(req.result || null);
+      };
+
+      req.onerror = function () {
+        resolve(null);
+      };
+    });
+  }).catch(function () {
+    return null;
+  });
+}
+
+function catalogIdbPutRecord(key, data, timestamp) {
+  if (!key || !data) return Promise.resolve(false);
+
+  return openCatalogIdb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(CATALOG_IDB_DB.store, 'readwrite');
+      var store = tx.objectStore(CATALOG_IDB_DB.store);
+
+      store.put({
+        key: key,
+        data: data,
+        timestamp: timestamp || Date.now()
+      });
+
+      tx.oncomplete = function () {
+        resolve(true);
+      };
+
+      tx.onerror = function () {
+        resolve(false);
+      };
+
+      tx.onabort = function () {
+        resolve(false);
+      };
+    });
+  }).catch(function () {
+    return false;
+  });
+}
+
+function catalogIdbDeleteRecord(key) {
+  if (!key) return Promise.resolve(false);
+
+  return openCatalogIdb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(CATALOG_IDB_DB.store, 'readwrite');
+      var store = tx.objectStore(CATALOG_IDB_DB.store);
+      var req = store.delete(key);
+
+      req.onsuccess = function () {
+        resolve(true);
+      };
+
+      req.onerror = function () {
+        resolve(false);
+      };
+    });
+  }).catch(function () {
+    return false;
+  });
+}
+
+function catalogIdbClearStore() {
+  return openCatalogIdb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(CATALOG_IDB_DB.store, 'readwrite');
+      var store = tx.objectStore(CATALOG_IDB_DB.store);
+      var req = store.clear();
+
+      req.onsuccess = function () {
+        resolve(true);
+      };
+
+      req.onerror = function () {
+        resolve(false);
+      };
+    });
+  }).catch(function () {
+    return false;
+  });
+}
+
+function isCatalogIdbFresh(timestamp) {
+  if (!timestamp) return false;
+  return Date.now() - timestamp < CATALOG_IDB_DB.maxAgeMs;
+}
+
+function normalizeFullCatalogData(responseData) {
+  var items = responseData && Array.isArray(responseData.items)
+    ? responseData.items
+    : [];
+
+  var loadedItemIds = {};
+
+  for (var i = 0; i < items.length; i++) {
+    if (items[i] && items[i].id !== undefined && items[i].id !== null) {
+      loadedItemIds[items[i].id] = true;
+    }
+  }
+
+  return {
+    items: items,
+    totalItems: responseData && responseData.pagination && responseData.pagination.total
+      ? responseData.pagination.total
+      : items.length,
+    currentPage: 1,
+    hasMore: false,
+    loadedItemIds: loadedItemIds
+  };
+}
+
+function getFullCatalogFresh(key, url, limit) {
+  if (!key || !url) return Promise.resolve(null);
+
+  if (catalogFullFetchInFlight[key]) {
+    return catalogFullFetchInFlight[key];
+  }
+
+  var promise = catalogIdbGetRecord(key).then(function (record) {
+    // 1. Если есть свежий кэш в IndexedDB — возвращаем без сети
+    if (record && record.data && isCatalogIdbFresh(record.timestamp)) {
+      return {
+        source: 'idb',
+        key: key,
+        timestamp: record.timestamp,
+        data: record.data
+      };
+    }
+
+    // 2. Если кэша нет или он старше 6 часов — обновляем через сеть
+    var fetchUrl = url + '/items?from=0&limit=' + (limit || 1000);
+
+    return safeFetch(fetchUrl, { timeout: 30000 }).then(function (responseData) {
+      if (!responseData || !responseData.success) {
+        // Если сеть недоступна, но есть старый кэш — отдаём старый кэш
+        if (record && record.data) {
+          return {
+            source: 'idb-stale',
+            key: key,
+            timestamp: record.timestamp,
+            data: record.data,
+            networkFailed: true
+          };
+        }
+
+        throw new Error('Catalog fetch failed');
+      }
+
+      var normalized = normalizeFullCatalogData(responseData);
+      var now = Date.now();
+
+      return catalogIdbPutRecord(key, normalized, now)
+        .catch(function () {
+          // Если IndexedDB недоступна, всё равно возвращаем данные
+        })
+        .then(function () {
+          return {
+            source: 'network',
+            key: key,
+            timestamp: now,
+            data: normalized
+          };
+        });
+    }).catch(function (error) {
+      // Fallback на старый кэш, если сеть упала
+      if (record && record.data) {
+        return {
+          source: 'idb-stale',
+          key: key,
+          timestamp: record.timestamp,
+          data: record.data,
+          networkFailed: true,
+          error: error && error.message
+        };
+      }
+
+      throw error;
+    });
+  });
+
+  catalogFullFetchInFlight[key] = promise;
+
+  return promise.then(function (result) {
+    delete catalogFullFetchInFlight[key];
+    return result;
+  }, function (error) {
+    delete catalogFullFetchInFlight[key];
+    throw error;
+  });
+}
+
+function prefetchFullCatalogs(entries, limit) {
+  var results = {};
+  var queue = Array.isArray(entries) ? entries.slice() : [];
+  var active = 0;
+  var maxActive = 2;
+
+  return new Promise(function (resolve) {
+    function next() {
+      if (!queue.length && active === 0) {
+        resolve(results);
+        return;
+      }
+
+      while (active < maxActive && queue.length) {
+        (function (entry) {
+          active++;
+
+          getFullCatalogFresh(entry.key, entry.url, limit || 1000)
+            .then(function (result) {
+              results[entry.key] = result;
+            })
+            .catch(function () {
+              results[entry.key] = null;
+            })
+            .then(function () {
+              active--;
+              setTimeout(next, 0);
+            });
+        })(queue.shift());
+      }
+    }
+
+    next();
+  });
+}
+
+// ==================== /IndexedDB: полный кэш каталогов ====================
+
 // ==================== ОБРАБОТЧИК СООБЩЕНИЙ ====================
 var pendingRequests = {};
 var requestId = 0;
@@ -1489,6 +1769,74 @@ self.onmessage = function (e) {
       tmdbDetailsClear().then(function (data) {
         self.postMessage({ id: id, type: 'RESULT', data: data });
       });
+      break;
+
+    // --- IndexedDB: полный кэш каталогов ---
+    case 'CATALOG_IDB_GET':
+      catalogIdbGetRecord(payload && payload.key)
+        .then(function (record) {
+          self.postMessage({ id: id, type: 'RESULT', data: record });
+        })
+        .catch(function (error) {
+          self.postMessage({ id: id, type: 'ERROR', error: error && error.message || 'CATALOG_IDB_GET error' });
+        });
+      break;
+
+    case 'CATALOG_IDB_SET':
+      catalogIdbPutRecord(payload && payload.key, payload && payload.data, Date.now())
+        .then(function (success) {
+          self.postMessage({ id: id, type: 'RESULT', data: { success: !!success } });
+        })
+        .catch(function (error) {
+          self.postMessage({ id: id, type: 'ERROR', error: error && error.message || 'CATALOG_IDB_SET error' });
+        });
+      break;
+
+    case 'CATALOG_IDB_DELETE':
+      catalogIdbDeleteRecord(payload && payload.key)
+        .then(function (success) {
+          self.postMessage({ id: id, type: 'RESULT', data: { success: !!success } });
+        })
+        .catch(function (error) {
+          self.postMessage({ id: id, type: 'ERROR', error: error && error.message || 'CATALOG_IDB_DELETE error' });
+        });
+      break;
+
+    case 'CATALOG_IDB_CLEAR':
+      catalogIdbClearStore()
+        .then(function (success) {
+          self.postMessage({ id: id, type: 'RESULT', data: { success: !!success } });
+        })
+        .catch(function (error) {
+          self.postMessage({ id: id, type: 'ERROR', error: error && error.message || 'CATALOG_IDB_CLEAR error' });
+        });
+      break;
+
+    case 'CATALOG_GET_FRESH':
+      getFullCatalogFresh(
+        payload && payload.key,
+        payload && payload.url,
+        payload && payload.limit
+      )
+        .then(function (result) {
+          self.postMessage({ id: id, type: 'RESULT', data: result });
+        })
+        .catch(function (error) {
+          self.postMessage({ id: id, type: 'ERROR', error: error && error.message || 'CATALOG_GET_FRESH error' });
+        });
+      break;
+
+    case 'CATALOG_PREFETCH_ALL':
+      prefetchFullCatalogs(
+        payload && payload.entries,
+        payload && payload.limit
+      )
+        .then(function (result) {
+          self.postMessage({ id: id, type: 'RESULT', data: result });
+        })
+        .catch(function (error) {
+          self.postMessage({ id: id, type: 'ERROR', error: error && error.message || 'CATALOG_PREFETCH_ALL error' });
+        });
       break;
 
     default:
