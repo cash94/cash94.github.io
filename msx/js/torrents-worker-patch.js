@@ -12,10 +12,18 @@
     var _origUpdateVoices = window.updateAvailableVoices || updateAvailableVoices;
     var _origUpdateVideotype = window.updateAvailableVideotype || updateAvailableVideotype;
     var _origLoadAllTmdbData = window.loadAllTmdbDataForTorrent || loadAllTmdbDataForTorrent;
+    var _searchController = null;
+    var _searchSequence = 0;
+    var _filterSequence = 0;
 
     // ==================== searchTorrentsLegacy ====================
     window.searchTorrentsLegacy = searchTorrentsLegacy = async function (query) {
         if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
+
+        if (_searchController) _searchController.abort();
+        _searchController = new AbortController();
+        var controller = _searchController;
+        var searchSequence = ++_searchSequence;
 
         var encodedQuery = encodeURIComponent(query.trim());
         var jacred = getEl('jacred-url');
@@ -25,9 +33,10 @@
         showLoading('Поиск...');
 
         try {
-            var response = await fetch(searchUrl);
+            var response = await fetch(searchUrl, { signal: controller.signal });
             if (!response.ok) throw new Error('Ошибка поиска: HTTP ' + response.status);
             var data = await response.json();
+            if (searchSequence !== _searchSequence) return;
 
             var rawResults = [];
             if (data && Array.isArray(data.Results)) rawResults = data.Results;
@@ -40,6 +49,7 @@
                 console.warn('⚠️ Worker normalize failed, fallback:', e.message);
                 searchResults = rawResults.map(normalizeSearchResult);
             }
+            if (searchSequence !== _searchSequence) return;
 
             currentSearchQuery = query;
             var searchInput = getEl('search-query');
@@ -56,19 +66,22 @@
                 console.warn('⚠️ Worker computeFilters failed, fallback:', e.message);
                 _origUpdateTrackers.call(window);
             }
+            if (searchSequence !== _searchSequence) return;
 
             applyFiltersAndSort();
             showSearchResults();
         } catch (error) {
+            if (error && error.name === 'AbortError') return;
             console.error('Ошибка поиска:', error);
             alert('Ошибка при поиске: ' + error.message);
         } finally {
-            hideLoading();
+            if (searchSequence === _searchSequence) hideLoading();
         }
     };
 
     // ==================== applyFiltersAndSort ====================
     window.applyFiltersAndSort = applyFiltersAndSort = async function () {
+        var filterSequence = ++_filterSequence;
         var filters = {
             quality: currentQualityFilter,
             tracker: currentTrackerFilter,
@@ -81,6 +94,7 @@
 
         try {
             filteredResults = await TorrentsWorker.applyFiltersAndSort(searchResults, filters);
+            if (filterSequence !== _filterSequence) return;
             renderSearchResults();
         } catch (e) {
             console.warn('⚠️ Worker filter failed, fallback:', e.message);
