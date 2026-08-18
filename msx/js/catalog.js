@@ -34,7 +34,8 @@ var mirrors = [
     'tsimg.hnar.online',
     'nl.imagetmdb.com',
     'mocha.stull.xyz',
-    'proxy.vokino.pro/image'
+    'proxy.vokino.pro/image',
+    'nmtmdb.duckdns.org'
     // 'another-mirror.com' // можно добавлять новые через запятую
 ];
 
