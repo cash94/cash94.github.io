@@ -862,7 +862,8 @@ async function loadCatalog(key) {
     catalogState.items = []; catalogState.totalItems = 0; catalogState.currentPage = 0;
     catalogState.hasMore = true; catalogState.isLoadingMore = false; catalogState.loadedItemIds = {};
     catalogState.loadedPostersCount = 0; catalogState.posterLoadQueue = [];
-    catalogState.posterCache.clear();
+    // Keep the bounded LRU across catalog switches so cached w342 poster URLs
+    // can be rendered immediately without another Worker or IndexedDB lookup.
     AppState.mediaType = config.mediaType;
     showCatalogLoading('Загрузка ' + config.name + '...');
     if (catalogCache.has(key)) {
@@ -1353,7 +1354,8 @@ function loadInitialPosters() {
         if (!card) continue;
 
         // Если img ещё нет — ставим в очередь
-        if (!card.querySelector('img.catalog-poster-img')) {
+        if (!card.querySelector('img.catalog-poster-img') && card.dataset.posterRequested !== '1') {
+            card.dataset.posterRequested = '1';
             idxs.push(i);
         }
     }
@@ -1368,13 +1370,14 @@ function initPosterLazyLoading() {
     catalogState.posterObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
             if (entries[i].isIntersecting) {
-                var idx = parseInt(entries[i].target.dataset.catalogIndex, 10);
+                var target = entries[i].target;
+                if (target.dataset.posterRequested === '1') continue;
+                target.dataset.posterRequested = '1';
+                catalogState.posterObserver.unobserve(target);
+                var idx = parseInt(target.dataset.catalogIndex, 10);
                 var it = catalogState.items[idx];
                 if (!it) continue;
-                var key = it.id + '_' + (it.media_type || 'movie');
-                if (!catalogState.posterCache.has(key) && catalogState.posterLoadQueue.indexOf(idx) === -1) {
-                    addToPosterQueue(idx);
-                }
+                addToPosterQueue(idx);
             }
         }
     }, { rootMargin: CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX + 'px', threshold: 0.1 });
@@ -1382,7 +1385,7 @@ function initPosterLazyLoading() {
     for (var i = 0; i < cards.length; i++) {
         var it = catalogState.items[i];
         if (!it) continue;
-        if (!catalogState.posterCache.has(it.id + '_' + (it.media_type || 'movie'))) {
+        if (!cards[i].querySelector('img.catalog-poster-img') && cards[i].dataset.posterRequested !== '1') {
             catalogState.posterObserver.observe(cards[i]);
         }
     }
@@ -1394,13 +1397,15 @@ function updatePosterObservers() {
     for (var i = 0; i < cards.length; i++) {
         var it = catalogState.items[i];
         if (!it) continue;
-        if (!catalogState.posterCache.has(it.id + '_' + (it.media_type || 'movie'))) {
+        if (!cards[i].querySelector('img.catalog-poster-img') && cards[i].dataset.posterRequested !== '1') {
             try { catalogState.posterObserver.observe(cards[i]); } catch (e) { }
         }
     }
 }
 
 function addToPosterQueue(idx) {
+    var card = catalogState.cardElements[idx];
+    if (card) card.dataset.posterRequested = '1';
     if (catalogState.posterLoadQueue.indexOf(idx) !== -1) return;
     catalogState.posterLoadQueue.push(idx);
     if (!catalogState.isPosterLoading) loadNextPosterBatch();
@@ -2589,6 +2594,8 @@ async function showCatalogList() {
     }
 
     // Параллельная загрузка всех рядов
+    return loadCatalogRowsProgressively(grid, keys);
+
     var loadPromises = keys.map(function (key) {
         return loadRowItems(key).then(function (items) {
             return { key: key, items: items };
@@ -2638,6 +2645,107 @@ async function showCatalogList() {
 /**
  * Загружает до 19 элементов для ряда категории
  */
+function loadCatalogRowsProgressively(grid, keys) {
+    var MAX_PARALLEL_ROW_LOADS = 3;
+    var results = new Array(keys.length);
+    var nextToLoad = 0;
+    var nextToRender = 0;
+    var activeLoads = 0;
+    var completedLoads = 0;
+    var renderedRows = 0;
+    var rowsActivated = false;
+    var finished = false;
+
+    function isCurrentCatalogList() {
+        return AppState.currentScreen === 'catalog' && !catalogState.currentCatalog;
+    }
+
+    function finish(value, resolve) {
+        if (finished) return;
+        finished = true;
+        resolve(value);
+    }
+
+    function observeRowPosters(row) {
+        if (!catalogState.rowPosterObserver) {
+            initRowPosterLazyLoading();
+            return;
+        }
+        var cards = row.querySelectorAll('.catalog-row-card');
+        for (var i = 0; i < cards.length; i++) {
+            if (cards[i].dataset.itemIndex !== undefined && cards[i].dataset.posterLoaded !== '1') {
+                catalogState.rowPosterObserver.observe(cards[i]);
+            }
+        }
+    }
+
+    function activateRows() {
+        if (rowsActivated) return;
+        rowsActivated = true;
+        requestAnimationFrame(function () {
+            if (!isCurrentCatalogList()) return;
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            setTimeout(function () {
+                if (!isCurrentCatalogList()) return;
+                grid.style.display = 'grid';
+                restoreRowFocus();
+            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+        });
+    }
+
+    return new Promise(function (resolve) {
+        function renderReadyRows() {
+            if (!isCurrentCatalogList()) {
+                finish(false, resolve);
+                return;
+            }
+            while (nextToRender < keys.length && results[nextToRender] !== undefined) {
+                var result = results[nextToRender++];
+                if (!result.items || result.items.length === 0) continue;
+                var row = createCatalogRow(result.key, result.items);
+                if (!row) continue;
+                if (renderedRows === 0) grid.innerHTML = '';
+                grid.appendChild(row);
+                renderedRows++;
+                observeRowPosters(row);
+                activateRows();
+            }
+        }
+
+        function scheduleLoads() {
+            if (finished) return;
+            if (!isCurrentCatalogList()) {
+                finish(false, resolve);
+                return;
+            }
+            if (completedLoads === keys.length) {
+                if (renderedRows === 0) {
+                    grid.innerHTML = '<div class="catalog-rows-loading"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталоги пусты</div></div>';
+                }
+                finish(true, resolve);
+                return;
+            }
+            while (activeLoads < MAX_PARALLEL_ROW_LOADS && nextToLoad < keys.length) {
+                (function (index, key) {
+                    activeLoads++;
+                    loadRowItems(key)
+                        .then(function (items) { results[index] = { key: key, items: items || [] }; })
+                        .catch(function () { results[index] = { key: key, items: [] }; })
+                        .then(function () {
+                            activeLoads--;
+                            completedLoads++;
+                            renderReadyRows();
+                            scheduleLoads();
+                        });
+                })(nextToLoad, keys[nextToLoad]);
+                nextToLoad++;
+            }
+        }
+
+        scheduleLoads();
+    });
+}
+
 async function loadRowItems(key) {
     var LIMIT = 10;
     if (key === 'history') {
@@ -3154,7 +3262,7 @@ function backToCatalogList() {
     catalogState.loadedItemIds = {};
     catalogState.loadedPostersCount = 0;
     catalogState.posterLoadQueue = [];
-    catalogState.posterCache.clear();
+    // The LRU is already capped; retaining it keeps the catalog home screen warm.
     catalogState.lastSelectedIndex = 0;
     catalogState.lastSelectedId = null;
     localStorage.removeItem('lastCatalogCardIndex');
