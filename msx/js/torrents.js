@@ -849,8 +849,16 @@ async function loadTorrents(silent = false) {
         AppState.torrents = Array.isArray(data) ? data : [];
         getEl('config-screen').style.display = 'none'; getEl('torrserver-section').style.display = 'block'; AppState.currentScreen = 'torrents'; AppState.inSearch = 'torrents';
         renderTorrents();
-        if (AppState.currentScreen === 'torrents' && !document.querySelector('.torrent-card.focused')) {
-            setTimeout(function () { if (typeof window.focusFirstTorrentCard === 'function') window.focusFirstTorrentCard(); }, 80);
+        if (
+            AppState.currentScreen === 'torrents' &&
+            AppState.torrents.length > 0 &&
+            !document.querySelector('.torrent-card.focused')
+        ) {
+            setTimeout(function () {
+                if (typeof window.focusFirstTorrentCard === 'function') {
+                    window.focusFirstTorrentCard();
+                }
+            }, 80);
         }
         return true;
     } catch (error) {
@@ -924,8 +932,11 @@ function renderTorrents() {
             requestAnimationFrame(renderChunk);
         } else {
             // Все карточки отрендерены — восстанавливаем фокус
-            if (AppState.currentScreen === 'torrents' &&
-                !document.querySelector('.torrent-card.focused')) {
+            if (
+                AppState.currentScreen === 'torrents' &&
+                AppState.torrents.length > 0 &&
+                !document.querySelector('.torrent-card.focused')
+            ) {
                 setTimeout(function () {
                     if (typeof window.focusFirstTorrentCard === 'function') {
                         window.focusFirstTorrentCard();
