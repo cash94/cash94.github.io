@@ -1,4 +1,4 @@
-
+// catalog-worker-posters-batch-patch.js
 // Пакетная загрузка постеров: один запрос Worker'а на партию вместо N одиночных.
 // Подключать ПОСЛЕ catalog-worker-posters-patch.js
 (function () {
@@ -49,42 +49,16 @@
         return url;
     }
 
-    // ---------- планировщик с бюджетом времени на кадр ----------
-    // Применяет уже готовые URL к DOM порциями, укладываясь в бюджет времени
-    // на кадр (~6ms), и отдаёт управление браузеру между порциями через rAF.
-    // Это и есть главное исправление просадки FPS: раньше все N постеров
-    // партии применялись к DOM синхронно в одном цикле (создание Image,
-    // decode(), вставка, requestAnimationFrame-класс) — это забивало кадр
-    // и вызывало джанк. Теперь работа размазывается по нескольким кадрам.
-    var FRAME_BUDGET_MS = 6;
-    function runChunked(items, worker) {
-        if (!items.length) return Promise.resolve();
-        var i = 0;
-        var raf = window.requestAnimationFrame || function (cb) { return setTimeout(cb, 16); };
-        return new Promise(function (resolve) {
-            function step() {
-                var start = (window.performance && performance.now) ? performance.now() : Date.now();
-                while (i < items.length) {
-                    worker(items[i]);
-                    i++;
-                    var now = (window.performance && performance.now) ? performance.now() : Date.now();
-                    if (now - start >= FRAME_BUDGET_MS) break;
-                }
-                if (i < items.length) raf(step);
-                else resolve();
-            }
-            raf(step);
-        });
-    }
-
     var SINGLES_CONCURRENCY = 3;
+    // Keep batch URL lookup fast, but limit w342 image decoding on the UI thread.
+    var IMAGE_DECODE_CONCURRENCY = 5;
 
     // Ограниченный параллелизм для точечных догрузок
-    function runWithConcurrency(list, workerFn) {
+    function runWithConcurrency(list, workerFn, concurrency) {
         if (!list.length) return Promise.resolve();
         var idx = 0;
         var runners = [];
-        var n = Math.min(SINGLES_CONCURRENCY, list.length);
+        var n = Math.min(concurrency || SINGLES_CONCURRENCY, list.length);
         for (var i = 0; i < n; i++) {
             runners.push((function () {
                 function step() {
@@ -211,18 +185,16 @@
         if (!entries.length) { finish(); return; }
 
         resolvePosterUrls(entries).then(function (out) {
-            // Применяем найденное — порциями по кадрам, а не всё разом
-            var toApply = [];
+            // Применяем найденное
+            var resolvedEntries = [];
             for (var i = 0; i < entries.length; i++) {
-                var e = entries[i];
-                var url = out.resolved[e.key];
-                if (url) toApply.push(e);
+                if (out.resolved[entries[i].key]) resolvedEntries.push(entries[i]);
             }
-            return runChunked(toApply, function (e) {
-                if (!e.card.isConnected) return;
-                updatePosterDOM(e.div, e.card.dataset.rating, out.resolved[e.key]);
-            }).then(function () {
-                // Промахи — поодиночке (PosterDB → Worker → поиск по названию)
+            // Промахи — поодиночке (PosterDB → Worker → поиск по названию)
+            return runWithConcurrency(resolvedEntries, function (e) {
+                if (!e.card.isConnected) return null;
+                return updatePosterDOM(e.div, e.card.dataset.rating, out.resolved[e.key]);
+            }, IMAGE_DECODE_CONCURRENCY).then(function () {
                 return runWithConcurrency(out.missed, function (e2) {
                     if (!e2.card.isConnected) return null;
                     return _singleLoadCatalogPoster(e2.card, e2.title, e2.mt, e2.id, e2.index);
@@ -242,11 +214,7 @@
         if (!catalogState.rowPosterQueue || catalogState.rowPosterQueue.length === 0) return;
         if (catalogState._rowBatchActive) return;
 
-        // Партия под сетевой батч-запрос (один HTTP-запрос на всех),
-        // но применение к DOM всё равно идёт порциями (см. runChunked ниже) —
-        // это отдельная, более консервативная величина, потому что каждая
-        // строка требует decode()+layout, что дороже, чем у карточек сетки.
-        var tasks = catalogState.rowPosterQueue.splice(0, 24);
+        var tasks = catalogState.rowPosterQueue.splice(0, 60);
         var alive = [];
         for (var i = 0; i < tasks.length; i++) {
             if (tasks[i].card && tasks[i].card.isConnected) alive.push(tasks[i]);
@@ -270,16 +238,15 @@
         }
 
         resolvePosterUrls(entries).then(function (out) {
-            var toApply = [];
+            var resolvedEntries = [];
             for (var k = 0; k < entries.length; k++) {
-                var e = entries[k];
-                if (out.resolved[e.key]) toApply.push(e);
+                if (out.resolved[entries[k].key]) resolvedEntries.push(entries[k]);
             }
-            return runChunked(toApply, function (e) {
-                if (!e.task.card.isConnected) return;
+            return runWithConcurrency(resolvedEntries, function (e) {
+                if (!e.task.card.isConnected) return null;
                 var box = e.task.card.querySelector('.row-poster-img');
-                if (box) setRowPosterImg(box, out.resolved[e.key]);
-            }).then(function () {
+                return box ? setRowPosterImg(box, out.resolved[e.key]) : null;
+            }, IMAGE_DECODE_CONCURRENCY).then(function () {
                 return runWithConcurrency(out.missed, function (e2) {
                     if (!e2.task.card.isConnected) return null;
                     return _singleLoadRowPoster(e2.task.card, e2.task.item);
@@ -302,13 +269,10 @@
     window.processRowPosterQueue = patchedProcessRowPosterQueue;
     try { if (typeof processRowPosterQueue !== 'undefined') processRowPosterQueue = patchedProcessRowPosterQueue; } catch (e) { }
 
-    // Сетевой батч-запрос дешёвый, но применение к DOM (decode+layout+paint)
-    // остаётся дорогим — поэтому размер партии и зону предзагрузки увеличиваем
-    // умеренно, а не агрессивно, чтобы не копить слишком много готовых URL,
-    // которые потом всё равно применяются постранично (runChunked).
-    CATALOG_CONSTANTS.POSTER_BATCH_SIZE = 28;
-    catalogState.postersPerBatch = 28;
-    CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX = 600;
+    // Батчи дешёвые — увеличиваем порции и зону предзагрузки
+    CATALOG_CONSTANTS.POSTER_BATCH_SIZE = 40;
+    catalogState.postersPerBatch = 40;
+    CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX = 800;
 
     console.log('✅ Batch poster loading enabled');
 })();
