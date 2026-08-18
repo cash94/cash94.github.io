@@ -6,6 +6,8 @@ var filteredResults = [];
 var currentSearchQuery = '';
 var currentSearchMode = 'globalsearch';
 var globalSearchResults = [];
+var tmdbSearchController = null;
+var tmdbSearchSequence = 0;
 
 // Настройки фильтрации и сортировки
 var currentSort = 'date-desc';
@@ -98,6 +100,10 @@ LruCache.prototype.clear = function () {
 // Кэш
 var progressCache = new LruCache(150, 60 * 1000);
 var torrentFilesCache = new LruCache(80, 60 * 60 * 1000);
+var torrentFilesInFlight = {};
+var torrentProgressCache = new LruCache(150, 60 * 1000);
+var torrentProgressInFlight = {};
+var torrentCardMetaCache = new LruCache(300, 0);
 
 var knownTorrentMeta = new LruCache(200, 24 * 60 * 60 * 1000);
 
@@ -856,6 +862,7 @@ async function loadTorrents(silent = false) {
 
 async function refreshTorrents(showLoadingFlag = true) {
     if (typeof progressCache !== 'undefined') progressCache.clear();
+    if (typeof torrentProgressCache !== 'undefined') torrentProgressCache.clear();
     return await loadTorrents(!showLoadingFlag);
 }
 window.refreshTorrents = refreshTorrents;
@@ -943,14 +950,19 @@ function createTorrentCard(torrent) {
         if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) {
             isTv = torrent.file_stats.length > 1;
         } else if (torrent.data) {
-            var data = JSON.parse(torrent.data);
-            if (data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 0) {
-                isTv = data.TorrServer.Files.length > 1;
+            var cacheKey = String(torrent.hash || '');
+            var cachedMeta = cacheKey ? torrentCardMetaCache.get(cacheKey) : null;
+            if (!cachedMeta || cachedMeta.source !== torrent.data) {
+                var data = JSON.parse(torrent.data);
+                cachedMeta = {
+                    source: torrent.data,
+                    isTv: !!(data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 1),
+                    poster: data.movie ? (data.movie.img || (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : '')) : ''
+                };
+                if (cacheKey) torrentCardMetaCache.set(cacheKey, cachedMeta);
             }
-            if (data.movie) {
-                poster = data.movie.img ||
-                    (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : '');
-            }
+            isTv = cachedMeta.isTv;
+            poster = cachedMeta.poster;
         }
     } catch (e) { }
 
@@ -1225,6 +1237,57 @@ async function getTorrentFilesWithCache(torrent, forceRefresh = false) {
 
 function clearTorrentFilesCache(hash) { if (hash && torrentFilesCache.has(hash)) torrentFilesCache.delete(hash); }
 function clearAllTorrentFilesCache() { torrentFilesCache.clear(); }
+
+// Share one TorrServer stat request between the detail view and TMDB enrichment.
+async function getTorrentFilesWithCache(torrent, forceRefresh = false) {
+    var hash = torrent && torrent.hash;
+    if (!hash) return [];
+
+    if (!forceRefresh && torrentFilesCache.has(hash)) {
+        var cached = torrentFilesCache.get(hash);
+        if (cached && Date.now() - cached.timestamp < 60 * 60 * 1000) return cached.files;
+        torrentFilesCache.delete(hash);
+    }
+    if (!forceRefresh && torrentFilesInFlight[hash]) return torrentFilesInFlight[hash];
+
+    var request = (async function () {
+        var files = [];
+        if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length) {
+            files = torrent.file_stats;
+        }
+        if (!files.length && AppState.currentTorrserverUrl) {
+            try {
+                var response = await torrServerFetch('/stream?link=' + hash + '&index=1&stat=stat', {
+                    method: 'GET', headers: { accept: 'application/octet-stream' }
+                });
+                if (response.ok) {
+                    var apiData = await response.json();
+                    if (Array.isArray(apiData.file_stats)) files = apiData.file_stats;
+                    else if (apiData.data) {
+                        try {
+                            var parsedData = JSON.parse(apiData.data);
+                            if (parsedData.TorrServer && Array.isArray(parsedData.TorrServer.Files)) {
+                                files = parsedData.TorrServer.Files;
+                            }
+                        } catch (e) { }
+                    }
+                }
+            } catch (error) {
+                console.error('Torrent files request failed:', error);
+            }
+        }
+        torrent.file_stats = files;
+        torrentFilesCache.set(hash, { files: files, timestamp: Date.now() });
+        return files;
+    })();
+
+    torrentFilesInFlight[hash] = request;
+    try {
+        return await request;
+    } finally {
+        delete torrentFilesInFlight[hash];
+    }
+}
 
 function visibleItemsforDetail(change) {
     if (change === 'showDetail') {
@@ -1971,7 +2034,7 @@ function addFileItem(file, hash, name, episodeIndex, stillImage, returnOnly = fa
     var fileName = file.path.split('/').pop() || ('Файл ' + file.id);
     var fileExt = fileName.split('.').pop().toLowerCase();
     if (!['mkv', 'mp4', 'avi', 'mov', 'webm', 'm4v'].includes(fileExt)) return null;
-    var item = document.createElement('div'); item.className = 'file-item'; item.dataset.hash = hash; item.dataset.fileId = file.id;
+    var item = document.createElement('div'); item.className = 'file-item'; item.dataset.hash = hash; item.dataset.fileId = file.id; item.dataset.fileName = fileName;
     if (episodeIndex !== undefined && episodeIndex !== null) item.dataset.episodeIndex = episodeIndex;
     item.innerHTML = `
         <div class="file-content"><button class="play-btn" data-hash="${hash}" data-file-id="${file.id}" data-episode-index="${episodeIndex !== undefined ? episodeIndex : ''}">▶</button></div>
@@ -2151,6 +2214,119 @@ function applyProgressToItem(item, timecode, duration) {
     }
     item.dataset.progressTimecode = timecode;
     item.dataset.progressDuration = duration;
+}
+
+function getVideoFilesForProgress(files) {
+    var videoFiles = [];
+    for (var i = 0; i < (files || []).length; i++) {
+        var file = files[i];
+        var name = String(file.path || file.name || '').toLowerCase();
+        if (['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(function (ext) {
+            return name.indexOf(ext) !== -1;
+        })) {
+            file._progressIndex = i;
+            videoFiles.push(file);
+        }
+    }
+    return videoFiles;
+}
+
+function getTorrentProgressBatch(hash, files) {
+    if (!hash) return Promise.resolve({ byFileId: {}, lastWatched: null });
+    var cached = torrentProgressCache.get(hash);
+    if (cached) return Promise.resolve(cached);
+    if (torrentProgressInFlight[hash]) return torrentProgressInFlight[hash];
+
+    var request = (async function () {
+        var videoFiles = getVideoFilesForProgress(files);
+        var result = { byFileId: {}, lastWatched: null };
+        if (!videoFiles.length) return result;
+
+        try {
+            var response = await fetch(SERVER_URL + '/api/timecode/batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    hash: hash,
+                    fileIds: videoFiles.map(function (file) { return file.id; }),
+                    clientId: localStorage.getItem('clientId')
+                })
+            });
+            if (!response.ok) return result;
+            var data = await response.json();
+            if (!data.success || !data.timecodes) return result;
+
+            for (var i = 0; i < videoFiles.length; i++) {
+                var file = videoFiles[i];
+                var timecode = data.timecodes[file.id];
+                if (!timecode || !(timecode.timecode > 0)) continue;
+                var entry = {
+                    hash: hash,
+                    fileId: file.id,
+                    timecode: timecode.timecode,
+                    duration: timecode.duration || 0,
+                    index: file._progressIndex,
+                    fileName: String(file.path || file.name || '').split('/').pop()
+                };
+                result.byFileId[String(file.id)] = entry;
+                if (!result.lastWatched || entry.index > result.lastWatched.index) {
+                    result.lastWatched = entry;
+                }
+            }
+        } catch (error) {
+            console.error('Progress batch request failed:', error);
+        }
+        return result;
+    })();
+
+    torrentProgressInFlight[hash] = request;
+    return request.then(function (result) {
+        delete torrentProgressInFlight[hash];
+        torrentProgressCache.set(hash, result);
+        return result;
+    }, function (error) {
+        delete torrentProgressInFlight[hash];
+        throw error;
+    });
+}
+
+async function loadProgressForTorrent(torrent, preloadedFiles) {
+    if (!torrent || !torrent.hash) return null;
+    var files = Array.isArray(preloadedFiles) && preloadedFiles.length
+        ? preloadedFiles
+        : await getTorrentFilesWithCache(torrent, false);
+    var progress = await getTorrentProgressBatch(torrent.hash, files);
+    if (!progress.lastWatched) return null;
+
+    var last = progress.lastWatched;
+    return {
+        hash: torrent.hash,
+        fileId: last.fileId,
+        timecode: last.timecode,
+        duration: last.duration,
+        episodeIndex: last.index,
+        totalEpisodes: getVideoFilesForProgress(files).length,
+        episodeName: last.fileName,
+        isSeries: getVideoFilesForProgress(files).length > 1
+    };
+}
+
+async function loadProgressForFileItems(items, hash) {
+    if (!items || !items.length || !hash) return;
+    var files = [];
+    for (var i = 0; i < items.length; i++) {
+        files.push({
+            id: items[i].dataset.fileId,
+            path: items[i].dataset.fileName || String(items[i].dataset.fileId) + '.mkv'
+        });
+    }
+    var progress = await getTorrentProgressBatch(hash, files);
+    for (var j = 0; j < items.length; j++) {
+        var itemProgress = progress.byFileId[String(items[j].dataset.fileId)];
+        if (itemProgress && itemProgress.duration > 0) {
+            applyProgressToItem(items[j], itemProgress.timecode, itemProgress.duration);
+        }
+    }
 }
 
 function addMovieItem(torrent) {
@@ -2750,8 +2926,6 @@ function renderSearchResults() {
         // 🆕 TRACKER: выводим ПОЛНОСТЬЮ как есть (например "bitru, rutor")
         var trackerDisplay = result.tracker || 'Unknown';
 
-        var resultJsonEncoded = encodeURIComponent(JSON.stringify(result));
-
         html += '<div class="search-result-item" data-index="' + idx + '">' +
             '<div class="search-result-info">' +
             '<div class="search-result-title">' + escapeHtml(result.title || 'Без названия') + '</div>' +
@@ -2765,7 +2939,7 @@ function renderSearchResults() {
             '</div>' +
             (voices.length > 0 ? '<div class="search-result-voices">' + voices.map(function (v) { return '<span class="search-result-voice">' + escapeHtml(v) + '</span>'; }).join('') + '</div>' : '') +
             '</div>' +
-            '<button class="search-result-play" data-hash="' + hash + '" data-magnet="' + escapeHtml(result.magnet) + '" data-result="' + resultJsonEncoded + '" ' + (!hash ? 'disabled' : '') + '>' + (hash ? '▶' : '❌ Нет hash') + '</button>' +
+            '<button class="search-result-play" data-hash="' + hash + '" data-magnet="' + escapeHtml(result.magnet) + '" data-index="' + idx + '" ' + (!hash ? 'disabled' : '') + '>' + (hash ? '▶' : '❌ Нет hash') + '</button>' +
             '</div>';
     }
 
@@ -2778,14 +2952,16 @@ function renderSearchResults() {
             e.stopPropagation();
             var hash = playBtn.dataset.hash;
             var magnet = playBtn.dataset.magnet;
-            var resultJsonEncoded = playBtn.dataset.result;
             if (hash) {
-                var searchResult = null;
-                if (resultJsonEncoded) {
-                    try {
-                        searchResult = JSON.parse(decodeURIComponent(resultJsonEncoded));
-                        if (window.pendingCatalogPoster) searchResult.poster = window.pendingCatalogPoster;
-                    } catch (e) { }
+                var index = parseInt(playBtn.dataset.index, 10);
+                var sourceResult = !isNaN(index) ? filteredResults[index] : null;
+                var searchResult = sourceResult;
+                if (sourceResult && window.pendingCatalogPoster) {
+                    searchResult = {};
+                    for (var key in sourceResult) {
+                        if (sourceResult.hasOwnProperty(key)) searchResult[key] = sourceResult[key];
+                    }
+                    searchResult.poster = window.pendingCatalogPoster;
                 }
                 if (window.AndroidJS || AppState.transcodingFullOnOff) AppState.playFromHash = true;
                 playFromHash(hash, magnet, searchResult);
@@ -2798,6 +2974,82 @@ function renderSearchResults() {
             }
         }
     };
+}
+
+function buildSearchResultMarkup(result, index) {
+    var voices = Array.isArray(result.voices) ? result.voices : [];
+    var hash = extractHashFromMagnet(result.magnet);
+    var trackerDisplay = result.tracker || 'Unknown';
+
+    return '<div class="search-result-item" data-index="' + index + '">' +
+        '<div class="search-result-info">' +
+        '<div class="search-result-title">' + escapeHtml(result.title || 'Без названия') + '</div>' +
+        '<div class="search-result-meta">' +
+        '<div class="search-result-meta-item">' + escapeHtml(trackerDisplay) + '</div>' +
+        '<div class="search-result-meta-item">' + escapeHtml(result.sizeName || formatBytes(result.size)) + '</div>' +
+        '<div class="search-result-meta-item">' + (result.released || 'N/A') + ' (' + (result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A') + ')</div>' +
+        '<div class="search-result-meta-item">' + ((result.types && result.types.indexOf('tv') !== -1) ? 'Сериал' : 'Фильм') + ' / ' + (result.quality || 'N/A') + 'p</div>' +
+        '<div class="search-result-meta-item">сиды: ' + (result.sid !== undefined ? result.sid : 0) + '</div>' +
+        '<div class="search-result-meta-item">пиры: ' + (result.pir !== undefined ? result.pir : 0) + '</div>' +
+        '</div>' +
+        (voices.length > 0 ? '<div class="search-result-voices">' + voices.map(function (voice) { return '<span class="search-result-voice">' + escapeHtml(voice) + '</span>'; }).join('') + '</div>' : '') +
+        '</div>' +
+        '<button class="search-result-play" data-hash="' + hash + '" data-magnet="' + escapeAttr(result.magnet) + '" data-index="' + index + '" ' + (!hash ? 'disabled' : '') + '>' + (hash ? '▶' : '❌ Нет hash') + '</button>' +
+        '</div>';
+}
+
+// Render result cards in frames. Large tracker responses no longer monopolise the UI thread.
+function renderSearchResults() {
+    var searchResultsDiv = getEl('search-results');
+    if (!searchResultsDiv) return;
+    var renderId = (searchResultsDiv._renderId || 0) + 1;
+    searchResultsDiv._renderId = renderId;
+
+    if (filteredResults.length === 0) {
+        searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>' + searchResults.length + '</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"' : 'Введите запрос для поиска') + '</div>';
+        return;
+    }
+
+    searchResultsDiv.innerHTML = '<div class="filter-stats">Показано: <span>' + filteredResults.length + '</span> из <span>' + searchResults.length + '</span></div>';
+    searchResultsDiv.onclick = function (event) {
+        var playBtn = event.target.closest('.search-result-play');
+        if (playBtn && !playBtn.disabled) {
+            event.stopPropagation();
+            var hash = playBtn.dataset.hash;
+            var index = parseInt(playBtn.dataset.index, 10);
+            var sourceResult = !isNaN(index) ? filteredResults[index] : null;
+            var searchResult = sourceResult;
+            if (sourceResult && window.pendingCatalogPoster) {
+                searchResult = {};
+                for (var key in sourceResult) {
+                    if (sourceResult.hasOwnProperty(key)) searchResult[key] = sourceResult[key];
+                }
+                searchResult.poster = window.pendingCatalogPoster;
+            }
+            if (hash) {
+                if (window.AndroidJS || AppState.transcodingFullOnOff) AppState.playFromHash = true;
+                playFromHash(hash, playBtn.dataset.magnet, searchResult);
+            }
+            return;
+        }
+        var item = event.target.closest('.search-result-item');
+        if (item) {
+            var button = item.querySelector('.search-result-play');
+            if (button && !button.disabled) button.click();
+        }
+    };
+
+    var index = 0;
+    var CHUNK_SIZE = 30;
+    function renderChunk() {
+        if (searchResultsDiv._renderId !== renderId) return;
+        var html = '';
+        var end = Math.min(index + CHUNK_SIZE, filteredResults.length);
+        for (; index < end; index++) html += buildSearchResultMarkup(filteredResults[index], index);
+        searchResultsDiv.insertAdjacentHTML('beforeend', html);
+        if (index < filteredResults.length) requestAnimationFrame(renderChunk);
+    }
+    requestAnimationFrame(renderChunk);
 }
 
 function extractHashFromMagnet(magnet) {
@@ -2815,11 +3067,20 @@ function getCurrentSearchMode() {
 
 async function searchTMDB(query) {
     if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
+    if (tmdbSearchController) tmdbSearchController.abort();
+    tmdbSearchController = new AbortController();
+    var controller = tmdbSearchController;
+    var searchSequence = ++tmdbSearchSequence;
     showLoading('Поиск в TMDB...');
     try {
         var encodedQuery = encodeURIComponent(query.trim());
-        var moviesResponse = await fetch('/api/tmdb/search?query=' + encodedQuery + '&type=movie&year=');
-        var tvResponse = await fetch('/api/tmdb/search?query=' + encodedQuery + '&type=tv&year=');
+        var searchResponses = await Promise.all([
+            fetch('/api/tmdb/search?query=' + encodedQuery + '&type=movie&year=', { signal: controller.signal }),
+            fetch('/api/tmdb/search?query=' + encodedQuery + '&type=tv&year=', { signal: controller.signal })
+        ]);
+        if (searchSequence !== tmdbSearchSequence) return;
+        var moviesResponse = searchResponses[0];
+        var tvResponse = searchResponses[1];
         var allResults = [];
         if (moviesResponse && moviesResponse.ok) {
             var moviesData = await moviesResponse.json();
@@ -2833,7 +3094,14 @@ async function searchTMDB(query) {
         globalSearchResults = allResults; currentSearchQuery = query;
         if (currentSearchMode === 'globalsearch') showContentTypeFilter();
         showGlobalSearchResults();
-    } catch (error) { console.error('Ошибка поиска в TMDB:', error); alert('Ошибка при поиске: ' + error.message); } finally { hideLoading(); }
+    } catch (error) {
+        if (!error || error.name !== 'AbortError') {
+            console.error('Ошибка поиска в TMDB:', error);
+            alert('Ошибка при поиске: ' + error.message);
+        }
+    } finally {
+        if (searchSequence === tmdbSearchSequence) hideLoading();
+    }
 }
 
 function getRatingColor(rating) { if (rating >= 8) return '#4caf50'; if (rating >= 6) return '#ffc107'; if (rating >= 4) return '#ff9800'; return '#f44336'; }
