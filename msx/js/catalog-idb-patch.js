@@ -8,6 +8,65 @@
         return;
     }
 
+    // ==================== Кэширование /api/catalogs ====================
+
+    var _catalogsListCache = null;
+    var _catalogsListCacheTime = 0;
+    var CATALOGS_LIST_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 часов
+
+    function invalidateCatalogsListCache() {
+        _catalogsListCache = null;
+        _catalogsListCacheTime = 0;
+    }
+
+    function fetchCatalogsWithCache() {
+        var now = Date.now();
+
+        // Если кэш свежий — возвращаем из памяти
+        if (_catalogsListCache && (now - _catalogsListCacheTime < CATALOGS_LIST_CACHE_TTL)) {
+            return Promise.resolve(_catalogsListCache);
+        }
+
+        // Запрашиваем с сервера
+        return fetch(SERVER_URL + '/api/catalogs')
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(function (data) {
+                if (data && data.success && Array.isArray(data.catalogs)) {
+                    _catalogsListCache = data.catalogs;
+                    _catalogsListCacheTime = Date.now();
+                    return data.catalogs;
+                }
+                throw new Error('Invalid catalogs response');
+            })
+            .catch(function (error) {
+                console.warn('⚠️ fetchCatalogsWithCache error:', error);
+                // Если есть старый кэш — возвращаем его
+                if (_catalogsListCache) {
+                    return _catalogsListCache;
+                }
+                return [];
+            });
+    }
+
+    function getCatalogInfoFromCache(catalogKey) {
+        if (!_catalogsListCache || !Array.isArray(_catalogsListCache)) {
+            return null;
+        }
+
+        for (var i = 0; i < _catalogsListCache.length; i++) {
+            if (_catalogsListCache[i].id === catalogKey) {
+                return _catalogsListCache[i];
+            }
+        }
+
+        return null;
+    }
+
     var CATALOG_FULL_LIMIT = 1000;
     var _catalogIdbUpdating = false;
 
