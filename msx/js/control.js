@@ -709,8 +709,13 @@ var ScreenStrategies = {
                     if (dir === 'left') { openFilterPanelAndFocus(); return true; }
                     if (dir === 'right') {
                         if (f && (f.classList.contains('search-result-item') || f.classList.contains('global-search-card'))) {
-                            var pb = f.querySelector('.search-result-play'), m = pb ? pb.dataset.magnet : null, h = pb ? pb.dataset.hash : null, sr = pb ? pb.dataset.result : null;
-                            try { var rj = decodeURIComponent(sr); sr = JSON.parse(rj); } catch (e) { console.error('Ошибка парсинга searchResult:'); }
+                            var pb = f.querySelector('.search-result-play');
+                            var m = pb ? pb.dataset.magnet : null;
+                            var h = pb ? pb.dataset.hash : null;
+                            // Берём результат напрямую из filteredResults по индексу,
+                            // вместо парсинга data-result, которого нет в DOM
+                            var idx = pb ? parseInt(pb.dataset.index, 10) : -1;
+                            var sr = (!isNaN(idx) && idx >= 0 && idx < filteredResults.length) ? filteredResults[idx] : null;
                             if (m && typeof window.addTorrentSearchToServer === 'function') window.addTorrentSearchToServer(m, h, sr).then(function () {
                                 var oh = pb.innerHTML; pb.style.display = 'block'; pb.innerHTML = '✓';
                                 setTimeout(function () { pb.style.display = 'none'; pb.innerHTML = oh; }, 2000);
