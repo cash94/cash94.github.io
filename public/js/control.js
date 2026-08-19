@@ -20,6 +20,15 @@ var SEEK_ACCELERATION_STEPS = [
     { time: 4000, step: 120 }
 ];
 
+var SCROLL_SMOOTH = {
+    force: true,
+    durationX: 0.42,
+    durationY: 0.50,
+    durationFastX: 0.26,
+    durationFastY: 0.32,
+    ease: 'power3.out'
+};
+
 // ==================== СОСТОЯНИЕ ====================
 var focusableElements = [];
 var currentFocusIndex = 0;
@@ -183,8 +192,8 @@ function getTorrentGridColumns() {
     var grid = getEl('torrents-grid');
     if (!grid) return 5;
     try {
-        var cols = (window.getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
-        _cachedColumns = cols || 5;
+        //var cols = (window.getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
+        _cachedColumns = 5; //cols || 5;
     } catch (e) { _cachedColumns = 5; }
     return _cachedColumns;
 }
@@ -199,30 +208,52 @@ function invalidateFocusCache() {
 window.invalidateFocusCache = invalidateFocusCache;
 
 // ==================== ХЕЛПЕРЫ ДЛЯ СТРАТЕГИЙ ====================
+function _isScreenVisible(el) {
+    if (!el) return false;
+
+    if (el.hidden) return false;
+
+    if (el.classList && el.classList.contains('hidden')) return false;
+
+    if (el.style.display === 'none') return false;
+
+    // Если inline display задан — верим ему
+    if (el.style.display !== '') return true;
+
+    // Если inline не задан, один раз проверяем computed style
+    try {
+        return getComputedStyle(el).display !== 'none';
+    } catch (e) {
+        return true;
+    }
+}
+
 function currentScreen() {
     try {
         var ss = window.AppState && AppState.currentScreen ? AppState.currentScreen : null;
-        var p = getEl('player-screen'), d = getEl('detail-view'), c = getEl('config-screen');
-        var s = getEl('search-overlay'), ct = getEl('tab-catalog');
-        var dn = getEl('donate-overlay'), sy = getEl('sync-overlay');
 
         if (ss === 'player') return 'player';
-        if (p && getComputedStyle(p).display !== 'none') return 'player';
-        if (sy && !sy.classList.contains('hidden') && getComputedStyle(sy).display !== 'none') return 'sync';
-        if (c && getComputedStyle(c).display !== 'none') return 'config';
-        if (d && getComputedStyle(d).display !== 'none') return 'detail';
-        if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') return 'search';
-        if (dn && !dn.classList.contains('hidden') && getComputedStyle(dn).display !== 'none') return 'donate';
-        if (AppState.inSearch == 'catalog') return 'catalog';
 
-        var cg = getEl('torrents-grid');
+        if (_isScreenVisible(getEl('player-screen'))) return 'player';
+        if (_isScreenVisible(getEl('sync-overlay'))) return 'sync';
+        if (_isScreenVisible(getEl('config-screen'))) return 'config';
+        if (_isScreenVisible(getEl('detail-view'))) return 'detail';
+        if (_isScreenVisible(getEl('search-overlay'))) return 'search';
+        if (_isScreenVisible(getEl('donate-overlay'))) return 'donate';
+
+        if (ss === 'catalog' || (window.AppState && AppState.inSearch === 'catalog')) return 'catalog';
+
+        var cg = getEl('catalog-grid');
         if (cg) {
             var hc = cg.querySelector('.catalog-card,.catalog-folder-card') !== null;
             var tc = cg.querySelector('.torrent-card:not(.catalog-card):not(.catalog-folder-card)') !== null;
             if (hc && !tc) return 'catalog';
         }
+
         return ss || 'torrents';
-    } catch (e) { return 'torrents'; }
+    } catch (e) {
+        return 'torrents';
+    }
 }
 
 function belongsToScreen(el, screen) {
@@ -234,7 +265,7 @@ function belongsToScreen(el, screen) {
     }
     if (screen === 'catalog') {
         return el.closest('.torrent-card.catalog-card') || el.closest('.torrent-card.catalog-folder-card') ||
-            (el.closest('#torrents-grid') && !el.closest('.torrent-card:not(.catalog-card):not(.catalog-folder-card)')) ||
+            el.closest('#catalog-grid') ||
             el.id === 'back-from-catalog' || el.classList.contains('file-item') || el.classList.contains('back-btn') ||
             ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-catalog', 'tab-donate'].indexOf(el.id) !== -1;
     }
@@ -263,7 +294,7 @@ function belongsToScreen(el, screen) {
 }
 
 function getTorrentCards() {
-    var c = document.querySelectorAll('.torrent-card'), v = [];
+    var c = document.querySelectorAll('#torrents-grid .torrent-card'), v = [];
     for (var i = 0; i < c.length; i++) if (VISIBLE(c[i])) v.push(c[i]);
     return v;
 }
@@ -399,20 +430,75 @@ var ScreenStrategies = {
             var f = document.querySelector('.focused');
             if (!force && belongsToScreen(f, 'torrents')) return true;
             var c = getTorrentCards(), t = getTorrentTabs(), h = getTorrentHeader();
-            if (!c.length) return focusEl(t[0] || h[0]);
-            var tc = null;
-            var sh = (window.AppState && window.AppState.currentDetailItem && window.AppState.currentDetailItem.hash) ? window.AppState.currentDetailItem.hash.toLowerCase() : null;
-            if (sh) for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === sh) { tc = c[i]; break; }
-            if (!tc && typeof window.lastSelectedTorrentHash !== 'undefined' && window.lastSelectedTorrentHash)
-                for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === window.lastSelectedTorrentHash.toLowerCase()) { tc = c[i]; break; }
-            if (!tc && typeof window.lastSelectedTorrentIndex === 'number' && window.lastSelectedTorrentIndex >= 0) {
-                var si = window.lastSelectedTorrentIndex; if (si < c.length) tc = c[si];
+            if (!c.length) {
+                // Если список торрентов уже загружался и он пустой,
+                // не нужно бесконечно вызывать refreshTorrents()
+                if (
+                    window.AppState &&
+                    AppState.torrentsLoaded &&
+                    (!AppState.torrents || AppState.torrents.length === 0)
+                ) {
+                    return focusEl(t[0] || h[0]);
+                }
+
+                // Если список торрентов уже загружается, не запускаем новую загрузку
+                if (window.AppState && AppState.torrentsLoading) {
+                    return false;
+                }
+                return window.refreshTorrents().then(function () {
+                    c = getTorrentCards();
+                    var tc = null;
+                    var sh = (window.AppState && window.AppState.currentDetailItem && window.AppState.currentDetailItem.hash)
+                        ? window.AppState.currentDetailItem.hash.toLowerCase()
+                        : null;
+
+                    if (sh) {
+                        for (var i = 0; i < c.length; i++) {
+                            if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === sh) {
+                                tc = c[i];
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!tc && typeof window.lastSelectedTorrentHash !== 'undefined' && window.lastSelectedTorrentHash) {
+                        for (var i = 0; i < c.length; i++) {
+                            if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === window.lastSelectedTorrentHash.toLowerCase()) {
+                                tc = c[i];
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!tc && typeof window.lastSelectedTorrentIndex === 'number' && window.lastSelectedTorrentIndex >= 0) {
+                        var si = window.lastSelectedTorrentIndex;
+                        if (si < c.length) tc = c[si];
+                    }
+
+                    if (!tc) tc = c[0];
+
+                    if (window.AppState && window.AppState.currentDetailItem) window.AppState.currentDetailItem = null;
+                    if (window.lastSelectedTorrentHash) window.lastSelectedTorrentHash = null;
+                    if (typeof window.lastSelectedTorrentIndex !== 'undefined') window.lastSelectedTorrentIndex = 0;
+
+                    return focusEl(tc || t[0] || h[0]);
+                });
+            } else {
+                var tc = null;
+                var sh = (window.AppState && window.AppState.currentDetailItem && window.AppState.currentDetailItem.hash) ? window.AppState.currentDetailItem.hash.toLowerCase() : null;
+                if (sh) for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === sh) { tc = c[i]; break; }
+                if (!tc && typeof window.lastSelectedTorrentHash !== 'undefined' && window.lastSelectedTorrentHash)
+                    for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === window.lastSelectedTorrentHash.toLowerCase()) { tc = c[i]; break; }
+                if (!tc && typeof window.lastSelectedTorrentIndex === 'number' && window.lastSelectedTorrentIndex >= 0) {
+                    var si = window.lastSelectedTorrentIndex; if (si < c.length) tc = c[si];
+                }
+                if (!tc) tc = c[0];
+                if (window.AppState && window.AppState.currentDetailItem) window.AppState.currentDetailItem = null;
+                if (window.lastSelectedTorrentHash) window.lastSelectedTorrentHash = null;
+                if (typeof window.lastSelectedTorrentIndex !== 'undefined') window.lastSelectedTorrentIndex = 0;
+                return focusEl(tc);
             }
-            if (!tc) tc = c[0];
-            if (window.AppState && window.AppState.currentDetailItem) window.AppState.currentDetailItem = null;
-            if (window.lastSelectedTorrentHash) window.lastSelectedTorrentHash = null;
-            if (typeof window.lastSelectedTorrentIndex !== 'undefined') window.lastSelectedTorrentIndex = 0;
-            return focusEl(tc);
+            return focusEl(t[0] || h[0]);
         },
         handleNavigation: function (dir) {
             var f = (belongsToScreen(document.querySelector('.focused'), 'torrents') ? document.querySelector('.focused') : null);
@@ -456,7 +542,7 @@ var ScreenStrategies = {
 
     catalog: {
         getItems: function () {
-            var c = [], ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+            var c = [], ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
             return c;
         },
@@ -476,7 +562,7 @@ var ScreenStrategies = {
             // Старый вид: сетка (без изменений)
             var f = document.querySelector('.focused');
             if (!force && f && belongsToScreen(f, 'catalog')) return true;
-            var ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+            var ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
             var c = [];
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
             if (!c.length) return false;
@@ -502,7 +588,7 @@ var ScreenStrategies = {
 
             // Старый вид: сетка (без изменений)
             var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
-            var ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+            var ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
             var c = [];
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
             var h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns();
@@ -521,7 +607,7 @@ var ScreenStrategies = {
                     else if (c.length < catalogState.totalItems && !catalogState.isLoadingMore) {
                         window.loadMoreCatalogItems().then(function () {
                             setTimeout(function () {
-                                var nc = [], nac = document.querySelectorAll('.torrent-card.catalog-card,.torrent-card.catalog-folder-card');
+                                var nc = [], nac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
                                 for (var m = 0; m < nac.length; m++) if (VISIBLE(nac[m])) nc.push(nac[m]);
                                 var tix = Math.min(ci + cols, nc.length - 1);
                                 if (tix >= 0 && tix < nc.length && nc[tix]) focusEl(nc[tix]);
@@ -623,8 +709,13 @@ var ScreenStrategies = {
                     if (dir === 'left') { openFilterPanelAndFocus(); return true; }
                     if (dir === 'right') {
                         if (f && (f.classList.contains('search-result-item') || f.classList.contains('global-search-card'))) {
-                            var pb = f.querySelector('.search-result-play'), m = pb ? pb.dataset.magnet : null, h = pb ? pb.dataset.hash : null, sr = pb ? pb.dataset.result : null;
-                            try { var rj = decodeURIComponent(sr); sr = JSON.parse(rj); } catch (e) { console.error('Ошибка парсинга searchResult:'); }
+                            var pb = f.querySelector('.search-result-play');
+                            var m = pb ? pb.dataset.magnet : null;
+                            var h = pb ? pb.dataset.hash : null;
+                            // Берём результат напрямую из filteredResults по индексу,
+                            // вместо парсинга data-result, которого нет в DOM
+                            var idx = pb ? parseInt(pb.dataset.index, 10) : -1;
+                            var sr = (!isNaN(idx) && idx >= 0 && idx < filteredResults.length) ? filteredResults[idx] : null;
                             if (m && typeof window.addTorrentSearchToServer === 'function') window.addTorrentSearchToServer(m, h, sr).then(function () {
                                 var oh = pb.innerHTML; pb.style.display = 'block'; pb.innerHTML = '✓';
                                 setTimeout(function () { pb.style.display = 'none'; pb.innerHTML = oh; }, 2000);
@@ -1055,7 +1146,7 @@ function updateFocusableElements() {
     if (screen === 'torrents') {
         var searchInput = getEl('search-query'), searchBtn = getEl('search-btn'), settingsBtn = getEl('settings-btn');
         var tabTorrents = getEl('tab-torrents'), tabSearch = getEl('tab-search'), tabCatalog = getEl('tab-catalog');
-        var allCards = document.querySelectorAll('.torrent-card');
+        var allCards = document.querySelectorAll('#torrents-grid .torrent-card');
         var cards = []; for (var i = 0; i < allCards.length; i++) if (allCards[i] && allCards[i].offsetParent !== null) cards.push(allCards[i]);
         var cols = getTorrentGridColumns();
         var rows = []; for (var j = 0; j < cards.length; j += cols) rows.push(cards.slice(j, j + cols));
@@ -1074,9 +1165,9 @@ function updateFocusableElements() {
         return;
     }
     if (screen === 'catalog') {
-        var cards = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+        var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
         for (var i = 0; i < cards.length; i++) if (cards[i] && cards[i].offsetParent !== null) list.push(cards[i]);
-        var rowHeaders = document.querySelectorAll('.catalog-row-header');
+        var rowHeaders = document.querySelectorAll('#catalog-grid .catalog-row-header');
         for (var rh = 0; rh < rowHeaders.length; rh++) if (rowHeaders[rh] && rowHeaders[rh].offsetParent !== null) list.push(rowHeaders[rh]);
         focusableElements = list; window.catalogCards = list;
         _focusCache.timestamp = now;
@@ -1351,7 +1442,7 @@ function onBack() {
             return true;
         }
     }
-    if (configScreen && getComputedStyle(configScreen).display !== 'none') {
+    if (configScreen && _isScreenVisible(configScreen)) {
         var focusedElement = document.querySelector('.focused');
         var menuItems = getConfigMenuItems();
         var isOnMenu = false;
@@ -1392,7 +1483,7 @@ function onBack() {
         }
         return true;
     }
-    if (s && !s.classList.contains('hidden') && getComputedStyle(s).display !== 'none') {
+    if (s && !s.classList.contains('hidden') && _isScreenVisible(s)) {
         // Та же цепочка, что и в closeSearchBtn:
         // если вернулись из detail в поиск — «назад» открывает карточку каталога
         if (AppState && AppState.openCatalogDetailOnSearchClose) {
@@ -1409,7 +1500,7 @@ function onBack() {
         else leaveSearchToTorrents();
         return true;
     }
-    if (d && getComputedStyle(d).display !== 'none') {
+    if (d && _isScreenVisible(d)) {
         if (AppState.trailerPlay) {
             ovh = getEl('catalog-toggle-overview-btn');
             stopTrailerBackground();
@@ -1421,7 +1512,7 @@ function onBack() {
     }
     if (dn) { if (typeof window.closeDonateOverlay === 'function') window.closeDonateOverlay(); return true; }
     if (cat) {
-        var h = document.querySelector('#torrents-grid .torrent-card.catalog-folder-card');
+        var h = document.querySelector('#catalog-grid .torrent-card.catalog-folder-card');
         if (h) return true;
         if (window.catalogState) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); }
         if (typeof window.backToCatalogList === 'function') { AppState.currentScreen = 'catalog'; window.backToCatalogList(); }
@@ -1429,7 +1520,7 @@ function onBack() {
         setTimeout(function () { ScreenStrategies.catalog.ensureFocus(true); }, 180);
         return true;
     }
-    if (c && getComputedStyle(c).display !== 'none') {
+    if (c && _isScreenVisible(c)) {
         var m = getEl('torrserver-section');
         c.style.display = 'none';
         if (m) m.style.display = 'block';
@@ -1716,8 +1807,8 @@ function isElementFullyVisible(el, container) {
 
     if (isH) {
         // Для горизонтальных списков проверяем горизонтальную И вертикальную видимость
-        var hp = 30;  // горизонтальный отступ от краёв контейнера
-        var vp = 50;  // вертикальный отступ от краёв экрана
+        var hp = 45;  // горизонтальный отступ от краёв контейнера
+        var vp = 65;  // вертикальный отступ от краёв экрана
 
         var isHorizVisible = r.left >= cr.left + hp && r.right <= cr.right - hp;
         var isVertVisible = r.top >= vp && r.bottom <= (window.innerHeight - vp);
@@ -1726,12 +1817,13 @@ function isElementFullyVisible(el, container) {
     }
 
     // Для вертикальных списков проверяем вертикальную видимость
-    return r.top >= cr.top + 20 && r.bottom <= cr.bottom - 20 &&
-        r.left >= cr.left + 20 && r.right <= cr.right - 20;
+    return r.top >= cr.top + 35 && r.bottom <= cr.bottom - 35 &&
+        r.left >= cr.left + 25 && r.right <= cr.right - 25;
 }
 
 function scrollToElementIfNeeded(el, container, smooth, direction) {
-    if (smooth === undefined) smooth = !fastNavigation;
+    if (smooth === undefined) smooth = true;
+    if (SCROLL_SMOOTH.force) smooth = true;
     if (!el || !container) return;
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
@@ -1776,7 +1868,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             if (needsHScroll) {
                 if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                     gsap.killTweensOf(con);
-                    gsap.to(con, { scrollTo: { x: targetLeft }, duration: 0.1, ease: "power1.out", overwrite: true });
+                    gsap.to(con, {
+                        scrollTo: { x: targetLeft },
+                        duration: fastNavigation ? SCROLL_SMOOTH.durationFastX : SCROLL_SMOOTH.durationX,
+                        ease: SCROLL_SMOOTH.ease,
+                        overwrite: true
+                    });
                 } else if (smooth) {
                     con.scrollTo({ left: targetLeft, behavior: 'smooth' });
                 } else {
@@ -1813,8 +1910,18 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                 targetScrollTop = Math.max(0, Math.min(targetScrollTop, vertEl.scrollHeight - vertRect.height));
                 if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                     gsap.killTweensOf(vertEl);
-                    var tweenVars = { scrollTo: { y: targetScrollTop }, duration: 0.15, ease: "power1.out", overwrite: true };
-                    if (vertEl.id === 'detail-view') tweenVars.backgroundColor = 'rgb(0, 0, 0)'; // как было
+
+                    var tweenVars = {
+                        scrollTo: { y: targetScrollTop },
+                        duration: fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY,
+                        ease: SCROLL_SMOOTH.ease,
+                        overwrite: true
+                    };
+
+                    if (vertEl.id === 'detail-view') {
+                        tweenVars.backgroundColor = 'rgb(0, 0, 0)';
+                    }
+
                     gsap.to(vertEl, tweenVars);
                 } else if (smooth) {
                     vertEl.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
@@ -1829,7 +1936,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             var targetScrollTop = 0;
             if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
                 gsap.killTweensOf(container);
-                gsap.to(container, { scrollTo: { y: targetScrollTop }, duration: 0.1, ease: "power0.out", overwrite: true });
+                gsap.to(container, {
+                    scrollTo: { y: targetScrollTop },
+                    duration: SCROLL_SMOOTH.durationY,
+                    ease: SCROLL_SMOOTH.ease,
+                    overwrite: true
+                });
             } else if (smooth) {
                 container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
             } else {
@@ -1841,7 +1953,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         var targetScrollTop = 0;
         if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
             gsap.killTweensOf(container);
-            gsap.to(container, { scrollTo: { y: targetScrollTop }, duration: 0.1, ease: "power0.out", overwrite: true });
+            gsap.to(container, {
+                scrollTo: { y: targetScrollTop },
+                duration: SCROLL_SMOOTH.durationY,
+                ease: SCROLL_SMOOTH.ease,
+                overwrite: true
+            });
         } else if (smooth) {
             container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
         } else {
@@ -1852,13 +1969,20 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         if (typeof Animations !== 'undefined') Animations.scrollToIfNotVisible(el, container);
     }
     if (!scrollContainer) return;
-    Animations.scrollToIfNotVisible(el, container, { direction: direction });
+    Animations.scrollToIfNotVisible(el, container, {
+        direction: direction,
+        duration: fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY,
+        ease: SCROLL_SMOOTH.ease,
+        offset: 10,
+        overwrite: true
+    });
 }
 
 function byId(id) { return getEl(id); };
 
 function focusEl(el, opts) {
     if (opts === undefined) opts = {};
+    if (el === undefined) return;
     clearFocused();
     el.classList.add('focused');
     if (opts.nativeFocus) try { el.focus(); } catch (e) { } else blurEditor();
@@ -1879,11 +2003,9 @@ function focusEl(el, opts) {
         el.id === 'filter-back-btn' || el.id === 'filter-close-btn' ||
         el.id === 'reset-filters';
 
-    if (s === 'config') {
-        container = getEl('main-container');
-    } else if (s === 'catalog' || s === 'torrents') {
+    if (s === 'catalog' || s === 'torrents' || s === 'config') {
         var rowVp = (isRowCard && el.closest) ? el.closest('.catalog-row-viewport') : null;
-        container = rowVp || getEl('torrserver-section');
+        container = rowVp || getEl('main-container');
     } else if (s === 'search') {
         // ★ Если элемент внутри панели фильтров — используем контейнер панели
         if (isInFilterPanel) {
@@ -1922,7 +2044,12 @@ function focusEl(el, opts) {
     // Передаём direction в scrollToElementIfNeeded
     var scrollDirection = opts.direction || lastNavDirection;
     if (container && !isElementFullyVisible(el, container) || el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'tab-catalog') {
-        scrollToElementIfNeeded(el, container, !fastNavigation, scrollDirection);
+        scrollToElementIfNeeded(
+            el,
+            container,
+            SCROLL_SMOOTH.force ? true : !fastNavigation,
+            scrollDirection
+        );
     }
     return true;
 }
@@ -2382,7 +2509,7 @@ function setupPlayerWheelControl() {
             localStorage.setItem('playerVolume', newVolume);
         } catch (err) { /* ignore */ }
 
-        console.log('🔊 Громкость: ' + Math.round(newVolume * 100) + '%');
+        //console.log('🔊 Громкость: ' + Math.round(newVolume * 100) + '%');
 
     }, { passive: false }); // passive: false необходим для preventDefault
 
@@ -2418,13 +2545,13 @@ function setupMouseControls() {
 // Режим рядов: открыт список каталогов (не конкретный каталог) и ряды отрендерены
 function isCatalogRowsMode() {
     return !window.catalogState.currentCatalog &&
-        document.querySelector('.catalog-row') !== null;
+        document.querySelector('#catalog-grid .catalog-row') !== null;
 }
 
 // Массив массивов видимых карточек: rows[ряд][колонка]
 function getCatalogRows() {
     var rows = [];
-    var rowEls = document.querySelectorAll('.catalog-row');
+    var rowEls = document.querySelectorAll('#catalog-grid .catalog-row');
     for (var i = 0; i < rowEls.length; i++) {
         var cards = rowEls[i].querySelectorAll('.catalog-row-card');
         if (!cards.length) cards = rowEls[i].querySelectorAll('.torrent-card'); // фолбэк
@@ -2436,7 +2563,7 @@ function getCatalogRows() {
 }
 
 function getCatalogRowHeaders() {
-    var headers = document.querySelectorAll('.catalog-row-header');
+    var headers = document.querySelectorAll('#catalog-grid .catalog-row-header');
     var visible = [];
     for (var i = 0; i < headers.length; i++) if (VISIBLE(headers[i])) visible.push(headers[i]);
     return visible;
@@ -2555,6 +2682,9 @@ function handleRowsNavigation(dir) {
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 function initControl() {
     console.log('Модуль управления инициализирован');
+    if (window.gsap && window.ScrollToPlugin && gsap.registerPlugin) {
+        gsap.registerPlugin(ScrollToPlugin);
+    }
     setupKeyboardHandlers();
     setupFocusRescue();
     setupPlayerWheelControl();
@@ -2579,30 +2709,87 @@ function initControl() {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControl); else initControl();
 
 (function () {
-    function initHorizontalScroll() {
-        var c = document.querySelectorAll('.files-list,.catalog-detail-actors-grid,.catalog-detail-recommendations-grid, .catalog-row');
-        for (var i = 0; i < c.length; i++) {
+    function initSmoothHorizontalScroll() {
+        var containers = document.querySelectorAll(
+            '.files-list, ' +
+            '.catalog-detail-actors-grid, ' +
+            '.catalog-detail-recommendations-grid, ' +
+            '.catalog-row-viewport, ' +
+            '.catalog-row'
+        );
+
+        for (var i = 0; i < containers.length; i++) {
             (function (cnt) {
-                if (cnt._wh) return;
-                cnt._wh = true;
-                function wh(e) {
-                    e = e || window.event;
-                    var dy = e.deltaY || e.wheelDeltaY || (e.wheelDelta ? -e.wheelDelta / 40 : 0) || e.detail || 0;
+                if (cnt._smoothWheelInitialized) return;
+                cnt._smoothWheelInitialized = true;
+
+                var target = cnt.scrollLeft;
+                var rafId = null;
+
+                function getMaxScroll() {
+                    return Math.max(0, cnt.scrollWidth - cnt.clientWidth);
+                }
+
+                function clamp(value) {
+                    return Math.max(0, Math.min(getMaxScroll(), value));
+                }
+
+                function animationStep() {
+                    var current = cnt.scrollLeft;
+                    var diff = target - current;
+
+                    if (Math.abs(diff) < 0.6) {
+                        cnt.scrollLeft = target;
+                        rafId = null;
+                        return;
+                    }
+
+                    // Чем меньше коэффициент, тем мягче.
+                    // 0.10 - очень мягко
+                    // 0.16 - оптимально
+                    // 0.22 - быстрее
+                    cnt.scrollLeft = current + diff * 0.16;
+
+                    rafId = requestAnimationFrame(animationStep);
+                }
+
+                function onWheel(e) {
+                    if (cnt.scrollWidth <= cnt.clientWidth) return;
+
+                    var dy =
+                        e.deltaY ||
+                        e.wheelDeltaY ||
+                        (e.wheelDelta ? -e.wheelDelta / 40 : 0) ||
+                        e.detail ||
+                        0;
+
                     var dx = e.deltaX || e.wheelDeltaX || 0;
-                    if (Math.abs(dy) > Math.abs(dx)) {
-                        if (e.preventDefault) e.preventDefault();
-                        if (e.returnValue) e.returnValue = false;
-                        cnt.scrollLeft += dy;
+
+                    if (Math.abs(dy) <= Math.abs(dx)) return;
+
+                    e.preventDefault();
+
+                    if (!rafId) {
+                        target = cnt.scrollLeft;
+                    }
+
+                    target = clamp(target + dy * 0.9);
+
+                    if (!rafId) {
+                        rafId = requestAnimationFrame(animationStep);
                     }
                 }
-                if (cnt.addEventListener) {
-                    cnt.addEventListener('wheel', wh, false);
-                    cnt.addEventListener('mousewheel', wh, false);
-                    if (navigator.userAgent.indexOf('Firefox') !== -1) cnt.addEventListener('DOMMouseScroll', wh, false);
-                } else if (cnt.attachEvent) cnt.attachEvent('onmousewheel', wh);
-            })(c[i]);
+
+                cnt.addEventListener('wheel', onWheel, { passive: false });
+            })(containers[i]);
         }
     }
-    if (document.readyState === 'loading') document.addEventListener ? document.addEventListener('DOMContentLoaded', initHorizontalScroll) : window.attachEvent('onload', initHorizontalScroll); else initHorizontalScroll();
-    window.initHorizontalScroll = initHorizontalScroll;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSmoothHorizontalScroll);
+    } else {
+        initSmoothHorizontalScroll();
+    }
+
+    window.initSmoothHorizontalScroll = initSmoothHorizontalScroll;
 })();
