@@ -115,6 +115,10 @@ function buildTmdbPosterUrl(path, size) {
     if (!path) return null;
     path = String(path);
 
+    // catalog.js подключает общий выбор зеркала. Все постеры, включая file-item,
+    // используют тот же список mirrors.
+    if (window.getTmdbImageUrl) return window.getTmdbImageUrl(path, size || 'w342');
+
     // Если это уже полный URL, заменяем домен на прокси
     if (path.indexOf('http') === 0) {
         return replaceTmdbWithProxy(path);
@@ -1290,7 +1294,7 @@ async function loadMovieStill(tmdbId) {
         var response = await fetch('/api/tmdb/details?id=' + tmdbId + '&type=movie');
         if (response.ok) {
             var data = await response.json();
-            if (data.poster_path) { var stillUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + data.poster_path; seasonCache.set(cacheKey, { data: stillUrl, timestamp: Date.now() }); return stillUrl; }
+            if (data.poster_path) { var stillUrl = buildTmdbPosterUrl(data.poster_path, 'w300'); seasonCache.set(cacheKey, { data: stillUrl, timestamp: Date.now() }); return stillUrl; }
         }
     } catch (error) { console.error('Ошибка загрузки постера фильма:', error); }
     return null;
@@ -2151,7 +2155,7 @@ async function loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieS
         });
         var fileItems = document.querySelectorAll('.file-item');
         for (var i = 0; i < Math.min(fileItems.length, allStillsInOrder.length); i++) {
-            (function (item, url, index) { setTimeout(function () { updateFileItemStill(item, AppState.protocol + '//tsimg.hnar.online/t/p/w300' + url); }, index * 30); })(fileItems[i], allStillsInOrder[i].stillPath, i);
+            (function (item, url, index) { setTimeout(function () { updateFileItemStill(item, buildTmdbPosterUrl(url, 'w300')); }, index * 30); })(fileItems[i], allStillsInOrder[i].stillPath, i);
         }
     } else if (totalVideoFiles === 1 && movieStill) {
         var fileItem = document.querySelector('.file-item'); if (fileItem) setTimeout(function () { updateFileItemStill(fileItem, movieStill); }, 100);
@@ -3210,7 +3214,7 @@ function renderFilteredGlobalResults(results) {
         var yearStr = (result.release_date || result.first_air_date) ? new Date(result.release_date || result.first_air_date).getFullYear() : 'N/A';
         var mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
         var rating = result.vote_average ? result.vote_average.toFixed(1) : null;
-        var posterUrl = result.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/w342' + result.poster_path : null;
+        var posterUrl = result.poster_path ? buildTmdbPosterUrl(result.poster_path, 'w342') : null;
 
         var card = document.createElement('div');
         card.className = 'global-search-card';
@@ -3300,7 +3304,7 @@ function renderFilteredGlobalResults(results) {
 async function showGlobalSearchDetail(item) {
     var catalogItem = { id: item.id, media_type: item.media_type, title: item.title || item.name, name: item.name || item.title, overview: item.overview, poster_path: item.poster_path, backdrop_path: item.backdrop_path, vote_average: item.vote_average, release_date: item.release_date, first_air_date: item.first_air_date, torrent: [{ name: item.title || item.name }] };
     AppState.mediaType = item.media_type;
-    var posterUrl = item.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/w342' + item.poster_path : null;
+    var posterUrl = item.poster_path ? buildTmdbPosterUrl(item.poster_path, 'w342') : null;
     if (typeof window.showCatalogDetail === 'function') {
         AppState.searchReturnTo = 'search'; AppState.currentScreen = 'detail';
         await window.showCatalogDetail(catalogItem, 0, posterUrl);
