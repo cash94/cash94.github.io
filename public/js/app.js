@@ -638,9 +638,9 @@ function setupNavigation() {
             if (searchOverlay) {
               searchOverlay.classList.remove('hidden');
             }
-            //window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
-            finishSearchRestore();
-            //});
+            window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
+              finishSearchRestore();
+            });
             //});
             return;
           } else {
@@ -650,9 +650,9 @@ function setupNavigation() {
             if (searchOverlay) {
               searchOverlay.classList.remove('hidden');
             }
-            //window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
-            finishSearchRestore();
-            //});
+            window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
+              finishSearchRestore();
+            });
             //});
             return;
           }
