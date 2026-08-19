@@ -934,6 +934,19 @@ function setupSearch() {
       if (!tabCatalog.classList.contains('active')) {
         window.pendingCatalogPoster = null;
         window.pendingCatalogItem = null;
+        // Обычное открытие вкладки всегда начинает каталог с первой карточки.
+        // Состояние lastSelected* сохраняется только для возврата из detail.
+        if (typeof catalogState !== 'undefined') {
+          catalogState.lastSelectedIndex = 0;
+          catalogState.lastSelectedId = null;
+          catalogState.lastSelectedRowKey = null;
+          catalogState.lastSelectedColIndex = 0;
+        }
+        if (typeof AppState !== 'undefined') {
+          AppState.contentScroll = AppState.contentScroll || {};
+          AppState.contentScroll.catalog = 0;
+        }
+        localStorage.removeItem('lastCatalogCardIndex');
         if (typeof hideSearchResults === 'function') hideSearchResults();
         var searchOverlay = getEl('search-overlay');
         if (searchOverlay) searchOverlay.classList.add('hidden');
@@ -944,7 +957,16 @@ function setupSearch() {
         tabCatalog.classList.add('active');
         showContentScreen('catalog');
         var catalogGrid = getEl('catalog-grid');
-        if (!catalogGrid || !catalogGrid.hasChildNodes()) window.loadCatalogList();
+        if (!catalogGrid || !catalogGrid.hasChildNodes()) {
+          window.loadCatalogList();
+        } else {
+          // DOM уже тёплый, поэтому загрузки нет; задаём первую карточку явно.
+          setTimeout(function () {
+            if (AppState.currentScreen === 'catalog' && typeof window.ensureCatalogFocus === 'function') {
+              window.ensureCatalogFocus(true);
+            }
+          }, APP_CONSTANTS.FOCUS_RESTORE_DELAY_MS);
+        }
       }
     });
   }
