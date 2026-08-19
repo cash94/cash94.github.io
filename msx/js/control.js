@@ -2509,7 +2509,7 @@ function setupPlayerWheelControl() {
             localStorage.setItem('playerVolume', newVolume);
         } catch (err) { /* ignore */ }
 
-        console.log('🔊 Громкость: ' + Math.round(newVolume * 100) + '%');
+        //console.log('🔊 Громкость: ' + Math.round(newVolume * 100) + '%');
 
     }, { passive: false }); // passive: false необходим для preventDefault
 
