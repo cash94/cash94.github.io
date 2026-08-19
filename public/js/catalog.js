@@ -1092,7 +1092,7 @@ function renderCatalogGrid() {
             if (catalogState.hasMore) addLoadMoreTrigger(grid);
             catalogState.loadedPostersCount = 0;
             initPosterLazyLoading();
-            //initPosterUnloading();   // ← раскомментировать!
+            initPosterUnloading();   // ⚡ Включаем выгрузку постеров
             initLoadMoreObserver();
             loadInitialPosters();
             requestAnimationFrame(function () {
@@ -1146,7 +1146,7 @@ function appendCatalogItems(newItems) {
             if (catalogState.hasMore) addLoadMoreTrigger(grid);
 
             updatePosterObservers();
-            //initPosterUnloading();
+            initPosterUnloading();   // ⚡ Включаем выгрузку постеров
             initLoadMoreObserver();
 
             if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
@@ -1324,9 +1324,7 @@ function initLoadMoreObserver() {
 function initPosterUnloading() {
     if (catalogState.unloadObserver) catalogState.unloadObserver.disconnect();
 
-    // Один наблюдатель на оба случая: выгрузка (далеко за экраном)
-    // и повторная загрузка (карточка возвращается в зону видимости).
-    // threshold: 0 — самый надёжный триггер, гарантированно срабатывает в обе стороны.
+    // ⚡ Выгружаем постеры, которые далеко за экраном (экономим RAM)
     catalogState.unloadObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
             var entry = entries[i];
@@ -1336,8 +1334,7 @@ function initPosterUnloading() {
             var img = posterDiv.querySelector('img');
 
             if (entry.isIntersecting) {
-                // Карточка вернулась в зону видимости. Если постер был выгружен
-                // (нет <img>) — ставим её в очередь на повторную загрузку.
+                // Карточка вернулась в зону видимости — перезагружаем постер
                 if (!img) {
                     var idx = parseInt(card.dataset.catalogIndex, 10);
                     if (!isNaN(idx) && catalogState.items[idx]) {
@@ -1345,13 +1342,14 @@ function initPosterUnloading() {
                     }
                 }
             } else {
-                // Карточка далеко за пределами экрана — выгружаем постер, освобождая RAM.
+                // Карточка далеко — выгружаем постер
                 if (img) {
                     posterDiv.innerHTML = '<div class="no-poster catalog-poster-loading">⏳</div>';
+                    card.dataset.posterRequested = '0';  // ⚡ Сбрасываем флаг
                 }
             }
         }
-    }, { rootMargin: '1500px 0px', threshold: 0 });
+    }, { rootMargin: '1200px 0px', threshold: 0 });  // ⚡ Уменьшили с 1500px до 1200px
 
     var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
     for (var i = 0; i < cards.length; i++) {
@@ -1501,37 +1499,41 @@ async function loadCatalogPoster(card, title, mt, id, index) {
         div.innerHTML = '<div class="no-poster">Каталог закрыт</div>';
         return;
     }
-    if (window.PosterDB) {
-        var cached = await PosterDB.get(key);
-        if (cached) {
-            updatePosterDOM(div, rating, cached);
+
+    var item = catalogState.items[index];
+
+    // ⚡ БЫСТРЫЙ ПУТЬ: если у item есть poster_path — сразу рендерим
+    if (item && item.poster_path) {
+        var quickUrl = getTmdbImageUrl(item.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM);
+        if (quickUrl) {
+            updatePosterDOM(div, card.dataset.rating, quickUrl);
+            catalogState.posterCache.set(key, quickUrl);
             return;
         }
     }
+
     // Проверяем LRU-кэш
     var cached = catalogState.posterCache.get(key);
     if (cached) {
         updatePosterDOM(div, card.dataset.rating, cached);
         return;
     }
-    var item = catalogState.items[index];
-    if (catalogState.currentCatalog === 'history' && item && item.poster_path) {
-        var pp = getTmdbImageUrl(item.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM);
-        if (pp) {
-            catalogState.posterCache.set(key, pp);
-            updatePosterDOM(div, card.dataset.rating, pp);
-            return;
-        }
+
+    // Проверяем TMDB-кэш
+    var p = { id: id, type: mt };
+    var cachedTmdb = getFromTmdbCache('poster', p);
+    if (cachedTmdb && cachedTmdb.posterUrl) {
+        var url = normalizePosterUrl(cachedTmdb.posterUrl);
+        updatePosterDOM(div, card.dataset.rating, url);
+        catalogState.posterCache.set(key, url);
+        return;
     }
+
+    // МЕДЛЕННЫЙ ПУТЬ: запросы к Worker / API
     try {
         var url = null;
-        var p = { id: id, type: mt };
 
-        var cachedTmdb = getFromTmdbCache('poster', p);
-
-        if (cachedTmdb && cachedTmdb.posterUrl) {
-            url = normalizePosterUrl(cachedTmdb.posterUrl);
-        } else if (id && id !== 'undefined' && id !== 'null' && window.CatalogWorker) {
+        if (id && id !== 'undefined' && id !== 'null' && window.CatalogWorker) {
             try {
                 var posterResult = await CatalogWorker.fetchPosterUrl(
                     id,
@@ -1559,8 +1561,10 @@ async function loadCatalogPoster(card, title, mt, id, index) {
         }
         if (url) {
             catalogState.posterCache.set(key, url);
+            updatePosterDOM(div, card.dataset.rating, url);
+        } else {
+            div.innerHTML = '<div class="no-poster">Нет постера</div>';
         }
-        updatePosterDOM(div, card.dataset.rating, url || '');
     } catch (e) {
         console.warn('❌ Ошибка загрузки постера:', e.message);
         if (catalogState.currentCatalog) div.innerHTML = '<div class="no-poster">Нет постера</div>';
@@ -1568,80 +1572,41 @@ async function loadCatalogPoster(card, title, mt, id, index) {
 }
 
 function updatePosterDOM(div, rating, url) {
-    return new Promise(function (resolve) {
-        if (!div) {
-            resolve();
-            return;
-        }
+    if (!div || !url) {
+        if (div) div.innerHTML = '<div class="no-poster">Нет постера</div>';
+        return;
+    }
 
-        url = getTmdbImageUrl(url, getPosterCardSize());
+    url = getTmdbImageUrl(url, getPosterCardSize());
 
-        if (!url) {
+    // ⚡ Мгновенная вставка — браузер декодирует асинхронно сам
+    var img = new Image();
+    img.className = 'catalog-poster-img';
+    img.decoding = 'async';  // Браузер декодирует в фоне
+    img.alt = '';
+    img.src = url;
+
+    // Убираем старый контент
+    var oldImg = div.querySelector('img.catalog-poster-img');
+    if (oldImg) oldImg.remove();
+
+    var placeholder = div.querySelector('.no-poster');
+    if (placeholder) placeholder.remove();
+
+    // Вставляем сразу
+    div.appendChild(img);
+
+    // Анимация при загрузке (опционально)
+    img.onload = function () {
+        img.classList.add('loaded');
+    };
+
+    // Обработка ошибок
+    img.onerror = function () {
+        if (div.isConnected && !div.querySelector('.no-poster')) {
             div.innerHTML = '<div class="no-poster">Нет постера</div>';
-            resolve();
-            return;
         }
-
-        var img = new Image();
-
-        img.className = 'catalog-poster-img';
-        img.decoding = 'async';
-        img.alt = '';
-
-        var settled = false;
-
-        function finish(ok) {
-            if (settled) return;
-            settled = true;
-
-            if (ok && div.isConnected) {
-                var oldImg = div.querySelector('img.catalog-poster-img');
-                if (oldImg) oldImg.remove();
-
-                var placeholder = div.querySelector('.no-poster');
-                if (placeholder) placeholder.remove();
-
-                div.appendChild(img);
-
-                // Если есть анимация появления, лучше делать её очень короткой
-                // или вообще отключить во время массовой загрузки.
-                requestAnimationFrame(function () {
-                    img.classList.add('loaded');
-                });
-            } else if (!ok && div.isConnected) {
-                var ph = div.querySelector('.no-poster');
-                if (!ph) {
-                    div.innerHTML = '<div class="no-poster">Нет постера</div>';
-                }
-            }
-
-            resolve();
-        }
-
-        img.onerror = function () {
-            finish(false);
-        };
-
-        if (typeof img.decode === 'function') {
-            img.src = url;
-            img.decode()
-                .then(function () {
-                    finish(true);
-                })
-                .catch(function () {
-                    if (img.naturalWidth > 0) {
-                        finish(true);
-                    } else {
-                        finish(false);
-                    }
-                });
-        } else {
-            img.onload = function () {
-                finish(true);
-            };
-            img.src = url;
-        }
-    });
+    };
 }
 
 // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР ====================
