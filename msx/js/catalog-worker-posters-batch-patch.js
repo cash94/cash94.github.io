@@ -33,12 +33,14 @@
     }
     function buildLocalPosterUrl(path, size) {
         if (!path) return '';
+        if (window.getTmdbImageUrl) return window.getTmdbImageUrl(path, size);
         if (path.indexOf('http') === 0) return path;
         var fp = path.charAt(0) === '/' ? path : '/' + path;
         return getProtocolBase() + '//tsimg.hnar.online/t/p/' + size + fp;
     }
     function normalizePosterUrl(url) {
         if (!url) return '';
+        if (window.getTmdbImageUrl) return window.getTmdbImageUrl(url, getPosterCardSize());
         if (url.indexOf('http') !== 0) return url;
         var size = getPosterCardSize();
         var protocol = getProtocolBase();
