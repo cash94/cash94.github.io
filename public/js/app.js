@@ -887,6 +887,7 @@ function setupSearch() {
     tabTorrents.addEventListener('click', function () {
       if (!tabTorrents.classList.contains('active')) {
         console.log('📁 Переключение на вкладку "Мои торренты"');
+        AppState.currentScreen = 'torrents';
         window.pendingCatalogPoster = null;
         window.pendingCatalogItem = null;
         if (typeof AppState !== 'undefined') AppState.inSearch = 'torrents';
