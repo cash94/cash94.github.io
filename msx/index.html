@@ -248,8 +248,14 @@
         <button class="view-tab" id="tab-donate">Донат</button>
       </div>
 
-      <!-- Сетка с торрентами (всегда видна на фоне) -->
-      <div id="torrents-grid"></div>
+      <!-- Экраны хранятся в DOM постоянно: переключение вкладок не пересоздаёт карточки. -->
+      <div id="content-torrents" class="content-screen">
+        <div id="torrents-grid"></div>
+      </div>
+
+      <div id="content-catalog" class="content-screen" hidden>
+        <div id="catalog-grid"></div>
+      </div>
     </div>
   </div>
 
