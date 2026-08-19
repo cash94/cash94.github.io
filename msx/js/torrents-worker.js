@@ -379,7 +379,13 @@ function workerLoadAllTmdbData(torrent) {
     } else if (videoFilesCount > 1) {
         isTvSeries = true;
     } else {
-        isTvSeries = /(^|[^a-z0-9а-яё])(сезон|season|серия|эпизод|s\d+)([^a-z0-9а-яё]|$)/i.test(torrent.title || '');
+        var titlePattern = /(^|[^a-z0-9а-яё])(сезон|season|серия|эпизод|s\d+)([^a-z0-9а-яё]|$)/i;
+        var filePattern = /s\d+e\d+|сезон|серия/i;
+        var hasTitleMarker = titlePattern.test(torrent.title || '');
+        var hasFileMarker = videoFiles.some(function(f) {
+            return filePattern.test((f.path || '').toLowerCase());
+        });
+        isTvSeries = hasTitleMarker || hasFileMarker;
     }
 
     // ★ FIX: Если сезоны не найдены в заголовке — ищем в именах файлов
