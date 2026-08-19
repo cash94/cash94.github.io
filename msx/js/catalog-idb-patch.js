@@ -60,22 +60,58 @@
         return ids;
     }
 
+    function getPageSize() {
+        return (window.CATALOG_CONSTANTS && CATALOG_CONSTANTS.ITEMS_PER_PAGE) ||
+            (window.catalogState && catalogState.itemsPerPage) ||
+            150;
+    }
+
+    if (!window.__catalogIdbMeta) {
+        window.__catalogIdbMeta = {};
+    }
+
+    function setCatalogIdbMeta(key, timestamp, totalItems) {
+        if (!key) return;
+
+        window.__catalogIdbMeta[key] = {
+            timestamp: timestamp || Date.now(),
+            totalItems: totalItems || 0
+        };
+    }
+
+    function getCatalogIdbMeta(key) {
+        if (!window.__catalogIdbMeta || !window.__catalogIdbMeta[key]) {
+            return null;
+        }
+
+        return window.__catalogIdbMeta[key];
+    }
+
     function applyFullCatalogData(key, data, timestamp) {
         if (!key || !data) return;
 
         var items = Array.isArray(data.items) ? data.items : [];
+        var pageSize = getPageSize();
+        var ts = timestamp || Date.now();
+
+        // Сохраняем meta для даты в шапке
+        setCatalogIdbMeta(key, ts, data.totalItems || items.length);
 
         catalogState.currentCatalog = key;
-        catalogState.items = items;
+
+        // Полный каталог держим в памяти, но в DOM выводим порциями
+        catalogState.fullItems = items;
+        catalogState.idbTimestamp = ts;
+
+        // Первая страница
+        catalogState.items = items.slice(0, pageSize);
+
         catalogState.totalItems = data.totalItems || items.length;
         catalogState.currentPage = 1;
-        catalogState.hasMore = false;
+        catalogState.hasMore = catalogState.items.length < items.length;
         catalogState.isLoadingMore = false;
 
-        catalogState.loadedItemIds =
-            data.loadedItemIds && Object.keys(data.loadedItemIds).length > 0
-                ? data.loadedItemIds
-                : buildLoadedItemIds(items);
+        catalogState.loadedItemIds = buildLoadedItemIds(catalogState.items);
 
         catalogState.cardElements = {};
         catalogState.loadedPostersCount = 0;
@@ -84,12 +120,12 @@
         if (window.catalogCache && catalogCache.set) {
             catalogCache.set(key, {
                 data: {
-                    items: items.slice(),
+                    items: catalogState.items.slice(),
                     totalItems: catalogState.totalItems,
-                    currentPage: 1,
-                    hasMore: false
+                    currentPage: catalogState.currentPage,
+                    hasMore: catalogState.hasMore
                 },
-                timestamp: timestamp || Date.now()
+                timestamp: ts
             });
         }
 
@@ -228,9 +264,78 @@
             return loadCatalog(catalogState.currentCatalog);
         }
 
-        // Так как каталог теперь загружается целиком через limit=1000,
-        // дополнительная подгрузка страниц не используется.
-        return Promise.resolve(false);
+        if (!catalogState.currentCatalog || catalogState.isLoadingMore) {
+            return Promise.resolve(false);
+        }
+
+        // Если полного каталога в памяти нет — подгружать локально нечего
+        if (!catalogState.fullItems || !catalogState.hasMore) {
+            return Promise.resolve(false);
+        }
+
+        catalogState.isLoadingMore = true;
+
+        return Promise.resolve().then(function () {
+            var pageSize = getPageSize();
+
+            // Берём следующую порцию из уже загруженного полного каталога
+            var start = catalogState.items.length;
+            var nextItems = catalogState.fullItems.slice(start, start + pageSize);
+
+            if (!nextItems.length) {
+                catalogState.hasMore = false;
+                catalogState.isLoadingMore = false;
+                return false;
+            }
+
+            var unique = [];
+
+            for (var i = 0; i < nextItems.length; i++) {
+                var item = nextItems[i];
+
+                if (!item) continue;
+
+                if (!item.id || !catalogState.loadedItemIds[item.id]) {
+                    if (item.id) {
+                        catalogState.loadedItemIds[item.id] = true;
+                    }
+
+                    unique.push(item);
+                }
+            }
+
+            for (var j = 0; j < unique.length; j++) {
+                catalogState.items.push(unique[j]);
+            }
+
+            catalogState.currentPage = Math.ceil(catalogState.items.length / pageSize);
+            catalogState.hasMore = catalogState.items.length < catalogState.fullItems.length;
+
+            if (typeof appendCatalogItems === 'function') {
+                appendCatalogItems(unique);
+            } else {
+                renderCatalogGrid();
+            }
+
+            if (window.catalogCache && catalogCache.set) {
+                catalogCache.set(catalogState.currentCatalog, {
+                    data: {
+                        items: catalogState.items.slice(),
+                        totalItems: catalogState.totalItems,
+                        currentPage: catalogState.currentPage,
+                        hasMore: catalogState.hasMore
+                    },
+                    timestamp: catalogState.idbTimestamp || Date.now()
+                });
+            }
+
+            catalogState.isLoadingMore = false;
+            return true;
+        }).catch(function (error) {
+            console.error('loadMoreCatalogItems IDB error:', error);
+            catalogState.isLoadingMore = false;
+            return false;
+        });
     };
 
     // ==================== fallbackLoadAllCatalogItems ====================
@@ -380,6 +485,7 @@
                 '</div>';
 
             var btn = getEl('clear-history-btn');
+
             if (btn && typeof clearHistory === 'function') {
                 btn.onclick = clearHistory;
             }
@@ -388,13 +494,36 @@
             return header;
         }
 
+        var meta = getCatalogIdbMeta(catalogState.currentCatalog);
+        var ts = (meta && meta.timestamp) || catalogState.idbTimestamp || null;
+
+        var dateHtml = '';
+
+        if (ts) {
+            var iso = new Date(ts).toISOString();
+
+            var dateText =
+                typeof formatLastModifiedDate === 'function'
+                    ? formatLastModifiedDate(iso)
+                    : new Date(ts).toLocaleString();
+
+            dateHtml = '<span>Обновлено: ' + dateText + '</span>';
+        }
+
         header.innerHTML =
+            '<div style="display:flex;flex-direction:column;gap:5px">' +
             '<span style="font-size:20px;font-weight:600;color:#4a9eff">' + name + '</span>' +
+            '<div style="display:flex;gap:15px;font-size:12px;color:#aaa;flex-wrap:wrap">' +
+            '<span>' + catalogState.items.length + ' / ' + (catalogState.totalItems || catalogState.items.length) + '</span>' +
+            dateHtml +
+            '</div>' +
+            '</div>' +
             '<span style="font-size:14px;color:#aaa;background:rgba(0,0,0,0.3);padding:5px 12px;border-radius:20px">' +
-            catalogState.items.length + ' / ' + (catalogState.totalItems || catalogState.items.length) +
+            getPageSize() + ' на страницу' +
             '</span>';
 
         grid.appendChild(header);
+
         return header;
     };
 
