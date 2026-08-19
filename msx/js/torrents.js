@@ -2259,7 +2259,7 @@ function getTorrentProgressBatch(hash, files) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     hash: hash,
-                    fileIds: videoFiles.map(function (file) { return file.id; }),
+                    fileIds: videoFiles.map(function (file) { return parseInt(file.id, 10); }),
                     clientId: localStorage.getItem('clientId')
                 })
             });
