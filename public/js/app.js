@@ -54,6 +54,36 @@ function safeExecute(fn, errorMessage) {
   }
 }
 
+// Экраны торрентов и каталога остаются смонтированными. При переключении вкладок
+// меняем только видимость и восстанавливаем позицию общего скролл-контейнера.
+function showContentScreen(screen) {
+  var torrentsScreen = getEl('content-torrents');
+  var catalogScreen = getEl('content-catalog');
+  var mainContainer = getEl('main-container');
+  if (!torrentsScreen || !catalogScreen) return;
+
+  if (typeof AppState !== 'undefined' && mainContainer &&
+    (AppState.currentScreen === 'torrents' || AppState.currentScreen === 'catalog')) {
+    AppState.contentScroll = AppState.contentScroll || {};
+    AppState.contentScroll[AppState.currentScreen] = mainContainer.scrollTop;
+  }
+
+  torrentsScreen.hidden = screen !== 'torrents';
+  catalogScreen.hidden = screen !== 'catalog';
+
+  if (typeof AppState !== 'undefined') {
+    AppState.currentScreen = screen;
+    AppState.contentScroll = AppState.contentScroll || {};
+  }
+
+  requestAnimationFrame(function () {
+    if (!mainContainer || typeof AppState === 'undefined' || !AppState.contentScroll) return;
+    mainContainer.scrollTop = AppState.contentScroll[screen] || 0;
+    if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+  });
+}
+window.showContentScreen = showContentScreen;
+
 // ==================== СОСТОЯНИЕ ====================
 var hideClockEnabled = false;
 var addToDbEnabled = false;
@@ -569,6 +599,7 @@ function setupNavigation() {
       console.log('🔙 Возврат из детального просмотра');
       var mainContainer = getEl('main-container');
       resetDetailBackground();
+      var savedScroll = AppState.backupScroll || 0;
 
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
@@ -576,18 +607,50 @@ function setupNavigation() {
       if (window.AndroidJS || AppState.transcodingFullOnOff) {
         if (AppState.searchResultsHidden) {
           var searchOverlay = getEl('search-overlay');
-          if (searchOverlay) searchOverlay.classList.remove('hidden');
-          if (detailView) detailView.style.display = 'none';
-          window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
-          AppState.playFromHash = false;
-          AppState.isCatalogSerials = false;
-          AppState.currentScreen = 'search';
-          AppState.searchResultsHidden = false;
-          AppState.clearLastSelected = false;
-          setTimeout(function () {
-            if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); return; }
-          }, 80);
-          return;
+          // Финальные действия (общие для ветки, где не ждём)
+          function finishSearchRestore() {
+            AppState.playFromHash = false;
+            AppState.isCatalogSerials = false;
+            AppState.currentScreen = 'search';
+            AppState.searchResultsHidden = false;
+            AppState.clearLastSelected = false;
+            setTimeout(function () {
+              if (detailView) detailView.style.display = 'none';
+              if (searchOverlay) {
+                searchOverlay.classList.remove('hidden');
+                searchOverlay.style.display = 'flex';
+              }
+              if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); }
+            }, 80);
+          }
+
+          if (!AppState.openInRow) {
+            window.loadCatalog(AppState.backCurrentCatalog).then(function () {
+              var mc = getEl('main-container');
+              if (mc && AppState.backupScroll > 0) {
+                mc.scrollTop = AppState.backupScroll;
+              }
+              if (searchOverlay) {
+                searchOverlay.classList.remove('hidden');
+              }
+              window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
+                finishSearchRestore();
+              });
+            });
+            return;
+          } else {
+            AppState.currentScreen = 'catalog';
+            // Ждём, пока загрузится список
+            window.loadCatalogList().then(function () {
+              if (searchOverlay) {
+                searchOverlay.classList.remove('hidden');
+              }
+              window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
+                finishSearchRestore();
+              });
+            });
+            return;
+          }
         }
       }
 
@@ -622,7 +685,7 @@ function setupNavigation() {
           clearDetailHistory();
         }
 
-        restoreFocusAfterNavigation(returnTo, { currentTorrentHash: currentTorrentHash });
+        restoreFocusAfterNavigation(returnTo, { currentTorrentHash: currentTorrentHash, savedScroll: savedScroll });
 
         if (typeof Animations !== 'undefined') Animations.animateDetailHide();
       }, APP_CONSTANTS.DETAIL_HIDE_DELAY_MS);
@@ -635,6 +698,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
   if (returnTo === 'catalog' && AppState.playFromHash && AppState.isCatalogSerials) {
     AppState.playFromHash = false;
     AppState.isCatalogSerials = false;
+    showContentScreen('catalog');
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
       window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
     });
@@ -642,43 +706,47 @@ function restoreFocusAfterNavigation(returnTo, context) {
   }
 
   if (returnTo === 'catalog') {
-    AppState.backupScroll = 0;
-    AppState.currentScreen = 'catalog';
+    showContentScreen('catalog');
 
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
       if (detailView) detailView.style.display = 'none';
       restoreRowFocus();
       return;
-    } else if (!AppState.clearLastSelected && AppState.openInRow) {
-      AppState.openInRow = false;
+    }
+
+    // если каталог уже загружен и сетка в DOM — НЕ перерендериваем
+    var catalogGrid = getEl('catalog-grid');
+    if (catalogState.currentCatalog === AppState.backCurrentCatalog &&
+      catalogState.items.length > 0 && catalogGrid && catalogGrid.children.length > 0) {
+
       if (detailView) detailView.style.display = 'none';
-      var grid = getEl('torrents-grid');
-      if (grid) grid.style.display = 'none';
-      window.showCatalogList();
-      AppState.clearLastSelected = true;
-      return;
-    } else {
-      window.loadCatalog(AppState.backCurrentCatalog).then(function () {
-        if (typeof window.ensureCatalogFocus === 'function') {
-          if (detailView) detailView.style.display = 'none';
-          window.ensureCatalogFocus(true);
-          return;
-        }
-      });
+
+      // Восстанавливаем скролл ДО фокусировки
+      var mc = getEl('main-container');
+      if (mc && AppState.backupScroll > 0) {
+        mc.scrollTop = AppState.backupScroll;
+      }
+
+      // Фокус на нужную карточку без перерендера
+      if (typeof window.ensureCatalogFocus === 'function') {
+        window.ensureCatalogFocus(true);
+      }
       return;
     }
 
-    // Режим сетки (открыт конкретный каталог) — как раньше
-    if (typeof window.ensureCatalogFocus === 'function') {
+    // Только если каталог реально нужно загрузить заново
+    window.loadCatalog(AppState.backCurrentCatalog).then(function () {
+      // Восстанавливаем скролл ДО фокусировки
+      var mc = getEl('main-container');
+      if (mc && AppState.backupScroll > 0) {
+        mc.scrollTop = AppState.backupScroll;
+      }
       if (detailView) detailView.style.display = 'none';
-      window.ensureCatalogFocus(true);
-      return;
-    }
-    if (typeof window.focusFirstCatalogCard === 'function') {
-      if (detailView) detailView.style.display = 'none';
-      window.focusFirstCatalogCard();
-      return;
-    }
+      if (typeof window.ensureCatalogFocus === 'function') {
+        window.ensureCatalogFocus(true);
+      }
+    });
+    return;
   }
 
   if (returnTo === 'search') {
@@ -694,9 +762,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
 
   if (returnTo === 'torrents') {
     if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
-    if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
-    torrentsGrid = getEl('torrents-grid');
-    if (torrentsGrid) torrentsGrid.style.display = 'grid';
+    showContentScreen('torrents');
 
     if (context.currentTorrentHash) {
       window.lastSelectedTorrentHash = context.currentTorrentHash;
@@ -706,8 +772,8 @@ function restoreFocusAfterNavigation(returnTo, context) {
     updateFocusableElements();
 
     if (typeof window.ensureTorrentFocus === 'function') {
-      window.ensureTorrentFocus(true);
       if (detailView) detailView.style.display = 'none';
+      window.ensureTorrentFocus(true);
       console.log('🎯 Фокус восстановлен через ensureTorrentFocus');
       return;
     }
@@ -830,18 +896,19 @@ function setupSearch() {
         if (tabCatalog) tabCatalog.classList.remove('active');
         var searchOverlay = getEl('search-overlay');
         if (searchOverlay) searchOverlay.classList.add('hidden');
-        if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
+        showContentScreen('torrents');
         var torrentsGrid = getEl('torrents-grid');
-        if (torrentsGrid) {
-          torrentsGrid.style.display = 'grid';
-          torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div class="loading-spinner" style="margin: 0 auto 20px;"></div><div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div></div>';
-        }
-        loadTorrents(true).catch(function (error) {
-          console.error('Ошибка загрузки торрентов:', error);
+        if (!AppState.torrentsLoaded && !AppState.torrentsLoading) {
           if (torrentsGrid) {
-            torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div style="font-size: 48px; margin-bottom: 20px;">❌</div><div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div><button class="btn" style="margin-top: 20px;" onclick="getEl(\'tab-torrents\').click()">Попробовать снова</button></div>';
+          torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div class="loading-spinner" style="margin: 0 auto 20px;"></div><div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div></div>';
           }
-        });
+          loadTorrents(true).catch(function (error) {
+            console.error('Ошибка загрузки торрентов:', error);
+            if (torrentsGrid) {
+              torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div style="font-size: 48px; margin-bottom: 20px;">❌</div><div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div><button class="btn" style="margin-top: 20px;" onclick="getEl(\'tab-torrents\').click()">Попробовать снова</button></div>';
+            }
+          });
+        }
       }
     });
   }
@@ -861,11 +928,6 @@ function setupSearch() {
       if (!tabCatalog.classList.contains('active')) {
         window.pendingCatalogPoster = null;
         window.pendingCatalogItem = null;
-        if (typeof catalogState !== 'undefined') {
-          catalogState.lastSelectedIndex = 0;
-          catalogState.lastSelectedId = null;
-        }
-        localStorage.removeItem('lastCatalogCardIndex');
         if (typeof hideSearchResults === 'function') hideSearchResults();
         var searchOverlay = getEl('search-overlay');
         if (searchOverlay) searchOverlay.classList.add('hidden');
@@ -874,8 +936,9 @@ function setupSearch() {
         if (tabTorrentsEl) tabTorrentsEl.classList.remove('active');
         if (tabSearchEl) tabSearchEl.classList.remove('active');
         tabCatalog.classList.add('active');
-        if (typeof AppState !== 'undefined') AppState.currentScreen = 'catalog';
-        window.loadCatalogList();
+        showContentScreen('catalog');
+        var catalogGrid = getEl('catalog-grid');
+        if (!catalogGrid || !catalogGrid.hasChildNodes()) window.loadCatalogList();
       }
     });
   }
@@ -1251,30 +1314,18 @@ function setupTouchControls(seekSlider, volumeSlider) {
   var touchStartY = 0;
   var touchStartTime = 0;
   var touchMoved = false;
-  var observer = null;
 
-  function setupTouchButtons() {
-    var clickableElements = document.querySelectorAll(CLICKABLE_SELECTORS);
-    var elLen = clickableElements.length;
-    for (var i = 0; i < elLen; i++) {
-      var el = clickableElements[i];
-      el.removeEventListener('touchstart', handleTouchStart);
-      el.removeEventListener('touchend', handleTouchEnd);
-      el.removeEventListener('touchcancel', handleTouchCancel);
-      el.addEventListener('touchstart', handleTouchStart, { passive: true });
-      el.addEventListener('touchend', handleTouchEnd, { passive: true });
-      el.addEventListener('touchcancel', handleTouchCancel, { passive: true });
-    }
-  }
-
+  // ============ ОБРАБОТЧИКИ (логика без изменений) ============
   function handleTouchStart(e) {
     var target = e.target;
+
+    // Пропускаем элементы в search-overlay (кроме кнопок)
     var isInSearchOverlay = target.closest && target.closest('#search-overlay');
     var isCloseBtn = target.id === 'close-search' || (target.closest && target.closest('#close-search'));
     var isFilterBtn = target.id === 'filter-toggle' || (target.closest && target.closest('#filter-toggle'));
     if ((isCloseBtn || isFilterBtn) && isInSearchOverlay) return;
 
-    touchTarget = e.target;
+    touchTarget = target;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
     touchStartTime = Date.now();
@@ -1287,6 +1338,7 @@ function setupTouchControls(seekSlider, volumeSlider) {
 
   function handleTouchEnd(e) {
     if (!touchStartX) return;
+
     var deltaX = e.changedTouches[0].clientX - touchStartX;
     var deltaY = e.changedTouches[0].clientY - touchStartY;
     var deltaTime = Date.now() - touchStartTime;
@@ -1299,9 +1351,11 @@ function setupTouchControls(seekSlider, volumeSlider) {
       clickableElement = elementAtTouch.closest(CLICKABLE_SELECTORS);
     }
 
+    // Тап (не свайп, не долгое нажатие)
     if (!touchMoved && deltaTime < APP_CONSTANTS.TOUCH_TAP_THRESHOLD_MS &&
       Math.abs(deltaX) < APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX &&
       Math.abs(deltaY) < APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX) {
+
       var targetToClick = clickableElement || touchTarget;
       if (targetToClick && (
         targetToClick.closest('button') ||
@@ -1312,6 +1366,7 @@ function setupTouchControls(seekSlider, volumeSlider) {
         targetToClick.closest('.search-result-item') ||
         targetToClick.closest('.episode-item') ||
         targetToClick.closest('.audio-item') ||
+        targetToClick.closest('.subtitle-item') ||
         targetToClick.id === 'close-search' ||
         targetToClick.id === 'filter-toggle' ||
         targetToClick.id === 'search-btn'
@@ -1320,6 +1375,7 @@ function setupTouchControls(seekSlider, volumeSlider) {
         targetToClick.click();
       }
     }
+
     touchStartX = 0;
     touchStartY = 0;
   }
@@ -1330,6 +1386,25 @@ function setupTouchControls(seekSlider, volumeSlider) {
     touchStartY = 0;
   }
 
+  // ============ ДЕЛЕГИРОВАНИЕ: один listener на document ============
+  // Работает с ЛЮБЫМИ динамически добавленными элементами.
+  // Не нужен MutationObserver. Не нужен setupTouchButtons.
+  document.addEventListener('touchstart', function (e) {
+    var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
+    if (el) handleTouchStart.call(el, e);
+  }, { passive: true });
+
+  document.addEventListener('touchend', function (e) {
+    var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
+    if (el) handleTouchEnd.call(el, e);
+  }, { passive: true });
+
+  document.addEventListener('touchcancel', function (e) {
+    var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
+    if (el) handleTouchCancel.call(el, e);
+  }, { passive: true });
+
+  // ============ СЛАЙДЕРЫ (без изменений) ============
   if (seekSlider) {
     seekSlider.addEventListener('touchstart', function (e) {
       e.stopPropagation();
@@ -1354,23 +1429,8 @@ function setupTouchControls(seekSlider, volumeSlider) {
     volumeSlider.addEventListener('touchend', function (e) { e.stopPropagation(); }, { passive: true });
   }
 
-  setupTouchButtons();
-
-  // Исправление утечки памяти: observer теперь отключается при необходимости
-  observer = new MutationObserver(function (mutations) {
-    // Проверяем, действительно ли добавлены новые кликабельные элементы
-    var hasNewClickable = mutations.some(function (mutation) {
-      return Array.from(mutation.addedNodes).some(function (node) {
-        return node.nodeType === 1 && node.matches && node.matches(CLICKABLE_SELECTORS);
-      });
-    });
-    if (hasNewClickable) setupTouchButtons();
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  // Сохраняем observer для возможного отключения
-  window._touchObserver = observer;
+  // ============ MutationObserver и setupTouchButtons УДАЛЕНЫ ============
+  // Больше не нужны: делегирование обрабатывает все элементы автоматически.
 }
 
 // ==================== ПОЛНОЭКРАННЫЙ РЕЖИМ ====================
