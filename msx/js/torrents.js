@@ -115,16 +115,19 @@ function buildTmdbPosterUrl(path, size) {
     if (!path) return null;
     path = String(path);
 
-    if (path.indexOf('http') === 0) return path;
+    // Если это уже полный URL, заменяем домен на прокси
+    if (path.indexOf('http') === 0) {
+        return replaceTmdbWithProxy(path);
+    }
 
     size = size || 'w342';
-
     var protocol = 'https:';
     if (window.AppState && AppState.protocol) {
         protocol = String(AppState.protocol).replace(/:+$/, '');
         if (protocol.indexOf(':') === -1) protocol += ':';
     }
 
+    // Используем tsimg.hnar.online для новых URL
     return protocol + '//tsimg.hnar.online/t/p/' + size +
         (path.charAt(0) === '/' ? path : '/' + path);
 }
@@ -2737,28 +2740,22 @@ window.dropTorrentToServer = dropTorrentToServer;
 
 async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
     var refreshList = options.refreshList !== false;
-
     if (!AppState.currentTorrserverUrl) {
         alert('Сначала подключитесь к TorrServer');
         return null;
     }
-
     var ctx = getCatalogSearchContext(searchResult);
-
     var poster = options.poster || ctx.poster || null;
     var tmdbId = options.tmdbId || ctx.id || null;
     var mediaType = options.mediaType || ctx.mediaType || AppState.mediaType || 'movie';
-
     var seasons = [];
 
     if (searchResult && Array.isArray(searchResult.seasons)) {
         seasons = searchResult.seasons.slice();
     }
-
     if (!seasons.length && searchResult && searchResult.title) {
         seasons = extractSeasonsFromTitle(searchResult.title);
     }
-
     if (!seasons.length && ctx.item && (ctx.item.title || ctx.item.name)) {
         seasons = extractSeasonsFromTitle(ctx.item.title || ctx.item.name);
     }
@@ -2767,9 +2764,7 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
         (ctx.item && (ctx.item.title || ctx.item.name)) ||
         (searchResult && (searchResult.name || searchResult.title)) ||
         'Без названия';
-
     AppState.mediaType = mediaType;
-
     var torrname = (tmdbId ? '[' + tmdbId + '] ' : '') + baseName;
 
     if (mediaType === 'tv' && seasons.length > 0) {
@@ -2786,7 +2781,8 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
     };
 
     if (poster) {
-        requestBody.poster = poster;
+        // ★★★ ВАЖНО: заменяем image.tmdb.org на прокси перед отправкой ★★★
+        requestBody.poster = replaceTmdbWithProxy(poster);
     }
 
     try {
@@ -2800,12 +2796,11 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
         }
 
         var hashLower = hash ? String(hash).toLowerCase() : null;
-
         if (hashLower) {
             knownTorrentMeta.set(hashLower, {
                 id: tmdbId,
                 mediaType: mediaType,
-                poster: poster,
+                poster: requestBody.poster, // Используем уже заменённый URL
                 title: torrname
             });
         }
@@ -2818,42 +2813,34 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
         }
 
         await response.json();
-
         window.pendingCatalogPoster = null;
         window.pendingCatalogItem = null;
         lastAddedTorrentHash = hashLower;
 
         if (refreshList) {
             await refreshTorrentsList();
-
             var found = AppState.torrents.find(function (t) {
                 return t.hash && t.hash.toLowerCase() === hashLower;
             });
-
             if (found) {
-                found.poster = found.poster || poster;
+                found.poster = found.poster || requestBody.poster;
                 found.tmdbId = found.tmdbId || tmdbId;
                 found.media_type = found.media_type || mediaType;
-
                 knownTorrentMeta.set(found.hash.toLowerCase(), {
                     id: tmdbId,
                     mediaType: mediaType,
-                    poster: poster,
+                    poster: requestBody.poster,
                     title: found.title
                 });
             }
-
             return found || true;
         }
-
         return true;
     } catch (error) {
         console.error('❌ Ошибка добавления торрента:', error);
         alert('Ошибка при добавлении торрента: ' + error.message);
-
         window.pendingCatalogPoster = null;
         window.pendingCatalogItem = null;
-
         return null;
     }
 }
