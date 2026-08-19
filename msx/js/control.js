@@ -1942,6 +1942,7 @@ function byId(id) { return getEl(id); };
 
 function focusEl(el, opts) {
     if (opts === undefined) opts = {};
+    if (el === undefined) return;
     clearFocused();
     el.classList.add('focused');
     if (opts.nativeFocus) try { el.focus(); } catch (e) { } else blurEditor();
