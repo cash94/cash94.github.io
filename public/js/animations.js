@@ -425,9 +425,9 @@ var Animations = (function () {
         }
 
         // Анимация для каталога
-        var catalogCards = document.querySelectorAll('.catalog-card, .catalog-folder-card');
+        var catalogCards = document.querySelectorAll('#catalog-grid .catalog-card, #catalog-grid .catalog-folder-card');
         if (catalogCards.length > 0) {
-            animateCardsAppear('#torrents-grid', '.catalog-card, .catalog-folder-card');
+            animateCardsAppear('#catalog-grid', '.catalog-card, .catalog-folder-card');
         }
     }
 
