@@ -54,6 +54,10 @@
     function buildLocalPosterUrl(path, size) {
         if (!path) return '';
 
+        if (window.getTmdbImageUrl) {
+            return window.getTmdbImageUrl(path, size);
+        }
+
         if (path.indexOf('http') === 0) {
             return path;
         }
@@ -68,6 +72,10 @@
 
     function normalizePosterUrl(url) {
         if (!url) return '';
+
+        if (window.getTmdbImageUrl) {
+            return window.getTmdbImageUrl(url, getPosterCardSize());
+        }
 
         if (url.indexOf('http') !== 0) return url;
 
