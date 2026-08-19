@@ -12,10 +12,18 @@
     var _origUpdateVoices = window.updateAvailableVoices || updateAvailableVoices;
     var _origUpdateVideotype = window.updateAvailableVideotype || updateAvailableVideotype;
     var _origLoadAllTmdbData = window.loadAllTmdbDataForTorrent || loadAllTmdbDataForTorrent;
+    var _searchController = null;
+    var _searchSequence = 0;
+    var _filterSequence = 0;
 
     // ==================== searchTorrentsLegacy ====================
     window.searchTorrentsLegacy = searchTorrentsLegacy = async function (query) {
         if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
+
+        if (_searchController) _searchController.abort();
+        _searchController = new AbortController();
+        var controller = _searchController;
+        var searchSequence = ++_searchSequence;
 
         var encodedQuery = encodeURIComponent(query.trim());
         var jacred = getEl('jacred-url');
@@ -25,9 +33,10 @@
         showLoading('Поиск...');
 
         try {
-            var response = await fetch(searchUrl);
+            var response = await fetch(searchUrl, { signal: controller.signal });
             if (!response.ok) throw new Error('Ошибка поиска: HTTP ' + response.status);
             var data = await response.json();
+            if (searchSequence !== _searchSequence) return;
 
             var rawResults = [];
             if (data && Array.isArray(data.Results)) rawResults = data.Results;
@@ -40,6 +49,7 @@
                 console.warn('⚠️ Worker normalize failed, fallback:', e.message);
                 searchResults = rawResults.map(normalizeSearchResult);
             }
+            if (searchSequence !== _searchSequence) return;
 
             currentSearchQuery = query;
             var searchInput = getEl('search-query');
@@ -56,19 +66,22 @@
                 console.warn('⚠️ Worker computeFilters failed, fallback:', e.message);
                 _origUpdateTrackers.call(window);
             }
+            if (searchSequence !== _searchSequence) return;
 
             applyFiltersAndSort();
             showSearchResults();
         } catch (error) {
+            if (error && error.name === 'AbortError') return;
             console.error('Ошибка поиска:', error);
             alert('Ошибка при поиске: ' + error.message);
         } finally {
-            hideLoading();
+            if (searchSequence === _searchSequence) hideLoading();
         }
     };
 
     // ==================== applyFiltersAndSort ====================
     window.applyFiltersAndSort = applyFiltersAndSort = async function () {
+        var filterSequence = ++_filterSequence;
         var filters = {
             quality: currentQualityFilter,
             tracker: currentTrackerFilter,
@@ -81,6 +94,7 @@
 
         try {
             filteredResults = await TorrentsWorker.applyFiltersAndSort(searchResults, filters);
+            if (filterSequence !== _filterSequence) return;
             renderSearchResults();
         } catch (e) {
             console.warn('⚠️ Worker filter failed, fallback:', e.message);
@@ -149,40 +163,144 @@
 
     // ==================== loadAllTmdbDataForTorrent ====================
     window.loadAllTmdbDataForTorrent = loadAllTmdbDataForTorrent = async function (torrent, elements) {
-        // Быстрое обновление заголовка на main thread (без ожидания Worker)
-        var quickTitle = torrent.title || 'Без названия';
-        var qb = quickTitle.match(/\[(\d+)\]/);
-        if (qb) quickTitle = quickTitle.replace(/\[\d+\]/, '').trim();
+        elements = elements || {};
+
+        function cleanQuickTitle(t) {
+            return String(t || 'Без названия')
+                .replace(/\[\d+\]/g, '')
+                .replace(/\[(tv|movie|сериал|фильм)\]/gi, '')
+                .replace(/\[сезон[^\]]*\]/gi, '')
+                .trim();
+        }
+
+        function normalizePosterUrl(path) {
+            if (!path) return null;
+            path = String(path);
+
+            if (window.getTmdbImageUrl) return window.getTmdbImageUrl(path, 'w342');
+
+            // Если это уже полный URL, заменяем image.tmdb.org на прокси
+            if (path.indexOf('http') === 0) {
+                // Используем функцию из main thread если доступна
+                if (window.replaceTmdbWithProxy) {
+                    return window.replaceTmdbWithProxy(path);
+                }
+                // Fallback: заменяем вручную
+                if (path.indexOf('image.tmdb.org') !== -1) {
+                    var mirrors = [
+                        'tsimg.hnar.online',
+                        'nl.imagetmdb.com',
+                        'mocha.stull.xyz',
+                        'proxy.vokino.pro/image',
+                        'nmtmdb.duckdns.org'
+                    ];
+                    var randomProxy = mirrors[Math.floor(Math.random() * mirrors.length)];
+                    return path.replace(/image\.tmdb\.org/g, randomProxy);
+                }
+                return path;
+            }
+
+            var protocol = 'https:';
+            if (window.AppState && AppState.protocol) {
+                protocol = String(AppState.protocol).replace(/:+$/, '');
+                if (protocol.indexOf(':') === -1) protocol += ':';
+            }
+
+            return protocol + '//tsimg.hnar.online/t/p/w342' +
+                (path.charAt(0) === '/' ? path : '/' + path);
+        }
+
+        var quickTitle = cleanQuickTitle(torrent.title);
         if (elements.titleEl) elements.titleEl.textContent = quickTitle;
 
+        var hashLower = torrent.hash ? String(torrent.hash).toLowerCase() : '';
+        var known = null;
+        if (hashLower && window.getKnownTorrentMeta) {
+            known = window.getKnownTorrentMeta(hashLower) || null;
+        }
+        if (!known &&
+            hashLower &&
+            typeof lastAddedTorrentHash !== 'undefined' &&
+            lastAddedTorrentHash &&
+            hashLower === String(lastAddedTorrentHash).toLowerCase()) {
+            var pendingItem =
+                (window.AppState && AppState.pendingDetailItem) ||
+                window.pendingCatalogItem || null;
+            known = {
+                id: (window.AppState && AppState.pendingDetailTmdbId) ||
+                    (pendingItem && (pendingItem.id || pendingItem.tmdbId)) || null,
+                mediaType: (window.AppState && AppState.pendingDetailMediaType) ||
+                    (pendingItem && pendingItem.media_type) || null,
+                poster: (window.AppState && AppState.pendingDetailPoster) ||
+                    window.pendingCatalogPoster || null
+            };
+        }
+
+        if (known) {
+            if (!torrent.tmdbId && known.id) torrent.tmdbId = known.id;
+            if (!torrent.media_type && known.mediaType) torrent.media_type = known.mediaType;
+            if (!torrent.poster && known.poster) torrent.poster = normalizePosterUrl(known.poster);
+        }
+        if (!torrent.media_type && window.AppState && AppState.mediaType) {
+            torrent.media_type = AppState.mediaType;
+        }
+
+        // Подтягиваем файлы заранее
+        try {
+            if (typeof getTorrentFilesWithCache === 'function') {
+                var files = await getTorrentFilesWithCache(torrent, false);
+                if (files && files.length) {
+                    torrent.file_stats = files;
+                }
+            }
+        } catch (e) { }
+
+        // ★ FIX: Убираем bail-out для tv — Worker теперь корректно обрабатывает сериалы.
+        // Оставляем fallback только если Worker недоступен.
         try {
             var r = await TorrentsWorker.loadAllTmdbData(torrent);
+            if (!r) throw new Error('Empty worker result');
 
-            // Заголовок (Worker мог очистить сезоны)
-            if (elements.titleEl && r.cleanTitle) elements.titleEl.textContent = r.cleanTitle;
+            if (elements.titleEl && r.cleanTitle) {
+                elements.titleEl.textContent = r.cleanTitle;
+            }
 
-            // AppState
             AppState.isSerials = r.isTvSeries;
-            if (r.seasonNumbers.length === 1 && r.isTvSeries) {
+            if (r.mediaType) {
+                AppState.mediaType = r.mediaType;
+            }
+            if (r.seasonNumbers && r.seasonNumbers.length === 1 && r.isTvSeries) {
                 AppState.currentTMDB = r.tmdbId;
                 AppState.currentSeason = r.seasonNumbers[0];
             }
 
-            // Season stills → DOM
-            if (r.tmdbId && r.isTvSeries && r.seasonNumbers.length > 0 && Object.keys(r.allSeasonEpisodes).length > 0) {
+            // Применяем кадры сезонов
+            if (r.isTvSeries && r.seasonNumbers && r.seasonNumbers.length > 0 &&
+                Object.keys(r.allSeasonEpisodes || {}).length > 0) {
                 loadStillsAndUpdateFiles(r.seasonNumbers, r.allSeasonEpisodes, null, r.videoFilesCount);
             }
 
-            // Movie still → DOM (формируем URL на main thread)
+            // Постер фильма
             if (r.movieStillPosterPath) {
-                var stillUrl = AppState.protocol + '//tsimg.hnar.online/t/p/w300' + r.movieStillPosterPath;
+                var stillUrl = window.getTmdbImageUrl
+                    ? window.getTmdbImageUrl(r.movieStillPosterPath, 'w300')
+                    : normalizePosterUrl(r.movieStillPosterPath);
                 var fileItem = document.querySelector('.file-item');
                 if (fileItem) updateFileItemStill(fileItem, stillUrl);
             }
 
-            // TMDB Details → DOM
+            // TMDB details → DOM
             if (r.details) {
                 _applyTmdbDetailsToDOM(r.details, elements);
+            }
+
+            // Сохраняем в knownTorrentMeta для будущих визитов
+            if (hashLower && r.tmdbId && typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta.set) {
+                knownTorrentMeta.set(hashLower, {
+                    id: r.tmdbId,
+                    mediaType: r.mediaType,
+                    poster: torrent.poster || null
+                });
             }
 
             return r;
@@ -196,7 +314,9 @@
     function _applyTmdbDetailsToDOM(details, elements) {
         // Backdrop
         if (details.backdrop_path && elements.detailViewDiv) {
-            var bp = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
+            var bp = window.getTmdbImageUrl
+                ? window.getTmdbImageUrl(details.backdrop_path, 'original')
+                : AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
 
             // Добавляем linear-gradient поверх картинки для 50% затемнения
             elements.detailViewDiv.style.backgroundImage = 'linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url(' + bp + ')';
@@ -223,8 +343,8 @@
             var ovEl = getEl('catalog-detail-overview');
             if (ovEl) {
                 ovEl.textContent = details.overview;
-                ovEl.style.display = 'block';
-                ovEl.classList.remove('hidden');
+                ovEl.style.display = 'none';
+                ovEl.classList.add('hidden');
             }
         }
 
