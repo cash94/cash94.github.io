@@ -468,58 +468,116 @@
 
     // ==================== checkAndUpdateCatalogIfNeeded ====================
 
-    window.checkAndUpdateCatalogIfNeeded = checkAndUpdateCatalogIfNeeded = function (id, iso) {
-        if (!id || _catalogIdbUpdating) {
-            return Promise.resolve(false);
+    // Защита от повторных обновлений одного и того же каталога в течение 5 минут
+    var _catalogServerUpdateAttempts = {};
+
+    window.checkAndUpdateCatalogIfNeeded = checkAndUpdateCatalogIfNeeded = async function (id, iso) {
+        if (!id || !iso || _catalogIdbUpdating) {
+            return false;
         }
 
-        return CatalogWorker.catalogIdbGet(id)
-            .then(function (record) {
-                // Если кэш свежий — ничего не делаем
-                if (record && isFreshTimestamp(record.timestamp)) {
-                    return false;
+        var thresholdHours =
+            window.CATALOG_CONSTANTS && CATALOG_CONSTANTS.CATALOG_UPDATE_THRESHOLD_HOURS
+                ? CATALOG_CONSTANTS.CATALOG_UPDATE_THRESHOLD_HOURS
+                : 6;
+
+        var serverTime = new Date(iso).getTime();
+
+        if (isNaN(serverTime)) {
+            return false;
+        }
+
+        var hours = (Date.now() - serverTime) / 3600000;
+
+        // Если серверная дата свежая — ничего не делаем
+        if (hours <= thresholdHours) {
+            return false;
+        }
+
+        // Защита от цикла: не обновляем один и тот же каталог чаще, чем раз в 5 минут
+        var now = Date.now();
+
+        if (
+            _catalogServerUpdateAttempts[id] &&
+            now - _catalogServerUpdateAttempts[id] < 5 * 60 * 1000
+        ) {
+            return false;
+        }
+
+        _catalogServerUpdateAttempts[id] = now;
+        _catalogIdbUpdating = true;
+
+        try {
+            console.log('⏳ Каталог "' + id + '" старше ' + thresholdHours + ' часов, отправляем запрос на обновление');
+
+            // 1. Серверное обновление каталога
+            var updateResponse = await safeFetch(
+                SERVER_URL + '/api/catalog/' + encodeURIComponent(id) + '/update',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 30000
                 }
+            );
 
-                var cfg = window.CATALOG_CONFIG && CATALOG_CONFIG[id];
+            var updated = !!(updateResponse && updateResponse.success);
 
-                if (!cfg || !cfg.url) {
-                    return false;
-                }
-
-                _catalogIdbUpdating = true;
-
-                return CatalogWorker.catalogGetFresh(id, cfg.url, CATALOG_FULL_LIMIT)
-                    .then(function (result) {
-                        if (result && result.source === 'network') {
-                            if (window.catalogCache && catalogCache.delete) {
-                                catalogCache.delete(id);
-                            }
-
-                            if (catalogState.currentCatalog === id && result.data) {
-                                applyFullCatalogData(id, result.data, result.timestamp || Date.now());
-                            }
-
-                            // ★ ВАЖНО: инвалидируем кэш /api/catalogs,
-                            // чтобы при следующем открытии получить свежую lastModifiedISO
-                            invalidateCatalogsListCache();
-
-                            return true;
-                        }
-
-                        return false;
-                    })
-                    .catch(function () {
-                        return false;
-                    })
-                    .then(function (updated) {
-                        _catalogIdbUpdating = false;
-                        return updated;
-                    });
-            })
-            .catch(function () {
-                _catalogIdbUpdating = false;
+            if (!updated) {
+                console.warn('⚠️ Каталог "' + id + '" не был обновлён сервером');
                 return false;
-            });
+            }
+
+            console.log('✅ Каталог "' + id + '" обновлён на сервере');
+
+            // 2. Инвалидируем кэш /api/catalogs,
+            // чтобы при следующем рендере получить свежую lastModifiedISO
+            if (typeof invalidateCatalogsListCache === 'function') {
+                invalidateCatalogsListCache();
+            }
+
+            // 3. Удаляем старый полный каталог из IndexedDB
+            if (window.CatalogWorker && CatalogWorker.catalogIdbDelete) {
+                await CatalogWorker.catalogIdbDelete(id);
+            }
+
+            // 4. Удаляем локальный memory-кэш
+            if (window.catalogCache && catalogCache.delete) {
+                catalogCache.delete(id);
+            }
+
+            // 5. Заново загружаем полный каталог в IndexedDB
+            var cfg = window.CATALOG_CONFIG && CATALOG_CONFIG[id];
+
+            if (cfg && cfg.url) {
+                var freshResult = await CatalogWorker.catalogGetFresh(
+                    id,
+                    cfg.url,
+                    typeof CATALOG_FULL_LIMIT !== 'undefined' ? CATALOG_FULL_LIMIT : 1000
+                );
+
+                // 6. Если пользователь сейчас находится в этом каталоге — обновляем экран
+                if (
+                    catalogState.currentCatalog === id &&
+                    freshResult &&
+                    freshResult.data
+                ) {
+                    applyFullCatalogData(
+                        id,
+                        freshResult.data,
+                        freshResult.timestamp || Date.now()
+                    );
+                }
+            }
+
+            return true;
+        } catch (error) {
+            console.error('❌ checkAndUpdateCatalogIfNeeded error:', error);
+            return false;
+        } finally {
+            _catalogIdbUpdating = false;
+        }
     };
 
     // ==================== addCatalogHeader ====================
