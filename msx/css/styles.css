@@ -565,7 +565,8 @@ body {
   margin: 21.4px;
 }
 
-#torrents-grid {
+#torrents-grid,
+#catalog-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 10px;
@@ -1770,7 +1771,8 @@ body.detail-open {
 }
 
 @media (max-width: 768px) {
-  #torrents-grid {
+  #torrents-grid,
+  #catalog-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
