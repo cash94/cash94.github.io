@@ -39,20 +39,34 @@ var mirrors = [
     // 'another-mirror.com' // можно добавлять новые через запятую
 ];
 
+function getTmdbImageUrl(pathOrUrl, size) {
+    if (!pathOrUrl || typeof pathOrUrl !== 'string') return pathOrUrl || '';
+
+    var path = null;
+    var value = pathOrUrl.trim();
+
+    // Старые записи в кэше могут уже содержать URL tsimg/TMDB/другого зеркала.
+    // Для них извлекаем только путь изображения и выбираем зеркало заново.
+    if (/^https?:\/\//i.test(value)) {
+        var match = value.match(/\/t\/p\/[^/]+(\/[^?#]+)(?:[?#].*)?$/i);
+        if (!match) return value; // не TMDB-изображение, например внешний постер
+        path = match[1];
+    } else {
+        path = value.charAt(0) === '/' ? value : '/' + value;
+    }
+
+    var mirror = mirrors[Math.floor(Math.random() * mirrors.length)];
+    return getProtocolBase() + '//' + mirror + '/t/p/' +
+        (size || CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM) + path;
+}
+
 function replaceTmdbWithProxy(url) {
-    if (!url || typeof url !== 'string') return url;
-
-    // Если URL не содержит image.tmdb.org, возвращаем как есть
-    if (url.indexOf('image.tmdb.org') === -1) return url;
-
-    // Выбираем случайный прокси
-    var randomProxy = mirrors[Math.floor(Math.random() * mirrors.length)];
-
-    // Заменяем image.tmdb.org на прокси
-    return url.replace(/image\.tmdb\.org/g, randomProxy);
+    if (!url || typeof url !== 'string' || url.indexOf('image.tmdb.org') === -1) return url;
+    return getTmdbImageUrl(url);
 }
 
 window.replaceTmdbWithProxy = replaceTmdbWithProxy;
+window.getTmdbImageUrl = getTmdbImageUrl;
 
 // ==================== КОНФИГУРАЦИЯ КАТАЛОГОВ ====================
 var CATALOG_CONFIG = {
@@ -255,17 +269,8 @@ function getProtocolBase() {
 function normalizePosterUrl(url) {
     if (!url) return '';
 
-    if (url.indexOf('http') !== 0) return url;
-
     var size = getPosterCardSize();
-    var protocol = getProtocolBase();
-
-    if (url.indexOf('tsimg.hnar.online/t/p/') !== -1) {
-        url = url.replace(/^https?:/, protocol);
-        url = url.replace(/\/t\/p\/[^/]+\//, '/t/p/' + size + '/');
-    }
-
-    return url;
+    return getTmdbImageUrl(url, size);
 }
 
 // ==================== RUTUBE ТРЕЙЛЕРЫ ====================
@@ -1508,9 +1513,7 @@ async function loadCatalogPoster(card, title, mt, id, index) {
     }
     var item = catalogState.items[index];
     if (catalogState.currentCatalog === 'history' && item && item.poster_path) {
-        var pp = item.poster_path.indexOf('http') === 0 ? item.poster_path :
-            (AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM +
-                (item.poster_path.indexOf('/') === 0 ? item.poster_path : '/' + item.poster_path));
+        var pp = getTmdbImageUrl(item.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM);
         if (pp) {
             catalogState.posterCache.set(key, pp);
             updatePosterDOM(div, card.dataset.rating, pp);
@@ -1568,17 +1571,7 @@ function updatePosterDOM(div, rating, url) {
             return;
         }
 
-        // --- ДОБАВЛЕННАЯ ЛОГИКА ЗАМЕНЫ ---
-        // Если url начинается на http:// или https://image.tmdb.org/t/p/w342/,
-        // заменяем image.tmdb.org на tsimg.hnar.online, сохраняя протокол (http или https).
-        if (url) {
-            // Случайный выбор элемента из массива
-            var randomDomain = mirrors[Math.floor(Math.random() * mirrors.length)];
-
-            // Замена с использованием конкатенации строк (без шаблонных литералов ES6)
-            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1' + randomDomain + '/t/p/w342/');
-        }
-        // --------------------------------
+        url = getTmdbImageUrl(url, getPosterCardSize());
 
         if (!url) {
             div.innerHTML = '<div class="no-poster">Нет постера</div>';
@@ -1664,10 +1657,13 @@ function setupDetailLayout(item, index, posterUrl) {
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
     var dv = getEl('detail-view'), mc = getEl('main-container');
-    var savedScroll = 0;
-    if (mc && mc.scrollTop > 0) {
-        savedScroll = mc.scrollTop
-        AppState.backupScroll = savedScroll;
+    // Сохраняем и нулевую позицию: это валидное состояние, а не признак того,
+    // что позиция ещё не была инициализирована.
+    var savedScroll = mc ? mc.scrollTop : 0;
+    AppState.backupScroll = savedScroll;
+    if (AppState.currentScreen === 'catalog') {
+        AppState.contentScroll = AppState.contentScroll || {};
+        AppState.contentScroll.catalog = savedScroll;
     }
     var oldP = document.querySelector('.detail-progress');
     if (oldP) oldP.remove();
@@ -1747,7 +1743,7 @@ function renderDetailHeader(item, posterUrl, details) {
     //   Постер через img.decode()
     var posterSrc = null;
     if (src.poster_path) {
-        posterSrc = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + src.poster_path;
+        posterSrc = getTmdbImageUrl(src.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM);
         catalogState.posterCache.set(item.id + '_' + mt, posterSrc);
     } else if (src.image && (src.image.original || src.image.medium)) {
         posterSrc = src.image.original || src.image.medium;
@@ -1774,7 +1770,7 @@ function renderDetailHeader(item, posterUrl, details) {
     // Backdrop через img.decode()
     var bp = src.backdrop_path || (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
     if (bp) {
-        var bpUrl = bp.indexOf('http') === 0 ? bp : AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.BACKDROP + bp;
+        var bpUrl = getTmdbImageUrl(bp, CATALOG_CONSTANTS.IMG_SIZES.BACKDROP);
         _loadBackdropDecoded(be, bpUrl);
     } else {
         be.classList.add('hidden');
@@ -2124,7 +2120,7 @@ async function renderDetailActors(item, aw, preloadedActors) {
             var d = document.createElement('div');
             d.className = 'catalog-actor-card';
             d.innerHTML = '<div class="catalog-actor-photo">' +
-                (a.profilePath ? '<img src="' + AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL + a.profilePath + '" loading="lazy" decoding="async" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') +
+                (a.profilePath ? '<img src="' + getTmdbImageUrl(a.profilePath, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL) + '" loading="lazy" decoding="async" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') +
                 '</div><div class="catalog-actor-info"><div class="catalog-actor-name">' + escapeHtml(a.name) + '</div><div class="catalog-actor-character">' + escapeHtml(a.character || '') + '</div></div>';
             frag.appendChild(d);
         });
@@ -2154,7 +2150,7 @@ function renderDetailRecommendations(src, rw, mt) {
             d.dataset.tmdbId = r.id;
             d.dataset.mediaType = mt;
             d.dataset.title = r.title || r.name || 'Без названия';
-            var pu = r.poster_path ? AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL + r.poster_path : null;
+            var pu = r.poster_path ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL) : null;
             d.innerHTML = '<div class="catalog-recommendation-poster">' +
                 (pu ? '<img src="' + pu + '" loading="lazy" decoding="async" alt="' + escapeHtml(d.dataset.title) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-recommendation-no-poster\\\'> </div>\'">' : '<div class="catalog-recommendation-no-poster"> </div>') +
                 (r.vote_average ? '<div class="catalog-recommendation-rating">' + Math.round(r.vote_average * 10) / 10 + '</div>' : '') +
@@ -2903,9 +2899,7 @@ async function loadRowPoster(card, item) {
     if (cached) { await setRowPosterImg(imgBox, cached); return; }
 
     if (item.poster_path) {
-        var url = item.poster_path.indexOf('http') === 0 ? item.poster_path :
-            AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM +
-            (item.poster_path.indexOf('/') === 0 ? item.poster_path : '/' + item.poster_path);
+        var url = getTmdbImageUrl(item.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM);
         catalogState.posterCache.set(cacheKey, url);
         await setRowPosterImg(imgBox, url);
         return;
@@ -2994,15 +2988,7 @@ function processRowPosterQueue() {
 
 function setRowPosterImg(box, url) {
     return new Promise(function (resolve) {
-        // --- ДОБАВЛЕННАЯ ЛОГИКА ЗАМЕНЫ ---
-        if (url) {
-            // Случайный выбор элемента из массива
-            var randomDomain = mirrors[Math.floor(Math.random() * mirrors.length)];
-
-            // Замена с использованием конкатенации строк (без шаблонных литералов ES6)
-            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1' + randomDomain + '/t/p/w342/');
-        }
-        // --------------------------------
+        url = getTmdbImageUrl(url, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM);
 
         var img = new Image();
         img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
@@ -3344,8 +3330,10 @@ window.focusCatalogCardByIndex = function (target) {
 window.addToWatchHistory = async function (id, title, mt, pp) {
     try {
         var save = pp || null;
-        var pre = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM;
-        if (save && save.indexOf(pre) === 0) save = save.replace(pre, '');
+        if (save) {
+            var tmdbPath = save.match(/\/t\/p\/[^/]+(\/[^?#]+)(?:[?#].*)?$/i);
+            if (tmdbPath) save = tmdbPath[1];
+        }
         var d = await safeFetch('/api/history/add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3368,9 +3356,7 @@ function getCatalogKnownPosterUrl(item, posterUrl) {
     }
 
     if (!url && item.poster_path) {
-        url = getProtocolBase() + '//tsimg.hnar.online/t/p/' +
-            CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM +
-            (item.poster_path.indexOf('/') === 0 ? item.poster_path : '/' + item.poster_path);
+        url = getTmdbImageUrl(item.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM);
     }
 
     return url;
