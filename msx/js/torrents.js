@@ -833,22 +833,65 @@ async function checkServer(shouldLoadTorrents = true) {
 }
 
 async function loadTorrents(silent = false) {
-    var torrentsGrid = getEl('torrents-grid');
-    if (!AppState.serverOnline) {
-        var checked = await checkServer(false);
-        if (!checked) {
-            if (!silent) { alert('Сначала подключитесь к серверу'); getEl('config-screen').style.display = 'flex'; getEl('torrserver-section').style.display = 'none'; AppState.currentScreen = 'config'; }
-            return;
-        }
+    if (AppState.torrentsLoading) {
+        return false;
     }
-    if (!silent) { showLoading('Загрузка торрентов...'); if (torrentsGrid) torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 40px;">Загрузка...</div>'; }
+
+    AppState.torrentsLoading = true;
+
+    var torrentsGrid = getEl('torrents-grid');
+
     try {
-        var response = await torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'list' }) });
-        if (!response.ok) throw new Error('Ошибка загрузки: HTTP ' + response.status);
+        if (!AppState.serverOnline) {
+            var checked = await checkServer(false);
+
+            if (!checked) {
+                if (!silent) {
+                    alert('Сначала подключитесь к серверу');
+                    getEl('config-screen').style.display = 'flex';
+                    getEl('torrserver-section').style.display = 'none';
+                    AppState.currentScreen = 'config';
+                }
+
+                return false;
+            }
+        }
+
+        if (!silent) {
+            showLoading('Загрузка торрентов...');
+
+            if (torrentsGrid) {
+                torrentsGrid.innerHTML =
+                    '<div style="grid-column: 1 / -1; text-align: center; padding: 40px;">Загрузка...</div>';
+            }
+        }
+
+        var response = await torrServerFetch('/torrents', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'list' })
+        });
+
+        if (!response.ok) {
+            throw new Error('Ошибка загрузки: HTTP ' + response.status);
+        }
+
         var data = await response.json();
+
         AppState.torrents = Array.isArray(data) ? data : [];
-        getEl('config-screen').style.display = 'none'; getEl('torrserver-section').style.display = 'block'; AppState.currentScreen = 'torrents'; AppState.inSearch = 'torrents';
+
+        // Список был успешно загружен
+        AppState.torrentsLoaded = true;
+
+        getEl('config-screen').style.display = 'none';
+        getEl('torrserver-section').style.display = 'block';
+
+        AppState.currentScreen = 'torrents';
+        AppState.inSearch = 'torrents';
+
         renderTorrents();
+
+        // ВАЖНО:
+        // Не пытаемся фокусировать карточку торрента, если список пустой
         if (
             AppState.currentScreen === 'torrents' &&
             AppState.torrents.length > 0 &&
@@ -860,19 +903,51 @@ async function loadTorrents(silent = false) {
                 }
             }, 80);
         }
+
         return true;
     } catch (error) {
         console.error('Ошибка загрузки торрентов:', error);
-        if (!silent && torrentsGrid) torrentsGrid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div style="font-size: 16px; color: #ff6a6a;">Ошибка: ${error.message}</div><button class="btn" style="margin-top: 20px;" onclick="loadTorrents()">Попробовать снова</button></div>`;
+
+        // Чтобы focus-логика не долбила запросы при ошибке,
+        // считаем попытку загрузки завершённой
+        AppState.torrentsLoaded = true;
+
+        if (!silent && torrentsGrid) {
+            torrentsGrid.innerHTML =
+                '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">' +
+                '<div style="font-size: 16px; color: #ff6a6a;">Ошибка: ' + error.message + '</div>' +
+                '<button class="btn" style="margin-top: 20px;" onclick="loadTorrents()">Попробовать снова</button>' +
+                '</div>';
+        }
+
         return false;
-    } finally { if (!silent) hideLoading(); }
+    } finally {
+        AppState.torrentsLoading = false;
+
+        if (!silent) {
+            hideLoading();
+        }
+    }
 }
 
+var lastTorrentsRefreshAt = 0;
+
 async function refreshTorrents(showLoadingFlag = true) {
+    var now = Date.now();
+
+    // Защита от спама одинаковыми refreshTorrents()
+    if (now - lastTorrentsRefreshAt < 700) {
+        return false;
+    }
+
+    lastTorrentsRefreshAt = now;
+
     if (typeof progressCache !== 'undefined') progressCache.clear();
     if (typeof torrentProgressCache !== 'undefined') torrentProgressCache.clear();
+
     return await loadTorrents(!showLoadingFlag);
 }
+
 window.refreshTorrents = refreshTorrents;
 
 // ==================== ВСПОМОГАТЕЛЬНАЯ: экранирование для атрибутов ====================
@@ -932,11 +1007,8 @@ function renderTorrents() {
             requestAnimationFrame(renderChunk);
         } else {
             // Все карточки отрендерены — восстанавливаем фокус
-            if (
-                AppState.currentScreen === 'torrents' &&
-                AppState.torrents.length > 0 &&
-                !document.querySelector('.torrent-card.focused')
-            ) {
+            if (AppState.currentScreen === 'torrents' &&
+                !document.querySelector('.torrent-card.focused')) {
                 setTimeout(function () {
                     if (typeof window.focusFirstTorrentCard === 'function') {
                         window.focusFirstTorrentCard();
