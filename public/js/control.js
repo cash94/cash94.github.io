@@ -244,7 +244,7 @@ function currentScreen() {
         if (ss === 'catalog' || (window.AppState && AppState.inSearch === 'catalog')) return 'catalog';
 
         var cg = getEl('catalog-grid');
-        if (cg && !cg.classList.contains('hidden')) {
+        if (cg && cg.classList.contains('hidden')) {
             var hc = cg.querySelector('.catalog-card,.catalog-folder-card') !== null;
             if (hc) return 'catalog';
         }
