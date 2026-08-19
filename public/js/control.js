@@ -244,10 +244,9 @@ function currentScreen() {
         if (ss === 'catalog' || (window.AppState && AppState.inSearch === 'catalog')) return 'catalog';
 
         var cg = getEl('catalog-grid');
-        if (cg) {
+        if (cg && !cg.classList.contains('hidden')) {
             var hc = cg.querySelector('.catalog-card,.catalog-folder-card') !== null;
-            var tc = cg.querySelector('.torrent-card:not(.catalog-card):not(.catalog-folder-card)') !== null;
-            if (hc && !tc) return 'catalog';
+            if (hc) return 'catalog';
         }
 
         return ss || 'torrents';
