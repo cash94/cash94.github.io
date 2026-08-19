@@ -431,6 +431,20 @@ var ScreenStrategies = {
             if (!force && belongsToScreen(f, 'torrents')) return true;
             var c = getTorrentCards(), t = getTorrentTabs(), h = getTorrentHeader();
             if (!c.length) {
+                // Если список торрентов уже загружался и он пустой,
+                // не нужно бесконечно вызывать refreshTorrents()
+                if (
+                    window.AppState &&
+                    AppState.torrentsLoaded &&
+                    (!AppState.torrents || AppState.torrents.length === 0)
+                ) {
+                    return focusEl(t[0] || h[0]);
+                }
+
+                // Если список торрентов уже загружается, не запускаем новую загрузку
+                if (window.AppState && AppState.torrentsLoading) {
+                    return false;
+                }
                 return window.refreshTorrents().then(function () {
                     c = getTorrentCards();
                     var tc = null;
