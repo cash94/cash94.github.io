@@ -241,13 +241,12 @@ function currentScreen() {
         if (_isScreenVisible(getEl('search-overlay'))) return 'search';
         if (_isScreenVisible(getEl('donate-overlay'))) return 'donate';
 
-        if (window.AppState && AppState.inSearch === 'catalog') return 'catalog';
+        if (ss === 'catalog' || (window.AppState && AppState.inSearch === 'catalog')) return 'catalog';
 
-        var cg = getEl('torrents-grid');
-        if (cg) {
+        var cg = getEl('catalog-grid');
+        if (cg && cg.classList.contains('hidden')) {
             var hc = cg.querySelector('.catalog-card,.catalog-folder-card') !== null;
-            var tc = cg.querySelector('.torrent-card:not(.catalog-card):not(.catalog-folder-card)') !== null;
-            if (hc && !tc) return 'catalog';
+            if (hc) return 'catalog';
         }
 
         return ss || 'torrents';
@@ -265,7 +264,7 @@ function belongsToScreen(el, screen) {
     }
     if (screen === 'catalog') {
         return el.closest('.torrent-card.catalog-card') || el.closest('.torrent-card.catalog-folder-card') ||
-            (el.closest('#torrents-grid') && !el.closest('.torrent-card:not(.catalog-card):not(.catalog-folder-card)')) ||
+            el.closest('#catalog-grid') ||
             el.id === 'back-from-catalog' || el.classList.contains('file-item') || el.classList.contains('back-btn') ||
             ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-catalog', 'tab-donate'].indexOf(el.id) !== -1;
     }
@@ -294,7 +293,7 @@ function belongsToScreen(el, screen) {
 }
 
 function getTorrentCards() {
-    var c = document.querySelectorAll('.torrent-card'), v = [];
+    var c = document.querySelectorAll('#torrents-grid .torrent-card'), v = [];
     for (var i = 0; i < c.length; i++) if (VISIBLE(c[i])) v.push(c[i]);
     return v;
 }
@@ -542,7 +541,7 @@ var ScreenStrategies = {
 
     catalog: {
         getItems: function () {
-            var c = [], ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+            var c = [], ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
             return c;
         },
@@ -562,7 +561,7 @@ var ScreenStrategies = {
             // Старый вид: сетка (без изменений)
             var f = document.querySelector('.focused');
             if (!force && f && belongsToScreen(f, 'catalog')) return true;
-            var ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+            var ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
             var c = [];
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
             if (!c.length) return false;
@@ -588,7 +587,7 @@ var ScreenStrategies = {
 
             // Старый вид: сетка (без изменений)
             var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
-            var ac = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+            var ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
             var c = [];
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
             var h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns();
@@ -607,7 +606,7 @@ var ScreenStrategies = {
                     else if (c.length < catalogState.totalItems && !catalogState.isLoadingMore) {
                         window.loadMoreCatalogItems().then(function () {
                             setTimeout(function () {
-                                var nc = [], nac = document.querySelectorAll('.torrent-card.catalog-card,.torrent-card.catalog-folder-card');
+                                var nc = [], nac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
                                 for (var m = 0; m < nac.length; m++) if (VISIBLE(nac[m])) nc.push(nac[m]);
                                 var tix = Math.min(ci + cols, nc.length - 1);
                                 if (tix >= 0 && tix < nc.length && nc[tix]) focusEl(nc[tix]);
@@ -1146,7 +1145,7 @@ function updateFocusableElements() {
     if (screen === 'torrents') {
         var searchInput = getEl('search-query'), searchBtn = getEl('search-btn'), settingsBtn = getEl('settings-btn');
         var tabTorrents = getEl('tab-torrents'), tabSearch = getEl('tab-search'), tabCatalog = getEl('tab-catalog');
-        var allCards = document.querySelectorAll('.torrent-card');
+        var allCards = document.querySelectorAll('#torrents-grid .torrent-card');
         var cards = []; for (var i = 0; i < allCards.length; i++) if (allCards[i] && allCards[i].offsetParent !== null) cards.push(allCards[i]);
         var cols = getTorrentGridColumns();
         var rows = []; for (var j = 0; j < cards.length; j += cols) rows.push(cards.slice(j, j + cols));
@@ -1165,9 +1164,9 @@ function updateFocusableElements() {
         return;
     }
     if (screen === 'catalog') {
-        var cards = document.querySelectorAll('.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+        var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
         for (var i = 0; i < cards.length; i++) if (cards[i] && cards[i].offsetParent !== null) list.push(cards[i]);
-        var rowHeaders = document.querySelectorAll('.catalog-row-header');
+        var rowHeaders = document.querySelectorAll('#catalog-grid .catalog-row-header');
         for (var rh = 0; rh < rowHeaders.length; rh++) if (rowHeaders[rh] && rowHeaders[rh].offsetParent !== null) list.push(rowHeaders[rh]);
         focusableElements = list; window.catalogCards = list;
         _focusCache.timestamp = now;
@@ -1512,7 +1511,7 @@ function onBack() {
     }
     if (dn) { if (typeof window.closeDonateOverlay === 'function') window.closeDonateOverlay(); return true; }
     if (cat) {
-        var h = document.querySelector('#torrents-grid .torrent-card.catalog-folder-card');
+        var h = document.querySelector('#catalog-grid .torrent-card.catalog-folder-card');
         if (h) return true;
         if (window.catalogState) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); }
         if (typeof window.backToCatalogList === 'function') { AppState.currentScreen = 'catalog'; window.backToCatalogList(); }
@@ -2545,13 +2544,13 @@ function setupMouseControls() {
 // Режим рядов: открыт список каталогов (не конкретный каталог) и ряды отрендерены
 function isCatalogRowsMode() {
     return !window.catalogState.currentCatalog &&
-        document.querySelector('.catalog-row') !== null;
+        document.querySelector('#catalog-grid .catalog-row') !== null;
 }
 
 // Массив массивов видимых карточек: rows[ряд][колонка]
 function getCatalogRows() {
     var rows = [];
-    var rowEls = document.querySelectorAll('.catalog-row');
+    var rowEls = document.querySelectorAll('#catalog-grid .catalog-row');
     for (var i = 0; i < rowEls.length; i++) {
         var cards = rowEls[i].querySelectorAll('.catalog-row-card');
         if (!cards.length) cards = rowEls[i].querySelectorAll('.torrent-card'); // фолбэк
@@ -2563,7 +2562,7 @@ function getCatalogRows() {
 }
 
 function getCatalogRowHeaders() {
-    var headers = document.querySelectorAll('.catalog-row-header');
+    var headers = document.querySelectorAll('#catalog-grid .catalog-row-header');
     var visible = [];
     for (var i = 0; i < headers.length; i++) if (VISIBLE(headers[i])) visible.push(headers[i]);
     return visible;
