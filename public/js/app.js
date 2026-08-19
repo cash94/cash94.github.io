@@ -56,7 +56,7 @@ function safeExecute(fn, errorMessage) {
 
 // Экраны торрентов и каталога остаются смонтированными. При переключении вкладок
 // меняем только видимость и восстанавливаем позицию общего скролл-контейнера.
-function showContentScreen(screen) {
+function showContentScreen(screen, restoreScrollTop) {
   var torrentsScreen = getEl('content-torrents');
   var catalogScreen = getEl('content-catalog');
   var mainContainer = getEl('main-container');
@@ -74,6 +74,11 @@ function showContentScreen(screen) {
   if (typeof AppState !== 'undefined') {
     AppState.currentScreen = screen;
     AppState.contentScroll = AppState.contentScroll || {};
+    // При возврате из detail передаётся позиция каталога явно: detail не является
+    // контентным экраном и не может обновить сохранённый scroll сам.
+    if (typeof restoreScrollTop === 'number') {
+      AppState.contentScroll[screen] = restoreScrollTop;
+    }
   }
 
   requestAnimationFrame(function () {
@@ -599,7 +604,7 @@ function setupNavigation() {
       console.log('🔙 Возврат из детального просмотра');
       var mainContainer = getEl('main-container');
       resetDetailBackground();
-      var savedScroll = AppState.backupScroll || 0;
+      var savedScroll = typeof AppState.backupScroll === 'number' ? AppState.backupScroll : 0;
 
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
@@ -698,7 +703,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
   if (returnTo === 'catalog' && AppState.playFromHash && AppState.isCatalogSerials) {
     AppState.playFromHash = false;
     AppState.isCatalogSerials = false;
-    showContentScreen('catalog');
+    showContentScreen('catalog', AppState.backupScroll);
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
       window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
     });
@@ -706,7 +711,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
   }
 
   if (returnTo === 'catalog') {
-    showContentScreen('catalog');
+    showContentScreen('catalog', context.savedScroll);
 
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
       if (detailView) detailView.style.display = 'none';
@@ -723,8 +728,8 @@ function restoreFocusAfterNavigation(returnTo, context) {
 
       // Восстанавливаем скролл ДО фокусировки
       var mc = getEl('main-container');
-      if (mc && AppState.backupScroll > 0) {
-        mc.scrollTop = AppState.backupScroll;
+      if (mc && typeof context.savedScroll === 'number') {
+        mc.scrollTop = context.savedScroll;
       }
 
       // Фокус на нужную карточку без перерендера
@@ -738,8 +743,8 @@ function restoreFocusAfterNavigation(returnTo, context) {
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
       // Восстанавливаем скролл ДО фокусировки
       var mc = getEl('main-container');
-      if (mc && AppState.backupScroll > 0) {
-        mc.scrollTop = AppState.backupScroll;
+      if (mc && typeof context.savedScroll === 'number') {
+        mc.scrollTop = context.savedScroll;
       }
       if (detailView) detailView.style.display = 'none';
       if (typeof window.ensureCatalogFocus === 'function') {
