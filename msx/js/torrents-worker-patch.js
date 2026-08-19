@@ -177,6 +177,8 @@
             if (!path) return null;
             path = String(path);
 
+            if (window.getTmdbImageUrl) return window.getTmdbImageUrl(path, 'w342');
+
             // Если это уже полный URL, заменяем image.tmdb.org на прокси
             if (path.indexOf('http') === 0) {
                 // Используем функцию из main thread если доступна
@@ -280,12 +282,9 @@
 
             // Постер фильма
             if (r.movieStillPosterPath) {
-                var protocol = 'https:';
-                if (window.AppState && AppState.protocol) {
-                    protocol = String(AppState.protocol).replace(/:+$/, '');
-                    if (protocol.indexOf(':') === -1) protocol += ':';
-                }
-                var stillUrl = protocol + '//tsimg.hnar.online/t/p/w300' + r.movieStillPosterPath;
+                var stillUrl = window.getTmdbImageUrl
+                    ? window.getTmdbImageUrl(r.movieStillPosterPath, 'w300')
+                    : normalizePosterUrl(r.movieStillPosterPath);
                 var fileItem = document.querySelector('.file-item');
                 if (fileItem) updateFileItemStill(fileItem, stillUrl);
             }
@@ -315,7 +314,9 @@
     function _applyTmdbDetailsToDOM(details, elements) {
         // Backdrop
         if (details.backdrop_path && elements.detailViewDiv) {
-            var bp = AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
+            var bp = window.getTmdbImageUrl
+                ? window.getTmdbImageUrl(details.backdrop_path, 'original')
+                : AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
 
             // Добавляем linear-gradient поверх картинки для 50% затемнения
             elements.detailViewDiv.style.backgroundImage = 'linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url(' + bp + ')';
