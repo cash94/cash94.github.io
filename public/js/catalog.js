@@ -6,26 +6,53 @@ var CATALOG_CONSTANTS = {
     CACHE_TTL_MS: 3600000,              // 1 час
     FETCH_TIMEOUT_MS: 5000,             // 5 секунд
     CATALOG_CACHE_TTL_MS: 3600000,      // 1 час для каталогов
-    ITEMS_PER_PAGE: 100,
-    MAX_POSTER_CACHE: 150,
+    ITEMS_PER_PAGE: 150,
+    MAX_POSTER_CACHE: 300,
     MAX_DETAIL_HISTORY: 50,
-    POSTER_BATCH_SIZE: 30,
+    POSTER_BATCH_SIZE: 50,
     TMDB_MAX_CACHE_SIZE: 75,
     TMDB_CLEANUP_INTERVAL_MS: 300000,   // 5 минут
     MAX_ACTORS: 12,
     MAX_RECOMMENDATIONS: 12,
     MAX_TRAILERS: 6,
     LOAD_MORE_MARGIN_PX: 200,
-    POSTER_OBSERVER_MARGIN_PX: 300,
+    POSTER_OBSERVER_MARGIN_PX: 600,
     CATALOG_UPDATE_THRESHOLD_HOURS: 6,
+    MAX_POSTER_DECODES: 16,
     FOCUS_DELAY_MS: 100,
-    ROW_POSTER_CONCURRENCY: 2,
+    ROW_POSTER_CONCURRENCY: 10,
     IMG_SIZES: {
+        POSTER_CARD: 'w342',
         POSTER_SMALL: 'w185',
         POSTER_MEDIUM: 'w342',
         BACKDROP: 'w1920'
     }
 };
+
+// Массив доменов, который легко расширять
+var mirrors = [
+    'tsimg.hnar.online',
+    'nl.imagetmdb.com',
+    'mocha.stull.xyz',
+    'proxy.vokino.pro/image',
+    'nmtmdb.duckdns.org'
+    // 'another-mirror.com' // можно добавлять новые через запятую
+];
+
+function replaceTmdbWithProxy(url) {
+    if (!url || typeof url !== 'string') return url;
+
+    // Если URL не содержит image.tmdb.org, возвращаем как есть
+    if (url.indexOf('image.tmdb.org') === -1) return url;
+
+    // Выбираем случайный прокси
+    var randomProxy = mirrors[Math.floor(Math.random() * mirrors.length)];
+
+    // Заменяем image.tmdb.org на прокси
+    return url.replace(/image\.tmdb\.org/g, randomProxy);
+}
+
+window.replaceTmdbWithProxy = replaceTmdbWithProxy;
 
 // ==================== КОНФИГУРАЦИЯ КАТАЛОГОВ ====================
 var CATALOG_CONFIG = {
@@ -101,6 +128,145 @@ LRUCache.prototype.clear = function () {
 LRUCache.prototype.size = function () {
     return this.cache.size;
 };
+
+// ==================== LRU + TTL КЭШ ====================
+function LRUTTLCache(maxSize, ttl) {
+    this.maxSize = maxSize > 0 ? maxSize : 100;
+    this.ttl = ttl > 0 ? ttl : 0;
+    this.cache = new Map();
+}
+
+LRUTTLCache.prototype._isExpired = function (entry) {
+    if (!entry) return true;
+    if (this.ttl <= 0) return false;
+
+    var ts = (entry.value && entry.value.timestamp)
+        ? entry.value.timestamp
+        : entry.timestamp;
+
+    return (Date.now() - ts) > this.ttl;
+};
+
+LRUTTLCache.prototype.get = function (key) {
+    var entry = this.cache.get(key);
+
+    if (!entry) return undefined;
+
+    if (this._isExpired(entry)) {
+        this.cache.delete(key);
+        return undefined;
+    }
+
+    // LRU: поднимаем запись в конец
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+
+    return entry.value;
+};
+
+LRUTTLCache.prototype.has = function (key) {
+    var entry = this.cache.get(key);
+
+    if (!entry) return false;
+
+    if (this._isExpired(entry)) {
+        this.cache.delete(key);
+        return false;
+    }
+
+    return true;
+};
+
+LRUTTLCache.prototype.set = function (key, value) {
+    if (this.cache.has(key)) {
+        this.cache.delete(key);
+    } else if (this.cache.size >= this.maxSize) {
+        var firstKey = this.cache.keys().next().value;
+        if (firstKey !== undefined) {
+            this.cache.delete(firstKey);
+        }
+    }
+
+    var now = Date.now();
+    var ts = (value && value.timestamp) ? value.timestamp : now;
+
+    this.cache.set(key, {
+        value: value,
+        timestamp: ts
+    });
+};
+
+LRUTTLCache.prototype.delete = function (key) {
+    return this.cache.delete(key);
+};
+
+LRUTTLCache.prototype.clear = function () {
+    this.cache.clear();
+};
+
+LRUTTLCache.prototype.size = function () {
+    return this.cache.size;
+};
+
+LRUTTLCache.prototype.forEach = function (callback, includeExpired) {
+    var self = this;
+
+    this.cache.forEach(function (entry, key) {
+        if (includeExpired || !self._isExpired(entry)) {
+            callback(entry.value, key, entry);
+        }
+    });
+};
+
+LRUTTLCache.prototype.cleanExpired = function () {
+    var self = this;
+
+    this.cache.forEach(function (entry, key) {
+        if (self._isExpired(entry)) {
+            self.cache.delete(key);
+        }
+    });
+};
+
+LRUTTLCache.prototype.trimToMax = function () {
+    while (this.cache.size > this.maxSize) {
+        var firstKey = this.cache.keys().next().value;
+        if (firstKey === undefined) break;
+        this.cache.delete(firstKey);
+    }
+};
+// ==================== /LRU + TTL КЭШ ====================
+
+function getPosterCardSize() {
+    return (
+        CATALOG_CONSTANTS.IMG_SIZES.POSTER_CARD ||
+        CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL ||
+        'w185'
+    );
+}
+
+function getProtocolBase() {
+    var p = (window.AppState && AppState.protocol) || 'https:';
+    p = String(p).replace(/\/+$/, '');
+    if (p.indexOf(':') === -1) p += ':';
+    return p;
+}
+
+function normalizePosterUrl(url) {
+    if (!url) return '';
+
+    if (url.indexOf('http') !== 0) return url;
+
+    var size = getPosterCardSize();
+    var protocol = getProtocolBase();
+
+    if (url.indexOf('tsimg.hnar.online/t/p/') !== -1) {
+        url = url.replace(/^https?:/, protocol);
+        url = url.replace(/\/t\/p\/[^/]+\//, '/t/p/' + size + '/');
+    }
+
+    return url;
+}
 
 // ==================== RUTUBE ТРЕЙЛЕРЫ ====================
 var rutubeTrailerState = {
@@ -335,14 +501,19 @@ function wrapRutubeHls(url) {
 }
 
 // ==================== TMDB КЭШ ====================
-var tmdbCache = {};
 var cats = [];
+
 var TMDB_CACHE_CONFIG = {
     ttl: CATALOG_CONSTANTS.CACHE_TTL_MS,
     maxSize: CATALOG_CONSTANTS.TMDB_MAX_CACHE_SIZE,
     cleanupInterval: CATALOG_CONSTANTS.TMDB_CLEANUP_INTERVAL_MS,
     enabled: true
 };
+
+var tmdbCache = new LRUTTLCache(
+    TMDB_CACHE_CONFIG.maxSize,
+    TMDB_CACHE_CONFIG.ttl
+);
 
 var detailHistory = [];
 
@@ -358,55 +529,82 @@ function getTmdbCacheKey(endpoint, params) {
 }
 
 function getFromTmdbCache(endpoint, params) {
-    if (!TMDB_CACHE_CONFIG.enabled) return null;
+    if (!TMDB_CACHE_CONFIG.enabled || !tmdbCache) return null;
+
     var key = getTmdbCacheKey(endpoint, params);
-    var cached = tmdbCache[key];
-    if (cached && (Date.now() - cached.timestamp < TMDB_CACHE_CONFIG.ttl)) {
-        return cached.data;
-    }
-    if (cached) delete tmdbCache[key];
-    return null;
+    var cached = tmdbCache.get(key);
+
+    if (!cached) return null;
+
+    return cached.data !== undefined ? cached.data : null;
 }
 
 function saveToTmdbCache(endpoint, params, data) {
-    if (!TMDB_CACHE_CONFIG.enabled) return;
+    if (!TMDB_CACHE_CONFIG.enabled || !tmdbCache) return;
+
     var key = getTmdbCacheKey(endpoint, params);
-    if (Object.keys(tmdbCache).length >= TMDB_CACHE_CONFIG.maxSize) cleanOldTmdbCache();
-    tmdbCache[key] = { data: data, timestamp: Date.now() };
+
+    tmdbCache.set(key, {
+        data: data,
+        timestamp: Date.now()
+    });
 }
 
 function cleanOldTmdbCache() {
-    var now = Date.now();
-    var keys = Object.keys(tmdbCache);
-    if (keys.length === 0) return;
-    var expired = [];
-    for (var i = 0; i < keys.length; i++) {
-        if (now - tmdbCache[keys[i]].timestamp >= TMDB_CACHE_CONFIG.ttl) expired.push(keys[i]);
-    }
-    for (var j = 0; j < expired.length; j++) delete tmdbCache[expired[j]];
-    keys = Object.keys(tmdbCache);
-    if (keys.length >= TMDB_CACHE_CONFIG.maxSize) {
-        var entries = keys.map(function (k) { return { k: k, t: tmdbCache[k].timestamp }; });
-        entries.sort(function (a, b) { return a.t - b.t; });
-        var toRemove = keys.length - TMDB_CACHE_CONFIG.maxSize + 15;
-        for (var r = 0; r < toRemove && r < entries.length; r++) delete tmdbCache[entries[r].k];
-    }
+    if (!tmdbCache) return;
+
+    tmdbCache.cleanExpired();
+    tmdbCache.trimToMax();
 }
 
-function clearTmdbCache() { tmdbCache = {}; }
+function clearTmdbCache() {
+    if (tmdbCache) tmdbCache.clear();
+}
 
 function getTmdbCacheStats() {
-    var now = Date.now(), valid = 0, expired = 0, size = 0;
-    var keys = Object.keys(tmdbCache);
-    for (var i = 0; i < keys.length; i++) {
-        var v = tmdbCache[keys[i]];
-        size += JSON.stringify(v.data).length;
-        (now - v.timestamp < TMDB_CACHE_CONFIG.ttl ? valid++ : expired++);
+    var now = Date.now();
+    var valid = 0;
+    var expired = 0;
+    var size = 0;
+
+    if (!tmdbCache) {
+        return {
+            totalEntries: 0,
+            validEntries: 0,
+            expiredEntries: 0,
+            totalSizeMB: '0.00',
+            maxSize: TMDB_CACHE_CONFIG.maxSize,
+            ttlHours: TMDB_CACHE_CONFIG.ttl / 3600000,
+            enabled: TMDB_CACHE_CONFIG.enabled
+        };
     }
+
+    tmdbCache.forEach(function (cached, key, entry) {
+        try {
+            size += JSON.stringify(cached.data).length;
+        } catch (e) {
+            // если данные не сериализуются — просто пропускаем размер
+        }
+
+        var ts = (cached && cached.timestamp)
+            ? cached.timestamp
+            : entry.timestamp;
+
+        if (now - ts < TMDB_CACHE_CONFIG.ttl) {
+            valid++;
+        } else {
+            expired++;
+        }
+    }, true);
+
     return {
-        totalEntries: keys.length, validEntries: valid, expiredEntries: expired,
-        totalSizeMB: (size / 1048576).toFixed(2), maxSize: TMDB_CACHE_CONFIG.maxSize,
-        ttlHours: TMDB_CACHE_CONFIG.ttl / 3600000, enabled: TMDB_CACHE_CONFIG.enabled
+        totalEntries: valid + expired,
+        validEntries: valid,
+        expiredEntries: expired,
+        totalSizeMB: (size / 1048576).toFixed(2),
+        maxSize: TMDB_CACHE_CONFIG.maxSize,
+        ttlHours: TMDB_CACHE_CONFIG.ttl / 3600000,
+        enabled: TMDB_CACHE_CONFIG.enabled
     };
 }
 
@@ -426,7 +624,7 @@ var catalogState = {
     activeRowPosterLoads: 0
 };
 
-var catalogCache = new Map();
+var catalogCache = new LRUCache(12);
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 function abortCatalogRequests() {
@@ -662,6 +860,14 @@ async function fetchCatalogItemMeta(item, mediaType) {
 // ==================== ЗАГРУЗКА КАТАЛОГА ====================
 async function loadCatalog(key) {
     if (!CATALOG_CONFIG[key]) return;
+    AppState.openInRow = false;
+
+    if (catalogState.currentCatalog === key &&
+        catalogState.items.length > 0 &&
+        getEl('catalog-grid').querySelector('.torrent-card.catalog-card')) {
+        return;
+    }
+
     AppState.backCurrentCatalog = key;
     abortCatalogRequests();
     catalogState.abortController = new AbortController();
@@ -671,7 +877,8 @@ async function loadCatalog(key) {
     catalogState.items = []; catalogState.totalItems = 0; catalogState.currentPage = 0;
     catalogState.hasMore = true; catalogState.isLoadingMore = false; catalogState.loadedItemIds = {};
     catalogState.loadedPostersCount = 0; catalogState.posterLoadQueue = [];
-    catalogState.posterCache.clear();
+    // Keep the bounded LRU across catalog switches so cached w342 poster URLs
+    // can be rendered immediately without another Worker or IndexedDB lookup.
     AppState.mediaType = config.mediaType;
     showCatalogLoading('Загрузка ' + config.name + '...');
     if (catalogCache.has(key)) {
@@ -697,6 +904,7 @@ async function loadCatalog(key) {
 
 async function loadHistoryCatalog() {
     abortCatalogRequests();
+    AppState.openInRow = false;
     catalogState.currentCatalog = 'history';
     catalogState.cardElements = {};
     catalogState.items = []; catalogState.totalItems = 0; catalogState.currentPage = 0;
@@ -736,7 +944,7 @@ async function loadHistoryCatalog() {
 }
 
 function showEmptyHistory() {
-    var g = getEl('torrents-grid');
+    var g = getEl('catalog-grid');
     if (!g) return;
     g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;"><div style="font-size:64px;margin-bottom:20px">📜</div><div style="font-size:18px;color:#aaa;margin-bottom:10px">История просмотра пуста</div><div style="font-size:14px;color:#666">Фильмы и сериалы, которые вы посмотрите, появятся здесь</div></div>';
 }
@@ -852,35 +1060,51 @@ function createCardElement(config) {
 
 // ==================== ОТОБРАЖЕНИЕ ====================
 function renderCatalogGrid() {
-    var grid = getEl('torrents-grid');
+    var grid = getEl('catalog-grid');
     if (!grid) return;
     grid.style.display = '';
     grid.innerHTML = '';
     if (catalogState.items.length === 0) { showEmptyCatalog(); return; }
     addCatalogHeader(grid);
-    var frag = document.createDocumentFragment();
-    for (var i = 0; i < catalogState.items.length; i++) {
-        frag.appendChild(createCatalogCard(catalogState.items[i], i));
-    }
-    grid.appendChild(frag);
-    if (catalogState.hasMore) addLoadMoreTrigger(grid);
-    catalogState.loadedPostersCount = 0;
-    initPosterLazyLoading();
-    //initPosterUnloading();
-    initLoadMoreObserver();
-    loadInitialPosters();
-    requestAnimationFrame(function () {
-        if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
-            if (typeof updateFocusableElements === 'function') updateFocusableElements();
-            setTimeout(function () {
-                if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
-            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+
+    var CHUNK = 8;
+    var i = 0;
+    var currentCatalogKey = catalogState.currentCatalog;
+
+    function renderChunk() {
+        if (catalogState.currentCatalog !== currentCatalogKey) return;
+        var frag = document.createDocumentFragment();
+        var end = Math.min(i + CHUNK, catalogState.items.length);
+        for (; i < end; i++) {
+            frag.appendChild(createCatalogCard(catalogState.items[i], i));
         }
-    });
+        grid.appendChild(frag);
+
+        if (i < catalogState.items.length) {
+            requestAnimationFrame(renderChunk);
+        } else {
+            // финализация — то что было после цикла
+            if (catalogState.hasMore) addLoadMoreTrigger(grid);
+            catalogState.loadedPostersCount = 0;
+            initPosterLazyLoading();
+            //initPosterUnloading();   // ← раскомментировать!
+            initLoadMoreObserver();
+            loadInitialPosters();
+            requestAnimationFrame(function () {
+                if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
+                    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+                    setTimeout(function () {
+                        if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+                    }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+                }
+            });
+        }
+    }
+    requestAnimationFrame(renderChunk);
 }
 
 function appendCatalogItems(newItems) {
-    var grid = getEl('torrents-grid');
+    var grid = getEl('catalog-grid');
     if (!grid) return;
 
     var old = getEl('load-more-trigger');
@@ -941,9 +1165,7 @@ function createCatalogCard(item, index) {
     var ratingHtml = rating ?
         '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + ratingColor + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + ratingColor + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);">' + rating + '</div>' : '';
 
-    var posterHtml = cached ?
-        '<img src="' + cached + '" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover">' :
-        '<div class="no-poster catalog-poster-loading"></div>';
+    var posterHtml = '<div class="no-poster catalog-poster-loading"></div>';
 
     var year = getCatalogItemYear(item);
     var badgeText = year || 'Каталог';
@@ -969,7 +1191,7 @@ function createCatalogCard(item, index) {
 
 // Event Delegation для сетки
 document.addEventListener('DOMContentLoaded', function () {
-    var grid = getEl('torrents-grid');
+    var grid = getEl('catalog-grid');
     if (!grid) return;
     grid.addEventListener('click', function (e) {
         // Карточка «Показать все» / папка категории
@@ -1071,7 +1293,7 @@ function addLoadMoreTrigger(grid) {
 }
 
 function showEmptyCatalog() {
-    var g = getEl('torrents-grid');
+    var g = getEl('catalog-grid');
     if (!g) return;
     g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталог пуст</div></div>';
 }
@@ -1126,7 +1348,7 @@ function initPosterUnloading() {
         }
     }, { rootMargin: '1500px 0px', threshold: 0 });
 
-    var cards = document.querySelectorAll('.torrent-card.catalog-card');
+    var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
     for (var i = 0; i < cards.length; i++) {
         catalogState.unloadObserver.observe(cards[i]);
     }
@@ -1134,13 +1356,28 @@ function initPosterUnloading() {
 
 function loadInitialPosters() {
     var idxs = [];
-    var limit = Math.min(catalogState.postersPerBatch, catalogState.items.length);
+    var limit = Math.min(
+        CATALOG_CONSTANTS.POSTER_BATCH_SIZE,
+        catalogState.items.length
+    );
+
     for (var i = 0; i < limit; i++) {
         var it = catalogState.items[i];
         if (!it) continue;
-        if (!catalogState.posterCache.has(it.id + '_' + (it.media_type || 'movie'))) idxs.push(i);
+
+        var card = catalogState.cardElements[i];
+        if (!card) continue;
+
+        // Если img ещё нет — ставим в очередь
+        if (!card.querySelector('img.catalog-poster-img') && card.dataset.posterRequested !== '1') {
+            card.dataset.posterRequested = '1';
+            idxs.push(i);
+        }
     }
-    if (idxs.length > 0) loadPosterBatch(idxs);
+
+    if (idxs.length > 0) {
+        loadPosterBatch(idxs);
+    }
 }
 
 function initPosterLazyLoading() {
@@ -1148,21 +1385,22 @@ function initPosterLazyLoading() {
     catalogState.posterObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
             if (entries[i].isIntersecting) {
-                var idx = parseInt(entries[i].target.dataset.catalogIndex, 10);
+                var target = entries[i].target;
+                if (target.dataset.posterRequested === '1') continue;
+                target.dataset.posterRequested = '1';
+                catalogState.posterObserver.unobserve(target);
+                var idx = parseInt(target.dataset.catalogIndex, 10);
                 var it = catalogState.items[idx];
                 if (!it) continue;
-                var key = it.id + '_' + (it.media_type || 'movie');
-                if (!catalogState.posterCache.has(key) && catalogState.posterLoadQueue.indexOf(idx) === -1) {
-                    addToPosterQueue(idx);
-                }
+                addToPosterQueue(idx);
             }
         }
     }, { rootMargin: CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX + 'px', threshold: 0.1 });
-    var cards = document.querySelectorAll('.torrent-card.catalog-card');
+    var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
     for (var i = 0; i < cards.length; i++) {
         var it = catalogState.items[i];
         if (!it) continue;
-        if (!catalogState.posterCache.has(it.id + '_' + (it.media_type || 'movie'))) {
+        if (!cards[i].querySelector('img.catalog-poster-img') && cards[i].dataset.posterRequested !== '1') {
             catalogState.posterObserver.observe(cards[i]);
         }
     }
@@ -1170,17 +1408,19 @@ function initPosterLazyLoading() {
 
 function updatePosterObservers() {
     if (!catalogState.posterObserver) return;
-    var cards = document.querySelectorAll('.torrent-card.catalog-card');
+    var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
     for (var i = 0; i < cards.length; i++) {
         var it = catalogState.items[i];
         if (!it) continue;
-        if (!catalogState.posterCache.has(it.id + '_' + (it.media_type || 'movie'))) {
+        if (!cards[i].querySelector('img.catalog-poster-img') && cards[i].dataset.posterRequested !== '1') {
             try { catalogState.posterObserver.observe(cards[i]); } catch (e) { }
         }
     }
 }
 
 function addToPosterQueue(idx) {
+    var card = catalogState.cardElements[idx];
+    if (card) card.dataset.posterRequested = '1';
     if (catalogState.posterLoadQueue.indexOf(idx) !== -1) return;
     catalogState.posterLoadQueue.push(idx);
     if (!catalogState.isPosterLoading) loadNextPosterBatch();
@@ -1194,30 +1434,44 @@ function loadNextPosterBatch() {
 }
 
 function loadPosterBatch(indices) {
-    if (indices.length === 0) return;
+    if (!indices || indices.length === 0) return;
+
     catalogState.isPosterLoading = true;
 
-    var i = 0;
-    function processNext() {
-        if (i >= indices.length) {
+    var active = 0;
+    var ptr = 0;
+    var maxActive = CATALOG_CONSTANTS.MAX_POSTER_DECODES || 2;
+
+    function next() {
+        if (ptr >= indices.length && active === 0) {
             catalogState.isPosterLoading = false;
+
             if (catalogState.posterLoadQueue.length > 0) {
-                // Небольшая пауза перед следующей партией
-                setTimeout(loadNextPosterBatch, 15);
+                setTimeout(loadNextPosterBatch, 10);
             }
+
             return;
         }
 
-        loadPosterForIndex(indices[i]).then(function () {
-            i++;
-            // Пауза 100-150мс между постерами дает главному потоку время на отрисовку кадров (60 FPS)
-            setTimeout(processNext, 5);
-        }).catch(function () {
-            i++;
-            setTimeout(processNext, 5);
-        });
+        while (active < maxActive && ptr < indices.length) {
+            active++;
+
+            var index = indices[ptr];
+            ptr++;
+
+            loadPosterForIndex(index)
+                .catch(function () {
+                    // игнорируем ошибку отдельного постера
+                })
+                // loadPosterBatch
+                .then(function () {
+                    active--;
+                    setTimeout(next, 0);          // без rAF
+                });
+        }
     }
-    processNext();
+
+    next();
 }
 
 async function loadPosterForIndex(index) {
@@ -1239,6 +1493,13 @@ async function loadCatalogPoster(card, title, mt, id, index) {
         div.innerHTML = '<div class="no-poster">Каталог закрыт</div>';
         return;
     }
+    if (window.PosterDB) {
+        var cached = await PosterDB.get(key);
+        if (cached) {
+            updatePosterDOM(div, rating, cached);
+            return;
+        }
+    }
     // Проверяем LRU-кэш
     var cached = catalogState.posterCache.get(key);
     if (cached) {
@@ -1259,14 +1520,27 @@ async function loadCatalogPoster(card, title, mt, id, index) {
     try {
         var url = null;
         var p = { id: id, type: mt };
+
         var cachedTmdb = getFromTmdbCache('poster', p);
+
         if (cachedTmdb && cachedTmdb.posterUrl) {
-            url = cachedTmdb.posterUrl;
-        } else if (id && id !== 'undefined' && id !== 'null') {
-            var d = await safeFetch('/api/tmdb/item?id=' + id + '&type=' + mt);
-            if (d && d.poster_path) {
-                url = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + d.poster_path;
-                saveToTmdbCache('poster', p, { posterUrl: url, data: d });
+            url = normalizePosterUrl(cachedTmdb.posterUrl);
+        } else if (id && id !== 'undefined' && id !== 'null' && window.CatalogWorker) {
+            try {
+                var posterResult = await CatalogWorker.fetchPosterUrl(
+                    id,
+                    mt,
+                    title,
+                    getProtocolBase(),
+                    getPosterCardSize()
+                );
+
+                if (posterResult && posterResult.posterUrl) {
+                    url = normalizePosterUrl(posterResult.posterUrl);
+                    saveToTmdbCache('poster', p, { posterUrl: url });
+                }
+            } catch (e) {
+                console.warn('fetchPosterUrl worker error:', e);
             }
         }
         if (!url && window.tmdb && window.tmdb.searchPoster) {
@@ -1288,43 +1562,90 @@ async function loadCatalogPoster(card, title, mt, id, index) {
 }
 
 function updatePosterDOM(div, rating, url) {
-    var rHtml = '';
-    if (rating && rating !== 'null' && rating !== 'undefined') {
-        var c = getRatingColor(parseFloat(rating));
-        rHtml = '<div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + c + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + c + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);">' + rating + '</div>';
-    }
+    return new Promise(function (resolve) {
+        if (!div) {
+            resolve();
+            return;
+        }
 
-    if (!url) {
-        div.innerHTML = '<div class="no-poster">Нет постера</div>' + rHtml;
-        return;
-    }
+        // --- ДОБАВЛЕННАЯ ЛОГИКА ЗАМЕНЫ ---
+        // Если url начинается на http:// или https://image.tmdb.org/t/p/w342/,
+        // заменяем image.tmdb.org на tsimg.hnar.online, сохраняя протокол (http или https).
+        if (url) {
+            // Случайный выбор элемента из массива
+            var randomDomain = mirrors[Math.floor(Math.random() * mirrors.length)];
 
-    // Создаем картинку в памяти, а не через innerHTML
-    var img = new Image();
-    img.style.width = '100%';
-    img.style.height = '100%';
-    img.style.objectFit = 'cover';
+            // Замена с использованием конкатенации строк (без шаблонных литералов ES6)
+            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1' + randomDomain + '/t/p/w342/');
+        }
+        // --------------------------------
 
-    var insertToDom = function () {
-        // Проверяем, не уничтожена ли карточка к этому моменту
-        if (!div.isConnected) return;
-        div.innerHTML = rHtml; // Очищаем от плейсхолдера ⏳ и ставим рейтинг
-        div.appendChild(img);  // Вставляем уже декодированную картинку (без фризов)
-    };
+        if (!url) {
+            div.innerHTML = '<div class="no-poster">Нет постера</div>';
+            resolve();
+            return;
+        }
 
-    img.onerror = function () {
-        if (div.isConnected) div.innerHTML = '<div class="no-poster">Нет постера</div>' + rHtml;
-    };
+        var img = new Image();
 
-    img.src = url;
+        img.className = 'catalog-poster-img';
+        img.decoding = 'async';
+        img.alt = '';
 
-    if (typeof img.decode === 'function') {
-        // Chrome 64+: декодируем JPEG в фоновом потоке, разгружая CPU
-        img.decode().then(insertToDom).catch(insertToDom);
-    } else {
-        // Фоллбек для очень старых браузеров
-        img.onload = insertToDom;
-    }
+        var settled = false;
+
+        function finish(ok) {
+            if (settled) return;
+            settled = true;
+
+            if (ok && div.isConnected) {
+                var oldImg = div.querySelector('img.catalog-poster-img');
+                if (oldImg) oldImg.remove();
+
+                var placeholder = div.querySelector('.no-poster');
+                if (placeholder) placeholder.remove();
+
+                div.appendChild(img);
+
+                // Если есть анимация появления, лучше делать её очень короткой
+                // или вообще отключить во время массовой загрузки.
+                requestAnimationFrame(function () {
+                    img.classList.add('loaded');
+                });
+            } else if (!ok && div.isConnected) {
+                var ph = div.querySelector('.no-poster');
+                if (!ph) {
+                    div.innerHTML = '<div class="no-poster">Нет постера</div>';
+                }
+            }
+
+            resolve();
+        }
+
+        img.onerror = function () {
+            finish(false);
+        };
+
+        if (typeof img.decode === 'function') {
+            img.src = url;
+            img.decode()
+                .then(function () {
+                    finish(true);
+                })
+                .catch(function () {
+                    if (img.naturalWidth > 0) {
+                        finish(true);
+                    } else {
+                        finish(false);
+                    }
+                });
+        } else {
+            img.onload = function () {
+                finish(true);
+            };
+            img.src = url;
+        }
+    });
 }
 
 // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР ====================
@@ -1343,8 +1664,11 @@ function setupDetailLayout(item, index, posterUrl) {
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
     var dv = getEl('detail-view'), mc = getEl('main-container');
-    var savedScroll = mc ? mc.scrollTop : 0;
-    AppState.backupScroll = savedScroll;
+    var savedScroll = 0;
+    if (mc && mc.scrollTop > 0) {
+        savedScroll = mc.scrollTop
+        AppState.backupScroll = savedScroll;
+    }
     var oldP = document.querySelector('.detail-progress');
     if (oldP) oldP.remove();
     var dh = document.querySelector('.detail-header');
@@ -1498,6 +1822,7 @@ function startTrailerBackground(url) {
 
     // Скрываем backdrop, пока играет трейлер
     if (backdrop) backdrop.classList.add('hidden');
+    dv.classList.add('hide-before');
 
     // ★ Плавное угасание cde / subtitle / back-btn за 10 секунд
     var fadeOutEls = [cde, sub, bb];
@@ -1606,6 +1931,8 @@ function stopTrailerBackground() {
     }
 
     if (backdrop) backdrop.classList.remove('hidden');
+    var dv = getEl('detail-view');
+    if (dv) dv.classList.remove('hide-before');
 }
 window.stopTrailerBackground = stopTrailerBackground;
 
@@ -1770,12 +2097,27 @@ function _loadBackdropDecoded(container, url) {
 /**
  * Рендер списка актёров
  */
-async function renderDetailActors(item, aw) {
+/**
+Рендер списка актёров
+@param {object} item - элемент каталога
+@param {HTMLElement} aw - обёртка для актёров
+@param {Array} [preloadedActors] - если переданы, используем их без запроса
+*/
+async function renderDetailActors(item, aw, preloadedActors) {
     if (!aw) return;
     var ae = getEl('catalog-detail-actors');
-    ae.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>';
-    aw.classList.remove('hidden');
-    var actors = await fetchCatalogActors(item);
+    var actors;
+
+    if (preloadedActors) {
+        // Данные уже загружены параллельно — рендерим сразу
+        actors = preloadedActors;
+    } else {
+        // Фоллбэк: грузим как раньше
+        ae.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>';
+        aw.classList.remove('hidden');
+        actors = await fetchCatalogActors(item);
+    }
+
     if (actors.length > 0) {
         var frag = document.createDocumentFragment();
         actors.forEach(function (a) {
@@ -1788,8 +2130,10 @@ async function renderDetailActors(item, aw) {
         });
         ae.innerHTML = '';
         ae.appendChild(frag);
+        aw.classList.remove('hidden');
     } else {
         ae.innerHTML = '<div class="catalog-empty">Актеры не найдены</div>';
+        aw.classList.remove('hidden');
     }
 }
 
@@ -1918,37 +2262,45 @@ async function showCatalogDetail(item, index, posterUrl) {
     if (aw) aw.classList.add('hidden');
     if (rw) rw.classList.add('hidden');
     if (wb) {
+        var knownPoster = getCatalogKnownPosterUrl(item, posterUrl);
+
         wb.onclick = function () {
             dv.style.display = 'none';
             dv.style.pointerEvents = 'none';
             if (mc) mc.style.pointerEvents = 'auto';
             AppState.currentScreen = 'search';
             AppState.isSearch = false;
-            showCatalogSearch(wb.dataset.searchTitle || title, posterUrl, item);
+            showCatalogSearch(wb.dataset.searchTitle || title, knownPoster, item);
         };
     }
     var restore = function () {
         if (mc && savedScroll > 0) setTimeout(function () { mc.scrollTop = savedScroll; }, 50);
     };
 
-    var details = await fetchCatalogItemDetails(item);
-    restore();
+    // ==================== ПАРАЛЛЕЛЬНАЯ ЗАГРУЗКА ====================
+    // Запускаем все независимые запросы одновременно
+    var detailsPromise = fetchCatalogItemDetails(item);
+    var actorsPromise = fetchCatalogActors(item);
 
-    // Рендерим все части
+    // Ждём детали для рендера шапки (обычно самый быстрый запрос)
+    var details = await detailsPromise;
+    restore();
     renderDetailHeader(item, posterUrl, details);
-    await renderDetailActors(item, aw);
+
+    // Ждём актёров (уже загружаются параллельно с деталями)
+    var actors = await actorsPromise;
+    renderDetailActors(item, aw, actors);
+
+    // Рекомендации — рендерим сразу из details
     var src = details || item || {};
     renderDetailRecommendations(src, rw, mt);
-    //renderDetailTrailers(src);
 
-    //     RUTUBE ТРЕЙЛЕР    
+    // ==================== RUTUBE ТРЕЙЛЕР (параллельно) ====================
     stopTrailerBackground();
-
     var trailerTitle = src.title || src.name || title;
     var trailerOriginal = src.original_title || src.original_name || '';
     var trailerDate = src.release_date || src.first_air_date || '';
     var trailerCacheKey = String(item.id || '') + '_' + mt;
-
     if (rutubeTrailerCache[trailerCacheKey]) {
         // Уже искали — показываем мгновенно (важно при возврате из плеера)
         rutubeTrailerState.currentUrl = rutubeTrailerCache[trailerCacheKey].url;
@@ -1957,7 +2309,6 @@ async function showCatalogDetail(item, index, posterUrl) {
     } else {
         rutubeTrailerState.currentUrl = null;
         rutubeTrailerState.currentTitle = null;
-
         fetchRutubeTrailer(trailerTitle, trailerOriginal, trailerDate).then(function (result) {
             if (!result || !result.url) return;
             rutubeTrailerCache[trailerCacheKey] = {
@@ -1976,11 +2327,10 @@ async function showCatalogDetail(item, index, posterUrl) {
             console.warn('RuTube trailer search failed:', e);
         });
     }
-    //     КОНЕЦ БЛОКА    
+    // ==================== КОНЕЦ БЛОКА ====================
 
     // Делегирование событий
     setupDetailDelegation(dv);
-
     // Фокус на кнопку просмотра
     requestAnimationFrame(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
@@ -2018,7 +2368,7 @@ function onCatalogItemClick(item, index) {
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
     localStorage.setItem('lastCatalogCardIndex', item.num_index !== undefined ? item.num_index : index);
-    var card = document.querySelector('.torrent-card.catalog-card[data-catalog-index="' + index + '"]');
+    var card = document.querySelector('#catalog-grid .torrent-card.catalog-card[data-catalog-index="' + index + '"]');
     var pu = null;
     if (card) {
         var img = card.querySelector('.torrent-poster img');
@@ -2042,8 +2392,19 @@ function showCatalogSearch(q, pu, item) {
         window.pendingCatalogItem = item;
         AppState.searchReturnTo = 'detail';
         if (item) {
+            pu = getCatalogKnownPosterUrl(item, pu);
+
+            window.pendingCatalogPoster = pu;
+            window.pendingCatalogItem = item;
+
             AppState.pendingDetailItem = item;
             AppState.pendingDetailPoster = pu;
+            AppState.pendingDetailTmdbId = item && (item.id || item.tmdbId) || null;
+            AppState.pendingDetailMediaType = item && item.media_type || null;
+
+            if (item && item.media_type) {
+                AppState.mediaType = item.media_type;
+            }
             AppState.pendingDetailIndex = catalogState.lastSelectedIndex;
         }
         AppState.currentScreen = 'search';
@@ -2215,7 +2576,7 @@ async function fetchAvailableCatalogs() {
 }
 
 async function showCatalogList() {
-    var grid = getEl('torrents-grid');
+    var grid = getEl('catalog-grid');
     if (!grid) return;
     abortCatalogRequests();
 
@@ -2248,6 +2609,8 @@ async function showCatalogList() {
     }
 
     // Параллельная загрузка всех рядов
+    return loadCatalogRowsProgressively(grid, keys);
+
     var loadPromises = keys.map(function (key) {
         return loadRowItems(key).then(function (items) {
             return { key: key, items: items };
@@ -2297,6 +2660,107 @@ async function showCatalogList() {
 /**
  * Загружает до 19 элементов для ряда категории
  */
+function loadCatalogRowsProgressively(grid, keys) {
+    var MAX_PARALLEL_ROW_LOADS = 3;
+    var results = new Array(keys.length);
+    var nextToLoad = 0;
+    var nextToRender = 0;
+    var activeLoads = 0;
+    var completedLoads = 0;
+    var renderedRows = 0;
+    var rowsActivated = false;
+    var finished = false;
+
+    function isCurrentCatalogList() {
+        return AppState.currentScreen === 'catalog' && !catalogState.currentCatalog;
+    }
+
+    function finish(value, resolve) {
+        if (finished) return;
+        finished = true;
+        resolve(value);
+    }
+
+    function observeRowPosters(row) {
+        if (!catalogState.rowPosterObserver) {
+            initRowPosterLazyLoading();
+            return;
+        }
+        var cards = row.querySelectorAll('.catalog-row-card');
+        for (var i = 0; i < cards.length; i++) {
+            if (cards[i].dataset.itemIndex !== undefined && cards[i].dataset.posterLoaded !== '1') {
+                catalogState.rowPosterObserver.observe(cards[i]);
+            }
+        }
+    }
+
+    function activateRows() {
+        if (rowsActivated) return;
+        rowsActivated = true;
+        requestAnimationFrame(function () {
+            if (!isCurrentCatalogList()) return;
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            setTimeout(function () {
+                if (!isCurrentCatalogList()) return;
+                grid.style.display = 'grid';
+                restoreRowFocus();
+            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+        });
+    }
+
+    return new Promise(function (resolve) {
+        function renderReadyRows() {
+            if (!isCurrentCatalogList()) {
+                finish(false, resolve);
+                return;
+            }
+            while (nextToRender < keys.length && results[nextToRender] !== undefined) {
+                var result = results[nextToRender++];
+                if (!result.items || result.items.length === 0) continue;
+                var row = createCatalogRow(result.key, result.items);
+                if (!row) continue;
+                if (renderedRows === 0) grid.innerHTML = '';
+                grid.appendChild(row);
+                renderedRows++;
+                observeRowPosters(row);
+                activateRows();
+            }
+        }
+
+        function scheduleLoads() {
+            if (finished) return;
+            if (!isCurrentCatalogList()) {
+                finish(false, resolve);
+                return;
+            }
+            if (completedLoads === keys.length) {
+                if (renderedRows === 0) {
+                    grid.innerHTML = '<div class="catalog-rows-loading"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталоги пусты</div></div>';
+                }
+                finish(true, resolve);
+                return;
+            }
+            while (activeLoads < MAX_PARALLEL_ROW_LOADS && nextToLoad < keys.length) {
+                (function (index, key) {
+                    activeLoads++;
+                    loadRowItems(key)
+                        .then(function (items) { results[index] = { key: key, items: items || [] }; })
+                        .catch(function () { results[index] = { key: key, items: [] }; })
+                        .then(function () {
+                            activeLoads--;
+                            completedLoads++;
+                            renderReadyRows();
+                            scheduleLoads();
+                        });
+                })(nextToLoad, keys[nextToLoad]);
+                nextToLoad++;
+            }
+        }
+
+        scheduleLoads();
+    });
+}
+
 async function loadRowItems(key) {
     var LIMIT = 10;
     if (key === 'history') {
@@ -2447,13 +2911,23 @@ async function loadRowPoster(card, item) {
         return;
     }
 
-    if (id && id !== 'undefined' && id !== 'null') {
+    if (id && id !== 'undefined' && id !== 'null' && window.CatalogWorker) {
         try {
-            var d = await safeFetch('/api/tmdb/item?id=' + id + '&type=' + mt);
-            if (d && d.poster_path) {
-                var url2 = AppState.protocol + '//tsimg.hnar.online/t/p/' + CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM + d.poster_path;
+            var posterResult = await CatalogWorker.fetchPosterUrl(
+                id,
+                mt,
+                getCatalogItemTitle(item),
+                getProtocolBase(),
+                getPosterCardSize()
+            );
+
+            if (posterResult && posterResult.posterUrl) {
+                var url2 = normalizePosterUrl(posterResult.posterUrl);
+
                 catalogState.posterCache.set(cacheKey, url2);
+
                 if (card.isConnected) await setRowPosterImg(imgBox, url2);
+
                 return;
             }
         } catch (e) { }
@@ -2491,7 +2965,7 @@ function initRowPosterLazyLoading() {
         processRowPosterQueue();
     }, { rootMargin: CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX + 'px', threshold: 0.1 });
 
-    var cards = document.querySelectorAll('.catalog-row-card');
+    var cards = document.querySelectorAll('#catalog-grid .catalog-row-card');
     for (var i = 0; i < cards.length; i++) {
         if (cards[i].dataset.itemIndex !== undefined && cards[i].dataset.posterLoaded !== '1') {
             catalogState.rowPosterObserver.observe(cards[i]);
@@ -2520,6 +2994,16 @@ function processRowPosterQueue() {
 
 function setRowPosterImg(box, url) {
     return new Promise(function (resolve) {
+        // --- ДОБАВЛЕННАЯ ЛОГИКА ЗАМЕНЫ ---
+        if (url) {
+            // Случайный выбор элемента из массива
+            var randomDomain = mirrors[Math.floor(Math.random() * mirrors.length)];
+
+            // Замена с использованием конкатенации строк (без шаблонных литералов ES6)
+            url = url.replace(/^(https?:\/\/)image\.tmdb\.org\/t\/p\/w342\//, '$1' + randomDomain + '/t/p/w342/');
+        }
+        // --------------------------------
+
         var img = new Image();
         img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
         var settled = false;
@@ -2536,12 +3020,13 @@ function setRowPosterImg(box, url) {
             if (box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
             settle();
         };
+
+        img.onerror = fail;
         img.onload = function () {
             // Декодируем в фоновом потоке (Chromium 64+), не блокируя main thread
             if (typeof img.decode === 'function') img.decode().then(insert).catch(insert);
             else insert();
         };
-        img.onerror = fail;
         img.src = url;
     });
 }
@@ -2768,12 +3253,12 @@ function createCatalogFolderCard(key, cfg) {
 }
 
 function showCatalogLoading(msg) {
-    var g = getEl('torrents-grid');
+    var g = getEl('catalog-grid');
     if (g) g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">' + (msg || 'Загрузка...') + '</div></div>';
 }
 
 function showCatalogError(msg) {
-    var g = getEl('torrents-grid');
+    var g = getEl('catalog-grid');
     if (g) g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div style="font-size:48px;margin-bottom:20px">⚠️</div><div style="font-size:16px;color:#ff6a6a">' + msg + '</div><button class="btn" style="margin-top:20px" onclick="window.loadCatalogList()">Попробовать снова</button></div>';
 }
 
@@ -2792,7 +3277,7 @@ function backToCatalogList() {
     catalogState.loadedItemIds = {};
     catalogState.loadedPostersCount = 0;
     catalogState.posterLoadQueue = [];
-    catalogState.posterCache.clear();
+    // The LRU is already capped; retaining it keeps the catalog home screen warm.
     catalogState.lastSelectedIndex = 0;
     catalogState.lastSelectedId = null;
     localStorage.removeItem('lastCatalogCardIndex');
@@ -2815,7 +3300,7 @@ window.loadMoreAndFocus = async function (idx, cols) {
     var row = Math.floor(idx / cols) + 1;
     await loadMoreCatalogItems();
     setTimeout(function () {
-        var cards = document.querySelectorAll('.torrent-card.catalog-card');
+        var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
         var ni = row * cols;
         if (cards.length > ni) {
             if (typeof updateFocusableElements === 'function') updateFocusableElements();
@@ -2848,7 +3333,7 @@ window.checkAndLoadMoreOnNavigation = function () {
 window.focusCatalogCardByIndex = function (target) {
     if (AppState.currentScreen !== 'catalog') return 0;
     if (typeof updateFocusableElements === 'function') updateFocusableElements();
-    var cards = document.querySelectorAll('.torrent-card.catalog-card'), idx = 0;
+    var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card'), idx = 0;
     for (var i = 0; i < cards.length; i++) {
         if (cards[i].dataset.numIndex && parseInt(cards[i].dataset.numIndex) === target) { idx = i; break; }
     }
@@ -2872,6 +3357,25 @@ window.addToWatchHistory = async function (id, title, mt, pp) {
     }
 };
 
+function getCatalogKnownPosterUrl(item, posterUrl) {
+    if (!item) return posterUrl || null;
+
+    var mt = item.media_type || 'movie';
+    var url = posterUrl || null;
+
+    if (!url && catalogState && catalogState.posterCache) {
+        url = catalogState.posterCache.get((item.id || '') + '_' + mt);
+    }
+
+    if (!url && item.poster_path) {
+        url = getProtocolBase() + '//tsimg.hnar.online/t/p/' +
+            CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM +
+            (item.poster_path.indexOf('/') === 0 ? item.poster_path : '/' + item.poster_path);
+    }
+
+    return url;
+}
+
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 var tmdbCleanupIv = null;
 
@@ -2884,19 +3388,41 @@ function stopTmdbCleanup() {
     if (tmdbCleanupIv) { clearInterval(tmdbCleanupIv); tmdbCleanupIv = null; }
 }
 
+function preloadPosterCacheFromDB() {
+    if (!window.PosterDB || !window.PosterDB.getAll) return Promise.resolve();
+
+    return PosterDB.getAll().then(function (all) {
+        if (!all) return;
+        var keys = Object.keys(all);
+        for (var i = 0; i < keys.length; i++) {
+            // Не перезаписываем, если уже есть в памяти
+            if (!catalogState.posterCache.has(keys[i])) {
+                catalogState.posterCache.set(keys[i], all[keys[i]]);
+            }
+        }
+        console.log('✅ PosterDB: загружено ' + keys.length + ' постеров в память');
+    }).catch(function (e) {
+        console.warn('PosterDB preload error:', e);
+    });
+}
+
 function initCatalog() {
     startTmdbCleanup();
     initCatalogDetailButtons();
-    //setupCatalogRowsNavigation();
-    window.tmdbCache = {
+    preloadPosterCacheFromDB();
+
+    // Используем другое имя для публичного API
+    window.tmdbCacheAPI = {
         clear: clearTmdbCache,
         stats: getTmdbCacheStats,
         setEnabled: function (v) { TMDB_CACHE_CONFIG.enabled = v; },
         isEnabled: function () { return TMDB_CACHE_CONFIG.enabled; },
-        setTtl: function (v) { TMDB_CACHE_CONFIG.ttl = v; }
+        setTtl: function (v) {
+            TMDB_CACHE_CONFIG.ttl = v;
+            if (tmdbCache) tmdbCache.ttl = v;
+        }
     };
 }
-
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initCatalog);
 else initCatalog();
 
