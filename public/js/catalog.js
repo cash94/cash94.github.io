@@ -1445,14 +1445,16 @@ function loadPosterBatch(indices) {
 
     var active = 0;
     var ptr = 0;
-    var maxActive = CATALOG_CONSTANTS.MAX_POSTER_DECODES || 2;
+    var maxActive = CATALOG_CONSTANTS.MAX_POSTER_DECODES || 3;
 
     function next() {
         if (ptr >= indices.length && active === 0) {
             catalogState.isPosterLoading = false;
 
             if (catalogState.posterLoadQueue.length > 0) {
-                setTimeout(loadNextPosterBatch, 10);
+                // Используем requestIdleCallback для фоновой загрузки следующего батча
+                var scheduleNext = window.requestIdleCallback || function(cb) { setTimeout(cb, 16); };
+                scheduleNext(loadNextPosterBatch);
             }
 
             return;
@@ -1468,10 +1470,11 @@ function loadPosterBatch(indices) {
                 .catch(function () {
                     // игнорируем ошибку отдельного постера
                 })
-                // loadPosterBatch
                 .then(function () {
                     active--;
-                    setTimeout(next, 0);          // без rAF
+                    // Используем requestIdleCallback для следующего постера
+                    var scheduleNext = window.requestIdleCallback || function(cb) { setTimeout(cb, 0); };
+                    scheduleNext(next);
                 });
         }
     }
