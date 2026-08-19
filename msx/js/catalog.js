@@ -15,8 +15,8 @@ var CATALOG_CONSTANTS = {
     MAX_ACTORS: 12,
     MAX_RECOMMENDATIONS: 12,
     MAX_TRAILERS: 6,
-    LOAD_MORE_MARGIN_PX: 300,
-    POSTER_OBSERVER_MARGIN_PX: 1200,
+    LOAD_MORE_MARGIN_PX: 200,
+    POSTER_OBSERVER_MARGIN_PX: 600,
     CATALOG_UPDATE_THRESHOLD_HOURS: 6,
     MAX_POSTER_DECODES: 16,
     FOCUS_DELAY_MS: 100,
@@ -1072,40 +1072,29 @@ function renderCatalogGrid() {
     if (catalogState.items.length === 0) { showEmptyCatalog(); return; }
     addCatalogHeader(grid);
 
-    var CHUNK = 8;
-    var i = 0;
-    var currentCatalogKey = catalogState.currentCatalog;
-
-    function renderChunk() {
-        if (catalogState.currentCatalog !== currentCatalogKey) return;
-        var frag = document.createDocumentFragment();
-        var end = Math.min(i + CHUNK, catalogState.items.length);
-        for (; i < end; i++) {
-            frag.appendChild(createCatalogCard(catalogState.items[i], i));
-        }
-        grid.appendChild(frag);
-
-        if (i < catalogState.items.length) {
-            requestAnimationFrame(renderChunk);
-        } else {
-            // финализация — то что было после цикла
-            if (catalogState.hasMore) addLoadMoreTrigger(grid);
-            catalogState.loadedPostersCount = 0;
-            initPosterLazyLoading();
-            //initPosterUnloading();   // ⚡ Включаем выгрузку постеров
-            initLoadMoreObserver();
-            loadInitialPosters();
-            requestAnimationFrame(function () {
-                if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
-                    if (typeof updateFocusableElements === 'function') updateFocusableElements();
-                    setTimeout(function () {
-                        if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
-                    }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
-                }
-            });
-        }
+    // ⚡ Рендерим ВСЁ сразу — постеры загрузятся фоном через lazy loading
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < catalogState.items.length; i++) {
+        frag.appendChild(createCatalogCard(catalogState.items[i], i));
     }
-    requestAnimationFrame(renderChunk);
+    grid.appendChild(frag);
+
+    // Финализация
+    if (catalogState.hasMore) addLoadMoreTrigger(grid);
+    catalogState.loadedPostersCount = 0;
+    initPosterLazyLoading();
+    //initPosterUnloading();   // ⚡ Включаем выгрузку постеров
+    initLoadMoreObserver();
+    loadInitialPosters();
+
+    requestAnimationFrame(function () {
+        if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            setTimeout(function () {
+                if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+        }
+    });
 }
 
 function appendCatalogItems(newItems) {
@@ -1116,47 +1105,26 @@ function appendCatalogItems(newItems) {
     if (old) old.remove();
 
     var start = catalogState.items.length - newItems.length;
-
-    // Защита: запоминаем, какой каталог мы рендерим прямо сейчас
     var currentCatalogKey = catalogState.currentCatalog;
-    var i = 0;
-    var CHUNK_SIZE = 6; // Размер порции: 6 карточек за один кадр
 
-    function renderChunk() {
-        // ВАЖНО: Если пользователь нажал "Назад" или быстро сменил каталог,
-        // пока карточки дорисовывались — немедленно прерываем цикл, 
-        // чтобы не вставить старые карточки в новый каталог.
-        if (catalogState.currentCatalog !== currentCatalogKey) return;
+    // ⚡ Рендерим все новые элементы сразу (их обычно 18-50 штук)
+    if (catalogState.currentCatalog !== currentCatalogKey) return;
 
-        var frag = document.createDocumentFragment();
-        var end = Math.min(i + CHUNK_SIZE, newItems.length);
-
-        // Создаем порцию карточек
-        for (; i < end; i++) {
-            frag.appendChild(createCatalogCard(newItems[i], start + i));
-        }
-        grid.appendChild(frag); // Вставляем порцию в DOM
-
-        if (i < newItems.length) {
-            // Карточки еще остались. Отдаем управление браузеру (чтобы он отрисовал кадр),
-            // и планируем следующую порцию на следующий кадр.
-            requestAnimationFrame(renderChunk);
-        } else {
-            // Все 18 карточек успешно добавлены. Выполняем финальные действия:
-            if (catalogState.hasMore) addLoadMoreTrigger(grid);
-
-            updatePosterObservers();
-            //initPosterUnloading();   // ⚡ Включаем выгрузку постеров
-            initLoadMoreObserver();
-
-            if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
-                if (typeof updateFocusableElements === 'function') updateFocusableElements();
-            }
-        }
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < newItems.length; i++) {
+        frag.appendChild(createCatalogCard(newItems[i], start + i));
     }
+    grid.appendChild(frag);
 
-    // Запускаем отрисовку первой порции
-    requestAnimationFrame(renderChunk);
+    // Финализация
+    if (catalogState.hasMore) addLoadMoreTrigger(grid);
+    updatePosterObservers();
+    //initPosterUnloading();   // ⚡ Включаем выгрузку постеров
+    initLoadMoreObserver();
+
+    if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
+        if (typeof updateFocusableElements === 'function') updateFocusableElements();
+    }
 }
 
 function createCatalogCard(item, index) {
