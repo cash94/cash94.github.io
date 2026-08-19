@@ -39,6 +39,21 @@ var mirrors = [
     // 'another-mirror.com' // можно добавлять новые через запятую
 ];
 
+function replaceTmdbWithProxy(url) {
+    if (!url || typeof url !== 'string') return url;
+
+    // Если URL не содержит image.tmdb.org, возвращаем как есть
+    if (url.indexOf('image.tmdb.org') === -1) return url;
+
+    // Выбираем случайный прокси
+    var randomProxy = mirrors[Math.floor(Math.random() * mirrors.length)];
+
+    // Заменяем image.tmdb.org на прокси
+    return url.replace(/image\.tmdb\.org/g, randomProxy);
+}
+
+window.replaceTmdbWithProxy = replaceTmdbWithProxy;
+
 // ==================== КОНФИГУРАЦИЯ КАТАЛОГОВ ====================
 var CATALOG_CONFIG = {
     movie: { name: 'Фильмы', url: SERVER_URL + '/api/catalog/movie', mediaType: 'movie' },
