@@ -630,30 +630,30 @@ function setupNavigation() {
           }
 
           if (!AppState.openInRow) {
-            window.loadCatalog(AppState.backCurrentCatalog).then(function () {
-              var mc = getEl('main-container');
-              if (mc && AppState.backupScroll > 0) {
-                mc.scrollTop = AppState.backupScroll;
-              }
-              if (searchOverlay) {
-                searchOverlay.classList.remove('hidden');
-              }
-              window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
-                finishSearchRestore();
-              });
-            });
+            //window.loadCatalog(AppState.backCurrentCatalog).then(function () {
+            var mc = getEl('main-container');
+            if (mc && AppState.backupScroll > 0) {
+              mc.scrollTop = AppState.backupScroll;
+            }
+            if (searchOverlay) {
+              searchOverlay.classList.remove('hidden');
+            }
+            //window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
+            finishSearchRestore();
+            //});
+            //});
             return;
           } else {
             AppState.currentScreen = 'catalog';
             // Ждём, пока загрузится список
-            window.loadCatalogList().then(function () {
-              if (searchOverlay) {
-                searchOverlay.classList.remove('hidden');
-              }
-              window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
-                finishSearchRestore();
-              });
-            });
+            //window.loadCatalogList().then(function () {
+            if (searchOverlay) {
+              searchOverlay.classList.remove('hidden');
+            }
+            //window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
+            finishSearchRestore();
+            //});
+            //});
             return;
           }
         }
