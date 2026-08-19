@@ -1,6 +1,6 @@
 // TMDB API через свой прокси
 var TMDB_API_URL = '/api/tmdb/search';
-var TMDB_IMAGE_URL = AppState.protocol+'//tsimg.hnar.online/t/p/w342'; 
+var TMDB_IMAGE_URL = AppState.protocol+'//tsimg.hnar.online/t/p/w342';
 
 // Кэш для постеров
 var posterCache = new Map();
@@ -199,7 +199,9 @@ async function searchPoster(title, year, mediaType, retry) {
     }
 
     // Формируем прямой URL к изображению
-    var posterUrl = TMDB_IMAGE_URL + posterPath;
+    var posterUrl = window.getTmdbImageUrl
+      ? window.getTmdbImageUrl(posterPath, 'w342')
+      : TMDB_IMAGE_URL + posterPath;
     console.log('✅ Найден прямой URL постера:', posterUrl);
 
     // Сохраняем в кэш
