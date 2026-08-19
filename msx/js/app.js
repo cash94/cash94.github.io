@@ -54,6 +54,41 @@ function safeExecute(fn, errorMessage) {
   }
 }
 
+// Экраны торрентов и каталога остаются смонтированными. При переключении вкладок
+// меняем только видимость и восстанавливаем позицию общего скролл-контейнера.
+function showContentScreen(screen, restoreScrollTop) {
+  var torrentsScreen = getEl('content-torrents');
+  var catalogScreen = getEl('content-catalog');
+  var mainContainer = getEl('main-container');
+  if (!torrentsScreen || !catalogScreen) return;
+
+  if (typeof AppState !== 'undefined' && mainContainer &&
+    (AppState.currentScreen === 'torrents' || AppState.currentScreen === 'catalog')) {
+    AppState.contentScroll = AppState.contentScroll || {};
+    AppState.contentScroll[AppState.currentScreen] = mainContainer.scrollTop;
+  }
+
+  torrentsScreen.hidden = screen !== 'torrents';
+  catalogScreen.hidden = screen !== 'catalog';
+
+  if (typeof AppState !== 'undefined') {
+    AppState.currentScreen = screen;
+    AppState.contentScroll = AppState.contentScroll || {};
+    // При возврате из detail передаётся позиция каталога явно: detail не является
+    // контентным экраном и не может обновить сохранённый scroll сам.
+    if (typeof restoreScrollTop === 'number') {
+      AppState.contentScroll[screen] = restoreScrollTop;
+    }
+  }
+
+  requestAnimationFrame(function () {
+    if (!mainContainer || typeof AppState === 'undefined' || !AppState.contentScroll) return;
+    mainContainer.scrollTop = AppState.contentScroll[screen] || 0;
+    if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+  });
+}
+window.showContentScreen = showContentScreen;
+
 // ==================== СОСТОЯНИЕ ====================
 var hideClockEnabled = false;
 var addToDbEnabled = false;
@@ -569,7 +604,7 @@ function setupNavigation() {
       console.log('🔙 Возврат из детального просмотра');
       var mainContainer = getEl('main-container');
       resetDetailBackground();
-      var savedScroll = AppState.backupScroll || 0;
+      var savedScroll = typeof AppState.backupScroll === 'number' ? AppState.backupScroll : 0;
 
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
@@ -595,30 +630,30 @@ function setupNavigation() {
           }
 
           if (!AppState.openInRow) {
-            window.loadCatalog(AppState.backCurrentCatalog).then(function () {
-              var mc = getEl('main-container');
-              if (mc && AppState.backupScroll > 0) {
-                mc.scrollTop = AppState.backupScroll;
-              }
-              if (searchOverlay) {
-                searchOverlay.classList.remove('hidden');
-              }
-              window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
-                finishSearchRestore();
-              });
+            //window.loadCatalog(AppState.backCurrentCatalog).then(function () {
+            var mc = getEl('main-container');
+            if (mc && AppState.backupScroll > 0) {
+              mc.scrollTop = AppState.backupScroll;
+            }
+            if (searchOverlay) {
+              searchOverlay.classList.remove('hidden');
+            }
+            window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
+              finishSearchRestore();
             });
+            //});
             return;
           } else {
             AppState.currentScreen = 'catalog';
             // Ждём, пока загрузится список
-            window.loadCatalogList().then(function () {
-              if (searchOverlay) {
-                searchOverlay.classList.remove('hidden');
-              }
-              window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
-                finishSearchRestore();
-              });
+            //window.loadCatalogList().then(function () {
+            if (searchOverlay) {
+              searchOverlay.classList.remove('hidden');
+            }
+            window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
+              finishSearchRestore();
             });
+            //});
             return;
           }
         }
@@ -668,6 +703,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
   if (returnTo === 'catalog' && AppState.playFromHash && AppState.isCatalogSerials) {
     AppState.playFromHash = false;
     AppState.isCatalogSerials = false;
+    showContentScreen('catalog', AppState.backupScroll);
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
       window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
     });
@@ -675,7 +711,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
   }
 
   if (returnTo === 'catalog') {
-    AppState.currentScreen = 'catalog';
+    showContentScreen('catalog', context.savedScroll);
 
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
       if (detailView) detailView.style.display = 'none';
@@ -684,16 +720,16 @@ function restoreFocusAfterNavigation(returnTo, context) {
     }
 
     // если каталог уже загружен и сетка в DOM — НЕ перерендериваем
-    var torrentsGrid = getEl('torrents-grid');
+    var catalogGrid = getEl('catalog-grid');
     if (catalogState.currentCatalog === AppState.backCurrentCatalog &&
-      catalogState.items.length > 0 && torrentsGrid.children.length > 0) {
+      catalogState.items.length > 0 && catalogGrid && catalogGrid.children.length > 0) {
 
       if (detailView) detailView.style.display = 'none';
 
       // Восстанавливаем скролл ДО фокусировки
       var mc = getEl('main-container');
-      if (mc && AppState.backupScroll > 0) {
-        mc.scrollTop = AppState.backupScroll;
+      if (mc && typeof context.savedScroll === 'number') {
+        mc.scrollTop = context.savedScroll;
       }
 
       // Фокус на нужную карточку без перерендера
@@ -707,8 +743,8 @@ function restoreFocusAfterNavigation(returnTo, context) {
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
       // Восстанавливаем скролл ДО фокусировки
       var mc = getEl('main-container');
-      if (mc && AppState.backupScroll > 0) {
-        mc.scrollTop = AppState.backupScroll;
+      if (mc && typeof context.savedScroll === 'number') {
+        mc.scrollTop = context.savedScroll;
       }
       if (detailView) detailView.style.display = 'none';
       if (typeof window.ensureCatalogFocus === 'function') {
@@ -731,9 +767,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
 
   if (returnTo === 'torrents') {
     if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
-    if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
-    torrentsGrid = getEl('torrents-grid');
-    if (torrentsGrid) torrentsGrid.style.display = 'grid';
+    showContentScreen('torrents');
 
     if (context.currentTorrentHash) {
       window.lastSelectedTorrentHash = context.currentTorrentHash;
@@ -858,6 +892,7 @@ function setupSearch() {
     tabTorrents.addEventListener('click', function () {
       if (!tabTorrents.classList.contains('active')) {
         console.log('📁 Переключение на вкладку "Мои торренты"');
+        AppState.currentScreen = 'torrents';
         window.pendingCatalogPoster = null;
         window.pendingCatalogItem = null;
         if (typeof AppState !== 'undefined') AppState.inSearch = 'torrents';
@@ -867,18 +902,19 @@ function setupSearch() {
         if (tabCatalog) tabCatalog.classList.remove('active');
         var searchOverlay = getEl('search-overlay');
         if (searchOverlay) searchOverlay.classList.add('hidden');
-        if (typeof AppState !== 'undefined') AppState.currentScreen = 'torrents';
+        showContentScreen('torrents');
         var torrentsGrid = getEl('torrents-grid');
-        if (torrentsGrid) {
-          torrentsGrid.style.display = 'grid';
-          torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div class="loading-spinner" style="margin: 0 auto 20px;"></div><div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div></div>';
-        }
-        loadTorrents(true).catch(function (error) {
-          console.error('Ошибка загрузки торрентов:', error);
+        if (!AppState.torrentsLoaded && !AppState.torrentsLoading) {
           if (torrentsGrid) {
-            torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div style="font-size: 48px; margin-bottom: 20px;">❌</div><div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div><button class="btn" style="margin-top: 20px;" onclick="getEl(\'tab-torrents\').click()">Попробовать снова</button></div>';
+          torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div class="loading-spinner" style="margin: 0 auto 20px;"></div><div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div></div>';
           }
-        });
+          loadTorrents(true).catch(function (error) {
+            console.error('Ошибка загрузки торрентов:', error);
+            if (torrentsGrid) {
+              torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div style="font-size: 48px; margin-bottom: 20px;">❌</div><div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div><button class="btn" style="margin-top: 20px;" onclick="getEl(\'tab-torrents\').click()">Попробовать снова</button></div>';
+            }
+          });
+        }
       }
     });
   }
@@ -898,9 +934,17 @@ function setupSearch() {
       if (!tabCatalog.classList.contains('active')) {
         window.pendingCatalogPoster = null;
         window.pendingCatalogItem = null;
+        // Обычное открытие вкладки всегда начинает каталог с первой карточки.
+        // Состояние lastSelected* сохраняется только для возврата из detail.
         if (typeof catalogState !== 'undefined') {
           catalogState.lastSelectedIndex = 0;
           catalogState.lastSelectedId = null;
+          catalogState.lastSelectedRowKey = null;
+          catalogState.lastSelectedColIndex = 0;
+        }
+        if (typeof AppState !== 'undefined') {
+          AppState.contentScroll = AppState.contentScroll || {};
+          AppState.contentScroll.catalog = 0;
         }
         localStorage.removeItem('lastCatalogCardIndex');
         if (typeof hideSearchResults === 'function') hideSearchResults();
@@ -911,8 +955,18 @@ function setupSearch() {
         if (tabTorrentsEl) tabTorrentsEl.classList.remove('active');
         if (tabSearchEl) tabSearchEl.classList.remove('active');
         tabCatalog.classList.add('active');
-        if (typeof AppState !== 'undefined') AppState.currentScreen = 'catalog';
-        window.loadCatalogList();
+        showContentScreen('catalog');
+        var catalogGrid = getEl('catalog-grid');
+        if (!catalogGrid || !catalogGrid.hasChildNodes()) {
+          window.loadCatalogList();
+        } else {
+          // DOM уже тёплый, поэтому загрузки нет; задаём первую карточку явно.
+          setTimeout(function () {
+            if (AppState.currentScreen === 'catalog' && typeof window.ensureCatalogFocus === 'function') {
+              window.ensureCatalogFocus(true);
+            }
+          }, APP_CONSTANTS.FOCUS_RESTORE_DELAY_MS);
+        }
       }
     });
   }
