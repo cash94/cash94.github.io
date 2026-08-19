@@ -202,6 +202,9 @@
         }
 
         try {
+            fetchCatalogsWithCache().catch(function () {
+                // Игнорируем ошибку — не критично
+            });
             var record = await CatalogWorker.catalogIdbGet(key);
 
             // 1. Если есть кэш в IndexedDB
@@ -406,13 +409,14 @@
 
     // ==================== checkAndUpdateCatalogIfNeeded ====================
 
-    window.checkAndUpdateCatalogIfNeeded = checkAndUpdateCatalogIfNeeded = function (id) {
+    window.checkAndUpdateCatalogIfNeeded = checkAndUpdateCatalogIfNeeded = function (id, iso) {
         if (!id || _catalogIdbUpdating) {
             return Promise.resolve(false);
         }
 
         return CatalogWorker.catalogIdbGet(id)
             .then(function (record) {
+                // Если кэш свежий — ничего не делаем
                 if (record && isFreshTimestamp(record.timestamp)) {
                     return false;
                 }
@@ -435,6 +439,10 @@
                             if (catalogState.currentCatalog === id && result.data) {
                                 applyFullCatalogData(id, result.data, result.timestamp || Date.now());
                             }
+
+                            // ★ ВАЖНО: инвалидируем кэш /api/catalogs,
+                            // чтобы при следующем открытии получить свежую lastModifiedISO
+                            invalidateCatalogsListCache();
 
                             return true;
                         }
@@ -494,28 +502,13 @@
             return header;
         }
 
-        var meta = getCatalogIdbMeta(catalogState.currentCatalog);
-        var ts = (meta && meta.timestamp) || catalogState.idbTimestamp || null;
-
-        var dateHtml = '';
-
-        if (ts) {
-            var iso = new Date(ts).toISOString();
-
-            var dateText =
-                typeof formatLastModifiedDate === 'function'
-                    ? formatLastModifiedDate(iso)
-                    : new Date(ts).toLocaleString();
-
-            dateHtml = '<span>Обновлено: ' + dateText + '</span>';
-        }
-
+        // Базовая структура заголовка
         header.innerHTML =
             '<div style="display:flex;flex-direction:column;gap:5px">' +
             '<span style="font-size:20px;font-weight:600;color:#4a9eff">' + name + '</span>' +
-            '<div style="display:flex;gap:15px;font-size:12px;color:#aaa;flex-wrap:wrap">' +
+            '<div class="catalog-meta-info" style="display:flex;gap:15px;font-size:12px;color:#aaa;flex-wrap:wrap">' +
             '<span>' + catalogState.items.length + ' / ' + (catalogState.totalItems || catalogState.items.length) + '</span>' +
-            dateHtml +
+            '<span class="catalog-update-date">Загрузка даты...</span>' +
             '</div>' +
             '</div>' +
             '<span style="font-size:14px;color:#aaa;background:rgba(0,0,0,0.3);padding:5px 12px;border-radius:20px">' +
@@ -523,6 +516,58 @@
             '</span>';
 
         grid.appendChild(header);
+
+        // Запрашиваем список каталогов с кэшированием
+        fetchCatalogsWithCache()
+            .then(function (catalogs) {
+                if (!header.isConnected) return;
+
+                var catalogInfo = null;
+
+                for (var i = 0; i < catalogs.length; i++) {
+                    if (catalogs[i].id === catalogState.currentCatalog) {
+                        catalogInfo = catalogs[i];
+                        break;
+                    }
+                }
+
+                var dateElement = header.querySelector('.catalog-update-date');
+
+                if (!dateElement) return;
+
+                if (catalogInfo && catalogInfo.lastModifiedISO) {
+                    // Проверяем, нужно ли обновить каталог
+                    if (typeof checkAndUpdateCatalogIfNeeded === 'function') {
+                        checkAndUpdateCatalogIfNeeded(catalogInfo.id, catalogInfo.lastModifiedISO);
+                    }
+
+                    // Форматируем серверную дату
+                    var dateText =
+                        typeof formatLastModifiedDate === 'function'
+                            ? formatLastModifiedDate(catalogInfo.lastModifiedISO)
+                            : new Date(catalogInfo.lastModifiedISO).toLocaleString();
+
+                    dateElement.textContent = 'Обновлено: ' + dateText;
+                } else {
+                    // Fallback на локальный timestamp из IndexedDB
+                    var meta = getCatalogIdbMeta(catalogState.currentCatalog);
+                    var ts = (meta && meta.timestamp) || catalogState.idbTimestamp || null;
+
+                    if (ts) {
+                        var dateText =
+                            typeof formatLastModifiedDate === 'function'
+                                ? formatLastModifiedDate(new Date(ts).toISOString())
+                                : new Date(ts).toLocaleString();
+
+                        dateElement.textContent = 'Обновлено: ' + dateText;
+                    } else {
+                        dateElement.textContent = '';
+                    }
+                }
+            })
+            .catch(function (error) {
+                console.warn('⚠️ Failed to load catalogs list:', error);
+            });
 
         return header;
     };
