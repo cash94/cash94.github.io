@@ -65,6 +65,10 @@
               style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
               Настройки плеера
             </div>
+            <div class="menu-item" data-tab="appearance-tab" id="appearance-tab"
+              style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
+              Внешний вид
+            </div>
             <div class="menu-item" data-tab="sync-tab" id="sync-tab"
               style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
               Синхронизация
@@ -207,7 +211,10 @@
             </div>
           </div>
 
-          <!-- Блок 4: Синхронизация -->
+          <!-- Блок 4: Внешний вид (наполняется из js/ui-customizer.js) -->
+          <div id="appearance-tab-content" class="tab-content" style="display: none;"></div>
+
+          <!-- Блок 5: Синхронизация -->
           <div id="sync-tab-content" class="tab-content" style="display: none;">
             <div class="settings-section">
               <h2>Синхронизация</h2>
@@ -592,8 +599,9 @@
     document.write('<script src="https://cash94.github.io/msx/js/animations.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/app.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/memory-fixes.js?v=' + VERSION + '"><\/script>');
-    //document.write('<script src="https://cash94.github.io/msx/js/player-memory-fix.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog-memory-fix.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/player-memory-fix.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/ui-customizer.js?v=' + VERSION + '"><\/script>');
 
     // Скрываем загрузчик после инициализации
     document.write('<script>');
