@@ -2,9 +2,10 @@
 // UI CUSTOMIZER - Настройка внешнего вида интерфейса
 // Работает поверх внешней CSS (cash94.github.io/msx).
 // Все переопределения используют реальные селекторы:
-//   #catalog-grid / #torrents-grid  (display:grid, repeat(5,1fr))
+//   #catalog-grid / #torrents-grid  (display:grid)
 //   .torrent-card / .torrent-poster / .torrent-title / .torrent-meta
-//   .rating-badge / .catalog-badge / .catalog-row-card .torrent-poster
+//   .rating-badge / .catalog-badge / .catalog-row-card / .catalog-show-all
+//   #detail-view > * (масштаб детального просмотра через zoom)
 // Навигация пультом: собственный обработчик на window (capture),
 // срабатывает раньше control.js и перехватывает клавиши, пока панель открыта.
 // =====================================================
@@ -19,32 +20,39 @@
     var STORAGE_KEY = 'uiCustomizer';
 
     var defaultSettings = {
-        catalogCardSize: 'medium',   // small | medium | large | xlarge  (управляет числом колонок)
-        catalogColumns: 'auto',      // auto | 3 | 4 | 5 | 6 | 7 | 8      (явно переопределяет размер)
+        cardSize: 210,               // ЕДИНЫЙ размер карточек и постеров: ширина в px (макс 260 = 260×460)
+        detailScale: 100,            // масштаб содержимого detail-view, %
+        catalogColumns: 'auto',      // auto | 3..8  (auto = число колонок считается из cardSize)
         fontSize: 'medium',          // small | medium | large
         borderRadius: 'medium',      // none | small | medium | large
         density: 'comfortable',      // compact | comfortable | spacious
         animations: 'normal',        // none | reduced | normal
-        rowPosterSize: 'medium',     // small | medium | large  (постеры в рядах каталога)
         posterBrightness: 'normal',  // dim | normal | bright
         showRatings: true,
         showYear: true
     };
 
-    // ==================== ЗАГРУЗКА ====================
-
-    var currentSettings;
-    try {
-        var saved = localStorage.getItem(STORAGE_KEY);
-        currentSettings = saved ? Object.assign({}, defaultSettings, JSON.parse(saved)) : Object.assign({}, defaultSettings);
-    } catch (e) {
-        currentSettings = Object.assign({}, defaultSettings);
-    }
-
     // ==================== ТАБЛИЦЫ ЗНАЧЕНИЙ ====================
 
-    // Размер карточки -> число колонок (меньше колонок = крупнее карточки)
-    var SIZE_TO_COLUMNS = { small: 7, medium: 5, large: 4, xlarge: 3 };
+    // Пропорции постера: самый крупный размер — 260×460
+    var CARD_MAX_W = 260;
+    var CARD_MAX_H = 460;
+
+    function posterHeight(w) {
+        return Math.round(w * CARD_MAX_H / CARD_MAX_W);
+    }
+
+    // Ползунки: min/max/шаг/значение по умолчанию/подпись
+    var SLIDERS = {
+        cardSize: {
+            min: 120, max: CARD_MAX_W, step: 5, def: 210,
+            fmt: function (v) { return v + ' × ' + posterHeight(v); }
+        },
+        detailScale: {
+            min: 60, max: 160, step: 5, def: 100,
+            fmt: function (v) { return v + '%'; }
+        }
+    };
 
     var FONT_SIZES = {
         small: { title: '11px', meta: '11px' },
@@ -60,60 +68,157 @@
         spacious: { gap: '20px', info: '12px' }
     };
 
-    var ROW_POSTER = {
-        small: { w: '170px', h: '300px' },
-        medium: { w: '210px', h: '370px' },
-        large: { w: '260px', h: '460px' }
-    };
-
     var BRIGHTNESS = { dim: '0.8', normal: '1', bright: '1.15' };
+
+    // Миграция со старых раздельных настроек -> единый cardSize
+    var LEGACY_ROW_TO_W = { small: 170, medium: 210, large: 260 };
+    var LEGACY_CARD_TO_W = { small: 150, medium: 190, large: 220, xlarge: 260 };
+
+    // ==================== ЗАГРУЗКА / НОРМАЛИЗАЦИЯ ====================
+
+    function clampStep(value, cfg) {
+        var v = parseFloat(value);
+        if (isNaN(v)) v = cfg.def;
+        v = Math.round(v / cfg.step) * cfg.step;
+        if (v < cfg.min) v = cfg.min;
+        if (v > cfg.max) v = cfg.max;
+        return v;
+    }
+
+    // Приводит настройки к актуальной схеме (в т.ч. из старых версий localStorage)
+    function normalizeSettings(s) {
+        if (!s || typeof s !== 'object') s = {};
+
+        if (s.cardSize === undefined || s.cardSize === null || isNaN(parseFloat(s.cardSize))) {
+            var legacy = LEGACY_ROW_TO_W[s.rowPosterSize];
+            if (!legacy) legacy = LEGACY_CARD_TO_W[s.catalogCardSize];
+            s.cardSize = legacy || defaultSettings.cardSize;
+        }
+        delete s.rowPosterSize;
+        delete s.catalogCardSize;
+
+        s.cardSize = clampStep(s.cardSize, SLIDERS.cardSize);
+        s.detailScale = clampStep(s.detailScale, SLIDERS.detailScale);
+
+        s.showRatings = !!s.showRatings;
+        s.showYear = !!s.showYear;
+        return s;
+    }
+
+    var currentSettings;
+    try {
+        var saved = localStorage.getItem(STORAGE_KEY);
+        currentSettings = normalizeSettings(Object.assign({}, defaultSettings, saved ? JSON.parse(saved) : null));
+    } catch (e) {
+        currentSettings = Object.assign({}, defaultSettings);
+    }
 
     // ==================== ПРИМЕНЕНИЕ НАСТРОЕК ====================
 
-    function getColumns() {
+    function cardWidth() { return clampStep(currentSettings.cardSize, SLIDERS.cardSize); }
+    function detailScale() { return clampStep(currentSettings.detailScale, SLIDERS.detailScale); }
+
+    // Явно заданное число колонок (0 = авто)
+    function explicitColumns() {
         if (currentSettings.catalogColumns && currentSettings.catalogColumns !== 'auto') {
             var n = parseInt(currentSettings.catalogColumns, 10);
             if (!isNaN(n) && n > 0) return n;
         }
-        return SIZE_TO_COLUMNS[currentSettings.catalogCardSize] || SIZE_TO_COLUMNS.medium;
+        return 0;
+    }
+
+    function densityGap() {
+        var d = DENSITIES[currentSettings.density] || DENSITIES.comfortable;
+        return parseFloat(d.gap) || 12;
+    }
+
+    // Фактическое число колонок сетки.
+    // Считаем в JS (а не через CSS auto-fill), потому что control.js разбирает
+    // grid-template-columns регуляркой repeat(<число>) — 'auto-fill' её ломает.
+    function getColumns() {
+        var explicit = explicitColumns();
+        if (explicit) return explicit;
+
+        var w = cardWidth();
+        var gap = densityGap();
+
+        // Доступная ширина: сам грид, иначе его родитель (грид может быть скрыт), иначе окно
+        var avail = 0;
+        var grid = document.getElementById('catalog-grid') || document.getElementById('torrents-grid');
+        if (grid) {
+            avail = grid.clientWidth;
+            if (!avail && grid.parentElement) avail = grid.parentElement.clientWidth;
+            if (avail) avail -= 16; // padding грида 8px с каждой стороны
+        }
+        if (!(avail > 0)) avail = (window.innerWidth || 1280) - 16;
+
+        // Столько карточек шириной w влезает в ряд с зазором gap
+        var n = Math.floor((avail + gap) / (w + gap));
+        if (n < 1) n = 1;
+        if (n > 12) n = 12;
+        return n;
     }
 
     function buildSettingsCss() {
+        var w = cardWidth();
+        var h = posterHeight(w);
         var cols = getColumns();
         var font = FONT_SIZES[currentSettings.fontSize] || FONT_SIZES.medium;
         var radius = RADII[currentSettings.borderRadius] || RADII.medium;
         var density = DENSITIES[currentSettings.density] || DENSITIES.comfortable;
-        var row = ROW_POSTER[currentSettings.rowPosterSize] || ROW_POSTER.medium;
         var bright = BRIGHTNESS[currentSettings.posterBrightness] || BRIGHTNESS.normal;
+        var scale = detailScale();
 
         var css = [];
 
-        // 1. Сетка: число колонок (= размер карточек) + отступы (плотность)
+        // 1. Сетка: ширина карточки задаёт число колонок (либо оно задано явно)
         css.push('#catalog-grid,#torrents-grid{' +
             'grid-template-columns:repeat(' + cols + ',1fr)!important;' +
             'gap:' + density.gap + '!important;}');
 
-        // 2. Скругление карточек
+        // Подсказка для content-visibility, чтобы скролл не «прыгал»
+        css.push('.torrent-card.catalog-card{contain-intrinsic-size:' + w + 'px ' + Math.round(w * 1.5 + 60) + 'px!important;}');
+
+        // 2. ТОТ ЖЕ размер — постеры в рядах-каруселях каталога (.catalog-row-card)
+        css.push('.catalog-row-card,.catalog-row-viewport .catalog-row-card{' +
+            'flex:0 0 ' + w + 'px!important;width:' + w + 'px!important;}');
+        css.push('.catalog-row-viewport .catalog-row-card{height:' + h + 'px!important;}');
+        css.push('.catalog-row-card .torrent-poster,.catalog-row-viewport .catalog-row-card .torrent-poster{' +
+            'width:' + w + 'px!important;height:' + h + 'px!important;}');
+        // Карточка «Показать все» — тот же размер
+        css.push('.catalog-show-all,.catalog-row-viewport .catalog-show-all{' +
+            'flex:0 0 ' + w + 'px!important;width:' + w + 'px!important;}');
+        css.push('.catalog-show-all .show-all-inner,.catalog-row-viewport .catalog-show-all .show-all-inner{' +
+            'width:' + w + 'px!important;height:' + h + 'px!important;}');
+
+        // 3. Скругление карточек
         css.push('.torrent-card{border-radius:' + radius + '!important;}');
 
-        // 3. Плотность: внутренний отступ информации
+        // 4. Плотность: внутренний отступ информации
         css.push('.torrent-info{padding:' + density.info + '!important;}');
 
-        // 4. Размер текста (снимаем фикс. высоту .torrent-title, иначе обрежет)
+        // 5. Размер текста (снимаем фикс. высоту .torrent-title, иначе обрежет)
         css.push('.torrent-title{font-size:' + font.title + '!important;height:auto!important;max-height:none!important;}');
         css.push('.torrent-meta,.torrent-badge{font-size:' + font.meta + '!important;}');
 
-        // 5. Рейтинги / год
+        // 6. Рейтинги / год
         if (!currentSettings.showRatings) css.push('.rating-badge{display:none!important;}');
         if (!currentSettings.showYear) css.push('.catalog-badge{display:none!important;}');
 
-        // 6. Яркость постеров
+        // 7. Яркость постеров
         css.push('.torrent-poster img,.row-poster-img,img.catalog-poster-img{filter:brightness(' + bright + ')!important;}');
 
-        // 7. Размер постеров в рядах каталога
-        css.push('.catalog-row-card .torrent-poster{width:' + row.w + '!important;height:' + row.h + '!important;}');
+        // 8. Масштаб detail-view.
+        //    zoom вешаем на содержимое (а не на сам #detail-view — он position:fixed inset:0
+        //    и является скролл-контейнером), фон-подложку #catalog-detail-backdrop
+        //    (position:fixed) исключаем, иначе она вылезет за экран.
+        if (scale !== 100) {
+            css.push('#detail-view>*:not(#catalog-detail-extra),' +
+                '#detail-view>#catalog-detail-extra>*:not(#catalog-detail-backdrop){' +
+                'zoom:' + (scale / 100) + '!important;}');
+        }
 
-        // 8. Анимации (none/reduced помогают производительности на слабых ТВ)
+        // 9. Анимации (none/reduced помогают производительности на слабых ТВ)
         if (currentSettings.animations === 'none') {
             css.push('*,*::before,*::after{transition:none!important;animation:none!important;}');
         } else if (currentSettings.animations === 'reduced') {
@@ -131,6 +236,8 @@
             document.head.appendChild(style);
         }
         style.textContent = buildSettingsCss();
+        // Число колонок изменилось — сбрасываем кэш навигации в control.js
+        try { if (typeof window.invalidateColumnsCache === 'function') window.invalidateColumnsCache(); } catch (e) {}
         console.log('🎨 Настройки внешнего вида применены:', JSON.stringify(currentSettings));
     }
 
@@ -152,25 +259,38 @@
             '.ui-customizer-overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.75);}',
             '.ui-customizer-overlay.hidden{display:none;}',
             '.ui-customizer-panel{width:92vw;max-width:760px;max-height:88vh;display:flex;flex-direction:column;background:#15151b;border:1px solid #2a2a30;border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,0.6);overflow:hidden;}',
-            '.ui-customizer-header{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #2a2a30;}',
+            '.ui-customizer-header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #2a2a30;}',
             '.ui-customizer-header h2{margin:0;font-size:20px;color:#fff;}',
             '.ui-customizer-close{background:#1e1e28;color:#fff;border:1px solid #33333d;border-radius:10px;width:40px;height:40px;font-size:18px;cursor:pointer;line-height:1;}',
-            '.ui-customizer-content{padding:12px 22px;overflow-y:auto;overflow-x:hidden;}',
-            '.ui-customizer-group{padding:12px 0;border-bottom:1px solid #202028;}',
+            // min-height:0 обязателен, иначе flex-элемент не сжимается и скролл ломается
+            '.ui-customizer-content{flex:1 1 auto;min-height:0;padding:0 22px 12px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}',
+            '.ui-customizer-group{padding:0 0 12px;border-bottom:1px solid #202028;}',
             '.ui-customizer-group:last-child{border-bottom:none;}',
-            '.ui-customizer-group h3{margin:0 0 10px 0;font-size:14px;font-weight:600;color:#9fb4cc;text-transform:uppercase;letter-spacing:.4px;}',
+            // Залипающий заголовок: всегда видно, какой параметр настраиваешь
+            '.ui-customizer-group h3{position:sticky;top:0;z-index:3;display:flex;align-items:baseline;justify-content:space-between;gap:12px;' +
+                'margin:0 -22px 10px;padding:12px 22px 8px;font-size:14px;font-weight:600;color:#9fb4cc;text-transform:uppercase;letter-spacing:.4px;background:#15151b;}',
+            '.ui-customizer-hint{margin:-4px 0 8px;font-size:12px;color:#6f7889;text-transform:none;letter-spacing:0;}',
             '.ui-customizer-options{display:flex;flex-wrap:wrap;gap:8px;}',
             '.ui-option{background:#1e1e28;color:#cfd4dc;border:1px solid #33333d;border-radius:10px;padding:9px 16px;font-size:14px;cursor:pointer;transition:background .15s,border-color .15s;}',
             '.ui-option:hover{background:rgba(38,38,51,0.5);}',
             '.ui-option.active{background:#4a9eff;border-color:#4a9eff;color:#fff;font-weight:600;}',
+            // Ползунок
+            '.ui-slider{display:flex;align-items:center;gap:16px;padding:8px 4px;border-radius:10px;user-select:none;-webkit-user-select:none;}',
+            '.ui-slider-track{position:relative;flex:1 1 auto;height:8px;background:#262630;border-radius:6px;cursor:pointer;}',
+            '.ui-slider-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:#4a9eff;border-radius:6px;}',
+            '.ui-slider-thumb{position:absolute;top:50%;left:0;width:22px;height:22px;margin:-11px 0 0 -11px;background:#fff;border:2px solid #4a9eff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.55);}',
+            '.ui-slider-val{flex:0 0 auto;min-width:104px;text-align:right;font-size:15px;font-weight:600;color:#e8edf5;}',
+            '.ui-slider.ui-focused .ui-slider-track{background:#33333f;}',
+            '.ui-slider.ui-focused .ui-slider-thumb{width:26px;height:26px;margin:-13px 0 0 -13px;}',
+            '.ui-slider-ends{display:flex;justify-content:space-between;margin-top:2px;font-size:11px;color:#5d6675;}',
             '.ui-checkbox{display:flex;align-items:center;gap:10px;padding:8px 4px;color:#cfd4dc;font-size:14px;cursor:pointer;border-radius:10px;}',
             '.ui-checkbox input{width:18px;height:18px;accent-color:#4a9eff;}',
-            '.ui-customizer-footer{display:flex;justify-content:space-between;gap:12px;padding:16px 22px;border-top:1px solid #2a2a30;}',
+            '.ui-customizer-footer{flex:0 0 auto;display:flex;justify-content:space-between;gap:12px;padding:16px 22px;border-top:1px solid #2a2a30;}',
             '.ui-cust-btn{flex:1;padding:12px 18px;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;border:1px solid #33333d;background:#1e1e28;color:#cfd4dc;}',
             '.ui-cust-btn.primary{background:#4a9eff;border-color:#4a9eff;color:#fff;}',
             // Индикатор фокуса для навигации пультом
             '.ui-customizer-panel .ui-focused{outline:3px solid #4a9eff!important;outline-offset:2px;box-shadow:0 0 0 4px rgba(74,158,255,0.25)!important;}',
-            '.ui-customizer-panel .ui-checkbox.ui-focused{background:#22222c;}',
+            '.ui-customizer-panel .ui-checkbox.ui-focused,.ui-customizer-panel .ui-slider.ui-focused{background:#22222c;}',
             // Кнопка входа в настройках
             '.ui-appearance-open-btn{margin-top:8px;}'
         ].join('\n');
@@ -187,6 +307,18 @@
         return html;
     }
 
+    function sliderRow(setting, minLabel, maxLabel) {
+        var cfg = SLIDERS[setting];
+        return '<div class="ui-slider" data-setting="' + setting + '">' +
+                   '<div class="ui-slider-track">' +
+                       '<div class="ui-slider-fill"></div>' +
+                       '<div class="ui-slider-thumb"></div>' +
+                   '</div>' +
+                   '<div class="ui-slider-val">' + cfg.fmt(cfg.def) + '</div>' +
+               '</div>' +
+               '<div class="ui-slider-ends"><span>' + minLabel + '</span><span>' + maxLabel + '</span></div>';
+    }
+
     function createCustomizerPanel() {
         if (document.getElementById('ui-customizer-overlay')) return;
 
@@ -201,13 +333,22 @@
                     '<button class="ui-customizer-close" id="ui-close-customizer" title="Закрыть">✕</button>' +
                 '</div>' +
                 '<div class="ui-customizer-content">' +
-                    '<div class="ui-customizer-group"><h3>Размер карточек</h3><div class="ui-customizer-options">' +
-                        optionRow('catalogCardSize', [['small', 'Малый'], ['medium', 'Средний'], ['large', 'Большой'], ['xlarge', 'Огромный']]) +
-                    '</div></div>' +
+                    '<div class="ui-customizer-group"><h3>Размер карточек и постеров</h3>' +
+                        '<div class="ui-customizer-hint">Один размер для сетки и для рядов-карусели. Максимум — 260 × 460.</div>' +
+                        sliderRow('cardSize', '120 × ' + posterHeight(SLIDERS.cardSize.min), CARD_MAX_W + ' × ' + CARD_MAX_H) +
+                    '</div>' +
 
-                    '<div class="ui-customizer-group"><h3>Количество колонок</h3><div class="ui-customizer-options">' +
-                        optionRow('catalogColumns', [['auto', 'Авто'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['8', '8']]) +
-                    '</div></div>' +
+                    '<div class="ui-customizer-group"><h3>Масштаб детального просмотра</h3>' +
+                        '<div class="ui-customizer-hint">Шапка, описание, кнопки, актёры и список файлов на экране фильма.</div>' +
+                        sliderRow('detailScale', SLIDERS.detailScale.min + '%', SLIDERS.detailScale.max + '%') +
+                    '</div>' +
+
+                    '<div class="ui-customizer-group"><h3>Количество колонок</h3>' +
+                        '<div class="ui-customizer-hint">«Авто» — колонки считаются из размера карточки.</div>' +
+                        '<div class="ui-customizer-options">' +
+                            optionRow('catalogColumns', [['auto', 'Авто'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['8', '8']]) +
+                        '</div>' +
+                    '</div>' +
 
                     '<div class="ui-customizer-group"><h3>Размер текста</h3><div class="ui-customizer-options">' +
                         optionRow('fontSize', [['small', 'Малый'], ['medium', 'Средний'], ['large', 'Большой']]) +
@@ -223,10 +364,6 @@
 
                     '<div class="ui-customizer-group"><h3>Анимации</h3><div class="ui-customizer-options">' +
                         optionRow('animations', [['none', 'Отключить'], ['reduced', 'Быстрые'], ['normal', 'Обычные']]) +
-                    '</div></div>' +
-
-                    '<div class="ui-customizer-group"><h3>Размер постеров в рядах</h3><div class="ui-customizer-options">' +
-                        optionRow('rowPosterSize', [['small', 'Малый'], ['medium', 'Средний'], ['large', 'Большой']]) +
                     '</div></div>' +
 
                     '<div class="ui-customizer-group"><h3>Яркость постеров</h3><div class="ui-customizer-options">' +
@@ -250,6 +387,75 @@
         setupPanelListeners();
     }
 
+    // ==================== ПОЛЗУНКИ ====================
+
+    function sliderConfig(el) {
+        return el && el.dataset ? SLIDERS[el.dataset.setting] : null;
+    }
+
+    function updateSliders() {
+        var list = document.querySelectorAll('#ui-customizer-panel .ui-slider');
+        for (var i = 0; i < list.length; i++) {
+            var el = list[i];
+            var cfg = sliderConfig(el);
+            if (!cfg) continue;
+
+            var v = clampStep(currentSettings[el.dataset.setting], cfg);
+            var pct = (v - cfg.min) / (cfg.max - cfg.min) * 100;
+
+            var fill = el.querySelector('.ui-slider-fill');
+            var thumb = el.querySelector('.ui-slider-thumb');
+            var val = el.querySelector('.ui-slider-val');
+            if (fill) fill.style.width = pct + '%';
+            if (thumb) thumb.style.left = pct + '%';
+            if (val) val.textContent = cfg.fmt(v);
+        }
+    }
+
+    function setSliderValue(el, value) {
+        var cfg = sliderConfig(el);
+        if (!cfg) return;
+        var v = clampStep(value, cfg);
+        if (currentSettings[el.dataset.setting] === v) return;
+        currentSettings[el.dataset.setting] = v;
+        updateSliders();
+        applySettings();   // живой предпросмотр
+    }
+
+    function nudgeSlider(el, direction) {
+        var cfg = sliderConfig(el);
+        if (!cfg) return;
+        setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * cfg.step);
+    }
+
+    function valueFromPointer(el, clientX) {
+        var cfg = sliderConfig(el);
+        var track = el.querySelector('.ui-slider-track');
+        if (!cfg || !track) return 0;
+        var r = track.getBoundingClientRect();
+        var t = r.width ? (clientX - r.left) / r.width : 0;
+        if (t < 0) t = 0;
+        if (t > 1) t = 1;
+        return cfg.min + t * (cfg.max - cfg.min);
+    }
+
+    function bindSlider(el) {
+        el.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            var self = this;
+            setFocus(self, true);
+            setSliderValue(self, valueFromPointer(self, e.clientX));
+
+            var onMove = function (ev) { setSliderValue(self, valueFromPointer(self, ev.clientX)); };
+            var onUp = function () {
+                document.removeEventListener('mousemove', onMove, true);
+                document.removeEventListener('mouseup', onUp, true);
+            };
+            document.addEventListener('mousemove', onMove, true);
+            document.addEventListener('mouseup', onUp, true);
+        });
+    }
+
     // ==================== СИНХРОНИЗАЦИЯ КНОПОК <-> НАСТРОЙКИ ====================
 
     function updateActiveButtons() {
@@ -262,6 +468,7 @@
         var y = document.getElementById('ui-show-year');
         if (r) r.checked = !!currentSettings.showRatings;
         if (y) y.checked = !!currentSettings.showYear;
+        updateSliders();
     }
 
     function setupPanelListeners() {
@@ -285,6 +492,10 @@
                 return;
             }
         });
+
+        // Ползунки (мышь)
+        var sliders = panel.querySelectorAll('.ui-slider');
+        for (var i = 0; i < sliders.length; i++) bindSlider(sliders[i]);
 
         // Чекбоксы
         var ratings = document.getElementById('ui-show-ratings');
@@ -318,10 +529,10 @@
         var close = document.getElementById('ui-close-customizer');
         if (close) close.addEventListener('click', closeCustomizer);
 
-        // Наведение мышью подсвечивает фокус (для пользователей с указателем)
-        var focusables = panel.querySelectorAll('.ui-option,.ui-checkbox,.ui-cust-btn,.ui-customizer-close');
-        for (var i = 0; i < focusables.length; i++) {
-            focusables[i].addEventListener('mouseenter', function () { setFocus(this); });
+        // Наведение мышью подсвечивает фокус (без автоскролла — иначе панель «убегает» под курсором)
+        var focusables = panel.querySelectorAll('.ui-option,.ui-checkbox,.ui-slider,.ui-cust-btn,.ui-customizer-close');
+        for (var j = 0; j < focusables.length; j++) {
+            focusables[j].addEventListener('mouseenter', function () { setFocus(this, true); });
         }
     }
 
@@ -343,9 +554,14 @@
         previousBodyOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
 
-        // Начальный фокус на первую опцию
-        var first = overlay.querySelector('.ui-option');
-        setFocus(first || document.getElementById('ui-close-customizer'));
+        // Ползунки считают позицию по ширине трека — она известна только после показа
+        updateSliders();
+
+        // Начальный фокус на первый элемент, скролл в самое начало
+        var content = overlay.querySelector('.ui-customizer-content');
+        if (content) content.scrollTop = 0;
+        var first = overlay.querySelector('.ui-slider,.ui-option');
+        setFocus(first || document.getElementById('ui-close-customizer'), true);
     }
 
     function closeCustomizer() {
@@ -363,11 +579,12 @@
     // ==================== НАВИГАЦИЯ ПУЛЬТОМ (внутри панели) ====================
 
     var focusedEl = null;
+    var FOCUS_SELECTOR = '.ui-option,.ui-checkbox,.ui-slider,.ui-cust-btn,.ui-customizer-close';
 
     function getFocusables() {
         var panel = document.getElementById('ui-customizer-panel');
         if (!panel) return [];
-        var list = panel.querySelectorAll('.ui-option,.ui-checkbox,.ui-cust-btn,.ui-customizer-close');
+        var list = panel.querySelectorAll(FOCUS_SELECTOR);
         var out = [];
         for (var i = 0; i < list.length; i++) {
             if (list[i].offsetParent !== null) out.push(list[i]);
@@ -375,44 +592,102 @@
         return out;
     }
 
-    function setFocus(el) {
+    // Прокрутка к элементу с учётом заголовка параметра:
+    // если элемент в первой строке своей группы — показываем группу вместе с <h3>.
+    function scrollFocusIntoView(el) {
+        var content = document.querySelector('#ui-customizer-panel .ui-customizer-content');
+        if (!content || !el || !content.contains(el)) return;
+
+        var PAD = 10;
+        var eRect = el.getBoundingClientRect();
+        var cRect = content.getBoundingClientRect();
+        var group = el.closest ? el.closest('.ui-customizer-group') : null;
+
+        // Высота залипающего заголовка — под ним элемент считается скрытым
+        var head = group ? group.querySelector('h3') : null;
+        var headH = head ? head.offsetHeight : 0;
+
+        var desiredTop = eRect.top;
+        var topInset = headH;
+
+        if (group) {
+            // Есть ли в этой же группе элемент, который целиком выше текущего?
+            var sibs = group.querySelectorAll(FOCUS_SELECTOR);
+            var firstRow = true;
+            for (var i = 0; i < sibs.length; i++) {
+                if (sibs[i] === el) continue;
+                if (sibs[i].getBoundingClientRect().bottom <= eRect.top + 1) { firstRow = false; break; }
+            }
+            if (firstRow) {
+                // Первая строка группы — подтягиваем блок целиком, вместе с заголовком
+                desiredTop = group.getBoundingClientRect().top;
+                topInset = 0;
+            }
+        }
+
+        var above = (cRect.top + topInset + PAD) - desiredTop;
+        if (above > 0) { content.scrollTop -= above; return; }
+
+        var below = (eRect.bottom + PAD) - cRect.bottom;
+        if (below > 0) content.scrollTop += below;
+    }
+
+    function setFocus(el, skipScroll) {
         if (!el) return;
         if (focusedEl && focusedEl !== el) focusedEl.classList.remove('ui-focused');
         focusedEl = el;
         el.classList.add('ui-focused');
-        if (el.scrollIntoView) {
-            try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { el.scrollIntoView(); }
-        }
+        if (!skipScroll) scrollFocusIntoView(el);
     }
 
-    function centerOf(el) {
-        var r = el.getBoundingClientRect();
-        return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: r };
+    // Зазор между проекциями прямоугольников на ось (0 = перекрываются)
+    function gapBetween(aStart, aEnd, bStart, bEnd) {
+        if (bEnd <= aStart) return aStart - bEnd;
+        if (bStart >= aEnd) return bStart - aEnd;
+        return 0;
     }
 
-    // Геометрический поиск ближайшего элемента в направлении dir
+    // Геометрический поиск ближайшего элемента в направлении dir.
+    // Считаем расстояние по краям (а не по центрам) — иначе широкие ползунки
+    // «проигрывают» узким кнопкам и до них невозможно добраться.
     function moveFocus(dir) {
         var items = getFocusables();
         if (!items.length) return;
         if (!focusedEl || items.indexOf(focusedEl) === -1) { setFocus(items[0]); return; }
 
-        var from = centerOf(focusedEl);
+        var a = focusedEl.getBoundingClientRect();
+        var aCx = a.left + a.width / 2, aCy = a.top + a.height / 2;
         var best = null, bestScore = Infinity;
 
         for (var i = 0; i < items.length; i++) {
             if (items[i] === focusedEl) continue;
-            var c = centerOf(items[i]);
-            var dx = c.x - from.x, dy = c.y - from.y;
-            var primary, cross;
+            var b = items[i].getBoundingClientRect();
+            var bCx = b.left + b.width / 2, bCy = b.top + b.height / 2;
+            var primary, cross, weight;
 
-            if (dir === 'left') { if (dx >= -1) continue; primary = -dx; cross = Math.abs(dy); }
-            else if (dir === 'right') { if (dx <= 1) continue; primary = dx; cross = Math.abs(dy); }
-            else if (dir === 'up') { if (dy >= -1) continue; primary = -dy; cross = Math.abs(dx); }
-            else if (dir === 'down') { if (dy <= 1) continue; primary = dy; cross = Math.abs(dx); }
-            else continue;
+            if (dir === 'left') {
+                if (bCx >= aCx - 1) continue;
+                primary = Math.max(0, a.left - b.right);
+                cross = gapBetween(a.top, a.bottom, b.top, b.bottom);
+                weight = 3;
+            } else if (dir === 'right') {
+                if (bCx <= aCx + 1) continue;
+                primary = Math.max(0, b.left - a.right);
+                cross = gapBetween(a.top, a.bottom, b.top, b.bottom);
+                weight = 3;
+            } else if (dir === 'up') {
+                if (bCy >= aCy - 1) continue;
+                primary = Math.max(0, a.top - b.bottom);
+                cross = gapBetween(a.left, a.right, b.left, b.right);
+                weight = 2;
+            } else if (dir === 'down') {
+                if (bCy <= aCy + 1) continue;
+                primary = Math.max(0, b.top - a.bottom);
+                cross = gapBetween(a.left, a.right, b.left, b.right);
+                weight = 2;
+            } else continue;
 
-            // Для вертикали сильнее штрафуем горизонтальное смещение и наоборот
-            var score = (dir === 'up' || dir === 'down') ? (primary + cross * 2) : (primary + cross * 3);
+            var score = primary + cross * weight;
             if (score < bestScore) { bestScore = score; best = items[i]; }
         }
 
@@ -421,6 +696,7 @@
 
     function activateFocused() {
         if (!focusedEl) return;
+        if (focusedEl.classList.contains('ui-slider')) return;   // ползунок меняется влево/вправо
         if (focusedEl.classList.contains('ui-checkbox')) {
             var input = focusedEl.querySelector('input[type="checkbox"]');
             if (input) {
@@ -460,7 +736,13 @@
         if (isOpen()) {
             if (ARROW[kc]) {
                 e.preventDefault(); e.stopImmediatePropagation();
-                moveFocus(ARROW[kc]);
+                var dir = ARROW[kc];
+                // На ползунке влево/вправо меняет значение, вверх/вниз уходит с него
+                if (focusedEl && focusedEl.classList.contains('ui-slider') && (dir === 'left' || dir === 'right')) {
+                    nudgeSlider(focusedEl, dir === 'right' ? 1 : -1);
+                } else {
+                    moveFocus(dir);
+                }
                 return;
             }
             if (kc === 13) { // OK
@@ -501,7 +783,8 @@
             '<h2>Внешний вид</h2>' +
             '<button class="btn btn-primary ui-appearance-open-btn" id="open-ui-customizer-btn">🎨 Настроить внешний вид</button>' +
             '<div class="help-text" style="margin-top:10px;color:#666;font-size:12px;">' +
-            'Размер и число карточек, шрифт, скругление, плотность, анимации, яркость постеров.<br>' +
+            'Размер карточек и постеров (ползунок, до 260×460), масштаб детального просмотра, колонки,<br>' +
+            'шрифт, скругление, плотность, анимации, яркость постеров.<br>' +
             'Открыть в любой момент: жёлтая кнопка пульта или клавиша «C».</div>';
 
         container.appendChild(section);
@@ -529,6 +812,17 @@
         init();
     }
 
+    // Ширина окна изменилась — пересчитываем число колонок под тот же размер карточки
+    var resizeTimer = null;
+    window.addEventListener('resize', function () {
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function () {
+            resizeTimer = null;
+            applySettings();
+            if (isOpen()) updateSliders();
+        }, 150);
+    });
+
     // ==================== ЭКСПОРТ ====================
 
     window.UICustomizer = {
@@ -536,10 +830,12 @@
         close: closeCustomizer,
         apply: applySettings,
         isOpen: isOpen,
+        getColumns: getColumns,          // используется control.js для навигации пультом
+        getCardSize: function () { var w = cardWidth(); return { width: w, height: posterHeight(w) }; },
         get: function () { return Object.assign({}, currentSettings); },
         set: function (partial) {
             if (partial && typeof partial === 'object') {
-                currentSettings = Object.assign({}, currentSettings, partial);
+                currentSettings = normalizeSettings(Object.assign({}, currentSettings, partial));
                 applySettings();
                 saveSettings();
                 updateActiveButtons();
