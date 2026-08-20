@@ -28,6 +28,7 @@
         density: 'comfortable',      // compact | comfortable | spacious
         animations: 'normal',        // none | reduced | normal
         posterBrightness: 'normal',  // dim | normal | bright
+        focusColor: '#ff8c00',       // цвет рамки фокуса (#rrggbb)
         showRatings: true,
         showYear: true
     };
@@ -70,6 +71,36 @@
 
     var BRIGHTNESS = { dim: '0.8', normal: '1', bright: '1.15' };
 
+    // Палитра популярных цветов фокуса. Первый — исходный цвет приложения.
+    var FOCUS_COLORS = [
+        ['#ff8c00', 'Оранжевый'],
+        ['#ffd60a', 'Жёлтый'],
+        ['#ff3b30', 'Красный'],
+        ['#ff2d92', 'Розовый'],
+        ['#af52de', 'Фиолетовый'],
+        ['#4a9eff', 'Синий'],
+        ['#00d1ff', 'Голубой'],
+        ['#00e0a4', 'Бирюзовый'],
+        ['#4caf50', 'Зелёный'],
+        ['#ffffff', 'Белый']
+    ];
+
+    // #abc / #aabbcc -> '#aabbcc'; мусор -> цвет по умолчанию
+    function normalizeColor(v) {
+        var s = String(v === undefined || v === null ? '' : v).trim().toLowerCase();
+        if (/^#[0-9a-f]{3}$/.test(s)) {
+            s = '#' + s.charAt(1) + s.charAt(1) + s.charAt(2) + s.charAt(2) + s.charAt(3) + s.charAt(3);
+        }
+        if (/^#[0-9a-f]{6}$/.test(s)) return s;
+        return defaultSettings.focusColor;
+    }
+
+    // Полупрозрачные подложки для фокуса берём из того же цвета
+    function rgba(hex, alpha) {
+        var n = parseInt(normalizeColor(hex).slice(1), 16);
+        return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + alpha + ')';
+    }
+
     // Миграция со старых раздельных настроек -> единый cardSize
     var LEGACY_ROW_TO_W = { small: 170, medium: 210, large: 260 };
     var LEGACY_CARD_TO_W = { small: 150, medium: 190, large: 220, xlarge: 260 };
@@ -108,6 +139,7 @@
 
         s.cardSize = clampStep(s.cardSize, SLIDERS.cardSize);
         s.detailScale = clampStep(s.detailScale, SLIDERS.detailScale);
+        s.focusColor = normalizeColor(s.focusColor);
 
         s.showRatings = !!s.showRatings;
         s.showYear = !!s.showYear;
@@ -126,6 +158,7 @@
 
     function cardWidth() { return clampStep(currentSettings.cardSize, SLIDERS.cardSize); }
     function detailScale() { return clampStep(currentSettings.detailScale, SLIDERS.detailScale); }
+    function focusColor() { return normalizeColor(currentSettings.focusColor); }
 
     // Явно заданное число колонок (0 = авто)
     function explicitColumns() {
@@ -166,6 +199,79 @@
         if (n < 1) n = 1;
         if (n > 12) n = 12;
         return n;
+    }
+
+    // Цвет фокуса зашит в styles.css двумя цветами: #ff8c00 (общий фокус,
+    // detail-view, кнопки плеера) и #4a9eff (ряды каталога, панель фильтров).
+    // Перекрываем все эти правила одним выбранным цветом.
+    // !important обязателен: базовые правила тоже !important, а animations.js
+    // (GSAP) пишет box-shadow инлайном — инлайн проигрывает только !important.
+    // Красную .filter-reset-btn-new.focused не трогаем: там цвет смысловой.
+    function buildFocusCss(c) {
+        var css = [];
+
+        // Общий фокус (styles.css:2952) и detail-view (styles.css:3693)
+        css.push('.focused{box-shadow:0 0 0 3px ' + c + '!important;}');
+        css.push('#detail-view .focused{box-shadow:0 0 0 3px ' + c + '!important;}');
+
+        // Кнопки действий на экране фильма (styles.css:3698)
+        css.push('#catalog-watch-btn.focused,.catalog-watch-btn.focused,' +
+            '.catalog-trailer-btn.focused,#catalog-trailer-btn.focused,' +
+            '.detail-progress-btn.focused,#detail-progress-btn.focused,' +
+            '#catalog-toggle-overview-btn.focused,.catalog-toggle-overview-btn.focused{' +
+            'box-shadow:0 0 0 3px ' + c + '!important;}');
+
+        // Кнопка «назад» (styles.css:3710)
+        css.push('#back-from-detail.focused,.detail-header .back-btn.focused{' +
+            'box-shadow:0 0 0 3px ' + c + '!important;background:' + rgba(c, 0.2) + '!important;}');
+
+        // Актёры и «похожие» (styles.css:3716/3721)
+        css.push('.catalog-actor-card.focused,.catalog-recommendation-card.focused{' +
+            'box-shadow:0 0 0 3px ' + c + '!important;}');
+
+        // Карточки рядов-каруселей (styles.css:3939) — тень «подъёма» сохраняем
+        css.push('.catalog-row-card.focused .torrent-poster{' +
+            'box-shadow:0 0 0 3px ' + c + ',0 16px 40px rgba(0,0,0,0.6)!important;}');
+
+        // Карточка «Показать все» (styles.css:3972)
+        css.push('.catalog-show-all.focused .show-all-inner{' +
+            'border-color:' + c + '!important;background:' + rgba(c, 0.22) + '!important;' +
+            'box-shadow:0 0 0 3px ' + c + '!important;}');
+
+        // Заголовок ряда (styles.css:3983/3987)
+        css.push('.catalog-row-header.focused{background:' + rgba(c, 0.08) + '!important;}');
+        css.push('.catalog-row-header.focused .catalog-row-title{' +
+            'color:' + c + '!important;text-shadow:0 0 20px ' + rgba(c, 0.4) + '!important;}');
+
+        // Кнопки плеера (styles.css:1515)
+        css.push('.control-btn.focused{background:' + rgba(c, 0.2) + '!important;' +
+            'box-shadow:0 0 0 2px ' + c + '!important;}');
+
+        // Панель фильтров (styles.css:4160/4204/4282)
+        css.push('.filter-back-btn:focus-visible,.filter-close-btn:focus-visible,' +
+            '.filter-back-btn.focused,.filter-close-btn.focused{' +
+            'background:' + rgba(c, 0.2) + '!important;box-shadow:0 0 0 2px ' + c + '!important;}');
+        css.push('.filter-item.focused{background:' + rgba(c, 0.1) + '!important;' +
+            'box-shadow:0 0 0 2px ' + c + '!important;}');
+        css.push('.filter-value-item.focused{background:' + rgba(c, 0.15) + '!important;' +
+            'box-shadow:0 0 0 2px ' + c + '!important;}');
+
+        // Кнопка «пропустить» в плеере (styles.css:3085/3091)
+        css.push('.skip-button.focused{border-color:' + c + '!important;' +
+            'box-shadow:0 0 10px ' + c + ',0 2px 8px rgba(0,0,0,0.2)!important;}');
+        css.push('.skip-button.focused.filled{' +
+            'box-shadow:0 0 15px ' + c + ',0 4px 15px rgba(0,0,0,0.3)!important;}');
+
+        // Сама панель настройки — живой предпросмотр выбранного цвета.
+        // Селектор длиннее, чем в injectPanelStyles(), чтобы победить
+        // независимо от порядка тегов <style> в head.
+        css.push('.ui-customizer-overlay .ui-customizer-panel .ui-focused{' +
+            'outline-color:' + c + '!important;box-shadow:0 0 0 4px ' + rgba(c, 0.25) + '!important;}');
+
+        // Выбранный образец в палитре обводим его же цветом
+        css.push('.ui-customizer-panel .ui-swatch[data-value="' + c + '"]{border-color:' + c + '!important;}');
+
+        return css;
     }
 
     function buildSettingsCss() {
@@ -227,7 +333,10 @@
                 'zoom:' + (scale / 100) + '!important;}');
         }
 
-        // 9. Анимации (none/reduced помогают производительности на слабых ТВ)
+        // 9. Цвет фокуса
+        css = css.concat(buildFocusCss(focusColor()));
+
+        // 10. Анимации (none/reduced помогают производительности на слабых ТВ)
         if (currentSettings.animations === 'none') {
             css.push('*,*::before,*::after{transition:none!important;animation:none!important;}');
         } else if (currentSettings.animations === 'reduced') {
@@ -283,6 +392,12 @@
             '.ui-option{background:#1e1e28;color:#cfd4dc;border:1px solid #33333d;border-radius:10px;padding:9px 16px;font-size:14px;cursor:pointer;transition:background .15s,border-color .15s;}',
             '.ui-option:hover{background:rgba(38,38,51,0.5);}',
             '.ui-option.active{background:#4a9eff;border-color:#4a9eff;color:#fff;font-weight:600;}',
+            // Палитра цвета фокуса
+            '.ui-swatch{display:inline-flex;align-items:center;gap:9px;padding:8px 15px 8px 10px;}',
+            '.ui-swatch-dot{flex:0 0 auto;width:18px;height:18px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.5);}',
+            // 3 класса — перебивает .ui-option.active независимо от порядка правил
+            '.ui-option.ui-swatch.active{background:#22222c;color:#fff;font-weight:600;}',
+            '.ui-swatch.active .ui-swatch-dot{box-shadow:inset 0 0 0 2px #fff,0 0 0 1px rgba(0,0,0,.6);}',
             // Ползунок
             '.ui-slider{display:flex;align-items:center;gap:16px;padding:8px 4px;border-radius:10px;user-select:none;-webkit-user-select:none;}',
             '.ui-slider-track{position:relative;flex:1 1 auto;height:8px;background:#262630;border-radius:6px;cursor:pointer;}',
@@ -312,6 +427,19 @@
         var html = '';
         for (var i = 0; i < options.length; i++) {
             html += '<button class="ui-option" data-setting="' + setting + '" data-value="' + options[i][0] + '">' + options[i][1] + '</button>';
+        }
+        return html;
+    }
+
+    // Образцы цветов фокуса — обычные .ui-option, поэтому сразу доступны с пульта
+    function swatchRow() {
+        var html = '';
+        for (var i = 0; i < FOCUS_COLORS.length; i++) {
+            var c = FOCUS_COLORS[i][0];
+            html += '<button class="ui-option ui-swatch" data-setting="focusColor" data-value="' + c + '" title="' + c + '">' +
+                        '<span class="ui-swatch-dot" style="background:' + c + '"></span>' +
+                        '<span>' + FOCUS_COLORS[i][1] + '</span>' +
+                    '</button>';
         }
         return html;
     }
@@ -378,6 +506,11 @@
                     '<div class="ui-customizer-group"><h3>Яркость постеров</h3><div class="ui-customizer-options">' +
                         optionRow('posterBrightness', [['dim', 'Приглушённая'], ['normal', 'Обычная'], ['bright', 'Яркая']]) +
                     '</div></div>' +
+
+                    '<div class="ui-customizer-group"><h3>Цвет фокуса</h3>' +
+                        '<div class="ui-customizer-hint">Цвет рамки вокруг выбранного элемента: карточки, кнопки, ряды, фильтры, плеер.</div>' +
+                        '<div class="ui-customizer-options">' + swatchRow() + '</div>' +
+                    '</div>' +
 
                     '<div class="ui-customizer-group"><h3>Отображение элементов</h3>' +
                         '<label class="ui-checkbox" data-check="showRatings"><input type="checkbox" id="ui-show-ratings"' + (currentSettings.showRatings ? ' checked' : '') + '><span>Показывать рейтинги</span></label>' +
@@ -793,7 +926,7 @@
             '<button class="btn btn-primary ui-appearance-open-btn" id="open-ui-customizer-btn">🎨 Настроить внешний вид</button>' +
             '<div class="help-text" style="margin-top:10px;color:#666;font-size:12px;">' +
             'Размер карточек и постеров (ползунок, до 260×460), масштаб детального просмотра, колонки,<br>' +
-            'шрифт, скругление, плотность, анимации, яркость постеров.<br>' +
+            'шрифт, скругление, плотность, анимации, яркость постеров, цвет фокуса.<br>' +
             'Открыть в любой момент: жёлтая кнопка пульта или клавиша «C».</div>';
 
         container.appendChild(section);
@@ -841,6 +974,7 @@
         isOpen: isOpen,
         getColumns: getColumns,          // используется control.js для навигации пультом
         getCardSize: function () { var w = cardWidth(); return { width: w, height: posterHeight(w) }; },
+        getFocusColor: focusColor,
         get: function () { return Object.assign({}, currentSettings); },
         set: function (partial) {
             if (partial && typeof partial === 'object') {
