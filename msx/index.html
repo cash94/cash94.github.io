@@ -35,6 +35,9 @@
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-rounded.css?v=' + VERSION + '">');
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-chubby.css?v=' + VERSION + '">');
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/styles.css?v=' + VERSION + '">');
+    // Фоллбэки для старых браузеров (Chrome 66 на Smart TV): flex-gap, aspect-ratio.
+    // Подключается ПОСЛЕ styles.css и работает только при классе no-flex-gap на <html>.
+    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/flex-gap-fallback.css?v=' + VERSION + '">');
   </script>
 
   <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap"
@@ -42,6 +45,37 @@
 </head>
 
 <body class="tv-mode">
+
+  <script>
+    /* Определяем поддержку gap внутри flexbox (появилась в Chrome 84).
+       Через @supports это не проверить: в Chrome 66 gap уже работает в Grid,
+       поэтому @supports (gap: 1px) возвращает true. Меряем реальной вставкой.
+       Если поддержки нет — ставим класс no-flex-gap на <html>, под него в
+       css/flex-gap-fallback.css прописаны те же отступы через margin.
+       Скрипт стоит в начале body: класс появляется до разбора разметки,
+       поэтому страница ни на кадр не отрисуется «слипшейся». */
+    (function () {
+      var supported;
+      try {
+        var probe = document.createElement('div');
+        probe.style.cssText = 'display:flex;flex-direction:column;row-gap:10px;' +
+          'position:absolute;visibility:hidden;left:-9999px;top:0;width:10px;';
+        probe.appendChild(document.createElement('i'));
+        probe.appendChild(document.createElement('i'));
+        document.body.appendChild(probe);
+        supported = probe.offsetHeight === 10 || probe.scrollHeight === 10;
+        probe.parentNode.removeChild(probe);
+      } catch (e) {
+        var m = /Chrom(?:e|ium)\/(\d+)/.exec(navigator.userAgent || '');
+        supported = m ? parseInt(m[1], 10) >= 84 : true;
+      }
+      window.HAS_FLEX_GAP = supported;
+      if (!supported) {
+        var html = document.documentElement;
+        html.className += (html.className ? ' ' : '') + 'no-flex-gap';
+      }
+    })();
+  </script>
 
   <div id="main-container">
     <!-- Экран настроек TorrServer -->
