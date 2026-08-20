@@ -2155,7 +2155,7 @@ async function loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieS
         });
         var fileItems = document.querySelectorAll('.file-item');
         for (var i = 0; i < Math.min(fileItems.length, allStillsInOrder.length); i++) {
-            (function (item, url, index) { setTimeout(function () { updateFileItemStill(item, buildTmdbPosterUrl(url, 'w300')); }, index * 30); })(fileItems[i], allStillsInOrder[i].stillPath, i);
+            (function (item, url, index) { setTimeout(function () { updateFileItemStill(item, buildTmdbPosterUrl(url, 'w185')); }, index * 30); })(fileItems[i], allStillsInOrder[i].stillPath, i);
         }
     } else if (totalVideoFiles === 1 && movieStill) {
         var fileItem = document.querySelector('.file-item'); if (fileItem) setTimeout(function () { updateFileItemStill(fileItem, movieStill); }, 100);
