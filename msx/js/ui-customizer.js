@@ -723,15 +723,43 @@
     var focusedEl = null;
     var FOCUS_SELECTOR = '.ui-option,.ui-checkbox,.ui-slider,.ui-cust-btn,.ui-customizer-close';
 
-    function getFocusables() {
+    // Панель поделена на три области. Фокус переходит между ними только
+    // последовательно и только по вертикали: header <-> content <-> footer.
+    var AREA_SELECTOR = {
+        header: '.ui-customizer-header',
+        content: '.ui-customizer-content',
+        footer: '.ui-customizer-footer'
+    };
+    var AREAS = ['header', 'content', 'footer'];
+
+    // Видимые элементы одной области (без аргумента — всей панели)
+    function getFocusables(area) {
         var panel = document.getElementById('ui-customizer-panel');
         if (!panel) return [];
-        var list = panel.querySelectorAll(FOCUS_SELECTOR);
+        var root = area ? panel.querySelector(AREA_SELECTOR[area]) : panel;
+        if (!root) return [];
+        var list = root.querySelectorAll(FOCUS_SELECTOR);
         var out = [];
         for (var i = 0; i < list.length; i++) {
             if (list[i].offsetParent !== null) out.push(list[i]);
         }
         return out;
+    }
+
+    function areaOf(el) {
+        if (!el || !el.closest) return null;
+        for (var i = 0; i < AREAS.length; i++) {
+            if (el.closest(AREA_SELECTOR[AREAS[i]])) return AREAS[i];
+        }
+        return null;
+    }
+
+    // Фокус на крайний элемент области: last=true — на последний
+    function focusEdgeOf(area, last) {
+        var items = getFocusables(area);
+        if (!items.length) return false;
+        setFocus(items[last ? items.length - 1 : 0]);
+        return true;
     }
 
     // Прокрутка к элементу с учётом заголовка параметра:
@@ -789,14 +817,11 @@
         return 0;
     }
 
-    // Геометрический поиск ближайшего элемента в направлении dir.
+    // Геометрический поиск ближайшего элемента в направлении dir внутри списка.
     // Считаем расстояние по краям (а не по центрам) — иначе широкие ползунки
     // «проигрывают» узким кнопкам и до них невозможно добраться.
-    function moveFocus(dir) {
-        var items = getFocusables();
-        if (!items.length) return;
-        if (!focusedEl || items.indexOf(focusedEl) === -1) { setFocus(items[0]); return; }
-
+    // Возвращает true, если фокус переехал.
+    function moveWithin(items, dir) {
         var a = focusedEl.getBoundingClientRect();
         var aCx = a.left + a.width / 2, aCy = a.top + a.height / 2;
         var best = null, bestScore = Infinity;
@@ -833,7 +858,48 @@
             if (score < bestScore) { bestScore = score; best = items[i]; }
         }
 
-        if (best) setFocus(best);
+        if (!best) return false;
+        setFocus(best);
+        return true;
+    }
+
+    // Навигация с учётом трёх областей панели.
+    // header:  вниз -> первый элемент content; выше ничего нет.
+    // content: ищем внутри области; если в этом направлении никого нет —
+    //          вверх выходим в header, вниз — в footer (влево/вправо не выходят).
+    // footer:  вверх -> последний элемент content; вниз не работает;
+    //          влево/вправо — только между кнопками футера.
+    function moveFocus(dir) {
+        var all = getFocusables();
+        if (!all.length) return;
+        if (!focusedEl || all.indexOf(focusedEl) === -1) { setFocus(all[0]); return; }
+
+        var area = areaOf(focusedEl) || 'content';
+
+        if (area === 'header') {
+            if (dir === 'up') return;
+            if (dir === 'down') {
+                if (!focusEdgeOf('content', false)) focusEdgeOf('footer', false);
+                return;
+            }
+            moveWithin(getFocusables('header'), dir);   // сейчас в header одна кнопка
+            return;
+        }
+
+        if (area === 'footer') {
+            if (dir === 'down') return;                 // ниже футера ничего нет
+            if (dir === 'up') {
+                if (!focusEdgeOf('content', true)) focusEdgeOf('header', false);
+                return;
+            }
+            moveWithin(getFocusables('footer'), dir);
+            return;
+        }
+
+        // content
+        if (moveWithin(getFocusables('content'), dir)) return;
+        if (dir === 'up') focusEdgeOf('header', false);
+        else if (dir === 'down') focusEdgeOf('footer', false);
     }
 
     function activateFocused() {
