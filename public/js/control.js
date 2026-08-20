@@ -187,18 +187,51 @@ function isPlayerControlsVisible() {
     return !!c && !c.classList.contains('idle-hidden');
 }
 
+// Число колонок сетки. Раньше было жёстко зашито 5, из-за чего навигация
+// вверх/вниз ломалась, когда UI Customizer менял grid-template-columns.
+// Теперь читаем реальное значение, с кэшем (сброс — invalidateColumnsCache()).
 var _cachedColumns = 0;
-function getTorrentGridColumns() {
-    var grid = getEl('torrents-grid');
-    if (!grid) return 5;
+
+function _readGridColumns(gridId) {
+    var grid = getEl(gridId);
+    if (!grid) return 0;
     try {
-        //var cols = (window.getComputedStyle(grid).gridTemplateColumns || '').split(' ').filter(function (b) { return b; }).length;
-        _cachedColumns = 5; //cols || 5;
-    } catch (e) { _cachedColumns = 5; }
+        var tpl = window.getComputedStyle(grid).gridTemplateColumns || '';
+        if (!tpl || tpl === 'none') return 0;
+        // Скрытый грид (display:none) не резолвится — остаётся 'repeat(5, 1fr)'
+        var m = /repeat\(\s*(\d+)/.exec(tpl);
+        if (m) return parseInt(m[1], 10) || 0;
+        // Видимый грид: '250px 250px 250px 250px 250px'
+        var parts = tpl.split(' ').filter(function (b) { return b; });
+        return parts.length;
+    } catch (e) { }
+    return 0;
+}
+
+function invalidateColumnsCache() { _cachedColumns = 0; }
+window.invalidateColumnsCache = invalidateColumnsCache;
+window.addEventListener('resize', invalidateColumnsCache);
+
+function getColumns() {
+    if (_cachedColumns > 0) return _cachedColumns;
+
+    // 1. Явная настройка из UI Customizer — самый надёжный источник
+    try {
+        if (window.UICustomizer && typeof window.UICustomizer.getColumns === 'function') {
+            var n = window.UICustomizer.getColumns();
+            if (n > 0) { _cachedColumns = n; return n; }
+        }
+    } catch (e) { }
+
+    // 2. Реально применённый CSS того грида, который сейчас на экране
+    var cols = _readGridColumns('catalog-grid') || _readGridColumns('torrents-grid');
+    _cachedColumns = cols > 0 ? cols : 5;
     return _cachedColumns;
 }
 
-function getColumns() { return 5; }
+function getTorrentGridColumns() {
+    return _readGridColumns('torrents-grid') || getColumns();
+}
 
 // Функция для инвалидации кэша фокуса
 function invalidateFocusCache() {
@@ -286,7 +319,7 @@ function belongsToScreen(el, screen) {
     }
     if (screen === 'config') {
         return !!(el.closest('#config-screen') ||
-            ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio', 'torrserver-tab', 'torrents-tab', 'player-tab', 'sync-tab', 'jacred-url'].indexOf(el.id) !== -1 ||
+            ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio', 'torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab', 'jacred-url'].indexOf(el.id) !== -1 ||
             el.classList.contains('settings-btn') || el.classList.contains('menu-item'));
     }
     return false;
@@ -378,7 +411,7 @@ function getDetailItems() {
 }
 
 function getConfigMenuItems() {
-    var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'sync-tab'];
+    var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab'];
     var visibleItems = [];
     for (var i = 0; i < ids.length; i++) {
         var element = getEl(ids[i]);
@@ -1218,7 +1251,7 @@ function updateFocusableElements() {
         return;
     }
     if (screen === 'config') {
-        var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'sync-tab'];
+        var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab'];
         var cfg = document.querySelectorAll('.settings-btn');
         for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e && e.offsetParent !== null) list.push(e); }
         for (var i = 0; i < cfg.length; i++) if (cfg[i] && cfg[i].offsetParent !== null) list.push(cfg[i]);
