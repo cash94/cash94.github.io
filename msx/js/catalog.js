@@ -25,7 +25,7 @@ var CATALOG_CONSTANTS = {
         POSTER_CARD: 'w342',
         POSTER_SMALL: 'w185',
         POSTER_MEDIUM: 'w342',
-        BACKDROP: 'w1920'
+        BACKDROP: 'w1280'
     }
 };
 
