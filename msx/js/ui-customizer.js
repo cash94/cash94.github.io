@@ -265,8 +265,9 @@
         // Сама панель настройки — живой предпросмотр выбранного цвета.
         // Селектор длиннее, чем в injectPanelStyles(), чтобы победить
         // независимо от порядка тегов <style> в head.
+        // Сама панель настройки — живой предпросмотр выбранного цвета (через box-shadow).
         css.push('.ui-customizer-overlay .ui-customizer-panel .ui-focused{' +
-            'outline-color:' + c + '!important;box-shadow:0 0 0 4px ' + rgba(c, 0.25) + '!important;}');
+            'box-shadow:0 0 0 3px ' + c + ', 0 0 0 6px ' + rgba(c, 0.25) + '!important;outline:none!important;}');
 
         // Выбранный образец в палитре обводим его же цветом
         css.push('.ui-customizer-panel .ui-swatch[data-value="' + c + '"]{border-color:' + c + '!important;}');
@@ -355,7 +356,7 @@
         }
         style.textContent = buildSettingsCss();
         // Число колонок изменилось — сбрасываем кэш навигации в control.js
-        try { if (typeof window.invalidateColumnsCache === 'function') window.invalidateColumnsCache(); } catch (e) {}
+        try { if (typeof window.invalidateColumnsCache === 'function') window.invalidateColumnsCache(); } catch (e) { }
         console.log('🎨 Настройки внешнего вида применены:', JSON.stringify(currentSettings));
     }
 
@@ -386,7 +387,7 @@
             '.ui-customizer-group:last-child{border-bottom:none;}',
             // Залипающий заголовок: всегда видно, какой параметр настраиваешь
             '.ui-customizer-group h3{position:sticky;top:0;z-index:3;display:flex;align-items:baseline;justify-content:space-between;gap:12px;' +
-                'margin:0 -22px 10px;padding:12px 22px 8px;font-size:14px;font-weight:600;color:#9fb4cc;text-transform:uppercase;letter-spacing:.4px;background:#15151b;}',
+            'margin:0 -22px 10px;padding:12px 22px 8px;font-size:14px;font-weight:600;color:#9fb4cc;text-transform:uppercase;letter-spacing:.4px;background:#15151b;}',
             '.ui-customizer-hint{margin:-4px 0 8px;font-size:12px;color:#6f7889;text-transform:none;letter-spacing:0;}',
             '.ui-customizer-options{display:flex;flex-wrap:wrap;gap:8px;}',
             '.ui-option{background:#1e1e28;color:#cfd4dc;border:1px solid #33333d;border-radius:10px;padding:9px 16px;font-size:14px;cursor:pointer;transition:background .15s,border-color .15s;}',
@@ -412,8 +413,8 @@
             '.ui-customizer-footer{flex:0 0 auto;display:flex;justify-content:space-between;gap:12px;padding:16px 22px;border-top:1px solid #2a2a30;}',
             '.ui-cust-btn{flex:1;padding:12px 18px;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;border:1px solid #33333d;background:#1e1e28;color:#cfd4dc;}',
             '.ui-cust-btn.primary{background:#4a9eff;border-color:#4a9eff;color:#fff;}',
-            // Индикатор фокуса для навигации пультом
-            '.ui-customizer-panel .ui-focused{outline:3px solid #4a9eff!important;outline-offset:2px;box-shadow:0 0 0 4px rgba(74,158,255,0.25)!important;}',
+            // Индикатор фокуса для навигации пультом (через box-shadow, чтобы не обрезался в overflow-контейнерах)
+            '.ui-customizer-panel .ui-focused{box-shadow:0 0 0 3px #4a9eff, 0 0 0 6px rgba(74,158,255,0.25)!important;outline:none!important;}',
             '.ui-customizer-panel .ui-checkbox.ui-focused,.ui-customizer-panel .ui-slider.ui-focused{background:#22222c;}',
             // Кнопка входа в настройках
             '.ui-appearance-open-btn{margin-top:8px;}'
@@ -437,9 +438,9 @@
         for (var i = 0; i < FOCUS_COLORS.length; i++) {
             var c = FOCUS_COLORS[i][0];
             html += '<button class="ui-option ui-swatch" data-setting="focusColor" data-value="' + c + '" title="' + c + '">' +
-                        '<span class="ui-swatch-dot" style="background:' + c + '"></span>' +
-                        '<span>' + FOCUS_COLORS[i][1] + '</span>' +
-                    '</button>';
+                '<span class="ui-swatch-dot" style="background:' + c + '"></span>' +
+                '<span>' + FOCUS_COLORS[i][1] + '</span>' +
+                '</button>';
         }
         return html;
     }
@@ -447,13 +448,13 @@
     function sliderRow(setting, minLabel, maxLabel) {
         var cfg = SLIDERS[setting];
         return '<div class="ui-slider" data-setting="' + setting + '">' +
-                   '<div class="ui-slider-track">' +
-                       '<div class="ui-slider-fill"></div>' +
-                       '<div class="ui-slider-thumb"></div>' +
-                   '</div>' +
-                   '<div class="ui-slider-val">' + cfg.fmt(cfg.def) + '</div>' +
-               '</div>' +
-               '<div class="ui-slider-ends"><span>' + minLabel + '</span><span>' + maxLabel + '</span></div>';
+            '<div class="ui-slider-track">' +
+            '<div class="ui-slider-fill"></div>' +
+            '<div class="ui-slider-thumb"></div>' +
+            '</div>' +
+            '<div class="ui-slider-val">' + cfg.fmt(cfg.def) + '</div>' +
+            '</div>' +
+            '<div class="ui-slider-ends"><span>' + minLabel + '</span><span>' + maxLabel + '</span></div>';
     }
 
     function createCustomizerPanel() {
@@ -465,62 +466,62 @@
 
         overlay.innerHTML =
             '<div class="ui-customizer-panel" id="ui-customizer-panel" role="dialog" aria-label="Настройка интерфейса">' +
-                '<div class="ui-customizer-header">' +
-                    '<h2>🎨 Настройка интерфейса</h2>' +
-                    '<button class="ui-customizer-close" id="ui-close-customizer" title="Закрыть">✕</button>' +
-                '</div>' +
-                '<div class="ui-customizer-content">' +
-                    '<div class="ui-customizer-group"><h3>Размер карточек и постеров</h3>' +
-                        '<div class="ui-customizer-hint">Один размер для сетки и для рядов-карусели. Максимум — 260 × 460.</div>' +
-                        sliderRow('cardSize', '120 × ' + posterHeight(SLIDERS.cardSize.min), CARD_MAX_W + ' × ' + CARD_MAX_H) +
-                    '</div>' +
+            '<div class="ui-customizer-header">' +
+            '<h2>🎨 Настройка интерфейса</h2>' +
+            '<button class="ui-customizer-close" id="ui-close-customizer" title="Закрыть">✕</button>' +
+            '</div>' +
+            '<div class="ui-customizer-content">' +
+            '<div class="ui-customizer-group"><h3>Размер карточек и постеров</h3>' +
+            '<div class="ui-customizer-hint">Один размер для сетки и для рядов-карусели. Максимум — 260 × 460.</div>' +
+            sliderRow('cardSize', '120 × ' + posterHeight(SLIDERS.cardSize.min), CARD_MAX_W + ' × ' + CARD_MAX_H) +
+            '</div>' +
 
-                    '<div class="ui-customizer-group"><h3>Масштаб детального просмотра</h3>' +
-                        '<div class="ui-customizer-hint">Шапка, описание, кнопки, актёры и список файлов на экране фильма.</div>' +
-                        sliderRow('detailScale', SLIDERS.detailScale.min + '%', SLIDERS.detailScale.max + '%') +
-                    '</div>' +
+            '<div class="ui-customizer-group"><h3>Масштаб детального просмотра</h3>' +
+            '<div class="ui-customizer-hint">Шапка, описание, кнопки, актёры и список файлов на экране фильма.</div>' +
+            sliderRow('detailScale', SLIDERS.detailScale.min + '%', SLIDERS.detailScale.max + '%') +
+            '</div>' +
 
-                    '<div class="ui-customizer-group"><h3>Количество колонок</h3>' +
-                        '<div class="ui-customizer-hint">«Авто» — колонки считаются из размера карточки.</div>' +
-                        '<div class="ui-customizer-options">' +
-                            optionRow('catalogColumns', [['auto', 'Авто'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['8', '8']]) +
-                        '</div>' +
-                    '</div>' +
+            '<div class="ui-customizer-group"><h3>Количество колонок</h3>' +
+            '<div class="ui-customizer-hint">«Авто» — колонки считаются из размера карточки.</div>' +
+            '<div class="ui-customizer-options">' +
+            optionRow('catalogColumns', [['auto', 'Авто'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['8', '8']]) +
+            '</div>' +
+            '</div>' +
 
-                    '<div class="ui-customizer-group"><h3>Размер текста</h3><div class="ui-customizer-options">' +
-                        optionRow('fontSize', [['small', 'Малый'], ['medium', 'Средний'], ['large', 'Большой']]) +
-                    '</div></div>' +
+            '<div class="ui-customizer-group"><h3>Размер текста</h3><div class="ui-customizer-options">' +
+            optionRow('fontSize', [['small', 'Малый'], ['medium', 'Средний'], ['large', 'Большой']]) +
+            '</div></div>' +
 
-                    '<div class="ui-customizer-group"><h3>Скругление углов</h3><div class="ui-customizer-options">' +
-                        optionRow('borderRadius', [['none', 'Без'], ['small', 'Малое'], ['medium', 'Среднее'], ['large', 'Большое']]) +
-                    '</div></div>' +
+            '<div class="ui-customizer-group"><h3>Скругление углов</h3><div class="ui-customizer-options">' +
+            optionRow('borderRadius', [['none', 'Без'], ['small', 'Малое'], ['medium', 'Среднее'], ['large', 'Большое']]) +
+            '</div></div>' +
 
-                    '<div class="ui-customizer-group"><h3>Плотность интерфейса</h3><div class="ui-customizer-options">' +
-                        optionRow('density', [['compact', 'Компактный'], ['comfortable', 'Комфортный'], ['spacious', 'Просторный']]) +
-                    '</div></div>' +
+            '<div class="ui-customizer-group"><h3>Плотность интерфейса</h3><div class="ui-customizer-options">' +
+            optionRow('density', [['compact', 'Компактный'], ['comfortable', 'Комфортный'], ['spacious', 'Просторный']]) +
+            '</div></div>' +
 
-                    '<div class="ui-customizer-group"><h3>Анимации</h3><div class="ui-customizer-options">' +
-                        optionRow('animations', [['none', 'Отключить'], ['reduced', 'Быстрые'], ['normal', 'Обычные']]) +
-                    '</div></div>' +
+            '<div class="ui-customizer-group"><h3>Анимации</h3><div class="ui-customizer-options">' +
+            optionRow('animations', [['none', 'Отключить'], ['reduced', 'Быстрые'], ['normal', 'Обычные']]) +
+            '</div></div>' +
 
-                    '<div class="ui-customizer-group"><h3>Яркость постеров</h3><div class="ui-customizer-options">' +
-                        optionRow('posterBrightness', [['dim', 'Приглушённая'], ['normal', 'Обычная'], ['bright', 'Яркая']]) +
-                    '</div></div>' +
+            '<div class="ui-customizer-group"><h3>Яркость постеров</h3><div class="ui-customizer-options">' +
+            optionRow('posterBrightness', [['dim', 'Приглушённая'], ['normal', 'Обычная'], ['bright', 'Яркая']]) +
+            '</div></div>' +
 
-                    '<div class="ui-customizer-group"><h3>Цвет фокуса</h3>' +
-                        '<div class="ui-customizer-hint">Цвет рамки вокруг выбранного элемента: карточки, кнопки, ряды, фильтры, плеер.</div>' +
-                        '<div class="ui-customizer-options">' + swatchRow() + '</div>' +
-                    '</div>' +
+            '<div class="ui-customizer-group"><h3>Цвет фокуса</h3>' +
+            '<div class="ui-customizer-hint">Цвет рамки вокруг выбранного элемента: карточки, кнопки, ряды, фильтры, плеер.</div>' +
+            '<div class="ui-customizer-options">' + swatchRow() + '</div>' +
+            '</div>' +
 
-                    '<div class="ui-customizer-group"><h3>Отображение элементов</h3>' +
-                        '<label class="ui-checkbox" data-check="showRatings"><input type="checkbox" id="ui-show-ratings"' + (currentSettings.showRatings ? ' checked' : '') + '><span>Показывать рейтинги</span></label>' +
-                        '<label class="ui-checkbox" data-check="showYear"><input type="checkbox" id="ui-show-year"' + (currentSettings.showYear ? ' checked' : '') + '><span>Показывать год</span></label>' +
-                    '</div>' +
-                '</div>' +
-                '<div class="ui-customizer-footer">' +
-                    '<button class="ui-cust-btn" id="ui-reset-defaults">Сбросить</button>' +
-                    '<button class="ui-cust-btn primary" id="ui-apply-settings">Готово</button>' +
-                '</div>' +
+            '<div class="ui-customizer-group"><h3>Отображение элементов</h3>' +
+            '<label class="ui-checkbox" data-check="showRatings"><input type="checkbox" id="ui-show-ratings"' + (currentSettings.showRatings ? ' checked' : '') + '><span>Показывать рейтинги</span></label>' +
+            '<label class="ui-checkbox" data-check="showYear"><input type="checkbox" id="ui-show-year"' + (currentSettings.showYear ? ' checked' : '') + '><span>Показывать год</span></label>' +
+            '</div>' +
+            '</div>' +
+            '<div class="ui-customizer-footer">' +
+            '<button class="ui-cust-btn" id="ui-reset-defaults">Сбросить</button>' +
+            '<button class="ui-cust-btn primary" id="ui-apply-settings">Готово</button>' +
+            '</div>' +
             '</div>';
 
         document.body.appendChild(overlay);
@@ -715,7 +716,7 @@
             if (typeof window.ensureCatalogFocus === 'function' && window.AppState && AppState.currentScreen === 'catalog') {
                 window.ensureCatalogFocus(true);
             }
-        } catch (e) {}
+        } catch (e) { }
     }
 
     // ==================== НАВИГАЦИЯ ПУЛЬТОМ (внутри панели) ====================
