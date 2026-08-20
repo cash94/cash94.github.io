@@ -85,15 +85,24 @@
         return v;
     }
 
-    // Приводит настройки к актуальной схеме (в т.ч. из старых версий localStorage)
+    // Старые версии хранили размер карточек и постеров раздельно
+    // (catalogCardSize + rowPosterSize) — сворачиваем их в один cardSize.
+    // Важно: вызывать ДО слияния с defaultSettings, иначе cardSize уже подставлен.
+    function migrateLegacy(raw) {
+        if (!raw || typeof raw !== 'object') return raw;
+        if (raw.cardSize === undefined || raw.cardSize === null || isNaN(parseFloat(raw.cardSize))) {
+            var legacy = LEGACY_ROW_TO_W[raw.rowPosterSize];
+            if (!legacy) legacy = LEGACY_CARD_TO_W[raw.catalogCardSize];
+            if (legacy) raw.cardSize = legacy;
+        }
+        delete raw.rowPosterSize;
+        delete raw.catalogCardSize;
+        return raw;
+    }
+
+    // Приводит настройки к актуальной схеме (клампинг ползунков, чистка старых полей)
     function normalizeSettings(s) {
         if (!s || typeof s !== 'object') s = {};
-
-        if (s.cardSize === undefined || s.cardSize === null || isNaN(parseFloat(s.cardSize))) {
-            var legacy = LEGACY_ROW_TO_W[s.rowPosterSize];
-            if (!legacy) legacy = LEGACY_CARD_TO_W[s.catalogCardSize];
-            s.cardSize = legacy || defaultSettings.cardSize;
-        }
         delete s.rowPosterSize;
         delete s.catalogCardSize;
 
@@ -108,7 +117,7 @@
     var currentSettings;
     try {
         var saved = localStorage.getItem(STORAGE_KEY);
-        currentSettings = normalizeSettings(Object.assign({}, defaultSettings, saved ? JSON.parse(saved) : null));
+        currentSettings = normalizeSettings(Object.assign({}, defaultSettings, migrateLegacy(saved ? JSON.parse(saved) : null)));
     } catch (e) {
         currentSettings = Object.assign({}, defaultSettings);
     }
