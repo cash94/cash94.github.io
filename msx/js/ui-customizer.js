@@ -488,10 +488,10 @@
 
     // ==================== КНОПКА ВХОДА В НАСТРОЙКАХ ====================
     // getConfigContentItems() в control.js собирает <button> внутри активного
-    // таба, поэтому кнопка внутри player-tab-content доступна и с пульта, и мышью.
+    // таба, поэтому кнопка внутри appearance-tab-content доступна и с пульта, и мышью.
 
     function addEntryButton() {
-        var container = document.getElementById('player-tab-content');
+        var container = document.getElementById('appearance-tab-content');
         if (!container || document.getElementById('open-ui-customizer-btn')) return;
 
         var section = document.createElement('div');
