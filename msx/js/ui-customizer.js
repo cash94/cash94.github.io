@@ -45,11 +45,11 @@
     // Ползунки: min/max/шаг/значение по умолчанию/подпись
     var SLIDERS = {
         cardSize: {
-            min: 120, max: CARD_MAX_W, step: 5, def: 210,
+            min: 120, max: CARD_MAX_W, step: 1, def: 210,
             fmt: function (v) { return v + ' × ' + posterHeight(v); }
         },
         detailScale: {
-            min: 60, max: 160, step: 5, def: 100,
+            min: 60, max: 160, step: 1, def: 100,
             fmt: function (v) { return v + '%'; }
         }
     };
