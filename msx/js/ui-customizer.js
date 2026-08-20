@@ -468,7 +468,7 @@
             '<div class="ui-customizer-panel" id="ui-customizer-panel" role="dialog" aria-label="Настройка интерфейса">' +
             '<div class="ui-customizer-header">' +
             '<h2>🎨 Настройка интерфейса</h2>' +
-            '<button class="ui-customizer-close" id="ui-close-customizer" title="Закрыть">✕</button>' +
+            '<button class="ui-customizer-close" id="ui-close-customizer" title="Закрыть">X</button>' +
             '</div>' +
             '<div class="ui-customizer-content">' +
             '<div class="ui-customizer-group"><h3>Размер карточек и постеров</h3>' +
@@ -520,7 +520,7 @@
             '</div>' +
             '<div class="ui-customizer-footer">' +
             '<button class="ui-cust-btn" id="ui-reset-defaults">Сбросить</button>' +
-            '<button class="ui-cust-btn primary" id="ui-apply-settings">Готово</button>' +
+            '<button class="ui-cust-btn primary" id="ui-apply-settings">Сохранить</button>' +
             '</div>' +
             '</div>';
 
