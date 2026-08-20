@@ -298,7 +298,7 @@
         css.push('.catalog-row-card,.catalog-row-viewport .catalog-row-card{' +
             'flex:0 0 ' + w + 'px!important;width:' + w + 'px!important;}');
         css.push('.catalog-row-viewport .catalog-row-card{height:' + h + 'px!important;}');
-        css.push('.catalog-row-card .torrent-poster,.catalog-row-viewport .catalog-row-card .torrent-poster{' +
+        css.push('.catalog-row-card .torrent-poster,.catalog-row-viewport .catalog-row-card .torrent-poster,.row-poster-img{' +
             'width:' + w + 'px!important;height:' + h + 'px!important;}');
         // Карточка «Показать все» — тот же размер
         css.push('.catalog-show-all,.catalog-row-viewport .catalog-show-all{' +
