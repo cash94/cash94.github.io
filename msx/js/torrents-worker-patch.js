@@ -316,7 +316,7 @@
         if (details.backdrop_path && elements.detailViewDiv) {
             var bp = window.getTmdbImageUrl
                 ? window.getTmdbImageUrl(details.backdrop_path, 'w1280')
-                : AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
+                : AppState.protocol + '//tsimg.hnar.online/t/p/w1280' + details.backdrop_path;
 
             // Добавляем linear-gradient поверх картинки для 50% затемнения
             elements.detailViewDiv.style.backgroundImage = 'linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url(' + bp + ')';
