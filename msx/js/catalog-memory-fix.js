@@ -1,0 +1,329 @@
+// =====================================================
+// ИСПРАВЛЕНИЯ УТЕЧЕК ПАМЯТИ В CATALOG.JS
+// Специфичные патчи для модуля каталога
+// =====================================================
+
+(function() {
+    'use strict';
+
+    console.log('🧹 Загрузка патчей памяти для catalog.js...');
+
+    // ==================== 1. ОПТИМИЗАЦИЯ POSTER LOADING ====================
+
+    // Ограничение одновременных загрузок постеров
+    var MAX_CONCURRENT_POSTER_LOADS = 8; // было неограниченно
+
+    if (typeof catalogState !== 'undefined') {
+        var originalLoadPosterBatch = window.loadPosterBatch;
+
+        window.loadPosterBatch = function(indices) {
+            if (!indices || indices.length === 0) return;
+
+            catalogState.isPosterLoading = true;
+            var active = 0;
+            var ptr = 0;
+            var maxActive = Math.min(MAX_CONCURRENT_POSTER_LOADS, CATALOG_CONSTANTS.MAX_POSTER_DECODES || 3);
+
+            function next() {
+                if (ptr >= indices.length && active === 0) {
+                    catalogState.isPosterLoading = false;
+
+                    if (catalogState.posterLoadQueue.length > 0) {
+                        // ⚡ requestIdleCallback для фоновой загрузки
+                        var scheduleNext = window.requestIdleCallback || function(cb) { setTimeout(cb, 50); };
+                        scheduleNext(function() {
+                            if (typeof loadNextPosterBatch === 'function') {
+                                loadNextPosterBatch();
+                            }
+                        });
+                    }
+                    return;
+                }
+
+                while (active < maxActive && ptr < indices.length) {
+                    active++;
+                    var index = indices[ptr];
+                    ptr++;
+
+                    (function(idx) {
+                        if (typeof loadPosterForIndex === 'function') {
+                            loadPosterForIndex(idx)
+                                .catch(function() {})
+                                .then(function() {
+                                    active--;
+                                    var scheduleNext = window.requestIdleCallback || function(cb) { setTimeout(cb, 0); };
+                                    scheduleNext(next);
+                                });
+                        }
+                    })(index);
+                }
+            }
+
+            next();
+        };
+    }
+
+    // ==================== 2. CLEANUP DETACHED DOM NODES ====================
+
+    function cleanupDetachedPosterImages() {
+        if (typeof catalogState === 'undefined') return;
+
+        var cleaned = 0;
+        var cards = document.querySelectorAll('.catalog-card');
+
+        for (var i = 0; i < cards.length; i++) {
+            var card = cards[i];
+            if (!card.isConnected) {
+                // Удаляем ссылки на изображения из отключенных карточек
+                var img = card.querySelector('img');
+                if (img) {
+                    img.src = '';
+                    img.remove();
+                    cleaned++;
+                }
+            }
+        }
+
+        if (cleaned > 0) {
+            console.log('🧹 Очищено ' + cleaned + ' отключенных изображений');
+        }
+    }
+
+    // ==================== 3. OBSERVER CLEANUP ====================
+
+    var originalInitPosterUnloading = window.initPosterUnloading;
+    if (originalInitPosterUnloading) {
+        window.initPosterUnloading = function() {
+            // Отключаем старый observer перед созданием нового
+            if (typeof catalogState !== 'undefined' && catalogState.unloadObserver) {
+                try {
+                    catalogState.unloadObserver.disconnect();
+                    delete catalogState.unloadObserver;
+                } catch(e) {}
+            }
+
+            originalInitPosterUnloading();
+        };
+    }
+
+    var originalInitPosterLazyLoading = window.initPosterLazyLoading;
+    if (originalInitPosterLazyLoading) {
+        window.initPosterLazyLoading = function() {
+            // Отключаем старый observer
+            if (typeof catalogState !== 'undefined' && catalogState.posterObserver) {
+                try {
+                    catalogState.posterObserver.disconnect();
+                    delete catalogState.posterObserver;
+                } catch(e) {}
+            }
+
+            originalInitPosterLazyLoading();
+        };
+    }
+
+    var originalInitRowPosterLazyLoading = window.initRowPosterLazyLoading;
+    if (originalInitRowPosterLazyLoading) {
+        window.initRowPosterLazyLoading = function() {
+            // Отключаем старый observer
+            if (typeof catalogState !== 'undefined' && catalogState.rowPosterObserver) {
+                try {
+                    catalogState.rowPosterObserver.disconnect();
+                    delete catalogState.rowPosterObserver;
+                } catch(e) {}
+            }
+
+            originalInitRowPosterLazyLoading();
+        };
+    }
+
+    // ==================== 4. CLEANUP TRAILER CACHE ====================
+
+    var TRAILER_CACHE_LIMIT = 20;
+
+    function cleanupTrailerCache() {
+        if (typeof rutubeTrailerCache === 'undefined') return;
+
+        var keys = Object.keys(rutubeTrailerCache);
+        if (keys.length > TRAILER_CACHE_LIMIT) {
+            console.log('🧹 Очистка rutubeTrailerCache: ' + keys.length + ' элементов');
+
+            // Удаляем половину старых записей
+            var toRemove = Math.floor(keys.length / 2);
+            for (var i = 0; i < toRemove; i++) {
+                delete rutubeTrailerCache[keys[i]];
+            }
+        }
+    }
+
+    // ==================== 5. DELEGATION CLEANUP ====================
+
+    var originalSetupDetailDelegation = window.setupDetailDelegation;
+    if (originalSetupDetailDelegation) {
+        window.setupDetailDelegation = function(dv) {
+            // Удаляем старый обработчик перед добавлением нового
+            if (dv && dv._detailClickHandler) {
+                dv.removeEventListener('click', dv._detailClickHandler);
+                delete dv._detailClickHandler;
+            }
+
+            originalSetupDetailDelegation(dv);
+        };
+    }
+
+    // ==================== 6. TMDB CACHE CLEANUP ====================
+
+    if (typeof tmdbCache !== 'undefined' && tmdbCache.cleanExpired) {
+        // Очистка каждые 5 минут
+        setInterval(function() {
+            try {
+                tmdbCache.cleanExpired();
+                console.log('🧹 TMDB кэш очищен от устаревших записей');
+            } catch(e) {
+                console.warn('Ошибка очистки TMDB кэша:', e);
+            }
+        }, 300000);
+    }
+
+    // ==================== 7. CATALOG STATE CLEANUP ====================
+
+    function cleanupCatalogState() {
+        if (typeof catalogState === 'undefined') return;
+
+        // Очистка при смене каталога
+        if (AppState.currentScreen !== 'catalog') {
+            // Отключаем observers
+            if (catalogState.posterObserver) {
+                catalogState.posterObserver.disconnect();
+            }
+            if (catalogState.unloadObserver) {
+                catalogState.unloadObserver.disconnect();
+            }
+            if (catalogState.rowPosterObserver) {
+                catalogState.rowPosterObserver.disconnect();
+            }
+            if (catalogState.loadMoreObserver) {
+                catalogState.loadMoreObserver.disconnect();
+            }
+
+            // Очищаем очереди
+            catalogState.posterLoadQueue = [];
+            catalogState.rowPosterQueue = [];
+
+            console.log('🧹 Catalog state очищен (экран изменён)');
+        }
+    }
+
+    // ==================== 8. PERIODIC CLEANUP ====================
+
+    setInterval(function() {
+        cleanupDetachedPosterImages();
+        cleanupTrailerCache();
+        cleanupCatalogState();
+    }, 120000); // каждые 2 минуты
+
+    // ==================== 9. CLEANUP ON VISIBILITY CHANGE ====================
+
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            console.log('🧹 Страница скрыта, выполнение очистки...');
+            cleanupCatalogState();
+
+            // Принудительная очистка неиспользуемых изображений
+            if (typeof catalogState !== 'undefined' && catalogState.posterCache) {
+                // Оставляем только последние 50 постеров
+                if (catalogState.posterCache.size && catalogState.posterCache.size() > 50) {
+                    console.log('🧹 Сокращение posterCache с ' + catalogState.posterCache.size() + ' до 50');
+                    catalogState.posterCache.trimToMax && catalogState.posterCache.trimToMax();
+                }
+            }
+        }
+    });
+
+    // ==================== 10. PATCH BACKDROP LOADING ====================
+
+    var original_loadBackdropDecoded = window._loadBackdropDecoded;
+    if (original_loadBackdropDecoded) {
+        window._loadBackdropDecoded = function(container, url) {
+            if (!container || !container.isConnected) {
+                // Не загружаем backdrop для отключенных элементов
+                return;
+            }
+
+            var img = new Image();
+            img.src = url;
+
+            var apply = function() {
+                // Проверяем, что элемент всё ещё в DOM
+                if (!container.isConnected) {
+                    img.src = ''; // Освобождаем память
+                    return;
+                }
+                container.style.backgroundImage = 'url(' + url + ')';
+                container.classList.remove('hidden');
+            };
+
+            if (typeof img.decode === 'function') {
+                img.decode().then(apply).catch(function() {
+                    img.src = '';
+                });
+            } else {
+                img.onload = apply;
+                img.onerror = function() {
+                    img.src = '';
+                };
+            }
+        };
+    }
+
+    // ==================== 11. PATCH IMAGE LOADING ====================
+
+    var original_loadImageDecoded = window._loadImageDecoded;
+    if (original_loadImageDecoded) {
+        window._loadImageDecoded = function(container, src, alt) {
+            if (!container || !container.isConnected) {
+                return;
+            }
+
+            var img = new Image();
+            img.alt = alt || '';
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
+
+            var cleanup = function() {
+                img.src = '';
+                img.onload = null;
+                img.onerror = null;
+            };
+
+            var insert = function() {
+                if (!container.isConnected) {
+                    cleanup();
+                    return;
+                }
+                container.innerHTML = '';
+                img.style.opacity = '1';
+                container.appendChild(img);
+            };
+
+            img.onerror = function() {
+                if (container.isConnected) {
+                    container.innerHTML = '<div class="no-poster">Нет постера</div>';
+                }
+                cleanup();
+            };
+
+            img.src = src;
+
+            if (typeof img.decode === 'function') {
+                img.decode().then(insert).catch(function() {
+                    insert();
+                    cleanup();
+                });
+            } else {
+                img.onload = insert;
+            }
+        };
+    }
+
+    console.log('✅ Патчи памяти для catalog.js загружены');
+
+})();
