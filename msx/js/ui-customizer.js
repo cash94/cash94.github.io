@@ -2,7 +2,7 @@
 // UI CUSTOMIZER - Настройка внешнего вида интерфейса
 // Работает поверх внешней CSS (cash94.github.io/msx).
 // Все переопределения используют реальные селекторы:
-//   #catalog-grid / #torrents-grid  (display:grid)
+//   #catalog-grid / #catalog-rows / #torrents-grid  (display:grid)
 //   .torrent-card / .torrent-poster / .torrent-title / .torrent-meta
 //   .rating-badge / .catalog-badge / .catalog-row-card / .catalog-show-all
 //   #detail-view > * (масштаб детального просмотра через zoom)
@@ -290,7 +290,7 @@
         // 1. Сетка: ширина карточки задаёт число колонок (либо оно задано явно)
         //    grid-gap — для очень старых Grid-реализаций (Chrome < 66), где
         //    непрефиксного gap ещё нет; современные браузеры берут gap ниже.
-        css.push('#catalog-grid,#torrents-grid{' +
+        css.push('#catalog-grid,#catalog-rows,#torrents-grid{' +
             'grid-template-columns:repeat(' + cols + ',1fr)!important;' +
             'grid-gap:' + density.gap + '!important;' +
             'gap:' + density.gap + '!important;}');
