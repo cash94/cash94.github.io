@@ -104,61 +104,218 @@ var Animations = (function () {
         return null;
     }
 
+    // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР: ОТКРЫТИЕ / ЗАКРЫТИЕ ====================
+    // Длительности подобраны «в меру»: видно, что экран проявляется и уходит,
+    // но ждать не приходится.
+    var DETAIL_FADE = {
+        show: 0.32,          // появление #detail-view
+        hide: 0.26,          // закрытие
+        loader: 0.18,        // проявление/скрытие индикатора «Загрузка…»
+        loaderDelayMs: 160,  // пауза перед показом индикатора: если всё из кэша, он не мигнёт
+        loaderMaxMs: 4000    // страховка — индикатор не должен зависнуть насовсем
+    };
+
+    var detailHideTween = null;        // текущий тван закрытия
+    var detailLoaderEl = null;         // оверлей «Загрузка…» внутри #detail-view
+    var detailLoaderShowTimer = null;  // отложенный показ индикатора
+    var detailLoaderMaxTimer = null;   // страховочное скрытие индикатора
+
+    // Плавное изменение прозрачности. Без gsap — сразу конечное значение,
+    // чтобы элемент не остался полупрозрачным.
+    function fadeElement(el, toOpacity, duration, ease, onComplete) {
+        if (!el) return null;
+
+        if (typeof gsap === 'undefined') {
+            el.style.opacity = String(toOpacity);
+            if (onComplete) onComplete();
+            return null;
+        }
+
+        gsap.killTweensOf(el);
+
+        return gsap.to(el, {
+            opacity: toOpacity,
+            duration: duration,
+            ease: ease,
+            onComplete: onComplete || null
+        });
+    }
+
+    // Оверлей «Загрузка…» создаём один раз и держим внутри #detail-view.
+    // Стили инлайном: css/styles.css не трогаем. inset не используем — Chrome 66 его не знает.
+    // Спиннер и подпись — уже существующие классы из styles.css.
+    function getDetailLoader(create) {
+        if (detailLoaderEl && detailLoaderEl.parentNode) return detailLoaderEl;
+        if (!create) return null;
+
+        var detailView = getEl('detail-view');
+        if (!detailView) return null;
+
+        detailLoaderEl = document.createElement('div');
+        detailLoaderEl.id = 'detail-loading';
+        detailLoaderEl.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;' +
+            'display:none;flex-direction:column;align-items:center;justify-content:center;' +
+            'background:rgba(0,0,0,0.75);z-index:120;opacity:0;pointer-events:none;';
+        detailLoaderEl.innerHTML = '<div class="loading-spinner"></div>' +
+            '<div class="loading-text">Загрузка...</div>';
+        detailView.appendChild(detailLoaderEl);
+
+        return detailLoaderEl;
+    }
+
+    function clearDetailLoaderTimers() {
+        if (detailLoaderShowTimer) {
+            clearTimeout(detailLoaderShowTimer);
+            detailLoaderShowTimer = null;
+        }
+        if (detailLoaderMaxTimer) {
+            clearTimeout(detailLoaderMaxTimer);
+            detailLoaderMaxTimer = null;
+        }
+    }
+
+    // Показ с задержкой: если содержимое уже в кэше и отрисовалось за пару кадров,
+    // индикатор вообще не появится — мигать зря не нужно.
+    function showDetailLoading() {
+        clearDetailLoaderTimers();
+
+        detailLoaderShowTimer = setTimeout(function () {
+            detailLoaderShowTimer = null;
+
+            var el = getDetailLoader(true);
+            if (!el) return;
+
+            el.style.display = 'flex';
+            fadeElement(el, 1, DETAIL_FADE.loader, 'power1.out');
+        }, DETAIL_FADE.loaderDelayMs);
+
+        detailLoaderMaxTimer = setTimeout(function () {
+            detailLoaderMaxTimer = null;
+            hideDetailLoading();
+        }, DETAIL_FADE.loaderMaxMs);
+    }
+
+    function hideDetailLoading(immediate) {
+        clearDetailLoaderTimers();
+
+        var el = getDetailLoader(false);
+        if (!el) return;
+
+        if (immediate) {
+            if (typeof gsap !== 'undefined') gsap.killTweensOf(el);
+            el.style.opacity = '0';
+            el.style.display = 'none';
+            return;
+        }
+
+        fadeElement(el, 0, DETAIL_FADE.loader, 'power1.in', function () {
+            el.style.display = 'none';
+        });
+    }
+
+    // Прерываем незакончившееся закрытие: иначе его тван доведёт opacity до нуля
+    // и поставит display:none уже поверх нового открытия.
+    function cancelDetailHide(detailView) {
+        if (detailHideTween) {
+            if (typeof detailHideTween.kill === 'function') detailHideTween.kill();
+            detailHideTween = null;
+        }
+        if (detailView && detailView.dataset) delete detailView.dataset.hiding;
+    }
+
+    function finishDetailHide(detailView) {
+        detailView.style.display = 'none';
+        detailView.style.pointerEvents = 'none';
+        if (detailView.dataset) delete detailView.dataset.hiding;
+
+        // Готовим элемент к следующему открытию — он должен быть непрозрачным
+        if (typeof gsap !== 'undefined') gsap.set(detailView, { opacity: 1, y: 0, scale: 1 });
+        else detailView.style.opacity = '1';
+
+        // Фон карточки сбрасываем только теперь. Если делать это в момент нажатия
+        // «назад» (как было в app.js), подложка пропадала до затухания — и закрытие
+        // снова выглядело резким.
+        if (typeof window.resetDetailBackground === 'function') {
+            try { window.resetDetailBackground(); } catch (e) { }
+        }
+    }
+
     // Анимация появления детального просмотра
     function animateDetailShow() {
         var detailView = getEl('detail-view');
-        if (!detailView) return;
+        if (!detailView) return null;
 
-        // Убиваем все предыдущие анимации на этом элементе
-        gsap.killTweensOf(detailView);
+        cancelDetailHide(detailView);
 
         detailView.style.display = 'block';
         detailView.style.zIndex = '100';
         detailView.style.pointerEvents = 'auto';
 
-        // Сбрасываем свойства до начальных
-        gsap.set(detailView, {
-            opacity: 1,
-            y: 0,
-            scale: 1,
-            backgroundColor: 'rgb(0, 0, 0)',
-            force3D: false
-        });
-
-        // Ждем следующего кадра для применения стилей
-        requestAnimationFrame(function () {
-            var tl = gsap.timeline({
-                defaults: {
-                    duration: 0.5,
-                    opacity: 1,
-                    backgroundColor: 'rgb(0, 0, 0)',
-                    ease: "power1.out"
-                }
-            });
-
-            tl.to(detailView, {
-                opacity: 1,
-                backgroundColor: 'rgb(0, 0, 0)',
+        // Начальное состояние: прозрачный, без остатков от прошлых анимаций
+        if (typeof gsap !== 'undefined') {
+            gsap.killTweensOf(detailView);
+            gsap.set(detailView, {
+                opacity: 0,
                 y: 0,
                 scale: 1,
-                duration: 0.35
-            }, 0);
+                backgroundColor: 'rgb(0, 0, 0)',
+                force3D: false
+            });
+        } else {
+            detailView.style.opacity = '0';
+        }
 
-            return tl;
-        });
+        // «Загрузка…» — до вызова detailContentReady() из torrents.js / catalog.js
+        showDetailLoading();
+
+        return fadeElement(detailView, 1, DETAIL_FADE.show, 'power2.out');
     }
 
-    // Анимация скрытия детального просмотра
-    function animateDetailHide() {
-        var detailView = getEl('detail-view');
-        if (!detailView) return;
+    // Содержимое отрисовано — снимаем индикатор
+    function detailContentReady() {
+        hideDetailLoading();
+    }
 
-        return gsap.to(detailView, {
-            opacity: 0,
-            scale: 0.95,
-            duration: 0.5,
-            ease: "power1.out"
+    /**
+     * Анимация скрытия детального просмотра.
+     *
+     * display:none ставит сама анимация, когда затухание закончится. Раньше
+     * вызывающий код прятал элемент сразу, а animateDetailHide отрабатывал уже
+     * по скрытому — поэтому закрытие было мгновенным.
+     */
+    function animateDetailHide(onDone) {
+        var detailView = getEl('detail-view');
+        if (!detailView) {
+            if (onDone) onDone();
+            return null;
+        }
+
+        hideDetailLoading(true);
+
+        // Закрытие уже идёт — второй вызов ничего не перезапускает
+        if (detailHideTween) return detailHideTween;
+
+        if (detailView.style.display === 'none' || !detailView.style.display) {
+            // Уже скрыт (display ставит animateDetailShow, поэтому пустое значение
+            // тоже означает «не показан») — анимировать нечего
+            finishDetailHide(detailView);
+            if (onDone) onDone();
+            return null;
+        }
+
+        // Для навигации экран уже «не существует» (control.js: _isScreenVisible),
+        // хотя физически ещё виден: иначе нажатия пульта во время затухания уйдут
+        // в detail, а не в список под ним.
+        detailView.dataset.hiding = '1';
+        detailView.style.pointerEvents = 'none';
+
+        detailHideTween = fadeElement(detailView, 0, DETAIL_FADE.hide, 'power2.in', function () {
+            detailHideTween = null;
+            finishDetailHide(detailView);
+            if (onDone) onDone();
         });
+
+        return detailHideTween;
     }
 
     // Анимация загрузки (спиннер)
@@ -621,6 +778,9 @@ var Animations = (function () {
         animateFocus: animateFocus,
         animateDetailShow: animateDetailShow,
         animateDetailHide: animateDetailHide,
+        detailContentReady: detailContentReady,
+        showDetailLoading: showDetailLoading,
+        hideDetailLoading: hideDetailLoading,
         animateLoading: animateLoading,
         animateLoadingHide: animateLoadingHide,
         animateControlsShow: animateControlsShow,
