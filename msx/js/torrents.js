@@ -2766,8 +2766,23 @@ function showSearchResults(options = {}) {
     var searchOverlay = getEl('search-overlay'); var searchTab = getEl('tab-search'); var torrentsTab = getEl('tab-torrents'); var catalogTab = getEl('tab-catalog'); var searchInput = getEl('search-query');
     if (!searchOverlay || !searchTab || !torrentsTab) return;
     if (searchInput && document.activeElement === searchInput) searchInput.blur();
-    getEl('torrserver-section').style.display = 'none'; searchOverlay.classList.remove('hidden'); searchOverlay.style.display = 'flex'; searchTab.classList.add('active'); torrentsTab.classList.remove('active'); if (catalogTab) catalogTab.classList.remove('active');
+    var torrserverSection = getEl('torrserver-section');
+    searchTab.classList.add('active'); torrentsTab.classList.remove('active'); if (catalogTab) catalogTab.classList.remove('active');
     AppState.currentScreen = 'search'; syncSearchFilterButtons(); toggleSearchFiltersPanel(false);
+    if (typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
+        // Контент под оверлеем прячем только после проявления: иначе на 0.2 с
+        // вместо перехода видно пустую страницу
+        Animations.fadeIn(searchOverlay, {
+            duration: Animations.UI_FADE.overlay,
+            display: 'flex',
+            onDone: function () {
+                if (torrserverSection && AppState.currentScreen === 'search') torrserverSection.style.display = 'none';
+            }
+        });
+    } else {
+        if (torrserverSection) torrserverSection.style.display = 'none';
+        searchOverlay.classList.remove('hidden'); searchOverlay.style.display = 'flex';
+    }
     if (options.runSearch && searchInput && searchInput.value.trim()) setTimeout(function () { searchTorrents(searchInput.value.trim()); }, 0);
     setTimeout(function () {
         if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(options.focusQuery !== false); return; }
@@ -2790,7 +2805,23 @@ function hideSearchResults() {
     if (modeSelect) modeSelect.value = 'globalsearch';
     if (!searchOverlay || !searchTab || !torrentsTab) return;
     var returnTo = AppState.searchReturnTo || AppState.inSearch;
-    getEl('torrserver-section').style.display = 'block'; searchOverlay.classList.add('hidden'); searchOverlay.style.display = 'none'; searchTab.classList.remove('active'); getEl('search-results').innerHTML = ''; toggleSearchFiltersPanel(false);
+    var torrserverSection = getEl('torrserver-section');
+    // Контент показываем сразу — он проявляется из-под уходящего оверлея
+    if (torrserverSection) torrserverSection.style.display = 'block';
+    searchTab.classList.remove('active'); toggleSearchFiltersPanel(false);
+    if (typeof Animations !== 'undefined' && typeof Animations.fadeOut === 'function') {
+        // Прятать оверлей по-настоящему и чистить результаты можно только в конце
+        // затухания: display:none обрывает CSS-переход мгновенно
+        Animations.fadeOut(searchOverlay, {
+            duration: Animations.UI_FADE.overlay,
+            display: 'none',
+            addHidden: true,
+            onDone: function () { var sr = getEl('search-results'); if (sr) sr.innerHTML = ''; }
+        });
+    } else {
+        searchOverlay.classList.add('hidden'); searchOverlay.style.display = 'none';
+        var searchResultsEl = getEl('search-results'); if (searchResultsEl) searchResultsEl.innerHTML = '';
+    }
     if (returnTo === 'detail') {
         AppState.currentScreen = 'detail'; var mainContainer = getEl('main-container'); if (mainContainer && AppState.backupScroll > 0) mainContainer.scrollTop = AppState.backupScroll;
         AppState.searchReturnTo = null;
