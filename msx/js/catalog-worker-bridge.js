@@ -11,7 +11,7 @@ var CatalogWorker = (function () {
 
     try {
       // ★ Прямой путь — same-origin, без Blob, без GitHub
-      worker = new Worker('/catalog-worker.js');
+      worker = new Worker(new URL('catalog-worker.js', document.baseURI));
     } catch (e) {
       console.error('❌ Worker creation failed:', e);
       worker = null;
