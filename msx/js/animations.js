@@ -277,6 +277,33 @@ var Animations = (function () {
     }
 
     /**
+     * Мгновенно вернуть уже отрисованный detail-view (выход из плеера, закрытие
+     * поиска). Без затухания и без «Загрузка…»: содержимое на месте, показывать
+     * индикатор нечего. Главное — снять недоигранное закрытие, иначе экран
+     * останется с opacity 0 или получит display:none поверх восстановления.
+     */
+    function ensureDetailVisible() {
+        var detailView = getEl('detail-view');
+        if (!detailView) return null;
+
+        cancelDetailHide(detailView);
+        hideDetailLoading(true);
+
+        detailView.style.display = 'block';
+        detailView.style.zIndex = '100';
+        detailView.style.pointerEvents = 'auto';
+
+        if (typeof gsap !== 'undefined') {
+            gsap.killTweensOf(detailView);
+            gsap.set(detailView, { opacity: 1, y: 0, scale: 1, force3D: false });
+        } else {
+            detailView.style.opacity = '1';
+        }
+
+        return detailView;
+    }
+
+    /**
      * Анимация скрытия детального просмотра.
      *
      * display:none ставит сама анимация, когда затухание закончится. Раньше
