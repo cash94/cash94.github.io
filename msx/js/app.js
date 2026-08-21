@@ -1022,8 +1022,12 @@ function setupSearch() {
         if (tabSearchEl) tabSearchEl.classList.remove('active');
         tabCatalog.classList.add('active');
         showContentScreen('catalog');
-        var catalogGrid = getEl('catalog-grid');
-        if (!catalogGrid || !catalogGrid.hasChildNodes()) {
+        // Смотрим на активный вид: открыта категория — на её сетку, иначе на ряды.
+        // Раньше вид был один, и проверять было нечего.
+        var catalogView = (typeof catalogState !== 'undefined' && catalogState.currentCatalog)
+          ? getEl('catalog-grid')
+          : getEl('catalog-rows');
+        if (!catalogView || !catalogView.hasChildNodes()) {
           window.loadCatalogList();
         } else {
           // DOM уже тёплый, поэтому загрузки нет; задаём первую карточку явно.
