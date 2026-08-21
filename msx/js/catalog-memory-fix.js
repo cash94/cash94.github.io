@@ -187,31 +187,78 @@
     // ==================== 7. CATALOG STATE CLEANUP ====================
 
     function cleanupCatalogState() {
-        if (typeof catalogState === 'undefined') return;
+        if (typeof catalogState === 'undefined' || typeof AppState === 'undefined') return;
 
-        // Очистка при смене каталога
-        if (AppState.currentScreen !== 'catalog') {
-            // Отключаем observers
-            if (catalogState.posterObserver) {
-                catalogState.posterObserver.disconnect();
-            }
-            if (catalogState.unloadObserver) {
-                catalogState.unloadObserver.disconnect();
-            }
-            if (catalogState.rowPosterObserver) {
-                catalogState.rowPosterObserver.disconnect();
-            }
-            if (catalogState.loadMoreObserver) {
-                catalogState.loadMoreObserver.disconnect();
-            }
+        // 'detail' — это оверлей ПОВЕРХ живой сетки каталога. Пользователь вернётся
+        // кнопкой «Назад», а возврат сетку не перерисовывает (app.js: «если каталог
+        // уже загружен и сетка в DOM — НЕ перерендериваем»), значит отключённые здесь
+        // наблюдатели сами уже не поднимутся и постеры грузиться перестанут.
+        if (AppState.currentScreen === 'catalog' || AppState.currentScreen === 'detail') return;
 
-            // Очищаем очереди
-            catalogState.posterLoadQueue = [];
-            catalogState.rowPosterQueue = [];
-
-            console.log('🧹 Catalog state очищен (экран изменён)');
+        // Отключаем observers
+        if (catalogState.posterObserver) {
+            catalogState.posterObserver.disconnect();
         }
+        if (catalogState.unloadObserver) {
+            catalogState.unloadObserver.disconnect();
+        }
+        if (catalogState.rowPosterObserver) {
+            catalogState.rowPosterObserver.disconnect();
+        }
+        if (catalogState.loadMoreObserver) {
+            catalogState.loadMoreObserver.disconnect();
+        }
+
+        // Очищаем очереди
+        catalogState.posterLoadQueue = [];
+        catalogState.rowPosterQueue = [];
+
+        // disconnect() не обнуляет ссылку — объект остаётся truthy, поэтому
+        // ни initPosterLazyLoading(), ни updatePosterObservers() не вызовутся сами.
+        window._catalogObserversDisarmed = true;
+
+        console.log('🧹 Catalog state очищен (экран изменён)');
     }
+
+    // ==================== 7b. ВОССТАНОВЛЕНИЕ НАБЛЮДАТЕЛЕЙ ====================
+
+    /**
+     * Поднимает IntersectionObserver'ы каталога после периодической чистки.
+     * Вызывается при возврате на экран каталога (app.js), при показе страницы
+     * и как страховка на периодическом тике. Ничего не делает, если чистки не было.
+     */
+    function rearmCatalogObservers() {
+        if (typeof catalogState === 'undefined' || typeof AppState === 'undefined') return;
+        if (!window._catalogObserversDisarmed) return;
+        if (AppState.currentScreen !== 'catalog') return;
+        window._catalogObserversDisarmed = false;
+
+        // Режим рядов
+        if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
+            // Очередь рядов была очищена, но у карточек остался posterLoaded='1',
+            // а initRowPosterLazyLoading такие карточки не наблюдает (catalog.js:2900) —
+            // сбрасываем флаг у тех, где картинка так и не появилась.
+            var rows = document.querySelectorAll('#catalog-grid .catalog-row-card');
+            for (var r = 0; r < rows.length; r++) {
+                var box = rows[r].querySelector('.row-poster-img');
+                if (box && !box.querySelector('img')) rows[r].dataset.posterLoaded = '0';
+            }
+            if (typeof window.initRowPosterLazyLoading === 'function') window.initRowPosterLazyLoading();
+            console.log('♻️ Наблюдатели рядов каталога восстановлены (' + rows.length + ' карточек)');
+            return;
+        }
+
+        // Сетка: то же самое с флагом posterRequested (catalog.js:1374)
+        var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
+        for (var i = 0; i < cards.length; i++) {
+            if (!cards[i].querySelector('img.catalog-poster-img')) cards[i].dataset.posterRequested = '0';
+        }
+        if (typeof window.initPosterLazyLoading === 'function') window.initPosterLazyLoading();
+        if (typeof window.initLoadMoreObserver === 'function') window.initLoadMoreObserver();
+        console.log('♻️ Наблюдатели каталога восстановлены (' + cards.length + ' карточек)');
+    }
+
+    window.rearmCatalogObservers = rearmCatalogObservers;
 
     // ==================== 8. PERIODIC CLEANUP ====================
 
@@ -219,22 +266,25 @@
         cleanupDetachedPosterImages();
         cleanupTrailerCache();
         cleanupCatalogState();
+        rearmCatalogObservers();   // страховка: вернулись в каталог мимо app.js
     }, 120000); // каждые 2 минуты
 
     // ==================== 9. CLEANUP ON VISIBILITY CHANGE ====================
 
     document.addEventListener('visibilitychange', function() {
-        if (document.hidden) {
-            console.log('🧹 Страница скрыта, выполнение очистки...');
-            cleanupCatalogState();
+        if (!document.hidden) {
+            rearmCatalogObservers();
+            return;
+        }
+        console.log('🧹 Страница скрыта, выполнение очистки...');
+        cleanupCatalogState();
 
-            // Принудительная очистка неиспользуемых изображений
-            if (typeof catalogState !== 'undefined' && catalogState.posterCache) {
-                // Оставляем только последние 50 постеров
-                if (catalogState.posterCache.size && catalogState.posterCache.size() > 50) {
-                    console.log('🧹 Сокращение posterCache с ' + catalogState.posterCache.size() + ' до 50');
-                    catalogState.posterCache.trimToMax && catalogState.posterCache.trimToMax();
-                }
+        // Принудительная очистка неиспользуемых изображений
+        if (typeof catalogState !== 'undefined' && catalogState.posterCache) {
+            // Оставляем только последние 50 постеров
+            if (catalogState.posterCache.size && catalogState.posterCache.size() > 50) {
+                console.log('🧹 Сокращение posterCache с ' + catalogState.posterCache.size() + ' до 50');
+                catalogState.posterCache.trimToMax && catalogState.posterCache.trimToMax();
             }
         }
     });
