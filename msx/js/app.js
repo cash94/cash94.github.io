@@ -603,7 +603,10 @@ function setupNavigation() {
     backFromDetail.addEventListener('click', function () {
       console.log('🔙 Возврат из детального просмотра');
       var mainContainer = getEl('main-container');
-      resetDetailBackground();
+      // Фон карточки здесь больше не сбрасываем: подложка должна оставаться на месте,
+      // пока идёт затухание. Её снимает animations.js в конце анимации закрытия
+      // (finishDetailHide), а ветки ниже, которые сразу открывают другую карточку,
+      // делают это сами.
       var savedScroll = typeof AppState.backupScroll === 'number' ? AppState.backupScroll : 0;
 
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
@@ -612,6 +615,9 @@ function setupNavigation() {
       if (window.AndroidJS || AppState.transcodingFullOnOff) {
         if (AppState.searchResultsHidden) {
           var searchOverlay = getEl('search-overlay');
+          // Здесь сразу открывается другая карточка, поэтому фон сбрасываем сами
+          // (в конце затухания это сделать уже нельзя — затухания не будет)
+          resetDetailBackground();
           // Финальные действия (общие для ветки, где не ждём)
           function finishSearchRestore() {
             AppState.playFromHash = false;
@@ -620,7 +626,7 @@ function setupNavigation() {
             AppState.searchResultsHidden = false;
             AppState.clearLastSelected = false;
             setTimeout(function () {
-              if (detailView) detailView.style.display = 'none';
+              hideDetailView();
               if (searchOverlay) {
                 searchOverlay.classList.remove('hidden');
                 searchOverlay.style.display = 'flex';
@@ -659,8 +665,12 @@ function setupNavigation() {
         }
       }
 
-      if (AppState && !AppState.isSearch && !AppState.playFromHash && detailHistory.length <= 1 && AppState.clearLastSelected) {
-        if (detailView) detailView.style.display = 'none';
+      // Затухание запускаем сразу по нажатию «назад»: восстановление списка ниже
+      // (скролл, фокус) идёт параллельно, под уходящей карточкой — поэтому реакция
+      // мгновенная, а сам переход плавный. Если в истории есть предыдущая карточка,
+      // ниже откроется она — закрывать нечего.
+      if (!detailHistory || detailHistory.length <= 1) {
+        hideDetailView();
       }
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
 
@@ -683,6 +693,8 @@ function setupNavigation() {
         if (detailHistory.length > 1) {
           detailHistory.pop();
           var lastItem = detailHistory[detailHistory.length - 1];
+          // Открывается другая карточка, затухания не будет — фон сбрасываем сами
+          resetDetailBackground();
           window.showCatalogDetail(lastItem, 0, null);
           console.log('🔙 Возврат к элементу:', lastItem.title || lastItem.name);
           return;
@@ -692,11 +704,29 @@ function setupNavigation() {
 
         restoreFocusAfterNavigation(returnTo, { currentTorrentHash: currentTorrentHash, savedScroll: savedScroll });
 
+        // Страховка: если ветка выше не тронула карточку, закрываем её здесь.
+        // Повторный вызов ничего не перезапускает — анимация уже идёт.
         if (typeof Animations !== 'undefined') Animations.animateDetailHide();
       }, APP_CONSTANTS.DETAIL_HIDE_DELAY_MS);
     });
     AppState.isCatalogSearch = false;
   }
+}
+
+/**
+ * Прячем детальный просмотр плавно.
+ *
+ * display:none ставит сама анимация в конце затухания (animations.js:
+ * animateDetailHide). Прямое присваивание display:none обрывало бы затухание:
+ * раньше все ветки ниже прятали элемент сразу, а Animations.animateDetailHide()
+ * вызывался уже по скрытому — поэтому карточка закрывалась резко.
+ */
+function hideDetailView() {
+  if (typeof Animations !== 'undefined' && typeof Animations.animateDetailHide === 'function') {
+    Animations.animateDetailHide();
+    return;
+  }
+  if (detailView) detailView.style.display = 'none';
 }
 
 function restoreFocusAfterNavigation(returnTo, context) {
@@ -719,7 +749,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
     if (typeof window.rearmCatalogObservers === 'function') window.rearmCatalogObservers();
 
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
-      if (detailView) detailView.style.display = 'none';
+      hideDetailView();
       restoreRowFocus();
       return;
     }
@@ -729,7 +759,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
     if (catalogState.currentCatalog === AppState.backCurrentCatalog &&
       catalogState.items.length > 0 && catalogGrid && catalogGrid.children.length > 0) {
 
-      if (detailView) detailView.style.display = 'none';
+      hideDetailView();
 
       // Восстанавливаем скролл ДО фокусировки
       var mc = getEl('main-container');
@@ -751,7 +781,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
       if (mc && typeof context.savedScroll === 'number') {
         mc.scrollTop = context.savedScroll;
       }
-      if (detailView) detailView.style.display = 'none';
+      hideDetailView();
       if (typeof window.ensureCatalogFocus === 'function') {
         window.ensureCatalogFocus(true);
       }
@@ -766,7 +796,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
     } else {
       if (typeof window.clearSearchResults === 'function') window.clearSearchResults();
     }
-    if (detailView) detailView.style.display = 'none';
+    hideDetailView();
     return;
   }
 
@@ -792,7 +822,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
     updateFocusableElements();
 
     if (typeof window.ensureTorrentFocus === 'function') {
-      if (detailView) detailView.style.display = 'none';
+      hideDetailView();
       window.ensureTorrentFocus(true);
       console.log('🎯 Фокус восстановлен через ensureTorrentFocus');
       return;
@@ -807,7 +837,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
     }
 
     setFocus(targetIndex !== -1 ? targetIndex : 0);
-    if (detailView) detailView.style.display = 'none';
+    hideDetailView();
   }
 }
 
