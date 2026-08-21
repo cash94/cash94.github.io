@@ -1336,7 +1336,7 @@ function initPosterUnloading() {
                 if (!img) {
                     var idx = parseInt(card.dataset.catalogIndex, 10);
                     if (!isNaN(idx) && catalogState.items[idx]) {
-                        addToPosterQueue(idx);
+                        if (!loadPosterDirect(idx, card)) addToPosterQueue(idx);
                     }
                 }
             } else {
@@ -1369,11 +1369,11 @@ function loadInitialPosters() {
         var card = catalogState.cardElements[i];
         if (!card) continue;
 
-        // Если img ещё нет — ставим в очередь
-        if (!card.querySelector('img.catalog-poster-img') && card.dataset.posterRequested !== '1') {
-            card.dataset.posterRequested = '1';
-            idxs.push(i);
-        }
+        if (card.querySelector('img.catalog-poster-img') || card.dataset.posterRequested === '1') continue;
+        card.dataset.posterRequested = '1';
+
+        // Быстрый путь — сразу, в очередь попадает только то, что требует запроса
+        if (!loadPosterDirect(i, card)) idxs.push(i);
     }
 
     if (idxs.length > 0) {
@@ -1393,7 +1393,8 @@ function initPosterLazyLoading() {
                 var idx = parseInt(target.dataset.catalogIndex, 10);
                 var it = catalogState.items[idx];
                 if (!it) continue;
-                addToPosterQueue(idx);
+                // Есть poster_path — вставляем сразу; в очередь только медленный путь
+                if (!loadPosterDirect(idx, target)) addToPosterQueue(idx);
             }
         }
     }, { rootMargin: CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX + 'px', threshold: 0.1 });
@@ -1417,6 +1418,40 @@ function updatePosterObservers() {
             try { catalogState.posterObserver.observe(cards[i]); } catch (e) { }
         }
     }
+}
+
+/**
+ * Быстрый путь: у элемента уже есть poster_path, значит адрес известен сразу —
+ * собираем его через то же зеркало-прокси, что и все остальные постеры
+ * (getTmdbImageUrl, никаких прямых обращений к image.tmdb.org), и вставляем
+ * картинку на месте, синхронно.
+ *
+ * Очередь, батчи и requestIdleCallback здесь не нужны: ничего асинхронного мы
+ * не ждём — декодированием занимается сам браузер (img.decoding='async'), а
+ * число одновременных HTTP-загрузок он же и ограничивает. Очередь остаётся для
+ * медленного пути: элементов без poster_path, которым нужен запрос к Worker/TMDB.
+ *
+ * @returns {boolean} true — постер обработан, в очередь ставить не нужно
+ */
+function loadPosterDirect(idx, card) {
+    if (!catalogState.currentCatalog) return false;
+
+    var item = catalogState.items[idx];
+    if (!item || !item.poster_path) return false;
+
+    if (!card) card = catalogState.cardElements[idx];
+    if (!card) return false;
+
+    var div = card.querySelector('.torrent-poster');
+    if (!div) return false;
+
+    var url = getTmdbImageUrl(item.poster_path, getPosterCardSize());
+    if (!url) return false;
+
+    catalogState.posterCache.set(item.id + '_' + (item.media_type || 'movie'), url);
+    card.dataset.posterRequested = '1';   // как в addToPosterQueue: карточка обработана
+    updatePosterDOM(div, card.dataset.rating, url);
+    return true;
 }
 
 function addToPosterQueue(idx) {
@@ -1443,14 +1478,21 @@ function loadPosterBatch(indices) {
     var ptr = 0;
     var maxActive = CATALOG_CONSTANTS.MAX_POSTER_DECODES || 3;
 
+    // requestIdleCallback без timeout браузер вправе откладывать сколько угодно,
+    // пока телевизор занят скроллом или декодированием — постеры «капали».
+    // Здесь остался только медленный путь (запросы к Worker/TMDB), но ждать его
+    // бесконечно всё равно нельзя, поэтому задаём предельную задержку.
+    function scheduleIdle(cb, timeout) {
+        if (window.requestIdleCallback) window.requestIdleCallback(cb, { timeout: timeout });
+        else setTimeout(cb, 16);
+    }
+
     function next() {
         if (ptr >= indices.length && active === 0) {
             catalogState.isPosterLoading = false;
 
             if (catalogState.posterLoadQueue.length > 0) {
-                // Используем requestIdleCallback для фоновой загрузки следующего батча
-                var scheduleNext = window.requestIdleCallback || function(cb) { setTimeout(cb, 16); };
-                scheduleNext(loadNextPosterBatch);
+                scheduleIdle(loadNextPosterBatch, 200);
             }
 
             return;
@@ -1468,9 +1510,7 @@ function loadPosterBatch(indices) {
                 })
                 .then(function () {
                     active--;
-                    // Используем requestIdleCallback для следующего постера
-                    var scheduleNext = window.requestIdleCallback || function(cb) { setTimeout(cb, 0); };
-                    scheduleNext(next);
+                    scheduleIdle(next, 100);
                 });
         }
     }
@@ -1500,9 +1540,13 @@ async function loadCatalogPoster(card, title, mt, id, index) {
 
     var item = catalogState.items[index];
 
-    // ⚡ БЫСТРЫЙ ПУТЬ: если у item есть poster_path — сразу рендерим
+    // ⚡ БЫСТРЫЙ ПУТЬ: если у item есть poster_path — сразу рендерим.
+    // Обычно сюда уже не попадаем (loadPosterDirect отработал синхронно ещё в
+    // колбэке observer'а), но путь оставлен для вызовов мимо очереди.
+    // Размер — getPosterCardSize(), тот же, что ждёт updatePosterDOM,
+    // иначе URL пересобирался бы там второй раз.
     if (item && item.poster_path) {
-        var quickUrl = getTmdbImageUrl(item.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM);
+        var quickUrl = getTmdbImageUrl(item.poster_path, getPosterCardSize());
         if (quickUrl) {
             updatePosterDOM(div, card.dataset.rating, quickUrl);
             catalogState.posterCache.set(key, quickUrl);
