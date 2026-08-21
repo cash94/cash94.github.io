@@ -1094,9 +1094,81 @@ function createCardElement(config) {
 }
 
 // ==================== ОТОБРАЖЕНИЕ ====================
+
+// Возврат из категории в ряды раньше был рывком: содержимое #catalog-grid
+// подменялось мгновенно. Теперь сетка затухает, новое содержимое пишется в уже
+// невидимую сетку и она проявляется обратно.
+var CATALOG_GRID_REVEAL_DELAY_MS = 200;   // столько ждём ряды, прежде чем показать спиннер
+var catalogGridRevealTimer = null;
+var catalogGridFaded = false;             // сетка спрятана затуханием и ждёт проявления
+
+function cancelCatalogGridReveal() {
+    if (catalogGridRevealTimer) { clearTimeout(catalogGridRevealTimer); catalogGridRevealTimer = null; }
+}
+
+// Плавно спрятать сетку перед подменой содержимого. display не трогаем: спиннер
+// «Загрузка каталогов...» пишется в невидимую сетку, а display:none помешал бы
+// потом её проявить.
+function fadeOutCatalogGrid(onDone) {
+    var grid = getEl('catalog-grid');
+    cancelCatalogGridReveal();
+    if (!grid || typeof Animations === 'undefined' || typeof Animations.fadeOut !== 'function') {
+        if (onDone) onDone();
+        return;
+    }
+    Animations.fadeOut(grid, {
+        duration: 0.2,
+        keepFaded: true,
+        onDone: function () {
+            catalogGridFaded = true;
+            if (onDone) onDone();
+        }
+    });
+}
+
+// Проявить сетку обратно. Если её никто не прятал — обычное присвоение display,
+// как было раньше.
+function revealCatalogGrid(display) {
+    cancelCatalogGridReveal();
+    var grid = getEl('catalog-grid');
+    if (!grid) return;
+    if (!catalogGridFaded || typeof Animations === 'undefined' || typeof Animations.fadeIn !== 'function') {
+        if (typeof display === 'string') grid.style.display = display;
+        return;
+    }
+    catalogGridFaded = false;
+    var options = { duration: Animations.UI_FADE.content };
+    if (typeof display === 'string') options.display = display;
+    Animations.fadeIn(grid, options);
+}
+
+// Страховка: если ряды так и не построятся (пустые каталоги, ошибка загрузки),
+// сетку всё равно надо показать
+function scheduleCatalogGridReveal(display) {
+    cancelCatalogGridReveal();
+    catalogGridRevealTimer = setTimeout(function () {
+        catalogGridRevealTimer = null;
+        revealCatalogGrid(display);
+    }, CATALOG_GRID_REVEAL_DELAY_MS);
+}
+
+// Сбросить незакончившееся затухание: содержимое, записанное в сетку помимо
+// рядов, не должно остаться невидимым
+function ensureCatalogGridVisible() {
+    cancelCatalogGridReveal();
+    catalogGridFaded = false;
+    var grid = getEl('catalog-grid');
+    if (grid && typeof Animations !== 'undefined' && typeof Animations.resetFade === 'function') {
+        Animations.resetFade(grid);
+    } else if (grid) {
+        grid.style.opacity = '';
+    }
+}
+
 function renderCatalogGrid() {
     var grid = getEl('catalog-grid');
     if (!grid) return;
+    ensureCatalogGridVisible();
     grid.style.display = '';
     grid.innerHTML = '';
     if (catalogState.items.length === 0) { showEmptyCatalog(); return; }
@@ -2729,7 +2801,7 @@ function loadCatalogRowsProgressively(grid, keys) {
             if (typeof updateFocusableElements === 'function') updateFocusableElements();
             setTimeout(function () {
                 if (!isCurrentCatalogList()) return;
-                grid.style.display = 'grid';
+                revealCatalogGrid('grid');
                 restoreRowFocus();
             }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
         });
@@ -3326,11 +3398,13 @@ function createCatalogFolderCard(key, cfg) {
 
 function showCatalogLoading(msg) {
     var g = getEl('catalog-grid');
+    ensureCatalogGridVisible();
     if (g) g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">' + (msg || 'Загрузка...') + '</div></div>';
 }
 
 function showCatalogError(msg) {
     var g = getEl('catalog-grid');
+    ensureCatalogGridVisible();
     if (g) g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div style="font-size:48px;margin-bottom:20px">⚠️</div><div style="font-size:16px;color:#ff6a6a">' + msg + '</div><button class="btn" style="margin-top:20px" onclick="window.loadCatalogList()">Попробовать снова</button></div>';
 }
 
@@ -3353,14 +3427,21 @@ function backToCatalogList() {
     catalogState.lastSelectedIndex = 0;
     catalogState.lastSelectedId = null;
     localStorage.removeItem('lastCatalogCardIndex');
-    showCatalogList();
-    requestAnimationFrame(function () {
-        if (AppState.currentScreen === 'catalog') {
-            if (typeof updateFocusableElements === 'function') updateFocusableElements();
-            setTimeout(function () {
-                if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
-            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
-        }
+    // Сначала затухает сетка категории, и только потом в неё пишутся ряды —
+    // иначе подмена содержимого выглядит рывком
+    fadeOutCatalogGrid(function () {
+        showCatalogList();
+        // Ряды из кэша успевают отрисоваться за эту паузу и проявляются сами;
+        // если загрузка затянулась — показываем спиннер
+        scheduleCatalogGridReveal('grid');
+        requestAnimationFrame(function () {
+            if (AppState.currentScreen === 'catalog') {
+                if (typeof updateFocusableElements === 'function') updateFocusableElements();
+                setTimeout(function () {
+                    if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+                }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+            }
+        });
     });
 }
 
