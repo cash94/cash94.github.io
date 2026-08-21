@@ -192,7 +192,7 @@
             // Очередь рядов была очищена, но у карточек остался posterLoaded='1',
             // а initRowPosterLazyLoading такие карточки не наблюдает (catalog.js:2900) —
             // сбрасываем флаг у тех, где картинка так и не появилась.
-            var rows = document.querySelectorAll('#catalog-grid .catalog-row-card');
+            var rows = document.querySelectorAll('#catalog-rows .catalog-row-card');
             for (var r = 0; r < rows.length; r++) {
                 var box = rows[r].querySelector('.row-poster-img');
                 if (box && !box.querySelector('img')) rows[r].dataset.posterLoaded = '0';
