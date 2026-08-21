@@ -10,58 +10,12 @@
 
     // ==================== 1. ОПТИМИЗАЦИЯ POSTER LOADING ====================
 
-    // Ограничение одновременных загрузок постеров
-    var MAX_CONCURRENT_POSTER_LOADS = 8; // было неограниченно
-
-    if (typeof catalogState !== 'undefined') {
-        var originalLoadPosterBatch = window.loadPosterBatch;
-
-        window.loadPosterBatch = function(indices) {
-            if (!indices || indices.length === 0) return;
-
-            catalogState.isPosterLoading = true;
-            var active = 0;
-            var ptr = 0;
-            var maxActive = Math.min(MAX_CONCURRENT_POSTER_LOADS, CATALOG_CONSTANTS.MAX_POSTER_DECODES || 3);
-
-            function next() {
-                if (ptr >= indices.length && active === 0) {
-                    catalogState.isPosterLoading = false;
-
-                    if (catalogState.posterLoadQueue.length > 0) {
-                        // ⚡ requestIdleCallback для фоновой загрузки
-                        var scheduleNext = window.requestIdleCallback || function(cb) { setTimeout(cb, 50); };
-                        scheduleNext(function() {
-                            if (typeof loadNextPosterBatch === 'function') {
-                                loadNextPosterBatch();
-                            }
-                        });
-                    }
-                    return;
-                }
-
-                while (active < maxActive && ptr < indices.length) {
-                    active++;
-                    var index = indices[ptr];
-                    ptr++;
-
-                    (function(idx) {
-                        if (typeof loadPosterForIndex === 'function') {
-                            loadPosterForIndex(idx)
-                                .catch(function() {})
-                                .then(function() {
-                                    active--;
-                                    var scheduleNext = window.requestIdleCallback || function(cb) { setTimeout(cb, 0); };
-                                    scheduleNext(next);
-                                });
-                        }
-                    })(index);
-                }
-            }
-
-            next();
-        };
-    }
+    // Здесь был патч window.loadPosterBatch, ограничивавший число одновременных
+    // загрузок постеров. Удалён: он повторял catalog.js:1407 один в один, а лимит
+    // получался тот же самый — Math.min(8, MAX_POSTER_DECODES) === MAX_POSTER_DECODES === 8.
+    // Единственным его эффектом были три лишних кадра стека на каждый постер.
+    // Ограничение живёт в самом catalog.js (CATALOG_CONSTANTS.MAX_POSTER_DECODES) —
+    // менять его надо там, а не переопределением функции.
 
     // ==================== 2. CLEANUP DETACHED DOM NODES ====================
 
