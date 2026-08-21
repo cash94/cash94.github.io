@@ -108,38 +108,101 @@ var Animations = (function () {
     // Длительности подобраны «в меру»: видно, что экран проявляется и уходит,
     // но ждать не приходится.
     var DETAIL_FADE = {
-        show: 0.1,          // появление #detail-view
+        show: 0.32,          // появление #detail-view
         hide: 0.26,          // закрытие
-        loader: 0.05,        // проявление/скрытие индикатора «Загрузка…»
+        loader: 0.18,        // проявление/скрытие индикатора «Загрузка…»
         loaderDelayMs: 160,  // пауза перед показом индикатора: если всё из кэша, он не мигнёт
-        loaderMaxMs: 4000    // страховка — индикатор не должен зависнуть насовсем
+        loaderMaxMs: 4000,   // страховка — индикатор не должен зависнуть насовсем
+        easeOut: 'cubic-bezier(0.22, 0.61, 0.36, 1)',   // аналог power2.out
+        easeIn: 'cubic-bezier(0.55, 0.09, 0.68, 0.53)'  // аналог power2.in
     };
 
-    var detailHideTween = null;        // текущий тван закрытия
+    var detailHideTween = null;        // текущее затухание при закрытии
     var detailLoaderEl = null;         // оверлей «Загрузка…» внутри #detail-view
     var detailLoaderShowTimer = null;  // отложенный показ индикатора
     var detailLoaderMaxTimer = null;   // страховочное скрытие индикатора
 
-    // Плавное изменение прозрачности. Без gsap — сразу конечное значение,
-    // чтобы элемент не остался полупрозрачным.
+    // Снять незакончившееся затухание, оставив текущее значение прозрачности
+    function stopFade(el) {
+        if (el && el._fadeHandle) el._fadeHandle.kill();
+    }
+
+    /**
+     * Плавное изменение прозрачности через CSS-переход.
+     *
+     * Раньше здесь был gsap.to(). Его тик живёт в основном потоке, а отрисовка
+     * карточки (особенно из каталога) занимает поток надолго — переход не
+     * доигрывал и экран оставался полупрозрачным (0.2…0.97). CSS-переход
+     * считает композитор: он доводит прозрачность до конца независимо от того,
+     * чем занят JS.
+     *
+     * Возвращает объект с kill() — совместимо с прежним тваном gsap.
+     */
     function fadeElement(el, toOpacity, duration, ease, onComplete) {
         if (!el) return null;
 
-        if (typeof gsap === 'undefined') {
-            el.style.opacity = String(toOpacity);
-            if (onComplete) onComplete();
-            return null;
+        // Остатки прежних анимаций на этом элементе
+        if (typeof gsap !== 'undefined') gsap.killTweensOf(el);
+        stopFade(el);
+
+        var finished = false;
+        var timer = null;
+
+        function cleanup() {
+            if (el.removeEventListener) el.removeEventListener('transitionend', onTransitionEnd, false);
+            if (timer) { clearTimeout(timer); timer = null; }
+            if (el._fadeHandle === handle) el._fadeHandle = null;
         }
 
-        gsap.killTweensOf(el);
+        function finish() {
+            if (finished) return;
+            finished = true;
+            cleanup();
+            el.style.transition = '';
+            el.style.opacity = String(toOpacity);
+            if (onComplete) onComplete();
+        }
 
-        return gsap.to(el, {
-            opacity: toOpacity,
-            duration: duration,
-            ease: ease,
-            onComplete: onComplete || null
-        });
+        function onTransitionEnd(e) {
+            // Переходы дочерних элементов всплывают сюда — они не наши
+            if (e.target !== el || e.propertyName !== 'opacity') return;
+            finish();
+        }
+
+        var handle = {
+            kill: function () {
+                if (finished) return;
+                finished = true;
+                // Фиксируем текущее значение, иначе снятие transition доведёт
+                // прозрачность до конечной — следующая анимация задаст своё
+                var current = null;
+                if (window.getComputedStyle) {
+                    try { current = window.getComputedStyle(el).opacity; } catch (err) { current = null; }
+                }
+                if (current !== null && current !== '') el.style.opacity = current;
+                el.style.transition = '';
+                cleanup();
+            }
+        };
+
+        el._fadeHandle = handle;
+
+        // Начальное значение должно попасть в стиль до включения перехода,
+        // иначе браузер сразу применит конечное. offsetWidth форсирует пересчёт.
+        void el.offsetWidth;
+
+        el.style.transition = 'opacity ' + duration + 's ' + (ease || 'ease');
+        el.style.opacity = String(toOpacity);
+
+        if (el.addEventListener) el.addEventListener('transitionend', onTransitionEnd, false);
+
+        // Страховка: transitionend не придёт, если элемент скрыт (display:none)
+        // или переход не стартовал — тогда добиваем значение таймером.
+        timer = setTimeout(finish, Math.round(duration * 1000) + 150);
+
+        return handle;
     }
+
 
     // Оверлей «Загрузка…» создаём один раз и держим внутри #detail-view.
     // Стили инлайном: css/styles.css не трогаем. inset не используем — Chrome 66 его не знает.
@@ -186,7 +249,7 @@ var Animations = (function () {
             if (!el) return;
 
             el.style.display = 'flex';
-            fadeElement(el, 1, DETAIL_FADE.loader, 'power1.out');
+            fadeElement(el, 1, DETAIL_FADE.loader, DETAIL_FADE.easeOut);
         }, DETAIL_FADE.loaderDelayMs);
 
         detailLoaderMaxTimer = setTimeout(function () {
@@ -203,23 +266,26 @@ var Animations = (function () {
 
         if (immediate) {
             if (typeof gsap !== 'undefined') gsap.killTweensOf(el);
+            stopFade(el);
+            el.style.transition = '';
             el.style.opacity = '0';
             el.style.display = 'none';
             return;
         }
 
-        fadeElement(el, 0, DETAIL_FADE.loader, 'power1.in', function () {
+        fadeElement(el, 0, DETAIL_FADE.loader, DETAIL_FADE.easeIn, function () {
             el.style.display = 'none';
         });
     }
 
-    // Прерываем незакончившееся закрытие: иначе его тван доведёт opacity до нуля
+    // Прерываем незакончившееся закрытие: иначе оно доведёт opacity до нуля
     // и поставит display:none уже поверх нового открытия.
     function cancelDetailHide(detailView) {
         if (detailHideTween) {
             if (typeof detailHideTween.kill === 'function') detailHideTween.kill();
             detailHideTween = null;
         }
+        if (detailView) stopFade(detailView);
         if (detailView && detailView.dataset) delete detailView.dataset.hiding;
     }
 
@@ -229,8 +295,10 @@ var Animations = (function () {
         if (detailView.dataset) delete detailView.dataset.hiding;
 
         // Готовим элемент к следующему открытию — он должен быть непрозрачным
-        if (typeof gsap !== 'undefined') gsap.set(detailView, { opacity: 1, y: 0, scale: 1 });
-        else detailView.style.opacity = '1';
+        // и без перехода, чтобы новое открытие начиналось с чистого состояния
+        detailView.style.transition = '';
+        detailView.style.opacity = '1';
+        if (typeof gsap !== 'undefined') gsap.set(detailView, { y: 0, scale: 1 });
 
         // Фон карточки сбрасываем только теперь. Если делать это в момент нажатия
         // «назад» (как было в app.js), подложка пропадала до затухания — и закрытие
@@ -251,29 +319,38 @@ var Animations = (function () {
         detailView.style.zIndex = '100';
         detailView.style.pointerEvents = 'auto';
 
-        // Начальное состояние: прозрачный, без остатков от прошлых анимаций
+        // Убираем остатки прошлых анимаций (сдвиг/масштаб от gsap), прозрачность
+        // ведём сами — CSS-переходом в fadeElement
         if (typeof gsap !== 'undefined') {
             gsap.killTweensOf(detailView);
             gsap.set(detailView, {
-                opacity: 0,
                 y: 0,
                 scale: 1,
                 backgroundColor: 'rgb(0, 0, 0)',
                 force3D: false
             });
-        } else {
-            detailView.style.opacity = '0';
         }
+        detailView.style.transition = '';
+        detailView.style.opacity = '0';
 
         // «Загрузка…» — до вызова detailContentReady() из torrents.js / catalog.js
         showDetailLoading();
 
-        return fadeElement(detailView, 1, DETAIL_FADE.show, 'power2.out');
+        return fadeElement(detailView, 1, DETAIL_FADE.show, DETAIL_FADE.easeOut);
     }
 
     // Содержимое отрисовано — снимаем индикатор
     function detailContentReady() {
         hideDetailLoading();
+
+        // Страховка от полупрозрачного экрана: если появление уже не идёт
+        // (переход снят или не стартовал), карточка обязана быть непрозрачной
+        var detailView = getEl('detail-view');
+        if (detailView && !detailView._fadeHandle && !detailHideTween &&
+            detailView.style.display !== 'none') {
+            detailView.style.transition = '';
+            detailView.style.opacity = '1';
+        }
     }
 
     /**
