@@ -372,10 +372,10 @@ var Animations = (function () {
 
         if (typeof gsap !== 'undefined') {
             gsap.killTweensOf(detailView);
-            gsap.set(detailView, { opacity: 1, y: 0, scale: 1, force3D: false });
-        } else {
-            detailView.style.opacity = '1';
+            gsap.set(detailView, { y: 0, scale: 1, force3D: false });
         }
+        detailView.style.transition = '';
+        detailView.style.opacity = '1';
 
         return detailView;
     }
