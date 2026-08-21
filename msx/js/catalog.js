@@ -2807,7 +2807,10 @@ function loadCatalogRowsProgressively(grid, keys) {
             if (typeof updateFocusableElements === 'function') updateFocusableElements();
             setTimeout(function () {
                 if (!isCurrentCatalogList()) return;
-                revealCatalogGrid('grid');
+                // display выставляем на первом же ряду, но саму сетку не проявляем:
+                // при возврате из категории она ждёт остальных рядов (иначе видно,
+                // как список достраивается уже после появления)
+                grid.style.display = 'grid';
                 restoreRowFocus();
             }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
         });
@@ -2841,9 +2844,9 @@ function loadCatalogRowsProgressively(grid, keys) {
             if (completedLoads === keys.length) {
                 if (renderedRows === 0) {
                     grid.innerHTML = '<div class="catalog-rows-loading"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталоги пусты</div></div>';
-                    // Рядов не будет — ждать их проявления бессмысленно
-                    revealCatalogGrid('grid');
                 }
+                // Все ряды в DOM — теперь сетку можно проявить одним движением
+                revealCatalogGrid('grid');
                 finish(true, resolve);
                 return;
             }
