@@ -118,7 +118,7 @@ var Animations = (function () {
     };
 
     var detailHideTween = null;        // текущее затухание при закрытии
-    var detailLoaderEl = null;         // оверлей «Загрузка…» внутри #detail-view
+    var detailLoaderEl = null;         // оверлей «Загрузка…» (в body, поверх карточки)
     var detailLoaderShowTimer = null;  // отложенный показ индикатора
     var detailLoaderMaxTimer = null;   // страховочное скрытие индикатора
 
@@ -169,6 +169,29 @@ var Animations = (function () {
             finish();
         }
 
+        // Дошла ли прозрачность до цели (переход закончился или не запускался)
+        function atTarget() {
+            if (!window.getComputedStyle) return true;
+            var now;
+            try { now = parseFloat(window.getComputedStyle(el).opacity); } catch (err) { return true; }
+            if (isNaN(now)) return true;
+            return Math.abs(now - toOpacity) < 0.02;
+        }
+
+        // Страховка на случай, если transitionend не придёт (элемент скрыт,
+        // переход не стартовал). Проверяем реальное значение: пока поток был
+        // занят отрисовкой, переход мог даже не начаться — тогда ждём ещё круг,
+        // иначе страховка сама превратила бы плавное появление в резкое.
+        var attempts = 0;
+        function tick() {
+            timer = null;
+            if (attempts++ < 3 && !atTarget()) {
+                timer = setTimeout(tick, Math.round(duration * 1000) + 150);
+                return;
+            }
+            finish();
+        }
+
         var handle = {
             kill: function () {
                 if (finished) return;
@@ -196,23 +219,24 @@ var Animations = (function () {
 
         if (el.addEventListener) el.addEventListener('transitionend', onTransitionEnd, false);
 
-        // Страховка: transitionend не придёт, если элемент скрыт (display:none)
-        // или переход не стартовал — тогда добиваем значение таймером.
-        timer = setTimeout(finish, Math.round(duration * 1000) + 150);
+        timer = setTimeout(tick, Math.round(duration * 1000) + 150);
 
         return handle;
     }
 
 
-    // Оверлей «Загрузка…» создаём один раз и держим внутри #detail-view.
+    // Оверлей «Загрузка…» создаём один раз и держим в body — не внутри
+    // #detail-view: пока карточка проявляется, её opacity близка к нулю, и
+    // вложенный индикатор был бы не виден именно тогда, когда он нужен.
+    // z-index 120 — выше #detail-view (100) и ниже остальных оверлеев (200+).
     // Стили инлайном: css/styles.css не трогаем. inset не используем — Chrome 66 его не знает.
     // Спиннер и подпись — уже существующие классы из styles.css.
     function getDetailLoader(create) {
         if (detailLoaderEl && detailLoaderEl.parentNode) return detailLoaderEl;
         if (!create) return null;
 
-        var detailView = getEl('detail-view');
-        if (!detailView) return null;
+        var host = document.body || getEl('detail-view');
+        if (!host) return null;
 
         detailLoaderEl = document.createElement('div');
         detailLoaderEl.id = 'detail-loading';
@@ -221,7 +245,7 @@ var Animations = (function () {
             'background:rgba(0,0,0,0.75);z-index:120;opacity:0;pointer-events:none;';
         detailLoaderEl.innerHTML = '<div class="loading-spinner"></div>' +
             '<div class="loading-text">Загрузка...</div>';
-        detailView.appendChild(detailLoaderEl);
+        host.appendChild(detailLoaderEl);
 
         return detailLoaderEl;
     }
