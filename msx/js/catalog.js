@@ -1098,7 +1098,13 @@ function createCardElement(config) {
 // Возврат из категории в ряды раньше был рывком: содержимое #catalog-grid
 // подменялось мгновенно. Теперь сетка затухает, новое содержимое пишется в уже
 // невидимую сетку и она проявляется обратно.
-var CATALOG_GRID_REVEAL_DELAY_MS = 900;   // столько ждём ряды, прежде чем показать спиннер
+//
+// Проявлять сетку нужно ОДИН раз и уже с рядами. Если показать её раньше, пока
+// внутри только спиннер «Загрузка каталогов...», то первый готовый ряд затрёт
+// спиннер (renderReadyRows: grid.innerHTML = '') на видимой сетке — это и читается
+// как моргание. Поэтому таймер ниже — только страховка на случай, когда рядов не
+// будет вовсе (пустые каталоги, обрыв загрузки), а не обычный путь.
+var CATALOG_GRID_REVEAL_DELAY_MS = 900;
 var catalogGridRevealTimer = null;
 var catalogGridFaded = false;             // сетка спрятана затуханием и ждёт проявления
 
@@ -2835,6 +2841,8 @@ function loadCatalogRowsProgressively(grid, keys) {
             if (completedLoads === keys.length) {
                 if (renderedRows === 0) {
                     grid.innerHTML = '<div class="catalog-rows-loading"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталоги пусты</div></div>';
+                    // Рядов не будет — ждать их проявления бессмысленно
+                    revealCatalogGrid('grid');
                 }
                 finish(true, resolve);
                 return;
@@ -3430,10 +3438,10 @@ function backToCatalogList() {
     // Сначала затухает сетка категории, и только потом в неё пишутся ряды —
     // иначе подмена содержимого выглядит рывком
     fadeOutCatalogGrid(function () {
-        showCatalogList();
-        // Ряды из кэша успевают отрисоваться за эту паузу и проявляются сами;
-        // если загрузка затянулась — показываем спиннер
+        // Страховку ставим до построения рядов: если showCatalogList сорвётся,
+        // сетка всё равно не останется невидимой
         scheduleCatalogGridReveal('grid');
+        showCatalogList();
         requestAnimationFrame(function () {
             if (AppState.currentScreen === 'catalog') {
                 if (typeof updateFocusableElements === 'function') updateFocusableElements();
