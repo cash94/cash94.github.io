@@ -774,6 +774,16 @@ function restoreFocusAfterNavigation(returnTo, context) {
     if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
     showContentScreen('torrents');
 
+    // Скролл восстанавливаем синхронно, ДО фокусировки, как в ветке каталога:
+    // showContentScreen применяет его только в requestAnimationFrame, а
+    // ensureTorrentFocus проверяет видимость карточки прямо сейчас. Иначе он
+    // решает, что скроллить не нужно, а кадром позже rAF уводит список наверх.
+    var mcTorrents = getEl('main-container');
+    var savedTorrentsScroll = AppState.contentScroll ? AppState.contentScroll.torrents : null;
+    if (mcTorrents && typeof savedTorrentsScroll === 'number') {
+      mcTorrents.scrollTop = savedTorrentsScroll;
+    }
+
     if (context.currentTorrentHash) {
       window.lastSelectedTorrentHash = context.currentTorrentHash;
       console.log('💾 Сохранен hash для восстановления:', context.currentTorrentHash);
