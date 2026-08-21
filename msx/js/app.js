@@ -713,6 +713,11 @@ function restoreFocusAfterNavigation(returnTo, context) {
   if (returnTo === 'catalog') {
     showContentScreen('catalog', context.savedScroll);
 
+    // Пока была открыта карточка, периодическая чистка памяти могла отключить
+    // IntersectionObserver'ы каталога. Сетка ниже не перерисовывается, поэтому
+    // поднимаем наблюдателей вручную — иначе постеры больше не догружаются.
+    if (typeof window.rearmCatalogObservers === 'function') window.rearmCatalogObservers();
+
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
       if (detailView) detailView.style.display = 'none';
       restoreRowFocus();
