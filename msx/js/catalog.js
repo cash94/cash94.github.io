@@ -1098,7 +1098,7 @@ function createCardElement(config) {
 // Возврат из категории в ряды раньше был рывком: содержимое #catalog-grid
 // подменялось мгновенно. Теперь сетка затухает, новое содержимое пишется в уже
 // невидимую сетку и она проявляется обратно.
-var CATALOG_GRID_REVEAL_DELAY_MS = 200;   // столько ждём ряды, прежде чем показать спиннер
+var CATALOG_GRID_REVEAL_DELAY_MS = 900;   // столько ждём ряды, прежде чем показать спиннер
 var catalogGridRevealTimer = null;
 var catalogGridFaded = false;             // сетка спрятана затуханием и ждёт проявления
 
