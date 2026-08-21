@@ -39,6 +39,36 @@ var mirrors = [
     // 'another-mirror.com' // можно добавлять новые через запятую
 ];
 
+/**
+ * Выбирает зеркало детерминированно — по пути самого изображения.
+ * Раньше здесь был Math.random(): один и тот же постер каждый раз приезжал
+ * с другого хоста, поэтому HTTP-кэш браузера почти не работал (при 5 зеркалах
+ * шанс попасть в уже скачанный файл — 1/5), а URL в posterCache не совпадал
+ * с тем, что реально грузилось. Балансировка сохраняется: разные постеры
+ * по-прежнему расходятся по всем зеркалам, но каждый — всегда на своё.
+ */
+function pickMirror(path) {
+    var h = 0;
+    for (var i = 0; i < path.length; i++) {
+        h = ((h << 5) - h + path.charCodeAt(i)) | 0;
+    }
+    return mirrors[Math.abs(h) % mirrors.length];
+}
+
+/**
+ * Тот же путь на следующем зеркале — фоллбэк для img.onerror.
+ * Нужен именно из-за детерминированного выбора: мёртвый хост иначе ронял бы
+ * один и тот же набор постеров всегда, а не случайную пятую часть.
+ */
+function getTmdbNextMirrorUrl(url) {
+    if (!url || typeof url !== 'string') return null;
+    var m = url.match(/^(https?:)\/\/(.+?)(\/t\/p\/.+)$/i);
+    if (!m) return null;
+    var i = mirrors.indexOf(m[2]);
+    if (i === -1) return null;
+    return m[1] + '//' + mirrors[(i + 1) % mirrors.length] + m[3];
+}
+
 function getTmdbImageUrl(pathOrUrl, size) {
     if (!pathOrUrl || typeof pathOrUrl !== 'string') return pathOrUrl || '';
 
@@ -55,7 +85,7 @@ function getTmdbImageUrl(pathOrUrl, size) {
         path = value.charAt(0) === '/' ? value : '/' + value;
     }
 
-    var mirror = mirrors[Math.floor(Math.random() * mirrors.length)];
+    var mirror = pickMirror(path);
     return getProtocolBase() + '//' + mirror + '/t/p/' +
         (size || CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM) + path;
 }
@@ -1545,7 +1575,13 @@ function updatePosterDOM(div, rating, url) {
         return;
     }
 
-    url = getTmdbImageUrl(url, getPosterCardSize());
+    // URL уже собран нами под нужный размер (быстрый путь, posterCache,
+    // normalizePosterUrl) — не пересобираем: это лишний разбор строки, а раньше
+    // ещё и меняло зеркало, из-за чего в кэш попадал один адрес, а грузился другой.
+    var size = getPosterCardSize();
+    if (url.indexOf('/t/p/' + size + '/') === -1) {
+        url = getTmdbImageUrl(url, size);
+    }
 
     // ⚡ Мгновенная вставка — браузер декодирует асинхронно сам
     var img = new Image();
@@ -1569,8 +1605,19 @@ function updatePosterDOM(div, rating, url) {
         img.classList.add('loaded');
     };
 
-    // Обработка ошибок
+    // Обработка ошибок: зеркало теперь выбирается детерминированно, поэтому
+    // мёртвый хост ронял бы один и тот же набор постеров всегда — пробуем один
+    // раз следующее зеркало и только потом сдаёмся.
+    var mirrorRetried = false;
     img.onerror = function () {
+        if (!mirrorRetried) {
+            var alt = getTmdbNextMirrorUrl(img.src);
+            if (alt && alt !== img.src) {
+                mirrorRetried = true;
+                img.src = alt;
+                return;
+            }
+        }
         if (div.isConnected && !div.querySelector('.no-poster')) {
             div.innerHTML = '<div class="no-poster">Нет постера</div>';
         }
@@ -2943,7 +2990,20 @@ function setRowPosterImg(box, url) {
             settle();
         };
 
-        img.onerror = fail;
+        // Как и в updatePosterDOM: зеркало детерминированное, поэтому один раз
+        // пробуем следующее, прежде чем показать «Нет постера».
+        var mirrorRetried = false;
+        img.onerror = function () {
+            if (!mirrorRetried) {
+                var alt = getTmdbNextMirrorUrl(img.src);
+                if (alt && alt !== img.src) {
+                    mirrorRetried = true;
+                    img.src = alt;
+                    return;
+                }
+            }
+            fail();
+        };
         img.onload = function () {
             // Декодируем в фоновом потоке (Chromium 64+), не блокируя main thread
             if (typeof img.decode === 'function') img.decode().then(insert).catch(insert);
