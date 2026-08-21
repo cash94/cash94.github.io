@@ -1597,6 +1597,10 @@ async function showDetail(torrent) {
                 }
             } else setFocus(0);
         }
+        // Всё отрисовано и фокус на месте — снимаем индикатор «Загрузка…»
+        if (typeof Animations !== 'undefined' && typeof Animations.detailContentReady === 'function') {
+            Animations.detailContentReady();
+        }
     }, 200);
     AppState.mediaType = '';
 }
