@@ -215,10 +215,11 @@
         // Загружаем все каталоги в IndexedDB.
         // Если нужно ждать полную загрузку до показа списка,
         // замените строку ниже на:
-        // return prefetchAllFullCatalogs().then(function () { return _origShowCatalogList.call(window); });
+        // return prefetchAllFullCatalogs().then(function () { return _origShowCatalogList.apply(window, args); });
         prefetchAllFullCatalogs();
 
-        return _origShowCatalogList.call(window);
+        // apply, а не call: showCatalogList принимает force (пересборка рядов)
+        return _origShowCatalogList.apply(window, arguments);
     };
 
     // ==================== loadCatalog ====================
