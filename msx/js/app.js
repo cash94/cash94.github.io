@@ -68,8 +68,30 @@ function showContentScreen(screen, restoreScrollTop) {
     AppState.contentScroll[AppState.currentScreen] = mainContainer.scrollTop;
   }
 
-  torrentsScreen.hidden = screen !== 'torrents';
-  catalogScreen.hidden = screen !== 'catalog';
+  // Уходящий экран убираем сразу: оба экрана лежат в общем потоке #main-container,
+  // одновременно показать их нельзя — вторая вкладка встала бы под первой.
+  // Поэтому плавно проявляем только приходящий, и только когда вкладка реально
+  // сменилась (возврат из detail не должен мигать).
+  var hasScreenFade = typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function';
+  var incoming = screen === 'torrents' ? torrentsScreen : (screen === 'catalog' ? catalogScreen : null);
+  var outgoing = incoming === torrentsScreen ? catalogScreen : torrentsScreen;
+  var wasHidden = incoming ? incoming.hidden : false;
+
+  if (hasScreenFade) Animations.resetFade(outgoing);
+  outgoing.hidden = true;
+
+  if (!incoming) {
+    // Неизвестный экран — как раньше, прячем оба
+    if (hasScreenFade) Animations.resetFade(torrentsScreen);
+    torrentsScreen.hidden = true;
+    catalogScreen.hidden = true;
+  } else if (wasHidden && hasScreenFade) {
+    // fadeIn сам снимает hidden и ведёт прозрачность от 0 к 1
+    Animations.fadeIn(incoming, { duration: Animations.UI_FADE.screen });
+  } else {
+    if (hasScreenFade) Animations.resetFade(incoming);
+    incoming.hidden = false;
+  }
 
   if (typeof AppState !== 'undefined') {
     AppState.currentScreen = screen;
