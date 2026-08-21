@@ -413,7 +413,7 @@ var Animations = (function () {
         detailView.dataset.hiding = '1';
         detailView.style.pointerEvents = 'none';
 
-        detailHideTween = fadeElement(detailView, 0, DETAIL_FADE.hide, 'power2.in', function () {
+        detailHideTween = fadeElement(detailView, 0, DETAIL_FADE.hide, DETAIL_FADE.easeIn, function () {
             detailHideTween = null;
             finishDetailHide(detailView);
             if (onDone) onDone();
