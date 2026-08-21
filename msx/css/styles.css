@@ -566,7 +566,8 @@ body {
 }
 
 #torrents-grid,
-#catalog-grid {
+#catalog-grid,
+#catalog-rows {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 10px;
@@ -1772,7 +1773,8 @@ body.detail-open {
 
 @media (max-width: 768px) {
   #torrents-grid,
-  #catalog-grid {
+  #catalog-grid,
+  #catalog-rows {
     grid-template-columns: repeat(2, 1fr);
   }
 
