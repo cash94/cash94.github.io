@@ -2366,6 +2366,10 @@ async function showCatalogDetail(item, index, posterUrl) {
             }
             setFocus(idx !== -1 ? idx : 0);
         }
+        // Шапка, актёры и похожие отрисованы, фокус на месте — снимаем «Загрузка…»
+        if (typeof Animations !== 'undefined' && typeof Animations.detailContentReady === 'function') {
+            Animations.detailContentReady();
+        }
     });
 }
 
@@ -3220,10 +3224,19 @@ function scrollRowToCard(card) {
     var cr = card.getBoundingClientRect();
     var vr = viewport.getBoundingClientRect();
     var pad = 50;
-    if (cr.left < vr.left + pad) {
-        viewport.scrollBy({ left: cr.left - vr.left - pad, behavior: 'smooth' });
-    } else if (cr.right > vr.right - pad) {
-        viewport.scrollBy({ left: cr.right - vr.right + pad, behavior: 'smooth' });
+    var target = null;
+    if (cr.left < vr.left + pad) target = viewport.scrollLeft + (cr.left - vr.left - pad);
+    else if (cr.right > vr.right - pad) target = viewport.scrollLeft + (cr.right - vr.right + pad);
+    if (target === null) return;
+    target = Math.max(0, target);
+
+    // Тем же путём, что и вся навигация (control.js: applyScroll → Animations.tweenScroll):
+    // нативный scrollBy({behavior:'smooth'}) на телевизоре не работает.
+    // Эту функцию перекрывает одноимённая из control.js — правки держим синхронными.
+    if (typeof Animations !== 'undefined' && typeof Animations.tweenScroll === 'function') {
+        Animations.tweenScroll(viewport, { scrollLeft: target }, { duration: 0.42, ease: 'power3.out' });
+    } else {
+        viewport.scrollLeft = target;
     }
 }
 
