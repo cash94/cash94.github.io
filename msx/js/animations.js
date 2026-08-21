@@ -193,6 +193,7 @@ var Animations = (function () {
         }
 
         var handle = {
+            to: toOpacity,   // чтобы повторный вызов не перезапускал ту же анимацию
             kill: function () {
                 if (finished) return;
                 finished = true;
@@ -444,6 +445,117 @@ var Animations = (function () {
         });
 
         return detailHideTween;
+    }
+
+    // ==================== ПЛАВНОЕ ПОЯВЛЕНИЕ / ЗАТУХАНИЕ ЭКРАНОВ ====================
+    // Тот же приём, что и у detail-view: CSS-переход считает композитор, поэтому
+    // он доигрывает до конца, даже когда основной поток занят отрисовкой списков.
+    var UI_FADE = {
+        screen: 0.22,    // переключение вкладок «Каталог» / «Мои торренты»
+        overlay: 0.2,    // оверлей поиска
+        content: 0.24    // подмена содержимого (возврат из категории каталога в ряды)
+    };
+
+    // Элемент спрятан любым из принятых в проекте способов
+    function isElementHidden(el) {
+        if (!el) return true;
+        if (el.hidden) return true;
+        if (el.classList && el.classList.contains('hidden')) return true;
+        if (el.style.display === 'none') return true;
+        return false;
+    }
+
+    // Снять недоигранное затухание и вернуть элемент к «чистому» состоянию:
+    // inline-прозрачность и переход убираем, дальше решает CSS
+    function resetFade(el) {
+        if (!el) return;
+        stopFade(el);
+        el.style.transition = '';
+        el.style.opacity = '';
+        if (el.dataset) delete el.dataset.hiding;
+    }
+
+    /**
+     * Плавно показать элемент.
+     * options: duration, ease, display (строка — будет выставлена в style.display),
+     *          onDone.
+     * Спрятанный элемент проявляется с нуля, уже видимый — с текущей прозрачности,
+     * чтобы прерванное затухание не мигало.
+     */
+    function fadeIn(el, options) {
+        if (!el) return null;
+        options = options || {};
+
+        // Уже проявляется — не перезапускаем (иначе повторный вызов дёрнет анимацию)
+        if (!options.onDone && el._fadeHandle && el._fadeHandle.to === 1) return el._fadeHandle;
+
+        var wasHidden = isElementHidden(el);
+        stopFade(el);
+        if (el.dataset) delete el.dataset.hiding;
+        if (el.classList) el.classList.remove('hidden');
+        if (el.hidden) el.hidden = false;
+        if (typeof options.display === 'string') el.style.display = options.display;
+
+        var from = 0;
+        if (!wasHidden && window.getComputedStyle) {
+            try { from = parseFloat(getComputedStyle(el).opacity); } catch (err) { from = 1; }
+            if (isNaN(from)) from = 1;
+        }
+
+        if (from >= 0.999) {
+            // Полностью видим — анимировать нечего
+            el.style.transition = '';
+            el.style.opacity = '';
+            if (options.onDone) options.onDone();
+            return null;
+        }
+
+        el.style.transition = '';
+        el.style.opacity = String(from);
+
+        var duration = typeof options.duration === 'number' ? options.duration : UI_FADE.screen;
+        return fadeElement(el, 1, duration, options.ease || DETAIL_FADE.easeOut, function () {
+            // Возвращаем управление CSS: inline opacity < 1 создаёт контекст наложения
+            el.style.opacity = '';
+            if (options.onDone) options.onDone();
+        });
+    }
+
+    /**
+     * Плавно скрыть элемент. По-настоящему прятать (display / hidden / .hidden)
+     * можно только после затухания — display:none обрывает переход мгновенно.
+     * options: duration, ease, display, addHidden, hiddenAttr, keepFaded, onDone.
+     * keepFaded — оставить элемент на месте с прозрачностью 0: так в невидимую
+     * сетку каталога можно записать новое содержимое и проявить её обратно.
+     */
+    function fadeOut(el, options) {
+        options = options || {};
+
+        function applyHidden() {
+            if (!el) return;
+            if (typeof options.display === 'string') el.style.display = options.display;
+            if (options.addHidden && el.classList) el.classList.add('hidden');
+            if (options.hiddenAttr) el.hidden = true;
+            el.style.transition = '';
+            if (!options.keepFaded) el.style.opacity = '';
+            if (el.dataset) delete el.dataset.hiding;
+        }
+
+        if (!el || isElementHidden(el)) {
+            if (el) { stopFade(el); applyHidden(); }
+            if (options.onDone) options.onDone();
+            return null;
+        }
+
+        // Для навигации элемент уже «не существует»: control.js (_isScreenVisible)
+        // игнорирует dataset.hiding, иначе кнопки пульта уйдут в уходящий экран
+        if (el.dataset) el.dataset.hiding = '1';
+
+        var duration = typeof options.duration === 'number' ? options.duration : UI_FADE.screen;
+        return fadeElement(el, 0, duration, options.ease || DETAIL_FADE.easeIn, function () {
+            applyHidden();
+            if (options.onDone) options.onDone();
+        });
     }
 
     // Анимация загрузки (спиннер)
@@ -910,6 +1022,13 @@ var Animations = (function () {
         detailContentReady: detailContentReady,
         showDetailLoading: showDetailLoading,
         hideDetailLoading: hideDetailLoading,
+
+        // Плавные переходы экранов: вкладки, оверлей поиска, подмена сетки каталога
+        fadeIn: fadeIn,
+        fadeOut: fadeOut,
+        resetFade: resetFade,
+        UI_FADE: UI_FADE,
+
         animateLoading: animateLoading,
         animateLoadingHide: animateLoadingHide,
         animateControlsShow: animateControlsShow,
