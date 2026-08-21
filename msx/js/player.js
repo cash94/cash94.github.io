@@ -1147,6 +1147,9 @@ function transitionToPlayerScreen() {
   getEl('config-screen').style.display = 'none';
   getEl('torrserver-section').style.display = 'none';
   getEl('detail-view').style.display = 'none';
+  // Уходим в плеер мгновенно: затухание карточки тут не нужно, но недоигранный
+  // индикатор «Загрузка…» гасим, чтобы он не всплыл при возврате
+  if (typeof Animations !== 'undefined' && typeof Animations.hideDetailLoading === 'function') Animations.hideDetailLoading(true);
   getEl('player-screen').style.display = 'block';
   clearFocused();
   var controlsContainer = getEl('controls-container');
@@ -1512,7 +1515,10 @@ function showDetailView(field = null) {
         if (AppState.hls) { AppState.hls.destroy(); AppState.hls = null; }
         AppState.isYoutubePlayback = false; AppState.currentScreen = 'catalog'; getEl('player-screen').style.display = 'none';
         var detailView = getEl('detail-view');
-        if (detailView && AppState.youtubeContext) { detailView.style.display = 'block'; detailView.style.pointerEvents = 'auto'; }
+        if (detailView && AppState.youtubeContext) {
+          if (typeof Animations !== 'undefined' && typeof Animations.ensureDetailVisible === 'function') Animations.ensureDetailVisible();
+          else { detailView.style.display = 'block'; detailView.style.pointerEvents = 'auto'; }
+        }
         else if (typeof window.showCatalogList === 'function') window.showCatalogList();
       }
       return;
@@ -1575,7 +1581,10 @@ function showDetailView(field = null) {
     lastPlaybackFromSearch = false;
   } else {
     var detailView = getEl('detail-view');
-    if (AppState.currentDetailItem) { detailView.style.display = 'block'; updateDetailProgress(AppState.currentDetailItem); }
+    var restoreDetail = (typeof Animations !== 'undefined' && typeof Animations.ensureDetailVisible === 'function')
+      ? Animations.ensureDetailVisible
+      : function () { detailView.style.display = 'block'; };
+    if (AppState.currentDetailItem) { restoreDetail(); updateDetailProgress(AppState.currentDetailItem); }
     else detailView.style.display = 'none';
     setTimeout(function () {
       if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
