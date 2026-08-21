@@ -18,12 +18,18 @@ var Animations = (function () {
         }
     };
 
-    // Инициализация ScrollTrigger
+    // Инициализация плагинов gsap, если они подключены.
+    // ScrollTrigger / ScrollToPlugin / EasePack убраны из index.html (тормозили
+    // прокрутку), поэтому каждый проверяем отдельно: раньше ScrollToPlugin
+    // регистрировался внутри проверки на ScrollTrigger.
     function initScrollTrigger() {
+        if (typeof gsap === 'undefined' || !gsap.registerPlugin) return;
         if (typeof ScrollTrigger !== 'undefined') {
             gsap.registerPlugin(ScrollTrigger);
-            gsap.registerPlugin(ScrollToPlugin);
             console.log('✅ ScrollTrigger инициализирован');
+        }
+        if (typeof ScrollToPlugin !== 'undefined') {
+            gsap.registerPlugin(ScrollToPlugin);
         }
     }
 
@@ -445,24 +451,15 @@ var Animations = (function () {
             var targetTop = container.scrollTop + (rect.top - containerRect.top) - offset;
             targetTop = Math.max(0, Math.min(container.scrollHeight - containerRect.height, targetTop));
 
-            gsap.killTweensOf(container);
-            gsap.to(container, {
-                scrollTop: targetTop,
-                duration: duration,
-                ease: ease,
-                overwrite: true
-            });
+            tweenScroll(container, { scrollTop: targetTop }, { duration: duration, ease: ease });
         } else if (container === window || !container) {
             var targetY = window.scrollY + element.getBoundingClientRect().top - offset;
             targetY = Math.max(0, targetY);
 
-            gsap.killTweensOf(window);
-            gsap.to(window, {
-                scrollTo: { y: targetY },
-                duration: duration,
-                ease: ease,
-                overwrite: true
-            });
+            // Без ScrollToPlugin окно тянем через scrollTop корневого элемента
+            var root = document.scrollingElement || document.documentElement;
+            if (root) tweenScroll(root, { scrollTop: targetY }, { duration: duration, ease: ease });
+            else window.scrollTo(0, targetY);
         }
     }
     // Проверка, находится ли элемент полностью в зоне видимости контейнера
@@ -474,14 +471,63 @@ var Animations = (function () {
             ? { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth }
             : container.getBoundingClientRect();
 
-        // Элемент считается видимым, если он полностью помещается в границы контейнера
-        // (Если нужна проверка только по вертикали, можно убрать условия для left/right)
-        return (
-            elRect.top >= containerRect.top &&
-            elRect.bottom <= containerRect.bottom // &&
-            //elRect.left >= containerRect.left &&
-            //elRect.right <= containerRect.right
-        );
+        if (elRect.top < containerRect.top || elRect.bottom > containerRect.bottom) return false;
+
+        // По горизонтали проверяем только там, где контейнер реально прокручивается
+        // (ряды каталога, горизонтальные списки актёров и т.п.). Для #main-container
+        // с overflow-x: hidden scrollWidth === clientWidth, и проверка не включается —
+        // прежнее поведение вертикальных списков не меняется.
+        if (canScrollX(container)) {
+            if (elRect.left < containerRect.left || elRect.right > containerRect.right) return false;
+        }
+
+        return true;
+    }
+
+    function canScrollX(el) {
+        return !!el && el !== window && el.scrollWidth > el.clientWidth + 1;
+    }
+
+    function canScrollY(el) {
+        return !!el && el !== window && el.scrollHeight > el.clientHeight + 1;
+    }
+
+    /**
+     * Плавная прокрутка контейнера тваном по scrollTop / scrollLeft.
+     *
+     * ScrollToPlugin для этого не нужен: gsap тянет scrollTop и scrollLeft как любое
+     * числовое свойство DOM-элемента. Плагин (вместе с ScrollTrigger и EasePack) убран
+     * из index.html — он тормозил прокрутку, — поэтому весь плавный скролл приложения
+     * идёт через эту функцию.
+     *
+     * @param {Element} container контейнер с прокруткой
+     * @param {Object}  vars      свойства для твана: scrollTop / scrollLeft
+     *                            (можно добавить любые gsap-свойства, например backgroundColor)
+     * @param {Object}  [options] duration в секундах (0 или отсутствие gsap — мгновенно), ease
+     */
+    function tweenScroll(container, vars, options) {
+        if (!container || !vars) return;
+        options = options || {};
+        var duration = typeof options.duration === 'number' ? options.duration : 0.3;
+        var ease = options.ease || 'power1.out';
+
+        if (typeof gsap === 'undefined' || duration <= 0) {
+            // Мгновенно: остальные свойства (тот же backgroundColor) без твана не нужны
+            if (typeof vars.scrollTop === 'number') container.scrollTop = vars.scrollTop;
+            if (typeof vars.scrollLeft === 'number') container.scrollLeft = vars.scrollLeft;
+            return;
+        }
+
+        gsap.killTweensOf(container);
+
+        var tween = {};
+        for (var k in vars) {
+            if (Object.prototype.hasOwnProperty.call(vars, k)) tween[k] = vars[k];
+        }
+        tween.duration = duration;
+        tween.ease = ease;
+        tween.overwrite = true;
+        gsap.to(container, tween);
     }
 
     // Проверка видимости и прокрутка к элементу, если он не виден
@@ -503,33 +549,44 @@ var Animations = (function () {
         if (targetContainer !== window && targetContainer.scrollTop !== undefined) {
             var rect = element.getBoundingClientRect();
             var containerRect = targetContainer.getBoundingClientRect();
-            var targetTop;
+            var vars = {};
 
-            // Разная логика в зависимости от направления
-            if (direction === 'down') {
-                // При навигации вниз - прижимаем элемент к НИЖНЕМУ краю
-                var positionDiff = rect.bottom - containerRect.bottom;
-                targetTop = targetContainer.scrollTop + positionDiff + offset;
-            } else if (direction === 'up') {
-                // При навигации вверх - прижимаем элемент к ВЕРХНЕМУ краю
-                var positionDiff = rect.top - containerRect.top;
-                targetTop = targetContainer.scrollTop + positionDiff - offset;
-            } else {
-                // По умолчанию - прижимаем к нижнему краю (старая логика)
-                var positionDiff = rect.bottom - containerRect.bottom;
-                targetTop = targetContainer.scrollTop + positionDiff + offset;
+            if (canScrollY(targetContainer)) {
+                var targetTop;
+
+                // Разная логика в зависимости от направления
+                if (direction === 'down') {
+                    // При навигации вниз - прижимаем элемент к НИЖНЕМУ краю
+                    targetTop = targetContainer.scrollTop + (rect.bottom - containerRect.bottom) + offset;
+                } else if (direction === 'up') {
+                    // При навигации вверх - прижимаем элемент к ВЕРХНЕМУ краю
+                    targetTop = targetContainer.scrollTop + (rect.top - containerRect.top) - offset;
+                } else {
+                    // По умолчанию - прижимаем к нижнему краю (старая логика)
+                    targetTop = targetContainer.scrollTop + (rect.bottom - containerRect.bottom) + offset;
+                }
+
+                // Ограничиваем значения, чтобы не выйти за пределы скролла
+                vars.scrollTop = Math.max(0, Math.min(targetContainer.scrollHeight - containerRect.height, targetTop));
             }
 
-            // Ограничиваем значения, чтобы не выйти за пределы скролла
-            targetTop = Math.max(0, Math.min(targetContainer.scrollHeight - containerRect.height, targetTop));
+            // Горизонтальные списки (ряды каталога): раньше функция знала только про
+            // вертикаль, а isElementInView для ряда всегда возвращал true — карточка
+            // по вертикали внутри своего же viewport'а. Скролл ряда просто не работал.
+            if (canScrollX(targetContainer)) {
+                var targetLeft;
+                if (direction === 'left') {
+                    targetLeft = targetContainer.scrollLeft + (rect.left - containerRect.left) - offset;
+                } else if (direction === 'right') {
+                    targetLeft = targetContainer.scrollLeft + (rect.right - containerRect.right) + offset;
+                } else {
+                    targetLeft = targetContainer.scrollLeft + (rect.left - containerRect.left)
+                        - (containerRect.width / 2) + (rect.width / 2);
+                }
+                vars.scrollLeft = Math.max(0, Math.min(targetContainer.scrollWidth - containerRect.width, targetLeft));
+            }
 
-            gsap.killTweensOf(targetContainer);
-            gsap.to(targetContainer, {
-                scrollTop: targetTop,
-                duration: duration,
-                ease: ease,
-                overwrite: true
-            });
+            tweenScroll(targetContainer, vars, { duration: duration, ease: ease });
         } else {
             // Для окна браузера логика аналогичная
             var targetY;
@@ -542,13 +599,12 @@ var Animations = (function () {
             }
             targetY = Math.max(0, targetY);
 
-            gsap.killTweensOf(window);
-            gsap.to(window, {
-                scrollTo: { y: targetY },
-                duration: duration,
-                ease: ease,
-                overwrite: true
-            });
+            // Раньше здесь был gsap.to(window, {scrollTo: {y}}) — это ScrollToPlugin,
+            // которого больше нет. Тван по scrollTop корневого элемента даёт то же,
+            // но обходится без плагина.
+            var root = document.scrollingElement || document.documentElement;
+            if (root) tweenScroll(root, { scrollTop: targetY }, { duration: duration, ease: ease });
+            else window.scrollTo(0, targetY);
         }
     }
 
@@ -583,6 +639,7 @@ var Animations = (function () {
         quickScrollTo: quickScrollTo,
         isElementInView: isElementInView,
         scrollToIfNotVisible: scrollToIfNotVisible,
+        tweenScroll: tweenScroll,
 
         // Конфигурация
         config: config,
