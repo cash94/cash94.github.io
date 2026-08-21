@@ -2926,7 +2926,9 @@ async function loadRowPoster(card, item) {
     if (cached) { await setRowPosterImg(imgBox, cached); return; }
 
     if (item.poster_path) {
-        var url = getTmdbImageUrl(item.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM);
+        // Размер — getPosterCardSize(), как в сетке: тогда URL совпадает
+        // с тем, что уже лежит в posterCache, и setRowPosterImg не пересобирает его.
+        var url = getTmdbImageUrl(item.poster_path, getPosterCardSize());
         catalogState.posterCache.set(cacheKey, url);
         await setRowPosterImg(imgBox, url);
         return;
@@ -2957,6 +2959,29 @@ async function loadRowPoster(card, item) {
     if (card.isConnected) imgBox.innerHTML = '<div class="no-poster">Нет постера</div>';
 }
 
+/**
+ * Быстрый путь для карточки ряда — то же, что loadPosterDirect для сетки.
+ * poster_path уже есть, значит адрес известен: собираем его через зеркало-прокси
+ * и сразу отдаём в setRowPosterImg, минуя rowPosterQueue. Очередь нужна только
+ * там, где URL ещё надо узнать (запрос к Worker), — ждать нечего, а каждый
+ * прогон очереди стоит setTimeout плюс два промис-тика.
+ *
+ * @returns {boolean} true — постер обработан, в очередь ставить не нужно
+ */
+function loadRowPosterDirect(card, item) {
+    if (!item || !item.poster_path) return false;
+
+    var box = card && card.querySelector('.row-poster-img');
+    if (!box) return false;
+
+    var url = getTmdbImageUrl(item.poster_path, getPosterCardSize());
+    if (!url) return false;
+
+    catalogState.posterCache.set(item.id + '_' + (item.media_type || 'movie'), url);
+    setRowPosterImg(box, url);   // промис не нужен: пейсингом занят только медленный путь
+    return true;
+}
+
 // ==================== ЛЕНИВАЯ ЗАГРУЗКА ПОСТЕРОВ РЯДОВ ====================
 /**
  * Наблюдает за карточками рядов и ставит в очередь постеры тех,
@@ -2980,8 +3005,11 @@ function initRowPosterLazyLoading() {
             if (!items || !items[idx]) continue;
 
             card.dataset.posterLoaded = '1';                // защита от повторной постановки
-            catalogState.rowPosterQueue.push({ card: card, item: items[idx] });
             catalogState.rowPosterObserver.unobserve(card);
+
+            // Есть poster_path — вставляем сразу; в очередь только медленный путь
+            if (loadRowPosterDirect(card, items[idx])) continue;
+            catalogState.rowPosterQueue.push({ card: card, item: items[idx] });
         }
         processRowPosterQueue();
     }, { rootMargin: CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX + 'px', threshold: 0.1 });
@@ -3015,8 +3043,13 @@ function processRowPosterQueue() {
 
 function setRowPosterImg(box, url) {
     return new Promise(function (resolve) {
-        url = getTmdbImageUrl(url, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM);
-
+        // URL уже собран под нужный размер (быстрый путь, posterCache) — не
+        // пересобираем, как и в updatePosterDOM: лишний разбор строки, а раньше
+        // это ещё и меняло зеркало.
+        var size = getPosterCardSize();
+        if (url && url.indexOf('/t/p/' + size + '/') === -1) {
+            url = getTmdbImageUrl(url, size);
+        }
         var img = new Image();
         img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
         var settled = false;
