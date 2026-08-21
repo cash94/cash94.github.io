@@ -177,13 +177,21 @@
     function performMemoryCleanup() {
         console.log('🧹 Выполнение периодической очистки памяти...');
 
-        // 1. Очистка неиспользуемых observers
-        if (typeof catalogState !== 'undefined') {
-            if (catalogState.posterObserver && AppState.currentScreen !== 'catalog') {
+        // 1. Очистка неиспользуемых observers.
+        // Экран 'detail' — оверлей поверх живой сетки каталога: возврат из карточки
+        // сетку не перерисовывает, а disconnect() не обнуляет ссылку, поэтому
+        // initPosterLazyLoading() сам не вызовется и постеры больше не грузятся.
+        // Поднимает их обратно window.rearmCatalogObservers() (catalog-memory-fix.js).
+        var screen = (typeof AppState !== 'undefined') ? AppState.currentScreen : null;
+        var catalogAlive = (screen === 'catalog' || screen === 'detail');
+        if (typeof catalogState !== 'undefined' && !catalogAlive) {
+            if (catalogState.posterObserver) {
                 catalogState.posterObserver.disconnect();
+                window._catalogObserversDisarmed = true;
             }
-            if (catalogState.unloadObserver && AppState.currentScreen !== 'catalog') {
+            if (catalogState.unloadObserver) {
                 catalogState.unloadObserver.disconnect();
+                window._catalogObserversDisarmed = true;
             }
         }
 
