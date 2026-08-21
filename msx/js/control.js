@@ -250,6 +250,11 @@ function _isScreenVisible(el) {
 
     if (el.style.display === 'none') return false;
 
+    // Экран, который прямо сейчас плавно закрывается (animations.js: animateDetailHide),
+    // для навигации уже не существует: display:none ему поставят в конце затухания,
+    // но реагировать на кнопки пульта он больше не должен.
+    if (el.dataset && el.dataset.hiding === '1') return false;
+
     // Если inline display задан — верим ему
     if (el.style.display !== '') return true;
 
