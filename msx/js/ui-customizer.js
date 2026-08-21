@@ -288,8 +288,11 @@
         var css = [];
 
         // 1. Сетка: ширина карточки задаёт число колонок (либо оно задано явно)
+        //    grid-gap — для очень старых Grid-реализаций (Chrome < 66), где
+        //    непрефиксного gap ещё нет; современные браузеры берут gap ниже.
         css.push('#catalog-grid,#torrents-grid{' +
             'grid-template-columns:repeat(' + cols + ',1fr)!important;' +
+            'grid-gap:' + density.gap + '!important;' +
             'gap:' + density.gap + '!important;}');
 
         // Подсказка для content-visibility, чтобы скролл не «прыгал»
@@ -386,21 +389,28 @@
             '.ui-customizer-group{padding:0 0 12px;border-bottom:1px solid #202028;}',
             '.ui-customizer-group:last-child{border-bottom:none;}',
             // Залипающий заголовок: всегда видно, какой параметр настраиваешь
-            '.ui-customizer-group h3{position:sticky;top:0;z-index:3;display:flex;align-items:baseline;justify-content:space-between;gap:12px;' +
+            '.ui-customizer-group h3{position:sticky;top:0;z-index:3;display:flex;align-items:baseline;justify-content:space-between;' +
             'margin:0 -22px 10px;padding:12px 22px 8px;font-size:14px;font-weight:600;color:#9fb4cc;text-transform:uppercase;letter-spacing:.4px;background:#15151b;}',
             '.ui-customizer-hint{margin:-4px 0 8px;font-size:12px;color:#6f7889;text-transform:none;letter-spacing:0;}',
-            '.ui-customizer-options{display:flex;flex-wrap:wrap;gap:8px;}',
-            '.ui-option{background:#1e1e28;color:#cfd4dc;border:1px solid #33333d;border-radius:10px;padding:9px 16px;font-size:14px;cursor:pointer;transition:background .15s,border-color .15s;}',
+            // ВАЖНО: внутри панели отступы делаются margin'ами, а не gap.
+            // gap во flexbox работает только с Chrome 84, а панель должна
+            // выглядеть одинаково и на старых ТВ (Chrome 66) — там всё
+            // «слипалось» в одну кучу. Значения подобраны так, чтобы
+            // геометрия совпадала с прежними gap.
+            '.ui-customizer-options{display:flex;flex-wrap:wrap;margin:-4px;}',   // -4px + 4px у детей = зазор 8px
+            '.ui-option{background:#1e1e28;color:#cfd4dc;border:1px solid #33333d;border-radius:10px;margin:4px;padding:9px 16px;font-size:14px;cursor:pointer;transition:background .15s,border-color .15s;}',
             '.ui-option:hover{background:rgba(38,38,51,0.5);}',
             '.ui-option.active{background:#4a9eff;border-color:#4a9eff;color:#fff;font-weight:600;}',
             // Палитра цвета фокуса
-            '.ui-swatch{display:inline-flex;align-items:center;gap:9px;padding:8px 15px 8px 10px;}',
+            '.ui-swatch{display:inline-flex;align-items:center;padding:8px 15px 8px 10px;}',
+            '.ui-swatch>*+*{margin-left:9px;}',
             '.ui-swatch-dot{flex:0 0 auto;width:18px;height:18px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.5);}',
             // 3 класса — перебивает .ui-option.active независимо от порядка правил
             '.ui-option.ui-swatch.active{background:#22222c;color:#fff;font-weight:600;}',
             '.ui-swatch.active .ui-swatch-dot{box-shadow:inset 0 0 0 2px #fff,0 0 0 1px rgba(0,0,0,.6);}',
             // Ползунок
-            '.ui-slider{display:flex;align-items:center;gap:16px;padding:8px 4px;border-radius:10px;user-select:none;-webkit-user-select:none;}',
+            '.ui-slider{display:flex;align-items:center;padding:8px 4px;border-radius:10px;user-select:none;-webkit-user-select:none;}',
+            '.ui-slider>*+*{margin-left:16px;}',
             '.ui-slider-track{position:relative;flex:1 1 auto;height:8px;background:#262630;border-radius:6px;cursor:pointer;}',
             '.ui-slider-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:#4a9eff;border-radius:6px;}',
             '.ui-slider-thumb{position:absolute;top:50%;left:0;width:22px;height:22px;margin:-11px 0 0 -11px;background:#fff;border:2px solid #4a9eff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.55);}',
@@ -408,9 +418,11 @@
             '.ui-slider.ui-focused .ui-slider-track{background:#33333f;}',
             '.ui-slider.ui-focused .ui-slider-thumb{width:26px;height:26px;margin:-13px 0 0 -13px;}',
             '.ui-slider-ends{display:flex;justify-content:space-between;margin-top:2px;font-size:11px;color:#5d6675;}',
-            '.ui-checkbox{display:flex;align-items:center;gap:10px;padding:8px 4px;color:#cfd4dc;font-size:14px;cursor:pointer;border-radius:10px;}',
+            '.ui-checkbox{display:flex;align-items:center;padding:8px 4px;color:#cfd4dc;font-size:14px;cursor:pointer;border-radius:10px;}',
+            '.ui-checkbox>*+*{margin-left:10px;}',
             '.ui-checkbox input{width:18px;height:18px;accent-color:#4a9eff;}',
-            '.ui-customizer-footer{flex:0 0 auto;display:flex;justify-content:space-between;gap:12px;padding:16px 22px;border-top:1px solid #2a2a30;}',
+            '.ui-customizer-footer{flex:0 0 auto;display:flex;justify-content:space-between;padding:16px 22px;border-top:1px solid #2a2a30;}',
+            '.ui-customizer-footer>*+*{margin-left:12px;}',
             '.ui-cust-btn{flex:1;padding:12px 18px;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;border:1px solid #33333d;background:#1e1e28;color:#cfd4dc;}',
             '.ui-cust-btn.primary{background:#4a9eff;border-color:#4a9eff;color:#fff;}',
             // Индикатор фокуса для навигации пультом (через box-shadow, чтобы не обрезался в overflow-контейнерах)
