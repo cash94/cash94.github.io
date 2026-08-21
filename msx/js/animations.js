@@ -805,6 +805,7 @@ var Animations = (function () {
         animateFocus: animateFocus,
         animateDetailShow: animateDetailShow,
         animateDetailHide: animateDetailHide,
+        ensureDetailVisible: ensureDetailVisible,
         detailContentReady: detailContentReady,
         showDetailLoading: showDetailLoading,
         hideDetailLoading: hideDetailLoading,
