@@ -967,8 +967,8 @@ function setupSearch() {
         tabTorrents.classList.add('active');
         if (tabSearch) tabSearch.classList.remove('active');
         if (tabCatalog) tabCatalog.classList.remove('active');
-        var searchOverlay = getEl('search-overlay');
-        if (searchOverlay) searchOverlay.classList.add('hidden');
+        // Оверлей поиска прячет сам hideSearchResults — в конце затухания.
+        // Ставить .hidden здесь нельзя: display:none оборвал бы переход.
         showContentScreen('torrents');
         var torrentsGrid = getEl('torrents-grid');
         if (!AppState.torrentsLoaded && !AppState.torrentsLoading) {
@@ -1015,8 +1015,7 @@ function setupSearch() {
         }
         localStorage.removeItem('lastCatalogCardIndex');
         if (typeof hideSearchResults === 'function') hideSearchResults();
-        var searchOverlay = getEl('search-overlay');
-        if (searchOverlay) searchOverlay.classList.add('hidden');
+        // .hidden на оверлее поиска ставит hideSearchResults в конце затухания
         var tabTorrentsEl = getEl('tab-torrents');
         var tabSearchEl = getEl('tab-search');
         if (tabTorrentsEl) tabTorrentsEl.classList.remove('active');
