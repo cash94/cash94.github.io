@@ -1853,6 +1853,37 @@ function isElementFullyVisible(el, container) {
         r.left >= cr.left + 25 && r.right <= cr.right - 25;
 }
 
+/**
+ * Единая точка прокрутки для навигации фокусом.
+ *
+ * Раньше здесь было три ветки: gsap + ScrollToPlugin, нативный
+ * scrollTo({behavior:'smooth'}) и мгновенное присваивание. Плагин убран из
+ * index.html (тормозил прокрутку), поэтому первая ветка больше не срабатывала,
+ * а нативный плавный скролл на телевизоре не работает. Всё идёт через
+ * Animations.tweenScroll: gsap тянет scrollTop/scrollLeft как обычные числовые
+ * свойства, никакого плагина для этого не нужно.
+ *
+ * @param {Element} container контейнер с прокруткой
+ * @param {Object}  vars      scrollTop / scrollLeft (+ любые gsap-свойства)
+ * @param {boolean} smooth    false — прыжком
+ * @param {number}  duration  длительность в секундах
+ */
+function applyScroll(container, vars, smooth, duration) {
+    if (!container || !vars) return;
+
+    if (typeof Animations !== 'undefined' && typeof Animations.tweenScroll === 'function') {
+        Animations.tweenScroll(container, vars, {
+            duration: smooth ? duration : 0,
+            ease: SCROLL_SMOOTH.ease
+        });
+        return;
+    }
+
+    // Animations ещё не загружен — ставим позицию сразу, без анимации
+    if (typeof vars.scrollTop === 'number') container.scrollTop = vars.scrollTop;
+    if (typeof vars.scrollLeft === 'number') container.scrollLeft = vars.scrollLeft;
+}
+
 function scrollToElementIfNeeded(el, container, smooth, direction) {
     if (smooth === undefined) smooth = true;
     if (SCROLL_SMOOTH.force) smooth = true;
@@ -1898,19 +1929,8 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             targetLeft = Math.max(0, targetLeft);
             var needsHScroll = Math.abs(con.scrollLeft - targetLeft) > 10;
             if (needsHScroll) {
-                if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                    gsap.killTweensOf(con);
-                    gsap.to(con, {
-                        scrollTo: { x: targetLeft },
-                        duration: fastNavigation ? SCROLL_SMOOTH.durationFastX : SCROLL_SMOOTH.durationX,
-                        ease: SCROLL_SMOOTH.ease,
-                        overwrite: true
-                    });
-                } else if (smooth) {
-                    con.scrollTo({ left: targetLeft, behavior: 'smooth' });
-                } else {
-                    con.scrollLeft = targetLeft;
-                }
+                applyScroll(con, { scrollLeft: targetLeft }, smooth,
+                    fastNavigation ? SCROLL_SMOOTH.durationFastX : SCROLL_SMOOTH.durationX);
             }
         }
 
@@ -1940,62 +1960,23 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
 
             if (needsVertScroll) {
                 targetScrollTop = Math.max(0, Math.min(targetScrollTop, vertEl.scrollHeight - vertRect.height));
-                if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                    gsap.killTweensOf(vertEl);
 
-                    var tweenVars = {
-                        scrollTo: { y: targetScrollTop },
-                        duration: fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY,
-                        ease: SCROLL_SMOOTH.ease,
-                        overwrite: true
-                    };
+                var tweenVars = { scrollTop: targetScrollTop };
+                // Фон detail-view возвращаем к чёрному тем же тваном, как было раньше
+                if (vertEl.id === 'detail-view') tweenVars.backgroundColor = 'rgb(0, 0, 0)';
 
-                    if (vertEl.id === 'detail-view') {
-                        tweenVars.backgroundColor = 'rgb(0, 0, 0)';
-                    }
-
-                    gsap.to(vertEl, tweenVars);
-                } else if (smooth) {
-                    vertEl.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-                } else {
-                    vertEl.scrollTop = targetScrollTop;
-                }
+                applyScroll(vertEl, tweenVars, smooth,
+                    fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
             }
         }
         return;
     } else if (container.id === 'detail-view') {
         if (el.id === 'back-from-detail' || el.id === 'catalog-watch-btn') {
-            var targetScrollTop = 0;
-            if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                gsap.killTweensOf(container);
-                gsap.to(container, {
-                    scrollTo: { y: targetScrollTop },
-                    duration: SCROLL_SMOOTH.durationY,
-                    ease: SCROLL_SMOOTH.ease,
-                    overwrite: true
-                });
-            } else if (smooth) {
-                container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-            } else {
-                container.scrollTop = targetScrollTop;
-            }
+            applyScroll(container, { scrollTop: 0 }, smooth, SCROLL_SMOOTH.durationY);
             return;
         }
     } else if (el.id === 'tab-catalog') {
-        var targetScrollTop = 0;
-        if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-            gsap.killTweensOf(container);
-            gsap.to(container, {
-                scrollTo: { y: targetScrollTop },
-                duration: SCROLL_SMOOTH.durationY,
-                ease: SCROLL_SMOOTH.ease,
-                overwrite: true
-            });
-        } else if (smooth) {
-            container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-        } else {
-            container.scrollTop = targetScrollTop;
-        }
+        applyScroll(container, { scrollTop: 0 }, smooth, SCROLL_SMOOTH.durationY);
         return;
     } else if (container.id == 'episodes-panel' || container.id == 'audio-panel' || container.id == 'subtitles-panel') {
         if (typeof Animations !== 'undefined') Animations.scrollToIfNotVisible(el, container);
@@ -2630,10 +2611,14 @@ function scrollRowToCard(card) {
     var cr = card.getBoundingClientRect();
     var vr = viewport.getBoundingClientRect();
     var pad = 50;
+    // Через applyScroll, а не scrollBy({behavior:'smooth'}): нативный плавный скролл
+    // на телевизоре не работает, а ScrollToPlugin убран из index.html.
     if (cr.left < vr.left + pad) {
-        viewport.scrollBy({ left: cr.left - vr.left - pad, behavior: 'smooth' });
+        applyScroll(viewport, { scrollLeft: Math.max(0, viewport.scrollLeft + (cr.left - vr.left - pad)) },
+            true, SCROLL_SMOOTH.durationX);
     } else if (cr.right > vr.right - pad) {
-        viewport.scrollBy({ left: cr.right - vr.right + pad, behavior: 'smooth' });
+        applyScroll(viewport, { scrollLeft: Math.max(0, viewport.scrollLeft + (cr.right - vr.right + pad)) },
+            true, SCROLL_SMOOTH.durationX);
     }
 }
 
