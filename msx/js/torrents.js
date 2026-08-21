@@ -527,7 +527,13 @@ async function removeTorrentByHash(hash, options = {}) {
 
         clearTorrentFilesCache(hash);
         if (AppState.currentDetailItem && (AppState.currentDetailItem.hash || '').toLowerCase() === String(hash).toLowerCase()) {
-            getEl('detail-view').style.display = 'none';
+            // Раздачи больше нет — закрываем карточку тем же плавным затуханием,
+            // что и по кнопке «назад»
+            if (typeof Animations !== 'undefined' && typeof Animations.animateDetailHide === 'function') {
+                Animations.animateDetailHide();
+            } else {
+                getEl('detail-view').style.display = 'none';
+            }
             AppState.currentDetailItem = null;
             AppState.currentScreen = 'torrents';
             var mainContainer = getEl('main-container');
@@ -2789,7 +2795,12 @@ function hideSearchResults() {
         AppState.currentScreen = 'detail'; var mainContainer = getEl('main-container'); if (mainContainer && AppState.backupScroll > 0) mainContainer.scrollTop = AppState.backupScroll;
         AppState.searchReturnTo = null;
         if (catalogTab) catalogTab.classList.remove('active'); torrentsTab.classList.remove('active');
-        var detailView = getEl('detail-view'); if (detailView && detailView.style.display !== 'block') { detailView.style.display = 'block'; detailView.style.zIndex = '100'; detailView.style.pointerEvents = 'auto'; }
+        var detailView = getEl('detail-view');
+        if (typeof Animations !== 'undefined' && typeof Animations.ensureDetailVisible === 'function') {
+            // Возвращаем уже отрисованный detail без затухания, но со снятием
+            // недоигранного закрытия — иначе экран останется прозрачным
+            Animations.ensureDetailVisible();
+        } else if (detailView && detailView.style.display !== 'block') { detailView.style.display = 'block'; detailView.style.zIndex = '100'; detailView.style.pointerEvents = 'auto'; }
         setTimeout(function () {
             if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
                 updateFocusableElements(); var watchBtn = getEl('catalog-watch-btn'); if (watchBtn) { for (var i = 0; i < focusableElements.length; i++) { if (focusableElements[i].id === 'catalog-watch-btn') { setFocus(i); return; } } }
