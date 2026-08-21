@@ -1028,37 +1028,84 @@ function renderTorrents() {
     requestAnimationFrame(renderChunk);
 }
 
-// ==================== СОЗДАНИЕ ОДНОЙ КАРТОЧКИ ====================
-function createTorrentCard(torrent) {
-    var poster = '';
-    var title = torrent.title || 'Без названия';
-    var category = torrent.category || '';
+// ==================== МЕТА ТОРРЕНТА ИЗ torrent.data ====================
+// Разбор torrent.data кэшируем по хешу: JSON.parse на каждую карточку заметен на ТВ.
+// Кэш сбрасывается сам, когда сервер прислал новый data (source !== torrent.data).
+// Бросает исключение на битом JSON — вызывающий оборачивает в try/catch.
+function getTorrentCardMeta(torrent) {
+    var cacheKey = String(torrent.hash || '');
+    var cachedMeta = cacheKey ? torrentCardMetaCache.get(cacheKey) : null;
+
+    if (!cachedMeta || cachedMeta.source !== torrent.data) {
+        var data = JSON.parse(torrent.data);
+        cachedMeta = {
+            source: torrent.data,
+            isTv: !!(data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 1),
+            poster: data.movie ? (data.movie.img || (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : '')) : ''
+        };
+        if (cacheKey) torrentCardMetaCache.set(cacheKey, cachedMeta);
+    }
+
+    return cachedMeta;
+}
+
+/**
+ * Тип торрента: 'tv' или 'movie'. Это ровно то, что карточка показывает в бейдже
+ * («Сериал» / «Фильм»).
+ *
+ * Одна и та же функция используется и для бейджа, и для выбора movie/tv в запросах
+ * к TMDB (loadAllTmdbDataForTorrent). Раньше detail определял тип заново и мог
+ * разойтись с карточкой: на карточке «Сериал», а данные грузились как о фильме —
+ * например когда у торрента category = movie, а файлов в раздаче несколько.
+ *
+ * Признаки, по порядку:
+ *   1. больше одного файла в раздаче (file_stats, иначе TorrServer.Files) — сериал;
+ *   2. category самого торрента (tv / сериал / serial / series).
+ */
+function getTorrentMediaTypeFromCard(torrent) {
+    if (!torrent) return 'movie';
+
     var isTv = false;
 
-    // Определяем тип и постер
     try {
         if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) {
             isTv = torrent.file_stats.length > 1;
         } else if (torrent.data) {
-            var cacheKey = String(torrent.hash || '');
-            var cachedMeta = cacheKey ? torrentCardMetaCache.get(cacheKey) : null;
-            if (!cachedMeta || cachedMeta.source !== torrent.data) {
-                var data = JSON.parse(torrent.data);
-                cachedMeta = {
-                    source: torrent.data,
-                    isTv: !!(data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 1),
-                    poster: data.movie ? (data.movie.img || (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : '')) : ''
-                };
-                if (cacheKey) torrentCardMetaCache.set(cacheKey, cachedMeta);
-            }
-            isTv = cachedMeta.isTv;
-            poster = cachedMeta.poster;
+            isTv = getTorrentCardMeta(torrent).isTv;
         }
+    } catch (e) { }
+
+    if (isTv) return 'tv';
+
+    var category = String(torrent.category || '').toLowerCase();
+    if (category.indexOf('tv') !== -1 ||
+        category.indexOf('сериал') !== -1 ||
+        category.indexOf('serial') !== -1 ||
+        category.indexOf('series') !== -1) {
+        return 'tv';
+    }
+
+    return 'movie';
+}
+
+window.getTorrentMediaTypeFromCard = getTorrentMediaTypeFromCard;
+
+// ==================== СОЗДАНИЕ ОДНОЙ КАРТОЧКИ ====================
+function createTorrentCard(torrent) {
+    var poster = '';
+    var title = torrent.title || 'Без названия';
+
+    // Постер из torrent.data — только когда file_stats нет (как было раньше),
+    // иначе берём уже готовый torrent.poster
+    try {
+        var hasFileStats = torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0;
+        if (!hasFileStats && torrent.data) poster = getTorrentCardMeta(torrent).poster;
     } catch (e) { }
 
     if (!poster && torrent.poster) poster = torrent.poster;
 
-    var displayCategory = isTv ? 'tv' : (category || 'movie');
+    // Тип — общей функцией с detail, чтобы бейдж и запросы TMDB не расходились
+    var cardMediaType = getTorrentMediaTypeFromCard(torrent);
 
     // Статус: просмотр или размер
     var playStatus;
@@ -1082,6 +1129,8 @@ function createTorrentCard(torrent) {
     var card = document.createElement('div');
     card.className = 'torrent-card';
     card.dataset.hash = torrent.hash;
+    // Тот же тип, что в бейдже — чтобы его было видно в DOM и можно было брать снаружи
+    card.dataset.mediaType = cardMediaType;
 
     // Long-press удаление
     //attachTorrentDeleteLongPress(card, torrent);
@@ -1092,7 +1141,7 @@ function createTorrentCard(torrent) {
         '<div class="torrent-title">' + escapeHtml(title.length > 60 ? title.substring(0, 60) + '...' : title) + '</div>' +
         '<div class="torrent-meta">' +
         '<span>' + playStatus + '</span>' +
-        '<span class="torrent-badge">' + (displayCategory === 'tv' ? 'Сериал' : 'Фильм') + '</span>' +
+        '<span class="torrent-badge">' + (cardMediaType === 'tv' ? 'Сериал' : 'Фильм') + '</span>' +
         '</div>' +
         '</div>';
 
@@ -1801,8 +1850,14 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
         seasonNumbers = extractSeasonsFromFilesLocal();
     }
 
+    // Тип с карточки торрента (её бейдж «Сериал»/«Фильм»). Считается по самому
+    // торренту — число файлов в раздаче плюс его category, — поэтому это самый
+    // надёжный локальный признак, и «Сериал» здесь главнее всего остального.
+    var cardMediaType = getTorrentMediaTypeFromCard(torrent);
+
     var forcedTv = false;
 
+    if (cardMediaType === 'tv') forcedTv = true;
     if (torrent.media_type === 'tv') forcedTv = true;
     if (known && known.mediaType === 'tv') forcedTv = true;
     if (window.AppState && AppState.mediaType === 'tv') forcedTv = true;
@@ -1821,11 +1876,31 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
         elements.titleEl.textContent = cleanTitle;
     }
 
-    var knownMediaType =
+    // Бейдж «Сериал» перебивает всё: раньше сюда попадал movie из torrent.category
+    // (у сериала category бывает movie), из уже записанного torrent.media_type
+    // (мог быть испорчен предыдущим неверным определением — строка с details.media_type
+    // ниже) и из AppState.mediaType, который глобальный и остаётся от предыдущего
+    // экрана. Из-за этого о сериале грузились данные как о фильме (запрос к /movie).
+    var knownMediaType = (cardMediaType === 'tv') ? 'tv' : (
         torrent.media_type ||
         torrent.knownMediaType ||
         (known && known.mediaType) ||
-        null;
+        null
+    );
+
+    // «Сезон/серия/эпизод/S01» в названии — признак сериала. Считаем один раз:
+    // раньше эта проверка была только в самой последней ветке ниже.
+    var titleLooksLikeSeries = /(^|[^a-z0-9а-яё])(сезон|season|серия|эпизод|s\d+)([^a-z0-9а-яё]|$)/i
+        .test(String(torrent.title || '').toLowerCase());
+
+    // «Фильм» с карточки — тоже сигнал о конкретном торренте, поэтому он важнее
+    // глобального AppState.mediaType. Но принимаем его только когда других признаков
+    // сериала нет: бейдж считается по числу файлов, а сериал бывает и одним файлом
+    // (один сезон / одна серия) — тогда важнее сезон из названия или из имён файлов.
+    if (!knownMediaType && cardMediaType === 'movie' &&
+        seasonNumbers.length === 0 && !titleLooksLikeSeries) {
+        knownMediaType = 'movie';
+    }
 
     if (!knownMediaType && window.AppState && AppState.mediaType === 'tv') {
         knownMediaType = 'tv';
@@ -1871,12 +1946,17 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
         } catch (e) { }
 
         if (!isTvSeries) {
-            var lowerTitle = String(torrent.title || '').toLowerCase();
-            isTvSeries = /(^|[^a-z0-9а-яё])(сезон|season|серия|эпизод|s\d+)([^a-z0-9а-яё]|$)/i.test(lowerTitle);
+            isTvSeries = titleLooksLikeSeries;
         }
     }
 
     var mediaType = isTvSeries ? 'tv' : 'movie';
+
+    // Решение записываем обратно в торрент. Раньше сюда попадал только
+    // details.media_type (ниже, если поля ещё не было), и одно неверное определение
+    // прилипало к объекту на всю сессию: при следующем заходе в detail запрос опять
+    // уходил не туда. Теперь тип всегда согласован с бейджем карточки.
+    torrent.media_type = mediaType;
 
     var videoFilesCount = 0;
     try {
@@ -2790,6 +2870,7 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
         action: 'add',
         link: magnet,
         title: torrname,
+        category: mediaType,
         save_to_db: AppState.addToDbEnabled
     };
 
