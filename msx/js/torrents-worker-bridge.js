@@ -10,7 +10,7 @@ var TorrentsWorker = (function () {
         if (worker) return;
 
         try {
-            worker = new Worker('/torrents-worker.js');
+            worker = new Worker(new URL('torrents-worker.js', document.baseURI));
         } catch (e) {
             console.error('❌ TorrentsWorker creation failed:', e);
             worker = null;
