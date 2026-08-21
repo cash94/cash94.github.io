@@ -20,8 +20,9 @@
 
    2) aspect-ratio: постеры в ряду каталога.
 
-   ВНИМАНИЕ: раздел flex-gap СГЕНЕРИРОВАН из css/styles.css.
-   Если меняете gap в styles.css — поправьте и здесь.
+   ВНИМАНИЕ: разделы 1 и 1b СГЕНЕРИРОВАНЫ из css/styles.css и разметки.
+   После правки gap в styles.css перегенерируйте файл:
+       node tools/flexgap-fallback-gen.js     (из папки public)
    ============================================================= */
 
 /* ===================== 1. FLEX-GAP ===================== */
@@ -47,9 +48,11 @@ html.no-flex-gap .volume-container > * + * {
 
 /* styles.css:331 */
 html.no-flex-gap .search-overlay-header > * {
+  margin-top:0;
+}
+html.no-flex-gap .search-overlay-header > * {
   margin-right:12.84px;
   margin-bottom:12.84px;
-  margin-top:0;
 }
 html.no-flex-gap .search-overlay-header > *:last-child {
   margin-right: 0;
@@ -111,9 +114,11 @@ html.no-flex-gap .catalog-row-viewport > * + * {
 
 /* styles.css:763 */
 html.no-flex-gap .detail-progress-content > * {
+  margin-top:0;
+}
+html.no-flex-gap .detail-progress-content > * {
   margin-right:12px;
   margin-bottom:12px;
-  margin-top:0;
 }
 html.no-flex-gap .detail-progress-content > *:last-child {
   margin-right: 0;
@@ -193,10 +198,12 @@ html.no-flex-gap .filter-value-item > * + * {
 
 @media (max-width: 768px) {
   /* styles.css:331 */
-  html.no-flex-gap .search-overlay-header > * + * {
-    margin-top:12.84px;
+  html.no-flex-gap .search-overlay-header > * {
     margin-right:0;
     margin-bottom:0;
+  }
+  html.no-flex-gap .search-overlay-header > * + * {
+    margin-top:12.84px;
   }
 
   /* styles.css:1810 */
@@ -205,19 +212,23 @@ html.no-flex-gap .filter-value-item > * + * {
   }
 
   /* styles.css:763 */
-  html.no-flex-gap .detail-progress-content > * + * {
-    margin-top:12px;
+  html.no-flex-gap .detail-progress-content > * {
     margin-right:0;
     margin-bottom:0;
+  }
+  html.no-flex-gap .detail-progress-content > * + * {
+    margin-top:12px;
   }
 }
 
 @media screen and (min-width: 960px) and (max-width: 1399px) {
   /* styles.css:2062 */
   html.no-flex-gap .detail-progress-content > * {
+    margin-top:0;
+  }
+  html.no-flex-gap .detail-progress-content > * {
     margin-right:12.36px;
     margin-bottom:12.36px;
-    margin-top:0;
   }
   html.no-flex-gap .detail-progress-content > *:last-child {
     margin-right: 0;
@@ -248,9 +259,11 @@ html.no-flex-gap .filter-value-item > * + * {
 
   /* styles.css:2222 */
   html.no-flex-gap .search-overlay-header > * {
+    margin-top:0;
+  }
+  html.no-flex-gap .search-overlay-header > * {
     margin-right:13.23px;
     margin-bottom:13.23px;
-    margin-top:0;
   }
   html.no-flex-gap .search-overlay-header > *:last-child {
     margin-right: 0;
@@ -288,9 +301,11 @@ html.no-flex-gap .filter-value-item > * + * {
 @media screen and (min-width: 1400px) {
   /* styles.css:2372 */
   html.no-flex-gap .detail-progress-content > * {
+    margin-top:0;
+  }
+  html.no-flex-gap .detail-progress-content > * {
     margin-right:15px;
     margin-bottom:15px;
-    margin-top:0;
   }
   html.no-flex-gap .detail-progress-content > *:last-child {
     margin-right: 0;
@@ -321,9 +336,11 @@ html.no-flex-gap .filter-value-item > * + * {
 
   /* styles.css:2532 */
   html.no-flex-gap .search-overlay-header > * {
+    margin-top:0;
+  }
+  html.no-flex-gap .search-overlay-header > * {
     margin-right:16.05px;
     margin-bottom:16.05px;
-    margin-top:0;
   }
   html.no-flex-gap .search-overlay-header > *:last-child {
     margin-right: 0;
