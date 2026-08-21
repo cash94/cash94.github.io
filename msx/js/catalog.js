@@ -899,7 +899,9 @@ async function loadCatalog(key) {
 
     if (catalogState.currentCatalog === key &&
         catalogState.items.length > 0 &&
-        getEl('catalog-grid').querySelector('.torrent-card.catalog-card')) {
+        getCatalogGridEl() &&
+        getCatalogGridEl().querySelector('.torrent-card.catalog-card')) {
+        showCatalogGridView();
         return;
     }
 
@@ -979,8 +981,9 @@ async function loadHistoryCatalog() {
 }
 
 function showEmptyHistory() {
-    var g = getEl('catalog-grid');
+    var g = getCatalogGridEl();
     if (!g) return;
+    showCatalogGridView();
     g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;"><div style="font-size:64px;margin-bottom:20px">📜</div><div style="font-size:18px;color:#aaa;margin-bottom:10px">История просмотра пуста</div><div style="font-size:14px;color:#666">Фильмы и сериалы, которые вы посмотрите, появятся здесь</div></div>';
 }
 
@@ -1095,87 +1098,113 @@ function createCardElement(config) {
 
 // ==================== ОТОБРАЖЕНИЕ ====================
 
-// Возврат из категории в ряды раньше был рывком: содержимое #catalog-grid
-// подменялось мгновенно. Теперь сетка затухает, новое содержимое пишется в уже
-// невидимую сетку и она проявляется обратно.
+// Подмена одного вида другим раньше была рывком: содержимое #catalog-grid
+// заменялось мгновенно. Теперь уходящий вид затухает, и только потом на его
+// место проявляется приходящий (см. backToCatalogList → showCatalogRowsView).
 //
-// Проявлять сетку нужно ОДИН раз и уже с рядами. Если показать её раньше, пока
-// внутри только спиннер «Загрузка каталогов...», то первый готовый ряд затрёт
-// спиннер (renderReadyRows: grid.innerHTML = '') на видимой сетке — это и читается
-// как моргание. Поэтому таймер ниже — только страховка на случай, когда рядов не
-// будет вовсе (пустые каталоги, обрыв загрузки), а не обычный путь.
-var CATALOG_GRID_REVEAL_DELAY_MS = 900;
-var catalogGridRevealTimer = null;
-var catalogGridFaded = false;             // сетка спрятана затуханием и ждёт проявления
+// Гасится всегда ровно один вид, поэтому вместо флага храним сам элемент: только
+// он имеет право на проявление через fadeIn, остальным достаётся обычный display.
+var catalogFadedEl = null;                // вид, спрятанный затуханием и ждущий проявления
 
-function cancelCatalogGridReveal() {
-    if (catalogGridRevealTimer) { clearTimeout(catalogGridRevealTimer); catalogGridRevealTimer = null; }
-}
+function getCatalogRowsEl() { return getEl('catalog-rows'); }
+function getCatalogGridEl() { return getEl('catalog-grid'); }
 
-// Плавно спрятать сетку перед подменой содержимого. display не трогаем: спиннер
-// «Загрузка каталогов...» пишется в невидимую сетку, а display:none помешал бы
-// потом её проявить.
-function fadeOutCatalogGrid(onDone) {
-    var grid = getEl('catalog-grid');
-    cancelCatalogGridReveal();
-    if (!grid || typeof Animations === 'undefined' || typeof Animations.fadeOut !== 'function') {
+// Плавно спрятать вид перед подменой содержимого. display не трогаем: спиннер
+// «Загрузка...» пишется в невидимый контейнер, а display:none помешал бы
+// потом его проявить.
+function fadeOutCatalogGrid(onDone, el) {
+    var target = el || getCatalogGridEl();
+    if (!target || typeof Animations === 'undefined' || typeof Animations.fadeOut !== 'function') {
         if (onDone) onDone();
         return;
     }
-    Animations.fadeOut(grid, {
+    Animations.fadeOut(target, {
         duration: 0.2,
         keepFaded: true,
         onDone: function () {
-            catalogGridFaded = true;
+            catalogFadedEl = target;
             if (onDone) onDone();
         }
     });
 }
 
-// Проявить сетку обратно. Если её никто не прятал — обычное присвоение display,
+// Проявить вид обратно. Если его никто не прятал — обычное присвоение display,
 // как было раньше.
-function revealCatalogGrid(display) {
-    cancelCatalogGridReveal();
-    var grid = getEl('catalog-grid');
-    if (!grid) return;
-    if (!catalogGridFaded || typeof Animations === 'undefined' || typeof Animations.fadeIn !== 'function') {
-        if (typeof display === 'string') grid.style.display = display;
+function revealCatalogGrid(display, el) {
+    var target = el || getCatalogGridEl();
+    if (!target) return;
+    if (catalogFadedEl !== target || typeof Animations === 'undefined' || typeof Animations.fadeIn !== 'function') {
+        if (typeof display === 'string') target.style.display = display;
         return;
     }
-    catalogGridFaded = false;
+    catalogFadedEl = null;
     var options = { duration: Animations.UI_FADE.content };
     if (typeof display === 'string') options.display = display;
-    Animations.fadeIn(grid, options);
+    Animations.fadeIn(target, options);
 }
 
-// Страховка: если ряды так и не построятся (пустые каталоги, ошибка загрузки),
-// сетку всё равно надо показать
-function scheduleCatalogGridReveal(display) {
-    cancelCatalogGridReveal();
-    catalogGridRevealTimer = setTimeout(function () {
-        catalogGridRevealTimer = null;
-        revealCatalogGrid(display);
-    }, CATALOG_GRID_REVEAL_DELAY_MS);
+// Сбросить незакончившееся затухание: содержимое, записанное в контейнер помимо
+// обычного пути, не должно остаться невидимым
+function ensureCatalogGridVisible(el) {
+    var target = el || getCatalogGridEl();
+    if (catalogFadedEl === target) catalogFadedEl = null;
+    if (target && typeof Animations !== 'undefined' && typeof Animations.resetFade === 'function') {
+        Animations.resetFade(target);
+    } else if (target) {
+        target.style.opacity = '';
+    }
 }
 
-// Сбросить незакончившееся затухание: содержимое, записанное в сетку помимо
-// рядов, не должно остаться невидимым
-function ensureCatalogGridVisible() {
-    cancelCatalogGridReveal();
-    catalogGridFaded = false;
-    var grid = getEl('catalog-grid');
-    if (grid && typeof Animations !== 'undefined' && typeof Animations.resetFade === 'function') {
-        Animations.resetFade(grid);
-    } else if (grid) {
-        grid.style.opacity = '';
+// ==================== ПЕРЕКЛЮЧЕНИЕ ВИДОВ КАТАЛОГА ====================
+// Оба вида лежат в общем потоке #content-catalog, одновременно показать их нельзя —
+// сетка встала бы под рядами. Поэтому уходящий прячем через display:none.
+// Вертикальный скролл (#main-container) у видов общий.
+
+function showCatalogGridView() {
+    var rows = getCatalogRowsEl(), grid = getCatalogGridEl();
+    if (rows && rows.style.display !== 'none') {
+        if (typeof Animations !== 'undefined' && typeof Animations.resetFade === 'function') {
+            Animations.resetFade(rows);
+        }
+        if (catalogFadedEl === rows) catalogFadedEl = null;
+        rows.style.display = 'none';
+    }
+    if (grid) grid.style.display = '';
+}
+
+function showCatalogRowsView() {
+    var rows = getCatalogRowsEl(), grid = getCatalogGridEl();
+    // Сетку категории не держим в DOM: сотни карточек с постерами на слабом ТВ
+    // дороже, чем повторная отрисовка при следующем входе в категорию.
+    if (grid) {
+        if (typeof Animations !== 'undefined' && typeof Animations.resetFade === 'function') {
+            Animations.resetFade(grid);
+        }
+        if (catalogFadedEl === grid) catalogFadedEl = null;
+        grid.style.display = 'none';
+        grid.innerHTML = '';
+    }
+    if (!rows) return;
+    // Скролл сбрасываем ДО показа: #main-container остался на позиции сетки
+    // категории, а фокус всё равно уедет на первую карточку первого ряда
+    // (restoreRowFocus без lastSelectedRowKey). Без сброса ряды сначала
+    // появились бы на чужой позиции и только потом прыгнули наверх.
+    var mc = getEl('main-container');
+    if (mc) mc.scrollTop = 0;
+    var wasHidden = rows.style.display === 'none';
+    if (wasHidden && typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
+        Animations.fadeIn(rows, { duration: Animations.UI_FADE.content, display: '' });
+    } else {
+        ensureCatalogGridVisible(rows);
+        rows.style.display = '';
     }
 }
 
 function renderCatalogGrid() {
-    var grid = getEl('catalog-grid');
+    var grid = getCatalogGridEl();
     if (!grid) return;
     ensureCatalogGridVisible();
-    grid.style.display = '';
+    showCatalogGridView();
     grid.innerHTML = '';
     if (catalogState.items.length === 0) { showEmptyCatalog(); return; }
     addCatalogHeader(grid);
@@ -1206,8 +1235,9 @@ function renderCatalogGrid() {
 }
 
 function appendCatalogItems(newItems) {
-    var grid = getEl('catalog-grid');
+    var grid = getCatalogGridEl();
     if (!grid) return;
+    showCatalogGridView();
 
     var old = getEl('load-more-trigger');
     if (old) old.remove();
@@ -1270,38 +1300,42 @@ function createCatalogCard(item, index) {
     return card;
 }
 
-// Event Delegation для сетки
+// Event Delegation для обоих видов каталога: карточки рядов лежат в #catalog-rows,
+// карточки категории — в #catalog-grid, обработчик один и тот же.
+function onCatalogViewClick(e) {
+    // Карточка «Показать все» / папка категории
+    var folder = e.target.closest('.catalog-folder-card');
+    if (folder) {
+        var fkey = folder.dataset.catalogKey;
+        if (fkey === 'history') loadHistoryCatalog();
+        else loadCatalog(fkey);
+        return;
+    }
+
+    var card = e.target.closest('.torrent-card.catalog-card');
+    if (!card) return;
+
+    // Режим сетки (открыт конкретный каталог)
+    if (catalogState.currentCatalog) {
+        var idx = parseInt(card.dataset.catalogIndex, 10);
+        if (!isNaN(idx) && catalogState.items[idx]) onCatalogItemClick(catalogState.items[idx], idx);
+        return;
+    }
+
+    // Режим рядов (список каталогов)
+    var rkey = card.dataset.catalogKey;
+    var itemIdx = parseInt(card.dataset.itemIndex, 10);
+    if (rkey && !isNaN(itemIdx) && window.catalogRowsData &&
+        window.catalogRowsData[rkey] && window.catalogRowsData[rkey][itemIdx]) {
+        onRowItemClick(window.catalogRowsData[rkey][itemIdx], rkey, itemIdx);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function () {
-    var grid = getEl('catalog-grid');
-    if (!grid) return;
-    grid.addEventListener('click', function (e) {
-        // Карточка «Показать все» / папка категории
-        var folder = e.target.closest('.catalog-folder-card');
-        if (folder) {
-            var fkey = folder.dataset.catalogKey;
-            if (fkey === 'history') loadHistoryCatalog();
-            else loadCatalog(fkey);
-            return;
-        }
-
-        var card = e.target.closest('.torrent-card.catalog-card');
-        if (!card) return;
-
-        // Режим сетки (открыт конкретный каталог)
-        if (catalogState.currentCatalog) {
-            var idx = parseInt(card.dataset.catalogIndex, 10);
-            if (!isNaN(idx) && catalogState.items[idx]) onCatalogItemClick(catalogState.items[idx], idx);
-            return;
-        }
-
-        // Режим рядов (список каталогов)
-        var rkey = card.dataset.catalogKey;
-        var itemIdx = parseInt(card.dataset.itemIndex, 10);
-        if (rkey && !isNaN(itemIdx) && window.catalogRowsData &&
-            window.catalogRowsData[rkey] && window.catalogRowsData[rkey][itemIdx]) {
-            onRowItemClick(window.catalogRowsData[rkey][itemIdx], rkey, itemIdx);
-        }
-    });
+    var grid = getCatalogGridEl();
+    if (grid) grid.addEventListener('click', onCatalogViewClick);
+    var rows = getCatalogRowsEl();
+    if (rows) rows.addEventListener('click', onCatalogViewClick);
 });
 
 function formatLastModifiedDate(iso) {
@@ -1374,8 +1408,9 @@ function addLoadMoreTrigger(grid) {
 }
 
 function showEmptyCatalog() {
-    var g = getEl('catalog-grid');
+    var g = getCatalogGridEl();
     if (!g) return;
+    showCatalogGridView();
     g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталог пуст</div></div>';
 }
 
@@ -2680,9 +2715,17 @@ async function fetchAvailableCatalogs() {
     return (d && d.success && d.catalogs) ? d.catalogs : [];
 }
 
-async function showCatalogList() {
-    var grid = getEl('catalog-grid');
-    if (!grid) return;
+/**
+ * Главный экран каталога — ряды-карусели в #catalog-rows.
+ *
+ * Ряды собираются один раз и остаются в DOM, пока открыта категория, поэтому
+ * обычный возврат идёт по быстрому пути: ни сети, ни пересборки DOM, ни повторной
+ * загрузки постеров. Полная пересборка — только при первом входе или force === true
+ * (window.refreshCatalogRows).
+ */
+async function showCatalogList(force) {
+    var rows = getCatalogRowsEl();
+    if (!rows) return;
     abortCatalogRequests();
 
     catalogState.currentCatalog = null;
@@ -2693,8 +2736,9 @@ async function showCatalogList() {
     catalogState.posterLoadQueue = [];
     catalogState.lastSelectedIndex = 0;
     catalogState.lastSelectedId = null;
-    window.catalogRows = [];
-    window.catalogRowsData = {};
+    // lastSelectedRowKey / lastSelectedColIndex не сбрасываем: на них держится
+    // restoreRowFocus(). Обнуляет их только обработчик вкладки «Каталог» (app.js),
+    // чтобы обычное открытие вкладки начиналось с первой карточки.
 
     var catalogTab = getEl('tab-catalog');
     if (catalogTab) catalogTab.classList.add('active');
@@ -2703,9 +2747,30 @@ async function showCatalogList() {
     var searchTab = getEl('tab-search');
     if (searchTab) searchTab.classList.remove('active');
 
-    //grid.className = 'catalog-rows-container';
-    //grid.style.display = 'block';
-    grid.innerHTML = '<div class="catalog-rows-loading"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка каталогов...</div></div>';
+    // Быстрый путь: ряды уже в DOM — только показываем их обратно
+    if (!force && rows.querySelector('.catalog-row') &&
+        window.catalogRows && window.catalogRows.length) {
+        showCatalogRowsView();
+        // abortCatalogRequests() выше отключил наблюдателя, поднимаем заново:
+        // недогруженные постеры должны продолжить появляться при скролле
+        resetStrandedRowPosters();
+        initRowPosterLazyLoading();
+        requestAnimationFrame(function () {
+            if (AppState.currentScreen !== 'catalog' || catalogState.currentCatalog) return;
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            setTimeout(function () {
+                if (AppState.currentScreen !== 'catalog' || catalogState.currentCatalog) return;
+                restoreRowFocus();
+            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+        });
+        return true;
+    }
+
+    window.catalogRows = [];
+    window.catalogRowsData = {};
+
+    showCatalogRowsView();
+    rows.innerHTML = '<div class="catalog-rows-loading"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка каталогов...</div></div>';
 
     // Категории из CATALOG_CONFIG (в порядке объявления)
     var keys = [];
@@ -2713,51 +2778,8 @@ async function showCatalogList() {
         if (CATALOG_CONFIG.hasOwnProperty(k)) keys.push(k);
     }
 
-    // Параллельная загрузка всех рядов
-    return loadCatalogRowsProgressively(grid, keys);
-
-    var loadPromises = keys.map(function (key) {
-        return loadRowItems(key).then(function (items) {
-            return { key: key, items: items };
-        }).catch(function () {
-            return { key: key, items: [] };
-        });
-    });
-
-    var results = await Promise.all(loadPromises);
-
-    if (AppState.currentScreen !== 'catalog') return;
-
-    grid.innerHTML = '';
-    window.catalogRows = [];
-    window.catalogRowsData = {};
-
-    var frag = document.createDocumentFragment();
-    var renderedRows = 0;
-    for (var i = 0; i < results.length; i++) {
-        var res = results[i];
-        if (!res.items || res.items.length === 0) continue; // пустые категории пропускаем
-        var row = createCatalogRow(res.key, res.items);
-        if (row) { frag.appendChild(row); renderedRows++; }
-    }
-
-    if (renderedRows === 0) {
-        grid.innerHTML = '<div class="catalog-rows-loading"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталоги пусты</div></div>';
-        return;
-    }
-
-    grid.appendChild(frag);
-    initRowPosterLazyLoading();
-
-    requestAnimationFrame(function () {
-        if (AppState.currentScreen === 'catalog' && !catalogState.currentCatalog) {
-            if (typeof updateFocusableElements === 'function') updateFocusableElements();
-            setTimeout(function () {
-                grid.style.display = 'grid';
-                restoreRowFocus();
-            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
-        }
-    });
+    // Прогрессивная загрузка рядов: каждый готовый ряд сразу уходит в DOM
+    return loadCatalogRowsProgressively(rows, keys);
 }
 
 // ==================== РЯДЫ-КАРУСЕЛИ (список каталогов) ====================
@@ -2765,7 +2787,7 @@ async function showCatalogList() {
 /**
  * Загружает до 19 элементов для ряда категории
  */
-function loadCatalogRowsProgressively(grid, keys) {
+function loadCatalogRowsProgressively(container, keys) {
     var MAX_PARALLEL_ROW_LOADS = 3;
     var results = new Array(keys.length);
     var nextToLoad = 0;
@@ -2807,10 +2829,9 @@ function loadCatalogRowsProgressively(grid, keys) {
             if (typeof updateFocusableElements === 'function') updateFocusableElements();
             setTimeout(function () {
                 if (!isCurrentCatalogList()) return;
-                // display выставляем на первом же ряду, но саму сетку не проявляем:
-                // при возврате из категории она ждёт остальных рядов (иначе видно,
-                // как список достраивается уже после появления)
-                grid.style.display = 'grid';
+                // Контейнер уже показан самим showCatalogList; display здесь —
+                // страховка от чужого display:none, чтобы фокус нашёл карточки.
+                container.style.display = '';
                 restoreRowFocus();
             }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
         });
@@ -2827,8 +2848,8 @@ function loadCatalogRowsProgressively(grid, keys) {
                 if (!result.items || result.items.length === 0) continue;
                 var row = createCatalogRow(result.key, result.items);
                 if (!row) continue;
-                if (renderedRows === 0) grid.innerHTML = '';
-                grid.appendChild(row);
+                if (renderedRows === 0) container.innerHTML = '';
+                container.appendChild(row);
                 renderedRows++;
                 observeRowPosters(row);
                 activateRows();
@@ -2843,10 +2864,11 @@ function loadCatalogRowsProgressively(grid, keys) {
             }
             if (completedLoads === keys.length) {
                 if (renderedRows === 0) {
-                    grid.innerHTML = '<div class="catalog-rows-loading"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталоги пусты</div></div>';
+                    container.innerHTML = '<div class="catalog-rows-loading"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталоги пусты</div></div>';
                 }
-                // Все ряды в DOM — теперь сетку можно проявить одним движением
-                revealCatalogGrid('grid');
+                // Все ряды в DOM. Страховка на случай, если контейнер остался
+                // погашенным (пустые каталоги, обрыв загрузки) — проявляем.
+                revealCatalogGrid('', container);
                 finish(true, resolve);
                 return;
             }
@@ -3071,6 +3093,24 @@ function loadRowPosterDirect(card, item) {
 
 // ==================== ЛЕНИВАЯ ЗАГРУЗКА ПОСТЕРОВ РЯДОВ ====================
 /**
+ * Снимает posterLoaded с карточек, которым постер так и не достался.
+ *
+ * Флаг ставится в момент попадания карточки в зону видимости, ещё до самой
+ * загрузки. Если очередь после этого обнулили (вход в категорию → abortCatalogRequests,
+ * повторный initRowPosterLazyLoading), такая карточка остаётся с флагом, но без
+ * картинки — и наблюдатель её больше не возьмёт. Тот же приём, что в
+ * rearmCatalogObservers (catalog-memory-fix.js).
+ */
+function resetStrandedRowPosters() {
+    var cards = document.querySelectorAll('#catalog-rows .catalog-row-card');
+    for (var i = 0; i < cards.length; i++) {
+        if (cards[i].dataset.posterLoaded !== '1') continue;
+        var box = cards[i].querySelector('.row-poster-img');
+        if (box && !box.querySelector('img')) cards[i].dataset.posterLoaded = '0';
+    }
+}
+
+/**
  * Наблюдает за карточками рядов и ставит в очередь постеры тех,
  * что попали в зону видимости (+300px предзагрузки).
  */
@@ -3101,7 +3141,7 @@ function initRowPosterLazyLoading() {
         processRowPosterQueue();
     }, { rootMargin: CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX + 'px', threshold: 0.1 });
 
-    var cards = document.querySelectorAll('#catalog-grid .catalog-row-card');
+    var cards = document.querySelectorAll('#catalog-rows .catalog-row-card');
     for (var i = 0; i < cards.length; i++) {
         if (cards[i].dataset.itemIndex !== undefined && cards[i].dataset.posterLoaded !== '1') {
             catalogState.rowPosterObserver.observe(cards[i]);
@@ -3408,14 +3448,16 @@ function createCatalogFolderCard(key, cfg) {
 }
 
 function showCatalogLoading(msg) {
-    var g = getEl('catalog-grid');
+    var g = getCatalogGridEl();
     ensureCatalogGridVisible();
+    showCatalogGridView();
     if (g) g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">' + (msg || 'Загрузка...') + '</div></div>';
 }
 
 function showCatalogError(msg) {
-    var g = getEl('catalog-grid');
+    var g = getCatalogGridEl();
     ensureCatalogGridVisible();
+    showCatalogGridView();
     if (g) g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px"><div style="font-size:48px;margin-bottom:20px">⚠️</div><div style="font-size:16px;color:#ff6a6a">' + msg + '</div><button class="btn" style="margin-top:20px" onclick="window.loadCatalogList()">Попробовать снова</button></div>';
 }
 
@@ -3438,21 +3480,11 @@ function backToCatalogList() {
     catalogState.lastSelectedIndex = 0;
     catalogState.lastSelectedId = null;
     localStorage.removeItem('lastCatalogCardIndex');
-    // Сначала затухает сетка категории, и только потом в неё пишутся ряды —
-    // иначе подмена содержимого выглядит рывком
+    // Сначала затухает сетка категории, и только потом показываются ряды —
+    // иначе подмена содержимого выглядит рывком. Фокусом занимается сам
+    // showCatalogList: и быстрый путь, и пересборка зовут restoreRowFocus().
     fadeOutCatalogGrid(function () {
-        // Страховку ставим до построения рядов: если showCatalogList сорвётся,
-        // сетка всё равно не останется невидимой
-        scheduleCatalogGridReveal('grid');
         showCatalogList();
-        requestAnimationFrame(function () {
-            if (AppState.currentScreen === 'catalog') {
-                if (typeof updateFocusableElements === 'function') updateFocusableElements();
-                setTimeout(function () {
-                    if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
-                }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
-            }
-        });
     });
 }
 
@@ -3592,6 +3624,9 @@ else initCatalog();
 
 window.loadCatalogList = showCatalogList;
 window.backToCatalogList = backToCatalogList;
+// Явная пересборка рядов: обычный вход в ряды их переиспользует, поэтому обновить
+// содержимое (например, ряд «История просмотра») можно только так.
+window.refreshCatalogRows = function () { return showCatalogList(true); };
 window.exitYoutubePlayer = exitYoutubePlayer;
 window.loadMoreCatalogItems = loadMoreCatalogItems;
 window.catalog = {
