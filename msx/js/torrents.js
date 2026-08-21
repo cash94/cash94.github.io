@@ -1435,6 +1435,15 @@ async function showDetail(torrent) {
     }
     var mainContainer = getEl('main-container');
     if (mainContainer) mainContainer.style.pointerEvents = 'none';
+    // Позицию списка сохраняем сами: 'detail' — не контентный экран, showContentScreen
+    // здесь не вызывается и обновить contentScroll.torrents не может. Без этого на
+    // возврате (app.js: showContentScreen('torrents')) подставится устаревшее
+    // значение или ноль, и карточка с фокусом уедет за экран.
+    // Как в setupDetailLayout (catalog.js) — ноль тоже валидная позиция.
+    if (mainContainer && AppState.currentScreen === 'torrents') {
+        AppState.contentScroll = AppState.contentScroll || {};
+        AppState.contentScroll.torrents = mainContainer.scrollTop;
+    }
     AppState.currentScreen = 'detail';
     if (!window.AndroidJS || !AppState.transcodingFullOnOff) {
         AppState.detailReturnTo = 'torrents';
