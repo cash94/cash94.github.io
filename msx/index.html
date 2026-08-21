@@ -296,7 +296,13 @@
       </div>
 
       <div id="content-catalog" class="content-screen" hidden>
-        <div id="catalog-grid"></div>
+        <!-- Два независимых вида каталога. Виден всегда ровно один:
+             #catalog-rows — главный экран (ряды-карусели), собирается один раз и живёт в DOM;
+             #catalog-grid — экран одной категории, наполняется при входе и очищается при выходе.
+             Раньше оба вида делили #catalog-grid, поэтому возврат из категории заново
+             тянул по сети данные всех рядов и пересобирал их DOM. -->
+        <div id="catalog-rows"></div>
+        <div id="catalog-grid" style="display: none"></div>
       </div>
     </div>
   </div>
