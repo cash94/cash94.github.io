@@ -176,35 +176,43 @@
         catalogState.loadedPostersCount = 0;
         catalogState.posterLoadQueue = [];
 
-        if (window.catalogCache && catalogCache.set) {
-            catalogCache.set(key, {
-                data: {
-                    items: catalogState.items.slice(),
-                    totalItems: catalogState.totalItems,
-                    currentPage: catalogState.currentPage,
-                    hasMore: catalogState.hasMore
-                },
-                timestamp: ts
-            });
-        }
-
         if (typeof renderCatalogGrid === 'function') {
             renderCatalogGrid();
         }
     }
 
+    // Префетч прогревает IndexedDB и больше ни для чего не нужен — результат
+    // вызывающая сторона выбрасывает. Поэтому:
+    //   • summary: true — воркер присылает сводку, а не 8 каталогов по 1000 элементов;
+    //   • один запуск за сессию — TTL записей 6 часов, а первая сборка рядов и так
+    //     зовёт getFullCatalogFresh по всем каталогам через loadRowItems.
+    var _prefetchPromise = null;
+    var _prefetchDone = false;
+
     function prefetchAllFullCatalogs() {
+        if (_prefetchDone) return Promise.resolve({});
+        if (_prefetchPromise) return _prefetchPromise;
+
         var entries = getFullCatalogEntries();
 
         if (!entries.length) {
             return Promise.resolve({});
         }
 
-        return CatalogWorker.catalogPrefetchAll(entries, CATALOG_FULL_LIMIT)
+        _prefetchPromise = CatalogWorker.catalogPrefetchAll(entries, CATALOG_FULL_LIMIT, true)
+            .then(function (summary) {
+                _prefetchDone = true;
+                _prefetchPromise = null;
+                console.log('📦 Каталоги прогреты в IndexedDB:', summary);
+                return summary;
+            })
             .catch(function (error) {
                 console.warn('⚠️ Prefetch catalogs error:', error);
+                _prefetchPromise = null;   // дать шанс следующему входу в каталог
                 return {};
             });
+
+        return _prefetchPromise;
     }
 
     // ==================== showCatalogList ====================
@@ -212,9 +220,8 @@
     var _origShowCatalogList = window.showCatalogList || showCatalogList;
 
     window.showCatalogList = showCatalogList = function () {
-        // Загружаем все каталоги в IndexedDB.
-        // Если нужно ждать полную загрузку до показа списка,
-        // замените строку ниже на:
+        // Прогреваем IndexedDB (сам вызов не чаще одного раза за сессию — см. выше).
+        // Если нужно ждать полную загрузку до показа списка, замените строку ниже на:
         // return prefetchAllFullCatalogs().then(function () { return _origShowCatalogList.apply(window, args); });
         prefetchAllFullCatalogs();
 
@@ -380,18 +387,6 @@
                 renderCatalogGrid();
             }
 
-            if (window.catalogCache && catalogCache.set) {
-                catalogCache.set(catalogState.currentCatalog, {
-                    data: {
-                        items: catalogState.items.slice(),
-                        totalItems: catalogState.totalItems,
-                        currentPage: catalogState.currentPage,
-                        hasMore: catalogState.hasMore
-                    },
-                    timestamp: catalogState.idbTimestamp || Date.now()
-                });
-            }
-
             catalogState.isLoadingMore = false;
             return true;
         }).catch(function (error) {
@@ -454,7 +449,10 @@
         }
 
         try {
-            var result = await CatalogWorker.catalogGetFresh(key, cfg.url, CATALOG_FULL_LIMIT);
+            // take: LIMIT — воркер обрежет выборку до postMessage, чтобы не пересылать
+            // 1000 элементов ради 10. slice ниже оставлен: устаревший закэшированный
+            // воркер про take не знает и вернёт весь каталог.
+            var result = await CatalogWorker.catalogGetFresh(key, cfg.url, CATALOG_FULL_LIMIT, LIMIT);
 
             if (result && result.data && Array.isArray(result.data.items)) {
                 return result.data.items.slice(0, LIMIT);
@@ -543,12 +541,7 @@
                 await CatalogWorker.catalogIdbDelete(id);
             }
 
-            // 4. Удаляем локальный memory-кэш
-            if (window.catalogCache && catalogCache.delete) {
-                catalogCache.delete(id);
-            }
-
-            // 5. Заново загружаем полный каталог в IndexedDB
+            // 4. Заново загружаем полный каталог в IndexedDB
             var cfg = window.CATALOG_CONFIG && CATALOG_CONFIG[id];
 
             if (cfg && cfg.url) {
@@ -558,7 +551,7 @@
                     typeof CATALOG_FULL_LIMIT !== 'undefined' ? CATALOG_FULL_LIMIT : 1000
                 );
 
-                // 6. Если пользователь сейчас находится в этом каталоге — обновляем экран
+                // 5. Если пользователь сейчас находится в этом каталоге — обновляем экран
                 if (
                     catalogState.currentCatalog === id &&
                     freshResult &&
