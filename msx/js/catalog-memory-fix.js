@@ -233,14 +233,10 @@
         console.log('🧹 Страница скрыта, выполнение очистки...');
         cleanupCatalogState();
 
-        // Принудительная очистка неиспользуемых изображений
-        if (typeof catalogState !== 'undefined' && catalogState.posterCache) {
-            // Оставляем только последние 50 постеров
-            if (catalogState.posterCache.size && catalogState.posterCache.size() > 50) {
-                console.log('🧹 Сокращение posterCache с ' + catalogState.posterCache.size() + ' до 50');
-                catalogState.posterCache.trimToMax && catalogState.posterCache.trimToMax();
-            }
-        }
+        // posterCache хранит только строки-URL и ограничен самим LRU
+        // (CATALOG_CONSTANTS.MAX_POSTER_CACHE), отдельно подрезать нечего:
+        // trimToMax есть у LRUTTLCache, у LRUCache его нет — прежняя ветка
+        // была no-op и только писала в лог, что «сокращает» кэш.
     });
 
     // ==================== 10. PATCH BACKDROP LOADING ====================
