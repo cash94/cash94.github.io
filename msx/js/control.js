@@ -22,10 +22,10 @@ var SEEK_ACCELERATION_STEPS = [
 
 var SCROLL_SMOOTH = {
     force: true,
-    durationX: 0.21,
-    durationY: 0.21,
-    durationFastX: 0.13,
-    durationFastY: 0.16,
+    durationX: 0.33,
+    durationY: 0.38,
+    durationFastX: 0.21,
+    durationFastY: 0.28,
     ease: 'power2.out'
 };
 
