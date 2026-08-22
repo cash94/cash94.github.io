@@ -98,11 +98,6 @@
                         if (reset) renderCatalogGrid();
                         else appendCatalogItems(unique);
 
-                        // ★ Локальный кэш (для loadCatalog)
-                        catalogCache.set(catalogState.currentCatalog, {
-                            data: { items: catalogState.items.slice(), totalItems: catalogState.totalItems, currentPage: catalogState.currentPage, hasMore: catalogState.hasMore },
-                            timestamp: Date.now()
-                        });
                         return true;
                     });
             })
@@ -134,10 +129,6 @@
                     if (catalogState.items[i].id) catalogState.loadedItemIds[catalogState.items[i].id] = true;
                 }
                 renderCatalogGrid();
-                catalogCache.set(catalogState.currentCatalog, {
-                    data: { items: catalogState.items.slice(), totalItems: catalogState.totalItems, currentPage: 1, hasMore: false },
-                    timestamp: Date.now()
-                });
             })
             .catch(function (e) {
                 console.error('Fallback error:', e);
@@ -176,10 +167,6 @@
                         };
                     }).sort(function (a, b) { return b.timestamp - a.timestamp; });
                     catalogState.totalItems = catalogState.items.length;
-                    catalogCache.set('history', {
-                        data: { items: catalogState.items.slice(), totalItems: catalogState.totalItems, currentPage: 1, hasMore: false },
-                        timestamp: Date.now()
-                    });
                     renderCatalogGrid();
                 } else {
                     showEmptyHistory();
@@ -206,8 +193,6 @@
             return CatalogWorker.checkCatalogUpdate(id, iso)
                 .then(function (result) {
                     if (result && result.updated) {
-                        catalogCache.delete(id);
-
                         // чтобы следующий addCatalogHeader получил СВЕЖИЙ lastModifiedISO
                         _catalogsCache = null;
                         _catalogsCacheTime = 0;
@@ -316,7 +301,6 @@
         return CatalogWorker.clearHistory()
             .then(function (d) {
                 if (d && d.success) {
-                    catalogCache.delete('history');
                     return loadHistoryCatalog();
                 }
                 alert('Ошибка очистки');
