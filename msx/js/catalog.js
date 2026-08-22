@@ -11,7 +11,7 @@ var CATALOG_CONSTANTS = {
     // Карточек на экране рядов ~90, в сетке до 150 — при лимите 20 кэш почти
     // всегда промахивался и URL постера каждый раз запрашивался у воркера.
     MAX_DETAIL_HISTORY: 50,
-    POSTER_BATCH_SIZE: 150,
+    POSTER_BATCH_SIZE: 20,
     TMDB_MAX_CACHE_SIZE: 10,
     TMDB_CLEANUP_INTERVAL_MS: 300000,   // 5 минут
     MAX_ACTORS: 12,
