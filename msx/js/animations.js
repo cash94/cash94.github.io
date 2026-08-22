@@ -845,8 +845,8 @@ var Animations = (function () {
         if (container && container.scrollTop !== undefined) {
             var rect = element.getBoundingClientRect();
             var containerRect = container.getBoundingClientRect();
-            var targetTop = scrollOffsetY(container) + (rect.top - containerRect.top) - offset;
-            targetTop = Math.max(0, Math.min(maxScrollOffsetY(container, containerRect.height), targetTop));
+            var targetTop = container.scrollTop + (rect.top - containerRect.top) - offset;
+            targetTop = Math.max(0, Math.min(container.scrollHeight - containerRect.height, targetTop));
 
             tweenScroll(container, { scrollTop: targetTop }, { duration: duration, ease: ease });
         } else if (container === window || !container) {
@@ -871,10 +871,9 @@ var Animations = (function () {
         if (elRect.top < containerRect.top || elRect.bottom > containerRect.bottom) return false;
 
         // По горизонтали проверяем только там, где контейнер реально прокручивается
-        // (ряды каталога, горизонтальные списки актёров и т.п.). У #main-container
-        // содержимое по ширине не выходит за край, scrollWidth === clientWidth,
-        // и проверка не включается — прежнее поведение вертикальных списков
-        // не меняется.
+        // (ряды каталога, горизонтальные списки актёров и т.п.). Для #main-container
+        // с overflow-x: hidden scrollWidth === clientWidth, и проверка не включается —
+        // прежнее поведение вертикальных списков не меняется.
         if (canScrollX(container)) {
             if (elRect.left < containerRect.left || elRect.right > containerRect.right) return false;
         }
@@ -888,28 +887,6 @@ var Animations = (function () {
 
     function canScrollY(el) {
         return !!el && el !== window && el.scrollHeight > el.clientHeight + 1;
-    }
-
-    /**
-     * Текущее вертикальное смещение контейнера.
-     *
-     * У #main-container вместо scrollTop двигается трансформация внутреннего
-     * трека (#main-track), читать её умеют хелперы getScrollY/getMaxScrollY/
-     * setScrollY из js/control.js. control.js подключается позже animations.js,
-     * но вызовы происходят в рантайме, когда оба файла уже разобраны, поэтому
-     * проверка через typeof — тот же приём, что в catalog.js:scrollRowToCard.
-     * Для всех остальных контейнеров хелперы прозрачно возвращают scrollTop.
-     */
-    function scrollOffsetY(el) {
-        return (typeof getScrollY === 'function') ? getScrollY(el) : el.scrollTop;
-    }
-
-    /** Предел вертикального смещения. viewportH — высота видимой области */
-    function maxScrollOffsetY(el, viewportH) {
-        if (typeof getMainTrack === 'function' && typeof getMaxScrollY === 'function' && getMainTrack(el)) {
-            return getMaxScrollY(el);
-        }
-        return el.scrollHeight - viewportH;
     }
 
     /**
@@ -930,26 +907,6 @@ var Animations = (function () {
         options = options || {};
         var duration = typeof options.duration === 'number' ? options.duration : 0.3;
         var ease = options.ease || 'power1.out';
-
-        // #main-container двигается трансформацией трека, а не scrollTop. Это
-        // единственная точка, откуда scrollTop вообще пишется тваном (сюда
-        // сходятся и applyScroll из control.js, и scrollToIfNotVisible ниже),
-        // поэтому перевод делается один раз здесь. Остальные свойства из vars
-        // (backgroundColor у #detail-view) тванятся как раньше.
-        if (typeof vars.scrollTop === 'number' &&
-            typeof getMainTrack === 'function' && getMainTrack(container)) {
-            setScrollY(container, vars.scrollTop, duration > 0, duration, ease);
-
-            var rest = null;
-            for (var p in vars) {
-                if (!Object.prototype.hasOwnProperty.call(vars, p)) continue;
-                if (p === 'scrollTop') continue;
-                if (!rest) rest = {};
-                rest[p] = vars[p];
-            }
-            if (!rest) return;
-            vars = rest;
-        }
 
         if (typeof gsap === 'undefined' || duration <= 0) {
             // Мгновенно: остальные свойства (тот же backgroundColor) без твана не нужны
@@ -993,22 +950,21 @@ var Animations = (function () {
 
             if (canScrollY(targetContainer)) {
                 var targetTop;
-                var curTop = scrollOffsetY(targetContainer);
 
                 // Разная логика в зависимости от направления
                 if (direction === 'down') {
                     // При навигации вниз - прижимаем элемент к НИЖНЕМУ краю
-                    targetTop = curTop + (rect.bottom - containerRect.bottom) + offset;
+                    targetTop = targetContainer.scrollTop + (rect.bottom - containerRect.bottom) + offset;
                 } else if (direction === 'up') {
                     // При навигации вверх - прижимаем элемент к ВЕРХНЕМУ краю
-                    targetTop = curTop + (rect.top - containerRect.top) - offset;
+                    targetTop = targetContainer.scrollTop + (rect.top - containerRect.top) - offset;
                 } else {
                     // По умолчанию - прижимаем к нижнему краю (старая логика)
-                    targetTop = curTop + (rect.bottom - containerRect.bottom) + offset;
+                    targetTop = targetContainer.scrollTop + (rect.bottom - containerRect.bottom) + offset;
                 }
 
                 // Ограничиваем значения, чтобы не выйти за пределы скролла
-                vars.scrollTop = Math.max(0, Math.min(maxScrollOffsetY(targetContainer, containerRect.height), targetTop));
+                vars.scrollTop = Math.max(0, Math.min(targetContainer.scrollHeight - containerRect.height, targetTop));
             }
 
             // Горизонтальные списки (ряды каталога): раньше функция знала только про
