@@ -11,7 +11,7 @@ var CATALOG_CONSTANTS = {
     // Карточек на экране рядов ~90, в сетке до 150 — при лимите 20 кэш почти
     // всегда промахивался и URL постера каждый раз запрашивался у воркера.
     MAX_DETAIL_HISTORY: 50,
-    POSTER_BATCH_SIZE: 20,
+    POSTER_BATCH_SIZE: 15,
     TMDB_MAX_CACHE_SIZE: 10,
     TMDB_CLEANUP_INTERVAL_MS: 300000,   // 5 минут
     MAX_ACTORS: 12,
@@ -20,7 +20,7 @@ var CATALOG_CONSTANTS = {
     LOAD_MORE_MARGIN_PX: 300,
     POSTER_OBSERVER_MARGIN_PX: 1200,
     CATALOG_UPDATE_THRESHOLD_HOURS: 6,
-    MAX_POSTER_DECODES: 4,
+    MAX_POSTER_DECODES: 8,
     FOCUS_DELAY_MS: 100,
     ROW_POSTER_CONCURRENCY: 10,
     IMG_SIZES: {
@@ -2927,11 +2927,18 @@ function createCatalogRow(key, items) {
     });
     row.appendChild(header);
 
-    // Карусель
+    // Карусель.
+    // Вьюпорт — только окно-обрезка (overflow: hidden), а двигается внутренний
+    // трек через transform: translate3d — так кадр обходится композитору без
+    // layout + paint, в отличие от твана scrollLeft. Позицию читают/пишут
+    // getScrollX / setScrollX (control.js), они ищут трек по первому дочернему
+    // элементу вьюпорта с классом catalog-row-track.
     var carousel = document.createElement('div');
     carousel.className = 'catalog-row-carousel';
     var viewport = document.createElement('div');
     viewport.className = 'catalog-row-viewport';
+    var track = document.createElement('div');
+    track.className = 'catalog-row-track';
 
     var rowCards = [];
     window.catalogRowsData[key] = items;
@@ -2939,15 +2946,16 @@ function createCatalogRow(key, items) {
     // Карточки фильмов (до 19)
     for (var i = 0; i < items.length; i++) {
         var card = createRowCard(items[i], key, i);
-        viewport.appendChild(card);
+        track.appendChild(card);
         rowCards.push(card);
     }
 
     // 20-я карточка — «Показать все»
     var showAll = createShowAllCard(key);
-    viewport.appendChild(showAll);
+    track.appendChild(showAll);
     rowCards.push(showAll);
 
+    viewport.appendChild(track);
     carousel.appendChild(viewport);
     row.appendChild(carousel);
 
@@ -3332,18 +3340,29 @@ function handleRowsNavigation(dir) {
 function scrollRowToCard(card) {
     var viewport = card.closest ? card.closest('.catalog-row-viewport') : null;
     if (!viewport) return;
+
+    // Эту функцию перекрывает одноимённая из control.js (грузится позже) —
+    // правки держим синхронными. Карусель двигается трансформацией внутреннего
+    // трека, поэтому позицию читаем/пишем хелперами control.js; они появляются
+    // позже нас, но к моменту вызова уже есть.
+    var cur = (typeof getScrollX === 'function') ? getScrollX(viewport) : viewport.scrollLeft;
     var cr = card.getBoundingClientRect();
     var vr = viewport.getBoundingClientRect();
     var pad = 50;
     var target = null;
-    if (cr.left < vr.left + pad) target = viewport.scrollLeft + (cr.left - vr.left - pad);
-    else if (cr.right > vr.right - pad) target = viewport.scrollLeft + (cr.right - vr.right + pad);
+    if (cr.left < vr.left + pad) target = cur + (cr.left - vr.left - pad);
+    else if (cr.right > vr.right - pad) target = cur + (cr.right - vr.right + pad);
     if (target === null) return;
-    target = Math.max(0, target);
 
-    // Тем же путём, что и вся навигация (control.js: applyScroll → Animations.tweenScroll):
-    // нативный scrollBy({behavior:'smooth'}) на телевизоре не работает.
-    // Эту функцию перекрывает одноимённая из control.js — правки держим синхронными.
+    if (typeof setScrollX === 'function') {
+        setScrollX(viewport, target, true, 0.42);
+        return;
+    }
+
+    // control.js не загружен: остаётся нативный скролл. Тем же путём, что и вся
+    // навигация (Animations.tweenScroll) — scrollBy({behavior:'smooth'}) на
+    // телевизоре не работает.
+    target = Math.max(0, target);
     if (typeof Animations !== 'undefined' && typeof Animations.tweenScroll === 'function') {
         Animations.tweenScroll(viewport, { scrollLeft: target }, { duration: 0.42, ease: 'power3.out' });
     } else {
