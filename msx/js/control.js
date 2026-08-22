@@ -26,7 +26,7 @@ var SCROLL_SMOOTH = {
     durationY: 0.38,
     durationFastX: 0.21,
     durationFastY: 0.28,
-    ease: 'power0.out'
+    ease: 'power3.inOut'
 };
 
 // ==================== СОСТОЯНИЕ ====================
