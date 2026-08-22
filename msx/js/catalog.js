@@ -1214,6 +1214,7 @@ function renderCatalogGrid() {
     loadInitialPosters();
 
     requestAnimationFrame(function () {
+        measureCatalogCardHeight();   // высота ряда известна только после отрисовки
         if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
             if (typeof updateFocusableElements === 'function') updateFocusableElements();
             setTimeout(function () {
@@ -3200,6 +3201,45 @@ function measureVisibilityMargin(sample) {
     return Math.round(h * CATALOG_CONSTANTS.VISIBILITY_WINDOW_ROWS);
 }
 
+/**
+ * Под неотрисованной карточкой (content-visibility: auto) браузер резервирует
+ * ровно то, что объявлено в contain-intrinsic-size. Если это число не совпадает
+ * с реальной высотой ряда, каждый входящий в кадр ряд меняет размер и толкает
+ * всё, что ниже: при 1920 и настройках по умолчанию резерв был 375px против
+ * реальных 402px — сдвиг на 27px на каждом шаге прокрутки.
+ *
+ * Реальную высоту знает только отрисованная сетка: она зависит от ширины окна,
+ * числа колонок, шрифта и плотности (всё это задаёт ui-customizer.js). Поэтому
+ * замеряем её здесь и отдаём в CSS-переменную --catalog-card-h, которую читают
+ * оба правила contain-intrinsic-size (styles.css и ui-customizer.js).
+ *
+ * Попутно выправляется и rootMargin оконной видимости: measureVisibilityMargin
+ * зовут сразу после вставки карточек, когда те ещё пропущены рендером и отдают
+ * как раз объявленный резерв.
+ */
+function measureCatalogCardHeight() {
+    var grid = getCatalogGridEl();
+    if (!grid) return;
+
+    // Число колонок задаёт ui-customizer, поэтому берём его из вычисленных стилей
+    var cols = 5;
+    var tpl = window.getComputedStyle(grid).gridTemplateColumns;
+    if (tpl && tpl !== 'none') cols = tpl.split(/\s+/).length;
+
+    // Ряд растягивает карточки по самой высокой, значит максимум по первому ряду
+    // и есть высота ряда (заголовок сетки занимает свой ряд: grid-column 1/-1).
+    // Пропущенные рендером карточки пропускаем — они отдают старое значение
+    // intrinsic-size, и замер закольцевался бы сам на себя.
+    var cards = grid.querySelectorAll('.torrent-card.catalog-card');
+    var h = 0;
+    for (var i = 0; i < cards.length && i < cols; i++) {
+        var poster = cards[i].querySelector('.torrent-poster');
+        if (!poster || !poster.offsetHeight) continue;
+        if (cards[i].offsetHeight > h) h = cards[i].offsetHeight;
+    }
+    if (h > 0) document.documentElement.style.setProperty('--catalog-card-h', h + 'px');
+}
+
 function createVisibilityObserver(marginPx) {
     return new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
@@ -3313,6 +3353,7 @@ function revealAllCatalogRows() {
 window.revealCatalogElement = revealCatalogElement;
 window.initRowVisibilityWindow = initRowVisibilityWindow;
 window.initGridVisibilityWindow = initGridVisibilityWindow;
+window.measureCatalogCardHeight = measureCatalogCardHeight;   // зовёт ui-customizer после смены настроек
 
 /**
  * Обрабатывает очередь: не более ROW_POSTER_CONCURRENCY загрузок одновременно.
