@@ -11,7 +11,12 @@ var CatalogWorker = (function () {
 
     try {
       // ★ Прямой путь — same-origin, без Blob, без GitHub
-      worker = new Worker(new URL('catalog-worker.js', document.baseURI));
+      // ?v= обязателен: без него WebView отдаёт воркер из своего HTTP-кэша, пока
+      // все остальные скрипты приходят свежими (index.html грузит их с ?v=VERSION).
+      // Правки catalog-worker.js без этого могут не доехать до телевизора.
+      var workerUrl = 'catalog-worker.js';
+      if (window.VERSION) workerUrl += '?v=' + window.VERSION;
+      worker = new Worker(new URL(workerUrl, document.baseURI));
     } catch (e) {
       console.error('❌ Worker creation failed:', e);
       worker = null;
@@ -143,18 +148,24 @@ var CatalogWorker = (function () {
       return request('CATALOG_IDB_CLEAR', {}, 10000);
     },
 
-    catalogGetFresh: function (key, url, limit) {
+    catalogGetFresh: function (key, url, limit, take) {
       return request('CATALOG_GET_FRESH', {
         key: key,
         url: url,
-        limit: limit
+        limit: limit,
+        // take: сколько элементов реально нужно вызывающей стороне. Воркер обрежет
+        // выборку до postMessage. Старый закэшированный воркер параметр проигнорирует
+        // и вернёт всё, как раньше, — вызывающий код всё равно делает свой slice.
+        take: take
       }, 60000);
     },
 
-    catalogPrefetchAll: function (entries, limit) {
+    catalogPrefetchAll: function (entries, limit, summary) {
       return request('CATALOG_PREFETCH_ALL', {
         entries: entries,
-        limit: limit
+        limit: limit,
+        // summary: вернуть только метаданные вместо содержимого всех каталогов
+        summary: !!summary
       }, 240000);
     },
 
