@@ -2153,6 +2153,15 @@ function focusEl(el, opts) {
     var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
     var isRowCard = el.classList && el.classList.contains('catalog-row-card');
 
+    // Оконная видимость каталога (catalog.js): элемент под фокусом обязан быть
+    // видимым сразу, а колбэк IntersectionObserver придёт только через кадр-два
+    // после сдвига скролла. Рассинхрон самоисправляется — наблюдатель пришлёт
+    // своё состояние, когда элемент пересечёт границу окна.
+    if ((isRowCard || (el.classList && el.classList.contains('catalog-card'))) &&
+        typeof revealCatalogElement === 'function') {
+        revealCatalogElement(el);
+    }
+
     // ★ НОВОЕ: проверка, находится ли элемент внутри панели фильтров
     var isFilterItem = el.classList && (el.classList.contains('filter-item') || el.classList.contains('filter-value-item'));
     var filterMainScreen = el.closest && el.closest('.filter-main-screen');
