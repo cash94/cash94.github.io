@@ -1991,6 +1991,109 @@ function setScrollX(container, left, smooth, duration) {
     });
 }
 
+// ==================== ВЕРТИКАЛЬНАЯ ПРОКРУТКА ====================
+
+/**
+ * Вертикально в приложении скроллится ровно один элемент — #main-container.
+ * Он тоже переведён с нативного скролла на трансформацию внутреннего трека
+ * (#main-track, index.html), по той же причине, что и карусели рядов: твин
+ * scrollTop каждый кадр даёт forced layout и событие scroll, а translate3d
+ * уходит в композитор. На сетке каталога (150 карточек) разница видна.
+ *
+ * ВАЖНО: overflow:hidden не запрещает программную запись scrollTop и не убирает
+ * scrollHeight > clientHeight. Поэтому у #main-container scrollTop нельзя
+ * трогать напрямую нигде — иначе смещение трека и смещение скролла сложатся.
+ * Все точки доступа переведены на хелперы ниже (js/app.js, js/torrents.js,
+ * js/catalog.js, js/animations.js).
+ *
+ * Ось направлена как у scrollTop: 0 — верх, растёт вниз, то есть y трека = -offset.
+ *
+ * @param {Element} container контейнер прокрутки
+ * @returns {Element|null} трек или null для обычного скроллера
+ */
+function getMainTrack(container) {
+    if (!container || container.id !== 'main-container') return null;
+    var track = container.firstElementChild;
+    return (track && track.id === 'main-track') ? track : null;
+}
+
+/** Текущее смещение трека по y (px, отрицательное при сдвиге вверх) */
+function getTrackY(track) {
+    if (typeof gsap !== 'undefined') {
+        var y = parseFloat(gsap.getProperty(track, 'y'));
+        return isNaN(y) ? 0 : y;
+    }
+    return typeof track._trackY === 'number' ? track._trackY : 0;
+}
+
+/** Ставит смещение трека мгновенно */
+function setTrackY(track, y) {
+    if (typeof gsap !== 'undefined') {
+        // Только через gsap: при прямой записи style.transform он продолжит
+        // считать актуальным своё закэшированное значение
+        gsap.killTweensOf(track);
+        gsap.set(track, { y: y });
+        return;
+    }
+    track._trackY = y;
+    track.style.transform = 'translate3d(0, ' + y + 'px, 0)';
+}
+
+/** Смещение контейнера в координатах scrollTop */
+function getScrollY(container) {
+    if (!container) return 0;
+    var track = getMainTrack(container);
+    if (!track) return container.scrollTop;
+    return -getTrackY(track);
+}
+
+/** Предел смещения: нативный скролл браузер обрезает сам, трек — нет */
+function getMaxScrollY(container) {
+    if (!container) return 0;
+    var track = getMainTrack(container);
+    if (!track) return Math.max(0, container.scrollHeight - container.clientHeight);
+    var content = Math.max(track.scrollHeight, track.offsetHeight);
+    return Math.max(0, content - container.clientHeight);
+}
+
+/** Смещение без анимации (колесо, палец, восстановление позиции, фолбэк без gsap) */
+function setScrollYImmediate(container, top) {
+    if (!container) return;
+    if (container._cancelSmoothScrollY) container._cancelSmoothScrollY();
+    var track = getMainTrack(container);
+    if (!track) { container.scrollTop = top; return; }
+    setTrackY(track, -top);
+}
+
+/**
+ * Прокрутка контейнера к позиции top (в координатах scrollTop), с обрезкой
+ * по краям — у трека нативной обрезки нет, уехал бы в пустоту.
+ *
+ * @param {string} [ease] по умолчанию SCROLL_SMOOTH.ease
+ */
+function setScrollY(container, top, smooth, duration, ease) {
+    if (!container) return;
+    if (container._cancelSmoothScrollY) container._cancelSmoothScrollY();
+    top = Math.max(0, Math.min(getMaxScrollY(container), top));
+
+    var track = getMainTrack(container);
+    if (!track) {
+        applyScroll(container, { scrollTop: top }, smooth, duration);
+        return;
+    }
+    if (!smooth || typeof gsap === 'undefined') {
+        setScrollYImmediate(container, top);
+        return;
+    }
+    gsap.killTweensOf(track);
+    gsap.to(track, {
+        y: -top,
+        duration: duration,
+        ease: ease || SCROLL_SMOOTH.ease,
+        overwrite: true
+    });
+}
+
 /**
  * Единая точка прокрутки для навигации фокусом.
  *
@@ -2002,7 +2105,10 @@ function setScrollX(container, left, smooth, duration) {
  * свойства, никакого плагина для этого не нужно.
  *
  * Для горизонтальной прокрутки каруселей рядов используйте setScrollX —
- * там вместо scrollLeft двигается трансформация трека.
+ * там вместо scrollLeft двигается трансформация трека. Вертикальный
+ * scrollTop у #main-container Animations.tweenScroll сам переводит в
+ * setScrollY (см. js/animations.js), поэтому вызывать applyScroll с
+ * { scrollTop: … } по-прежнему можно для любого контейнера.
  *
  * @param {Element} container контейнер с прокруткой
  * @param {Object}  vars      scrollTop / scrollLeft (+ любые gsap-свойства)
@@ -2021,8 +2127,8 @@ function applyScroll(container, vars, smooth, duration) {
     }
 
     // Animations ещё не загружен — ставим позицию сразу, без анимации
-    if (typeof vars.scrollTop === 'number') container.scrollTop = vars.scrollTop;
-    if (typeof vars.scrollLeft === 'number') container.scrollLeft = vars.scrollLeft;
+    if (typeof vars.scrollTop === 'number') setScrollYImmediate(container, vars.scrollTop);
+    if (typeof vars.scrollLeft === 'number') setScrollXImmediate(container, vars.scrollLeft);
 }
 
 function scrollToElementIfNeeded(el, container, smooth, direction) {
@@ -2084,12 +2190,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         if (vertEl) {
             var containerRect = container.getBoundingClientRect();
             var vertRect = vertEl.getBoundingClientRect();
-            var containerTopRelative = containerRect.top - vertRect.top + vertEl.scrollTop;
+            var containerTopRelative = containerRect.top - vertRect.top + getScrollY(vertEl);
             var containerBottomRelative = containerTopRelative + containerRect.height;
-            var vertViewportTop = vertEl.scrollTop;
+            var vertViewportTop = getScrollY(vertEl);
             var vertViewportBottom = vertViewportTop + vertRect.height;
             var needsVertScroll = false;
-            var targetScrollTop = vertEl.scrollTop;
+            var targetScrollTop = getScrollY(vertEl);
 
             if (containerTopRelative < vertViewportTop + 50) {
                 targetScrollTop = (direction === 'up')
@@ -2104,7 +2210,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             }
 
             if (needsVertScroll) {
-                targetScrollTop = Math.max(0, Math.min(targetScrollTop, vertEl.scrollHeight - vertRect.height));
+                targetScrollTop = Math.max(0, Math.min(targetScrollTop, getMaxScrollY(vertEl)));
 
                 var tweenVars = { scrollTop: targetScrollTop };
                 // Фон detail-view возвращаем к чёрному тем же тваном, как было раньше
@@ -2357,7 +2463,7 @@ function openFilterPanelAndFocus() {
     }
 }
 
-function scrollToActiveConfigItem() { var ai = document.querySelector('#config-screen .focused'), cs = document.querySelector('#config-screen'), it = getConfigItems(); if (!ai || !cs) return; var sc = cs; while (sc && sc.scrollHeight <= sc.clientHeight) { sc = sc.parentElement; if (!sc || sc === document.body) { sc = window; break; } } var iw = (sc === window), cur = iw ? window.scrollY : sc.scrollTop, ci = -1; for (var i = 0; i < it.length; i++) if (ai === it[i]) { ci = i; break; } var ar = ai.getBoundingClientRect(), ct = iw ? 0 : sc.getBoundingClientRect().top, ot = ar.top - ct; if (ci === it.length - 2) { if (iw) window.scrollTo(0, document.body.scrollHeight - window.innerHeight); else sc.scrollTop = sc.scrollHeight - sc.clientHeight; return; } if (ci === 1) { if (iw) window.scrollTo(0, 0); else sc.scrollTop = 0; return; } var ch = iw ? window.innerHeight : sc.clientHeight; if (ot < 0) { var ns = cur + ot - 10; if (iw) window.scrollTo(0, ns); else sc.scrollTop = ns; } else if (ot + ar.height > ch) { var ns = cur + (ot + ar.height - ch) + 10; if (iw) window.scrollTo(0, ns); else sc.scrollTop = ns; } }
+function scrollToActiveConfigItem() { var ai = document.querySelector('#config-screen .focused'), cs = document.querySelector('#config-screen'), it = getConfigItems(); if (!ai || !cs) return; var sc = cs; while (sc && sc.scrollHeight <= sc.clientHeight) { sc = sc.parentElement; if (!sc || sc === document.body) { sc = window; break; } } var iw = (sc === window), cur = iw ? window.scrollY : getScrollY(sc), ci = -1; for (var i = 0; i < it.length; i++) if (ai === it[i]) { ci = i; break; } var ar = ai.getBoundingClientRect(), ct = iw ? 0 : sc.getBoundingClientRect().top, ot = ar.top - ct; if (ci === it.length - 2) { if (iw) window.scrollTo(0, document.body.scrollHeight - window.innerHeight); else setScrollYImmediate(sc, getMaxScrollY(sc)); return; } if (ci === 1) { if (iw) window.scrollTo(0, 0); else setScrollYImmediate(sc, 0); return; } var ch = iw ? window.innerHeight : sc.clientHeight; if (ot < 0) { var ns = cur + ot - 10; if (iw) window.scrollTo(0, ns); else setScrollYImmediate(sc, ns); } else if (ot + ar.height > ch) { var ns = cur + (ot + ar.height - ch) + 10; if (iw) window.scrollTo(0, ns); else setScrollYImmediate(sc, ns); } }
 
 function handleConfigNavigation(dir) {
     if (currentScreen() !== 'config') return false;
@@ -2983,4 +3089,186 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     }
 
     window.initSmoothHorizontalScroll = initSmoothHorizontalScroll;
+})();
+
+(function () {
+    /**
+     * Колесо мыши и драг пальцем для #main-container.
+     *
+     * #main-container переведён на overflow:hidden — позиция живёт в
+     * трансформации #main-track (хелперы getScrollY/setScrollY/
+     * setScrollYImmediate выше), поэтому нативной прокрутки мышью и тачем у него
+     * больше нет. Вертикального обработчика колеса в проекте до этого и не было:
+     * setupPlayerWheelControl слушает document, но сразу выходит, если экран не
+     * плеер, и рулит только громкостью.
+     *
+     * Догон кадрами — тот же, что в initSmoothHorizontalScroll выше.
+     *
+     * Привязка одноразовая: #main-container есть в разметке статически, в отличие
+     * от каруселей рядов, которые создаются позже DOMContentLoaded и поэтому
+     * горизонтальный обработчик так и не получают.
+     *
+     * Оверлеи (#detail-view, поиск, .filter-panel, плеер) лежат ВНЕ
+     * #main-container и накрывают его целиком (position:fixed), так что их
+     * события колеса и тача сюда не доходят — конфликтов нет.
+     */
+    var WHEEL_STEP = 0.9;   // множитель deltaY
+    var CHASE = 0.16;       // доля остатка за кадр (как у горизонтали)
+    var STOP_PX = 0.6;      // ближе этого — доводим и останавливаемся
+    var FLING_MS = 120;     // сколько «пролетаем» по инерции после отпускания
+    var DRAG_START_PX = 4;  // до этого сдвига считаем, что это тап, а не драг
+
+    function initSmoothVerticalScroll() {
+        var cnt = getEl('main-container');
+        if (!cnt || cnt._smoothVerticalInitialized) return;
+        cnt._smoothVerticalInitialized = true;
+
+        var target = getScrollY(cnt);
+        var rafId = null;
+        var writing = false;   // true только пока пишет сам догон, см. _cancelSmoothScrollY
+
+        function clamp(value) {
+            return Math.max(0, Math.min(getMaxScrollY(cnt), value));
+        }
+
+        function write(pos) {
+            writing = true;
+            setScrollYImmediate(cnt, pos);
+            writing = false;
+        }
+
+        function animationStep() {
+            var current = getScrollY(cnt);
+            var diff = target - current;
+
+            if (Math.abs(diff) < STOP_PX) {
+                write(target);
+                rafId = null;
+                return;
+            }
+
+            write(current + diff * CHASE);
+            rafId = requestAnimationFrame(animationStep);
+        }
+
+        function chase(to) {
+            target = clamp(to);
+            if (!rafId) rafId = requestAnimationFrame(animationStep);
+        }
+
+        /**
+         * Гасит догон. Зовут setScrollY и setScrollYImmediate: без этого догон
+         * следующим кадром вернул бы позицию к своему target и перебил бы
+         * и твин от пульта, и восстановление сохранённого скролла.
+         * Собственные записи догона (write) пропускаем — иначе он убьёт сам себя.
+         */
+        cnt._cancelSmoothScrollY = function () {
+            if (writing || !rafId) return;
+            cancelAnimationFrame(rafId);
+            rafId = null;
+        };
+
+        // ==================== КОЛЕСО ====================
+
+        // На плеере колесо крутит громкость (setupPlayerWheelControl). Туда
+        // события и так не доходят: при запуске плеера #main-container получает
+        // pointer-events:none. Проверка — страховка на случай, если забудут.
+        function isBusy() {
+            return typeof AppState !== 'undefined' && AppState.currentScreen === 'player';
+        }
+
+        function onWheel(e) {
+            if (isBusy() || getMaxScrollY(cnt) <= 0) return;
+
+            var dy =
+                e.deltaY ||
+                e.wheelDeltaY ||
+                (e.wheelDelta ? -e.wheelDelta / 40 : 0) ||
+                e.detail ||
+                0;
+
+            var dx = e.deltaX || e.wheelDeltaX || 0;
+
+            if (!dy || Math.abs(dy) < Math.abs(dx)) return;
+
+            e.preventDefault();
+
+            if (!rafId) target = getScrollY(cnt);
+            chase(target + dy * WHEEL_STEP);
+        }
+
+        // ==================== ПАЛЕЦ ====================
+
+        var touching = false, dragging = false;
+        var startY = 0, startTop = 0, lastY = 0, lastT = 0, velocity = 0;
+
+        function onTouchStart(e) {
+            touching = dragging = false;
+            if (isBusy() || !e.touches || e.touches.length !== 1) return;
+            if (getMaxScrollY(cnt) <= 0) return;
+
+            // Твин от пульта мог быть в полёте: берём фактическую позицию и
+            // тут же ставим её обратно — setScrollYImmediate гасит и твин трека,
+            // и догон. Иначе палец потянет от устаревшего значения и контент
+            // прыгнет.
+            var pos = getScrollY(cnt);
+            setScrollYImmediate(cnt, pos);
+
+            touching = true;
+            startY = lastY = e.touches[0].clientY;
+            startTop = target = pos;
+            lastT = e.timeStamp || 0;
+            velocity = 0;
+        }
+
+        function onTouchMove(e) {
+            if (!touching || !e.touches || e.touches.length !== 1) return;
+
+            var y = e.touches[0].clientY;
+            // Пока сдвиг меньше порога — это может быть тап по карточке,
+            // preventDefault не делаем, чтобы не съесть его
+            if (!dragging) {
+                if (Math.abs(y - startY) < DRAG_START_PX) return;
+                dragging = true;
+                startY = y;
+            }
+
+            var t = e.timeStamp || 0;
+            var dt = t - lastT;
+            if (dt > 0) velocity = (lastY - y) / dt;   // px/мс, вниз — положительная
+            lastY = y;
+            lastT = t;
+
+            // Палец вверх — контент уезжает вверх, то есть offset растёт
+            var pos = clamp(startTop + (startY - y));
+
+            e.preventDefault();
+            write(pos);
+            target = pos;
+        }
+
+        function onTouchEnd() {
+            touching = false;
+            if (!dragging) return;
+            dragging = false;
+
+            var fling = velocity * FLING_MS;
+            velocity = 0;
+            if (Math.abs(fling) > STOP_PX) chase(getScrollY(cnt) + fling);
+        }
+
+        cnt.addEventListener('wheel', onWheel, { passive: false });
+        cnt.addEventListener('touchstart', onTouchStart, { passive: true });
+        cnt.addEventListener('touchmove', onTouchMove, { passive: false });
+        cnt.addEventListener('touchend', onTouchEnd, { passive: true });
+        cnt.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initSmoothVerticalScroll);
+    } else {
+        initSmoothVerticalScroll();
+    }
+
+    window.initSmoothVerticalScroll = initSmoothVerticalScroll;
 })();
