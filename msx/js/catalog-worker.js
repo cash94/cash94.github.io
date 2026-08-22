@@ -10,7 +10,7 @@ var WORKER_CONSTANTS = {
   FETCH_TIMEOUT_MS: 5000,
   CATALOG_CACHE_TTL_MS: 3600000,
   ITEMS_PER_PAGE: 150,
-  MAX_POSTER_CACHE: 20,
+  MAX_POSTER_CACHE: 400, // только строки-URL, ~50 КБ; см. CATALOG_CONSTANTS в catalog.js
   TMDB_MAX_CACHE_SIZE: 10,
   TMDB_CLEANUP_INTERVAL_MS: 300000,
   MAX_ACTORS: 12,
@@ -1539,6 +1539,71 @@ function prefetchFullCatalogs(entries, limit) {
 
 // ==================== /IndexedDB: полный кэш каталогов ====================
 
+/**
+ * Обрезает результат getFullCatalogFresh до take элементов ПЕРЕД postMessage.
+ *
+ * Ряды каталога показывают по 10 карточек, а полный каталог — до 1000 элементов.
+ * Пересылать все 1000 через structured clone, чтобы взять 10, — это синхронная
+ * десериализация в главном потоке и мгновенный мусор: главный источник микрофризов
+ * на входе в каталог. loadedItemIds (словарь на 1000 ключей) рядам не нужен вовсе.
+ *
+ * Строим НОВЫЙ объект: result.data — это тот же объект, что лежит в записи
+ * IndexedDB и в общем in-flight-промисе (catalogFullFetchInFlight), его нельзя
+ * мутировать, иначе параллельный запрос из режима сетки получит обрезанный каталог.
+ */
+function sliceCatalogResult(result, take) {
+  if (!take || take <= 0) return result;
+  if (!result || !result.data || !Array.isArray(result.data.items)) return result;
+  if (result.data.items.length <= take && !result.data.loadedItemIds) return result;
+
+  return {
+    source: result.source,
+    key: result.key,
+    timestamp: result.timestamp,
+    networkFailed: result.networkFailed,
+    data: {
+      items: result.data.items.slice(0, take),
+      totalItems: result.data.totalItems,
+      currentPage: 1,
+      hasMore: false
+    }
+  };
+}
+
+/**
+ * Сводка вместо содержимого всех каталогов.
+ *
+ * Префетч нужен только чтобы прогреть IndexedDB — данные вызывающая сторона
+ * выбрасывает. Без этого в главный поток уезжали все 8 каталогов по 1000
+ * элементов плюс 8 словарей loadedItemIds одним блобом.
+ */
+function summarizePrefetchResults(results) {
+  var summary = {};
+
+  if (!results) return summary;
+
+  for (var key in results) {
+    if (!results.hasOwnProperty(key)) continue;
+
+    var r = results[key];
+
+    if (!r) {
+      summary[key] = null;
+      continue;
+    }
+
+    summary[key] = {
+      source: r.source,
+      timestamp: r.timestamp,
+      totalItems: r.data && r.data.totalItems || 0,
+      items: r.data && Array.isArray(r.data.items) ? r.data.items.length : 0,
+      networkFailed: !!r.networkFailed
+    };
+  }
+
+  return summary;
+}
+
 // ==================== ОБРАБОТЧИК СООБЩЕНИЙ ====================
 var pendingRequests = {};
 var requestId = 0;
@@ -1819,7 +1884,7 @@ self.onmessage = function (e) {
         payload && payload.limit
       )
         .then(function (result) {
-          self.postMessage({ id: id, type: 'RESULT', data: result });
+          self.postMessage({ id: id, type: 'RESULT', data: sliceCatalogResult(result, payload && payload.take) });
         })
         .catch(function (error) {
           self.postMessage({ id: id, type: 'ERROR', error: error && error.message || 'CATALOG_GET_FRESH error' });
@@ -1832,7 +1897,11 @@ self.onmessage = function (e) {
         payload && payload.limit
       )
         .then(function (result) {
-          self.postMessage({ id: id, type: 'RESULT', data: result });
+          self.postMessage({
+            id: id,
+            type: 'RESULT',
+            data: (payload && payload.summary) ? summarizePrefetchResults(result) : result
+          });
         })
         .catch(function (error) {
           self.postMessage({ id: id, type: 'ERROR', error: error && error.message || 'CATALOG_PREFETCH_ALL error' });
