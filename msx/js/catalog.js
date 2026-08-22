@@ -1173,7 +1173,7 @@ function showCatalogRowsView() {
     // (restoreRowFocus без lastSelectedRowKey). Без сброса ряды сначала
     // появились бы на чужой позиции и только потом прыгнули наверх.
     var mc = getEl('main-container');
-    if (mc) setScrollYImmediate(mc, 0);
+    if (mc) mc.scrollTop = 0;
     // Оконная видимость: классы остались от прежней позиции скролла
     revealAllCatalogRows();
     var wasHidden = rows.style.display === 'none';
@@ -1789,7 +1789,7 @@ function setupDetailLayout(item, index, posterUrl) {
     var dv = getEl('detail-view'), mc = getEl('main-container');
     // Сохраняем и нулевую позицию: это валидное состояние, а не признак того,
     // что позиция ещё не была инициализирована.
-    var savedScroll = mc ? getScrollY(mc) : 0;
+    var savedScroll = mc ? mc.scrollTop : 0;
     AppState.backupScroll = savedScroll;
     if (AppState.currentScreen === 'catalog') {
         AppState.contentScroll = AppState.contentScroll || {};
@@ -2400,7 +2400,7 @@ async function showCatalogDetail(item, index, posterUrl) {
         };
     }
     var restore = function () {
-        if (mc && savedScroll > 0) setTimeout(function () { setScrollYImmediate(mc, savedScroll); }, 50);
+        if (mc && savedScroll > 0) setTimeout(function () { mc.scrollTop = savedScroll; }, 50);
     };
 
     // ==================== ПАРАЛЛЕЛЬНАЯ ЗАГРУЗКА ====================
