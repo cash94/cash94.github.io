@@ -7,7 +7,9 @@ var CATALOG_CONSTANTS = {
     FETCH_TIMEOUT_MS: 5000,             // 5 секунд
     CATALOG_CACHE_TTL_MS: 3600000,      // 1 час для каталогов
     ITEMS_PER_PAGE: 150,
-    MAX_POSTER_CACHE: 20,
+    MAX_POSTER_CACHE: 400,              // только строки-URL: ~50 КБ на 400 записей.
+    // Карточек на экране рядов ~90, в сетке до 150 — при лимите 20 кэш почти
+    // всегда промахивался и URL постера каждый раз запрашивался у воркера.
     MAX_DETAIL_HISTORY: 50,
     POSTER_BATCH_SIZE: 15,
     TMDB_MAX_CACHE_SIZE: 10,
@@ -659,7 +661,9 @@ var catalogState = {
     activeRowPosterLoads: 0
 };
 
-var catalogCache = new LRUCache(12);
+// catalogCache удалён: единственным его читателем был loadCatalog ниже, а он
+// целиком переопределён в catalog-idb-patch.js. Полные каталоги теперь живут
+// в IndexedDB (catalog-worker.js), кэш в куче был только записью в мусор.
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 function abortCatalogRequests() {
@@ -918,23 +922,6 @@ async function loadCatalog(key) {
     // can be rendered immediately without another Worker or IndexedDB lookup.
     AppState.mediaType = config.mediaType;
     showCatalogLoading('Загрузка ' + config.name + '...');
-    if (catalogCache.has(key)) {
-        var cached = catalogCache.get(key);
-        if (Date.now() - cached.timestamp < CATALOG_CONSTANTS.CATALOG_CACHE_TTL_MS) {
-            catalogState.items = cached.data.items || [];
-            catalogState.totalItems = cached.data.totalItems || catalogState.items.length;
-            catalogState.currentPage = cached.data.currentPage || 0;
-            catalogState.hasMore = cached.data.hasMore || false;
-            for (var i = 0; i < catalogState.items.length; i++) {
-                if (catalogState.items[i].id) catalogState.loadedItemIds[catalogState.items[i].id] = true;
-            }
-            catalogState.loading = false;
-            hideCatalogLoading();
-            renderCatalogGrid();
-            catalogState.abortController = null;
-            return;
-        }
-    }
     await loadMoreCatalogItems(true);
     catalogState.abortController = null;
 }
@@ -964,10 +951,6 @@ async function loadHistoryCatalog() {
                 };
             }).sort(function (a, b) { return b.timestamp - a.timestamp; });
             catalogState.totalItems = catalogState.items.length;
-            catalogCache.set('history', {
-                data: { items: catalogState.items.slice(), totalItems: catalogState.totalItems, currentPage: 1, hasMore: false },
-                timestamp: Date.now()
-            });
             renderCatalogGrid();
         } else {
             showEmptyHistory();
@@ -1029,10 +1012,6 @@ async function loadMoreCatalogItems(reset) {
         for (var j = 0; j < unique.length; j++) catalogState.items.push(unique[j]);
         catalogState.currentPage++;
         if (reset) renderCatalogGrid(); else appendCatalogItems(unique);
-        catalogCache.set(catalogState.currentCatalog, {
-            data: { items: catalogState.items.slice(), totalItems: catalogState.totalItems, currentPage: catalogState.currentPage, hasMore: catalogState.hasMore },
-            timestamp: Date.now()
-        });
         return Promise.resolve(true);
     } catch (e) {
         if (e.name !== 'AbortError') {
@@ -1062,10 +1041,6 @@ async function fallbackLoadAllCatalogItems() {
             if (catalogState.items[i].id) catalogState.loadedItemIds[catalogState.items[i].id] = true;
         }
         renderCatalogGrid();
-        catalogCache.set(catalogState.currentCatalog, {
-            data: { items: catalogState.items.slice(), totalItems: catalogState.totalItems, currentPage: 1, hasMore: false },
-            timestamp: Date.now()
-        });
     } catch (e) {
         console.error('Fallback error:', e);
         showCatalogError('Ошибка загрузки каталога');
@@ -1170,6 +1145,8 @@ function showCatalogGridView() {
         rows.style.display = 'none';
     }
     if (grid) grid.style.display = '';
+    // Сменился видимый контейнер → сменился состав фокусируемых элементов
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
 }
 
 function showCatalogRowsView() {
@@ -1198,6 +1175,8 @@ function showCatalogRowsView() {
         ensureCatalogGridVisible(rows);
         rows.style.display = '';
     }
+    // Сменился видимый контейнер (плюс сетка категории только что очищена)
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
 }
 
 function renderCatalogGrid() {
@@ -1219,6 +1198,7 @@ function renderCatalogGrid() {
     // Финализация
     if (catalogState.hasMore) addLoadMoreTrigger(grid);
     catalogState.loadedPostersCount = 0;
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     initPosterLazyLoading();
     //initPosterUnloading();   // ⚡ Включаем выгрузку постеров
     initLoadMoreObserver();
@@ -1256,6 +1236,7 @@ function appendCatalogItems(newItems) {
 
     // Финализация
     if (catalogState.hasMore) addLoadMoreTrigger(grid);
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     updatePosterObservers();
     //initPosterUnloading();   // ⚡ Включаем выгрузку постеров
     initLoadMoreObserver();
@@ -1357,7 +1338,6 @@ async function checkAndUpdateCatalogIfNeeded(id, iso) {
                 headers: { 'Content-Type': 'application/json' }
             });
             if (d && d.success) {
-                catalogCache.delete(id);
                 if (catalogState.currentCatalog === id) {
                     setTimeout(function () { loadCatalog(id); }, 500);
                 }
@@ -2771,6 +2751,7 @@ async function showCatalogList(force) {
 
     showCatalogRowsView();
     rows.innerHTML = '<div class="catalog-rows-loading"><div class="loading-spinner" style="margin:0 auto 20px"></div><div style="font-size:16px;color:#aaa">Загрузка каталогов...</div></div>';
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
 
     // Категории из CATALOG_CONFIG (в порядке объявления)
     var keys = [];
@@ -2843,6 +2824,7 @@ function loadCatalogRowsProgressively(container, keys) {
                 finish(false, resolve);
                 return;
             }
+            var appended = 0;
             while (nextToRender < keys.length && results[nextToRender] !== undefined) {
                 var result = results[nextToRender++];
                 if (!result.items || result.items.length === 0) continue;
@@ -2851,9 +2833,13 @@ function loadCatalogRowsProgressively(container, keys) {
                 if (renderedRows === 0) container.innerHTML = '';
                 container.appendChild(row);
                 renderedRows++;
+                appended++;
                 observeRowPosters(row);
                 activateRows();
             }
+            // Появились новые карточки — кэш фокуса в control.js держится на
+            // счётчике поколений DOM, поэтому обязаны сказать об этом явно.
+            if (appended && typeof invalidateFocusCache === 'function') invalidateFocusCache();
         }
 
         function scheduleLoads() {
@@ -2865,6 +2851,7 @@ function loadCatalogRowsProgressively(container, keys) {
             if (completedLoads === keys.length) {
                 if (renderedRows === 0) {
                     container.innerHTML = '<div class="catalog-rows-loading"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталоги пусты</div></div>';
+                    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
                 }
                 // Все ряды в DOM. Страховка на случай, если контейнер остался
                 // погашенным (пустые каталоги, обрыв загрузки) — проявляем.
@@ -3234,7 +3221,8 @@ function onRowItemClick(item, key, index) {
 // Фокус на конкретную карточку ряда + скролл карусели
 function focusRowCardByElement(card) {
     if (!card) return;
-    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    // invalidateFocusCache() здесь не нужен: перемещение фокуса DOM не меняет,
+    // а сброс кэша только заставлял updateFocusableElements() обойти все карточки.
     if (typeof updateFocusableElements === 'function') updateFocusableElements();
     var idx = (typeof focusableElements !== 'undefined') ? focusableElements.indexOf(card) : -1;
     if (idx !== -1 && typeof setFocus === 'function') {
@@ -3465,7 +3453,6 @@ function hideCatalogLoading() { }
 
 function backToCatalogList() {
     abortCatalogRequests();
-    catalogCache.clear();
     catalogState.currentCatalog = null;
     catalogState.items = [];
     catalogState.cardElements = {};
