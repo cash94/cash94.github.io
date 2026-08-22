@@ -174,6 +174,38 @@
         return parseFloat(d.gap) || 12;
     }
 
+    // Ширина, доступная под карточки внутри сетки (без её собственного padding).
+    // Сам грид может быть скрыт — тогда спрашиваем родителя, в крайнем случае окно.
+    function gridAvailWidth() {
+        var avail = 0;
+        var grid = document.getElementById('catalog-grid') || document.getElementById('torrents-grid');
+        if (grid) {
+            avail = grid.clientWidth;
+            if (!avail && grid.parentElement) avail = grid.parentElement.clientWidth;
+            if (avail) avail -= 16; // padding грида 8px с каждой стороны
+        }
+        if (!(avail > 0)) avail = (window.innerWidth || 1280) - 16;
+        return avail;
+    }
+
+    // Фактическая ширина колонки: сетка растягивает карточку до 1fr, поэтому она
+    // не равна заданной cardWidth() — обычно чуть больше.
+    function gridColumnWidth() {
+        var cols = getColumns();
+        return Math.floor((gridAvailWidth() - (cols - 1) * densityGap()) / cols);
+    }
+
+    // Фактическая высота части карточки с подписью: два внутренних отступа,
+    // две строки названия (line-clamp: 2), его нижний margin и строка меты.
+    function cardInfoHeight() {
+        var density = DENSITIES[currentSettings.density] || DENSITIES.comfortable;
+        var font = FONT_SIZES[currentSettings.fontSize] || FONT_SIZES.medium;
+        return 2 * (parseFloat(density.info) || 8) +
+            2 * Math.round((parseFloat(font.title) || 13) * 1.3) +
+            4 +
+            Math.round((parseFloat(font.meta) || 12) * 1.35);
+    }
+
     // Фактическое число колонок сетки.
     // Считаем в JS (а не через CSS auto-fill), потому что control.js разбирает
     // grid-template-columns регуляркой repeat(<число>) — 'auto-fill' её ломает.
@@ -184,18 +216,8 @@
         var w = cardWidth();
         var gap = densityGap();
 
-        // Доступная ширина: сам грид, иначе его родитель (грид может быть скрыт), иначе окно
-        var avail = 0;
-        var grid = document.getElementById('catalog-grid') || document.getElementById('torrents-grid');
-        if (grid) {
-            avail = grid.clientWidth;
-            if (!avail && grid.parentElement) avail = grid.parentElement.clientWidth;
-            if (avail) avail -= 16; // padding грида 8px с каждой стороны
-        }
-        if (!(avail > 0)) avail = (window.innerWidth || 1280) - 16;
-
         // Столько карточек шириной w влезает в ряд с зазором gap
-        var n = Math.floor((avail + gap) / (w + gap));
+        var n = Math.floor((gridAvailWidth() + gap) / (w + gap));
         if (n < 1) n = 1;
         if (n > 12) n = 12;
         return n;
@@ -295,8 +317,17 @@
             'grid-gap:' + density.gap + '!important;' +
             'gap:' + density.gap + '!important;}');
 
-        // Подсказка для content-visibility, чтобы скролл не «прыгал»
-        css.push('.torrent-card.catalog-card{contain-intrinsic-size:' + w + 'px ' + Math.round(w * 1.5 + 60) + 'px!important;}');
+        // Подсказка для content-visibility, чтобы скролл не «прыгал».
+        // Резерв под неотрисованной карточкой должен совпадать с реальной высотой
+        // ряда, иначе каждый входящий в кадр ряд меняет размер и толкает всё, что
+        // ниже. Поэтому считаем от ФАКТИЧЕСКОЙ ширины колонки (карточка растянута
+        // до 1fr, это не заданные cardSize) и от реальной высоты подписи.
+        // Точное значение замеряет measureCatalogCardHeight() в catalog.js по
+        // отрисованному ряду и пишет в --catalog-card-h; число здесь — резерв на
+        // первый кадр, до замера.
+        var colW = gridColumnWidth();
+        css.push('.torrent-card.catalog-card{contain-intrinsic-size:' + colW + 'px ' +
+            'var(--catalog-card-h,' + Math.round((colW - 2) * 1.5 + cardInfoHeight()) + 'px)!important;}');
 
         // 2. ТОТ ЖЕ размер — постеры в рядах-каруселях каталога (.catalog-row-card)
         css.push('.catalog-row-card,.catalog-row-viewport .catalog-row-card{' +
@@ -358,6 +389,16 @@
             document.head.appendChild(style);
         }
         style.textContent = buildSettingsCss();
+        // Размер карточки/шрифт/плотность изменились — прежний замер высоты ряда
+        // больше не годится. Снимаем его, чтобы заработал резерв из buildSettingsCss,
+        // и перезамеряем на следующем кадре, когда сетка уже перестроится.
+        document.documentElement.style.removeProperty('--catalog-card-h');
+        try {
+            if (typeof window.measureCatalogCardHeight === 'function') {
+                if (typeof requestAnimationFrame === 'function') requestAnimationFrame(window.measureCatalogCardHeight);
+                else setTimeout(window.measureCatalogCardHeight, 16);
+            }
+        } catch (e) { }
         // Число колонок изменилось — сбрасываем кэш навигации в control.js
         try { if (typeof window.invalidateColumnsCache === 'function') window.invalidateColumnsCache(); } catch (e) { }
         console.log('🎨 Настройки внешнего вида применены:', JSON.stringify(currentSettings));
