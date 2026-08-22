@@ -22,11 +22,11 @@ var SEEK_ACCELERATION_STEPS = [
 
 var SCROLL_SMOOTH = {
     force: true,
-    durationX: 0.3,
-    durationY: 0.35,
+    durationX: 0.33,
+    durationY: 0.38,
     durationFastX: 0.21,
     durationFastY: 0.28,
-    ease: 'power2.out'
+    ease: 'power1.out'
 };
 
 // ==================== СОСТОЯНИЕ ====================
