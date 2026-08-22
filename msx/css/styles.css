@@ -3927,6 +3927,16 @@ article {
   transform: translateX(0);
 }
 
+/* ===== Оконная видимость рядов и карточек (catalog.js) =====
+   Строки/карточки дальше пары строк от вьюпорта не отрисовываются.
+   visibility, а не display: none — бокс остаётся на месте, поэтому
+   scrollHeight контейнера и позиция скролла не меняются, а
+   IntersectionObserver продолжает видеть элемент и сможет снять класс
+   при приближении. */
+.catalog-offscreen {
+  visibility: hidden;
+}
+
 /* ===== Карточка в ряду (260×460) ===== */
 .catalog-row-card {
   flex: 0 0 auto;
