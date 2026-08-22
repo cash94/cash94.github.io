@@ -63,8 +63,22 @@ var _focusCache = {
     timestamp: 0,
     screen: null,
     elements: [],
+    gen: -1,
     ttl: 100 // мс
 };
+
+// Поколение DOM: инкрементируется в invalidateFocusCache() из всех точек, где
+// реально меняется состав фокусируемых элементов. Для экрана каталога кэш живёт
+// по поколению, а не по 100-мс TTL: там на каждое нажатие стрелки шёл полный
+// обход ~90 карточек с offsetParent, и на Android TV это заметно.
+var _focusGen = 0;
+
+// Кэш getCatalogRows() — та же схема, тот же счётчик поколений
+var _rowsCache = { gen: -1, rows: null };
+
+// Каталог держит кэш фокуса по поколению; TTL остаётся только предохранителем
+// на случай мутации DOM, которая забыла позвать invalidateFocusCache().
+var CATALOG_FOCUS_CACHE_TTL = 1500; // мс
 
 // ==================== OVERLAY ПЕРЕМОТКИ ====================
 var seekOverlay = null;
@@ -237,6 +251,9 @@ function getTorrentGridColumns() {
 function invalidateFocusCache() {
     _focusCache.timestamp = 0;
     _focusCache.elements = [];
+    _focusGen++;
+    _rowsCache.gen = -1;
+    _rowsCache.rows = null;
 }
 window.invalidateFocusCache = invalidateFocusCache;
 
@@ -1103,9 +1120,13 @@ function updateFocusableElements() {
     var screen = AppState.currentScreen;
 
     // Проверяем кэш
-    if (now - _focusCache.timestamp < _focusCache.ttl &&
-        _focusCache.screen === screen &&
-        _focusCache.elements.length > 0) {
+    if (_focusCache.screen === screen &&
+        _focusCache.elements.length > 0 &&
+        _focusCache.gen === _focusGen &&
+        (screen === 'catalog'
+            ? now - _focusCache.timestamp < CATALOG_FOCUS_CACHE_TTL
+            : now - _focusCache.timestamp < _focusCache.ttl) &&
+        _focusCache.elements[0].isConnected !== false) {
         focusableElements = _focusCache.elements;
         return;
     }
@@ -1125,6 +1146,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (isAudioOpen) {
@@ -1134,6 +1156,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (isSubtitlesOpen) {
@@ -1143,6 +1166,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'sync') {
@@ -1152,6 +1176,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'player') {
@@ -1168,6 +1193,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'detail') {
@@ -1178,6 +1204,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'torrents') {
@@ -1199,6 +1226,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'catalog') {
@@ -1210,6 +1238,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'search') {
@@ -1253,6 +1282,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'config') {
@@ -1264,12 +1294,14 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     focusableElements = [];
     _focusCache.timestamp = now;
     _focusCache.screen = screen;
     _focusCache.elements = focusableElements.slice();
+    _focusCache.gen = _focusGen;
 }
 
 // setFocus с requestAnimationFrame для плавности
@@ -1682,6 +1714,7 @@ function setupKeyboardHandlers() {
         }
 
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
         updateFocusableElements();
 
         if (AppState.currentScreen === 'player') {
@@ -2573,6 +2606,16 @@ function isCatalogRowsMode() {
 
 // Массив массивов видимых карточек: rows[ряд][колонка]
 function getCatalogRows() {
+    // Кэш по поколению DOM: handleRowsNavigation зовёт эту функцию на каждое
+    // нажатие стрелки, а обход — querySelectorAll по рядам плюс offsetParent
+    // на каждой из ~90 карточек. isConnected — страховка от пропущенной
+    // инвалидации: если контейнер рядов переписали, кэш отбрасываем.
+    if (_rowsCache.gen === _focusGen && _rowsCache.rows &&
+        _rowsCache.rows.length > 0 && _rowsCache.rows[0][0] &&
+        _rowsCache.rows[0][0].isConnected !== false) {
+        return _rowsCache.rows;
+    }
+
     var rows = [];
     var rowEls = document.querySelectorAll('#catalog-rows .catalog-row');
     for (var i = 0; i < rowEls.length; i++) {
@@ -2582,6 +2625,10 @@ function getCatalogRows() {
         for (var j = 0; j < cards.length; j++) if (VISIBLE(cards[j])) visible.push(cards[j]);
         if (visible.length > 0) rows.push(visible);
     }
+
+    _rowsCache.gen = _focusGen;
+    _rowsCache.rows = rows;
+
     return rows;
 }
 
@@ -2596,7 +2643,8 @@ function focusRowHeader(ri) {
     var headers = getCatalogRowHeaders();
     if (!headers[ri]) return true;
     var header = headers[ri];
-    invalidateFocusCache();
+    // invalidateFocusCache() здесь не нужен: перемещение фокуса DOM не меняет,
+    // а вызов гарантированно сбрасывал кэш прямо перед updateFocusableElements().
     updateFocusableElements();
     var idx = focusableElements.indexOf(header);
     if (idx !== -1) setFocus(idx);
@@ -2636,7 +2684,7 @@ function scrollRowToCard(card) {
 function focusRowCard(ri, ci, rows) {
     if (!rows || !rows[ri] || !rows[ri][ci]) return true;
     var card = rows[ri][ci];
-    invalidateFocusCache();
+    // invalidateFocusCache() здесь не нужен — см. focusRowHeader
     updateFocusableElements();
     var idx = focusableElements.indexOf(card);
     if (idx !== -1) setFocus(idx);
