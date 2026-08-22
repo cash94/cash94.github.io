@@ -15,14 +15,33 @@ body {
   height: 100vh;
 }
 
+/* Вертикальная прокрутка приложения сделана не нативным скроллом, а
+   трансформацией внутреннего трека #main-track — как у каруселей рядов
+   (.catalog-row-viewport / .catalog-row-track ниже). Причина та же: твин
+   scrollTop каждый кадр заставляет браузер пересчитать layout (gsap читает
+   значение обратно) и стреляет событием scroll, а translate3d обрабатывает
+   композитор. На Android TV разница заметна на сетке каталога.
+
+   Читают и пишут смещение только хелперы getScrollY/setScrollY/
+   setScrollYImmediate из js/control.js — напрямую scrollTop у #main-container
+   трогать нельзя: overflow:hidden его не запрещает, и два смещения сложатся. */
 #main-container {
   width: 100vw;
   height: 100vh;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   background: #000000;
   position: relative;
   z-index: 1;
+}
+
+#main-track {
+  /* Нулевая 2D-трансформация: создаёт stacking context, но НЕ композиторский
+     слой. Нужна, чтобы порядок наложения был одинаковым до первого твина и
+     после него — иначе первое движение визуально дёргает слои.
+     will-change: transform сознательно нет: трек высотой в несколько экранов
+     стоил бы десятки МБ видеопамяти, а gsap и так ставит translate3d на время
+     твина (force3D: "auto"). */
+  transform: translateY(0);
 }
 
 #config-screen {
