@@ -23,6 +23,8 @@ var CATALOG_CONSTANTS = {
     MAX_POSTER_DECODES: 8,
     FOCUS_DELAY_MS: 100,
     ROW_POSTER_CONCURRENCY: 10,
+    VISIBILITY_WINDOW_ROWS: 2,          // сколько строк «запаса» держим отрисованными
+    VISIBILITY_FALLBACK_MARGIN_PX: 800, // если высоту строки измерить не удалось
     IMG_SIZES: {
         POSTER_CARD: 'w342',
         POSTER_SMALL: 'w185',
@@ -658,7 +660,10 @@ var catalogState = {
     maxPosterCacheSize: CATALOG_CONSTANTS.MAX_POSTER_CACHE,
     rowPosterObserver: null,
     rowPosterQueue: [],
-    activeRowPosterLoads: 0
+    activeRowPosterLoads: 0,
+    // Оконная видимость (см. initRowVisibilityWindow / initGridVisibilityWindow)
+    rowVisibilityObserver: null,
+    gridVisibilityObserver: null
 };
 
 // catalogCache удалён: единственным его читателем был loadCatalog ниже, а он
@@ -1160,6 +1165,7 @@ function showCatalogRowsView() {
         if (catalogFadedEl === grid) catalogFadedEl = null;
         grid.style.display = 'none';
         grid.innerHTML = '';
+        resetGridVisibilityWindow();
     }
     if (!rows) return;
     // Скролл сбрасываем ДО показа: #main-container остался на позиции сетки
@@ -1168,6 +1174,8 @@ function showCatalogRowsView() {
     // появились бы на чужой позиции и только потом прыгнули наверх.
     var mc = getEl('main-container');
     if (mc) mc.scrollTop = 0;
+    // Оконная видимость: классы остались от прежней позиции скролла
+    revealAllCatalogRows();
     var wasHidden = rows.style.display === 'none';
     if (wasHidden && typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
         Animations.fadeIn(rows, { duration: Animations.UI_FADE.content, display: '' });
@@ -1201,6 +1209,7 @@ function renderCatalogGrid() {
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     initPosterLazyLoading();
     //initPosterUnloading();   // ⚡ Включаем выгрузку постеров
+    initGridVisibilityWindow();
     initLoadMoreObserver();
     loadInitialPosters();
 
@@ -1239,6 +1248,7 @@ function appendCatalogItems(newItems) {
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     updatePosterObservers();
     //initPosterUnloading();   // ⚡ Включаем выгрузку постеров
+    updateGridVisibilityWindow();
     initLoadMoreObserver();
 
     if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
@@ -2830,11 +2840,18 @@ function loadCatalogRowsProgressively(container, keys) {
                 if (!result.items || result.items.length === 0) continue;
                 var row = createCatalogRow(result.key, result.items);
                 if (!row) continue;
-                if (renderedRows === 0) container.innerHTML = '';
+                if (renderedRows === 0) {
+                    container.innerHTML = '';
+                    // Ряды пересобираются с нуля: наблюдатель оконной видимости
+                    // держит ссылки на уже отсоединённые ряды — отпускаем его,
+                    // observeRowVisibility создаст новый по первому же ряду.
+                    resetRowVisibilityWindow();
+                }
                 container.appendChild(row);
                 renderedRows++;
                 appended++;
                 observeRowPosters(row);
+                observeRowVisibility(row);
                 activateRows();
             }
             // Появились новые карточки — кэш фокуса в control.js держится на
@@ -2851,6 +2868,9 @@ function loadCatalogRowsProgressively(container, keys) {
             if (completedLoads === keys.length) {
                 if (renderedRows === 0) {
                     container.innerHTML = '<div class="catalog-rows-loading"><div style="font-size:48px;margin-bottom:20px">🎬</div><div style="font-size:18px;color:#aaa">Каталоги пусты</div></div>';
+                    // Прежние ряды (если пересобирались по force) только что
+                    // отсоединены — наблюдателю их держать незачем
+                    resetRowVisibilityWindow();
                     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
                 }
                 // Все ряды в DOM. Страховка на случай, если контейнер остался
@@ -3143,6 +3163,156 @@ function initRowPosterLazyLoading() {
         }
     }
 }
+
+// ==================== ОКОННАЯ ВИДИМОСТЬ (как в Lampa) ====================
+
+/**
+ * Строки/карточки, которые дальше VISIBILITY_WINDOW_ROWS строк от вьюпорта,
+ * получают класс catalog-offscreen (visibility: hidden) и перестают
+ * отрисовываться. По мере приближения класс снимается, с уходящей стороны —
+ * ставится, поэтому «живыми» всегда остаются только видимые строки плюс запас.
+ *
+ * Почему visibility, а не display: none — бокс остаётся на месте, значит
+ * scrollHeight контейнера и позиция скролла не меняются, и IntersectionObserver
+ * продолжает видеть элемент (у display:none прямоугольник нулевой, класс уже
+ * никогда бы не снялся). Фокус по скрытым элементам ходить может: offsetParent
+ * у них не null, то есть VISIBLE() в control.js их по-прежнему считает.
+ *
+ * Отличие от content-visibility: auto на .torrent-card.catalog-card
+ * (styles.css:3305): тот работает только с Chromium 85+ (на Vidaa OS его нет),
+ * решает сам, что считать «около вьюпорта», и гасит карточку, но не ряд целиком
+ * с заголовком и композиторным слоем карусели.
+ *
+ * Ошибка в безопасную сторону: элементы создаются видимыми, скрывает их только
+ * колбэк наблюдателя. Если IntersectionObserver не сработает, мы потеряем
+ * оптимизацию, но не покажем пустой экран.
+ */
+var OFFSCREEN_CLASS = 'catalog-offscreen';
+
+/**
+ * Запас в пикселях = высота образцового элемента × VISIBILITY_WINDOW_ROWS.
+ * Считается один раз на создание наблюдателя (rootMargin потом не поменять),
+ * поэтому меряем уже лежащий в DOM элемент.
+ */
+function measureVisibilityMargin(sample) {
+    var h = sample ? sample.offsetHeight : 0;
+    if (!h) return CATALOG_CONSTANTS.VISIBILITY_FALLBACK_MARGIN_PX;
+    return Math.round(h * CATALOG_CONSTANTS.VISIBILITY_WINDOW_ROWS);
+}
+
+function createVisibilityObserver(marginPx) {
+    return new IntersectionObserver(function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+            var el = entries[i].target;
+            // Элемент не отрисован: ушли в режим сетки (#catalog-rows скрыт),
+            // сменили экран, контейнер погашен. Прямоугольник нулевой, поэтому
+            // наблюдатель честно рапортует «не пересекается» — но гасить по
+            // такому сообщению нельзя, иначе при возврате увидим пустой экран
+            // до следующего пересчёта. Классы не трогаем.
+            if (!entries[i].boundingClientRect.height) continue;
+            if (entries[i].isIntersecting) el.classList.remove(OFFSCREEN_CLASS);
+            else el.classList.add(OFFSCREEN_CLASS);
+        }
+    }, {
+        root: getEl('main-container'),
+        rootMargin: marginPx + 'px 0px',   // запас только по вертикали
+        threshold: 0
+    });
+}
+
+/**
+ * Снимает погашение с элемента (и с его ряда) немедленно.
+ * Нужно потому, что колбэк наблюдателя приходит через кадр-два после сдвига
+ * скролла, а сфокусированный элемент обязан быть видимым сразу. Рассинхрон
+ * с наблюдателем самоисправляется: он всё равно пришлёт своё состояние,
+ * когда элемент пересечёт границу окна.
+ */
+function revealCatalogElement(el) {
+    if (!el || !el.classList) return;
+    el.classList.remove(OFFSCREEN_CLASS);
+    var row = el.closest ? el.closest('.catalog-row') : null;
+    if (row) row.classList.remove(OFFSCREEN_CLASS);
+}
+
+/** Ряды-карусели: гасим ряд целиком вместе с заголовком */
+function initRowVisibilityWindow() {
+    if (catalogState.rowVisibilityObserver) catalogState.rowVisibilityObserver.disconnect();
+
+    var rows = document.querySelectorAll('#catalog-rows .catalog-row');
+    if (!rows.length) { catalogState.rowVisibilityObserver = null; return; }
+
+    catalogState.rowVisibilityObserver = createVisibilityObserver(measureVisibilityMargin(rows[0]));
+    for (var i = 0; i < rows.length; i++) {
+        rows[i].classList.remove(OFFSCREEN_CLASS);
+        catalogState.rowVisibilityObserver.observe(rows[i]);
+    }
+}
+
+/** Ряды добавляются по одному, поэтому наблюдателю их отдаём тоже по одному */
+function observeRowVisibility(row) {
+    if (!catalogState.rowVisibilityObserver) { initRowVisibilityWindow(); return; }
+    catalogState.rowVisibilityObserver.observe(row);
+}
+
+/**
+ * Ряды отсоединены от DOM (пересборка каталога, заглушка «Каталоги пусты»):
+ * наблюдатель держал бы их ссылками. Новый создаст observeRowVisibility.
+ */
+function resetRowVisibilityWindow() {
+    if (!catalogState.rowVisibilityObserver) return;
+    catalogState.rowVisibilityObserver.disconnect();
+    catalogState.rowVisibilityObserver = null;
+}
+
+/** Сетка категории: гасим отдельные карточки, строк как элементов там нет */
+function initGridVisibilityWindow() {
+    if (catalogState.gridVisibilityObserver) catalogState.gridVisibilityObserver.disconnect();
+
+    var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
+    if (!cards.length) { catalogState.gridVisibilityObserver = null; return; }
+
+    catalogState.gridVisibilityObserver = createVisibilityObserver(measureVisibilityMargin(cards[0]));
+    for (var i = 0; i < cards.length; i++) {
+        cards[i].classList.remove(OFFSCREEN_CLASS);
+        catalogState.gridVisibilityObserver.observe(cards[i]);
+    }
+}
+
+/** Догрузка страницы: новые карточки надо взять под наблюдение */
+function updateGridVisibilityWindow() {
+    if (!catalogState.gridVisibilityObserver) { initGridVisibilityWindow(); return; }
+    var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
+    for (var i = 0; i < cards.length; i++) {
+        try { catalogState.gridVisibilityObserver.observe(cards[i]); } catch (e) { }
+    }
+}
+
+/**
+ * Сетка категории очищена (showCatalogRowsView): наблюдатель держал бы сотни
+ * отсоединённых карточек. Новый создаст renderCatalogGrid при следующем входе.
+ */
+function resetGridVisibilityWindow() {
+    if (!catalogState.gridVisibilityObserver) return;
+    catalogState.gridVisibilityObserver.disconnect();
+    catalogState.gridVisibilityObserver = null;
+}
+
+/**
+ * Возврат к рядам. Пока #catalog-rows был display:none, наблюдатель геометрию
+ * не видел (см. проверку height в колбэке), поэтому классы остались от той
+ * позиции скролла, с которой уходили в категорию, — а showCatalogRowsView
+ * сбрасывает scrollTop в 0. Показываем всё сразу, иначе первый кадр после
+ * возврата будет с дырами вместо верхних рядов. Лишнее наблюдатель погасит
+ * через кадр-два, уже незаметно.
+ */
+function revealAllCatalogRows() {
+    var rows = document.querySelectorAll('#catalog-rows .catalog-row');
+    for (var i = 0; i < rows.length; i++) rows[i].classList.remove(OFFSCREEN_CLASS);
+}
+
+window.revealCatalogElement = revealCatalogElement;
+window.initRowVisibilityWindow = initRowVisibilityWindow;
+window.initGridVisibilityWindow = initGridVisibilityWindow;
 
 /**
  * Обрабатывает очередь: не более ROW_POSTER_CONCURRENCY загрузок одновременно.
