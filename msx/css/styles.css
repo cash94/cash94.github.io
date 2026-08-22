@@ -3899,17 +3899,32 @@ article {
   position: relative;
 }
 
+/* Вьюпорт больше не прокручивается нативно — он только окно-обрезка.
+   Карусель двигает внутренний трек через transform: translate3d, потому что
+   твин scrollLeft заставляет браузер каждый кадр делать layout + paint всего
+   контейнера, а трансформация уходит в композитор. На Android TV разница
+   заметна. Позиция карусели теперь читается/пишется хелперами
+   getScrollX / setScrollX (control.js), а не через scrollLeft. */
 .catalog-row-viewport {
-  display: flex;
-  gap: 18px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 10px 40px 20px;
-  scrollbar-width: none;
+  overflow: hidden;
 }
 
-.catalog-row-viewport::-webkit-scrollbar {
-  display: none;
+/* Padding перенесён сюда с вьюпорта: у нативного скролла отступы входили в
+   прокручиваемую область, у трека они входят в его ширину — геометрия
+   (и getBoundingClientRect вьюпорта) остаётся прежней. */
+.catalog-row-track {
+  display: flex;
+  gap: 18px;
+  padding: 10px 40px 20px;
+  width: -webkit-max-content;
+  width: max-content;
+  /* Единичная 2D-трансформация: контекст наложения у трека одинаковый и до
+     первого твана, и после — иначе z-index сфокусированного постера при первом
+     движении карусели менял бы область действия. Слой в композиторе она НЕ
+     создаёт, в отличие от translate3d/will-change: ~8 постоянных слоёв по
+     2900×490 съели бы десятки МБ видеопамяти. Слой создаёт сам gsap на время
+     твана (force3D: "auto" по умолчанию) и отпускает после. */
+  transform: translateX(0);
 }
 
 /* ===== Карточка в ряду (260×460) ===== */
@@ -4031,7 +4046,7 @@ article {
   }
 
   /* --- Карусель --- */
-  .catalog-row-viewport {
+  .catalog-row-track {
     gap: 14px;
     padding: 8px 24px 16px;
   }
