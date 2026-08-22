@@ -79,6 +79,12 @@
   </script>
 
   <div id="main-container">
+    <!-- #main-track двигается трансформацией (translateY), сам #main-container
+         не скроллится: overflow:hidden. Так же сделаны карусели рядов
+         (.catalog-row-viewport + .catalog-row-track), причину см. styles.css:18.
+         Отбивка содержимого оставлена прежней, чтобы не переформатировать
+         200+ строк разметки ради обёртки. -->
+    <div id="main-track">
     <!-- Экран настроек TorrServer -->
     <div id="config-screen">
       <div class="config-card" style="display: flex; gap: 30px;">
@@ -305,6 +311,7 @@
         <div id="catalog-grid" style="display: none"></div>
       </div>
     </div>
+    </div><!-- /#main-track -->
   </div>
 
   <!-- Контейнер для результатов поиска (оверлей поверх сетки) -->
