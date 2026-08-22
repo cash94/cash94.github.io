@@ -106,9 +106,9 @@ html.no-flex-gap .player-title-container > * + * {
   margin-top:4px;
 }
 
-/* styles.css:3405, 3900 */
+/* styles.css:3405, 3908 */
 html.no-flex-gap .detail-header > * + *,
-html.no-flex-gap .catalog-row-viewport > * + * {
+html.no-flex-gap .catalog-row-track > * + * {
   margin-left:18px;
 }
 
@@ -409,8 +409,8 @@ html.no-flex-gap .filter-value-item > * + * {
     margin-left:8px;
   }
 
-  /* styles.css:4032 */
-  html.no-flex-gap .catalog-row-viewport > * + * {
+  /* styles.css:4045 */
+  html.no-flex-gap .catalog-row-track > * + * {
     margin-left:14px;
   }
 
