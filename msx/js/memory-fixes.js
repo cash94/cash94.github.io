@@ -195,9 +195,11 @@
             }
         }
 
-        // 2. Очистка старых элементов в posterCache (LRU уже управляет размером)
+        // 2. Контроль размера posterCache (LRU сам управляет размером,
+        // порог берём из конфига — иначе после подъёма лимита лог засорялся)
         if (typeof catalogState !== 'undefined' && catalogState.posterCache) {
-            if (catalogState.posterCache.size && catalogState.posterCache.size() > 100) {
+            var posterCap = (typeof CATALOG_CONSTANTS !== 'undefined' && CATALOG_CONSTANTS.MAX_POSTER_CACHE) || 400;
+            if (catalogState.posterCache.size && catalogState.posterCache.size() > posterCap) {
                 console.log('⚠️ posterCache превышает лимит: ' + catalogState.posterCache.size());
             }
         }
