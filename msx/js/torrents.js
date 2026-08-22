@@ -1497,7 +1497,7 @@ async function showDetail(torrent) {
     // Как в setupDetailLayout (catalog.js) — ноль тоже валидная позиция.
     if (mainContainer && AppState.currentScreen === 'torrents') {
         AppState.contentScroll = AppState.contentScroll || {};
-        AppState.contentScroll.torrents = mainContainer.scrollTop;
+        AppState.contentScroll.torrents = getScrollY(mainContainer);
     }
     AppState.currentScreen = 'detail';
     if (!window.AndroidJS || !AppState.transcodingFullOnOff) {
@@ -2823,7 +2823,7 @@ function hideSearchResults() {
         var searchResultsEl = getEl('search-results'); if (searchResultsEl) searchResultsEl.innerHTML = '';
     }
     if (returnTo === 'detail') {
-        AppState.currentScreen = 'detail'; var mainContainer = getEl('main-container'); if (mainContainer && AppState.backupScroll > 0) mainContainer.scrollTop = AppState.backupScroll;
+        AppState.currentScreen = 'detail'; var mainContainer = getEl('main-container'); if (mainContainer && AppState.backupScroll > 0) setScrollYImmediate(mainContainer, AppState.backupScroll);
         AppState.searchReturnTo = null;
         if (catalogTab) catalogTab.classList.remove('active'); torrentsTab.classList.remove('active');
         var detailView = getEl('detail-view');
