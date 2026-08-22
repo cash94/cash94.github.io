@@ -65,7 +65,7 @@ function showContentScreen(screen, restoreScrollTop) {
   if (typeof AppState !== 'undefined' && mainContainer &&
     (AppState.currentScreen === 'torrents' || AppState.currentScreen === 'catalog')) {
     AppState.contentScroll = AppState.contentScroll || {};
-    AppState.contentScroll[AppState.currentScreen] = getScrollY(mainContainer);
+    AppState.contentScroll[AppState.currentScreen] = mainContainer.scrollTop;
   }
 
   // Уходящий экран убираем сразу: оба экрана лежат в общем потоке #main-container,
@@ -105,7 +105,7 @@ function showContentScreen(screen, restoreScrollTop) {
 
   requestAnimationFrame(function () {
     if (!mainContainer || typeof AppState === 'undefined' || !AppState.contentScroll) return;
-    setScrollYImmediate(mainContainer, AppState.contentScroll[screen] || 0);
+    mainContainer.scrollTop = AppState.contentScroll[screen] || 0;
     if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
   });
 }
@@ -661,7 +661,7 @@ function setupNavigation() {
             //window.loadCatalog(AppState.backCurrentCatalog).then(function () {
             var mc = getEl('main-container');
             if (mc && AppState.backupScroll > 0) {
-              setScrollYImmediate(mc, AppState.backupScroll);
+              mc.scrollTop = AppState.backupScroll;
             }
             if (searchOverlay) {
               searchOverlay.classList.remove('hidden');
@@ -786,7 +786,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
       // Восстанавливаем скролл ДО фокусировки
       var mc = getEl('main-container');
       if (mc && typeof context.savedScroll === 'number') {
-        setScrollYImmediate(mc, context.savedScroll);
+        mc.scrollTop = context.savedScroll;
       }
 
       // Фокус на нужную карточку без перерендера
@@ -801,7 +801,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
       // Восстанавливаем скролл ДО фокусировки
       var mc = getEl('main-container');
       if (mc && typeof context.savedScroll === 'number') {
-        setScrollYImmediate(mc, context.savedScroll);
+        mc.scrollTop = context.savedScroll;
       }
       hideDetailView();
       if (typeof window.ensureCatalogFocus === 'function') {
@@ -833,7 +833,7 @@ function restoreFocusAfterNavigation(returnTo, context) {
     var mcTorrents = getEl('main-container');
     var savedTorrentsScroll = AppState.contentScroll ? AppState.contentScroll.torrents : null;
     if (mcTorrents && typeof savedTorrentsScroll === 'number') {
-      setScrollYImmediate(mcTorrents, savedTorrentsScroll);
+      mcTorrents.scrollTop = savedTorrentsScroll;
     }
 
     if (context.currentTorrentHash) {
