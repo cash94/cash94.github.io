@@ -22,10 +22,10 @@ var SEEK_ACCELERATION_STEPS = [
 
 var SCROLL_SMOOTH = {
     force: true,
-    durationX: 0.33,
-    durationY: 0.38,
-    durationFastX: 0.21,
-    durationFastY: 0.28,
+    durationX: 0.42,
+    durationY: 0.50,
+    durationFastX: 0.26,
+    durationFastY: 0.32,
     ease: 'power3.out'
 };
 
@@ -1893,6 +1893,104 @@ function isElementFullyVisible(el, container) {
         r.left >= cr.left + 25 && r.right <= cr.right - 25;
 }
 
+// ==================== ГОРИЗОНТАЛЬНАЯ ПРОКРУТКА ====================
+
+/**
+ * Карусели рядов каталога двигаются не нативным скроллом, а трансформацией
+ * внутреннего трека (.catalog-row-track, создаётся в catalog.js:createCatalogRow).
+ * Причина: твин scrollLeft заставляет браузер каждый кадр пересчитывать layout
+ * и перерисовывать контейнер, а translate3d обрабатывается композитором — на
+ * Android TV разница заметна.
+ *
+ * Хелперы ниже дают единый API для обоих случаев: у карусели читается и пишется
+ * трансформация трека, у остальных горизонтальных списков (files-list, актёры,
+ * рекомендации, трейлеры) — по-прежнему scrollLeft. Ось направлена как у
+ * scrollLeft: 0 — начало, растёт вправо, то есть x трека = -offset.
+ *
+ * @param {Element} container контейнер прокрутки
+ * @returns {Element|null} трек карусели или null для обычного скроллера
+ */
+function getRowTrack(container) {
+    if (!container || !container.classList) return null;
+    if (!container.classList.contains('catalog-row-viewport')) return null;
+    var track = container.firstElementChild;
+    return (track && track.classList && track.classList.contains('catalog-row-track')) ? track : null;
+}
+
+/** Текущее смещение трека по x (px, отрицательное при сдвиге влево) */
+function getTrackX(track) {
+    if (typeof gsap !== 'undefined') {
+        // gsap.getProperty отдаёт актуальное значение и посреди твана;
+        // parseFloat — потому что в разных версиях это число либо '0px'
+        var x = parseFloat(gsap.getProperty(track, 'x'));
+        return isNaN(x) ? 0 : x;
+    }
+    return typeof track._trackX === 'number' ? track._trackX : 0;
+}
+
+/** Ставит смещение трека мгновенно */
+function setTrackX(track, x) {
+    if (typeof gsap !== 'undefined') {
+        // Только через gsap: при прямой записи style.transform он продолжит
+        // считать актуальным своё закэшированное значение
+        gsap.killTweensOf(track);
+        gsap.set(track, { x: x });
+        return;
+    }
+    track._trackX = x;
+    track.style.transform = 'translate3d(' + x + 'px, 0, 0)';
+}
+
+/** Смещение контейнера в координатах scrollLeft */
+function getScrollX(container) {
+    var track = getRowTrack(container);
+    if (!track) return container.scrollLeft;
+    return -getTrackX(track);
+}
+
+/** Предел смещения: нативный скролл браузер обрезает сам, трек — нет */
+function getMaxScrollX(container) {
+    var track = getRowTrack(container);
+    if (!track) return Math.max(0, container.scrollWidth - container.clientWidth);
+    // width: max-content на старом WebKit может не примениться — тогда карточки
+    // вылезают за трек и реальную ширину содержимого даёт scrollWidth
+    var content = Math.max(track.scrollWidth, track.offsetWidth);
+    return Math.max(0, content - container.clientWidth);
+}
+
+/** Смещение без анимации (колесо мыши, фолбэк без gsap) */
+function setScrollXImmediate(container, left) {
+    var track = getRowTrack(container);
+    if (!track) { container.scrollLeft = left; return; }
+    setTrackX(track, -left);
+}
+
+/**
+ * Прокрутка контейнера к позиции left (в координатах scrollLeft), с обрезкой
+ * по краям — у трека нативной обрезки нет, уехал бы в пустоту.
+ */
+function setScrollX(container, left, smooth, duration) {
+    if (!container) return;
+    left = Math.max(0, Math.min(getMaxScrollX(container), left));
+
+    var track = getRowTrack(container);
+    if (!track) {
+        applyScroll(container, { scrollLeft: left }, smooth, duration);
+        return;
+    }
+    if (!smooth || typeof gsap === 'undefined') {
+        setScrollXImmediate(container, left);
+        return;
+    }
+    gsap.killTweensOf(track);
+    gsap.to(track, {
+        x: -left,
+        duration: duration,
+        ease: SCROLL_SMOOTH.ease,
+        overwrite: true
+    });
+}
+
 /**
  * Единая точка прокрутки для навигации фокусом.
  *
@@ -1902,6 +2000,9 @@ function isElementFullyVisible(el, container) {
  * а нативный плавный скролл на телевизоре не работает. Всё идёт через
  * Animations.tweenScroll: gsap тянет scrollTop/scrollLeft как обычные числовые
  * свойства, никакого плагина для этого не нужно.
+ *
+ * Для горизонтальной прокрутки каруселей рядов используйте setScrollX —
+ * там вместо scrollLeft двигается трансформация трека.
  *
  * @param {Element} container контейнер с прокруткой
  * @param {Object}  vars      scrollTop / scrollLeft (+ любые gsap-свойства)
@@ -1958,18 +2059,22 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         var isHorizVisible = r.left >= cr.left + hp && r.right <= cr.right - hp;
 
         if (!isHorizVisible) {
+            // curLeft — смещение контейнера сейчас (у карусели это -x трека,
+            // у обычного списка scrollLeft), r/cr уже учитывают трансформацию,
+            // так что математика та же, что была с scrollLeft
+            var curLeft = getScrollX(con);
             var targetLeft;
             if (direction === 'left') {
-                targetLeft = con.scrollLeft + (r.left - cr.left) - hp;
+                targetLeft = curLeft + (r.left - cr.left) - hp;
             } else if (direction === 'right') {
-                targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width - r.width - hp);
+                targetLeft = curLeft + (r.left - cr.left) - (cr.width - r.width - hp);
             } else {
-                targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
+                targetLeft = curLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
             }
-            targetLeft = Math.max(0, targetLeft);
-            var needsHScroll = Math.abs(con.scrollLeft - targetLeft) > 10;
+            targetLeft = Math.max(0, Math.min(getMaxScrollX(con), targetLeft));
+            var needsHScroll = Math.abs(curLeft - targetLeft) > 10;
             if (needsHScroll) {
-                applyScroll(con, { scrollLeft: targetLeft }, smooth,
+                setScrollX(con, targetLeft, smooth,
                     fastNavigation ? SCROLL_SMOOTH.durationFastX : SCROLL_SMOOTH.durationX);
             }
         }
@@ -2669,15 +2774,15 @@ function scrollRowToCard(card) {
     var cr = card.getBoundingClientRect();
     var vr = viewport.getBoundingClientRect();
     var pad = 50;
-    // Через applyScroll, а не scrollBy({behavior:'smooth'}): нативный плавный скролл
-    // на телевизоре не работает, а ScrollToPlugin убран из index.html.
-    if (cr.left < vr.left + pad) {
-        applyScroll(viewport, { scrollLeft: Math.max(0, viewport.scrollLeft + (cr.left - vr.left - pad)) },
-            true, SCROLL_SMOOTH.durationX);
-    } else if (cr.right > vr.right - pad) {
-        applyScroll(viewport, { scrollLeft: Math.max(0, viewport.scrollLeft + (cr.right - vr.right + pad)) },
-            true, SCROLL_SMOOTH.durationX);
-    }
+    var cur = getScrollX(viewport);
+    var target = null;
+    if (cr.left < vr.left + pad) target = cur + (cr.left - vr.left - pad);
+    else if (cr.right > vr.right - pad) target = cur + (cr.right - vr.right + pad);
+    if (target === null) return;
+    // Через setScrollX (двигает трек карусели трансформацией и сам обрезает по
+    // краям), а не scrollBy({behavior:'smooth'}): нативный плавный скролл на
+    // телевизоре не работает, а ScrollToPlugin убран из index.html.
+    setScrollX(viewport, target, true, SCROLL_SMOOTH.durationX);
 }
 
 // Фокус карточки в ряду + скролл карусели
@@ -2798,11 +2903,13 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
                 if (cnt._smoothWheelInitialized) return;
                 cnt._smoothWheelInitialized = true;
 
-                var target = cnt.scrollLeft;
+                // Через getScrollX/setScrollXImmediate, а не cnt.scrollLeft:
+                // у каруселей рядов позиция живёт в трансформации трека
+                var target = getScrollX(cnt);
                 var rafId = null;
 
                 function getMaxScroll() {
-                    return Math.max(0, cnt.scrollWidth - cnt.clientWidth);
+                    return getMaxScrollX(cnt);
                 }
 
                 function clamp(value) {
@@ -2810,11 +2917,11 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
                 }
 
                 function animationStep() {
-                    var current = cnt.scrollLeft;
+                    var current = getScrollX(cnt);
                     var diff = target - current;
 
                     if (Math.abs(diff) < 0.6) {
-                        cnt.scrollLeft = target;
+                        setScrollXImmediate(cnt, target);
                         rafId = null;
                         return;
                     }
@@ -2823,13 +2930,13 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
                     // 0.10 - очень мягко
                     // 0.16 - оптимально
                     // 0.22 - быстрее
-                    cnt.scrollLeft = current + diff * 0.16;
+                    setScrollXImmediate(cnt, current + diff * 0.16);
 
                     rafId = requestAnimationFrame(animationStep);
                 }
 
                 function onWheel(e) {
-                    if (cnt.scrollWidth <= cnt.clientWidth) return;
+                    if (getMaxScroll() <= 0) return;
 
                     var dy =
                         e.deltaY ||
@@ -2845,7 +2952,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
                     e.preventDefault();
 
                     if (!rafId) {
-                        target = cnt.scrollLeft;
+                        target = getScrollX(cnt);
                     }
 
                     target = clamp(target + dy * 0.9);
