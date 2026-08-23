@@ -3306,6 +3306,7 @@ article {
   content-visibility: auto;
   contain-intrinsic-size: 280px 400px;
   contain: layout style paint;
+  will-change: transform;
 
 }
 
