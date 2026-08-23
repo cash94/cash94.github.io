@@ -26,7 +26,12 @@
         fontSize: 'medium',          // small | medium | large
         borderRadius: 'medium',      // none | small | medium | large
         density: 'comfortable',      // compact | comfortable | spacious
-        animations: 'normal',        // none | reduced | normal
+        animations: 'normal',        // none | reduced | normal (CSS-переходы и анимации)
+        scrollAnim: 'smooth',        // none | fast | smooth — твины ГОРИЗОНТАЛЬНОЙ прокрутки
+                                     // (карусели рядов и списки в карточке фильма).
+                                     // Отдельно от animations: те правила гасят CSS-переходы,
+                                     // а прокрутку двигает gsap, и на слабых устройствах
+                                     // тормозит именно она.
         posterBrightness: 'normal',  // dim | normal | bright
         focusColor: '#ff8c00',       // цвет рамки фокуса (#rrggbb)
         showRatings: true,
@@ -70,6 +75,9 @@
     };
 
     var BRIGHTNESS = { dim: '0.8', normal: '1', bright: '1.15' };
+
+    // Режимы анимации горизонтальной прокрутки (применяет control.js, CSS не порождают)
+    var SCROLL_ANIMS = { none: 1, fast: 1, smooth: 1 };
 
     // Палитра популярных цветов фокуса. Первый — исходный цвет приложения.
     var FOCUS_COLORS = [
@@ -159,6 +167,11 @@
     function cardWidth() { return clampStep(currentSettings.cardSize, SLIDERS.cardSize); }
     function detailScale() { return clampStep(currentSettings.detailScale, SLIDERS.detailScale); }
     function focusColor() { return normalizeColor(currentSettings.focusColor); }
+
+    // Режим анимации горизонтальной прокрутки — читает control.js через getScrollAnim()
+    function scrollAnim() {
+        return SCROLL_ANIMS[currentSettings.scrollAnim] ? currentSettings.scrollAnim : 'smooth';
+    }
 
     // Явно заданное число колонок (0 = авто)
     function explicitColumns() {
@@ -555,6 +568,12 @@
 
             '<div class="ui-customizer-group"><h3>Анимации</h3><div class="ui-customizer-options">' +
             optionRow('animations', [['none', 'Отключить'], ['reduced', 'Быстрые'], ['normal', 'Обычные']]) +
+            '</div></div>' +
+
+            '<div class="ui-customizer-group"><h3>Анимация прокрутки рядов</h3>' +
+            '<div class="ui-customizer-hint">Горизонтальное движение каруселей каталога и списков в карточке фильма. На слабых устройствах плавное движение может подтормаживать — выберите «Без анимации».</div>' +
+            '<div class="ui-customizer-options">' +
+            optionRow('scrollAnim', [['none', 'Без анимации'], ['fast', 'Быстрая'], ['smooth', 'Плавная']]) +
             '</div></div>' +
 
             '<div class="ui-customizer-group"><h3>Яркость постеров</h3><div class="ui-customizer-options">' +
@@ -1046,7 +1065,7 @@
             '<button class="btn btn-primary ui-appearance-open-btn" id="open-ui-customizer-btn">🎨 Настроить внешний вид</button>' +
             '<div class="help-text" style="margin-top:10px;color:#666;font-size:12px;">' +
             'Размер карточек и постеров (ползунок, до 260×460), масштаб детального просмотра, колонки,<br>' +
-            'шрифт, скругление, плотность, анимации, яркость постеров, цвет фокуса.<br>' +
+            'шрифт, скругление, плотность, анимации, анимация прокрутки, яркость постеров, цвет фокуса.<br>' +
             'Открыть в любой момент: жёлтая кнопка пульта или клавиша «C».</div>';
 
         container.appendChild(section);
@@ -1095,6 +1114,7 @@
         getColumns: getColumns,          // используется control.js для навигации пультом
         getCardSize: function () { var w = cardWidth(); return { width: w, height: posterHeight(w) }; },
         getFocusColor: focusColor,
+        getScrollAnim: scrollAnim,       // control.js: длительность твинов горизонтальной прокрутки
         get: function () { return Object.assign({}, currentSettings); },
         set: function (partial) {
             if (partial && typeof partial === 'object') {
