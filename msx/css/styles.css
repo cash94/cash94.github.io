@@ -3306,25 +3306,7 @@ article {
   content-visibility: auto;
   contain-intrinsic-size: 280px 400px;
   contain: layout style paint;
-  will-change: transform;
 
-}
-
-/* Карточки сетки категории: резерв под неотрисованной карточкой обязан совпадать
-   с реальной высотой ряда, иначе каждый входящий в кадр ряд меняет размер и
-   толкает всё, что ниже (это и есть рывки при прокрутке вниз).
-   Реальную высоту замеряет measureCatalogCardHeight() в catalog.js и пишет в
-   --catalog-card-h — она учитывает и настройки ui-customizer.js.
-   Значения ниже — резерв до первого замера, посчитанный под базовую сетку из
-   этого файла: 5 колонок, gap 10px, padding 8px у #catalog-grid, 16px у
-   #torrserver-section, то есть колонка = (100vw - 88px)/5, а высота = постер
-   (ширина минус бордеры, aspect-ratio 2/3) плюс 68px подписи.
-   Ряды каталога это правило не задевает: у них своя фиксированная геометрия и
-   .catalog-row-viewport постоянной высоты, где рост скрытой карточки ничего не
-   двигает. */
-#catalog-grid > .torrent-card.catalog-card {
-  contain-intrinsic-size: calc((100vw - 88px) / 5)
-    var(--catalog-card-h, calc(((100vw - 88px) / 5 - 2px) * 1.5 + 68px));
 }
 
 .torrent-poster {
