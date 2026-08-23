@@ -22,10 +22,10 @@ var SEEK_ACCELERATION_STEPS = [
 
 var SCROLL_SMOOTH = {
     force: true,
-    durationX: 0.42,
-    durationY: 0.50,
-    durationFastX: 0.26,
-    durationFastY: 0.32,
+    durationX: 0.33,
+    durationY: 0.38,
+    durationFastX: 0.20,
+    durationFastY: 0.25,
     ease: 'power3.out'
 };
 
@@ -1896,6 +1896,36 @@ function isElementFullyVisible(el, container) {
 // ==================== ГОРИЗОНТАЛЬНАЯ ПРОКРУТКА ====================
 
 /**
+ * Режим анимации горизонтальной прокрутки из ui-customizer: none | fast | smooth.
+ * На слабых устройствах твин трека подтормаживает (gsap на время анимации поднимает
+ * трек ряда — а это ~2900x490 — в слой композитора и отпускает после, и так на
+ * каждое нажатие пульта), поэтому выбор оставлен пользователю. Отличать устройства
+ * из кода нельзя, а поведение по умолчанию не меняется.
+ *
+ * Без кэша: это чтение строки пару раз на нажатие. getColumns кэшируется только
+ * потому, что читает вычисленные стили — здесь инвалидация не нужна.
+ *
+ * @returns {string} 'none' | 'fast' | 'smooth'
+ */
+function getScrollAnimMode() {
+    try {
+        if (window.UICustomizer && typeof window.UICustomizer.getScrollAnim === 'function') {
+            var mode = window.UICustomizer.getScrollAnim();
+            if (mode === 'none' || mode === 'fast' || mode === 'smooth') return mode;
+        }
+    } catch (e) { }
+    return 'smooth';
+}
+
+/** Длительность твина с поправкой на режим: none — мгновенно, fast — вдвое короче */
+function scrollAnimDurationX(duration) {
+    var mode = getScrollAnimMode();
+    if (mode === 'none') return 0;
+    if (mode === 'fast' && typeof duration === 'number') return duration * 0.5;
+    return duration;
+}
+
+/**
  * Карусели рядов каталога двигаются не нативным скроллом, а трансформацией
  * внутреннего трека (.catalog-row-track, создаётся в catalog.js:createCatalogRow).
  * Причина: твин scrollLeft заставляет браузер каждый кадр пересчитывать layout
@@ -1972,13 +2002,14 @@ function setScrollXImmediate(container, left) {
 function setScrollX(container, left, smooth, duration) {
     if (!container) return;
     left = Math.max(0, Math.min(getMaxScrollX(container), left));
+    duration = scrollAnimDurationX(duration);   // режим из ui-customizer
 
     var track = getRowTrack(container);
     if (!track) {
         applyScroll(container, { scrollLeft: left }, smooth, duration);
         return;
     }
-    if (!smooth || typeof gsap === 'undefined') {
+    if (!smooth || duration <= 0 || typeof gsap === 'undefined') {
         setScrollXImmediate(container, left);
         return;
     }
@@ -2939,7 +2970,9 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
                     // 0.10 - очень мягко
                     // 0.16 - оптимально
                     // 0.22 - быстрее
-                    setScrollXImmediate(cnt, current + diff * 0.16);
+                    // 0.30 - режим «Быстрая» в ui-customizer (меньше кадров догона)
+                    var factor = getScrollAnimMode() === 'fast' ? 0.3 : 0.16;
+                    setScrollXImmediate(cnt, current + diff * factor);
 
                     rafId = requestAnimationFrame(animationStep);
                 }
@@ -2959,6 +2992,14 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
                     if (Math.abs(dy) <= Math.abs(dx)) return;
 
                     e.preventDefault();
+
+                    // «Без анимации» — ставим позицию сразу, догон кадрами не запускаем
+                    if (getScrollAnimMode() === 'none') {
+                        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+                        target = clamp(getScrollX(cnt) + dy * 0.9);
+                        setScrollXImmediate(cnt, target);
+                        return;
+                    }
 
                     if (!rafId) {
                         target = getScrollX(cnt);
