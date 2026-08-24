@@ -2947,6 +2947,7 @@ html {
 .catalog-recommendation-card {
   scroll-snap-align: start;
   scroll-margin-inline: 20px;
+  will-change: transform;
   /* Горизонтальный отступ при скролле */
 }
 
@@ -3306,6 +3307,7 @@ article {
   content-visibility: auto;
   contain-intrinsic-size: 280px 400px;
   contain: layout style paint;
+  will-change: transform;
 
 }
 
