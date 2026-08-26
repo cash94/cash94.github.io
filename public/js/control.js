@@ -22,10 +22,10 @@ var SEEK_ACCELERATION_STEPS = [
 
 var SCROLL_SMOOTH = {
     force: true,
-    durationX: 0.42,
-    durationY: 0.50,
-    durationFastX: 0.26,
-    durationFastY: 0.32,
+    durationX: 0.33,
+    durationY: 0.38,
+    durationFastX: 0.20,
+    durationFastY: 0.25,
     ease: 'power3.out'
 };
 
@@ -63,8 +63,22 @@ var _focusCache = {
     timestamp: 0,
     screen: null,
     elements: [],
+    gen: -1,
     ttl: 100 // мс
 };
+
+// Поколение DOM: инкрементируется в invalidateFocusCache() из всех точек, где
+// реально меняется состав фокусируемых элементов. Для экрана каталога кэш живёт
+// по поколению, а не по 100-мс TTL: там на каждое нажатие стрелки шёл полный
+// обход ~90 карточек с offsetParent, и на Android TV это заметно.
+var _focusGen = 0;
+
+// Кэш getCatalogRows() — та же схема, тот же счётчик поколений
+var _rowsCache = { gen: -1, rows: null };
+
+// Каталог держит кэш фокуса по поколению; TTL остаётся только предохранителем
+// на случай мутации DOM, которая забыла позвать invalidateFocusCache().
+var CATALOG_FOCUS_CACHE_TTL = 1500; // мс
 
 // ==================== OVERLAY ПЕРЕМОТКИ ====================
 var seekOverlay = null;
@@ -237,6 +251,9 @@ function getTorrentGridColumns() {
 function invalidateFocusCache() {
     _focusCache.timestamp = 0;
     _focusCache.elements = [];
+    _focusGen++;
+    _rowsCache.gen = -1;
+    _rowsCache.rows = null;
 }
 window.invalidateFocusCache = invalidateFocusCache;
 
@@ -249,6 +266,11 @@ function _isScreenVisible(el) {
     if (el.classList && el.classList.contains('hidden')) return false;
 
     if (el.style.display === 'none') return false;
+
+    // Экран, который прямо сейчас плавно закрывается (animations.js: animateDetailHide),
+    // для навигации уже не существует: display:none ему поставят в конце затухания,
+    // но реагировать на кнопки пульта он больше не должен.
+    if (el.dataset && el.dataset.hiding === '1') return false;
 
     // Если inline display задан — верим ему
     if (el.style.display !== '') return true;
@@ -276,7 +298,7 @@ function currentScreen() {
 
         if (ss === 'catalog' || (window.AppState && AppState.inSearch === 'catalog')) return 'catalog';
 
-        var cg = getEl('catalog-grid');
+        var cg = getEl('catalog-grid') || getEl('catalog-rows');
         if (cg && cg.classList.contains('hidden')) {
             var hc = cg.querySelector('.catalog-card,.catalog-folder-card') !== null;
             if (hc) return 'catalog';
@@ -297,7 +319,7 @@ function belongsToScreen(el, screen) {
     }
     if (screen === 'catalog') {
         return el.closest('.torrent-card.catalog-card') || el.closest('.torrent-card.catalog-folder-card') ||
-            el.closest('#catalog-grid') ||
+            el.closest('#catalog-grid') || el.closest('#catalog-rows') ||
             el.id === 'back-from-catalog' || el.classList.contains('file-item') || el.classList.contains('back-btn') ||
             ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-catalog', 'tab-donate'].indexOf(el.id) !== -1;
     }
@@ -402,11 +424,13 @@ function getSearchResults() {
 
 function getDetailItems() {
     var s = ['.back-btn', '.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
+    // Сборный селектор → порядок обхода совпадает с порядком в DOM, а не с
+    // порядком селекторов. Важно для торрентного detail: там ряд актёров идёт
+    // ПЕРЕД файлами, и «вверх» от плитки должно попадать в него.
+    // Побочный плюс: элемент, подходящий сразу двум селекторам, не дублируется.
+    var it = document.querySelectorAll(s.join(','));
     var a = [];
-    for (var i = 0; i < s.length; i++) {
-        var it = document.querySelectorAll(s[i]);
-        for (var j = 0; j < it.length; j++) if (VISIBLE(it[j])) a.push(it[j]);
-    }
+    for (var i = 0; i < it.length; i++) if (VISIBLE(it[i])) a.push(it[i]);
     return a;
 }
 
@@ -574,7 +598,7 @@ var ScreenStrategies = {
 
     catalog: {
         getItems: function () {
-            var c = [], ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
+            var c = [], ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card, #catalog-rows .torrent-card.catalog-card, #catalog-rows .torrent-card.catalog-folder-card');
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
             return c;
         },
@@ -594,7 +618,7 @@ var ScreenStrategies = {
             // Старый вид: сетка (без изменений)
             var f = document.querySelector('.focused');
             if (!force && f && belongsToScreen(f, 'catalog')) return true;
-            var ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
+            var ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card, #catalog-rows .torrent-card.catalog-card, #catalog-rows .torrent-card.catalog-folder-card');
             var c = [];
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
             if (!c.length) return false;
@@ -620,7 +644,7 @@ var ScreenStrategies = {
 
             // Старый вид: сетка (без изменений)
             var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
-            var ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
+            var ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card, #catalog-rows .torrent-card.catalog-card, #catalog-rows .torrent-card.catalog-folder-card');
             var c = [];
             for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
             var h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns();
@@ -639,7 +663,7 @@ var ScreenStrategies = {
                     else if (c.length < catalogState.totalItems && !catalogState.isLoadingMore) {
                         window.loadMoreCatalogItems().then(function () {
                             setTimeout(function () {
-                                var nc = [], nac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
+                                var nc = [], nac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card, #catalog-rows .torrent-card.catalog-card, #catalog-rows .torrent-card.catalog-folder-card');
                                 for (var m = 0; m < nac.length; m++) if (VISIBLE(nac[m])) nc.push(nac[m]);
                                 var tix = Math.min(ci + cols, nc.length - 1);
                                 if (tix >= 0 && tix < nc.length && nc[tix]) focusEl(nc[tix]);
@@ -905,7 +929,7 @@ var ScreenStrategies = {
             if (isF && fii !== -1) {
                 if (dir === 'left') { if (fii > 0) { focusEl(fi[fii - 1], { direction: 'left' }); } return true; }
                 if (dir === 'right') { if (fii < fi.length - 1) { focusEl(fi[fii + 1], { direction: 'right' }); } return true; }
-                if (dir === 'up') { var prevItems = []; for (var k = idx - 1; k >= 0; k--) { if (!items[k].classList || !items[k].classList.contains('file-item')) { prevItems.push(items[k]); } } if (prevItems.length > 0) focusEl(prevItems[0], { direction: 'up' }); return true; }
+                if (dir === 'up') { if (ac.length > 0) { focusEl(ac[Math.min(fii, ac.length - 1)], { direction: 'up' }); return true; } var prevItems = []; for (var k = idx - 1; k >= 0; k--) { if (!items[k].classList || !items[k].classList.contains('file-item')) { prevItems.push(items[k]); } } if (prevItems.length > 0) focusEl(prevItems[0], { direction: 'up' }); return true; }
                 if (dir === 'down') return true;
                 return true;
             }
@@ -919,7 +943,7 @@ var ScreenStrategies = {
             if (isA && ai !== -1) {
                 if (dir === 'left') return focusEl(ac[Math.max(0, ai - 1)] || f, { direction: 'left' });
                 if (dir === 'right') return focusEl(ac[Math.min(ac.length - 1, ai + 1)] || f, { direction: 'right' });
-                if (dir === 'up') { if (tl.length > 0) { focusEl(tl[tl.length - 1], { direction: 'up' }); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
+                if (dir === 'up') { if (tl.length > 0) { focusEl(tl[tl.length - 1], { direction: 'up' }); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } var pgb = getEl('detail-progress-btn'); if (pgb && pgb.offsetParent !== null) { focusEl(pgb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
                 if (dir === 'down') { if (rc.length > 0) { var t = ai < rc.length ? ai : rc.length - 1; focusEl(rc[t], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 return true;
             }
@@ -1098,9 +1122,13 @@ function updateFocusableElements() {
     var screen = AppState.currentScreen;
 
     // Проверяем кэш
-    if (now - _focusCache.timestamp < _focusCache.ttl &&
-        _focusCache.screen === screen &&
-        _focusCache.elements.length > 0) {
+    if (_focusCache.screen === screen &&
+        _focusCache.elements.length > 0 &&
+        _focusCache.gen === _focusGen &&
+        (screen === 'catalog'
+            ? now - _focusCache.timestamp < CATALOG_FOCUS_CACHE_TTL
+            : now - _focusCache.timestamp < _focusCache.ttl) &&
+        _focusCache.elements[0].isConnected !== false) {
         focusableElements = _focusCache.elements;
         return;
     }
@@ -1120,6 +1148,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (isAudioOpen) {
@@ -1129,6 +1158,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (isSubtitlesOpen) {
@@ -1138,6 +1168,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'sync') {
@@ -1147,6 +1178,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'player') {
@@ -1163,16 +1195,20 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'detail') {
-        var sel = '.detail-progress-btn, .file-item, .back-btn, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn';
+        // Карточки актёров/рекомендаций — тоже фокусируемые: без них «вверх» из
+        // ряда файлов торрентного detail упирается в кнопки шапки
+        var sel = '.detail-progress-btn, .file-item, .back-btn, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn, .catalog-actor-card, .catalog-recommendation-card';
         var els = document.querySelectorAll(sel);
         for (var i = 0; i < els.length; i++) if (els[i] && els[i].offsetParent !== null) list.push(els[i]);
         focusableElements = list;
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'torrents') {
@@ -1194,17 +1230,19 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'catalog') {
-        var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card');
+        var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card, #catalog-rows .torrent-card.catalog-card, #catalog-rows .torrent-card.catalog-folder-card');
         for (var i = 0; i < cards.length; i++) if (cards[i] && cards[i].offsetParent !== null) list.push(cards[i]);
-        var rowHeaders = document.querySelectorAll('#catalog-grid .catalog-row-header');
+        var rowHeaders = document.querySelectorAll('#catalog-rows .catalog-row-header, #catalog-grid .catalog-row-header');
         for (var rh = 0; rh < rowHeaders.length; rh++) if (rowHeaders[rh] && rowHeaders[rh].offsetParent !== null) list.push(rowHeaders[rh]);
         focusableElements = list; window.catalogCards = list;
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'search') {
@@ -1248,6 +1286,7 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     if (screen === 'config') {
@@ -1259,12 +1298,14 @@ function updateFocusableElements() {
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
         return;
     }
     focusableElements = [];
     _focusCache.timestamp = now;
     _focusCache.screen = screen;
     _focusCache.elements = focusableElements.slice();
+    _focusCache.gen = _focusGen;
 }
 
 // setFocus с requestAnimationFrame для плавности
@@ -1544,8 +1585,10 @@ function onBack() {
     }
     if (dn) { if (typeof window.closeDonateOverlay === 'function') window.closeDonateOverlay(); return true; }
     if (cat) {
-        var h = document.querySelector('#catalog-grid .torrent-card.catalog-folder-card');
-        if (h) return true;
+        // Из рядов уходить некуда: «назад» здесь ничего не делает. Раньше признаком
+        // рядов было наличие .catalog-folder-card в #catalog-grid — теперь карточки
+        // «Показать все» лежат в #catalog-rows, поэтому спрашиваем режим напрямую.
+        if (isCatalogRowsMode()) return true;
         if (window.catalogState) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); }
         if (typeof window.backToCatalogList === 'function') { AppState.currentScreen = 'catalog'; window.backToCatalogList(); }
         else clickEl(getEl('back-from-catalog'));
@@ -1675,6 +1718,7 @@ function setupKeyboardHandlers() {
         }
 
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
         updateFocusableElements();
 
         if (AppState.currentScreen === 'player') {
@@ -1853,6 +1897,169 @@ function isElementFullyVisible(el, container) {
         r.left >= cr.left + 25 && r.right <= cr.right - 25;
 }
 
+// ==================== ГОРИЗОНТАЛЬНАЯ ПРОКРУТКА ====================
+
+/**
+ * Режим анимации горизонтальной прокрутки из ui-customizer: none | fast | smooth.
+ * На слабых устройствах твин трека подтормаживает (gsap на время анимации поднимает
+ * трек ряда — а это ~2900x490 — в слой композитора и отпускает после, и так на
+ * каждое нажатие пульта), поэтому выбор оставлен пользователю. Отличать устройства
+ * из кода нельзя, а поведение по умолчанию не меняется.
+ *
+ * Без кэша: это чтение строки пару раз на нажатие. getColumns кэшируется только
+ * потому, что читает вычисленные стили — здесь инвалидация не нужна.
+ *
+ * @returns {string} 'none' | 'fast' | 'smooth'
+ */
+function getScrollAnimMode() {
+    try {
+        if (window.UICustomizer && typeof window.UICustomizer.getScrollAnim === 'function') {
+            var mode = window.UICustomizer.getScrollAnim();
+            if (mode === 'none' || mode === 'fast' || mode === 'smooth') return mode;
+        }
+    } catch (e) { }
+    return 'smooth';
+}
+
+/** Длительность твина с поправкой на режим: none — мгновенно, fast — вдвое короче */
+function scrollAnimDurationX(duration) {
+    var mode = getScrollAnimMode();
+    if (mode === 'none') return 0;
+    if (mode === 'fast' && typeof duration === 'number') return duration * 0.5;
+    return duration;
+}
+
+/**
+ * Карусели рядов каталога двигаются не нативным скроллом, а трансформацией
+ * внутреннего трека (.catalog-row-track, создаётся в catalog.js:createCatalogRow).
+ * Причина: твин scrollLeft заставляет браузер каждый кадр пересчитывать layout
+ * и перерисовывать контейнер, а translate3d обрабатывается композитором — на
+ * Android TV разница заметна.
+ *
+ * Хелперы ниже дают единый API для обоих случаев: у карусели читается и пишется
+ * трансформация трека, у остальных горизонтальных списков (files-list, актёры,
+ * рекомендации, трейлеры) — по-прежнему scrollLeft. Ось направлена как у
+ * scrollLeft: 0 — начало, растёт вправо, то есть x трека = -offset.
+ *
+ * @param {Element} container контейнер прокрутки
+ * @returns {Element|null} трек карусели или null для обычного скроллера
+ */
+function getRowTrack(container) {
+    if (!container || !container.classList) return null;
+    if (!container.classList.contains('catalog-row-viewport')) return null;
+    var track = container.firstElementChild;
+    return (track && track.classList && track.classList.contains('catalog-row-track')) ? track : null;
+}
+
+/** Текущее смещение трека по x (px, отрицательное при сдвиге влево) */
+function getTrackX(track) {
+    if (typeof gsap !== 'undefined') {
+        // gsap.getProperty отдаёт актуальное значение и посреди твана;
+        // parseFloat — потому что в разных версиях это число либо '0px'
+        var x = parseFloat(gsap.getProperty(track, 'x'));
+        return isNaN(x) ? 0 : x;
+    }
+    return typeof track._trackX === 'number' ? track._trackX : 0;
+}
+
+/** Ставит смещение трека мгновенно */
+function setTrackX(track, x) {
+    if (typeof gsap !== 'undefined') {
+        // Только через gsap: при прямой записи style.transform он продолжит
+        // считать актуальным своё закэшированное значение
+        gsap.killTweensOf(track);
+        gsap.set(track, { x: x });
+        return;
+    }
+    track._trackX = x;
+    track.style.transform = 'translate3d(' + x + 'px, 0, 0)';
+}
+
+/** Смещение контейнера в координатах scrollLeft */
+function getScrollX(container) {
+    var track = getRowTrack(container);
+    if (!track) return container.scrollLeft;
+    return -getTrackX(track);
+}
+
+/** Предел смещения: нативный скролл браузер обрезает сам, трек — нет */
+function getMaxScrollX(container) {
+    var track = getRowTrack(container);
+    if (!track) return Math.max(0, container.scrollWidth - container.clientWidth);
+    // width: max-content на старом WebKit может не примениться — тогда карточки
+    // вылезают за трек и реальную ширину содержимого даёт scrollWidth
+    var content = Math.max(track.scrollWidth, track.offsetWidth);
+    return Math.max(0, content - container.clientWidth);
+}
+
+/** Смещение без анимации (колесо мыши, фолбэк без gsap) */
+function setScrollXImmediate(container, left) {
+    var track = getRowTrack(container);
+    if (!track) { container.scrollLeft = left; return; }
+    setTrackX(track, -left);
+}
+
+/**
+ * Прокрутка контейнера к позиции left (в координатах scrollLeft), с обрезкой
+ * по краям — у трека нативной обрезки нет, уехал бы в пустоту.
+ */
+function setScrollX(container, left, smooth, duration) {
+    if (!container) return;
+    left = Math.max(0, Math.min(getMaxScrollX(container), left));
+    duration = scrollAnimDurationX(duration);   // режим из ui-customizer
+
+    var track = getRowTrack(container);
+    if (!track) {
+        applyScroll(container, { scrollLeft: left }, smooth, duration);
+        return;
+    }
+    if (!smooth || duration <= 0 || typeof gsap === 'undefined') {
+        setScrollXImmediate(container, left);
+        return;
+    }
+    gsap.killTweensOf(track);
+    gsap.to(track, {
+        x: -left,
+        duration: duration,
+        ease: SCROLL_SMOOTH.ease,
+        overwrite: true
+    });
+}
+
+/**
+ * Единая точка прокрутки для навигации фокусом.
+ *
+ * Раньше здесь было три ветки: gsap + ScrollToPlugin, нативный
+ * scrollTo({behavior:'smooth'}) и мгновенное присваивание. Плагин убран из
+ * index.html (тормозил прокрутку), поэтому первая ветка больше не срабатывала,
+ * а нативный плавный скролл на телевизоре не работает. Всё идёт через
+ * Animations.tweenScroll: gsap тянет scrollTop/scrollLeft как обычные числовые
+ * свойства, никакого плагина для этого не нужно.
+ *
+ * Для горизонтальной прокрутки каруселей рядов используйте setScrollX —
+ * там вместо scrollLeft двигается трансформация трека.
+ *
+ * @param {Element} container контейнер с прокруткой
+ * @param {Object}  vars      scrollTop / scrollLeft (+ любые gsap-свойства)
+ * @param {boolean} smooth    false — прыжком
+ * @param {number}  duration  длительность в секундах
+ */
+function applyScroll(container, vars, smooth, duration) {
+    if (!container || !vars) return;
+
+    if (typeof Animations !== 'undefined' && typeof Animations.tweenScroll === 'function') {
+        Animations.tweenScroll(container, vars, {
+            duration: smooth ? duration : 0,
+            ease: SCROLL_SMOOTH.ease
+        });
+        return;
+    }
+
+    // Animations ещё не загружен — ставим позицию сразу, без анимации
+    if (typeof vars.scrollTop === 'number') container.scrollTop = vars.scrollTop;
+    if (typeof vars.scrollLeft === 'number') container.scrollLeft = vars.scrollLeft;
+}
+
 function scrollToElementIfNeeded(el, container, smooth, direction) {
     if (smooth === undefined) smooth = true;
     if (SCROLL_SMOOTH.force) smooth = true;
@@ -1887,30 +2094,23 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         var isHorizVisible = r.left >= cr.left + hp && r.right <= cr.right - hp;
 
         if (!isHorizVisible) {
+            // curLeft — смещение контейнера сейчас (у карусели это -x трека,
+            // у обычного списка scrollLeft), r/cr уже учитывают трансформацию,
+            // так что математика та же, что была с scrollLeft
+            var curLeft = getScrollX(con);
             var targetLeft;
             if (direction === 'left') {
-                targetLeft = con.scrollLeft + (r.left - cr.left) - hp;
+                targetLeft = curLeft + (r.left - cr.left) - hp;
             } else if (direction === 'right') {
-                targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width - r.width - hp);
+                targetLeft = curLeft + (r.left - cr.left) - (cr.width - r.width - hp);
             } else {
-                targetLeft = con.scrollLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
+                targetLeft = curLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
             }
-            targetLeft = Math.max(0, targetLeft);
-            var needsHScroll = Math.abs(con.scrollLeft - targetLeft) > 10;
+            targetLeft = Math.max(0, Math.min(getMaxScrollX(con), targetLeft));
+            var needsHScroll = Math.abs(curLeft - targetLeft) > 10;
             if (needsHScroll) {
-                if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                    gsap.killTweensOf(con);
-                    gsap.to(con, {
-                        scrollTo: { x: targetLeft },
-                        duration: fastNavigation ? SCROLL_SMOOTH.durationFastX : SCROLL_SMOOTH.durationX,
-                        ease: SCROLL_SMOOTH.ease,
-                        overwrite: true
-                    });
-                } else if (smooth) {
-                    con.scrollTo({ left: targetLeft, behavior: 'smooth' });
-                } else {
-                    con.scrollLeft = targetLeft;
-                }
+                setScrollX(con, targetLeft, smooth,
+                    fastNavigation ? SCROLL_SMOOTH.durationFastX : SCROLL_SMOOTH.durationX);
             }
         }
 
@@ -1940,62 +2140,23 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
 
             if (needsVertScroll) {
                 targetScrollTop = Math.max(0, Math.min(targetScrollTop, vertEl.scrollHeight - vertRect.height));
-                if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                    gsap.killTweensOf(vertEl);
 
-                    var tweenVars = {
-                        scrollTo: { y: targetScrollTop },
-                        duration: fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY,
-                        ease: SCROLL_SMOOTH.ease,
-                        overwrite: true
-                    };
+                var tweenVars = { scrollTop: targetScrollTop };
+                // Фон detail-view возвращаем к чёрному тем же тваном, как было раньше
+                if (vertEl.id === 'detail-view') tweenVars.backgroundColor = 'rgb(0, 0, 0)';
 
-                    if (vertEl.id === 'detail-view') {
-                        tweenVars.backgroundColor = 'rgb(0, 0, 0)';
-                    }
-
-                    gsap.to(vertEl, tweenVars);
-                } else if (smooth) {
-                    vertEl.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-                } else {
-                    vertEl.scrollTop = targetScrollTop;
-                }
+                applyScroll(vertEl, tweenVars, smooth,
+                    fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
             }
         }
         return;
     } else if (container.id === 'detail-view') {
         if (el.id === 'back-from-detail' || el.id === 'catalog-watch-btn') {
-            var targetScrollTop = 0;
-            if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-                gsap.killTweensOf(container);
-                gsap.to(container, {
-                    scrollTo: { y: targetScrollTop },
-                    duration: SCROLL_SMOOTH.durationY,
-                    ease: SCROLL_SMOOTH.ease,
-                    overwrite: true
-                });
-            } else if (smooth) {
-                container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-            } else {
-                container.scrollTop = targetScrollTop;
-            }
+            applyScroll(container, { scrollTop: 0 }, smooth, SCROLL_SMOOTH.durationY);
             return;
         }
     } else if (el.id === 'tab-catalog') {
-        var targetScrollTop = 0;
-        if (smooth && typeof gsap !== 'undefined' && typeof ScrollToPlugin !== 'undefined') {
-            gsap.killTweensOf(container);
-            gsap.to(container, {
-                scrollTo: { y: targetScrollTop },
-                duration: SCROLL_SMOOTH.durationY,
-                ease: SCROLL_SMOOTH.ease,
-                overwrite: true
-            });
-        } else if (smooth) {
-            container.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
-        } else {
-            container.scrollTop = targetScrollTop;
-        }
+        applyScroll(container, { scrollTop: 0 }, smooth, SCROLL_SMOOTH.durationY);
         return;
     } else if (container.id == 'episodes-panel' || container.id == 'audio-panel' || container.id == 'subtitles-panel') {
         if (typeof Animations !== 'undefined') Animations.scrollToIfNotVisible(el, container);
@@ -2026,6 +2187,15 @@ function focusEl(el, opts) {
     var isRC = el.classList && el.classList.contains('catalog-recommendation-card');
     var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
     var isRowCard = el.classList && el.classList.contains('catalog-row-card');
+
+    // Оконная видимость каталога (catalog.js): элемент под фокусом обязан быть
+    // видимым сразу, а колбэк IntersectionObserver придёт только через кадр-два
+    // после сдвига скролла. Рассинхрон самоисправляется — наблюдатель пришлёт
+    // своё состояние, когда элемент пересечёт границу окна.
+    if ((isRowCard || (el.classList && el.classList.contains('catalog-card'))) &&
+        typeof revealCatalogElement === 'function') {
+        revealCatalogElement(el);
+    }
 
     // ★ НОВОЕ: проверка, находится ли элемент внутри панели фильтров
     var isFilterItem = el.classList && (el.classList.contains('filter-item') || el.classList.contains('filter-value-item'));
@@ -2574,16 +2744,29 @@ function setupMouseControls() {
 
 // ==================== НАВИГАЦИЯ ПО РЯДАМ-КАРУСЕЛЯМ (новый вид каталога) ====================
 
-// Режим рядов: открыт список каталогов (не конкретный каталог) и ряды отрендерены
+// Режим рядов: открыт список каталогов (не конкретный каталог) и ряды видимы.
+// Проверять только наличие .catalog-row нельзя: после разделения экранов ряды
+// остаются в DOM и пока открыта категория (и пока идёт затухание при возврате).
 function isCatalogRowsMode() {
-    return !window.catalogState.currentCatalog &&
-        document.querySelector('#catalog-grid .catalog-row') !== null;
+    if (window.catalogState.currentCatalog) return false;
+    var row = document.querySelector('#catalog-rows .catalog-row');
+    return !!row && VISIBLE(row);
 }
 
 // Массив массивов видимых карточек: rows[ряд][колонка]
 function getCatalogRows() {
+    // Кэш по поколению DOM: handleRowsNavigation зовёт эту функцию на каждое
+    // нажатие стрелки, а обход — querySelectorAll по рядам плюс offsetParent
+    // на каждой из ~90 карточек. isConnected — страховка от пропущенной
+    // инвалидации: если контейнер рядов переписали, кэш отбрасываем.
+    if (_rowsCache.gen === _focusGen && _rowsCache.rows &&
+        _rowsCache.rows.length > 0 && _rowsCache.rows[0][0] &&
+        _rowsCache.rows[0][0].isConnected !== false) {
+        return _rowsCache.rows;
+    }
+
     var rows = [];
-    var rowEls = document.querySelectorAll('#catalog-grid .catalog-row');
+    var rowEls = document.querySelectorAll('#catalog-rows .catalog-row');
     for (var i = 0; i < rowEls.length; i++) {
         var cards = rowEls[i].querySelectorAll('.catalog-row-card');
         if (!cards.length) cards = rowEls[i].querySelectorAll('.torrent-card'); // фолбэк
@@ -2591,11 +2774,15 @@ function getCatalogRows() {
         for (var j = 0; j < cards.length; j++) if (VISIBLE(cards[j])) visible.push(cards[j]);
         if (visible.length > 0) rows.push(visible);
     }
+
+    _rowsCache.gen = _focusGen;
+    _rowsCache.rows = rows;
+
     return rows;
 }
 
 function getCatalogRowHeaders() {
-    var headers = document.querySelectorAll('#catalog-grid .catalog-row-header');
+    var headers = document.querySelectorAll('#catalog-rows .catalog-row-header');
     var visible = [];
     for (var i = 0; i < headers.length; i++) if (VISIBLE(headers[i])) visible.push(headers[i]);
     return visible;
@@ -2605,7 +2792,8 @@ function focusRowHeader(ri) {
     var headers = getCatalogRowHeaders();
     if (!headers[ri]) return true;
     var header = headers[ri];
-    invalidateFocusCache();
+    // invalidateFocusCache() здесь не нужен: перемещение фокуса DOM не меняет,
+    // а вызов гарантированно сбрасывал кэш прямо перед updateFocusableElements().
     updateFocusableElements();
     var idx = focusableElements.indexOf(header);
     if (idx !== -1) setFocus(idx);
@@ -2630,18 +2818,22 @@ function scrollRowToCard(card) {
     var cr = card.getBoundingClientRect();
     var vr = viewport.getBoundingClientRect();
     var pad = 50;
-    if (cr.left < vr.left + pad) {
-        viewport.scrollBy({ left: cr.left - vr.left - pad, behavior: 'smooth' });
-    } else if (cr.right > vr.right - pad) {
-        viewport.scrollBy({ left: cr.right - vr.right + pad, behavior: 'smooth' });
-    }
+    var cur = getScrollX(viewport);
+    var target = null;
+    if (cr.left < vr.left + pad) target = cur + (cr.left - vr.left - pad);
+    else if (cr.right > vr.right - pad) target = cur + (cr.right - vr.right + pad);
+    if (target === null) return;
+    // Через setScrollX (двигает трек карусели трансформацией и сам обрезает по
+    // краям), а не scrollBy({behavior:'smooth'}): нативный плавный скролл на
+    // телевизоре не работает, а ScrollToPlugin убран из index.html.
+    setScrollX(viewport, target, true, SCROLL_SMOOTH.durationX);
 }
 
 // Фокус карточки в ряду + скролл карусели
 function focusRowCard(ri, ci, rows) {
     if (!rows || !rows[ri] || !rows[ri][ci]) return true;
     var card = rows[ri][ci];
-    invalidateFocusCache();
+    // invalidateFocusCache() здесь не нужен — см. focusRowHeader
     updateFocusableElements();
     var idx = focusableElements.indexOf(card);
     if (idx !== -1) setFocus(idx);
@@ -2755,11 +2947,13 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
                 if (cnt._smoothWheelInitialized) return;
                 cnt._smoothWheelInitialized = true;
 
-                var target = cnt.scrollLeft;
+                // Через getScrollX/setScrollXImmediate, а не cnt.scrollLeft:
+                // у каруселей рядов позиция живёт в трансформации трека
+                var target = getScrollX(cnt);
                 var rafId = null;
 
                 function getMaxScroll() {
-                    return Math.max(0, cnt.scrollWidth - cnt.clientWidth);
+                    return getMaxScrollX(cnt);
                 }
 
                 function clamp(value) {
@@ -2767,11 +2961,11 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
                 }
 
                 function animationStep() {
-                    var current = cnt.scrollLeft;
+                    var current = getScrollX(cnt);
                     var diff = target - current;
 
                     if (Math.abs(diff) < 0.6) {
-                        cnt.scrollLeft = target;
+                        setScrollXImmediate(cnt, target);
                         rafId = null;
                         return;
                     }
@@ -2780,13 +2974,15 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
                     // 0.10 - очень мягко
                     // 0.16 - оптимально
                     // 0.22 - быстрее
-                    cnt.scrollLeft = current + diff * 0.16;
+                    // 0.30 - режим «Быстрая» в ui-customizer (меньше кадров догона)
+                    var factor = getScrollAnimMode() === 'fast' ? 0.3 : 0.16;
+                    setScrollXImmediate(cnt, current + diff * factor);
 
                     rafId = requestAnimationFrame(animationStep);
                 }
 
                 function onWheel(e) {
-                    if (cnt.scrollWidth <= cnt.clientWidth) return;
+                    if (getMaxScroll() <= 0) return;
 
                     var dy =
                         e.deltaY ||
@@ -2801,8 +2997,16 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 
                     e.preventDefault();
 
+                    // «Без анимации» — ставим позицию сразу, догон кадрами не запускаем
+                    if (getScrollAnimMode() === 'none') {
+                        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+                        target = clamp(getScrollX(cnt) + dy * 0.9);
+                        setScrollXImmediate(cnt, target);
+                        return;
+                    }
+
                     if (!rafId) {
-                        target = cnt.scrollLeft;
+                        target = getScrollX(cnt);
                     }
 
                     target = clamp(target + dy * 0.9);
