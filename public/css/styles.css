@@ -4439,10 +4439,10 @@ article {
 
 #detail-view.torrent-detail-mode #back-from-detail.focused,
 #detail-view.torrent-detail-mode .detail-header .back-btn.focused {
-  background: #ff8c00 !important;
-  border-color: #ff8c00;
+  background: var(--focus-color, #ff8c00) !important;
+  border-color: var(--focus-color, #ff8c00);
   color: #000 !important;
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.35) !important;
+  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35)) !important;
 }
 
 #detail-view.torrent-detail-mode #detail-title-text {
@@ -4526,7 +4526,7 @@ article {
 #detail-view.torrent-detail-mode #detail-progress-btn:hover,
 #detail-view.torrent-detail-mode #detail-progress-btn.focused {
   background: #ffffff !important;
-  box-shadow: 0 0 0 5px #ff8c00, 0 8px 26px rgba(0, 0, 0, 0.55) !important;
+  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00), 0 8px 26px rgba(0, 0, 0, 0.55) !important;
 }
 
 #detail-view.torrent-detail-mode #detail-progress-btn .btn-label {
@@ -4627,8 +4627,8 @@ article {
 }
 
 #detail-view.torrent-detail-mode .catalog-actor-card.focused .catalog-actor-photo {
-  border-color: #ff8c00 !important;
-  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.35), 0 8px 26px rgba(0, 0, 0, 0.6);
+  border-color: var(--focus-color, #ff8c00) !important;
+  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35)), 0 8px 26px rgba(0, 0, 0, 0.6);
 }
 
 #detail-view.torrent-detail-mode .catalog-actor-card.focused .catalog-actor-name {
@@ -4727,7 +4727,7 @@ article {
 /* Рамка фокуса плитки — толще базовых 3px: с дивана 3px не видно.
    Без transform: scale — плитка внутри overflow-x обрезалась бы по краям */
 #detail-view.torrent-detail-mode .file-item.focused {
-  box-shadow: 0 0 0 5px #ff8c00, 0 14px 40px rgba(0, 0, 0, 0.7) !important;
+  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00), 0 14px 40px rgba(0, 0, 0, 0.7) !important;
   border-radius: 10px;
 }
 
