@@ -315,11 +315,16 @@
         // Backdrop
         if (details.backdrop_path && elements.detailViewDiv) {
             var bp = window.getTmdbImageUrl
-                ? window.getTmdbImageUrl(details.backdrop_path, 'original')
-                : AppState.protocol + '//tsimg.hnar.online/t/p/original' + details.backdrop_path;
+                ? window.getTmdbImageUrl(details.backdrop_path, 'w1280')
+                : AppState.protocol + '//tsimg.hnar.online/t/p/w1280' + details.backdrop_path;
 
-            // Добавляем linear-gradient поверх картинки для 50% затемнения
-            elements.detailViewDiv.style.backgroundImage = 'linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url(' + bp + ')';
+            // Кинематографичный скрим вместо ровного затемнения: снизу — почти
+            // чёрный (под ряды актёров и файлов), слева — под текст, справа кадр
+            // остаётся светлым
+            elements.detailViewDiv.style.backgroundImage =
+                'linear-gradient(to top, rgba(0, 0, 0, 0.97) 0%, rgba(0, 0, 0, 0.82) 32%, rgba(0, 0, 0, 0.38) 64%, rgba(0, 0, 0, 0.25) 100%), ' +
+                'linear-gradient(to right, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.5) 45%, rgba(0, 0, 0, 0.1) 100%), ' +
+                'url(' + bp + ')';
             elements.detailViewDiv.style.backgroundSize = 'cover';
             elements.detailViewDiv.style.backgroundPosition = 'center';
             elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
