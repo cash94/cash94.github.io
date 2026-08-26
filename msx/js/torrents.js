@@ -1251,6 +1251,10 @@ function resetDetailBackground() {
     for (var i = 0; i < oldProgressBlocks.length; i++) {
         oldProgressBlocks[i].remove();
     }
+    // Netflix-блоки торрентного режима: чистим содержимое и снимаем режим,
+    // чтобы каталожный detail получил свою раскладку без остатков торрентной
+    clearDetailNetflixBlocks();
+    detailView.classList.remove('torrent-detail-mode');
 }
 window.resetDetailBackground = resetDetailBackground;
 
@@ -1434,10 +1438,239 @@ async function getTorrentFilesWithCache(torrent, forceRefresh = false) {
     }
 }
 
+// ==================== ТОРРЕНТНЫЙ DETAIL: META-СТРОКА, АКТЁРЫ, ЗАГОЛОВОК РЯДА ====================
+// index.html этих блоков не содержит: строим их на ходу, как это делает
+// setupDetailLayout в catalog.js. Ряд актёров переиспользует каталожные
+// контейнеры (#catalog-detail-actors-wrap / #catalog-detail-actors) — под них
+// уже написаны и стили, и навигация пультом.
+
+var detailMetaState = { details: null, isTvSeries: false, filesCount: 0, filesBytes: 0, torrentTitle: '' };
+
+function isTorrentDetailMode() {
+    var dv = getEl('detail-view');
+    return !!(dv && dv.classList.contains('torrent-detail-mode'));
+}
+
+function pluralRu(n, one, few, many) {
+    var abs = Math.abs(n) % 100;
+    var last = abs % 10;
+    if (abs > 10 && abs < 20) return many;
+    if (last === 1) return one;
+    if (last > 1 && last < 5) return few;
+    return many;
+}
+
+function formatRuntimeMinutes(minutes) {
+    var m = parseInt(minutes, 10);
+    if (!m || m <= 0) return '';
+    var h = Math.floor(m / 60);
+    var rest = m % 60;
+    if (h > 0) return rest > 0 ? h + ' ч ' + rest + ' мин' : h + ' ч';
+    return rest + ' мин';
+}
+
+// Качество раздачи в названии торрента — то, чего в TMDB нет, а зрителю важно.
+function extractQualityBadges(title) {
+    var t = String(title || '');
+    var badges = [];
+    if (/2160p|\b4k\b|\buhd\b/i.test(t)) badges.push('4K');
+    else if (/1080[pi]/i.test(t)) badges.push('1080p');
+    else if (/720p/i.test(t)) badges.push('720p');
+    if (/\bhdr10?\+?\b|dolby\s*vision|\bdovi\b/i.test(t)) badges.push('HDR');
+    if (/atmos/i.test(t)) badges.push('ATMOS');
+    else if (/\b(5\.1|7\.1)\b/.test(t)) badges.push('5.1');
+    return badges;
+}
+
+function ensureDetailMetaRow() {
+    var row = getEl('detail-meta-row');
+    if (row) return row;
+    var titleBlock = document.querySelector('#detail-view .detail-title');
+    if (!titleBlock) return null;
+    row = document.createElement('div');
+    row.id = 'detail-meta-row';
+    row.className = 'detail-meta-row hidden';
+    var subtitle = getEl('detail-subtitle');
+    // Порядок как в Netflix: заголовок → метаданные → описание
+    if (subtitle && subtitle.parentElement === titleBlock) titleBlock.insertBefore(row, subtitle);
+    else titleBlock.appendChild(row);
+    return row;
+}
+
+function ensureFilesListTitle() {
+    var title = getEl('files-list-title');
+    if (title) return title;
+    var filesList = getEl('files-list');
+    if (!filesList || !filesList.parentElement) return null;
+    title = document.createElement('div');
+    title.id = 'files-list-title';
+    title.className = 'catalog-detail-section-title hidden';
+    title.textContent = 'Серии';
+    filesList.parentElement.insertBefore(title, filesList);
+    return title;
+}
+
+// Тот же id и та же точка вставки, что в setupDetailLayout (catalog.js): какой бы
+// режим ни открылся первым, второй найдёт готовый контейнер и не создаст дубль.
+function ensureDetailActorsWrap() {
+    var wrap = getEl('catalog-detail-actors-wrap');
+    if (wrap) return wrap;
+    var panel = document.querySelector('#detail-view .catalog-detail-panel');
+    if (!panel || !panel.parentElement) return null;
+    wrap = document.createElement('div');
+    wrap.id = 'catalog-detail-actors-wrap';
+    wrap.className = 'catalog-detail-actors-wrap hidden';
+    wrap.innerHTML = '<div class="catalog-detail-section-title">В главных ролях</div>' +
+        '<div id="catalog-detail-actors" class="catalog-detail-actors-grid"></div>';
+    panel.parentElement.insertBefore(wrap, panel.nextSibling);
+    return wrap;
+}
+
+function clearDetailNetflixBlocks() {
+    var row = getEl('detail-meta-row');
+    if (row) { row.innerHTML = ''; row.classList.add('hidden'); }
+    var actors = getEl('catalog-detail-actors');
+    if (actors) actors.innerHTML = '';
+    var wrap = getEl('catalog-detail-actors-wrap');
+    if (wrap) wrap.classList.add('hidden');
+    var filesTitle = getEl('files-list-title');
+    if (filesTitle) filesTitle.classList.add('hidden');
+}
+
+// Строка вида «2019 · 8.4 · 3 сезона · 48 мин · Драма · 24 серии · 96 ГБ · [4K]».
+// Данные приходят из двух источников (TMDB и список файлов) в непредсказуемом
+// порядке, поэтому обе стороны только пишут в detailMetaState и перерисовывают.
+function renderDetailMetaRow() {
+    if (!isTorrentDetailMode()) return;
+    var row = ensureDetailMetaRow();
+    if (!row) return;
+
+    var d = detailMetaState.details;
+    var parts = [];
+
+    if (d) {
+        var date = d.release_date || d.first_air_date || '';
+        if (date) parts.push(escapeHtml(String(date).substring(0, 4)));
+
+        if (d.vote_average > 0) {
+            parts.push('<span class="detail-meta-rating">' + (Math.round(d.vote_average * 10) / 10) + '</span>');
+        }
+
+        var seasons = parseInt(d.number_of_seasons, 10);
+        if (seasons > 0) parts.push(seasons + ' ' + pluralRu(seasons, 'сезон', 'сезона', 'сезонов'));
+        else parts.push(detailMetaState.isTvSeries ? 'Сериал' : 'Фильм');
+
+        var runtime = formatRuntimeMinutes(d.runtime ||
+            (Array.isArray(d.episode_run_time) ? d.episode_run_time[0] : 0));
+        if (runtime) parts.push(runtime);
+
+        if (d.genres && d.genres.length) {
+            var names = [];
+            for (var g = 0; g < d.genres.length && names.length < 2; g++) {
+                if (d.genres[g] && d.genres[g].name) names.push(d.genres[g].name);
+            }
+            if (names.length) parts.push(escapeHtml(names.join(', ')));
+        }
+    }
+
+    var count = detailMetaState.filesCount;
+    if (count > 1) {
+        parts.push(count + ' ' + (detailMetaState.isTvSeries
+            ? pluralRu(count, 'серия', 'серии', 'серий')
+            : pluralRu(count, 'файл', 'файла', 'файлов')));
+    }
+    if (detailMetaState.filesBytes > 0 && typeof formatBytes === 'function') {
+        parts.push(escapeHtml(formatBytes(detailMetaState.filesBytes)));
+    }
+
+    var badges = extractQualityBadges(detailMetaState.torrentTitle);
+
+    if (!parts.length && !badges.length) {
+        row.innerHTML = '';
+        row.classList.add('hidden');
+        return;
+    }
+
+    var html = '';
+    for (var p = 0; p < parts.length; p++) html += '<span class="detail-meta-item">' + parts[p] + '</span>';
+    for (var b = 0; b < badges.length; b++) html += '<span class="detail-meta-badge">' + escapeHtml(badges[b]) + '</span>';
+    row.innerHTML = html;
+    row.classList.remove('hidden');
+}
+
+// Актёры берутся из того же ответа /api/tmdb/details, который detail уже ждёт
+// ради описания и бэкдропа (поле cast), — дополнительных запросов нет.
+function renderDetailActorsFromDetails(details) {
+    if (!isTorrentDetailMode()) return;
+    var wrap = ensureDetailActorsWrap();
+    if (!wrap) return;
+    var grid = getEl('catalog-detail-actors');
+    if (!grid) return;
+
+    var cast = details && details.cast;
+    if (!cast || !cast.length) {
+        grid.innerHTML = '';
+        wrap.classList.add('hidden');
+        return;
+    }
+
+    var max = 12;
+    try {
+        if (typeof CATALOG_CONSTANTS !== 'undefined' && CATALOG_CONSTANTS.MAX_ACTORS) max = CATALOG_CONSTANTS.MAX_ACTORS;
+    } catch (e) { }
+
+    var html = '';
+    var shown = 0;
+    for (var i = 0; i < cast.length && shown < max; i++) {
+        var a = cast[i];
+        if (!a || !a.name) continue;
+
+        var photo = a.profile_path || a.profilePath || '';
+        var src = '';
+        if (photo) {
+            if (typeof getTmdbImageUrl === 'function') src = getTmdbImageUrl(photo, 'w185');
+            else if (typeof buildTmdbPosterUrl === 'function') src = buildTmdbPosterUrl(photo, 'w185');
+        }
+
+        html += '<div class="catalog-actor-card">' +
+            '<div class="catalog-actor-photo">' +
+            (src
+                ? '<img src="' + src + '" loading="lazy" decoding="async" alt="' + escapeHtml(a.name) +
+                '" onerror="this.parentElement.innerHTML=\'<div class=&quot;catalog-actor-no-photo&quot;>👤</div>\'">'
+                : '<div class="catalog-actor-no-photo">👤</div>') +
+            '</div>' +
+            '<div class="catalog-actor-info">' +
+            '<div class="catalog-actor-name">' + escapeHtml(a.name) + '</div>' +
+            '<div class="catalog-actor-character">' + escapeHtml(a.character || '') + '</div>' +
+            '</div>' +
+            '</div>';
+        shown++;
+    }
+
+    if (!shown) {
+        grid.innerHTML = '';
+        wrap.classList.add('hidden');
+        return;
+    }
+
+    grid.innerHTML = html;
+    wrap.classList.remove('hidden');
+    // Карточки актёров попадают в фокусируемые только после появления в DOM.
+    // Сброс кэша обязателен: у detail он живёт 100 мс по времени и по поколению
+    // DOM, поэтому без invalidateFocusCache() новый ряд мог не попасть в список.
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+}
+// ==================== /ТОРРЕНТНЫЙ DETAIL ====================
+
 function visibleItemsforDetail(change) {
+    var detailView = getEl('detail-view');
+
     if (change === 'showDetail') {
+        // Ряд актёров остаётся скрытым до прихода cast: пустая секция с
+        // заголовком на пол-экрана выглядит хуже, чем её отсутствие.
         var massHidden = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
-            'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'detail-poster'
+            'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'detail-poster', 'files-list-title'
         ];
         massHidden.forEach(function (id) {
             var el = getEl(id);
@@ -1452,6 +1685,8 @@ function visibleItemsforDetail(change) {
                 el.style.removeProperty('display');
             }
         });
+
+        if (detailView) detailView.classList.add('torrent-detail-mode');
     } else if (change === 'showCatalogDetail') {
         var massVisible2 = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
             'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'catalog-detail-extra'
@@ -1463,19 +1698,106 @@ function visibleItemsforDetail(change) {
                 el.style.removeProperty('display');
             }
         });
-        var massHidden2 = ['detail-progress-btn'];
+        var massHidden2 = ['detail-progress-btn', 'detail-meta-row', 'files-list-title'];
         massHidden2.forEach(function (id) {
             var el = getEl(id);
             if (el) el.classList.add('hidden');
         });
+
+        if (detailView) detailView.classList.remove('torrent-detail-mode');
     }
 }
 
 window.visibleItemsforDetail = visibleItemsforDetail;
 
+// ==================== ЦВЕТ РАМКИ ФОКУСА ИЗ UI CUSTOMIZER ====================
+// Новый torrent-detail рисует рамки своего размера (5px вокруг плитки файла,
+// круг вокруг аватара актёра), поэтому его правила в styles.css специфичнее тех,
+// которыми UI Customizer перекрывает общий фокус (`.focused{…!important}`) —
+// снаружи он их не достаёт. Цвет эти правила берут переменной
+// var(--focus-color, #ff8c00), а переменную выставляет сам кастомайзер. Но если
+// на устройстве раздаётся его старая сборка (index.html тянет ui-customizer.js с
+// msx/js, тогда как styles.css и torrents.js — уже с public/js), строки с :root
+// там нет: var() уходит в дефолт, и рамка остаётся оранжевой при любом выбранном
+// цвете. Поэтому выставляем переменные и здесь — цвет берём из публичного API
+// кастомайзера, а если и его нет, читаем прямо из его хранилища.
+var UI_CUSTOMIZER_STORAGE_KEY = 'uiCustomizer';
+
+function readUiFocusColor() {
+    try {
+        if (window.UICustomizer && typeof UICustomizer.getFocusColor === 'function') {
+            var fromApi = UICustomizer.getFocusColor();
+            if (fromApi) return fromApi;
+        }
+    } catch (e) { }
+    try {
+        var raw = localStorage.getItem(UI_CUSTOMIZER_STORAGE_KEY);
+        if (raw) {
+            var saved = JSON.parse(raw);
+            if (saved && saved.focusColor) return saved.focusColor;
+        }
+    } catch (e) { }
+    return null;
+}
+
+// #rgb / #rrggbb → rgba(): для мягкого внешнего свечения (--focus-color-soft)
+function focusColorToRgba(color, alpha) {
+    var s = String(color || '').trim();
+    if (s.charAt(0) !== '#') return null;
+    s = s.slice(1);
+    if (s.length === 3) {
+        s = s.charAt(0) + s.charAt(0) + s.charAt(1) + s.charAt(1) + s.charAt(2) + s.charAt(2);
+    }
+    if (!/^[0-9a-f]{6}$/i.test(s)) return null;
+    var n = parseInt(s, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255) + ', ' + alpha + ')';
+}
+
+function applyFocusColorVars() {
+    var color = readUiFocusColor();
+    if (!color || !focusColorToRgba(color, 1)) return;
+    var root = document.documentElement;
+    if (!root || !root.style || !root.style.setProperty) return;
+    // Инлайн на <html> перебивает :root из <style> кастомайзера, но значение то же
+    // самое (берём из его же настроек), а хук ниже держит их синхронными.
+    root.style.setProperty('--focus-color', color);
+    var soft = focusColorToRgba(color, 0.35);
+    if (soft) root.style.setProperty('--focus-color-soft', soft);
+}
+window.applyFocusColorVars = applyFocusColorVars;
+
+// Один раз оборачиваем apply() кастомайзера, чтобы цвет применялся сразу при
+// выборе в панели, а не только при следующем открытии detail.
+function hookUiCustomizerFocusColor() {
+    if (!window.UICustomizer || typeof UICustomizer.apply !== 'function') return false;
+    if (!UICustomizer.__focusVarsHooked) {
+        var origApply = UICustomizer.apply;
+        UICustomizer.apply = function () {
+            var result = origApply.apply(this, arguments);
+            applyFocusColorVars();
+            return result;
+        };
+        UICustomizer.__focusVarsHooked = true;
+    }
+    applyFocusColorVars();
+    return true;
+}
+
+// Сразу — цвет из хранилища: ui-customizer.js подключается последним из всех
+// скриптов, поэтому на момент загрузки torrents.js window.UICustomizer ещё нет.
+// Дальше дожидаемся его, чтобы повесить хук на apply().
+applyFocusColorVars();
+(function waitForUiCustomizer(triesLeft) {
+    if (hookUiCustomizerFocusColor() || triesLeft <= 0) return;
+    setTimeout(function () { waitForUiCustomizer(triesLeft - 1); }, 300);
+})(20);
+
 async function showDetail(torrent) {
     if (torrent && torrent.hash) window.lastSelectedTorrentHash = torrent.hash;
     if (typeof currentFocusIndex !== 'undefined') window.lastSelectedTorrentIndex = currentFocusIndex;
+    // Рамки фокуса нового detail читают var(--focus-color) — убеждаемся, что
+    // переменная выставлена до первой отрисовки (см. applyFocusColorVars выше)
+    applyFocusColorVars();
     resetDetailBackground();
     var known = knownTorrentMeta.get(String(torrent.hash || '').toLowerCase());
 
@@ -1514,6 +1836,20 @@ async function showDetail(torrent) {
     }
     hideCatalogDetailExtra();
     visibleItemsforDetail('showDetail');
+
+    // Netflix-раскладка: строка метаданных, ряд актёров и заголовок ряда файлов
+    detailMetaState = {
+        details: null,
+        isTvSeries: false,
+        filesCount: 0,
+        filesBytes: 0,
+        torrentTitle: torrent.title || ''
+    };
+    ensureDetailMetaRow();
+    ensureDetailActorsWrap();
+    ensureFilesListTitle();
+    clearDetailNetflixBlocks();
+
     var posterImg = getEl('detail-poster');
     var titleEl = getEl('detail-title-text');
     var filesList = getEl('files-list');
@@ -1535,6 +1871,15 @@ async function showDetail(torrent) {
     // === ПАРАЛЛЕЛЬНЫЙ ЗАПУСК: файлы + TMDB ===
     var filesPromise = getTorrentFilesWithCache(torrent, false);
     var tmdbPromise = loadAllTmdbDataForTorrent(torrent, { titleEl: titleEl, detailViewDiv: detailViewDiv, detailSubtitle: detailSubtitle });
+
+    // Актёры и метаданные не зависят от списка файлов — рисуем отдельной ветвью,
+    // иначе при пустом/ошибочном списке файлов ряд актёров вообще не появится.
+    tmdbPromise.then(function (tmdbData) {
+        if (!tmdbData) return;
+        detailMetaState.isTvSeries = !!tmdbData.isTvSeries;
+        renderDetailMetaRow();
+        renderDetailActorsFromDetails(tmdbData.details);
+    }).catch(function () { });
 
     try {
         var files = await filesPromise;
@@ -1567,6 +1912,25 @@ async function showDetail(torrent) {
             }
             filesList.appendChild(fragment);
 
+            // Количество и общий вес — в строку метаданных под заголовком
+            var totalBytes = 0;
+            for (var fb = 0; fb < videoFiles.length; fb++) totalBytes += (videoFiles[fb].length || 0);
+            detailMetaState.filesCount = videoFiles.length;
+            detailMetaState.filesBytes = totalBytes;
+            renderDetailMetaRow();
+
+            // Заголовок ряда нужен только когда файлов несколько: над единственной
+            // плиткой с полным названием он лишний
+            var filesTitle = ensureFilesListTitle();
+            if (filesTitle) {
+                if (videoFiles.length > 1) {
+                    filesTitle.textContent = 'Серии';
+                    filesTitle.classList.remove('hidden');
+                } else {
+                    filesTitle.classList.add('hidden');
+                }
+            }
+
             // Один батч-запрос на все файлы вместо N отдельных
             if (addedItems.length > 0) {
                 loadProgressForFileItems(addedItems, torrent.hash);
@@ -1595,13 +1959,25 @@ async function showDetail(torrent) {
     }
     setTimeout(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+            if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
             updateFocusableElements();
-            var fileItems = document.querySelectorAll('.file-item');
-            if (fileItems.length > 0) {
+            // Фокус ставим на «Играть/Продолжить», а не на первую плитку. Строка
+            // метаданных и ряд актёров приходят из TMDB позже и сдвигают ряд файлов
+            // вниз — вместе со сфокусированной плиткой, и она уезжала за экран.
+            // Кнопка стоит в шапке, выше всего, что подгружается, и не двигается.
+            var placed = false;
+            var progressBtn = getEl('detail-progress-btn');
+            if (progressBtn && progressBtn.offsetParent !== null) {
                 for (var i = 0; i < focusableElements.length; i++) {
-                    if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) { setFocus(i); break; }
+                    if (focusableElements[i] === progressBtn) { setFocus(i); placed = true; break; }
                 }
-            } else setFocus(0);
+            }
+            if (!placed && document.querySelectorAll('.file-item').length > 0) {
+                for (var j = 0; j < focusableElements.length; j++) {
+                    if (focusableElements[j].classList && focusableElements[j].classList.contains('file-item')) { setFocus(j); placed = true; break; }
+                }
+            }
+            if (!placed) setFocus(0);
         }
         // Всё отрисовано и фокус на месте — снимаем индикатор «Загрузка…»
         if (typeof Animations !== 'undefined' && typeof Animations.detailContentReady === 'function') {
@@ -1870,7 +2246,8 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
     if (cardMediaType === 'tv') forcedTv = true;
     if (torrent.media_type === 'tv') forcedTv = true;
     if (known && known.mediaType === 'tv') forcedTv = true;
-    if (window.AppState && AppState.mediaType === 'tv') forcedTv = true;
+    // AppState.mediaType здесь не читаем: это тип предыдущего экрана, а не этого
+    // торрента (см. комментарий у knownMediaType ниже).
 
     // Если мы точно знаем, что это сериал, но сезон не смогли определить,
     // берём сезон 1 как fallback, иначе кадры сезонов не загрузятся.
@@ -1887,10 +2264,9 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
     }
 
     // Бейдж «Сериал» перебивает всё: раньше сюда попадал movie из torrent.category
-    // (у сериала category бывает movie), из уже записанного torrent.media_type
+    // (у сериала category бывает movie) и из уже записанного torrent.media_type
     // (мог быть испорчен предыдущим неверным определением — строка с details.media_type
-    // ниже) и из AppState.mediaType, который глобальный и остаётся от предыдущего
-    // экрана. Из-за этого о сериале грузились данные как о фильме (запрос к /movie).
+    // ниже). Из-за этого о сериале грузились данные как о фильме (запрос к /movie).
     var knownMediaType = (cardMediaType === 'tv') ? 'tv' : (
         torrent.media_type ||
         torrent.knownMediaType ||
@@ -1903,22 +2279,22 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
     var titleLooksLikeSeries = /(^|[^a-z0-9а-яё])(сезон|season|серия|эпизод|s\d+)([^a-z0-9а-яё]|$)/i
         .test(String(torrent.title || '').toLowerCase());
 
-    // «Фильм» с карточки — тоже сигнал о конкретном торренте, поэтому он важнее
-    // глобального AppState.mediaType. Но принимаем его только когда других признаков
-    // сериала нет: бейдж считается по числу файлов, а сериал бывает и одним файлом
-    // (один сезон / одна серия) — тогда важнее сезон из названия или из имён файлов.
+    // «Фильм» с карточки — сигнал о конкретном торренте. Принимаем его только когда
+    // других признаков сериала нет: бейдж считается по числу файлов, а сериал бывает
+    // и одним файлом (один сезон / одна серия) — тогда важнее сезон из названия или
+    // из имён файлов.
     if (!knownMediaType && cardMediaType === 'movie' &&
         seasonNumbers.length === 0 && !titleLooksLikeSeries) {
         knownMediaType = 'movie';
     }
 
-    if (!knownMediaType && window.AppState && AppState.mediaType === 'tv') {
-        knownMediaType = 'tv';
-    }
-
-    if (!knownMediaType && window.AppState && AppState.mediaType === 'movie') {
-        knownMediaType = 'movie';
-    }
+    // Глобальный AppState.mediaType сюда больше не подмешивается. Это тип текущего
+    // экрана (каталог выставляет его по категории), а не этого торрента, и он
+    // оставался от предыдущего открытия: после сериала фильм запрашивался как
+    // /api/tmdb/details?type=tv, а после фильма сериал — как ?type=movie.
+    // Тип из каталога доходит сюда по-другому — через torrent.media_type и
+    // knownTorrentMeta по hash (их заполняют playFromHash и addTorrentToServer),
+    // а также через category раздачи, которую читает getTorrentMediaTypeFromCard.
 
     if (!knownMediaType && torrent.category) {
         var categoryLower = String(torrent.category).toLowerCase();
@@ -1990,7 +2366,9 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
             var backdropUrl = normalizePosterUrl(details.backdrop_path, 'original');
 
             elements.detailViewDiv.style.backgroundImage =
-                'linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)), url("' + backdropUrl + '")';
+                'linear-gradient(to top, rgba(0, 0, 0, 0.97) 0%, rgba(0, 0, 0, 0.82) 32%, rgba(0, 0, 0, 0.38) 64%, rgba(0, 0, 0, 0.25) 100%), ' +
+                'linear-gradient(to right, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.5) 45%, rgba(0, 0, 0, 0.1) 100%), ' +
+                'url("' + backdropUrl + '")';
             elements.detailViewDiv.style.backgroundSize = 'cover';
             elements.detailViewDiv.style.backgroundPosition = 'center';
             elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
@@ -2167,6 +2545,17 @@ function updateDetailMetaInfo(tmdbData) {
         metaContainer.classList.add('hidden');
         metaContainer.style.display = 'none';
     }
+
+    // Те же данные, но одной строкой под заголовком (торрентный detail).
+    // Вызывается из обоих путей загрузки TMDB — и воркерного, и запасного.
+    detailMetaState.details = tmdbData;
+    if (tmdbData) {
+        // /api/tmdb/details отдаёт тип в поле type, media_type там не бывает
+        detailMetaState.isTvSeries = detailMetaState.isTvSeries ||
+            tmdbData.type === 'tv' || tmdbData.media_type === 'tv' ||
+            tmdbData.number_of_seasons !== undefined;
+    }
+    renderDetailMetaRow();
 }
 
 // ==================== ДЕЛЕГИРОВАНИЕ PLAY-КНОПОК В ФАЙЛАХ ====================
@@ -2254,7 +2643,7 @@ async function loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieS
         });
         var fileItems = document.querySelectorAll('.file-item');
         for (var i = 0; i < Math.min(fileItems.length, allStillsInOrder.length); i++) {
-            (function (item, url, index) { setTimeout(function () { updateFileItemStill(item, buildTmdbPosterUrl(url, 'w185')); }, index * 30); })(fileItems[i], allStillsInOrder[i].stillPath, i);
+            (function (item, url, index) { setTimeout(function () { updateFileItemStill(item, buildTmdbPosterUrl(url, 'w300')); }, index * 30); })(fileItems[i], allStillsInOrder[i].stillPath, i);
         }
     } else if (totalVideoFiles === 1 && movieStill) {
         var fileItem = document.querySelector('.file-item'); if (fileItem) setTimeout(function () { updateFileItemStill(fileItem, movieStill); }, 100);
