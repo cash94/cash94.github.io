@@ -958,7 +958,7 @@ var ScreenStrategies = {
                 if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 if (dir === 'left') return true;
                 if (dir === 'right') return focusEl(ovw);
-                if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
+                if (dir === 'up') return true; //return focusEl(bb || f, { direction: 'up' });
                 return true;
             }
             if (isOv) {
@@ -968,14 +968,14 @@ var ScreenStrategies = {
                     return true;
                 }
                 if (dir === 'left') return focusEl(wb);
-                if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
+                if (dir === 'up') return true; //return focusEl(bb || f, { direction: 'up' });
                 return true;
             }
             if (isRut) {
                 if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 if (dir === 'right') return true;
                 if (dir === 'left') return focusEl(ovw);
-                if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
+                if (dir === 'up') return true; //return focusEl(bb || f, { direction: 'up' });
                 return true;
             }
             if (isB) {
