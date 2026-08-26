@@ -241,9 +241,6 @@
             if (!torrent.media_type && known.mediaType) torrent.media_type = known.mediaType;
             if (!torrent.poster && known.poster) torrent.poster = normalizePosterUrl(known.poster);
         }
-        if (!torrent.media_type && window.AppState && AppState.mediaType) {
-            torrent.media_type = AppState.mediaType;
-        }
 
         // Подтягиваем файлы заранее
         try {
@@ -254,6 +251,28 @@
                 }
             }
         } catch (e) { }
+
+        // Тип определяем ТОЛЬКО по признакам самого торрента. Раньше здесь стояло
+        // `torrent.media_type = AppState.mediaType` — а это тип предыдущего экрана
+        // (каталога или предыдущего detail), он же глобальный. Из-за него тип
+        // прилипал: после сериала фильм запрашивался как /api/tmdb/details?type=tv,
+        // а после фильма сериал — как ?type=movie.
+        // Тип из каталога при этом не теряется: playFromHash и addTorrentToServer
+        // кладут его и в torrent.media_type, и в knownTorrentMeta по hash (блок known
+        // выше), и в category раздачи — её и читаем ниже.
+        if (!torrent.media_type && torrent.category) {
+            // Только вердикт 'tv': его больше взять негде (сериал из одного файла
+            // и без «сезона» в названии Worker сам не распознает). Обратный вердикт
+            // не фиксируем — category у сериала часто бывает movie, а признаки
+            // сериала по числу видеофайлов и по названию Worker проверит сам.
+            var catLower = String(torrent.category).toLowerCase();
+            if (catLower.indexOf('tv') !== -1 ||
+                catLower.indexOf('сериал') !== -1 ||
+                catLower.indexOf('serial') !== -1 ||
+                catLower.indexOf('series') !== -1) {
+                torrent.media_type = 'tv';
+            }
+        }
 
         // ★ FIX: Убираем bail-out для tv — Worker теперь корректно обрабатывает сериалы.
         // Оставляем fallback только если Worker недоступен.
@@ -266,9 +285,13 @@
             }
 
             AppState.isSerials = r.isTvSeries;
-            if (r.mediaType) {
-                AppState.mediaType = r.mediaType;
-            }
+            // AppState.mediaType здесь НЕ пишем. Это поле — тип текущего экрана
+            // (каталог его выставляет по категории/карточке), и запись сюда вердикта
+            // detail-view превращала результат одного открытия во входные данные
+            // следующего: тип первого открытого торрента прилипал ко всем остальным.
+            // Вердикт этого открытия и так уходит куда нужно: в AppState.isSerials,
+            // в torrent.media_type и в knownTorrentMeta по hash (ниже).
+            torrent.media_type = r.mediaType || torrent.media_type;
             if (r.seasonNumbers && r.seasonNumbers.length === 1 && r.isTvSeries) {
                 AppState.currentTMDB = r.tmdbId;
                 AppState.currentSeason = r.seasonNumbers[0];
@@ -318,8 +341,13 @@
                 ? window.getTmdbImageUrl(details.backdrop_path, 'w1280')
                 : AppState.protocol + '//tsimg.hnar.online/t/p/w1280' + details.backdrop_path;
 
-            // Добавляем linear-gradient поверх картинки для 50% затемнения
-            elements.detailViewDiv.style.backgroundImage = 'linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url(' + bp + ')';
+            // Кинематографичный скрим вместо ровного затемнения: снизу — почти
+            // чёрный (под ряды актёров и файлов), слева — под текст, справа кадр
+            // остаётся светлым
+            elements.detailViewDiv.style.backgroundImage =
+                'linear-gradient(to top, rgba(0, 0, 0, 0.97) 0%, rgba(0, 0, 0, 0.82) 32%, rgba(0, 0, 0, 0.38) 64%, rgba(0, 0, 0, 0.25) 100%), ' +
+                'linear-gradient(to right, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.5) 45%, rgba(0, 0, 0, 0.1) 100%), ' +
+                'url(' + bp + ')';
             elements.detailViewDiv.style.backgroundSize = 'cover';
             elements.detailViewDiv.style.backgroundPosition = 'center';
             elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
