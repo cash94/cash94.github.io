@@ -898,14 +898,22 @@ async function loadTorrents(silent = false) {
         getEl('config-screen').style.display = 'none';
         getEl('torrserver-section').style.display = 'block';
 
-        AppState.currentScreen = 'torrents';
-        AppState.inSearch = 'torrents';
+        // Главная (home.js) открывается раньше, чем приходит ответ TorrServer.
+        // Список торрентов прогреваем в скрытом #content-torrents, но экран и
+        // фокус у главной не отбираем — иначе витрина мигала бы на торренты.
+        var homeActive = !!(window.HomeScreen && window.HomeScreen.isActive());
+
+        if (!homeActive) {
+            AppState.currentScreen = 'torrents';
+            AppState.inSearch = 'torrents';
+        }
 
         renderTorrents();
 
         // ВАЖНО:
         // Не пытаемся фокусировать карточку торрента, если список пустой
         if (
+            !homeActive &&
             AppState.currentScreen === 'torrents' &&
             AppState.torrents.length > 0 &&
             !document.querySelector('.torrent-card.focused')
@@ -3230,6 +3238,12 @@ function hideSearchResults() {
     } else if (returnTo === 'catalog') {
         if (catalogTab) catalogTab.classList.add('active'); torrentsTab.classList.remove('active'); AppState.currentScreen = 'catalog';
         setTimeout(function () { if (typeof window.focusCatalogCardByIndex === 'function') { var savedIndex = localStorage.getItem('lastCatalogCardIndex'); window.focusCatalogCardByIndex(parseInt(savedIndex || 0)); } else if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard(); }, 80);
+    } else if (returnTo === 'home' && window.HomeScreen) {
+        // Пришли в поиск с главной — туда и возвращаемся. Ни одна вкладка не
+        // активна: на главной навигация своя, а обработчики вкладок проверяют
+        // .active и иначе не сработали бы с первого нажатия.
+        if (catalogTab) catalogTab.classList.remove('active'); torrentsTab.classList.remove('active');
+        window.HomeScreen.show({ restoreFocus: true });
     } else {
         torrentsTab.classList.add('active'); if (catalogTab) catalogTab.classList.remove('active'); AppState.currentScreen = 'torrents';
         setTimeout(function () {
