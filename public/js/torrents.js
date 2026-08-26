@@ -1872,12 +1872,23 @@ async function showDetail(torrent) {
     setTimeout(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
             updateFocusableElements();
-            var fileItems = document.querySelectorAll('.file-item');
-            if (fileItems.length > 0) {
+            // Фокус ставим на «Играть/Продолжить», а не на первую плитку. Строка
+            // метаданных и ряд актёров приходят из TMDB позже и сдвигают ряд файлов
+            // вниз — вместе со сфокусированной плиткой, и она уезжала за экран.
+            // Кнопка стоит в шапке, выше всего, что подгружается, и не двигается.
+            var placed = false;
+            var progressBtn = getEl('detail-progress-btn');
+            if (progressBtn && progressBtn.offsetParent !== null) {
                 for (var i = 0; i < focusableElements.length; i++) {
-                    if (focusableElements[i].classList && focusableElements[i].classList.contains('file-item')) { setFocus(i); break; }
+                    if (focusableElements[i] === progressBtn) { setFocus(i); placed = true; break; }
                 }
-            } else setFocus(0);
+            }
+            if (!placed && document.querySelectorAll('.file-item').length > 0) {
+                for (var j = 0; j < focusableElements.length; j++) {
+                    if (focusableElements[j].classList && focusableElements[j].classList.contains('file-item')) { setFocus(j); placed = true; break; }
+                }
+            }
+            if (!placed) setFocus(0);
         }
         // Всё отрисовано и фокус на месте — снимаем индикатор «Загрузка…»
         if (typeof Animations !== 'undefined' && typeof Animations.detailContentReady === 'function') {
