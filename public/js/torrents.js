@@ -1710,9 +1710,94 @@ function visibleItemsforDetail(change) {
 
 window.visibleItemsforDetail = visibleItemsforDetail;
 
+// ==================== ЦВЕТ РАМКИ ФОКУСА ИЗ UI CUSTOMIZER ====================
+// Новый torrent-detail рисует рамки своего размера (5px вокруг плитки файла,
+// круг вокруг аватара актёра), поэтому его правила в styles.css специфичнее тех,
+// которыми UI Customizer перекрывает общий фокус (`.focused{…!important}`) —
+// снаружи он их не достаёт. Цвет эти правила берут переменной
+// var(--focus-color, #ff8c00), а переменную выставляет сам кастомайзер. Но если
+// на устройстве раздаётся его старая сборка (index.html тянет ui-customizer.js с
+// msx/js, тогда как styles.css и torrents.js — уже с public/js), строки с :root
+// там нет: var() уходит в дефолт, и рамка остаётся оранжевой при любом выбранном
+// цвете. Поэтому выставляем переменные и здесь — цвет берём из публичного API
+// кастомайзера, а если и его нет, читаем прямо из его хранилища.
+var UI_CUSTOMIZER_STORAGE_KEY = 'uiCustomizer';
+
+function readUiFocusColor() {
+    try {
+        if (window.UICustomizer && typeof UICustomizer.getFocusColor === 'function') {
+            var fromApi = UICustomizer.getFocusColor();
+            if (fromApi) return fromApi;
+        }
+    } catch (e) { }
+    try {
+        var raw = localStorage.getItem(UI_CUSTOMIZER_STORAGE_KEY);
+        if (raw) {
+            var saved = JSON.parse(raw);
+            if (saved && saved.focusColor) return saved.focusColor;
+        }
+    } catch (e) { }
+    return null;
+}
+
+// #rgb / #rrggbb → rgba(): для мягкого внешнего свечения (--focus-color-soft)
+function focusColorToRgba(color, alpha) {
+    var s = String(color || '').trim();
+    if (s.charAt(0) !== '#') return null;
+    s = s.slice(1);
+    if (s.length === 3) {
+        s = s.charAt(0) + s.charAt(0) + s.charAt(1) + s.charAt(1) + s.charAt(2) + s.charAt(2);
+    }
+    if (!/^[0-9a-f]{6}$/i.test(s)) return null;
+    var n = parseInt(s, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255) + ', ' + alpha + ')';
+}
+
+function applyFocusColorVars() {
+    var color = readUiFocusColor();
+    if (!color || !focusColorToRgba(color, 1)) return;
+    var root = document.documentElement;
+    if (!root || !root.style || !root.style.setProperty) return;
+    // Инлайн на <html> перебивает :root из <style> кастомайзера, но значение то же
+    // самое (берём из его же настроек), а хук ниже держит их синхронными.
+    root.style.setProperty('--focus-color', color);
+    var soft = focusColorToRgba(color, 0.35);
+    if (soft) root.style.setProperty('--focus-color-soft', soft);
+}
+window.applyFocusColorVars = applyFocusColorVars;
+
+// Один раз оборачиваем apply() кастомайзера, чтобы цвет применялся сразу при
+// выборе в панели, а не только при следующем открытии detail.
+function hookUiCustomizerFocusColor() {
+    if (!window.UICustomizer || typeof UICustomizer.apply !== 'function') return false;
+    if (!UICustomizer.__focusVarsHooked) {
+        var origApply = UICustomizer.apply;
+        UICustomizer.apply = function () {
+            var result = origApply.apply(this, arguments);
+            applyFocusColorVars();
+            return result;
+        };
+        UICustomizer.__focusVarsHooked = true;
+    }
+    applyFocusColorVars();
+    return true;
+}
+
+// Сразу — цвет из хранилища: ui-customizer.js подключается последним из всех
+// скриптов, поэтому на момент загрузки torrents.js window.UICustomizer ещё нет.
+// Дальше дожидаемся его, чтобы повесить хук на apply().
+applyFocusColorVars();
+(function waitForUiCustomizer(triesLeft) {
+    if (hookUiCustomizerFocusColor() || triesLeft <= 0) return;
+    setTimeout(function () { waitForUiCustomizer(triesLeft - 1); }, 300);
+})(20);
+
 async function showDetail(torrent) {
     if (torrent && torrent.hash) window.lastSelectedTorrentHash = torrent.hash;
     if (typeof currentFocusIndex !== 'undefined') window.lastSelectedTorrentIndex = currentFocusIndex;
+    // Рамки фокуса нового detail читают var(--focus-color) — убеждаемся, что
+    // переменная выставлена до первой отрисовки (см. applyFocusColorVars выше)
+    applyFocusColorVars();
     resetDetailBackground();
     var known = knownTorrentMeta.get(String(torrent.hash || '').toLowerCase());
 
