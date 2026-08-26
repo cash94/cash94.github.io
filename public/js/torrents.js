@@ -2450,8 +2450,10 @@ function updateDetailMetaInfo(tmdbData) {
     // Вызывается из обоих путей загрузки TMDB — и воркерного, и запасного.
     detailMetaState.details = tmdbData;
     if (tmdbData) {
+        // /api/tmdb/details отдаёт тип в поле type, media_type там не бывает
         detailMetaState.isTvSeries = detailMetaState.isTvSeries ||
-            tmdbData.media_type === 'tv' || tmdbData.number_of_seasons !== undefined;
+            tmdbData.type === 'tv' || tmdbData.media_type === 'tv' ||
+            tmdbData.number_of_seasons !== undefined;
     }
     renderDetailMetaRow();
 }
