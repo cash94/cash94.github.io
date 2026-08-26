@@ -245,6 +245,11 @@
     function buildFocusCss(c) {
         var css = [];
 
+        // Переменная для правил, которым нужен свой размер/форма рамки, а цвет —
+        // выбранный пользователем (торрентный detail-view в styles.css).
+        // Перечислять их здесь не нужно: они сами читают var(--focus-color).
+        css.push(':root{--focus-color:' + c + ';--focus-color-soft:' + rgba(c, 0.35) + ';}');
+
         // Общий фокус (styles.css:2952) и detail-view (styles.css:3693)
         css.push('.focused{box-shadow:0 0 0 3px ' + c + '!important;}');
         css.push('#detail-view .focused{box-shadow:0 0 0 3px ' + c + '!important;}');
