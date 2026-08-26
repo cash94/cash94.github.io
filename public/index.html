@@ -10,6 +10,8 @@
   <meta name="tv" content="true">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <link rel="icon" type="image/x-icon" href="https://cash94.github.io/msx/favicon16.ico">
+  <link rel="preconnect" href="https://tsimg.hnar.online">
+  <link rel="dns-prefetch" href="https://tsimg.hnar.online">
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-K43Y9GMGR9"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
@@ -19,20 +21,40 @@
   </script>
 
   <!-- HLS.js библиотека (без версионирования, так как с CDN) -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/EasePack.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollToPlugin.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.19/dist/hls.min.js"></script>
+  <script src="https://cash94.github.io/msx/gsap/gsap.min.js"></script>
+  <!-- 
+  <script src="https://cash94.github.io/msx/gsap/ScrollTrigger.min.js"></script>
+  <script src="https://cash94.github.io/msx/gsap/EasePack.min.js"></script>
+  <script src="https://cash94.github.io/msx/gsap/ScrollToPlugin.min.js"></script> -->
   <script src="https://cdn.jsdelivr.net/npm/promise-polyfill@8/dist/polyfill.min.js"></script>
 
   <!-- CSS стили с версионированием -->
   <script>
     var VERSION = Date.now();
+
+    // Отладка на ПК: ?local=1 грузит css/js из локального public/ (его раздаёт
+    // express.static), а не с зеркала cash94.github.io. Правки видно сразу,
+    // без выкладки. Подменяем не сами строки загрузки ниже, а document.write —
+    // так на телевизоре (без флага) путь остаётся байт-в-байт прежним.
+    if (location.search.indexOf('local=1') !== -1) {
+      var _origDocWrite = document.write;
+      document.write = function (html) {
+        return _origDocWrite.call(
+          document,
+          String(html).replace(/https:\/\/cash94\.github\.io\/(?:msx|public)\//g, '/')
+        );
+      };
+      console.log('[local=1] модули грузятся из локального public/');
+    }
+
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-regular-rounded.css?v=' + VERSION + '">');
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-rounded.css?v=' + VERSION + '">');
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-chubby.css?v=' + VERSION + '">');
-    document.write('<link rel="stylesheet" href="https://cash94.github.io/public/css/styles.css?v=' + VERSION + '">');
+    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/styles.css?v=' + VERSION + '">');
+    // Фоллбэки для старых браузеров (Chrome 66 на Smart TV): flex-gap, aspect-ratio.
+    // Подключается ПОСЛЕ styles.css и работает только при классе no-flex-gap на <html>.
+    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/flex-gap-fallback.css?v=' + VERSION + '">');
   </script>
 
   <link href="https://fonts.googleapis.com/css2?family=Bitcount+Prop+Double:wght@100..900&display=swap"
@@ -40,6 +62,37 @@
 </head>
 
 <body class="tv-mode">
+
+  <script>
+    /* Определяем поддержку gap внутри flexbox (появилась в Chrome 84).
+       Через @supports это не проверить: в Chrome 66 gap уже работает в Grid,
+       поэтому @supports (gap: 1px) возвращает true. Меряем реальной вставкой.
+       Если поддержки нет — ставим класс no-flex-gap на <html>, под него в
+       css/flex-gap-fallback.css прописаны те же отступы через margin.
+       Скрипт стоит в начале body: класс появляется до разбора разметки,
+       поэтому страница ни на кадр не отрисуется «слипшейся». */
+    (function () {
+      var supported;
+      try {
+        var probe = document.createElement('div');
+        probe.style.cssText = 'display:flex;flex-direction:column;row-gap:10px;' +
+          'position:absolute;visibility:hidden;left:-9999px;top:0;width:10px;';
+        probe.appendChild(document.createElement('i'));
+        probe.appendChild(document.createElement('i'));
+        document.body.appendChild(probe);
+        supported = probe.offsetHeight === 10 || probe.scrollHeight === 10;
+        probe.parentNode.removeChild(probe);
+      } catch (e) {
+        var m = /Chrom(?:e|ium)\/(\d+)/.exec(navigator.userAgent || '');
+        supported = m ? parseInt(m[1], 10) >= 84 : true;
+      }
+      window.HAS_FLEX_GAP = supported;
+      if (!supported) {
+        var html = document.documentElement;
+        html.className += (html.className ? ' ' : '') + 'no-flex-gap';
+      }
+    })();
+  </script>
 
   <div id="main-container">
     <!-- Экран настроек TorrServer -->
@@ -62,6 +115,10 @@
             <div class="menu-item" data-tab="player-tab" id="player-tab"
               style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
               Настройки плеера
+            </div>
+            <div class="menu-item" data-tab="appearance-tab" id="appearance-tab"
+              style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
+              Внешний вид
             </div>
             <div class="menu-item" data-tab="sync-tab" id="sync-tab"
               style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
@@ -97,34 +154,39 @@
                 <div class="status-indicator" id="status-indicator"></div>
                 <span id="status-text">Введите адрес сервера</span>
               </div>
-            </div>
-
-            <div class="checkbox-container">
-              <input type="checkbox" id="add-to-db">
-              <span>Добавлять торренты в базу</span>
-            </div>
-
-            <div class="action-row" style="margin-bottom: 20px;">
-              <button class="btn btn-primary" id="speedtest-btn" style="background: #4a9eff;">Замерить скорость</button>
-            </div>
-            <div id="speedtest-results"
-              style="display: none; margin-bottom: 20px; padding: 12px; background: #0a0a0f; border-radius: 12px; border: 1px solid #4a9eff;">
-              <div style="font-size: 13px; margin-bottom: 8px; color: #4a9eff;">Результаты замера:</div>
-              <div id="speedtest-torrserver" style="font-size: 12px; color: #ccc;">TorrServer → TorrStream: -- Mbps
+              <div class="checkbox-container">
+                <input type="checkbox" id="add-to-db">
+                <span>Добавлять торренты в базу</span>
               </div>
-              <div id="speedtest-client" style="font-size: 12px; color: #ccc; margin-top: 5px;">TorrStream → Клиент: --
-                Mbps
+              <div class="checkbox-container">
+                <input type="checkbox" id="transcoding-off">
+                <span>Включить транскодирование через TorrServer (нужна специальная сборка TorrServer)</span>
               </div>
-              <div id="speedtest-total"
-                style="font-size: 12px; color: #ff8c00; margin-top: 8px; border-top: 1px solid #333; padding-top: 6px;">
-                Общая задержка: --
-              </div>
-            </div>
 
-            <div class="help-text" style="margin-top: 40px; color: #666; font-size: 12px;">
-              • Введите адрес TorrServer для автоматического подключения<br>
-              • После успешной проверки откроется список торрентов<br>
-              • Настройки сохраняются автоматически
+              <div class="action-row" style="margin-bottom: 20px;">
+                <button class="btn btn-primary" id="speedtest-btn" style="background: #4a9eff;">Замерить
+                  скорость</button>
+              </div>
+              <div id="speedtest-results"
+                style="display: none; margin-bottom: 20px; padding: 12px; background: #0a0a0f; border-radius: 12px; border: 1px solid #4a9eff;">
+                <div style="font-size: 13px; margin-bottom: 8px; color: #4a9eff;">Результаты замера:</div>
+                <div id="speedtest-torrserver" style="font-size: 12px; color: #ccc;">TorrServer → TorrStream: -- Mbps
+                </div>
+                <div id="speedtest-client" style="font-size: 12px; color: #ccc; margin-top: 5px;">TorrStream → Клиент:
+                  --
+                  Mbps
+                </div>
+                <div id="speedtest-total"
+                  style="font-size: 12px; color: #ff8c00; margin-top: 8px; border-top: 1px solid #333; padding-top: 6px;">
+                  Общая задержка: --
+                </div>
+              </div>
+
+              <div class="help-text" style="margin-top: 40px; color: #666; font-size: 12px;">
+                • Введите адрес TorrServer для автоматического подключения<br>
+                • После успешной проверки откроется список торрентов<br>
+                • Настройки сохраняются автоматически
+              </div>
             </div>
           </div>
 
@@ -146,7 +208,7 @@
             <div class="settings-section">
               <h2>Настройки плеера</h2>
 
-              <div class="checkbox-container">
+              <div class="checkbox-container" hidden>
                 <input type="checkbox" id="auto-fullscreen">
                 <span>Автоматический полноэкранный режим при запуске</span>
               </div>
@@ -155,21 +217,55 @@
                 <span>Скрыть часы в плеере</span>
               </div>
               <div class="checkbox-container">
+                <input type="checkbox" id="transcoding-on-off">
+                <span>Полностью отключить транскодирование видео</span>
+              </div>
+              <div class="checkbox-container">
                 <input type="checkbox" id="multi-channel-audio">
-                <span>Включить многоканальный звук (экспериментальная функция)</span>
+                <span>Включить многоканальный звук (работает только если отключено транскодирование через
+                  TorrServer)</span>
               </div>
               <div class="checkbox-container" hidden>
                 <input type="checkbox" id="out-player">
                 <span>Использовать внешний плеер (только android)</span>
               </div>
-
-              <div class="help-text" style="margin-top: 20px; color: #666;">
-                • Здесь будут настройки субтитров, качества видео и т.д.
+              <div class="checkbox-container">
+                <input type="checkbox" id="dvOnOff">
+                <span>Предпочитать Dolby Vision по умолчанию</span>
               </div>
+            </div>
+            <!-- Блок проверки поддержки Dolby Vision -->
+            <div class="settings-group"
+              style="margin-top: 20px; padding: 15px; background: rgba(74, 158, 255, 0.1); border-radius: 12px; border: 1px solid rgba(74, 158, 255, 0.3);">
+              <div class="settings-group-title"
+                style="font-size: 16px; font-weight: 600; color: #4a9eff; margin-bottom: 12px;">
+                🎬 Поддержка Dolby Vision
+              </div>
+              <div class="settings-group-description" style="font-size: 13px; color: #aaa; margin-bottom: 15px;">
+                Автоматическая проверка поддержки HDR10, Dolby Vision и кодеков на вашем устройстве
+              </div>
+
+              <div id="dv-check-status" style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                <div id="dv-status-icon" style="font-size: 24px;">⏳</div>
+                <div id="dv-status-text" style="font-size: 14px; color: #aaa;">Проверка не выполнена</div>
+              </div>
+
+              <div id="dv-codecs-list"
+                style="display: none; margin-top: 10px; padding: 10px; background: rgba(0, 0, 0, 0.3); border-radius: 8px; font-family: monospace; font-size: 12px;">
+                <!-- Сюда будут добавлены результаты проверки кодеков -->
+              </div>
+
+              <button id="dv-check-btn" class="settings-btn"
+                style="margin-top: 10px; padding: 8px 16px; background: #4a9eff; border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 13px;">
+                🔄 Проверить поддержку
+              </button>
             </div>
           </div>
 
-          <!-- Блок 4: Синхронизация -->
+          <!-- Блок 4: Внешний вид (наполняется из js/ui-customizer.js) -->
+          <div id="appearance-tab-content" class="tab-content" style="display: none;"></div>
+
+          <!-- Блок 5: Синхронизация -->
           <div id="sync-tab-content" class="tab-content" style="display: none;">
             <div class="settings-section">
               <h2>Синхронизация</h2>
@@ -179,7 +275,8 @@
               </div>
 
               <div class="help-text" style="margin-top: 20px; color: #666;">
-                • Нажмите кнопку "Синхронизация" чтобы сихнронизировать это устройство или чтобы получить код для синхронизации другого устройства.<br>
+                • Нажмите кнопку "Синхронизация" чтобы сихнронизировать это устройство или чтобы получить код для
+                синхронизации другого устройства.<br>
               </div>
             </div>
           </div>
@@ -189,33 +286,53 @@
 
     <!-- Раздел TorrServer с торрентами -->
     <div id="torrserver-section" style="display: none;">
-      <div class="section-header">
-        <!-- Кнопка "Назад" для каталога (изначально скрыта) -->
-        <!-- <div class="back-btn" id="back-from-catalog" style="display: none;">← Назад к списку</div> -->
-        <!-- Пустой div слева для баланса -->
-        <div class="placeholder-btn"></div>
-
+      <!-- Единая шапка всего раздела: главная, торренты и каталог видят одну и ту
+           же строку навигации, поэтому «Главная» доступна из любого экрана.
+           Кнопки — те же самые элементы, что раньше лежали в .view-tabs и
+           .section-header: их id ищут app.js (#tab-*, #settings-btn),
+           donate.js (#tab-donate), control.js и torrents.js. Мы их не
+           пересоздаём, а переносим и переодеваем в .home-nav-btn, чтобы вся
+           существующая логика разделов работала без изменений.
+           Новая тут только «Главная» — её обслуживает home.js. -->
+      <div id="home-topbar">
         <div class="section-title-header">TorrStream</div>
-
-        <!-- Кнопка настроек справа (на месте refresh-torrents) -->
-        <div class="settings-btn" id="settings-btn">Настройки</div>
+        <button class="home-nav-btn active" id="home-nav-home">Главная</button>
+        <button class="view-tab home-nav-btn" id="tab-catalog">Каталог</button>
+        <button class="view-tab home-nav-btn" id="tab-torrents">Мои торренты</button>
+        <button class="view-tab home-nav-btn" id="tab-donate">Донат</button>
+        <!-- Лупа и «Настройки» уходят к правому краю: margin-left: auto у #tab-search -->
+        <button class="view-tab home-nav-btn home-nav-icon" id="tab-search" title="Поиск"><i
+            class="fi fi-rr-search"></i></button>
+        <div class="settings-btn home-nav-btn" id="settings-btn">Настройки</div>
       </div>
 
-      <!-- Переключатель между списком торрентов и результатами поиска -->
-      <div class="view-tabs">
-        <button class="view-tab" id="tab-catalog">Каталог</button>
-        <button class="view-tab active" id="tab-torrents">Мои торренты</button>
-        <button class="view-tab" id="tab-search">Поиск</button>
-        <button class="view-tab" id="tab-donate">Донат</button>
+      <!-- Экраны хранятся в DOM постоянно: переключение вкладок не пересоздаёт карточки. -->
+
+      <!-- Главная страница (home.js). Лежит внутри #torrserver-section не случайно:
+           возврат из детального просмотра и hideSearchResults() безусловно ставят
+           этой секции display:block, поэтому главная возвращается сама. -->
+      <div id="content-home" class="content-screen" hidden>
+        <div id="home-rows"></div>
       </div>
 
-      <!-- Сетка с торрентами (всегда видна на фоне) -->
-      <div id="torrents-grid"></div>
+      <div id="content-torrents" class="content-screen">
+        <div id="torrents-grid"></div>
+      </div>
+
+      <div id="content-catalog" class="content-screen" hidden>
+        <!-- Два независимых вида каталога. Виден всегда ровно один:
+             #catalog-rows — главный экран (ряды-карусели), собирается один раз и живёт в DOM;
+             #catalog-grid — экран одной категории, наполняется при входе и очищается при выходе.
+             Раньше оба вида делили #catalog-grid, поэтому возврат из категории заново
+             тянул по сети данные всех рядов и пересобирал их DOM. -->
+        <div id="catalog-rows"></div>
+        <div id="catalog-grid" style="display: none"></div>
+      </div>
     </div>
   </div>
 
   <!-- Контейнер для результатов поиска (оверлей поверх сетки) -->
-  <div id="search-overlay" class="search-overlay hidden">
+  <div id="search-overlay" class="search-overlay hidden" style="display: none;">
     <div class="search-overlay-header search-screen-toolbar">
       <input type="text" class="search-input-screen" id="search-query" placeholder="Поиск фильмов и сериалов...">
       <button class="filter-toggle-btn" id="filter-toggle" title="Фильтры">Фильтры</button>
@@ -223,77 +340,105 @@
       <button class="close-search-btn" id="close-search">X</button>
     </div>
 
-    <div class="search-filters collapsed" id="search-filters-panel">
-      <div class="filter-group">
-        <label class="filter-label" for="torrent-movie">Категория</label>
-        <select id="torrent-movie" class="filter-select">
-          <option value="globalsearch">Глобальный поиск</option>
-          <option value="torrentsearch">Торренты</option>
-        </select>
+    <!-- Панель фильтров (выезжает справа) -->
+    <div id="search-filters-panel" class="filter-panel">
+      <div class="filter-panel-header">
+        <button class="filter-back-btn" id="filter-back-btn" style="display: none;">
+          <i class="fi fi-rr-left"></i>
+        </button>
+        <h3 class="filter-panel-title">Фильтры</h3>
+        <button class="filter-close-btn" id="filter-close-btn">
+          <i class="fi fi-rr-cross"></i>
+        </button>
       </div>
 
-      <div class="filter-group">
-        <label class="filter-label" for="sort-by">Сортировка</label>
-        <select id="sort-by" class="filter-select">
-          <option value="date-desc">Сначала новые</option>
-        </select>
+      <!-- Главный экран: список фильтров -->
+      <div class="filter-main-screen" id="filter-main-screen">
+        <div class="filter-list">
+          <button class="filter-item" data-filter="torrent-movie">
+            <span class="filter-item-label">Категория</span>
+            <span class="filter-item-value" id="filter-value-torrent-movie">Глобальный поиск</span>
+            <i class="fi fi-rr-angle-right"></i>
+          </button>
+
+          <button class="filter-item" data-filter="sort-by">
+            <span class="filter-item-label">Сортировка</span>
+            <span class="filter-item-value" id="filter-value-sort-by">Сначала новые</span>
+            <i class="fi fi-rr-angle-right"></i>
+          </button>
+
+          <button class="filter-item" data-filter="filter-quality">
+            <span class="filter-item-label">Качество</span>
+            <span class="filter-item-value" id="filter-value-filter-quality">Все</span>
+            <i class="fi fi-rr-angle-right"></i>
+          </button>
+
+          <button class="filter-item" data-filter="filter-tracker">
+            <span class="filter-item-label">Трекер</span>
+            <span class="filter-item-value" id="filter-value-filter-tracker">Все</span>
+            <i class="fi fi-rr-angle-right"></i>
+          </button>
+
+          <button class="filter-item" data-filter="filter-year">
+            <span class="filter-item-label">Год</span>
+            <span class="filter-item-value" id="filter-value-filter-year">Все</span>
+            <i class="fi fi-rr-angle-right"></i>
+          </button>
+
+          <button class="filter-item" data-filter="filter-season">
+            <span class="filter-item-label">Сезон</span>
+            <span class="filter-item-value" id="filter-value-filter-season">Все</span>
+            <i class="fi fi-rr-angle-right"></i>
+          </button>
+
+          <button class="filter-item" data-filter="filter-voice">
+            <span class="filter-item-label">Озвучка</span>
+            <span class="filter-item-value" id="filter-value-filter-voice">Все</span>
+            <i class="fi fi-rr-angle-right"></i>
+          </button>
+
+          <button class="filter-item" data-filter="filter-videotype">
+            <span class="filter-item-label">Тип видео</span>
+            <span class="filter-item-value" id="filter-value-filter-videotype">Все</span>
+            <i class="fi fi-rr-angle-right"></i>
+          </button>
+
+          <button class="filter-reset-btn-new" id="reset-filters">
+            <i class="fi fi-rr-trash"></i>
+            Сбросить все фильтры
+          </button>
+        </div>
       </div>
 
-      <div class="filter-group">
-        <label class="filter-label" for="filter-quality">Качество</label>
-        <select id="filter-quality" class="filter-select">
-          <option value="all">Все</option>
-        </select>
+      <!-- Экраны значений фильтров -->
+      <div class="filter-values-screen" id="filter-values-screen" style="display: none;">
+        <div class="filter-values-list" id="filter-values-list"></div>
       </div>
-
-      <div class="filter-group">
-        <label class="filter-label" for="filter-tracker">Трекер</label>
-        <select id="filter-tracker" class="filter-select">
-          <option value="all">Все</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label class="filter-label" for="filter-year">Год</label>
-        <select id="filter-year" class="filter-select">
-          <option value="all">Все</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label class="filter-label" for="filter-season">Сезон</label>
-        <select id="filter-season" class="filter-select">
-          <option value="all">Все</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label class="filter-label" for="filter-voice">Озвучка</label>
-        <select id="filter-voice" class="filter-select">
-          <option value="all">Все</option>
-        </select>
-      </div>
-
-      <div class="filter-group">
-        <label class="filter-label" for="filter-videotype">Тип видео</label>
-        <select id="filter-videotype" class="filter-select">
-          <option value="all">Все</option>
-        </select>
-      </div>
-
-      <button class="filter-reset-btn" id="reset-filters">X</button>
     </div>
+
+    <!-- Скрытые select'ы для совместимости -->
+    <select id="torrent-movie" style="display: none;">
+      <option value="globalsearch">Глобальный поиск</option>
+      <option value="torrentsearch">Торренты</option>
+    </select>
+    <select id="sort-by" style="display: none;"></select>
+    <select id="filter-quality" style="display: none;"></select>
+    <select id="filter-tracker" style="display: none;"></select>
+    <select id="filter-year" style="display: none;"></select>
+    <select id="filter-season" style="display: none;"></select>
+    <select id="filter-voice" style="display: none;"></select>
+    <select id="filter-videotype" style="display: none;"></select>
 
     <div id="search-results" class="search-results-list"></div>
   </div>
 
   <!-- Детальный просмотр -->
-  <div id="detail-view">
+  <div id="detail-view" style="display: none;">
     <div class="detail-header">
       <div class="back-btn" id="back-from-detail" style="margin-right: 20px; margin-left: 20px;">
         <i class="fi fi-rr-left"></i>
       </div>
-      <div class="detail-poster" id="detail-poster"></div>
+      <div class="detail-poster hidden" id="detail-poster"></div>
       <div class="detail-title">
         <h2 id="detail-title-text"></h2>
         <div id="detail-subtitle" class="detail-subtitle"></div>
@@ -303,11 +448,15 @@
     <div id="catalog-detail-extra" class="catalog-detail-extra hidden">
       <div id="catalog-detail-backdrop" class="catalog-detail-backdrop hidden"></div>
       <div class="catalog-detail-panel">
-        <div id="catalog-detail-meta" class="catalog-detail-meta"></div>
         <div id="catalog-detail-overview" class="catalog-detail-overview"></div>
 
         <div id="catalog-detail-actions" class="catalog-detail-actions">
           <button id="catalog-watch-btn" class="catalog-watch-btn">Торренты</button>
+          <button id="detail-progress-btn" class="detail-progress-btn hidden">Играть</button>
+          <button id="catalog-toggle-overview-btn" class="catalog-toggle-overview-btn">Подробнее</button>
+          <button id="catalog-trailer-btn" class="catalog-trailer-btn hidden">
+            <span class="trailer-btn-icon">▶</span> Трейлер
+          </button>
         </div>
 
         <div id="catalog-detail-trailers-wrap" class="catalog-detail-section hidden">
@@ -338,7 +487,7 @@
   </div>
 
   <!-- Плеер -->
-  <div id="player-screen">
+  <div id="player-screen" style="display: none;">
     <video id="video-player" autoplay playsinline crossorigin="anonymous" preload="auto"></video>
     <!-- Индикатор скорости перемотки -->
     <div id="seek-speed-indicator" class="seek-speed-indicator hidden"></div>
@@ -371,6 +520,10 @@
             <!-- Кнопка выбора аудиодорожек -->
             <button class="control-btn" id="audio-btn" title="Аудиодорожки">
               <i class="fi fi-rr-music-alt"></i>
+            </button>
+            <!-- Кнопка выбора субтитров -->
+            <button class="control-btn" id="subtitles-btn" title="Субтитры">
+              <i class="fi fi-rr-subtitles"></i>
             </button>
             <!-- Кнопка выбора серий -->
             <button class="control-btn" id="episodes-btn" title="Список серий">
@@ -415,6 +568,15 @@
       <div class="audio-list" id="audio-list"></div>
     </div>
 
+    <!-- Панель субтитров -->
+    <div id="subtitles-panel" class="subtitles-panel hidden">
+      <div class="subtitles-panel-header">
+        <h3>Субтитры</h3>
+        <button id="close-subtitles" class="close-panel-btn">X</button>
+      </div>
+      <div id="subtitles-list" class="subtitles-list"></div>
+    </div>
+
     <!-- Оверлей загрузки при перемотке -->
     <div id="loading-player-overlay">
       <div class="loading-player-spinner"></div>
@@ -425,7 +587,9 @@
     <div id="buffer-stats">Загрузка...</div>
     <div id="player-hint">← Назад для выхода</div>
     <!-- Кнопка выхода из плеера -->
-    <div id="exit-player-btn" title="Выйти (ESC)">←</div>
+    <div id="exit-player-btn" title="Выйти (ESC)">
+      <i class="fi fi-rr-left"></i>
+    </div>
     <div id="clock-display">--:--</div>
   </div>
 
@@ -478,18 +642,33 @@
   <script>
     var VERSION = Date.now();
 
-    document.write('<script src="https://cash94.github.io/public/js/config.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/tmdb.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/config.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/tmdb.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/public/js/torrents.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/catalog.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/player.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/torrents-worker-bridge.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/torrents-worker-patch.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/poster-db.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/catalog.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-bridge.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-patch.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/catalog-idb-patch.js?v=' + VERSION + '"><\/script>');
+    //document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-posters-patch.js?v=' + VERSION + '"><\/script>');
+    //document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-posters-batch-patch.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/player.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/public/js/control.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/donate.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/torrserverstats.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/speedtest.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/sync.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/animations.js?v=' + VERSION + '"><\/script>');
-    document.write('<script src="https://cash94.github.io/public/js/app.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/donate.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/torrserverstats.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/speedtest.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/sync.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/animations.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/app.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/memory-fixes.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/catalog-memory-fix.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/player-memory-fix.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/ui-customizer.js?v=' + VERSION + '"><\/script>');
+    // Главная страница — последней: патчит showContentScreen / restoreFocusAfterNavigation
+    // из app.js и closeDonateOverlay из donate.js, поэтому грузится после них
+    document.write('<script src="https://cash94.github.io/msx/js/home.js?v=' + VERSION + '"><\/script>');
 
     // Скрываем загрузчик после инициализации
     document.write('<script>');
