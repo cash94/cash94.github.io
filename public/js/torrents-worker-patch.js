@@ -259,13 +259,17 @@
         // а после фильма сериал — как ?type=movie.
         // Тип из каталога при этом не теряется: playFromHash и addTorrentToServer
         // кладут его и в torrent.media_type, и в knownTorrentMeta по hash (блок known
-        // выше), и в category раздачи — а её читает getTorrentMediaTypeFromCard.
-        if (!torrent.media_type && window.getTorrentMediaTypeFromCard) {
-            // Файлы уже загружены выше, поэтому «больше одного файла → сериал»
-            // здесь считается по настоящему списку. Берём только вердикт 'tv':
-            // 'movie' у этой функции — значение по умолчанию, а не признак, и
-            // Worker сам проверит сезоны в названии и в именах файлов.
-            if (window.getTorrentMediaTypeFromCard(torrent) === 'tv') {
+        // выше), и в category раздачи — её и читаем ниже.
+        if (!torrent.media_type && torrent.category) {
+            // Только вердикт 'tv': его больше взять негде (сериал из одного файла
+            // и без «сезона» в названии Worker сам не распознает). Обратный вердикт
+            // не фиксируем — category у сериала часто бывает movie, а признаки
+            // сериала по числу видеофайлов и по названию Worker проверит сам.
+            var catLower = String(torrent.category).toLowerCase();
+            if (catLower.indexOf('tv') !== -1 ||
+                catLower.indexOf('сериал') !== -1 ||
+                catLower.indexOf('serial') !== -1 ||
+                catLower.indexOf('series') !== -1) {
                 torrent.media_type = 'tv';
             }
         }
