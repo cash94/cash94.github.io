@@ -423,12 +423,14 @@ function getSearchResults() {
 }
 
 function getDetailItems() {
-    var s = ['.back-btn', '.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
+    var s = ['.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
+    // Сборный селектор → порядок обхода совпадает с порядком в DOM, а не с
+    // порядком селекторов. Важно для торрентного detail: там ряд актёров идёт
+    // ПЕРЕД файлами, и «вверх» от плитки должно попадать в него.
+    // Побочный плюс: элемент, подходящий сразу двум селекторам, не дублируется.
+    var it = document.querySelectorAll(s.join(','));
     var a = [];
-    for (var i = 0; i < s.length; i++) {
-        var it = document.querySelectorAll(s[i]);
-        for (var j = 0; j < it.length; j++) if (VISIBLE(it[j])) a.push(it[j]);
-    }
+    for (var i = 0; i < it.length; i++) if (VISIBLE(it[i])) a.push(it[i]);
     return a;
 }
 
@@ -898,7 +900,7 @@ var ScreenStrategies = {
 
             // ИСПРАВЛЕНО: используем прямой вызов getDetailItems() вместо this.getItems()
             var items = getDetailItems();
-            return focusEl(items[0] || getEl('back-from-detail'));
+            return focusEl(items[0]); // || getEl('back-from-detail'));
         },
         handleNavigation: function (dir) {
             var items = getDetailItems(), f = (belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null);
@@ -927,7 +929,7 @@ var ScreenStrategies = {
             if (isF && fii !== -1) {
                 if (dir === 'left') { if (fii > 0) { focusEl(fi[fii - 1], { direction: 'left' }); } return true; }
                 if (dir === 'right') { if (fii < fi.length - 1) { focusEl(fi[fii + 1], { direction: 'right' }); } return true; }
-                if (dir === 'up') { var prevItems = []; for (var k = idx - 1; k >= 0; k--) { if (!items[k].classList || !items[k].classList.contains('file-item')) { prevItems.push(items[k]); } } if (prevItems.length > 0) focusEl(prevItems[0], { direction: 'up' }); return true; }
+                if (dir === 'up') { if (ac.length > 0) { focusEl(ac[Math.min(fii, ac.length - 1)], { direction: 'up' }); return true; } var prevItems = []; for (var k = idx - 1; k >= 0; k--) { if (!items[k].classList || !items[k].classList.contains('file-item')) { prevItems.push(items[k]); } } if (prevItems.length > 0) focusEl(prevItems[0], { direction: 'up' }); return true; }
                 if (dir === 'down') return true;
                 return true;
             }
@@ -941,7 +943,7 @@ var ScreenStrategies = {
             if (isA && ai !== -1) {
                 if (dir === 'left') return focusEl(ac[Math.max(0, ai - 1)] || f, { direction: 'left' });
                 if (dir === 'right') return focusEl(ac[Math.min(ac.length - 1, ai + 1)] || f, { direction: 'right' });
-                if (dir === 'up') { if (tl.length > 0) { focusEl(tl[tl.length - 1], { direction: 'up' }); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
+                if (dir === 'up') { if (tl.length > 0) { focusEl(tl[tl.length - 1], { direction: 'up' }); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } var pgb = getEl('detail-progress-btn'); if (pgb && pgb.offsetParent !== null) { focusEl(pgb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
                 if (dir === 'down') { if (rc.length > 0) { var t = ai < rc.length ? ai : rc.length - 1; focusEl(rc[t], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 return true;
             }
@@ -956,7 +958,7 @@ var ScreenStrategies = {
                 if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 if (dir === 'left') return true;
                 if (dir === 'right') return focusEl(ovw);
-                if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
+                if (dir === 'up') return true; //return focusEl(bb || f, { direction: 'up' });
                 return true;
             }
             if (isOv) {
@@ -966,14 +968,14 @@ var ScreenStrategies = {
                     return true;
                 }
                 if (dir === 'left') return focusEl(wb);
-                if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
+                if (dir === 'up') return true; //return focusEl(bb || f, { direction: 'up' });
                 return true;
             }
             if (isRut) {
                 if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 if (dir === 'right') return true;
                 if (dir === 'left') return focusEl(ovw);
-                if (dir === 'up') return focusEl(bb || f, { direction: 'up' });
+                if (dir === 'up') return true; //return focusEl(bb || f, { direction: 'up' });
                 return true;
             }
             if (isB) {
@@ -1197,7 +1199,9 @@ function updateFocusableElements() {
         return;
     }
     if (screen === 'detail') {
-        var sel = '.detail-progress-btn, .file-item, .back-btn, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn';
+        // Карточки актёров/рекомендаций — тоже фокусируемые: без них «вверх» из
+        // ряда файлов торрентного detail упирается в кнопки шапки
+        var sel = '.detail-progress-btn, .file-item, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn, .catalog-actor-card, .catalog-recommendation-card';
         var els = document.querySelectorAll(sel);
         for (var i = 0; i < els.length; i++) if (els[i] && els[i].offsetParent !== null) list.push(els[i]);
         focusableElements = list;
@@ -2147,7 +2151,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         }
         return;
     } else if (container.id === 'detail-view') {
-        if (el.id === 'back-from-detail' || el.id === 'catalog-watch-btn') {
+        if (el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'detail-progress-btn') {
             applyScroll(container, { scrollTop: 0 }, smooth, SCROLL_SMOOTH.durationY);
             return;
         }
