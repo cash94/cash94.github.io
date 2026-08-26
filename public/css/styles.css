@@ -4797,3 +4797,138 @@ article {
   }
 }
 
+/* --- АДАПТИВ: 1280x720 и другие «широкие, но низкие» экраны --------------
+       Телевизоры на 720p отдают ширину 1280 (> 1024), поэтому в блок выше не
+       попадают, а базовые размеры рассчитаны на 1080p: ряд файлов уезжал под
+       нижнюю кромку. Условие по ВЫСОТЕ, а min-width развязывает этот блок с
+       предыдущим, чтобы на узких экранах два набора правил не спорили.
+       Вертикальный бюджет 720p: шапка 26 + заголовок 42 + метастрока 28 +
+       описание 42 + кнопка 58 + ряд актёров 209 + заголовок ряда 45 +
+       плитки 182 = ~630px. Остаток — на рамку фокуса и второй строку заголовка. */
+@media screen and (min-width: 1025px) and (max-height: 820px) {
+  #detail-view.torrent-detail-mode .detail-header {
+    padding: 26px 48px 0 48px !important;
+  }
+
+  #detail-view.torrent-detail-mode #back-from-detail,
+  #detail-view.torrent-detail-mode .detail-header .back-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 19px;
+    margin: 4px 4px 0 0 !important;
+  }
+
+  #detail-view.torrent-detail-mode #detail-title-text {
+    font-size: 38px !important;
+    margin: 0 0 10px 0 !important;
+    max-width: 860px;
+  }
+
+  #detail-view.torrent-detail-mode #detail-meta-row {
+    font-size: 17px;
+    margin: 0 0 8px 0;
+  }
+
+  #detail-view.torrent-detail-mode .detail-meta-item + .detail-meta-item::before {
+    margin: 0 9px;
+  }
+
+  #detail-view.torrent-detail-mode #detail-subtitle {
+    font-size: 15px !important;
+    line-height: 1.4;
+    max-width: 760px;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-detail-panel {
+    padding: 14px 48px 0 48px !important;
+  }
+
+  #detail-view.torrent-detail-mode #detail-progress-btn {
+    padding: 11px 26px !important;
+    font-size: 17px !important;
+  }
+
+  #detail-view.torrent-detail-mode #detail-progress-btn .btn-label {
+    font-size: 17px;
+  }
+
+  #detail-view.torrent-detail-mode #detail-progress-btn .btn-hint {
+    margin-left: 11px;
+    font-size: 13px;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-detail-section-title {
+    font-size: 19px !important;
+    padding-left: 48px;
+    margin-bottom: 10px !important;
+  }
+
+  #detail-view.torrent-detail-mode #files-list-title {
+    margin-top: 16px !important;
+  }
+
+  #detail-view.torrent-detail-mode #catalog-detail-actors-wrap {
+    margin-top: 18px !important;
+  }
+
+  #detail-view.torrent-detail-mode #catalog-detail-actors {
+    padding: 4px 48px 14px 48px !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-card {
+    width: 116px !important;
+    margin: 0 20px 0 0 !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-photo {
+    width: 100px;
+    height: 100px;
+    margin: 0 auto 8px auto;
+    border-width: 2px !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-no-photo {
+    font-size: 34px;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-name {
+    font-size: 15px !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-character {
+    font-size: 13px !important;
+  }
+
+  #detail-view.torrent-detail-mode .files-list {
+    padding: 4px 48px 20px 48px !important;
+  }
+
+  /* 280x158 — те же 16:9, что и у базовой плитки 320x210 без подписи */
+  #detail-view.torrent-detail-mode .file-item {
+    width: 280px;
+    min-width: 280px;
+    height: 158px;
+    margin: 0 18px 0 0 !important;
+  }
+
+  #detail-view.torrent-detail-mode .file-info {
+    padding: 22px 12px 10px 12px !important;
+  }
+
+  #detail-view.torrent-detail-mode .file-name {
+    font-size: 15px;
+  }
+
+  #detail-view.torrent-detail-mode .file-size {
+    font-size: 13px;
+  }
+
+  #detail-view.torrent-detail-mode .play-btn {
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
+    min-height: 52px;
+    font-size: 20px;
+  }
+}
+
