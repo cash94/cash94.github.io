@@ -3444,7 +3444,7 @@ article {
   margin: 0 4px 0 0 !important;
   width: 40px;
   height: 40px;
-  display: flex !important;
+  display: none !important;
   align-items: center;
   justify-content: center;
   border-radius: 50% !important;
