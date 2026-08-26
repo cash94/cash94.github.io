@@ -32,6 +32,22 @@
   <!-- CSS стили с версионированием -->
   <script>
     var VERSION = Date.now();
+
+    // Отладка на ПК: ?local=1 грузит css/js из локального public/ (его раздаёт
+    // express.static), а не с зеркала cash94.github.io. Правки видно сразу,
+    // без выкладки. Подменяем не сами строки загрузки ниже, а document.write —
+    // так на телевизоре (без флага) путь остаётся байт-в-байт прежним.
+    if (location.search.indexOf('local=1') !== -1) {
+      var _origDocWrite = document.write;
+      document.write = function (html) {
+        return _origDocWrite.call(
+          document,
+          String(html).replace(/https:\/\/cash94\.github\.io\/(?:msx|public)\//g, '/')
+        );
+      };
+      console.log('[local=1] модули грузятся из локального public/');
+    }
+
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-regular-rounded.css?v=' + VERSION + '">');
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-rounded.css?v=' + VERSION + '">');
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-chubby.css?v=' + VERSION + '">');
@@ -270,27 +286,35 @@
 
     <!-- Раздел TorrServer с торрентами -->
     <div id="torrserver-section" style="display: none;">
-      <div class="section-header">
-        <!-- Кнопка "Назад" для каталога (изначально скрыта) -->
-        <!-- <div class="back-btn" id="back-from-catalog" style="display: none;">← Назад к списку</div> -->
-        <!-- Пустой div слева для баланса -->
-        <div class="placeholder-btn"></div>
-
+      <!-- Единая шапка всего раздела: главная, торренты и каталог видят одну и ту
+           же строку навигации, поэтому «Главная» доступна из любого экрана.
+           Кнопки — те же самые элементы, что раньше лежали в .view-tabs и
+           .section-header: их id ищут app.js (#tab-*, #settings-btn),
+           donate.js (#tab-donate), control.js и torrents.js. Мы их не
+           пересоздаём, а переносим и переодеваем в .home-nav-btn, чтобы вся
+           существующая логика разделов работала без изменений.
+           Новая тут только «Главная» — её обслуживает home.js. -->
+      <div id="home-topbar">
         <div class="section-title-header">TorrStream</div>
-
-        <!-- Кнопка настроек справа (на месте refresh-torrents) -->
-        <div class="settings-btn" id="settings-btn">Настройки</div>
-      </div>
-
-      <!-- Переключатель между списком торрентов и результатами поиска -->
-      <div class="view-tabs">
-        <button class="view-tab" id="tab-catalog">Каталог</button>
-        <button class="view-tab active" id="tab-torrents">Мои торренты</button>
-        <button class="view-tab" id="tab-search">Поиск</button>
-        <button class="view-tab" id="tab-donate">Донат</button>
+        <button class="home-nav-btn active" id="home-nav-home">Главная</button>
+        <button class="view-tab home-nav-btn" id="tab-catalog">Каталог</button>
+        <button class="view-tab home-nav-btn" id="tab-torrents">Мои торренты</button>
+        <button class="view-tab home-nav-btn" id="tab-donate">Донат</button>
+        <!-- Лупа и «Настройки» уходят к правому краю: margin-left: auto у #tab-search -->
+        <button class="view-tab home-nav-btn home-nav-icon" id="tab-search" title="Поиск"><i
+            class="fi fi-rr-search"></i></button>
+        <div class="settings-btn home-nav-btn" id="settings-btn">Настройки</div>
       </div>
 
       <!-- Экраны хранятся в DOM постоянно: переключение вкладок не пересоздаёт карточки. -->
+
+      <!-- Главная страница (home.js). Лежит внутри #torrserver-section не случайно:
+           возврат из детального просмотра и hideSearchResults() безусловно ставят
+           этой секции display:block, поэтому главная возвращается сама. -->
+      <div id="content-home" class="content-screen" hidden>
+        <div id="home-rows"></div>
+      </div>
+
       <div id="content-torrents" class="content-screen">
         <div id="torrents-grid"></div>
       </div>
@@ -642,6 +666,9 @@
     document.write('<script src="https://cash94.github.io/msx/js/catalog-memory-fix.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/player-memory-fix.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/ui-customizer.js?v=' + VERSION + '"><\/script>');
+    // Главная страница — последней: патчит showContentScreen / restoreFocusAfterNavigation
+    // из app.js и closeDonateOverlay из donate.js, поэтому грузится после них
+    document.write('<script src="https://cash94.github.io/msx/js/home.js?v=' + VERSION + '"><\/script>');
 
     // Скрываем загрузчик после инициализации
     document.write('<script>');
