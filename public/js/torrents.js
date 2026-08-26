@@ -2146,7 +2146,8 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
     if (cardMediaType === 'tv') forcedTv = true;
     if (torrent.media_type === 'tv') forcedTv = true;
     if (known && known.mediaType === 'tv') forcedTv = true;
-    if (window.AppState && AppState.mediaType === 'tv') forcedTv = true;
+    // AppState.mediaType здесь не читаем: это тип предыдущего экрана, а не этого
+    // торрента (см. комментарий у knownMediaType ниже).
 
     // Если мы точно знаем, что это сериал, но сезон не смогли определить,
     // берём сезон 1 как fallback, иначе кадры сезонов не загрузятся.
@@ -2163,10 +2164,9 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
     }
 
     // Бейдж «Сериал» перебивает всё: раньше сюда попадал movie из torrent.category
-    // (у сериала category бывает movie), из уже записанного torrent.media_type
+    // (у сериала category бывает movie) и из уже записанного torrent.media_type
     // (мог быть испорчен предыдущим неверным определением — строка с details.media_type
-    // ниже) и из AppState.mediaType, который глобальный и остаётся от предыдущего
-    // экрана. Из-за этого о сериале грузились данные как о фильме (запрос к /movie).
+    // ниже). Из-за этого о сериале грузились данные как о фильме (запрос к /movie).
     var knownMediaType = (cardMediaType === 'tv') ? 'tv' : (
         torrent.media_type ||
         torrent.knownMediaType ||
@@ -2179,22 +2179,22 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
     var titleLooksLikeSeries = /(^|[^a-z0-9а-яё])(сезон|season|серия|эпизод|s\d+)([^a-z0-9а-яё]|$)/i
         .test(String(torrent.title || '').toLowerCase());
 
-    // «Фильм» с карточки — тоже сигнал о конкретном торренте, поэтому он важнее
-    // глобального AppState.mediaType. Но принимаем его только когда других признаков
-    // сериала нет: бейдж считается по числу файлов, а сериал бывает и одним файлом
-    // (один сезон / одна серия) — тогда важнее сезон из названия или из имён файлов.
+    // «Фильм» с карточки — сигнал о конкретном торренте. Принимаем его только когда
+    // других признаков сериала нет: бейдж считается по числу файлов, а сериал бывает
+    // и одним файлом (один сезон / одна серия) — тогда важнее сезон из названия или
+    // из имён файлов.
     if (!knownMediaType && cardMediaType === 'movie' &&
         seasonNumbers.length === 0 && !titleLooksLikeSeries) {
         knownMediaType = 'movie';
     }
 
-    if (!knownMediaType && window.AppState && AppState.mediaType === 'tv') {
-        knownMediaType = 'tv';
-    }
-
-    if (!knownMediaType && window.AppState && AppState.mediaType === 'movie') {
-        knownMediaType = 'movie';
-    }
+    // Глобальный AppState.mediaType сюда больше не подмешивается. Это тип текущего
+    // экрана (каталог выставляет его по категории), а не этого торрента, и он
+    // оставался от предыдущего открытия: после сериала фильм запрашивался как
+    // /api/tmdb/details?type=tv, а после фильма сериал — как ?type=movie.
+    // Тип из каталога доходит сюда по-другому — через torrent.media_type и
+    // knownTorrentMeta по hash (их заполняют playFromHash и addTorrentToServer),
+    // а также через category раздачи, которую читает getTorrentMediaTypeFromCard.
 
     if (!knownMediaType && torrent.category) {
         var categoryLower = String(torrent.category).toLowerCase();
