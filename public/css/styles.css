@@ -566,7 +566,8 @@ body {
 }
 
 #torrents-grid,
-#catalog-grid {
+#catalog-grid,
+#catalog-rows {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 10px;
@@ -1772,7 +1773,8 @@ body.detail-open {
 
 @media (max-width: 768px) {
   #torrents-grid,
-  #catalog-grid {
+  #catalog-grid,
+  #catalog-rows {
     grid-template-columns: repeat(2, 1fr);
   }
 
@@ -2945,6 +2947,7 @@ html {
 .catalog-recommendation-card {
   scroll-snap-align: start;
   scroll-margin-inline: 20px;
+  will-change: transform;
   /* Горизонтальный отступ при скролле */
 }
 
@@ -3304,7 +3307,25 @@ article {
   content-visibility: auto;
   contain-intrinsic-size: 280px 400px;
   contain: layout style paint;
+  will-change: transform;
 
+}
+
+/* Карточки сетки категории: резерв под неотрисованной карточкой обязан совпадать
+   с реальной высотой ряда, иначе каждый входящий в кадр ряд меняет размер и
+   толкает всё, что ниже (это и есть рывки при прокрутке вниз).
+   Реальную высоту замеряет measureCatalogCardHeight() в catalog.js и пишет в
+   --catalog-card-h — она учитывает и настройки ui-customizer.js.
+   Значения ниже — резерв до первого замера, посчитанный под базовую сетку из
+   этого файла: 5 колонок, gap 10px, padding 8px у #catalog-grid, 16px у
+   #torrserver-section, то есть колонка = (100vw - 88px)/5, а высота = постер
+   (ширина минус бордеры, aspect-ratio 2/3) плюс 68px подписи.
+   Ряды каталога это правило не задевает: у них своя фиксированная геометрия и
+   .catalog-row-viewport постоянной высоты, где рост скрытой карточки ничего не
+   двигает. */
+#catalog-grid > .torrent-card.catalog-card {
+  contain-intrinsic-size: calc((100vw - 88px) / 5)
+    var(--catalog-card-h, calc(((100vw - 88px) / 5 - 2px) * 1.5 + 68px));
 }
 
 .torrent-poster {
@@ -3897,17 +3918,42 @@ article {
   position: relative;
 }
 
+/* Вьюпорт больше не прокручивается нативно — он только окно-обрезка.
+   Карусель двигает внутренний трек через transform: translate3d, потому что
+   твин scrollLeft заставляет браузер каждый кадр делать layout + paint всего
+   контейнера, а трансформация уходит в композитор. На Android TV разница
+   заметна. Позиция карусели теперь читается/пишется хелперами
+   getScrollX / setScrollX (control.js), а не через scrollLeft. */
 .catalog-row-viewport {
-  display: flex;
-  gap: 18px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 10px 40px 20px;
-  scrollbar-width: none;
+  overflow: hidden;
 }
 
-.catalog-row-viewport::-webkit-scrollbar {
-  display: none;
+/* Padding перенесён сюда с вьюпорта: у нативного скролла отступы входили в
+   прокручиваемую область, у трека они входят в его ширину — геометрия
+   (и getBoundingClientRect вьюпорта) остаётся прежней. */
+.catalog-row-track {
+  display: flex;
+  gap: 18px;
+  padding: 10px 40px 20px;
+  width: -webkit-max-content;
+  width: max-content;
+  /* Единичная 2D-трансформация: контекст наложения у трека одинаковый и до
+     первого твана, и после — иначе z-index сфокусированного постера при первом
+     движении карусели менял бы область действия. Слой в композиторе она НЕ
+     создаёт, в отличие от translate3d/will-change: ~8 постоянных слоёв по
+     2900×490 съели бы десятки МБ видеопамяти. Слой создаёт сам gsap на время
+     твана (force3D: "auto" по умолчанию) и отпускает после. */
+  transform: translateX(0);
+}
+
+/* ===== Оконная видимость рядов и карточек (catalog.js) =====
+   Строки/карточки дальше пары строк от вьюпорта не отрисовываются.
+   visibility, а не display: none — бокс остаётся на месте, поэтому
+   scrollHeight контейнера и позиция скролла не меняются, а
+   IntersectionObserver продолжает видеть элемент и сможет снять класс
+   при приближении. */
+.catalog-offscreen {
+  visibility: hidden;
 }
 
 /* ===== Карточка в ряду (260×460) ===== */
@@ -4029,7 +4075,7 @@ article {
   }
 
   /* --- Карусель --- */
-  .catalog-row-viewport {
+  .catalog-row-track {
     gap: 14px;
     padding: 8px 24px 16px;
   }
@@ -4358,3 +4404,396 @@ article {
 .catalog-poster-img.loaded {
     opacity: 1;
 }
+
+/* ============================================================================
+   ТОРРЕНТНЫЙ DETAIL-VIEW — Netflix-раскладка (showDetail в torrents.js)
+   ----------------------------------------------------------------------------
+   Всё под классом .torrent-detail-mode, который ставит visibleItemsforDetail
+   ('showDetail') и снимает resetDetailBackground / 'showCatalogDetail'.
+   Каталожный detail этот блок не задевает.
+
+   Сверху вниз: герой (бэкдроп + заголовок + метастрока + описание + «Играть»),
+   ряд актёров, ряд плиток-файлов с горизонтальным скроллом.
+
+   Совместимость с Vidaa OS / Chrome 66: без flex-gap (только margin), без
+   aspect-ratio, без backdrop-filter. !important стоит там, где ниже по
+   каскаду уже лежит !important или инлайн-стиль из JS.
+   ============================================================================ */
+
+/* --- ГЕРОЙ: шапка ------------------------------------------------------- */
+#detail-view.torrent-detail-mode .detail-header {
+  align-items: flex-start !important;
+  padding: 46px 64px 0 64px !important;
+}
+
+/* Кнопка «Назад» — крупнее и на уровне первой строки заголовка */
+#detail-view.torrent-detail-mode #back-from-detail,
+#detail-view.torrent-detail-mode .detail-header .back-btn {
+  width: 52px;
+  height: 52px;
+  font-size: 22px;
+  margin: 6px 4px 0 0 !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+#detail-view.torrent-detail-mode #back-from-detail.focused,
+#detail-view.torrent-detail-mode .detail-header .back-btn.focused {
+  background: #ff8c00 !important;
+  border-color: #ff8c00;
+  color: #000 !important;
+  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.35) !important;
+}
+
+#detail-view.torrent-detail-mode #detail-title-text {
+  font-size: 52px !important;
+  line-height: 1.1;
+  margin: 0 0 14px 0 !important;
+  max-width: 1180px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.85);
+}
+
+/* --- ГЕРОЙ: строка метаданных ------------------------------------------ */
+/* display без !important — иначе .hidden перестанет прятать пустую строку */
+#detail-view.torrent-detail-mode #detail-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 20px;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  margin: 0 0 12px 0;
+}
+
+/* Разделители точками вместо flex-gap (в Chrome 66 gap у flex не работает) */
+#detail-view.torrent-detail-mode .detail-meta-item + .detail-meta-item::before {
+  content: "\00B7";
+  margin: 0 12px;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+#detail-view.torrent-detail-mode .detail-meta-rating {
+  color: #46d369;
+  font-weight: 700;
+}
+
+#detail-view.torrent-detail-mode .detail-meta-badge {
+  margin-left: 12px;
+  padding: 2px 9px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+}
+
+#detail-view.torrent-detail-mode #detail-subtitle {
+  font-size: 19px !important;
+  line-height: 1.45;
+  -webkit-line-clamp: 2;
+  max-width: 980px;
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+/* --- ГЕРОЙ: кнопка «Играть / Продолжить» ------------------------------- */
+#detail-view.torrent-detail-mode .catalog-detail-panel {
+  padding: 20px 64px 0 64px !important;
+  max-width: none;
+}
+
+#detail-view.torrent-detail-mode #catalog-detail-actions {
+  margin-bottom: 0;
+}
+
+/* Белая кнопка — главное действие экрана, как в Netflix */
+#detail-view.torrent-detail-mode #detail-progress-btn {
+  gap: 0 !important;
+  align-items: baseline;
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 13px 34px !important;
+  font-size: 20px !important;
+  font-weight: 700 !important;
+}
+
+#detail-view.torrent-detail-mode #detail-progress-btn:hover,
+#detail-view.torrent-detail-mode #detail-progress-btn.focused {
+  background: #ffffff !important;
+  box-shadow: 0 0 0 5px #ff8c00, 0 8px 26px rgba(0, 0, 0, 0.55) !important;
+}
+
+#detail-view.torrent-detail-mode #detail-progress-btn .btn-label {
+  font-size: 20px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Подсказка «Серия 3 · 0:12:45 / 0:48:00» — тем же кеглем не читается */
+#detail-view.torrent-detail-mode #detail-progress-btn .btn-hint {
+  margin-left: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+}
+
+/* --- ЗАГОЛОВКИ РЯДОВ --------------------------------------------------- */
+#detail-view.torrent-detail-mode .catalog-detail-section-title {
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  padding-left: 64px;
+  margin-bottom: 14px !important;
+}
+
+/* Заголовок ряда файлов лежит прямо в #detail-view, поэтому его, как и
+   остальной контент, нужно поднять над sticky-градиентом #detail-view::before */
+#detail-view.torrent-detail-mode #files-list-title {
+  position: relative;
+  z-index: 2;
+  margin-top: 26px !important;
+}
+
+/* --- РЯД АКТЁРОВ ------------------------------------------------------- */
+#detail-view.torrent-detail-mode #catalog-detail-actors-wrap {
+  margin-top: 30px !important;
+  padding: 0 !important;
+}
+
+/* Из 12-колоночной сетки делаем горизонтальную ленту: карточек может быть
+   больше, чем колонок, и на ТВ по ней ездят пультом влево-вправо */
+#detail-view.torrent-detail-mode #catalog-detail-actors {
+  display: flex !important;
+  grid-template-columns: none !important;
+  gap: 0 !important;
+  padding: 6px 64px 22px 64px !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+#detail-view.torrent-detail-mode #catalog-detail-actors::-webkit-scrollbar {
+  display: none;
+}
+
+#detail-view.torrent-detail-mode .catalog-actor-card {
+  width: 150px !important;
+  margin: 0 26px 0 0 !important;
+  background: transparent !important;
+  overflow: visible;
+}
+
+#detail-view.torrent-detail-mode .catalog-actor-photo {
+  width: 132px;
+  height: 132px;
+  margin: 0 auto 12px auto;
+  border: 3px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#detail-view.torrent-detail-mode .catalog-actor-no-photo {
+  font-size: 46px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+#detail-view.torrent-detail-mode .catalog-actor-info {
+  padding: 0 4px;
+}
+
+#detail-view.torrent-detail-mode .catalog-actor-name {
+  font-size: 17px !important;
+  font-weight: 600 !important;
+  line-height: 1.25;
+}
+
+#detail-view.torrent-detail-mode .catalog-actor-character {
+  font-size: 14px !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+  line-height: 1.3;
+}
+
+/* Рамка фокуса — по кругу аватара, а не по квадрату карточки */
+#detail-view.torrent-detail-mode .catalog-actor-card.focused {
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+#detail-view.torrent-detail-mode .catalog-actor-card.focused .catalog-actor-photo {
+  border-color: #ff8c00 !important;
+  box-shadow: 0 0 0 4px rgba(255, 140, 0, 0.35), 0 8px 26px rgba(0, 0, 0, 0.6);
+}
+
+#detail-view.torrent-detail-mode .catalog-actor-card.focused .catalog-actor-name {
+  color: #fff !important;
+}
+
+#detail-view.torrent-detail-mode .catalog-actor-card.focused .catalog-actor-character {
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+/* --- РЯД ФАЙЛОВ (плитки, горизонтальный скролл) ------------------------ */
+#detail-view.torrent-detail-mode .files-list {
+  margin-top: 0 !important;
+  padding: 6px 64px 44px 64px !important;
+  gap: 0 !important;
+  overflow-y: hidden !important;
+}
+
+/* Широкая плитка под кадр 16:9 — кадр TMDB перестаёт обрезаться по бокам */
+#detail-view.torrent-detail-mode .file-item {
+  width: 320px;
+  min-width: 320px;
+  height: 210px;
+  margin: 0 24px 0 0 !important;
+  border-radius: 10px;
+  background: #14141c;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  transition: box-shadow 0.2s ease;
+}
+
+/* Подпись висит на градиенте, а не на чёрной плашке */
+#detail-view.torrent-detail-mode .file-info {
+  padding: 28px 14px 12px 14px !important;
+  background: linear-gradient(to top,
+      rgba(0, 0, 0, 0.95) 0%,
+      rgba(0, 0, 0, 0.78) 45%,
+      rgba(0, 0, 0, 0) 100%) !important;
+  border-top: none !important;
+  border-radius: 0 0 10px 10px;
+}
+
+#detail-view.torrent-detail-mode .file-name {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 3px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+#detail-view.torrent-detail-mode .file-size {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+#detail-view.torrent-detail-mode .file-still-placeholder {
+  background: linear-gradient(135deg, #23233a, #14141c);
+}
+
+/* Кнопку play показываем только на плитке под фокусом */
+#detail-view.torrent-detail-mode .file-content {
+  height: 100%;
+}
+
+#detail-view.torrent-detail-mode .play-btn {
+  width: 62px;
+  height: 62px;
+  min-width: 62px;
+  min-height: 62px;
+  padding: 0;
+  font-size: 24px;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+#detail-view.torrent-detail-mode .file-item:hover .play-btn,
+#detail-view.torrent-detail-mode .file-item.focused .play-btn {
+  opacity: 1;
+  transform: scale(1);
+  background: #ffffff;
+  color: #000000;
+  border-color: #ffffff;
+}
+
+/* Полоса просмотра лежала под .file-info (z-index 2) и была не видна */
+#detail-view.torrent-detail-mode .file-progress-container {
+  z-index: 3 !important;
+  height: 5px !important;
+  border-radius: 0 !important;
+  background: rgba(255, 255, 255, 0.22) !important;
+}
+
+#detail-view.torrent-detail-mode .file-item.has-progress {
+  border-bottom: none;
+}
+
+/* Рамка фокуса плитки — толще базовых 3px: с дивана 3px не видно.
+   Без transform: scale — плитка внутри overflow-x обрезалась бы по краям */
+#detail-view.torrent-detail-mode .file-item.focused {
+  box-shadow: 0 0 0 5px #ff8c00, 0 14px 40px rgba(0, 0, 0, 0.7) !important;
+  border-radius: 10px;
+}
+
+/* --- АДАПТИВ: узкие экраны (блок идёт после медиа-запросов выше по файлу,
+       поэтому свои отступы приходится задавать здесь же) ----------------- */
+@media screen and (max-width: 1024px) {
+  #detail-view.torrent-detail-mode .detail-header {
+    padding: 20px 28px 0 28px !important;
+  }
+
+  #detail-view.torrent-detail-mode #detail-title-text {
+    font-size: 30px !important;
+  }
+
+  #detail-view.torrent-detail-mode #detail-meta-row {
+    font-size: 15px;
+  }
+
+  #detail-view.torrent-detail-mode #detail-subtitle {
+    font-size: 15px !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-detail-panel {
+    padding: 14px 28px 0 28px !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-detail-section-title {
+    font-size: 18px !important;
+    padding-left: 28px;
+  }
+
+  #detail-view.torrent-detail-mode #catalog-detail-actors {
+    padding: 6px 28px 18px 28px !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-card {
+    width: 110px !important;
+    margin-right: 18px !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-photo {
+    width: 96px;
+    height: 96px;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-name {
+    font-size: 13px !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-character {
+    font-size: 11px !important;
+  }
+
+  #detail-view.torrent-detail-mode .files-list {
+    padding: 6px 28px 28px 28px !important;
+  }
+
+  #detail-view.torrent-detail-mode .file-item {
+    width: 240px;
+    min-width: 240px;
+    height: 160px;
+    margin-right: 16px !important;
+  }
+
+  #detail-view.torrent-detail-mode .file-name {
+    font-size: 14px;
+  }
+}
+
