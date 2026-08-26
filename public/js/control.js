@@ -296,6 +296,12 @@ function currentScreen() {
         if (_isScreenVisible(getEl('search-overlay'))) return 'search';
         if (_isScreenVisible(getEl('donate-overlay'))) return 'donate';
 
+        // Главная (home.js). Проба идёт после всех оверлеев: _isScreenVisible
+        // смотрит только на сам элемент, поэтому #content-home «виден» и когда
+        // над ним открыты настройки или поиск. Единственный признак того, что
+        // главная активна — снятый с неё атрибут hidden.
+        if (_isScreenVisible(getEl('content-home'))) return 'home';
+
         if (ss === 'catalog' || (window.AppState && AppState.inSearch === 'catalog')) return 'catalog';
 
         var cg = getEl('catalog-grid') || getEl('catalog-rows');
@@ -313,6 +319,9 @@ function currentScreen() {
 function belongsToScreen(el, screen) {
     if (!el) return false;
 
+    if (screen === 'home') {
+        return !!(el.closest('#content-home') || el.classList.contains('home-nav-btn'));
+    }
     if (screen === 'torrents') {
         return el.closest('.torrent-card') || el.classList.contains('file-item') ||
             ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-donate', 'back-from-detail', 'tab-catalog'].indexOf(el.id) !== -1;
@@ -1211,6 +1220,22 @@ function updateFocusableElements() {
         _focusCache.gen = _focusGen;
         return;
     }
+    if (screen === 'home') {
+        // Шапка + все карточки рядов главной. Карточки с классом
+        // catalog-offscreen намеренно остаются в списке: visibility: hidden не
+        // обнуляет offsetParent, поэтому фокус может уехать на скрытый ряд, а
+        // focusEl() снимет с него класс через revealCatalogElement().
+        var navBtns = document.querySelectorAll('#home-topbar .home-nav-btn');
+        for (var i = 0; i < navBtns.length; i++) if (navBtns[i].offsetParent !== null) list.push(navBtns[i]);
+        var homeCards = document.querySelectorAll('#home-rows .torrent-card.catalog-card');
+        for (var i = 0; i < homeCards.length; i++) if (homeCards[i].offsetParent !== null) list.push(homeCards[i]);
+        focusableElements = list;
+        _focusCache.timestamp = now;
+        _focusCache.screen = screen;
+        _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
+        return;
+    }
     if (screen === 'torrents') {
         var searchInput = getEl('search-query'), searchBtn = getEl('search-btn'), settingsBtn = getEl('settings-btn');
         var tabTorrents = getEl('tab-torrents'), tabSearch = getEl('tab-search'), tabCatalog = getEl('tab-catalog');
@@ -1494,9 +1519,18 @@ function onOk() {
     return strategy.onOk(f);
 }
 
+// Главная (home.js) как «подложка» под настройками и поиском. currentScreen()
+// для этого не годится: настройки гасят #torrserver-section целиком, поэтому
+// смотрим только на атрибут hidden самого экрана главной.
+function isHomeUnderneath() {
+    var h = getEl('content-home');
+    return !!(h && !h.hidden);
+}
+
 function onBack() {
     var s = getEl('search-overlay'), d = getEl('detail-view'), c = getEl('config-screen');
     var cat = currentScreen() === 'catalog', dn = currentScreen() === 'donate';
+    var hm = currentScreen() === 'home';
 
     var configScreen = getEl('config-screen');
     // Проверяем, открыта ли панель фильтров
@@ -1531,6 +1565,12 @@ function onBack() {
             configScreen.style.display = 'none';
             var torrserverSection = getEl('torrserver-section');
             if (torrserverSection) torrserverSection.style.display = 'block';
+            // Из настроек возвращаемся туда, откуда пришли: если под ними
+            // осталась главная, торренты показывать нельзя
+            if (isHomeUnderneath() && window.HomeScreen) {
+                window.HomeScreen.show({ restoreFocus: true });
+                return true;
+            }
             try { window.AppState.currentScreen = 'torrents'; } catch (e) { }
             setTimeout(function () { ScreenStrategies.torrents.ensureFocus(true); }, 180);
             return true;
@@ -1569,7 +1609,12 @@ function onBack() {
                 return true;
             }
         }
-        if (typeof window.hideSearchResults === 'function') { window.hideSearchResults(); focusEl(getTorrentTabs()[2]); }
+        if (typeof window.hideSearchResults === 'function') {
+            window.hideSearchResults();
+            // hideSearchResults сам возвращает фокус на главную (ветка
+            // returnTo === 'home'), вкладку поиска в этом случае не трогаем
+            if (!isHomeUnderneath()) focusEl(getTorrentTabs()[2]);
+        }
         else leaveSearchToTorrents();
         return true;
     }
@@ -1584,6 +1629,14 @@ function onBack() {
         return true;
     }
     if (dn) { if (typeof window.closeDonateOverlay === 'function') window.closeDonateOverlay(); return true; }
+    if (hm) {
+        // Главная — точка входа: наружу уходить некуда. «Назад» из рядов
+        // поднимает фокус в шапку, из шапки не делает ничего.
+        if (window.HomeScreen && typeof window.HomeScreen.handleBack === 'function') {
+            return window.HomeScreen.handleBack();
+        }
+        return true;
+    }
     if (cat) {
         // Из рядов уходить некуда: «назад» здесь ничего не делает. Раньше признаком
         // рядов было наличие .catalog-folder-card в #catalog-grid — теперь карточки
@@ -1599,6 +1652,10 @@ function onBack() {
         var m = getEl('torrserver-section');
         c.style.display = 'none';
         if (m) m.style.display = 'block';
+        if (isHomeUnderneath() && window.HomeScreen) {
+            window.HomeScreen.show({ restoreFocus: true });
+            return true;
+        }
         try { window.AppState.currentScreen = 'torrents'; } catch (e) { }
         setTimeout(function () { ScreenStrategies.torrents.ensureFocus(true); }, 180);
         return true;
@@ -2205,7 +2262,9 @@ function focusEl(el, opts) {
         el.id === 'filter-back-btn' || el.id === 'filter-close-btn' ||
         el.id === 'reset-filters';
 
-    if (s === 'catalog' || s === 'torrents' || s === 'config') {
+    // 'home' здесь обязателен: без него карточка ряда главной не подтягивала бы
+    // вертикальный скролл #main-container, и фокус уезжал бы за пределы экрана
+    if (s === 'catalog' || s === 'torrents' || s === 'config' || s === 'home') {
         var rowVp = (isRowCard && el.closest) ? el.closest('.catalog-row-viewport') : null;
         container = rowVp || getEl('main-container');
     } else if (s === 'search') {
@@ -2522,7 +2581,7 @@ function setupFocusRescue() {
     document.addEventListener('keydown', function (e) {
         var s = currentScreen();
         if (s === 'player') return;
-        if (['torrents', 'catalog', 'search', 'detail', 'config', 'donate'].indexOf(s) === -1) return;
+        if (['home', 'torrents', 'catalog', 'search', 'detail', 'config', 'donate'].indexOf(s) === -1) return;
         var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
         if (isBackKey(e.keyCode)) {
             if (ed) {
