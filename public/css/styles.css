@@ -4932,3 +4932,182 @@ article {
   }
 }
 
+
+/* ==========================================================================
+   ГЛАВНАЯ СТРАНИЦА (home.js) + ОБЩАЯ ШАПКА РАЗДЕЛА
+   Ряды используют классы каталога (.catalog-row*, .catalog-row-card), поэтому
+   геометрия карточек, стили фокуса и настройки UI Customizer применяются к ним
+   без единой дополнительной строки. Здесь — только шапка и контейнер рядов.
+   ========================================================================== */
+
+/* display: block, а не grid: у #catalog-rows сетка нужна для второго вида
+   (#catalog-grid), а тут ряды всегда идут в столбик. Заодно ни одного
+   flex/grid-gap — на Vidaa он не работает. */
+#home-rows {
+  display: block;
+  padding: 4px 0 50px;
+}
+
+#home-rows .catalog-row {
+  margin-bottom: 6px;
+}
+
+/* У подборок TMDB нет экрана-сетки, открывать заголовок нечем */
+#home-rows .catalog-row-header {
+  cursor: default;
+}
+
+#home-rows .catalog-row-title::after {
+  content: none;
+}
+
+/* ===== Общая шапка раздела =====
+   Одна строка на все экраны (#content-home / #content-torrents /
+   #content-catalog), поэтому «Главная» доступна из любого места. Раскладка как
+   у Netflix: название и разделы слева, лупа и «Настройки» — у правого края. */
+#home-topbar {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  padding: 12px 40px 14px;
+  margin: -16px -16px 10px;
+  /* компенсируем padding #torrserver-section, чтобы полоса шла во всю ширину */
+  background: linear-gradient(180deg, #000 0%, #000 62%, rgba(0, 0, 0, 0) 100%);
+}
+
+/* gap на Vidaa не поддержан — отступ даём соседям через margin */
+#home-topbar > .home-nav-btn + .home-nav-btn {
+  margin-left: 22px;
+}
+
+/* Правая группа: auto съедает всё свободное место до лупы. Селектор из двух id
+   специфичнее правила выше, поэтому margin-left соседа его не перебивает. */
+#home-topbar #tab-search {
+  margin-left: auto;
+}
+
+#home-topbar #settings-btn {
+  margin-left: 22px;
+}
+
+/* Название раздела в роли логотипа. Оно же разрывает цепочку
+   .home-nav-btn + .home-nav-btn, поэтому отступ у «Главной» задаёт этот
+   margin-right, а не правило выше. */
+#home-topbar .section-title-header {
+  flex: none;
+  margin: 0 32px 0 0;
+  font-size: 26px;
+  line-height: 1;
+  color: #ff8c00;
+}
+
+/* app.js вставляет предупреждение о версии сразу за .section-title-header
+   (app.js:292). В строке шапки места ему нет — уводим под неё абсолютом,
+   иначе flex-nowrap сожмёт кнопки. */
+#home-topbar .version-warning {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+}
+
+/* Пункты навигации — текстом, без таблеток. Селектор перебивает legacy-стили
+   .view-tab и .settings-btn: эти элементы физически те же, что раньше лежали
+   во .view-tabs, мы их только перенесли в шапку. border: 0 гасит и
+   `border-color: #000 !important` из блока на строке 1838 — цвет там задан,
+   а ширина нет. */
+.home-nav-btn {
+  padding: 6px 2px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: #b3b3b3;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: nowrap;
+  outline: none;
+}
+
+/* Лупа: круглая обводка вместо текста. Рамка есть всегда, просто прозрачная —
+   иначе на фокусе кнопка подросла бы на 4px и сдвинула соседей. */
+.home-nav-btn.home-nav-icon {
+  padding: 7px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  font-size: 19px;
+  line-height: 1;
+  color: #fff;
+}
+
+.home-nav-btn.home-nav-icon i {
+  display: block;
+  line-height: 1;
+}
+
+/* Активный раздел: белый и жирный, как «Home» у Netflix */
+.home-nav-btn.active {
+  color: #fff;
+  font-weight: 700;
+  background: transparent;
+}
+
+/* Фокус пульта — только цвет текста, из UI Customizer (--focus-color).
+   box-shadow: none гасит общее правило `.focused{box-shadow:…!important}`
+   (строка 2955) и такое же, которое UI Customizer подставляет своим цветом:
+   у селектора из двух классов специфичность выше. */
+.home-nav-btn.focused {
+  color: var(--focus-color, #ff8c00);
+  background: transparent;
+  box-shadow: none !important;
+}
+
+/* У лупы вместо текста подсвечиваем обводку. !important нужен из-за
+   `border-color: #000000 !important` для .view-tab на строке 1838 — этот класс
+   на кнопке остался, чтобы её id продолжали видеть старые обработчики. */
+.home-nav-btn.home-nav-icon.focused {
+  border-color: var(--focus-color, #ff8c00) !important;
+}
+
+/* ===== Адаптация для 720–960px (ТВ) ===== */
+@media (min-width: 720px) and (max-width: 960px) {
+
+  #home-rows {
+    padding: 2px 0 36px;
+  }
+
+  #home-rows .catalog-row {
+    margin-bottom: 4px;
+  }
+
+  #home-topbar {
+    padding: 8px 24px 10px;
+    margin: -16px -16px 6px;
+  }
+
+  #home-topbar > .home-nav-btn + .home-nav-btn,
+  #home-topbar #settings-btn {
+    margin-left: 16px;
+  }
+
+  #home-topbar .section-title-header {
+    margin: 0 22px 0 0;
+    font-size: 20px;
+  }
+
+  .home-nav-btn {
+    padding: 4px 2px;
+    font-size: 14px;
+  }
+
+  .home-nav-btn.home-nav-icon {
+    padding: 5px;
+    font-size: 15px;
+  }
+}
