@@ -1655,7 +1655,10 @@ function renderDetailActorsFromDetails(details) {
 
     grid.innerHTML = html;
     wrap.classList.remove('hidden');
-    // Карточки актёров попадают в фокусируемые только после появления в DOM
+    // Карточки актёров попадают в фокусируемые только после появления в DOM.
+    // Сброс кэша обязателен: у detail он живёт 100 мс по времени и по поколению
+    // DOM, поэтому без invalidateFocusCache() новый ряд мог не попасть в список.
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     if (typeof updateFocusableElements === 'function') updateFocusableElements();
 }
 // ==================== /ТОРРЕНТНЫЙ DETAIL ====================
@@ -1871,6 +1874,7 @@ async function showDetail(torrent) {
     }
     setTimeout(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+            if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
             updateFocusableElements();
             // Фокус ставим на «Играть/Продолжить», а не на первую плитку. Строка
             // метаданных и ряд актёров приходят из TMDB позже и сдвигают ряд файлов
