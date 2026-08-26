@@ -50,9 +50,12 @@
         { key: 'popular_tv', name: 'Популярные сериалы', source: 'tmdb' }
     ];
 
-    // Кнопки шапки: id → что делать по OK/клику
-    var NAV_BUTTONS = ['home-nav-search', 'home-nav-home', 'home-nav-catalog',
-        'home-nav-torrents', 'home-nav-donate', 'home-nav-settings'];
+    // Кнопки общей шапки #home-topbar в порядке DOM — по нему ходит навигация
+    // влево/вправо. Это те же самые элементы, что и вкладки разделов
+    // (#tab-*, #settings-btn): свои обработчики у них уже есть, новая тут
+    // только «Главная» (#home-nav-home).
+    var NAV_BUTTONS = ['home-nav-home', 'tab-catalog', 'tab-torrents',
+        'tab-donate', 'tab-search', 'settings-btn'];
 
     var homeState = {
         built: false,            // ряды собраны и лежат в DOM
@@ -132,6 +135,10 @@
      */
     function saveHomeScroll() {
         if (!window.AppState) return;
+        // Шапка общая для всех разделов, поэтому её кнопки жмут и из каталога:
+        // там #main-container прокручен по каталогу, и запоминать эту позицию
+        // как «скролл главной» нельзя.
+        if (!isHomeVisible()) return;
         var mc = el('main-container');
         if (!mc) return;
         AppState.contentScroll = AppState.contentScroll || {};
@@ -810,11 +817,17 @@
     }
 
     function belongsToHome(target) {
-        if (!target || !target.closest) return false;
+        if (!target) return false;
+        // Кнопки шапки лежат в #home-topbar, снаружи #content-home
+        if (target.classList && target.classList.contains('home-nav-btn')) return true;
+        if (!target.closest) return false;
         return !!target.closest('#content-home');
     }
 
     function handleHomeNavigation(dir) {
+        // control.js читает направление при доводке скролла (setFocus → focusEl),
+        // но стратегии главной его не передаёт — выставляем сами
+        window.lastNavDirection = dir;
         var f = document.querySelector('.focused');
         var btns = getNavButtons();
         var bi = (f && btns.indexOf) ? btns.indexOf(f) : -1;
@@ -918,20 +931,32 @@
         return true;
     }
 
-    function onNavButton(id) {
+    function onNavButton(id, viaClick) {
         homeState.lastNavBtnId = id;
         saveHomeScroll();
-        if (id === 'home-nav-search') return openSearchFromHome();
-        if (id === 'home-nav-home') {
-            scrollHomeToTop();
-            if (homeState.rows.length) return focusCard(0, 0);
-            return true;
-        }
-        if (id === 'home-nav-catalog') return clickHidden('tab-catalog');
-        if (id === 'home-nav-torrents') return clickHidden('tab-torrents');
-        if (id === 'home-nav-donate') return clickHidden('tab-donate');
-        if (id === 'home-nav-settings') return clickHidden('settings-btn');
-        return false;
+
+        // «Главная» — единственная кнопка шапки без своего обработчика
+        if (id === 'home-nav-home') return goHome();
+
+        // Остальные кнопки — настоящие вкладки разделов. На реальном клике их
+        // собственный обработчик уже сработал (мы поймали то же событие на
+        // всплытии), и повторный click() открыл бы раздел дважды. С пульта
+        // клика нет — там мы его и создаём.
+        if (viaClick) return true;
+        if (id === 'tab-search') return openSearchFromHome();
+        return clickHidden(id);
+    }
+
+    /**
+     * «Главная» работает из любого раздела: на самой главной это «наверх, к
+     * первому ряду», из каталога / торрентов — полноценный возврат домой
+     * (showHome прячет чужие экраны и снимает hidden с #content-home).
+     */
+    function goHome() {
+        if (!isHomeVisible()) return showHome({ restoreFocus: true });
+        scrollHomeToTop();
+        if (homeState.rows.length) return focusCard(0, 0);
+        return true;
     }
 
     function onHomeOk(f) {
@@ -970,10 +995,12 @@
 
         // Экран неизвестный для app.js → прячет и торренты, и каталог,
         // ставит AppState.currentScreen = 'home' и возвращает свой скролл.
-        // Обёртка ниже показывает #content-home и добавляет класс home-active.
+        // Обёртка ниже снимает hidden с #content-home и подсвечивает «Главную».
         if (typeof window.showContentScreen === 'function') window.showContentScreen('home');
         else if (window.AppState) AppState.currentScreen = 'home';
         screen.hidden = false;
+        var homeBtn = el('home-nav-home');
+        if (homeBtn) homeBtn.classList.add('active');
 
         if (window.AppState) {
             AppState.inSearch = 'home';
@@ -1035,7 +1062,7 @@
         var origShowContentScreen = window.showContentScreen;
         window.showContentScreen = function (screen) {
             var homeScreen = el('content-home');
-            var section = el('torrserver-section');
+            var homeBtn = el('home-nav-home');
             // Уходя с главной, сохраняем её скролл сами: оригинал запоминает
             // позицию только для torrents и catalog
             if (window.AppState && AppState.currentScreen === 'home' && screen !== 'home') {
@@ -1044,10 +1071,22 @@
                 if (mc) AppState.contentScroll.home = mc.scrollTop;
                 homeState.detailFromHome = false;
             }
+            // Экраны раздела живут в DOM постоянно, видимость переключается
+            // через hidden. Уходя на главную, прячем чужие экраны сами: app.js
+            // на телевизоре грузится со старого зеркала, и полагаться на то,
+            // как он обходится с неизвестным ему экраном, нельзя.
+            if (screen === 'home') {
+                var screens = document.querySelectorAll('#torrserver-section .content-screen');
+                for (var i = 0; i < screens.length; i++) {
+                    if (screens[i] !== homeScreen) screens[i].hidden = true;
+                }
+            }
             if (homeScreen) homeScreen.hidden = (screen !== 'home');
-            if (section) {
-                if (screen === 'home') section.classList.add('home-active');
-                else section.classList.remove('home-active');
+            // «Главная» подсвечена по тому же правилу, что вкладки разделов:
+            // .active — у того пункта, чей экран открыт
+            if (homeBtn) {
+                if (screen === 'home') homeBtn.classList.add('active');
+                else homeBtn.classList.remove('active');
             }
             if (typeof origShowContentScreen === 'function') {
                 return origShowContentScreen.apply(this, arguments);
@@ -1131,11 +1170,14 @@
 
         var topbar = el('home-topbar');
         if (topbar) {
+            // Слушаем на перехвате: обработчики самих вкладок висят на кнопках,
+            // и на всплытии главная уже была бы спрятана — saveHomeScroll()
+            // записал бы чужой скролл (см. его guard на isHomeVisible).
             topbar.addEventListener('click', function (e) {
                 var btn = e.target.closest ? e.target.closest('.home-nav-btn') : null;
                 if (!btn) return;
-                onNavButton(btn.id);
-            });
+                onNavButton(btn.id, true);
+            }, true);
         }
 
         var rows = el('home-rows');
