@@ -423,7 +423,7 @@ function getSearchResults() {
 }
 
 function getDetailItems() {
-    var s = ['.back-btn', '.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
+    var s = ['.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
     // Сборный селектор → порядок обхода совпадает с порядком в DOM, а не с
     // порядком селекторов. Важно для торрентного detail: там ряд актёров идёт
     // ПЕРЕД файлами, и «вверх» от плитки должно попадать в него.
@@ -900,7 +900,7 @@ var ScreenStrategies = {
 
             // ИСПРАВЛЕНО: используем прямой вызов getDetailItems() вместо this.getItems()
             var items = getDetailItems();
-            return focusEl(items[0] || getEl('back-from-detail'));
+            return focusEl(items[0]); // || getEl('back-from-detail'));
         },
         handleNavigation: function (dir) {
             var items = getDetailItems(), f = (belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null);
@@ -1201,7 +1201,7 @@ function updateFocusableElements() {
     if (screen === 'detail') {
         // Карточки актёров/рекомендаций — тоже фокусируемые: без них «вверх» из
         // ряда файлов торрентного detail упирается в кнопки шапки
-        var sel = '.detail-progress-btn, .file-item, .back-btn, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn, .catalog-actor-card, .catalog-recommendation-card';
+        var sel = '.detail-progress-btn, .file-item, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn, .catalog-actor-card, .catalog-recommendation-card';
         var els = document.querySelectorAll(sel);
         for (var i = 0; i < els.length; i++) if (els[i] && els[i].offsetParent !== null) list.push(els[i]);
         focusableElements = list;
@@ -2151,7 +2151,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         }
         return;
     } else if (container.id === 'detail-view') {
-        if (el.id === 'back-from-detail' || el.id === 'catalog-watch-btn') {
+        if (el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'detail-progress-btn') {
             applyScroll(container, { scrollTop: 0 }, smooth, SCROLL_SMOOTH.durationY);
             return;
         }
