@@ -4931,3 +4931,134 @@ article {
     font-size: 20px;
   }
 }
+
+
+/* ==========================================================================
+   ГЛАВНАЯ СТРАНИЦА (home.js)
+   Ряды используют классы каталога (.catalog-row*, .catalog-row-card), поэтому
+   геометрия карточек, стили фокуса и настройки UI Customizer применяются к ним
+   без единой дополнительной строки. Здесь — только шапка и контейнер рядов.
+   ========================================================================== */
+
+/* Пока открыта главная, служебная шапка секции и вкладки не нужны: вся
+   навигация живёт в #home-topbar. Сами вкладки остаются в DOM — кнопки шапки
+   кликают по ним, чтобы не дублировать логику разделов. */
+#torrserver-section.home-active .section-header,
+#torrserver-section.home-active .view-tabs {
+  display: none;
+}
+
+/* display: block, а не grid: у #catalog-rows сетка нужна для второго вида
+   (#catalog-grid), а тут ряды всегда идут в столбик. Заодно ни одного
+   flex/grid-gap — на Vidaa он не работает. */
+#home-rows {
+  display: block;
+  padding: 10px 0 50px;
+}
+
+#home-rows .catalog-row {
+  margin-bottom: 6px;
+}
+
+/* У подборок TMDB нет экрана-сетки, открывать заголовок нечем */
+#home-rows .catalog-row-header {
+  cursor: default;
+}
+
+#home-rows .catalog-row-title::after {
+  content: none;
+}
+
+/* ===== Шапка главной ===== */
+#home-topbar {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  padding: 14px 40px 16px;
+  margin: -16px -16px 6px;
+  /* компенсируем padding #torrserver-section, чтобы полоса шла во всю ширину */
+  background: linear-gradient(180deg, #000 0%, #000 62%, rgba(0, 0, 0, 0) 100%);
+}
+
+/* gap на Vidaa не поддержан — отступ даём соседям через margin */
+#home-topbar > .home-nav-btn + .home-nav-btn {
+  margin-left: 10px;
+}
+
+.home-nav-btn {
+  padding: 10px 20px;
+  background: rgba(40, 40, 55, 0.9);
+  border: 1px solid #4a9eff;
+  border-radius: 24px;
+  color: #cfd6e4;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  outline: none;
+}
+
+.home-nav-btn.home-nav-icon {
+  padding: 10px 14px;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.home-nav-btn.home-nav-icon i {
+  display: block;
+  line-height: 1;
+}
+
+.home-nav-btn.active {
+  color: #fff;
+  border-color: #ff8c00;
+  background: rgba(255, 140, 0, 0.18);
+}
+
+/* Цвет берём из UI Customizer (--focus-color), с морковным по умолчанию */
+.home-nav-btn.focused {
+  color: #fff;
+  background: var(--focus-color, #ff8c00);
+  border-color: var(--focus-color, #ff8c00);
+  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35));
+}
+
+/* ===== Адаптация главной для 720–960px (ТВ) ===== */
+@media (min-width: 720px) and (max-width: 960px) {
+
+  #home-rows {
+    padding: 8px 0 36px;
+  }
+
+  #home-rows .catalog-row {
+    margin-bottom: 4px;
+  }
+
+  #home-topbar {
+    padding: 10px 24px 12px;
+    margin: -16px -16px 4px;
+  }
+
+  #home-topbar > .home-nav-btn + .home-nav-btn {
+    margin-left: 8px;
+  }
+
+  .home-nav-btn {
+    padding: 8px 15px;
+    font-size: 13px;
+    border-radius: 20px;
+  }
+
+  .home-nav-btn.home-nav-icon {
+    padding: 8px 11px;
+    font-size: 15px;
+  }
+
+  .home-nav-btn.focused {
+    box-shadow: 0 0 0 3px var(--focus-color-soft, rgba(255, 140, 0, 0.35));
+  }
+}
