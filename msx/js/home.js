@@ -124,6 +124,20 @@
         if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
     }
 
+    /**
+     * Запоминаем вертикальный скролл главной перед уходом на другой экран.
+     * showContentScreen('home') при возврате читает именно AppState.contentScroll.home,
+     * и без этого страница прыгала бы к началу: детальный просмотр, настройки и
+     * донат уходят с главной, не вызывая showContentScreen вовсе.
+     */
+    function saveHomeScroll() {
+        if (!window.AppState) return;
+        var mc = el('main-container');
+        if (!mc) return;
+        AppState.contentScroll = AppState.contentScroll || {};
+        AppState.contentScroll.home = mc.scrollTop;
+    }
+
     /** Главная смонтирована и видна (шапка + ряды на экране) */
     function isHomeVisible() {
         var screen = el('content-home');
@@ -689,6 +703,15 @@
 
     // ==================== ФОКУС И НАВИГАЦИЯ ====================
 
+    function scrollHomeToTop() {
+        var mc = el('main-container');
+        if (mc) mc.scrollTop = 0;
+        if (window.AppState) {
+            AppState.contentScroll = AppState.contentScroll || {};
+            AppState.contentScroll.home = 0;
+        }
+    }
+
     function getNavButtons() {
         var out = [];
         for (var i = 0; i < NAV_BUTTONS.length; i++) {
@@ -751,8 +774,7 @@
         if (!target || btns.indexOf(target) === -1) target = el('home-nav-home') || btns[0];
         // Шапка липкая, но при уходе вверх из первого ряда всё равно поднимаем
         // страницу: иначе фокус на кнопке, а под ней виден обрезок ряда
-        var mc = el('main-container');
-        if (mc) mc.scrollTop = 0;
+        scrollHomeToTop();
         return focusHomeEl(target);
     }
 
@@ -850,6 +872,7 @@
         homeState.lastRowKey = key;
         homeState.lastColIndex = index;
         homeState.detailFromHome = true;
+        saveHomeScroll();
         if (window.AppState) {
             AppState.catalogIndex = index;
             AppState.androidBackCatalog = item;
@@ -897,10 +920,10 @@
 
     function onNavButton(id) {
         homeState.lastNavBtnId = id;
+        saveHomeScroll();
         if (id === 'home-nav-search') return openSearchFromHome();
         if (id === 'home-nav-home') {
-            var mc = el('main-container');
-            if (mc) mc.scrollTop = 0;
+            scrollHomeToTop();
             if (homeState.rows.length) return focusCard(0, 0);
             return true;
         }
