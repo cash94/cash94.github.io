@@ -4628,7 +4628,7 @@ article {
 
 #detail-view.torrent-detail-mode .catalog-actor-card.focused .catalog-actor-photo {
   border-color: var(--focus-color, #ff8c00) !important;
-  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35)), 0 8px 26px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35)), 0 8px 26px rgba(0, 0, 0, 0.6) !important;
 }
 
 #detail-view.torrent-detail-mode .catalog-actor-card.focused .catalog-actor-name {
