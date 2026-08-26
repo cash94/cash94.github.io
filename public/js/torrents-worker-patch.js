@@ -241,9 +241,6 @@
             if (!torrent.media_type && known.mediaType) torrent.media_type = known.mediaType;
             if (!torrent.poster && known.poster) torrent.poster = normalizePosterUrl(known.poster);
         }
-        if (!torrent.media_type && window.AppState && AppState.mediaType) {
-            torrent.media_type = AppState.mediaType;
-        }
 
         // Подтягиваем файлы заранее
         try {
@@ -254,6 +251,24 @@
                 }
             }
         } catch (e) { }
+
+        // Тип определяем ТОЛЬКО по признакам самого торрента. Раньше здесь стояло
+        // `torrent.media_type = AppState.mediaType` — а это тип предыдущего экрана
+        // (каталога или предыдущего detail), он же глобальный. Из-за него тип
+        // прилипал: после сериала фильм запрашивался как /api/tmdb/details?type=tv,
+        // а после фильма сериал — как ?type=movie.
+        // Тип из каталога при этом не теряется: playFromHash и addTorrentToServer
+        // кладут его и в torrent.media_type, и в knownTorrentMeta по hash (блок known
+        // выше), и в category раздачи — а её читает getTorrentMediaTypeFromCard.
+        if (!torrent.media_type && window.getTorrentMediaTypeFromCard) {
+            // Файлы уже загружены выше, поэтому «больше одного файла → сериал»
+            // здесь считается по настоящему списку. Берём только вердикт 'tv':
+            // 'movie' у этой функции — значение по умолчанию, а не признак, и
+            // Worker сам проверит сезоны в названии и в именах файлов.
+            if (window.getTorrentMediaTypeFromCard(torrent) === 'tv') {
+                torrent.media_type = 'tv';
+            }
+        }
 
         // ★ FIX: Убираем bail-out для tv — Worker теперь корректно обрабатывает сериалы.
         // Оставляем fallback только если Worker недоступен.
@@ -266,9 +281,13 @@
             }
 
             AppState.isSerials = r.isTvSeries;
-            if (r.mediaType) {
-                AppState.mediaType = r.mediaType;
-            }
+            // AppState.mediaType здесь НЕ пишем. Это поле — тип текущего экрана
+            // (каталог его выставляет по категории/карточке), и запись сюда вердикта
+            // detail-view превращала результат одного открытия во входные данные
+            // следующего: тип первого открытого торрента прилипал ко всем остальным.
+            // Вердикт этого открытия и так уходит куда нужно: в AppState.isSerials,
+            // в torrent.media_type и в knownTorrentMeta по hash (ниже).
+            torrent.media_type = r.mediaType || torrent.media_type;
             if (r.seasonNumbers && r.seasonNumbers.length === 1 && r.isTvSeries) {
                 AppState.currentTMDB = r.tmdbId;
                 AppState.currentSeason = r.seasonNumbers[0];
