@@ -3471,20 +3471,36 @@ window.initGridVisibilityWindow = initGridVisibilityWindow;
 window.measureCatalogCardHeight = measureCatalogCardHeight;   // зовёт ui-customizer после смены настроек
 
 /**
+ * Идёт ли прокрутка, задевающая ряды. Два источника: вертикальный тван
+ * scrollTop у #main-container (переход на другой ряд) и горизонтальный тван
+ * трека той карусели, где сейчас фокус (движение внутри ряда). Трек проверяем
+ * только у сфокусированного ряда — остальные при навигации не двигаются.
+ */
+function isRowScrollAnimating() {
+    if (isCatalogScrollAnimating()) return true;
+    if (typeof gsap === 'undefined' || typeof gsap.isTweening !== 'function') return false;
+    var f = document.querySelector('#catalog-rows .catalog-row-card.focused');
+    var track = (f && f.closest) ? f.closest('.catalog-row-track') : null;
+    return !!track && gsap.isTweening(track);
+}
+
+/**
  * Обрабатывает очередь: не более ROW_POSTER_CONCURRENCY загрузок одновременно.
  * Как только одна завершается (загрузка + декод), берётся следующая.
  *
- * Пока идёт прокрутка (window.isNavBusy — отметку ставит control.js в момент
- * старта твина), очередь стоит. Вставка постера — это замена содержимого бокса
- * и перерисовка карточки 260×460; несколько таких посреди анимации ряда и есть
- * те самые фризы навигации. Постер карточки под фокусом это не задерживает:
- * его тянет ensureRowPosterNow вне очереди.
+ * Пока идёт навигация, очередь стоит — тем же приёмом, что и у сетки
+ * (deferPosterUntilScrollEnds): вставка постера это замена содержимого бокса и
+ * перерисовка карточки 260×460, а несколько таких посреди тванa ряда и есть те
+ * самые фризы. Ждём двух условий: тван прокрутки докрутился и с последнего
+ * нажатия прошло больше 200мс (fastNavigation в control.js) — иначе при зажатой
+ * кнопке пульта постеры вставлялись бы в паузах между твинами. Карточку под
+ * фокусом это не задерживает: её тянет ensureRowPosterNow вне очереди.
  */
 function processRowPosterQueue() {
     if (!catalogState.rowPosterQueue || !catalogState.rowPosterQueue.length) return;
 
-    if (typeof window.isNavBusy === 'function' && window.isNavBusy()) {
-        if (catalogState.rowPosterQueueTimer) return;        // ждём уже
+    if (window.fastNavigation || isRowScrollAnimating()) {
+        if (catalogState.rowPosterQueueTimer) return;        // ожидание уже заведено
         catalogState.rowPosterQueueTimer = setTimeout(function () {
             catalogState.rowPosterQueueTimer = null;
             processRowPosterQueue();
