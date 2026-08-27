@@ -3213,6 +3213,12 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
             if (!isCarousel) return;
             delta = dx;
         } else {
+            // На главной вертикальное колесо листает подборки (это делает home.js),
+            // а не катает ряд вбок: ряд там показан один, вертикальной прокрутки у
+            // страницы нет, и иначе дальше первой подборки мышью не уйти. Событие
+            // отдаём как есть — default не отменяем, чтобы обработчик главной его
+            // увидел. Shift + колесо остаётся горизонтальным жестом для ряда.
+            if (!e.shiftKey && cnt.closest && cnt.closest('#home-rows')) return;
             delta = dy;
         }
         if (!delta) return;
