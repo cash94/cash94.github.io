@@ -3357,6 +3357,53 @@ function measureCatalogCardHeight() {
     if (h > 0) document.documentElement.style.setProperty('--catalog-card-h', h + 'px');
 }
 
+/**
+ * Переключения оконной видимости, дождавшиеся конца навигации.
+ *
+ * Снятие класса возвращает в отрисовку целый ряд — семь карточек 260×460 плюс
+ * заголовок. Посреди твана перехода это скачок на несколько кадров, а спешить
+ * незачем: ряд, куда встал фокус, показывает сам revealCatalogElement (его
+ * зовёт focusEl синхронно с перемещением фокуса), а всё остальное — запас
+ * вперёд, который никто в этот момент не видит.
+ */
+var visibilityPending = [];
+var visibilityFlushTimer = null;
+
+function queueVisibilityToggle(el, show) {
+    for (var i = 0; i < visibilityPending.length; i++) {
+        // Последнее слово за свежей записью: ряд мог войти и выйти за одну пачку
+        if (visibilityPending[i].el === el) { visibilityPending[i].show = show; return; }
+    }
+    visibilityPending.push({ el: el, show: show });
+}
+
+function flushVisibilityToggles() {
+    if (!visibilityPending.length) return;
+
+    if (window.fastNavigation || isRowScrollAnimating()) {
+        if (visibilityFlushTimer) return;
+        visibilityFlushTimer = setTimeout(function () {
+            visibilityFlushTimer = null;
+            flushVisibilityToggles();
+        }, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+        return;
+    }
+
+    var list = visibilityPending;
+    visibilityPending = [];
+    for (var i = 0; i < list.length; i++) {
+        if (!list[i].el.isConnected) continue;
+        if (list[i].show) list[i].el.classList.remove(OFFSCREEN_CLASS);
+        else list[i].el.classList.add(OFFSCREEN_CLASS);
+    }
+}
+
+/** Позиция скролла сброшена — отложенные решения посчитаны для старой и не годятся */
+function dropPendingVisibilityToggles() {
+    if (visibilityFlushTimer) { clearTimeout(visibilityFlushTimer); visibilityFlushTimer = null; }
+    visibilityPending.length = 0;
+}
+
 function createVisibilityObserver(marginPx) {
     return new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
@@ -3367,9 +3414,9 @@ function createVisibilityObserver(marginPx) {
             // такому сообщению нельзя, иначе при возврате увидим пустой экран
             // до следующего пересчёта. Классы не трогаем.
             if (!entries[i].boundingClientRect.height) continue;
-            if (entries[i].isIntersecting) el.classList.remove(OFFSCREEN_CLASS);
-            else el.classList.add(OFFSCREEN_CLASS);
+            queueVisibilityToggle(el, entries[i].isIntersecting);
         }
+        flushVisibilityToggles();
     }, {
         root: getEl('main-container'),
         rootMargin: marginPx + 'px 0px',   // запас только по вертикали
@@ -3420,6 +3467,7 @@ function resetRowVisibilityWindow() {
     if (!catalogState.rowVisibilityObserver) return;
     catalogState.rowVisibilityObserver.disconnect();
     catalogState.rowVisibilityObserver = null;
+    dropPendingVisibilityToggles();
 }
 
 /** Сетка категории: гасим отдельные карточки, строк как элементов там нет */
