@@ -2021,7 +2021,17 @@ function startTrailerBackground(url) {
     video.loop = true;
     video.autoplay = true;
     video.playsInline = true;
-    video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;transition:opacity 10s ease;';
+    video.setAttribute('playsinline', '');
+    // Штатные контролы WebView не нужны совсем: на Android TV они и рисуют тот
+    // самый значок «плей» во весь экран поверх пустого видео (остальное добивают
+    // правила #trailer-bg-video::-webkit-media-controls* в styles.css)
+    video.controls = false;
+    video.removeAttribute('controls');
+    video.setAttribute('disableremoteplayback', '');
+    // visibility, а не только opacity: на Android TV видео живёт в отдельном слое,
+    // и его собственная отрисовка прозрачность не всегда слушается. Слой снят,
+    // пока не появится первый кадр (см. revealVideo ниже).
+    video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;visibility:hidden;pointer-events:none;transition:opacity 10s ease;';
 
     var backdrop = getEl('catalog-detail-backdrop');
     var cde = getEl('catalog-detail-extra');
@@ -2094,14 +2104,24 @@ function startTrailerBackground(url) {
         video.play().catch(function () { });
     }
 
-    // Плавное проявление видео
-    requestAnimationFrame(function () {
+    // Показ видео — только когда есть первый кадр, иначе WebView успевает
+    // нарисовать поверх пустого элемента свой значок «плей»
+    function revealVideo() {
+        if (rutubeTrailerState.bgVideo !== video) return;
+        video.style.visibility = 'visible';
         video.style.opacity = '1';
-    });
+    }
 
     // ★ Нарастание звука — когда видео реально заиграло
-    video.addEventListener('playing', startVolumeFade);
-    video.addEventListener('timeupdate', startVolumeFade);
+    video.addEventListener('playing', function () {
+        revealVideo();
+        startVolumeFade();
+    });
+    video.addEventListener('timeupdate', function () {
+        // playing на части устройств приходит раньше первого кадра
+        if (video.currentTime > 0) revealVideo();
+        startVolumeFade();
+    });
 }
 
 /**

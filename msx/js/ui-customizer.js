@@ -35,7 +35,10 @@
         posterBrightness: 'normal',  // dim | normal | bright
         focusColor: '#ff8c00',       // цвет рамки фокуса (#rrggbb)
         showRatings: true,
-        showYear: true
+        showYear: true,
+        // Баннер главной сам включает трейлер, когда фокус постоял на карточке
+        // (home.js спрашивает getHeroTrailers перед каждым отсчётом)
+        heroTrailers: true
     };
 
     // ==================== ТАБЛИЦЫ ЗНАЧЕНИЙ ====================
@@ -183,6 +186,9 @@
 
         s.showRatings = !!s.showRatings;
         s.showYear = !!s.showYear;
+        // Не !!: у тех, кто сохранял настройки до появления этой галки, ключа в
+        // localStorage нет, и трейлеры выключились бы сами собой
+        s.heroTrailers = s.heroTrailers !== false;
         return s;
     }
 
@@ -462,7 +468,28 @@
         } catch (e) { }
         // Число колонок изменилось — сбрасываем кэш навигации в control.js
         try { if (typeof window.invalidateColumnsCache === 'function') window.invalidateColumnsCache(); } catch (e) { }
+        syncHeroTrailers();
         console.log('🎨 Настройки внешнего вида применены:', JSON.stringify(currentSettings));
+    }
+
+    /**
+     * Галка трейлеров на CSS не влияет — её применяем прямо здесь, и только на
+     * переходе значения: applySettings зовётся и на resize, и на любую другую
+     * настройку, а гасить/перезаводить играющий баннер каждый раз незачем.
+     */
+    var lastHeroTrailers = null;
+    function syncHeroTrailers() {
+        var on = currentSettings.heroTrailers !== false;
+        if (on === lastHeroTrailers) return;
+        lastHeroTrailers = on;
+        try {
+            if (!window.HomeScreen) return;
+            // Выключили — гасим сразу, а не «когда-нибудь потом»: галку жмут
+            // именно потому, что мешает прямо сейчас. Включили — заводим отсчёт
+            // для карточки под фокусом, не дожидаясь нажатия стрелки.
+            var fn = on ? HomeScreen.rearmTrailer : HomeScreen.stopTrailer;
+            if (typeof fn === 'function') fn();
+        } catch (e) { }
     }
 
     function saveSettings() {
@@ -637,6 +664,11 @@
             '<label class="ui-checkbox" data-check="showRatings"><input type="checkbox" id="ui-show-ratings"' + (currentSettings.showRatings ? ' checked' : '') + '><span>Показывать рейтинги</span></label>' +
             '<label class="ui-checkbox" data-check="showYear"><input type="checkbox" id="ui-show-year"' + (currentSettings.showYear ? ' checked' : '') + '><span>Показывать год</span></label>' +
             '</div>' +
+
+            '<div class="ui-customizer-group"><h3>Трейлеры на главной</h3>' +
+            '<div class="ui-customizer-hint">Постояв на карточке 5 секунд, баннер главной сам включает её трейлер вместо картинки. Выключите, если это мешает или тормозит на слабом устройстве.</div>' +
+            '<label class="ui-checkbox" data-check="heroTrailers"><input type="checkbox" id="ui-hero-trailers"' + (currentSettings.heroTrailers ? ' checked' : '') + '><span>Автовоспроизведение трейлеров</span></label>' +
+            '</div>' +
             '</div>' +
             '<div class="ui-customizer-footer">' +
             '<button class="ui-cust-btn" id="ui-reset-defaults">Сбросить</button>' +
@@ -729,8 +761,10 @@
         }
         var r = document.getElementById('ui-show-ratings');
         var y = document.getElementById('ui-show-year');
+        var t = document.getElementById('ui-hero-trailers');
         if (r) r.checked = !!currentSettings.showRatings;
         if (y) y.checked = !!currentSettings.showYear;
+        if (t) t.checked = currentSettings.heroTrailers !== false;
         updateSliders();
     }
 
@@ -770,6 +804,11 @@
         if (year) year.addEventListener('change', function () {
             currentSettings.showYear = this.checked;
             applySettings();
+        });
+        var trailers = document.getElementById('ui-hero-trailers');
+        if (trailers) trailers.addEventListener('change', function () {
+            currentSettings.heroTrailers = this.checked;
+            applySettings();            // гасит играющий трейлер / заводит отсчёт заново
         });
 
         // Готово (применить + сохранить + закрыть)
@@ -1047,7 +1086,7 @@
     var ARROW = { 37: 'left', 38: 'up', 39: 'right', 40: 'down' };
     var BACK_KEYS = [4, 8, 27, 461, 111, 10009];
     var OPEN_KEYS = [405, 67]; // «жёлтая» кнопка пульта и клавиша C
-    var OPEN_SCREENS = ['catalog', 'torrents', 'search', 'detail', 'config'];
+    var OPEN_SCREENS = ['home', 'catalog', 'torrents', 'search', 'detail', 'config'];
 
     function isEditing() {
         var a = document.activeElement;
@@ -1163,6 +1202,7 @@
         getCardSize: function () { var w = cardWidth(); return { width: w, height: posterHeight(w) }; },
         getFocusColor: focusColor,
         getScrollAnim: scrollAnim,       // control.js: длительность твинов горизонтальной прокрутки
+        getHeroTrailers: function () { return currentSettings.heroTrailers !== false; }, // home.js: заводить ли отсчёт трейлера
         get: function () { return Object.assign({}, currentSettings); },
         set: function (partial) {
             if (partial && typeof partial === 'object') {
