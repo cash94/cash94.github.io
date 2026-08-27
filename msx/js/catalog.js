@@ -3250,6 +3250,10 @@ function initRowPosterLazyLoading() {
     if (catalogState.rowPosterObserver) catalogState.rowPosterObserver.disconnect();
     catalogState.rowPosterQueue = [];
     catalogState.activeRowPosterLoads = 0;
+    if (catalogState.rowPosterQueueTimer) {
+        clearTimeout(catalogState.rowPosterQueueTimer);
+        catalogState.rowPosterQueueTimer = null;
+    }
 
     catalogState.rowPosterObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
@@ -3548,7 +3552,7 @@ function isRowScrollAnimating() {
  *
  * Пока идёт навигация, очередь стоит — тем же приёмом, что и у сетки
  * (deferPosterUntilScrollEnds): вставка постера это замена содержимого бокса и
- * перерисовка карточки 260×460, а несколько таких посреди тванa ряда и есть те
+ * перерисовка карточки 260×460, а несколько таких посреди твана ряда и есть те
  * самые фризы. Ждём двух условий: тван прокрутки докрутился и с последнего
  * нажатия прошло больше 200мс (fastNavigation в control.js) — иначе при зажатой
  * кнопке пульта постеры вставлялись бы в паузах между твинами. Карточку под
