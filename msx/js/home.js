@@ -66,7 +66,25 @@
         // Как часто проверять, что играющий трейлер всё ещё «свой» и на экране
         WATCHDOG_MS: 1000,
         // Постеры соседних рядов подтягиваем заранее, но не мешая текущему
-        PREFETCH_DELAY_MS: 700
+        PREFETCH_DELAY_MS: 700,
+
+        // --- мышь и палец (см. раздел «ЖЕСТЫ») ---
+        // Сколько «прокрутить» колесом, чтобы сменить подборку. Одна засечка
+        // мыши — это уже 100 (у тачпада бывает 3-5), так что берём меньше.
+        WHEEL_STEP_PX: 40,
+        // Свайп: шаг за каждые столько пикселей пальца по вертикали
+        SWIPE_STEP_PX: 60,
+        // До этого порога направление свайпа не определено — столько же, сколько
+        // TOUCH_AXIS_THRESHOLD у горизонтального драга рядов (control.js)
+        SWIPE_AXIS_PX: 10,
+        // Плавный тачпад присылает десятки событий подряд, а быстрый свайп
+        // пальцем — сотни пикселей: не больше одной смены подборки за это время
+        GESTURE_COOLDOWN_MS: 260,
+        // Мышь у края ряда: пауза между шагами и длительность самого твина.
+        // Твин чуть короче паузы, чтобы ряд успевал доехать и вставал ровно
+        // по карточке, а не догонялся следующим шагом из середины пути.
+        HOVER_SCROLL_MS: 320,
+        HOVER_SCROLL_SEC: 0.3
     };
 
     // Порядок рядов сверху вниз. key для подборок TMDB — это preset эндпоинта.
@@ -232,6 +250,39 @@
         var screen = el('player-screen');
         if (screen && screen.style.display && screen.style.display !== 'none') return true;
         return false;
+    }
+
+    /**
+     * Заглушка загрузчика модулей (#module-loader в index.html) снимается по
+     * первому показанному ряду — dismissModuleLoader ниже. Пока она на экране,
+     * пользователь ничего не выбирал, и трейлер под ней играл бы звуком в
+     * пустоту. Проверка страхует порядок: он зависит от сети.
+     */
+    function moduleLoaderUp() {
+        var l = el('module-loader');
+        if (!l) return false;
+        // position: fixed, offsetParent === null и у показанного элемента (та же
+        // история, что с #player-screen выше), поэтому смотрим на инлайновые
+        // стили, которыми загрузчик и гасят. Про opacity важно: display: none
+        // ставится только по концу перехода, то есть на 400 мс позже — за этот
+        // зазор как раз успевает встать фокус на первую карточку.
+        return l.style.display !== 'none' && l.style.opacity !== '0';
+    }
+
+    /**
+     * Раньше загрузчик ждал window.load, а тот наступает после ВСЕХ картинок и
+     * шрифтов — на телевизоре это секунды спиннера поверх уже готовой главной.
+     * Снимаем сами, как только первый ряд на экране: это и есть момент, когда
+     * приложением можно пользоваться. Функцию определяет index.html до загрузки
+     * модулей; ветка с display — на случай разметки без неё.
+     */
+    function dismissModuleLoader() {
+        if (typeof window.hideModuleLoader === 'function') {
+            window.hideModuleLoader();
+            return;
+        }
+        var l = el('module-loader');
+        if (l) l.style.display = 'none';
     }
 
     function homeFetch(url) {
@@ -651,7 +702,7 @@
      */
     function startTrailerCountdown(item, details, gen) {
         if (gen !== homeState.hero.gen) return;
-        if (!isHomeVisible() || playerBusy()) return;
+        if (!isHomeVisible() || playerBusy() || moduleLoaderUp()) return;
         runHeroRing();
         homeState.hero.ringTimer = setTimeout(function () {
             homeState.hero.ringTimer = null;
@@ -1508,6 +1559,8 @@
             function activate() {
                 if (homeState.activated) return;
                 homeState.activated = true;
+                // Первый ряд на экране — заглушку загрузчика держать больше не за чем
+                dismissModuleLoader();
                 requestAnimationFrame(function () {
                     if (!isHomeFocusable()) { loadRowPosters(homeState.activeRow); return; }
                     if (typeof updateFocusableElements === 'function') updateFocusableElements();
@@ -1556,6 +1609,8 @@
                             '<div style="font-size:14px;color:#777;margin-top:10px">Проверьте подключение к интернету</div></div>';
                         invalidateFocus();
                         if (isHomeFocusable()) focusTopbar();
+                        // Рядов не будет вовсе — держать заглушку тем более не за чем
+                        dismissModuleLoader();
                     }
                     finish(renderedRows > 0);
                     return;
@@ -1807,6 +1862,243 @@
         };
     }
 
+    // ==================== ЖЕСТЫ: КОЛЕСО И СВАЙП ====================
+    //
+    // Главная не прокручивается — баннер и один ряд рассчитаны ровно на высоту
+    // экрана. Поэтому вертикальному жесту нечего скроллить, и мышью с тачем
+    // дальше первой подборки было не уйти: с пульта ряд меняют стрелки, а
+    // указателю такого действия не досталось. Переводим вертикальный жест в тот
+    // же вызов, что и стрелки, — смену показанного ряда.
+    //
+    // Раскладка ролей: вертикаль — подборки, горизонталь — карточки внутри ряда.
+    // Горизонтальный жест ведёт делегированный обработчик в control.js
+    // (H_SCROLL_SELECTOR), туда же уходит shift + колесо; вертикальное колесо над
+    // рядом главной он специально пропускает, не отменяя default. Отсюда проверка
+    // e.defaultPrevented: событие с отменённым default он уже забрал себе.
+
+    var wheelAccum = 0;         // сумма deltaY одного «маха» колеса
+    var wheelAccumAt = 0;
+    var wheelScrollable = false;
+    var gestureLockUntil = 0;   // до этого времени новый шаг не делаем
+    var swipe = null;
+
+    /**
+     * Обычно на главной прокручивать нечего, и жест мы забираем целиком
+     * (preventDefault). Но на совсем низком окне раскладка может не сойтись —
+     * тогда default не отменяем, иначе до вылезшего за экран содержимого будет
+     * не добраться. Смену подборки это не отменяет.
+     */
+    function pageScrollable() {
+        var mc = el('main-container');
+        return !!(mc && mc.scrollHeight - mc.clientHeight > 2);
+    }
+
+    /** Один шаг вертикального жеста — то же, что стрелка вверх/вниз в ряду */
+    function gestureStepRow(down) {
+        if (!isHomeFocusable() || !homeState.rowEls.length) return false;
+        // Тем же способом, что handleHomeNavigation: control.js читает
+        // направление при доводке скролла в focusEl
+        window.lastNavDirection = down ? 'down' : 'up';
+        var f = document.querySelector('.focused');
+        var pos = f ? findCardPosition(f) : null;
+        // Фокус в шапке или на «Смотреть»: вниз сначала уводим его в ряд —
+        // ровно так же ведёт себя стрелка
+        if (!pos) {
+            if (!down) return false;
+            focusActiveRowCard();
+            return true;
+        }
+        var next = pos.row + (down ? 1 : -1);
+        if (next < 0 || next >= homeState.rowEls.length) return false;
+        focusRow(next);
+        return true;
+    }
+
+    function onHomeWheel(e) {
+        if (e.defaultPrevented) return;      // колесо уже отработал control.js
+        if (!isHomeFocusable()) return;
+
+        var dy = e.deltaY || e.wheelDeltaY ||
+            (e.wheelDelta ? -e.wheelDelta / 40 : 0) || e.detail || 0;
+        var dx = e.deltaX || e.wheelDeltaX || 0;
+        if (!dy || Math.abs(dx) > Math.abs(dy)) return;
+
+        var now = Date.now();
+        // Пауза или разворот — счёт с нуля: иначе докрутка в обратную сторону
+        // складывалась бы с прежним направлением
+        if (now - wheelAccumAt > 400 || (wheelAccum > 0) !== (dy > 0)) {
+            wheelAccum = 0;
+            // Раз на мах: чтение scrollHeight — принудительный layout, а тачпад
+            // присылает событий десятками
+            wheelScrollable = pageScrollable();
+        }
+        wheelAccumAt = now;
+        wheelAccum += dy;
+        if (!wheelScrollable) e.preventDefault();
+
+        if (Math.abs(wheelAccum) < HOME.WHEEL_STEP_PX) return;
+        if (now < gestureLockUntil) return;
+        wheelAccum = 0;
+        gestureLockUntil = now + HOME.GESTURE_COOLDOWN_MS;
+        gestureStepRow(dy > 0);
+    }
+
+    function onHomeTouchStart(e) {
+        swipe = null;
+        touchedAt = Date.now();
+        stopHoverScroll();      // палец не «висит» у края, как курсор
+        if (!e.touches || e.touches.length !== 1) return;
+        if (!isHomeFocusable()) return;
+        var t = e.touches[0];
+        swipe = { x: t.clientX, y: t.clientY, anchor: t.clientY, vertical: false, scrollable: false };
+    }
+
+    function onHomeTouchMove(e) {
+        if (!swipe || !e.touches || e.touches.length !== 1) return;
+
+        var t = e.touches[0];
+        var dx = t.clientX - swipe.x;
+        var dy = t.clientY - swipe.y;
+
+        if (!swipe.vertical) {
+            if (Math.abs(dx) < HOME.SWIPE_AXIS_PX && Math.abs(dy) < HOME.SWIPE_AXIS_PX) return;
+            // Горизонтальный жест ведёт control.js — отпускаем до конца касания
+            if (Math.abs(dx) > Math.abs(dy)) { swipe = null; return; }
+            swipe.vertical = true;
+            swipe.anchor = t.clientY;      // порог не считаем за пройденный путь
+            swipe.scrollable = pageScrollable();   // раз на касание, а не на кадр
+        }
+
+        if (!swipe.scrollable) e.preventDefault();
+
+        var now = Date.now();
+        if (now < gestureLockUntil) return;
+        // Палец вверх — вниз по подборкам, как при прокрутке страницы.
+        // Шаг за каждые SWIPE_STEP_PX: длинный свайп проходит несколько рядов,
+        // но не быстрее GESTURE_COOLDOWN_MS (каждый ряд тянет 20 постеров).
+        var travel = t.clientY - swipe.anchor;
+        if (Math.abs(travel) < HOME.SWIPE_STEP_PX) return;
+        swipe.anchor = t.clientY;
+        gestureLockUntil = now + HOME.GESTURE_COOLDOWN_MS;
+        gestureStepRow(travel < 0);
+    }
+
+    function onHomeTouchEnd() {
+        swipe = null;
+        touchedAt = Date.now();
+    }
+
+    // ---------- Мышь у края ряда: прокрутка в эту сторону ----------
+    //
+    // Колесо на главной листает подборки, а горизонтального жеста у обычной
+    // мыши нет — до дальних карточек ряда указателем было не добраться.
+    // Держим курсор на крайней карточке (у правого или левого края вьюпорта) —
+    // ряд едет в эту сторону шагами по карточке, пока не упрётся в край.
+    // Фокус не трогаем: он остаётся там, куда его поставили пультом, а клик
+    // открывает ту карточку, по которой щёлкнули.
+
+    var hover = { viewport: null, dir: 0, timer: null };
+    // Метрики ряда под курсором: mousemove приходит десятками в секунду, а
+    // getBoundingClientRect и offsetLeft посреди твина трека — это
+    // принудительный пересчёт стилей. Полсекунды жизни хватает: раскладка
+    // меняется только на resize и при смене ряда.
+    var hoverMetrics = { el: null, at: 0, box: null, step: 0 };
+    var lastMoveAt = 0;
+    var touchedAt = 0;
+
+    /** Шаг прокрутки — реальное расстояние между карточками этого ряда */
+    function cardStep(viewport) {
+        var track = viewport.firstElementChild;
+        var cards = track ? track.children : null;
+        if (cards && cards.length > 1) {
+            var s = cards[1].offsetLeft - cards[0].offsetLeft;
+            if (s > 10) return s;
+        }
+        if (cards && cards.length === 1) return cards[0].offsetWidth;
+        return Math.max(120, (viewport.clientWidth || 600) * 0.25);
+    }
+
+    function rowMetrics(v) {
+        var now = Date.now();
+        if (hoverMetrics.el !== v || now - hoverMetrics.at > 500) {
+            hoverMetrics.el = v;
+            hoverMetrics.at = now;
+            hoverMetrics.box = v.getBoundingClientRect();
+            hoverMetrics.step = cardStep(v);
+        }
+        return hoverMetrics;
+    }
+
+    function stopHoverScroll() {
+        if (hover.timer) { clearInterval(hover.timer); hover.timer = null; }
+        hover.viewport = null;
+        hover.dir = 0;
+    }
+
+    function hoverScrollStep() {
+        var v = hover.viewport;
+        if (!v || !v.isConnected || !hover.dir || !isHomeFocusable()) { stopHoverScroll(); return; }
+        // Ряд под курсором могли сменить стрелками — скрытый двигать незачем
+        if (v.offsetParent === null) { stopHoverScroll(); return; }
+        if (typeof getScrollX !== 'function' || typeof setScrollX !== 'function') { stopHoverScroll(); return; }
+
+        var cur = getScrollX(v);
+        var max = (typeof getMaxScrollX === 'function') ? getMaxScrollX(v) : 0;
+        // Доехали до края — таймер гасим, иначе он крутится вхолостую всё время,
+        // пока курсор стоит на крайней карточке
+        if ((hover.dir < 0 && cur <= 0.5) || (hover.dir > 0 && cur >= max - 0.5)) {
+            stopHoverScroll();
+            return;
+        }
+        setScrollX(v, cur + hover.dir * rowMetrics(v).step, true, HOME.HOVER_SCROLL_SEC);
+    }
+
+    function startHoverScroll(viewport, dir) {
+        if (hover.viewport === viewport && hover.dir === dir && hover.timer) return;
+        stopHoverScroll();
+        hover.viewport = viewport;
+        hover.dir = dir;
+        hoverScrollStep();                          // первый шаг сразу
+        if (hover.dir) hover.timer = setInterval(hoverScrollStep, HOME.HOVER_SCROLL_MS);
+    }
+
+    function onHomeMouseMove(e) {
+        var now = Date.now();
+        if (now - lastMoveAt < 50) return;          // хватит и 20 проверок в секунду
+        lastMoveAt = now;
+
+        if (!isHomeFocusable()) { stopHoverScroll(); return; }
+        var v = (e.target && e.target.closest)
+            ? e.target.closest('#home-rows .catalog-row-viewport') : null;
+        if (!v) { stopHoverScroll(); return; }
+
+        var m = rowMetrics(v);
+        // Зона примерно в карточку шириной, но не уже 60px и не больше трети ряда
+        var w = m.box.width || v.clientWidth || 0;
+        var zone = Math.max(60, Math.min(m.step, w * 0.3));
+
+        if (e.clientX >= m.box.right - zone) startHoverScroll(v, 1);
+        else if (e.clientX <= m.box.left + zone) startHoverScroll(v, -1);
+        else stopHoverScroll();
+    }
+
+    function initGestures() {
+        // На document и после control.js (home.js грузится последним): его
+        // обработчик успевает пометить событие своим preventDefault
+        document.addEventListener('wheel', onHomeWheel, { passive: false });
+        document.addEventListener('touchstart', onHomeTouchStart, { passive: true });
+        document.addEventListener('touchmove', onHomeTouchMove, { passive: false });
+        document.addEventListener('touchend', onHomeTouchEnd, { passive: true });
+        document.addEventListener('touchcancel', onHomeTouchEnd, { passive: true });
+        // Указатель у края ряда. mouseout с пустым relatedTarget = курсор ушёл
+        // за пределы окна: mousemove больше не придёт, а таймер бы остался.
+        document.addEventListener('mousemove', onHomeMouseMove, { passive: true });
+        document.addEventListener('mouseout', function (e) {
+            if (!e.relatedTarget) stopHoverScroll();
+        }, { passive: true });
+        window.addEventListener('blur', stopHoverScroll);
+    }
+
     // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
     function initHome() {
@@ -1832,6 +2124,7 @@
 
         patchGlobals();
         registerStrategy();
+        initGestures();
 
         // Главная открывается сразу, не дожидаясь проверки TorrServer
         showHome({ initial: true });
