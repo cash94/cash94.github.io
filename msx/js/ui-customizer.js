@@ -139,6 +139,38 @@
         return raw;
     }
 
+    // ==================== ПОДГОНКА ПОД НИЗКИЙ ЭКРАН ====================
+
+    // Версия автоподгонки. Лежит в сохранённых настройках и означает «этот экран
+    // уже подгоняли». Нужна потому, что saveSettings() пишет ПОЛНЫЙ объект: у всех,
+    // кто хоть раз открывал панель, в localStorage лежит cardSize: 210, и новый
+    // дефолт до них сам не доберётся.
+    var FIT_VERSION = 1;
+
+    // ТВ 960×540 (1080p при DPR 2), лендскейп-планшет и т.п. — широкий, но низкий
+    // экран. 1280×720 сюда НЕ попадает: под него есть отдельный медиазапрос.
+    function shortLandscape() {
+        var h = window.innerHeight || 0;
+        var w = window.innerWidth || 0;
+        return h > 0 && h <= 620 && w >= 700;
+    }
+
+    // На низком экране постер 210×372 съедает 69% высоты — второго ряда не видно,
+    // а detail-view не влезает вообще. Считаем ширину от высоты окна так, чтобы
+    // постер занимал ~47% экрана (при 540px это 144×255), и уплотняем сетку.
+    function viewportDefaults() {
+        if (!shortLandscape()) return null;
+        return {
+            cardSize: clampStep(Math.round((window.innerHeight || 540) * 0.266), SLIDERS.cardSize),
+            density: 'compact'
+        };
+    }
+
+    // Дефолты с учётом экрана — их же отдаёт кнопка «Сбросить»
+    function resolvedDefaults() {
+        return Object.assign({}, defaultSettings, viewportDefaults());
+    }
+
     // Приводит настройки к актуальной схеме (клампинг ползунков, чистка старых полей)
     function normalizeSettings(s) {
         if (!s || typeof s !== 'object') s = {};
@@ -157,9 +189,20 @@
     var currentSettings;
     try {
         var saved = localStorage.getItem(STORAGE_KEY);
-        currentSettings = normalizeSettings(Object.assign({}, defaultSettings, migrateLegacy(saved ? JSON.parse(saved) : null)));
+        var raw = migrateLegacy(saved ? JSON.parse(saved) : null);
+        var fit = viewportDefaults();
+        // Разовая подгонка уже сохранённых настроек под низкий экран. Дальше
+        // ползунок пользователя главнее: fitVersion сохраняется вместе с ним.
+        var needFit = !!fit && !!raw && raw.fitVersion !== FIT_VERSION;
+        currentSettings = normalizeSettings(needFit
+            ? Object.assign({}, defaultSettings, raw, fit)
+            : Object.assign({}, defaultSettings, fit, raw));
+        currentSettings.fitVersion = FIT_VERSION;
+        // Помечаем только то, что уже лежало в localStorage. Если настроек не было,
+        // ничего не пишем — тогда дефолт продолжит подстраиваться под экран сам.
+        if (saved) saveSettings();
     } catch (e) {
-        currentSettings = Object.assign({}, defaultSettings);
+        currentSettings = resolvedDefaults();
     }
 
     // ==================== ПРИМЕНЕНИЕ НАСТРОЕК ====================
@@ -740,7 +783,7 @@
         // Сбросить
         var reset = document.getElementById('ui-reset-defaults');
         if (reset) reset.addEventListener('click', function () {
-            currentSettings = Object.assign({}, defaultSettings);
+            currentSettings = resolvedDefaults();
             updateActiveButtons();
             applySettings();
         });
@@ -1130,7 +1173,7 @@
             }
         },
         reset: function () {
-            currentSettings = Object.assign({}, defaultSettings);
+            currentSettings = resolvedDefaults();
             applySettings();
             saveSettings();
             updateActiveButtons();
