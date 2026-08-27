@@ -834,7 +834,7 @@ async function checkServer(shouldLoadTorrents = true) {
                 if (authCheckbox && authCheckbox.checked) { AppState.authEnabled = true; AppState.authLogin = authLogin ? authLogin.value.trim() : ''; AppState.authPassword = authPassword ? authPassword.value : ''; }
                 else AppState.authEnabled = false;
                 await saveClientConfig();
-                if (shouldLoadTorrents) await loadTorrents();
+                if (shouldLoadTorrents) await loadTorrents(true);
                 return true;
             }
         }
