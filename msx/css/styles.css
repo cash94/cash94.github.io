@@ -3926,6 +3926,10 @@ article {
    getScrollX / setScrollX (control.js), а не через scrollLeft. */
 .catalog-row-viewport {
   overflow: hidden;
+  /* Палец: вертикаль отдаём браузеру (#main-container скроллится нативно),
+     горизонталь двигаем сами в control.js. Без pan-y браузер может забрать
+     жест себе на первых пикселях, и preventDefault в touchmove опоздает. */
+  touch-action: pan-y;
 }
 
 /* Padding перенесён сюда с вьюпорта: у нативного скролла отступы входили в
@@ -4125,6 +4129,7 @@ article {
     background: transparent;
     box-sizing: border-box;
     overflow: hidden;
+    will-change: transform;
   }
 
   .catalog-row-viewport .catalog-row-card .torrent-poster {
