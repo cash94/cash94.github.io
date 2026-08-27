@@ -2228,7 +2228,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             }
         }
 
-        // Вертикальный скролл — без изменений (для рядов — main-container)
+        // Вертикальный скролл (для рядов — main-container)
         var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
         // Первый ряд экрана — всегда самый верх страницы, а не «подтянуть на 50px»:
         // иначе под липкой шапкой остаётся полоска предыдущего скролла.
@@ -2237,6 +2237,41 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                 applyScroll(vertEl, { scrollTop: 0 }, smooth,
                     fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
             }
+            return;
+        }
+        // Ряды-карусели: вертикаль отдаём общему Animations.scrollToIfNotVisible,
+        // как у всех остальных списков. Целимся в .catalog-row, а не в вьюпорт
+        // карусели, чтобы вместе с карточками в кадр попадал заголовок ряда.
+        // Горизонталь выше остаётся на setScrollX — там позиция живёт
+        // в трансформации трека, и scrollLeft писать нельзя.
+        if (vertEl && isRowViewport && typeof Animations !== 'undefined') {
+            var rowEl = (container.closest && container.closest('.catalog-row')) || container;
+
+            // Липкая шапка перекрывает верх контейнера, и ряд под ней формально
+            // «виден» — scrollToIfNotVisible такой случай не поймает. Поэтому
+            // верхней границей считаем нижний край шапки и подводим ряд сами.
+            var topPad = 0;
+            var topbar = getEl('home-topbar');
+            if (topbar && topbar.offsetParent !== null) topPad = topbar.offsetHeight + 10;
+
+            var rowRect = rowEl.getBoundingClientRect();
+            var vertTop = vertEl.getBoundingClientRect().top;
+            if (rowRect.top < vertTop + topPad) {
+                applyScroll(vertEl,
+                    { scrollTop: Math.max(0, vertEl.scrollTop + (rowRect.top - vertTop) - topPad) },
+                    smooth, fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
+                return;
+            }
+
+            Animations.scrollToIfNotVisible(rowEl, vertEl, {
+                direction: direction,
+                duration: smooth
+                    ? (fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY)
+                    : 0,
+                ease: SCROLL_SMOOTH.ease,
+                offset: 50,
+                overwrite: true
+            });
             return;
         }
         if (vertEl) {
@@ -3061,100 +3096,199 @@ function initControl() {
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControl); else initControl();
 
+/**
+ * Горизонтальная прокрутка списков колесом мыши и пальцем.
+ *
+ * Слушатели делегированы на document. Раньше wheel вешался на каждый
+ * найденный контейнер один раз на DOMContentLoaded — то есть до того, как
+ * появились ряды главной и каталога (они строятся асинхронно и пересобираются
+ * при обновлении подборок), поэтому в рядах колесо не работало вовсе.
+ *
+ * Пальцем ряды тоже не двигались: у карусели .catalog-row-viewport
+ * overflow: hidden, позиция живёт в трансформации трека — нативного скролла,
+ * который браузер мог бы подхватить, там просто нет. Отсюда ручной драг.
+ */
 (function () {
-    function initSmoothHorizontalScroll() {
-        var containers = document.querySelectorAll(
-            '.files-list, ' +
-            '.catalog-detail-actors-grid, ' +
-            '.catalog-detail-recommendations-grid, ' +
-            '.catalog-row-viewport, ' +
-            '.catalog-row'
-        );
+    var H_SCROLL_SELECTOR = '.files-list, ' +
+        '.catalog-detail-actors-grid, ' +
+        '.catalog-detail-recommendations-grid, ' +
+        '.catalog-row-viewport, ' +
+        '.catalog-row';
 
-        for (var i = 0; i < containers.length; i++) {
-            (function (cnt) {
-                if (cnt._smoothWheelInitialized) return;
-                cnt._smoothWheelInitialized = true;
+    // Столько же, сколько APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX в app.js: до
+    // этого порога касание там ещё считается тапом и открывает карточку,
+    // так что раньше начинать драг нельзя — уедет ряд и откроется фильм
+    var TOUCH_AXIS_THRESHOLD = 10;
+    var FLING_MS = 140;      // насколько ряд пролетает по инерции после свайпа
+    var FLING_IDLE_MS = 80;  // палец постоял перед отрывом — инерции нет
 
-                // Через getScrollX/setScrollXImmediate, а не cnt.scrollLeft:
-                // у каруселей рядов позиция живёт в трансформации трека
-                var target = getScrollX(cnt);
-                var rafId = null;
+    /** Состояние догона кадрами держим на самом элементе: слушатель один на всех */
+    function state(cnt) {
+        if (!cnt._hScroll) cnt._hScroll = { target: getScrollX(cnt), rafId: null };
+        return cnt._hScroll;
+    }
 
-                function getMaxScroll() {
-                    return getMaxScrollX(cnt);
-                }
+    function clampX(cnt, value) {
+        return Math.max(0, Math.min(getMaxScrollX(cnt), value));
+    }
 
-                function clamp(value) {
-                    return Math.max(0, Math.min(getMaxScroll(), value));
-                }
+    function stopGlide(cnt) {
+        var st = state(cnt);
+        if (st.rafId) { cancelAnimationFrame(st.rafId); st.rafId = null; }
+    }
 
-                function animationStep() {
-                    var current = getScrollX(cnt);
-                    var diff = target - current;
+    function step(cnt) {
+        var st = state(cnt);
+        var current = getScrollX(cnt);
+        var diff = st.target - current;
 
-                    if (Math.abs(diff) < 0.6) {
-                        setScrollXImmediate(cnt, target);
-                        rafId = null;
-                        return;
-                    }
-
-                    // Чем меньше коэффициент, тем мягче.
-                    // 0.10 - очень мягко
-                    // 0.16 - оптимально
-                    // 0.22 - быстрее
-                    // 0.30 - режим «Быстрая» в ui-customizer (меньше кадров догона)
-                    var factor = getScrollAnimMode() === 'fast' ? 0.3 : 0.16;
-                    setScrollXImmediate(cnt, current + diff * factor);
-
-                    rafId = requestAnimationFrame(animationStep);
-                }
-
-                function onWheel(e) {
-                    if (getMaxScroll() <= 0) return;
-
-                    var dy =
-                        e.deltaY ||
-                        e.wheelDeltaY ||
-                        (e.wheelDelta ? -e.wheelDelta / 40 : 0) ||
-                        e.detail ||
-                        0;
-
-                    var dx = e.deltaX || e.wheelDeltaX || 0;
-
-                    if (Math.abs(dy) <= Math.abs(dx)) return;
-
-                    e.preventDefault();
-
-                    // «Без анимации» — ставим позицию сразу, догон кадрами не запускаем
-                    if (getScrollAnimMode() === 'none') {
-                        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-                        target = clamp(getScrollX(cnt) + dy * 0.9);
-                        setScrollXImmediate(cnt, target);
-                        return;
-                    }
-
-                    if (!rafId) {
-                        target = getScrollX(cnt);
-                    }
-
-                    target = clamp(target + dy * 0.9);
-
-                    if (!rafId) {
-                        rafId = requestAnimationFrame(animationStep);
-                    }
-                }
-
-                cnt.addEventListener('wheel', onWheel, { passive: false });
-            })(containers[i]);
+        if (Math.abs(diff) < 0.6) {
+            setScrollXImmediate(cnt, st.target);
+            st.rafId = null;
+            return;
         }
+
+        // Чем меньше коэффициент, тем мягче.
+        // 0.10 - очень мягко
+        // 0.16 - оптимально
+        // 0.22 - быстрее
+        // 0.30 - режим «Быстрая» в ui-customizer (меньше кадров догона)
+        var factor = getScrollAnimMode() === 'fast' ? 0.3 : 0.16;
+        setScrollXImmediate(cnt, current + diff * factor);
+
+        st.rafId = requestAnimationFrame(function () { step(cnt); });
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initSmoothHorizontalScroll);
-    } else {
-        initSmoothHorizontalScroll();
+    /** Плавно доехать до позиции left (в координатах scrollLeft) */
+    function glideTo(cnt, left) {
+        var st = state(cnt);
+        st.target = clampX(cnt, left);
+
+        // «Без анимации» — ставим позицию сразу, догон кадрами не запускаем
+        if (getScrollAnimMode() === 'none') {
+            stopGlide(cnt);
+            setScrollXImmediate(cnt, st.target);
+            return;
+        }
+        if (!st.rafId) st.rafId = requestAnimationFrame(function () { step(cnt); });
     }
 
-    window.initSmoothHorizontalScroll = initSmoothHorizontalScroll;
+    /**
+     * Контейнер под курсором/пальцем, который реально можно двигать.
+     * Заголовок ряда лежит вне вьюпорта — там closest даёт .catalog-row,
+     * у которого getMaxScrollX === 0, и жест уходит странице.
+     */
+    function findContainer(target) {
+        if (!target || !target.closest) return null;
+        var cnt = target.closest(H_SCROLL_SELECTOR);
+        if (!cnt || getMaxScrollX(cnt) <= 0) return null;
+        return cnt;
+    }
+
+    document.addEventListener('wheel', function (e) {
+        var cnt = findContainer(e.target);
+        if (!cnt) return;
+
+        var dy =
+            e.deltaY ||
+            e.wheelDeltaY ||
+            (e.wheelDelta ? -e.wheelDelta / 40 : 0) ||
+            e.detail ||
+            0;
+
+        var dx = e.deltaX || e.wheelDeltaX || 0;
+        var isCarousel = !!getRowTrack(cnt);
+        var delta;
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+            // Горизонтальный жест (тачпад, shift+колесо): нативному списку его
+            // отработает сам браузер, а у карусели скроллить нечего — только трек
+            if (!isCarousel) return;
+            delta = dx;
+        } else {
+            delta = dy;
+        }
+        if (!delta) return;
+
+        var st = state(cnt);
+        // Догон не идёт — считаем от фактической позиции, а не от старой цели
+        // (её мог перебить setScrollX при навигации пультом)
+        if (!st.rafId) st.target = getScrollX(cnt);
+
+        // Ряд упёрся в край — колесо отдаём странице (default не отменяем).
+        // Иначе на главной, где ряды занимают весь экран, вертикальной
+        // прокрутки мышью не было бы вообще.
+        var max = getMaxScrollX(cnt);
+        if ((delta < 0 && st.target <= 0.5) || (delta > 0 && st.target >= max - 0.5)) return;
+
+        e.preventDefault();
+        glideTo(cnt, st.target + delta * 0.9);
+    }, { passive: false });
+
+    // ---------- Драг пальцем ----------
+    var drag = null;
+
+    document.addEventListener('touchstart', function (e) {
+        drag = null;
+        if (!e.touches || e.touches.length !== 1) return;
+        var cnt = findContainer(e.target);
+        if (!cnt) return;
+
+        stopGlide(cnt);
+        var t = e.touches[0];
+        drag = {
+            cnt: cnt,
+            startX: t.clientX,
+            startY: t.clientY,
+            startScroll: getScrollX(cnt),
+            axis: null,
+            lastX: t.clientX,
+            lastT: Date.now(),
+            velocity: 0
+        };
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function (e) {
+        if (!drag || !e.touches || e.touches.length !== 1) return;
+
+        var t = e.touches[0];
+        var dx = drag.startX - t.clientX;
+        var dy = drag.startY - t.clientY;
+
+        if (!drag.axis) {
+            if (Math.abs(dx) < TOUCH_AXIS_THRESHOLD && Math.abs(dy) < TOUCH_AXIS_THRESHOLD) return;
+            // Жест по вертикали отдаём странице: #main-container скроллится
+            // нативно, перехватим — и главная перестанет листаться пальцем
+            if (Math.abs(dy) >= Math.abs(dx)) { drag = null; return; }
+            drag.axis = 'x';
+        }
+
+        e.preventDefault();
+
+        var now = Date.now();
+        var dt = now - drag.lastT;
+        // px/мс, знак как у scrollX: палец влево — ряд уезжает вперёд
+        if (dt > 0) drag.velocity = (drag.lastX - t.clientX) / dt;
+        drag.lastX = t.clientX;
+        drag.lastT = now;
+
+        setScrollXImmediate(drag.cnt, clampX(drag.cnt, drag.startScroll + dx));
+    }, { passive: false });
+
+    function endDrag() {
+        if (!drag) return;
+        var d = drag;
+        drag = null;
+        if (d.axis !== 'x') return;
+
+        var velocity = (Date.now() - d.lastT > FLING_IDLE_MS) ? 0 : d.velocity;
+        glideTo(d.cnt, getScrollX(d.cnt) + velocity * FLING_MS);
+    }
+
+    document.addEventListener('touchend', endDrag, { passive: true });
+    document.addEventListener('touchcancel', endDrag, { passive: true });
+
+    // Слушатели делегированы, обходить контейнеры больше не нужно —
+    // функция оставлена, чтобы не падали внешние вызовы
+    window.initSmoothHorizontalScroll = function () { };
 })();
