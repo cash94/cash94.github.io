@@ -270,6 +270,20 @@
     }
 
     /**
+     * Галка «Автовоспроизведение трейлеров» в UI Customizer. Спрашиваем каждый
+     * раз, а не кэшируем: настройку переключают на живой странице. Нет самого
+     * кастомайзера (старая копия на зеркале) — считаем, что включено.
+     */
+    function heroTrailersOn() {
+        try {
+            if (window.UICustomizer && typeof UICustomizer.getHeroTrailers === 'function') {
+                return UICustomizer.getHeroTrailers();
+            }
+        } catch (e) { }
+        return true;
+    }
+
+    /**
      * Раньше загрузчик ждал window.load, а тот наступает после ВСЕХ картинок и
      * шрифтов — на телевизоре это секунды спиннера поверх уже готовой главной.
      * Снимаем сами, как только первый ряд на экране: это и есть момент, когда
@@ -703,12 +717,16 @@
     function startTrailerCountdown(item, details, gen) {
         if (gen !== homeState.hero.gen) return;
         if (!isHomeVisible() || playerBusy() || moduleLoaderUp()) return;
+        // Галка выключена — баннер остаётся картинкой: ни кругляшка, ни поиска
+        // на RuTube, ни запроса /api/rutube/hls
+        if (!heroTrailersOn()) { hideHeroRing(); return; }
         runHeroRing();
         homeState.hero.ringTimer = setTimeout(function () {
             homeState.hero.ringTimer = null;
             if (gen !== homeState.hero.gen) return;
             homeState.hero.ringDone = true;
             if (!isHomeVisible() || playerBusy() || !focusedIsHeroCard()) { hideHeroRing(); return; }
+            if (!heroTrailersOn()) { hideHeroRing(); return; }
             if (homeState.hero.trailerUrl) {
                 startHeroTrailer(homeState.hero.trailerUrl, gen);
                 return;
@@ -781,6 +799,8 @@
     function startHeroTrailer(url, gen) {
         if (!url || gen !== homeState.hero.gen) return;
         if (!isHomeVisible() || playerBusy()) return;
+        // Последний рубеж: галку могли снять уже после отсчёта, пока искался трейлер
+        if (!heroTrailersOn()) { hideHeroRing(); return; }
         var media = el('home-hero-media');
         if (!media) return;
 
@@ -918,6 +938,20 @@
         homeState.hero.pendingKey = null;
         resetHeroRing();
         stopHeroTrailer();
+    }
+
+    /**
+     * Галку «Автовоспроизведение трейлеров» вернули обратно (ui-customizer.js) —
+     * заводим отсчёт для карточки под фокусом, не дожидаясь, пока фокус куда-то
+     * переедет. pendingKey сбрасываем, иначе setHeroItem сочтёт этот элемент уже
+     * показанным и выйдет молча.
+     */
+    function rearmHeroTrailer() {
+        if (!isHomeVisible() || !heroTrailersOn()) return;
+        var f = document.querySelector('.focused');
+        if (!f || !findCardPosition(f)) return;
+        homeState.hero.pendingKey = null;
+        setHeroFromCard(f);
     }
 
     // ==================== РАЗМЕРЫ: БАННЕР И КАРТОЧКИ ====================
@@ -2241,6 +2275,7 @@
         refresh: refreshHome,
         layout: layoutHome,
         stopTrailer: suspendHero,
+        rearmTrailer: rearmHeroTrailer,
         state: homeState
     };
 
