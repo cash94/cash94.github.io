@@ -1241,7 +1241,7 @@
         setScrollX(viewport, target, true, 0.42);
     }
 
-    function focusCard(ri, ci) {
+    function focusCard(ri, ci, noScroll) {
         var cards = homeState.rows[ri];
         if (!cards || !cards[ci]) return true;
         if (ri !== homeState.activeRow) setActiveRow(ri);
@@ -1249,7 +1249,9 @@
         homeState.lastRowKey = homeState.rowKeys[ri];
         homeState.lastColIndex = ci;
         focusHomeEl(cards[ci]);
-        scrollToCard(cards[ci]);
+        // noScroll — фокус за курсором мыши: карточка и так под ним целиком,
+        // а любой сдвиг ряда уводил бы её из-под указателя (см. «ЖЕСТЫ»)
+        if (!noScroll) scrollToCard(cards[ci]);
         setHeroFromCard(cards[ci]);
         return true;
     }
@@ -1992,10 +1994,9 @@
     //
     // Колесо на главной листает подборки, а горизонтального жеста у обычной
     // мыши нет — до дальних карточек ряда указателем было не добраться.
-    // Держим курсор на крайней карточке (у правого или левого края вьюпорта) —
-    // ряд едет в эту сторону шагами по карточке, пока не упрётся в край.
-    // Фокус не трогаем: он остаётся там, куда его поставили пультом, а клик
-    // открывает ту карточку, по которой щёлкнули.
+    // Держим курсор у правого или левого края ряда — он едет в эту сторону
+    // шагами по карточке, пока не упрётся. Отсюда деление зон: у краёв курсор
+    // прокручивает ряд, в середине — ставит фокус (hoverFocus ниже).
 
     var hover = { viewport: null, dir: 0, timer: null };
     // Метрики ряда под курсором: mousemove приходит десятками в секунду, а
@@ -2004,6 +2005,8 @@
     // меняется только на resize и при смене ряда.
     var hoverMetrics = { el: null, at: 0, box: null, step: 0 };
     var lastMoveAt = 0;
+    var lastMoveX = -1;
+    var lastMoveY = -1;
     var touchedAt = 0;
 
     /** Шаг прокрутки — реальное расстояние между карточками этого ряда */
@@ -2053,33 +2056,91 @@
         setScrollX(v, cur + hover.dir * rowMetrics(v).step, true, HOME.HOVER_SCROLL_SEC);
     }
 
+    /** @returns {boolean} true — ряд поехал (или уже едет), false — уже у края */
     function startHoverScroll(viewport, dir) {
-        if (hover.viewport === viewport && hover.dir === dir && hover.timer) return;
+        if (hover.viewport === viewport && hover.dir === dir && hover.timer) return true;
         stopHoverScroll();
         hover.viewport = viewport;
         hover.dir = dir;
         hoverScrollStep();                          // первый шаг сразу
-        if (hover.dir) hover.timer = setInterval(hoverScrollStep, HOME.HOVER_SCROLL_MS);
+        // Шаг мог упереться в край и всё погасить — тогда таймер не заводим
+        if (!hover.dir) return false;
+        hover.timer = setInterval(hoverScrollStep, HOME.HOVER_SCROLL_MS);
+        return true;
+    }
+
+    // ---------- Мышь: фокус за курсором ----------
+    //
+    // С пультом фокус ведут стрелки, но указателем ожидается прямое попадание:
+    // карточка под курсором и есть выбранная. Ведём фокус тем же путём, что
+    // стрелки (focusCard / focusHomeEl), иначе разойдутся баннер и запомненная
+    // для ряда колонка — с них потом продолжает пульт.
+
+    /** Ближайший элемент под курсором, которому на главной положен фокус */
+    function hoverFocusableFrom(node) {
+        if (!node || !node.closest) return null;
+        return node.closest('#home-rows .torrent-card.catalog-card') ||
+            node.closest('#home-topbar .home-nav-btn') ||
+            node.closest('#home-play-btn');
+    }
+
+    function hoverFocus(target) {
+        // Курсор стоит на уже выбранном — самый частый случай, и делать нечего
+        if (!target || target.classList.contains('focused')) return;
+
+        var pos = findCardPosition(target);
+        if (pos) {
+            // Карточку, вылезающую за край вьюпорта, доводка скроллом подтянула
+            // бы под фокус — ряд поехал бы под курсором, и следующий mousemove
+            // целился бы уже в соседнюю. Такие края — забота краевой прокрутки.
+            var vp = target.closest('.catalog-row-viewport');
+            if (vp) {
+                var cb = target.getBoundingClientRect(), vb = rowMetrics(vp).box;
+                if (cb.left < vb.left - 1 || cb.right > vb.right + 1) return;
+            }
+            focusCard(pos.row, pos.col, true);
+            return;
+        }
+
+        // Как и стрелками по шапке: помним кнопку, на которую вернёт «вверх»
+        if (target.classList.contains('home-nav-btn')) {
+            homeState.lastNavBtnId = target.id || homeState.lastNavBtnId;
+        }
+        focusHomeEl(target);
     }
 
     function onHomeMouseMove(e) {
         var now = Date.now();
+        // Тап на тач-экране рисует ещё и mousemove: курсора там нет, и «зависший
+        // у края» указатель прокручивал бы ряд до упора после каждого касания
+        if (now - touchedAt < 800) return;
         if (now - lastMoveAt < 50) return;          // хватит и 20 проверок в секунду
+        // Ряд поехал под неподвижным курсором — это не жест мышью
+        if (e.clientX === lastMoveX && e.clientY === lastMoveY) return;
         lastMoveAt = now;
+        lastMoveX = e.clientX;
+        lastMoveY = e.clientY;
 
         if (!isHomeFocusable()) { stopHoverScroll(); return; }
+
         var v = (e.target && e.target.closest)
             ? e.target.closest('#home-rows .catalog-row-viewport') : null;
-        if (!v) { stopHoverScroll(); return; }
-
-        var m = rowMetrics(v);
-        // Зона примерно в карточку шириной, но не уже 60px и не больше трети ряда
-        var w = m.box.width || v.clientWidth || 0;
-        var zone = Math.max(60, Math.min(m.step, w * 0.3));
-
-        if (e.clientX >= m.box.right - zone) startHoverScroll(v, 1);
-        else if (e.clientX <= m.box.left + zone) startHoverScroll(v, -1);
-        else stopHoverScroll();
+        if (v) {
+            var m = rowMetrics(v);
+            // Зона примерно в карточку шириной, но не уже 60px и не больше трети ряда
+            var w = m.box.width || v.clientWidth || 0;
+            var zone = Math.max(60, Math.min(m.step, w * 0.3));
+            // У края ряд едет, фокус не трогаем: карточки под курсором меняются
+            // сами. Ряд, доехавший до упора, зону освобождает — там снова фокус
+            // (иначе до первой и последней карточки мышью было бы не добраться).
+            if (e.clientX >= m.box.right - zone) {
+                if (startHoverScroll(v, 1)) return;
+            } else if (e.clientX <= m.box.left + zone) {
+                if (startHoverScroll(v, -1)) return;
+            }
+        }
+        stopHoverScroll();
+        hoverFocus(hoverFocusableFrom(e.target));
     }
 
     function initGestures() {
