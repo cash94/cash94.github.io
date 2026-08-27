@@ -5116,3 +5116,402 @@ article {
     font-size: 15px;
   }
 }
+
+
+/* ==========================================================================
+   АДАПТИВ: 960x540 — ТВ 1080p при DPR 2 (и другие «широкие, но низкие» экраны)
+   ------------------------------------------------------------------------
+   Такой экран НЕ попадает в блок 1025+/max-height:820 (ширина меньше 1025), а
+   блоки «планшет» (max-width: 1024) рассчитаны на высоту 768+ — по вертикали не
+   влезало ничего: у detail-view шапка с постером 100x150 и панель занимали 369
+   из 540px, актёры оказывались целиком под кромкой.
+
+   Вертикальный бюджет 540px:
+     главная/каталог  шапка 36 + ряд (заголовок 27 + карусель 277) = 340,
+                      остаток 200 — заголовок следующего ряда и ~60% постера
+                      (видно, что список продолжается);
+     detail-view      шапка 125 + панель 124 + актёры 161 = 410,
+                      остаток — заголовок «Похожие» и верх постеров;
+     торрент          шапка 93 + панель 41 + актёры 161 + файлы 160 = 455.
+
+   ВАЖНО: размеры самих карточек (ширина/высота постера, число колонок сетки,
+   gap и шрифты подписей) сюда не входят — их задаёт ui-customizer.js через
+   !important, и медиазапрос их всё равно не перебьёт (его <style> идёт в head
+   после этого файла). Под низкий экран он подставляет свой дефолт cardSize
+   (~144x255 при 540px) и плотность compact — см. viewportDefaults().
+   !important здесь нужен там, где он есть у блоков max-width:1024 выше:
+   специфичность равная, поэтому решает порядок правил.
+   ========================================================================== */
+@media screen and (min-width: 720px) and (max-width: 1024px) and (max-height: 620px) {
+
+  /* ===== Шапка раздела ===== */
+  #home-topbar {
+    padding: 6px 20px 8px;
+    margin: -16px -16px 4px;
+  }
+
+  #home-topbar > .home-nav-btn + .home-nav-btn,
+  #home-topbar #settings-btn {
+    margin-left: 14px;
+  }
+
+  #home-topbar .section-title-header {
+    margin: 0 18px 0 0;
+    font-size: 18px;
+  }
+
+  .home-nav-btn {
+    padding: 3px 2px;
+    font-size: 13px;
+  }
+
+  .home-nav-btn.home-nav-icon {
+    padding: 4px;
+    font-size: 14px;
+  }
+
+  /* ===== Ряды: главная и каталог ===== */
+  #home-rows {
+    padding: 0 0 28px;
+  }
+
+  /* Боковые 8px не нужны: отступ от кромки задаёт padding заголовка ряда */
+  #catalog-rows {
+    padding: 0 0 28px;
+  }
+
+  .catalog-rows-loading {
+    padding: 30px 16px;
+  }
+
+  #home-rows .catalog-row,
+  .catalog-row {
+    margin-bottom: 4px;
+  }
+
+  .catalog-row-header {
+    padding: 0 20px 6px;
+  }
+
+  .catalog-row-title {
+    font-size: 17px;
+    gap: 6px;
+  }
+
+  .catalog-row-title::after {
+    font-size: 14px;
+  }
+
+  .catalog-row-showall-hint {
+    font-size: 11px;
+  }
+
+  /* Верхний отступ трека — под рамку фокуса (3px) и подъём постера
+     (scale 1.05 у постера 255px выходит за край на 6.4px сверху и снизу):
+     .catalog-row-viewport обрезает по overflow, поэтому меньше 10px нельзя. */
+  .catalog-row-track {
+    gap: 10px;
+    padding: 10px 20px 12px;
+  }
+
+  .catalog-row-card .rating-badge {
+    top: 5px !important;
+    right: 5px !important;
+    font-size: 10px !important;
+    padding: 1px 5px !important;
+    border-radius: 7px !important;
+  }
+
+  .catalog-show-all .show-all-icon {
+    font-size: 30px;
+  }
+
+  .catalog-show-all .show-all-text {
+    font-size: 12px;
+  }
+
+  /* ===== Сетка каталога =====
+     Резерв под неотрисованной карточкой (content-visibility). Обычно его
+     перебивает ui-customizer.js, здесь — корректное значение на случай, если он
+     не загрузился: 6 колонок, gap 6px (плотность compact), padding 8px у
+     #catalog-grid и 16px у #torrserver-section, то есть колонка =
+     (100vw - 78px)/6, а высота = постер (aspect-ratio 2/3) + 64px подписи. */
+  #catalog-grid > .torrent-card.catalog-card {
+    contain-intrinsic-size: calc((100vw - 78px) / 6)
+      var(--catalog-card-h, calc(((100vw - 78px) / 6 - 2px) * 1.5 + 64px));
+  }
+
+  /* ===== DETAIL-VIEW: карточка фильма ===== */
+  .detail-header {
+    padding: 10px 28px !important;
+    gap: 12px;
+  }
+
+  .detail-poster {
+    width: 70px !important;
+    height: 105px !important;
+  }
+
+  .detail-title h2,
+  #detail-title-text {
+    font-size: 22px !important;
+    margin: 0 0 4px 0 !important;
+  }
+
+  .detail-subtitle,
+  #detail-subtitle {
+    font-size: 13px !important;
+    -webkit-line-clamp: 2;
+  }
+
+  .catalog-detail-panel {
+    padding: 8px 28px 10px 28px !important;
+    max-width: 720px;
+  }
+
+  .catalog-detail-meta {
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .catalog-meta-chip {
+    padding: 3px 9px;
+    font-size: 11px;
+  }
+
+  .catalog-detail-overview,
+  #catalog-detail-overview {
+    font-size: 13px !important;
+    line-height: 1.45 !important;
+    margin-bottom: 10px !important;
+    -webkit-line-clamp: 2;
+    max-width: 620px;
+  }
+
+  #catalog-detail-actions,
+  .catalog-detail-actions {
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .catalog-watch-btn,
+  #catalog-watch-btn,
+  .catalog-trailer-btn,
+  #catalog-trailer-btn,
+  .detail-progress-btn,
+  #detail-progress-btn,
+  .catalog-toggle-overview-btn,
+  #catalog-toggle-overview-btn {
+    padding: 7px 16px !important;
+    font-size: 13px !important;
+  }
+
+  .detail-progress {
+    margin: 0 28px 6px 28px;
+    padding: 8px;
+  }
+
+  .detail-progress-label,
+  .detail-progress-episode,
+  .detail-progress-time {
+    font-size: 11px;
+  }
+
+  .catalog-detail-panel > .catalog-toggle-overview-btn {
+    margin-top: -6px;
+    margin-bottom: 8px;
+  }
+
+  .catalog-detail-section-title {
+    font-size: 15px !important;
+    margin-bottom: 6px !important;
+    padding-left: 28px;
+  }
+
+  /* --- Актёры --- */
+  #catalog-detail-actors-wrap,
+  .catalog-detail-actors-wrap {
+    margin-top: 12px !important;
+  }
+
+  .catalog-detail-actors-grid,
+  #catalog-detail-actors {
+    padding: 2px 28px 10px 28px !important;
+    gap: 12px;
+  }
+
+  .catalog-actor-card {
+    width: 76px;
+  }
+
+  .catalog-actor-photo {
+    width: 72px;
+    height: 72px;
+    margin: 0 2px 4px 2px;
+  }
+
+  .catalog-actor-no-photo {
+    font-size: 26px;
+  }
+
+  .catalog-actor-info {
+    padding: 0 2px 4px 2px;
+  }
+
+  /* --- Похожие --- */
+  #catalog-detail-recommendations-wrap,
+  .catalog-detail-recommendations-wrap {
+    margin-top: 12px !important;
+    padding: 0 0 20px 0 !important;
+  }
+
+  .catalog-detail-recommendations-grid,
+  #catalog-detail-recommendations {
+    padding: 2px 28px 10px 28px !important;
+    gap: 12px;
+  }
+
+  .catalog-recommendation-card {
+    width: 96px;
+  }
+
+  .catalog-recommendation-poster {
+    width: 96px;
+    height: 144px;
+  }
+
+  .catalog-recommendation-no-poster {
+    font-size: 26px;
+  }
+
+  .catalog-recommendation-info {
+    padding: 5px;
+  }
+
+  .catalog-recommendation-title {
+    font-size: 10px;
+  }
+
+  .catalog-recommendation-year,
+  .catalog-recommendation-rating {
+    font-size: 9px;
+  }
+
+  /* ===== DETAIL-VIEW: карточка торрента ===== */
+  #detail-view.torrent-detail-mode .detail-header {
+    padding: 10px 28px 0 28px !important;
+  }
+
+  #detail-view.torrent-detail-mode #detail-title-text {
+    font-size: 22px !important;
+    margin: 0 0 6px 0 !important;
+    max-width: 780px;
+  }
+
+  #detail-view.torrent-detail-mode #detail-meta-row {
+    font-size: 12px;
+    margin: 0 0 4px 0;
+  }
+
+  #detail-view.torrent-detail-mode #detail-subtitle {
+    font-size: 12px !important;
+    line-height: 1.35;
+    max-width: 700px;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-detail-panel {
+    padding: 8px 28px 0 28px !important;
+  }
+
+  #detail-view.torrent-detail-mode #detail-progress-btn {
+    padding: 7px 16px !important;
+    font-size: 13px !important;
+  }
+
+  #detail-view.torrent-detail-mode #detail-progress-btn .btn-label {
+    font-size: 13px;
+  }
+
+  #detail-view.torrent-detail-mode #detail-progress-btn .btn-hint {
+    margin-left: 8px;
+    font-size: 11px;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-detail-section-title {
+    font-size: 15px !important;
+    margin-bottom: 6px !important;
+    padding-left: 28px;
+  }
+
+  #detail-view.torrent-detail-mode #files-list-title {
+    margin-top: 10px !important;
+  }
+
+  #detail-view.torrent-detail-mode #catalog-detail-actors-wrap {
+    margin-top: 12px !important;
+  }
+
+  #detail-view.torrent-detail-mode #catalog-detail-actors {
+    padding: 2px 28px 10px 28px !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-card {
+    width: 76px !important;
+    margin: 0 12px 0 0 !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-photo {
+    width: 72px;
+    height: 72px;
+    margin: 0 2px 4px 2px;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-no-photo {
+    font-size: 26px;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-name {
+    font-size: 11px !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-actor-character {
+    font-size: 9px !important;
+  }
+
+  #detail-view.torrent-detail-mode .files-list {
+    padding: 2px 28px 16px 28px !important;
+  }
+
+  /* 200x113 — те же 16:9, что и у плиток на 720p/1080p.
+     padding обнуляем принудительно: блок @media 960–1399 задаёт .file-item
+     padding: 11.37px, а плитка — border-box, и этот отступ уводит .file-content
+     (кнопка play) из центра кадра. */
+  #detail-view.torrent-detail-mode .file-item {
+    width: 200px;
+    min-width: 200px;
+    height: 113px;
+    margin: 0 12px 0 0 !important;
+    padding: 0 !important;
+  }
+
+  #detail-view.torrent-detail-mode .file-info {
+    padding: 14px 10px 7px 10px !important;
+  }
+
+  #detail-view.torrent-detail-mode .file-name {
+    font-size: 12px;
+  }
+
+  #detail-view.torrent-detail-mode .file-size {
+    font-size: 11px;
+  }
+
+  #detail-view.torrent-detail-mode .play-btn {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0 !important;
+    font-size: 16px;
+  }
+}

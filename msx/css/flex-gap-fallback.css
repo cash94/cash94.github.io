@@ -420,6 +420,59 @@ html.no-flex-gap .filter-value-item > * + * {
   }
 }
 
+/* ===== 960x540: ТВ 1080p при DPR 2 =====
+   Парный блок к @media …(max-width: 1024px) and (max-height: 620px) в конце
+   styles.css. Идёт ПОСЛЕ блока 720–960: на таком экране подходят оба, решает
+   порядок правил. */
+@media screen and (min-width: 720px) and (max-width: 1024px) and (max-height: 620px) {
+  /* styles.css: .catalog-row-title */
+  html.no-flex-gap .catalog-row-title > * + * {
+    margin-left:6px;
+  }
+
+  /* styles.css: .catalog-row-track */
+  html.no-flex-gap .catalog-row-track > * + * {
+    margin-left:10px;
+  }
+
+  /* styles.css: .detail-header */
+  html.no-flex-gap .detail-header > * + * {
+    margin-left:12px;
+  }
+
+  /* styles.css: .catalog-detail-meta */
+  html.no-flex-gap .catalog-detail-meta > * {
+    margin-right:6px;
+    margin-bottom:6px;
+  }
+  html.no-flex-gap .catalog-detail-meta > *:last-child {
+    margin-right: 0;
+  }
+
+  /* styles.css: #catalog-detail-actions */
+  html.no-flex-gap #catalog-detail-actions > *,
+  html.no-flex-gap .catalog-detail-actions > * {
+    margin-right:10px;
+    margin-bottom:10px;
+  }
+  html.no-flex-gap #catalog-detail-actions > *:last-child,
+  html.no-flex-gap .catalog-detail-actions > *:last-child {
+    margin-right: 0;
+  }
+
+  /* styles.css: .catalog-detail-actors-grid / .catalog-detail-recommendations-grid.
+     В общей части фоллбэка правила для них нет (gap: 20px в styles.css:2984 не
+     продублирован) — на Chrome 66 аватары и постеры «похожих» слипались.
+     В торрентном detail-view это не мешает: там у карточек свой
+     margin: 0 12px 0 0 !important, и он перебивает margin-left отсюда. */
+  html.no-flex-gap .catalog-detail-actors-grid > * + *,
+  html.no-flex-gap #catalog-detail-actors > * + *,
+  html.no-flex-gap .catalog-detail-recommendations-grid > * + *,
+  html.no-flex-gap #catalog-detail-recommendations > * + * {
+    margin-left:12px;
+  }
+}
+
 /* ============== 1b. Инлайновые gap в разметке ==============
    Те же отступы для элементов, у которых gap задан прямо в
    атрибуте style (index.html и шаблоны в js/*.js). Селекторы
