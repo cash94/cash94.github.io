@@ -19,6 +19,14 @@ var CATALOG_CONSTANTS = {
     MAX_TRAILERS: 6,
     LOAD_MORE_MARGIN_PX: 300,
     POSTER_OBSERVER_MARGIN_PX: 1200,
+    // Ряды: запас по горизонтали держим маленьким. Вертикальные 1200px — это
+    // «следующие ряды», их надо готовить заранее. По горизонтали же 1200px дают
+    // +5 карточек за краем экрана, и при входе ряда в кадр в очередь разом
+    // улетают все видимые плюс запас — десяток декодов и вставок посреди
+    // навигации, то есть фриз. 400px — полторы карточки: постер успевает
+    // появиться до того, как до него дойдёт фокус, а работа размазана
+    // по нажатиям вместо одного залпа.
+    ROW_POSTER_MARGIN_X_PX: 400,
     CATALOG_UPDATE_THRESHOLD_HOURS: 6,
     MAX_POSTER_DECODES: 8,
     FOCUS_DELAY_MS: 100,
@@ -3165,26 +3173,41 @@ async function loadRowPoster(card, item) {
 }
 
 /**
- * Быстрый путь для карточки ряда — то же, что loadPosterDirect для сетки.
- * poster_path уже есть, значит адрес известен: собираем его через зеркало-прокси
- * и сразу отдаём в setRowPosterImg, минуя rowPosterQueue. Очередь нужна только
- * там, где URL ещё надо узнать (запрос к Worker), — ждать нечего, а каждый
- * прогон очереди стоит setTimeout плюс два промис-тика.
+ * Постер карточки, на которую только что встал фокус, — вне очереди и вне
+ * пейсинга. Пока кнопка пульта зажата, processRowPosterQueue стоит (см.
+ * isNavBusy), и без этой врезки пользователь ехал бы по пустым рамкам. Один
+ * постер на нажатие потянет любой телевизор, а очередь доберёт остальные,
+ * когда навигация утихнет.
  *
- * @returns {boolean} true — постер обработан, в очередь ставить не нужно
+ * Зовётся из revealCatalogElement, то есть из focusEl (control.js) — ровно там,
+ * где с карточки уже снимается оконное погашение.
  */
-function loadRowPosterDirect(card, item) {
-    if (!item || !item.poster_path) return false;
+function ensureRowPosterNow(card) {
+    if (!card || !card.classList || !card.classList.contains('catalog-row-card')) return;
+    if (card.dataset.posterStarted === '1') return;      // загрузка уже идёт
 
-    var box = card && card.querySelector('.row-poster-img');
-    if (!box) return false;
+    var box = card.querySelector('.row-poster-img');
+    if (!box || box.querySelector('img')) return;        // постер уже на месте
 
-    var url = getTmdbImageUrl(item.poster_path, getPosterCardSize());
-    if (!url) return false;
+    var key = card.dataset.catalogKey;
+    var idx = parseInt(card.dataset.itemIndex, 10);
+    if (isNaN(idx)) return;                              // «Показать все» — без постера
+    var items = window.catalogRowsData && window.catalogRowsData[key];
+    if (!items || !items[idx]) return;
 
-    catalogState.posterCache.set(item.id + '_' + (item.media_type || 'movie'), url);
-    setRowPosterImg(box, url);   // промис не нужен: пейсингом занят только медленный путь
-    return true;
+    // Карточка могла уже стоять в очереди — вынимаем, иначе загрузим дважды
+    var q = catalogState.rowPosterQueue;
+    if (q) {
+        for (var i = 0; i < q.length; i++) {
+            if (q[i].card === card) { q.splice(i, 1); break; }
+        }
+    }
+    if (card.dataset.posterLoaded !== '1') {
+        card.dataset.posterLoaded = '1';
+        if (catalogState.rowPosterObserver) catalogState.rowPosterObserver.unobserve(card);
+    }
+    card.dataset.posterStarted = '1';
+    loadRowPoster(card, items[idx]).catch(function () { });
 }
 
 // ==================== ЛЕНИВАЯ ЗАГРУЗКА ПОСТЕРОВ РЯДОВ ====================
@@ -3202,13 +3225,22 @@ function resetStrandedRowPosters() {
     for (var i = 0; i < cards.length; i++) {
         if (cards[i].dataset.posterLoaded !== '1') continue;
         var box = cards[i].querySelector('.row-poster-img');
-        if (box && !box.querySelector('img')) cards[i].dataset.posterLoaded = '0';
+        if (box && !box.querySelector('img')) {
+            cards[i].dataset.posterLoaded = '0';
+            cards[i].dataset.posterStarted = '0';   // иначе ensureRowPosterNow её пропустит
+        }
     }
 }
 
 /**
  * Наблюдает за карточками рядов и ставит в очередь постеры тех,
- * что попали в зону видимости (+300px предзагрузки).
+ * что попали в зону видимости.
+ *
+ * В очередь идут все без исключения: раньше карточки с готовым poster_path
+ * вставлялись здесь же, минуя очередь, и при входе ряда в кадр браузер получал
+ * весь залп декодов сразу — на телевизоре это и есть фризы навигации. Теперь
+ * единственный путь — processRowPosterQueue, который знает и про предел
+ * параллельности, и про то, что во время прокрутки надо помолчать.
  */
 function initRowPosterLazyLoading() {
     if (catalogState.rowPosterObserver) catalogState.rowPosterObserver.disconnect();
@@ -3229,13 +3261,14 @@ function initRowPosterLazyLoading() {
 
             card.dataset.posterLoaded = '1';                // защита от повторной постановки
             catalogState.rowPosterObserver.unobserve(card);
-
-            // Есть poster_path — вставляем сразу; в очередь только медленный путь
-            if (loadRowPosterDirect(card, items[idx])) continue;
             catalogState.rowPosterQueue.push({ card: card, item: items[idx] });
         }
         processRowPosterQueue();
-    }, { rootMargin: CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX + 'px', threshold: 0.1 });
+    }, {
+        rootMargin: CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX + 'px ' +
+            CATALOG_CONSTANTS.ROW_POSTER_MARGIN_X_PX + 'px',
+        threshold: 0.1
+    });
 
     var cards = document.querySelectorAll('#catalog-rows .catalog-row-card');
     for (var i = 0; i < cards.length; i++) {
@@ -3440,12 +3473,31 @@ window.measureCatalogCardHeight = measureCatalogCardHeight;   // зовёт ui-c
 /**
  * Обрабатывает очередь: не более ROW_POSTER_CONCURRENCY загрузок одновременно.
  * Как только одна завершается (загрузка + декод), берётся следующая.
+ *
+ * Пока идёт прокрутка (window.isNavBusy — отметку ставит control.js в момент
+ * старта твина), очередь стоит. Вставка постера — это замена содержимого бокса
+ * и перерисовка карточки 260×460; несколько таких посреди анимации ряда и есть
+ * те самые фризы навигации. Постер карточки под фокусом это не задерживает:
+ * его тянет ensureRowPosterNow вне очереди.
  */
 function processRowPosterQueue() {
+    if (!catalogState.rowPosterQueue || !catalogState.rowPosterQueue.length) return;
+
+    if (typeof window.isNavBusy === 'function' && window.isNavBusy()) {
+        if (catalogState.rowPosterQueueTimer) return;        // ждём уже
+        catalogState.rowPosterQueueTimer = setTimeout(function () {
+            catalogState.rowPosterQueueTimer = null;
+            processRowPosterQueue();
+        }, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+        return;
+    }
+
     while (catalogState.activeRowPosterLoads < CATALOG_CONSTANTS.ROW_POSTER_CONCURRENCY &&
         catalogState.rowPosterQueue.length > 0) {
         var task = catalogState.rowPosterQueue.shift();
         if (!task.card.isConnected) continue;               // карточку могли удалить
+        if (task.card.dataset.posterStarted === '1') continue;  // уже тянет ensureRowPosterNow
+        task.card.dataset.posterStarted = '1';
         catalogState.activeRowPosterLoads++;
         loadRowPoster(task.card, task.item)
             .catch(function () { })

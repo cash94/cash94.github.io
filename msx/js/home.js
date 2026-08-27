@@ -63,6 +63,8 @@
         TRAILER_DELAY_MS: 5000,
         // Длина окружности кругляшка: 2πr при r = 19 (см. viewBox 0 0 44 44)
         RING_LEN: 119.4,
+        // Как часто проверять, что играющий трейлер всё ещё «свой» и на экране
+        WATCHDOG_MS: 1000,
         // Постеры соседних рядов подтягиваем заранее, но не мешая текущему
         PREFETCH_DELAY_MS: 700
     };
@@ -120,7 +122,8 @@
             trailerUrl: null,
             trailerSearched: false,
             video: null,
-            hls: null
+            hls: null,
+            watchdog: null        // «главная ещё на экране?» пока играет трейлер
         }
     };
 
@@ -204,7 +207,31 @@
 
     /** Главная не только видна, но и владеет фокусом (сверху нет оверлеев) */
     function isHomeFocusable() {
+        if (playerBusy()) return false;
         return isHomeVisible() && !!(window.AppState && AppState.currentScreen === 'home');
+    }
+
+    /**
+     * Плеер уже в кадре или вот-вот в нём окажется. Проверок три, потому что путь
+     * «Смотреть → поиск → воспроизведение» проходит через hideSearchResults
+     * (torrents.js:3495): тот возвращает главную на экран и заводит отсчёт
+     * кругляшка, а #torrserver-section плеер погасит только после запроса
+     * метаданных — то есть через секунды. Без этой проверки в тот зазор успевал
+     * запуститься трейлер и потом играл звуком поверх фильма.
+     */
+    function playerBusy() {
+        if (window.AppState && AppState.currentScreen === 'player') return true;
+        var overlay = el('playback-overlay');
+        if (overlay && overlay.classList.contains('active')) return true;
+        // #player-screen — position: fixed, offsetParent у него null и в
+        // показанном виде. Смотрим на инлайновый display: в разметке он
+        // 'none', плеер ставит 'block' (transitionToPlayerScreen), а базовое
+        // правило в CSS всё равно display: none — то есть пустая строка тоже
+        // означает «скрыт». Вычисленные стили тут не читаем: playerBusy зовётся
+        // на каждое перемещение фокуса.
+        var screen = el('player-screen');
+        if (screen && screen.style.display && screen.style.display !== 'none') return true;
+        return false;
     }
 
     function homeFetch(url) {
@@ -624,13 +651,13 @@
      */
     function startTrailerCountdown(item, details, gen) {
         if (gen !== homeState.hero.gen) return;
-        if (!isHomeVisible()) return;
+        if (!isHomeVisible() || playerBusy()) return;
         runHeroRing();
         homeState.hero.ringTimer = setTimeout(function () {
             homeState.hero.ringTimer = null;
             if (gen !== homeState.hero.gen) return;
             homeState.hero.ringDone = true;
-            if (!isHomeVisible() || !focusedIsHeroCard()) { hideHeroRing(); return; }
+            if (!isHomeVisible() || playerBusy() || !focusedIsHeroCard()) { hideHeroRing(); return; }
             if (homeState.hero.trailerUrl) {
                 startHeroTrailer(homeState.hero.trailerUrl, gen);
                 return;
@@ -677,7 +704,7 @@
         homeState.hero.trailerUrl = url;
         homeState.hero.trailerSearched = true;
         // Пока искали, фокус мог уйти на другую карточку — включаем только «свой»
-        if (homeState.hero.ringDone && focusedIsHeroCard()) startHeroTrailer(url, gen);
+        if (homeState.hero.ringDone && !playerBusy() && focusedIsHeroCard()) startHeroTrailer(url, gen);
         else hideHeroRing();
     }
 
@@ -702,7 +729,7 @@
      */
     function startHeroTrailer(url, gen) {
         if (!url || gen !== homeState.hero.gen) return;
-        if (!isHomeVisible()) return;
+        if (!isHomeVisible() || playerBusy()) return;
         var media = el('home-hero-media');
         if (!media) return;
 
@@ -763,9 +790,34 @@
         }
 
         requestAnimationFrame(function () { video.classList.add('home-hero-video-on'); });
+        startHeroWatchdog();
+    }
+
+    /**
+     * Пока трейлер играет, следим, что главная всё ещё на экране. Плеер
+     * (transitionToPlayerScreen в player.js) и внешние оверлеи гасят
+     * #torrserver-section присваиванием style.display — события, на которое можно
+     * подписаться, тут нет, а видео в скрытом контейнере продолжает играть
+     * звуком. Раз в секунду и только пока есть что останавливать.
+     */
+    function startHeroWatchdog() {
+        stopHeroWatchdog();
+        homeState.hero.watchdog = setInterval(function () {
+            if (!homeState.hero.video) { stopHeroWatchdog(); return; }
+            if (isHomeVisible() && !playerBusy() && focusedIsHeroCard()) return;
+            suspendHero();
+        }, HOME.WATCHDOG_MS);
+    }
+
+    function stopHeroWatchdog() {
+        if (homeState.hero.watchdog) {
+            clearInterval(homeState.hero.watchdog);
+            homeState.hero.watchdog = null;
+        }
     }
 
     function stopHeroTrailer() {
+        stopHeroWatchdog();
         var hero = el('home-hero');
         if (hero) hero.classList.remove('home-hero-playing');
         if (homeState.hero.hls) {
@@ -786,10 +838,17 @@
         homeState.hero.video = null;
     }
 
-    /** Уходим с главной (раздел, детальный просмотр, поиск) — гасим всё разом */
+    /**
+     * Уходим с главной (раздел, детальный просмотр, поиск, плеер) — гасим всё
+     * разом. Ключ элемента забываем: вернёмся — setHeroItem сравнивает новый
+     * ключ с pendingKey, и без сброса тот же самый элемент не завёл бы отсчёт
+     * заново (баннер остался бы картинкой без кругляшка).
+     */
     function suspendHero() {
         homeState.hero.gen++;
         if (homeState.hero.timer) { clearTimeout(homeState.hero.timer); homeState.hero.timer = null; }
+        homeState.hero.key = null;
+        homeState.hero.pendingKey = null;
         resetHeroRing();
         stopHeroTrailer();
     }
@@ -1684,13 +1743,24 @@
         document.addEventListener('visibilitychange', function () {
             if (document.hidden) { suspendHero(); return; }
             if (!isHomeVisible()) return;
-            homeState.hero.key = null;
-            homeState.hero.pendingKey = null;
             var f = document.querySelector('.focused');
             if (f && findCardPosition(f)) setHeroFromCard(f);
         });
 
-        // 5. Раскладка привязана к высоте экрана — пересчитываем на resize
+        // 5. Началось воспроизведение. Путь «Смотреть → поиск → фильм» проходит
+        //    через hideSearchResults, а тот возвращает главную на экран и заводит
+        //    кругляшок заново (torrents.js:3495 → ветка returnTo === 'home').
+        //    Гасим здесь: startHLSPlayback — единственная точка входа в плеер,
+        //    и она вызывается раньше, чем плеер спрячет #torrserver-section.
+        var origStartPlayback = window.startHLSPlayback;
+        if (typeof origStartPlayback === 'function') {
+            window.startHLSPlayback = function () {
+                suspendHero();
+                return origStartPlayback.apply(this, arguments);
+            };
+        }
+
+        // 6. Раскладка привязана к высоте экрана — пересчитываем на resize
         window.addEventListener('resize', function () {
             if (!isHomeVisible()) return;
             if (homeState.resizeTimer) clearTimeout(homeState.resizeTimer);

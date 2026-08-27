@@ -2232,12 +2232,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
 
         // Вертикальный скролл (для рядов — main-container)
         var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
+        var vertDur = fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY;
         // Первый ряд экрана — всегда самый верх страницы, а не «подтянуть на 50px»:
         // иначе под липкой шапкой остаётся полоска предыдущего скролла.
         if (vertEl && isRowViewport && isFirstRowViewport(container)) {
             if (vertEl.scrollTop > 1) {
-                applyScroll(vertEl, { scrollTop: 0 }, smooth,
-                    fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
+                applyScroll(vertEl, { scrollTop: 0 }, smooth, vertDur);
             }
             return;
         }
@@ -2261,15 +2261,13 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             if (rowRect.top < vertTop + topPad) {
                 applyScroll(vertEl,
                     { scrollTop: Math.max(0, vertEl.scrollTop + (rowRect.top - vertTop) - topPad) },
-                    smooth, fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
+                    smooth, vertDur);
                 return;
             }
 
             Animations.scrollToIfNotVisible(rowEl, vertEl, {
                 direction: direction,
-                duration: smooth
-                    ? (fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY)
-                    : 0,
+                duration: smooth ? vertDur : 0,
                 ease: SCROLL_SMOOTH.ease,
                 offset: 50,
                 overwrite: true
@@ -2358,13 +2356,18 @@ function focusEl(el, opts) {
         revealCatalogElement(el);
     }
 
-    // ★ НОВОЕ: проверка, находится ли элемент внутри панели фильтров
-    var isFilterItem = el.classList && (el.classList.contains('filter-item') || el.classList.contains('filter-value-item'));
-    var filterMainScreen = el.closest && el.closest('.filter-main-screen');
-    var filterValuesScreen = el.closest && el.closest('.filter-values-screen');
-    var isInFilterPanel = filterMainScreen || filterValuesScreen ||
-        el.id === 'filter-back-btn' || el.id === 'filter-close-btn' ||
-        el.id === 'reset-filters';
+    // Панель фильтров есть только на экране поиска, а closest() — подъём по DOM
+    // до самого корня на каждое перемещение фокуса. В рядах (10 × 20 карточек)
+    // эти два прохода ничего не находят и стоят кадров, поэтому спрашиваем
+    // только там, где ответ может быть непустым.
+    var filterMainScreen = null, filterValuesScreen = null, isInFilterPanel = false;
+    if (s === 'search' && el.closest) {
+        filterMainScreen = el.closest('.filter-main-screen');
+        filterValuesScreen = el.closest('.filter-values-screen');
+        isInFilterPanel = !!(filterMainScreen || filterValuesScreen) ||
+            el.id === 'filter-back-btn' || el.id === 'filter-close-btn' ||
+            el.id === 'reset-filters';
+    }
 
     // 'home' здесь обязателен из-за карточек ряда: контейнером для них должен
     // стать .catalog-row-viewport (горизонтальная доводка каруселью). Сама
