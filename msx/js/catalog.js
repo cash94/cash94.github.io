@@ -31,6 +31,7 @@ var CATALOG_CONSTANTS = {
     MAX_POSTER_DECODES: 8,
     FOCUS_DELAY_MS: 100,
     ROW_POSTER_CONCURRENCY: 10,
+    ROW_POSTER_RETRY_MS: 120,           // как часто переспрашивать «навигация утихла?»
     VISIBILITY_WINDOW_ROWS: 2,          // сколько строк «запаса» держим отрисованными
     VISIBILITY_FALLBACK_MARGIN_PX: 800, // если высоту строки измерить не удалось
     IMG_SIZES: {
@@ -670,6 +671,7 @@ var catalogState = {
     maxPosterCacheSize: CATALOG_CONSTANTS.MAX_POSTER_CACHE,
     rowPosterObserver: null,
     rowPosterQueue: [],
+    rowPosterQueueTimer: null,      // отложенный прогон очереди (ждём конца навигации)
     activeRowPosterLoads: 0,
     // Оконная видимость (см. initRowVisibilityWindow / initGridVisibilityWindow)
     rowVisibilityObserver: null,
@@ -3387,6 +3389,7 @@ function revealCatalogElement(el) {
     el.classList.remove(OFFSCREEN_CLASS);
     var row = el.closest ? el.closest('.catalog-row') : null;
     if (row) row.classList.remove(OFFSCREEN_CLASS);
+    ensureRowPosterNow(el);
 }
 
 /** Ряды-карусели: гасим ряд целиком вместе с заголовком */
