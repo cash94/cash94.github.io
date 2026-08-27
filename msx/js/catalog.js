@@ -4031,7 +4031,17 @@ function preloadPosterCacheFromDB() {
     });
 }
 
+var catalogInited = false;
+
 function initCatalog() {
+    // Два обработчика DOMContentLoaded: свой (внизу файла) и ещё один в
+    // catalog-worker-patch.js — тот подменяет initCatalog обёрткой, но наш
+    // слушатель держит ссылку на исходную функцию, поэтому тело звалось дважды
+    // (лишнее чтение PosterDB на старте). CatalogWorker.init() остаётся в
+    // обёртке и от этой проверки не страдает.
+    if (catalogInited) return;
+    catalogInited = true;
+
     startTmdbCleanup();
     initCatalogDetailButtons();
     preloadPosterCacheFromDB();
