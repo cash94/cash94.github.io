@@ -1228,12 +1228,14 @@ function updateFocusableElements() {
         return;
     }
     if (screen === 'home') {
-        // Шапка + все карточки рядов главной. Карточки с классом
-        // catalog-offscreen намеренно остаются в списке: visibility: hidden не
-        // обнуляет offsetParent, поэтому фокус может уехать на скрытый ряд, а
-        // focusEl() снимет с него класс через revealCatalogElement().
+        // Шапка → кнопка «Смотреть» на баннере → карточки ряда, в порядке DOM.
+        // Ряды вне экрана на главной скрыты через display:none (home-row-hidden),
+        // поэтому их карточки отсеивает проверка offsetParent: на экране всегда
+        // ровно один ряд, стрелки вверх/вниз меняют именно его (home.js).
         var navBtns = document.querySelectorAll('#home-topbar .home-nav-btn');
         for (var i = 0; i < navBtns.length; i++) if (navBtns[i].offsetParent !== null) list.push(navBtns[i]);
+        var homePlay = getEl('home-play-btn');
+        if (homePlay && homePlay.offsetParent !== null) list.push(homePlay);
         var homeCards = document.querySelectorAll('#home-rows .torrent-card.catalog-card');
         for (var i = 0; i < homeCards.length; i++) if (homeCards[i].offsetParent !== null) list.push(homeCards[i]);
         focusableElements = list;
@@ -2364,8 +2366,10 @@ function focusEl(el, opts) {
         el.id === 'filter-back-btn' || el.id === 'filter-close-btn' ||
         el.id === 'reset-filters';
 
-    // 'home' здесь обязателен: без него карточка ряда главной не подтягивала бы
-    // вертикальный скролл #main-container, и фокус уезжал бы за пределы экрана
+    // 'home' здесь обязателен из-за карточек ряда: контейнером для них должен
+    // стать .catalog-row-viewport (горизонтальная доводка каруселью). Сама
+    // главная по вертикали не прокручивается — баннер и ряд считаны ровно на
+    // высоту экрана, поэтому #main-container для её кнопок остаётся no-op.
     if (s === 'catalog' || s === 'torrents' || s === 'config' || s === 'home') {
         var rowVp = (isRowCard && el.closest) ? el.closest('.catalog-row-viewport') : null;
         container = rowVp || getEl('main-container');

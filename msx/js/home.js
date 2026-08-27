@@ -1,5 +1,19 @@
 // home.js — главная страница в стиле Netflix.
 //
+// Раскладка: во всю ширину баннер (широкий постер с названием, описанием и
+// кнопкой «Смотреть»), а внизу — ОДИН ряд подборки. Стрелки вверх/вниз меняют
+// именно ряд: прочие ряды лежат в DOM с display:none (класс home-row-hidden),
+// поэтому на экране всегда ровно один. Баннер уходит под #home-topbar (шапка
+// нарисована поверх его верхнего края собственным градиентом).
+//
+// Пока фокус стоит на карточке, в правом нижнем углу баннера заполняется
+// кругляшок; заполнился — вместо картинки включается трейлер с RuTube (если
+// он нашёлся). Поиск трейлера — fetchRutubeTrailer из catalog.js, проигрывание
+// повторяет startTrailerBackground/stopTrailerBackground оттуда же, но своим
+// видео внутри баннера: те функции жёстко привязаны к #detail-view и трогают
+// AppState.trailerPlay, по которому control.js разбирает «назад» в детальном
+// просмотре.
+//
 // Отдельный модуль: собственные ряды, собственные наблюдатели, собственная база
 // в IndexedDB. С каталогом (catalog.js) делим только CSS-классы разметки
 // (.catalog-row*, .catalog-row-card) и детальный просмотр — всё состояние своё,
@@ -23,17 +37,34 @@
         // Пауза между «ряды в DOM» и «фокус на карточке»: столько же, сколько
         // CATALOG_CONSTANTS.FOCUS_DELAY_MS у каталога
         FOCUS_DELAY_MS: 100,
-        POSTER_OBSERVER_MARGIN_PX: 1200,
         POSTER_CONCURRENCY: 10,
-        VISIBILITY_WINDOW_ROWS: 2,
-        VISIBILITY_FALLBACK_MARGIN_PX: 800,
         MAX_PARALLEL_ROW_LOADS: 3,
         FETCH_TIMEOUT_MS: 10000,
         ITEMS_PER_ROW: 20,
-        // Тот же класс, что у каталога (styles.css): visibility: hidden.
-        // display:none нельзя — обнулился бы прямоугольник, и наблюдатель уже
-        // никогда не снял бы класс обратно.
-        OFFSCREEN_CLASS: 'catalog-offscreen'
+        // Ряд вне экрана — display:none. У каталога для этого visibility:hidden
+        // (catalog-offscreen), но там ряды остаются на своих местах в потоке,
+        // а здесь скрытый ряд не должен занимать высоту вовсе.
+        HIDDEN_ROW_CLASS: 'home-row-hidden',
+
+        // --- баннер и раскладка ---
+        // Доля свободной высоты под ряд; остальное достаётся баннеру
+        ROW_SHARE: 0.48,
+        HERO_MIN_H: 190,
+        // Нижний отступ #torrserver-section: на него ряд не должен наезжать
+        BOTTOM_PAD_PX: 16,
+        // Заголовок ряда + вертикальные padding'и трека, если замерить не вышло
+        ROW_CHROME_FALLBACK_PX: 72,
+        CARD_ASPECT: 460 / 260,      // те же пропорции, что у карточки ряда каталога
+        CARD_MIN_W: 84,
+        CARD_MAX_W: 240,
+        // Пока фокус пробегает ряд, баннер не дёргаем на каждой карточке
+        HERO_DEBOUNCE_MS: 260,
+        // Столько заполняется кругляшок; заполнился — включаем трейлер
+        TRAILER_DELAY_MS: 5000,
+        // Длина окружности кругляшка: 2πr при r = 19 (см. viewBox 0 0 44 44)
+        RING_LEN: 119.4,
+        // Постеры соседних рядов подтягиваем заранее, но не мешая текущему
+        PREFETCH_DELAY_MS: 700
     };
 
     // Порядок рядов сверху вниз. key для подборок TMDB — это preset эндпоинта.
@@ -62,17 +93,35 @@
         loading: false,
         activated: false,        // фокус уже уехал на карточку → постеры можно грузить
         rows: [],                // [[card, ...], ...] в порядке показа
+        rowEls: [],              // сами <section class="catalog-row"> по тому же индексу
         rowKeys: [],             // ключ ряда по его индексу в rows
+        rowCols: [],             // на какой карточке стояли в каждом ряду
+        activeRow: 0,            // единственный показанный ряд
         data: {},                // key → items
         lastRowKey: null,        // куда вернуть фокус (возврат из detail/поиска)
         lastColIndex: 0,
         lastNavBtnId: 'home-nav-home',
-        posterObserver: null,
         posterQueue: [],
         activePosterLoads: 0,
-        pendingPosterRows: [],
-        visibilityObserver: null,
-        detailFromHome: false
+        prefetchTimer: null,
+        resizeTimer: null,
+        cardWidth: 0,            // текущая ширина карточки (её же держит <style>)
+        detailFromHome: false,
+        heroDetails: {},         // id_mediaType → полные детали TMDB
+        hero: {
+            key: null,           // id_mediaType показанного элемента
+            pendingKey: null,    // то же для элемента, ждущего в дебаунсе
+            item: null,
+            timer: null,         // дебаунс смены баннера
+            ringTimer: null,     // «кругляшок заполнился»
+            ringDone: false,
+            gen: 0,              // поколение: гасит ответы по устаревшему элементу
+            backdropUrl: null,
+            trailerUrl: null,
+            trailerSearched: false,
+            video: null,
+            hls: null
+        }
     };
 
     // ==================== МЕЛКИЕ ХЕЛПЕРЫ ====================
@@ -112,40 +161,39 @@
 
     // Зеркала постеров выбирает catalog.js (детерминированно по пути картинки,
     // чтобы работал HTTP-кэш браузера). Свой список тут не держим.
-    function posterUrlFor(path) {
+    function tmdbImage(path, size) {
         if (!path) return '';
         if (typeof window.getTmdbImageUrl === 'function') {
-            return window.getTmdbImageUrl(path, posterSize());
+            return window.getTmdbImageUrl(path, size);
         }
         var p = String(path);
         if (/^https?:\/\//i.test(p)) return p;
         if (p.charAt(0) !== '/') p = '/' + p;
-        return 'https://tsimg.hnar.online/t/p/' + posterSize() + p;
+        return 'https://tsimg.hnar.online/t/p/' + size + p;
     }
+
+    function posterUrlFor(path) { return tmdbImage(path, posterSize()); }
+    function backdropUrlFor(path) { return tmdbImage(path, 'w1280'); }
 
     function invalidateFocus() {
         if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
     }
 
     /**
-     * Запоминаем вертикальный скролл главной перед уходом на другой экран.
-     * showContentScreen('home') при возврате читает именно AppState.contentScroll.home,
-     * и без этого страница прыгала бы к началу: детальный просмотр, настройки и
-     * донат уходят с главной, не вызывая showContentScreen вовсе.
+     * Главная не прокручивается: баннер и ряд рассчитаны ровно на высоту экрана.
+     * Позицию всё равно держим в нуле — showContentScreen('home') при возврате
+     * восстанавливает AppState.contentScroll.home (app.js).
      */
-    function saveHomeScroll() {
-        if (!window.AppState) return;
-        // Шапка общая для всех разделов, поэтому её кнопки жмут и из каталога:
-        // там #main-container прокручен по каталогу, и запоминать эту позицию
-        // как «скролл главной» нельзя.
-        if (!isHomeVisible()) return;
+    function scrollHomeToTop() {
         var mc = el('main-container');
-        if (!mc) return;
-        AppState.contentScroll = AppState.contentScroll || {};
-        AppState.contentScroll.home = mc.scrollTop;
+        if (mc && isHomeVisible()) mc.scrollTop = 0;
+        if (window.AppState) {
+            AppState.contentScroll = AppState.contentScroll || {};
+            AppState.contentScroll.home = 0;
+        }
     }
 
-    /** Главная смонтирована и видна (шапка + ряды на экране) */
+    /** Главная смонтирована и видна (шапка + баннер + ряд на экране) */
     function isHomeVisible() {
         var screen = el('content-home');
         if (!screen || screen.hidden) return false;
@@ -184,10 +232,13 @@
     //
     // Своя база, а не PosterCacheDB из poster-db.js: там свои версии и миграции,
     // поднимать их из чужого модуля нельзя. Store один — collections,
-    // запись {key, items, ts}.
+    // запись {key, items, ts, v}.
     var DB_NAME = 'HomeCacheDB';
     var DB_VERSION = 1;
     var DB_STORE = 'collections';
+    // Версия проекции подборки. Записи первой версии лежат без backdrop_path и
+    // overview — баннеру они не годятся, поэтому считаем их просроченными.
+    var ITEMS_SCHEMA_VERSION = 2;
     var dbPromise = null;
 
     function openDb() {
@@ -231,7 +282,9 @@
             return new Promise(function (resolve) {
                 try {
                     var tx = db.transaction(DB_STORE, 'readwrite');
-                    tx.objectStore(DB_STORE).put({ key: key, items: items, ts: Date.now() });
+                    tx.objectStore(DB_STORE).put({
+                        key: key, items: items, ts: Date.now(), v: ITEMS_SCHEMA_VERSION
+                    });
                     tx.oncomplete = function () { resolve(); };
                     tx.onerror = function () { resolve(); };
                     tx.onabort = function () { resolve(); };
@@ -280,12 +333,14 @@
 
     /**
      * Свежая запись в IndexedDB → сеть не трогаем вообще.
-     * Записи нет или ей больше 3 дней → запрос к серверу и перезапись.
-     * Сеть молчит → рисуем просроченный кэш; и его нет — ряд не показываем.
+     * Записи нет, ей больше 3 дней или она от прошлой версии проекции (нет полей
+     * баннера) → запрос к серверу и перезапись.
+     * Сеть молчит → рисуем что было; и этого нет — ряд не показываем.
      */
     function loadCollectionItems(cfg) {
         return dbGet(cfg.key).then(function (rec) {
             var fresh = rec && rec.items && rec.items.length &&
+                rec.v === ITEMS_SCHEMA_VERSION &&
                 (Date.now() - (rec.ts || 0)) < HOME.TTL_MS;
             if (fresh) return rec.items;
 
@@ -297,7 +352,7 @@
                         return data.items;
                     }
                     if (rec && rec.items && rec.items.length) {
-                        console.warn('🏠 Подборка ' + cfg.key + ': сеть недоступна, берём просроченный кэш');
+                        console.warn('🏠 Подборка ' + cfg.key + ': сеть недоступна, берём старый кэш');
                         return rec.items;
                     }
                     return [];
@@ -308,6 +363,522 @@
     function loadRowItems(cfg) {
         if (cfg.source === 'history') return loadHistoryItems();
         return loadCollectionItems(cfg);
+    }
+
+    // ==================== БАННЕР: РАЗМЕТКА ====================
+
+    function heroKey(item) {
+        if (!item || item.id == null) return null;
+        return String(item.id) + '_' + (item.media_type || 'movie');
+    }
+
+    function ensureHeroDom() {
+        var hero = el('home-hero');
+        if (hero) return hero;
+        var screen = el('content-home');
+        if (!screen) return null;
+
+        hero = document.createElement('section');
+        hero.id = 'home-hero';
+        hero.innerHTML =
+            '<div id="home-hero-media">' +
+            '<div id="home-hero-backdrop" class="home-hero-empty"></div>' +
+            '</div>' +
+            '<div id="home-hero-shade"></div>' +
+            // Кругляшок в правом нижнем углу постера: заполнился — вместо
+            // картинки пойдёт трейлер. conic-gradient на Vidaa (Chrome 66) не
+            // работает, поэтому дуга рисуется SVG через stroke-dashoffset,
+            // а поворот на -90° задан атрибутом transform (у CSS-трансформа на
+            // SVG-элементе там другая точка отсчёта).
+            '<div class="home-hero-ring" id="home-hero-ring" hidden>' +
+            '<svg viewBox="0 0 44 44">' +
+            '<circle class="home-ring-track" cx="22" cy="22" r="19"></circle>' +
+            '<circle class="home-ring-bar" cx="22" cy="22" r="19" transform="rotate(-90 22 22)"></circle>' +
+            '</svg>' +
+            '<div class="home-ring-icon">▶</div>' +
+            '</div>' +
+            '<div id="home-hero-body">' +
+            '<h1 id="home-hero-title"></h1>' +
+            '<div id="home-hero-meta"></div>' +
+            '<div id="home-hero-overview"></div>' +
+            // «Подробнее» тут намеренно нет: карточка открывается OK прямо с ряда
+            '<button type="button" class="home-hero-btn" id="home-play-btn" hidden>' +
+            '<span class="home-hero-btn-icon">▶</span>Смотреть</button>' +
+            '</div>';
+
+        var rows = el('home-rows');
+        if (rows) screen.insertBefore(hero, rows);
+        else screen.appendChild(hero);
+
+        hero.addEventListener('click', function (e) {
+            if (!e.target.closest) return;
+            if (e.target.closest('#home-play-btn')) playHeroItem();
+        });
+        return hero;
+    }
+
+    function heroMetaText(item, details) {
+        var src = details || item || {};
+        var mt = (item && item.media_type) === 'tv' ? 'tv' : 'movie';
+        var parts = [];
+        parts.push(mt === 'tv' ? 'Сериал' : 'Фильм');
+        var year = itemYear(src) || itemYear(item);
+        if (year) parts.push(year);
+        var rating = Number(src.vote_average || (item && item.vote_average));
+        if (rating > 0) parts.push('★ ' + (Math.round(rating * 10) / 10));
+        // media_type подставляем сами: у деталей TMDB его нет (там поле type), а
+        // getNormalizedCatalogGenres по нему выбирает карту жанров фильмов или
+        // сериалов — иначе часть id сериалов не расшифруется
+        var genres = (typeof window.getNormalizedCatalogGenres === 'function')
+            ? window.getNormalizedCatalogGenres({
+                media_type: mt, genres: src.genres,
+                genre_ids: src.genre_ids || (item && item.genre_ids)
+            }) : [];
+        if (genres.length) parts.push(genres.slice(0, 2).join(', '));
+        return parts.join('  •  ');
+    }
+
+    /** Картинку ставим только после декодирования — иначе баннер мигает белым */
+    function applyHeroBackdrop(url) {
+        var box = el('home-hero-backdrop');
+        if (!box) return;
+        if (!url) {
+            homeState.hero.backdropUrl = null;
+            box.style.backgroundImage = '';
+            box.classList.add('home-hero-empty');
+            return;
+        }
+        if (homeState.hero.backdropUrl === url) return;
+        homeState.hero.backdropUrl = url;
+
+        var img = new Image();
+        function apply() {
+            if (homeState.hero.backdropUrl !== url) return;   // успели переключить
+            box.style.backgroundImage = 'url("' + url + '")';
+            box.classList.remove('home-hero-empty');
+        }
+        img.onerror = function () {
+            if (homeState.hero.backdropUrl !== url) return;
+            box.classList.add('home-hero-empty');
+        };
+        if (typeof img.decode === 'function') {
+            img.src = url;
+            img.decode().then(apply).catch(apply);
+        } else {
+            img.onload = apply;
+            img.src = url;
+        }
+    }
+
+    function renderHero(item, details) {
+        var hero = ensureHeroDom();
+        if (!hero) return;
+        var src = details || item || {};
+
+        var t = el('home-hero-title');
+        if (t) t.textContent = itemTitle(src) !== 'Без названия' ? itemTitle(src) : itemTitle(item);
+        var m = el('home-hero-meta');
+        if (m) m.textContent = heroMetaText(item, details);
+        var o = el('home-hero-overview');
+        if (o) o.textContent = src.overview || (item && item.overview) || '';
+        var btn = el('home-play-btn');
+        // Кнопка появляется вместе с первым элементом баннера — до этого её нет в
+        // focusableElements, и без сброса кэша фокуса control.js её не увидит
+        if (btn && btn.hidden) {
+            btn.hidden = false;
+            invalidateFocus();
+        }
+
+        // Постер как запас: у ряда «Продолжить просмотр» backdrop'а нет вовсе,
+        // а деталями он приходит уже после первой отрисовки
+        var path = src.backdrop_path || (item && item.backdrop_path);
+        if (path) applyHeroBackdrop(backdropUrlFor(path));
+        else if (item && item.poster_path) applyHeroBackdrop(posterUrlFor(item.poster_path));
+        else applyHeroBackdrop('');
+    }
+
+    // ==================== БАННЕР: СМЕНА ЭЛЕМЕНТА ====================
+
+    /** Дебаунс: при быстром пролистывании ряда баннер меняется один раз */
+    function setHeroItem(item) {
+        var k = heroKey(item);
+        if (!k) return;
+        if (k === homeState.hero.pendingKey) return;
+        homeState.hero.pendingKey = k;
+        // Сам элемент запоминаем сразу, не дожидаясь отрисовки: «Смотреть» могут
+        // нажать быстрее, чем истечёт дебаунс
+        homeState.hero.item = item;
+        if (homeState.hero.timer) clearTimeout(homeState.hero.timer);
+        homeState.hero.timer = setTimeout(function () {
+            homeState.hero.timer = null;
+            applyHero(item);
+        }, HOME.HERO_DEBOUNCE_MS);
+    }
+
+    function applyHero(item) {
+        var hero = ensureHeroDom();
+        if (!hero || !item) return;
+        var k = heroKey(item);
+        // Поколение отсекает ответы (детали, поиск трейлера) по прошлому элементу
+        var gen = ++homeState.hero.gen;
+
+        stopHeroTrailer();
+        resetHeroRing();
+        homeState.hero.key = k;
+        homeState.hero.pendingKey = k;
+        homeState.hero.item = item;
+        homeState.hero.trailerUrl = null;
+        homeState.hero.trailerSearched = false;
+
+        var cached = homeState.heroDetails[k] || null;
+        renderHero(item, cached);
+
+        if (cached || (item.backdrop_path && item.overview)) {
+            if (!cached) homeState.heroDetails[k] = item;
+            startTrailerCountdown(item, cached || item, gen);
+        } else {
+            enrichHero(item, k, gen);
+        }
+    }
+
+    /**
+     * Подборки уже отдают backdrop_path/overview/genre_ids (routes/tmdb.js), но у
+     * ряда «Продолжить просмотр» их нет — дотягиваем полными деталями TMDB.
+     */
+    function enrichHero(item, k, gen) {
+        if (typeof window.fetchCatalogItemDetails !== 'function') {
+            startTrailerCountdown(item, null, gen);
+            return;
+        }
+        Promise.resolve(window.fetchCatalogItemDetails(item)).then(function (d) {
+            if (gen !== homeState.hero.gen) return;
+            if (d) {
+                homeState.heroDetails[k] = d;
+                renderHero(item, d);
+            }
+            startTrailerCountdown(item, d, gen);
+        }).catch(function () {
+            if (gen !== homeState.hero.gen) return;
+            startTrailerCountdown(item, null, gen);
+        });
+    }
+
+    // ==================== БАННЕР: КРУГЛЯШОК ====================
+
+    function ringBar() { return document.querySelector('#home-hero-ring .home-ring-bar'); }
+
+    function runHeroRing() {
+        var ring = el('home-hero-ring');
+        if (ring) ring.hidden = false;
+        var bar = ringBar();
+        if (!bar) return;
+        bar.style.transition = 'none';
+        bar.style.strokeDashoffset = HOME.RING_LEN;
+        // Двойной кадр: без него сброс и запуск склеятся в один стиль и анимации
+        // не будет (тот же приём, что в startTrailerBackground)
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                if (!bar.isConnected) return;
+                bar.style.transition = 'stroke-dashoffset ' +
+                    (HOME.TRAILER_DELAY_MS / 1000) + 's linear';
+                bar.style.strokeDashoffset = '0';
+            });
+        });
+    }
+
+    function resetHeroRing() {
+        if (homeState.hero.ringTimer) {
+            clearTimeout(homeState.hero.ringTimer);
+            homeState.hero.ringTimer = null;
+        }
+        homeState.hero.ringDone = false;
+        hideHeroRing();
+        var bar = ringBar();
+        if (bar) {
+            bar.style.transition = 'none';
+            bar.style.strokeDashoffset = HOME.RING_LEN;
+        }
+    }
+
+    function hideHeroRing() {
+        var ring = el('home-hero-ring');
+        if (ring) ring.hidden = true;
+    }
+
+    /** Фокус всё ещё на той карточке, чей элемент показан в баннере */
+    function focusedIsHeroCard() {
+        var f = document.querySelector('.focused');
+        if (!f || !f.dataset || !findCardPosition(f)) return false;
+        var items = homeState.data[f.dataset.homeKey];
+        var idx = parseInt(f.dataset.itemIndex, 10);
+        if (!items || isNaN(idx) || !items[idx]) return false;
+        return heroKey(items[idx]) === homeState.hero.key;
+    }
+
+    /**
+     * Кругляшок — таймер ожидания, а не индикатор загрузки: ни трейлер, ни его
+     * поиск до конца отсчёта не запускаются. Иначе каждая карточка, через
+     * которую фокус просто прошёл, тянула бы за собой поиск на RuTube и поток
+     * через /api/rutube/hls/proxy — на телевизоре от этого всё встаёт.
+     * Заполнился, а фокус уже ушёл с карточки — не делаем ничего.
+     */
+    function startTrailerCountdown(item, details, gen) {
+        if (gen !== homeState.hero.gen) return;
+        if (!isHomeVisible()) return;
+        runHeroRing();
+        homeState.hero.ringTimer = setTimeout(function () {
+            homeState.hero.ringTimer = null;
+            if (gen !== homeState.hero.gen) return;
+            homeState.hero.ringDone = true;
+            if (!isHomeVisible() || !focusedIsHeroCard()) { hideHeroRing(); return; }
+            if (homeState.hero.trailerUrl) {
+                startHeroTrailer(homeState.hero.trailerUrl, gen);
+                return;
+            }
+            if (homeState.hero.trailerSearched) { hideHeroRing(); return; }
+            findHeroTrailer(item, details, gen);
+        }, HOME.TRAILER_DELAY_MS);
+    }
+
+    function findHeroTrailer(item, details, gen) {
+        var src = details || item || {};
+        var mt = item.media_type || 'movie';
+        var cacheKey = String(item.id || '') + '_' + mt;
+        var title = itemTitle(src) !== 'Без названия' ? itemTitle(src) : itemTitle(item);
+
+        // Кэш общий с детальным просмотром (rutubeTrailerCache в catalog.js):
+        // найденный здесь трейлер там сразу даёт кнопку, и наоборот
+        var shared = window.rutubeTrailerCache;
+        if (shared && shared[cacheKey] && shared[cacheKey].url) {
+            onTrailerFound(shared[cacheKey].url, gen);
+            return;
+        }
+        if (typeof window.fetchRutubeTrailer !== 'function') { onTrailerMissing(gen); return; }
+
+        var orig = src.original_title || src.original_name || '';
+        var date = src.release_date || src.first_air_date ||
+            (item.release_date || item.first_air_date || '');
+        Promise.resolve(window.fetchRutubeTrailer(title, orig, date)).then(function (res) {
+            if (gen !== homeState.hero.gen) return;
+            if (res && res.url) {
+                if (shared) shared[cacheKey] = { url: res.url, title: res.title || title };
+                onTrailerFound(res.url, gen);
+            } else {
+                onTrailerMissing(gen);
+            }
+        }).catch(function (e) {
+            console.warn('🏠 Поиск трейлера не удался:', e && e.message);
+            onTrailerMissing(gen);
+        });
+    }
+
+    function onTrailerFound(url, gen) {
+        if (gen !== homeState.hero.gen) return;
+        homeState.hero.trailerUrl = url;
+        homeState.hero.trailerSearched = true;
+        // Пока искали, фокус мог уйти на другую карточку — включаем только «свой»
+        if (homeState.hero.ringDone && focusedIsHeroCard()) startHeroTrailer(url, gen);
+        else hideHeroRing();
+    }
+
+    function onTrailerMissing(gen) {
+        if (gen !== homeState.hero.gen) return;
+        homeState.hero.trailerSearched = true;
+        hideHeroRing();
+    }
+
+    // ==================== БАННЕР: ТРЕЙЛЕР ====================
+
+    function hlsUrl(url) {
+        if (typeof window.wrapRutubeHls === 'function') return window.wrapRutubeHls(url);
+        return url;
+    }
+
+    /**
+     * Своё видео внутри баннера. startTrailerBackground из catalog.js повторить
+     * нельзя: оно вставляет видео в #detail-view, гасит #catalog-detail-backdrop
+     * и ставит AppState.trailerPlay, а по этому флагу control.js разбирает
+     * «назад» в детальном просмотре. Настройки Hls и нарастание звука — те же.
+     */
+    function startHeroTrailer(url, gen) {
+        if (!url || gen !== homeState.hero.gen) return;
+        if (!isHomeVisible()) return;
+        var media = el('home-hero-media');
+        if (!media) return;
+
+        stopHeroTrailer();
+        hideHeroRing();
+
+        var video = document.createElement('video');
+        video.id = 'home-hero-video';
+        video.className = 'home-hero-video';
+        video.muted = true;
+        video.volume = 0;
+        video.loop = true;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.setAttribute('playsinline', '');
+        media.appendChild(video);
+        homeState.hero.video = video;
+
+        // Звук поднимаем с нуля: автозапуск со звуком браузер не разрешит
+        var volumeStarted = false;
+        function startVolumeFade() {
+            if (volumeStarted) return;
+            volumeStarted = true;
+            try { video.muted = false; video.volume = 0; } catch (e) { }
+            var vol = 0;
+            video._volumeTimer = setInterval(function () {
+                vol = Math.min(1, vol + 0.1);
+                try { video.volume = vol; } catch (e) { }
+                if (vol >= 1 && video._volumeTimer) {
+                    clearInterval(video._volumeTimer);
+                    video._volumeTimer = null;
+                }
+            }, 1000);
+        }
+        video.addEventListener('playing', function () {
+            startVolumeFade();
+            var hero = el('home-hero');
+            if (hero) hero.classList.add('home-hero-playing');
+        });
+        video.addEventListener('timeupdate', startVolumeFade);
+
+        if (window.Hls && Hls.isSupported()) {
+            var hls = new Hls({
+                maxBufferSize: 30 * 1024 * 1024,
+                maxBufferLength: 10,
+                startLevel: 2,
+                enableWorker: true
+            });
+            hls.loadSource(hlsUrl(url));
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                video.play().catch(function () { });
+            });
+            homeState.hero.hls = hls;
+        } else {
+            video.src = hlsUrl(url);
+            video.play().catch(function () { });
+        }
+
+        requestAnimationFrame(function () { video.classList.add('home-hero-video-on'); });
+    }
+
+    function stopHeroTrailer() {
+        var hero = el('home-hero');
+        if (hero) hero.classList.remove('home-hero-playing');
+        if (homeState.hero.hls) {
+            try { homeState.hero.hls.destroy(); } catch (e) { }
+            homeState.hero.hls = null;
+        }
+        var video = homeState.hero.video || el('home-hero-video');
+        if (video) {
+            if (video._volumeTimer) {
+                clearInterval(video._volumeTimer);
+                video._volumeTimer = null;
+            }
+            try { video.pause(); } catch (e) { }
+            video.removeAttribute('src');
+            try { video.load(); } catch (e) { }
+            if (video.parentNode) video.parentNode.removeChild(video);
+        }
+        homeState.hero.video = null;
+    }
+
+    /** Уходим с главной (раздел, детальный просмотр, поиск) — гасим всё разом */
+    function suspendHero() {
+        homeState.hero.gen++;
+        if (homeState.hero.timer) { clearTimeout(homeState.hero.timer); homeState.hero.timer = null; }
+        resetHeroRing();
+        stopHeroTrailer();
+    }
+
+    // ==================== РАЗМЕРЫ: БАННЕР И КАРТОЧКИ ====================
+
+    function userCardWidth() {
+        try {
+            if (window.UICustomizer && typeof UICustomizer.getCardSize === 'function') {
+                var s = UICustomizer.getCardSize();
+                if (s && s.width) return s.width;
+            }
+        } catch (e) { }
+        return 0;
+    }
+
+    /**
+     * Размер карточек нижнего ряда. Отдельным <style>, потому что геометрию
+     * .catalog-row-card задаёт ui-customizer.js через !important — перебить его
+     * можно только более специфичным селектором (.catalog-row-card.home-card:
+     * два класса против одного), и порядок подключения тут уже не важен.
+     */
+    function applyCardCss(w, h) {
+        if (homeState.cardWidth === w) return;
+        homeState.cardWidth = w;
+        var st = el('home-card-style');
+        if (!st) {
+            st = document.createElement('style');
+            st.id = 'home-card-style';
+            document.head.appendChild(st);
+        }
+        st.textContent =
+            '.catalog-row-card.home-card,' +
+            '.catalog-row-viewport .catalog-row-card.home-card{' +
+            'flex:0 0 ' + w + 'px!important;width:' + w + 'px!important;height:' + h + 'px!important}' +
+            '.catalog-row-card.home-card .torrent-poster,' +
+            '.catalog-row-viewport .catalog-row-card.home-card .torrent-poster,' +
+            '.catalog-row-card.home-card .row-poster-img{' +
+            'width:' + w + 'px!important;height:' + h + 'px!important}';
+    }
+
+    /** Заголовок ряда + вертикальные padding'и трека: высота ряда минус карточка */
+    function rowChrome() {
+        var row = homeState.rowEls[homeState.activeRow];
+        var cards = homeState.rows[homeState.activeRow];
+        if (row && row.offsetHeight && cards && cards.length && cards[0].offsetHeight) {
+            var c = row.offsetHeight - cards[0].offsetHeight;
+            if (c > 20 && c < 220) return c;
+        }
+        return HOME.ROW_CHROME_FALLBACK_PX;
+    }
+
+    /**
+     * Раскладка «баннер сверху, один ряд снизу». Считаем в JS, а не в CSS: высота
+     * карточки приходит из ui-customizer с !important, высота липкой шапки в
+     * каждом медиазапросе своя, а ряд должен упираться в нижний край экрана.
+     */
+    function layoutHome() {
+        var hero = ensureHeroDom();
+        if (!hero || !isHomeVisible()) return;
+        var mc = el('main-container');
+        if (mc && mc.scrollTop) mc.scrollTop = 0;
+        var avail = (mc && mc.clientHeight) || window.innerHeight || 720;
+
+        // Свой сдвиг снимаем перед замером, иначе прочитали бы позицию,
+        // поднятую прошлым проходом, и баннер уползал бы вверх
+        hero.style.marginTop = '0px';
+        var mcTop = mc ? mc.getBoundingClientRect().top : 0;
+        var heroTop = Math.max(0, Math.round(hero.getBoundingClientRect().top - mcTop));
+
+        var free = Math.max(200, avail - heroTop - HOME.BOTTOM_PAD_PX);
+        var chrome = rowChrome();
+
+        var rowBlock = Math.round(free * HOME.ROW_SHARE);
+        var maxRow = free - HOME.HERO_MIN_H;
+        if (rowBlock > maxRow) rowBlock = maxRow;
+
+        var w = Math.round((rowBlock - chrome) / HOME.CARD_ASPECT);
+        var lim = userCardWidth();                       // ползунок «Размер карточек» — верхняя граница
+        if (lim && w > lim) w = lim;
+        w = Math.max(HOME.CARD_MIN_W, Math.min(HOME.CARD_MAX_W, w));
+        var posterH = Math.round(w * HOME.CARD_ASPECT);
+        applyCardCss(w, posterH);
+
+        // Остаток высоты — баннеру. Отрицательный margin заводит его под шапку:
+        // та лежит выше по z-index и рисует поверх свой градиент.
+        var heroH = Math.max(HOME.HERO_MIN_H, free - (posterH + chrome));
+        hero.style.marginTop = (-heroTop) + 'px';
+        hero.style.height = (heroH + heroTop) + 'px';
     }
 
     // ==================== РАЗМЕТКА РЯДОВ ====================
@@ -352,14 +923,18 @@
 
     function createHomeRow(cfg, items) {
         var row = document.createElement('section');
-        row.className = 'catalog-row home-row';
+        // Ряд появляется скрытым: показан всегда ровно один, его выбирает
+        // setActiveRow (стрелки вверх/вниз)
+        row.className = 'catalog-row home-row ' + HOME.HIDDEN_ROW_CLASS;
         row.dataset.homeKey = cfg.key;
 
         // Заголовок без «Показать все»: у подборок TMDB нет экрана-сетки,
-        // открывать по нему нечего
+        // открывать по нему нечего. Счётчик справа — единственная подсказка, что
+        // рядов больше одного: соседние ряды на экране не видны.
         var header = document.createElement('div');
         header.className = 'catalog-row-header';
-        header.innerHTML = '<h2 class="catalog-row-title">' + esc(cfg.name) + '</h2>';
+        header.innerHTML = '<h2 class="catalog-row-title">' + esc(cfg.name) + '</h2>' +
+            '<div class="home-row-counter"></div>';
         row.appendChild(header);
 
         // Карусель: вьюпорт — окно-обрезка, двигается внутренний трек через
@@ -386,40 +961,25 @@
         row.appendChild(carousel);
 
         homeState.rows.push(cards);
+        homeState.rowEls.push(row);
         homeState.rowKeys.push(cfg.key);
+        homeState.rowCols.push(0);
         return row;
     }
 
+    function updateRowCounters() {
+        var total = homeState.rowEls.length;
+        for (var i = 0; i < total; i++) {
+            var c = homeState.rowEls[i].querySelector('.home-row-counter');
+            if (c) c.textContent = total > 1 ? (i + 1) + ' / ' + total : '';
+        }
+    }
+
     // ==================== ЛЕНИВАЯ ЗАГРУЗКА ПОСТЕРОВ ====================
-
-    function homeCards(root) {
-        return (root || document).querySelectorAll('.catalog-row-card');
-    }
-
-    function observeCardsIn(root) {
-        if (!homeState.posterObserver) return;
-        var cards = root === document
-            ? document.querySelectorAll('#home-rows .catalog-row-card')
-            : homeCards(root);
-        for (var i = 0; i < cards.length; i++) {
-            if (cards[i].dataset.posterLoaded !== '1') homeState.posterObserver.observe(cards[i]);
-        }
-    }
-
-    /**
-     * Флаг posterLoaded ставится в момент попадания в зону видимости, до самой
-     * загрузки. Если очередь после этого обнулили (пересоздание наблюдателя,
-     * возврат на главную), карточка осталась бы с флагом и без картинки —
-     * наблюдатель её больше не возьмёт. Тот же приём, что в catalog.js.
-     */
-    function resetStrandedPosters() {
-        var cards = document.querySelectorAll('#home-rows .catalog-row-card');
-        for (var i = 0; i < cards.length; i++) {
-            if (cards[i].dataset.posterLoaded !== '1') continue;
-            var box = cards[i].querySelector('.row-poster-img');
-            if (box && !box.querySelector('img')) cards[i].dataset.posterLoaded = '0';
-        }
-    }
+    //
+    // IntersectionObserver тут больше не нужен: на экране один ряд, и что
+    // грузить — известно точно. Постеры берём рядом целиком (20 карточек),
+    // соседние ряды — с задержкой, чтобы не отбирать канал у текущего.
 
     function setPosterFallback(box, url) {
         return new Promise(function (resolve) {
@@ -469,255 +1029,67 @@
         }
     }
 
-    function loadAllPostersDirect() {
-        var cards = document.querySelectorAll('#home-rows .catalog-row-card');
+    function loadRowPosters(index) {
+        var cards = homeState.rows[index];
+        if (!cards) return;
+        var items = homeState.data[homeState.rowKeys[index]] || [];
         for (var i = 0; i < cards.length; i++) {
-            var idx = parseInt(cards[i].dataset.itemIndex, 10);
-            var items = homeState.data[cards[i].dataset.homeKey];
-            if (isNaN(idx) || !items || !items[idx]) continue;
-            if (cards[i].dataset.posterLoaded === '1') continue;
-            cards[i].dataset.posterLoaded = '1';
-            homeState.posterQueue.push({ card: cards[i], item: items[idx] });
+            var card = cards[i];
+            var box = card.querySelector('.row-poster-img');
+            // Флаг ставится до самой загрузки, поэтому проверяем и картинку:
+            // если очередь успели обнулить, карточка осталась бы пустой навсегда
+            if (card.dataset.posterLoaded === '1' && box && box.querySelector('img')) continue;
+            var idx = parseInt(card.dataset.itemIndex, 10);
+            if (isNaN(idx) || !items[idx]) continue;
+            card.dataset.posterLoaded = '1';
+            homeState.posterQueue.push({ card: card, item: items[idx] });
         }
         processPosterQueue();
     }
 
-    function initPosterObserver() {
-        if (homeState.posterObserver) homeState.posterObserver.disconnect();
-        homeState.posterQueue = [];
-        homeState.activePosterLoads = 0;
-
-        if (typeof IntersectionObserver !== 'function') {
-            homeState.posterObserver = null;
-            loadAllPostersDirect();
-            return;
-        }
-
-        homeState.posterObserver = new IntersectionObserver(function (entries) {
-            for (var i = 0; i < entries.length; i++) {
-                if (!entries[i].isIntersecting) continue;
-                var card = entries[i].target;
-                if (card.dataset.posterLoaded === '1') continue;
-                var idx = parseInt(card.dataset.itemIndex, 10);
-                if (isNaN(idx)) continue;
-                var items = homeState.data[card.dataset.homeKey];
-                if (!items || !items[idx]) continue;
-                card.dataset.posterLoaded = '1';       // защита от повторной постановки
-                homeState.posterObserver.unobserve(card);
-                homeState.posterQueue.push({ card: card, item: items[idx] });
-            }
-            processPosterQueue();
-        }, { rootMargin: HOME.POSTER_OBSERVER_MARGIN_PX + 'px', threshold: 0.1 });
-
-        observeCardsIn(document);
+    /** Соседние ряды — заранее, но после текущего: вверх/вниз тогда без пустых постеров */
+    function prefetchNeighbourPosters(index) {
+        if (homeState.prefetchTimer) clearTimeout(homeState.prefetchTimer);
+        homeState.prefetchTimer = setTimeout(function () {
+            homeState.prefetchTimer = null;
+            loadRowPosters(index + 1);
+            loadRowPosters(index - 1);
+        }, HOME.PREFETCH_DELAY_MS);
     }
 
-    function resetPosterObserver() {
-        if (homeState.posterObserver) {
-            homeState.posterObserver.disconnect();
-            homeState.posterObserver = null;
-        }
+    function resetPosterQueue() {
         homeState.posterQueue = [];
         homeState.activePosterLoads = 0;
+        if (homeState.prefetchTimer) {
+            clearTimeout(homeState.prefetchTimer);
+            homeState.prefetchTimer = null;
+        }
     }
+
+    // ==================== ПЕРЕКЛЮЧЕНИЕ РЯДА ====================
 
     /**
-     * До первого показа фокуса постеры не грузим вовсе: пользователь просил,
-     * чтобы сначала уезжал фокус, а картинки подтягивались уже после. Ряды,
-     * пришедшие в DOM раньше, ждут здесь.
+     * Показан всегда ровно один ряд: вверх/вниз меняют его, баннер остаётся на
+     * месте. Скрытые ряды с display:none выпадают из focusableElements сами —
+     * control.js фильтрует список по offsetParent.
      */
-    function observeRowPosters(row) {
-        if (!homeState.activated || !homeState.posterObserver) {
-            homeState.pendingPosterRows.push(row);
-            return;
+    function setActiveRow(index) {
+        if (index < 0 || index >= homeState.rowEls.length) return false;
+        var changed = homeState.activeRow !== index;
+        homeState.activeRow = index;
+        for (var i = 0; i < homeState.rowEls.length; i++) {
+            if (i === index) homeState.rowEls[i].classList.remove(HOME.HIDDEN_ROW_CLASS);
+            else homeState.rowEls[i].classList.add(HOME.HIDDEN_ROW_CLASS);
         }
-        observeCardsIn(row);
-    }
-
-    function flushPendingPosterRows() {
-        homeState.pendingPosterRows = [];
-        // initPosterObserver сам подхватывает все карточки, уже лежащие в DOM
-        initPosterObserver();
-    }
-
-    // ==================== ОКОННАЯ ВИДИМОСТЬ РЯДОВ ====================
-    //
-    // Ряд дальше VISIBILITY_WINDOW_ROWS высот от вьюпорта получает
-    // catalog-offscreen (visibility: hidden) и перестаёт отрисовываться.
-    // visibility, а не display:none: бокс остаётся на месте, scrollHeight и
-    // позиция скролла не меняются, наблюдатель продолжает видеть элемент,
-    // а фокус по скрытым карточкам ходить может (offsetParent не null).
-
-    function measureMargin(sample) {
-        var h = sample ? sample.offsetHeight : 0;
-        if (!h) return HOME.VISIBILITY_FALLBACK_MARGIN_PX;
-        return Math.round(h * HOME.VISIBILITY_WINDOW_ROWS);
-    }
-
-    function createVisibilityObserver(marginPx) {
-        return new IntersectionObserver(function (entries) {
-            for (var i = 0; i < entries.length; i++) {
-                var target = entries[i].target;
-                // Прямоугольник нулевой — ряд не отрисован (ушли на другой экран,
-                // секция погашена). Гасить по такому сообщению нельзя, иначе при
-                // возврате увидим пустую страницу до следующего пересчёта.
-                if (!entries[i].boundingClientRect.height) continue;
-                if (entries[i].isIntersecting) target.classList.remove(HOME.OFFSCREEN_CLASS);
-                else target.classList.add(HOME.OFFSCREEN_CLASS);
-            }
-        }, {
-            root: el('main-container'),
-            rootMargin: marginPx + 'px 0px',   // запас только по вертикали
-            threshold: 0
-        });
-    }
-
-    function initVisibilityObserver() {
-        if (homeState.visibilityObserver) {
-            homeState.visibilityObserver.disconnect();
-            homeState.visibilityObserver = null;
-        }
-        if (typeof IntersectionObserver !== 'function') return;
-        var rows = document.querySelectorAll('#home-rows .catalog-row');
-        if (!rows.length) return;
-        homeState.visibilityObserver = createVisibilityObserver(measureMargin(rows[0]));
-        for (var i = 0; i < rows.length; i++) {
-            rows[i].classList.remove(HOME.OFFSCREEN_CLASS);
-            homeState.visibilityObserver.observe(rows[i]);
-        }
-    }
-
-    /** Ряды добавляются по одному — наблюдателю отдаём их тоже по одному */
-    function observeRowVisibility(row) {
-        if (!homeState.visibilityObserver) { initVisibilityObserver(); return; }
-        homeState.visibilityObserver.observe(row);
-    }
-
-    function resetVisibilityObserver() {
-        if (!homeState.visibilityObserver) return;
-        homeState.visibilityObserver.disconnect();
-        homeState.visibilityObserver = null;
-    }
-
-    function revealAllHomeRows() {
-        var rows = document.querySelectorAll('#home-rows .catalog-row');
-        for (var i = 0; i < rows.length; i++) rows[i].classList.remove(HOME.OFFSCREEN_CLASS);
-    }
-
-    // ==================== ПРОГРЕССИВНАЯ ЗАГРУЗКА РЯДОВ ====================
-
-    function loadHomeRows() {
-        var container = el('home-rows');
-        if (!container) return Promise.resolve(false);
-
-        var cfgs = HOME_ROWS;
-        var results = new Array(cfgs.length);
-        var nextToLoad = 0, nextToRender = 0;
-        var activeLoads = 0, completedLoads = 0, renderedRows = 0;
-        var finished = false;
-
-        homeState.rows = [];
-        homeState.rowKeys = [];
-        homeState.data = {};
-        homeState.activated = false;
-        homeState.pendingPosterRows = [];
-        resetPosterObserver();
-        resetVisibilityObserver();
-
-        container.innerHTML = '<div class="catalog-rows-loading">' +
-            '<div class="loading-spinner" style="margin:0 auto 20px"></div>' +
-            '<div style="font-size:16px;color:#aaa">Загрузка подборок...</div></div>';
-        invalidateFocus();
-
-        return new Promise(function (resolve) {
-            function finish(value) {
-                if (finished) return;
-                finished = true;
-                resolve(value);
-            }
-
-            function activate() {
-                if (homeState.activated) return;
-                homeState.activated = true;
-                requestAnimationFrame(function () {
-                    if (!isHomeFocusable()) { flushPendingPosterRows(); return; }
-                    if (typeof updateFocusableElements === 'function') updateFocusableElements();
-                    setTimeout(function () {
-                        if (isHomeFocusable()) restoreHomeFocus();
-                        // Постеры включаются только теперь: фокус уже на карточке
-                        flushPendingPosterRows();
-                    }, HOME.FOCUS_DELAY_MS);
-                });
-            }
-
-            function renderReadyRows() {
-                if (!isHomeVisible()) { finish(false); return; }
-                var appended = 0;
-                while (nextToRender < cfgs.length && results[nextToRender] !== undefined) {
-                    var res = results[nextToRender++];
-                    if (!res.items || !res.items.length) continue;   // пустой ряд не показываем
-                    var row = createHomeRow(res.cfg, res.items);
-                    if (!row) continue;
-                    if (renderedRows === 0) container.innerHTML = '';
-                    container.appendChild(row);
-                    renderedRows++;
-                    appended++;
-                    observeRowPosters(row);
-                    observeRowVisibility(row);
-                    activate();
-                }
-                // Кэш фокуса в control.js держится на счётчике поколений DOM —
-                // о новых карточках надо сказать явно
-                if (appended) invalidateFocus();
-            }
-
-            function scheduleLoads() {
-                if (finished) return;
-                if (!isHomeVisible()) { finish(false); return; }
-                if (completedLoads === cfgs.length) {
-                    if (renderedRows === 0) {
-                        container.innerHTML = '<div class="catalog-rows-loading">' +
-                            '<div style="font-size:48px;margin-bottom:20px">🎬</div>' +
-                            '<div style="font-size:18px;color:#aaa">Подборки недоступны</div>' +
-                            '<div style="font-size:14px;color:#777;margin-top:10px">Проверьте подключение к интернету</div></div>';
-                        resetVisibilityObserver();
-                        invalidateFocus();
-                        if (isHomeFocusable()) focusTopbar();
-                    }
-                    finish(renderedRows > 0);
-                    return;
-                }
-                while (activeLoads < HOME.MAX_PARALLEL_ROW_LOADS && nextToLoad < cfgs.length) {
-                    (function (index, cfg) {
-                        activeLoads++;
-                        loadRowItems(cfg)
-                            .then(function (items) { results[index] = { cfg: cfg, items: items || [] }; })
-                            .catch(function () { results[index] = { cfg: cfg, items: [] }; })
-                            .then(function () {
-                                activeLoads--;
-                                completedLoads++;
-                                renderReadyRows();
-                                scheduleLoads();
-                            });
-                    })(nextToLoad, cfgs[nextToLoad]);
-                    nextToLoad++;
-                }
-            }
-
-            scheduleLoads();
-        });
+        homeState.lastRowKey = homeState.rowKeys[index];
+        if (changed) invalidateFocus();
+        layoutHome();
+        loadRowPosters(index);
+        prefetchNeighbourPosters(index);
+        return true;
     }
 
     // ==================== ФОКУС И НАВИГАЦИЯ ====================
-
-    function scrollHomeToTop() {
-        var mc = el('main-container');
-        if (mc) mc.scrollTop = 0;
-        if (window.AppState) {
-            AppState.contentScroll = AppState.contentScroll || {};
-            AppState.contentScroll.home = 0;
-        }
-    }
 
     function getNavButtons() {
         var out = [];
@@ -726,6 +1098,11 @@
             if (b && b.offsetParent !== null) out.push(b);
         }
         return out;
+    }
+
+    function playButton() {
+        var b = el('home-play-btn');
+        return (b && !b.hidden && b.offsetParent !== null) ? b : null;
     }
 
     function focusHomeEl(target) {
@@ -755,13 +1132,37 @@
     }
 
     function focusCard(ri, ci) {
-        var rows = homeState.rows;
-        if (!rows[ri] || !rows[ri][ci]) return true;
+        var cards = homeState.rows[ri];
+        if (!cards || !cards[ci]) return true;
+        if (ri !== homeState.activeRow) setActiveRow(ri);
+        homeState.rowCols[ri] = ci;
         homeState.lastRowKey = homeState.rowKeys[ri];
         homeState.lastColIndex = ci;
-        focusHomeEl(rows[ri][ci]);
-        scrollToCard(rows[ri][ci]);
+        focusHomeEl(cards[ci]);
+        scrollToCard(cards[ci]);
+        setHeroFromCard(cards[ci]);
         return true;
+    }
+
+    function setHeroFromCard(card) {
+        var items = homeState.data[card.dataset.homeKey];
+        var idx = parseInt(card.dataset.itemIndex, 10);
+        if (!items || isNaN(idx) || !items[idx]) return;
+        setHeroItem(items[idx]);
+    }
+
+    /** Фокус в показанный ряд, на запомненную для него карточку */
+    function focusActiveRowCard(col) {
+        var ri = homeState.activeRow;
+        var cards = homeState.rows[ri];
+        if (!cards || !cards.length) return focusTopbar();
+        if (col === undefined || col === null || isNaN(col)) col = homeState.rowCols[ri] || 0;
+        return focusCard(ri, Math.max(0, Math.min(cards.length - 1, col)));
+    }
+
+    function focusRow(index) {
+        if (!setActiveRow(index)) return true;
+        return focusActiveRowCard(homeState.rowCols[index]);
     }
 
     function findCardPosition(target) {
@@ -779,32 +1180,18 @@
         if (!btns.length) return true;
         var target = el(homeState.lastNavBtnId);
         if (!target || btns.indexOf(target) === -1) target = el('home-nav-home') || btns[0];
-        // Шапка липкая, но при уходе вверх из первого ряда всё равно поднимаем
-        // страницу: иначе фокус на кнопке, а под ней виден обрезок ряда
-        scrollHomeToTop();
         return focusHomeEl(target);
     }
 
-    /** Возврат фокуса на ту карточку, с которой уходили (detail, поиск, донат) */
+    /** Возврат фокуса туда, откуда уходили (detail, поиск, донат) */
     function restoreHomeFocus() {
-        var key = homeState.lastRowKey;
-        if (key != null) {
-            var card = document.querySelector('#home-rows .catalog-row-card[data-home-key="' +
-                key + '"][data-item-index="' + homeState.lastColIndex + '"]');
-            if (card && card.offsetParent !== null) {
-                focusHomeEl(card);
-                scrollToCard(card);
-                return true;
-            }
-            var firstInRow = document.querySelector('#home-rows .catalog-row-card[data-home-key="' + key + '"]');
-            if (firstInRow && firstInRow.offsetParent !== null) {
-                focusHomeEl(firstInRow);
-                scrollToCard(firstInRow);
-                return true;
-            }
-        }
-        if (homeState.rows.length) return focusCard(0, 0);
-        return focusTopbar();
+        if (!homeState.rowEls.length) return focusTopbar();
+        var idx = homeState.rowKeys.indexOf(homeState.lastRowKey);
+        if (idx === -1) idx = Math.min(homeState.activeRow, homeState.rowEls.length - 1);
+        setActiveRow(idx);
+        var col = (homeState.rowKeys[idx] === homeState.lastRowKey)
+            ? homeState.lastColIndex : homeState.rowCols[idx];
+        return focusActiveRowCard(col);
     }
 
     function ensureHomeFocus(force) {
@@ -832,39 +1219,53 @@
         var btns = getNavButtons();
         var bi = (f && btns.indexOf) ? btns.indexOf(f) : -1;
 
+        // --- шапка ---
         if (bi !== -1) {
             homeState.lastNavBtnId = f.id || homeState.lastNavBtnId;
             if (dir === 'left') return focusHomeEl(btns[Math.max(0, bi - 1)]);
             if (dir === 'right') return focusHomeEl(btns[Math.min(btns.length - 1, bi + 1)]);
             if (dir === 'down') {
-                if (!homeState.rows.length) return true;
-                return restoreHomeFocus();
+                var pb = playButton();
+                if (pb) return focusHomeEl(pb);
+                if (!homeState.rowEls.length) return true;
+                return focusActiveRowCard();
             }
             return true;   // вверх с шапки уходить некуда
         }
 
+        // --- кнопка «Смотреть» на баннере ---
+        if (f && f.id === 'home-play-btn') {
+            if (dir === 'up') return focusTopbar();
+            if (dir === 'down') {
+                if (!homeState.rowEls.length) return true;
+                return focusActiveRowCard();
+            }
+            return true;   // влево/вправо на баннере некуда: кнопка одна
+        }
+
+        // --- нижний ряд ---
         var pos = f ? findCardPosition(f) : null;
         if (!pos) return ensureHomeFocus(true);
-        var rows = homeState.rows;
+        var cards = homeState.rows[pos.row];
 
         if (dir === 'left') {
             if (pos.col > 0) return focusCard(pos.row, pos.col - 1);
             return true;
         }
         if (dir === 'right') {
-            if (pos.col < rows[pos.row].length - 1) return focusCard(pos.row, pos.col + 1);
+            if (pos.col < cards.length - 1) return focusCard(pos.row, pos.col + 1);
             return true;
         }
+        // Вверх/вниз меняют подборку в нижнем ряду, а не уводят фокус по вертикали:
+        // на экране один ряд, остальные скрыты
         if (dir === 'up') {
-            if (pos.row > 0) {
-                return focusCard(pos.row - 1, Math.min(pos.col, rows[pos.row - 1].length - 1));
-            }
+            if (pos.row > 0) return focusRow(pos.row - 1);
+            var pb2 = playButton();
+            if (pb2) return focusHomeEl(pb2);
             return focusTopbar();
         }
         if (dir === 'down') {
-            if (pos.row < rows.length - 1) {
-                return focusCard(pos.row + 1, Math.min(pos.col, rows[pos.row + 1].length - 1));
-            }
+            if (pos.row < homeState.rowEls.length - 1) return focusRow(pos.row + 1);
             return true;
         }
         return true;
@@ -874,7 +1275,13 @@
         var f = document.querySelector('.focused');
         var btns = getNavButtons();
         if (f && btns.indexOf(f) !== -1) return true;    // уже в шапке — уходить некуда
-        if (f && findCardPosition(f)) { focusTopbar(); return true; }
+        if (f && f.id === 'home-play-btn') { focusTopbar(); return true; }
+        if (f && findCardPosition(f)) {
+            var pb = playButton();
+            if (pb) { focusHomeEl(pb); return true; }
+            focusTopbar();
+            return true;
+        }
         ensureHomeFocus(true);
         return true;
     }
@@ -885,7 +1292,8 @@
         homeState.lastRowKey = key;
         homeState.lastColIndex = index;
         homeState.detailFromHome = true;
-        saveHomeScroll();
+        suspendHero();
+        scrollHomeToTop();
         if (window.AppState) {
             AppState.catalogIndex = index;
             AppState.androidBackCatalog = item;
@@ -896,6 +1304,34 @@
             window.showCatalogDetail(item, index, null);
         }
         return true;
+    }
+
+    /**
+     * «Смотреть» — то же действие, что главная кнопка детального просмотра:
+     * поиск торрентов по названию. showCatalogSearch целит «назад» в детальный
+     * просмотр, но с главной он не открывался, поэтому возврат правим на home
+     * (ветку returnTo === 'home' разбирает hideSearchResults в torrents.js).
+     */
+    function playHeroItem() {
+        var item = homeState.hero.item;
+        if (!item) return ensureHomeFocus(true);
+        suspendHero();
+
+        var details = homeState.heroDetails[heroKey(item)] || item;
+        var title = itemTitle(details) !== 'Без названия' ? itemTitle(details) : itemTitle(item);
+        var poster = item.poster_path ? posterUrlFor(item.poster_path) : null;
+
+        if (typeof window.showCatalogSearch === 'function') {
+            if (window.AppState) {
+                AppState.androidBackCatalog = item;
+                AppState.catalogIndex = homeState.lastColIndex;
+            }
+            window.showCatalogSearch(title, poster, item);
+            if (window.AppState) AppState.searchReturnTo = 'home';
+            return true;
+        }
+        // Поиска нет — открываем карточку, там кнопка «Смотреть» своя
+        return openHomeItem(item, homeState.rowKeys[homeState.activeRow], homeState.lastColIndex);
     }
 
     function onHomeRowsClick(e) {
@@ -933,34 +1369,38 @@
 
     function onNavButton(id, viaClick) {
         homeState.lastNavBtnId = id;
-        saveHomeScroll();
 
         // «Главная» — единственная кнопка шапки без своего обработчика
         if (id === 'home-nav-home') return goHome();
 
-        // Остальные кнопки — настоящие вкладки разделов. На реальном клике их
-        // собственный обработчик уже сработал (мы поймали то же событие на
-        // всплытии), и повторный click() открыл бы раздел дважды. С пульта
-        // клика нет — там мы его и создаём.
+        // Уходим с главной: трейлер и кругляшок гасим, чтобы звук не играл
+        // поверх чужого экрана
+        suspendHero();
+        scrollHomeToTop();
+
+        // Остальные кнопки — настоящие вкладки разделов. Обработчики висят на
+        // самих кнопках, а мы слушаем на перехвате — то есть до них. Повторный
+        // click() открыл бы раздел дважды. С пульта клика нет — там мы его и
+        // создаём.
         if (viaClick) return true;
         if (id === 'tab-search') return openSearchFromHome();
         return clickHidden(id);
     }
 
     /**
-     * «Главная» работает из любого раздела: на самой главной это «наверх, к
-     * первому ряду», из каталога / торрентов — полноценный возврат домой
+     * «Главная» работает из любого раздела: на самой главной это «вернуться к
+     * первой подборке», из каталога / торрентов — полноценный возврат домой
      * (showHome прячет чужие экраны и снимает hidden с #content-home).
      */
     function goHome() {
         if (!isHomeVisible()) return showHome({ restoreFocus: true });
-        scrollHomeToTop();
-        if (homeState.rows.length) return focusCard(0, 0);
-        return true;
+        if (!homeState.rowEls.length) return true;
+        return focusRow(0);
     }
 
     function onHomeOk(f) {
         if (!f) return ensureHomeFocus(true);
+        if (f.id === 'home-play-btn') return playHeroItem();
         if (f.classList && f.classList.contains('home-nav-btn')) return onNavButton(f.id);
         var pos = findCardPosition(f);
         if (pos) {
@@ -971,6 +1411,115 @@
             return true;
         }
         return ensureHomeFocus(true);
+    }
+
+    // ==================== ПРОГРЕССИВНАЯ ЗАГРУЗКА РЯДОВ ====================
+
+    function loadHomeRows() {
+        var container = el('home-rows');
+        if (!container) return Promise.resolve(false);
+
+        var cfgs = HOME_ROWS;
+        var results = new Array(cfgs.length);
+        var nextToLoad = 0, nextToRender = 0;
+        var activeLoads = 0, completedLoads = 0, renderedRows = 0;
+        var finished = false;
+
+        homeState.rows = [];
+        homeState.rowEls = [];
+        homeState.rowKeys = [];
+        homeState.rowCols = [];
+        homeState.activeRow = 0;
+        homeState.data = {};
+        homeState.activated = false;
+        resetPosterQueue();
+
+        container.innerHTML = '<div class="catalog-rows-loading">' +
+            '<div class="loading-spinner" style="margin:0 auto 20px"></div>' +
+            '<div style="font-size:16px;color:#aaa">Загрузка подборок...</div></div>';
+        invalidateFocus();
+
+        return new Promise(function (resolve) {
+            function finish(value) {
+                if (finished) return;
+                finished = true;
+                resolve(value);
+            }
+
+            function activate() {
+                if (homeState.activated) return;
+                homeState.activated = true;
+                requestAnimationFrame(function () {
+                    if (!isHomeFocusable()) { loadRowPosters(homeState.activeRow); return; }
+                    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+                    setTimeout(function () {
+                        // Фокус уезжает на карточку раньше картинок: постеры
+                        // подтягиваются уже после него (setActiveRow → loadRowPosters)
+                        if (isHomeFocusable()) restoreHomeFocus();
+                        else loadRowPosters(homeState.activeRow);
+                    }, HOME.FOCUS_DELAY_MS);
+                });
+            }
+
+            function renderReadyRows() {
+                if (!isHomeVisible()) { finish(false); return; }
+                var appended = 0;
+                while (nextToRender < cfgs.length && results[nextToRender] !== undefined) {
+                    var res = results[nextToRender++];
+                    if (!res.items || !res.items.length) continue;   // пустой ряд не показываем
+                    var row = createHomeRow(res.cfg, res.items);
+                    if (!row) continue;
+                    if (renderedRows === 0) container.innerHTML = '';
+                    container.appendChild(row);
+                    renderedRows++;
+                    appended++;
+                    // Первый пришедший ряд и становится показанным; остальные
+                    // ложатся скрытыми и ждут стрелки «вниз»
+                    if (renderedRows === 1) setActiveRow(0);
+                    activate();
+                }
+                if (appended) {
+                    updateRowCounters();
+                    // Кэш фокуса в control.js держится на счётчике поколений DOM —
+                    // о новых карточках надо сказать явно
+                    invalidateFocus();
+                }
+            }
+
+            function scheduleLoads() {
+                if (finished) return;
+                if (!isHomeVisible()) { finish(false); return; }
+                if (completedLoads === cfgs.length) {
+                    if (renderedRows === 0) {
+                        container.innerHTML = '<div class="catalog-rows-loading">' +
+                            '<div style="font-size:48px;margin-bottom:20px">🎬</div>' +
+                            '<div style="font-size:18px;color:#aaa">Подборки недоступны</div>' +
+                            '<div style="font-size:14px;color:#777;margin-top:10px">Проверьте подключение к интернету</div></div>';
+                        invalidateFocus();
+                        if (isHomeFocusable()) focusTopbar();
+                    }
+                    finish(renderedRows > 0);
+                    return;
+                }
+                while (activeLoads < HOME.MAX_PARALLEL_ROW_LOADS && nextToLoad < cfgs.length) {
+                    (function (index, cfg) {
+                        activeLoads++;
+                        loadRowItems(cfg)
+                            .then(function (items) { results[index] = { cfg: cfg, items: items || [] }; })
+                            .catch(function () { results[index] = { cfg: cfg, items: [] }; })
+                            .then(function () {
+                                activeLoads--;
+                                completedLoads++;
+                                renderReadyRows();
+                                scheduleLoads();
+                            });
+                    })(nextToLoad, cfgs[nextToLoad]);
+                    nextToLoad++;
+                }
+            }
+
+            scheduleLoads();
+        });
     }
 
     // ==================== ПОКАЗ / СКРЫТИЕ ====================
@@ -1008,10 +1557,12 @@
             AppState.isSearch = false;
             AppState.isCatalogSearch = false;
         }
+        ensureHeroDom();
         invalidateFocus();
 
         if (!homeState.built && !homeState.loading) {
             homeState.loading = true;
+            layoutHome();
             loadHomeRows().then(function (ok) {
                 homeState.loading = false;
                 homeState.built = !!ok;
@@ -1019,13 +1570,14 @@
             return true;
         }
 
-        // Ряды уже в DOM: наблюдателей могла отключить чистка памяти или уход
-        // на другой экран — поднимаем заново, иначе постеры больше не догружаются
-        revealAllHomeRows();
-        resetStrandedPosters();
-        initPosterObserver();
-        initVisibilityObserver();
+        // Возврат на готовую главную: баннер пересобираем с нуля (кругляшок и
+        // трейлер гасились при уходе), размеры пересчитываем — за это время мог
+        // измениться и размер карточек в настройках
+        homeState.hero.key = null;
+        homeState.hero.pendingKey = null;
+        homeState.cardWidth = 0;
         homeState.activated = true;
+        setActiveRow(Math.min(homeState.activeRow, Math.max(0, homeState.rowEls.length - 1)));
 
         requestAnimationFrame(function () {
             if (!isHomeFocusable()) return;
@@ -1041,10 +1593,12 @@
 
     function refreshHome() {
         return dbClear().then(function () {
+            suspendHero();
             homeState.built = false;
             homeState.loading = false;
             homeState.lastRowKey = null;
             homeState.lastColIndex = 0;
+            homeState.heroDetails = {};
             return showHome();
         });
     }
@@ -1063,13 +1617,12 @@
         window.showContentScreen = function (screen) {
             var homeScreen = el('content-home');
             var homeBtn = el('home-nav-home');
-            // Уходя с главной, сохраняем её скролл сами: оригинал запоминает
-            // позицию только для torrents и catalog
             if (window.AppState && AppState.currentScreen === 'home' && screen !== 'home') {
-                var mc = el('main-container');
+                // Главная не прокручивается — возвращаться на неё всегда сверху
                 AppState.contentScroll = AppState.contentScroll || {};
-                if (mc) AppState.contentScroll.home = mc.scrollTop;
+                AppState.contentScroll.home = 0;
                 homeState.detailFromHome = false;
+                suspendHero();
             }
             // Экраны раздела живут в DOM постоянно, видимость переключается
             // через hidden. Уходя на главную, прячем чужие экраны сами: app.js
@@ -1125,6 +1678,28 @@
             if (!e.target.closest('#donate-close-btn, .donate-overlay-backdrop')) return;
             scheduleFocusAfterOverlay();
         });
+
+        // 4. Экран ушёл в фон (переключили вход, свернули браузер) — звук
+        //    трейлера в фоне не нужен. Вернулись — заводим отсчёт заново.
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden) { suspendHero(); return; }
+            if (!isHomeVisible()) return;
+            homeState.hero.key = null;
+            homeState.hero.pendingKey = null;
+            var f = document.querySelector('.focused');
+            if (f && findCardPosition(f)) setHeroFromCard(f);
+        });
+
+        // 5. Раскладка привязана к высоте экрана — пересчитываем на resize
+        window.addEventListener('resize', function () {
+            if (!isHomeVisible()) return;
+            if (homeState.resizeTimer) clearTimeout(homeState.resizeTimer);
+            homeState.resizeTimer = setTimeout(function () {
+                homeState.resizeTimer = null;
+                homeState.cardWidth = 0;      // размер мог не измениться — но пересчитать надо
+                layoutHome();
+            }, 150);
+        });
     }
 
     /** Оверлей закрылся — если под ним главная и фокус потерян, возвращаем его */
@@ -1147,6 +1722,9 @@
         ScreenStrategies.home = {
             getItems: function () {
                 var out = getNavButtons();
+                var pb = playButton();
+                if (pb) out.push(pb);
+                // Скрытые ряды (display:none) в список не попадают
                 var cards = document.querySelectorAll('#home-rows .catalog-row-card');
                 for (var i = 0; i < cards.length; i++) {
                     if (cards[i].offsetParent !== null) out.push(cards[i]);
@@ -1171,8 +1749,7 @@
         var topbar = el('home-topbar');
         if (topbar) {
             // Слушаем на перехвате: обработчики самих вкладок висят на кнопках,
-            // и на всплытии главная уже была бы спрятана — saveHomeScroll()
-            // записал бы чужой скролл (см. его guard на isHomeVisible).
+            // и на всплытии главная уже была бы спрятана
             topbar.addEventListener('click', function (e) {
                 var btn = e.target.closest ? e.target.closest('.home-nav-btn') : null;
                 if (!btn) return;
@@ -1199,6 +1776,8 @@
         restoreFocus: restoreHomeFocus,
         handleBack: handleHomeBack,
         refresh: refreshHome,
+        layout: layoutHome,
+        stopTrailer: suspendHero,
         state: homeState
     };
 
