@@ -3176,22 +3176,24 @@ async function loadRowPoster(card, item) {
 
 /**
  * Постер карточки, на которую только что встал фокус, — вне очереди и вне
- * пейсинга. Пока кнопка пульта зажата, processRowPosterQueue стоит (см.
- * isNavBusy), и без этой врезки пользователь ехал бы по пустым рамкам. Один
- * постер на нажатие потянет любой телевизор, а очередь доберёт остальные,
- * когда навигация утихнет.
+ * пейсинга. Пока пользователь листает, processRowPosterQueue стоит (см. там же),
+ * и без этой врезки фокус ехал бы по пустым рамкам. Один постер на нажатие
+ * потянет любой телевизор, а очередь доберёт остальные, когда навигация утихнет.
  *
  * Зовётся из revealCatalogElement, то есть из focusEl (control.js) — ровно там,
  * где с карточки уже снимается оконное погашение.
  */
 function ensureRowPosterNow(card) {
     if (!card || !card.classList || !card.classList.contains('catalog-row-card')) return;
+    // Карточки главной тоже .catalog-row-card, но ключ у них свой (data-home-key)
+    // и грузит их home.js — сюда они попадать не должны.
+    var key = card.dataset.catalogKey;
+    if (!key) return;
     if (card.dataset.posterStarted === '1') return;      // загрузка уже идёт
 
     var box = card.querySelector('.row-poster-img');
     if (!box || box.querySelector('img')) return;        // постер уже на месте
 
-    var key = card.dataset.catalogKey;
     var idx = parseInt(card.dataset.itemIndex, 10);
     if (isNaN(idx)) return;                              // «Показать все» — без постера
     var items = window.catalogRowsData && window.catalogRowsData[key];
@@ -3275,6 +3277,10 @@ function initRowPosterLazyLoading() {
     var cards = document.querySelectorAll('#catalog-rows .catalog-row-card');
     for (var i = 0; i < cards.length; i++) {
         if (cards[i].dataset.itemIndex !== undefined && cards[i].dataset.posterLoaded !== '1') {
+            // Карточку берём под наблюдение заново, значит прежняя попытка
+            // загрузки не в счёт (её могли обнулить вместе с очередью —
+            // см. rearmCatalogObservers в catalog-memory-fix.js).
+            cards[i].dataset.posterStarted = '0';
             catalogState.rowPosterObserver.observe(cards[i]);
         }
     }
@@ -3512,6 +3518,7 @@ function resetGridVisibilityWindow() {
  * через кадр-два, уже незаметно.
  */
 function revealAllCatalogRows() {
+    dropPendingVisibilityToggles();     // решения от прежней позиции скролла
     var rows = document.querySelectorAll('#catalog-rows .catalog-row');
     for (var i = 0; i < rows.length; i++) rows[i].classList.remove(OFFSCREEN_CLASS);
 }
