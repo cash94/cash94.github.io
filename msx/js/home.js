@@ -796,6 +796,11 @@
         video.autoplay = true;
         video.playsInline = true;
         video.setAttribute('playsinline', '');
+        // Штатные контролы WebView не нужны совсем: на Android TV они и рисуют
+        // тот значок «плей» поверх пустого видео (остальное добивает CSS)
+        video.controls = false;
+        video.removeAttribute('controls');
+        video.setAttribute('disableremoteplayback', '');
         media.appendChild(video);
         homeState.hero.video = video;
 
@@ -815,12 +820,24 @@
                 }
             }, 1000);
         }
+        // Видео показываем только когда пошли настоящие кадры: включённое
+        // заранее, оно на Android TV успевает нарисовать свой значок «плей»
+        // (CSS его прячет, но пустой чёрный слой всё равно виден лишним мигом)
+        function revealVideo() {
+            if (homeState.hero.video !== video) return;
+            video.classList.add('home-hero-video-on');
+        }
         video.addEventListener('playing', function () {
+            revealVideo();
             startVolumeFade();
             var hero = el('home-hero');
             if (hero) hero.classList.add('home-hero-playing');
         });
-        video.addEventListener('timeupdate', startVolumeFade);
+        video.addEventListener('timeupdate', function () {
+            // playing на части устройств приходит раньше первого кадра
+            if (video.currentTime > 0) revealVideo();
+            startVolumeFade();
+        });
 
         if (window.Hls && Hls.isSupported()) {
             var hls = new Hls({
@@ -840,7 +857,6 @@
             video.play().catch(function () { });
         }
 
-        requestAnimationFrame(function () { video.classList.add('home-hero-video-on'); });
         startHeroWatchdog();
     }
 
@@ -1895,22 +1911,43 @@
         return !!(mc && mc.scrollHeight - mc.clientHeight > 2);
     }
 
+    /**
+     * Жест адресован главной? Смотрим на цель касания, а не на
+     * AppState.currentScreen: тот на старте может ещё принадлежать торрентам
+     * (checkServer и loadTorrents приходят позже первого жеста), а витрина уже
+     * на экране — именно поэтому на телефоне свайп «оживал» только после
+     * захода в карточку и возврата (showHome выставлял экран заново).
+     * Заодно отсекается всё, что лежит поверх: detail-view и оверлеи поиска и
+     * доната — отдельные ветки DOM. Шапку раздела берём отдельно: она общая для
+     * торрентов и каталога и лежит рядом с #content-home, а не внутри.
+     */
+    function homeGestureTarget(target) {
+        if (playerBusy() || moduleLoaderUp() || !isHomeVisible()) return false;
+        if (!target || !target.closest) return false;
+        return !!(target.closest('#content-home') || target.closest('#home-topbar'));
+    }
+
     /** Один шаг вертикального жеста — то же, что стрелка вверх/вниз в ряду */
     function gestureStepRow(down) {
-        if (!isHomeFocusable() || !homeState.rowEls.length) return false;
+        if (!homeState.rowEls.length) return false;
         // Тем же способом, что handleHomeNavigation: control.js читает
         // направление при доводке скролла в focusEl
         window.lastNavDirection = down ? 'down' : 'up';
+
         var f = document.querySelector('.focused');
         var pos = f ? findCardPosition(f) : null;
         // Фокус в шапке или на «Смотреть»: вниз сначала уводим его в ряд —
         // ровно так же ведёт себя стрелка
-        if (!pos) {
+        if (!pos && f && belongsToHome(f)) {
             if (!down) return false;
             focusActiveRowCard();
             return true;
         }
-        var next = pos.row + (down ? 1 : -1);
+        // Опора — показанный ряд, а не фокус: на телефоне фокуса может не быть
+        // вовсе (его ставят пультом или курсором), а листать подборки жест
+        // обязан и без него.
+        var from = pos ? pos.row : homeState.activeRow;
+        var next = from + (down ? 1 : -1);
         if (next < 0 || next >= homeState.rowEls.length) return false;
         focusRow(next);
         return true;
@@ -1918,7 +1955,7 @@
 
     function onHomeWheel(e) {
         if (e.defaultPrevented) return;      // колесо уже отработал control.js
-        if (!isHomeFocusable()) return;
+        if (!homeGestureTarget(e.target)) return;
 
         var dy = e.deltaY || e.wheelDeltaY ||
             (e.wheelDelta ? -e.wheelDelta / 40 : 0) || e.detail || 0;
@@ -1950,7 +1987,7 @@
         touchedAt = Date.now();
         stopHoverScroll();      // палец не «висит» у края, как курсор
         if (!e.touches || e.touches.length !== 1) return;
-        if (!isHomeFocusable()) return;
+        if (!homeGestureTarget(e.target)) return;
         var t = e.touches[0];
         swipe = { x: t.clientX, y: t.clientY, anchor: t.clientY, vertical: false, scrollable: false };
     }
@@ -2040,7 +2077,9 @@
 
     function hoverScrollStep() {
         var v = hover.viewport;
-        if (!v || !v.isConnected || !hover.dir || !isHomeFocusable()) { stopHoverScroll(); return; }
+        if (!v || !v.isConnected || !hover.dir) { stopHoverScroll(); return; }
+        // Проверка та же, что у жестов, но без цели события: таймер живёт сам
+        if (playerBusy() || !isHomeVisible()) { stopHoverScroll(); return; }
         // Ряд под курсором могли сменить стрелками — скрытый двигать незачем
         if (v.offsetParent === null) { stopHoverScroll(); return; }
         if (typeof getScrollX !== 'function' || typeof setScrollX !== 'function') { stopHoverScroll(); return; }
@@ -2121,7 +2160,7 @@
         lastMoveX = e.clientX;
         lastMoveY = e.clientY;
 
-        if (!isHomeFocusable()) { stopHoverScroll(); return; }
+        if (!homeGestureTarget(e.target)) { stopHoverScroll(); return; }
 
         var v = (e.target && e.target.closest)
             ? e.target.closest('#home-rows .catalog-row-viewport') : null;
