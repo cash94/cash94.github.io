@@ -59,6 +59,13 @@
         CARD_MAX_W: 240,
         // Пока фокус пробегает ряд, баннер не дёргаем на каждой карточке
         HERO_DEBOUNCE_MS: 260,
+        // Столько кадр нового элемента может грузиться, не гася прежний. Не
+        // пришёл — показываем подложку: кадр предыдущего фильма под новым
+        // названием выглядит как баг (им и был).
+        BACKDROP_GRACE_MS: 1200,
+        // Сколько зеркал TMDB пробуем на один путь: первое + следующие по кругу.
+        // Всех пяти не берём — кандидатов и так два набора (кадр и постер).
+        BACKDROP_MIRROR_TRIES: 3,
         // Столько заполняется кругляшок; заполнился — включаем трейлер
         TRAILER_DELAY_MS: 5000,
         // Длина окружности кругляшка: 2πr при r = 19 (см. viewBox 0 0 44 44)
@@ -530,36 +537,140 @@
         return parts.join('  •  ');
     }
 
-    /** Картинку ставим только после декодирования — иначе баннер мигает белым */
-    function applyHeroBackdrop(url) {
+    // Поколение загрузки кадра: сменился элемент баннера — ответы прошлой
+    // цепочки (у неё несколько попыток) должны молча уйти в никуда
+    var backdropLoad = 0;
+    var backdropTimer = null;
+    // Цепочка добралась до конца, а показать было нечего. Держим отдельно от
+    // hero.backdropUrl: пока попытки идут, повторный renderHero цепочку не
+    // трогает, а вот сеть моргнула и всё упало — при следующем заходе на этот
+    // же элемент пробуем ещё раз, иначе подложка осталась бы навсегда.
+    var backdropFailed = false;
+
+    function cancelBackdropTimer() {
+        if (backdropTimer) { clearTimeout(backdropTimer); backdropTimer = null; }
+    }
+
+    /**
+     * Ровная тёмная подложка вместо картинки. Инлайновый background-image именно
+     * снимаем: у .home-hero-empty специфичность класса, инлайн её перебивает —
+     * и в баннере оставался кадр ПРОШЛОГО фильма, хотя новый не загрузился.
+     */
+    function clearHeroBackdrop() {
         var box = el('home-hero-backdrop');
         if (!box) return;
-        if (!url) {
+        box.style.removeProperty('background-image');
+        box.classList.add('home-hero-empty');
+    }
+
+    /** Тот же путь на других зеркалах — по порядку обхода getTmdbNextMirrorUrl */
+    function pushMirrors(out, url) {
+        if (!url || out.indexOf(url) !== -1) return;
+        out.push(url);
+        if (typeof window.getTmdbNextMirrorUrl !== 'function') return;
+        var next = url;
+        // getTmdbNextMirrorUrl ходит по кругу — выходим и по повтору.
+        for (var i = 0; i < HOME.BACKDROP_MIRROR_TRIES - 1; i++) {
+            next = window.getTmdbNextMirrorUrl(next);
+            if (!next || out.indexOf(next) !== -1) break;
+            out.push(next);
+        }
+    }
+
+    /**
+     * Кадр баннера. url — широкий кадр, extra — постер как запас (у истории
+     * просмотра backdrop'а нет вовсе). Между ними перебираем зеркала: выбор
+     * зеркала детерминированный (pickMirror в catalog.js), поэтому упавший или
+     * отдающий обрезанные файлы хост валит один и тот же набор картинок всегда.
+     *
+     * Осечка или молчание дольше BACKDROP_GRACE_MS гасят картинку в тёмную
+     * подложку и переводят на следующего кандидата: иначе в баннере висел бы
+     * кадр предыдущего фильма под названием нового — тот самый баг. Повезёт
+     * дальше по списку — кадр появится (хоть и позже), нет — останется подложка.
+     */
+    function applyHeroBackdrop(url, extra) {
+        var box = el('home-hero-backdrop');
+        if (!box) return;
+
+        var queue = [];
+        pushMirrors(queue, url);
+        pushMirrors(queue, extra);
+        if (!queue.length) {
+            backdropLoad++;
+            cancelBackdropTimer();
             homeState.hero.backdropUrl = null;
-            box.style.backgroundImage = '';
-            box.classList.add('home-hero-empty');
+            clearHeroBackdrop();
             return;
         }
-        if (homeState.hero.backdropUrl === url) return;
-        homeState.hero.backdropUrl = url;
+        // Этот кадр уже запрашивали (renderHero зовётся второй раз, с деталями) —
+        // не перезапускаем цепочку, пока она идёт или уже показала картинку.
+        // Ключ — первый кандидат, а не удавшийся: иначе успех с запасного
+        // зеркала выглядел бы как новый запрос и мигал бы подложкой.
+        if (homeState.hero.backdropUrl === queue[0] && !backdropFailed) return;
+        homeState.hero.backdropUrl = queue[0];
+        backdropFailed = false;
 
-        var img = new Image();
-        function apply() {
-            if (homeState.hero.backdropUrl !== url) return;   // успели переключить
-            box.style.backgroundImage = 'url("' + url + '")';
-            box.classList.remove('home-hero-empty');
+        var mine = ++backdropLoad;
+        var at = 0;
+        var shown = false;      // кадр этого элемента уже в баннере
+
+        // Гасим только пока показывать нечего: опоздавший ответ мог вернуть
+        // годную картинку, и осечка следующего кандидата не должна её стирать.
+        function fallback() {
+            if (!shown) clearHeroBackdrop();
         }
-        img.onerror = function () {
-            if (homeState.hero.backdropUrl !== url) return;
-            box.classList.add('home-hero-empty');
-        };
-        if (typeof img.decode === 'function') {
-            img.src = url;
-            img.decode().then(apply).catch(apply);
-        } else {
-            img.onload = apply;
-            img.src = url;
+
+        function tryNext() {
+            cancelBackdropTimer();
+            if (shown) return;                              // уже нашли, дальше не ищем
+            if (mine !== backdropLoad) return;              // элемент успели сменить
+            if (at >= queue.length) { backdropFailed = true; fallback(); return; }
+            var candidate = queue[at++];
+            var img = new Image();
+            var settled = false;
+
+            // Прежний кадр держим, пока грузится новый — иначе баннер мигал бы
+            // подложкой на каждой карточке. Но недолго: зависший запрос (ни
+            // load, ни error могут не прийти десятками секунд) иначе оставил бы
+            // на экране чужую картинку. Ответ этого кандидата не отбрасываем:
+            // придёт с опозданием — заменит подложку.
+            backdropTimer = setTimeout(function () {
+                backdropTimer = null;
+                if (mine !== backdropLoad) return;
+                fallback();
+                tryNext();
+            }, HOME.BACKDROP_GRACE_MS);
+
+            function finish() {
+                if (settled) return;
+                settled = true;
+                if (mine !== backdropLoad) return;
+                // naturalWidth — единственная надёжная проверка: decode() на
+                // части устройств отклоняет и годные картинки, а обрезанный
+                // файл фоном рисуется пустотой
+                if (!img.naturalWidth) { fallback(); tryNext(); return; }
+                cancelBackdropTimer();
+                shown = true;
+                backdropFailed = false;     // мог успеть выставиться, если это опоздавший ответ
+                box.style.backgroundImage = 'url("' + candidate + '")';
+                box.classList.remove('home-hero-empty');
+            }
+
+            img.onerror = function () {
+                if (settled) return;
+                settled = true;
+                if (mine !== backdropLoad) return;
+                fallback();
+                tryNext();
+            };
+            img.onload = function () {
+                if (typeof img.decode === 'function') img.decode().then(finish).catch(finish);
+                else finish();
+            };
+            img.src = candidate;
         }
+
+        tryNext();
     }
 
     function renderHero(item, details) {
@@ -581,12 +692,13 @@
             invalidateFocus();
         }
 
-        // Постер как запас: у ряда «Продолжить просмотр» backdrop'а нет вовсе,
-        // а деталями он приходит уже после первой отрисовки
+        // Постер — запас на две беды: у ряда «Продолжить просмотр» широкого кадра
+        // нет вовсе, а у остальных он может не отдаться ни с одного зеркала.
+        // Размер тот же, что у карточки: этот файл уже лежит в кэше браузера.
         var path = src.backdrop_path || (item && item.backdrop_path);
-        if (path) applyHeroBackdrop(backdropUrlFor(path));
-        else if (item && item.poster_path) applyHeroBackdrop(posterUrlFor(item.poster_path));
-        else applyHeroBackdrop('');
+        var poster = (src.poster_path || (item && item.poster_path)) || '';
+        applyHeroBackdrop(path ? backdropUrlFor(path) : '',
+            poster ? posterUrlFor(poster) : '');
     }
 
     // ==================== БАННЕР: СМЕНА ЭЛЕМЕНТА ====================
