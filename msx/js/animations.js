@@ -937,7 +937,9 @@ var Animations = (function () {
         }
 
         options = options || {};
-        var duration = options.duration || 0.15;
+        // typeof, а не `||`: duration: 0 — это «мгновенно, без твана»
+        // (быстрая навигация по пульту), и его нельзя подменять на 0.15
+        var duration = typeof options.duration === 'number' ? options.duration : 0.15;
         var ease = options.ease || "power1.out";
         var offset = options.offset || 10;
         var direction = options.direction || null; //Добавляем параметр направления
