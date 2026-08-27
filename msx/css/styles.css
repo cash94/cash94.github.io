@@ -5025,9 +5025,11 @@ article {
   transition: opacity 0.5s ease;
 }
 
-/* Кадра нет (или он не загрузился) — ровная подложка вместо белой вспышки */
+/* Кадра нет (или он не загрузился) — ровная подложка вместо белой вспышки.
+   !important здесь не для красоты: картинку ставит инлайновый background-image
+   (home.js), и без него класс не перебил бы кадр прошлого фильма. */
 #home-hero-backdrop.home-hero-empty {
-  background-image: none;
+  background-image: none !important;
   background-color: #101010;
 }
 
