@@ -5044,12 +5044,42 @@ article {
   height: 100%;
   object-fit: cover;
   opacity: 0;
+  /* Не только прозрачность: на Android TV видео живёт в отдельном слое, и его
+     собственная отрисовка (значок «плей» до первого кадра) opacity не всегда
+     слушается. visibility снимает слой целиком. */
+  visibility: hidden;
   transition: opacity 0.6s ease;
   background: #000;
 }
 
 .home-hero-video.home-hero-video-on {
   opacity: 1;
+  visibility: visible;
+}
+
+/* Значок «плей» и прочая штатная обвязка <video>. Android TV (WebView) рисует
+   его в пустом видео, пока не пошли кадры: значок мигает перед началом
+   трейлера. Классы контролов у WebKit-движка называются по-разному в разных
+   версиях, поэтому перечислены все — лишние правила просто ни на что не
+   попадут. #trailer-bg-video — тот же трейлер в детальном просмотре
+   (catalog.js), у него ровно та же беда. */
+.home-hero-video::-webkit-media-controls,
+.home-hero-video::-webkit-media-controls-enclosure,
+.home-hero-video::-webkit-media-controls-panel,
+.home-hero-video::-webkit-media-controls-overlay-enclosure,
+.home-hero-video::-webkit-media-controls-overlay-play-button,
+.home-hero-video::-webkit-media-controls-start-playback-button,
+#trailer-bg-video::-webkit-media-controls,
+#trailer-bg-video::-webkit-media-controls-enclosure,
+#trailer-bg-video::-webkit-media-controls-panel,
+#trailer-bg-video::-webkit-media-controls-overlay-enclosure,
+#trailer-bg-video::-webkit-media-controls-overlay-play-button,
+#trailer-bg-video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  opacity: 0 !important;
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: none;
 }
 
 /* Затемнение: слева — под текст, снизу — стык с рядом, сверху — под шапку */
