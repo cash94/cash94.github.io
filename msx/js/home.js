@@ -2350,6 +2350,50 @@
         window.addEventListener('blur', stopHoverScroll);
     }
 
+    // ==================== ЧАСЫ В ШАПКЕ ====================
+
+    var CLOCK_DAYS = ['воскресенье', 'понедельник', 'вторник', 'среда',
+        'четверг', 'пятница', 'суббота'];
+    var CLOCK_MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+        'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+
+    /**
+     * Время, дата и день недели справа от «Настроек» (разметка в index.html).
+     * Тикаем раз в секунду, а в DOM пишем только когда строка изменилась — то
+     * есть раз в минуту, и раз в сутки для даты. На старых телевизорах
+     * перерисовка липкой шапки каждую секунду стоит дороже самих часов, а
+     * секунд мы всё равно не показываем.
+     */
+    function startTopbarClock() {
+        var timeEl = el('home-clock-time');
+        if (!timeEl) return;
+        var dayEl = el('home-clock-day');
+        var wdEl = el('home-clock-weekday');
+        var lastTime = '';
+        var lastDay = '';
+
+        function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+        function tick() {
+            var d = new Date();
+            var t = d.getHours() + ':' + pad(d.getMinutes());
+            if (t !== lastTime) {
+                lastTime = t;
+                timeEl.textContent = t;
+            }
+            var day = d.getDate() + ' ' + CLOCK_MONTHS[d.getMonth()] + ' ' +
+                d.getFullYear() + 'г.';
+            if (day !== lastDay) {
+                lastDay = day;
+                if (dayEl) dayEl.textContent = day;
+                if (wdEl) wdEl.textContent = CLOCK_DAYS[d.getDay()];
+            }
+        }
+
+        tick();
+        setInterval(tick, 1000);
+    }
+
     // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
     function initHome() {
@@ -2373,6 +2417,7 @@
         var rows = el('home-rows');
         if (rows) rows.addEventListener('click', onHomeRowsClick);
 
+        startTopbarClock();
         patchGlobals();
         registerStrategy();
         initGestures();
