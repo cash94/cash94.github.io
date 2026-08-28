@@ -3235,12 +3235,28 @@ function hideSearchResults() {
             // недоигранного закрытия — иначе экран останется прозрачным
             Animations.ensureDetailVisible();
         } else if (detailView && detailView.style.display !== 'block') { detailView.style.display = 'block'; detailView.style.zIndex = '100'; detailView.style.pointerEvents = 'auto'; }
-        setTimeout(function () {
-            if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-                updateFocusableElements(); var watchBtn = getEl('catalog-watch-btn'); if (watchBtn) { for (var i = 0; i < focusableElements.length; i++) { if (focusableElements[i].id === 'catalog-watch-btn') { setFocus(i); return; } } }
-            }
-            if (typeof window.ensureCatalogDetailFocus === 'function') window.ensureCatalogDetailFocus(true);
-        }, 100);
+        // Страховка: карточку могли выпотрошить, пока она стояла под оверлеем
+        // поиска. Цепочка «карточка каталога → поиск торрентов → детали торрента
+        // → назад»: на выходе из деталей торрента app.js заново рисует карточку
+        // каталога и сразу прячет её, а затухание в конце зовёт
+        // resetDetailBackground — тот чистит заголовок, подзаголовок, постер и ряд
+        // актёров. Показывать половину карточки нельзя — рисуем её заново.
+        var detailTitleEl = getEl('detail-title-text');
+        var restoreItem = AppState.pendingDetailItem || AppState.androidBackCatalog || AppState.currentDetailItem;
+        var detailGutted = !!(detailTitleEl && !String(detailTitleEl.textContent || '').trim() &&
+            restoreItem && restoreItem.id && !isTorrentDetailMode() &&
+            typeof window.showCatalogDetail === 'function');
+        if (detailGutted) {
+            // showCatalogDetail сам поставит фокус на «Поиск торрентов»
+            window.showCatalogDetail(restoreItem, AppState.catalogIndex || 0, AppState.catalogPu || null);
+        } else {
+            setTimeout(function () {
+                if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+                    updateFocusableElements(); var watchBtn = getEl('catalog-watch-btn'); if (watchBtn) { for (var i = 0; i < focusableElements.length; i++) { if (focusableElements[i].id === 'catalog-watch-btn') { setFocus(i); return; } } }
+                }
+                if (typeof window.ensureCatalogDetailFocus === 'function') window.ensureCatalogDetailFocus(true);
+            }, 100);
+        }
     } else if (returnTo === 'catalog') {
         if (catalogTab) catalogTab.classList.add('active'); torrentsTab.classList.remove('active'); AppState.currentScreen = 'catalog';
         setTimeout(function () { if (typeof window.focusCatalogCardByIndex === 'function') { var savedIndex = localStorage.getItem('lastCatalogCardIndex'); window.focusCatalogCardByIndex(parseInt(savedIndex || 0)); } else if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard(); }, 80);
