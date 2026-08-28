@@ -112,40 +112,24 @@
         };
     }
 
-    // ==================== 4. ОЧИСТКА ТАЙМЕРОВ ====================
-
-    window._activeTimers = window._activeTimers || [];
-
-    function registerTimer(timerId, name) {
-        window._activeTimers.push({ id: timerId, name: name });
-    }
-
-    function clearAllTimers() {
-        console.log('🧹 Очистка ' + window._activeTimers.length + ' таймеров');
-        for (var i = 0; i < window._activeTimers.length; i++) {
-            clearTimeout(window._activeTimers[i].id);
-            clearInterval(window._activeTimers[i].id);
-        }
-        window._activeTimers = [];
-    }
-
-    // Патч setTimeout/setInterval для автоматической регистрации
-    var originalSetTimeout = window.setTimeout;
-    var originalSetInterval = window.setInterval;
-
-    window.setTimeout = function(callback, delay) {
-        var args = Array.prototype.slice.call(arguments, 2);
-        var timerId = originalSetTimeout.apply(window, [callback, delay].concat(args));
-        registerTimer(timerId, 'timeout');
-        return timerId;
-    };
-
-    window.setInterval = function(callback, delay) {
-        var args = Array.prototype.slice.call(arguments, 2);
-        var timerId = originalSetInterval.apply(window, [callback, delay].concat(args));
-        registerTimer(timerId, 'interval');
-        return timerId;
-    };
+    // ==================== 4. ТАЙМЕРЫ — БЕЗ ПАТЧА ====================
+    //
+    // Здесь window.setTimeout и window.setInterval подменялись обёртками,
+    // которые складывали id каждого таймера в window._activeTimers. Это было
+    // хуже, чем проблема, которую лечило:
+    //
+    //   • массив не чистился никогда — отработавшие таймауты оставались в нём
+    //     до конца сессии. Приложение заводит таймеры на каждое нажатие пульта,
+    //     на анимации, на debounce; за несколько часов работы телевизора это
+    //     сотни тысяч записей, то есть ровно та утечка, ради которой файл и
+    //     написан;
+    //   • каждый вызов setTimeout стоил трёх лишних выделений памяти
+    //     (slice + массив + concat) на самом горячем пути в приложении;
+    //   • собранное использовалось единственный раз — в clearAllTimers() на
+    //     beforeunload, где гасить таймеры уже бессмысленно: страница
+    //     уничтожается вместе с ними.
+    //
+    // Не возвращайте обёртки сюда.
 
     // ==================== 5. ОГРАНИЧЕНИЕ РАЗМЕРА КЭШЕЙ ====================
 
@@ -210,10 +194,8 @@
             detailHistory.splice(0, detailHistory.length - 50);
         }
 
-        // 4. Очистка tmdbCache
-        if (typeof tmdbCache !== 'undefined' && tmdbCache.cleanExpired) {
-            tmdbCache.cleanExpired();
-        }
+        // tmdbCache здесь не трогаем: у него свой планировщик в catalog.js
+        // (startTmdbCleanup → cleanOldTmdbCache), и он же делает trimToMax
 
         // 5. Принудительная сборка мусора (если доступна)
         if (typeof window.gc === 'function') {
@@ -245,7 +227,6 @@
     window.addEventListener('beforeunload', function() {
         console.log('🧹 Очистка при выгрузке страницы...');
         cleanupAllObservers();
-        clearAllTimers();
 
         if (typeof catalogState !== 'undefined') {
             if (catalogState.posterCache && catalogState.posterCache.clear) {
@@ -256,17 +237,24 @@
 
     // ==================== 9. МОНИТОРИНГ ПАМЯТИ (для отладки) ====================
 
+    // Раз в минуту сюда шла строка в консоль независимо ни от чего. На ТВ
+    // (особенно с подключённым logcat) это не бесплатно, а смотреть на неё
+    // некому. Оставили сам сторож: логируем, только когда память подходит
+    // к пределу, либо когда отладка включена явно — ?memdebug=1 в адресе.
     if (window.performance && window.performance.memory) {
+        var MEM_DEBUG = location.search.indexOf('memdebug=1') !== -1;
         setInterval(function() {
             var mem = window.performance.memory;
-            var used = (mem.usedJSHeapSize / 1048576).toFixed(2);
-            var total = (mem.totalJSHeapSize / 1048576).toFixed(2);
-            var limit = (mem.jsHeapSizeLimit / 1048576).toFixed(2);
+            var ratio = mem.jsHeapSizeLimit ? (mem.usedJSHeapSize / mem.jsHeapSizeLimit) : 0;
 
-            console.log('💾 Память: ' + used + ' MB / ' + total + ' MB (лимит: ' + limit + ' MB)');
+            if (MEM_DEBUG || ratio > 0.75) {
+                console.log('💾 Память: ' + (mem.usedJSHeapSize / 1048576).toFixed(2) + ' MB / ' +
+                    (mem.totalJSHeapSize / 1048576).toFixed(2) + ' MB (лимит: ' +
+                    (mem.jsHeapSizeLimit / 1048576).toFixed(2) + ' MB)');
+            }
 
             // Предупреждение при высоком использовании
-            if (mem.usedJSHeapSize > mem.jsHeapSizeLimit * 0.9) {
+            if (ratio > 0.9) {
                 console.warn('⚠️ КРИТИЧЕСКОЕ использование памяти! Выполнение очистки...');
                 performMemoryCleanup();
             }

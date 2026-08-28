@@ -1286,6 +1286,9 @@ function resetPlaybackState() {
 
 function transitionToPlayerScreen() {
   AppState.currentScreen = 'player';
+  // Тик буфера и проверки «Пропустить» заводится вместе с плеером и гаснет сам,
+  // когда экран сменится (app.js)
+  if (typeof window.startBufferUpdates === 'function') window.startBufferUpdates();
   getEl('config-screen').style.display = 'none';
   getEl('torrserver-section').style.display = 'none';
   getEl('detail-view').style.display = 'none';

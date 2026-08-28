@@ -2291,6 +2291,9 @@ async function openRutubeTrailerInPlayer(m3u8Url, title) {
             }
 
             AppState.currentScreen = 'player';
+            // Плеер трейлера открывается мимо transitionToPlayerScreen (player.js),
+            // поэтому тик буфера заводим здесь
+            if (typeof window.startBufferUpdates === 'function') window.startBufferUpdates();
 
         } catch (e) {
             console.error('RuTube trailer player error:', e);
@@ -2928,6 +2931,9 @@ async function openYoutubeInPlayer(url, title) {
                 throw new Error('Браузер не поддерживает HLS');
             }
             AppState.currentScreen = 'player';
+            // Плеер трейлера открывается мимо transitionToPlayerScreen (player.js),
+            // поэтому тик буфера заводим здесь
+            if (typeof window.startBufferUpdates === 'function') window.startBufferUpdates();
         }
     } catch (e) {
         console.error('YouTube error:', e);
