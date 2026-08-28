@@ -32,7 +32,10 @@
    .filter-toggle-btn), ни панели фильтров (.filter-panel-header,
    .filter-item, .filter-value-item, .filter-reset-btn-new): в styles.css
    они расставляют отступы margin'ами, без gap, поэтому фоллбэк им не нужен.
-   Не возвращайте сюда правила для них — на Chrome 66 отступы удвоятся. */
+   Не возвращайте сюда правила для них — на Chrome 66 отступы удвоятся.
+
+   По той же причине здесь нет панелей плеера: .current-episode-info и
+   .subtitle-details тоже переведены на margin. */
 
 /* styles.css:180, 221, 771 */
 html.no-flex-gap .action-row > *,
@@ -110,21 +113,11 @@ html.no-flex-gap .catalog-trailer-meta > * + * {
   margin-left:9.21px;
 }
 
-/* styles.css:1475, 1483, 3134, 3868 */
+/* styles.css:1475, 1483, 3868 */
 html.no-flex-gap .button-row > * + *,
 html.no-flex-gap .left-buttons > * + *,
-html.no-flex-gap .current-episode-info > * + *,
 html.no-flex-gap .catalog-row-title > * + * {
   margin-left:10px;
-}
-
-/* styles.css:3265 */
-html.no-flex-gap .subtitle-details > * {
-  margin-right:8px;
-  margin-bottom:8px;
-}
-html.no-flex-gap .subtitle-details > *:last-child {
-  margin-right: 0;
 }
 
 /* styles.css:3516, 3516 */
