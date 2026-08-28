@@ -37,7 +37,11 @@ var CATALOG_CONSTANTS = {
     // Фон детального просмотра: сколько зеркал TMDB пробуем на один путь
     // (первое + следующие по кругу) и сколько ждём молчащее зеркало, прежде чем
     // идти к следующему — ни load, ни error от него может не прийти вообще.
-    DETAIL_BACKDROP_TRIES: 3,
+    // Значение — по числу зеркал в mirrors ниже: при трёх попытках из пяти два
+    // подряд мёртвых хоста оставляли карточку с чёрным фоном, хотя рабочие
+    // зеркала ещё оставались. Лишнего обхода не будет: очередь сама
+    // останавливается, когда круг замкнулся (_detailBackdropQueue).
+    DETAIL_BACKDROP_TRIES: 5,
     DETAIL_BACKDROP_GRACE_MS: 1200,
     IMG_SIZES: {
         POSTER_CARD: 'w342',
@@ -1996,8 +2000,12 @@ function renderDetailHeader(item, posterUrl, details) {
         oe.style.display = 'block';
     }
 
-    // Backdrop через img.decode()
-    var bp = src.backdrop_path || (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
+    // Backdrop через img.decode().
+    // item.backdrop_path — обязательный фоллбэк: ответ /details иногда приходит
+    // без кадра (обрезанный ответ зеркала, запись из своего кэша), а в самом
+    // элементе каталога путь есть. Без него карточка молча оставалась чёрной.
+    var bp = src.backdrop_path || (item && item.backdrop_path) ||
+        (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
     if (bp) {
         var bpUrl = getTmdbImageUrl(bp, CATALOG_CONSTANTS.IMG_SIZES.BACKDROP);
         _loadBackdropDecoded(be, bpUrl);
@@ -2296,20 +2304,49 @@ async function openRutubeTrailerInPlayer(m3u8Url, title) {
 }
 
 //   Вспомогательная: загрузка <img> с decode()
+// Метка последнего запроса картинки для узла: постер детального просмотра
+// грузится в один и тот же #detail-poster, и опоздавший ответ прошлой карточки
+// иначе встаёт в уже открытую следующую — та же болезнь, что была у фона
+var imageLoadToken = 0;
+
 function _loadImageDecoded(container, src, alt) {
+    if (!container || !container.isConnected) return;
+
+    var token = String(++imageLoadToken);
+    container.dataset.imgToken = token;
+
     var img = new Image();
     img.alt = alt || '';
     img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
 
+    function stale() { return container.dataset.imgToken !== token; }
+
+    // Отпускаем картинку, которая никуда не вставится. Вызывать после успешной
+    // вставки нельзя: сброс src обнулит уже показанный <img> в DOM
+    function release() {
+        img.onload = null;
+        img.onerror = null;
+        img.src = '';
+    }
+
     var insert = function () {
-        if (!container.isConnected) return;
+        if (stale() || !container.isConnected) { release(); return; }
+        // naturalWidth, а не только факт decode(): на части телевизоров decode()
+        // отклоняет живые картинки, а битые, наоборот, доходят до сюда
+        if (!img.naturalWidth) {
+            release();
+            container.innerHTML = '<div class="no-poster">Нет постера</div>';
+            return;
+        }
         container.innerHTML = '';
         img.style.opacity = '1';
         container.appendChild(img);
     };
 
     img.onerror = function () {
-        if (container.isConnected) container.innerHTML = '<div class="no-poster">Нет постера</div>';
+        var wasStale = stale();
+        release();
+        if (!wasStale && container.isConnected) container.innerHTML = '<div class="no-poster">Нет постера</div>';
     };
     img.src = src;
 
@@ -2378,7 +2415,9 @@ function _detailBackdropQueue(url) {
 function _loadBackdropDecoded(container, url) {
     var queue = _detailBackdropQueue(url);
     resetDetailBackdrop(container);       // заодно поднимает поколение
-    if (!queue.length || !container) return;
+    // Узел вне документа грузить незачем: картинка приедет в никуда и будет
+    // держать память до сборки мусора
+    if (!queue.length || !container || !container.isConnected) return;
 
     var mine = detailBackdropLoad;
     var at = 0;
@@ -2392,10 +2431,19 @@ function _loadBackdropDecoded(container, url) {
         var candidate = queue[at++];
         var img = new Image();
 
+        // Отпускаем неудачную попытку: без сброса src декодированный кадр
+        // (1280px) висит в памяти до сборки мусора, а на ТВ таких попыток
+        // накапливается по нескольку на каждую открытую карточку
+        function release() {
+            img.onload = null;
+            img.onerror = null;
+            img.src = '';
+        }
+
         function finish() {
-            if (shown || mine !== detailBackdropLoad) return;
-            if (!img.naturalWidth) { tryNext(); return; }   // битый файл
-            if (!container.isConnected) return;
+            if (shown || mine !== detailBackdropLoad) { release(); return; }
+            if (!img.naturalWidth) { release(); tryNext(); return; }   // битый файл
+            if (!container.isConnected) { release(); return; }
             shown = true;
             _clearDetailBackdropTimer();
             container.style.backgroundImage = 'url(' + candidate + ')';
@@ -2404,8 +2452,10 @@ function _loadBackdropDecoded(container, url) {
             if (!rutubeTrailerState.bgVideo) container.classList.remove('hidden');
         }
 
-        img.onerror = function () { tryNext(); };
+        img.onerror = function () { release(); tryNext(); };
         img.onload = function () {
+            // Смотрим naturalWidth, а не только факт decode(): на части
+            // телевизоров decode() отклоняет вполне живые кадры, и наоборот
             if (typeof img.decode === 'function') img.decode().then(finish).catch(finish);
             else finish();
         };
@@ -2572,6 +2622,22 @@ function setupDetailDelegation(dv) {
 /**
  * Главная функция показа деталей каталога
  */
+/**
+ * Та же карточка сейчас открыта или пользователь успел уйти в другую?
+ *
+ * showCatalogDetail ждёт /details и актёров, а всё, что после await, пишет в
+ * ОБЩИЙ #detail-view. Успел выйти и открыть соседний фильм — и опоздавший ответ
+ * первой карточки затирал заголовок, постер, описание и фон уже открытой
+ * второй. Экран специально не проверяем: из карточки можно уйти в поиск
+ * торрентов, и там дорисовать её содержимое как раз нужно — вернёмся мы в неё же.
+ */
+function isDetailStillCurrent(item) {
+    var cur = AppState.currentDetailItem;
+    if (!cur || !item) return false;
+    if (cur === item) return true;
+    return item.id != null && String(cur.id) === String(item.id);
+}
+
 async function showCatalogDetail(item, index, posterUrl) {
     var layout = setupDetailLayout(item, index, posterUrl);
     var dv = layout.dv, mc = layout.mc, aw = layout.aw, rw = layout.rw, savedScroll = layout.savedScroll;
@@ -2622,11 +2688,13 @@ async function showCatalogDetail(item, index, posterUrl) {
 
     // Ждём детали для рендера шапки (обычно самый быстрый запрос)
     var details = await detailsPromise;
+    if (!isDetailStillCurrent(item)) return;   // пока ждали, открыли другую карточку
     restore();
     renderDetailHeader(item, posterUrl, details);
 
     // Ждём актёров (уже загружаются параллельно с деталями)
     var actors = await actorsPromise;
+    if (!isDetailStillCurrent(item)) return;
     renderDetailActors(item, aw, actors);
 
     // Рекомендации — рендерим сразу из details

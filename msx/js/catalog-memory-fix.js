@@ -239,90 +239,32 @@
         // была no-op и только писала в лог, что «сокращает» кэш.
     });
 
-    // ==================== 10. PATCH BACKDROP LOADING ====================
+    // ==================== 10. BACKDROP LOADING — БЕЗ ПАТЧА ====================
+    //
+    // Здесь стояла своя реализация _loadBackdropDecoded, и она перекрывала
+    // рабочую из catalog.js. Вместе с ней терялись три вещи:
+    //
+    //   1) перебор зеркал TMDB — при мёртвом зеркале фон просто не появлялся,
+    //      и карточка оставалась чёрной до смены зеркала руками;
+    //   2) поколение загрузки (detailBackdropLoad) — опоздавший кадр прошлой
+    //      карточки всплывал поверх уже открытой следующей;
+    //   3) проверка naturalWidth — decode() на части телевизоров отклоняет
+    //      живые картинки, и фон терялся на ровном месте.
+    //
+    // Полезное из патча (не грузить в оторванный от документа узел, отпускать
+    // неудачные Image) перенесено в сам _loadBackdropDecoded в catalog.js.
+    // Не возвращайте обёртку сюда.
 
-    var original_loadBackdropDecoded = window._loadBackdropDecoded;
-    if (original_loadBackdropDecoded) {
-        window._loadBackdropDecoded = function(container, url) {
-            if (!container || !container.isConnected) {
-                // Не загружаем backdrop для отключенных элементов
-                return;
-            }
-
-            var img = new Image();
-            img.src = url;
-
-            var apply = function() {
-                // Проверяем, что элемент всё ещё в DOM
-                if (!container.isConnected) {
-                    img.src = ''; // Освобождаем память
-                    return;
-                }
-                container.style.backgroundImage = 'url(' + url + ')';
-                container.classList.remove('hidden');
-            };
-
-            if (typeof img.decode === 'function') {
-                img.decode().then(apply).catch(function() {
-                    img.src = '';
-                });
-            } else {
-                img.onload = apply;
-                img.onerror = function() {
-                    img.src = '';
-                };
-            }
-        };
-    }
-
-    // ==================== 11. PATCH IMAGE LOADING ====================
-
-    var original_loadImageDecoded = window._loadImageDecoded;
-    if (original_loadImageDecoded) {
-        window._loadImageDecoded = function(container, src, alt) {
-            if (!container || !container.isConnected) {
-                return;
-            }
-
-            var img = new Image();
-            img.alt = alt || '';
-            img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
-
-            var cleanup = function() {
-                img.src = '';
-                img.onload = null;
-                img.onerror = null;
-            };
-
-            var insert = function() {
-                if (!container.isConnected) {
-                    cleanup();
-                    return;
-                }
-                container.innerHTML = '';
-                img.style.opacity = '1';
-                container.appendChild(img);
-            };
-
-            img.onerror = function() {
-                if (container.isConnected) {
-                    container.innerHTML = '<div class="no-poster">Нет постера</div>';
-                }
-                cleanup();
-            };
-
-            img.src = src;
-
-            if (typeof img.decode === 'function') {
-                img.decode().then(insert).catch(function() {
-                    insert();
-                    cleanup();
-                });
-            } else {
-                img.onload = insert;
-            }
-        };
-    }
+    // ==================== 11. IMAGE LOADING — БЕЗ ПАТЧА ====================
+    //
+    // Здесь тоже стояла своя реализация _loadImageDecoded поверх catalog.js.
+    // Она гасила img.src ПОСЛЕ вставки картинки в DOM (ветка decode().catch),
+    // то есть на телевизорах, где decode() отклоняет живые кадры, постер
+    // карточки оказывался пустым. Проверки naturalWidth в ней тоже не было.
+    //
+    // Очистка неудачных Image перенесена в сам _loadImageDecoded в catalog.js,
+    // туда же добавлена метка запроса — постер прошлой карточки больше не
+    // встаёт в уже открытую следующую. Не возвращайте обёртку сюда.
 
     console.log('✅ Патчи памяти для catalog.js загружены');
 
