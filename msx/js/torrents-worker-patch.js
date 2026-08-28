@@ -381,6 +381,4 @@
             updateDetailMetaInfo(details);
         }
     }
-
-    console.log('✅ Torrents Worker patches applied (v2 — compute + TMDB data)');
 })();

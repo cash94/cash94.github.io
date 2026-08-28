@@ -1752,7 +1752,7 @@ function showDetailView(field = null) {
   }
   refreshTorrentsList().then(function () {
     if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
-      var cacheKey = AppState.currentDetailItem.hash; if (progressCache.has(cacheKey)) progressCache.delete(cacheKey);
+      var cacheKey = AppState.currentDetailItem.hash; if (torrentProgressCache.has(cacheKey)) torrentProgressCache.delete(cacheKey);
     }
   })['catch'](function (error) { });
   if (lastPlaybackFromSearch && lastAddedTorrentHash) {
@@ -1793,9 +1793,12 @@ async function updateDetailProgress(torrent) {
   var btn = getEl('detail-progress-btn');
   if (!btn) return null;
 
-  // Принудительное обновление: сбрасываем кэш прогресса
+  // Принудительное обновление: сбрасываем кэш прогресса.
+  // Именно torrentProgressCache — тот, из которого читает loadProgressForTorrent.
+  // Раньше тут чистился давно осиротевший progressCache, и кнопка «Продолжить»
+  // после выхода из плеера могла показывать позицию до минуты назад.
   var cacheKey = torrent.hash;
-  if (progressCache.has(cacheKey)) progressCache.delete(cacheKey);
+  if (torrentProgressCache.has(cacheKey)) torrentProgressCache.delete(cacheKey);
 
   // Чистим старые блоки (могли остаться от предыдущей версии)
   var oldProgressBlocks = document.querySelectorAll('#detail-progress');
