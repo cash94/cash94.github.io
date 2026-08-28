@@ -34,6 +34,11 @@ var CATALOG_CONSTANTS = {
     ROW_POSTER_RETRY_MS: 120,           // как часто переспрашивать «навигация утихла?»
     VISIBILITY_WINDOW_ROWS: 2,          // сколько строк «запаса» держим отрисованными
     VISIBILITY_FALLBACK_MARGIN_PX: 800, // если высоту строки измерить не удалось
+    // Фон детального просмотра: сколько зеркал TMDB пробуем на один путь
+    // (первое + следующие по кругу) и сколько ждём молчащее зеркало, прежде чем
+    // идти к следующему — ни load, ни error от него может не прийти вообще.
+    DETAIL_BACKDROP_TRIES: 3,
+    DETAIL_BACKDROP_GRACE_MS: 1200,
     IMG_SIZES: {
         POSTER_CARD: 'w342',
         POSTER_SMALL: 'w185',
@@ -1997,8 +2002,7 @@ function renderDetailHeader(item, posterUrl, details) {
         var bpUrl = getTmdbImageUrl(bp, CATALOG_CONSTANTS.IMG_SIZES.BACKDROP);
         _loadBackdropDecoded(be, bpUrl);
     } else {
-        be.classList.add('hidden');
-        be.style.backgroundImage = '';
+        resetDetailBackdrop(be);
     }
 
     // Сброс кнопок для новой карточки
@@ -2317,21 +2321,103 @@ function _loadImageDecoded(container, src, alt) {
 }
 
 //   Вспомогательная: предзагрузка backdrop с decode(), потом CSS background
-function _loadBackdropDecoded(container, url) {
-    var img = new Image();
-    img.src = url;
+//
+// Поколение загрузки: открыли другую карточку — ответы прошлой цепочки (а у неё
+// несколько попыток по зеркалам) должны молча уйти в никуда. Без этого кадр
+// предыдущего фильма догружался поверх новой карточки, иногда через несколько
+// секунд после перехода.
+var detailBackdropLoad = 0;
+var detailBackdropTimer = null;
 
-    var apply = function () {
-        if (!container.isConnected) return;
-        container.style.backgroundImage = 'url(' + url + ')';
-        container.classList.remove('hidden');
-    };
-
-    if (typeof img.decode === 'function') {
-        img.decode().then(apply).catch(apply);
-    } else {
-        img.onload = apply;
+function _clearDetailBackdropTimer() {
+    if (detailBackdropTimer) {
+        clearTimeout(detailBackdropTimer);
+        detailBackdropTimer = null;
     }
+}
+
+/**
+ * Убрать фон совсем. backgroundImage чистим обязательно, а не только вешаем
+ * .hidden: stopTrailerBackground() безусловно снимает этот класс (и при старте
+ * карточки, и когда трейлер отыграл), так что оставленный в стиле URL
+ * предыдущего фильма всплывал обратно спустя десяток секунд.
+ */
+function resetDetailBackdrop(container) {
+    var box = container || getEl('catalog-detail-backdrop');
+    detailBackdropLoad++;                 // всё, что грузилось до этого, теперь чужое
+    _clearDetailBackdropTimer();
+    if (!box) return;
+    box.classList.add('hidden');
+    box.style.backgroundImage = '';
+}
+window.resetDetailBackdrop = resetDetailBackdrop;
+
+/** Кандидаты на один кадр: сам URL и следующие зеркала того же пути */
+function _detailBackdropQueue(url) {
+    var out = [];
+    if (!url) return out;
+    out.push(url);
+    var next = url;
+    for (var i = 0; i < CATALOG_CONSTANTS.DETAIL_BACKDROP_TRIES - 1; i++) {
+        next = getTmdbNextMirrorUrl(next);
+        if (!next || out.indexOf(next) !== -1) break;   // не TMDB или круг замкнулся
+        out.push(next);
+    }
+    return out;
+}
+
+/**
+ * Фон детального просмотра. Кадр может не отдаться (зеркало отвалилось, пришёл
+ * битый файл) — тогда пробуем следующие зеркала того же пути, а если молчат и
+ * они, убираем фон совсем: чёрный прямоугольник на месте кадра выглядит хуже,
+ * чем его отсутствие.
+ * Смотрим naturalWidth, а не только факт onload/decode: decode() на части
+ * телевизоров отклоняет вполне живые картинки, а на битых, наоборот, попадали
+ * в catch — раньше в обоих случаях фон ставился как есть.
+ */
+function _loadBackdropDecoded(container, url) {
+    var queue = _detailBackdropQueue(url);
+    resetDetailBackdrop(container);       // заодно поднимает поколение
+    if (!queue.length || !container) return;
+
+    var mine = detailBackdropLoad;
+    var at = 0;
+    var shown = false;
+
+    function tryNext() {
+        _clearDetailBackdropTimer();
+        if (shown || mine !== detailBackdropLoad) return;
+        if (at >= queue.length) return;                // кандидаты кончились — фон уже убран
+
+        var candidate = queue[at++];
+        var img = new Image();
+
+        function finish() {
+            if (shown || mine !== detailBackdropLoad) return;
+            if (!img.naturalWidth) { tryNext(); return; }   // битый файл
+            if (!container.isConnected) return;
+            shown = true;
+            _clearDetailBackdropTimer();
+            container.style.backgroundImage = 'url(' + candidate + ')';
+            // Пока играет фоновый трейлер, backdrop лежит под .hidden намеренно
+            // (startTrailerBackground) — класс снимет stopTrailerBackground
+            if (!rutubeTrailerState.bgVideo) container.classList.remove('hidden');
+        }
+
+        img.onerror = function () { tryNext(); };
+        img.onload = function () {
+            if (typeof img.decode === 'function') img.decode().then(finish).catch(finish);
+            else finish();
+        };
+        img.src = candidate;
+
+        // Зеркало может не ответить вообще — ни load, ни error. Не ждём его
+        // вечно; опоздавший ответ ещё успеет показаться, у finish() проверка на
+        // shown, а не «моя ли это попытка».
+        detailBackdropTimer = setTimeout(tryNext, CATALOG_CONSTANTS.DETAIL_BACKDROP_GRACE_MS);
+    }
+
+    tryNext();
 }
 
 /**
@@ -2490,6 +2576,11 @@ async function showCatalogDetail(item, index, posterUrl) {
     var layout = setupDetailLayout(item, index, posterUrl);
     var dv = layout.dv, mc = layout.mc, aw = layout.aw, rw = layout.rw, savedScroll = layout.savedScroll;
     var title = getCatalogItemTitle(item), mt = item.media_type || 'movie';
+    // Фон прошлой карточки убираем сразу, а не в renderDetailHeader: тот ждёт
+    // ответа fetchCatalogItemDetails, и всё это время открытая карточка стояла
+    // на кадре предыдущего фильма. Вместе с кадром снимается и его цепочка
+    // загрузки — догрузиться поверх новой карточки она уже не сможет.
+    resetDetailBackdrop();
     AppState.currentDetailItem = item;
     AppState.currentScreen = 'detail';
     AppState.detailReturnTo = 'catalog';
@@ -2505,12 +2596,12 @@ async function showCatalogDetail(item, index, posterUrl) {
         var knownPoster = getCatalogKnownPosterUrl(item, posterUrl);
 
         wb.onclick = function () {
-            dv.style.display = 'none';
-            dv.style.pointerEvents = 'none';
-            if (mc) mc.style.pointerEvents = 'auto';
             AppState.currentScreen = 'search';
             AppState.isSearch = false;
             showCatalogSearch(wb.dataset.searchTitle || title, knownPoster, item);
+            dv.style.display = 'none';
+            dv.style.pointerEvents = 'none';
+            if (mc) mc.style.pointerEvents = 'auto';
         };
     }
     var restore = function () {
