@@ -3219,10 +3219,11 @@ function hideSearchResults() {
             duration: Animations.UI_FADE.overlay,
             display: 'none',
             addHidden: true,
-            onDone: function () { var sr = getEl('search-results'); if (sr) sr.innerHTML = ''; }
+            onDone: function () { resetSearchVisibilityWindow(); var sr = getEl('search-results'); if (sr) sr.innerHTML = ''; }
         });
     } else {
         searchOverlay.classList.add('hidden'); searchOverlay.style.display = 'none';
+        resetSearchVisibilityWindow();
         var searchResultsEl = getEl('search-results'); if (searchResultsEl) searchResultsEl.innerHTML = '';
     }
     if (returnTo === 'detail') {
@@ -3633,12 +3634,101 @@ function buildSearchResultMarkup(result, index) {
         '</div>';
 }
 
+// ==================== ОКОННАЯ ВИДИМОСТЬ СПИСКА РЕЗУЛЬТАТОВ ====================
+
+/**
+ * Элементы списка результатов, которые дальше SEARCH_VISIBILITY_WINDOW_ROWS
+ * высот карточки от вьюпорта, получают класс search-offscreen
+ * (visibility: hidden в styles.css) и перестают отрисовываться. По мере
+ * приближения класс снимается, с уходящей стороны — ставится, поэтому
+ * «живыми» всегда остаются только видимые карточки плюс запас.
+ *
+ * Тот же приём, что у рядов каталога (OFFSCREEN_CLASS в catalog.js), и по тем
+ * же причинам: visibility, а не display: none — бокс остаётся на месте,
+ * значит высота списка и позиция скролла не меняются, IntersectionObserver
+ * продолжает видеть элемент (у display:none прямоугольник нулевой, и класс
+ * уже никогда бы не сняли), а offsetParent не null — то есть VISIBLE()
+ * в control.js по-прежнему пускает на скрытую карточку фокус.
+ *
+ * Ошибка в безопасную сторону: карточки создаются видимыми, гасит их только
+ * колбэк наблюдателя. Нет IntersectionObserver (или он молчит) — потеряем
+ * оптимизацию, но не покажем пустой список.
+ */
+var SEARCH_OFFSCREEN_CLASS = 'search-offscreen';
+var SEARCH_VISIBILITY_WINDOW_ROWS = 5;
+var SEARCH_VISIBILITY_FALLBACK_MARGIN_PX = 700;
+var searchVisibilityObserver = null;
+
+function createSearchVisibilityObserver(container, marginPx) {
+    return new IntersectionObserver(function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+            // Нулевая высота — оверлей поиска скрыт (display:none) или список
+            // очищен. Наблюдатель честно рапортует «не пересекается», но гасить
+            // по такому сообщению нельзя: вернёмся к результатам и увидим
+            // пустой экран до следующего пересчёта.
+            if (!entries[i].boundingClientRect.height) continue;
+            if (entries[i].isIntersecting) entries[i].target.classList.remove(SEARCH_OFFSCREEN_CLASS);
+            else entries[i].target.classList.add(SEARCH_OFFSCREEN_CLASS);
+        }
+    }, {
+        root: container,
+        rootMargin: marginPx + 'px 0px',   // запас только по вертикали
+        threshold: 0
+    });
+}
+
+/** Берёт под наблюдение карточки, которых наблюдатель ещё не видел */
+function observeSearchResultItems(container) {
+    if (!container || !('IntersectionObserver' in window)) return;
+    var items = container.querySelectorAll('.search-result-item');
+    if (!items.length) return;
+
+    if (!searchVisibilityObserver) {
+        // rootMargin у наблюдателя потом не поменять, поэтому запас считаем
+        // один раз — по уже лежащей в DOM карточке
+        var h = items[0].offsetHeight;
+        var margin = h ? Math.round(h * SEARCH_VISIBILITY_WINDOW_ROWS)
+            : SEARCH_VISIBILITY_FALLBACK_MARGIN_PX;
+        searchVisibilityObserver = createSearchVisibilityObserver(container, margin);
+    }
+
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].dataset.visObserved === '1') continue;
+        items[i].dataset.visObserved = '1';
+        searchVisibilityObserver.observe(items[i]);
+    }
+}
+
+/**
+ * Список пересобирается или очищается: старые карточки отсоединяются от DOM,
+ * а наблюдатель держал бы их ссылками. Новый создаст observeSearchResultItems.
+ */
+function resetSearchVisibilityWindow() {
+    if (!searchVisibilityObserver) return;
+    searchVisibilityObserver.disconnect();
+    searchVisibilityObserver = null;
+}
+
+/**
+ * Снимает погашение немедленно. Нужно потому, что колбэк наблюдателя приходит
+ * через кадр-два после сдвига скролла, а карточка под фокусом обязана быть
+ * видимой сразу. Зовёт focusEl() из control.js. Рассинхрон самоисправляется:
+ * наблюдатель всё равно пришлёт своё состояние.
+ */
+function revealSearchResultItem(el) {
+    if (!el || !el.classList) return;
+    el.classList.remove(SEARCH_OFFSCREEN_CLASS);
+}
+window.revealSearchResultItem = revealSearchResultItem;
+
 // Render result cards in frames. Large tracker responses no longer monopolise the UI thread.
 function renderSearchResults() {
     var searchResultsDiv = getEl('search-results');
     if (!searchResultsDiv) return;
     var renderId = (searchResultsDiv._renderId || 0) + 1;
     searchResultsDiv._renderId = renderId;
+    // Прежние карточки сейчас уедут из DOM вместе с innerHTML
+    resetSearchVisibilityWindow();
 
     if (filteredResults.length === 0) {
         searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>' + searchResults.length + '</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"' : 'Введите запрос для поиска') + '</div>';
@@ -3682,6 +3772,8 @@ function renderSearchResults() {
         var end = Math.min(index + CHUNK_SIZE, filteredResults.length);
         for (; index < end; index++) html += buildSearchResultMarkup(filteredResults[index], index);
         searchResultsDiv.insertAdjacentHTML('beforeend', html);
+        // Карточки приходят пачками, значит и наблюдателю их отдаём пачками
+        observeSearchResultItems(searchResultsDiv);
         if (index < filteredResults.length) requestAnimationFrame(renderChunk);
     }
     requestAnimationFrame(renderChunk);
@@ -3756,6 +3848,7 @@ function renderFilteredGlobalResults(results) {
 
     // Ограничиваем рендер, чтобы не вешать DOM на слабых ТВ
     var limit = Math.min(results.length, 40);
+    resetSearchVisibilityWindow();   // тут своя сетка карточек, списка больше нет
     searchResultsDiv.innerHTML = ''; // Очищаем безопасно
 
     var statsDiv = document.createElement('div');
@@ -3892,7 +3985,7 @@ function filterGlobalSearchByType(type) {
     renderFilteredGlobalResults(filtered);
 }
 
-function clearSearchResultsContainer() { var searchResultsDiv = getEl('search-results'); if (searchResultsDiv) searchResultsDiv.innerHTML = ''; }
+function clearSearchResultsContainer() { resetSearchVisibilityWindow(); var searchResultsDiv = getEl('search-results'); if (searchResultsDiv) searchResultsDiv.innerHTML = ''; }
 window.clearSearchResultsContainer = clearSearchResultsContainer;
 
 function initTorrentDelegations() {

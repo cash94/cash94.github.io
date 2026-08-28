@@ -2476,6 +2476,14 @@ function focusEl(el, opts) {
         revealCatalogElement(el);
     }
 
+    // То же самое для списка результатов поиска (оконная видимость в
+    // torrents.js): карточка под фокусом обязана быть видимой сразу, не дожидаясь
+    // колбэка IntersectionObserver.
+    if (s === 'search' && el.classList && el.classList.contains('search-result-item') &&
+        typeof window.revealSearchResultItem === 'function') {
+        window.revealSearchResultItem(el);
+    }
+
     // Панель фильтров есть только на экране поиска, а closest() — подъём по DOM
     // до самого корня на каждое перемещение фокуса. В рядах (10 × 20 карточек)
     // эти два прохода ничего не находят и стоят кадров, поэтому спрашиваем
