@@ -5038,6 +5038,32 @@ article {
   opacity: 0;
 }
 
+/* ...а подписи баннера (название, рейтинги, описание, «Смотреть») плавно
+   уходят: под живой картинкой они лишние. Класс home-hero-playing ставится в
+   момент появления кадров и снимается в stopHeroTrailer, поэтому обратно
+   подписи возвращаются сами при любой остановке трейлера.
+   Гасим детей, а не сам #home-hero-body: прозрачность на родителе не даёт
+   исключения ниже. */
+#home-hero-body > * {
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+#home-hero.home-hero-playing #home-hero-body > * {
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+}
+
+/* Исключение — кнопка под фокусом: невидимый фокус выглядел бы потерянным.
+   Трейлер в этот момент и так гасится сторожем (startHeroWatchdog: фокус ушёл
+   с карточки баннера → suspendHero), так что живёт правило меньше секунды.
+   Специфичность набрана намеренно: правило выше — два id и класс. */
+#home-hero.home-hero-playing #home-hero-body > #home-play-btn.focused {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
 .home-hero-video {
   position: absolute;
   left: 0;
