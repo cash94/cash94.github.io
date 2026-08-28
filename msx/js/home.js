@@ -955,15 +955,20 @@
         // Видео показываем только когда пошли настоящие кадры: включённое
         // заранее, оно на Android TV успевает нарисовать свой значок «плей»
         // (CSS его прячет, но пустой чёрный слой всё равно виден лишним мигом)
+        // Класс на баннере ставим здесь же, а не по событию playing: на нём висит
+        // и гашение кадра, и плавный уход подписей (название, рейтинги, описание,
+        // «Смотреть»), а они должны уходить ровно тогда, когда появляется
+        // картинка трейлера. Снимает его stopHeroTrailer — то есть любая
+        // остановка возвращает подписи обратно.
         function revealVideo() {
             if (homeState.hero.video !== video) return;
             video.classList.add('home-hero-video-on');
+            var hero = el('home-hero');
+            if (hero) hero.classList.add('home-hero-playing');
         }
         video.addEventListener('playing', function () {
             revealVideo();
             startVolumeFade();
-            var hero = el('home-hero');
-            if (hero) hero.classList.add('home-hero-playing');
         });
         video.addEventListener('timeupdate', function () {
             // playing на части устройств приходит раньше первого кадра
