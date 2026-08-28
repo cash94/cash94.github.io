@@ -328,14 +328,27 @@ body {
   display: none !important;
 }
 
+/* ===== ШАПКА ЭКРАНА ПОИСКА И ПАНЕЛЬ ФИЛЬТРОВ =====
+   Оформление то же, что у списка результатов ниже: тёмные плитки #14141c,
+   волосяная рамка rgba(255,255,255,.06..08), радиус 12px (совпадает с
+   border-radius у .focused, поэтому рамка фокуса ложится по углам) и синий
+   акцент только на активном.
+
+   Отступы — margin'ами, без flex-gap: на Chrome 66 (Vidaa OS) gap внутри
+   flexbox не работает, а парные правила в css/flex-gap-fallback.css для этих
+   блоков удалены как ненужные. */
+
 .search-overlay-header {
   display: flex;
   align-items: center;
-  gap: 12.84px;
-  padding: 17.12px;
-  background: #000000;
-  border-bottom: 1px solid #4a9eff;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  padding: 14px 20px;
+  background: #0a0a12;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.search-overlay-header > * + * {
+  margin-left: 10px;
 }
 
 .search-input-group {
@@ -348,63 +361,75 @@ body {
 
 .search-input-screen {
   flex: 1;
-  padding: 12.84px 17.12px;
-  font-size: 17.12px;
-  background: #1e1e2d;
-  border: 1px solid #4a9eff;
-  border-radius: 29.96px;
+  /* Без min-width поле не даёт кнопкам ужаться и выталкивает их за край */
+  min-width: 0;
+  padding: 11px 18px;
+  font-size: 16px;
+  background: #14141c;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
   color: #fff;
   outline: none;
 }
 
-.search-input-screen:focus {
-  border-color: #4a9eff;
+.search-input-screen:focus,
+.search-input-screen.focused {
+  background: #1b1b28;
+  border-color: rgba(74, 158, 255, 0.5);
 }
 
 .search-input-screen::placeholder {
-  color: #888;
+  color: #6d7686;
 }
 
+/* «Поиск» — единственное акцентное действие в строке */
 .search-action-btn {
-  padding: 12.84px 21.4px;
-  background: #282837;
-  border: none;
-  border-radius: 29.96px;
-  color: white;
-  font-size: 14.98px;
+  padding: 11px 22px;
+  background: rgba(74, 158, 255, 0.14);
+  border: 1px solid rgba(74, 158, 255, 0.35);
+  border-radius: 12px;
+  color: #9ac6ff;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .filter-toggle-btn {
-  padding: 12.84px 17.12px;
-  background: #282837;
-  border: 1px solid #4a9eff;
-  border-radius: 29.96px;
-  color: #aaa;
-  font-size: 14.98px;
+  padding: 11px 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: #98a1b0;
+  font-size: 14px;
   cursor: pointer;
   white-space: nowrap;
   display: flex;
   align-items: center;
-  gap: 6.42px;
 }
 
+.filter-toggle-btn > * + * {
+  margin-left: 6px;
+}
+
+/* Панель фильтров открыта */
 .filter-toggle-btn.active {
-  background: #e99e85;
-  color: #ffffff;
-  border-color: #4a9eff;
+  background: rgba(74, 158, 255, 0.16);
+  border-color: rgba(74, 158, 255, 0.4);
+  color: #9ac6ff;
 }
 
 .close-search-btn {
-  width: 42.8px;
-  height: 42.8px;
-  border-radius: 50%;
-  background: #282837;
-  border: 1px solid #4a9eff;
-  color: #fff;
-  font-size: 21.4px;
+  /* Квадрат со скруглением 12px, а не круг: рамка фокуса (.focused) тоже
+     рисуется с радиусом 12px, у круглой кнопки она бы не совпала */
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #98a1b0;
+  font-size: 18px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -467,60 +492,142 @@ body {
   white-space: nowrap;
 }
 
+/* ===== СПИСОК РЕЗУЛЬТАТОВ ПОИСКА ПО ТРЕКЕРАМ (legacy-режим) =====
+   Разметку строит buildSearchResultMarkup() в js/torrents.js, и она не
+   меняется: заголовок, шесть метаданных строго в одном порядке (трекер,
+   размер, год с датой раздачи, тип и качество, сиды, пиры) и чипы озвучек.
+   Порядок фиксирован разметкой, поэтому смысловые цвета навешиваются через
+   :nth-child — без единой правки в JS.
+
+   Отступы внутри карточки заданы margin'ами, а не gap: на Smart TV
+   (Chrome 66) flex-gap не работает, и на каждый gap пришлось бы держать
+   парное правило в css/flex-gap-fallback.css. Здесь их не нужно. */
+
 .filter-stats {
-  padding: 10.7px 17.12px;
-  color: #aaa;
-  font-size: 13.91px;
-  border-bottom: 1px solid #ff8c00;
+  padding: 4px 6px 14px 6px;
+  color: #7e8798;
+  font-size: 13px;
+  letter-spacing: 0.02em;
 }
 
 .filter-stats span {
-  color: #ff8c00;
-  font-weight: 600;
+  color: #fff;
+  font-weight: 700;
 }
 
 .search-results-list {
   flex: 1;
   overflow-y: auto;
-  padding: 17.12px;
+  padding: 14px 20px 32px 20px;
 }
 
 .search-result-item {
-  background: #282837;
-  border-radius: 12.84px;
-  padding: 14.98px;
-  margin-bottom: 10.7px;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: 1px solid #4a9eff;
+  padding: 12px 16px 12px 20px;
+  margin-bottom: 8px;
+  /* 12px, а не крупнее: .focused ниже по файлу ставит свой border-radius: 12px,
+     и при другом значении рамка фокуса не совпала бы с углами карточки */
+  border-radius: 12px;
+  background: #14141c;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+/* Цветной «корешок» слева. Под фокусом загорается выбранным цветом:
+   --focus-color задаёт js/ui-customizer.js, #ff8c00 — значение по умолчанию. */
+.search-result-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #4a9eff;
+  opacity: 0.4;
+}
+
+.search-result-item:hover,
+.search-result-item.focused {
+  background: #1b1b28;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.search-result-item.focused::before {
+  background: var(--focus-color, #ff8c00);
+  opacity: 1;
 }
 
 .search-result-info {
   flex: 1;
-  margin-right: 16.05px;
+  /* Без min-width: 0 длинное имя раздачи распирает flex-элемент
+     и уносит содержимое карточки за правый край списка */
+  min-width: 0;
+  margin-right: 16px;
 }
 
 .search-result-title {
-  font-size: 16.05px;
+  font-size: 16px;
   font-weight: 600;
   color: #fff;
-  margin-bottom: 8.56px;
+  margin-bottom: 8px;
   line-height: 1.3;
 }
 
 .search-result-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 12.84px;
-  font-size: 12.84px;
-  color: #aaa;
+  align-items: center;
+  font-size: 12.5px;
+  color: #98a1b0;
+  /* Гасим нижний отступ последней строки чипов */
+  margin-bottom: -5px;
 }
 
 .search-result-meta-item {
   display: flex;
   align-items: center;
-  gap: 4.28px;
+  margin-right: 5px;
+  margin-bottom: 5px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+/* Порядок чипов задан разметкой: 1 — трекер, 2 — размер, 3 — год и дата,
+   4 — тип и качество, 5 — сиды, 6 — пиры. Третий оставляем нейтральным. */
+.search-result-meta-item:nth-child(1) {
+  color: #7fb6ff;
+  background: rgba(74, 158, 255, 0.13);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.search-result-meta-item:nth-child(2) {
+  color: #ffc078;
+  background: rgba(255, 160, 60, 0.12);
+  font-weight: 600;
+}
+
+.search-result-meta-item:nth-child(4) {
+  color: #c9b4ff;
+  background: rgba(140, 110, 255, 0.14);
+  font-weight: 600;
+}
+
+.search-result-meta-item:nth-child(5) {
+  color: #6fe3a1;
+  background: rgba(60, 220, 130, 0.11);
+}
+
+.search-result-meta-item:nth-child(6) {
+  color: #ff9d9d;
+  background: rgba(255, 90, 90, 0.11);
 }
 
 .search-result-meta-item span {
@@ -530,16 +637,19 @@ body {
 .search-result-voices {
   display: flex;
   flex-wrap: wrap;
-  gap: 6.42px;
-  margin-top: 8.56px;
+  margin-top: 8px;
+  margin-bottom: -4px;
 }
 
 .search-result-voice {
-  padding: 2.14px 8.56px;
-  background: #3a3a4a;
-  border-radius: 12.84px;
-  font-size: 11.77px;
-  color: #aaa;
+  margin-right: 4px;
+  margin-bottom: 4px;
+  padding: 2px 9px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 11.5px;
+  color: #98a1b0;
 }
 
 .search-result-play {
@@ -557,12 +667,22 @@ body {
 
 .search-result-empty {
   text-align: center;
-  padding: 64.2px 21.4px;
-  color: #aaa;
-  font-size: 17.12px;
-  background: #0a0a0f;
-  border-radius: 17.12px;
-  margin: 21.4px;
+  padding: 56px 20px;
+  color: #8b93a3;
+  font-size: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 16px;
+  margin: 16px 0;
+}
+
+/* Элемент списка вне окна прокрутки (оконная видимость, js/torrents.js).
+   visibility, а не display: none — бокс остаётся на месте, поэтому высота
+   списка и позиция скролла не меняются, а IntersectionObserver продолжает
+   видеть элемент и вернёт его, когда тот подойдёт к краю окна. offsetParent
+   при этом не null, значит VISIBLE() в control.js по-прежнему пускает сюда
+   фокус — навигация пультом по списку не ломается. */
+.search-offscreen {
+  visibility: hidden;
 }
 
 #torrents-grid,
@@ -1795,24 +1915,46 @@ body.detail-open {
     z-index: 1000;
   }
 
+  /* Две строки: поле поиска занимает первую целиком, кнопки переносятся
+     во вторую. Колонкой (каждая кнопка своей строкой) шапка съедала
+     четверть экрана телефона. */
   .search-overlay-header {
-    flex-direction: column;
-    align-items: stretch;
+    flex-wrap: wrap;
+    padding: 12px 14px;
+  }
+
+  .search-input-screen {
+    flex: 1 0 100%;
+  }
+
+  .search-overlay-header > * + * {
+    margin-left: 8px;
+    margin-top: 10px;
+  }
+
+  /* Первая кнопка второй строки — без отступа слева, иначе строка съезжает */
+  .filter-toggle-btn {
+    margin-left: 0;
+  }
+
+  /* Кнопки делят ширину поровну: попасть пальцем проще, чем в прижатые к краю */
+  .filter-toggle-btn,
+  .search-action-btn {
+    flex: 1;
+    justify-content: center;
   }
 
   .search-input-group {
     width: 100%;
   }
 
-  .filter-toggle-btn,
-  .close-search-btn {
-    margin-left: auto;
-  }
-
   .search-result-item {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+  }
+
+  .search-result-info {
+    margin-right: 0;
   }
 
   .search-result-play {
@@ -1839,14 +1981,8 @@ body.detail-open {
 .search-container-header,
 .search-btn-header,
 .view-tab,
-.search-overlay,
-.search-overlay-header,
-.search-input-screen,
-.filter-toggle-btn,
-.close-search-btn,
 .filter-select,
 .filter-input,
-.search-result-item,
 .torrent-card,
 .progress-badge,
 .playback-text,
@@ -2220,10 +2356,13 @@ body.detail-open {
     font-size: 9.49px;
   }
 
-  /* Увеличение поисковой части на 3% и текста результатов на 10% */
+  /* Шапка поиска и панель фильтров: +10% к базовым размерам */
   .search-overlay-header {
-    gap: 13.23px;
-    padding: 17.63px;
+    padding: 15px 22px;
+  }
+
+  .search-overlay-header > * + * {
+    margin-left: 11px;
   }
 
   .search-input-group {
@@ -2232,28 +2371,24 @@ body.detail-open {
   }
 
   .search-input-screen {
-    padding: 13.23px 17.63px;
-    font-size: 17.63px;
-    border-radius: 30.86px;
+    padding: 12px 20px;
+    font-size: 17px;
   }
 
   .search-action-btn {
-    padding: 13.23px 22.04px;
-    border-radius: 30.86px;
-    font-size: 15.43px;
+    padding: 12px 24px;
+    font-size: 15px;
   }
 
   .filter-toggle-btn {
-    padding: 13.23px 17.63px;
-    border-radius: 30.86px;
-    font-size: 15.43px;
-    gap: 6.61px;
+    padding: 12px 20px;
+    font-size: 15px;
   }
 
   .close-search-btn {
-    width: 44.08px;
-    height: 44.08px;
-    font-size: 22.04px;
+    width: 42px;
+    height: 42px;
+    font-size: 19px;
   }
 
   .search-filters {
@@ -2278,49 +2413,51 @@ body.detail-open {
     font-size: 14.33px;
   }
 
+  /* Размеры списка результатов: +10% к базовым */
   .filter-stats {
-    padding: 11.02px 17.63px;
-    font-size: 14.33px;
+    padding: 4px 6px 15px 6px;
+    font-size: 14px;
   }
 
   .search-results-list {
-    padding: 17.63px;
+    padding: 16px 24px 36px 24px;
   }
 
   .search-result-item {
-    border-radius: 13.23px;
-    padding: 15.43px;
-    margin-bottom: 11.02px;
+    padding: 13px 18px 13px 22px;
+    margin-bottom: 9px;
   }
 
   .search-result-info {
-    margin-right: 16.53px;
+    margin-right: 18px;
   }
 
-  /* Увеличение текста результатов на 10% */
   .search-result-title {
-    font-size: 17.66px;
-    margin-bottom: 9.42px;
+    font-size: 17.5px;
+    margin-bottom: 9px;
   }
 
   .search-result-meta {
-    margin: -7.06px;
-    font-size: 14.12px;
+    font-size: 13.5px;
+    margin-bottom: -6px;
   }
 
   .search-result-meta-item {
-    margin: 7.06px;
+    margin-right: 6px;
+    margin-bottom: 6px;
+    padding: 3px 10px;
   }
 
   .search-result-voices {
-    gap: 7.06px;
-    margin-top: 9.42px;
+    margin-top: 9px;
+    margin-bottom: -5px;
   }
 
   .search-result-voice {
-    padding: 2.35px 9.42px;
-    border-radius: 14.12px;
-    font-size: 12.95px;
+    margin-right: 5px;
+    margin-bottom: 5px;
+    padding: 2px 10px;
+    font-size: 12.5px;
   }
 
   .search-result-play {
@@ -2330,10 +2467,8 @@ body.detail-open {
   }
 
   .search-result-empty {
-    padding: 70.64px 23.55px;
-    font-size: 18.84px;
-    border-radius: 18.84px;
-    margin: 23.55px;
+    padding: 62px 22px;
+    font-size: 17px;
   }
 }
 
@@ -2530,10 +2665,13 @@ body.detail-open {
     font-size: 11.51px;
   }
 
-  /* Увеличение поисковой части на 25% */
+  /* Шапка поиска и панель фильтров: +25% к базовым размерам */
   .search-overlay-header {
-    gap: 16.05px;
-    padding: 21.4px;
+    padding: 17px 26px;
+  }
+
+  .search-overlay-header > * + * {
+    margin-left: 12px;
   }
 
   .search-input-group {
@@ -2542,28 +2680,24 @@ body.detail-open {
   }
 
   .search-input-screen {
-    padding: 16.05px 21.4px;
-    font-size: 21.4px;
-    border-radius: 37.45px;
+    padding: 13px 22px;
+    font-size: 19px;
   }
 
   .search-action-btn {
-    padding: 16.05px 26.75px;
-    border-radius: 37.45px;
-    font-size: 18.73px;
+    padding: 13px 28px;
+    font-size: 16px;
   }
 
   .filter-toggle-btn {
-    padding: 16.05px 21.4px;
-    border-radius: 37.45px;
-    font-size: 18.73px;
-    gap: 8.02px;
+    padding: 13px 22px;
+    font-size: 16px;
   }
 
   .close-search-btn {
-    width: 53.5px;
-    height: 53.5px;
-    font-size: 26.75px;
+    width: 46px;
+    height: 46px;
+    font-size: 21px;
   }
 
   .search-filters {
@@ -2588,49 +2722,52 @@ body.detail-open {
     font-size: 17.39px;
   }
 
+  /* Размеры списка результатов: +25% к базовым */
   .filter-stats {
-    padding: 13.38px 21.4px;
-    font-size: 17.39px;
+    padding: 6px 8px 18px 8px;
+    font-size: 15.5px;
   }
 
   .search-results-list {
-    padding: 21.4px;
+    padding: 18px 28px 40px 28px;
   }
 
   .search-result-item {
-    border-radius: 16.05px;
-    padding: 18.73px;
-    margin-bottom: 13.38px;
+    padding: 15px 20px 15px 26px;
+    margin-bottom: 10px;
   }
 
   .search-result-info {
-    margin-right: 20.06px;
+    margin-right: 20px;
   }
 
-  /* Увеличение текста результатов на 10% от базового (фактически +37.5% от исходного) */
   .search-result-title {
-    font-size: 20.06px;
-    margin-bottom: 10.7px;
+    font-size: 20px;
+    margin-bottom: 10px;
   }
 
   .search-result-meta {
-    gap: 16.05px;
-    font-size: 16.05px;
+    font-size: 15px;
+    margin-bottom: -7px;
   }
 
   .search-result-meta-item {
-    gap: 5.35px;
+    margin-right: 7px;
+    margin-bottom: 7px;
+    padding: 4px 12px;
+    border-radius: 9px;
   }
 
   .search-result-voices {
-    gap: 8.02px;
-    margin-top: 10.7px;
+    margin-top: 11px;
+    margin-bottom: -6px;
   }
 
   .search-result-voice {
-    padding: 2.68px 10.7px;
-    border-radius: 16.05px;
-    font-size: 14.71px;
+    margin-right: 6px;
+    margin-bottom: 6px;
+    padding: 3px 12px;
+    font-size: 14px;
   }
 
   .search-result-play {
@@ -2640,10 +2777,8 @@ body.detail-open {
   }
 
   .search-result-empty {
-    padding: 80.25px 26.75px;
-    font-size: 21.4px;
-    border-radius: 21.4px;
-    margin: 26.75px;
+    padding: 72px 26px;
+    font-size: 19px;
   }
 }
 
@@ -3002,12 +3137,6 @@ html {
   outline: none !important;
   transition: none !important;
   /* GSAP будет управлять анимацией */
-}
-
-.search-result-meta-item:not(:first-child)::before {
-  content: "•";
-  margin: 0 6px;
-  color: #4a9eff;
 }
 
 /* Убираем скроллбары у всех элементов, которые могут иметь скролл */
@@ -4159,15 +4288,21 @@ article {
   }
 }
 
-/* ==================== ПАНЕЛЬ ФИЛЬТРОВ (DRILL-DOWN) ==================== */
+/* ==================== ПАНЕЛЬ ФИЛЬТРОВ (DRILL-DOWN) ====================
+   Тот же язык, что у списка результатов: плитки со скруглением 12px,
+   волосяные рамки, значение фильтра — чипом. Отступы margin'ами, без gap
+   (Chrome 66 на Vidaa OS). Правила фокуса (.focused) специально оставлены
+   с прежними селекторами и размером тени: их перекрывает js/ui-customizer.js
+   выбранным цветом через !important. */
 .filter-panel {
   position: fixed;
   top: 0;
   right: 0;
   width: 400px;
   height: 100vh;
-  background: #1a1a2e;
-  border-left: 1px solid rgba(74, 158, 255, 0.3);
+  background: #0d0d14;
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.45);
   z-index: 1000;
   display: flex;
   flex-direction: column;
@@ -4185,25 +4320,29 @@ article {
 .filter-panel-header {
   display: flex;
   align-items: center;
-  padding: 20px;
-  background: rgba(0, 0, 0, 0.3);
-  border-bottom: 1px solid rgba(74, 158, 255, 0.3);
-  gap: 15px;
+  padding: 16px 18px;
+  background: #0a0a12;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.filter-panel-header > * + * {
+  margin-left: 12px;
 }
 
 .filter-back-btn,
 .filter-close-btn {
-  background: rgba(74, 158, 255, 0.1);
-  border: 1px solid rgba(74, 158, 255, 0.3);
-  border-radius: 8px;
-  width: 40px;
-  height: 40px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #4a9eff;
-  font-size: 20px;
+  color: #98a1b0;
+  font-size: 18px;
   transition: background 0.15s, box-shadow 0.15s;
 }
 
@@ -4219,8 +4358,9 @@ article {
 
 .filter-panel-title {
   flex: 1;
+  min-width: 0;
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   color: #fff;
 }
@@ -4229,7 +4369,7 @@ article {
 .filter-main-screen {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 0;
+  padding: 10px 12px 16px 12px;
 }
 
 .filter-list {
@@ -4240,15 +4380,21 @@ article {
 .filter-item {
   display: flex;
   align-items: center;
-  padding: 18px 20px;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 12px 14px;
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  /* Прозрачная рамка, а не её отсутствие: строка не дёргается,
+     когда .selected или фокус добавляют цветную */
+  border: 1px solid transparent;
+  border-radius: 12px;
   cursor: pointer;
   transition: background 0.15s, box-shadow 0.15s;
   text-align: left;
   width: 100%;
-  gap: 15px;
+}
+
+.filter-item > * + * {
+  margin-left: 10px;
 }
 
 .filter-item:hover,
@@ -4259,24 +4405,37 @@ article {
 
 .filter-item-label {
   flex: 1;
-  font-size: 16px;
+  min-width: 0;
+  font-size: 15px;
   color: #fff;
   font-weight: 500;
 }
 
+/* Значение фильтра — такой же чип, как метаданные у результата поиска */
 .filter-item-value {
-  font-size: 14px;
-  color: #4a9eff;
-  font-weight: 600;
   max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #98a1b0;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+/* Фильтр уведён со значения по умолчанию — класс ставит updateFilterValueDisplays()
+   в js/app.js. Видно, какие фильтры реально сужают выдачу. */
+.filter-item.filter-item-set .filter-item-value {
+  background: rgba(74, 158, 255, 0.13);
+  color: #7fb6ff;
 }
 
 .filter-item i.fi-rr-angle-right {
-  color: rgba(74, 158, 255, 0.5);
-  font-size: 18px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 16px;
 }
 
 /* Кнопка сброса */
@@ -4284,17 +4443,20 @@ article {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  margin: 20px;
-  padding: 15px;
-  background: rgba(255, 107, 107, 0.1);
-  border: 1px solid rgba(255, 107, 107, 0.3);
+  margin: 10px 0 0 0;
+  padding: 13px;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.25);
   border-radius: 12px;
-  color: #ff6b6b;
-  font-size: 15px;
+  color: #ff8f8f;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, box-shadow 0.15s;
+}
+
+.filter-reset-btn-new > * + * {
+  margin-left: 8px;
 }
 
 .filter-reset-btn-new:hover,
@@ -4307,7 +4469,7 @@ article {
 .filter-values-screen {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 0;
+  padding: 10px 12px 16px 12px;
 }
 
 .filter-values-list {
@@ -4318,15 +4480,19 @@ article {
 .filter-value-item {
   display: flex;
   align-items: center;
-  padding: 18px 20px;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 12px 14px;
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  border-radius: 12px;
   cursor: pointer;
   transition: background 0.15s, box-shadow 0.15s;
   text-align: left;
   width: 100%;
-  gap: 15px;
+}
+
+.filter-value-item > * + * {
+  margin-left: 10px;
 }
 
 .filter-value-item:hover,
@@ -4336,21 +4502,26 @@ article {
 }
 
 .filter-value-item.selected {
-  background: rgba(76, 175, 80, 0.15);
+  background: rgba(60, 220, 130, 0.1);
+  border-color: rgba(60, 220, 130, 0.28);
 }
 
 .filter-value-item.selected::before {
   content: '✓';
-  color: #4caf50;
+  color: #6fe3a1;
   font-weight: bold;
-  font-size: 20px;
+  font-size: 15px;
   margin-right: 10px;
 }
 
 .filter-value-label {
   flex: 1;
-  font-size: 16px;
+  min-width: 0;
+  font-size: 15px;
   color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Оверлей */
@@ -4375,18 +4546,18 @@ article {
 /* Скроллбары */
 .filter-main-screen::-webkit-scrollbar,
 .filter-values-screen::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 .filter-main-screen::-webkit-scrollbar-track,
 .filter-values-screen::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+  background: transparent;
 }
 
 .filter-main-screen::-webkit-scrollbar-thumb,
 .filter-values-screen::-webkit-scrollbar-thumb {
-  background: rgba(74, 158, 255, 0.5);
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 2px;
 }
 
 /* Мобильная версия */
@@ -6663,5 +6834,338 @@ article {
 
   #detail-view.catalog-detail-mode .catalog-recommendation-year {
     font-size: 10px !important;
+  }
+}
+
+
+/* --- ПАНЕЛЬ ФИЛЬТРОВ: размерные тиры -----------------------------------
+       Блоки стоят ПОСЛЕ базового описания панели: медиазапрос не добавляет
+       специфичности, и правило из @media, стоящее выше по файлу, проиграло бы
+       обычному правилу ниже. Порядок тиров тот же, что у остальной вёрстки:
+       телефон, +10%, +25%, дальше два ТВ-профиля. */
+
+@media (max-width: 768px) {
+  .filter-panel-title {
+    font-size: 17px;
+  }
+}
+
+@media screen and (min-width: 960px) and (max-width: 1399px) {
+  .filter-panel {
+    width: 420px;
+  }
+
+  .filter-panel-header {
+    padding: 18px 20px;
+  }
+
+  .filter-panel-title {
+    font-size: 19px;
+  }
+
+  .filter-back-btn,
+  .filter-close-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 19px;
+  }
+
+  .filter-item,
+  .filter-value-item {
+    padding: 13px 16px;
+  }
+
+  .filter-item-label,
+  .filter-value-label {
+    font-size: 16px;
+  }
+
+  .filter-item-value {
+    font-size: 13px;
+  }
+
+  .filter-reset-btn-new {
+    padding: 13px;
+    font-size: 14.5px;
+  }
+}
+
+@media screen and (min-width: 1400px) {
+  .filter-panel {
+    width: 460px;
+  }
+
+  .filter-panel-header {
+    padding: 20px 24px;
+  }
+
+  .filter-panel-title {
+    font-size: 21px;
+  }
+
+  .filter-back-btn,
+  .filter-close-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 21px;
+  }
+
+  .filter-main-screen,
+  .filter-values-screen {
+    padding: 12px 14px 20px 14px;
+  }
+
+  .filter-item,
+  .filter-value-item {
+    padding: 15px 18px;
+    margin-bottom: 7px;
+  }
+
+  .filter-item-label,
+  .filter-value-label {
+    font-size: 17.5px;
+  }
+
+  .filter-item-value {
+    font-size: 14px;
+    max-width: 175px;
+    padding: 4px 12px;
+  }
+
+  .filter-reset-btn-new {
+    padding: 15px;
+    font-size: 16px;
+  }
+}
+
+/* --- ЭКРАН ПОИСКА: ТВ-профили ------------------------------------------
+       Парные блоки к @media выше по файлу, где так же ужимается
+       #detail-view.catalog-detail-mode. Идут последними: условия
+       пересекаются с тирами +10% / +25%, и решает порядок правил.
+
+       Бюджет по высоте 540px: шапка 46 + 8 фильтров по 40 + сброс 45 = ~430,
+       панель помещается целиком, без прокрутки. */
+@media screen and (min-width: 720px) and (max-width: 1024px) and (max-height: 620px) {
+  .search-overlay-header {
+    padding: 10px 14px;
+  }
+
+  .search-overlay-header > * + * {
+    margin-left: 8px;
+  }
+
+  .search-input-screen {
+    padding: 8px 14px;
+    font-size: 14px;
+  }
+
+  .search-action-btn {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+
+  .filter-toggle-btn {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .close-search-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 16px;
+  }
+
+  .search-results-list {
+    padding: 10px 14px 24px 14px;
+  }
+
+  .filter-stats {
+    padding: 2px 4px 10px 4px;
+    font-size: 12px;
+  }
+
+  .search-result-item {
+    padding: 9px 12px 9px 16px;
+    margin-bottom: 6px;
+  }
+
+  .search-result-title {
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .search-result-meta {
+    font-size: 11.5px;
+    margin-bottom: -4px;
+  }
+
+  .search-result-meta-item {
+    margin-right: 4px;
+    margin-bottom: 4px;
+    padding: 2px 8px;
+  }
+
+  .search-result-voices {
+    margin-top: 6px;
+    margin-bottom: -3px;
+  }
+
+  .search-result-voice {
+    margin-right: 3px;
+    margin-bottom: 3px;
+    padding: 1px 8px;
+    font-size: 11px;
+  }
+
+  .search-result-empty {
+    padding: 36px 16px;
+    font-size: 14px;
+  }
+
+  .filter-panel {
+    width: 300px;
+  }
+
+  .filter-panel-header {
+    padding: 10px 12px;
+  }
+
+  .filter-panel-title {
+    font-size: 15px;
+  }
+
+  .filter-back-btn,
+  .filter-close-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+    border-radius: 10px;
+  }
+
+  .filter-main-screen,
+  .filter-values-screen {
+    padding: 8px 10px 12px 10px;
+  }
+
+  .filter-item,
+  .filter-value-item {
+    padding: 8px 12px;
+    margin-bottom: 5px;
+    border-radius: 10px;
+  }
+
+  .filter-item-label,
+  .filter-value-label {
+    font-size: 13px;
+  }
+
+  .filter-item-value {
+    font-size: 11.5px;
+    max-width: 110px;
+    padding: 2px 8px;
+  }
+
+  .filter-item i.fi-rr-angle-right {
+    font-size: 13px;
+  }
+
+  .filter-reset-btn-new {
+    margin-top: 8px;
+    padding: 9px;
+    font-size: 12.5px;
+  }
+
+  .filter-value-item.selected::before {
+    font-size: 13px;
+    margin-right: 8px;
+  }
+}
+
+/* --- ЭКРАН ПОИСКА: 1280x720 и другие «широкие, но низкие» --------------
+       720p-телевизоры отдают ширину 1280 (> 1024), поэтому в блок выше не
+       попадают, а тир +10% рассчитан на монитор. Условие по ВЫСОТЕ. */
+@media screen and (min-width: 1025px) and (max-height: 820px) {
+  .search-overlay-header {
+    padding: 12px 18px;
+  }
+
+  .search-overlay-header > * + * {
+    margin-left: 9px;
+  }
+
+  .search-input-screen {
+    padding: 10px 16px;
+    font-size: 15px;
+  }
+
+  .search-action-btn {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+
+  .filter-toggle-btn {
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  .close-search-btn {
+    width: 38px;
+    height: 38px;
+    font-size: 17px;
+  }
+
+  .search-results-list {
+    padding: 12px 18px 28px 18px;
+  }
+
+  .search-result-item {
+    padding: 11px 16px 11px 20px;
+  }
+
+  .search-result-title {
+    font-size: 15px;
+  }
+
+  .search-result-meta {
+    font-size: 12.5px;
+  }
+
+  .filter-panel {
+    width: 380px;
+  }
+
+  .filter-panel-header {
+    padding: 13px 16px;
+  }
+
+  .filter-panel-title {
+    font-size: 17px;
+  }
+
+  .filter-back-btn,
+  .filter-close-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 17px;
+  }
+
+  .filter-item,
+  .filter-value-item {
+    padding: 10px 14px;
+  }
+
+  .filter-item-label,
+  .filter-value-label {
+    font-size: 14.5px;
+  }
+
+  .filter-item-value {
+    font-size: 12px;
+    max-width: 140px;
+  }
+
+  .filter-reset-btn-new {
+    padding: 11px;
+    font-size: 13.5px;
   }
 }

@@ -27,6 +27,13 @@
 
 /* ===================== 1. FLEX-GAP ===================== */
 
+/* Экрана поиска здесь намеренно нет — ни списка результатов
+   (.search-result-item и всё внутри), ни шапки (.search-overlay-header,
+   .filter-toggle-btn), ни панели фильтров (.filter-panel-header,
+   .filter-item, .filter-value-item, .filter-reset-btn-new): в styles.css
+   они расставляют отступы margin'ами, без gap, поэтому фоллбэк им не нужен.
+   Не возвращайте сюда правила для них — на Chrome 66 отступы удвоятся. */
+
 /* styles.css:180, 221, 771 */
 html.no-flex-gap .action-row > *,
 html.no-flex-gap .section-header > *,
@@ -46,26 +53,9 @@ html.no-flex-gap .volume-container > * + * {
   margin-left:8px;
 }
 
-/* styles.css:331 */
-html.no-flex-gap .search-overlay-header > * {
-  margin-top:0;
-}
-html.no-flex-gap .search-overlay-header > * {
-  margin-right:12.84px;
-  margin-bottom:12.84px;
-}
-html.no-flex-gap .search-overlay-header > *:last-child {
-  margin-right: 0;
-}
-
 /* styles.css:341 */
 html.no-flex-gap .search-input-group > * + * {
   margin-left:8.56px;
-}
-
-/* styles.css:380 */
-html.no-flex-gap .filter-toggle-btn > * + * {
-  margin-left:6.42px;
 }
 
 /* styles.css:414 */
@@ -74,29 +64,6 @@ html.no-flex-gap .search-filters > * {
   margin-bottom:10.7px;
 }
 html.no-flex-gap .search-filters > *:last-child {
-  margin-right: 0;
-}
-
-/* styles.css:512 */
-html.no-flex-gap .search-result-meta > * {
-  margin-right:12.84px;
-  margin-bottom:12.84px;
-}
-html.no-flex-gap .search-result-meta > *:last-child {
-  margin-right: 0;
-}
-
-/* styles.css:520 */
-html.no-flex-gap .search-result-meta-item > * + * {
-  margin-left:4.28px;
-}
-
-/* styles.css:530 */
-html.no-flex-gap .search-result-voices > * {
-  margin-right:6.42px;
-  margin-bottom:6.42px;
-}
-html.no-flex-gap .search-result-voices > *:last-child {
   margin-right: 0;
 }
 
@@ -143,12 +110,11 @@ html.no-flex-gap .catalog-trailer-meta > * + * {
   margin-left:9.21px;
 }
 
-/* styles.css:1475, 1483, 3134, 3868, 4232 */
+/* styles.css:1475, 1483, 3134, 3868 */
 html.no-flex-gap .button-row > * + *,
 html.no-flex-gap .left-buttons > * + *,
 html.no-flex-gap .current-episode-info > * + *,
-html.no-flex-gap .catalog-row-title > * + *,
-html.no-flex-gap .filter-reset-btn-new > * + * {
+html.no-flex-gap .catalog-row-title > * + * {
   margin-left:10px;
 }
 
@@ -189,28 +155,7 @@ html.no-flex-gap .catalog-show-all .show-all-inner > * + * {
   margin-top:14px;
 }
 
-/* styles.css:4134, 4189, 4267 */
-html.no-flex-gap .filter-panel-header > * + *,
-html.no-flex-gap .filter-item > * + *,
-html.no-flex-gap .filter-value-item > * + * {
-  margin-left:15px;
-}
-
 @media (max-width: 768px) {
-  /* styles.css:331 */
-  html.no-flex-gap .search-overlay-header > * {
-    margin-right:0;
-    margin-bottom:0;
-  }
-  html.no-flex-gap .search-overlay-header > * + * {
-    margin-top:12.84px;
-  }
-
-  /* styles.css:1810 */
-  html.no-flex-gap .search-result-item > * + * {
-    margin-top:12px;
-  }
-
   /* styles.css:763 */
   html.no-flex-gap .detail-progress-content > * {
     margin-right:0;
@@ -257,26 +202,9 @@ html.no-flex-gap .filter-value-item > * + * {
     margin-left:9.49px;
   }
 
-  /* styles.css:2222 */
-  html.no-flex-gap .search-overlay-header > * {
-    margin-top:0;
-  }
-  html.no-flex-gap .search-overlay-header > * {
-    margin-right:13.23px;
-    margin-bottom:13.23px;
-  }
-  html.no-flex-gap .search-overlay-header > *:last-child {
-    margin-right: 0;
-  }
-
   /* styles.css:2227 */
   html.no-flex-gap .search-input-group > * + * {
     margin-left:8.82px;
-  }
-
-  /* styles.css:2244 */
-  html.no-flex-gap .filter-toggle-btn > * + * {
-    margin-left:6.61px;
   }
 
   /* styles.css:2257 */
@@ -285,15 +213,6 @@ html.no-flex-gap .filter-value-item > * + * {
     margin-bottom:11.02px;
   }
   html.no-flex-gap .search-filters > *:last-child {
-    margin-right: 0;
-  }
-
-  /* styles.css:2313 */
-  html.no-flex-gap .search-result-voices > * {
-    margin-right:7.06px;
-    margin-bottom:7.06px;
-  }
-  html.no-flex-gap .search-result-voices > *:last-child {
     margin-right: 0;
   }
 }
@@ -334,26 +253,9 @@ html.no-flex-gap .filter-value-item > * + * {
     margin-left:11.51px;
   }
 
-  /* styles.css:2532 */
-  html.no-flex-gap .search-overlay-header > * {
-    margin-top:0;
-  }
-  html.no-flex-gap .search-overlay-header > * {
-    margin-right:16.05px;
-    margin-bottom:16.05px;
-  }
-  html.no-flex-gap .search-overlay-header > *:last-child {
-    margin-right: 0;
-  }
-
   /* styles.css:2537 */
   html.no-flex-gap .search-input-group > * + * {
     margin-left:10.7px;
-  }
-
-  /* styles.css:2554 */
-  html.no-flex-gap .filter-toggle-btn > * + * {
-    margin-left:8.02px;
   }
 
   /* styles.css:2567 */
@@ -362,29 +264,6 @@ html.no-flex-gap .filter-value-item > * + * {
     margin-bottom:13.38px;
   }
   html.no-flex-gap .search-filters > *:last-child {
-    margin-right: 0;
-  }
-
-  /* styles.css:2614 */
-  html.no-flex-gap .search-result-meta > * {
-    margin-right:16.05px;
-    margin-bottom:16.05px;
-  }
-  html.no-flex-gap .search-result-meta > *:last-child {
-    margin-right: 0;
-  }
-
-  /* styles.css:2619 */
-  html.no-flex-gap .search-result-meta-item > * + * {
-    margin-left:5.35px;
-  }
-
-  /* styles.css:2623 */
-  html.no-flex-gap .search-result-voices > * {
-    margin-right:8.02px;
-    margin-bottom:8.02px;
-  }
-  html.no-flex-gap .search-result-voices > *:last-child {
     margin-right: 0;
   }
 }
