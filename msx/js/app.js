@@ -3,18 +3,13 @@
 var APP_CONSTANTS = {
   DEBOUNCE_DELAY_MS: 300,
   CHECK_SERVER_TIMEOUT_MS: 500,
-  AUTO_REFRESH_INTERVAL_MS: 300000,
   FOCUS_RESTORE_DELAY_MS: 100,
-  TOAST_DURATION_MS: 1500,
   IDLE_TIMEOUT_MS: 3000,
   TOUCH_TAP_THRESHOLD_MS: 300,
   TOUCH_MOVE_THRESHOLD_PX: 10,
   INITIAL_CHECK_DELAY_MS: 1000,
-  SEEK_RESET_DELAY_MS: 200,
   NAVIGATION_DELAY_MS: 300,
   DETAIL_HIDE_DELAY_MS: 250,
-  TORRENT_LOAD_DELAY_MS: 80,
-  SEARCH_FOCUS_DELAY_MS: 200,
   FILTER_PANEL_DELAY_MS: 60,
   ZOOM_TOAST_DURATION_MS: 1500,
   HINT_DISPLAY_DURATION_MS: 2000,
@@ -118,7 +113,6 @@ var transcodingOnOff = false;
 var multiChannelEnabled = false;
 var dvPreferred = false;
 var detailView = getEl('detail-view');
-var controls = document.querySelectorAll('.control-btn, #seek-slider, #volume-slider');
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 function initialServerCheck() {
@@ -258,7 +252,6 @@ function setupVideoPlayerControls() {
 
   setupEpisodeNavigation();
   if (video) setupVideoEvents(video, volumeSlider, seekSlider);
-  setupBufferUpdateInterval();
   if (toggleBufferBtn) setupToggleBufferButton(toggleBufferBtn);
   if (overlay) setupOverlayControls(overlay);
 
@@ -549,17 +542,39 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
   });
 }
 
-function setupBufferUpdateInterval() {
-  setInterval(function () {
-    // Условие !AppState.bufferHidden убрано намеренно: на этом же тике
-    // updateBufferDisplay проверяет вступление и титры, и со скрытой строкой
-    // буфера (жёлтая кнопка на пульте) кнопка «Пропустить» переставала
-    // появляться. Саму строку updateBufferDisplay всё так же не перерисовывает.
-    if (AppState && AppState.currentScreen === 'player' && !AppState.isSeeking) {
-      if (typeof updateBufferDisplay === 'function') updateBufferDisplay();
-    }
-  }, 300);
+/**
+ * Тик строки буфера и проверки «Пропустить вступление / титры».
+ *
+ * Живёт ровно столько, сколько открыт плеер. Раньше здесь стоял вечный
+ * setInterval на 300 мс: он просыпался больше трёх раз в секунду и на главной,
+ * и в каталоге, и в настройках — только чтобы посмотреть на AppState и уснуть
+ * обратно. На телевизоре это заметная фоновая работа за всю сессию.
+ *
+ * Цепочка на setTimeout обрывается сама, как только экран перестал быть
+ * плеерным, поэтому отдельная «остановка» никому не нужна: достаточно позвать
+ * startBufferUpdates() там, где плеер открывается.
+ *
+ * Условия !bufferHidden в тике нет намеренно: на нём же висит проверка
+ * вступления и титров, и со скрытой строкой буфера (жёлтая кнопка на пульте)
+ * кнопка «Пропустить» переставала появляться. Саму строку updateBufferDisplay
+ * при скрытом буфере всё так же не перерисовывает.
+ */
+var BUFFER_TICK_MS = 300;
+var bufferTickTimer = null;
+
+function bufferTick() {
+  bufferTickTimer = null;
+  if (typeof AppState === 'undefined' || !AppState) return;
+  if (AppState.currentScreen !== 'player') return;   // ушли из плеера — цепочка кончилась
+  if (!AppState.isSeeking && typeof updateBufferDisplay === 'function') updateBufferDisplay();
+  bufferTickTimer = setTimeout(bufferTick, BUFFER_TICK_MS);
 }
+
+function startBufferUpdates() {
+  if (bufferTickTimer) return;   // уже идёт, второй цепочки не нужно
+  bufferTick();
+}
+window.startBufferUpdates = startBufferUpdates;
 
 function setupToggleBufferButton(toggleBufferBtn) {
   toggleBufferBtn.addEventListener('click', function (e) {
@@ -1412,19 +1427,14 @@ function setupAuth() {
 // ==================== АВТОСКРЫТИЕ ПЛЕЕРА ====================
 function setupPlayerAutoHide() {
   var playerScreen = getEl('player-screen');
-  if (playerScreen && typeof resetMouseIdleTimer === 'function') {
-    playerScreen.addEventListener('mousemove', resetMouseIdleTimer);
-    playerScreen.addEventListener('mousedown', resetMouseIdleTimer);
-    playerScreen.addEventListener('mouseenter', resetMouseIdleTimer);
-  }
-  if (typeof resetMouseIdleTimer === 'function') {
-    var cLen = controls.length;
-    for (var i = 0; i < cLen; i++) {
-      var control = controls[i];
-      control.addEventListener('mouseenter', resetMouseIdleTimer);
-      control.addEventListener('mousedown', resetMouseIdleTimer);
-    }
-  }
+  if (!playerScreen || typeof resetMouseIdleTimer !== 'function') return;
+  // Хватает трёх слушателей на самом экране. Раньше те же два вешались ещё и на
+  // каждую кнопку управления (около двух десятков лишних подписок): все они
+  // лежат внутри #player-screen, и любое движение мыши над ними всё равно
+  // приходит сюда через mousemove.
+  playerScreen.addEventListener('mousemove', resetMouseIdleTimer);
+  playerScreen.addEventListener('mousedown', resetMouseIdleTimer);
+  playerScreen.addEventListener('mouseenter', resetMouseIdleTimer);
 }
 
 // ==================== СЕНСОРНОЕ УПРАВЛЕНИЕ ====================

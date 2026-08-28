@@ -124,19 +124,12 @@
         };
     }
 
-    // ==================== 6. TMDB CACHE CLEANUP ====================
-
-    if (typeof tmdbCache !== 'undefined' && tmdbCache.cleanExpired) {
-        // Очистка каждые 5 минут
-        setInterval(function() {
-            try {
-                tmdbCache.cleanExpired();
-                console.log('🧹 TMDB кэш очищен от устаревших записей');
-            } catch(e) {
-                console.warn('Ошибка очистки TMDB кэша:', e);
-            }
-        }, 300000);
-    }
+    // ==================== 6. TMDB CACHE CLEANUP — БЕЗ ПАТЧА ====================
+    //
+    // Здесь стоял третий по счёту пятиминутный таймер очистки одного и того же
+    // tmdbCache: свой планировщик есть в catalog.js (startTmdbCleanup →
+    // cleanOldTmdbCache, он же делает trimToMax), и ещё раз cleanExpired звала
+    // периодическая уборка из memory-fixes.js. Оставлен только первый.
 
     // ==================== 7. CATALOG STATE CLEANUP ====================
 
