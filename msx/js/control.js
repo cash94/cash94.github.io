@@ -1536,7 +1536,9 @@ function navigate(direction) {
     switch (direction) { case 'up': setFocus(currentFocusIndex - 1); break; case 'down': setFocus(currentFocusIndex + 1); break; case 'left': setFocus(currentFocusIndex - 1); break; case 'right': setFocus(currentFocusIndex + 1); break; }
 }
 
-function keyToDirection(keyCode) { if (isKeyPressed('UP', keyCode)) return 'up'; if (isKeyPressed('DOWN', keyCode)) return 'down'; if (isKeyPressed('LEFT', keyCode)) return 'left'; if (isKeyPressed('RIGHT', keyCode)) return 'right'; return null; }
+// Тот же ответ, что и у arrowDir() ниже по файлу — две одинаковые функции
+// жили рядом. Оставлено имя, которым пользуется ветка плеера.
+function keyToDirection(keyCode) { return arrowDir(keyCode); }
 function stopSeeking() { if (seekHoldInterval) { clearInterval(seekHoldInterval); seekHoldInterval = null; } }
 
 // ==================== ОБРАБОТЧИКИ КЛАВИШ ====================
@@ -1746,9 +1748,41 @@ function focusActivePanelItem(panelType) {
     }, 100);
 }
 
+/**
+ * Клавиатура и пульт разведены по двум обработчикам keydown на document, и это
+ * не дубль:
+ *
+ *   • setupFocusRescue() слушает в фазе ПЕРЕХВАТА и забирает стрелки, OK и
+ *     «назад» на всех обычных экранах (главная, торренты, каталог, поиск,
+ *     карточка, настройки, донат), передавая их в ScreenStrategies. Он гасит
+ *     событие через stopImmediatePropagation, поэтому до обработчика ниже эти
+ *     клавиши на этих экранах просто не доходят;
+ *   • setupKeyboardHandlers() (здесь) слушает в фазе всплытия и обслуживает
+ *     плеер — там перехватчик уходит первой же строкой — плюс остаётся
+ *     запасным путём для экранов, которых перехватчик не знает.
+ *
+ * Порядок регистрации значения не имеет: перехват всегда раньше всплытия.
+ * Не сливайте их в один обработчик, не переписав маршрутизацию целиком.
+ */
 function setupKeyboardHandlers() {
+    // Один keyup на оба дела: отпускание перемотки и отпускание OK на карточке
+    // торрента (долгое нажатие = удаление). Раньше это были два отдельных
+    // слушателя на document в разных функциях и фазах.
     document.addEventListener('keyup', function (e) {
         var k = e.keyCode;
+
+        // Долгое OK на карточке торрента: отпустили — либо обычный клик,
+        // либо ничего, если удаление уже отработало по таймеру
+        if (isOkKey(k) && !isCustomFilterMenuOpen() && currentScreen() === 'torrents') {
+            var focused = document.querySelector('.focused');
+            var sameCard = focused && okHoldFocused && focused === okHoldFocused;
+            clearOkHold();
+            if (!okHoldHandled && sameCard && focused.classList.contains('torrent-card')) focused.click();
+            okHoldHandled = false;
+            okHoldFocused = null;
+            return;
+        }
+
         if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) {
             if (seekHoldInterval) {
                 clearInterval(seekHoldInterval);
@@ -1778,7 +1812,7 @@ function setupKeyboardHandlers() {
     });
 
     document.addEventListener('keydown', function (e) {
-        var k = e.keyCode, active = document.activeElement;
+        var k = e.keyCode;
         navKeyRepeat = !!e.repeat;       // держат кнопку или короткое нажатие
         var po = getEl('playback-overlay'); var isPA = po && po.classList.contains('active'); if (isPA) return;
         var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
@@ -1791,25 +1825,12 @@ function setupKeyboardHandlers() {
             if (!isEmpty) return;
         }
 
-        if (AppState.currentScreen === 'torrents') {
-            if (['UP', 'DOWN', 'LEFT', 'RIGHT'].some(function (d) { return isKeyPressed(d, k); })) { e.preventDefault(); if (!document.querySelector('.focused')) { focusFirstTorrentCard(); return; } navigate(keyToDirection(k)); return; }
-            if (isKeyPressed('OK', k) || k === 13) { e.preventDefault(); if (e.repeat) return; var f = document.querySelector('.focused'); if (!f) { focusFirstTorrentCard(); return; } if (f.id === 'search-query') { if (typeof window.showSearchResults === 'function') window.showSearchResults({ focusQuery: true }); return; } if (f.id === 'search-btn' || f.id === 'tab-search') { if (typeof window.showSearchResults === 'function') window.showSearchResults({ focusQuery: true, runSearch: f.id === 'search-btn' }); return; } if (f.id === 'tab-catalog') { f.click(); return; } if (f.id === 'settings-btn' || f.id === 'tab-torrents') { f.click(); return; } if (f.classList.contains('torrent-card')) return; if (f.click) f.click(); return; }
-            return;
-        }
-
-        if (active && active.id === 'search-query') {
-            if (isKeyPressed('BACK', k) || isKeyPressed('EXIT', k)) { e.preventDefault(); active.blur(); updateFocusableElements(); var si = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].id === 'search-query') { si = i; break; } setFocus(si !== -1 ? si : 0); return; }
-            if (['DOWN', 'UP', 'LEFT', 'RIGHT'].some(function (d) { return isKeyPressed(d, k); })) { e.preventDefault(); var dir = keyToDirection(k); active.blur(); updateFocusableElements(); if (AppState.currentScreen === 'search') { if (dir === 'right') { var sb = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].id === 'search-btn') { sb = i; break; } setFocus(sb !== -1 ? sb : 0); } else { var ff = -1, fr = -1; for (var i = 0; i < focusableElements.length; i++) { var el = focusableElements[i]; if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && ff === -1) ff = i; if (el.classList && (el.classList.contains('search-result-item') || el.classList.contains('global-search-card')) && fr === -1) fr = i; } setFocus(dir === 'down' && ff !== -1 ? ff : (ff !== -1 ? ff : (fr !== -1 ? fr : 0))); } return; } navigate(dir); return; }
-            if (isKeyPressed('OK', k)) { e.preventDefault(); var q = active.value.trim(); if (AppState.currentScreen === 'search') { if (q && typeof window.searchTorrents === 'function') window.searchTorrents(q); active.blur(); setTimeout(function () { focusSearchHome(true); }, 100); return; } if (typeof window.showSearchResults === 'function') window.showSearchResults({ focusQuery: true, runSearch: !!q }); active.blur(); return; }
-        }
-
-        if (AppState.currentScreen === 'search') {
-            var tag = e.target.tagName; var isF = tag === 'SELECT' || e.target.id === 'filter-year';
-            if (isF && ['UP', 'DOWN', 'LEFT', 'RIGHT'].some(function (d) { return isKeyPressed(d, k); })) { e.preventDefault(); if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur(); updateFocusableElements(); var ff = -1; for (var i = 0; i < focusableElements.length; i++) if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(focusableElements[i].id) !== -1) { ff = i; break; } if (ff !== -1) { setFocus(ff); if (keyToDirection(k) !== 'left') navigate(keyToDirection(k)); } return; }
-        }
-
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
+        // Дальше — плеер и запасной путь. Экраны поиска, торрентов, каталога,
+        // карточки и настроек сюда не доходят: их стрелки, OK и «назад»
+        // забирает перехватчик в setupFocusRescue и гасит событие. Здесь для
+        // них раньше лежали свои ветки навигации — мёртвый дубль той же логики.
         updateFocusableElements();
 
         if (AppState.currentScreen === 'player') {
@@ -1835,12 +1856,9 @@ function setupKeyboardHandlers() {
                 }
             }
             if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) {
-                var cc = getEl('controls-container');
-                if (cc.classList.contains('idle-hidden')) {
-                    e.preventDefault();
-                    return;
-                }
                 e.preventDefault();
+                // cv посчитан в начале ветки, панель с тех пор никто не трогал
+                if (!cv) return;
                 if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
 
                 var fe = focusableElements[currentFocusIndex];
@@ -1926,8 +1944,6 @@ function setupKeyboardHandlers() {
             if (isKeyPressed('REW', k)) { e.preventDefault(); vp.currentTime = Math.max(0, vp.currentTime - 30); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
             if (!cv) return;
         }
-
-        if (AppState.currentScreen === 'search' && isKeyPressed('OK', k)) { e.preventDefault(); var f = document.querySelector('.focused'); if (f) { if (f.id === 'search-query') { f.focus(); try { if (f.select) f.select(); } catch (e) { } } else if (f.tagName === 'SELECT' || f.id === 'filter-year') { if (typeof window.openNativeSearchControl === 'function') window.openNativeSearchControl(f); else { f.focus(); f.click(); } } else if (f.id === 'search-btn') { var q = getEl('search-query'); var qt = q ? q.value.trim() : ''; if (qt && typeof window.searchTorrents === 'function') window.searchTorrents(qt); } else f.click(); } else focusSearchHome(true); return; }
 
         if (isKeyPressed('UP', k)) { e.preventDefault(); navigate('up'); } else if (isKeyPressed('DOWN', k)) { e.preventDefault(); navigate('down'); } else if (isKeyPressed('LEFT', k)) { e.preventDefault(); navigate('left'); } else if (isKeyPressed('RIGHT', k)) { e.preventDefault(); navigate('right'); } else if (isKeyPressed('OK', k)) { e.preventDefault(); var f = document.querySelector('.focused'); if (f) { if (f.classList.contains('file-item')) { var pb = f.querySelector('.play-btn'); if (pb) pb.click(); else f.click(); } else f.click(); } else if (focusableElements.length > 0) focusableElements[0].click(); } else if (isKeyPressed('INFO', k)) { e.preventDefault(); console.log('ℹ️ Информация:', { screen: AppState.currentScreen, platform: AppState.platform, focusIndex: currentFocusIndex, focusableCount: focusableElements.length }); }
     });
@@ -2844,17 +2860,6 @@ function setupFocusRescue() {
         }
     }, true);
 
-    document.addEventListener('keyup', function (e) {
-        var s = currentScreen();
-        if (isCustomFilterMenuOpen()) return;
-        if (!isOkKey(e.keyCode) || s !== 'torrents') return;
-        var f = document.querySelector('.focused'), cs = f && okHoldFocused && f === okHoldFocused;
-        clearOkHold();
-        if (!okHoldHandled && cs && f.classList.contains('torrent-card')) f.click();
-        okHoldHandled = false;
-        okHoldFocused = null;
-    }, true);
-
     var prevShow = window.showDetail;
     if (typeof prevShow === 'function') {
         window.showDetail = function () {
@@ -2976,11 +2981,7 @@ function setupPlayerWheelControl() {
             localStorage.setItem('playerVolume', newVolume);
         } catch (err) { /* ignore */ }
 
-        //console.log('🔊 Громкость: ' + Math.round(newVolume * 100) + '%');
-
     }, { passive: false }); // passive: false необходим для preventDefault
-
-    console.log('✅ Глобальное управление громкостью колесом мыши активировано для экрана плеера');
 }
 
 // ==================== УПРАВЛЕНИЕ МЫШЬЮ ====================
@@ -3003,8 +3004,6 @@ function setupMouseControls() {
 
         return false;
     });
-
-    console.log('✅ Управление правой кнопкой мыши активировано');
 }
 
 // ==================== НАВИГАЦИЯ ПО РЯДАМ-КАРУСЕЛЯМ (новый вид каталога) ====================
@@ -3170,7 +3169,6 @@ function handleRowsNavigation(dir) {
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 function initControl() {
-    console.log('Модуль управления инициализирован');
     if (window.gsap && window.ScrollToPlugin && gsap.registerPlugin) {
         gsap.registerPlugin(ScrollToPlugin);
     }
