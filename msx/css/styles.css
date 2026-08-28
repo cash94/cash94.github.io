@@ -5110,24 +5110,19 @@ article {
   pointer-events: none;
 }
 
-/* Затемнение: слева — под текст, снизу — стык с рядом, сверху — под шапку */
+/* Затемнение только по вертикали: сверху — под шапку, снизу — под подписи и
+   стык с рядом. Горизонтального градиента (слева 0.88) здесь больше нет: с ним
+   левая половина кадра уходила почти в чёрное. Нижний спад поэтому растянут
+   выше (с 62% до 40%) — подписи баннера начинаются примерно на 60% высоты, и
+   без подложки заголовок на светлом кадре читался бы только за счёт
+   text-shadow. Один градиент вместо двух слоёв — ::after больше не нужен. */
 #home-hero-shade {
   position: absolute;
   left: 0;
   top: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.7) 34%, rgba(0, 0, 0, 0.1) 68%, rgba(0, 0, 0, 0) 100%);
-}
-
-#home-hero-shade::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0) 26%, rgba(0, 0, 0, 0) 62%, rgba(0, 0, 0, 0.92) 100%);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0) 24%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.45) 68%, rgba(0, 0, 0, 0.92) 100%);
 }
 
 #home-hero-body {
@@ -5296,7 +5291,7 @@ article {
 #home-topbar .section-title-header {
   flex: none;
   margin: 0 32px 0 0;
-  font-size: 26px;
+  font-size: 28px;
   line-height: 1;
   color: #ff8c00;
 }
@@ -5324,7 +5319,7 @@ article {
   color: #b3b3b3;
   cursor: pointer;
   font-family: inherit;
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 400;
   line-height: 1.2;
   white-space: nowrap;
@@ -5332,12 +5327,17 @@ article {
 }
 
 /* Лупа: круглая обводка вместо текста. Рамка есть всегда, просто прозрачная —
-   иначе на фокусе кнопка подросла бы на 4px и сдвинула соседей. */
+   иначе на фокусе кнопка подросла бы на 4px и сдвинула соседей.
+   !important на цвете обязателен: в блоке на строке 1838 у .view-tab стоит
+   `border-color: #000000 !important`, а этот класс на кнопке остался ради
+   старых обработчиков — без перебивки вокруг лупы висело чёрное кольцо, и на
+   светлом кадре баннера (шапка ниже 62% уже прозрачная) его было видно. */
 .home-nav-btn.home-nav-icon {
   padding: 7px;
   border: 2px solid transparent;
+  border-color: transparent !important;
   border-radius: 50%;
-  font-size: 19px;
+  font-size: 21px;
   line-height: 1;
   color: #fff;
 }
@@ -5364,11 +5364,52 @@ article {
   box-shadow: none !important;
 }
 
-/* У лупы вместо текста подсвечиваем обводку. !important нужен из-за
-   `border-color: #000000 !important` для .view-tab на строке 1838 — этот класс
-   на кнопке остался, чтобы её id продолжали видеть старые обработчики. */
+/* У лупы вместо текста подсвечиваем обводку — три класса с !important
+   перебивают и прозрачную рамку из правила выше, и legacy-цвет .view-tab. 
 .home-nav-btn.home-nav-icon.focused {
   border-color: var(--focus-color, #ff8c00) !important;
+} */
+
+/* ===== Часы в шапке =====
+   Слева крупное время во всю высоту двух строк, справа от него дата и под ней
+   день недели. Высота блока подобрана под строку кнопок: шапка от часов не
+   растёт, иначе поехал бы вертикальный бюджет рядов и topPad, который
+   control.js считает от topbar.offsetHeight (строка 2353).
+   Селектор из двух id — чтобы margin-left не перебивался правилами шапки. */
+#home-topbar #home-clock {
+  flex: none;
+  display: flex;
+  align-items: center;
+  margin-left: 26px;
+}
+
+#home-clock-time {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1;
+  color: #fff;
+  white-space: nowrap;
+}
+
+/* gap на Vidaa не поддержан — отступ margin'ом, как и у кнопок шапки */
+#home-clock-date {
+  margin-left: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* line-height 1.1, а не 1.15: две строки должны уложиться в высоту строки
+   кнопок (19px × 1.2 + 12px = 34.8), иначе шапка растёт из-за даты */
+#home-clock-day {
+  font-size: 16px;
+  line-height: 1.1;
+  color: #b3b3b3;
+}
+
+#home-clock-weekday {
+  font-size: 15px;
+  line-height: 1.1;
+  color: #8a8a8a;
 }
 
 /* ===== Адаптация для 720–960px (ТВ) ===== */
@@ -5443,17 +5484,38 @@ article {
 
   #home-topbar .section-title-header {
     margin: 0 22px 0 0;
-    font-size: 20px;
+    font-size: 22px;
   }
 
   .home-nav-btn {
     padding: 4px 2px;
-    font-size: 14px;
+    font-size: 16px;
   }
 
   .home-nav-btn.home-nav-icon {
     padding: 5px;
-    font-size: 15px;
+    font-size: 17px;
+  }
+
+  /* Часы: суммарно ~27px в высоту — ровно строка кнопок (16px × 1.2 + 8px) */
+  #home-topbar #home-clock {
+    margin-left: 18px;
+  }
+
+  #home-clock-time {
+    font-size: 26px;
+  }
+
+  #home-clock-date {
+    margin-left: 9px;
+  }
+
+  #home-clock-day {
+    font-size: 13px;
+  }
+
+  #home-clock-weekday {
+    font-size: 12px;
   }
 }
 
@@ -5497,17 +5559,41 @@ article {
 
   #home-topbar .section-title-header {
     margin: 0 18px 0 0;
-    font-size: 18px;
+    font-size: 20px;
   }
 
   .home-nav-btn {
     padding: 3px 2px;
-    font-size: 13px;
+    font-size: 15px;
   }
 
   .home-nav-btn.home-nav-icon {
     padding: 4px;
-    font-size: 14px;
+    font-size: 16px;
+  }
+
+  /* Часы: 540px по высоте — самый тесный бюджет, поэтому строки поджаты
+     до 1.05 и блок укладывается в 24px строки кнопок */
+  #home-topbar #home-clock {
+    margin-left: 14px;
+  }
+
+  #home-clock-time {
+    font-size: 23px;
+  }
+
+  #home-clock-date {
+    margin-left: 8px;
+  }
+
+  #home-clock-day {
+    font-size: 12px;
+    line-height: 1.05;
+  }
+
+  #home-clock-weekday {
+    font-size: 11px;
+    line-height: 1.05;
   }
 
   /* ===== Ряды: главная и каталог ===== */
