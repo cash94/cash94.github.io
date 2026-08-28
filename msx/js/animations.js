@@ -314,7 +314,7 @@ var Animations = (function () {
         if (detailView && detailView.dataset) delete detailView.dataset.hiding;
     }
 
-    function finishDetailHide(detailView) {
+    function finishDetailHide(detailView, keepContent) {
         detailView.style.display = 'none';
         detailView.style.pointerEvents = 'none';
         if (detailView.dataset) delete detailView.dataset.hiding;
@@ -328,7 +328,15 @@ var Animations = (function () {
         // Фон карточки сбрасываем только теперь. Если делать это в момент нажатия
         // «назад» (как было в app.js), подложка пропадала до затухания — и закрытие
         // снова выглядело резким.
-        if (typeof window.resetDetailBackground === 'function') {
+        //
+        // keepContent — карточку прячут «на время»: она уже отрисована и ждёт
+        // возврата (выход из деталей торрента в поиск торрентов, см.
+        // finishSearchRestore в app.js). Чистить её в этом случае нельзя:
+        // resetDetailBackground выгрызает заголовок, подзаголовок и ряд актёров,
+        // и на возврате из поиска (hideSearchResults, ветка returnTo === 'detail')
+        // показывалась половина карточки — описание, кнопки, фон и похожие есть,
+        // остального нет.
+        if (!keepContent && typeof window.resetDetailBackground === 'function') {
             try { window.resetDetailBackground(); } catch (e) { }
         }
     }
@@ -411,8 +419,12 @@ var Animations = (function () {
      * display:none ставит сама анимация, когда затухание закончится. Раньше
      * вызывающий код прятал элемент сразу, а animateDetailHide отрабатывал уже
      * по скрытому — поэтому закрытие было мгновенным.
+     *
+     * opts.keepContent — прячем «на время», содержимое карточки не чистим
+     * (подробности в finishDetailHide).
      */
-    function animateDetailHide(onDone) {
+    function animateDetailHide(onDone, opts) {
+        var keepContent = !!(opts && opts.keepContent);
         var detailView = getEl('detail-view');
         if (!detailView) {
             if (onDone) onDone();
@@ -427,7 +439,7 @@ var Animations = (function () {
         if (detailView.style.display === 'none' || !detailView.style.display) {
             // Уже скрыт (display ставит animateDetailShow, поэтому пустое значение
             // тоже означает «не показан») — анимировать нечего
-            finishDetailHide(detailView);
+            finishDetailHide(detailView, keepContent);
             if (onDone) onDone();
             return null;
         }
@@ -440,7 +452,7 @@ var Animations = (function () {
 
         detailHideTween = fadeElement(detailView, 0, DETAIL_FADE.hide, DETAIL_FADE.easeIn, function () {
             detailHideTween = null;
-            finishDetailHide(detailView);
+            finishDetailHide(detailView, keepContent);
             if (onDone) onDone();
         });
 

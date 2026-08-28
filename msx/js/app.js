@@ -648,7 +648,13 @@ function setupNavigation() {
             AppState.searchResultsHidden = false;
             AppState.clearLastSelected = false;
             setTimeout(function () {
-              hideDetailView();
+              // keepContent: карточку каталога только что перерисовали выше и
+              // прячем её на время — пользователь уходит в поиск торрентов и
+              // вернётся в неё же (hideSearchResults, ветка returnTo === 'detail').
+              // Без флага затухание в конце вызывает resetDetailBackground, а тот
+              // вычищает заголовок, подзаголовок и ряд актёров: на возврате
+              // оставались только описание, кнопки, фон и похожие фильмы.
+              hideDetailView({ keepContent: true });
               if (searchOverlay) {
                 searchOverlay.classList.remove('hidden');
                 searchOverlay.style.display = 'flex';
@@ -743,9 +749,9 @@ function setupNavigation() {
  * раньше все ветки ниже прятали элемент сразу, а Animations.animateDetailHide()
  * вызывался уже по скрытому — поэтому карточка закрывалась резко.
  */
-function hideDetailView() {
+function hideDetailView(opts) {
   if (typeof Animations !== 'undefined' && typeof Animations.animateDetailHide === 'function') {
-    Animations.animateDetailHide();
+    Animations.animateDetailHide(null, opts);
     return;
   }
   if (detailView) detailView.style.display = 'none';
