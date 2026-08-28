@@ -2576,6 +2576,13 @@ async function showCatalogDetail(item, index, posterUrl) {
     var layout = setupDetailLayout(item, index, posterUrl);
     var dv = layout.dv, mc = layout.mc, aw = layout.aw, rw = layout.rw, savedScroll = layout.savedScroll;
     var title = getCatalogItemTitle(item), mt = item.media_type || 'movie';
+    // Режим раскладки. Под .catalog-detail-mode в styles.css лежит вся адаптация
+    // каталожной карточки под 1920 / 1280x720 / 1024 / 960x540, под
+    // .torrent-detail-mode — раскладка торрентной. Класс ставит и
+    // visibleItemsforDetail('showCatalogDetail'), но на ТВ может раздаваться его
+    // старая сборка, поэтому дублируем здесь: без класса вернётся старая вёрстка.
+    dv.classList.add('catalog-detail-mode');
+    dv.classList.remove('torrent-detail-mode');
     // Фон прошлой карточки убираем сразу, а не в renderDetailHeader: тот ждёт
     // ответа fetchCatalogItemDetails, и всё это время открытая карточка стояла
     // на кадре предыдущего фильма. Вместе с кадром снимается и его цепочка
