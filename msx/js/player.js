@@ -54,6 +54,55 @@ var currentSkipRangeKey = null;
 var skipIntro = 0;
 var skipCredits = 0;
 
+// ==================== ОВЕРЛЕИ И ПОЛНОЭКРАННЫЙ РЕЖИМ ====================
+/**
+ * В полноэкранном режиме браузер рисует ТОЛЬКО полноэкранный элемент и его
+ * потомков. Оверлеи плеера — #playback-overlay («Переключение на серию…»),
+ * #loading-overlay и кнопка пропуска — лежат в <body> рядом с #player-screen,
+ * поэтому раньше в fullscreen их просто не было видно: серия переключалась
+ * молча, без единого сообщения.
+ *
+ * Держим их внутри текущего полноэкранного элемента и возвращаем на место при
+ * выходе. Перенос узла сохраняет и слушатели, и классы, а клики по ним и так
+ * ловит делегирование на document (CLICKABLE_SELECTORS в app.js).
+ *
+ * Само окно на весь экран app.js просит у document.documentElement — тогда
+ * переносить обычно нечего. Этот код нужен для случаев, когда полноэкранным
+ * стал другой элемент: часть ТВ-браузеров сама разворачивает <video> или
+ * #player-screen.
+ */
+var FS_OVERLAY_IDS = ['playback-overlay', 'loading-overlay', 'skip-button'];
+var fsOverlayHome = {};
+
+function getFullscreenEl() {
+  return document.fullscreenElement || document.webkitFullscreenElement ||
+    document.mozFullScreenElement || document.msFullscreenElement || null;
+}
+
+/** Куда вешать оверлей, чтобы он был виден и в обычном режиме, и в fullscreen */
+function getOverlayHost() {
+  var fs = getFullscreenEl();
+  if (fs && fs !== document.documentElement && fs !== document.body) return fs;
+  return document.body;
+}
+window.getOverlayHost = getOverlayHost;
+
+function syncFullscreenOverlays() {
+  var host = getOverlayHost();
+  for (var i = 0; i < FS_OVERLAY_IDS.length; i++) {
+    var id = FS_OVERLAY_IDS[i];
+    var el = document.getElementById(id);
+    if (!el) continue;
+    if (!fsOverlayHome[id]) fsOverlayHome[id] = el.parentNode || document.body;
+    var target = (host === document.body) ? fsOverlayHome[id] : host;
+    if (el.parentNode !== target) target.appendChild(el);
+  }
+}
+window.syncFullscreenOverlays = syncFullscreenOverlays;
+
+document.addEventListener('fullscreenchange', syncFullscreenOverlays);
+document.addEventListener('webkitfullscreenchange', syncFullscreenOverlays);
+
 function createSkipButton() {
   if (skipButton) {
     skipButton.remove();
@@ -63,7 +112,7 @@ function createSkipButton() {
   skipButton.id = 'skip-button';
   skipButton.className = 'skip-button hidden';
   skipButton.innerHTML = '⏩ Пропустить';
-  document.body.appendChild(skipButton);
+  getOverlayHost().appendChild(skipButton);
   return skipButton;
 }
 
@@ -136,6 +185,7 @@ function checkAndShowSkipButton(currentTimeSec) {
   }
   var currentTimeMs = currentTimeSec * 1000;
   var videoPlayer = getEl('video-player');
+  if (!videoPlayer) return;
   var totalDuration = AppState.originalDuration || AppState.expectedDuration || videoPlayer.duration;
   var totalDurationMs = totalDuration * 1000;
   var inAnyRange = false;
@@ -207,6 +257,13 @@ document.addEventListener('DOMContentLoaded', function () {
   if (nextBtn) nextBtn.style.display = 'none';
 });
 
+/** Недоступная кнопка управления: гасится классом, .control-btn.is-disabled */
+function setControlDisabled(btn, disabled) {
+  if (!btn) return;
+  if (disabled) btn.classList.add('is-disabled');
+  else btn.classList.remove('is-disabled');
+}
+
 function updateEpisodeButtons() {
   var prevBtn = getEl('prev-episode-btn');
   var nextBtn = getEl('next-episode-btn');
@@ -215,10 +272,11 @@ function updateEpisodeButtons() {
   if (filesLen > 0) {
     prevBtn.style.display = 'flex';
     nextBtn.style.display = 'flex';
-    prevBtn.style.opacity = currentEpisodeIndex === 0 ? '0.3' : '1';
-    prevBtn.style.pointerEvents = currentEpisodeIndex === 0 ? 'none' : 'auto';
-    nextBtn.style.opacity = currentEpisodeIndex === filesLen - 1 ? '0.3' : '1';
-    nextBtn.style.pointerEvents = currentEpisodeIndex === filesLen - 1 ? 'none' : 'auto';
+    // Класс, а не inline-стиль: гашение по бездействию (setPlayerControlsIdle)
+    // переписывает opacity всем кнопкам подряд, и «серым» кнопкам возвращался
+    // полный цвет — недоступная кнопка выглядела рабочей
+    setControlDisabled(prevBtn, currentEpisodeIndex === 0);
+    setControlDisabled(nextBtn, currentEpisodeIndex === filesLen - 1);
   } else {
     prevBtn.style.display = 'none';
     nextBtn.style.display = 'none';
@@ -252,16 +310,16 @@ function syncPlayerTitleVisibility(forceVisible) {
   var hasTitle = !!titleElement.dataset.hasTitle;
   if (!hasTitle) {
     titleElement.classList.add('hidden', 'idle-hidden');
-    subtitleElement.classList.add('hidden', 'idle-hidden');
+    if (subtitleElement) subtitleElement.classList.add('hidden', 'idle-hidden');
     return;
   }
   var shouldShow = forceVisible === null ? !!(controlsContainer && !controlsContainer.classList.contains('idle-hidden')) : !!forceVisible;
   if (shouldShow) {
     titleElement.classList.remove('hidden', 'idle-hidden');
-    subtitleElement.classList.remove('hidden', 'idle-hidden');
+    if (subtitleElement) subtitleElement.classList.remove('hidden', 'idle-hidden');
   } else {
     titleElement.classList.add('hidden', 'idle-hidden');
-    subtitleElement.classList.add('hidden', 'idle-hidden');
+    if (subtitleElement) subtitleElement.classList.add('hidden', 'idle-hidden');
   }
 }
 window.syncPlayerTitleVisibility = syncPlayerTitleVisibility;
@@ -290,51 +348,62 @@ async function getFileNameByHash(hash, fileId) {
   return null;
 }
 
+/**
+ * Элементы, которые гаснут вместе с панелью управления. Список статический,
+ * поэтому собираем его один раз: resetMouseIdleTimer зовётся на КАЖДОЕ движение
+ * мыши и нажатие пульта, и десять getElementById + переписывание inline-стилей
+ * на каждый вызов на ТВ заметны.
+ */
+var idleControlEls = null;
+
+function getIdleControlEls() {
+  if (idleControlEls) return idleControlEls;
+  var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn',
+    'exit-player-btn', 'episodes-btn', 'subtitles-btn', 'prev-episode-btn',
+    'next-episode-btn', 'player-title'];
+  var list = [];
+  for (var i = 0; i < ids.length; i++) { var el = getEl(ids[i]); if (el) list.push(el); }
+  if (list.length) idleControlEls = list;   // пусто — DOM ещё не готов, попробуем позже
+  return list;
+}
+
+/**
+ * Гасим и показываем только классом idle-hidden — под него в styles.css уже
+ * прописаны opacity и pointer-events с !important. Раньше тут вдобавок
+ * переписывались inline-стили, и они спорили с hidePlayerControls/
+ * showPlayerControls из control.js, которые работают ровно с этим классом.
+ *
+ * Кнопки внутри #controls-container (аудио, субтитры, буфер, серии) отдельно
+ * трогать незачем: гаснет контейнер — гаснут и они.
+ */
+function setPlayerControlsIdle(hidden) {
+  var els = getIdleControlEls();
+  for (var i = 0; i < els.length; i++) {
+    if (hidden) els[i].classList.add('idle-hidden');
+    else els[i].classList.remove('idle-hidden');
+  }
+  syncPlayerTitleVisibility(!hidden);
+}
+window.setPlayerControlsIdle = setPlayerControlsIdle;
+
 function resetMouseIdleTimer() {
   var playerScreen = getEl('player-screen');
   if (!playerScreen || playerScreen.style.display !== 'block') return;
   var playerOverlay = getEl('player-overlay');
-  var controlElements = [
-    getEl('controls-container'), getEl('buffer-stats'), getEl('player-hint'),
-    getEl('toggle-buffer-btn'), getEl('exit-player-btn'), getEl('episodes-btn'),
-    getEl('subtitles-btn'), getEl('prev-episode-btn'), getEl('next-episode-btn'), getEl('player-title')
-  ];
   if (playerOverlay) playerOverlay.classList.add('touch-active');
-  for (var i = 0; i < controlElements.length; i++) {
-    if (controlElements[i]) {
-      controlElements[i].classList.remove('idle-hidden');
-      controlElements[i].style.opacity = '1';
-      controlElements[i].style.pointerEvents = 'auto';
-    }
-  }
-  syncPlayerTitleVisibility(true);
-  var episodesPanel = getEl('episodes-panel');
-  if (episodesPanel && !episodesPanel.classList.contains('hidden')) {
-    episodesPanel.style.opacity = '1'; episodesPanel.style.pointerEvents = 'auto';
-  }
-  var subtitlesPanel = getEl('subtitles-panel');
-  if (subtitlesPanel && !subtitlesPanel.classList.contains('hidden')) {
-    subtitlesPanel.style.opacity = '1'; subtitlesPanel.style.pointerEvents = 'auto';
-  }
+
+  // Классы трогаем, только если панель действительно спрятана. Раньше на
+  // каждое нажатие пульта переписывались inline-стили десяти элементов подряд.
+  // Состояние читаем из DOM, а не из своего флага: панель прячет и показывает
+  // ещё и control.js (hidePlayerControls / showPlayerControls).
+  var controls = getEl('controls-container');
+  if (!controls || controls.classList.contains('idle-hidden')) setPlayerControlsIdle(false);
+
   if (mouseIdleTimer) clearTimeout(mouseIdleTimer);
   mouseIdleTimer = setTimeout(function () {
-    if (playerScreen.style.display === 'block') {
-      if (playerOverlay) playerOverlay.classList.remove('touch-active');
-      for (var j = 0; j < controlElements.length; j++) {
-        if (controlElements[j]) {
-          controlElements[j].classList.add('idle-hidden');
-          controlElements[j].style.opacity = '0';
-          controlElements[j].style.pointerEvents = 'none';
-        }
-      }
-      syncPlayerTitleVisibility(false);
-      if (episodesPanel && episodesPanel.classList.contains('hidden')) {
-        episodesPanel.style.opacity = '0'; episodesPanel.style.pointerEvents = 'none';
-      }
-      if (subtitlesPanel && subtitlesPanel.classList.contains('hidden')) {
-        subtitlesPanel.style.opacity = '0'; subtitlesPanel.style.pointerEvents = 'none';
-      }
-    }
+    if (playerScreen.style.display !== 'block') return;
+    if (playerOverlay) playerOverlay.classList.remove('touch-active');
+    setPlayerControlsIdle(true);
   }, IDLE_TIMEOUT);
 }
 
@@ -413,6 +482,12 @@ function updateBufferDisplay() {
   var subtitleElement = getEl('player-subtitle');
   var videoPlayer = getEl('video-player');
   if (!bufferStats || !videoPlayer) return;
+
+  // Кнопка «Пропустить вступление / титры» не зависит от того, показана ли
+  // строка буфера. Раньше проверка жила внутри ветки отрисовки, и жёлтая кнопка
+  // на пульте (скрыть буфер) заодно отключала пропуск заставки.
+  checkAndShowSkipButton(videoPlayer.currentTime + AppState.seekOffset);
+
   if (AppState.bufferHidden) {
     bufferStats.classList.add('hidden');
     if (subtitleElement) subtitleElement.classList.add('hidden');
@@ -446,7 +521,6 @@ function updateBufferDisplay() {
       }
       bufferStats.innerText = 'Буфер: ' + bufferAheadText + ' | до конца: ' + remainingText + ' | конец в: ' + endTimeText;
       if (subtitleElement) subtitleElement.innerText = torrServerText || '';
-      checkAndShowSkipButton(absoluteCurrentTime);
     }
   } else {
     bufferStats.innerText = 'буфер: 0%';
@@ -477,6 +551,7 @@ function forceUpdateDuration(duration, origDur, offset) {
 
 function destroyHls() {
   hidePlayerLoading();
+  var videoPlayer = getEl('video-player');
   var seekSlider = getEl('seek-slider');
   if (seekSlider) seekSlider.value = 0;
   var currentTimeSpan = getEl('current-time');
@@ -488,12 +563,10 @@ function destroyHls() {
     AppState.suppressTimeUpdate = false;
   }
   if (AppState._timeUpdateHandler) {
-    var videoPlayer = getEl('video-player');
     if (videoPlayer) videoPlayer.removeEventListener('timeupdate', AppState._timeUpdateHandler);
     AppState._timeUpdateHandler = null;
   }
   if (AppState._canPlayHandler) {
-    var videoPlayer = getEl('video-player');
     if (videoPlayer) videoPlayer.removeEventListener('canplay', AppState._canPlayHandler);
     AppState._canPlayHandler = null;
   }
@@ -501,14 +574,22 @@ function destroyHls() {
     clearTimeout(AppState._loadingTimeout);
     AppState._loadingTimeout = null;
   }
+  // Отложенная перемотка ползунком (debounce 300 мс в seekStream). Раньше её
+  // никто не отменял: уйти из плеера сразу после ползунка — и seek уходил уже
+  // в уничтоженный поток
+  if (AppState.seekTimeout) {
+    clearTimeout(AppState.seekTimeout);
+    AppState.seekTimeout = null;
+  }
   if (AppState._seekExecuted) AppState._seekExecuted = false;
+  // Слушатели прямого воспроизведения (initTranscodingOffPlayback)
+  if (AppState._directPlaybackDetach) { AppState._directPlaybackDetach(); AppState._directPlaybackDetach = null; }
 
   if (AppState.hls) {
     AppState.expectedDuration = null;
     AppState.originalDuration = null;
     AppState.seekOffset = 0;
     AppState.lastSuccessfulSeek = 0;
-    var videoPlayer = getEl('video-player');
     if (videoPlayer) {
       delete videoPlayer.dataset.expectedDuration;
       delete videoPlayer.dataset.originalDuration;
@@ -977,14 +1058,82 @@ async function switchToEpisode(index, fileId) {
   }
 }
 
-function toggleEpisodesPanel() {
-  var panel = getEl('episodes-panel'); var btn = getEl('episodes-btn');
-  if (!panel || !btn) return;
-  if (panel.classList.contains('hidden')) {
-    if (AppState.currentDetailItem) loadEpisodesInfo(AppState.currentDetailItem.hash);
-    panel.classList.remove('hidden'); btn.classList.add('active');
-  } else { panel.classList.add('hidden'); btn.classList.remove('active'); }
+// ==================== ПАНЕЛИ ПЛЕЕРА (серии / аудио / субтитры) ====================
+/**
+ * Три панели устроены одинаково, поэтому и открываются одинаково: открыта
+ * ровно одна. Раньше у каждой был свой toggle, и «Серии» не закрывали аудио и
+ * субтитры — на экране могли оказаться две панели сразу.
+ */
+var PLAYER_PANELS = {
+  episodes: { panel: 'episodes-panel', btn: 'episodes-btn' },
+  audio: { panel: 'audio-panel', btn: 'audio-btn' },
+  subtitles: { panel: 'subtitles-panel', btn: 'subtitles-btn' }
+};
+
+function setPlayerPanel(name, open) {
+  var cfg = PLAYER_PANELS[name];
+  if (!cfg) return false;
+  var panel = getEl(cfg.panel), btn = getEl(cfg.btn);
+  if (!panel) return false;
+  if (open) { panel.classList.remove('hidden'); if (btn) btn.classList.add('active'); }
+  else { panel.classList.add('hidden'); if (btn) btn.classList.remove('active'); }
+  return true;
 }
+
+function isPlayerPanelOpen(name) {
+  var cfg = PLAYER_PANELS[name];
+  var panel = cfg && getEl(cfg.panel);
+  return !!(panel && !panel.classList.contains('hidden'));
+}
+
+function closePlayerPanels(except) {
+  for (var name in PLAYER_PANELS) {
+    if (name !== except) setPlayerPanel(name, false);
+  }
+}
+window.closePlayerPanels = closePlayerPanels;
+
+function togglePlayerPanel(name) {
+  var willOpen = !isPlayerPanelOpen(name);
+  closePlayerPanels(name);
+  if (willOpen) {
+    if (name === 'episodes') {
+      var hash = AppState.currentDetailItem && AppState.currentDetailItem.hash;
+      // Список уже собран для этого торрента — только перерисовываем.
+      // loadEpisodesInfo ходит в TorrServer до четырёх раз с паузами по 800 мс,
+      // а раньше это повторялось на каждое открытие панели.
+      if (hash && currentEpisodeFiles.length && currentTorrentHash === hash) renderEpisodesList();
+      else if (hash) loadEpisodesInfo(hash);
+    } else if (name === 'audio') renderAudioTracks();
+    else if (name === 'subtitles') renderSubtitleTracks();
+  }
+  setPlayerPanel(name, willOpen);
+  return willOpen;
+}
+
+/**
+ * Клик мимо открытой панели закрывает её. Один слушатель на все три: раньше
+ * setupEpisodesButton / setupAudioButton / setupSubtitlesButton вешали по
+ * своему на document.
+ */
+function setupPlayerPanelsOutsideClick() {
+  if (setupPlayerPanelsOutsideClick._bound) return;
+  setupPlayerPanelsOutsideClick._bound = true;
+  document.addEventListener('click', function (e) {
+    var inPlayer = AppState && AppState.currentScreen === 'player';
+    for (var name in PLAYER_PANELS) {
+      if (!isPlayerPanelOpen(name)) continue;
+      var cfg = PLAYER_PANELS[name];
+      var panel = getEl(cfg.panel), btn = getEl(cfg.btn);
+      if (panel && panel.contains(e.target)) continue;
+      if (btn && btn.contains(e.target)) continue;
+      setPlayerPanel(name, false);
+    }
+    if (inPlayer) resetMouseIdleTimer();
+  });
+}
+
+function toggleEpisodesPanel() { return togglePlayerPanel('episodes'); }
 
 // ==================== ДЕЛЕГИРОВАНИЕ СПИСКОВ ПЛЕЕРА ====================
 function setupEpisodesListDelegation() {
@@ -1070,18 +1219,11 @@ function setupEpisodesButton() {
   });
 
   closeEpisodesBtn.addEventListener('click', function () {
-    episodesPanel.classList.add('hidden');
-    episodesBtn.classList.remove('active');
+    setPlayerPanel('episodes', false);
     resetMouseIdleTimer();
   });
 
-  document.addEventListener('click', function (e) {
-    if (!episodesPanel.contains(e.target) && !episodesBtn.contains(e.target)) {
-      episodesPanel.classList.add('hidden');
-      episodesBtn.classList.remove('active');
-    }
-    resetMouseIdleTimer();
-  });
+  setupPlayerPanelsOutsideClick();
 }
 
 function preloadTorrents(hash, fileId) {
@@ -1152,19 +1294,32 @@ function transitionToPlayerScreen() {
   if (typeof Animations !== 'undefined' && typeof Animations.hideDetailLoading === 'function') Animations.hideDetailLoading(true);
   getEl('player-screen').style.display = 'block';
   clearFocused();
+  // Часы тикают раз в минуту от загрузки страницы: без этого при входе в плеер
+  // они могли показывать время почти минутной давности
+  if (typeof updateClock === 'function') updateClock();
   var controlsContainer = getEl('controls-container');
   if (controlsContainer) controlsContainer.classList.add('idle-hidden');
   if (typeof currentFocusIndex !== 'undefined') currentFocusIndex = 0;
   if (typeof updateFocusableElements === 'function') updateFocusableElements();
 }
 
-function showPlayerHint() {
+var DEFAULT_PLAYER_HINT = '← Назад для выхода';
+
+/**
+ * Подсказка внизу экрана. Аргумент нужен control.js: по первому Back он
+ * показывает «Нажмите Back ещё раз для выхода». Раньше текст игнорировался,
+ * и вместо предупреждения всплывала обычная подсказка.
+ */
+function showPlayerHint(message) {
   var playerHint = getEl('player-hint');
-  if (playerHint) {
-    playerHint.style.opacity = '1';
-    if (AppState.hintTimeout) clearTimeout(AppState.hintTimeout);
-    AppState.hintTimeout = setTimeout(function () { playerHint.style.opacity = '0'; }, 4000);
-  }
+  if (!playerHint) return;
+  playerHint.textContent = message || DEFAULT_PLAYER_HINT;
+  playerHint.style.opacity = '1';
+  if (AppState.hintTimeout) clearTimeout(AppState.hintTimeout);
+  AppState.hintTimeout = setTimeout(function () {
+    playerHint.style.opacity = '0';
+    playerHint.textContent = DEFAULT_PLAYER_HINT;
+  }, 4000);
 }
 
 async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal) {
@@ -1267,7 +1422,7 @@ async function initGstPlayback(metadata, initialSeek, signal) {
 async function initTranscodingOffPlayback(initialSeek, signal) {
   var playURL = AppState.currentTorrserverUrl + '/stream?link=' + currentTimecodeData.hash + '&index=' + currentTimecodeData.fileId + '&play=play';
   var videoPlayer = getEl('video-player');
-  destroyHls();
+  destroyHls();   // заодно снимает слушатели прошлого прямого файла
 
   // Прямой файл — без hls.js, отдаём ссылку нативному <video>
   AppState.seekOffset = 0;
@@ -1280,7 +1435,8 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
   var startPlayback = function () {
     if (started || signal.aborted) return;
     started = true;
-    if (AppState._loadingTimeout) clearTimeout(AppState._loadingTimeout);
+    if (AppState._loadingTimeout) { clearTimeout(AppState._loadingTimeout); AppState._loadingTimeout = null; }
+    videoPlayer.removeEventListener('canplay', onCanPlay);
     hidePlayerLoading();
     if (initialSeek > 0) {
       try { videoPlayer.currentTime = initialSeek; } catch (e) { }
@@ -1294,28 +1450,41 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
     startTimecodeSaving(); resetMouseIdleTimer(); startNearEndCheck(); startHeartbeat(); startTorrentStatsUpdates();
   };
 
+  // Все три слушателя снимаем одной функцией: раньше 'error' не снимался
+  // вообще, и на каждом переключении серии на <video> оседал ещё один
+  var detachDirectListeners = function () {
+    videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
+    videoPlayer.removeEventListener('canplay', onCanPlay);
+    videoPlayer.removeEventListener('error', onError);
+  };
+
   var onLoadedMetadata = function () {
     videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
     AppState.expectedDuration = videoPlayer.duration;
     AppState.originalDuration = videoPlayer.duration;
     forceUpdateDuration(videoPlayer.duration, videoPlayer.duration, 0);
-    console.log('audioTracks:', videoPlayer.audioTracks);
-    if (videoPlayer.audioTracks) {
-      console.log('Дорожек:', videoPlayer.audioTracks.length);
+
+    // Дорожки прямого файла отдаёт сам <video>. Раньше их только печатали в
+    // консоль, поэтому панель аудио в этом режиме всегда была пустой, хотя
+    // переключение (switchNativeAudioTrack) уже было написано.
+    var nativeTracks = collectNativeAudioTracks(videoPlayer);
+    if (nativeTracks.length) {
+      currentAudioTracks = nativeTracks;
+      var enabled = -1;
       for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
-        console.log(i, videoPlayer.audioTracks[i].label, videoPlayer.audioTracks[i].language, videoPlayer.audioTracks[i].enabled);
+        if (videoPlayer.audioTracks[i].enabled) { enabled = i; break; }
       }
+      currentAudioTrack = enabled >= 0 ? enabled : 0;
+      renderAudioTracks();
     }
   };
 
   var onCanPlay = function () {
-    videoPlayer.removeEventListener('canplay', onCanPlay);
     startPlayback();
-    hidePlayerLoading();
   };
 
   var onError = function () {
-    videoPlayer.removeEventListener('error', onError);
+    detachDirectListeners();
     if (signal.aborted || AppState.currentScreen !== 'player') return;
     hidePlayerLoading();
     alert('Файл не воспроизводится напрямую: кодек/контейнер не поддерживается устройством');
@@ -1324,6 +1493,9 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
   videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
   videoPlayer.addEventListener('canplay', onCanPlay);
   videoPlayer.addEventListener('error', onError);
+  // Ссылку держим, чтобы снять слушатели прошлого файла: 'error' живёт всё
+  // воспроизведение, и без этого на <video> оседал ещё один на каждую серию
+  AppState._directPlaybackDetach = detachDirectListeners;
 
   AppState._loadingTimeout = setTimeout(function () {
     if (!started && !signal.aborted) startPlayback();
@@ -1372,6 +1544,10 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
     }
     showPlayerLoading('Буферизация...', null);
     var onCanPlay = function () {
+      // Страховочный таймаут ниже больше не нужен: без этого он срабатывал
+      // через 3 секунды после начала и повторно жал play — поставленное сразу
+      // после старта видео само снималось с паузы
+      if (AppState._loadingTimeout) { clearTimeout(AppState._loadingTimeout); AppState._loadingTimeout = null; }
       hidePlayerLoading();
       if (!signal.aborted && !isPlaybackCancelled) videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
       videoPlayer.muted = false; updateMuteButton(); startTimecodeSaving(); resetMouseIdleTimer();
@@ -1446,7 +1622,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (episodeIndex === undefined) episodeIndex = null;
   if (audioTrack === undefined) audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
   if (window.AndroidJS) {
-    if (playInExternalPlayer(originalUrl, AppState.currentDetailItem.title, initialSeek, fromSearch)) {
+    var externalTitle = AppState.currentDetailItem ? AppState.currentDetailItem.title : '';
+    if (playInExternalPlayer(originalUrl, externalTitle, initialSeek, fromSearch)) {
       getEl('config-screen').style.display = 'none'; getEl('torrserver-section').style.display = 'none'; return;
     }
   }
@@ -1469,7 +1646,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   // }
   if (fileName) updatePlayerTitle(fileName);
   else if (AppState.currentDetailItem && AppState.currentDetailItem.title) updatePlayerTitle(AppState.currentDetailItem.title);
-  if (AppState.currentDetailItem.hash) {
+  if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
     var currentFileId = (episodeIndex !== null && currentEpisodeFiles[episodeIndex]) ? currentEpisodeFiles[episodeIndex].id : (metadata.match ? metadata.match[2] : null);
     setTimeout(function () { if (!signal.aborted) loadEpisodesInfo(AppState.currentDetailItem.hash, currentFileId); }, fromSearch ? EPISODES_LOAD_DELAY_SEARCH_MS : EPISODES_LOAD_DELAY_MS);
   }
@@ -1496,6 +1673,7 @@ function cancelCurrentPlayback() {
   if (AppState.bufferCheckInterval) { clearInterval(AppState.bufferCheckInterval); AppState.bufferCheckInterval = null; }
   if (AppState._loadingTimeout) { clearTimeout(AppState._loadingTimeout); AppState._loadingTimeout = null; }
   if (AppState._seekTimeout) { clearTimeout(AppState._seekTimeout); AppState._seekTimeout = null; }
+  if (AppState.seekTimeout) { clearTimeout(AppState.seekTimeout); AppState.seekTimeout = null; }
   if (AppState.hls) { try { AppState.hls.destroy(); AppState.hls = null; } catch (e) { } }
   if (AppState.currentStreamId) { fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { }); AppState.currentStreamId = null; }
   hidePlayerLoading();
@@ -1528,10 +1706,9 @@ function showDetailView(field = null) {
     if (nearEndCheckInterval) { clearInterval(nearEndCheckInterval); nearEndCheckInterval = null; }
     lastCleanedSegment = -1; currentEpisodeFiles = []; currentEpisodeIndex = 0; currentTorrentHash = null;
     updatePlayerTitle(null); clearTimecodeData();
-    var episodesPanel = getEl('episodes-panel'); var episodesBtn = getEl('episodes-btn');
-    if (episodesPanel) episodesPanel.classList.add('hidden'); if (episodesBtn) episodesBtn.classList.remove('active');
-    var audioPanel = getEl('audio-panel'); var audioBtn = getEl('audio-btn');
-    if (audioPanel) { audioPanel.classList.add('hidden'); if (audioBtn) audioBtn.classList.remove('active'); }
+    if (typeof window.hideSeekOverlay === 'function') window.hideSeekOverlay();
+    closePlayerPanels();
+    var episodesBtn = getEl('episodes-btn');
     if (episodesBtn) episodesBtn.style.display = 'none';
     var prevBtn = getEl('prev-episode-btn'); var nextBtn = getEl('next-episode-btn');
     if (prevBtn) prevBtn.style.display = 'none'; if (nextBtn) nextBtn.style.display = 'none';
@@ -1567,7 +1744,9 @@ function showDetailView(field = null) {
 
     getEl('torrserver-section').style.display = 'block';
   }
-  dropTorrentToServer(AppState.currentDetailItem.hash).then(function (result) { })['catch'](function (error) { });
+  if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
+    dropTorrentToServer(AppState.currentDetailItem.hash).then(function (result) { })['catch'](function (error) { });
+  }
   refreshTorrentsList().then(function () {
     if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
       var cacheKey = AppState.currentDetailItem.hash; if (progressCache.has(cacheKey)) progressCache.delete(cacheKey);
@@ -1774,7 +1953,9 @@ function collectNativeAudioTracks(videoPlayer) {
 async function switchAudioTrack(trackIndex) {
   if (trackIndex === currentAudioTrack) { toggleAudioPanel(); return; }
   if (AppState.transcodingFullOnOff) {
-    switchNativeAudioTrack(AppState.nativeVideoPlayer, trackIndex);
+    // nativeVideoPlayer обнуляет destroyHls(), а элемент <video> никуда не
+    // девается — берём его напрямую, иначе тут падало на null.audioTracks
+    switchNativeAudioTrack(AppState.nativeVideoPlayer || getEl('video-player'), trackIndex);
     return;
   }
   thisisseek = false; await saveTimecodeToServer();
@@ -1794,6 +1975,7 @@ async function switchAudioTrack(trackIndex) {
 }
 
 function switchNativeAudioTrack(videoPlayer, index) {
+  if (!videoPlayer) return;
   if (AppState.transcodingFullOnOff && videoPlayer.audioTracks && videoPlayer.audioTracks.length > 0) {
     for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
       videoPlayer.audioTracks[i].enabled = (i === index);
@@ -1808,15 +1990,7 @@ function switchNativeAudioTrack(videoPlayer, index) {
   }
 }
 
-function toggleAudioPanel() {
-  var panel = getEl('audio-panel'); var btn = getEl('audio-btn');
-  var episodesPanel = getEl('episodes-panel'); var episodesBtn = getEl('episodes-btn');
-  if (!panel || !btn) return;
-  if (panel.classList.contains('hidden')) {
-    if (episodesPanel && !episodesPanel.classList.contains('hidden')) { episodesPanel.classList.add('hidden'); if (episodesBtn) episodesBtn.classList.remove('active'); }
-    panel.classList.remove('hidden'); btn.classList.add('active'); renderAudioTracks();
-  } else { panel.classList.add('hidden'); btn.classList.remove('active'); }
-}
+function toggleAudioPanel() { return togglePlayerPanel('audio'); }
 
 function setupAudioButton() {
   var audioBtn = getEl('audio-btn');
@@ -1835,17 +2009,11 @@ function setupAudioButton() {
   });
 
   closeAudioBtn.addEventListener('click', function () {
-    audioPanel.classList.add('hidden');
-    audioBtn.classList.remove('active');
+    setPlayerPanel('audio', false);
     resetMouseIdleTimer();
   });
 
-  document.addEventListener('click', function (e) {
-    if (!audioPanel.contains(e.target) && !audioBtn.contains(e.target)) {
-      audioPanel.classList.add('hidden');
-      audioBtn.classList.remove('active');
-    }
-  });
+  setupPlayerPanelsOutsideClick();
 }
 
 async function saveAudioPreference(hash, fileId, audioTrack) {
@@ -1904,17 +2072,7 @@ async function switchSubtitleTrack(trackIndex) {
   finally { getEl('playback-overlay').classList.remove('active'); document.querySelector('.playback-text').textContent = 'Воспроизведение...'; }
 }
 
-function toggleSubtitlesPanel() {
-  var panel = getEl('subtitles-panel'); var btn = getEl('subtitles-btn');
-  var audioPanel = getEl('audio-panel'); var audioBtn = getEl('audio-btn');
-  if (!panel || !btn) return;
-  if (audioPanel && !audioPanel.classList.contains('hidden')) { audioPanel.classList.add('hidden'); if (audioBtn) audioBtn.classList.remove('active'); }
-  if (panel.classList.contains('hidden')) {
-    var episodesPanel = getEl('episodes-panel'); var episodesBtn = getEl('episodes-btn');
-    if (episodesPanel && !episodesPanel.classList.contains('hidden')) { episodesPanel.classList.add('hidden'); if (episodesBtn) episodesBtn.classList.remove('active'); }
-    panel.classList.remove('hidden'); btn.classList.add('active'); renderSubtitleTracks();
-  } else { panel.classList.add('hidden'); btn.classList.remove('active'); }
-}
+function toggleSubtitlesPanel() { return togglePlayerPanel('subtitles'); }
 
 function setupSubtitlesButton() {
   var subtitlesBtn = getEl('subtitles-btn');
@@ -1933,17 +2091,11 @@ function setupSubtitlesButton() {
   });
 
   closeSubtitlesBtn.addEventListener('click', function () {
-    subtitlesPanel.classList.add('hidden');
-    subtitlesBtn.classList.remove('active');
+    setPlayerPanel('subtitles', false);
     resetMouseIdleTimer();
   });
 
-  document.addEventListener('click', function (e) {
-    if (!subtitlesPanel.contains(e.target) && !subtitlesBtn.contains(e.target)) {
-      subtitlesPanel.classList.add('hidden');
-      subtitlesBtn.classList.remove('active');
-    }
-  });
+  setupPlayerPanelsOutsideClick();
 }
 
 async function saveSubtitlePreference(hash, fileId, subtitleTrack) {
@@ -1975,14 +2127,17 @@ async function handleVideoEnded() {
   }
 }
 
+/**
+ * Раньше здесь крутился секундный интервал с пустым телом if — просыпался
+ * каждую секунду всё время просмотра и ничего не делал. Конец файла ловит
+ * событие 'ended' (handleVideoEnded), отдельная проверка не нужна.
+ *
+ * Функцию и nearEndCheckInterval оставляем: их гасят из полудюжины мест
+ * (выход из плеера, смена серии, ошибки), и все эти вызовы должны остаться
+ * рабочими, если проверка когда-нибудь вернётся.
+ */
 function startNearEndCheck() {
-  if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
-  nearEndCheckInterval = setInterval(function () {
-    var videoPlayer = getEl('video-player');
-    var totalDuration = AppState.originalDuration || AppState.expectedDuration || videoPlayer.duration;
-    var currentTime = videoPlayer.currentTime + AppState.seekOffset;
-    if (totalDuration > 0 && currentTime >= totalDuration - 5 && !videoPlayer.paused && !videoPlayer.ended) { }
-  }, 1000);
+  if (nearEndCheckInterval) { clearInterval(nearEndCheckInterval); nearEndCheckInterval = null; }
 }
 
 function exitPlayer() { if (nearEndCheckInterval) { clearInterval(nearEndCheckInterval); nearEndCheckInterval = null; } }

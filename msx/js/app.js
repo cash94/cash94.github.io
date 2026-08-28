@@ -273,7 +273,9 @@ function showToast(message) {
   var toast = document.createElement('div');
   toast.textContent = message;
   toast.style.cssText = 'position:fixed;bottom:20%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:8px 16px;border-radius:8px;z-index:9999;font-size:14px;pointer-events:none;';
-  document.body.appendChild(toast);
+  // В полноэкранном режиме виден только полноэкранный элемент и его потомки
+  var host = (typeof window.getOverlayHost === 'function') ? window.getOverlayHost() : document.body;
+  host.appendChild(toast);
   setTimeout(function () {
     if (toast && toast.remove) toast.remove();
     else if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
@@ -549,7 +551,11 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
 
 function setupBufferUpdateInterval() {
   setInterval(function () {
-    if (AppState && AppState.currentScreen === 'player' && !AppState.bufferHidden && !AppState.isSeeking) {
+    // Условие !AppState.bufferHidden убрано намеренно: на этом же тике
+    // updateBufferDisplay проверяет вступление и титры, и со скрытой строкой
+    // буфера (жёлтая кнопка на пульте) кнопка «Пропустить» переставала
+    // появляться. Саму строку updateBufferDisplay всё так же не перерисовывает.
+    if (AppState && AppState.currentScreen === 'player' && !AppState.isSeeking) {
       if (typeof updateBufferDisplay === 'function') updateBufferDisplay();
     }
   }, 300);
@@ -1551,12 +1557,16 @@ function setupTouchControls(seekSlider, volumeSlider) {
 function setupFullscreen() {
   var fullscreenBtn = getEl('fullscreen-btn');
   if (!fullscreenBtn) return;
-  var playerScreen = getEl('player-screen');
 
   function toggleFullscreen() {
     var isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
     if (!isFullscreen) {
-      var element = playerScreen || document.documentElement;
+      // Именно documentElement, а не #player-screen. В полноэкранном режиме
+      // браузер рисует только полноэкранный элемент и его потомков, а
+      // #playback-overlay («Переключение на серию…»), #loading-overlay и кнопка
+      // пропуска лежат в <body> рядом с плеером — с #player-screen их не было
+      // видно вообще. То же самое делает setupAutoFullscreen ниже.
+      var element = document.documentElement;
       if (element.requestFullscreen) element.requestFullscreen();
       else if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();
       else if (element.mozRequestFullScreen) element.mozRequestFullScreen();
@@ -1577,6 +1587,9 @@ function setupFullscreen() {
     var isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
     fullscreenBtn.innerHTML = isFullscreen ? '<i class="fi fi-rr-compress"></i>' : '<i class="fi fi-rr-expand"></i>';
     fullscreenBtn.title = isFullscreen ? 'Выйти из полноэкранного режима' : 'Полный экран';
+    // Если полноэкранным стал не документ (часть ТВ-браузеров разворачивает
+    // сам <video>), player.js перенесёт оверлеи внутрь него
+    if (typeof window.syncFullscreenOverlays === 'function') window.syncFullscreenOverlays();
   }
 
   fullscreenBtn.addEventListener('click', function (e) {
