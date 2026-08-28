@@ -1289,6 +1289,16 @@ function setupSearchFilters() {
         if (sel && display) {
           var selectedOption = sel.options[sel.selectedIndex];
           display.textContent = selectedOption ? selectedOption.textContent : 'Все';
+
+          // Подсвечиваем фильтры, уведённые со значения по умолчанию: у всех этих
+          // select'ов первый option и есть дефолт («Все», «Глобальный поиск»,
+          // «Сначала новые»). Класс красит чип со значением в синий (styles.css),
+          // чтобы сразу было видно, какие фильтры реально сужают выдачу.
+          var item = display.parentNode;
+          if (item && item.classList) {
+            if (sel.selectedIndex > 0) item.classList.add('filter-item-set');
+            else item.classList.remove('filter-item-set');
+          }
         }
       }
     }
