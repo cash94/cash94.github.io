@@ -45,6 +45,12 @@ var okHoldHandled = false;
 var okHoldFocused = null;
 var fastNavigation = false;
 var fastNavigationTimer = null;
+// Автоповтор от браузера: ставится в обработчиках keydown, читается
+// setFastNavigation. Признак того, что кнопку именно ДЕРЖАТ.
+var navKeyRepeat = false;
+var navStreak = 0;
+var navStreakAt = 0;
+var navStreakDir = null;
 var lastPopStateTime = 0;
 var isProcessingBack = false;
 var lastNavDirection = 'right';
@@ -167,10 +173,38 @@ function scheduleHideSeekOverlay() {
 }
 
 // ==================== УТИЛИТЫ ====================
-function setFastNavigation() {
-    fastNavigation = true;
+/**
+ * Быстрая навигация — это УДЕРЖАНИЕ кнопки (автоповтор), а не серия коротких
+ * нажатий. Раньше флаг взводился на любом втором шаге в пределах 200мс, поэтому
+ * при быстром «тык-тык» часть шагов уезжала с короткой длительностью, а часть с
+ * обычной — со стороны это выглядело как рвущаяся анимация.
+ *
+ * Основной признак — e.repeat от браузера. Он есть не везде (старые WebView на
+ * ТВ, часть пультов присылает независимые keydown), поэтому есть и запасной:
+ * устойчивая серия в одну сторону с шагом не больше FAST_NAV_GAP_MS. Порог
+ * специально злой — 8+ шагов в секунду подряд руками не натыкать, это уже
+ * только автоповтор.
+ */
+var FAST_NAV_GAP_MS = 120;
+var FAST_NAV_MIN_STREAK = 5;
+var FAST_NAV_IDLE_MS = 260;
+
+function setFastNavigation(direction) {
+    var now = Date.now();
+    var gap = now - navStreakAt;
+    navStreakAt = now;
+    if (gap <= FAST_NAV_GAP_MS && direction === navStreakDir) navStreak++;
+    else navStreak = 1;
+    navStreakDir = direction;
+
+    fastNavigation = navKeyRepeat || navStreak >= FAST_NAV_MIN_STREAK;
     if (fastNavigationTimer) clearTimeout(fastNavigationTimer);
-    fastNavigationTimer = setTimeout(function () { fastNavigation = false; }, 200);
+    fastNavigationTimer = setTimeout(function () {
+        fastNavigation = false;
+        navStreak = 0;
+        navStreakDir = null;
+        navKeyRepeat = false;
+    }, FAST_NAV_IDLE_MS);
 }
 
 function VISIBLE(el) { return !!(el && el.offsetParent !== null && !el.disabled); }
@@ -1405,7 +1439,7 @@ function focusSearchHome(preferQuery) {
 
 // ==================== НАВИГАЦИЯ ====================
 function navigate(direction) {
-    if (typeof setFastNavigation === 'function') setFastNavigation();
+    if (typeof setFastNavigation === 'function') setFastNavigation(direction);
     lastNavDirection = direction;
     var active = document.activeElement;
     if (active && active.id === 'search-query') {
@@ -1761,6 +1795,7 @@ function setupKeyboardHandlers() {
 
     document.addEventListener('keydown', function (e) {
         var k = e.keyCode, active = document.activeElement;
+        navKeyRepeat = !!e.repeat;       // держат кнопку или короткое нажатие
         var po = getEl('playback-overlay'); var isPA = po && po.classList.contains('active'); if (isPA) return;
         var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
         var skipBtn = getEl('skip-button'); if (k == 13 && skipBtn && !skipBtn.classList.contains('hidden') && skipBtn.classList.contains('focused')) { if (typeof window.executeSkip === 'function') { window.executeSkip(); return true; } }
@@ -1947,7 +1982,8 @@ function isElementFullyVisible(el, container) {
     var cr = container.getBoundingClientRect();
 
     // Определяем тип контейнта
-    var isH = (container.classList && container.classList.contains('catalog-row-viewport')) ||
+    var isRowVp = !!(container.classList && container.classList.contains('catalog-row-viewport'));
+    var isH = isRowVp ||
         container.id === 'files-list' ||
         container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
@@ -1958,18 +1994,60 @@ function isElementFullyVisible(el, container) {
         var hp = 45;  // горизонтальный отступ от краёв контейнера
         var vp = 65;  // вертикальный отступ от краёв экрана
 
-        var isHorizVisible = r.left >= cr.left + hp && r.right <= cr.right - hp;
-        var isVertVisible = r.top >= vp && r.bottom <= (window.innerHeight - vp);
+        // По позиции ПОКОЯ, а не по текущей: см. pendingScrollDelta
+        var dx = pendingScrollDeltaX(container);
+        var dy = pendingScrollDelta(isRowVp ? getEl('main-container') : getEl('detail-view'));
+
+        var isHorizVisible = (r.left - dx) >= cr.left + hp && (r.right - dx) <= cr.right - hp;
+        var isVertVisible = (r.top - dy) >= vp && (r.bottom - dy) <= (window.innerHeight - vp);
 
         return isHorizVisible && isVertVisible;
     }
 
     // Для вертикальных списков проверяем вертикальную видимость
-    return r.top >= cr.top + 35 && r.bottom <= cr.bottom - 35 &&
+    var dv = pendingScrollDelta(container);
+    return (r.top - dv) >= cr.top + 35 && (r.bottom - dv) <= cr.bottom - 35 &&
         r.left >= cr.left + 25 && r.right <= cr.right - 25;
 }
 
 // ==================== ГОРИЗОНТАЛЬНАЯ ПРОКРУТКА ====================
+
+/**
+ * Пока твин прокрутки в полёте, getBoundingClientRect отдаёт позицию «на
+ * полпути» — и проверки видимости врут. Именно из-за этого при быстрых коротких
+ * нажатиях анимация пропадала через шаг: очередное нажатие видело карточку уже
+ * «видимой» (её дотягивал предыдущий твин), прокрутку не запускало, страница
+ * замирала там, где её застали, а следующий шаг снова уезжал с анимацией.
+ *
+ * Поэтому запускаемые твины помечают свою цель, а решения принимаются по
+ * позиции ПОКОЯ: текущая минус то, что осталось дотянуть. Пометка живёт ровно
+ * длительность твина (+ небольшой запас на кадр).
+ */
+function markPendingScroll(el, key, value, duration) {
+    if (!el) return;
+    el[key] = value;
+    el[key + 'Until'] = Date.now() + Math.round(duration * 1000) + 50;
+}
+
+function clearPendingScroll(el, key) {
+    if (!el) return;
+    el[key] = null;
+    el[key + 'Until'] = 0;
+}
+
+/** Сколько ещё дотянет вертикальный твин (px, + вниз) */
+function pendingScrollDelta(el) {
+    if (!el || typeof el._navPendTop !== 'number') return 0;
+    if (Date.now() > el._navPendTopUntil) return 0;
+    return el._navPendTop - el.scrollTop;
+}
+
+/** То же по горизонтали, в координатах scrollLeft (у рядов — трансформация трека) */
+function pendingScrollDeltaX(container) {
+    if (!container || typeof container._navPendX !== 'number') return 0;
+    if (Date.now() > container._navPendXUntil) return 0;
+    return container._navPendX - getScrollX(container);
+}
 
 /**
  * Режим анимации горизонтальной прокрутки из ui-customizer: none | fast | smooth.
@@ -2067,6 +2145,7 @@ function getMaxScrollX(container) {
 /** Смещение без анимации (колесо мыши, фолбэк без gsap) */
 function setScrollXImmediate(container, left) {
     var track = getRowTrack(container);
+    clearPendingScroll(container, '_navPendX');
     if (!track) { container.scrollLeft = left; return; }
     setTrackX(track, -left);
 }
@@ -2082,6 +2161,8 @@ function setScrollX(container, left, smooth, duration) {
 
     var track = getRowTrack(container);
     if (!track) {
+        if (smooth && duration > 0) markPendingScroll(container, '_navPendX', left, duration);
+        else clearPendingScroll(container, '_navPendX');
         applyScroll(container, { scrollLeft: left }, smooth, duration);
         return;
     }
@@ -2090,6 +2171,7 @@ function setScrollX(container, left, smooth, duration) {
         return;
     }
     gsap.killTweensOf(track);
+    markPendingScroll(container, '_navPendX', left, duration);
     gsap.to(track, {
         x: -left,
         duration: duration,
@@ -2118,6 +2200,12 @@ function setScrollX(container, left, smooth, duration) {
  */
 function applyScroll(container, vars, smooth, duration) {
     if (!container || !vars) return;
+
+    var animated = smooth && typeof duration === 'number' && duration > 0;
+    if (typeof vars.scrollTop === 'number') {
+        if (animated) markPendingScroll(container, '_navPendTop', vars.scrollTop, duration);
+        else clearPendingScroll(container, '_navPendTop');
+    }
 
     if (typeof Animations !== 'undefined' && typeof Animations.tweenScroll === 'function') {
         Animations.tweenScroll(container, vars, {
@@ -2207,7 +2295,9 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
 
         var hp = 30;
 
-        var isHorizVisible = r.left >= cr.left + hp && r.right <= cr.right - hp;
+        // Позиция покоя: пока трек едет, живой rect показывал бы «уже видно»
+        var dx = pendingScrollDeltaX(con);
+        var isHorizVisible = (r.left - dx) >= cr.left + hp && (r.right - dx) <= cr.right - hp;
 
         if (!isHorizVisible) {
             // curLeft — смещение контейнера сейчас (у карусели это -x трека,
@@ -2223,7 +2313,11 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                 targetLeft = curLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
             }
             targetLeft = Math.max(0, Math.min(getMaxScrollX(con), targetLeft));
-            var needsHScroll = Math.abs(curLeft - targetLeft) > 10;
+            // Сравниваем с целью уже запущенного твина, а не с текущим
+            // положением: иначе тот же самый доводчик пересоздавал бы твин
+            // и прокрутка каждый раз начинала разгон заново
+            var fromLeft = dx ? curLeft + dx : curLeft;
+            var needsHScroll = Math.abs(fromLeft - targetLeft) > 10;
             if (needsHScroll) {
                 setScrollX(con, targetLeft, smooth,
                     fastNavigation ? SCROLL_SMOOTH.durationFastX : SCROLL_SMOOTH.durationX);
@@ -2233,20 +2327,22 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         // Вертикальный скролл (для рядов — main-container)
         var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
         var vertDur = fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY;
+        var dy = pendingScrollDelta(vertEl);        // сколько ещё дотянет твин
         // Первый ряд экрана — всегда самый верх страницы, а не «подтянуть на 50px»:
         // иначе под липкой шапкой остаётся полоска предыдущего скролла.
         if (vertEl && isRowViewport && isFirstRowViewport(container)) {
-            if (vertEl.scrollTop > 1) {
+            // Проверяем цель, а не текущую позицию: твин к нулю уже может идти,
+            // и повторный такой же твин только сбивал бы разгон
+            if (vertEl.scrollTop + dy > 1) {
                 applyScroll(vertEl, { scrollTop: 0 }, smooth, vertDur);
             }
             return;
         }
-        // Ряды-карусели: вертикаль отдаём общему Animations.scrollToIfNotVisible,
-        // как у всех остальных списков. Целимся в .catalog-row, а не в вьюпорт
-        // карусели, чтобы вместе с карточками в кадр попадал заголовок ряда.
-        // Горизонталь выше остаётся на setScrollX — там позиция живёт
-        // в трансформации трека, и scrollLeft писать нельзя.
-        if (vertEl && isRowViewport && typeof Animations !== 'undefined') {
+        // Ряды-карусели: вертикаль ведём сами (см. ниже), целясь в .catalog-row,
+        // а не в вьюпорт карусели, чтобы вместе с карточками в кадр попадал
+        // заголовок ряда. Горизонталь выше остаётся на setScrollX — там позиция
+        // живёт в трансформации трека, и scrollLeft писать нельзя.
+        if (vertEl && isRowViewport) {
             var rowEl = (container.closest && container.closest('.catalog-row')) || container;
 
             // Липкая шапка перекрывает верх контейнера, и ряд под ней формально
@@ -2258,20 +2354,25 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
 
             var rowRect = rowEl.getBoundingClientRect();
             var vertTop = vertEl.getBoundingClientRect().top;
-            if (rowRect.top < vertTop + topPad) {
+            if (rowRect.top - dy < vertTop + topPad) {
                 applyScroll(vertEl,
                     { scrollTop: Math.max(0, vertEl.scrollTop + (rowRect.top - vertTop) - topPad) },
                     smooth, vertDur);
                 return;
             }
 
-            Animations.scrollToIfNotVisible(rowEl, vertEl, {
-                direction: direction,
-                duration: smooth ? vertDur : 0,
-                ease: SCROLL_SMOOTH.ease,
-                offset: 50,
-                overwrite: true
-            });
+            // Ряд не влез снизу — подводим его сами, а не через
+            // Animations.scrollToIfNotVisible: тот смотрит на живой rect и
+            // посреди твина ответил бы «ряд уже виден», шаг проходил бы без
+            // прокрутки, и серия быстрых нажатий получалась рваной. Логика та
+            // же (нижний край + offset 50), только от позиции покоя.
+            var restBottom = rowRect.bottom - dy;
+            var viewBottom = vertTop + vertEl.clientHeight;
+            if (restBottom > viewBottom - 1) {
+                applyScroll(vertEl,
+                    { scrollTop: Math.max(0, vertEl.scrollTop + dy + (restBottom - viewBottom) + 50) },
+                    smooth, vertDur);
+            }
             return;
         }
         if (vertEl) {
@@ -2279,10 +2380,10 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             var vertRect = vertEl.getBoundingClientRect();
             var containerTopRelative = containerRect.top - vertRect.top + vertEl.scrollTop;
             var containerBottomRelative = containerTopRelative + containerRect.height;
-            var vertViewportTop = vertEl.scrollTop;
+            var vertViewportTop = vertEl.scrollTop + dy;    // куда встанет прокрутка
             var vertViewportBottom = vertViewportTop + vertRect.height;
             var needsVertScroll = false;
-            var targetScrollTop = vertEl.scrollTop;
+            var targetScrollTop = vertViewportTop;
 
             if (containerTopRelative < vertViewportTop + 50) {
                 targetScrollTop = (direction === 'up')
@@ -2321,6 +2422,25 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         if (typeof Animations !== 'undefined') Animations.scrollToIfNotVisible(el, container);
     }
     if (!scrollContainer) return;
+    var dyTail = pendingScrollDelta(scrollContainer);
+    if (dyTail) {
+        // Тот же расчёт, что в Animations.scrollToIfNotVisible, но от позиции
+        // покоя: живой rect посреди твина ответил бы «элемент уже виден», шаг
+        // проходил бы без прокрутки, и серия быстрых нажатий получалась рваной.
+        var er = el.getBoundingClientRect();
+        var viewTop = isWindow ? 0 : scrollContainer.getBoundingClientRect().top;
+        var viewBot = isWindow ? window.innerHeight : viewTop + scrollContainer.clientHeight;
+        var over = 0;
+        if (er.top - dyTail < viewTop + 10) over = (er.top - dyTail) - (viewTop + 10);
+        else if (er.bottom - dyTail > viewBot - 10) over = (er.bottom - dyTail) - (viewBot - 10);
+        if (over) {
+            var maxTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+            applyScroll(scrollContainer,
+                { scrollTop: Math.max(0, Math.min(maxTop, scrollContainer.scrollTop + dyTail + over)) },
+                smooth, fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
+        }
+        return;
+    }
     Animations.scrollToIfNotVisible(el, container, {
         direction: direction,
         duration: fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY,
@@ -2718,6 +2838,11 @@ function setupFocusRescue() {
             e.stopImmediatePropagation();
             var d = arrowDir(e.keyCode);
             if (isCustomFilterMenuOpen()) { if (d === 'up') moveCustomFilterMenu(-1); else if (d === 'down') moveCustomFilterMenu(1); return; }
+            // Ряды каталога и главной идут сюда, а не через navigate(), поэтому
+            // флаг быстрой навигации взводим здесь: на нём висит откладывание
+            // постеров в catalog.js (вставка карточки посреди твина = фриз).
+            navKeyRepeat = !!e.repeat;
+            setFastNavigation(d);
             var strategy = ScreenStrategies[s];
             if (strategy && strategy.handleNavigation) strategy.handleNavigation(d);
             return;

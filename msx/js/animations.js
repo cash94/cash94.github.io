@@ -910,9 +910,22 @@ var Animations = (function () {
 
         if (typeof gsap === 'undefined' || duration <= 0) {
             // Мгновенно: остальные свойства (тот же backgroundColor) без твана не нужны
-            if (typeof vars.scrollTop === 'number') container.scrollTop = vars.scrollTop;
+            if (typeof vars.scrollTop === 'number') {
+                container.scrollTop = vars.scrollTop;
+                container._navPendTop = null;
+                container._navPendTopUntil = 0;
+            }
             if (typeof vars.scrollLeft === 'number') container.scrollLeft = vars.scrollLeft;
             return;
+        }
+
+        // Помечаем цель твина: пока он в полёте, getBoundingClientRect отдаёт
+        // позицию «на полпути», и проверки видимости в control.js врут —
+        // быстрые короткие нажатия то запускали прокрутку, то нет. Читается
+        // через pendingScrollDelta (control.js).
+        if (typeof vars.scrollTop === 'number') {
+            container._navPendTop = vars.scrollTop;
+            container._navPendTopUntil = Date.now() + Math.round(duration * 1000) + 50;
         }
 
         gsap.killTweensOf(container);

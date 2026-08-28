@@ -673,6 +673,9 @@ var catalogState = {
     rowPosterQueue: [],
     rowPosterQueueTimer: null,      // отложенный прогон очереди (ждём конца навигации)
     activeRowPosterLoads: 0,
+    // Постер карточки под фокусом: ждёт конца твина карусели (ensureRowPosterNow)
+    focusPosterCard: null,
+    focusPosterTimer: null,
     // Оконная видимость (см. initRowVisibilityWindow / initGridVisibilityWindow)
     rowVisibilityObserver: null,
     gridVisibilityObserver: null
@@ -3202,14 +3205,47 @@ async function loadRowPoster(card, item) {
  *
  * Зовётся из revealCatalogElement, то есть из focusEl (control.js) — ровно там,
  * где с карточки уже снимается оконное погашение.
+ *
+ * Но не сразу: сначала фокус переезжает и докручивается карусель, и только потом
+ * вставляется картинка. Раньше загрузка стартовала здесь же, параллельно твину,
+ * и вставка (замена содержимого бокса 260×460 внутри анимируемого слоя) попадала
+ * ровно в середину анимации — те самые микрофризы на горизонтальной прокрутке.
+ * Ждём по тем же условиям, что и общая очередь: твин докрутился и кнопку не держат.
  */
 function ensureRowPosterNow(card) {
     if (!card || !card.classList || !card.classList.contains('catalog-row-card')) return;
     // Карточки главной тоже .catalog-row-card, но ключ у них свой (data-home-key)
     // и грузит их home.js — сюда они попадать не должны.
+    if (!card.dataset.catalogKey) return;
+    if (card.dataset.posterStarted === '1') return;      // загрузка уже идёт
+
+    // Одна карточка в ожидании: ушли дальше — прежнюю доберёт очередь, она из
+    // неё не вынималась. Ноль в задержке не для красоты: твин карусели запускает
+    // focusEl уже ПОСЛЕ этого вызова, и без отступа проверять было бы нечего.
+    catalogState.focusPosterCard = card;
+    scheduleFocusRowPoster(0);
+}
+
+function scheduleFocusRowPoster(delay) {
+    if (catalogState.focusPosterTimer) clearTimeout(catalogState.focusPosterTimer);
+    catalogState.focusPosterTimer = setTimeout(function () {
+        catalogState.focusPosterTimer = null;
+        var card = catalogState.focusPosterCard;
+        if (!card) return;
+        if (!card.isConnected) { catalogState.focusPosterCard = null; return; }
+        if (isRowScrollAnimating() || window.fastNavigation) {
+            scheduleFocusRowPoster(CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+            return;
+        }
+        catalogState.focusPosterCard = null;
+        loadFocusRowPoster(card);
+    }, delay);
+}
+
+function loadFocusRowPoster(card) {
+    if (card.dataset.posterStarted === '1') return;
     var key = card.dataset.catalogKey;
     if (!key) return;
-    if (card.dataset.posterStarted === '1') return;      // загрузка уже идёт
 
     var box = card.querySelector('.row-poster-img');
     if (!box || box.querySelector('img')) return;        // постер уже на месте
@@ -3274,6 +3310,11 @@ function initRowPosterLazyLoading() {
         clearTimeout(catalogState.rowPosterQueueTimer);
         catalogState.rowPosterQueueTimer = null;
     }
+    if (catalogState.focusPosterTimer) {
+        clearTimeout(catalogState.focusPosterTimer);
+        catalogState.focusPosterTimer = null;
+    }
+    catalogState.focusPosterCard = null;
 
     catalogState.rowPosterObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
