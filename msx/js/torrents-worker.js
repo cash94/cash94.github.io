@@ -7,8 +7,37 @@
 var TMDB_CACHE_TTL = 86400000; // 24 часа
 
 // ==================== КЭШИ ====================
+// Сообщение CLEAR_CACHES есть, но его никто не шлёт, а TTL проверяется только
+// при чтении — то есть протухшая запись висит в памяти, пока её не спросят
+// повторно. За долгий сеанс (десятки открытых раздач, у сериала ещё и список
+// серий на каждый сезон) в потоке воркера копились мегабайты. Поэтому держим
+// оба кэша ограниченными.
+var TMDB_CACHE_MAX = 60;
 var workerSeasonCache = {};
 var workerTmdbDetailsCache = {};
+
+/** Положить в кэш и подрезать: сначала протухшее, потом самое старое */
+function cachePut(store, key, value) {
+    store[key] = { d: value, t: Date.now() };
+
+    var keys = Object.keys(store);
+    if (keys.length <= TMDB_CACHE_MAX) return;
+
+    var now = Date.now();
+    for (var i = 0; i < keys.length; i++) {
+        if (now - store[keys[i]].t >= TMDB_CACHE_TTL) delete store[keys[i]];
+    }
+
+    keys = Object.keys(store);
+    while (keys.length > TMDB_CACHE_MAX) {
+        var oldest = keys[0];
+        for (var j = 1; j < keys.length; j++) {
+            if (store[keys[j]].t < store[oldest].t) oldest = keys[j];
+        }
+        delete store[oldest];
+        keys = Object.keys(store);
+    }
+}
 
 // ==================== УТИЛИТЫ ====================
 function formatBytes(bytes) {
@@ -283,7 +312,7 @@ function workerLoadSeasonStills(tmdbId, seasonNumber) {
     return workerSafeFetch('/api/tmdb/season?id=' + tmdbId + '&seasonNumber=' + seasonNumber)
         .then(function (data) {
             var eps = (data && data.episodes) || [];
-            workerSeasonCache[key] = { d: eps, t: Date.now() };
+            cachePut(workerSeasonCache, key, eps);
             return eps;
         });
 }
@@ -297,7 +326,7 @@ function workerLoadMovieStill(tmdbId) {
     return workerSafeFetch('/api/tmdb/details?id=' + tmdbId + '&type=movie')
         .then(function (data) {
             var pp = (data && data.poster_path) || null;
-            workerSeasonCache[key] = { d: pp, t: Date.now() };
+            cachePut(workerSeasonCache, key, pp);
             return pp;
         });
 }
@@ -311,7 +340,7 @@ function workerGetTmdbDetails(tmdbId, mediaType) {
 
     return workerSafeFetch('/api/tmdb/details?id=' + tmdbId + '&type=' + mediaType)
         .then(function (data) {
-            if (data) workerTmdbDetailsCache[key] = { d: data, t: Date.now() };
+            if (data) cachePut(workerTmdbDetailsCache, key, data);
             return data || null;
         });
 }
