@@ -86,91 +86,75 @@ var _rowsCache = { gen: -1, rows: null };
 // на случай мутации DOM, которая забыла позвать invalidateFocusCache().
 var CATALOG_FOCUS_CACHE_TTL = 1500; // мс
 
-// ==================== OVERLAY ПЕРЕМОТКИ ====================
-var seekOverlay = null;
+// ==================== ИНДИКАТОР ПЕРЕМОТКИ ====================
+/**
+ * Крупное время под курсором перемотки. Живёт в готовом #seek-speed-indicator
+ * внутри #player-screen — раньше control.js создавал свой div и вешал его в
+ * <body>, из-за чего в полноэкранном режиме индикатора не было видно вообще
+ * (браузер рисует только полноэкранный элемент и его потомков), а оформление
+ * было прибито инлайном мимо styles.css.
+ *
+ * Кроме времени показываем текущий шаг ускорения: при удержании кнопки он
+ * растёт с 5 до 120 секунд, и без подсказки непонятно, почему полоса вдруг
+ * поехала быстрее. Раньше шаг только писался в консоль.
+ */
+var seekIndicatorEl = null;
+var seekIndicatorTimeEl = null;
+var seekIndicatorDirEl = null;
+var seekIndicatorStepEl = null;
 var seekOverlayTimeout = null;
 
-function createSeekOverlay() {
-    if (seekOverlay) return seekOverlay;
-
-    seekOverlay = document.createElement('div');
-    seekOverlay.id = 'seek-overlay';
-    seekOverlay.style.cssText = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 50vw;
-        height: 50vh;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        border-radius: 20px;
-        font-size: 72px;
-        font-weight: bold;
-        font-family: monospace;
-        z-index: 10000;
-        pointer-events: none;
-        opacity: 0;
-        transition: opacity 0.2s ease;
-        text-align: center;
-    `;
-    seekOverlay.innerHTML = `
-        <div id="seek-time" style="font-size: 96px; line-height: 1; margin-bottom: 10px;">00:00</div>
-        <div id="seek-direction" style="font-size: 24px; opacity: 0.8;">Перемотка</div>
-    `;
-    document.body.appendChild(seekOverlay);
-    return seekOverlay;
+function getSeekIndicator() {
+    if (seekIndicatorEl && seekIndicatorEl.parentNode) return seekIndicatorEl;
+    seekIndicatorEl = getEl('seek-speed-indicator');
+    if (!seekIndicatorEl) return null;
+    if (!seekIndicatorEl.firstChild) {
+        seekIndicatorEl.innerHTML =
+            '<div class="seek-indicator-time" id="seek-time">00:00</div>' +
+            '<div class="seek-indicator-step">' +
+            '<span class="seek-indicator-dir" id="seek-direction"></span>' +
+            '<span class="seek-indicator-speed" id="seek-step"></span>' +
+            '</div>';
+    }
+    seekIndicatorTimeEl = seekIndicatorEl.querySelector('#seek-time');
+    seekIndicatorDirEl = seekIndicatorEl.querySelector('#seek-direction');
+    seekIndicatorStepEl = seekIndicatorEl.querySelector('#seek-step');
+    return seekIndicatorEl;
 }
 
-function showSeekOverlay(time, direction) {
-    var overlay = createSeekOverlay();
-    var timeEl = overlay.querySelector('#seek-time');
-    var dirEl = overlay.querySelector('#seek-direction');
+/**
+ * @param {number} time  абсолютное время, к которому едем
+ * @param {number} direction  +1 вперёд, -1 назад
+ * @param {number} [step]  шаг ускорения в секундах (только удержание кнопки)
+ */
+function showSeekOverlay(time, direction, step) {
+    var el = getSeekIndicator();
+    if (!el) return;
 
-    if (timeEl) {
-        timeEl.textContent = formatTime(time);
-    }
+    if (seekIndicatorTimeEl) seekIndicatorTimeEl.textContent = formatTime(time);
+    if (seekIndicatorDirEl) seekIndicatorDirEl.textContent = direction > 0 ? '\u25b6\u25b6' : '\u25c0\u25c0';
+    if (seekIndicatorStepEl) seekIndicatorStepEl.textContent = step ? (step + ' сек') : '';
 
-    if (dirEl) {
-        if (direction > 0) {
-            dirEl.textContent = 'Вперёд';
-            dirEl.style.color = '#4caf50';
-        } else {
-            dirEl.textContent = 'Назад';
-            dirEl.style.color = '#ff9800';
-        }
-    }
-
-    overlay.style.opacity = '1';
-
-    // Сбрасываем таймер скрытия
-    if (seekOverlayTimeout) {
-        clearTimeout(seekOverlayTimeout);
-    }
+    el.classList.remove('hidden');
+    el.classList.add('visible');
+    if (seekOverlayTimeout) { clearTimeout(seekOverlayTimeout); seekOverlayTimeout = null; }
 }
 
 function hideSeekOverlay() {
-    if (seekOverlay) {
-        seekOverlay.style.opacity = '0';
-    }
-    if (seekOverlayTimeout) {
-        clearTimeout(seekOverlayTimeout);
-        seekOverlayTimeout = null;
-    }
+    if (seekIndicatorEl) seekIndicatorEl.classList.remove('visible');
+    if (seekOverlayTimeout) { clearTimeout(seekOverlayTimeout); seekOverlayTimeout = null; }
 }
 
-// Скрываем оверлей с задержкой после окончания перемотки
+// Скрываем индикатор с задержкой после окончания перемотки
 function scheduleHideSeekOverlay() {
-    if (seekOverlayTimeout) {
-        clearTimeout(seekOverlayTimeout);
-    }
+    if (seekOverlayTimeout) clearTimeout(seekOverlayTimeout);
     seekOverlayTimeout = setTimeout(function () {
         hideSeekOverlay();
-    }, 800); // Скрываем через 800мс после последнего обновления
+    }, 800); // через 800мс после последнего обновления
 }
+
+// В window их кладёт initControl() в конце файла — оттуда их берут app.js
+// (перетаскивание ползунка мышью) и player.js (выход из плеера)
 
 // ==================== УТИЛИТЫ ====================
 /**
@@ -1770,7 +1754,7 @@ function setupKeyboardHandlers() {
                 clearInterval(seekHoldInterval);
                 seekHoldInterval = null;
 
-                if (typeof accelerationTimer !== 'undefined' && accelerationTimer) {
+                if (accelerationTimer) {
                     clearInterval(accelerationTimer);
                     accelerationTimer = null;
                 }
@@ -1862,87 +1846,64 @@ function setupKeyboardHandlers() {
                 var fe = focusableElements[currentFocusIndex];
                 if (fe && fe.id === 'seek-slider') {
                     var s = getEl('seek-slider');
+                    var loadingOverlay = getEl('loading-player-overlay');
+                    var loadingTimeEl = getEl('loading-time');
+                    var currentTimeEl = getEl('current-time');
                     var dir = isKeyPressed('LEFT', k) ? -1 : 1;
-                    var hd = 0;
                     var cs = seekHoldStep;
-                    var ms = 120;
-                    var ac = [
-                        { t: 0, s: 5 },
-                        { t: 500, s: 10 },
-                        { t: 1000, s: 20 },
-                        { t: 1500, s: 30 },
-                        { t: 2000, s: 45 },
-                        { t: 2500, s: 60 },
-                        { t: 3000, s: 90 },
-                        { t: 4000, s: 120 }
-                    ];
                     var lu = Date.now();
-                    var at = null;
 
-                    // Функция обновления шага
+                    // Шаг ускорения — из общей таблицы SEEK_ACCELERATION_STEPS
+                    // наверху файла. Раньше рядом лежала её вторая, дословная
+                    // копия, и таблица-константа не использовалась вообще.
                     var us = function () {
-                        var el = Date.now() - lu;
+                        var elapsed = Date.now() - lu;
                         var ns = seekHoldStep;
-                        for (var i = ac.length - 1; i >= 0; i--) {
-                            if (el >= ac[i].t) {
-                                ns = ac[i].s;
+                        for (var i = SEEK_ACCELERATION_STEPS.length - 1; i >= 0; i--) {
+                            if (elapsed >= SEEK_ACCELERATION_STEPS[i].time) {
+                                ns = SEEK_ACCELERATION_STEPS[i].step;
                                 break;
                             }
                         }
-                        if (ns !== cs) {
-                            cs = ns;
-                            console.log('⚡ Ускорение перемотки: ' + cs + ' сек');
-                        }
+                        cs = ns;
                     };
 
-                    // Функция перемотки с показом оверлея
+                    // Шаг перемотки: двигаем ползунок и показываем индикатор.
+                    // Реальный seek уходит один раз на keyup — событием change.
                     var ps = function () {
-                        var cv = parseFloat(s.value);
+                        var nv = parseFloat(s.value) + cs * dir;
                         var mx = parseFloat(s.max);
-                        var st = cs * dir;
-                        var nv = cv + st;
 
                         if (nv < 0) nv = 0;
                         if (nv > mx) nv = mx;
 
                         s.value = nv;
 
-                        if (typeof AppState !== 'undefined') {
-                            AppState.previewTime = nv;
+                        if (typeof AppState !== 'undefined') AppState.previewTime = nv;
+                        if (currentTimeEl) currentTimeEl.textContent = formatTime(nv);
+                        if (loadingTimeEl && (AppState.isSeeking ||
+                            (loadingOverlay && loadingOverlay.classList.contains('active')))) {
+                            loadingTimeEl.textContent = formatTime(nv);
                         }
 
-                        var ct = getEl('current-time');
-                        if (ct) ct.textContent = formatTime(nv);
-
-                        if (AppState.isSeeking || getEl('loading-player-overlay').classList.contains('active')) {
-                            var lt = getEl('loading-time');
-                            if (lt) lt.textContent = formatTime(nv);
-                        }
-
-                        // ПОКАЗЫВАЕМ ОВЕРЛЕЙ С ТЕКУЩИМ ВРЕМЕНЕМ
-                        showSeekOverlay(nv, dir);
+                        showSeekOverlay(nv, dir, cs);
                     };
 
                     if (!seekHoldInterval) {
                         isSeekHoldActive = true;
-                        hd = 0;
                         cs = seekHoldStep;
                         lu = Date.now();
 
-                        // Первая перемотка
                         ps();
-
-                        // Интервал перемотки
                         seekHoldInterval = setInterval(ps, seekHoldDelay);
 
-                        // Интервал обновления скорости
-                        at = setInterval(function () {
-                            if (seekHoldInterval) {
-                                us();
-                            } else if (at) {
-                                clearInterval(at);
-                                at = null;
-                            }
+                        // accelerationTimer — модульная переменная: keyup гасит
+                        // именно её. Раньше таймер держала локальная at, и на
+                        // отпускании кнопки он крутился ещё до своего же тика.
+                        if (accelerationTimer) clearInterval(accelerationTimer);
+                        accelerationTimer = setInterval(function () {
+                            if (seekHoldInterval) us();
+                            else { clearInterval(accelerationTimer); accelerationTimer = null; }
                         }, 200);
                     }
                     return;
