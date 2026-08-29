@@ -1707,6 +1707,17 @@ function onBack() {
             return true;
         }
     }
+    // Настройщик внешнего вида (ui-customizer.js) лежит поверх любого экрана и
+    // гасит клавиши сам. Но если его код кнопки «назад» не совпал с нашим, мы
+    // окажемся здесь при ОТКРЫТОЙ панели и уведём фокус за неё — на экране
+    // ничего не изменится, и выйти будет нельзя. Проверяем до всех экранов:
+    // пока панель открыта, «назад» закрывает её и ничего больше.
+    if (window.UICustomizer && typeof UICustomizer.isOpen === 'function' &&
+        UICustomizer.isOpen() && typeof UICustomizer.close === 'function') {
+        UICustomizer.close();
+        return true;
+    }
+
     if (configScreen && _isScreenVisible(configScreen)) {
         var focusedElement = document.querySelector('.focused');
         var menuItems = getConfigMenuItems();

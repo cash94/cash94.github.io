@@ -870,9 +870,25 @@
         var overlay = document.getElementById('ui-customizer-overlay');
         if (overlay) overlay.classList.add('hidden');
         document.body.style.overflow = previousBodyOverflow;
-        // Восстанавливаем фокус приложения
+        // Восстанавливаем фокус приложения на ТОМ экране, откуда панель открыли.
+        // Раньше здесь был только каталог, а входят в панель как раз из настроек
+        // (кнопка «Настроить внешний вид» в разделе «Внешний вид»).
+        //
+        // Панель своя навигация ведёт классом ui-focused и .focused приложения не
+        // трогает, поэтому чаще всего фокус никуда и не девался — он так и стоит
+        // на кнопке, которой панель открыли. Тогда не вмешиваемся: forced
+        // ensureFocus на экране настроек сбрасывает configState к первой вкладке
+        // (ветка !configState.initialized), и человек, закрыв панель, оказывался
+        // в «TorrServer» вместо «Внешнего вида».
         try {
-            if (typeof window.ensureCatalogFocus === 'function' && window.AppState && AppState.currentScreen === 'catalog') {
+            var keep = document.querySelector('.focused');
+            if (keep && keep.offsetParent !== null) return;
+
+            var scr = (window.AppState && AppState.currentScreen) || null;
+            if (scr && window.ScreenStrategies && ScreenStrategies[scr] &&
+                typeof ScreenStrategies[scr].ensureFocus === 'function') {
+                ScreenStrategies[scr].ensureFocus(true);
+            } else if (typeof window.ensureCatalogFocus === 'function' && scr === 'catalog') {
                 window.ensureCatalogFocus(true);
             }
         } catch (e) { }
@@ -1083,10 +1099,52 @@
     // Регистрируется на window (capture), поэтому срабатывает РАНЬШЕ
     // обработчика control.js на document (capture) и может «съесть» событие.
 
+    // Коды кнопок пульта здесь были выписаны отдельным списком, и он разошёлся
+    // с общей платформенной картой в config.js (getKeyMap / isKeyPressed):
+    //
+    //   BACK в config.js — [4, 8, 27, 461, 111, 10009, 10014]
+    //   BACK_KEYS здесь   — [4, 8, 27, 461, 111, 10009]        ← нет 10014
+    //
+    // На телевизоре, чей пульт шлёт «назад» кодом 10014, панель этот код не
+    // узнавала и не гасила событие. Дальше оно доходило до общего обработчика
+    // в control.js — тот 10014 знает (isBackKey зовёт isKeyPressed) и уводил
+    // фокус ЗА открытой панелью, в меню настроек. Со стороны: панель открыта,
+    // «назад» не делает ничего, выйти нельзя. По той же причине не работали
+    // стрелки (нет 19/20/21/22 и 10010–10012) и OK (нет 23, 10013, 10020).
+    //
+    // Теперь коды спрашиваем у config.js, а списки ниже остаются запасными на
+    // случай, если config.js не загрузился.
     var ARROW = { 37: 'left', 38: 'up', 39: 'right', 40: 'down' };
-    var BACK_KEYS = [4, 8, 27, 461, 111, 10009];
+    var BACK_KEYS = [4, 8, 27, 461, 111, 10009, 10014];
+    var OK_KEYS = [13, 23, 10013, 10020];
     var OPEN_KEYS = [405, 67]; // «жёлтая» кнопка пульта и клавиша C
     var OPEN_SCREENS = ['home', 'catalog', 'torrents', 'search', 'detail', 'config'];
+
+    function keyIs(name, kc, fallback) {
+        if (typeof isKeyPressed === 'function' && isKeyPressed(name, kc)) return true;
+        return fallback.indexOf(kc) !== -1;
+    }
+
+    function isBackKeyCode(kc) { return keyIs('BACK', kc, BACK_KEYS); }
+    function isOkKeyCode(kc) { return keyIs('OK', kc, OK_KEYS); }
+
+    /**
+     * Направление стрелки или null.
+     *
+     * Спрашивать надо ПОСЛЕ «назад»: код 10009 в карте config.js значится и как
+     * LEFT, и как BACK, а во всём проекте он трактуется как «назад» — в
+     * control.js проверка isBackKey стоит раньше isArrowKey. Здесь тот же
+     * порядок, поэтому поведение этого кода не меняется.
+     */
+    function arrowDirCode(kc) {
+        if (ARROW[kc]) return ARROW[kc];
+        if (typeof isKeyPressed !== 'function') return null;
+        if (isKeyPressed('UP', kc)) return 'up';
+        if (isKeyPressed('DOWN', kc)) return 'down';
+        if (isKeyPressed('LEFT', kc)) return 'left';
+        if (isKeyPressed('RIGHT', kc)) return 'right';
+        return null;
+    }
 
     function isEditing() {
         var a = document.activeElement;
@@ -1102,25 +1160,26 @@
 
         // --- Панель открыта: полностью перехватываем навигацию ---
         if (isOpen()) {
-            if (ARROW[kc]) {
+            // «Назад» проверяем ПЕРВЫМ — см. комментарий к arrowDirCode
+            if (isBackKeyCode(kc)) {
                 e.preventDefault(); e.stopImmediatePropagation();
-                var dir = ARROW[kc];
+                closeCustomizer();
+                return;
+            }
+            if (isOkKeyCode(kc)) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                activateFocused();
+                return;
+            }
+            var dir = arrowDirCode(kc);
+            if (dir) {
+                e.preventDefault(); e.stopImmediatePropagation();
                 // На ползунке влево/вправо меняет значение, вверх/вниз уходит с него
                 if (focusedEl && focusedEl.classList.contains('ui-slider') && (dir === 'left' || dir === 'right')) {
                     nudgeSlider(focusedEl, dir === 'right' ? 1 : -1);
                 } else {
                     moveFocus(dir);
                 }
-                return;
-            }
-            if (kc === 13) { // OK
-                e.preventDefault(); e.stopImmediatePropagation();
-                activateFocused();
-                return;
-            }
-            if (BACK_KEYS.indexOf(kc) !== -1) {
-                e.preventDefault(); e.stopImmediatePropagation();
-                closeCustomizer();
                 return;
             }
             return;
