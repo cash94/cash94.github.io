@@ -122,7 +122,7 @@
     function getPageSize() {
         return (window.CATALOG_CONSTANTS && CATALOG_CONSTANTS.ITEMS_PER_PAGE) ||
             (window.catalogState && catalogState.itemsPerPage) ||
-            150;
+            50;
     }
 
     if (!window.__catalogIdbMeta) {
@@ -152,12 +152,19 @@
      * Полная запись — до CATALOG_FULL_LIMIT элементов плюс словарь loadedItemIds
      * на столько же ключей, и всё это раскладывается structured clone'ом в
      * ГЛАВНОМ потоке ровно в момент перехода в категорию. При этом на экран
-     * попадает одна страница. Берём две (запас на первую прокрутку), остальное
+     * попадает одна страница. Берём с запасом на несколько прокруток, остальное
      * дотягиваем только если человек действительно долистает — до конца тысячи
      * доходят единицы.
+     *
+     * Число намеренно НЕ привязано к размеру страницы: с ITEMS_PER_PAGE = 50
+     * привязка «две страницы» давала бы take = 100, и уже на третьей догрузке
+     * пришлось бы тянуть весь каталог целиком — ровно та пересылка, которой
+     * take и избегает.
      */
+    var CATALOG_INITIAL_TAKE = 300;
+
     function getInitialTake() {
-        return getPageSize() * 2;
+        return CATALOG_INITIAL_TAKE;
     }
 
     /**
