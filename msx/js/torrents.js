@@ -2931,7 +2931,17 @@ function hideSearchResults() {
         }
     } else if (returnTo === 'catalog') {
         if (catalogTab) catalogTab.classList.add('active'); torrentsTab.classList.remove('active'); AppState.currentScreen = 'catalog';
-        setTimeout(function () { if (typeof window.focusCatalogCardByIndex === 'function') { var savedIndex = localStorage.getItem('lastCatalogCardIndex'); window.focusCatalogCardByIndex(parseInt(savedIndex || 0)); } else if (typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard(); }, 80);
+        setTimeout(function () {
+            // focusCatalogCardByIndex работает только по сетке категории и
+            // возвращает false, если карточек нет (открыты ряды-карусели) —
+            // тогда фокус ставит стратегия экрана
+            var done = false;
+            if (typeof window.focusCatalogCardByIndex === 'function') {
+                var savedIndex = localStorage.getItem('lastCatalogCardIndex');
+                done = window.focusCatalogCardByIndex(parseInt(savedIndex || 0, 10));
+            }
+            if (!done && typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+        }, 80);
     } else if (returnTo === 'home' && window.HomeScreen) {
         // Пришли в поиск с главной — туда и возвращаемся. Ни одна вкладка не
         // активна: на главной навигация своя, а обработчики вкладок проверяют
