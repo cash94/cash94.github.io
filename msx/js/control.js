@@ -2355,6 +2355,19 @@ function isFirstRowViewport(viewport) {
     return false;
 }
 
+/**
+ * Карточка ряда-карусели каталога (#catalog-rows).
+ *
+ * Карточки главной тоже .catalog-row-card, но у них свой ключ (data-home-key)
+ * и класс .home-card, а раскладкой рядов на главной заведует home.js — её
+ * прокрутку трогать нельзя.
+ */
+function isCatalogRowCard(el) {
+    if (!el || !el.classList || !el.classList.contains('catalog-row-card')) return false;
+    if (el.classList.contains('home-card')) return false;
+    return !!(el.dataset && el.dataset.catalogKey);
+}
+
 /** Карточка сетки категории каталога (#catalog-grid), а не ряда-карусели */
 function isCatalogGridCard(el) {
     if (!el || !el.classList) return false;
@@ -2439,6 +2452,62 @@ function scrollCatalogGridCardIntoView(el, scrollContainer, smooth) {
 
     applyScroll(scrollContainer, { scrollTop: target }, smooth,
         fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
+}
+
+// Зазор под сфокусированным рядом. 50px — столько же оставляла прежняя ветка
+// «ряд не влез снизу», чтобы движение вниз на ощупь не изменилось.
+var CATALOG_ROW_BOTTOM_PAD = 50;
+
+/**
+ * Ряды-карусели каталога: ряд под фокусом всегда прижат к НИЖНЕЙ границе —
+ * ровно как строка в сетке категории (scrollCatalogGridCardIntoView).
+ *
+ * Прежняя логика была той же несимметричной парой, что и в сетке:
+ *   • ряд ушёл под липкую шапку — подтянуть его ВЕРХ под неё;
+ *   • ряд не влез снизу — подтянуть его НИЗ к краю экрана;
+ *   • а если ряд целиком виден, focusEl прокрутку вообще не звал.
+ * Поэтому вниз ряд честно стоял у нижнего края, а вверх фокус сперва шагал по
+ * видимым рядам, никуда не прокручивая, потом одним рывком прыгал под шапку.
+ *
+ * Целимся в .catalog-row, а не во вьюпорт карусели: вместе с карточками в кадр
+ * должен попадать заголовок ряда. Горизонталь остаётся выше на setScrollX — там
+ * позиция живёт в трансформации трека, и scrollLeft писать нельзя.
+ *
+ * @param {number} dy остаток текущего твина (pendingScrollDelta): считаем от
+ *                    позиции ПОКОЯ, иначе серия быстрых нажатий рвётся
+ */
+function scrollCatalogRowIntoView(viewport, vertEl, dy, smooth, duration) {
+    var rowEl = (viewport.closest && viewport.closest('.catalog-row')) || viewport;
+
+    // Липкая шапка перекрывает верх контейнера, и ряд под ней формально «виден»,
+    // но не читается. Ниже она задаёт предел, дальше которого ряд не уводим.
+    var topPad = 0;
+    var topbar = getEl('home-topbar');
+    if (topbar && topbar.offsetParent !== null) topPad = topbar.offsetHeight + 10;
+
+    var restTop = vertEl.scrollTop + dy;
+    var vertTop = vertEl.getBoundingClientRect().top;
+    var rowRect = rowEl.getBoundingClientRect();
+
+    // Границы ряда в координатах прокручиваемого содержимого, от позиции покоя
+    var rowTop = restTop + (rowRect.top - dy) - vertTop;
+    var rowBottom = restTop + (rowRect.bottom - dy) - vertTop;
+
+    var target = rowBottom - vertEl.clientHeight + CATALOG_ROW_BOTTOM_PAD;
+
+    // Но не настолько, чтобы заголовок ряда уехал под липкую шапку. Сработает
+    // только на ряде выше видимой области или на ряде, который сам по себе
+    // выше свободной высоты экрана.
+    target = Math.min(target, rowTop - topPad);
+
+    var maxTop = Math.max(0, vertEl.scrollHeight - vertEl.clientHeight);
+    target = Math.max(0, Math.min(maxTop, target));
+
+    // Уже там (движение влево/вправо внутри ряда, упор в край списка) —
+    // не пересоздаём твин, иначе прокрутка каждый раз начинает разгон заново
+    if (Math.abs(restTop - target) < 2) return;
+
+    applyScroll(vertEl, { scrollTop: target }, smooth, duration);
 }
 
 /**
@@ -2534,36 +2603,9 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         // заголовок ряда. Горизонталь выше остаётся на setScrollX — там позиция
         // живёт в трансформации трека, и scrollLeft писать нельзя.
         if (vertEl && isRowViewport) {
-            var rowEl = (container.closest && container.closest('.catalog-row')) || container;
-
-            // Липкая шапка перекрывает верх контейнера, и ряд под ней формально
-            // «виден» — scrollToIfNotVisible такой случай не поймает. Поэтому
-            // верхней границей считаем нижний край шапки и подводим ряд сами.
-            var topPad = 0;
-            var topbar = getEl('home-topbar');
-            if (topbar && topbar.offsetParent !== null) topPad = topbar.offsetHeight + 10;
-
-            var rowRect = rowEl.getBoundingClientRect();
-            var vertTop = vertEl.getBoundingClientRect().top;
-            if (rowRect.top - dy < vertTop + topPad) {
-                applyScroll(vertEl,
-                    { scrollTop: Math.max(0, vertEl.scrollTop + (rowRect.top - vertTop) - topPad) },
-                    smooth, vertDur);
-                return;
-            }
-
-            // Ряд не влез снизу — подводим его сами, а не через
-            // Animations.scrollToIfNotVisible: тот смотрит на живой rect и
-            // посреди твина ответил бы «ряд уже виден», шаг проходил бы без
-            // прокрутки, и серия быстрых нажатий получалась рваной. Логика та
-            // же (нижний край + offset 50), только от позиции покоя.
-            var restBottom = rowRect.bottom - dy;
-            var viewBottom = vertTop + vertEl.clientHeight;
-            if (restBottom > viewBottom - 1) {
-                applyScroll(vertEl,
-                    { scrollTop: Math.max(0, vertEl.scrollTop + dy + (restBottom - viewBottom) + 50) },
-                    smooth, vertDur);
-            }
+            // Одна цель на оба направления: ряд у нижней границы
+            // (см. scrollCatalogRowIntoView)
+            scrollCatalogRowIntoView(container, vertEl, dy, smooth, vertDur);
             return;
         }
         if (vertEl) {
@@ -2759,13 +2801,15 @@ function focusEl(el, opts) {
     // isTopAnchoredTarget — фокус в шапке или в первой строке экрана: страницу
     // надо вернуть в ноль даже если элемент уже целиком виден.
     //
-    // isCatalogGridCard — там позиция строки задана жёстко (у нижней границы),
-    // поэтому проверка видимости не годится: пока фокус идёт вверх по уже
-    // видимым строкам, она возвращала «прокрутка не нужна», страница стояла на
-    // месте, и строка уезжала от нижнего края к верхнему. Решение принимает
-    // сама scrollCatalogGridCardIntoView — если двигаться некуда, она выйдет.
+    // isCatalogGridCard / isCatalogRowCard — там позиция строки задана жёстко
+    // (у нижней границы), поэтому проверка видимости не годится: пока фокус
+    // идёт вверх по уже видимым строкам, она возвращала «прокрутка не нужна»,
+    // страница стояла на месте, и строка уезжала от нижнего края к верхнему.
+    // Решение принимают сами scrollCatalogGridCardIntoView /
+    // scrollCatalogRowIntoView — если двигаться некуда, они выходят.
     if (container && !isElementFullyVisible(el, container) || el.id === 'back-from-detail' ||
-        el.id === 'catalog-watch-btn' || isTopAnchoredTarget(el) || isCatalogGridCard(el)) {
+        el.id === 'catalog-watch-btn' || isTopAnchoredTarget(el) ||
+        isCatalogGridCard(el) || isCatalogRowCard(el)) {
         scrollToElementIfNeeded(
             el,
             container,
