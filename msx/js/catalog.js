@@ -4030,15 +4030,41 @@ window.checkAndLoadMoreOnNavigation = function () {
     }
 };
 
+/**
+ * Ставит фокус на карточку сетки по её num_index (его пишет onCatalogItemClick
+ * в localStorage.lastCatalogCardIndex).
+ *
+ * Раньше функция считала индекс и просто возвращала его, никого не фокусируя —
+ * при том, что зовут её именно ради фокуса (torrents.js, возврат в каталог из
+ * поиска / деталей) и возвращённое значение там отбрасывают. Поэтому по этому
+ * маршруту фокус в каталог не возвращался вовсе.
+ *
+ * @returns {boolean} удалось ли сфокусировать карточку
+ */
 window.focusCatalogCardByIndex = function (target) {
-    if (AppState.currentScreen !== 'catalog') return 0;
-    if (typeof updateFocusableElements === 'function') updateFocusableElements();
-    var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card'), idx = 0;
-    for (var i = 0; i < cards.length; i++) {
-        if (cards[i].dataset.numIndex && parseInt(cards[i].dataset.numIndex) === target) { idx = i; break; }
+    if (AppState.currentScreen !== 'catalog') return false;
+
+    var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
+    if (!cards.length) return false;
+
+    var idx = -1;
+    if (!isNaN(target)) {
+        for (var i = 0; i < cards.length; i++) {
+            if (cards[i].dataset.numIndex && parseInt(cards[i].dataset.numIndex, 10) === target) { idx = i; break; }
+        }
+        // num_index не совпал ни с одной карточкой — пробуем как порядковый номер
+        if (idx === -1 && target >= 0 && target < cards.length) idx = target;
     }
-    if (idx === 0 && target < cards.length) idx = target;
-    return idx;
+    if (idx === -1) idx = 0;
+
+    var card = cards[idx];
+    if (!card || card.offsetParent === null) return false;
+
+    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+    var gi = (typeof focusableElements !== 'undefined') ? focusableElements.indexOf(card) : -1;
+    if (gi !== -1 && typeof setFocus === 'function') { setFocus(gi); return true; }
+    if (typeof focusEl === 'function') { focusEl(card); return true; }
+    return false;
 };
 
 window.addToWatchHistory = async function (id, title, mt, pp) {
