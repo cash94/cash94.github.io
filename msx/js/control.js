@@ -2591,12 +2591,29 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             if (needsVertScroll) {
                 targetScrollTop = Math.max(0, Math.min(targetScrollTop, vertEl.scrollHeight - vertRect.height));
 
-                var tweenVars = { scrollTop: targetScrollTop };
-                // Фон detail-view возвращаем к чёрному тем же тваном, как было раньше
-                if (vertEl.id === 'detail-view') tweenVars.backgroundColor = 'rgb(0, 0, 0)';
-
-                applyScroll(vertEl, tweenVars, smooth,
-                    fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
+                // Сравниваем с позицией покоя — тот же приём, что у горизонтали
+                // выше (needsHScroll), которого здесь не было.
+                //
+                // Смещения 30px для direction 'up'/'down' лежат ВНУТРИ порога в
+                // 50px, который эту ветку и запускает: докрутив контейнер до
+                // цели, условие остаётся истинным, и следующее нажатие снова
+                // заводит твин к той же самой точке. Прокрутка при этом никуда
+                // не едет, но каждый раз идёт killTweensOf + новый твин — и
+                // вниз это заметнее, чем вверх, потому что вниз фокус идёт по
+                // рядам актёров и похожих (они сюда и попадают), а вверх
+                // выходит к кнопкам панели, у которых путь другой и который
+                // при видимом элементе не запускает прокрутку вовсе.
+                //
+                // Из твина убран backgroundColor: 'rgb(0, 0, 0)'. Чёрный фон
+                // #detail-view и так выставляют при открытии — animateDetailShow
+                // (animations.js) и ветка торрентной карточки (torrents.js);
+                // ничто во всём проекте не красит его в другой цвет, так что
+                // это была анимация из чёрного в чёрный на каждую прокрутку.
+                // Полноэкранный элемент в списке анимируемых свойств не нужен.
+                if (Math.abs(vertViewportTop - targetScrollTop) > 4) {
+                    applyScroll(vertEl, { scrollTop: targetScrollTop }, smooth,
+                        fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
+                }
             }
         }
         return;
