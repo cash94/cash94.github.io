@@ -132,8 +132,12 @@ var CatalogWorker = (function () {
     catalogCacheDelete: function (key) { return request('CATALOG_CACHE_DELETE', { key: key }); },
     catalogCacheClear: function () { return request('CATALOG_CACHE_CLEAR', {}); },
     // --- IndexedDB: полный кэш каталогов ---
-    catalogIdbGet: function (key) {
-      return request('CATALOG_IDB_GET', { key: key }, 15000);
+    catalogIdbGet: function (key, take) {
+      // take: сколько элементов реально нужно вызывающей стороне. Воркер
+      // обрежет запись до postMessage и добавит data.fullCount — сколько
+      // элементов лежит в кэше целиком. Старый закэшированный воркер про take
+      // не знает и вернёт всё, поэтому вызывающий код обязан пережить и это.
+      return request('CATALOG_IDB_GET', { key: key, take: take }, 15000);
     },
 
     catalogIdbSet: function (key, data) {

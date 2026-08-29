@@ -19,46 +19,20 @@
 
     // ==================== 2. CLEANUP DETACHED DOM NODES ====================
 
-    function cleanupDetachedPosterImages() {
-        if (typeof catalogState === 'undefined') return;
-
-        var cleaned = 0;
-        var cards = document.querySelectorAll('.catalog-card');
-
-        for (var i = 0; i < cards.length; i++) {
-            var card = cards[i];
-            if (!card.isConnected) {
-                // Удаляем ссылки на изображения из отключенных карточек
-                var img = card.querySelector('img');
-                if (img) {
-                    img.src = '';
-                    img.remove();
-                    cleaned++;
-                }
-            }
-        }
-
-        if (cleaned > 0) {
-            console.log('🧹 Очищено ' + cleaned + ' отключенных изображений');
-        }
-    }
+    // cleanupDetachedPosterImages() удалён.
+    //
+    // Он брал карточки через document.querySelectorAll('.catalog-card') и чистил
+    // те, у которых !card.isConnected. Но элементы, полученные живым запросом по
+    // документу, connected по определению — условие не выполнялось никогда.
+    // Функция гарантированно ничего не делала, зато каждые две минуты обходила
+    // все карточки сетки (до CATALOG_FULL_LIMIT штук) ровно тогда, когда
+    // пользователь навигирует.
 
     // ==================== 3. OBSERVER CLEANUP ====================
 
-    var originalInitPosterUnloading = window.initPosterUnloading;
-    if (originalInitPosterUnloading) {
-        window.initPosterUnloading = function() {
-            // Отключаем старый observer перед созданием нового
-            if (typeof catalogState !== 'undefined' && catalogState.unloadObserver) {
-                try {
-                    catalogState.unloadObserver.disconnect();
-                    delete catalogState.unloadObserver;
-                } catch(e) {}
-            }
-
-            originalInitPosterUnloading();
-        };
-    }
+    // Обёртка над initPosterUnloading убрана вместе с самой функцией
+    // (см. catalog.js): её вызовы были закомментированы, наблюдатель
+    // unloadObserver не создавался никогда.
 
     var originalInitPosterLazyLoading = window.initPosterLazyLoading;
     if (originalInitPosterLazyLoading) {
@@ -146,9 +120,6 @@
         if (catalogState.posterObserver) {
             catalogState.posterObserver.disconnect();
         }
-        if (catalogState.unloadObserver) {
-            catalogState.unloadObserver.disconnect();
-        }
         if (catalogState.rowPosterObserver) {
             catalogState.rowPosterObserver.disconnect();
         }
@@ -210,7 +181,6 @@
     // ==================== 8. PERIODIC CLEANUP ====================
 
     setInterval(function() {
-        cleanupDetachedPosterImages();
         cleanupTrailerCache();
         cleanupCatalogState();
         rearmCatalogObservers();   // страховка: вернулись в каталог мимо app.js

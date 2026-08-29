@@ -558,7 +558,6 @@ function wrapRutubeHls(url) {
 }
 
 // ==================== TMDB КЭШ ====================
-var cats = [];
 
 var TMDB_CACHE_CONFIG = {
     ttl: CATALOG_CONSTANTS.CACHE_TTL_MS,
@@ -1234,7 +1233,6 @@ function renderCatalogGrid() {
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     resetDeferredPosters();   // индексы прошлой сетки больше не действительны
     initPosterLazyLoading();
-    //initPosterUnloading();   // ⚡ Включаем выгрузку постеров
     initGridVisibilityWindow();
     initLoadMoreObserver();
     loadInitialPosters();
@@ -1274,7 +1272,6 @@ function appendCatalogItems(newItems) {
     if (catalogState.hasMore) addLoadMoreTrigger(grid);
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     updatePosterObservers();
-    //initPosterUnloading();   // ⚡ Включаем выгрузку постеров
     updateGridVisibilityWindow();
     initLoadMoreObserver();
 
@@ -1449,41 +1446,15 @@ function initLoadMoreObserver() {
 
 // ==================== ПОСТЕРЫ ====================
 
-function initPosterUnloading() {
-    if (catalogState.unloadObserver) catalogState.unloadObserver.disconnect();
-
-    // ⚡ Выгружаем постеры, которые далеко за экраном (экономим RAM)
-    catalogState.unloadObserver = new IntersectionObserver(function (entries) {
-        for (var i = 0; i < entries.length; i++) {
-            var entry = entries[i];
-            var card = entry.target;
-            var posterDiv = card.querySelector('.torrent-poster');
-            if (!posterDiv) continue;
-            var img = posterDiv.querySelector('img');
-
-            if (entry.isIntersecting) {
-                // Карточка вернулась в зону видимости — перезагружаем постер
-                if (!img) {
-                    var idx = parseInt(card.dataset.catalogIndex, 10);
-                    if (!isNaN(idx) && catalogState.items[idx]) {
-                        if (!loadPosterDirect(idx, card)) addToPosterQueue(idx);
-                    }
-                }
-            } else {
-                // Карточка далеко — выгружаем постер
-                if (img) {
-                    posterDiv.innerHTML = '<div class="no-poster catalog-poster-loading">⏳</div>';
-                    card.dataset.posterRequested = '0';  // ⚡ Сбрасываем флаг
-                }
-            }
-        }
-    }, { rootMargin: '1200px 0px', threshold: 0 });  // ⚡ Уменьшили с 1500px до 1200px
-
-    var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
-    for (var i = 0; i < cards.length; i++) {
-        catalogState.unloadObserver.observe(cards[i]);
-    }
-}
+// initPosterUnloading() удалён вместе с catalogState.unloadObserver.
+//
+// Он выгружал постеры карточек, ушедших дальше 1200px за экран, но вызовы были
+// закомментированы в renderCatalogGrid и appendCatalogItems — наблюдатель не
+// создавался никогда. При этом функцию продолжали оборачивать патчи из
+// catalog-memory-fix.js и memory-fixes.js, а ветки с unloadObserver висели в
+// их периодической уборке. Ту же работу сейчас делают оконная видимость
+// (initGridVisibilityWindow) и content-visibility: auto в styles.css.
+// Если выгрузка снова понадобится — писать её заново, а не воскрешать эту.
 
 function loadInitialPosters() {
     var idxs = [];
@@ -3677,6 +3648,12 @@ function createVisibilityObserver(marginPx) {
 function revealCatalogElement(el) {
     if (!el || !el.classList) return;
     el.classList.remove(OFFSCREEN_CLASS);
+
+    // Ряд и его постер есть только в режиме рядов. В сетке категории closest()
+    // всё равно поднимался до корня и всегда возвращал null, а звалось это из
+    // focusEl на каждое перемещение фокуса.
+    if (!el.classList.contains('catalog-row-card')) return;
+
     var row = el.closest ? el.closest('.catalog-row') : null;
     if (row) row.classList.remove(OFFSCREEN_CLASS);
     ensureRowPosterNow(el);
@@ -3930,136 +3907,25 @@ function restoreRowFocus() {
     }
 }
 
-// ==================== НАВИГАЦИЯ ПО РЯДАМ ====================
-
-function focusRowCard(ri, ci) {
-    var rows = window.catalogRows;
-    if (!rows || !rows[ri] || !rows[ri][ci]) return true;
-    var card = rows[ri][ci];
-    if (typeof updateFocusableElements === 'function') updateFocusableElements();
-    var idx = (typeof focusableElements !== 'undefined') ? focusableElements.indexOf(card) : -1;
-    if (idx !== -1 && typeof setFocus === 'function') setFocus(idx);
-    else if (typeof focusEl === 'function') focusEl(card);
-    scrollRowToCard(card);
-    return true;
-}
-
-function findRowPosition(el) {
-    var rows = window.catalogRows || [];
-    for (var i = 0; i < rows.length; i++) {
-        for (var j = 0; j < rows[i].length; j++) {
-            if (rows[i][j] === el) return { row: i, col: j };
-        }
-    }
-    return null;
-}
-
-function handleRowsNavigation(dir) {
-    var rows = window.catalogRows;
-    if (!rows || !rows.length) return false;
-
-    var f = document.querySelector('.focused');
-    var pos = f ? findRowPosition(f) : null;
-
-    if (!pos) return focusRowCard(0, 0);
-
-    if (dir === 'left') {
-        if (pos.col > 0) return focusRowCard(pos.row, pos.col - 1);
-        return true;
-    }
-    if (dir === 'right') {
-        if (pos.col < rows[pos.row].length - 1) return focusRowCard(pos.row, pos.col + 1);
-        return true;
-    }
-    if (dir === 'up') {
-        if (pos.row > 0) {
-            var tc = Math.min(pos.col, rows[pos.row - 1].length - 1);
-            return focusRowCard(pos.row - 1, tc);
-        }
-        // верхний ряд → на табы
-        if (typeof getTorrentTabs === 'function') {
-            var t = getTorrentTabs();
-            if (t.length && typeof focusEl === 'function') { focusEl(t[0]); return true; }
-        }
-        return true;
-    }
-    if (dir === 'down') {
-        if (pos.row < rows.length - 1) {
-            var tc2 = Math.min(pos.col, rows[pos.row + 1].length - 1);
-            return focusRowCard(pos.row + 1, tc2);
-        }
-        return true;
-    }
-    return true;
-}
-
-function scrollRowToCard(card) {
-    var viewport = card.closest ? card.closest('.catalog-row-viewport') : null;
-    if (!viewport) return;
-
-    // Эту функцию перекрывает одноимённая из control.js (грузится позже) —
-    // правки держим синхронными. Карусель двигается трансформацией внутреннего
-    // трека, поэтому позицию читаем/пишем хелперами control.js; они появляются
-    // позже нас, но к моменту вызова уже есть.
-    var cur = (typeof getScrollX === 'function') ? getScrollX(viewport) : viewport.scrollLeft;
-    var cr = card.getBoundingClientRect();
-    var vr = viewport.getBoundingClientRect();
-    var pad = 50;
-    var target = null;
-    if (cr.left < vr.left + pad) target = cur + (cr.left - vr.left - pad);
-    else if (cr.right > vr.right - pad) target = cur + (cr.right - vr.right + pad);
-    if (target === null) return;
-
-    if (typeof setScrollX === 'function') {
-        setScrollX(viewport, target, true, 0.42);
-        return;
-    }
-
-    // control.js не загружен: остаётся нативный скролл. Тем же путём, что и вся
-    // навигация (Animations.tweenScroll) — scrollBy({behavior:'smooth'}) на
-    // телевизоре не работает.
-    target = Math.max(0, target);
-    if (typeof Animations !== 'undefined' && typeof Animations.tweenScroll === 'function') {
-        Animations.tweenScroll(viewport, { scrollLeft: target }, { duration: 0.42, ease: 'power3.out' });
-    } else {
-        viewport.scrollLeft = target;
-    }
-}
-
-/**
- * Переопределяет стратегию catalog для поддержки режима рядов.
- * Режим сетки (открыт конкретный каталог) сохраняет старую логику.
- */
-function setupCatalogRowsNavigation() {
-    if (typeof ScreenStrategies === 'undefined' || !ScreenStrategies.catalog) {
-        setTimeout(setupCatalogRowsNavigation, 100); // control.js ещё не готов
-        return;
-    }
-    if (ScreenStrategies.catalog._rowsPatched) return;
-
-    var _origHandleNav = ScreenStrategies.catalog.handleNavigation;
-    var _origEnsureFocus = ScreenStrategies.catalog.ensureFocus;
-
-    ScreenStrategies.catalog.handleNavigation = function (dir) {
-        if (!catalogState.currentCatalog && window.catalogRows && window.catalogRows.length) {
-            return handleRowsNavigation(dir);
-        }
-        return _origHandleNav.call(this, dir);
-    };
-
-    ScreenStrategies.catalog.ensureFocus = function (force) {
-        if (force === undefined) force = false;
-        if (!catalogState.currentCatalog && window.catalogRows && window.catalogRows.length) {
-            if (typeof currentScreen === 'function' && currentScreen() !== 'catalog') return false;
-            var f = document.querySelector('.focused');
-            if (!force && f && typeof belongsToScreen === 'function' && belongsToScreen(f, 'catalog')) return true;
-            return focusRowCard(0, 0);
-        }
-        return _origEnsureFocus.call(this, force);
-    };
-
-    ScreenStrategies.catalog._rowsPatched = true;
-}
+// ==================== НАВИГАЦИЯ ПО РЯДАМ — ЖИВЁТ В control.js ====================
+//
+// Здесь были свои focusRowCard / findRowPosition / handleRowsNavigation /
+// scrollRowToCard. Все четыре — обычные function-декларации в глобальной
+// области, и control.js объявляет их же под теми же именами. Он грузится
+// позже (index.html), поэтому его версии перекрывали наши: код был мёртвым,
+// но при чтении выглядел работающим, а правки в нём ни на что не влияли.
+// Отличие версий существенное: control.js берёт ряды из getCatalogRows() с
+// кэшем по поколению DOM, здешние читали window.catalogRows.
+//
+// Вместе с ними убран setupCatalogRowsNavigation() — он патчил
+// ScreenStrategies.catalog, но не вызывался ниоткуда. Патч и не был нужен:
+// ScreenStrategies.catalog.handleNavigation сам разбирает режим рядов через
+// isCatalogRowsMode(). А его ensureFocus звал focusRowCard(0, 0) без третьего
+// аргумента rows — версия из control.js на !rows молча возвращает true, так что
+// фокус в рядах не восстанавливался бы вовсе, если бы функция работала.
+//
+// window.catalogRows по-прежнему заполняется createCatalogRow() и читается
+// showCatalogList() как признак «ряды уже собраны».
 
 function createCatalogFolderCard(key, cfg) {
     var c = document.createElement('div');
@@ -4151,33 +4017,9 @@ function backToCatalogList() {
 }
 
 // ==================== НАВИГАЦИЯ ====================
-window.loadMoreAndFocus = async function (idx, cols) {
-    if (!catalogState.currentCatalog || catalogState.isLoadingMore) return;
-    var t = getEl('load-more-trigger');
-    if (t) { var s = t.querySelector('.loading-spinner-small'); if (s) s.style.display = 'inline-block'; }
-    var row = Math.floor(idx / cols) + 1;
-    await loadMoreCatalogItems();
-    setTimeout(function () {
-        var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
-        var ni = row * cols;
-        if (cards.length > ni) {
-            if (typeof updateFocusableElements === 'function') updateFocusableElements();
-            setTimeout(function () {
-                var tc = cards[ni];
-                if (tc && typeof setFocus === 'function') {
-                    var gi = -1;
-                    if (typeof focusableElements !== 'undefined') {
-                        for (var j = 0; j < focusableElements.length; j++) {
-                            if (tc === focusableElements[j]) { gi = j; break; }
-                        }
-                    }
-                    if (gi !== -1) setFocus(gi);
-                }
-            }, 100);
-        }
-        if (t) { var s = t.querySelector('.loading-spinner-small'); if (s) s.style.display = 'none'; }
-    }, 300);
-};
+// window.loadMoreAndFocus() удалён — вызовов не было ни в одном модуле.
+// Догрузку по «вниз» из последнего ряда делает ScreenStrategies.catalog
+// (control.js), а по скроллу — initLoadMoreObserver ниже.
 
 window.checkAndLoadMoreOnNavigation = function () {
     if (catalogState.currentCatalog && catalogState.hasMore && !catalogState.isLoadingMore) {
@@ -4301,10 +4143,15 @@ window.backToCatalogList = backToCatalogList;
 window.refreshCatalogRows = function () { return showCatalogList(true); };
 window.exitYoutubePlayer = exitYoutubePlayer;
 window.loadMoreCatalogItems = loadMoreCatalogItems;
+// Публичный фасад. Функции берутся через window В МОМЕНТ ВЫЗОВА, а не
+// защёлкиваются здесь: этот файл выполняется раньше catalog-worker-patch.js и
+// catalog-idb-patch.js, которые переопределяют loadCatalog и showCatalogList.
+// Прямые ссылки держали исходные версии, и вход в каталог через этот фасад
+// пошёл бы мимо IndexedDB — со старой постраничной загрузкой из сети.
 window.catalog = {
-    loadCatalog: loadCatalog,
-    showCatalogList: showCatalogList,
-    backToCatalogList: backToCatalogList,
+    loadCatalog: function (key) { return window.loadCatalog(key); },
+    showCatalogList: function (force) { return window.showCatalogList(force); },
+    backToCatalogList: function () { return window.backToCatalogList(); },
     tmdbCache: { clear: clearTmdbCache, stats: getTmdbCacheStats }
 };
 window.showCatalogDetail = showCatalogDetail;

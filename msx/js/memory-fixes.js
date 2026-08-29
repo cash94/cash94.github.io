@@ -98,18 +98,9 @@
             }
         };
 
-        var originalInitPosterUnloading = window.initPosterUnloading;
-        window.initPosterUnloading = function() {
-            if (catalogState.unloadObserver) {
-                catalogState.unloadObserver.disconnect();
-            }
-            if (originalInitPosterUnloading) {
-                originalInitPosterUnloading();
-            }
-            if (catalogState.unloadObserver) {
-                registerObserver(catalogState.unloadObserver, 'unloadObserver');
-            }
-        };
+        // Обёртка над initPosterUnloading убрана: сама функция удалена из
+        // catalog.js (её вызовы были закомментированы, наблюдатель никогда не
+        // создавался). Патч подменял несуществующее и только держал ссылку.
     }
 
     // ==================== 4. ТАЙМЕРЫ — БЕЗ ПАТЧА ====================
@@ -171,10 +162,6 @@
         if (typeof catalogState !== 'undefined' && !catalogAlive) {
             if (catalogState.posterObserver) {
                 catalogState.posterObserver.disconnect();
-                window._catalogObserversDisarmed = true;
-            }
-            if (catalogState.unloadObserver) {
-                catalogState.unloadObserver.disconnect();
                 window._catalogObserversDisarmed = true;
             }
         }

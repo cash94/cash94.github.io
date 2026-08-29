@@ -275,8 +275,13 @@ async function showSyncOverlay() {
                 for (var i = 0; i < focusedElements.length; i++) {
                     focusedElements[i].classList.remove('focused');
                 }
-                // Добавляем класс focused на поле ввода
+                // Добавляем класс focused на поле ввода. Регистрируем его в
+                // control.js: clearFocused() снимает подсветку по своему списку,
+                // а не обходом документа, и без регистрации она бы здесь залипла.
                 codeInput.classList.add('focused');
+                if (typeof window.trackFocusedElement === 'function') {
+                    window.trackFocusedElement(codeInput);
+                }
                 codeInput.focus();
 
                 // Обновляем focusableElements и currentFocusIndex для control.js

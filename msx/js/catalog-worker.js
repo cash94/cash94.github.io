@@ -1556,14 +1556,22 @@ function sliceCatalogResult(result, take) {
   if (!result || !result.data || !Array.isArray(result.data.items)) return result;
   if (result.data.items.length <= take && !result.data.loadedItemIds) return result;
 
+  var all = result.data.items;
+
   return {
     source: result.source,
     key: result.key,
     timestamp: result.timestamp,
     networkFailed: result.networkFailed,
     data: {
-      items: result.data.items.slice(0, take),
+      items: all.slice(0, take),
       totalItems: result.data.totalItems,
+      // Сколько элементов лежит в кэше на самом деле. НЕ totalItems: тот
+      // приходит из pagination.total сервера и может быть больше выборки
+      // (каталог глубже, чем limit запроса). Вызывающей стороне нужно ровно
+      // «обрезали ли мы то, что уже есть» — чтобы знать, надо ли дозапрашивать
+      // остаток, когда пользователь долистает до конца.
+      fullCount: all.length,
       currentPage: 1,
       hasMore: false
     }
@@ -1840,7 +1848,16 @@ self.onmessage = function (e) {
     case 'CATALOG_IDB_GET':
       catalogIdbGetRecord(payload && payload.key)
         .then(function (record) {
-          self.postMessage({ id: id, type: 'RESULT', data: record });
+          // take: обрезаем выборку ДО postMessage — тем же приёмом, что и
+          // CATALOG_GET_FRESH. Запись в IndexedDB держит до CATALOG_FULL_LIMIT
+          // элементов плюс словарь loadedItemIds на столько же ключей, и всё
+          // это раскладывалось structured clone'ом в главном потоке ради
+          // первых полутора экранов сетки.
+          self.postMessage({
+            id: id,
+            type: 'RESULT',
+            data: sliceCatalogResult(record, payload && payload.take)
+          });
         })
         .catch(function (error) {
           self.postMessage({ id: id, type: 'ERROR', error: error && error.message || 'CATALOG_IDB_GET error' });
