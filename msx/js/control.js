@@ -235,6 +235,54 @@ function trackFocusedElement(el) {
 }
 window.trackFocusedElement = trackFocusedElement;
 
+/**
+ * Где стоял фокус на каждом экране: { screen -> element }.
+ *
+ * Нужно для возврата из настроек: они гасят #torrserver-section целиком, а
+ * содержимое экрана под ними остаётся в DOM нетронутым — вернуть надо не просто
+ * экран, а место на нём.
+ *
+ * Кнопки общей шапки (#home-topbar .home-nav-btn) не запоминаем: она одна на все
+ * экраны раздела, и уходят в настройки как раз через неё — запись затёрла бы
+ * реальное место в контенте ровно в момент ухода.
+ */
+var _lastFocusedByScreen = {};
+
+function rememberScreenFocus(el) {
+    if (!el || !el.classList || el.classList.contains('home-nav-btn')) return;
+    var screen = window.AppState && AppState.currentScreen;
+    if (!screen || screen === 'config') return;
+    _lastFocusedByScreen[screen] = el;
+}
+
+/**
+ * Вернуть фокус туда, где он стоял на экране screen. Если запомненного элемента
+ * нет или он больше не на экране (список перерисовали, каталог сменили) —
+ * отдаём решение стратегии экрана.
+ */
+function restoreScreenFocus(screen) {
+    // Состав фокусируемого только что изменился: #torrserver-section вернули из
+    // display:none, и всё, что в нём лежит, снова имеет offsetParent
+    invalidateFocusCache();
+
+    var el = _lastFocusedByScreen[screen];
+    if (el) {
+        if (el.isConnected !== false && VISIBLE(el)) {
+            updateFocusableElements();
+            var idx = focusableElements.indexOf(el);
+            if (idx !== -1) setFocus(idx);
+            else focusEl(el);
+            return true;
+        }
+        // Элемент больше не на экране (сетку перерисовали, каталог сменили) —
+        // не держим ссылку на оторванный узел до следующего фокуса
+        delete _lastFocusedByScreen[screen];
+    }
+
+    var strategy = ScreenStrategies[screen];
+    return !!(strategy && strategy.ensureFocus && strategy.ensureFocus(true));
+}
+
 function clearFocused() {
     if (!_focusedEls.length) return;
     var list = _focusedEls;
@@ -1675,14 +1723,33 @@ function onBack() {
             configScreen.style.display = 'none';
             var torrserverSection = getEl('torrserver-section');
             if (torrserverSection) torrserverSection.style.display = 'block';
-            // Из настроек возвращаемся туда, откуда пришли: если под ними
-            // осталась главная, торренты показывать нельзя
-            if (isHomeUnderneath() && window.HomeScreen) {
+            // Из настроек возвращаемся туда, откуда пришли.
+            //
+            // Раньше вариантов было два: главная, если она осталась под
+            // настройками, иначе торренты. Из каталога это давало
+            // currentScreen = 'torrents' поверх видимого #content-catalog —
+            // карточек торрентов на экране нет, и фокус падал на кнопки шапки.
+            // Экран запоминает обработчик открытия настроек (AppState.configReturnTo),
+            // проверка isHomeUnderneath остаётся запасным вариантом.
+            var returnTo = (window.AppState && AppState.configReturnTo) || null;
+            if (!returnTo) returnTo = isHomeUnderneath() ? 'home' : 'torrents';
+            if (window.AppState) AppState.configReturnTo = null;
+
+            if (returnTo === 'home' && window.HomeScreen) {
                 window.HomeScreen.show({ restoreFocus: true });
                 return true;
             }
-            try { window.AppState.currentScreen = 'torrents'; } catch (e) { }
-            setTimeout(function () { ScreenStrategies.torrents.ensureFocus(true); }, 180);
+
+            try { window.AppState.currentScreen = returnTo; } catch (e) { }
+            setTimeout(function () {
+                // Экран мог перестать быть доступным, пока мы сидели в
+                // настройках (сервер отвалился, каталог пересобрали) —
+                // тогда уходим к торрентам, как было раньше
+                if (restoreScreenFocus(returnTo)) return;
+                if (returnTo === 'torrents') return;
+                try { window.AppState.currentScreen = 'torrents'; } catch (e) { }
+                ScreenStrategies.torrents.ensureFocus(true);
+            }, 180);
             return true;
         }
     }
@@ -2587,6 +2654,7 @@ function focusEl(el, opts) {
     clearFocused();
     el.classList.add('focused');
     trackFocusedElement(el);
+    rememberScreenFocus(el);
     if (opts.nativeFocus) try { el.focus(); } catch (e) { } else blurEditor();
 
     var container = null;

@@ -697,6 +697,9 @@ async function loadTorrents(silent = false) {
                     alert('Сначала подключитесь к серверу');
                     getEl('config-screen').style.display = 'flex';
                     getEl('torrserver-section').style.display = 'none';
+                    // Настройки открыты не пользователем, а из-за недоступного
+                    // сервера — возвращаться отсюда логично к торрентам
+                    AppState.configReturnTo = 'torrents';
                     AppState.currentScreen = 'config';
                 }
 
