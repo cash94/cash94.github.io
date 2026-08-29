@@ -146,6 +146,64 @@
         return window.__catalogIdbMeta[key];
     }
 
+    /**
+     * Сколько элементов просим у воркера на первый показ категории.
+     *
+     * Полная запись — до CATALOG_FULL_LIMIT элементов плюс словарь loadedItemIds
+     * на столько же ключей, и всё это раскладывается structured clone'ом в
+     * ГЛАВНОМ потоке ровно в момент перехода в категорию. При этом на экран
+     * попадает одна страница. Берём две (запас на первую прокрутку), остальное
+     * дотягиваем только если человек действительно долистает — до конца тысячи
+     * доходят единицы.
+     */
+    function getInitialTake() {
+        return getPageSize() * 2;
+    }
+
+    /**
+     * Отмечает, что воркер прислал урезанную выборку.
+     *
+     * data.fullCount добавляет sliceCatalogResult в воркере. Его может не быть
+     * совсем: устаревший закэшированный воркер про take не знает и присылает всё
+     * целиком — тогда обрезки не было и дотягивать нечего.
+     */
+    function setFullItemsTruncation(key, data) {
+        var items = Array.isArray(data.items) ? data.items : [];
+        catalogState.fullItemsTruncated =
+            typeof data.fullCount === 'number' && data.fullCount > items.length;
+    }
+
+    /**
+     * Дотягивает остаток каталога, когда локальные элементы закончились.
+     * Возвращает true, если fullItems пополнился.
+     */
+    function extendFullItems(key) {
+        var cfg = window.CATALOG_CONFIG && CATALOG_CONFIG[key];
+        if (!cfg || !cfg.url) return Promise.resolve(false);
+
+        // Без take — теперь нужен весь список
+        return CatalogWorker.catalogGetFresh(key, cfg.url, CATALOG_FULL_LIMIT)
+            .then(function (result) {
+                if (catalogState.currentCatalog !== key) return false;
+                if (!result || !result.data || !Array.isArray(result.data.items)) return false;
+
+                var items = result.data.items;
+                if (items.length <= catalogState.fullItems.length) {
+                    catalogState.fullItemsTruncated = false;
+                    return false;
+                }
+
+                catalogState.fullItems = items;
+                catalogState.fullItemsTruncated = false;
+                catalogState.totalItems = result.data.totalItems || items.length;
+                return true;
+            })
+            .catch(function (error) {
+                console.warn('⚠️ Не удалось дотянуть остаток каталога "' + key + '":', error);
+                return false;
+            });
+    }
+
     function applyFullCatalogData(key, data, timestamp) {
         if (!key || !data) return;
 
@@ -158,16 +216,20 @@
 
         catalogState.currentCatalog = key;
 
-        // Полный каталог держим в памяти, но в DOM выводим порциями
+        // Загруженная часть каталога держится в памяти, в DOM выводим порциями
         catalogState.fullItems = items;
         catalogState.idbTimestamp = ts;
+        setFullItemsTruncation(key, data);
 
         // Первая страница
         catalogState.items = items.slice(0, pageSize);
 
         catalogState.totalItems = data.totalItems || items.length;
         catalogState.currentPage = 1;
-        catalogState.hasMore = catalogState.items.length < items.length;
+        // hasMore true и когда локальных элементов больше, и когда воркер
+        // прислал урезанную выборку — остаток дотянет loadMoreCatalogItems
+        catalogState.hasMore =
+            catalogState.items.length < items.length || catalogState.fullItemsTruncated;
         catalogState.isLoadingMore = false;
 
         catalogState.loadedItemIds = buildLoadedItemIds(catalogState.items);
@@ -179,6 +241,81 @@
         if (typeof renderCatalogGrid === 'function') {
             renderCatalogGrid();
         }
+    }
+
+    /**
+     * Ушёл ли пользователь с первого экрана категории.
+     *
+     * renderCatalogGrid() очищает сетку, строит карточки заново и переводит
+     * фокус на первую (catalog.js: focusFirstCatalogCard). Для первого показа
+     * это норма, но фоновое обновление приходит секундами позже — и человек,
+     * успевший пролистать вниз, получает мигание всей сетки и прыжок фокуса
+     * в начало. В таком случае обновляем данные молча.
+     */
+    function hasUserMovedInGrid(key) {
+        if (catalogState.currentCatalog !== key) return false;
+
+        // Догрузил хотя бы одну дополнительную страницу
+        if (catalogState.items.length > getPageSize()) return true;
+
+        var mc = typeof getEl === 'function' ? getEl('main-container') : null;
+        if (mc && mc.scrollTop > 0) return true;
+
+        // Фокус стоит не на первой карточке
+        var focused = document.querySelector('#catalog-grid .torrent-card.catalog-card.focused');
+        if (focused && focused.dataset.catalogIndex &&
+            parseInt(focused.dataset.catalogIndex, 10) > 0) return true;
+
+        return false;
+    }
+
+    /**
+     * Обновляет данные каталога, не трогая DOM и фокус.
+     *
+     * Свежий полный список уезжает в fullItems (оттуда его берёт
+     * loadMoreCatalogItems), обновляются счётчики и meta для даты в шапке.
+     * Уже отрисованные карточки остаются как есть: дальше по списку человек
+     * доберётся до свежих элементов сам, а дубликаты отсечёт loadedItemIds.
+     */
+    function applyFullCatalogDataQuiet(key, data, timestamp) {
+        if (!key || !data) return;
+
+        var items = Array.isArray(data.items) ? data.items : [];
+        var ts = timestamp || Date.now();
+        var have = Array.isArray(catalogState.fullItems) ? catalogState.fullItems : [];
+
+        setCatalogIdbMeta(key, ts, data.totalItems || items.length);
+
+        catalogState.idbTimestamp = ts;
+        catalogState.totalItems = data.totalItems || items.length;
+
+        // Фоновое обновление приходит урезанным (getInitialTake), а сюда мы
+        // попадаем ровно тогда, когда человек уже пролистал дальше этой
+        // выборки. Укоротить fullItems значило бы оборвать ему подгрузку на
+        // ровном месте, поэтому короткий список не принимаем — помечаем, что
+        // полный ещё предстоит дотянуть.
+        if (items.length < have.length) {
+            catalogState.fullItemsTruncated = true;
+        } else {
+            catalogState.fullItems = items;
+            setFullItemsTruncation(key, data);
+        }
+
+        catalogState.hasMore =
+            catalogState.items.length < catalogState.fullItems.length ||
+            catalogState.fullItemsTruncated;
+    }
+
+    /** Фоновое обновление: перерисовываем только если человек ещё на первом экране */
+    function applyFullCatalogUpdate(key, data, timestamp) {
+        if (catalogState.currentCatalog !== key) return;
+
+        if (hasUserMovedInGrid(key)) {
+            applyFullCatalogDataQuiet(key, data, timestamp);
+            return;
+        }
+
+        applyFullCatalogData(key, data, timestamp);
     }
 
     // Префетч прогревает IndexedDB и больше ни для чего не нужен — результат
@@ -261,6 +398,11 @@
         catalogState.loadedItemIds = {};
         catalogState.loadedPostersCount = 0;
         catalogState.posterLoadQueue = [];
+        // Список прошлой категории и его признак урезанности — чужие для новой.
+        // Заполнит applyFullCatalogData; если загрузка упадёт, здесь останется
+        // пусто, а не хвост предыдущего каталога.
+        catalogState.fullItems = null;
+        catalogState.fullItemsTruncated = false;
 
         AppState.mediaType = config.mediaType;
 
@@ -272,7 +414,9 @@
             fetchCatalogsWithCache().catch(function () {
                 // Игнорируем ошибку — не критично
             });
-            var record = await CatalogWorker.catalogIdbGet(key);
+            // take: на первый показ нужны две страницы, а не вся тысяча —
+            // остаток дотянет loadMoreCatalogItems, если человек долистает
+            var record = await CatalogWorker.catalogIdbGet(key, getInitialTake());
 
             // 1. Если есть кэш в IndexedDB
             if (record && record.data) {
@@ -291,10 +435,10 @@
                 // Сейчас он обновляется в фоне, показывая старый каталог.
                 // Если хотите блокировать показ до полного обновления,
                 // замените этот блок на await CatalogWorker.catalogGetFresh(...)
-                CatalogWorker.catalogGetFresh(key, config.url, CATALOG_FULL_LIMIT)
+                CatalogWorker.catalogGetFresh(key, config.url, CATALOG_FULL_LIMIT, getInitialTake())
                     .then(function (freshResult) {
-                        if (catalogState.currentCatalog === key && freshResult && freshResult.data) {
-                            applyFullCatalogData(key, freshResult.data, freshResult.timestamp || Date.now());
+                        if (freshResult && freshResult.data) {
+                            applyFullCatalogUpdate(key, freshResult.data, freshResult.timestamp || Date.now());
                         }
                     })
                     .catch(function (error) {
@@ -305,7 +449,7 @@
             }
 
             // 2. Если кэша нет вообще — грузим из сети и сохраняем в IndexedDB
-            var freshResult = await CatalogWorker.catalogGetFresh(key, config.url, CATALOG_FULL_LIMIT);
+            var freshResult = await CatalogWorker.catalogGetFresh(key, config.url, CATALOG_FULL_LIMIT, getInitialTake());
 
             if (freshResult && freshResult.data) {
                 applyFullCatalogData(key, freshResult.data, freshResult.timestamp || Date.now());
@@ -345,7 +489,21 @@
 
         catalogState.isLoadingMore = true;
 
-        return Promise.resolve().then(function () {
+        var key = catalogState.currentCatalog;
+
+        // Локальные элементы кончились, но выборка была урезана (getInitialTake) —
+        // сначала дотягиваем остаток каталога, потом режем страницу как обычно.
+        var ready = (catalogState.items.length >= catalogState.fullItems.length &&
+            catalogState.fullItemsTruncated)
+            ? extendFullItems(key)
+            : Promise.resolve(false);
+
+        return ready.then(function () {
+            if (catalogState.currentCatalog !== key) {
+                catalogState.isLoadingMore = false;
+                return false;
+            }
+
             var pageSize = getPageSize();
 
             // Берём следующую порцию из уже загруженного полного каталога
@@ -379,7 +537,9 @@
             }
 
             catalogState.currentPage = Math.ceil(catalogState.items.length / pageSize);
-            catalogState.hasMore = catalogState.items.length < catalogState.fullItems.length;
+            catalogState.hasMore =
+                catalogState.items.length < catalogState.fullItems.length ||
+                catalogState.fullItemsTruncated;
 
             if (typeof appendCatalogItems === 'function') {
                 appendCatalogItems(unique);
@@ -467,8 +627,28 @@
 
     // ==================== checkAndUpdateCatalogIfNeeded ====================
 
-    // Защита от повторных обновлений одного и того же каталога в течение 5 минут
+    /**
+     * Защита от цикла обновления каталога.
+     *
+     * Цепочка замкнута сама на себя: renderCatalogGrid → addCatalogHeader →
+     * fetchCatalogsWithCache → checkAndUpdateCatalogIfNeeded → POST /update →
+     * invalidateCatalogsListCache + перекачка каталога → applyFullCatalogData →
+     * renderCatalogGrid. Раньше единственным тормозом был пятиминутный таймаут,
+     * то есть при сервере, который принимает /update, но не двигает
+     * lastModifiedISO, всё это крутилось вечно с периодом 5 минут: POST,
+     * перекачка тысячи элементов и перерисовка сетки под пользователем.
+     *
+     * Теперь два дополнительных стопа:
+     *   • дата не сдвинулась после успешного обновления — до конца сессии больше
+     *     не пробуем (giveUp): сервер сказал «обновил», но обновлять нечего;
+     *   • не больше MAX_UPDATE_ATTEMPTS попыток на каталог за сессию — на случай
+     *     источника, который каждый раз отдаёт новую, но всё ещё старую дату.
+     *
+     * id -> { at, iso, done, attempts, giveUp }
+     */
     var _catalogServerUpdateAttempts = {};
+    var UPDATE_RETRY_MS = 5 * 60 * 1000;
+    var MAX_UPDATE_ATTEMPTS = 2;
 
     window.checkAndUpdateCatalogIfNeeded = checkAndUpdateCatalogIfNeeded = async function (id, iso) {
         if (!id || !iso || _catalogIdbUpdating) {
@@ -493,17 +673,42 @@
             return false;
         }
 
-        // Защита от цикла: не обновляем один и тот же каталог чаще, чем раз в 5 минут
         var now = Date.now();
+        var attempt = _catalogServerUpdateAttempts[id];
 
-        if (
-            _catalogServerUpdateAttempts[id] &&
-            now - _catalogServerUpdateAttempts[id] < 5 * 60 * 1000
-        ) {
-            return false;
+        if (attempt) {
+            // Сдались на этом каталоге до конца сессии
+            if (attempt.giveUp) {
+                return false;
+            }
+
+            // Прошлый POST отработал успешно, а сервер отдаёт ТУ ЖЕ дату —
+            // обновлять нечего, дальше был бы бесконечный круг
+            if (attempt.done && attempt.iso === iso) {
+                attempt.giveUp = true;
+                console.warn('⚠️ Каталог "' + id + '": дата не изменилась после обновления, больше не пробуем');
+                return false;
+            }
+
+            if (attempt.attempts >= MAX_UPDATE_ATTEMPTS) {
+                attempt.giveUp = true;
+                console.warn('⚠️ Каталог "' + id + '": исчерпан лимит попыток обновления за сессию');
+                return false;
+            }
+
+            if (now - attempt.at < UPDATE_RETRY_MS) {
+                return false;
+            }
+
+            attempt.at = now;
+            attempt.iso = iso;
+            attempt.done = false;
+            attempt.attempts++;
+        } else {
+            _catalogServerUpdateAttempts[id] = attempt =
+                { at: now, iso: iso, done: false, attempts: 1, giveUp: false };
         }
 
-        _catalogServerUpdateAttempts[id] = now;
         _catalogIdbUpdating = true;
 
         try {
@@ -530,6 +735,11 @@
 
             console.log('✅ Каталог "' + id + '" обновлён на сервере');
 
+            // Помечаем попытку как отработавшую: если следующий проход придёт с
+            // той же lastModifiedISO, значит обновление ничего не изменило —
+            // и цикл остановится на проверке в начале функции.
+            attempt.done = true;
+
             // 2. Инвалидируем кэш /api/catalogs,
             // чтобы при следующем рендере получить свежую lastModifiedISO
             if (typeof invalidateCatalogsListCache === 'function') {
@@ -551,13 +761,12 @@
                     typeof CATALOG_FULL_LIMIT !== 'undefined' ? CATALOG_FULL_LIMIT : 1000
                 );
 
-                // 5. Если пользователь сейчас находится в этом каталоге — обновляем экран
-                if (
-                    catalogState.currentCatalog === id &&
-                    freshResult &&
-                    freshResult.data
-                ) {
-                    applyFullCatalogData(
+                // 5. Если пользователь сейчас находится в этом каталоге — обновляем данные.
+                // Экран перерисовываем только пока он на первом экране: обновление
+                // приходит через POST + перекачку каталога, к этому моменту человек
+                // мог уйти вниз, и перерисовка сбросила бы ему фокус в начало.
+                if (freshResult && freshResult.data) {
+                    applyFullCatalogUpdate(
                         id,
                         freshResult.data,
                         freshResult.timestamp || Date.now()

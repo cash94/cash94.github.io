@@ -82,9 +82,23 @@ var _focusGen = 0;
 // Кэш getCatalogRows() — та же схема, тот же счётчик поколений
 var _rowsCache = { gen: -1, rows: null };
 
-// Каталог держит кэш фокуса по поколению; TTL остаётся только предохранителем
-// на случай мутации DOM, которая забыла позвать invalidateFocusCache().
-var CATALOG_FOCUS_CACHE_TTL = 1500; // мс
+// Кэш getCatalogGridCards() — то же самое для режима сетки категории.
+// Раньше кэша тут не было вовсе: каждое нажатие стрелки строило список заново
+// (querySelectorAll по документу + offsetParent на каждой карточке). В рядах
+// это ~90 элементов, а в сетке с catalog-idb-patch.js подгрузка идёт порциями
+// по ITEMS_PER_PAGE до CATALOG_FULL_LIMIT — то есть до 1000 offsetParent на
+// нажатие, и чем глубже пользователь ушёл, тем сильнее фризит навигация.
+var _gridCardsCache = { gen: -1, cards: null };
+
+// Каталог держит кэш фокуса ТОЛЬКО по поколению, без TTL.
+//
+// Раньше здесь был предохранитель в 1500мс на случай мутации DOM, забывшей
+// позвать invalidateFocusCache(). Но при непрерывной навигации он срабатывал
+// всегда — раз в полторы секунды список из сотен карточек пересобирался
+// целиком (querySelectorAll + offsetParent на каждой), и это ощущалось как
+// периодический рывок. Все реальные изменения состава двигают _focusGen:
+// renderCatalogGrid, appendCatalogItems, showCatalogGridView/RowsView,
+// прогрессивная сборка рядов — каждая из них зовёт invalidateFocusCache().
 
 // ==================== ИНДИКАТОР ПЕРЕМОТКИ ====================
 /**
@@ -200,13 +214,36 @@ function blurEditor() {
     }
 }
 
+/**
+ * Элементы, которым мы сами поставили класс focused.
+ *
+ * Раньше clearFocused() искал их через document.querySelectorAll('.focused') —
+ * то есть обходил ВЕСЬ документ на каждое перемещение фокуса. В сетке каталога
+ * это прогулка по тысяче с лишним узлов на каждое нажатие стрелки, притом что
+ * подсвеченный элемент почти всегда ровно один и мы сами его только что
+ * подсветили.
+ *
+ * Инвариант: всё, что ставит класс focused, обязано зарегистрироваться здесь.
+ * Точек всего две — focusEl() ниже и sync.js (поле ввода кода), обе зовут
+ * trackFocusedElement(). Если появится третья, а регистрации не будет, на
+ * экране останется лишняя подсветка.
+ */
+var _focusedEls = [];
+
+function trackFocusedElement(el) {
+    if (el && _focusedEls.indexOf(el) === -1) _focusedEls.push(el);
+}
+window.trackFocusedElement = trackFocusedElement;
+
 function clearFocused() {
-    var f = document.querySelectorAll('.focused');
-    for (var i = 0; i < f.length; i++) {
-        if (typeof gsap !== 'undefined') gsap.killTweensOf(f[i]);
-        f[i].style.boxShadow = '';
-        f[i].style.transform = '';
-        f[i].classList.remove('focused');
+    if (!_focusedEls.length) return;
+    var list = _focusedEls;
+    _focusedEls = [];
+    for (var i = 0; i < list.length; i++) {
+        if (typeof gsap !== 'undefined') gsap.killTweensOf(list[i]);
+        list[i].style.boxShadow = '';
+        list[i].style.transform = '';
+        list[i].classList.remove('focused');
     }
 }
 
@@ -272,6 +309,8 @@ function invalidateFocusCache() {
     _focusGen++;
     _rowsCache.gen = -1;
     _rowsCache.rows = null;
+    _gridCardsCache.gen = -1;
+    _gridCardsCache.cards = null;
 }
 window.invalidateFocusCache = invalidateFocusCache;
 
@@ -382,6 +421,41 @@ function getTorrentCards() {
     var c = document.querySelectorAll('#torrents-grid .torrent-card'), v = [];
     for (var i = 0; i < c.length; i++) if (VISIBLE(c[i])) v.push(c[i]);
     return v;
+}
+
+// Селектор карточек каталога — один на все точки, где раньше он был выписан
+// заново (getItems, ensureFocus, handleNavigation, догрузка по «вниз»).
+var CATALOG_CARDS_SELECTOR =
+    '#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card, ' +
+    '#catalog-rows .torrent-card.catalog-card, #catalog-rows .torrent-card.catalog-folder-card';
+
+/**
+ * Видимые карточки каталога, с кэшем по поколению DOM — та же схема, что у
+ * getCatalogRows(). Обход стоит querySelectorAll по документу плюс offsetParent
+ * на каждой карточке; в сетке категории их до CATALOG_FULL_LIMIT (1000), а
+ * звалось это на КАЖДОЕ нажатие стрелки, и не по одному разу.
+ *
+ * isConnected на первом элементе — страховка от пропущенной инвалидации, как
+ * в getCatalogRows: если сетку переписали мимо invalidateFocusCache(), кэш
+ * отбрасываем. Пустой результат не кэшируется по той же причине, что и там:
+ * карточки могли ещё не появиться, и залипший пустой список означал бы экран
+ * без фокуса до следующей инвалидации.
+ */
+function getCatalogGridCards() {
+    if (_gridCardsCache.gen === _focusGen && _gridCardsCache.cards &&
+        _gridCardsCache.cards.length > 0 &&
+        _gridCardsCache.cards[0].isConnected !== false) {
+        return _gridCardsCache.cards;
+    }
+
+    var ac = document.querySelectorAll(CATALOG_CARDS_SELECTOR);
+    var c = [];
+    for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
+
+    _gridCardsCache.gen = _focusGen;
+    _gridCardsCache.cards = c;
+
+    return c;
 }
 
 // Отдельной шапки с «Настройками» больше нет: кнопка стоит в одной строке с
@@ -632,9 +706,7 @@ var ScreenStrategies = {
 
     catalog: {
         getItems: function () {
-            var c = [], ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card, #catalog-rows .torrent-card.catalog-card, #catalog-rows .torrent-card.catalog-folder-card');
-            for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
-            return c;
+            return getCatalogGridCards();
         },
         ensureFocus: function (force) {
             if (force === undefined) force = false;
@@ -652,9 +724,7 @@ var ScreenStrategies = {
             // Старый вид: сетка (без изменений)
             var f = document.querySelector('.focused');
             if (!force && f && belongsToScreen(f, 'catalog')) return true;
-            var ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card, #catalog-rows .torrent-card.catalog-card, #catalog-rows .torrent-card.catalog-folder-card');
-            var c = [];
-            for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
+            var c = getCatalogGridCards();
             if (!c.length) return false;
             var si = localStorage.getItem('lastCatalogCardIndex'), tc = null;
             if (si !== null) {
@@ -676,11 +746,13 @@ var ScreenStrategies = {
                 return handleRowsNavigation(dir);
             }
 
-            // Старый вид: сетка (без изменений)
-            var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
-            var ac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card, #catalog-rows .torrent-card.catalog-card, #catalog-rows .torrent-card.catalog-folder-card');
-            var c = [];
-            for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
+            // Старый вид: сетка. Списки берём из кэша по поколению DOM
+            // (getCatalogGridCards), а .focused ищем один раз, а не дважды
+            // подряд, как было: оба запроса шли по всему документу на каждое
+            // нажатие стрелки.
+            var focused = document.querySelector('.focused');
+            var f = belongsToScreen(focused, 'catalog') ? focused : null;
+            var c = getCatalogGridCards();
             var h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns();
             if (!f) return this.ensureFocus(true);
             var ci = -1, hi = -1, ti = -1;
@@ -697,8 +769,9 @@ var ScreenStrategies = {
                     else if (c.length < catalogState.totalItems && !catalogState.isLoadingMore) {
                         window.loadMoreCatalogItems().then(function () {
                             setTimeout(function () {
-                                var nc = [], nac = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card, #catalog-rows .torrent-card.catalog-card, #catalog-rows .torrent-card.catalog-folder-card');
-                                for (var m = 0; m < nac.length; m++) if (VISIBLE(nac[m])) nc.push(nac[m]);
+                                // appendCatalogItems уже позвал invalidateFocusCache(),
+                                // поэтому кэш здесь гарантированно пересобран
+                                var nc = getCatalogGridCards();
                                 var tix = Math.min(ci + cols, nc.length - 1);
                                 if (tix >= 0 && tix < nc.length && nc[tix]) focusEl(nc[tix]);
                             }, 50);
@@ -1159,9 +1232,7 @@ function updateFocusableElements() {
     if (_focusCache.screen === screen &&
         _focusCache.elements.length > 0 &&
         _focusCache.gen === _focusGen &&
-        (screen === 'catalog'
-            ? now - _focusCache.timestamp < CATALOG_FOCUS_CACHE_TTL
-            : now - _focusCache.timestamp < _focusCache.ttl) &&
+        (screen === 'catalog' || now - _focusCache.timestamp < _focusCache.ttl) &&
         _focusCache.elements[0].isConnected !== false) {
         focusableElements = _focusCache.elements;
         return;
@@ -1286,8 +1357,10 @@ function updateFocusableElements() {
         return;
     }
     if (screen === 'catalog') {
-        var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card, #catalog-rows .torrent-card.catalog-card, #catalog-rows .torrent-card.catalog-folder-card');
-        for (var i = 0; i < cards.length; i++) if (cards[i] && cards[i].offsetParent !== null) list.push(cards[i]);
+        // Тот же кэш по поколению, что и у навигации: обход карточек с
+        // offsetParent делается один раз на изменение DOM, а не здесь заново.
+        var cards = getCatalogGridCards();
+        for (var i = 0; i < cards.length; i++) list.push(cards[i]);
         var rowHeaders = document.querySelectorAll('#catalog-rows .catalog-row-header, #catalog-grid .catalog-row-header');
         for (var rh = 0; rh < rowHeaders.length; rh++) if (rowHeaders[rh] && rowHeaders[rh].offsetParent !== null) list.push(rowHeaders[rh]);
         // window.catalogCards заполняем ДО кнопок шапки: legacy-навигация по
@@ -1295,10 +1368,13 @@ function updateFocusableElements() {
         window.catalogCards = list.slice();
         var catNav = getTorrentTabs();
         for (var cn = 0; cn < catNav.length; cn++) if (list.indexOf(catNav[cn]) === -1) list.push(catNav[cn]);
+        // Кэш и focusableElements — один и тот же массив: список нигде не
+        // мутируют на месте, только переприсваивают целиком, поэтому вторая
+        // копия сотен элементов на каждую пересборку была лишней.
         focusableElements = list;
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
-        _focusCache.elements = focusableElements.slice();
+        _focusCache.elements = list;
         _focusCache.gen = _focusGen;
         return;
     }
@@ -2434,6 +2510,7 @@ function focusEl(el, opts) {
     if (el === undefined) return;
     clearFocused();
     el.classList.add('focused');
+    trackFocusedElement(el);
     if (opts.nativeFocus) try { el.focus(); } catch (e) { } else blurEditor();
 
     var container = null;
