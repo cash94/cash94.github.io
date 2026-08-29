@@ -2288,6 +2288,15 @@ function isFirstRowViewport(viewport) {
     return false;
 }
 
+/** Карточка сетки категории каталога (#catalog-grid), а не ряда-карусели */
+function isCatalogGridCard(el) {
+    if (!el || !el.classList) return false;
+    if (el.classList.contains('catalog-row-card')) return false;
+    if (!el.classList.contains('torrent-card')) return false;
+    var grid = getEl('catalog-grid');
+    return !!(grid && grid.contains(el));
+}
+
 /** Карточка из самой верхней строки сетки (#torrents-grid / #catalog-grid) */
 function isFirstRowGridCard(target) {
     if (!target || !target.closest) return false;
@@ -2295,12 +2304,74 @@ function isFirstRowGridCard(target) {
     if (!grid) return false;
     var cols = grid.id === 'torrents-grid' ? getTorrentGridColumns() : getColumns();
     if (!cols || cols < 1) return false;
-    var cards = grid.querySelectorAll('.torrent-card'), seen = 0;
-    for (var i = 0; i < cards.length; i++) {
-        if (cards[i] === target) return seen < cols;
-        if (cards[i].offsetParent !== null) seen++;
+
+    // Каталог: тот же кэшированный по поколению DOM список, что и у навигации.
+    // Прежний путь обходил grid.querySelectorAll('.torrent-card') с offsetParent
+    // до совпадения — до тысячи элементов, и звалось это дважды на нажатие
+    // (проверка в focusEl плюс ветка в scrollToElementIfNeeded).
+    if (grid.id === 'catalog-grid') {
+        var cards = getCatalogGridCards();
+        for (var c = 0; c < cards.length && c < cols; c++) {
+            if (cards[c] === target) return true;
+        }
+        return false;
+    }
+
+    var all = grid.querySelectorAll('.torrent-card'), seen = 0;
+    for (var i = 0; i < all.length; i++) {
+        if (all[i] === target) return seen < cols;
+        if (all[i].offsetParent !== null) seen++;
     }
     return false;
+}
+
+// Зазор под сфокусированной строкой сетки категории. 10px — ровно столько же
+// оставляла прежняя прокрутка «вниз» (Animations.scrollToIfNotVisible с
+// offset: 10), чтобы движение вниз на ощупь не изменилось.
+var CATALOG_GRID_BOTTOM_PAD = 10;
+
+/**
+ * Сетка категории: строка под фокусом всегда прижата к НИЖНЕЙ границе.
+ *
+ * Раньше вниз и вверх работали по-разному, и вверх фокус «плясал»:
+ *   • focusEl вообще не звал прокрутку, если элемент уже целиком виден. Идя
+ *     вверх, фокус поэтому просто шагал по видимым строкам от нижней к верхней,
+ *     не двигая страницу;
+ *   • дойдя до верхней видимой строки, он упирался в невидимую, и только тогда
+ *     запускалась прокрутка — с direction 'up', то есть прижимала строку к
+ *     ВЕРХНЕЙ границе. Дальше фокус так и оставался наверху;
+ *   • вдобавок при быстрых нажатиях (твин ещё в полёте) отрабатывала другая
+ *     ветка — она просто доводила элемент до ближайшего края, без учёта
+ *     направления. Один и тот же шаг давал разный результат.
+ *
+ * Теперь цель одна и считается всегда: нижний край карточки встаёт на
+ * CATALOG_GRID_BOTTOM_PAD выше низа контейнера. У краёв списка цель упирается в
+ * ограничители (0 и максимум прокрутки) — у первых строк это верх страницы, у
+ * последних низ, иначе прижать к низу нечем.
+ *
+ * Считаем от позиции ПОКОЯ (pendingScrollDelta), а не от живого rect: посреди
+ * твина живой прямоугольник показывает «полпути», и серия быстрых нажатий
+ * получалась рваной — та же причина, что и в соседних ветках.
+ */
+function scrollCatalogGridCardIntoView(el, scrollContainer, smooth) {
+    if (!el || !scrollContainer) return;
+
+    var dy = pendingScrollDelta(scrollContainer);
+    var restTop = scrollContainer.scrollTop + dy;          // куда встанет прокрутка
+    var viewTop = scrollContainer.getBoundingClientRect().top;
+    var viewBottom = viewTop + scrollContainer.clientHeight;
+    var restBottom = el.getBoundingClientRect().bottom - dy;
+
+    var target = restTop + (restBottom - (viewBottom - CATALOG_GRID_BOTTOM_PAD));
+    var maxTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+    target = Math.max(0, Math.min(maxTop, target));
+
+    // Уже там (движение влево/вправо внутри строки, упор в край списка) —
+    // не пересоздаём твин, иначе прокрутка каждый раз начинала разгон заново
+    if (Math.abs(restTop - target) < 2) return;
+
+    applyScroll(scrollContainer, { scrollTop: target }, smooth,
+        fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
 }
 
 /**
@@ -2471,6 +2542,11 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         // Кнопки шапки и первая строка сетки (#torrents-grid / #catalog-grid)
         applyScroll(container, { scrollTop: 0 }, smooth, SCROLL_SMOOTH.durationY);
         return;
+    } else if (isCatalogGridCard(el)) {
+        // Сетка категории: строка под фокусом всегда у нижней границы,
+        // одинаково вниз и вверх (см. scrollCatalogGridCardIntoView)
+        scrollCatalogGridCardIntoView(el, scrollContainer, smooth);
+        return;
     } else if (container.id == 'episodes-panel' || container.id == 'audio-panel' || container.id == 'subtitles-panel') {
         if (typeof Animations !== 'undefined') Animations.scrollToIfNotVisible(el, container);
     }
@@ -2597,8 +2673,14 @@ function focusEl(el, opts) {
     var scrollDirection = opts.direction || lastNavDirection;
     // isTopAnchoredTarget — фокус в шапке или в первой строке экрана: страницу
     // надо вернуть в ноль даже если элемент уже целиком виден.
+    //
+    // isCatalogGridCard — там позиция строки задана жёстко (у нижней границы),
+    // поэтому проверка видимости не годится: пока фокус идёт вверх по уже
+    // видимым строкам, она возвращала «прокрутка не нужна», страница стояла на
+    // месте, и строка уезжала от нижнего края к верхнему. Решение принимает
+    // сама scrollCatalogGridCardIntoView — если двигаться некуда, она выйдет.
     if (container && !isElementFullyVisible(el, container) || el.id === 'back-from-detail' ||
-        el.id === 'catalog-watch-btn' || isTopAnchoredTarget(el)) {
+        el.id === 'catalog-watch-btn' || isTopAnchoredTarget(el) || isCatalogGridCard(el)) {
         scrollToElementIfNeeded(
             el,
             container,
