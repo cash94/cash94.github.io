@@ -635,9 +635,13 @@ function setupNavigation() {
       // currentScreen() смотрит на то, что сейчас видно, а через мгновение
       // #torrserver-section будет погашен целиком. Читает это control.js (onBack).
       if (typeof AppState !== 'undefined') {
-        AppState.configReturnTo = (typeof currentScreen === 'function')
+        var from = (typeof currentScreen === 'function')
           ? currentScreen()
           : AppState.currentScreen;
+        // 'config' записать нельзя: настройки могли открыть поверх уже открытых
+        // (например, ветка «сервер недоступен» в torrents.js), и тогда возврат
+        // указывал бы сам на себя. В таком случае прежнее значение сохраняем.
+        if (from && from !== 'config') AppState.configReturnTo = from;
       }
       if (torrserverSection) torrserverSection.style.display = 'none';
       if (configScreen) configScreen.style.display = 'flex';
