@@ -6,7 +6,13 @@ var CATALOG_CONSTANTS = {
     CACHE_TTL_MS: 3600000,              // 1 час
     FETCH_TIMEOUT_MS: 5000,             // 5 секунд
     CATALOG_CACHE_TTL_MS: 3600000,      // 1 час для каталогов
-    ITEMS_PER_PAGE: 150,
+    // 50, а не 150: столько карточек отрисовывается при входе в категорию и
+    // добавляется за одну догрузку. Сетка всё равно виртуализуется чанками
+    // (см. блок перед renderCatalogGrid), поэтому крупная страница ничего не
+    // экономила — она лишь делала вход в категорию втрое дороже и собирала
+    // работу в редкие большие рывки вместо частых мелких.
+    // При 5 колонках страница совпадает с чанком (CHUNK_ROWS × колонки).
+    ITEMS_PER_PAGE: 50,
     MAX_POSTER_CACHE: 400,              // только строки-URL: ~50 КБ на 400 записей.
     // Карточек на экране рядов ~90, в сетке до 150 — при лимите 20 кэш почти
     // всегда промахивался и URL постера каждый раз запрашивался у воркера.
@@ -686,7 +692,12 @@ var catalogState = {
     focusPosterTimer: null,
     // Оконная видимость (см. initRowVisibilityWindow / initGridVisibilityWindow)
     rowVisibilityObserver: null,
-    gridVisibilityObserver: null
+    gridVisibilityObserver: null,
+    // Чанковая виртуализация сетки категории (см. блок перед renderCatalogGrid)
+    chunks: [],
+    chunkSize: 0,
+    chunkObserver: null,
+    chunkTrimTimer: null
 };
 
 // catalogCache удалён: единственным его читателем был loadCatalog ниже, а он
@@ -699,6 +710,7 @@ function abortCatalogRequests() {
     if (catalogState.posterObserver) { catalogState.posterObserver.disconnect(); catalogState.posterObserver = null; }
     if (catalogState.loadMoreObserver) { catalogState.loadMoreObserver.disconnect(); catalogState.loadMoreObserver = null; }
     if (catalogState.rowPosterObserver) { catalogState.rowPosterObserver.disconnect(); catalogState.rowPosterObserver = null; }
+    if (catalogState.chunkObserver) { catalogState.chunkObserver.disconnect(); catalogState.chunkObserver = null; }
     resetDeferredPosters();
 }
 
@@ -1190,6 +1202,7 @@ function showCatalogRowsView() {
         grid.style.display = 'none';
         grid.innerHTML = '';
         resetGridVisibilityWindow();
+        resetGridChunks();
     }
     if (!rows) return;
     // Скролл сбрасываем ДО показа: #main-container остался на позиции сетки
@@ -1210,6 +1223,315 @@ function showCatalogRowsView() {
     // Сменился видимый контейнер (плюс сетка категории только что очищена)
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
 }
+
+/* ==================== ЧАНКОВАЯ ВИРТУАЛИЗАЦИЯ СЕТКИ ====================
+ *
+ * Карточки категории копились в DOM без предела: 150 за страницу, до
+ * CATALOG_FULL_LIMIT. На 900 карточках это 11 тысяч узлов, и каждое нажатие
+ * пульта дорожало вчетверо против 150 — не из-за памяти (куча стояла на месте),
+ * а из-за layout: focusEl на каждый шаг зовёт getBoundingClientRect дважды
+ * (isElementFullyVisible и scrollCatalogGridCardIntoView), а стоимость
+ * принудительного пересчёта линейна по размеру документа.
+ *
+ * Поэтому сетка держится нарезанной на чанки по CHUNK_ROWS строк. Далёкие от
+ * фокуса чанки СВОРАЧИВАЮТСЯ: карточки удаляются, а на их место встаёт одна
+ * распорка ровно той же высоты. Ключевое здесь — именно распорка, а не простое
+ * удаление: scrollHeight не меняется, значит позицию прокрутки компенсировать
+ * не надо и рывка нет в принципе.
+ *
+ * От дёрганья на границе (быстро мотать вверх-вниз) защищают три вещи:
+ *   • гистерезис — сворачиваем, только перевалив за CHUNK_HYDRATED_MAX, и лишь
+ *     до CHUNK_HYDRATED_KEEP, так что у границы всегда есть запас;
+ *   • CHUNK_FOCUS_GUARD — чанк с фокусом и соседние не трогаем вообще;
+ *   • работаем только в тишине — тем же условием, что очередь постеров
+ *     и оконная видимость (fastNavigation + isCatalogScrollAnimating).
+ *
+ * Границы чанков выравнены по строкам сетки (кратны числу колонок): иначе
+ * распорка во всю ширину встала бы посреди строки и разъехалась бы вёрстка.
+ */
+var CHUNK_ROWS = 10;             // строк сетки в одном чанке
+var CHUNK_HYDRATED_MAX = 4;      // сверх этого начинаем сворачивать
+var CHUNK_HYDRATED_KEEP = 3;     // до скольких сворачиваем: предыдущий, текущий, следующий
+var CHUNK_FOCUS_GUARD = 1;       // чанков по обе стороны от фокуса не трогаем
+
+/* Почему именно 4 и 3.
+ *
+ * KEEP = 3 — это ровно то, что защищает CHUNK_FOCUS_GUARD: чанк с фокусом плюс
+ * по одному с каждой стороны. Меньше поставить нельзя — обрезка всё равно не
+ * тронет защищённые и просто отработает вхолостую.
+ *
+ * MAX = KEEP + 1 даёт запас ровно на одно пересечение границы, и этого хватает,
+ * чтобы мотание вверх-вниз через границу не дёргало DOM. Перешли из чанка n в
+ * n+1: ensureChunksAroundFocus поднимает n+2, живых становится 4 — это ещё не
+ * больше MAX, обрезка молчит. Вернулись в n: n-1 уже живой, ничего поднимать не
+ * надо, живых по-прежнему 4. Сколько ни качайся у этой границы, ни одной
+ * свёртки и ни одной развёртки не происходит. Только уйдя на чанк дальше,
+ * получаем 5 живых, и хвост сворачивается до 3.
+ *
+ * При 5 колонках это 150–200 карточек в DOM вместо неограниченного роста. */
+var CHUNK_OBSERVER_MARGIN_PX = 1200;   // за сколько до вьюпорта разворачивать
+
+function getChunkSize() {
+    var cols = (typeof getColumns === 'function' && getColumns()) || 5;
+    return cols * CHUNK_ROWS;
+}
+
+/** Сетка перерисована или каталог сменился — прежняя нарезка недействительна */
+function resetGridChunks() {
+    if (catalogState.chunkObserver) {
+        catalogState.chunkObserver.disconnect();
+        catalogState.chunkObserver = null;
+    }
+    if (catalogState.chunkTrimTimer) {
+        clearTimeout(catalogState.chunkTrimTimer);
+        catalogState.chunkTrimTimer = null;
+    }
+    catalogState.chunks = [];
+    catalogState.chunkSize = 0;
+}
+
+/**
+ * Пересобирает описание чанков по текущему составу catalogState.items.
+ * Сами карточки при этом не трогаются — только границы диапазонов.
+ */
+function rebuildChunkRanges() {
+    var size = catalogState.chunkSize || getChunkSize();
+    var total = catalogState.items.length;
+    var chunks = catalogState.chunks;
+
+    for (var start = chunks.length * size; start < total; start += size) {
+        chunks.push({
+            index: chunks.length,
+            start: start,
+            end: Math.min(start + size, total),
+            spacer: null
+        });
+    }
+
+    // Последний чанк мог быть неполным и дорасти новой страницей
+    if (chunks.length) {
+        var last = chunks[chunks.length - 1];
+        last.end = Math.min(last.start + size, total);
+    }
+}
+
+function initChunkObserver() {
+    if (catalogState.chunkObserver) catalogState.chunkObserver.disconnect();
+
+    catalogState.chunkObserver = new IntersectionObserver(function (entries) {
+        var grew = false;
+        for (var i = 0; i < entries.length; i++) {
+            if (!entries[i].isIntersecting) continue;
+            var ch = entries[i].target._chunk;
+            if (ch && ch.spacer) { hydrateChunk(ch); grew = true; }
+        }
+        if (grew) {
+            if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+            updatePosterObservers();
+            updateGridVisibilityWindow();
+            scheduleChunkTrim();
+        }
+    }, { root: getEl('main-container'), rootMargin: CHUNK_OBSERVER_MARGIN_PX + 'px 0px', threshold: 0 });
+}
+
+/** Свернуть чанк: карточки → одна распорка той же высоты */
+function dehydrateChunk(ch) {
+    if (!ch || ch.spacer) return false;
+
+    var first = catalogState.cardElements[ch.start];
+    var last = catalogState.cardElements[ch.end - 1];
+    if (!first || !last || !first.isConnected || !last.isConnected) return false;
+
+    // Высоту МЕРЯЕМ, а не считаем из числа строк и gap: посчитанная разъедется
+    // с реальной при любой правке плотности в ui-customizer, а разъехавшаяся
+    // распорка — это тот самый сдвиг, ради отсутствия которого всё и затевалось.
+    var height = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
+    if (!(height > 0)) return false;
+
+    var spacer = document.createElement('div');
+    spacer.className = 'catalog-chunk-spacer';
+    spacer.style.cssText = 'grid-column:1/-1;height:' + height + 'px;';
+    spacer._chunk = ch;
+
+    var grid = getCatalogGridEl();
+    if (!grid) return false;
+    grid.insertBefore(spacer, first);
+
+    for (var i = ch.start; i < ch.end; i++) {
+        var card = catalogState.cardElements[i];
+        if (card && card.parentNode === grid) grid.removeChild(card);
+        delete catalogState.cardElements[i];
+    }
+
+    ch.spacer = spacer;
+    if (catalogState.chunkObserver) catalogState.chunkObserver.observe(spacer);
+    return true;
+}
+
+/** Развернуть чанк обратно: распорка → карточки */
+function hydrateChunk(ch) {
+    if (!ch || !ch.spacer) return false;
+
+    var grid = getCatalogGridEl();
+    var spacer = ch.spacer;
+    if (!grid || spacer.parentNode !== grid) { ch.spacer = null; return false; }
+
+    var frag = document.createDocumentFragment();
+    for (var i = ch.start; i < ch.end; i++) {
+        var item = catalogState.items[i];
+        if (!item) continue;
+        frag.appendChild(createCatalogCard(item, i));
+    }
+
+    grid.insertBefore(frag, spacer);
+    if (catalogState.chunkObserver) catalogState.chunkObserver.unobserve(spacer);
+    grid.removeChild(spacer);
+    ch.spacer = null;
+    return true;
+}
+
+/**
+ * Чанк, вокруг которого держим развёрнутое окно.
+ *
+ * Обычно это чанк с фокусом. Но догрузка страниц идёт и без фокуса в сетке —
+ * её запускает наблюдатель load-more-trigger при прокрутке. Раньше в этом
+ * случае обрезка просто не срабатывала, и карточки копились как прежде,
+ * поэтому есть запасной путь: чанк, ближайший к верху видимой области.
+ */
+function anchorChunkIndex() {
+    var size = catalogState.chunkSize || getChunkSize();
+
+    var f = document.querySelector('#catalog-grid .torrent-card.catalog-card.focused');
+    if (f && f.dataset.catalogIndex) {
+        var idx = parseInt(f.dataset.catalogIndex, 10);
+        if (!isNaN(idx)) return Math.floor(idx / size);
+    }
+
+    var mc = getEl('main-container');
+    var chunks = catalogState.chunks;
+    if (!mc || !chunks || !chunks.length) return -1;
+
+    var viewTop = mc.getBoundingClientRect().top;
+    var best = -1, bestDist = Infinity;
+    for (var i = 0; i < chunks.length; i++) {
+        if (chunks[i].spacer) continue;
+        var card = catalogState.cardElements[chunks[i].start];
+        if (!card || !card.isConnected) continue;
+        var d = Math.abs(card.getBoundingClientRect().top - viewTop);
+        if (d < bestDist) { bestDist = d; best = chunks[i].index; }
+    }
+    return best;
+}
+
+/** Отложить обрезку до конца навигации — как очередь постеров */
+function scheduleChunkTrim() {
+    if (catalogState.chunkTrimTimer) return;
+    catalogState.chunkTrimTimer = setTimeout(function () {
+        catalogState.chunkTrimTimer = null;
+        trimGridChunks();
+    }, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+}
+
+function trimGridChunks() {
+    var chunks = catalogState.chunks;
+    if (!chunks || chunks.length <= CHUNK_HYDRATED_MAX) return;
+
+    var live = [];
+    for (var i = 0; i < chunks.length; i++) if (!chunks[i].spacer) live.push(chunks[i]);
+    if (live.length <= CHUNK_HYDRATED_MAX) return;
+
+    // Пока кнопку держат или едет твин — DOM не трогаем вовсе
+    if (window.fastNavigation || isCatalogScrollAnimating()) { scheduleChunkTrim(); return; }
+
+    var focusIdx = anchorChunkIndex();
+    if (focusIdx === -1) return;    // не от чего отсчитывать «далёкий» чанк
+
+    live.sort(function (a, b) {
+        return Math.abs(b.index - focusIdx) - Math.abs(a.index - focusIdx);
+    });
+
+    // Запоминаем, где стоял фокус: CHUNK_FOCUS_GUARD его чанк защищает, но
+    // защита строится вокруг anchorChunkIndex(), а тот при уже потерянном
+    // фокусе переходит на вьюпорт. Если такое совпадёт с моментом обрезки,
+    // карточка под фокусом может уехать вместе с чанком — ниже поднимем.
+    var focusedEl = document.querySelector('#catalog-grid .torrent-card.catalog-card.focused');
+    var focusedIdx = focusedEl && focusedEl.dataset
+        ? parseInt(focusedEl.dataset.catalogIndex, 10)
+        : NaN;
+
+    var removed = 0;
+    for (var j = 0; j < live.length && live.length - removed > CHUNK_HYDRATED_KEEP; j++) {
+        if (Math.abs(live[j].index - focusIdx) <= CHUNK_FOCUS_GUARD) continue;
+        if (dehydrateChunk(live[j])) removed++;
+    }
+
+    if (!removed) return;
+
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    updateGridVisibilityWindow();
+
+    // Самовосстановление фокуса. Экран без фокуса на телевизоре — это
+    // намертво: пульт перестаёт что-либо делать, пока не сработает
+    // setupFocusRescue. Возвращаем на ту же карточку, а если её чанк всё-таки
+    // свернули — на ближайшую живую, но НЕ на первую в каталоге: прыжок
+    // в начало списка хуже самой потери.
+    var still = document.querySelector('#catalog-grid .torrent-card.catalog-card.focused');
+    if (still && still.isConnected) return;
+
+    var target = !isNaN(focusedIdx) ? catalogState.cardElements[focusedIdx] : null;
+    if (!target || !target.isConnected) {
+        var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
+        var best = null, bestD = Infinity;
+        for (var k = 0; k < cards.length; k++) {
+            var n = parseInt(cards[k].dataset.catalogIndex, 10);
+            if (isNaN(n)) continue;
+            var d = isNaN(focusedIdx) ? k : Math.abs(n - focusedIdx);
+            if (d < bestD) { bestD = d; best = cards[k]; }
+        }
+        target = best;
+    }
+    if (target && typeof focusEl === 'function') focusEl(target);
+}
+
+/**
+ * Страховка на шаг вперёд: соседние с фокусом чанки обязаны быть развёрнуты.
+ *
+ * Разворачиванием вообще-то заведует наблюдатель (CHUNK_OBSERVER_MARGIN_PX даёт
+ * запас примерно в три строки), но его колбэк приходит через кадр, а фокус
+ * двигается синхронно. Здесь тот же приём, что и с оконной видимостью:
+ * сфокусированный элемент готовим сами, не дожидаясь наблюдателя. Зовётся из
+ * focusEl → revealCatalogElement на каждое перемещение по сетке, поэтому к
+ * следующему нажатию соседний чанк уже на месте.
+ */
+function ensureChunksAroundFocus(card) {
+    var chunks = catalogState.chunks;
+    if (!chunks || !chunks.length || !card.dataset) return;
+
+    var idx = parseInt(card.dataset.catalogIndex, 10);
+    if (isNaN(idx)) return;
+
+    var size = catalogState.chunkSize || getChunkSize();
+    var here = Math.floor(idx / size);
+    var grew = false;
+
+    for (var i = here - 1; i <= here + 1; i++) {
+        if (i < 0 || i >= chunks.length) continue;
+        if (chunks[i].spacer && hydrateChunk(chunks[i])) grew = true;
+    }
+
+    if (grew) {
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        updatePosterObservers();
+        updateGridVisibilityWindow();
+        // Обязательно: развернув чанк, мы увеличили окно, и хвост надо
+        // подрезать. Без этого вызова окно только росло — при движении по
+        // сетке чанки поднимались один за другим и не сворачивались никогда,
+        // потому что обрезку планировали лишь догрузка страницы и наблюдатель.
+        scheduleChunkTrim();
+    }
+}
+
+window.trimGridChunks = trimGridChunks;
 
 function renderCatalogGrid() {
     var grid = getCatalogGridEl();
@@ -1232,6 +1554,10 @@ function renderCatalogGrid() {
     catalogState.loadedPostersCount = 0;
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     resetDeferredPosters();   // индексы прошлой сетки больше не действительны
+    resetGridChunks();
+    catalogState.chunkSize = getChunkSize();
+    rebuildChunkRanges();
+    initChunkObserver();
     initPosterLazyLoading();
     initGridVisibilityWindow();
     initLoadMoreObserver();
@@ -1274,6 +1600,10 @@ function appendCatalogItems(newItems) {
     updatePosterObservers();
     updateGridVisibilityWindow();
     initLoadMoreObserver();
+
+    // Новая страница — новые чанки; сворачивание отложено до тишины
+    rebuildChunkRanges();
+    scheduleChunkTrim();
 
     if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
         if (typeof updateFocusableElements === 'function') updateFocusableElements();
@@ -3652,7 +3982,10 @@ function revealCatalogElement(el) {
     // Ряд и его постер есть только в режиме рядов. В сетке категории closest()
     // всё равно поднимался до корня и всегда возвращал null, а звалось это из
     // focusEl на каждое перемещение фокуса.
-    if (!el.classList.contains('catalog-row-card')) return;
+    if (!el.classList.contains('catalog-row-card')) {
+        ensureChunksAroundFocus(el);
+        return;
+    }
 
     var row = el.closest ? el.closest('.catalog-row') : null;
     if (row) row.classList.remove(OFFSCREEN_CLASS);

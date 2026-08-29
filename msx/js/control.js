@@ -2396,16 +2396,20 @@ function isFirstRowGridCard(target) {
     var cols = grid.id === 'torrents-grid' ? getTorrentGridColumns() : getColumns();
     if (!cols || cols < 1) return false;
 
-    // Каталог: тот же кэшированный по поколению DOM список, что и у навигации.
-    // Прежний путь обходил grid.querySelectorAll('.torrent-card') с offsetParent
-    // до совпадения — до тысячи элементов, и звалось это дважды на нажатие
+    // Каталог: смотрим на НОМЕР ЭЛЕМЕНТА, а не на позицию в DOM.
+    //
+    // Позиция не годится с тех пор, как сетка виртуализуется чанками
+    // (catalog.js): при прокрутке вглубь первые чанки сворачиваются в распорки,
+    // и первой в DOM оказывается карточка из середины каталога. По позиции она
+    // считалась бы «верхним рядом», и фокус на ней уводил бы страницу в самое
+    // начало. Номер элемента от сворачивания не зависит.
+    //
+    // Заодно это дешевле прежнего обхода grid.querySelectorAll('.torrent-card')
+    // с offsetParent до совпадения — а звалось оно дважды на каждое нажатие
     // (проверка в focusEl плюс ветка в scrollToElementIfNeeded).
     if (grid.id === 'catalog-grid') {
-        var cards = getCatalogGridCards();
-        for (var c = 0; c < cards.length && c < cols; c++) {
-            if (cards[c] === target) return true;
-        }
-        return false;
+        var n = parseInt(target.dataset.catalogIndex, 10);
+        return !isNaN(n) && n < cols;
     }
 
     var all = grid.querySelectorAll('.torrent-card'), seen = 0;
@@ -2721,6 +2725,16 @@ function byId(id) { return getEl(id); };
 function focusEl(el, opts) {
     if (opts === undefined) opts = {};
     if (el === undefined) return;
+    // Элемент уже не в документе — не трогаем текущий фокус.
+    //
+    // Иначе clearFocused() снимет подсветку с живой карточки, класс уйдёт на
+    // оторванный узел, и document.querySelector('.focused') вернёт null: на
+    // телевизоре это означает мёртвый пульт до срабатывания setupFocusRescue.
+    // Приходит такое из кэшированных списков (getCatalogGridCards), когда сетку
+    // между сборкой кэша и нажатием подрезала чанковая виртуализация. Пропустить
+    // одно нажатие несравнимо лучше, чем потерять фокус совсем.
+    if (el.isConnected === false) return false;
+
     clearFocused();
     el.classList.add('focused');
     trackFocusedElement(el);
