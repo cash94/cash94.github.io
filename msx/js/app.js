@@ -631,6 +631,14 @@ function setupNavigation() {
     settingsBtn.addEventListener('click', function () {
       var torrserverSection = getEl('torrserver-section');
       var configScreen = getEl('config-screen');
+      // Куда возвращаться по «назад» из настроек. Считаем ДО подмены экранов:
+      // currentScreen() смотрит на то, что сейчас видно, а через мгновение
+      // #torrserver-section будет погашен целиком. Читает это control.js (onBack).
+      if (typeof AppState !== 'undefined') {
+        AppState.configReturnTo = (typeof currentScreen === 'function')
+          ? currentScreen()
+          : AppState.currentScreen;
+      }
       if (torrserverSection) torrserverSection.style.display = 'none';
       if (configScreen) configScreen.style.display = 'flex';
       if (typeof AppState !== 'undefined') AppState.currentScreen = 'config';
