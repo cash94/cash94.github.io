@@ -94,6 +94,9 @@
         HOVER_SCROLL_SEC: 0.3
     };
 
+    // Эндпоинт модуля подборок Кинопоиска (kinopoisk-collections)
+    var KP_ENDPOINT = '/api/kinopoisk/collection';
+
     // Порядок рядов сверху вниз. key для подборок TMDB — это preset эндпоинта.
     var HOME_ROWS = [
         { key: 'history', name: 'Продолжить просмотр', source: 'history' },
@@ -105,7 +108,27 @@
         { key: 'top_movies', name: 'Топ рейтинга: фильмы', source: 'tmdb' },
         { key: 'top_tv', name: 'Топ рейтинга: сериалы', source: 'tmdb' },
         { key: 'popular_movies', name: 'Популярные фильмы', source: 'tmdb' },
-        { key: 'popular_tv', name: 'Популярные сериалы', source: 'tmdb' }
+        { key: 'popular_tv', name: 'Популярные сериалы', source: 'tmdb' },
+        // Подборки Кинопоиска. Их отдаёт модуль kinopoisk-collections
+        // (module-loader), поэтому у них свой endpoint вместо /api/tmdb/collection.
+        // Формат ответа тот же, так что дальше по коду они ничем не отличаются
+        // от остальных подборок. Названия и состав дублируют COLLECTIONS в модуле —
+        // при правке менять в обоих местах.
+        // Порядок здесь = порядок рядов на экране; лишний ряд убирается одной строкой.
+        { key: 'kp_popular', name: 'Кинопоиск · Популярное', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_pop_movies', name: 'Кинопоиск · Популярные фильмы', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_pop_series', name: 'Кинопоиск · Популярные сериалы', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_top250', name: 'Кинопоиск · Топ 250 фильмов', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_top250_tv', name: 'Кинопоиск · Топ 250 сериалов', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_releases', name: 'Кинопоиск · Скоро в кино', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_family', name: 'Кинопоиск · Семейное', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_comics', name: 'Кинопоиск · Комиксы', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_love', name: 'Кинопоиск · Про любовь', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_zombie', name: 'Кинопоиск · Про зомби', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_vampire', name: 'Кинопоиск · Про вампиров', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_disaster', name: 'Кинопоиск · Катастрофы', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_kids', name: 'Кинопоиск · Мультфильмы детям', source: 'tmdb', endpoint: KP_ENDPOINT },
+        { key: 'kp_oscar', name: 'Кинопоиск · Оскар 2021', source: 'tmdb', endpoint: KP_ENDPOINT }
     ];
 
     // Кнопки общей шапки #home-topbar в порядке DOM — по нему ходит навигация
@@ -443,7 +466,10 @@
                 (Date.now() - (rec.ts || 0)) < HOME.TTL_MS;
             if (fresh) return rec.items;
 
-            return homeFetch(serverUrl() + '/api/tmdb/collection?preset=' +
+            // endpoint задают ряды из модулей (см. HOME_ROWS); у штатных подборок
+            // его нет, и берётся серверный /api/tmdb/collection
+            var endpoint = cfg.endpoint || '/api/tmdb/collection';
+            return homeFetch(serverUrl() + endpoint + '?preset=' +
                 encodeURIComponent(cfg.key)).then(function (data) {
                     if (data && data.success && data.items && data.items.length) {
                         // Запись в IndexedDB не блокирует показ ряда
