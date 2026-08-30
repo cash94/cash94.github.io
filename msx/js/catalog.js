@@ -696,6 +696,7 @@ var catalogState = {
     // Чанковая виртуализация сетки категории (см. блок перед renderCatalogGrid)
     chunks: [],
     chunkSize: 0,
+    chunkCols: 0,
     chunkObserver: null,
     chunkTrimTimer: null
 };
@@ -1288,6 +1289,7 @@ function resetGridChunks() {
     }
     catalogState.chunks = [];
     catalogState.chunkSize = 0;
+    catalogState.chunkCols = 0;
 }
 
 /**
@@ -1334,9 +1336,56 @@ function initChunkObserver() {
     }, { root: getEl('main-container'), rootMargin: CHUNK_OBSERVER_MARGIN_PX + 'px 0px', threshold: 0 });
 }
 
+/**
+ * Начинается и заканчивается ли чанк на границе СТРОКИ сетки.
+ *
+ * Распорка занимает всю ширину (grid-column: 1/-1). Если чанк начинается
+ * посреди строки, карточки перед ним в этой же строке остаются сиротами, а
+ * распорка уезжает на следующую строку — раскладка разъезжается, и замер
+ * высоты по «первая.top … последняя.bottom» тоже врёт.
+ *
+ * Такое случается, когда число колонок изменилось уже после построения сетки:
+ * его задаёт ui-customizer, а chunkSize считался один раз в renderCatalogGrid.
+ * Ниже это лечит realignChunksToColumns(), а здесь стоит последний заслон.
+ */
+function chunkAlignedToRows(ch, cols) {
+    if (!cols || cols < 1) return false;
+    if (ch.start % cols !== 0) return false;
+    // Последний чанк вправе быть неполным — он и так упирается в конец списка
+    if (ch.end < catalogState.items.length && (ch.end - ch.start) % cols !== 0) return false;
+    return true;
+}
+
+/**
+ * Число колонок изменилось (настройки внешнего вида) — режем сетку заново.
+ * Сначала разворачиваем всё, иначе прежние распорки останутся с чужой
+ * геометрией, а их чанки — с чужими границами.
+ */
+function realignChunksToColumns() {
+    var cols = (typeof getColumns === 'function' && getColumns()) || 0;
+    if (!cols || !catalogState.chunks || !catalogState.chunks.length) return false;
+    if (cols === catalogState.chunkCols) return false;
+
+    var chunks = catalogState.chunks;
+    for (var i = 0; i < chunks.length; i++) {
+        if (chunks[i].spacer) hydrateChunk(chunks[i]);
+    }
+
+    catalogState.chunks = [];
+    catalogState.chunkCols = cols;
+    catalogState.chunkSize = cols * CHUNK_ROWS;
+    rebuildChunkRanges();
+
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    updatePosterObservers();
+    updateGridVisibilityWindow();
+    return true;
+}
+
 /** Свернуть чанк: карточки → одна распорка той же высоты */
 function dehydrateChunk(ch) {
     if (!ch || ch.spacer) return false;
+    if (!chunkAlignedToRows(ch, (typeof getColumns === 'function' && getColumns()) || 0)) return false;
 
     var first = catalogState.cardElements[ch.start];
     var last = catalogState.cardElements[ch.end - 1];
@@ -1433,6 +1482,7 @@ function scheduleChunkTrim() {
 }
 
 function trimGridChunks() {
+    realignChunksToColumns();
     var chunks = catalogState.chunks;
     if (!chunks || chunks.length <= CHUNK_HYDRATED_MAX) return;
 
@@ -1504,6 +1554,7 @@ function trimGridChunks() {
  * следующему нажатию соседний чанк уже на месте.
  */
 function ensureChunksAroundFocus(card) {
+    realignChunksToColumns();
     var chunks = catalogState.chunks;
     if (!chunks || !chunks.length || !card.dataset) return;
 
@@ -1532,6 +1583,10 @@ function ensureChunksAroundFocus(card) {
 }
 
 window.trimGridChunks = trimGridChunks;
+// Зовёт ui-customizer сразу после смены настроек внешнего вида: число колонок
+// могло измениться, и нарезку надо переложить под новые строки, не дожидаясь
+// следующего нажатия пульта.
+window.realignCatalogChunks = realignChunksToColumns;
 
 function renderCatalogGrid() {
     var grid = getCatalogGridEl();
@@ -1555,7 +1610,8 @@ function renderCatalogGrid() {
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     resetDeferredPosters();   // индексы прошлой сетки больше не действительны
     resetGridChunks();
-    catalogState.chunkSize = getChunkSize();
+    catalogState.chunkCols = (typeof getColumns === 'function' && getColumns()) || 5;
+    catalogState.chunkSize = catalogState.chunkCols * CHUNK_ROWS;
     rebuildChunkRanges();
     initChunkObserver();
     initPosterLazyLoading();

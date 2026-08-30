@@ -809,8 +809,25 @@ var ScreenStrategies = {
             for (var i = 0; i < t.length; i++) if (f === t[i]) { ti = i; break; }
             if (ci !== -1) {
                 var row = Math.floor(ci / cols);
-                if (dir === 'left') { if (ci > 0 && ci % cols !== 0) return focusEl(c[Math.max(0, ci - 1)] || f); return true; }
-                if (dir === 'right') { if (ci < c.length - 1 && (ci + 1) % cols !== 0) return focusEl(c[Math.min(c.length - 1, ci + 1)] || f); return true; }
+                // Влево/вправо идут по списку СКВОЗЬ границы строк: с последней
+                // карточки ряда «вправо» переводит на первую карточку следующего,
+                // с первой «влево» — на последнюю предыдущего. Раньше проверка
+                // ci % cols держала фокус внутри строки, и на краю нажатие
+                // просто пропадало.
+                if (dir === 'left') { if (ci > 0) return focusEl(c[ci - 1] || f); return true; }
+                if (dir === 'right') {
+                    if (ci < c.length - 1) return focusEl(c[ci + 1] || f);
+                    // Уперлись в конец загруженного — догружаем, как по «вниз»
+                    if (c.length < catalogState.totalItems && !catalogState.isLoadingMore) {
+                        window.loadMoreCatalogItems().then(function () {
+                            setTimeout(function () {
+                                var nc = getCatalogGridCards();
+                                if (nc.length > ci + 1) focusEl(nc[ci + 1]);
+                            }, 50);
+                        });
+                    }
+                    return true;
+                }
                 if (dir === 'up') { if (row === 0) return focusEl(t[0] || h[0] || f); return focusEl(c[Math.max(0, ci - cols)] || f); }
                 if (dir === 'down') {
                     if (ci + cols < c.length) return focusEl(c[Math.min(c.length - 1, ci + cols)] || f);
