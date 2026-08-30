@@ -13,13 +13,6 @@
       "description": "Подборка русских фильмов и сериалов.",
       "url": "https://cash94.github.io/torrstream-modules/rus-catalog/rus-catalog.js",
       "sha256": "aea5adbef574785273c4f39c1b7687cf801993e0cb6bf6781a41689e4edbb20c"
-    },
-    "kinopoisk-collections": {
-      "name": "kinopoisk-collections",
-      "version": "1.1.0",
-      "description": "Подборки Кинопоиска рядами на главной: 14 коллекций с маппингом в TMDB.",
-      "url": "https://cash94.github.io/torrstream-modules/kinopoisk-collections/module.js",
-      "sha256": "7fbd210ebec11f65a97190ef900795c4b8da3805af3f5a1b8d1d272556b292ca"
     }
   }
 }
