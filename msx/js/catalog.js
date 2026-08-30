@@ -1271,6 +1271,30 @@ var CHUNK_FOCUS_GUARD = 1;       // чанков по обе стороны от
  *
  * При 5 колонках это 150–200 карточек в DOM вместо неограниченного роста. */
 var CHUNK_OBSERVER_MARGIN_PX = 1200;   // за сколько до вьюпорта разворачивать
+var CHUNK_SCROLL_QUIET_MS = 250;       // сколько ждать после последнего события прокрутки
+
+/* Тишина прокрутки.
+ *
+ * Свёртку чанков нельзя делать во время движения — иначе карточки исчезают
+ * прямо под пальцем. Для пульта это ловят fastNavigation и твин прокрутки, но
+ * при свайпе на телефоне нет ни того, ни другого: инерционный скролл идёт
+ * сам по себе, обрезка срабатывает посреди него, наблюдатель тут же
+ * разворачивает чанк обратно — и карточки мерцают.
+ *
+ * Поэтому отдельно слушаем сам scroll. Обработчик только пишет отметку
+ * времени, ничего не читает из layout и потому ничего не форсирует. */
+var _gridScrollAt = 0;
+
+function initChunkScrollWatch() {
+    var mc = getEl('main-container');
+    if (!mc || mc._chunkScrollWatch) return;
+    mc._chunkScrollWatch = true;
+    mc.addEventListener('scroll', function () { _gridScrollAt = Date.now(); }, false);
+}
+
+function isGridScrolling() {
+    return (Date.now() - _gridScrollAt) < CHUNK_SCROLL_QUIET_MS;
+}
 
 function getChunkSize() {
     var cols = (typeof getColumns === 'function' && getColumns()) || 5;
@@ -1490,8 +1514,11 @@ function trimGridChunks() {
     for (var i = 0; i < chunks.length; i++) if (!chunks[i].spacer) live.push(chunks[i]);
     if (live.length <= CHUNK_HYDRATED_MAX) return;
 
-    // Пока кнопку держат или едет твин — DOM не трогаем вовсе
-    if (window.fastNavigation || isCatalogScrollAnimating()) { scheduleChunkTrim(); return; }
+    // Пока кнопку держат, едет твин или палец тянет список — DOM не трогаем
+    if (window.fastNavigation || isCatalogScrollAnimating() || isGridScrolling()) {
+        scheduleChunkTrim();
+        return;
+    }
 
     var focusIdx = anchorChunkIndex();
     if (focusIdx === -1) return;    // не от чего отсчитывать «далёкий» чанк
@@ -1614,6 +1641,7 @@ function renderCatalogGrid() {
     catalogState.chunkSize = catalogState.chunkCols * CHUNK_ROWS;
     rebuildChunkRanges();
     initChunkObserver();
+    initChunkScrollWatch();
     initPosterLazyLoading();
     initGridVisibilityWindow();
     initLoadMoreObserver();
@@ -1708,6 +1736,7 @@ function onCatalogViewClick(e) {
     var folder = e.target.closest('.catalog-folder-card');
     if (folder) {
         var fkey = folder.dataset.catalogKey;
+        rememberRowEntry(fkey, folder);
         if (fkey === 'history') loadHistoryCatalog();
         else loadCatalog(fkey);
         return;
@@ -3585,6 +3614,7 @@ function createCatalogRow(key, items) {
         '<h2 class="catalog-row-title">' + escapeHtml(cfg.name) + '</h2>' +
         '<div class="catalog-row-showall-hint">Показать все →</div>';
     header.addEventListener('click', function () {
+        rememberRowEntry(key, null);
         if (key === 'history') loadHistoryCatalog();
         else loadCatalog(key);
     });
@@ -4264,6 +4294,24 @@ function focusRowCardByElement(card) {
 }
 
 // Возврат фокуса на кликнутую карточку ряда
+/**
+ * Запоминает, из какого ряда ушли в категорию.
+ *
+ * Раньше lastSelectedRowKey писал только onRowItemClick — то есть клик по
+ * фильму внутри ряда. Вход в саму категорию (карточка «Показать все» или
+ * заголовок ряда) ничего не запоминал, и возврат всегда ставил фокус на первую
+ * карточку первого ряда: ушёл в «Сериалы» — вернулся в «Фильмы».
+ *
+ * col = 'showall' — вернуться на ту же карточку «Показать все», а не в начало
+ * ряда: карусель тогда не отматывается к первому элементу.
+ */
+function rememberRowEntry(key, card) {
+    if (!key) return;
+    catalogState.lastSelectedRowKey = key;
+    catalogState.lastSelectedColIndex =
+        (card && card.classList && card.classList.contains('catalog-show-all')) ? 'showall' : null;
+}
+
 function restoreRowFocus() {
     var savedKey = catalogState.lastSelectedRowKey;
     var savedCol = catalogState.lastSelectedColIndex;
@@ -4271,6 +4319,13 @@ function restoreRowFocus() {
     catalogState.lastSelectedColIndex = 0;
 
     if (savedKey != null) {
+        // 0) Вернулись из категории, куда ушли по «Показать все» — на неё же
+        if (savedCol === 'showall') {
+            var sa = document.querySelector(
+                '.catalog-show-all[data-catalog-key="' + savedKey + '"]'
+            );
+            if (sa && sa.offsetParent !== null) { focusRowCardByElement(sa); return; }
+        }
         // 1) Точное совпадение: нужный ряд + нужная колонка
         var card = document.querySelector(
             '.catalog-row-card[data-catalog-key="' + savedKey + '"][data-item-index="' + savedCol + '"]'
