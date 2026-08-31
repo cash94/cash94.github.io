@@ -2922,6 +2922,27 @@ function setSearchLocked(locked, query) {
 }
 window.setSearchLocked = setSearchLocked;
 
+/**
+ * Забыть, из какой карточки каталога пришли в поиск.
+ *
+ * Один замок дыру не закрывает: сняв его где угодно, мы оставили бы
+ * pendingDetail* от прежней карточки, и следующая добавленная раздача снова
+ * получила бы чужие id, постер и тип. Поэтому контекст сбрасывается там, где
+ * начинается СВОБОДНЫЙ поиск — вкладка «Поиск», кнопка «Поиск», вход с главной.
+ *
+ * В hideSearchResults этого делать нельзя: он читает pendingDetailItem, чтобы
+ * восстановить выпотрошенную карточку на выходе из поиска (restoreItem ниже).
+ */
+function clearCatalogSearchContext() {
+    AppState.pendingDetailItem = null;
+    AppState.pendingDetailTmdbId = null;
+    AppState.pendingDetailPoster = null;
+    AppState.pendingDetailMediaType = null;
+    window.pendingCatalogItem = null;
+    window.pendingCatalogPoster = null;
+}
+window.clearCatalogSearchContext = clearCatalogSearchContext;
+
 function showSearchResults(options = {}) {
     var searchOverlay = getEl('search-overlay'); var searchTab = getEl('tab-search'); var torrentsTab = getEl('tab-torrents'); var catalogTab = getEl('tab-catalog'); var searchInput = getEl('search-query');
     if (!searchOverlay || !searchTab || !torrentsTab) return;

@@ -1625,8 +1625,10 @@
 
     function openSearchFromHome() {
         if (window.AppState) AppState.searchReturnTo = 'home';
-        // Свободный поиск с главной — строка редактируемая
+        // Свободный поиск с главной — строка редактируемая, контекст карточки
+        // каталога (если был) больше не действует
         if (typeof window.setSearchLocked === 'function') window.setSearchLocked(false);
+        if (typeof window.clearCatalogSearchContext === 'function') window.clearCatalogSearchContext();
         if (typeof window.showSearchResults === 'function') {
             window.showSearchResults({ focusQuery: true });
             return true;
