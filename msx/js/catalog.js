@@ -136,7 +136,11 @@ var CATALOG_CONFIG = {
     rus: { name: 'Русские', url: SERVER_URL + '/api/rus', mediaType: 'movie' },
     quadhd: { name: 'Фильмы в 4K', url: SERVER_URL + '/api/catalog/quadhd', mediaType: 'movie' },
     legends: { name: 'Лучшие фильмы', url: SERVER_URL + '/api/catalog/legends', mediaType: 'movie' },
-    history: { name: 'История', url: null, mediaType: 'history', isHistory: true }
+    history: { name: 'История', url: null, mediaType: 'history', isHistory: true },
+    // Избранное — как и история, не серверный каталог: url нет, данные лежат
+    // локально (favorites-db.js, IndexedDB). Порядок ключей здесь = порядок
+    // рядов на экране каталога.
+    favorites: { name: 'Избранное', url: null, mediaType: 'favorites', isFavorites: true }
 };
 
 var TMDB_GENRES = {
@@ -407,6 +411,12 @@ function initCatalogDetailButtons() {
  * Сброс состояния кнопок при открытии новой карточки
  */
 function resetDetailButtons() {
+    // Звёздочку не гасим, а пересинхронизируем: resetDetailButtons зовётся из
+    // renderDetailHeader, то есть УЖЕ после setupFavoriteButton и с актуальным
+    // AppState.currentDetailItem. Гашение здесь просто отменяло бы кнопку,
+    // выставленную мгновением раньше.
+    if (typeof syncFavoriteButton === 'function') syncFavoriteButton(AppState.currentDetailItem);
+
     var togBtn = getEl('catalog-toggle-overview-btn');
     if (togBtn) togBtn.textContent = 'Подробнее';
 
@@ -1014,6 +1024,258 @@ async function loadHistoryCatalog() {
     hideCatalogLoading();
     catalogState.abortController = null;
 }
+
+
+/* ==================== ИЗБРАННОЕ ==================== */
+
+/** Перерисовать звёздочку под текущее состояние */
+function syncFavoriteButton(item) {
+    var btn = getEl('catalog-favorite-btn');
+    if (!btn) return;
+
+    if (!item || item.id === undefined || item.id === null || !window.FavoritesDB) {
+        btn.classList.add('hidden');
+        return;
+    }
+
+    var active = FavoritesDB.has(item.id, item.media_type || 'movie');
+    var icon = btn.querySelector('.favorite-btn-icon');
+    if (icon) icon.textContent = active ? '★' : '☆';
+    btn.classList.toggle('is-favorite', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    btn.classList.remove('hidden');
+    btn.style.removeProperty('display');
+}
+
+/**
+ * Кнопка «Избранное» в карточке каталога.
+ *
+ * Состояние читается синхронно из индекса FavoritesDB — иначе звезда успевала
+ * бы моргнуть пустой на уже открытой карточке. Запись асинхронная, но кнопку
+ * перерисовываем сразу по возвращённому состоянию.
+ */
+function setupFavoriteButton(item) {
+    var btn = getEl('catalog-favorite-btn');
+    if (!btn) return;
+
+    if (!item || item.id === undefined || item.id === null || !window.FavoritesDB) {
+        btn.classList.add('hidden');
+        return;
+    }
+
+    // Индекс мог не успеть загрузиться к первой карточке — перерисуем, когда придёт
+    FavoritesDB.ready().then(function () { syncFavoriteButton(item); });
+    syncFavoriteButton(item);
+
+    // onclick, а не addEventListener: пересобирается на каждую карточку,
+    // накопления обработчиков от прошлых фильмов быть не должно
+    btn.onclick = function () {
+        // Название и год берём резолверами, а не полем item.title: у элементов
+        // серверного каталога его нет вовсе — заголовок лежит в torrent[0].name
+        // либо приходит из TMDB. Без этого в избранном оказывались безымянные
+        // карточки.
+        FavoritesDB.toggle(buildFavoriteRecord(item)).then(function () {
+            syncFavoriteButton(item);
+            // Ряд «Избранное» на экране каталога устарел
+            invalidateFavoritesRow();
+        });
+    };
+}
+
+/**
+ * Ряд «Избранное» собран из данных, которые только что изменились.
+ *
+ * Ряды каталога переиспользуются (showCatalogList без force берёт готовый DOM),
+ * поэтому просто пометим: при следующем показе список пересобрать.
+ */
+function invalidateFavoritesRow() {
+    if (window.catalogRowsData) delete window.catalogRowsData.favorites;
+    catalogState.favoritesRowStale = true;
+}
+
+/**
+ * Запись для избранного из элемента каталога.
+ *
+ * Заголовок собираем getCatalogItemTitle: у элементов серверного каталога поля
+ * title нет вовсе — оно либо в torrent[0].name, либо приходит из TMDB и оседает
+ * в AppState.currentDetailItem. Без этого в избранное попадали безымянные
+ * карточки. Постер берём уже известный, чтобы ряд избранного не ждал
+ * повторного запроса.
+ */
+function buildFavoriteRecord(item) {
+    var title = getCatalogItemTitle(item);
+    if (title === 'Без названия') {
+        var cur = AppState.currentDetailItem;
+        if (cur && cur.id === item.id) title = cur.title || cur.name || title;
+    }
+
+    return {
+        id: item.id,
+        media_type: item.media_type || 'movie',
+        title: title,
+        name: title,
+        poster_path: getCatalogKnownPosterUrl(item, item.poster_path) || item.poster_path || null,
+        vote_average: (typeof item.vote_average === 'number') ? item.vote_average : null,
+        release_date: item.release_date || item.first_air_date || null
+    };
+}
+
+/**
+ * window.catalogRows заново из DOM.
+ *
+ * createCatalogRow всегда дописывает ряд в КОНЕЦ массива, а точечная замена
+ * ставит его на прежнее место в разметке — порядок разъехался бы. Собираем
+ * список по документу: он и есть источник истины для порядка рядов.
+ */
+function syncCatalogRowsFromDom() {
+    var rows = document.querySelectorAll('#catalog-rows .catalog-row');
+    window.catalogRows = [];
+    for (var i = 0; i < rows.length; i++) {
+        var cards = rows[i].querySelectorAll('.catalog-row-card');
+        var arr = [];
+        for (var j = 0; j < cards.length; j++) arr.push(cards[j]);
+        if (arr.length) window.catalogRows.push(arr);
+    }
+}
+
+/**
+ * Перерисовать ТОЛЬКО ряд «Избранное», если он устарел.
+ *
+ * Звёздочку в карточке можно нажимать много раз подряд, и перестраивать ряд на
+ * каждое нажатие — лишняя работа на телевизоре. Поэтому клик лишь помечает
+ * ряд устаревшим (invalidateFavoritesRow), а собственно перерисовка происходит
+ * здесь — один раз, на возврате к рядам каталога.
+ *
+ * Полная пересборка всех рядов (showCatalogList с force) для этого не годится:
+ * она заново тянет по десять элементов на каждую из восьми категорий.
+ */
+function refreshFavoritesRow() {
+    if (!catalogState.favoritesRowStale) return Promise.resolve(false);
+    catalogState.favoritesRowStale = false;
+
+    var container = getCatalogRowsEl();
+    if (!container) return Promise.resolve(false);
+
+    return loadFavoritesItems(10).then(function (items) {
+        var existing = container.querySelector('.catalog-row[data-catalog-key="favorites"]');
+
+        // Избранное опустело — ряд убираем совсем, как это делает
+        // прогрессивная сборка с пустыми категориями
+        if (!items.length) {
+            if (existing) {
+                if (catalogState.rowVisibilityObserver) catalogState.rowVisibilityObserver.unobserve(existing);
+                container.removeChild(existing);
+            }
+            if (window.catalogRowsData) delete window.catalogRowsData.favorites;
+            syncCatalogRowsFromDom();
+            if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+            return true;
+        }
+
+        var fresh = createCatalogRow('favorites', items);
+        if (!fresh) return false;
+
+        if (existing) {
+            if (catalogState.rowVisibilityObserver) catalogState.rowVisibilityObserver.unobserve(existing);
+            container.replaceChild(fresh, existing);
+        } else {
+            // Ряда не было (избранное было пустым). favorites — последний ключ
+            // CATALOG_CONFIG, поэтому его место в конце.
+            container.appendChild(fresh);
+        }
+
+        // Новый ряд надо отдать наблюдателям: постеры и оконная видимость
+        if (catalogState.rowPosterObserver) {
+            var cards = fresh.querySelectorAll('.catalog-row-card');
+            for (var i = 0; i < cards.length; i++) {
+                if (cards[i].dataset.itemIndex !== undefined) {
+                    cards[i].dataset.posterStarted = '0';
+                    catalogState.rowPosterObserver.observe(cards[i]);
+                }
+            }
+        }
+        observeRowVisibility(fresh);
+
+        syncCatalogRowsFromDom();
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        return true;
+    }).catch(function (e) {
+        console.warn('⚠️ Ряд «Избранное» не обновился:', e);
+        return false;
+    });
+}
+window.refreshFavoritesRow = refreshFavoritesRow;
+
+/** Элементы избранного в том же виде, что и остальные карточки каталога */
+function loadFavoritesItems(limit) {
+    if (!window.FavoritesDB) return Promise.resolve([]);
+    return FavoritesDB.list().then(function (items) {
+        var out = [];
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            out.push({
+                id: it.id,
+                title: it.title,
+                name: it.name || it.title,
+                media_type: it.media_type,
+                poster_path: it.poster_path,
+                vote_average: it.vote_average,
+                release_date: it.release_date,
+                isFavoriteItem: true
+            });
+        }
+        return (limit && out.length > limit) ? out.slice(0, limit) : out;
+    });
+}
+
+function showEmptyFavorites() {
+    var g = getCatalogGridEl();
+    if (!g) return;
+    showCatalogGridView();
+    g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;">' +
+        '<div style="font-size:64px;margin-bottom:20px">★</div>' +
+        '<div style="font-size:18px;color:#aaa;margin-bottom:10px">В избранном пусто</div>' +
+        '<div style="font-size:14px;color:#666">Открой карточку фильма и нажми «Избранное»</div></div>';
+}
+
+/** Категория «Избранное» — сеткой, как история */
+function loadFavoritesCatalog() {
+    abortCatalogRequests();
+    catalogState.currentCatalog = 'favorites';
+    catalogState.cardElements = {};
+    catalogState.items = [];
+    catalogState.totalItems = 0;
+    catalogState.currentPage = 0;
+    catalogState.hasMore = false;
+    catalogState.isLoadingMore = false;
+    catalogState.loadedItemIds = {};
+    catalogState.loadedPostersCount = 0;
+    catalogState.posterLoadQueue = [];
+    catalogState.fullItems = null;
+    catalogState.fullItemsTruncated = false;
+    AppState.mediaType = 'favorites';
+    AppState.openInRow = false;
+    AppState.backCurrentCatalog = 'favorites';
+    showCatalogLoading('Загрузка избранного...');
+
+    return loadFavoritesItems(0).then(function (items) {
+        if (!items.length) { showEmptyFavorites(); return; }
+        catalogState.items = items;
+        catalogState.totalItems = items.length;
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].id) catalogState.loadedItemIds[items[i].id] = true;
+        }
+        renderCatalogGrid();
+    }).catch(function (e) {
+        console.error('Ошибка загрузки избранного:', e);
+        showCatalogError('Не удалось загрузить избранное');
+    }).finally(function () {
+        hideCatalogLoading();
+    });
+}
+window.loadFavoritesCatalog = loadFavoritesCatalog;
+window.loadFavoritesItems = loadFavoritesItems;
+window.syncFavoriteButton = syncFavoriteButton;
 
 function showEmptyHistory() {
     var g = getCatalogGridEl();
@@ -1748,6 +2010,7 @@ function onCatalogViewClick(e) {
         var fkey = folder.dataset.catalogKey;
         rememberRowEntry(fkey, folder);
         if (fkey === 'history') loadHistoryCatalog();
+        else if (fkey === 'favorites') loadFavoritesCatalog();
         else loadCatalog(fkey);
         return;
     }
@@ -3062,6 +3325,8 @@ async function showCatalogDetail(item, index, posterUrl) {
     if (typeof window.hideCatalogDetailExtra === 'function') window.hideCatalogDetailExtra();
     if (typeof window.visibleItemsforDetail === 'function') window.visibleItemsforDetail('showCatalogDetail');
     var wb = getEl('catalog-watch-btn');
+    // Звёздочка не ждёт ответа TMDB: id и media_type известны сразу из элемента
+    setupFavoriteButton(item);
     if (aw) aw.classList.add('hidden');
     if (rw) rw.classList.add('hidden');
     if (wb) {
@@ -3472,6 +3737,13 @@ async function showCatalogList(force) {
         // недогруженные постеры должны продолжить появляться при скролле
         resetStrandedRowPosters();
         initRowPosterLazyLoading();
+
+        // Звёздочку могли нажимать в карточке — ряд «Избранное» пересобираем
+        // здесь, один раз на возврат, а не на каждое нажатие. Ждём до
+        // восстановления фокуса: иначе restoreRowFocus искал бы карточку в
+        // ряду, который вот-вот заменят.
+        await refreshFavoritesRow();
+
         requestAnimationFrame(function () {
             if (AppState.currentScreen !== 'catalog' || catalogState.currentCatalog) return;
             if (typeof updateFocusableElements === 'function') updateFocusableElements();
@@ -3629,6 +3901,7 @@ function loadCatalogRowsProgressively(container, keys) {
 
 async function loadRowItems(key) {
     var LIMIT = 10;
+    if (key === 'favorites') return await loadFavoritesItems(LIMIT);
     if (key === 'history') {
         var data = await safeFetch(SERVER_URL + '/api/history', { timeout: 10000 });
         if (data && data.success && data.history && data.history.length) {
@@ -3671,6 +3944,7 @@ function createCatalogRow(key, items) {
     header.addEventListener('click', function () {
         rememberRowEntry(key, null);
         if (key === 'history') loadHistoryCatalog();
+        else if (key === 'favorites') loadFavoritesCatalog();
         else loadCatalog(key);
     });
     row.appendChild(header);

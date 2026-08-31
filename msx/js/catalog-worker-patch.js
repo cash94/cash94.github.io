@@ -160,6 +160,7 @@
     window.loadRowItems = loadRowItems = async function (key) {
         var LIMIT = 10;
 
+        // Избранное и обычные каталоги — не наша забота, отдаём дальше по цепочке
         if (key !== 'history') return _origLoadRowItems(key);
 
         try {

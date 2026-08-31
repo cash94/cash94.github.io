@@ -1596,7 +1596,7 @@ function visibleItemsforDetail(change) {
         // вело бы в никуда.
         var massHidden = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
             'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'detail-poster', 'files-list-title',
-            'detail-open-card-btn'
+            'detail-open-card-btn', 'catalog-favorite-btn'
         ];
         massHidden.forEach(function (id) {
             var el = getEl(id);

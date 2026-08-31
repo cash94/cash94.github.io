@@ -602,7 +602,7 @@ function getDetailItems() {
     // Без неё handleNavigation не находил элемент в этом списке (idx === -1) и
     // уходил в ensureFocus, отбрасывая фокус на первую кнопку строки: «влево»
     // с неё прыгало через «Подробнее» сразу на «Играть».
-    var s = ['.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
+    var s = ['.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
     // Сборный селектор → порядок обхода совпадает с порядком в DOM, а не с
     // порядком селекторов. Важно для торрентного detail: там ряд актёров идёт
     // ПЕРЕД файлами, и «вверх» от плитки должно попадать в него.

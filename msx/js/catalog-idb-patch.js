@@ -90,7 +90,8 @@
 
         for (var key in CATALOG_CONFIG) {
             if (!CATALOG_CONFIG.hasOwnProperty(key)) continue;
-            if (key === 'history') continue;
+            // history и favorites — локальные, серверного каталога у них нет
+            if (key === 'history' || key === 'favorites') continue;
 
             var cfg = CATALOG_CONFIG[key];
 
@@ -385,6 +386,9 @@
         if (key === 'history') {
             return loadHistoryCatalog();
         }
+        if (key === 'favorites') {
+            return loadFavoritesCatalog();
+        }
 
         AppState.openInRow = false;
         AppState.backCurrentCatalog = key;
@@ -599,6 +603,13 @@
 
     window.loadRowItems = loadRowItems = async function (key) {
         var LIMIT = 10;
+
+        // Избранное лежит локально в IndexedDB, серверного /items у него нет
+        if (key === 'favorites') {
+            return (typeof window.loadFavoritesItems === 'function')
+                ? window.loadFavoritesItems(LIMIT)
+                : (_origLoadRowItems ? _origLoadRowItems.call(window, key) : []);
+        }
 
         // История не является каталогом /items, её оставляем как было
         if (key === 'history') {
