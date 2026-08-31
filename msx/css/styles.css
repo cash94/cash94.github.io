@@ -3775,6 +3775,22 @@ article {
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 
+/* Подзаголовок развёрнут кнопкой «Подробнее».
+   В карточке торрента описание живёт именно здесь (в карточке каталога — в
+   отдельном #catalog-detail-overview), и обрезано оно до двух строк
+   правилом .torrent-detail-mode ниже. Снимаем обрезку тем же способом,
+   что и у блока описания. */
+/* Селектор с #detail-view и !important обязателен: обрезку в режиме карточки
+   торрента ставит #detail-view.torrent-detail-mode #detail-subtitle — это два
+   id против одного, и простое #detail-subtitle.expanded проигрывало по
+   специфичности, кнопка щёлкала вхолостую. */
+#detail-subtitle.expanded,
+#detail-view #detail-subtitle.expanded,
+#detail-view.torrent-detail-mode #detail-subtitle.expanded {
+  -webkit-line-clamp: unset !important;
+  overflow: visible !important;
+}
+
 /* ============================================================
    ОПИСАНИЕ — clamp 3 строки + кнопка «Подробнее»
    ============================================================ */
@@ -3839,6 +3855,20 @@ article {
 #catalog-trailer-btn:hover,
 .detail-progress-btn:hover,
 #detail-progress-btn:hover,
+/* Звёздочка «Избранного». Кнопка делит оформление с «Подробнее»
+   (класс catalog-toggle-overview-btn), здесь только сама звезда: в избранном —
+   жёлтая и чуть крупнее, иначе ★ и ☆ различаются лишь заливкой и на экране
+   телевизора это малозаметно. */
+.catalog-favorite-btn .favorite-btn-icon {
+  font-size: 1.15em;
+  line-height: 1;
+}
+
+.catalog-favorite-btn.is-favorite .favorite-btn-icon {
+  color: #ffc107;
+  text-shadow: 0 0 10px rgba(255, 193, 7, 0.45);
+}
+
 .catalog-toggle-overview-btn:hover,
 #catalog-toggle-overview-btn:hover {
   background: rgba(255, 255, 255, 0.22) !important;
