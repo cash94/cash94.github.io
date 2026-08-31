@@ -3855,6 +3855,14 @@ article {
 #catalog-trailer-btn:hover,
 .detail-progress-btn:hover,
 #detail-progress-btn:hover,
+/* Названия новых кнопок длиннее соседних («Открыть карточку», «Избранное»),
+   и при переносе на вторую строку кнопка становится выше остальных — строка
+   действий выглядит неровной. Перенос запрещаем: места в панели хватает. */
+#catalog-favorite-btn,
+#detail-open-card-btn {
+  white-space: nowrap;
+}
+
 /* Звёздочка «Избранного». Кнопка делит оформление с «Подробнее»
    (класс catalog-toggle-overview-btn), здесь только сама звезда: в избранном —
    жёлтая и чуть крупнее, иначе ★ и ☆ различаются лишь заливкой и на экране
@@ -6460,6 +6468,7 @@ article {
 
 /* «Подробнее» и «Трейлер» — серые вторичные */
 #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
+#detail-view.catalog-detail-mode #catalog-favorite-btn,
 #detail-view.catalog-detail-mode #catalog-trailer-btn {
   background: rgba(109, 109, 110, 0.7) !important;
   color: #ffffff !important;
@@ -6469,6 +6478,8 @@ article {
 }
 
 #detail-view.catalog-detail-mode #catalog-toggle-overview-btn:hover,
+#detail-view.catalog-detail-mode #catalog-favorite-btn:hover,
+#detail-view.catalog-detail-mode #catalog-favorite-btn.focused,
 #detail-view.catalog-detail-mode #catalog-toggle-overview-btn.focused,
 #detail-view.catalog-detail-mode #catalog-trailer-btn:hover,
 #detail-view.catalog-detail-mode #catalog-trailer-btn.focused {
@@ -6688,6 +6699,7 @@ article {
   }
 
   #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
+  #detail-view.catalog-detail-mode #catalog-favorite-btn,
   #detail-view.catalog-detail-mode #catalog-trailer-btn {
     padding: 9px 18px !important;
     font-size: 15px !important;
@@ -6813,6 +6825,7 @@ article {
   }
 
   #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
+  #detail-view.catalog-detail-mode #catalog-favorite-btn,
   #detail-view.catalog-detail-mode #catalog-trailer-btn {
     padding: 11px 24px !important;
     font-size: 17px !important;
@@ -6936,6 +6949,7 @@ article {
   }
 
   #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
+  #detail-view.catalog-detail-mode #catalog-favorite-btn,
   #detail-view.catalog-detail-mode #catalog-trailer-btn {
     padding: 7px 14px !important;
     font-size: 13px !important;
