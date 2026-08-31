@@ -3060,10 +3060,44 @@ async function showCatalogDetail(item, index, posterUrl) {
         wb.onclick = function () {
             AppState.currentScreen = 'search';
             AppState.isSearch = false;
-            showCatalogSearch(wb.dataset.searchTitle || title, knownPoster, item);
-            dv.style.display = 'none';
-            dv.style.pointerEvents = 'none';
-            if (mc) mc.style.pointerEvents = 'auto';
+
+            // Карточку прячем ТОЛЬКО когда поиск что-то нашёл. Раньше её гасили
+            // сразу, синхронно с запуском поиска, — и при пустом ответе (или
+            // недоступном Jacred) человек оставался на пустом экране поиска без
+            // возможности вернуться к фильму иначе как кнопкой «назад».
+            // Пока идёт поиск, карточка остаётся на месте: оверлей поиска лежит
+            // выше неё (z-index 1000 против 100) и всё равно её закрывает.
+            showCatalogSearch(wb.dataset.searchTitle || title, knownPoster, item)
+                .then(function (found) {
+                    if (found > 0) {
+                        dv.style.display = 'none';
+                        dv.style.pointerEvents = 'none';
+                        if (mc) mc.style.pointerEvents = 'auto';
+                        return;
+                    }
+
+                    // Ничего не нашли — возвращаем человека в карточку фильма
+                    var so = getEl('search-overlay');
+                    if (so) so.classList.add('hidden');
+                    AppState.currentScreen = 'detail';
+                    AppState.searchReturnTo = null;
+                    dv.style.display = 'block';
+                    dv.style.pointerEvents = 'auto';
+                    if (mc) mc.style.pointerEvents = 'none';
+
+                    if (typeof window.showErrorBanner === 'function') {
+                        window.showErrorBanner('Торренты не найдены',
+                            'По запросу «' + (wb.dataset.searchTitle || title) + '» ничего нет');
+                    }
+                    // Фокус обратно в карточку, иначе он остаётся на сетке
+                    // каталога под ней и пульт управляет не тем, что видно
+                    setTimeout(function () {
+                        if (window.ScreenStrategies && ScreenStrategies.detail &&
+                            typeof ScreenStrategies.detail.ensureFocus === 'function') {
+                            ScreenStrategies.detail.ensureFocus(true);
+                        }
+                    }, 80);
+                });
         };
     }
     var restore = function () {
@@ -3207,15 +3241,23 @@ function showCatalogSearch(q, pu, item) {
             AppState.pendingDetailIndex = catalogState.lastSelectedIndex;
         }
         AppState.currentScreen = 'search';
-        if (typeof window.searchTorrents === 'function') {
+
+        // Возвращаем промис с числом найденного: вызывающая сторона (кнопка
+        // «Торренты» в карточке) прячет detail-view только если искать было что.
+        var searching = Promise.resolve(0);
+        if (typeof window.searchTorrentsLegacy === 'function') {
             var tm = getEl('torrent-movie');
             if (tm) tm.value = 'torrentsearch';
-            window.searchTorrentsLegacy(q);
+            searching = Promise.resolve(window.searchTorrentsLegacy(q))
+                .then(function (n) { return typeof n === 'number' ? n : 0; })
+                .catch(function () { return 0; });
         }
         setTimeout(function () {
             if (typeof window.focusSearchHome === 'function') window.focusSearchHome(true);
         }, 200);
+        return searching;
     }
+    return Promise.resolve(0);
 }
 
 async function openYoutubeInPlayer(url, title) {

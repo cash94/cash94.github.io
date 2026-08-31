@@ -16,9 +16,21 @@
     var _searchSequence = 0;
     var _filterSequence = 0;
 
+    /**
+     * Ошибка «Jacred недоступен». Отдельный признак jacredHost нужен, чтобы
+     * отличить «агрегатор лежит» от «искали, но ничего не нашли»: пользователю
+     * это разные сообщения. Класс не заводим — патч грузится в общий скоуп,
+     * а признака на объекте достаточно.
+     */
+    function makeJacredError(host, reason) {
+        var e = new Error('Jacred (' + host + ') недоступен: ' + reason);
+        e.jacredHost = host;
+        return e;
+    }
+
     // ==================== searchTorrentsLegacy ====================
     window.searchTorrentsLegacy = searchTorrentsLegacy = async function (query) {
-        if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
+        if (!query || !query.trim()) { alert('Введите поисковый запрос'); return 0; }
 
         if (_searchController) _searchController.abort();
         _searchController = new AbortController();
@@ -33,10 +45,20 @@
         showLoading('Поиск...');
 
         try {
-            var response = await fetch(searchUrl, { signal: controller.signal });
-            if (!response.ok) throw new Error('Ошибка поиска: HTTP ' + response.status);
+            // «Jacred не отвечает» отделяем от прочих ошибок: сеть, DNS,
+            // выключенный или неверно указанный хост. Именно это происходит
+            // чаще всего, а alert('Failed to fetch') на телевизоре не виден
+            // вовсе — поиск просто молча ничего не находил.
+            var response;
+            try {
+                response = await fetch(searchUrl, { signal: controller.signal });
+            } catch (netError) {
+                if (netError && netError.name === 'AbortError') throw netError;
+                throw makeJacredError(jacDefault, netError.message);
+            }
+            if (!response.ok) throw makeJacredError(jacDefault, 'HTTP ' + response.status);
             var data = await response.json();
-            if (searchSequence !== _searchSequence) return;
+            if (searchSequence !== _searchSequence) return 0;
 
             var rawResults = [];
             if (data && Array.isArray(data.Results)) rawResults = data.Results;
@@ -49,7 +71,7 @@
                 console.warn('⚠️ Worker normalize failed, fallback:', e.message);
                 searchResults = rawResults.map(normalizeSearchResult);
             }
-            if (searchSequence !== _searchSequence) return;
+            if (searchSequence !== _searchSequence) return 0;
 
             currentSearchQuery = query;
             var searchInput = getEl('search-query');
@@ -70,10 +92,22 @@
 
             applyFiltersAndSort();
             showSearchResults();
+
+            // Число найденного нужно вызывающей стороне: кнопка «Торренты» в
+            // карточке каталога прячет detail-view только если искать было что.
+            return searchResults.length;
         } catch (error) {
-            if (error && error.name === 'AbortError') return;
+            if (error && error.name === 'AbortError') return 0;
             console.error('Ошибка поиска:', error);
-            alert('Ошибка при поиске: ' + error.message);
+            if (typeof window.showErrorBanner === 'function') {
+                if (error && error.jacredHost) {
+                    window.showErrorBanner('Jacred недоступен',
+                        'Не отвечает ' + error.jacredHost + '. Адрес меняется в настройках.');
+                } else {
+                    window.showErrorBanner('Ошибка поиска', error.message);
+                }
+            } else alert('Ошибка при поиске: ' + error.message);
+            return 0;
         } finally {
             if (searchSequence === _searchSequence) hideLoading();
         }
