@@ -1248,19 +1248,40 @@ function getCurrentItemPoster() {
  * Строит плейлист оставшихся серий (с текущей и до конца), чтобы нативный внешний
  * плеер мог переключать их сам, без возврата в веб-страницу между сериями.
  */
-function buildRemainingEpisodesPlaylist(fromIndex) {
+function buildRemainingEpisodesPlaylist(fromIndex, startSeekTime) {
   if (!Array.isArray(currentEpisodeFiles) || currentEpisodeFiles.length < 2) return null;
   if (!currentTorrentHash || !AppState.currentTorrserverUrl) return null;
   var startIndex = (typeof fromIndex === 'number' && fromIndex >= 0) ? fromIndex : currentEpisodeIndex;
   if (typeof startIndex !== 'number' || startIndex < 0) return null;
+  // Прогресс по всем файлам торрента уже лежит в кэше (его греет
+  // startHLSPlayback перед открытием внешнего плеера) — берём его синхронно.
+  var progress = null;
+  try {
+    if (typeof torrentProgressCache !== 'undefined' && torrentProgressCache) progress = torrentProgressCache.get(currentTorrentHash);
+  } catch (e) { /* кэша нет — пойдём с нулевыми таймкодами */ }
+  var byFileId = (progress && progress.byFileId) || {};
   var playlist = [];
   for (var i = startIndex; i < currentEpisodeFiles.length; i++) {
     var file = currentEpisodeFiles[i];
     if (!file || file.id === undefined || file.id === null) continue;
     var itemUrl = AppState.currentTorrserverUrl + "/stream?link=" + currentTorrentHash + "&index=" + file.id + "&play=play";
+    // Свой timeline у КАЖДОГО элемента плейлиста обязателен: именно его
+    // нативный плеер вернёт в updatePlayerTimeline при выходе. Без него hash
+    // приходил пустым ('0'), и таймкод серии терялся целиком.
+    var saved = byFileId[String(file.id)];
+    var itemTime = (i === startIndex && startSeekTime > 0) ? Math.floor(startSeekTime)
+      : (saved && saved.timecode > 0 ? Math.floor(saved.timecode) : 0);
+    var itemDuration = (saved && saved.duration > 0) ? saved.duration : 0;
     playlist.push({
       url: itemUrl,
       title: file.name || file.path || ('Серия ' + (i + 1)),
+      timecode: itemTime,
+      timeline: {
+        hash: currentTorrentHash + '_' + file.id,
+        time: itemTime,
+        duration: itemDuration,
+        percent: itemDuration > 0 ? Math.round((itemTime / itemDuration) * 100) : 0
+      },
       episode: i + 1,
       season: AppState.currentSeason || null
     });
@@ -1274,6 +1295,26 @@ function buildRemainingEpisodesPlaylist(fromIndex) {
 // активити, и вторая вылезает ровно в момент выхода из первой.
 var lastExternalOpen = { url: null, time: 0 };
 var EXTERNAL_OPEN_DEDUP_MS = 2500;
+
+/**
+ * Единственная точка запуска внешнего плеера: глушит дубли и запоминает,
+ * чем плеер открывали — чтобы updatePlayerTimeline было от чего оттолкнуться,
+ * если нативный плеер вернёт таймлайн без hash.
+ */
+function openAndroidPlayer(playURL, playerData) {
+  if (!window.AndroidJS || !playURL) return false;
+  var urlData = parseHashFromUrl(playURL);
+  if (urlData) {
+    currentTimecodeData.hash = urlData.torrentHash;
+    currentTimecodeData.fileId = urlData.fileId;
+    currentTimecodeData.timecode = (playerData && playerData.timecode) || 0;
+  }
+  if (lastExternalOpen.url === playURL && Date.now() - lastExternalOpen.time < EXTERNAL_OPEN_DEDUP_MS) return false;
+  lastExternalOpen.url = playURL; lastExternalOpen.time = Date.now();
+  AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
+  return true;
+}
+window.openAndroidPlayer = openAndroidPlayer;
 
 function playInExternalPlayer(url, title, timecode, fromSearch) {
   if (!window.AndroidJS || !url) return false;
@@ -1293,16 +1334,14 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       type: (item && item.media_type) || (AppState.isCatalogSerials ? 'tv' : 'movie')
     };
     if (AppState.autoSwitchEpisodes) {
-      var playlist = buildRemainingEpisodesPlaylist(currentEpisodeIndex);
+      var playlist = buildRemainingEpisodesPlaylist(currentEpisodeIndex, seekTime);
       if (playlist) playerData.playlist = playlist;
     }
     lastPlaybackFromSearch = fromSearch;
     if (!AppState.playFromHash) AppState.inSearch = 'torrents';
     else { AppState.currentDetailItem = AppState.androidBackCatalog; AppState.inSearch = 'catalog'; }
     AppState.currentScreen = 'detail';
-    if (lastExternalOpen.url === playURL && Date.now() - lastExternalOpen.time < EXTERNAL_OPEN_DEDUP_MS) return true;
-    lastExternalOpen.url = playURL; lastExternalOpen.time = Date.now();
-    AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
+    openAndroidPlayer(playURL, playerData);
     return true;
   }
   return false;
@@ -1685,6 +1724,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     if (AppState.autoSwitchEpisodes && AppState.currentDetailItem && AppState.currentDetailItem.hash) {
       var androidMatch = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/) || originalUrl.match(/[?&]link=([a-fA-F0-9]+)[&]index=(\d+)/);
       try { await loadEpisodesInfo(AppState.currentDetailItem.hash, androidMatch ? androidMatch[2] : null); } catch (e) { /* ignore, fall back to single episode */ }
+      // Прогрев кэша прогресса: buildRemainingEpisodesPlaylist синхронный, а
+      // таймкоды серий нужны ему, чтобы у каждого элемента плейлиста был
+      // осмысленный timeline (и позиция, с которой серию продолжат).
+      if (typeof getTorrentProgressBatch === 'function') {
+        try { await getTorrentProgressBatch(AppState.currentDetailItem.hash, currentEpisodeFiles); } catch (e) { /* без прогресса — нули */ }
+      }
     }
     if (playInExternalPlayer(originalUrl, externalTitle, initialSeek, fromSearch)) {
       getEl('config-screen').style.display = 'none'; getEl('torrserver-section').style.display = 'none'; return;
@@ -2256,11 +2301,15 @@ function updatePlayerTimeline(timelineData) {
     var data = typeof timelineData === 'string' ? JSON.parse(timelineData) : timelineData;
     var isCompleted = data.percent === 100;
     if (!data.hash || data.hash === '0') {
-      if (data.currentUrl) {
-        var urlData = parseHashFromUrl(data.currentUrl);
-        if (urlData) { data.hash = urlData.hash; data.torrentHash = urlData.torrentHash; data.fileId = urlData.fileId; }
-        else return;
-      } else return;
+      var urlData = data.currentUrl ? parseHashFromUrl(data.currentUrl) : null;
+      if (urlData) { data.hash = urlData.hash; data.torrentHash = urlData.torrentHash; data.fileId = urlData.fileId; }
+      // Плеер может вернуть таймлайн без hash и без currentUrl. Тогда опираемся
+      // на то, чем его открывали (openAndroidPlayer). При автопереключении серий
+      // это уже не та серия, но потерять таймкод целиком хуже.
+      else if (currentTimecodeData && currentTimecodeData.hash && currentTimecodeData.fileId) {
+        data.hash = currentTimecodeData.hash + '_' + currentTimecodeData.fileId;
+      }
+      else return;
     }
     if (currentTimecodeData) {
       if (isCompleted) { currentTimecodeData.timecode = 100; currentTimecodeData.duration = 100; }
