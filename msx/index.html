@@ -478,6 +478,12 @@
                собирает .catalog-toggle-overview-btn). Видимостью управляет
                visibleItemsforDetail в js/torrents.js. -->
           <button id="detail-open-card-btn" class="catalog-toggle-overview-btn hidden">Открыть карточку</button>
+          <!-- Звёздочка текстом, а не иконкой шрифта: подключены только
+               uicons-regular/thin, заполненного варианта звезды в них нет,
+               а ★/☆ рисуются везде, включая Chrome 66 на Vidaa. -->
+          <button id="catalog-favorite-btn" class="catalog-toggle-overview-btn catalog-favorite-btn hidden">
+            <span class="favorite-btn-icon">☆</span> Избранное
+          </button>
           <button id="catalog-trailer-btn" class="catalog-trailer-btn hidden">
             <span class="trailer-btn-icon">▶</span> Трейлер
           </button>
@@ -701,6 +707,7 @@
     document.write('<script src="https://cash94.github.io/msx/js/torrents-worker-bridge.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/torrents-worker-patch.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/poster-db.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/favorites-db.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-bridge.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-patch.js?v=' + VERSION + '"><\/script>');
