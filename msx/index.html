@@ -233,6 +233,14 @@
                 <input type="checkbox" id="dvOnOff">
                 <span>Предпочитать Dolby Vision по умолчанию</span>
               </div>
+              <!-- Показываются только внутри Android-приложения (window.AndroidJS) -->
+              <div class="checkbox-container" id="auto-switch-episodes-container" hidden>
+                <input type="checkbox" id="auto-switch-episodes">
+                <span>Переключать серии автоматически</span>
+              </div>
+              <div class="action-row" id="choose-player-container" hidden style="margin-top: 15px;">
+                <button class="btn btn-primary" id="choose-player-btn">Выбрать плеер по умолчанию</button>
+              </div>
             </div>
             <!-- Блок проверки поддержки Dolby Vision -->
             <div class="settings-group"
