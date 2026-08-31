@@ -3175,7 +3175,13 @@ async function playFromHash(hash, magnet, searchResult = null) {
             if (window.AndroidJS) {
                 getEl('playback-overlay').classList.remove('active');
                 var playURL = AppState.currentTorrserverUrl + "/stream?link=" + hash + "&index=" + fileId + "&play=play";
-                AndroidJS.openPlayer(playURL, JSON.stringify({ url: playURL, title: addedTorrent.title || 'Видео', iptv: false, timeline: { hash: hash + '_' + fileId, time: 0, duration: 0, percent: 0 } }));
+                AndroidJS.openPlayer(playURL, JSON.stringify({
+                    url: playURL, title: addedTorrent.title || 'Видео', iptv: false,
+                    timeline: { hash: hash + '_' + fileId, time: 0, duration: 0, percent: 0 },
+                    poster: addedTorrent.poster || null,
+                    id: addedTorrent.tmdbId || null,
+                    type: addedTorrent.media_type || (isSerial ? 'tv' : 'movie')
+                }));
                 return true;
             }
             if (AppState.transcodingFullOnOff) {

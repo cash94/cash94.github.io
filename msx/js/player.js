@@ -1234,6 +1234,40 @@ function preloadTorrents(hash, fileId) {
     .catch(function (error) { return Promise.resolve(); });
 }
 
+function getCurrentItemPoster() {
+  var item = AppState.currentDetailItem;
+  if (!item) return null;
+  if (item.poster) return item.poster;
+  if (item.poster_path && typeof getTmdbImageUrl === 'function') {
+    try { return getTmdbImageUrl(item.poster_path, 'w342'); } catch (e) { /* ignore */ }
+  }
+  return null;
+}
+
+/**
+ * Строит плейлист оставшихся серий (с текущей и до конца), чтобы нативный внешний
+ * плеер мог переключать их сам, без возврата в веб-страницу между сериями.
+ */
+function buildRemainingEpisodesPlaylist(fromIndex) {
+  if (!Array.isArray(currentEpisodeFiles) || currentEpisodeFiles.length < 2) return null;
+  if (!currentTorrentHash || !AppState.currentTorrserverUrl) return null;
+  var startIndex = (typeof fromIndex === 'number' && fromIndex >= 0) ? fromIndex : currentEpisodeIndex;
+  if (typeof startIndex !== 'number' || startIndex < 0) return null;
+  var playlist = [];
+  for (var i = startIndex; i < currentEpisodeFiles.length; i++) {
+    var file = currentEpisodeFiles[i];
+    if (!file || file.id === undefined || file.id === null) continue;
+    var itemUrl = AppState.currentTorrserverUrl + "/stream?link=" + currentTorrentHash + "&index=" + file.id + "&play=play";
+    playlist.push({
+      url: itemUrl,
+      title: file.name || file.path || ('Серия ' + (i + 1)),
+      episode: i + 1,
+      season: AppState.currentSeason || null
+    });
+  }
+  return playlist.length > 1 ? playlist : null;
+}
+
 function playInExternalPlayer(url, title, timecode, fromSearch) {
   if (!window.AndroidJS || !url) return false;
   var match = url.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
@@ -1243,7 +1277,18 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
     var seekTime = (timecode != null && timecode > 0) ? Math.floor(timecode) : 0;
     currentTimecodeData.hash = torrentHash; currentTimecodeData.fileId = fileId; currentTimecodeData.timecode = seekTime;
     var playURL = AppState.currentTorrserverUrl + "/stream?link=" + torrentHash + "&index=" + fileId + "&play=play";
-    var playerData = { url: playURL, title: title || 'Видео', iptv: false, timecode: seekTime, timeline: { hash: torrentHash + '_' + fileId, time: seekTime, duration: 0, percent: 0 } };
+    var item = AppState.currentDetailItem;
+    var playerData = {
+      url: playURL, title: title || 'Видео', iptv: false, timecode: seekTime,
+      timeline: { hash: torrentHash + '_' + fileId, time: seekTime, duration: 0, percent: 0 },
+      poster: getCurrentItemPoster(),
+      id: item && (item.tmdbId || item.id) || null,
+      type: (item && item.media_type) || (AppState.isCatalogSerials ? 'tv' : 'movie')
+    };
+    if (AppState.autoSwitchEpisodes) {
+      var playlist = buildRemainingEpisodesPlaylist(currentEpisodeIndex);
+      if (playlist) playerData.playlist = playlist;
+    }
     lastPlaybackFromSearch = fromSearch;
     if (!AppState.playFromHash) AppState.inSearch = 'torrents';
     else { AppState.currentDetailItem = AppState.androidBackCatalog; AppState.inSearch = 'catalog'; }
