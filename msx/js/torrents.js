@@ -2752,7 +2752,7 @@ async function searchTorrentsLegacy(query) {
         currentSearchQuery = query;
 
         var searchInput = getEl('search-query');
-        if (searchInput) searchInput.value = '';
+        if (searchInput && !AppState.searchLocked) searchInput.value = '';
 
         updateAvailableTrackers();
         updateAvailableYears();
@@ -2882,6 +2882,46 @@ function updateAvailableVideotype() {
     if (currentvideotype !== 'all' && !videotypeSet[currentvideotype]) { videotypeFilter.value = 'all'; currentvideotypeFilter = 'all'; }
 }
 
+/**
+ * Замок поисковой строки.
+ *
+ * Из карточки каталога (кнопка «Поиск торрентов») поиск идёт вместе с
+ * контекстом TMDB: AppState.pendingDetailItem, pendingDetailTmdbId,
+ * pendingDetailPoster и pendingDetailMediaType. Он же прикрепляется к тому,
+ * что пользователь добавит на сервер.
+ *
+ * Пока строку можно было править, получалось так: зашли в карточку сериала A,
+ * стёрли запрос, нашли сериал B, добавили — а на сервер и в историю ушли
+ * постер, id и тип от A. Данные расходились молча, и заметить это можно было
+ * только постфактум.
+ *
+ * Поэтому в этом режиме строка только для чтения и показывает, что именно
+ * ищется. Свободный поиск живёт на своей вкладке и замка не знает.
+ */
+function setSearchLocked(locked, query) {
+    AppState.searchLocked = !!locked;
+
+    var input = getEl('search-query');
+    if (!input) return;
+
+    if (locked) {
+        input.readOnly = true;
+        input.classList.add('search-input-locked');
+        // Показываем запрос, а не пустое поле: иначе непонятно, что ищется
+        if (query) input.value = query;
+        input.setAttribute('title', 'Запрос задан карточкой фильма и не редактируется');
+    } else {
+        input.readOnly = false;
+        input.classList.remove('search-input-locked');
+        input.removeAttribute('title');
+    }
+
+    // Состав фокусируемого меняется: заблокированные поле и кнопку
+    // навигация пропускает (control.js)
+    if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+}
+window.setSearchLocked = setSearchLocked;
+
 function showSearchResults(options = {}) {
     var searchOverlay = getEl('search-overlay'); var searchTab = getEl('tab-search'); var torrentsTab = getEl('tab-torrents'); var catalogTab = getEl('tab-catalog'); var searchInput = getEl('search-query');
     if (!searchOverlay || !searchTab || !torrentsTab) return;
@@ -2921,6 +2961,8 @@ function showSearchResults(options = {}) {
 }
 
 function hideSearchResults() {
+    // Уходим из поиска — контекст карточки больше не действует
+    setSearchLocked(false);
     var searchOverlay = getEl('search-overlay'); var searchTab = getEl('tab-search'); var torrentsTab = getEl('tab-torrents'); var catalogTab = getEl('tab-catalog'); var searchInput = getEl('search-query'); var modeSelect = getEl('torrent-movie');
     if (modeSelect) modeSelect.value = 'globalsearch';
     if (!searchOverlay || !searchTab || !torrentsTab) return;

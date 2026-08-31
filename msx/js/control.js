@@ -1445,6 +1445,10 @@ function updateFocusableElements() {
     }
     if (screen === 'search') {
         var q = getEl('search-query'), ft = getEl('filter-toggle'), sb = getEl('search-btn'), cs = getEl('close-search');
+        // Поиск из карточки каталога: строка только для чтения, и вести в неё
+        // фокус незачем — как и в «Поиск», который перезапустил бы тот же
+        // запрос. Замок ставит setSearchLocked (torrents.js).
+        if (window.AppState && AppState.searchLocked) { q = null; sb = null; }
         var ris = document.querySelectorAll('.search-result-item, .global-search-card');
         var res = []; for (var i = 0; i < ris.length; i++) if (ris[i] && ris[i].offsetParent !== null) res.push(ris[i]);
 

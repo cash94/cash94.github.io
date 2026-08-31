@@ -1625,6 +1625,8 @@
 
     function openSearchFromHome() {
         if (window.AppState) AppState.searchReturnTo = 'home';
+        // Свободный поиск с главной — строка редактируемая
+        if (typeof window.setSearchLocked === 'function') window.setSearchLocked(false);
         if (typeof window.showSearchResults === 'function') {
             window.showSearchResults({ focusQuery: true });
             return true;

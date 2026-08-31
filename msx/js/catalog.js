@@ -3221,6 +3221,9 @@ function showCatalogSearch(q, pu, item) {
         ct.classList.remove('active');
         so.classList.remove('hidden');
         if (si) { si.value = q; if (document.activeElement === si) si.blur(); }
+        // Запрос задан карточкой — править его нельзя, иначе к найденному
+        // прикрепится TMDB-контекст совсем другого фильма (см. setSearchLocked)
+        if (typeof window.setSearchLocked === 'function') window.setSearchLocked(true, q);
         window.pendingCatalogPoster = pu;
         window.pendingCatalogItem = item;
         AppState.searchReturnTo = 'detail';

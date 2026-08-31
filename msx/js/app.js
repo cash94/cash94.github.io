@@ -1024,6 +1024,8 @@ function setupSearch() {
   if (searchBtn && searchInput) {
     searchBtn.addEventListener('click', function () {
       var query = searchInput.value.trim();
+      // Свободный поиск: контекст карточки каталога больше не действует
+      if (typeof window.setSearchLocked === 'function') window.setSearchLocked(false);
       if (typeof showSearchResults === 'function') showSearchResults();
       if (query && typeof searchTorrents === 'function') searchTorrents(query);
     });
@@ -1092,6 +1094,7 @@ function setupSearch() {
 
   if (tabSearch && typeof showSearchResults === 'function') {
     tabSearch.addEventListener('click', function () {
+      if (typeof window.setSearchLocked === 'function') window.setSearchLocked(false);
       showSearchResults();
       if (searchInput && searchInput.value.trim() && typeof searchResults !== 'undefined' && searchResults.length === 0 && typeof searchTorrents === 'function') {
         searchTorrents(searchInput.value.trim());
