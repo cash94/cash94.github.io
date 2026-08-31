@@ -1478,6 +1478,24 @@ function setupTouchControls(seekSlider, volumeSlider) {
     }
   }
 
+  // Запасной пояс к preventDefault: часть WebView всё равно досылает настоящий
+  // click (иногда — уже после возврата из внешнего плеера, вместе с resume).
+  // Такой click узнаём по isTrusted и по тому же элементу, и глушим один раз.
+  var syntheticClickTarget = null;
+  var syntheticClickTime = 0;
+  function suppressNextRealClick(el) {
+    syntheticClickTarget = el;
+    syntheticClickTime = Date.now();
+  }
+  document.addEventListener('click', function (e) {
+    if (!syntheticClickTarget || !e.isTrusted) return;
+    if (Date.now() - syntheticClickTime > 1500) { syntheticClickTarget = null; return; }
+    if (e.target !== syntheticClickTarget && !syntheticClickTarget.contains(e.target)) return;
+    syntheticClickTarget = null;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }, true);
+
   function handleTouchEnd(e) {
     if (!touchStartX) return;
 
@@ -1514,6 +1532,12 @@ function setupTouchControls(seekSlider, volumeSlider) {
         targetToClick.id === 'search-btn'
       )) {
         e.stopPropagation();
+        // preventDefault гасит «совместимостные» mouse/click, которые WebView
+        // шлёт следом за touchend. Без него каждый тап приходил дважды: сначала
+        // наш синтетический click, потом настоящий — и AndroidJS.openPlayer
+        // запускал две копии плеера подряд (вторая всплывала при выходе).
+        if (e.cancelable) e.preventDefault();
+        suppressNextRealClick(targetToClick);
         targetToClick.click();
       }
     }
@@ -1536,10 +1560,12 @@ function setupTouchControls(seekSlider, volumeSlider) {
     if (el) handleTouchStart.call(el, e);
   }, { passive: true });
 
+  // touchend — НЕ passive: внутри нужен preventDefault против дубля клика.
+  // На скролл это не влияет (его определяют touchstart/touchmove).
   document.addEventListener('touchend', function (e) {
     var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
     if (el) handleTouchEnd.call(el, e);
-  }, { passive: true });
+  }, { passive: false });
 
   document.addEventListener('touchcancel', function (e) {
     var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
