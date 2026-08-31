@@ -732,15 +732,27 @@ async function loadTorrents(silent = false) {
         // Список был успешно загружен
         AppState.torrentsLoaded = true;
 
-        getEl('config-screen').style.display = 'none';
-        getEl('torrserver-section').style.display = 'block';
-
         // Главная (home.js) открывается раньше, чем приходит ответ TorrServer.
         // Список торрентов прогреваем в скрытом #content-torrents, но экран и
         // фокус у главной не отбираем — иначе витрина мигала бы на торренты.
         var homeActive = !!(window.HomeScreen && window.HomeScreen.isActive());
 
-        if (!homeActive) {
+        // То же самое для открытых настроек — и по куда более частому поводу.
+        // checkServer() зовётся из app.js на КАЖДЫЙ ввод символа в поле адреса
+        // (debouncedCheck) и на смену логина/пароля, а отсюда каждый удачный
+        // ответ уводил на «Мои торренты». То есть выкидывало ровно в тот момент,
+        // когда человек правит настройки. Список прогреваем, экран не трогаем.
+        var configScreen = getEl('config-screen');
+        var configOpen = !!(configScreen &&
+            configScreen.style.display !== 'none' &&
+            !configScreen.classList.contains('hidden'));
+
+        var keepScreen = homeActive || configOpen;
+
+        // Подменять видимые экраны можно только когда мы никому не мешаем
+        if (!keepScreen) {
+            if (configScreen) configScreen.style.display = 'none';
+            getEl('torrserver-section').style.display = 'block';
             AppState.currentScreen = 'torrents';
             AppState.inSearch = 'torrents';
         }
@@ -750,7 +762,7 @@ async function loadTorrents(silent = false) {
         // ВАЖНО:
         // Не пытаемся фокусировать карточку торрента, если список пустой
         if (
-            !homeActive &&
+            !keepScreen &&
             AppState.currentScreen === 'torrents' &&
             AppState.torrents.length > 0 &&
             !document.querySelector('.torrent-card.focused')
