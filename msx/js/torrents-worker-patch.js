@@ -75,7 +75,9 @@
 
             currentSearchQuery = query;
             var searchInput = getEl('search-query');
-            if (searchInput) searchInput.value = '';
+            // При замке строку не чистим: она показывает, что именно ищется
+            // по карточке фильма (setSearchLocked в torrents.js)
+            if (searchInput && !(window.AppState && AppState.searchLocked)) searchInput.value = '';
 
             // ★ Вычисление фильтров через Worker
             try {
