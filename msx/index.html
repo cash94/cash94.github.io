@@ -472,6 +472,12 @@
           <button id="catalog-watch-btn" class="catalog-watch-btn">Торренты</button>
           <button id="detail-progress-btn" class="detail-progress-btn hidden">Играть</button>
           <button id="catalog-toggle-overview-btn" class="catalog-toggle-overview-btn">Подробнее</button>
+          <!-- Только в режиме карточки торрента (torrent-detail-mode): уводит в
+               карточку каталога по tmdbId раздачи. Класс тот же, что у «Подробнее» —
+               от него и оформление, и попадание в список фокусируемых (control.js
+               собирает .catalog-toggle-overview-btn). Видимостью управляет
+               visibleItemsforDetail в js/torrents.js. -->
+          <button id="detail-open-card-btn" class="catalog-toggle-overview-btn hidden">Открыть карточку</button>
           <button id="catalog-trailer-btn" class="catalog-trailer-btn hidden">
             <span class="trailer-btn-icon">▶</span> Трейлер
           </button>
