@@ -1268,6 +1268,13 @@ function buildRemainingEpisodesPlaylist(fromIndex) {
   return playlist.length > 1 ? playlist : null;
 }
 
+// Последний запуск внешнего плеера: любой повторный вызов с тем же URL в
+// пределах пары секунд — это дубль (двойной клик, досланный WebView click),
+// а не осознанный перезапуск. Две подряд AndroidJS.openPlayer открывают две
+// активити, и вторая вылезает ровно в момент выхода из первой.
+var lastExternalOpen = { url: null, time: 0 };
+var EXTERNAL_OPEN_DEDUP_MS = 2500;
+
 function playInExternalPlayer(url, title, timecode, fromSearch) {
   if (!window.AndroidJS || !url) return false;
   var match = url.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
@@ -1293,6 +1300,8 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
     if (!AppState.playFromHash) AppState.inSearch = 'torrents';
     else { AppState.currentDetailItem = AppState.androidBackCatalog; AppState.inSearch = 'catalog'; }
     AppState.currentScreen = 'detail';
+    if (lastExternalOpen.url === playURL && Date.now() - lastExternalOpen.time < EXTERNAL_OPEN_DEDUP_MS) return true;
+    lastExternalOpen.url = playURL; lastExternalOpen.time = Date.now();
     AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
     return true;
   }
