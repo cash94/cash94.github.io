@@ -1499,14 +1499,96 @@ function renderDetailActorsFromDetails(details) {
 }
 // ==================== /ТОРРЕНТНЫЙ DETAIL ====================
 
+
+/**
+ * Кнопки «Подробнее» и «Открыть карточку» в карточке ТОРРЕНТА.
+ *
+ * В карточке каталога такие кнопки уже есть (catalog.js), здесь их не было:
+ * описание от TMDB загружалось и молча пряталось, а перейти в полноценную
+ * карточку с актёрами, похожими и трейлером было неоткуда.
+ *
+ * Показываем по факту данных, а не заранее: «Подробнее» — только когда пришёл
+ * overview (иначе разворачивало бы пустой блок), «Открыть карточку» — только
+ * когда у раздачи есть tmdbId (иначе showCatalogDetail пошёл бы в TMDB с
+ * пустым id и нарисовал бы пустую карточку).
+ *
+ * @param {object} torrent раздача, чью карточку показываем
+ * @param {object} details ответ TMDB (может быть null)
+ */
+function revealTorrentDetailExtras(torrent, details) {
+    // --- «Подробнее» ---
+    var overviewText = (details && details.overview) || '';
+    var ov = getEl('catalog-detail-overview');
+    var togBtn = getEl('catalog-toggle-overview-btn');
+
+    if (overviewText && ov && togBtn) {
+        ov.textContent = overviewText;
+        ov.classList.remove('hidden', 'expanded');
+        ov.style.removeProperty('display');
+
+        togBtn.textContent = 'Подробнее';
+        togBtn.classList.remove('hidden');
+        togBtn.style.removeProperty('display');
+
+        // Обработчик тот же, что у карточки каталога — ставит
+        // initCatalogDetailButtons() один раз на всё приложение
+        if (typeof window.initCatalogDetailButtons === 'function') window.initCatalogDetailButtons();
+    }
+
+    // --- «Открыть карточку» ---
+    var openBtn = getEl('detail-open-card-btn');
+    if (!openBtn) return;
+
+    var tmdbId = torrent && (torrent.tmdbId || torrent.id) || (details && details.id) || null;
+    if (!tmdbId) {
+        openBtn.classList.add('hidden');
+        return;
+    }
+
+    var mediaType = (torrent && torrent.media_type) ||
+        (details && details.media_type) ||
+        ((detailMetaState && detailMetaState.isTvSeries) ? 'tv' : 'movie');
+
+    var cardTitle = (details && (details.title || details.name)) ||
+        (torrent && torrent.title) || '';
+
+    openBtn.classList.remove('hidden');
+    openBtn.style.removeProperty('display');
+
+    // onclick, а не addEventListener: пересобираем на каждую карточку, и
+    // накопления обработчиков от прошлых раздач быть не должно
+    openBtn.onclick = function () {
+        if (typeof window.showCatalogDetail !== 'function') return;
+        var item = {
+            id: tmdbId,
+            tmdbId: tmdbId,
+            media_type: mediaType,
+            title: cardTitle,
+            name: cardTitle,
+            poster_path: (torrent && torrent.poster) || (details && details.poster_path) || null
+        };
+        // Возврат из карточки уводит в каталог, а пришли мы из списка торрентов —
+        // поправляем, иначе «назад» высадит не туда
+        AppState.androidBackCatalog = item;
+        window.showCatalogDetail(item, AppState.catalogIndex || 0, item.poster_path);
+    };
+}
+window.revealTorrentDetailExtras = revealTorrentDetailExtras;
+
 function visibleItemsforDetail(change) {
     var detailView = getEl('detail-view');
 
     if (change === 'showDetail') {
         // Ряд актёров остаётся скрытым до прихода cast: пустая секция с
         // заголовком на пол-экрана выглядит хуже, чем её отсутствие.
+        // «Подробнее» и «Открыть карточку» показываются не здесь, а по факту
+        // наличия данных: описание — когда придёт overview от TMDB, карточка —
+        // когда у раздачи есть tmdbId (см. revealTorrentDetailExtras ниже).
+        // Иначе «Подробнее» разворачивало бы пустоту, а «Открыть карточку»
+        // вело бы в никуда.
         var massHidden = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
-            'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'detail-poster', 'files-list-title'
+            'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'detail-poster', 'files-list-title',
+            'detail-open-card-btn'
         ];
         massHidden.forEach(function (id) {
             var el = getEl(id);
@@ -1537,7 +1619,8 @@ function visibleItemsforDetail(change) {
                 el.style.removeProperty('display');
             }
         });
-        var massHidden2 = ['detail-progress-btn', 'detail-meta-row', 'files-list-title'];
+        // 'detail-open-card-btn' — мы уже в карточке каталога, вести в неё некуда
+        var massHidden2 = ['detail-progress-btn', 'detail-meta-row', 'files-list-title', 'detail-open-card-btn'];
         massHidden2.forEach(function (id) {
             var el = getEl(id);
             if (el) el.classList.add('hidden');
@@ -2222,16 +2305,10 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
                 elements.detailSubtitle.style.display = 'block';
                 elements.detailSubtitle.classList.remove('hidden');
             }
-
-            if (typeof getEl === 'function') {
-                var overviewEl = getEl('catalog-detail-overview');
-                if (overviewEl) {
-                    overviewEl.textContent = details.overview;
-                    overviewEl.style.display = 'none';
-                    overviewEl.classList.add('hidden');
-                }
-            }
         }
+
+        // Описание и переход в карточку каталога — теперь доступны и здесь
+        revealTorrentDetailExtras(torrent, details);
 
         if (typeof updateDetailMetaInfo === 'function') {
             try {

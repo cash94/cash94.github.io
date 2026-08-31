@@ -404,12 +404,14 @@
                 elements.detailSubtitle.style.display = 'block';
                 elements.detailSubtitle.classList.remove('hidden');
             }
-            var ovEl = getEl('catalog-detail-overview');
-            if (ovEl) {
-                ovEl.textContent = details.overview;
-                ovEl.style.display = 'none';
-                ovEl.classList.add('hidden');
-            }
+        }
+
+        // Кнопки «Подробнее» и «Открыть карточку» карточки торрента.
+        // Раньше описание тут же и пряталось, а перехода в карточку каталога
+        // не было вовсе — теперь и то, и другое включает revealTorrentDetailExtras
+        // (torrents.js), по факту наличия overview и tmdbId.
+        if (typeof window.revealTorrentDetailExtras === 'function') {
+            window.revealTorrentDetailExtras(torrent, details);
         }
 
         // Meta (жанры, год, рейтинг)
