@@ -1023,9 +1023,16 @@ function setupSearch() {
 
   if (searchBtn && searchInput) {
     searchBtn.addEventListener('click', function () {
+      // Под замком кнопка бессмысленна: запрос задан карточкой фильма и не
+      // меняется, результаты уже на экране. А снять здесь замок означало бы
+      // открыть ровно ту дыру, ради которой он и появился — поэтому просто
+      // ничего не делаем. С пульта кнопка в этом режиме и так недостижима
+      // (control.js убирает её из фокусируемых), это про мышь и тач.
+      if (window.AppState && AppState.searchLocked) return;
+
       var query = searchInput.value.trim();
       // Свободный поиск: контекст карточки каталога больше не действует
-      if (typeof window.setSearchLocked === 'function') window.setSearchLocked(false);
+      if (typeof window.clearCatalogSearchContext === 'function') window.clearCatalogSearchContext();
       if (typeof showSearchResults === 'function') showSearchResults();
       if (query && typeof searchTorrents === 'function') searchTorrents(query);
     });
@@ -1094,7 +1101,10 @@ function setupSearch() {
 
   if (tabSearch && typeof showSearchResults === 'function') {
     tabSearch.addEventListener('click', function () {
+      // Осознанный переход к свободному поиску: снимаем замок и забываем,
+      // из какой карточки пришли — иначе к найденному прикрепится чужой TMDB
       if (typeof window.setSearchLocked === 'function') window.setSearchLocked(false);
+      if (typeof window.clearCatalogSearchContext === 'function') window.clearCatalogSearchContext();
       showSearchResults();
       if (searchInput && searchInput.value.trim() && typeof searchResults !== 'undefined' && searchResults.length === 0 && typeof searchTorrents === 'function') {
         searchTorrents(searchInput.value.trim());
