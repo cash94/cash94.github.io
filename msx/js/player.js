@@ -1289,6 +1289,43 @@ function buildRemainingEpisodesPlaylist(fromIndex, startSeekTime) {
   return playlist.length > 1 ? playlist : null;
 }
 
+/**
+ * Заголовок для внешнего плеера (AndroidJS): название плюс номер серии.
+ *
+ * Встроенный плеер показывает имя файла (updatePlayerTitle(fileName) в
+ * startHLSPlayback), и серия в нём видна сама собой. Внешнему же передавалось
+ * голое AppState.currentDetailItem.title — какую серию смотришь, на экране
+ * телевизора было не понять.
+ *
+ * Данные к этому моменту уже есть: ветка AndroidJS специально дожидается
+ * loadEpisodesInfo до запуска плеера (ей нужен плейлист), а тот заполняет
+ * currentEpisodeFiles и currentEpisodeIndex.
+ *
+ * Формат «Серия N» — тот же, что в панели серий и в fallback'е
+ * buildRemainingEpisodesPlaylist. Для фильма (файл один) остаётся чистое
+ * название: дописывать «Серия 1» там незачем.
+ */
+function buildExternalPlayerTitle() {
+  var base = (AppState.currentDetailItem && AppState.currentDetailItem.title) || '';
+
+  if (!currentEpisodeFiles || currentEpisodeFiles.length < 2) return base || 'Видео';
+
+  var idx = currentEpisodeIndex;
+  if (typeof idx !== 'number' || idx < 0 || !currentEpisodeFiles[idx]) return base || 'Видео';
+
+  var part = 'Серия ' + (idx + 1);
+  if (AppState.currentSeason) part = 'Сезон ' + AppState.currentSeason + ', ' + part;
+
+  // Без названия сериала (из поиска торрентов такое бывает) — отдаём хотя бы
+  // имя файла, оно информативнее одинокого «Серия 3»
+  if (!base) {
+    var file = currentEpisodeFiles[idx];
+    return file.name || file.path || part;
+  }
+
+  return base + ' · ' + part;
+}
+
 // Последний запуск внешнего плеера: любой повторный вызов с тем же URL в
 // пределах пары секунд — это дубль (двойной клик, досланный WebView click),
 // а не осознанный перезапуск. Две подряд AndroidJS.openPlayer открывают две
@@ -1718,7 +1755,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (episodeIndex === undefined) episodeIndex = null;
   if (audioTrack === undefined) audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
   if (window.AndroidJS) {
-    var externalTitle = AppState.currentDetailItem ? AppState.currentDetailItem.title : '';
+    // Заголовок считаем ПОСЛЕ loadEpisodesInfo ниже — до него currentEpisodeIndex
+    // ещё не знает, какая серия открыта, и в название не попал бы её номер.
     // Плейлист серий нужен ДО открытия нативного плеера: иначе currentEpisodeFiles
     // ещё пуст (обычно он подгружается уже после старта воспроизведения, с задержкой).
     if (AppState.autoSwitchEpisodes && AppState.currentDetailItem && AppState.currentDetailItem.hash) {
@@ -1731,7 +1769,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         try { await getTorrentProgressBatch(AppState.currentDetailItem.hash, currentEpisodeFiles); } catch (e) { /* без прогресса — нули */ }
       }
     }
-    if (playInExternalPlayer(originalUrl, externalTitle, initialSeek, fromSearch)) {
+    if (playInExternalPlayer(originalUrl, buildExternalPlayerTitle(), initialSeek, fromSearch)) {
       getEl('config-screen').style.display = 'none'; getEl('torrserver-section').style.display = 'none'; return;
     }
   }
