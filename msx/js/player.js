@@ -1671,6 +1671,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (audioTrack === undefined) audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
   if (window.AndroidJS) {
     var externalTitle = AppState.currentDetailItem ? AppState.currentDetailItem.title : '';
+    // Плейлист серий нужен ДО открытия нативного плеера: иначе currentEpisodeFiles
+    // ещё пуст (обычно он подгружается уже после старта воспроизведения, с задержкой).
+    if (AppState.autoSwitchEpisodes && AppState.currentDetailItem && AppState.currentDetailItem.hash) {
+      var androidMatch = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/) || originalUrl.match(/[?&]link=([a-fA-F0-9]+)[&]index=(\d+)/);
+      try { await loadEpisodesInfo(AppState.currentDetailItem.hash, androidMatch ? androidMatch[2] : null); } catch (e) { /* ignore, fall back to single episode */ }
+    }
     if (playInExternalPlayer(originalUrl, externalTitle, initialSeek, fromSearch)) {
       getEl('config-screen').style.display = 'none'; getEl('torrserver-section').style.display = 'none'; return;
     }
