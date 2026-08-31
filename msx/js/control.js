@@ -578,8 +578,31 @@ function getSearchResults() {
     return [];
 }
 
+/**
+ * Видимые кнопки строки действий карточки, в порядке разметки.
+ *
+ * Состав зависит от режима: в карточке каталога это «Торренты», «Подробнее»,
+ * «Трейлер»; в карточке торрента — «Играть», «Подробнее», «Открыть карточку».
+ * Порядок берём из DOM, а не списком имён: добавили кнопку в index.html —
+ * навигация подхватила её сама.
+ */
+function getDetailActionButtons() {
+    var row = getEl('catalog-detail-actions');
+    if (!row) return [];
+    var all = row.querySelectorAll('button, .catalog-watch-btn, .detail-progress-btn');
+    var out = [];
+    for (var i = 0; i < all.length; i++) {
+        if (VISIBLE(all[i]) && out.indexOf(all[i]) === -1) out.push(all[i]);
+    }
+    return out;
+}
+
 function getDetailItems() {
-    var s = ['.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
+    // '#detail-open-card-btn' — кнопка «Открыть карточку» в карточке торрента.
+    // Без неё handleNavigation не находил элемент в этом списке (idx === -1) и
+    // уходил в ensureFocus, отбрасывая фокус на первую кнопку строки: «влево»
+    // с неё прыгало через «Подробнее» сразу на «Играть».
+    var s = ['.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
     // Сборный селектор → порядок обхода совпадает с порядком в DOM, а не с
     // порядком селекторов. Важно для торрентного detail: там ряд актёров идёт
     // ПЕРЕД файлами, и «вверх» от плитки должно попадать в него.
@@ -1126,28 +1149,40 @@ var ScreenStrategies = {
                 if (dir === 'down') { if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
                 return true;
             }
-            if (isW) {
-                if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
-                if (dir === 'left') return true;
-                if (dir === 'right') return focusEl(ovw);
-                if (dir === 'up') return true; //return focusEl(bb || f, { direction: 'up' });
-                return true;
-            }
-            if (isOv) {
-                if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
-                if (dir === 'right') {
-                    if (VISIBLE(rut)) return focusEl(rut);
+            // --- Строка действий карточки: «Торренты» / «Играть» / «Подробнее» /
+            // «Открыть карточку» / «Трейлер» ---
+            //
+            // Раньше на каждую кнопку была своя ветка, а соседи в ней прописаны
+            // поимённо: isW → вправо всегда ovw, isOv → вправо всегда rut. Из-за
+            // этого «Играть» (detail-progress-btn) не обрабатывался вовсе и
+            // проваливался в общий хвост, где «вниз» уходило к следующему
+            // элементу в порядке DOM — то есть внутрь той же строки кнопок,
+            // а «вправо» не делало ничего. Новая кнопка «Открыть карточку» в
+            // цепочку тоже не попадала.
+            //
+            // Теперь строка обходится как строка: влево/вправо — по видимым
+            // соседям в порядке разметки, вниз — вон из строки, к ближайшей
+            // секции ниже. Ветки для каждой кнопки больше не нужны, состав
+            // строки в разных режимах (торрент / каталог) разбирается сам.
+            var actionRow = getDetailActionButtons();
+            var actIdx = actionRow.indexOf(f);
+            if (actIdx !== -1) {
+                if (dir === 'left') {
+                    if (actIdx > 0) return focusEl(actionRow[actIdx - 1], { direction: 'left' });
                     return true;
                 }
-                if (dir === 'left') return focusEl(wb);
-                if (dir === 'up') return true; //return focusEl(bb || f, { direction: 'up' });
-                return true;
-            }
-            if (isRut) {
-                if (dir === 'down') { if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; } else if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
-                if (dir === 'right') return true;
-                if (dir === 'left') return focusEl(ovw);
-                if (dir === 'up') return true; //return focusEl(bb || f, { direction: 'up' });
+                if (dir === 'right') {
+                    if (actIdx < actionRow.length - 1) return focusEl(actionRow[actIdx + 1], { direction: 'right' });
+                    return true;
+                }
+                if (dir === 'down') {
+                    if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; }
+                    if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; }
+                    if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; }
+                    if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; }
+                    return true;
+                }
+                if (dir === 'up') return true;
                 return true;
             }
             if (isB) {

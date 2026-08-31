@@ -351,9 +351,15 @@ function initCatalogDetailButtons() {
     if (togBtn && !togBtn._initialized) {
         togBtn._initialized = true;
         togBtn.onclick = function () {
-            var ov = getEl('catalog-detail-overview');
-            if (!ov) return;
-            var exp = ov.classList.toggle('expanded');
+            // Что именно разворачивать, зависит от режима карточки: в каталоге
+            // описание лежит в отдельном блоке, в карточке торрента — прямо в
+            // подзаголовке (там оно и остаётся, отдельный блок не показываем).
+            // Обрезку задаёт CSS: -webkit-line-clamp, снимает класс .expanded.
+            var dv = getEl('detail-view');
+            var torrentMode = !!(dv && dv.classList.contains('torrent-detail-mode'));
+            var target = torrentMode ? getEl('detail-subtitle') : getEl('catalog-detail-overview');
+            if (!target) return;
+            var exp = target.classList.toggle('expanded');
             togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
         };
     }
@@ -406,6 +412,10 @@ function resetDetailButtons() {
 
     var ov = getEl('catalog-detail-overview');
     if (ov) ov.classList.remove('expanded');
+
+    // Подзаголовок разворачивает та же кнопка в режиме карточки торрента
+    var sub = getEl('detail-subtitle');
+    if (sub) sub.classList.remove('expanded');
 
     var trailerBtn = getEl('catalog-trailer-btn');
     if (trailerBtn) {
