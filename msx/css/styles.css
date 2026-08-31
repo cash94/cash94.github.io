@@ -382,6 +382,17 @@ body {
   color: #6d7686;
 }
 
+/* Строка поиска заблокирована: запрос пришёл из карточки фильма и правке не
+   подлежит (js/torrents.js: setSearchLocked). Гасим её визуально, чтобы на
+   телевизоре было видно, что поле не редактируется — фокус в него навигация
+   всё равно не заводит. */
+.search-input-screen.search-input-locked {
+  background: #101018;
+  border-color: rgba(255, 255, 255, 0.05);
+  color: #8b93a3;
+  cursor: default;
+}
+
 /* «Поиск» — единственное акцентное действие в строке */
 .search-action-btn {
   padding: 11px 22px;
