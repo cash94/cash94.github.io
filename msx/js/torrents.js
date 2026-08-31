@@ -1521,10 +1521,18 @@ function revealTorrentDetailExtras(torrent, details) {
     var ov = getEl('catalog-detail-overview');
     var togBtn = getEl('catalog-toggle-overview-btn');
 
-    if (overviewText && ov && togBtn) {
-        ov.textContent = overviewText;
-        ov.classList.remove('hidden', 'expanded');
-        ov.style.removeProperty('display');
+    if (overviewText && togBtn) {
+        // Описание остаётся в подзаголовке — там оно и было. Отдельный блок
+        // #catalog-detail-overview в этом режиме не показываем: два одинаковых
+        // описания на экране. Кнопка «Подробнее» снимает обрезку подзаголовка
+        // (см. initCatalogDetailButtons в catalog.js — она смотрит на режим).
+        if (ov) {
+            ov.classList.add('hidden');
+            ov.classList.remove('expanded');
+            ov.style.display = 'none';
+        }
+        var sub = getEl('detail-subtitle');
+        if (sub) sub.classList.remove('expanded');
 
         togBtn.textContent = 'Подробнее';
         togBtn.classList.remove('hidden');

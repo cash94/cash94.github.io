@@ -351,6 +351,15 @@
             // TMDB details → DOM
             if (r.details) {
                 _applyTmdbDetailsToDOM(r.details, elements);
+
+                // Кнопки «Подробнее» и «Открыть карточку» карточки торрента.
+                // Здесь, а не внутри _applyTmdbDetailsToDOM: у той функции нет
+                // параметра torrent, и обращение к нему падало с
+                // «torrent is not defined» — ошибку глушил внешний catch,
+                // а деталей TMDB карточка после этого не получала вовсе.
+                if (typeof window.revealTorrentDetailExtras === 'function') {
+                    window.revealTorrentDetailExtras(torrent, r.details);
+                }
             }
 
             // Сохраняем в knownTorrentMeta для будущих визитов
@@ -406,13 +415,6 @@
             }
         }
 
-        // Кнопки «Подробнее» и «Открыть карточку» карточки торрента.
-        // Раньше описание тут же и пряталось, а перехода в карточку каталога
-        // не было вовсе — теперь и то, и другое включает revealTorrentDetailExtras
-        // (torrents.js), по факту наличия overview и tmdbId.
-        if (typeof window.revealTorrentDetailExtras === 'function') {
-            window.revealTorrentDetailExtras(torrent, details);
-        }
 
         // Meta (жанры, год, рейтинг)
         if (typeof updateDetailMetaInfo === 'function') {
