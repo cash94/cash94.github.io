@@ -1804,7 +1804,22 @@ function setupCheckboxes() {
     });
   }
 
-  if (!window.AndroidJS) {
+  if (window.AndroidJS) {
+    // 7. Плеер по умолчанию и автопереключение серий — только в Android-приложении,
+    // т.к. воспроизведение там всегда идёт через внешний плеер (AndroidJS.openPlayer).
+    var choosePlayerContainer = getEl('choose-player-container');
+    if (choosePlayerContainer) choosePlayerContainer.hidden = false;
+    var choosePlayerBtn = getEl('choose-player-btn');
+    if (choosePlayerBtn) {
+      choosePlayerBtn.addEventListener('click', function () {
+        if (typeof AndroidJS.choosePlayer === 'function') AndroidJS.choosePlayer();
+      });
+    }
+
+    var autoSwitchContainer = getEl('auto-switch-episodes-container');
+    if (autoSwitchContainer) autoSwitchContainer.hidden = false;
+    setupCheckboxWithStorage('auto-switch-episodes', 'autoSwitchEpisodes', 'autoSwitchEpisodes');
+  } else {
     // 7. Инициализация проверки Dolby Vision (безопасный вызов)
     if (typeof initDolbyVisionCheck === 'function') {
       try {
