@@ -275,6 +275,71 @@ function showToast(message) {
   }, APP_CONSTANTS.ZOOM_TOAST_DURATION_MS);
 }
 
+/**
+ * Крупный баннер об ошибке — замена alert() в путях воспроизведения и поиска.
+ *
+ * alert() на телевизоре бесполезен: WebView либо не показывает его вовсе, либо
+ * рисует системный диалог, который не виден в полноэкранном режиме и не
+ * управляется пультом. Поэтому ошибки, которые пользователь ОБЯЗАН увидеть
+ * (TorrServer недоступен, Jacred не отвечает), показываем своим блоком.
+ *
+ * showToast для этого мелковат — он про мимолётные подсказки вроде зума.
+ * Здесь крупный шрифт, красная рамка и время показа подлиннее.
+ *
+ * Хост берём через getOverlayHost(): в полноэкранном режиме браузер рисует
+ * только полноэкранный элемент и его потомков, и баннер в body был бы не виден.
+ */
+var ERROR_BANNER_ID = 'app-error-banner';
+var ERROR_BANNER_MS = 6000;
+var errorBannerTimer = null;
+
+function showErrorBanner(message, detail) {
+  if (!message) return;
+
+  var host = (typeof window.getOverlayHost === 'function') ? window.getOverlayHost() : document.body;
+  if (!host) return;
+
+  // Второй баннер поверх первого не копим — заменяем текст
+  var banner = document.getElementById(ERROR_BANNER_ID);
+  if (banner && banner.parentNode !== host) {
+    if (banner.remove) banner.remove(); else banner.parentNode.removeChild(banner);
+    banner = null;
+  }
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = ERROR_BANNER_ID;
+    banner.style.cssText =
+      'position:fixed;top:12%;left:50%;transform:translateX(-50%);' +
+      'max-width:80%;box-sizing:border-box;' +
+      'background:rgba(20,10,10,0.96);border:2px solid #ff5050;border-radius:16px;' +
+      'padding:20px 32px;text-align:center;z-index:10060;pointer-events:none;' +
+      'box-shadow:0 8px 40px rgba(0,0,0,0.6);';
+    host.appendChild(banner);
+  }
+
+  banner.innerHTML =
+    '<div style="font-size:22px;font-weight:600;color:#ff8a8a;line-height:1.3">' +
+    escapeBannerText(message) + '</div>' +
+    (detail ? '<div style="font-size:15px;color:#c8c8c8;margin-top:10px;line-height:1.35">' +
+      escapeBannerText(detail) + '</div>' : '');
+
+  if (errorBannerTimer) clearTimeout(errorBannerTimer);
+  errorBannerTimer = setTimeout(function () {
+    errorBannerTimer = null;
+    var b = document.getElementById(ERROR_BANNER_ID);
+    if (!b) return;
+    if (b.remove) b.remove(); else if (b.parentNode) b.parentNode.removeChild(b);
+  }, ERROR_BANNER_MS);
+}
+
+function escapeBannerText(s) {
+  return String(s == null ? '' : s).replace(/[&<>]/g, function (m) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[m];
+  });
+}
+
+window.showErrorBanner = showErrorBanner;
+
 // ==================== ПРОВЕРКА ВЕРСИИ ====================
 function checkAppVersion() {
   fetch('/api/version')

@@ -2696,10 +2696,23 @@ function normalizeSearchResult(item) {
     return normalized;
 }
 
+/**
+ * Jacred не ответил: сеть, DNS, неверный хост или не-200. Отдельный тип нужен,
+ * чтобы отличить «трекер-агрегатор лежит» от «искали, но ничего не нашли» —
+ * пользователю это разные сообщения.
+ */
+function JacredUnavailableError(host, reason) {
+    this.name = 'JacredUnavailableError';
+    this.jacredHost = host;
+    this.message = 'Jacred (' + host + ') недоступен: ' + reason;
+}
+JacredUnavailableError.prototype = Object.create(Error.prototype);
+JacredUnavailableError.prototype.constructor = JacredUnavailableError;
+
 async function searchTorrents(query) {
     if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
-    if (getCurrentSearchMode() === 'globalsearch') await searchTMDB(query);
-    else await searchTorrentsLegacy(query);
+    if (getCurrentSearchMode() === 'globalsearch') return await searchTMDB(query);
+    return await searchTorrentsLegacy(query);
 }
 
 async function searchTorrentsLegacy(query) {
@@ -2713,8 +2726,17 @@ async function searchTorrentsLegacy(query) {
 
     showLoading('Поиск...');
     try {
-        var response = await fetch(searchUrl);
-        if (!response.ok) throw new Error('Ошибка поиска: HTTP ' + response.status);
+        // Отдельно от остальных ошибок ловим «Jacred не отвечает»: сеть, DNS,
+        // выключенный или неверно указанный хост. Именно это чаще всего и
+        // происходит, а alert с текстом «Failed to fetch» на телевизоре не
+        // показывался вовсе — поиск просто молча ничего не находил.
+        var response;
+        try {
+            response = await fetch(searchUrl);
+        } catch (netError) {
+            throw new JacredUnavailableError(jacDefault, netError.message);
+        }
+        if (!response.ok) throw new JacredUnavailableError(jacDefault, 'HTTP ' + response.status);
         var data = await response.json();
 
         // Новый формат: {Results: [...]}, старый формат был просто массивом
@@ -2736,9 +2758,21 @@ async function searchTorrentsLegacy(query) {
         updateAvailableYears();
         applyFiltersAndSort();
         showSearchResults();
+
+        // Число найденного нужно вызывающей стороне: showCatalogSearch прячет
+        // карточку фильма только если искать было что (catalog.js)
+        return searchResults.length;
     } catch (error) {
         console.error('Ошибка поиска:', error);
-        alert('Ошибка при поиске: ' + error.message);
+        if (typeof window.showErrorBanner === 'function') {
+            if (error && error.jacredHost) {
+                window.showErrorBanner('Jacred недоступен',
+                    'Не отвечает ' + error.jacredHost + '. Адрес меняется в настройках.');
+            } else {
+                window.showErrorBanner('Ошибка поиска', error.message);
+            }
+        } else alert('Ошибка при поиске: ' + error.message);
+        return 0;
     } finally {
         hideLoading();
     }
@@ -2982,7 +3016,7 @@ function resetFilters() {
 }
 
 async function dropTorrentToServer(hash) {
-    if (!AppState.currentTorrserverUrl) { alert('Сначала подключитесь к TorrServer'); return null; }
+    if (!(await ensureTorrserverOnline())) return null;
     try {
         var response = await torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'drop', hash: hash }) });
         if (!response.ok) throw new Error('Ошибка остановки: ' + response.status);
@@ -2993,10 +3027,7 @@ window.dropTorrentToServer = dropTorrentToServer;
 
 async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
     var refreshList = options.refreshList !== false;
-    if (!AppState.currentTorrserverUrl) {
-        alert('Сначала подключитесь к TorrServer');
-        return null;
-    }
+    if (!(await ensureTorrserverOnline())) return null;
     var ctx = getCatalogSearchContext(searchResult);
     var poster = options.poster || ctx.poster || null;
     var tmdbId = options.tmdbId || ctx.id || null;
@@ -3130,9 +3161,51 @@ async function refreshTorrentsList() {
 }
 window.refreshTorrentsList = refreshTorrentsList;
 
+
+/**
+ * TorrServer точно доступен? Иначе показать баннер и не начинать.
+ *
+ * Проверка «!AppState.currentTorrserverUrl» ловила только «адрес не задан».
+ * Если сервер был настроен, но лежит (выключили, сменился IP, порт занят),
+ * воспроизведение падало уже внутри — в alert('Ошибка воспроизведения: …'),
+ * а alert на телевизоре не показывается вовсе. Человек нажимал «смотреть»
+ * и не понимал, почему ничего не происходит.
+ *
+ * Быстрый путь — по флагу AppState.serverOnline, его держит checkServer().
+ * Реальный запрос уходит только когда флаг снят: лишняя секунда перед стартом
+ * лучше, чем немой отказ.
+ */
+async function ensureTorrserverOnline() {
+    var banner = (typeof window.showErrorBanner === 'function') ? window.showErrorBanner : null;
+
+    if (!AppState.currentTorrserverUrl) {
+        if (banner) banner('TorrServer не подключён', 'Укажите адрес сервера в настройках');
+        else alert('Сначала подключитесь к TorrServer');
+        return false;
+    }
+
+    if (AppState.serverOnline) return true;
+
+    var ok = false;
+    try { ok = await checkServer(false); } catch (e) { ok = false; }
+
+    if (!ok) {
+        if (banner) banner('TorrServer недоступен',
+            'Не отвечает ' + AppState.currentTorrserverUrl + '. Проверьте, запущен ли сервер.');
+        else alert('TorrServer недоступен');
+        return false;
+    }
+    return true;
+}
+window.ensureTorrserverOnline = ensureTorrserverOnline;
+
 async function playFromHash(hash, magnet, searchResult = null) {
-    if (!hash) { alert('Ошибка: hash не найден'); return; }
-    if (!AppState.currentTorrserverUrl) { alert('Сначала подключитесь к TorrServer'); return; }
+    if (!hash) {
+        if (typeof window.showErrorBanner === 'function') window.showErrorBanner('Не удалось открыть раздачу', 'В результате поиска нет hash');
+        else alert('Ошибка: hash не найден');
+        return;
+    }
+    if (!(await ensureTorrserverOnline())) return;
     AppState.androidBackCatalog = AppState.currentDetailItem;
     if (window.addToWatchHistory && AppState.pendingDetailItem && AppState.pendingDetailItem.id) {
         await window.addToWatchHistory(String(AppState.pendingDetailItem.id), currentSearchQuery, AppState.pendingDetailItem.media_type, AppState.pendingDetailPoster || null);
@@ -3228,7 +3301,13 @@ async function playFromHash(hash, magnet, searchResult = null) {
             AppState.inSearch = (window.AndroidJS || AppState.transcodingFullOnOff) ? "catalog" : "torrents";
             showDetail(addedTorrent);
         }
-    } catch (error) { console.error('❌ Ошибка воспроизведения:', error); alert('Ошибка воспроизведения: ' + error.message); }
+    } catch (error) {
+        console.error('❌ Ошибка воспроизведения:', error);
+        // Сюда попадаем и когда сервер отвалился уже посреди добавления раздачи
+        if (typeof window.showErrorBanner === 'function') {
+            window.showErrorBanner('Не удалось начать воспроизведение', error.message);
+        } else alert('Ошибка воспроизведения: ' + error.message);
+    }
     finally { getEl('playback-overlay').classList.remove('active'); document.querySelector('.playback-text').textContent = 'Воспроизведение...'; }
 }
 window.playFromHash = playFromHash;
