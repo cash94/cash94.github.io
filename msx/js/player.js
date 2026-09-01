@@ -1400,6 +1400,12 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       skip_api: (AppState.protocol || 'https:') + '//tsskip.hnar.online/v2/media',
       tmdb_id: AppState.currentTMDB || null,
       season: AppState.currentSeason || null,
+      // Периодическое сохранение таймкода прямо из встроенного плеера. Веб-плеер
+      // шлёт его раз в 10 секунд (startTimecodeSaving), а из нативного таймкод
+      // приходил только при выходе — через updatePlayerTimeline. Если приложение
+      // убьют или пропадёт питание, прогресс терялся целиком.
+      timecode_api: SERVER_URL + '/api/timecode/save',
+      client_id: localStorage.getItem('clientId') || null,
       timeline: { hash: torrentHash + '_' + fileId, time: seekTime, duration: 0, percent: 0 },
       poster: getCurrentItemPoster(),
       id: item && (item.tmdbId || item.id) || null,
