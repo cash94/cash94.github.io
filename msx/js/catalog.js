@@ -1517,7 +1517,7 @@ function showCatalogRowsView() {
  *     до CHUNK_HYDRATED_KEEP, так что у границы всегда есть запас;
  *   • CHUNK_FOCUS_GUARD — чанк с фокусом и соседние не трогаем вообще;
  *   • работаем только в тишине — тем же условием, что очередь постеров
- *     и оконная видимость (fastNavigation + isCatalogScrollAnimating).
+ *     и оконная видимость (navHold + isCatalogScrollAnimating).
  *
  * Границы чанков выравнены по строкам сетки (кратны числу колонок): иначе
  * распорка во всю ширину встала бы посреди строки и разъехалась бы вёрстка.
@@ -1548,7 +1548,7 @@ var CHUNK_SCROLL_QUIET_MS = 250;       // сколько ждать после �
 /* Тишина прокрутки.
  *
  * Свёртку чанков нельзя делать во время движения — иначе карточки исчезают
- * прямо под пальцем. Для пульта это ловят fastNavigation и твин прокрутки, но
+ * прямо под пальцем. Для пульта это ловят navHold и твин прокрутки, но
  * при свайпе на телефоне нет ни того, ни другого: инерционный скролл идёт
  * сам по себе, обрезка срабатывает посреди него, наблюдатель тут же
  * разворачивает чанк обратно — и карточки мерцают.
@@ -1787,7 +1787,7 @@ function trimGridChunks() {
     if (live.length <= CHUNK_HYDRATED_MAX) return;
 
     // Пока кнопку держат, едет твин или палец тянет список — DOM не трогаем
-    if (window.fastNavigation || isCatalogScrollAnimating() || isGridScrolling()) {
+    if (window.navHold || isCatalogScrollAnimating() || isGridScrolling()) {
         scheduleChunkTrim();
         return;
     }
@@ -4121,7 +4121,7 @@ function scheduleFocusRowPoster(delay) {
         var card = catalogState.focusPosterCard;
         if (!card) return;
         if (!card.isConnected) { catalogState.focusPosterCard = null; return; }
-        if (isRowScrollAnimating() || window.fastNavigation) {
+        if (isRowScrollAnimating() || window.navHold) {
             scheduleFocusRowPoster(CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
             return;
         }
@@ -4339,7 +4339,7 @@ function queueVisibilityToggle(el, show) {
 function flushVisibilityToggles() {
     if (!visibilityPending.length) return;
 
-    if (window.fastNavigation || isRowScrollAnimating()) {
+    if (window.navHold || isRowScrollAnimating()) {
         if (visibilityFlushTimer) return;
         visibilityFlushTimer = setTimeout(function () {
             visibilityFlushTimer = null;
@@ -4511,15 +4511,15 @@ function isRowScrollAnimating() {
  * Пока идёт навигация, очередь стоит — тем же приёмом, что и у сетки
  * (deferPosterUntilScrollEnds): вставка постера это замена содержимого бокса и
  * перерисовка карточки 260×460, а несколько таких посреди твана ряда и есть те
- * самые фризы. Ждём двух условий: тван прокрутки докрутился и с последнего
- * нажатия прошло больше 200мс (fastNavigation в control.js) — иначе при зажатой
- * кнопке пульта постеры вставлялись бы в паузах между твинами. Карточку под
- * фокусом это не задерживает: её тянет ensureRowPosterNow вне очереди.
+ * самые фризы. Ждём двух условий: тван прокрутки докрутился и кнопку навигации
+ * не держат (navHold в control.js) — иначе при зажатой кнопке пульта постеры
+ * вставлялись бы в паузах между твинами. Карточку под фокусом это не
+ * задерживает: её тянет ensureRowPosterNow вне очереди.
  */
 function processRowPosterQueue() {
     if (!catalogState.rowPosterQueue || !catalogState.rowPosterQueue.length) return;
 
-    if (window.fastNavigation || isRowScrollAnimating()) {
+    if (window.navHold || isRowScrollAnimating()) {
         if (catalogState.rowPosterQueueTimer) return;        // ожидание уже заведено
         catalogState.rowPosterQueueTimer = setTimeout(function () {
             catalogState.rowPosterQueueTimer = null;
