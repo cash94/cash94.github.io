@@ -1382,10 +1382,9 @@ window.openAndroidPlayer = openAndroidPlayer;
 
 function playInExternalPlayer(url, title, timecode, fromSearch) {
   if (!window.AndroidJS || !url) return false;
-  var match = url.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/);
-  if (!match) match = url.match(/[?&]link=([a-fA-F0-9]+)[&]index=(\d+)/);
-  if (match) {
-    var torrentHash = match[1]; var fileId = parseInt(match[2]);
+  var ref = parseStreamRef(url);
+  if (ref) {
+    var torrentHash = ref.hash; var fileId = parseInt(ref.fileId);
     var seekTime = (timecode != null && timecode > 0) ? Math.floor(timecode) : 0;
     currentTimecodeData.hash = torrentHash; currentTimecodeData.fileId = fileId; currentTimecodeData.timecode = seekTime;
     var playURL = AppState.currentTorrserverUrl + "/stream?link=" + torrentHash + "&index=" + fileId + "&play=play";
@@ -1790,19 +1789,43 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
   hls.off(Hls.Events.ERROR, errorHandler); hls.on(Hls.Events.ERROR, errorHandler);
 }
 
+/**
+ * Хеш торрента и номер файла из ссылки потока.
+ *
+ * У TorrServer параметр link= принимает и голый хеш, и магнет целиком. Прежняя
+ * регулярка ([a-fA-F0-9]+) на магнете не срабатывала вовсе — Android-ветка тогда
+ * оставалась и без плейлиста серий, и без таймкода, молча стартуя с нуля.
+ */
+function parseStreamRef(url) {
+  if (!url) return null;
+  var direct = url.match(/\/play\/([a-fA-F0-9]{40})\/(\d+)/);
+  if (direct) return { hash: direct[1], fileId: direct[2] };
+
+  var linkParam = (url.match(/[?&]link=([^&]+)/) || [])[1];
+  var indexParam = (url.match(/[?&]index=(\d+)/) || [])[1];
+  if (!linkParam || !indexParam) return null;
+
+  var decoded = decodeURIComponent(linkParam);
+  var hash = /^[a-fA-F0-9]{40}$/.test(decoded)
+    ? decoded
+    : (typeof extractHashFromMagnet === 'function' ? extractHashFromMagnet(decoded) : null);
+  return hash ? { hash: hash, fileId: indexParam } : null;
+}
+
 async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack) {
   if (initialSeek === undefined) initialSeek = null;
   if (fromSearch === undefined) fromSearch = false;
   if (episodeIndex === undefined) episodeIndex = null;
   if (audioTrack === undefined) audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
   if (window.AndroidJS) {
+    var androidRef = parseStreamRef(originalUrl);
+
     // Заголовок считаем ПОСЛЕ loadEpisodesInfo ниже — до него currentEpisodeIndex
     // ещё не знает, какая серия открыта, и в название не попал бы её номер.
     // Плейлист серий нужен ДО открытия нативного плеера: иначе currentEpisodeFiles
     // ещё пуст (обычно он подгружается уже после старта воспроизведения, с задержкой).
     if (AppState.autoSwitchEpisodes && AppState.currentDetailItem && AppState.currentDetailItem.hash) {
-      var androidMatch = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/) || originalUrl.match(/[?&]link=([a-fA-F0-9]+)[&]index=(\d+)/);
-      try { await loadEpisodesInfo(AppState.currentDetailItem.hash, androidMatch ? androidMatch[2] : null); } catch (e) { /* ignore, fall back to single episode */ }
+      try { await loadEpisodesInfo(AppState.currentDetailItem.hash, androidRef ? androidRef.fileId : null); } catch (e) { /* ignore, fall back to single episode */ }
       // Прогрев кэша прогресса: buildEpisodesPlaylist синхронный, а
       // таймкоды серий нужны ему, чтобы у каждого элемента плейлиста был
       // осмысленный timeline (и позиция, с которой серию продолжат).
@@ -1810,7 +1833,19 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         try { await getTorrentProgressBatch(AppState.currentDetailItem.hash, currentEpisodeFiles); } catch (e) { /* без прогресса — нули */ }
       }
     }
-    if (playInExternalPlayer(originalUrl, buildExternalPlayerTitle(), initialSeek, fromSearch)) {
+    // Возобновление с сохранённой позиции. Ветка AndroidJS выходит из функции ДО
+    // preparePlaybackMetadata, а именно там веб-плеер читает таймкод с сервера
+    // (loadTimecodeFromServer). Из-за этого нативный плеер всегда стартовал с нуля:
+    // прогресс сохранялся, но никто его не запрашивал обратно.
+    var androidSeek = initialSeek;
+    if (androidSeek === null && androidRef) {
+      try {
+        var savedSeek = await loadTimecodeFromServer(androidRef.hash, androidRef.fileId);
+        if (savedSeek > 0) androidSeek = savedSeek;
+      } catch (e) { /* нет таймкода — стартуем с начала */ }
+    }
+
+    if (playInExternalPlayer(originalUrl, buildExternalPlayerTitle(), androidSeek, fromSearch)) {
       getEl('config-screen').style.display = 'none'; getEl('torrserver-section').style.display = 'none'; return;
     }
   }
