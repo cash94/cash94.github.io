@@ -24,9 +24,11 @@ var SCROLL_SMOOTH = {
     force: true,
     durationX: 0.33,
     durationY: 0.38,
-    durationFastX: 0.20,
-    durationFastY: 0.25,
-    ease: 'power3.out'
+    ease: 'power3.out',
+    // Продолжение уже идущего движения (зажатая кнопка пульта): линейно и на
+    // длительность шага автоповтора — тогда скорость постоянна. См. scrollTweenOpts.
+    chainEase: 'none',
+    chainMinDuration: 0.08
 };
 
 // ==================== СОСТОЯНИЕ ====================
@@ -43,14 +45,20 @@ var accelerationTimer = null;
 var okHoldTimer = null;
 var okHoldHandled = false;
 var okHoldFocused = null;
-var fastNavigation = false;
-var fastNavigationTimer = null;
-// Автоповтор от браузера: ставится в обработчиках keydown, читается
-// setFastNavigation. Признак того, что кнопку именно ДЕРЖАТ.
+// Кнопку навигации ДЕРЖАТ. На скорость прокрутки не влияет — она единая; флаг
+// нужен каталогу (window.navHold), чтобы не вставлять постеры и не трогать DOM,
+// пока идёт перемещение по строкам.
+var navHold = false;
+var navHoldTimer = null;
+// Автоповтор от браузера: ставится в обработчиках keydown, читается setNavHold.
+// Признак того, что кнопку именно ДЕРЖАТ.
 var navKeyRepeat = false;
 var navStreak = 0;
 var navStreakAt = 0;
 var navStreakDir = null;
+// Измеренный шаг автоповтора (мс). Из него считается длительность твина при
+// продолжении движения — см. scrollTweenOpts.
+var navRepeatGapMs = 0;
 var lastPopStateTime = 0;
 var isProcessingBack = false;
 var lastNavDirection = 'right';
@@ -172,37 +180,58 @@ function scheduleHideSeekOverlay() {
 
 // ==================== УТИЛИТЫ ====================
 /**
- * Быстрая навигация — это УДЕРЖАНИЕ кнопки (автоповтор), а не серия коротких
- * нажатий. Раньше флаг взводился на любом втором шаге в пределах 200мс, поэтому
- * при быстром «тык-тык» часть шагов уезжала с короткой длительностью, а часть с
- * обычной — со стороны это выглядело как рвущаяся анимация.
+ * Удержание кнопки навигации.
  *
- * Основной признак — e.repeat от браузера. Он есть не везде (старые WebView на
- * ТВ, часть пультов присылает независимые keydown), поэтому есть и запасной:
- * устойчивая серия в одну сторону с шагом не больше FAST_NAV_GAP_MS. Порог
- * специально злой — 8+ шагов в секунду подряд руками не натыкать, это уже
- * только автоповтор.
+ * Раньше флаг звался fastNavigation и укорачивал твины прокрутки: при удержании
+ * шаг ехал за 0.25с, при одиночном нажатии за 0.38с. Взводился он посреди серии,
+ * поэтому в одном и том же движении часть шагов уезжала быстро, часть обычно —
+ * со стороны это и выглядело как рвущаяся анимация. Скорость теперь одна на все
+ * случаи (SCROLL_SMOOTH.durationX / durationY), а флаг остался ради каталога:
+ * пока кнопку держат, catalog.js не вставляет постеры и не сворачивает чанки —
+ * эта работа посреди перехода и есть источник фризов.
+ *
+ * Основной признак удержания — e.repeat от браузера. Он есть не везде (старые
+ * WebView на ТВ, часть пультов присылает независимые keydown), поэтому есть и
+ * запасной: два шага подряд в одну сторону с интервалом не больше
+ * NAV_HOLD_GAP_MS. Порог теперь мягкий — цена ошибки всего лишь постер, приехавший
+ * на четверть секунды позже; анимацию этот флаг больше не трогает.
  */
-var FAST_NAV_GAP_MS = 120;
-var FAST_NAV_MIN_STREAK = 5;
-var FAST_NAV_IDLE_MS = 260;
+var NAV_HOLD_GAP_MS = 250;
+var NAV_HOLD_MIN_STREAK = 2;
+var NAV_HOLD_IDLE_MS = 260;
 
-function setFastNavigation(direction) {
+function setNavHold(direction) {
     var now = Date.now();
     var gap = now - navStreakAt;
     navStreakAt = now;
-    if (gap <= FAST_NAV_GAP_MS && direction === navStreakDir) navStreak++;
-    else navStreak = 1;
+    if (gap <= NAV_HOLD_GAP_MS && direction === navStreakDir) {
+        navStreak++;
+        navRepeatGapMs = gap;
+    } else {
+        navStreak = 1;
+        navRepeatGapMs = 0;
+    }
     navStreakDir = direction;
 
-    fastNavigation = navKeyRepeat || navStreak >= FAST_NAV_MIN_STREAK;
-    if (fastNavigationTimer) clearTimeout(fastNavigationTimer);
-    fastNavigationTimer = setTimeout(function () {
-        fastNavigation = false;
-        navStreak = 0;
-        navStreakDir = null;
-        navKeyRepeat = false;
-    }, FAST_NAV_IDLE_MS);
+    navHold = navKeyRepeat || navStreak >= NAV_HOLD_MIN_STREAK;
+    if (navHoldTimer) clearTimeout(navHoldTimer);
+    navHoldTimer = setTimeout(endNavHold, NAV_HOLD_IDLE_MS);
+}
+
+/**
+ * Серия кончилась: с последнего шага прошло NAV_HOLD_IDLE_MS.
+ *
+ * Именно по тишине, а не по keyup. Часть ТВ-пультов шлёт пару keydown/keyup на
+ * каждый тик автоповтора, и по отпусканию флаг гас бы между шагами — каталог
+ * успевал бы вставить постер ровно посреди перехода.
+ */
+function endNavHold() {
+    if (navHoldTimer) { clearTimeout(navHoldTimer); navHoldTimer = null; }
+    navHold = false;
+    navStreak = 0;
+    navStreakDir = null;
+    navKeyRepeat = false;
+    navRepeatGapMs = 0;
 }
 
 function VISIBLE(el) { return !!(el && el.offsetParent !== null && !el.disabled); }
@@ -1603,7 +1632,7 @@ function focusSearchHome(preferQuery) {
 
 // ==================== НАВИГАЦИЯ ====================
 function navigate(direction) {
-    if (typeof setFastNavigation === 'function') setFastNavigation(direction);
+    if (typeof setNavHold === 'function') setNavHold(direction);
     lastNavDirection = direction;
     var active = document.activeElement;
     if (active && active.id === 'search-query') {
@@ -2237,6 +2266,41 @@ function pendingScrollDeltaX(container) {
 }
 
 /**
+ * Параметры твина прокрутки.
+ *
+ * Скорость одна на все случаи, но профиль движения зависит от того, начинаем мы
+ * движение или продолжаем уже идущее (зажатая кнопка пульта):
+ *
+ *   • одиночный шаг — power3.out: выезд с торможением у цели;
+ *   • продолжение — линейно и на длительность шага автоповтора. При power3.out
+ *     скорость внутри шага падает почти вдвое, и серия таких шагов читается как
+ *     дрожание, а не как ровное движение. Линейный твин длиной ровно в шаг
+ *     автоповтора идёт с постоянной скоростью и отстаёт от фокуса примерно на
+ *     одну строку. Без привязки к шагу отставание было бы во столько раз
+ *     больше, во сколько базовая длительность превышает интервал автоповтора, —
+ *     строка под фокусом уехала бы за нижний край экрана.
+ *
+ * Признак продолжения — сама серия нажатий (navRepeatGapMs), а не «предыдущий
+ * твин ещё летит». Твин теперь длится ровно шаг автоповтора и приземляется
+ * впритык к следующему нажатию: по нему серия то определялась бы, то нет, и
+ * длительность скакала бы через шаг — ровно та беда, из-за которой убран
+ * fastNavigation.
+ *
+ * @param {number} duration базовая длительность (SCROLL_SMOOTH.durationX / durationY)
+ * @returns {{duration: number, ease: string}}
+ */
+function scrollTweenOpts(duration) {
+    if (!navRepeatGapMs || !(duration > 0)) {
+        return { duration: duration, ease: SCROLL_SMOOTH.ease };
+    }
+    return {
+        duration: Math.max(SCROLL_SMOOTH.chainMinDuration,
+            Math.min(duration, navRepeatGapMs / 1000)),
+        ease: SCROLL_SMOOTH.chainEase
+    };
+}
+
+/**
  * Режим анимации горизонтальной прокрутки из ui-customizer: none | fast | smooth.
  * На слабых устройствах твин трека подтормаживает (gsap на время анимации поднимает
  * трек ряда — а это ~2900x490 — в слой композитора и отпускает после, и так на
@@ -2346,23 +2410,25 @@ function setScrollX(container, left, smooth, duration) {
     left = Math.max(0, Math.min(getMaxScrollX(container), left));
     duration = scrollAnimDurationX(duration);   // режим из ui-customizer
 
+    var opts = scrollTweenOpts(duration);
+
     var track = getRowTrack(container);
     if (!track) {
-        if (smooth && duration > 0) markPendingScroll(container, '_navPendX', left, duration);
+        if (smooth && opts.duration > 0) markPendingScroll(container, '_navPendX', left, opts.duration);
         else clearPendingScroll(container, '_navPendX');
-        applyScroll(container, { scrollLeft: left }, smooth, duration);
+        applyScroll(container, { scrollLeft: left }, smooth, opts.duration, opts.ease);
         return;
     }
-    if (!smooth || duration <= 0 || typeof gsap === 'undefined') {
+    if (!smooth || opts.duration <= 0 || typeof gsap === 'undefined') {
         setScrollXImmediate(container, left);
         return;
     }
     gsap.killTweensOf(track);
-    markPendingScroll(container, '_navPendX', left, duration);
+    markPendingScroll(container, '_navPendX', left, opts.duration);
     gsap.to(track, {
         x: -left,
-        duration: duration,
-        ease: SCROLL_SMOOTH.ease,
+        duration: opts.duration,
+        ease: opts.ease,
         overwrite: true
     });
 }
@@ -2384,11 +2450,20 @@ function setScrollX(container, left, smooth, duration) {
  * @param {Object}  vars      scrollTop / scrollLeft (+ любые gsap-свойства)
  * @param {boolean} smooth    false — прыжком
  * @param {number}  duration  длительность в секундах
+ * @param {string}  [ease]    уже посчитанная кривая (setScrollX считает её сам,
+ *                            потому что успевает пометить цель раньше)
  */
-function applyScroll(container, vars, smooth, duration) {
+function applyScroll(container, vars, smooth, duration, ease) {
     if (!container || !vars) return;
 
     var animated = smooth && typeof duration === 'number' && duration > 0;
+
+    if (animated && !ease) {
+        var opts = scrollTweenOpts(duration);
+        duration = opts.duration;
+        ease = opts.ease;
+    }
+
     if (typeof vars.scrollTop === 'number') {
         if (animated) markPendingScroll(container, '_navPendTop', vars.scrollTop, duration);
         else clearPendingScroll(container, '_navPendTop');
@@ -2396,8 +2471,8 @@ function applyScroll(container, vars, smooth, duration) {
 
     if (typeof Animations !== 'undefined' && typeof Animations.tweenScroll === 'function') {
         Animations.tweenScroll(container, vars, {
-            duration: smooth ? duration : 0,
-            ease: SCROLL_SMOOTH.ease
+            duration: animated ? duration : 0,
+            ease: ease || SCROLL_SMOOTH.ease
         });
         return;
     }
@@ -2522,7 +2597,7 @@ function scrollCatalogGridCardIntoView(el, scrollContainer, smooth) {
     if (Math.abs(restTop - target) < 2) return;
 
     applyScroll(scrollContainer, { scrollTop: target }, smooth,
-        fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
+        SCROLL_SMOOTH.durationY);
 }
 
 // Зазор под сфокусированным рядом. 50px — столько же оставляла прежняя ветка
@@ -2651,13 +2726,13 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             var needsHScroll = Math.abs(fromLeft - targetLeft) > 10;
             if (needsHScroll) {
                 setScrollX(con, targetLeft, smooth,
-                    fastNavigation ? SCROLL_SMOOTH.durationFastX : SCROLL_SMOOTH.durationX);
+                    SCROLL_SMOOTH.durationX);
             }
         }
 
         // Вертикальный скролл (для рядов — main-container)
         var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
-        var vertDur = fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY;
+        var vertDur = SCROLL_SMOOTH.durationY;
         var dy = pendingScrollDelta(vertEl);        // сколько ещё дотянет твин
         // Первый ряд экрана — всегда самый верх страницы, а не «подтянуть на 50px»:
         // иначе под липкой шапкой остаётся полоска предыдущего скролла.
@@ -2725,7 +2800,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                 // Полноэкранный элемент в списке анимируемых свойств не нужен.
                 if (Math.abs(vertViewportTop - targetScrollTop) > 4) {
                     applyScroll(vertEl, { scrollTop: targetScrollTop }, smooth,
-                        fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
+                        SCROLL_SMOOTH.durationY);
                 }
             }
         }
@@ -2763,13 +2838,13 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             var maxTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
             applyScroll(scrollContainer,
                 { scrollTop: Math.max(0, Math.min(maxTop, scrollContainer.scrollTop + dyTail + over)) },
-                smooth, fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY);
+                smooth, SCROLL_SMOOTH.durationY);
         }
         return;
     }
     Animations.scrollToIfNotVisible(el, container, {
         direction: direction,
-        duration: fastNavigation ? SCROLL_SMOOTH.durationFastY : SCROLL_SMOOTH.durationY,
+        duration: SCROLL_SMOOTH.durationY,
         ease: SCROLL_SMOOTH.ease,
         offset: 10,
         overwrite: true
@@ -2894,7 +2969,7 @@ function focusEl(el, opts) {
         scrollToElementIfNeeded(
             el,
             container,
-            SCROLL_SMOOTH.force ? true : !fastNavigation,
+            true,               // прокрутка всегда с анимацией и единой скоростью
             scrollDirection
         );
     }
@@ -3193,10 +3268,10 @@ function setupFocusRescue() {
             var d = arrowDir(e.keyCode);
             if (isCustomFilterMenuOpen()) { if (d === 'up') moveCustomFilterMenu(-1); else if (d === 'down') moveCustomFilterMenu(1); return; }
             // Ряды каталога и главной идут сюда, а не через navigate(), поэтому
-            // флаг быстрой навигации взводим здесь: на нём висит откладывание
-            // постеров в catalog.js (вставка карточки посреди твина = фриз).
+            // флаг удержания взводим здесь: на нём висит откладывание постеров
+            // в catalog.js (вставка карточки посреди твина = фриз).
             navKeyRepeat = !!e.repeat;
-            setFastNavigation(d);
+            setNavHold(d);
             var strategy = ScreenStrategies[s];
             if (strategy && strategy.handleNavigation) strategy.handleNavigation(d);
             return;
