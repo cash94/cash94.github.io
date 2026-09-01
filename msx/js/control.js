@@ -3256,12 +3256,27 @@ function setupFocusRescue() {
     window.setConfigMenuActive = setConfigMenuActive;
 }
 
+/* Навигация «назад» держится на одной лишней записи в history — «часовом».
+   Нажатие Назад съедает её, мы ловим popstate, превращаем его в Escape (на него
+   реагируют все экраны) и кладём «часового» обратно.
+
+   Ключевой момент: popstate УЖЕ израсходовал запись, независимо от того,
+   собираемся мы обрабатывать нажатие или нет. Поэтому возвращать её надо и на
+   тех ветках, где нажатие игнорируется (антидребезг, блокировка свайпом,
+   повторный вход). Раньше эти ветки просто делали return — «часовой» пропадал,
+   история пустела, WebView.canGoBack() навсегда становился false, и нативный
+   обработчик в MainActivity начинал глотать Назад вхолостую. Со стороны это
+   выглядело как намертво отказавшая кнопка — до перезагрузки страницы. */
+function rearmBackSentinel() {
+    window.history.pushState({ page: 'main' }, '');
+}
+
 window.addEventListener('popstate', function (e) {
-    if (window.swipeBlocked) return;
+    if (window.swipeBlocked) { rearmBackSentinel(); return; }
     var now = Date.now();
-    if (now - lastPopStateTime < 500) return;
+    if (now - lastPopStateTime < 500) { rearmBackSentinel(); return; }
     lastPopStateTime = now;
-    if (isProcessingBack) return;
+    if (isProcessingBack) { rearmBackSentinel(); return; }
     isProcessingBack = true;
     e.preventDefault();
     e.stopPropagation();
@@ -3273,14 +3288,14 @@ window.addEventListener('popstate', function (e) {
     });
     document.dispatchEvent(be);
     setTimeout(function () {
-        window.history.pushState({ page: 'main' }, '');
+        rearmBackSentinel();
         setTimeout(function () {
             isProcessingBack = false;
         }, 300);
     }, 150);
 });
 
-window.history.pushState({ page: 'main' }, '');
+rearmBackSentinel();
 window.blockSwipe = function (ms) {
     window.swipeBlocked = true;
     setTimeout(function () {
