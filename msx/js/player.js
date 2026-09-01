@@ -1394,6 +1394,12 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       url: playURL, title: title || 'Видео', iptv: false, timecode: seekTime,
       // Для встроенного плеера — без номера серии, он допишет его сам
       title_base: buildBasePlayerTitle(),
+      // Данные для кнопки «Пропустить»: встроенный плеер сам дёргает этот API на
+      // каждую серию (номер эпизода он берёт из index= в ссылке файла). Адрес
+      // передаём отсюда, чтобы смена хоста не требовала пересборки приложения.
+      skip_api: (AppState.protocol || 'https:') + '//tsskip.hnar.online/v2/media',
+      tmdb_id: AppState.currentTMDB || null,
+      season: AppState.currentSeason || null,
       timeline: { hash: torrentHash + '_' + fileId, time: seekTime, duration: 0, percent: 0 },
       poster: getCurrentItemPoster(),
       id: item && (item.tmdbId || item.id) || null,
