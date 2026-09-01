@@ -1245,10 +1245,19 @@ function getCurrentItemPoster() {
 }
 
 /**
- * Строит плейлист оставшихся серий (с текущей и до конца), чтобы нативный внешний
- * плеер мог переключать их сам, без возврата в веб-страницу между сериями.
+ * Строит плейлист ВСЕХ серий торрента, чтобы нативный плеер переключал их сам,
+ * без возврата в веб-страницу между сериями.
+ *
+ * Раньше список резался «с текущей серии и до конца». Из-за этого при запуске
+ * со второй серии плеер получал 5 файлов вместо 6, вторая серия становилась в
+ * плейлисте первой, и он показывал «Эпизод 1 из 5». Плюс кнопка «предыдущая
+ * серия» не могла увести назад.
+ *
+ * Отдаём весь список целиком: с какого элемента стартовать, MainActivity
+ * вычисляет сама — ищет в плейлисте совпадение по url с запускаемым файлом
+ * (runPlayer, indexOfFirst), а startSeekTime применяется только к нему.
  */
-function buildRemainingEpisodesPlaylist(fromIndex, startSeekTime) {
+function buildEpisodesPlaylist(fromIndex, startSeekTime) {
   if (!Array.isArray(currentEpisodeFiles) || currentEpisodeFiles.length < 2) return null;
   if (!currentTorrentHash || !AppState.currentTorrserverUrl) return null;
   var startIndex = (typeof fromIndex === 'number' && fromIndex >= 0) ? fromIndex : currentEpisodeIndex;
@@ -1261,7 +1270,7 @@ function buildRemainingEpisodesPlaylist(fromIndex, startSeekTime) {
   } catch (e) { /* кэша нет — пойдём с нулевыми таймкодами */ }
   var byFileId = (progress && progress.byFileId) || {};
   var playlist = [];
-  for (var i = startIndex; i < currentEpisodeFiles.length; i++) {
+  for (var i = 0; i < currentEpisodeFiles.length; i++) {
     var file = currentEpisodeFiles[i];
     if (!file || file.id === undefined || file.id === null) continue;
     var itemUrl = AppState.currentTorrserverUrl + "/stream?link=" + currentTorrentHash + "&index=" + file.id + "&play=play";
@@ -1302,7 +1311,7 @@ function buildRemainingEpisodesPlaylist(fromIndex, startSeekTime) {
  * currentEpisodeFiles и currentEpisodeIndex.
  *
  * Формат «Серия N» — тот же, что в панели серий и в fallback'е
- * buildRemainingEpisodesPlaylist. Для фильма (файл один) остаётся чистое
+ * buildEpisodesPlaylist. Для фильма (файл один) остаётся чистое
  * название: дописывать «Серия 1» там незачем.
  */
 /**
@@ -1391,7 +1400,7 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       type: (item && item.media_type) || (AppState.isCatalogSerials ? 'tv' : 'movie')
     };
     if (AppState.autoSwitchEpisodes) {
-      var playlist = buildRemainingEpisodesPlaylist(currentEpisodeIndex, seekTime);
+      var playlist = buildEpisodesPlaylist(currentEpisodeIndex, seekTime);
       if (playlist) playerData.playlist = playlist;
     }
     lastPlaybackFromSearch = fromSearch;
@@ -1782,7 +1791,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     if (AppState.autoSwitchEpisodes && AppState.currentDetailItem && AppState.currentDetailItem.hash) {
       var androidMatch = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/) || originalUrl.match(/[?&]link=([a-fA-F0-9]+)[&]index=(\d+)/);
       try { await loadEpisodesInfo(AppState.currentDetailItem.hash, androidMatch ? androidMatch[2] : null); } catch (e) { /* ignore, fall back to single episode */ }
-      // Прогрев кэша прогресса: buildRemainingEpisodesPlaylist синхронный, а
+      // Прогрев кэша прогресса: buildEpisodesPlaylist синхронный, а
       // таймкоды серий нужны ему, чтобы у каждого элемента плейлиста был
       // осмысленный timeline (и позиция, с которой серию продолжат).
       if (typeof getTorrentProgressBatch === 'function') {
