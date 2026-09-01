@@ -1305,6 +1305,24 @@ function buildRemainingEpisodesPlaylist(fromIndex, startSeekTime) {
  * buildRemainingEpisodesPlaylist. Для фильма (файл один) остаётся чистое
  * название: дописывать «Серия 1» там незачем.
  */
+/**
+ * Название БЕЗ номера серии: сериал и, если известен, сезон.
+ *
+ * Нужно встроенному плееру (AndroidJS + Media3): он ведёт плейлист сам и знает
+ * текущий индекс, поэтому номер эпизода дописывает уже на своей стороне. Если
+ * отдать ему готовое «Серия 1», номер останется от той серии, с которой запуск
+ * начался, и на второй серии заголовок превратится в «Серия 1 · Эпизод 2».
+ *
+ * Внешним плеерам по-прежнему уходит buildExternalPlayerTitle(): они плейлист
+ * не отслеживают, и номер им надо вшить в строку заранее.
+ */
+function buildBasePlayerTitle() {
+  var base = (AppState.currentDetailItem && AppState.currentDetailItem.title) || '';
+  if (!base) return '';
+  if (AppState.currentSeason) return base + ' · Сезон ' + AppState.currentSeason;
+  return base;
+}
+
 function buildExternalPlayerTitle() {
   var base = (AppState.currentDetailItem && AppState.currentDetailItem.title) || '';
 
@@ -1365,6 +1383,8 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
     var item = AppState.currentDetailItem;
     var playerData = {
       url: playURL, title: title || 'Видео', iptv: false, timecode: seekTime,
+      // Для встроенного плеера — без номера серии, он допишет его сам
+      title_base: buildBasePlayerTitle(),
       timeline: { hash: torrentHash + '_' + fileId, time: seekTime, duration: 0, percent: 0 },
       poster: getCurrentItemPoster(),
       id: item && (item.tmdbId || item.id) || null,
