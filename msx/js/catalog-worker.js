@@ -1262,7 +1262,12 @@ function deduplicateItems(newItems, loadedItemIds) {
 
 var CATALOG_IDB_DB = {
   name: 'CatalogFullCacheDB',
-  version: 1,
+  // Версия 2: подборки Кинопоиска переехали с модуля kinopoisk-collections на
+  // файлы парсера. Ключи каталогов остались прежними (kp_popular и остальные
+  // семь), поэтому записи первой версии — двадцать элементов без торрентов —
+  // выглядят для кэша свежими и держались бы ещё шесть часов. Поднятие версии
+  // чистит стор один раз, дальше всё как было.
+  version: 2,
   store: 'catalogs',
   maxAgeMs: 6 * 60 * 60 * 1000 // 6 часов
 };
@@ -1280,11 +1285,37 @@ function openCatalogIdb() {
       var db = e.target.result;
       if (!db.objectStoreNames.contains(CATALOG_IDB_DB.store)) {
         db.createObjectStore(CATALOG_IDB_DB.store, { keyPath: 'key' });
+        return;
       }
+      // Стор уже есть — значит это переход между версиями, а не первый запуск.
+      // Чистим: см. комментарий к version у CATALOG_IDB_DB. Стор берём из
+      // versionchange-транзакции, своей здесь открыть нельзя.
+      try {
+        if (e.target.transaction) {
+          e.target.transaction.objectStore(CATALOG_IDB_DB.store).clear();
+        }
+      } catch (err) { }
+    };
+
+    // Апгрейд версии не начнётся, пока базу держит открытой кто-то ещё —
+    // другая вкладка или переживший её воркер. Без этих двух обработчиков
+    // запрос просто висит, а вместе с ним и весь каталог: openCatalogIdb
+    // ждут и catalogIdbGet, и прогрев.
+    //
+    // onversionchange — на своей стороне: отпускаем базу, когда апгрейд
+    // затевает кто-то другой.
+    req.onblocked = function () {
+      catalogIdbDbPromise = null;
+      reject(new Error('CatalogFullCacheDB заблокирована другим соединением'));
     };
 
     req.onsuccess = function (e) {
-      resolve(e.target.result);
+      var db = e.target.result;
+      db.onversionchange = function () {
+        try { db.close(); } catch (err) { }
+        catalogIdbDbPromise = null;
+      };
+      resolve(db);
     };
 
     req.onerror = function () {

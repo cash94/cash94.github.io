@@ -105,7 +105,18 @@
         { key: 'top_movies', name: 'Топ рейтинга: фильмы', source: 'tmdb' },
         { key: 'top_tv', name: 'Топ рейтинга: сериалы', source: 'tmdb' },
         { key: 'popular_movies', name: 'Популярные фильмы', source: 'tmdb' },
-        { key: 'popular_tv', name: 'Популярные сериалы', source: 'tmdb' }
+        { key: 'popular_tv', name: 'Популярные сериалы', source: 'tmdb' },
+        // Подборки Кинопоиска (модуль kinopoisk-collections). Здесь только
+        // мелкие — те, где элементов пятьдесят и меньше: на категорию каталога
+        // такой не хватает, а на ряд в самый раз. Крупные лежат категориями в
+        // CATALOG_CONFIG (catalog.js), сразу после «Русских».
+        // source отличается от 'tmdb' только эндпоинтом, см. loadCollectionItems;
+        // формат ответа и кэш в IndexedDB — общие. Модуль не установлен —
+        // запрос отвечает 404, ряд получает пустой список и не рисуется.
+        { key: 'kp_zombie', name: 'Кинопоиск · Про зомби', source: 'kinopoisk' },
+        { key: 'kp_vampire', name: 'Кинопоиск · Про вампиров', source: 'kinopoisk' },
+        { key: 'kp_disaster', name: 'Кинопоиск · Катастрофы', source: 'kinopoisk' },
+        { key: 'kp_kids', name: 'Кинопоиск · Мультфильмы детям', source: 'kinopoisk' }
     ];
 
     // Кнопки общей шапки #home-topbar в порядке DOM — по нему ходит навигация
@@ -443,8 +454,14 @@
                 (Date.now() - (rec.ts || 0)) < HOME.TTL_MS;
             if (fresh) return rec.items;
 
-            return homeFetch(serverUrl() + '/api/tmdb/collection?preset=' +
-                encodeURIComponent(cfg.key)).then(function (data) {
+            // Подборки Кинопоиска отдаёт модуль-расширение, всё остальное —
+            // routes/tmdb.js. Формат ответа у них одинаковый, поэтому дальше
+            // ветвиться уже незачем.
+            var url = cfg.source === 'kinopoisk'
+                ? serverUrl() + '/api/kinopoisk/collection?preset=' + encodeURIComponent(cfg.key)
+                : serverUrl() + '/api/tmdb/collection?preset=' + encodeURIComponent(cfg.key);
+
+            return homeFetch(url).then(function (data) {
                     if (data && data.success && data.items && data.items.length) {
                         // Запись в IndexedDB не блокирует показ ряда
                         dbPut(cfg.key, data.items);
