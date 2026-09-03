@@ -1468,7 +1468,14 @@ function renderDetailActorsFromDetails(details) {
             else if (typeof buildTmdbPosterUrl === 'function') src = buildTmdbPosterUrl(photo, 'w185');
         }
 
-        html += '<div class="catalog-actor-card">' +
+        // person-id и person-name читает обработчик ниже: по нажатию открывается
+        // фильмография актёра (loadPersonCatalog в catalog.js). Разметка та же,
+        // что у карточки каталога, но рисуется она здесь отдельно — поэтому и
+        // атрибуты приходится ставить в двух местах.
+        var pid = a.id || a.personId || '';
+        html += '<div class="catalog-actor-card"' +
+            (pid ? ' data-person-id="' + escapeHtml(String(pid)) + '"' : '') +
+            ' data-person-name="' + escapeHtml(a.name) + '">' +
             '<div class="catalog-actor-photo">' +
             (src
                 ? '<img src="' + src + '" loading="lazy" decoding="async" alt="' + escapeHtml(a.name) +
@@ -1491,6 +1498,22 @@ function renderDetailActorsFromDetails(details) {
 
     grid.innerHTML = html;
     wrap.classList.remove('hidden');
+
+    // Нажатие по актёру. В карточке КАТАЛОГА это делает делегированный
+    // обработчик на #detail-view (setupDetailDelegation в catalog.js), но
+    // торрентный detail через него не проходит — вешаем свой, на сам ряд.
+    // Обработчик один на всю жизнь элемента: grid.innerHTML переписывается,
+    // а сам grid остаётся, поэтому дубля слушателей не будет.
+    if (!grid._actorClickHandler) {
+        grid._actorClickHandler = function (e) {
+            var card = e.target.closest ? e.target.closest('.catalog-actor-card') : null;
+            if (!card || !card.dataset.personId) return;
+            if (typeof window.openPersonCatalog !== 'function') return;
+            window.openPersonCatalog(card.dataset.personId, card.dataset.personName);
+        };
+        grid.addEventListener('click', grid._actorClickHandler);
+    }
+
     // Карточки актёров попадают в фокусируемые только после появления в DOM.
     // Сброс кэша обязателен: у detail он живёт 100 мс по времени и по поколению
     // DOM, поэтому без invalidateFocusCache() новый ряд мог не попасть в список.

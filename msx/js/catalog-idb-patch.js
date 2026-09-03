@@ -379,6 +379,15 @@
     var _origLoadCatalog = window.loadCatalog || loadCatalog;
 
     window.loadCatalog = loadCatalog = async function (key) {
+        // Фильмография актёра идёт мимо кэша в IndexedDB: сервер отдаёт её
+        // готовой сотней, догружать нечего, а ключ у всех актёров общий —
+        // класть их в один и тот же кэш нельзя. Проверка стоит до CATALOG_CONFIG:
+        // такой категории там нет и не должно быть.
+        if (key === 'person') {
+            if (!catalogState.person || typeof window.loadPersonCatalog !== 'function') return;
+            return window.loadPersonCatalog(catalogState.person.id, catalogState.person.name);
+        }
+
         if (!window.CATALOG_CONFIG || !CATALOG_CONFIG[key]) {
             return;
         }
@@ -820,6 +829,24 @@
                 CATALOG_CONFIG[catalogState.currentCatalog].name
                 ? CATALOG_CONFIG[catalogState.currentCatalog].name
                 : 'Каталог';
+
+        // Фильмография актёра: имени в CATALOG_CONFIG нет, оно меняется от
+        // актёра к актёру. Даты обновления у неё тоже нет — /api/catalogs про
+        // такую категорию не знает, поэтому выходим до запроса.
+        if (catalogState.currentCatalog === 'person') {
+            var pname = (catalogState.person && catalogState.person.name) || 'Фильмография';
+            header.innerHTML =
+                '<div style="display:flex;flex-direction:column;gap:5px">' +
+                '<span style="font-size:20px;font-weight:600;color:#4a9eff">' + escapeHtml(pname) + '</span>' +
+                '<div style="display:flex;gap:15px;font-size:12px;color:#aaa">' +
+                '<span>фильмы и сериалы с этим актёром</span>' +
+                '</div>' +
+                '</div>' +
+                '<span style="font-size:14px;color:#aaa;background:rgba(0,0,0,0.3);padding:5px 12px;border-radius:20px">' +
+                catalogState.items.length + '</span>';
+            grid.appendChild(header);
+            return header;
+        }
 
         if (catalogState.currentCatalog === 'history') {
             header.innerHTML =
