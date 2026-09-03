@@ -16,10 +16,10 @@
     },
     "kinopoisk-collections": {
       "name": "kinopoisk-collections",
-      "version": "1.1.0",
+      "version": "3.0.0",
       "description": "Подборки Кинопоиска рядами на главной: 14 коллекций с маппингом в TMDB.",
       "url": "https://cash94.github.io/torrstream-modules/kinopoisk-collections/module.js",
-      "sha256": "7fbd210ebec11f65a97190ef900795c4b8da3805af3f5a1b8d1d272556b292ca"
+      "sha256": "c9163ff21f1f2b0390dc48bdda47179718f772f507a7cebceca59ce1a7129029"
     }
   }
 }
