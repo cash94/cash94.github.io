@@ -975,6 +975,14 @@ async function fetchCatalogItemMeta(item, mediaType) {
 
 // ==================== ЗАГРУЗКА КАТАЛОГА ====================
 async function loadCatalog(key) {
+    // Фильмография актёра — не серверный каталог, в CATALOG_CONFIG её нет.
+    // Сюда приходит возврат из карточки фильма, открытой из этой же сетки
+    // (restoreFocusAfterNavigation в app.js), поэтому пересобираем по
+    // запомненному актёру.
+    if (key === 'person') {
+        if (!catalogState.person) return;
+        return loadPersonCatalog(catalogState.person.id, catalogState.person.name);
+    }
     if (!CATALOG_CONFIG[key]) return;
     AppState.openInRow = false;
 
@@ -1291,6 +1299,217 @@ function loadFavoritesCatalog() {
 window.loadFavoritesCatalog = loadFavoritesCatalog;
 window.loadFavoritesItems = loadFavoritesItems;
 window.syncFavoriteButton = syncFavoriteButton;
+
+/* ==================== ФИЛЬМОГРАФИЯ АКТЁРА ==================== */
+
+/**
+ * Категория «фильмы с этим актёром» — по нажатию на карточку в ряду
+ * «В главных ролях».
+ *
+ * Ведёт себя как история и избранное: своя сетка, серверного каталога нет,
+ * догрузки нет (сервер отдаёт готовую сотню). Ключ категории один на всех
+ * актёров — 'person', а кто именно, лежит в catalogState.person: так возврат
+ * из карточки фильма (restoreFocusAfterNavigation → loadCatalog) попадает
+ * туда же, откуда ушёл, не разбирая ключ на части.
+ *
+ * «Назад» из сетки уводит в список категорий, как и из любой другой.
+ */
+/**
+ * Переход в фильмографию — новый шаг пути.
+ *
+ * Путь (catalogState.personTrail) — стек карточек, ИЗ которых уходили к актёру.
+ * Каждый шаг помнит и саму карточку, и фильмографию, которой она принадлежала:
+ * без второго поля цепочка «актёр → фильм → актёр» замкнулась бы сама на себя,
+ * потому что возврат из фильма смотрит на текущую сетку, а она уже чужая.
+ *
+ * Флаги приложения (personRoot) снимаются один раз, на входе в экскурсию, и
+ * возвращаются на выходе. Полагаться на них по ходу нельзя: обработчик «назад»
+ * в app.js перед вычислением returnTo делает detailReturnTo = inSearch, то есть
+ * затирает то, что мы могли бы туда положить.
+ */
+function openPersonCatalog(personId, personName) {
+    if (!personId) return Promise.resolve();
+    if (!catalogState.personTrail) catalogState.personTrail = [];
+
+    if (!catalogState.personTrail.length) {
+        catalogState.personRoot = {
+            fromHome: !!(window.HomeScreen && HomeScreen.state && HomeScreen.state.detailFromHome),
+            realCatalog: (catalogState.currentCatalog && catalogState.currentCatalog !== 'person')
+                ? catalogState.currentCatalog
+                : (AppState.backCurrentCatalog !== 'person' ? AppState.backCurrentCatalog : ''),
+            isSearch: !!AppState.isSearch,
+            inSearch: AppState.inSearch,
+            detailReturnTo: AppState.detailReturnTo,
+            // Позиция в категории, из которой уходим. localStorage один на все
+            // сетки, и за экскурсию его перетрут фильмографии — без снимка
+            // возврат в категорию встал бы на чужую карточку
+            lastIndex: catalogState.lastSelectedIndex,
+            lastId: catalogState.lastSelectedId,
+            storedIndex: (function () {
+                try { return localStorage.getItem('lastCatalogCardIndex'); } catch (e) { return null; }
+            })()
+        };
+    }
+
+    catalogState.personTrail.push({
+        item: AppState.currentDetailItem || null,
+        index: catalogState.lastSelectedIndex || 0,
+        // Сетка, из карточки которой уходим. null — карточку открыли из
+        // каталога, с главной или из поиска, то есть это начало экскурсии
+        person: catalogState.currentCatalog === 'person' ? catalogState.person : null
+    });
+
+    return showPersonCatalog(personId, personName);
+}
+
+/**
+ * Показ фильмографии без записи пути. Этим же путём идёт возврат в сетку из
+ * открытой из неё карточки (loadCatalog('person')): шаг там уже снят, добавлять
+ * его второй раз нельзя.
+ */
+function loadPersonCatalog(personId, personName) {
+    if (!personId) return Promise.resolve();
+    return showPersonCatalog(personId, personName);
+}
+
+function showPersonCatalog(personId, personName) {
+
+    abortCatalogRequests();
+
+    // Уходим из карточки: без этого сетка отрисуется под открытым detail-view.
+    // Историю карточек тоже сбрасываем — иначе «назад» из фильмографии полезет
+    // обратно по цепочке рекомендаций, из которой мы только что вышли.
+    if (typeof clearDetailHistory === 'function') clearDetailHistory();
+    if (typeof hideCatalogDetailView === 'function') hideCatalogDetailView();
+    // hideCatalogDetailView снимает только свой класс раскладки. Уйти сюда
+    // можно и из торрентной карточки — её класс тогда остался бы на #detail-view,
+    // и isTorrentDetailMode() врал бы про режим до следующего открытия.
+    var dvEl = getEl('detail-view');
+    if (dvEl) dvEl.classList.remove('torrent-detail-mode');
+    if (typeof Animations !== 'undefined' && typeof Animations.animateDetailHide === 'function') {
+        Animations.animateDetailHide();
+    } else {
+        var dv = getEl('detail-view');
+        if (dv) dv.style.display = 'none';
+    }
+
+    // Каждая фильмография помнит свою карточку отдельно. Тот же актёр — это
+    // возврат в уже открытую сетку, и объект переиспользуется вместе с
+    // запомненной позицией; другой — сетка новая, фокус начинается с первой
+    // карточки.
+    //
+    // Без этого позиция приезжала из прошлой категории: ensureFocus в control.js
+    // читает localStorage.lastCatalogCardIndex, а у элементов фильмографии нет
+    // num_index, поэтому число применяется как порядковый номер в списке.
+    var samePerson = catalogState.person && String(catalogState.person.id) === String(personId);
+    if (!samePerson) {
+        catalogState.person = { id: String(personId), name: personName || '', lastIndex: 0, lastId: null };
+    } else if (personName) {
+        catalogState.person.name = personName;
+    }
+    catalogState.lastSelectedIndex = catalogState.person.lastIndex || 0;
+    catalogState.lastSelectedId = catalogState.person.lastId || null;
+    try {
+        if (catalogState.lastSelectedIndex) {
+            localStorage.setItem('lastCatalogCardIndex', String(catalogState.lastSelectedIndex));
+        } else {
+            localStorage.removeItem('lastCatalogCardIndex');
+        }
+    } catch (e) { }
+
+    catalogState.currentCatalog = 'person';
+    catalogState.cardElements = {};
+    catalogState.items = [];
+    catalogState.totalItems = 0;
+    catalogState.currentPage = 0;
+    catalogState.hasMore = false;
+    catalogState.isLoadingMore = false;
+    catalogState.loadedItemIds = {};
+    catalogState.loadedPostersCount = 0;
+    catalogState.posterLoadQueue = [];
+    catalogState.fullItems = null;
+    catalogState.fullItemsTruncated = false;
+    // Список смешанный, тип у каждой карточки свой — общий берём нейтральным
+    AppState.mediaType = 'movie';
+    AppState.openInRow = false;
+    AppState.backCurrentCatalog = 'person';
+    // Из поиска карточка открывается поверх оверлея результатов, и он остался бы
+    // висеть над сеткой. Закрываем его до смены экрана, назначив возврат в
+    // каталог: сам hideSearchResults уводит туда, куда указывает searchReturnTo.
+    var searchOverlay = getEl('search-overlay');
+    if (searchOverlay && !searchOverlay.hidden && searchOverlay.style.display !== 'none' &&
+        typeof hideSearchResults === 'function') {
+        AppState.searchReturnTo = 'catalog';
+        hideSearchResults();
+    }
+
+    // Карточку открывают и из каталога, и с главной, и из поиска, а сетка
+    // живёт на экране каталога. Просто переставить AppState.currentScreen мало:
+    // с главной #content-catalog скрыт (hidden), и сетка отрисовалась бы в
+    // невидимый экран. showContentScreen пропатчен в home.js — он и прячет
+    // главную, и показывает каталог, и обновляет currentScreen.
+    if (typeof showContentScreen === 'function') showContentScreen('catalog');
+    else AppState.currentScreen = 'catalog';
+
+    // Признак «карточка открыта с главной» перебил бы возврат: пропатченный
+    // restoreFocusAfterNavigation увёл бы «назад» из фильма на главную, а не в
+    // эту сетку. Трейлер баннера тоже останавливаем — экран он больше не свой.
+    if (window.HomeScreen) {
+        if (HomeScreen.state) HomeScreen.state.detailFromHome = false;
+        if (typeof HomeScreen.stopTrailer === 'function') HomeScreen.stopTrailer();
+    }
+
+    // Куда уводит «назад» из карточки, открытой уже отсюда: в эту же сетку,
+    // даже если сюда пришли из поиска или с главной.
+    //
+    // Решает здесь именно inSearch. Обработчик «назад» в app.js первым делом
+    // делает detailReturnTo = inSearch и только потом сравнивает его с
+    // 'catalog' — то есть значение, положенное в detailReturnTo, до сравнения
+    // не доживает. С главной там лежало 'home', и возврат уходил в торренты.
+    AppState.inSearch = 'catalog';
+    AppState.detailReturnTo = 'catalog';
+    AppState.isSearch = false;
+    showCatalogLoading('Загрузка фильмографии...');
+
+    return safeFetch(SERVER_URL + '/api/tmdb/person/credits?id=' + encodeURIComponent(personId), { timeout: 15000 })
+        .then(function (d) {
+            if (!d || !d.success || !d.items || !d.items.length) {
+                showEmptyPerson(personName);
+                return;
+            }
+            catalogState.items = d.items;
+            catalogState.totalItems = d.items.length;
+            for (var i = 0; i < d.items.length; i++) {
+                if (d.items[i].id) catalogState.loadedItemIds[d.items[i].id] = true;
+            }
+            renderCatalogGrid();
+            // Сетку собрали после смены экрана — состав фокусируемого сменился
+            // целиком, кэш в control.js держится на счётчике поколений DOM
+            if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+            if (typeof updateFocusableElements === 'function') updateFocusableElements();
+            if (typeof window.ensureCatalogFocus === 'function') window.ensureCatalogFocus(true);
+        })
+        .catch(function (e) {
+            console.error('Ошибка загрузки фильмографии:', e);
+            showCatalogError('Не удалось загрузить фильмографию');
+        })
+        .finally(function () {
+            hideCatalogLoading();
+        });
+}
+
+function showEmptyPerson(personName) {
+    var g = getCatalogGridEl();
+    if (!g) return;
+    showCatalogGridView();
+    g.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;">' +
+        '<div style="font-size:64px;margin-bottom:20px">🎭</div>' +
+        '<div style="font-size:18px;color:#aaa;margin-bottom:10px">Ничего не нашлось</div>' +
+        '<div style="font-size:14px;color:#666">' + escapeHtml(personName || 'У этого актёра') + ' — фильмов и сериалов нет</div></div>';
+}
+
+window.openPersonCatalog = openPersonCatalog;
+window.loadPersonCatalog = loadPersonCatalog;
 
 function showEmptyHistory() {
     var g = getCatalogGridEl();
@@ -2092,6 +2311,21 @@ function addCatalogHeader(grid) {
     header.className = 'catalog-header';
     header.style.cssText = 'grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding:1px 20px;background:rgba(74,158,255,0.1);border-radius:16px;border:1px solid rgba(74,158,255,0.3);flex-wrap:wrap;gap:10px;';
     var name = (CATALOG_CONFIG[catalogState.currentCatalog] && CATALOG_CONFIG[catalogState.currentCatalog].name) || 'Каталог';
+    // Фильмографии в CATALOG_CONFIG нет: её имя меняется от актёра к актёру.
+    // Ниже по функции идёт запрос к /api/catalogs за датой обновления — для
+    // фильмографии там ничего нет и быть не может, поэтому выходим раньше.
+    if (catalogState.currentCatalog === 'person') {
+        var pname = (catalogState.person && catalogState.person.name) || 'Фильмография';
+        header.innerHTML =
+            '<div style="display:flex;flex-direction:column;gap:5px">' +
+            '<span style="font-size:20px;font-weight:600;color:#4a9eff">' + escapeHtml(pname) + '</span>' +
+            '<div style="display:flex;gap:15px;font-size:12px;color:#aaa"><span>фильмы и сериалы с этим актёром</span></div>' +
+            '</div>' +
+            '<span style="font-size:14px;color:#aaa;background:rgba(0,0,0,0.3);padding:5px 12px;border-radius:20px">' +
+            catalogState.items.length + '</span>';
+        grid.appendChild(header);
+        return;
+    }
     if (catalogState.currentCatalog === 'history') {
         header.innerHTML = '<div style="display:flex;flex-direction:column;gap:5px"><span style="font-size:20px;font-weight:600;color:#4a9eff">' + name + '</span><div style="display:flex;gap:15px;font-size:12px;color:#aaa"><span>' + catalogState.items.length + ' записей</span></div></div>';
         var btn = getEl('clear-history-btn');
@@ -3176,6 +3410,10 @@ async function renderDetailActors(item, aw, preloadedActors) {
         actors.forEach(function (a) {
             var d = document.createElement('div');
             d.className = 'catalog-actor-card';
+            // id и имя нужны обработчику нажатия: он открывает фильмографию
+            // (см. setupDetailDelegation → loadPersonCatalog)
+            if (a.id) d.dataset.personId = a.id;
+            d.dataset.personName = a.name || '';
             d.innerHTML = '<div class="catalog-actor-photo">' +
                 (a.profilePath ? '<img src="' + getTmdbImageUrl(a.profilePath, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL) + '" loading="lazy" decoding="async" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') +
                 '</div><div class="catalog-actor-info"><div class="catalog-actor-name">' + escapeHtml(a.name) + '</div><div class="catalog-actor-character">' + escapeHtml(a.character || '') + '</div></div>';
@@ -3274,6 +3512,12 @@ function setupDetailDelegation(dv) {
         dv.removeEventListener('click', dv._detailClickHandler);
     }
     dv._detailClickHandler = function (e) {
+        // Клик по актёру — уходим из карточки в сетку с его фильмографией
+        var actorCard = e.target.closest('.catalog-actor-card');
+        if (actorCard && actorCard.dataset.personId) {
+            openPersonCatalog(actorCard.dataset.personId, actorCard.dataset.personName);
+            return;
+        }
         // Клик по рекомендации
         var recCard = e.target.closest('.catalog-recommendation-card');
         if (recCard) {
@@ -3491,6 +3735,13 @@ function onCatalogItemClick(item, index) {
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
     localStorage.setItem('lastCatalogCardIndex', item.num_index !== undefined ? item.num_index : index);
+    // Фильмография помнит открытую карточку у себя: localStorage один на все
+    // категории, и после захода в другую сетку возврат в эту вернул бы чужую
+    // позицию
+    if (catalogState.currentCatalog === 'person' && catalogState.person) {
+        catalogState.person.lastIndex = index;
+        catalogState.person.lastId = item.id;
+    }
     var card = document.querySelector('#catalog-grid .torrent-card.catalog-card[data-catalog-index="' + index + '"]');
     var pu = null;
     if (card) {
@@ -4781,7 +5032,62 @@ function showCatalogError(msg) {
 function hideCatalogLoading() { }
 
 function backToCatalogList() {
+    // Назад по пути экскурсии по актёрам: снимаем последний шаг и
+    // возвращаемся в карточку, из которой ушли к этому актёру.
+    if (catalogState.currentCatalog === 'person' &&
+        catalogState.personTrail && catalogState.personTrail.length &&
+        typeof showCatalogDetail === 'function') {
+
+        var step = catalogState.personTrail.pop();
+        var root = catalogState.personRoot;
+
+        abortCatalogRequests();
+
+        // Какой фильмографии принадлежала та карточка — в неё же уйдёт
+        // следующее «назад» из неё. Элементы чистим обязательно: в сетке
+        // лежит содержимое той фильмографии, из которой мы сейчас уходим, и
+        // без сброса быстрый путь возврата показал бы чужую.
+        catalogState.person = step.person || null;
+        catalogState.items = [];
+        catalogState.cardElements = {};
+        catalogState.currentCatalog = step.person ? 'person' : null;
+        AppState.backCurrentCatalog = step.person
+            ? 'person'
+            : ((root && root.realCatalog) || '');
+
+        // Путь кончился — приложение возвращается к своим флагам, и следующее
+        // «назад» из карточки уйдёт туда, откуда экскурсия начиналась
+        if (!catalogState.personTrail.length && root) {
+            if (window.HomeScreen && HomeScreen.state) HomeScreen.state.detailFromHome = root.fromHome;
+            AppState.isSearch = root.isSearch;
+            AppState.inSearch = root.inSearch;
+            AppState.detailReturnTo = root.detailReturnTo;
+            // Позицию в категории тоже возвращаем: за экскурсию её перетёрли
+            catalogState.lastSelectedIndex = root.lastIndex || 0;
+            catalogState.lastSelectedId = root.lastId || null;
+            try {
+                if (root.storedIndex === null || root.storedIndex === undefined) {
+                    localStorage.removeItem('lastCatalogCardIndex');
+                } else {
+                    localStorage.setItem('lastCatalogCardIndex', root.storedIndex);
+                }
+            } catch (e) { }
+            catalogState.personRoot = null;
+        }
+
+        if (step.item) {
+            showCatalogDetail(step.item, step.index, null);
+            return;
+        }
+        // Карточки в шаге нет — уходим обычным путём, в список категорий
+    }
+
     abortCatalogRequests();
+    // Выход в список категорий заканчивает экскурсию целиком
+    catalogState.personTrail = [];
+    catalogState.personRoot = null;
+    catalogState.person = null;
+    if (AppState.backCurrentCatalog === 'person') AppState.backCurrentCatalog = '';
     catalogState.currentCatalog = null;
     catalogState.items = [];
     catalogState.cardElements = {};
