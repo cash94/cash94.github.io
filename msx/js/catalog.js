@@ -134,6 +134,21 @@ var CATALOG_CONFIG = {
     cartoons_tv: { name: 'Мультсериалы', url: SERVER_URL + '/api/catalog/cartoons_tv', mediaType: 'tv' },
     anime: { name: 'Аниме', url: SERVER_URL + '/api/catalog/anime', mediaType: 'tv' },
     rus: { name: 'Русские', url: SERVER_URL + '/api/rus', mediaType: 'movie' },
+    // Подборки Кинопоиска. Собирает их тот же парсер, что и остальные каталоги
+    // (releases/kp.go), поэтому здесь обычные серверные каталоги — со своими
+    // файлами в CATALOG_SOURCES и с торрентом у каждой карточки.
+    //
+    // Категориями становятся только подборки больше пятидесяти элементов;
+    // мелкие лежат рядами главной и приходят из модуля kinopoisk-collections,
+    // см. HOME_ROWS в home.js.
+    kp_popular: { name: 'Кинопоиск · Популярное', url: SERVER_URL + '/api/catalog/kp_popular', mediaType: 'movie' },
+    kp_pop_movies: { name: 'Кинопоиск · Популярные фильмы', url: SERVER_URL + '/api/catalog/kp_pop_movies', mediaType: 'movie' },
+    kp_pop_series: { name: 'Кинопоиск · Популярные сериалы', url: SERVER_URL + '/api/catalog/kp_pop_series', mediaType: 'tv' },
+    kp_top250: { name: 'Кинопоиск · Топ 250 фильмов', url: SERVER_URL + '/api/catalog/kp_top250', mediaType: 'movie' },
+    kp_top250_tv: { name: 'Кинопоиск · Топ 250 сериалов', url: SERVER_URL + '/api/catalog/kp_top250_tv', mediaType: 'tv' },
+    kp_family: { name: 'Кинопоиск · Семейное', url: SERVER_URL + '/api/catalog/kp_family', mediaType: 'movie' },
+    kp_comics: { name: 'Кинопоиск · Комиксы', url: SERVER_URL + '/api/catalog/kp_comics', mediaType: 'movie' },
+    kp_love: { name: 'Кинопоиск · Про любовь', url: SERVER_URL + '/api/catalog/kp_love', mediaType: 'movie' },
     quadhd: { name: 'Фильмы в 4K', url: SERVER_URL + '/api/catalog/quadhd', mediaType: 'movie' },
     legends: { name: 'Лучшие фильмы', url: SERVER_URL + '/api/catalog/legends', mediaType: 'movie' },
     history: { name: 'История', url: null, mediaType: 'history', isHistory: true },

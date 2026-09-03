@@ -14,8 +14,11 @@ var CatalogWorker = (function () {
       // ?v= обязателен: без него WebView отдаёт воркер из своего HTTP-кэша, пока
       // все остальные скрипты приходят свежими (index.html грузит их с ?v=VERSION).
       // Правки catalog-worker.js без этого могут не доехать до телевизора.
-      var workerUrl = 'catalog-worker.js';
-      if (window.VERSION) workerUrl += '?v=' + window.VERSION;
+      // ?local=1 пробрасываем в маршрут routes/proxy.js: без него он всегда
+      // тянет воркер с зеркала на GitHub, и локальные правки этого файла не
+      // видно вообще ничем. Так же сделано в torrents-worker-bridge.js.
+      var workerUrl = 'catalog-worker.js?v=' + (window.VERSION || Date.now());
+      if (location.search.indexOf('local=1') !== -1) workerUrl += '&local=1';
       worker = new Worker(new URL(workerUrl, document.baseURI));
     } catch (e) {
       console.error('❌ Worker creation failed:', e);
