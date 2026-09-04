@@ -2458,6 +2458,26 @@ function applyScroll(container, vars, smooth, duration, ease) {
 
     var animated = smooth && typeof duration === 'number' && duration > 0;
 
+    // Уже на месте — твина не заводим.
+    //
+    // Ветки isTopAnchoredTarget и 'detail-view' в scrollToElementIfNeeded зовут
+    // applyScroll с {scrollTop: 0} безусловно, не глядя на текущую позицию. Для
+    // первой строки сетки это означало полсекунды твина из нуля в ноль: ничего
+    // не двигалось, но gsap.isTweening(#main-container) всё это время отвечал
+    // «идёт». А на этом ответе висит откладывание постеров
+    // (deferPosterUntilScrollEnds в catalog.js) — весь первый экран сетки стоял
+    // пустым ровно на длину холостого твина, перепланируя себя каждый кадр.
+    // Заметнее всего это было на входе в фильмографию актёра: сетку собрали,
+    // фокус встал на первую карточку, и постеры ждали «прокрутку», которой нет.
+    //
+    // Позицию покоя считаем с учётом идущего твина (pendingScrollDelta) — тем
+    // же способом и с тем же порогом, что scrollCatalogGridCardIntoView.
+    // scrollLeft не трогаем: у него своя ветка и свои координаты.
+    if (animated && typeof vars.scrollTop === 'number' && vars.scrollLeft === undefined &&
+        Math.abs(container.scrollTop + pendingScrollDelta(container) - vars.scrollTop) < 2) {
+        return;
+    }
+
     if (animated && !ease) {
         var opts = scrollTweenOpts(duration);
         duration = opts.duration;
