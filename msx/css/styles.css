@@ -5846,6 +5846,15 @@ article {
     line-height: 36px;
   }
 
+  /* Вырез экрана. Фон и содержимое идут от края до края, отодвигается только панель,
+     иначе логотип и кнопки уезжают под чёлку. --safe-top задаёт Android-обёртка
+     (MainActivity.publishSafeArea), env() — запасной вариант для обычного браузера. */
+  #home-topbar,
+  .search-header,
+  .detail-header {
+    padding-top: calc(10px + var(--safe-top, env(safe-area-inset-top, 0px))) !important;
+  }
+
   #home-topbar {
     padding: 8px 24px 10px;
     margin: -16px -16px 6px;
