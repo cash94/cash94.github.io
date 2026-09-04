@@ -2647,10 +2647,12 @@ async function loadCatalogPoster(card, title, mt, id, index) {
     var div = card.querySelector('.torrent-poster');
     if (!div) return;
     var key = id + '_' + mt;
-    if (!catalogState.currentCatalog) {
-        div.innerHTML = '<div class="no-poster">Каталог закрыт</div>';
-        return;
-    }
+    // Каталог закрыли, пока постер стоял в очереди. Плашку не рисуем: надпись
+    // «Каталог закрыт» доезжала до человека как ошибка на всех карточках сразу,
+    // хотя это обычная гонка. Оставляем прежний placeholder — если каталог
+    // откроется снова, rearmCatalogObservers() сбросит posterRequested и
+    // карточка догрузится.
+    if (!catalogState.currentCatalog) return;
 
     var item = catalogState.items[index];
 
@@ -5054,6 +5056,20 @@ function backToCatalogList() {
         AppState.backCurrentCatalog = step.person
             ? 'person'
             : ((root && root.realCatalog) || '');
+
+        // Экскурсия началась не с сетки категории, а с рядов-каруселей или с
+        // главной — возвращаться некуда: ключа категории нет, и loadCatalog('')
+        // в app.js (restoreFocusAfterNavigation) выходит на первой же строке.
+        // Без переключения вида на экране осталась бы сетка фильмографии при
+        // закрытом состоянии каталога (currentCatalog = null, items пуст):
+        // постеры не грузятся и пишут «Каталог закрыт», а «назад» из карточки
+        // ставит фокус на её осиротевшие карточки — состояние, из которого
+        // пульт уже не выбирается. Ряды же делают isCatalogRowsMode() честным,
+        // и возврат из карточки уходит в restoreRowFocus().
+        if (!step.person && !AppState.backCurrentCatalog &&
+            typeof showCatalogRowsView === 'function') {
+            showCatalogRowsView();
+        }
 
         // Путь кончился — приложение возвращается к своим флагам, и следующее
         // «назад» из карточки уйдёт туда, откуда экскурсия начиналась

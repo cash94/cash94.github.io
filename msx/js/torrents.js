@@ -3456,20 +3456,39 @@ async function playFromHash(hash, magnet, searchResult = null) {
             fileId = playbackTarget.fileId || 1;
             document.querySelector('.playback-text').textContent = 'Воспроизведение...';
             var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
-            hideSearchResults(); AppState.inSearch = "torrents";
-            await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
+            // Результаты поиска не уничтожаем — только прячем оверлей, как в ветке
+            // transcodingFullOnOff выше: из плеера вернёмся прямо в них
+            // (showDetailView, ветка returnToSearchResults). Раньше здесь был
+            // hideSearchResults() + inSearch = 'torrents', и выход из плеера уводил
+            // в detail торрента, а оттуда — на «Мои торренты», а не туда, откуда запускали.
+            var searchOverlay = getEl('search-overlay');
+            if (searchOverlay) searchOverlay.classList.add('hidden');
+            AppState.returnToSearchResults = true;
+            var started = await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
+            // Плеер не поднялся (нет метаданных, файл не отдался) — результаты
+            // поиска уже спрятаны, и без возврата экран остался бы пустым:
+            // раньше на этом месте hideSearchResults() уводил на «Мои торренты».
+            if (!started && AppState.currentScreen !== 'player') {
+                AppState.returnToSearchResults = false;
+                AppState.playFromHash = false;
+                AppState.currentScreen = 'search';
+                if (searchOverlay) searchOverlay.classList.remove('hidden');
+                setTimeout(function () { if (typeof window.focusSearchHome === 'function') window.focusSearchHome(); }, 80);
+            }
         } else {
             AppState.currentDetailItem = addedTorrent; AppState.isCatalogSerials = true;
-            if (window.AndroidJS || AppState.transcodingFullOnOff) {
-                // Результаты поиска не уничтожаем — только прячем оверлей.
-                // Вернёмся к ним при выходе из detail (back-from-detail)
-                var searchOverlay = getEl('search-overlay');
-                if (searchOverlay) searchOverlay.classList.add('hidden');
-                AppState.searchResultsHidden = true;
-            } else {
-                hideSearchResults();
-            }
-            AppState.inSearch = (window.AndroidJS || AppState.transcodingFullOnOff) ? "catalog" : "torrents";
+            // Результаты поиска не уничтожаем — только прячем оверлей.
+            // Вернёмся к ним при выходе из detail (back-from-detail).
+            // Так же ведёт себя обычный режим: раньше он звал hideSearchResults()
+            // и ставил inSearch = 'torrents', поэтому «назад» из деталей сериала
+            // уходило сразу на «Мои торренты», минуя поиск и карточку каталога.
+            var searchOverlay = getEl('search-overlay');
+            if (searchOverlay) searchOverlay.classList.add('hidden');
+            AppState.searchResultsHidden = true;
+            // Дальше из поиска уходим туда, откуда его открыли: 'catalog' — только
+            // если под поиском действительно карточка каталога (поиск запущен из неё).
+            // Со вкладки «Поиск» карточки нет, и уводить в каталог некуда.
+            if (AppState.androidBackCatalog && AppState.androidBackCatalog.id) AppState.inSearch = "catalog";
             showDetail(addedTorrent);
         }
     } catch (error) {
@@ -3630,7 +3649,10 @@ function renderSearchResults() {
                 searchResult.poster = window.pendingCatalogPoster;
             }
             if (hash) {
-                if (window.AndroidJS || AppState.transcodingFullOnOff) AppState.playFromHash = true;
+                // Запуск из результатов поиска — во всех режимах одинаково:
+                // по этому флагу «назад» из деталей и плеера возвращает в поиск,
+                // а не на «Мои торренты» (app.js: restoreFocusAfterNavigation)
+                AppState.playFromHash = true;
                 playFromHash(hash, playBtn.dataset.magnet, searchResult);
             }
             return;

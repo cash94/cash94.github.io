@@ -732,7 +732,10 @@ function setupNavigation() {
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
 
-      if (window.AndroidJS || AppState.transcodingFullOnOff) {
+      // searchResultsHidden ставит playFromHash — теперь в любом режиме, не только
+      // AndroidJS/transcodingFullOnOff: результаты поиска живы, из деталей торрента
+      // возвращаемся в них, а под ними уже ждёт карточка каталога.
+      if (window.AndroidJS || AppState.transcodingFullOnOff || AppState.searchResultsHidden) {
         if (AppState.searchResultsHidden) {
           var searchOverlay = getEl('search-overlay');
           // Здесь сразу открывается другая карточка, поэтому фон сбрасываем сами
@@ -759,6 +762,17 @@ function setupNavigation() {
               }
               if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); }
             }, 80);
+          }
+
+          // Карточки каталога под поиском может не быть: поиск открывали со
+          // вкладки «Поиск», и в androidBackCatalog лежит не элемент TMDB, а
+          // торрент (или пусто). Тогда возвращаем только результаты поиска —
+          // showCatalogDetail на таком объекте промиса не вернёт и «назад» встанет.
+          var backCatalogItem = AppState.androidBackCatalog;
+          if (!backCatalogItem || !backCatalogItem.id || typeof window.showCatalogDetail !== 'function') {
+            if (searchOverlay) searchOverlay.classList.remove('hidden');
+            finishSearchRestore();
+            return;
           }
 
           if (!AppState.openInRow) {
