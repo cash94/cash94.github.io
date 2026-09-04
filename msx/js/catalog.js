@@ -4299,6 +4299,7 @@ function createRowCard(item, key, index) {
     return card;
 }
 
+
 /**
  * Карточка «Показать все» (20-я)
  */
