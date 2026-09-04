@@ -73,6 +73,12 @@ var AppState = {
   backCurrentCatalog: '',
   isCatalogSerials: false,
   isCatalogSearch: false,
+  // Раздачу запустили из результатов поиска, а сами результаты не уничтожили —
+  // только спрятали оверлей. Выход из плеера (player.js: showDetailView) и выход
+  // из деталей торрента (app.js: back-from-detail) возвращают человека туда,
+  // откуда он запускал, а не на «Мои торренты».
+  returnToSearchResults: false,
+  searchResultsHidden: false,
   dvPreferred: false,
   trailerPlay: false,
   clearLastSelected: true,

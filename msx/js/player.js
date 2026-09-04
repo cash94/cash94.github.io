@@ -1942,7 +1942,8 @@ function showDetailView(field = null) {
     getEl('player-screen').style.display = 'none';
     getEl('config-screen').style.display = 'none';
 
-    // Пришли из поиска (transcodingFullOnOff) — просто возвращаем оверлей с результатами
+    // Пришли из поиска (флаг ставит playFromHash — в любом режиме, не только
+    // при transcodingFullOnOff) — просто возвращаем оверлей с результатами
     if (AppState.returnToSearchResults) {
       AppState.returnToSearchResults = false;
       lastPlaybackFromSearch = false;
