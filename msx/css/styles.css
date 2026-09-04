@@ -3198,8 +3198,11 @@ html {
 .catalog-recommendation-card {
   scroll-snap-align: start;
   scroll-margin-inline: 20px;
-  will-change: transform;
   /* Горизонтальный отступ при скролле */
+  /* will-change: transform убран: это 20 актёров плюс 20 похожих в отдельных
+     слоях, а анимировать там нечего. Раньше он гасился ниже отдельным правилом
+     will-change: auto для catalog-detail-mode — но только для него, и в
+     карточке торрента слои оставались. */
 }
 
 /* Более заметный и плавный outline при фокусе */
@@ -3553,12 +3556,22 @@ article {
   }
 }
 
+/* will-change: transform отсюда убран. Правило ловит все карточки сразу —
+   сетку, ряды каталога и главную, — а это 414 элементов, каждый из которых
+   браузер уводил в отдельный слой композитора (210×372×4 ≈ 312 КБ текстуры на
+   штуку). На телевизоре хуже, чем в настольном Chrome: content-visibility
+   строкой ниже в Chrome 66 не поддерживается, поэтому пропущенные рендером
+   карточки там слой всё равно получали.
+   Анимируется при этом не карточка, а .torrent-poster внутри неё (scale при
+   фокусе) и трек ряда — то есть подсказка стояла не на том элементе. Тот же
+   вывод уже сделан для .catalog-row-track ниже: слой на время твина создаёт
+   сам gsap (force3D: "auto") и отпускает после.
+   contain: layout style paint остаётся — он ограничивает пересчёт раскладки
+   границами карточки и слоёв не плодит. */
 .torrent-card.catalog-card {
   content-visibility: auto;
   contain-intrinsic-size: 280px 400px;
   contain: layout style paint;
-  will-change: transform;
-
 }
 
 /* Карточки сетки категории: резерв под неотрисованной карточкой обязан совпадать
@@ -4440,7 +4453,7 @@ article {
     background: transparent;
     box-sizing: border-box;
     overflow: hidden;
-    will-change: transform;
+    /* will-change: transform убран — см. .torrent-card.catalog-card выше */
   }
 
   .catalog-row-viewport .catalog-row-card .torrent-poster {
@@ -6532,13 +6545,9 @@ article {
   display: none;
 }
 
-/* will-change: transform стоит на КАЖДОЙ карточке (строка ~2950) — это 20
-   актёров плюс 20 похожих в отдельных слоях; на Vidaa/Android TV composite
-   такого размера уже не вывозит, а анимироваться там нечему (hover'а нет) */
-#detail-view.catalog-detail-mode .catalog-actor-card,
-#detail-view.catalog-detail-mode .catalog-recommendation-card {
-  will-change: auto !important;
-}
+/* Заглушка will-change: auto отсюда убрана — вместе с самим will-change
+   в базовом правиле .catalog-actor-card / .catalog-recommendation-card.
+   Она гасила слои только в этом режиме, а в карточке торрента они оставались. */
 
 #detail-view.catalog-detail-mode .catalog-actor-card {
   width: 150px !important;
