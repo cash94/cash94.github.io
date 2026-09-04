@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>TorrStream — описание и инструкция</title>
+    <meta name="description"
+        content="TorrStream — стриминг торрентов на телевизор, телефон и ПК. Каталог, поиск, плеер, синхронизация между устройствами.">
+    <meta name="theme-color" content="#080b14">
+    <meta property="og:title" content="TorrStream — описание и инструкция">
+    <meta property="og:description" content="Стриминг торрентов на телевизор, телефон и ПК. Каталог, поиск, плеер.">
+    <meta property="og:image" content="https://cash94.github.io/msx/guide/01-home.webp">
+    <meta property="og:type" content="website">
+    <style>
+        :root {
+            --bg: #080b14;
+            --bg-soft: #0d1220;
+            --panel: #111827;
+            --panel-2: #151d2e;
+            --line: #1e2740;
+            --line-soft: #182034;
+            --text: #eef2ff;
+            --muted: #8b9ac0;
+            --dim: #67759b;
+            --accent: #ff8c00;
+            --accent-soft: rgba(255, 140, 0, .14);
+            --blue: #4a9eff;
+            --blue-soft: rgba(74, 158, 255, .12);
+            --radius: 18px;
+            --radius-sm: 12px;
+            --shadow: 0 18px 50px rgba(0, 0, 0, .45);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            scroll-padding-top: 74px;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            line-height: 1.55;
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+        }
+
+        /* ── фоновое свечение ───────────────────────────────────────── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: -20% -20% auto -20%;
+            height: 70vh;
+            background:
+                radial-gradient(60% 60% at 25% 0%, rgba(255, 140, 0, .13), transparent 70%),
+                radial-gradient(50% 60% at 80% 10%, rgba(74, 158, 255, .13), transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .wrap {
+            position: relative;
+            z-index: 1;
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 0 20px 80px;
+        }
+
+        /* ── шапка-навигация ────────────────────────────────────────── */
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: rgba(8, 11, 20, .82);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border-bottom: 1px solid var(--line-soft);
+        }
+
+        .topbar-inner {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+
+        .brand {
+            font-weight: 800;
+            font-size: 1.05rem;
+            letter-spacing: -.2px;
+            white-space: nowrap;
+        }
+
+        .brand span {
+            color: var(--accent);
+        }
+
+        .navlinks {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            scrollbar-width: none;
+            margin-left: auto;
+        }
+
+        .navlinks::-webkit-scrollbar {
+            display: none;
+        }
+
+        .navlinks a {
+            color: var(--muted);
+            text-decoration: none;
+            font-size: .88rem;
+            padding: 7px 13px;
+            border-radius: 30px;
+            white-space: nowrap;
+            transition: background .18s, color .18s;
+        }
+
+        .navlinks a:hover {
+            color: var(--text);
+            background: var(--panel-2);
+        }
+
+        /* ── герой ──────────────────────────────────────────────────── */
+        .hero {
+            padding: 56px 0 40px;
+            text-align: center;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: .78rem;
+            color: var(--accent);
+            background: var(--accent-soft);
+            border: 1px solid rgba(255, 140, 0, .25);
+            padding: 6px 14px;
+            border-radius: 30px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: clamp(2.1rem, 6vw, 3.4rem);
+            font-weight: 800;
+            letter-spacing: -1.2px;
+            line-height: 1.08;
+            background: linear-gradient(135deg, #ffffff 0%, #a9c4f5 55%, #ffb45c 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 16px;
+        }
+
+        .lead {
+            color: var(--muted);
+            font-size: clamp(.98rem, 2.2vw, 1.12rem);
+            max-width: 620px;
+            margin: 0 auto 30px;
+        }
+
+        .cta {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: .93rem;
+            padding: 13px 24px;
+            border-radius: 40px;
+            transition: transform .16s, box-shadow .16s, background .16s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #ff6a00);
+            color: #1a1000;
+            box-shadow: 0 10px 26px rgba(255, 140, 0, .28);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 32px rgba(255, 140, 0, .38);
+        }
+
+        .btn-ghost {
+            background: var(--panel);
+            color: var(--text);
+            border: 1px solid var(--line);
+        }
+
+        .btn-ghost:hover {
+            background: var(--panel-2);
+            transform: translateY(-2px);
+        }
+
+        .hero-shot {
+            margin-top: 44px;
+            border-radius: var(--radius);
+            overflow: hidden;
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+            line-height: 0;
+        }
+
+        .hero-shot img {
+            width: 100%;
+            display: block;
+        }
+
+        /* ── секции ─────────────────────────────────────────────────── */
+        section {
+            padding-top: 58px;
+        }
+
+        .sec-head {
+            margin-bottom: 24px;
+        }
+
+        .kicker {
+            font-size: .74rem;
+            text-transform: uppercase;
+            letter-spacing: 1.6px;
+            color: var(--accent);
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        h2 {
+            font-size: clamp(1.4rem, 3.4vw, 1.95rem);
+            font-weight: 700;
+            letter-spacing: -.5px;
+        }
+
+        .sec-head p {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: .95rem;
+            max-width: 640px;
+        }
+
+        /* ── сетка возможностей ─────────────────────────────────────── */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 14px;
+        }
+
+        .feature {
+            background: linear-gradient(160deg, var(--panel) 0%, var(--bg-soft) 100%);
+            border: 1px solid var(--line-soft);
+            border-radius: var(--radius);
+            padding: 20px;
+            transition: border-color .2s, transform .2s;
+        }
+
+        .feature:hover {
+            border-color: rgba(255, 140, 0, .35);
+            transform: translateY(-3px);
+        }
+
+        .feature .ico {
+            font-size: 1.5rem;
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        .feature h3 {
+            font-size: .98rem;
+            font-weight: 650;
+            margin-bottom: 5px;
+        }
+
+        .feature p {
+            color: var(--muted);
+            font-size: .87rem;
+        }
+
+        /* ── шаги инструкции ────────────────────────────────────────── */
+        .step {
+            background: var(--bg-soft);
+            border: 1px solid var(--line-soft);
+            border-radius: var(--radius);
+            padding: 22px;
+            margin-bottom: 16px;
+        }
+
+        .step-head {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            margin-bottom: 12px;
+        }
+
+        .step-num {
+            flex: 0 0 auto;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            font-weight: 700;
+            font-size: .95rem;
+            background: var(--accent-soft);
+            color: var(--accent);
+            border: 1px solid rgba(255, 140, 0, .3);
+        }
+
+        .step-head h3 {
+            font-size: 1.08rem;
+            font-weight: 650;
+            padding-top: 4px;
+        }
+
+        .step p {
+            color: var(--muted);
+            font-size: .92rem;
+            margin-bottom: 10px;
+        }
+
+        .step p strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .shot {
+            margin-top: 14px;
+            border-radius: var(--radius-sm);
+            overflow: hidden;
+            border: 1px solid var(--line);
+            line-height: 0;
+            cursor: zoom-in;
+        }
+
+        .shot img {
+            width: 100%;
+            display: block;
+            transition: transform .3s;
+        }
+
+        .shot:hover img {
+            transform: scale(1.015);
+        }
+
+        .caption {
+            font-size: .8rem;
+            color: var(--dim);
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+
+        .note {
+            background: var(--blue-soft);
+            border-left: 3px solid var(--blue);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            padding: 12px 16px;
+            font-size: .88rem;
+            color: #c3d6f5;
+            margin: 12px 0;
+        }
+
+        .note b {
+            color: #fff;
+        }
+
+        .pill {
+            display: inline-block;
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            border-radius: 30px;
+            padding: 2px 11px;
+            font-size: .82rem;
+            color: var(--text);
+        }
+
+        /* ── две колонки со скриншотом ──────────────────────────────── */
+        .split {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            align-items: start;
+        }
+
+        @media (max-width:760px) {
+            .split {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ── таблица клавиш ─────────────────────────────────────────── */
+        .keys {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 10px;
+        }
+
+        .key-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--bg-soft);
+            border: 1px solid var(--line-soft);
+            border-radius: var(--radius-sm);
+            padding: 12px 14px;
+        }
+
+        kbd {
+            flex: 0 0 auto;
+            min-width: 62px;
+            text-align: center;
+            font-family: inherit;
+            font-size: .8rem;
+            font-weight: 650;
+            color: var(--accent);
+            background: #0a0e18;
+            border: 1px solid var(--line);
+            border-bottom-width: 2px;
+            border-radius: 8px;
+            padding: 5px 9px;
+        }
+
+        .key-row span {
+            font-size: .87rem;
+            color: var(--muted);
+        }
+
+        /* ── список категорий ───────────────────────────────────────── */
+        .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .chip {
+            font-size: .82rem;
+            color: var(--muted);
+            background: var(--panel);
+            border: 1px solid var(--line-soft);
+            border-radius: 30px;
+            padding: 5px 13px;
+        }
+
+        /* ── подвал ─────────────────────────────────────────────────── */
+        footer {
+            margin-top: 70px;
+            padding-top: 26px;
+            border-top: 1px solid var(--line-soft);
+            color: var(--dim);
+            font-size: .84rem;
+            text-align: center;
+        }
+
+        footer a {
+            color: var(--blue);
+            text-decoration: none;
+        }
+
+        /* ── модалка увеличения ─────────────────────────────────────── */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(4, 6, 12, .93);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            cursor: zoom-out;
+        }
+
+        .modal img {
+            max-width: 100%;
+            max-height: 92vh;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 16px;
+            right: 22px;
+            font-size: 2rem;
+            line-height: 1;
+            color: var(--muted);
+            background: none;
+            border: 0;
+            cursor: pointer;
+        }
+
+        .modal-close:hover {
+            color: #fff;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="topbar">
+        <div class="topbar-inner">
+            <div class="brand">Torr<span>Stream</span></div>
+            <nav class="navlinks">
+                <a href="#features">Возможности</a>
+                <a href="#install">Установка</a>
+                <a href="#guide">Инструкция</a>
+                <a href="#remote">Пульт</a>
+                <a href="#donate">Поддержать</a>
+            </nav>
+        </div>
+    </div>
+
+    <div class="wrap">
+
+        <!-- ── ГЕРОЙ ─────────────────────────────────────────────── -->
+        <header class="hero">
+            <div class="badge">🎬 Стриминг торрентов без скачивания</div>
+            <h1>Смотрите торренты как онлайн-кинотеатр</h1>
+            <p class="lead">
+                TorrStream превращает ваш TorrServer в удобный медиацентр: каталог с постерами,
+                поиск раздач, плеер с таймкодами и синхронизация между устройствами.
+                Телевизор, телефон, планшет, ПК — интерфейс один и тот же.
+            </p>
+            <div class="cta">
+                <a class="btn btn-primary" href="setup.html">📥 Установить на устройство</a>
+                <a class="btn btn-ghost" href="#guide">📘 Как пользоваться</a>
+            </div>
+
+            <div class="hero-shot">
+                <img src="01-home.webp" alt="Главный экран TorrStream" class="zoomable">
+            </div>
+        </header>
+
+        <!-- ── ВОЗМОЖНОСТИ ───────────────────────────────────────── -->
+        <section id="features">
+            <div class="sec-head">
+                <div class="kicker">Возможности</div>
+                <h2>Что умеет приложение</h2>
+                <p>Всё работает поверх вашего TorrServer — файлы никуда не скачиваются целиком,
+                    воспроизведение начинается сразу.</p>
+            </div>
+
+            <div class="features">
+                <div class="feature">
+                    <span class="ico">🏠</span>
+                    <h3>Главная с трейлерами</h3>
+                    <p>Крупный баннер с фоновым трейлером и ряды подборок: популярное, новинки,
+                        сейчас в эфире, топ.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">🗂️</span>
+                    <h3>Каталог с постерами</h3>
+                    <p>Ряды-карусели по категориям и полная сетка по кнопке «Показать все».
+                        Обновляется автоматически.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">🎴</span>
+                    <h3>Карточка фильма</h3>
+                    <p>Описание, рейтинг, актёры, похожие фильмы, трейлеры и поиск раздач —
+                        всё на одном экране.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">🎭</span>
+                    <h3>Фильмография актёра</h3>
+                    <p>Нажмите на актёра в карточке — откроется всё, где он снимался.
+                        «Назад» вернёт ровно туда, откуда ушли.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">🔎</span>
+                    <h3>Два режима поиска</h3>
+                    <p>Глобальный — по базе фильмов с постерами. По торрентам — сразу раздачи,
+                        с фильтрами по качеству, трекеру и озвучке.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">⏱️</span>
+                    <h3>Таймкоды и продолжение</h3>
+                    <p>Позиция просмотра сохраняется для каждой серии и каждого устройства.
+                        Вернулись — продолжили с того же места.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">🔄</span>
+                    <h3>Синхронизация устройств</h3>
+                    <p>Начали смотреть на телевизоре — досмотрели на телефоне.
+                        Клиенты связываются кодом в настройках.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">🎧</span>
+                    <h3>Дорожки и субтитры</h3>
+                    <p>Выбор аудиодорожки и субтитров прямо в плеере. Выбранная озвучка
+                        запоминается для этого фильма.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">⏭️</span>
+                    <h3>Серии и заставки</h3>
+                    <p>Автопереход к следующей серии и кнопка пропуска заставки и титров.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">❤️</span>
+                    <h3>Избранное и история</h3>
+                    <p>Отмечайте звёздочкой — появится отдельный ряд. История просмотра
+                        собирается сама.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">🎨</span>
+                    <h3>Настройка интерфейса</h3>
+                    <p>Размер карточек, число колонок, цвет фокуса, плотность, плавность
+                        прокрутки — под свой экран.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">📱</span>
+                    <h3>Пульт, мышь и тач</h3>
+                    <p>Один интерфейс для телевизора, телефона и ПК: навигация стрелками,
+                        клики и касания работают одинаково.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── УСТАНОВКА ─────────────────────────────────────────── -->
+        <section id="install">
+            <div class="sec-head">
+                <div class="kicker">Установка</div>
+                <h2>С чего начать</h2>
+            </div>
+
+            <div class="step">
+                <p>Нужны две вещи: <strong>TorrServer</strong> (раздаёт торренты) и
+                    <strong>TorrStream</strong> (то, что вы видите на экране). Программа TorrStream
+                    запускается на компьютере или роутере в вашей сети, а телевизор открывает её по адресу.
+                </p>
+                <div class="note">
+                    <b>Важно:</b> адрес TorrStream и адрес TorrServer — это два разных адреса.
+                    Не перепутайте их при первой настройке.
+                </div>
+                <div class="cta" style="justify-content:flex-start;margin-top:16px">
+                    <a class="btn btn-primary" href="setup.html">📄 Пошаговая установка (Vidaa и другие ТВ)</a>
+                </div>
+            </div>
+        </section>
+
+        <!-- ── ИНСТРУКЦИЯ ────────────────────────────────────────── -->
+        <section id="guide">
+            <div class="sec-head">
+                <div class="kicker">Инструкция</div>
+                <h2>Как пользоваться</h2>
+                <p>Скриншоты кликабельны — нажмите, чтобы рассмотреть.</p>
+            </div>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">1</div>
+                    <h3>Подключение к TorrServer</h3>
+                </div>
+                <p>Откройте <strong>Настройки</strong> в шапке и на вкладке «Настройки TorrServer»
+                    укажите адрес с протоколом — например <span class="pill">http://192.168.1.10:8090</span>.
+                    Кружок рядом покажет состояние: <strong>зелёный</strong> — сервер отвечает,
+                    <strong>красный</strong> — недоступен.
+                </p>
+                <p>Здесь же включается авторизация, добавление торрентов в базу и транскодирование,
+                    а кнопка «Замерить скорость» проверит канал до сервера.</p>
+                <div class="shot"><img src="07-settings.webp" alt="Настройки TorrServer" loading="lazy"
+                        class="zoomable"></div>
+                <div class="caption">⚙️ Настройки — слева разделы: TorrServer, трекеры, плеер, внешний вид,
+                    синхронизация</div>
+            </div>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">2</div>
+                    <h3>Главная — с чего начинается просмотр</h3>
+                </div>
+                <p>Наверху — крупный баннер с трейлером, ниже ряды подборок. Стрелками
+                    <strong>вверх/вниз</strong> переключаются ряды, <strong>влево/вправо</strong> — карточки внутри
+                    ряда.
+                </p>
+                <div class="shot"><img src="01-home.webp" alt="Главный экран" loading="lazy" class="zoomable"></div>
+                <div class="caption">🏠 Главная: баннер с трейлером и ряды подборок</div>
+            </div>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">3</div>
+                    <h3>Каталог — ряды и категории</h3>
+                </div>
+                <p>Вкладка <strong>Каталог</strong> показывает категории рядами. Кнопка
+                    <strong>«Показать все»</strong> в конце ряда (или нажатие на заголовок) открывает
+                    категорию полной сеткой с догрузкой по мере прокрутки.
+                </p>
+                <div class="chips">
+                    <span class="chip">Фильмы</span><span class="chip">Сериалы</span>
+                    <span class="chip">Мультфильмы</span><span class="chip">Мультсериалы</span>
+                    <span class="chip">Аниме</span><span class="chip">4K</span>
+                    <span class="chip">Легенды</span><span class="chip">Русские</span>
+                    <span class="chip">Подборки Кинопоиска</span><span class="chip">Избранное</span>
+                    <span class="chip">История</span>
+                </div>
+                <div class="split" style="margin-top:16px">
+                    <div>
+                        <div class="shot"><img src="02-catalog.webp" alt="Каталог рядами" loading="lazy"
+                                class="zoomable"></div>
+                        <div class="caption">📺 Ряды-карусели по категориям</div>
+                    </div>
+                    <div>
+                        <div class="shot"><img src="03-category.webp" alt="Категория сеткой" loading="lazy"
+                                class="zoomable"></div>
+                        <div class="caption">🔲 Категория целиком — сеткой</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">4</div>
+                    <h3>Карточка фильма или сериала</h3>
+                </div>
+                <p>Описание, рейтинг, год и жанры, а под ними — кнопки действий:</p>
+                <div class="keys" style="margin:12px 0">
+                    <div class="key-row"><kbd>Поиск</kbd><span>подобрать раздачи под этот фильм</span></div>
+                    <div class="key-row"><kbd>Подробнее</kbd><span>полное описание и детали</span></div>
+                    <div class="key-row"><kbd>★</kbd><span>добавить в избранное</span></div>
+                    <div class="key-row"><kbd>▶ Трейлер</kbd><span>трейлер во встроенном плеере</span></div>
+                </div>
+                <p>Ниже — ряд <strong>«В главных ролях»</strong> и <strong>«Похожие фильмы»</strong>.
+                    Нажатие на актёра открывает его фильмографию.</p>
+                <div class="shot"><img src="04-detail.webp" alt="Карточка фильма" loading="lazy" class="zoomable"></div>
+                <div class="caption">🎴 Карточка: действия, актёры и похожее на одном экране</div>
+            </div>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">5</div>
+                    <h3>Фильмография актёра</h3>
+                </div>
+                <p>Нажмите на любого актёра — откроется всё, где он снимался. Из фильмографии можно
+                    зайти в фильм, оттуда к другому актёру и так далее; кнопка «Назад» каждый раз
+                    возвращает ровно на шаг назад по этому пути.</p>
+                <div class="shot"><img src="05-filmography.webp" alt="Фильмография актёра" loading="lazy"
+                        class="zoomable"></div>
+                <div class="caption">🎭 Фильмография — обычная сетка каталога</div>
+            </div>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">6</div>
+                    <h3>Поиск — два режима</h3>
+                </div>
+                <p><strong>Глобальный поиск</strong> ищет фильм или сериал по названию и показывает карточки
+                    с постерами — дальше открываете карточку и подбираете раздачу.</p>
+                <p><strong>Поиск торрентов</strong> сразу выдаёт раздачи по запросу. Кнопка
+                    <strong>«Фильтры»</strong> открывает отбор по качеству, трекеру, году, сезону и озвучке;
+                    с пульта к фильтрам быстро попасть нажатием <strong>влево</strong>.
+                </p>
+                <div class="shot"><img src="06-search.webp" alt="Глобальный поиск" loading="lazy" class="zoomable"></div>
+                <div class="caption">🔎 Глобальный поиск — результаты с постерами и рейтингом</div>
+            </div>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">7</div>
+                    <h3>Внешний вид под свой экран</h3>
+                </div>
+                <p>Настройки → <strong>Внешний вид</strong>. Здесь настраиваются размер карточек и постеров,
+                    масштаб карточки фильма, число колонок в сетке, размер текста, плотность, цвет фокуса,
+                    плавность прокрутки и трейлеры на главной.</p>
+                <div class="note">
+                    На слабых телевизорах помогает уменьшить размер карточек и переключить плавность
+                    прокрутки в режим <b>«Быстро»</b> или <b>«Без анимации»</b>.
+                </div>
+                <div class="shot"><img src="08-appearance.webp" alt="Настройка интерфейса" loading="lazy"
+                        class="zoomable"></div>
+                <div class="caption">🎨 Панель «Внешний вид»</div>
+            </div>
+
+            <div class="step">
+                <div class="step-head">
+                    <div class="step-num">8</div>
+                    <h3>Мои торренты</h3>
+                </div>
+                <p>Вкладка <strong>Мои торренты</strong> — всё, что сейчас лежит на вашем TorrServer:
+                    постер, размер, прогресс загрузки. Открытие торрента показывает список файлов и серий.
+                    Чтобы <strong>удалить</strong> раздачу — задержите <strong>ОК</strong> на карточке
+                    примерно на секунду.</p>
+                <div class="note">
+                    Список обновляется сам. Таймкоды и выбранная аудиодорожка хранятся отдельно для каждого
+                    торрента и каждого устройства.
+                </div>
+            </div>
+        </section>
+
+        <!-- ── ПУЛЬТ ─────────────────────────────────────────────── -->
+        <section id="remote">
+            <div class="sec-head">
+                <div class="kicker">Управление</div>
+                <h2>Пульт телевизора</h2>
+                <p>Приложение рассчитано на пульт, но мышь и касания работают везде одинаково.</p>
+            </div>
+            <div class="keys">
+                <div class="key-row"><kbd>← ↑ ↓ →</kbd><span>перемещение фокуса</span></div>
+                <div class="key-row"><kbd>OK</kbd><span>открыть, выбрать, запустить</span></div>
+                <div class="key-row"><kbd>OK ⏱</kbd><span>удержание — удалить торрент</span></div>
+                <div class="key-row"><kbd>Назад</kbd><span>шаг назад по экранам</span></div>
+                <div class="key-row"><kbd>← →</kbd><span>в плеере — перемотка, с ускорением при удержании</span></div>
+                <div class="key-row"><kbd>OK</kbd><span>в плеере — пауза и панель управления</span></div>
+                <div class="key-row"><kbd>←</kbd><span>в поиске — быстрый переход к фильтрам</span></div>
+                <div class="key-row"><kbd>↑</kbd><span>из первого ряда — на вкладки и в шапку</span></div>
+            </div>
+        </section>
+
+        <!-- ── ДОНАТ ─────────────────────────────────────────────── -->
+        <section id="donate">
+            <div class="sec-head">
+                <div class="kicker">Поддержка</div>
+                <h2>Поддержать проект</h2>
+            </div>
+            <div class="step">
+                <p>TorrStream делается силами энтузиастов. Вкладка <strong>Донат</strong> в приложении —
+                    способ сказать спасибо и помочь с серверами и новыми функциями.</p>
+                <p style="color:var(--accent);margin-bottom:0">❤️ Любая помощь имеет значение. Спасибо!</p>
+            </div>
+        </section>
+
+        <footer>
+            <p>TorrStream — стриминг торрентов в локальной сети и не только.</p>
+            <p style="margin-top:6px"><a href="setup.html">Инструкция по установке</a></p>
+        </footer>
+    </div>
+
+    <div class="modal" id="modal">
+        <button class="modal-close" id="modalClose" aria-label="Закрыть">&times;</button>
+        <img id="modalImg" src="" alt="">
+    </div>
+
+    <script>
+        (function () {
+            var modal = document.getElementById('modal');
+            var modalImg = document.getElementById('modalImg');
+
+            function open(src, alt) {
+                modalImg.src = src;
+                modalImg.alt = alt || 'Скриншот';
+                modal.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+            }
+            function close() {
+                modal.style.display = 'none';
+                modalImg.src = '';
+                document.body.style.overflow = '';
+            }
+
+            // Делегирование: обработчик один на документ, новые картинки
+            // подхватятся сами, без переобхода списка
+            document.addEventListener('click', function (e) {
+                var img = e.target.closest && e.target.closest('.zoomable, .shot img');
+                if (img) { open(img.getAttribute('src'), img.getAttribute('alt')); return; }
+                if (e.target === modal || e.target.id === 'modalClose') close();
+            });
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && modal.style.display === 'flex') close();
+            });
+        })();
+    </script>
+</body>
+
+</html>
