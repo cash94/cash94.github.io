@@ -1386,6 +1386,14 @@ function showPersonCatalog(personId, personName) {
     // и isTorrentDetailMode() врал бы про режим до следующего открытия.
     var dvEl = getEl('detail-view');
     if (dvEl) dvEl.classList.remove('torrent-detail-mode');
+    // Открытая карточка гасит #main-container (showCatalogDetail:
+    // mc.style.pointerEvents = 'none'), а возвращает его только «назад» из
+    // карточки (app.js, back-from-detail). Сюда уходят мимо него, и в сетке
+    // фильмографии не работали ни тап, ни мышь, ни прокрутка контейнера:
+    // пульт слушает document и потому продолжал ходить по карточкам, а всё
+    // указательное упиралось в pointer-events: none.
+    var mcEl = getEl('main-container');
+    if (mcEl) mcEl.style.pointerEvents = 'auto';
     if (typeof Animations !== 'undefined' && typeof Animations.animateDetailHide === 'function') {
         Animations.animateDetailHide();
     } else {
