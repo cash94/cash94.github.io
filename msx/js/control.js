@@ -22,8 +22,8 @@ var SEEK_ACCELERATION_STEPS = [
 
 var SCROLL_SMOOTH = {
     force: true,
-    durationX: 0.65,
-    durationY: 0.70,
+    durationX: 0.45,
+    durationY: 0.50,
     ease: 'power3.out',
     // Продолжение уже идущего движения (зажатая кнопка пульта): линейно и на
     // длительность шага автоповтора — тогда скорость постоянна. См. scrollTweenOpts.
