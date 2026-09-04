@@ -4292,10 +4292,14 @@ article {
   display: none;
 }
 
-/* Фокус на карточке ряда */
+/* Фокус на карточке ряда.
+   Тени «подъёма» (0 16px 40px) здесь больше нет: блюр в 40px растекается по
+   площади вдвое больше самой карточки, и каждая смена фокуса заставляла
+   перерисовывать её целиком. На телевизоре это давало просадку кадров ровно
+   в тот момент, когда едет доводка прокрутки. Кольцо в 3px рисуется даром. */
 .catalog-row-card.focused .torrent-poster {
   transform: scale(1.05);
-  box-shadow: 0 0 0 3px #4a9eff, 0 16px 40px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 3px #4a9eff;
   z-index: 5;
 }
 
@@ -4888,7 +4892,7 @@ article {
 #detail-view.torrent-detail-mode #detail-progress-btn:hover,
 #detail-view.torrent-detail-mode #detail-progress-btn.focused {
   background: #ffffff !important;
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00), 0 8px 26px rgba(0, 0, 0, 0.55) !important;
+  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
 #detail-view.torrent-detail-mode #detail-progress-btn .btn-label {
@@ -4952,12 +4956,12 @@ article {
   overflow: visible;
 }
 
+/* Без размытой тени — по той же причине, что и в catalog-detail-mode выше */
 #detail-view.torrent-detail-mode .catalog-actor-photo {
   width: 132px;
   height: 132px;
   margin: 0 auto 12px auto;
   border: 3px solid rgba(255, 255, 255, 0.14) !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -4990,7 +4994,7 @@ article {
 
 #detail-view.torrent-detail-mode .catalog-actor-card.focused .catalog-actor-photo {
   border-color: var(--focus-color, #ff8c00) !important;
-  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35)), 0 8px 26px rgba(0, 0, 0, 0.6) !important;
+  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35)) !important;
 }
 
 #detail-view.torrent-detail-mode .catalog-actor-card.focused .catalog-actor-name {
@@ -5089,7 +5093,7 @@ article {
 /* Рамка фокуса плитки — толще базовых 3px: с дивана 3px не видно.
    Без transform: scale — плитка внутри overflow-x обрезалась бы по краям */
 #detail-view.torrent-detail-mode .file-item.focused {
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00), 0 14px 40px rgba(0, 0, 0, 0.7) !important;
+  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
   border-radius: 10px;
 }
 
@@ -6463,7 +6467,7 @@ article {
 #detail-view.catalog-detail-mode #catalog-watch-btn:hover,
 #detail-view.catalog-detail-mode #catalog-watch-btn.focused {
   background: #ffffff !important;
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00), 0 8px 26px rgba(0, 0, 0, 0.55) !important;
+  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
 /* «Подробнее» и «Трейлер» — серые вторичные */
@@ -6484,7 +6488,7 @@ article {
 #detail-view.catalog-detail-mode #catalog-trailer-btn:hover,
 #detail-view.catalog-detail-mode #catalog-trailer-btn.focused {
   background: rgba(109, 109, 110, 0.9) !important;
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00), 0 8px 26px rgba(0, 0, 0, 0.55) !important;
+  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
 /* Иконка ▶ внутри «Трейлера»: у кнопки gap обнулён, отступ даёт она сама */
@@ -6545,13 +6549,17 @@ article {
   overflow: visible !important;
 }
 
+/* Тени под аватаром нет намеренно. Она была размытая (20px), а на фокусе
+   менялась на 26px — и transition ниже пересчитывал размытие каждый кадр все
+   0,2 с, на каждое нажатие стрелки. Разницу в 6 пикселей радиуса на экране не
+   видно, а кадры на телевизоре она стоила. Остаётся рамка и сплошное кольцо
+   фокуса: они рисуются по контуру и ничего не стоят. */
 #detail-view.catalog-detail-mode .catalog-actor-photo {
   width: 132px !important;
   height: 132px !important;
   margin: 0 auto 12px auto;
   border: 3px solid rgba(255, 255, 255, 0.14) !important;
   border-radius: 50% !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -6588,7 +6596,7 @@ article {
 
 #detail-view.catalog-detail-mode .catalog-actor-card.focused .catalog-actor-photo {
   border-color: var(--focus-color, #ff8c00) !important;
-  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35)), 0 8px 26px rgba(0, 0, 0, 0.6) !important;
+  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35)) !important;
 }
 
 #detail-view.catalog-detail-mode .catalog-actor-card.focused .catalog-actor-name {
@@ -6653,7 +6661,7 @@ article {
 }
 
 #detail-view.catalog-detail-mode .catalog-recommendation-card.focused .catalog-recommendation-poster {
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00), 0 14px 40px rgba(0, 0, 0, 0.7) !important;
+  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
 #detail-view.catalog-detail-mode .catalog-recommendation-card.focused .catalog-recommendation-title {
