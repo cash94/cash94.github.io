@@ -318,9 +318,12 @@
         css.push('.catalog-actor-card.focused,.catalog-recommendation-card.focused{' +
             'box-shadow:0 0 0 3px ' + c + '!important;}');
 
-        // Карточки рядов-каруселей (styles.css:3939) — тень «подъёма» сохраняем
+        // Карточки рядов-каруселей. Тень «подъёма» убрана вслед за styles.css:
+        // блюр в 40px перерисовывался на каждую смену фокуса и ронял кадры на
+        // телевизоре. Здесь важно повторить правило один в один — иначе
+        // !important отсюда вернул бы её обратно поверх базовой таблицы.
         css.push('.catalog-row-card.focused .torrent-poster{' +
-            'box-shadow:0 0 0 3px ' + c + ',0 16px 40px rgba(0,0,0,0.6)!important;}');
+            'box-shadow:0 0 0 3px ' + c + '!important;}');
 
         // Карточка «Показать все» (styles.css:3972)
         css.push('.catalog-show-all.focused .show-all-inner{' +
