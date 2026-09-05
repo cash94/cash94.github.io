@@ -753,6 +753,7 @@ function abortCatalogRequests() {
     if (catalogState.loadMoreObserver) { catalogState.loadMoreObserver.disconnect(); catalogState.loadMoreObserver = null; }
     if (catalogState.rowPosterObserver) { catalogState.rowPosterObserver.disconnect(); catalogState.rowPosterObserver = null; }
     if (catalogState.chunkObserver) { catalogState.chunkObserver.disconnect(); catalogState.chunkObserver = null; }
+    unwatchCatalogCardHeight();
     resetDeferredPosters();
 }
 
@@ -2417,6 +2418,7 @@ function renderCatalogGrid() {
 
     requestAnimationFrame(function () {
         measureCatalogCardHeight();   // высота ряда известна только после отрисовки
+        watchCatalogCardHeight();     // ...а точная — когда приедет шрифт и устоятся стили
         if (AppState.currentScreen === 'catalog' && catalogState.currentCatalog) {
             if (typeof updateFocusableElements === 'function') updateFocusableElements();
             setTimeout(function () {
@@ -4947,7 +4949,61 @@ function measureCatalogCardHeight() {
         if (!poster || !poster.offsetHeight) continue;
         if (cards[i].clientHeight > h) h = cards[i].clientHeight;
     }
-    if (h > 0) document.documentElement.style.setProperty('--catalog-card-h', h + 'px');
+    if (!(h > 0)) return;
+
+    // Пишем только при расхождении: замер зовут из нескольких мест, а лишняя
+    // запись переменной — это инвалидация стилей всей сетки
+    var prev = parseFloat(document.documentElement.style.getPropertyValue('--catalog-card-h'));
+    if (!isNaN(prev) && Math.abs(prev - h) <= 1) return;
+
+    document.documentElement.style.setProperty('--catalog-card-h', h + 'px');
+}
+
+/**
+ * Держать резерв в согласии с реальной высотой карточки.
+ *
+ * Замер был одноразовым — через кадр после отрисовки сетки. В этот момент ещё
+ * не приехал веб-шрифт: у запасного другие метрики строки, блок подписи выше,
+ * и карточка меряется на ~25px больше настоящей. Завышенное число оставалось
+ * навсегда, а это резерв под неотрисованные карточки (contain-intrinsic-size).
+ * Каждая входящая в кадр строка ужималась на эти 25px и толкала всё, что ниже:
+ * цель прокрутки, посчитанная мгновение назад, оказывалась неверной. Отсюда и
+ * «то прижат, то отступ больше», и сдвиг при движении влево-вправо.
+ *
+ * Догонять таймерами бесполезно: шрифт, настройки внешнего вида и ширина окна
+ * меняют высоту в разные моменты. Поэтому просто СЛЕДИМ за первой карточкой —
+ * ResizeObserver есть с Chrome 64, то есть и на самых старых поддерживаемых
+ * телевизорах. Обратной связи не возникает: наблюдаемая карточка отрисована,
+ * её высоту задаёт содержимое, а не резерв.
+ */
+var _cardHeightObserver = null;
+
+function watchCatalogCardHeight() {
+    var grid = getCatalogGridEl();
+    var card = grid && grid.querySelector('.torrent-card.catalog-card');
+    if (!card) return;
+
+    if (typeof ResizeObserver === 'undefined') {
+        // Без ResizeObserver — хотя бы поймать приезд шрифта
+        try {
+            if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+                document.fonts.ready.then(function () { measureCatalogCardHeight(); });
+            }
+        } catch (e) { }
+        setTimeout(measureCatalogCardHeight, 700);
+        setTimeout(measureCatalogCardHeight, 2000);
+        return;
+    }
+
+    if (_cardHeightObserver) _cardHeightObserver.disconnect();
+    _cardHeightObserver = new ResizeObserver(function () { measureCatalogCardHeight(); });
+    _cardHeightObserver.observe(card);
+}
+
+function unwatchCatalogCardHeight() {
+    if (!_cardHeightObserver) return;
+    _cardHeightObserver.disconnect();
+    _cardHeightObserver = null;
 }
 
 /**
