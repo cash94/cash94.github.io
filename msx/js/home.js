@@ -1185,8 +1185,7 @@
         var rc = rating ? ratingColor(rating) : '';
 
         var ratingHtml = rating ?
-            '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.55);color:' + rc +
-            ';font-weight:bold;font-size:13px;padding:3px 7px;border-radius:10px;z-index:10;border:1px solid ' + rc + '">' + rating + '</div>' : '';
+            '<div class="rating-badge" style="color:' + rc + '">' + rating + '</div>' : '';
 
         // Классы те же, что у карточки ряда каталога: размеры, фокус и настройки
         // из ui-customizer.js прописаны именно под них
