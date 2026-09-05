@@ -1,353 +1,525 @@
 #!/bin/bash
+# ==========================================================================
+#  Vidaa / TorrStream — установщик для macOS
+#  Совместимость: macOS 10.13 High Sierra … macOS 26 (Intel x86_64 и Apple Silicon)
+# ==========================================================================
 
-# Цвета для вывода
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Имя RAM-диска
 RAMDISK_NAME="VidaaRAMDisk"
 RAMDISK_PATH="/Volumes/$RAMDISK_NAME"
+INSTALL_DIR="/opt/Vidaa"
+CONF_FILE="$INSTALL_DIR/install.conf"
+BIN_PATH="$INSTALL_DIR/myapp-macos"
+START_SH="$INSTALL_DIR/start.sh"
+RAMDISK_SH="$INSTALL_DIR/create-ramdisk.sh"
 
-# Функция для загрузки файлов через curl
-download_file() {
-    local url=$1
-    local output=$2
-    
-    if command -v curl &> /dev/null; then
-        curl -L --progress-bar "$url" -o "$output"
-        return $?
+SERVER_LABEL="com.vidaa.server"
+RAMDISK_LABEL="com.vidaa.ramdisk"
+SERVER_PLIST="/Library/LaunchDaemons/$SERVER_LABEL.plist"
+RAMDISK_PLIST="/Library/LaunchDaemons/$RAMDISK_LABEL.plist"
+
+PF_ANCHOR="vidaa"
+PF_ANCHOR_FILE="/etc/pf.anchors/vidaa"
+PF_CONF="/etc/pf.conf"
+
+APP_ZIP_URL="https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-macos.zip"
+FFMPEG_TAG="v7.1.3-3"
+FFMPEG_VER="7.1.3-3"
+YTDLP_TAG="2026.03.17"
+
+# --------------------------------------------------------------------------
+# Вывод
+# --------------------------------------------------------------------------
+if [ -t 1 ]; then
+    RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'
+    BLUE=$'\033[0;34m'; NC=$'\033[0m'
+else
+    RED=''; GREEN=''; YELLOW=''; BLUE=''; NC=''
+fi
+
+info()  { printf '%s\n' "${BLUE}$*${NC}"; }
+ok()    { printf '%s\n' "${GREEN}$*${NC}"; }
+warn()  { printf '%s\n' "${YELLOW}$*${NC}"; }
+err()   { printf '%s\n' "${RED}$*${NC}" >&2; }
+plain() { printf '%s\n' "$*"; }
+
+# Чтение ответа пользователя. Работает и при `curl ... | bash`,
+# когда stdin занят телом скрипта.
+ask() {
+    local __prompt="$1" __var="$2" __ans=""
+    if [ -r /dev/tty ]; then
+        printf '%s' "$__prompt" > /dev/tty
+        IFS= read -r __ans < /dev/tty || __ans=""
     else
-        echo -e "${RED}curl не найден. Пожалуйста, установите curl.${NC}"
-        return 1
+        printf '%s' "$__prompt"
+        IFS= read -r __ans || __ans=""
     fi
+    eval "$__var=\$__ans"
 }
 
-# Функция для определения архитектуры macOS
-detect_architecture() {
-    local arch=$(uname -m)
-    case $arch in
-        x86_64)
-            echo "x64"
-            ;;
-        arm64)
-            echo "arm64"
-            ;;
-        *)
-            echo -e "${RED}Неподдерживаемая архитектура: $arch${NC}"
-            exit 1
-            ;;
+is_yes() {
+    case "$1" in
+        [YyДд]|[Yy][Ee][Ss]|[Дд][Аа]) return 0 ;;
+        *) return 1 ;;
     esac
 }
 
-# Функция для проверки и установки unzip
-check_and_install_unzip() {
-    if ! command -v unzip &> /dev/null; then
-        echo -e "${YELLOW}Пакет unzip не найден. Устанавливаю...${NC}"
-        
-        if command -v brew &> /dev/null; then
-            brew install unzip
-        else
-            echo -e "${RED}Homebrew не найден. Установите unzip вручную или установите Homebrew:${NC}"
-            echo -e "${YELLOW}/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"${NC}"
-            exit 1
+# Оставить в строке только цифры (защита от точек, пробелов, локали)
+digits_only() { printf '%s' "$1" | tr -cd '0-9'; }
+
+# --------------------------------------------------------------------------
+# Проверка платформы и версии macOS
+# --------------------------------------------------------------------------
+if [ "$(uname -s)" != "Darwin" ]; then
+    err "Этот скрипт предназначен только для macOS"
+    exit 1
+fi
+
+OS_VER="$(sw_vers -productVersion 2>/dev/null)"
+[ -n "$OS_VER" ] || OS_VER="0.0"
+OS_MAJOR="${OS_VER%%.*}"
+OS_REST="${OS_VER#*.}"
+if [ "$OS_REST" = "$OS_VER" ]; then
+    OS_MINOR=0
+else
+    OS_MINOR="${OS_REST%%.*}"
+fi
+OS_MAJOR="$(digits_only "$OS_MAJOR")"; OS_MINOR="$(digits_only "$OS_MINOR")"
+[ -n "$OS_MAJOR" ] || OS_MAJOR=0
+[ -n "$OS_MINOR" ] || OS_MINOR=0
+
+# Big Sur в режиме SYSTEM_VERSION_COMPAT отдаёт 10.16 — нормализуем в 11.0
+if [ "$OS_MAJOR" -eq 10 ] && [ "$OS_MINOR" -ge 16 ]; then
+    OS_MAJOR=11; OS_MINOR=0
+fi
+OS_NUM=$(( OS_MAJOR * 100 + OS_MINOR ))   # 10.13→1013, 11.0→1100, 26.0→2600
+
+# минимально поддерживаемая версия: 10.13 High Sierra
+if [ "$OS_NUM" -lt 1013 ]; then
+    err "Требуется macOS 10.13 (High Sierra) или новее. Обнаружена: $OS_VER"
+    exit 1
+fi
+
+os_at_least() { [ "$OS_NUM" -ge "$1" ]; }
+
+# --------------------------------------------------------------------------
+# Права root и определение «настоящего» пользователя
+# --------------------------------------------------------------------------
+if [ "$(id -u)" -ne 0 ]; then
+    err "Скрипт нужно запускать с правами администратора."
+    warn "Выполните: sudo bash \"$0\""
+    exit 1
+fi
+
+REAL_USER="${SUDO_USER:-}"
+if [ -z "$REAL_USER" ] || [ "$REAL_USER" = "root" ]; then
+    REAL_USER="$(stat -f%Su /dev/console 2>/dev/null)"
+fi
+[ -n "$REAL_USER" ] || REAL_USER="root"
+REAL_HOME="$(dscl . -read "/Users/$REAL_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+[ -n "$REAL_HOME" ] || REAL_HOME="/Users/$REAL_USER"
+[ -d "$REAL_HOME" ] || REAL_HOME="$HOME"
+
+# --------------------------------------------------------------------------
+# Архитектура
+# --------------------------------------------------------------------------
+ARCH=""
+detect_architecture() {
+    local a
+    a="$(uname -m)"
+    # под Rosetta uname -m возвращает x86_64 — уточняем через sysctl
+    if [ "$a" = "x86_64" ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = "1" ]; then
+        a="arm64"
+    fi
+    case "$a" in
+        x86_64|i386) ARCH="x64" ;;
+        arm64|aarch64) ARCH="arm64" ;;
+        *) err "Неподдерживаемая архитектура: $a"; return 1 ;;
+    esac
+    return 0
+}
+
+# --------------------------------------------------------------------------
+# Загрузка и распаковка
+# --------------------------------------------------------------------------
+download_file() {
+    local url="$1" output="$2"
+    if ! command -v curl >/dev/null 2>&1; then
+        err "curl не найден."
+        return 1
+    fi
+    # --fail: не сохранять HTML страницы ошибок как «успешную» загрузку
+    curl -fL --retry 3 --retry-delay 2 --connect-timeout 30 --progress-bar "$url" -o "$output"
+}
+
+# Распаковка zip без зависимости от unzip: ditto и tar есть в любой macOS
+extract_zip() {
+    local zip="$1" dest="$2"
+    if command -v ditto >/dev/null 2>&1; then
+        ditto -x -k "$zip" "$dest" && return 0
+    fi
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -q -o "$zip" -d "$dest" && return 0
+    fi
+    tar -xf "$zip" -C "$dest" 2>/dev/null && return 0
+    return 1
+}
+
+# Снять карантин Gatekeeper и подписать ad-hoc (обязательно для Apple Silicon)
+fix_binary() {
+    local f="$1"
+    [ -f "$f" ] || return 0
+    chmod 755 "$f" 2>/dev/null
+    xattr -dr com.apple.quarantine "$f" 2>/dev/null
+    xattr -dr com.apple.provenance "$f" 2>/dev/null
+    if [ "$ARCH" = "arm64" ] && command -v codesign >/dev/null 2>&1; then
+        if ! codesign -v "$f" >/dev/null 2>&1; then
+            codesign --force --sign - "$f" >/dev/null 2>&1
         fi
-        
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}unzip успешно установлен${NC}"
-        else
-            echo -e "${RED}Ошибка при установке unzip${NC}"
-            exit 1
-        fi
-    else
-        echo -e "${GREEN}unzip уже установлен${NC}"
     fi
 }
 
-# Функция для проверки доступной памяти
+# --------------------------------------------------------------------------
+# Память и RAM-диск
+# --------------------------------------------------------------------------
+vm_stat_field() {
+    # $1 — ключ вместе с двоеточием, например "Pages free:"
+    vm_stat 2>/dev/null | awk -v key="$1" '
+        index($0, key) == 1 { v = $NF; gsub(/[^0-9]/, "", v); print v; exit }'
+}
+
+get_page_size() {
+    local ps
+    # размер страницы берём из шапки vm_stat (4096 на Intel, 16384 на Apple Silicon)
+    ps="$(vm_stat 2>/dev/null | awk -F'page size of ' 'NR==1 && NF>1 { split($2, a, " "); print a[1]; exit }')"
+    ps="$(digits_only "$ps")"
+    [ -n "$ps" ] || ps="$(digits_only "$(sysctl -n hw.pagesize 2>/dev/null)")"
+    [ -n "$ps" ] || ps=4096
+    printf '%s' "$ps"
+}
+
 check_available_memory() {
-    # Получаем общую RAM в байтах
-    local total_mem=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
-    local total_gb=$((total_mem / 1073741824))
-    
-    # Получаем информацию о свободной памяти через vm_stat
-    local page_size=$(sysctl -n hw.pagesize 2>/dev/null || echo "4096")
-    local free_pages=$(vm_stat 2>/dev/null | grep "Pages free" | awk '{print $3}' | sed 's/\.//')
-    local inactive_pages=$(vm_stat 2>/dev/null | grep "Pages inactive" | awk '{print $3}' | sed 's/\.//')
-    
-    # Защита от пустых значений
-    free_pages=${free_pages:-0}
-    inactive_pages=${inactive_pages:-0}
-    
-    # Свободная + неактивная память (можно использовать)
-    local available_bytes=$(( (free_pages + inactive_pages) * page_size ))
-    local available_gb=$((available_bytes / 1073741824))
-    
-    echo "$available_gb"
+    local page_size free_p inactive_p purge_p spec_p total avail_bytes
+    page_size="$(get_page_size)"
+    free_p="$(vm_stat_field 'Pages free:')"
+    inactive_p="$(vm_stat_field 'Pages inactive:')"
+    purge_p="$(vm_stat_field 'Pages purgeable:')"
+    spec_p="$(vm_stat_field 'Pages speculative:')"
+    free_p=${free_p:-0}; inactive_p=${inactive_p:-0}
+    purge_p=${purge_p:-0}; spec_p=${spec_p:-0}
+
+    total=$(( free_p + inactive_p + purge_p + spec_p ))
+    avail_bytes=$(( total * page_size ))
+    printf '%s' $(( avail_bytes / 1073741824 ))
 }
 
-# Функция для настройки RAM-диска
+total_memory_gb() {
+    local m
+    m="$(digits_only "$(sysctl -n hw.memsize 2>/dev/null)")"
+    [ -n "$m" ] || m=0
+    printf '%s' $(( m / 1073741824 ))
+}
+
+# Результат кладём в глобальную переменную: вывод функции нельзя смешивать
+# с интерактивными вопросами (иначе $(...) проглатывает весь диалог).
+RAMDISK_SIZE_GB=""
 setup_ramdisk() {
-    local available_gb=$(check_available_memory)
-    local ramdisk_size=""
-    
-    echo ""
-    echo "=========================================="
-    echo "  Настройка RAM-диска"
-    echo "=========================================="
-    echo -e "${BLUE}Доступно памяти (приблизительно): ${available_gb} GB${NC}"
-    
-    # Если свободно меньше 2 GB - RAM-диск создавать нельзя
+    RAMDISK_SIZE_GB=""
+    local available_gb total_gb max_gb user_size
+    available_gb="$(check_available_memory)"
+    total_gb="$(total_memory_gb)"
+
+    plain ""
+    plain "=========================================="
+    plain "  Настройка RAM-диска"
+    plain "=========================================="
+    info "Всего памяти: ${total_gb} GB, доступно (приблизительно): ${available_gb} GB"
+
     if [ "$available_gb" -lt 2 ]; then
-        echo -e "${YELLOW}Свободно менее 2 GB памяти. RAM-диск не будет создан.${NC}"
-        echo ""
-        return
+        warn "Свободно менее 2 GB памяти. RAM-диск не будет создан."
+        plain ""
+        return 0
     fi
-    
-    # Вычисляем максимальный размер (свободно - 1 GB)
-    local max_gb=$((available_gb - 1))
-    
-    echo -e "${YELLOW}Вы можете указать размер RAM-диска от 1 до ${max_gb} GB.${NC}"
-    echo -e "${YELLOW}(1 GB будет зарезервирован для системы)${NC}"
-    echo ""
-    echo -n "Введите размер RAM-диска в GB (1-${max_gb}) или нажмите Enter чтобы пропустить: "
-    read -r user_size
-    
-    # Если пользователь нажал Enter - пропускаем
+
+    max_gb=$(( available_gb - 1 ))
+    # не отдаём под RAM-диск больше половины физической памяти
+    if [ "$total_gb" -gt 0 ] && [ "$max_gb" -gt $(( total_gb / 2 )) ]; then
+        max_gb=$(( total_gb / 2 ))
+    fi
+    [ "$max_gb" -ge 1 ] || max_gb=1
+
+    warn "Вы можете указать размер RAM-диска от 1 до ${max_gb} GB."
+    warn "(остальная память останется системе)"
+    plain ""
+    ask "Введите размер RAM-диска в GB (1-${max_gb}) или нажмите Enter чтобы пропустить: " user_size
+
     if [ -z "$user_size" ]; then
-        echo -e "${YELLOW}RAM-диск не будет создан${NC}"
-        echo ""
-        return
+        warn "RAM-диск не будет создан"
+        plain ""
+        return 0
     fi
-    
-    # Проверяем, что введено число
-    if ! [[ "$user_size" =~ ^[0-9]+$ ]]; then
-        echo -e "${RED}Некорректный ввод. RAM-диск не будет создан.${NC}"
-        echo ""
-        return
-    fi
-    
-    # Проверяем диапазон
+    case "$user_size" in
+        ''|*[!0-9]*) err "Некорректный ввод. RAM-диск не будет создан."; plain ""; return 0 ;;
+    esac
     if [ "$user_size" -lt 1 ] || [ "$user_size" -gt "$max_gb" ]; then
-        echo -e "${RED}Размер должен быть от 1 до ${max_gb} GB. RAM-диск не будет создан.${NC}"
-        echo ""
-        return
+        err "Размер должен быть от 1 до ${max_gb} GB. RAM-диск не будет создан."
+        plain ""
+        return 0
     fi
-    
-    # Всё ок, устанавливаем размер
-    ramdisk_size="$user_size"
-    echo -e "${GREEN}RAM-диск будет создан размером: ${ramdisk_size} GB${NC}"
-    echo ""
-    echo "$ramdisk_size"
+
+    RAMDISK_SIZE_GB="$user_size"
+    ok "RAM-диск будет создан размером: ${RAMDISK_SIZE_GB} GB"
+    plain ""
+    return 0
 }
 
-# Функция для создания RAM-диска
 create_ramdisk() {
-    local size_gb=$1
-    local size_bytes=$((size_gb * 1024 * 1024 * 1024))
-    
-    # Проверяем, не существует ли уже RAM-диск
+    local size_gb="$1" blocks device fmt created=0
+    [ -n "$size_gb" ] || return 1
+
     if [ -d "$RAMDISK_PATH" ]; then
-        echo -e "${YELLOW}RAM-диск $RAMDISK_PATH уже существует${NC}"
+        warn "RAM-диск $RAMDISK_PATH уже существует"
         return 0
     fi
-    
-    # Вычисляем количество блоков (512 байт на блок)
-    local blocks=$((size_bytes / 512))
-    
-    echo -e "${BLUE}Создание RAM-диска размером ${size_gb} GB...${NC}"
-    
-    # Создаём RAM-диск
-    local device=$(hdiutil attach -nomount ram://$blocks 2>/dev/null)
-    
+
+    blocks=$(( size_gb * 1024 * 1024 * 1024 / 512 ))
+    info "Создание RAM-диска размером ${size_gb} GB..."
+
+    device="$(hdiutil attach -nomount ram://$blocks 2>/dev/null | head -n 1 | tr -d '[:space:]')"
     if [ -z "$device" ]; then
-        echo -e "${RED}Ошибка создания RAM-диска${NC}"
+        err "Ошибка создания RAM-диска"
         return 1
     fi
-    
-    # Форматируем и монтируем
-    diskutil erasevolume HFS+ "$RAMDISK_NAME" $device > /dev/null 2>&1
-    
-    if [ $? -eq 0 ] && [ -d "$RAMDISK_PATH" ]; then
-        echo -e "${GREEN}RAM-диск успешно создан: $RAMDISK_PATH${NC}"
-        return 0
-    else
-        echo -e "${RED}Ошибка форматирования RAM-диска${NC}"
-        hdiutil detach $device > /dev/null 2>&1
-        return 1
-    fi
-}
 
-# Функция для удаления RAM-диска
-remove_ramdisk() {
-    if [ -d "$RAMDISK_PATH" ]; then
-        echo -e "${YELLOW}Удаление RAM-диска...${NC}"
-        diskutil unmount "$RAMDISK_PATH" > /dev/null 2>&1
-        
-        # Находим device и отсоединяем
-        local device=$(diskutil info "$RAMDISK_PATH" 2>/dev/null | grep "Device Node" | awk '{print $3}')
-        if [ -n "$device" ]; then
-            hdiutil detach "$device" > /dev/null 2>&1
-        fi
-        
-        echo -e "${GREEN}RAM-диск удален${NC}"
-    fi
-}
-
-# Функция для создания скрипта автозапуска RAM-диска
-create_ramdisk_script() {
-    local size_gb=$1
-    local script_path="/opt/Vidaa/create-ramdisk.sh"
-    local size_bytes=$((size_gb * 1024 * 1024 * 1024))
-    local blocks=$((size_bytes / 512))
-    
-    cat > "$script_path" << EOF
-#!/bin/bash
-# Скрипт создания RAM-диска для Vidaa
-
-RAMDISK_NAME="$RAMDISK_NAME"
-RAMDISK_PATH="$RAMDISK_PATH"
-SIZE_BYTES=$size_bytes
-BLOCKS=$blocks
-
-# Проверяем, существует ли уже RAM-диск
-if [ -d "\$RAMDISK_PATH" ]; then
-    exit 0
-fi
-
-# Создаём RAM-диск
-DEVICE=\$(hdiutil attach -nomount ram://\$BLOCKS 2>/dev/null)
-
-if [ -n "\$DEVICE" ]; then
-    diskutil erasevolume HFS+ "\$RAMDISK_NAME" \$DEVICE > /dev/null 2>&1
-fi
-EOF
-    
-    sudo chmod +x "$script_path"
-    echo "$script_path"
-}
-
-# Функция для проверки доступности порта (для macOS)
-check_port() {
-    local port=$1
-    if lsof -i :$port -sTCP:LISTEN &> /dev/null; then
-        return 1 # порт занят
-    else
-        return 0 # порт свободен
-    fi
-}
-
-# Функция для получения свободного порта
-get_free_port() {
-    local port=3000
-    while ! check_port $port; do
-        port=$((port + 1))
-        if [ $port -gt 65535 ]; then
-            echo "Ошибка: нет свободных портов в диапазоне 3000-65535"
-            exit 1
+    # HFS+ работает везде; APFS — запасной вариант для новых систем
+    for fmt in "HFS+" "JHFS+" "APFS"; do
+        if diskutil erasevolume "$fmt" "$RAMDISK_NAME" "$device" >/dev/null 2>&1; then
+            created=1
+            break
         fi
     done
-    echo $port
+
+    if [ "$created" -eq 1 ] && [ -d "$RAMDISK_PATH" ]; then
+        chmod 1777 "$RAMDISK_PATH" 2>/dev/null
+        ok "RAM-диск успешно создан: $RAMDISK_PATH"
+        return 0
+    fi
+
+    err "Ошибка форматирования RAM-диска"
+    hdiutil detach "$device" -force >/dev/null 2>&1
+    return 1
 }
 
-# Функция для настройки firewall
+remove_ramdisk() {
+    local device
+    [ -d "$RAMDISK_PATH" ] || return 0
+    warn "Удаление RAM-диска..."
+    device="$(diskutil info "$RAMDISK_PATH" 2>/dev/null | awk -F': *' '/Device Node/ {print $2}' | tr -d '[:space:]')"
+    diskutil unmount force "$RAMDISK_PATH" >/dev/null 2>&1
+    if [ -n "$device" ]; then
+        hdiutil detach "$device" -force >/dev/null 2>&1
+    fi
+    ok "RAM-диск удален"
+}
+
+create_ramdisk_script() {
+    local size_gb="$1" blocks
+    blocks=$(( size_gb * 1024 * 1024 * 1024 / 512 ))
+
+    cat > "$RAMDISK_SH" << EOF
+#!/bin/bash
+# Скрипт создания RAM-диска для Vidaa (создаётся установщиком)
+RAMDISK_NAME="$RAMDISK_NAME"
+RAMDISK_PATH="$RAMDISK_PATH"
+BLOCKS=$blocks
+
+[ -d "\$RAMDISK_PATH" ] && exit 0
+
+DEVICE=\$(hdiutil attach -nomount ram://\$BLOCKS 2>/dev/null | head -n 1 | tr -d '[:space:]')
+[ -n "\$DEVICE" ] || exit 1
+
+for FMT in "HFS+" "JHFS+" "APFS"; do
+    if diskutil erasevolume "\$FMT" "\$RAMDISK_NAME" "\$DEVICE" >/dev/null 2>&1; then
+        chmod 1777 "\$RAMDISK_PATH" 2>/dev/null
+        exit 0
+    fi
+done
+
+hdiutil detach "\$DEVICE" -force >/dev/null 2>&1
+exit 1
+EOF
+    chmod 755 "$RAMDISK_SH"
+}
+
+# --------------------------------------------------------------------------
+# Порты и сеть
+# --------------------------------------------------------------------------
+check_port() {
+    local port="$1"
+    if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+        return 1   # занят
+    fi
+    return 0       # свободен
+}
+
+get_free_port() {
+    local port=3000
+    while ! check_port "$port"; do
+        port=$(( port + 1 ))
+        if [ "$port" -gt 65535 ]; then
+            printf '%s' "0"
+            return 1
+        fi
+    done
+    printf '%s' "$port"
+}
+
+get_lan_ip() {
+    local iface ip
+    iface="$(route -n get default 2>/dev/null | awk '/interface:/ {print $2; exit}')"
+    if [ -n "$iface" ]; then
+        ip="$(ipconfig getifaddr "$iface" 2>/dev/null)"
+        [ -n "$ip" ] && { printf '%s' "$ip"; return 0; }
+    fi
+    for iface in $(networksetup -listallhardwareports 2>/dev/null | awk '/Device:/ {print $2}'); do
+        ip="$(ipconfig getifaddr "$iface" 2>/dev/null)"
+        [ -n "$ip" ] && { printf '%s' "$ip"; return 0; }
+    done
+    ip="$(ifconfig 2>/dev/null | awk '/inet / && $2 != "127.0.0.1" {print $2; exit}')"
+    printf '%s' "${ip:-127.0.0.1}"
+}
+
+# --------------------------------------------------------------------------
+# Firewall
+# --------------------------------------------------------------------------
+allow_app_firewall() {
+    local fw="/usr/libexec/ApplicationFirewall/socketfilterfw"
+    [ -x "$fw" ] || return 0
+    if "$fw" --getglobalstate 2>/dev/null | grep -qi "enabled"; then
+        "$fw" --add "$BIN_PATH" >/dev/null 2>&1
+        "$fw" --unblockapp "$BIN_PATH" >/dev/null 2>&1
+        ok "Приложение добавлено в исключения Application Firewall"
+    fi
+}
+
 configure_firewall() {
-    local port=$1
-    local pf_conf="/etc/pf.conf"
-    local pf_anchor="vidaa"
-    local pf_rules_file="/tmp/pf.vidaa.rules"
-    
-    echo -e "${YELLOW}Настройка firewall для порта $port...${NC}"
-    
-    # Проверяем, включен ли firewall
+    local port="$1" answer
+
+    warn "Настройка пакетного фильтра (pf) для порта $port..."
+
+    mkdir -p /etc/pf.anchors
+    cat > "$PF_ANCHOR_FILE" << EOF
+# Vidaa Server Rules (создано установщиком)
+pass in quick proto tcp from any to any port $port
+EOF
+    chmod 644 "$PF_ANCHOR_FILE"
+
+    if ! grep -q "anchor \"$PF_ANCHOR\"" "$PF_CONF" 2>/dev/null; then
+        [ -f "$PF_CONF" ] || printf '%s\n' "# PF configuration file" > "$PF_CONF"
+        cp "$PF_CONF" "${PF_CONF}.vidaa.bak" 2>/dev/null
+        {
+            printf '%s\n' "anchor \"$PF_ANCHOR\""
+            printf '%s\n' "load anchor \"$PF_ANCHOR\" from \"$PF_ANCHOR_FILE\""
+        } >> "$PF_CONF"
+    fi
+
     if ! pfctl -s info 2>/dev/null | grep -q "Status: Enabled"; then
-        echo -e "${YELLOW}Firewall (pf) в данный момент не включен.${NC}"
-        echo -n "Хотите включить firewall и настроить его? (y/n): "
-        read -r enable_fw
-        if [[ "$enable_fw" =~ ^[YyДд]$ ]]; then
-            # Включаем pf
-            sudo pfctl -e
-            
-            # Создаем backup оригинального конфига если его нет
-            if [ ! -f "$pf_conf" ]; then
-                echo "# PF configuration file" | sudo tee "$pf_conf" > /dev/null
-            fi
-            
-            if ! grep -q "anchor \"$pf_anchor\"" "$pf_conf" 2>/dev/null; then
-                echo "anchor \"$pf_anchor\"" | sudo tee -a "$pf_conf" > /dev/null
-                echo "load anchor \"$pf_anchor\" from \"$pf_rules_file\"" | sudo tee -a "$pf_conf" > /dev/null
-            fi
+        warn "Пакетный фильтр (pf) сейчас выключен."
+        ask "Включить pf и применить правила? (y/n): " answer
+        if is_yes "$answer"; then
+            pfctl -e >/dev/null 2>&1
         else
-            echo -e "${YELLOW}Firewall не будет настроен. Сервер будет доступен только локально.${NC}"
+            warn "pf не включен. Правило записано и применится, если вы включите pf позже."
+            allow_app_firewall
             return 0
         fi
     fi
-    
-    # Создаем правила для нашего порта
-    cat > "$pf_rules_file" << EOF
-# Vidaa Server Rules
-pass in on en0 proto tcp from any to any port $port
-pass in on en1 proto tcp from any to any port $port
-pass in on en2 proto tcp from any to any port $port
-pass in on en3 proto tcp from any to any port $port
-EOF
-    
-    # Загружаем правила
-    sudo pfctl -a "$pf_anchor" -f "$pf_rules_file" 2>/dev/null
-    
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}Firewall успешно настроен для порта $port${NC}"
-        
-        # Проверяем, не блокирует ли macOS Application Firewall
-        if /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate | grep -q "disabled"; then
-            echo -e "${YELLOW}Внимание: Application Firewall (socketfilterfw) отключен.${NC}"
-            echo -e "${YELLOW}Убедитесь, что в Системных настройках > Защита и безопасность > Брандмауэр разрешен доступ для приложений.${NC}"
-        fi
-        
+
+    if pfctl -f "$PF_CONF" >/dev/null 2>&1; then
+        ok "Firewall успешно настроен для порта $port"
+        allow_app_firewall
         return 0
-    else
-        echo -e "${RED}Ошибка при настройке firewall${NC}"
-        return 1
     fi
+
+    err "Не удалось применить правила pf (проверьте: sudo pfctl -f $PF_CONF)"
+    allow_app_firewall
+    return 1
 }
 
-# Функция для удаления правил firewall
 remove_firewall_rules() {
-    local pf_anchor="vidaa"
-    
-    echo -e "${YELLOW}Удаление правил firewall для Vidaa...${NC}"
-    
-    # Удаляем anchor
-    sudo pfctl -a "$pf_anchor" -F all 2>/dev/null
-    
-    # Удаляем anchor из основного конфига
-    if [ -f "/etc/pf.conf" ]; then
-        sudo sed -i '' "/anchor \"$pf_anchor\"/d" "/etc/pf.conf"
-        sudo sed -i '' "/load anchor \"$pf_anchor\"/d" "/etc/pf.conf"
+    local fw="/usr/libexec/ApplicationFirewall/socketfilterfw"
+    warn "Удаление правил firewall для Vidaa..."
+    pfctl -a "$PF_ANCHOR" -F all >/dev/null 2>&1
+    if [ -f "$PF_CONF" ]; then
+        sed -i '' "/anchor \"$PF_ANCHOR\"/d" "$PF_CONF" 2>/dev/null
+        sed -i '' "/load anchor \"$PF_ANCHOR\"/d" "$PF_CONF" 2>/dev/null
+        pfctl -f "$PF_CONF" >/dev/null 2>&1
     fi
-    
-    echo -e "${GREEN}Правила firewall удалены${NC}"
+    rm -f "$PF_ANCHOR_FILE"
+    [ -x "$fw" ] && "$fw" --remove "$BIN_PATH" >/dev/null 2>&1
+    ok "Правила firewall удалены"
 }
 
-# Функция для создания launchd plist (аналог systemd сервиса)
+# --------------------------------------------------------------------------
+# launchd
+# --------------------------------------------------------------------------
+# launchctl load/unload объявлены устаревшими начиная с 10.10; на свежих
+# системах используем современный синтаксис bootstrap/bootout с откатом.
+svc_stop() {
+    local label="$1" plist="$2"
+    if os_at_least 1011; then
+        launchctl bootout "system/$label" >/dev/null 2>&1
+    fi
+    launchctl unload -w "$plist" >/dev/null 2>&1
+    return 0
+}
+
+svc_start() {
+    local label="$1" plist="$2"
+    [ -f "$plist" ] || return 1
+    chown root:wheel "$plist" 2>/dev/null
+    chmod 644 "$plist" 2>/dev/null
+    if os_at_least 1011; then
+        launchctl enable "system/$label" >/dev/null 2>&1
+        launchctl bootstrap system "$plist" >/dev/null 2>&1 && return 0
+    fi
+    launchctl load -w "$plist" >/dev/null 2>&1 && return 0
+    return 1
+}
+
+svc_running() {
+    local label="$1"
+    if os_at_least 1011; then
+        launchctl print "system/$label" >/dev/null 2>&1 && return 0
+    fi
+    launchctl list 2>/dev/null | grep -q "$label" && return 0
+    return 1
+}
+
+create_start_script() {
+    cat > "$START_SH" << EOF
+#!/bin/bash
+# Обёртка запуска Vidaa (создаётся установщиком)
+[ -x "$RAMDISK_SH" ] && "$RAMDISK_SH" >/dev/null 2>&1
+exec "$BIN_PATH"
+EOF
+    chmod 755 "$START_SH"
+}
+
 create_launchd_service() {
-    local port=$1
-    local plist_path="$HOME/Library/LaunchAgents/com.vidaa.server.plist"
-    
-    mkdir -p "$HOME/Library/LaunchAgents"
-    
-    cat > "$plist_path" << EOF
+    local port="$1"
+
+    create_start_script
+
+    cat > "$SERVER_PLIST" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.vidaa.server</string>
+    <string>$SERVER_LABEL</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/Vidaa/myapp-macos</string>
+        <string>$START_SH</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
@@ -359,455 +531,492 @@ create_launchd_service() {
         <string>0.0.0.0</string>
     </dict>
     <key>WorkingDirectory</key>
-    <string>/opt/Vidaa</string>
+    <string>$INSTALL_DIR</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
     <key>StandardOutPath</key>
-    <string>/tmp/vidaa.log</string>
+    <string>/var/log/vidaa.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/vidaa.log</string>
+    <string>/var/log/vidaa.log</string>
 </dict>
 </plist>
 EOF
-    
-    # Загружаем сервис
-    launchctl unload "$plist_path" 2>/dev/null
-    launchctl load "$plist_path"
-    
-    if [ $? -eq 0 ]; then
-        return 0
-    else
-        return 1
-    fi
+
+    svc_stop "$SERVER_LABEL" "$SERVER_PLIST"
+    svc_start "$SERVER_LABEL" "$SERVER_PLIST"
 }
 
-# Функция для установки
-install_vidaa() {
-    echo -e "${GREEN}Начинаем установку Vidaa для macOS...${NC}"
-    
-    # Проверяем и устанавливаем unzip
-    check_and_install_unzip
-    
-    # Определяем архитектуру
-    local arch=$(detect_architecture)
-    echo -e "${GREEN}Обнаружена архитектура: $arch${NC}"
-    
-    # Выбираем версию приложения (правильные имена)
-    local app_file=""
-    if [ "$arch" = "x64" ]; then
+create_ramdisk_service() {
+    cat > "$RAMDISK_PLIST" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$RAMDISK_LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$RAMDISK_SH</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
+EOF
+    svc_stop "$RAMDISK_LABEL" "$RAMDISK_PLIST"
+    svc_start "$RAMDISK_LABEL" "$RAMDISK_PLIST"
+}
+
+# Удаление LaunchAgent'ов от предыдущих версий установщика
+remove_legacy_agents() {
+    local d p
+    for d in "$REAL_HOME" "/var/root" "/Users/$REAL_USER"; do
+        p="$d/Library/LaunchAgents/com.vidaa.server.plist"
+        [ -f "$p" ] || continue
+        launchctl unload "$p" >/dev/null 2>&1
+        rm -f "$p"
+    done
+}
+
+read_installed_port() {
+    local p=""
+    if [ -f "$CONF_FILE" ]; then
+        p="$(awk -F= '/^VIDAA_PORT=/ {print $2; exit}' "$CONF_FILE" | tr -cd '0-9')"
+    fi
+    if [ -z "$p" ] && [ -f "$SERVER_PLIST" ]; then
+        p="$(/usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:PORT" "$SERVER_PLIST" 2>/dev/null | tr -cd '0-9')"
+    fi
+    printf '%s' "$p"
+}
+
+save_conf() {
+    cat > "$CONF_FILE" << EOF
+VIDAA_PORT=$1
+VIDAA_RAMDISK_GB=$2
+VIDAA_ARCH=$ARCH
+VIDAA_OS=$OS_VER
+EOF
+    chmod 644 "$CONF_FILE"
+}
+
+# --------------------------------------------------------------------------
+# Компоненты: приложение, ffmpeg, yt-dlp
+# --------------------------------------------------------------------------
+install_app_binary() {
+    local app_file tmpdir
+    if [ "$ARCH" = "x64" ]; then
         app_file="TorrStream-macos-x64"
     else
         app_file="TorrStream-macos-arm64"
     fi
-    
-    # Создаем директорию
-    sudo mkdir -p /opt/Vidaa/
-    cd /opt/Vidaa/ || exit 1
-    
-    # Скачиваем архив приложения
-    echo "Скачивание архива приложения..."
-    download_file "https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-macos.zip" "TorrStream-macos.zip"
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при скачивании архива${NC}"
-        exit 1
+
+    tmpdir="$INSTALL_DIR/.dl"
+    rm -rf "$tmpdir"; mkdir -p "$tmpdir"
+
+    plain "Скачивание архива приложения..."
+    if ! download_file "$APP_ZIP_URL" "$tmpdir/TorrStream-macos.zip"; then
+        err "Ошибка при скачивании архива"
+        rm -rf "$tmpdir"
+        return 1
     fi
-    
-    # Распаковываем
-    echo "Распаковка архива..."
-    sudo unzip -q TorrStream-macos.zip
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при распаковке архива${NC}"
-        exit 1
+
+    plain "Распаковка архива..."
+    if ! extract_zip "$tmpdir/TorrStream-macos.zip" "$INSTALL_DIR"; then
+        err "Ошибка при распаковке архива"
+        rm -rf "$tmpdir"
+        return 1
     fi
-    
-    # Удаляем архив
-    sudo rm -rf /opt/Vidaa/TorrStream-macos.zip
-    
-    # Переименовываем бинарник в соответствии с архитектурой
-    if [ -f "/opt/Vidaa/$app_file" ]; then
-        sudo mv "/opt/Vidaa/$app_file" "/opt/Vidaa/myapp-macos"
-        echo -e "${GREEN}Найден и переименован бинарник: $app_file${NC}"
-    else
-        echo -e "${RED}Бинарник $app_file не найден в архиве${NC}"
-        echo -e "${YELLOW}Доступные файлы в архиве:${NC}"
-        ls -la /opt/Vidaa/
-        exit 1
+    rm -rf "$tmpdir"
+
+    if [ ! -f "$INSTALL_DIR/$app_file" ]; then
+        err "Бинарник $app_file не найден в архиве"
+        warn "Доступные файлы:"
+        ls -la "$INSTALL_DIR"
+        return 1
     fi
-    
-    # Создаем директорию для ffmpeg
-    sudo mkdir -p /opt/Vidaa/ffmpeg
-    cd /opt/Vidaa/ffmpeg || exit 1
-    
-    # Выбираем версию ffmpeg
-    local ffmpeg_url=""
-    if [ "$arch" = "x64" ]; then
-        ffmpeg_url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_mac64-gpl.tar.xz"
-    else
-        ffmpeg_url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_macarm64-gpl.tar.xz"
-    fi
-    
-    # Скачиваем ffmpeg
-    echo "Скачивание ffmpeg..."
-    download_file "$ffmpeg_url" "jellyfin-ffmpeg.tar.xz"
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при скачивании ffmpeg${NC}"
-        exit 1
-    fi
-    
-    # Распаковываем tar.xz
-    echo "Распаковка ffmpeg..."
-    sudo tar -xf jellyfin-ffmpeg.tar.xz
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при распаковке ffmpeg${NC}"
-        exit 1
-    fi
-    
-    # Копируем бинарники из распакованной папки
-    sudo find . -name "ffmpeg" -type f -exec cp {} /opt/Vidaa/ffmpeg/ \;
-    sudo find . -name "ffprobe" -type f -exec cp {} /opt/Vidaa/ffmpeg/ \;
-    
-    # Удаляем распакованную папку и архив
-    sudo rm -rf jellyfin-ffmpeg_* && sudo rm -f jellyfin-ffmpeg.tar.xz
-    
-    # Скачиваем yt-dlp для macOS
-    echo "Скачивание yt-dlp..."
-    download_file "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_macos" "yt-dlp"
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при скачивании yt-dlp${NC}"
-        exit 1
-    fi
-    
-    # Устанавливаем права
-    sudo chmod 755 /opt/Vidaa/myapp-macos
-    sudo chmod 755 /opt/Vidaa/ffmpeg/ffmpeg
-    sudo chmod 755 /opt/Vidaa/ffmpeg/ffprobe
-    sudo chmod 755 /opt/Vidaa/ffmpeg/yt-dlp
-    
-    # ==========================================
-    # ВОПРОС ПРО RAM-ДИСК (ДО ВЫБОРА ПОРТА)
-    # ==========================================
-    local ramdisk_size=$(setup_ramdisk)
-    
-    # Создаём RAM-диск если выбран размер
-    if [ -n "$ramdisk_size" ]; then
-        create_ramdisk "$ramdisk_size"
-        
-        # Создаем скрипт автозапуска
-        if [ $? -eq 0 ]; then
-            create_ramdisk_script "$ramdisk_size" > /dev/null
-        fi
-    fi
-    
-    # Запрос порта
-    local selected_port=""
-    while true; do
-        echo -e "${YELLOW}Введите порт для Vidaa сервера (или нажмите Enter для автоматического выбора):${NC}"
-        read -r user_port
-        
-        if [ -z "$user_port" ]; then
-            # Автоматический выбор свободного порта
-            selected_port=$(get_free_port)
-            echo -e "${GREEN}Выбран свободный порт: $selected_port${NC}"
-            break
-        elif [[ "$user_port" =~ ^[0-9]+$ ]] && [ "$user_port" -ge 1 ] && [ "$user_port" -le 65535 ]; then
-            if check_port "$user_port"; then
-                selected_port=$user_port
-                echo -e "${GREEN}Порт $selected_port доступен${NC}"
-                break
-            else
-                echo -e "${RED}Порт $user_port уже занят. Пожалуйста, выберите другой порт.${NC}"
-            fi
-        else
-            echo -e "${RED}Пожалуйста, введите корректный номер порта (1-65535)${NC}"
-        fi
-    done
-    
-    # Создаем launchd сервис
-    create_launchd_service "$selected_port"
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при создании launchd сервиса${NC}"
-        exit 1
-    fi
-    
-    # Запрос на настройку firewall
-    echo -e "${YELLOW}Хотите открыть порт $selected_port в firewall для доступа из сети?${NC}"
-    echo -n "(y/n): "
-    read -r configure_fw
-    
-    if [[ "$configure_fw" =~ ^[YyДд]$ ]]; then
-        configure_firewall "$selected_port"
-    else
-        echo -e "${YELLOW}Firewall не настроен. Сервер будет доступен только локально.${NC}"
-    fi
-    
-    # Получаем IP адрес
-    local ip_addr=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -n 1)
-    
-    echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}Установка завершена успешно!${NC}"
-    echo -e "${GREEN}Vidaa сервер доступен:${NC}"
-    echo -e "${BLUE}  Локально: http://localhost:$selected_port${NC}"
-    echo -e "${BLUE}  В сети: http://$ip_addr:$selected_port${NC}"
-    if [ -n "$ramdisk_size" ]; then
-        echo -e "${GREEN}RAM-диск (${ramdisk_size} GB) успешно создан${NC}"
-        echo -e "${YELLOW}Внимание: RAM-диск удаляется при перезагрузке!${NC}"
-        echo -e "${YELLOW}Для автоматического создания добавьте скрипт в Login Items:${NC}"
-        echo -e "${YELLOW}  Системные настройки > Основные > Объекты входа${NC}"
-        echo -e "${YELLOW}  Добавьте: /opt/Vidaa/create-ramdisk.sh${NC}"
-    fi
-    echo -e "${GREEN}========================================${NC}"
-    echo -e "${YELLOW}Для управления сервисом используйте:${NC}"
-    echo "  launchctl load ~/Library/LaunchAgents/com.vidaa.server.plist   # запуск"
-    echo "  launchctl unload ~/Library/LaunchAgents/com.vidaa.server.plist # остановка"
-    echo "  tail -f /tmp/vidaa.log                                         # просмотр логов"
-    
-    if [[ "$configure_fw" =~ ^[YyДд]$ ]]; then
-        echo -e "${YELLOW}Для проверки правил firewall: pfctl -s rules${NC}"
-        echo -e "${YELLOW}Для просмотра активных соединений: netstat -an | grep $selected_port${NC}"
-    fi
+
+    rm -f "$BIN_PATH"
+    mv "$INSTALL_DIR/$app_file" "$BIN_PATH"
+    # лишние бинарники другой архитектуры не нужны
+    rm -f "$INSTALL_DIR/TorrStream-macos-x64" "$INSTALL_DIR/TorrStream-macos-arm64"
+    fix_binary "$BIN_PATH"
+    ok "Установлен бинарник: $app_file"
+    return 0
 }
 
-# Функция для обновления
-update_vidaa() {
-    echo -e "${GREEN}Начинаем обновление Vidaa...${NC}"
-    
-    # Проверяем и устанавливаем unzip если нужно
-    check_and_install_unzip
-    
-    # Проверяем существование директории
-    if [ ! -d "/opt/Vidaa/" ]; then
-        echo -e "${RED}Директория /opt/Vidaa/ не существует. Сначала выполните установку.${NC}"
+install_ffmpeg() {
+    local url tmpdir found
+    mkdir -p "$INSTALL_DIR/ffmpeg"
+
+    if [ "$ARCH" = "x64" ]; then
+        url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/${FFMPEG_TAG}/jellyfin-ffmpeg_${FFMPEG_VER}_portable_mac64-gpl.tar.xz"
+    else
+        url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/${FFMPEG_TAG}/jellyfin-ffmpeg_${FFMPEG_VER}_portable_macarm64-gpl.tar.xz"
+    fi
+
+    # распаковываем во временный каталог, иначе find находит уже скопированные файлы
+    tmpdir="$INSTALL_DIR/.ffmpeg-tmp"
+    rm -rf "$tmpdir"; mkdir -p "$tmpdir"
+
+    plain "Скачивание ffmpeg..."
+    if ! download_file "$url" "$tmpdir/jellyfin-ffmpeg.tar.xz"; then
+        err "Ошибка при скачивании ffmpeg"
+        rm -rf "$tmpdir"
+        return 1
+    fi
+
+    plain "Распаковка ffmpeg..."
+    if ! tar -xf "$tmpdir/jellyfin-ffmpeg.tar.xz" -C "$tmpdir"; then
+        err "Ошибка при распаковке ffmpeg"
+        rm -rf "$tmpdir"
+        return 1
+    fi
+
+    for found in ffmpeg ffprobe; do
+        local src
+        src="$(find "$tmpdir" -type f -name "$found" -perm -u+x 2>/dev/null | head -n 1)"
+        [ -n "$src" ] || src="$(find "$tmpdir" -type f -name "$found" 2>/dev/null | head -n 1)"
+        if [ -n "$src" ]; then
+            cp -f "$src" "$INSTALL_DIR/ffmpeg/$found"
+            fix_binary "$INSTALL_DIR/ffmpeg/$found"
+        fi
+    done
+    rm -rf "$tmpdir"
+
+    if [ ! -x "$INSTALL_DIR/ffmpeg/ffmpeg" ]; then
+        err "ffmpeg не найден в архиве"
+        return 1
+    fi
+
+    # проверяем, что сборка запускается на этой версии macOS
+    if ! "$INSTALL_DIR/ffmpeg/ffmpeg" -version >/dev/null 2>&1; then
+        warn "Скачанный ffmpeg не запускается на macOS $OS_VER."
+        if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
+            warn "Использую системный ffmpeg из PATH."
+            cp -f "$(command -v ffmpeg)"  "$INSTALL_DIR/ffmpeg/ffmpeg"
+            cp -f "$(command -v ffprobe)" "$INSTALL_DIR/ffmpeg/ffprobe"
+            chmod 755 "$INSTALL_DIR/ffmpeg/ffmpeg" "$INSTALL_DIR/ffmpeg/ffprobe"
+        else
+            err "Установите ffmpeg вручную (например: brew install ffmpeg) и скопируйте"
+            err "ffmpeg и ffprobe в $INSTALL_DIR/ffmpeg/"
+            return 1
+        fi
+    fi
+
+    ok "ffmpeg установлен"
+    return 0
+}
+
+install_ytdlp() {
+    local name url dest
+    mkdir -p "$INSTALL_DIR/ffmpeg"
+    dest="$INSTALL_DIR/ffmpeg/yt-dlp"
+
+    # сборка yt-dlp_macos требует macOS 10.15+, для старых систем есть legacy
+    if os_at_least 1015; then
+        name="yt-dlp_macos"
+    else
+        name="yt-dlp_macos_legacy"
+    fi
+
+    plain "Скачивание yt-dlp ($name)..."
+    url="https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_TAG}/${name}"
+    if ! download_file "$url" "$dest"; then
+        warn "Не удалось скачать закреплённую версию, пробую latest..."
+        url="https://github.com/yt-dlp/yt-dlp/releases/latest/download/${name}"
+        if ! download_file "$url" "$dest"; then
+            err "Ошибка при скачивании yt-dlp"
+            return 1
+        fi
+    fi
+
+    fix_binary "$dest"
+    ok "yt-dlp установлен"
+    return 0
+}
+
+print_service_hints() {
+    plain ""
+    warn "Управление сервисом:"
+    if os_at_least 1011; then
+        plain "  sudo launchctl bootout system/$SERVER_LABEL              # остановить"
+        plain "  sudo launchctl bootstrap system $SERVER_PLIST            # запустить"
+        plain "  sudo launchctl kickstart -k system/$SERVER_LABEL         # перезапустить"
+    else
+        plain "  sudo launchctl unload $SERVER_PLIST   # остановить"
+        plain "  sudo launchctl load -w $SERVER_PLIST  # запустить"
+    fi
+    plain "  tail -f /var/log/vidaa.log                                   # логи"
+}
+
+# --------------------------------------------------------------------------
+# Установка
+# --------------------------------------------------------------------------
+install_vidaa() {
+    local selected_port user_port answer ip_addr
+
+    ok "Начинаем установку Vidaa для macOS $OS_VER..."
+    detect_architecture || exit 1
+    ok "Обнаружена архитектура: $ARCH"
+
+    mkdir -p "$INSTALL_DIR"
+    cd "$INSTALL_DIR" || exit 1
+
+    install_app_binary || exit 1
+    install_ffmpeg     || exit 1
+    install_ytdlp      || exit 1
+
+    # RAM-диск (до выбора порта)
+    setup_ramdisk
+    if [ -n "$RAMDISK_SIZE_GB" ]; then
+        if create_ramdisk "$RAMDISK_SIZE_GB"; then
+            create_ramdisk_script "$RAMDISK_SIZE_GB"
+            create_ramdisk_service
+        else
+            RAMDISK_SIZE_GB=""
+        fi
+    fi
+
+    # Порт
+    selected_port=""
+    while true; do
+        ask "${YELLOW}Введите порт для Vidaa сервера (Enter — выбрать автоматически): ${NC}" user_port
+        if [ -z "$user_port" ]; then
+            selected_port="$(get_free_port)"
+            if [ -z "$selected_port" ] || [ "$selected_port" = "0" ]; then
+                err "Нет свободных портов в диапазоне 3000-65535"
+                exit 1
+            fi
+            ok "Выбран свободный порт: $selected_port"
+            break
+        fi
+        case "$user_port" in
+            ''|*[!0-9]*) err "Введите корректный номер порта (1-65535)"; continue ;;
+        esac
+        if [ "$user_port" -lt 1 ] || [ "$user_port" -gt 65535 ]; then
+            err "Введите корректный номер порта (1-65535)"
+            continue
+        fi
+        if check_port "$user_port"; then
+            selected_port="$user_port"
+            ok "Порт $selected_port доступен"
+            break
+        fi
+        err "Порт $user_port уже занят. Выберите другой."
+    done
+
+    remove_legacy_agents
+    if ! create_launchd_service "$selected_port"; then
+        err "Ошибка при создании launchd сервиса"
+        err "Подробности: launchctl print system/$SERVER_LABEL"
         exit 1
     fi
-    
-    # ==========================================
-    # ПРОВЕРКА RAM-ДИСКА
-    # ==========================================
-    echo ""
-    echo "=========================================="
-    echo "  Проверка RAM-диска"
-    echo "=========================================="
-    
-    local create_ramdisk_now="N"
-    local ramdisk_size=""
-    
-    # Проверяем, существует ли RAM-диск
-    if [ -d "$RAMDISK_PATH" ]; then
-        echo -e "${GREEN}RAM-диск $RAMDISK_PATH уже существует${NC}"
-        local ramdisk_info=$(diskutil info "$RAMDISK_PATH" 2>/dev/null | grep "Volume Total Space" | awk '{print $4, $5}')
-        echo -e "${BLUE}Размер: ${ramdisk_info}${NC}"
+    save_conf "$selected_port" "$RAMDISK_SIZE_GB"
+
+    ask "${YELLOW}Открыть порт $selected_port в firewall для доступа из сети? (y/n): ${NC}" answer
+    if is_yes "$answer"; then
+        configure_firewall "$selected_port"
     else
-        echo -e "${YELLOW}RAM-диск $RAMDISK_PATH не обнаружен${NC}"
-        echo ""
-        echo -e "${YELLOW}Хотите создать RAM-диск для HLS сегментов?${NC}"
-        echo -e "${YELLOW}Это ускорит работу сервера и снизит износ SSD.${NC}"
-        echo -n "Создать RAM-диск? (y/n): "
-        read -r create_ramdisk_now
-        
-        if [[ "$create_ramdisk_now" =~ ^[YyДд]$ ]]; then
-            ramdisk_size=$(setup_ramdisk)
-            
-            if [ -n "$ramdisk_size" ]; then
-                create_ramdisk "$ramdisk_size"
-                
-                if [ $? -eq 0 ]; then
-                    create_ramdisk_script "$ramdisk_size" > /dev/null
+        warn "Firewall не настроен. Сервер будет доступен только локально."
+        allow_app_firewall
+    fi
+
+    ip_addr="$(get_lan_ip)"
+    plain ""
+    ok "========================================"
+    ok "Установка завершена успешно!"
+    ok "Vidaa сервер доступен:"
+    info "  Локально: http://localhost:$selected_port"
+    info "  В сети:   http://$ip_addr:$selected_port"
+    if [ -n "$RAMDISK_SIZE_GB" ]; then
+        ok "RAM-диск (${RAMDISK_SIZE_GB} GB) создан и будет пересоздаваться при загрузке"
+    fi
+    ok "========================================"
+    if ! svc_running "$SERVER_LABEL"; then
+        warn "Сервис пока не отображается как запущенный — проверьте /var/log/vidaa.log"
+    fi
+    print_service_hints
+}
+
+# --------------------------------------------------------------------------
+# Обновление
+# --------------------------------------------------------------------------
+update_vidaa() {
+    local answer port ip_addr ramdisk_info
+
+    ok "Начинаем обновление Vidaa..."
+    if [ ! -d "$INSTALL_DIR" ]; then
+        err "Директория $INSTALL_DIR не существует. Сначала выполните установку."
+        exit 1
+    fi
+
+    detect_architecture || exit 1
+    ok "Обнаружена архитектура: $ARCH"
+
+    plain ""
+    plain "=========================================="
+    plain "  Проверка RAM-диска"
+    plain "=========================================="
+    RAMDISK_SIZE_GB=""
+    if [ -d "$RAMDISK_PATH" ]; then
+        ok "RAM-диск $RAMDISK_PATH уже существует"
+        ramdisk_info="$(diskutil info "$RAMDISK_PATH" 2>/dev/null | awk -F': *' '/Total Space|Volume Total Space/ {print $2; exit}')"
+        [ -n "$ramdisk_info" ] && info "Размер: $ramdisk_info"
+    else
+        warn "RAM-диск $RAMDISK_PATH не обнаружен"
+        warn "RAM-диск ускоряет работу с HLS-сегментами и снижает износ SSD."
+        ask "Создать RAM-диск? (y/n): " answer
+        if is_yes "$answer"; then
+            setup_ramdisk
+            if [ -n "$RAMDISK_SIZE_GB" ]; then
+                if create_ramdisk "$RAMDISK_SIZE_GB"; then
+                    create_ramdisk_script "$RAMDISK_SIZE_GB"
+                    create_ramdisk_service
+                else
+                    RAMDISK_SIZE_GB=""
                 fi
             fi
         else
-            echo -e "${YELLOW}RAM-диск не будет создан${NC}"
+            warn "RAM-диск не будет создан"
         fi
     fi
-    echo ""
-    
-    # Определяем архитектуру
-    local arch=$(detect_architecture)
-    echo -e "${GREEN}Обнаружена архитектура: $arch${NC}"
-    
-    # Выбираем версию приложения (правильные имена)
-    local app_file=""
-    if [ "$arch" = "x64" ]; then
-        app_file="TorrStream-macos-x64"
+    plain ""
+
+    cd "$INSTALL_DIR" || exit 1
+
+    plain "Остановка сервиса..."
+    svc_stop "$SERVER_LABEL" "$SERVER_PLIST"
+
+    rm -rf "$INSTALL_DIR/public"
+    install_app_binary || exit 1
+    install_ytdlp      || exit 1
+
+    # ffmpeg переустанавливаем только если его нет или он не запускается
+    if [ ! -x "$INSTALL_DIR/ffmpeg/ffmpeg" ] || ! "$INSTALL_DIR/ffmpeg/ffmpeg" -version >/dev/null 2>&1; then
+        install_ffmpeg || exit 1
     else
-        app_file="TorrStream-macos-arm64"
+        fix_binary "$INSTALL_DIR/ffmpeg/ffmpeg"
+        fix_binary "$INSTALL_DIR/ffmpeg/ffprobe"
     fi
-    
-    cd /opt/Vidaa/ || exit 1
-    
-    # Скачиваем архив
-    echo "Скачивание обновления..."
-    download_file "https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-macos.zip" "TorrStream-macos.zip"
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при скачивании архива${NC}"
+
+    port="$(read_installed_port)"
+    if [ -z "$port" ]; then
+        warn "Не удалось определить сохранённый порт, подбираю свободный..."
+        port="$(get_free_port)"
+    fi
+
+    remove_legacy_agents
+    plain "Перезапуск сервиса..."
+    if ! create_launchd_service "$port"; then
+        err "Ошибка при перезапуске сервиса"
         exit 1
     fi
-    
-    # Распаковываем с заменой файлов
-    echo "Распаковка обновления..."
-    sudo rm -rf /opt/Vidaa/public
-    sudo unzip -q -o TorrStream-macos.zip
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при распаковке архива${NC}"
-        exit 1
+
+    local saved_ramdisk="$RAMDISK_SIZE_GB"
+    if [ -z "$saved_ramdisk" ] && [ -f "$CONF_FILE" ]; then
+        saved_ramdisk="$(awk -F= '/^VIDAA_RAMDISK_GB=/ {print $2; exit}' "$CONF_FILE" | tr -cd '0-9')"
     fi
-    
-    # Удаляем архив
-    sudo rm -rf /opt/Vidaa/TorrStream-macos.zip
-    
-    # Переименовываем бинарник
-    if [ -f "/opt/Vidaa/$app_file" ]; then
-        sudo mv "/opt/Vidaa/$app_file" "/opt/Vidaa/myapp-macos"
-        echo -e "${GREEN}Обновлен бинарник: $app_file${NC}"
-    else
-        echo -e "${RED}Бинарник $app_file не найден в архиве${NC}"
-        exit 1
+    save_conf "$port" "$saved_ramdisk"
+
+    ip_addr="$(get_lan_ip)"
+    ok "========================================"
+    ok "Обновление завершено успешно!"
+    info "  Локально: http://localhost:$port"
+    info "  В сети:   http://$ip_addr:$port"
+    if [ -d "$RAMDISK_PATH" ]; then
+        ok "RAM-диск активен"
     fi
-    
-    # Обновляем yt-dlp
-    echo "Обновление yt-dlp..."
-    download_file "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_macos" "/opt/Vidaa/ffmpeg/yt-dlp"
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при скачивании yt-dlp${NC}"
-        exit 1
-    fi
-    
-    # Обновляем права
-    sudo chmod 755 /opt/Vidaa/myapp-macos
-    sudo chmod 755 /opt/Vidaa/ffmpeg/ffmpeg
-    sudo chmod 755 /opt/Vidaa/ffmpeg/ffprobe
-    sudo chmod 755 /opt/Vidaa/ffmpeg/yt-dlp
-    
-    # Перезапускаем сервис
-    echo "Перезапуск сервиса..."
-    launchctl unload "$HOME/Library/LaunchAgents/com.vidaa.server.plist" 2>/dev/null
-    launchctl load "$HOME/Library/LaunchAgents/com.vidaa.server.plist"
-    
-    if [ $? -eq 0 ]; then
-        # Получаем информацию о сервисе
-        local port=$(grep -A1 "PORT" "$HOME/Library/LaunchAgents/com.vidaa.server.plist" | grep "<string>" | sed 's/.*<string>\(.*\)<\/string>.*/\1/')
-        local ip_addr=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -n 1)
-        echo -e "${GREEN}========================================${NC}"
-        echo -e "${GREEN}Обновление завершено успешно!${NC}"
-        echo -e "${GREEN}Vidaa сервер доступен по адресу: http://$ip_addr:$port${NC}"
-        if [ -d "$RAMDISK_PATH" ]; then
-            local ramdisk_info=$(diskutil info "$RAMDISK_PATH" 2>/dev/null | grep "Volume Total Space" | awk '{print $4, $5}')
-            echo -e "${GREEN}RAM-диск активен: ${ramdisk_info}${NC}"
-        fi
-        echo -e "${GREEN}========================================${NC}"
-    else
-        echo -e "${RED}Ошибка при перезапуске сервиса${NC}"
-        exit 1
-    fi
+    ok "========================================"
+    print_service_hints
 }
 
-# Функция для удаления
+# --------------------------------------------------------------------------
+# Удаление
+# --------------------------------------------------------------------------
 uninstall_vidaa() {
-    echo -e "${YELLOW}Начинаем удаление Vidaa...${NC}"
-    
-    # Запрашиваем подтверждение
-    echo -e "${RED}ВНИМАНИЕ: Это действие полностью удалит Vidaa и все его данные!${NC}"
-    echo -n "Вы уверены, что хотите продолжить? (y/n): "
-    read -r confirm
-    
-    if [[ ! "$confirm" =~ ^[YyДд]$ ]]; then
-        echo -e "${YELLOW}Удаление отменено.${NC}"
+    local confirm config_dir
+
+    warn "Начинаем удаление Vidaa..."
+    err "ВНИМАНИЕ: Это действие полностью удалит Vidaa и все его данные!"
+    ask "Вы уверены, что хотите продолжить? (y/n): " confirm
+    if ! is_yes "$confirm"; then
+        warn "Удаление отменено."
         return 0
     fi
-    
-    # Останавливаем и удаляем launchd сервис
-    echo "Остановка сервиса vidaa..."
-    launchctl unload "$HOME/Library/LaunchAgents/com.vidaa.server.plist" 2>/dev/null
-    
-    # Удаляем файл plist
-    echo "Удаление файла сервиса..."
-    rm -f "$HOME/Library/LaunchAgents/com.vidaa.server.plist"
-    
-    # Удаляем RAM-диск
+
+    plain "Остановка сервисов..."
+    svc_stop "$SERVER_LABEL"  "$SERVER_PLIST"
+    svc_stop "$RAMDISK_LABEL" "$RAMDISK_PLIST"
+    rm -f "$SERVER_PLIST" "$RAMDISK_PLIST"
+    remove_legacy_agents
+
     remove_ramdisk
-    
-    # Удаляем скрипт создания RAM-диска
-    if [ -f "/opt/Vidaa/create-ramdisk.sh" ]; then
-        echo "Удаление скрипта создания RAM-диска..."
-        sudo rm -f "/opt/Vidaa/create-ramdisk.sh"
-    fi
-    
-    # Удаляем правила firewall
     remove_firewall_rules
-    
-    # Удаляем директорию установки
-    if [ -d "/opt/Vidaa/" ]; then
-        echo "Удаление /opt/Vidaa/..."
-        sudo rm -rf /opt/Vidaa/
+
+    if [ -d "$INSTALL_DIR" ]; then
+        plain "Удаление $INSTALL_DIR..."
+        rm -rf "$INSTALL_DIR"
     else
-        echo -e "${YELLOW}Директория /opt/Vidaa/ не найдена${NC}"
+        warn "Директория $INSTALL_DIR не найдена"
     fi
-    
-    # Удаляем конфигурационную директорию в домашнем каталоге
-    local config_dir="$HOME/.videoloop-server"
+
+    rm -f /var/log/vidaa.log /tmp/vidaa.log
+
+    config_dir="$REAL_HOME/.videoloop-server"
     if [ -d "$config_dir" ]; then
-        echo "Удаление $config_dir..."
+        plain "Удаление $config_dir..."
         rm -rf "$config_dir"
     else
-        echo -e "${YELLOW}Директория $config_dir не найдена${NC}"
+        warn "Директория $config_dir не найдена"
     fi
-    
-    echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}Удаление Vidaa завершено успешно!${NC}"
-    echo -e "${GREEN}========================================${NC}"
+
+    ok "========================================"
+    ok "Удаление Vidaa завершено успешно!"
+    ok "========================================"
 }
 
-# Проверка, что скрипт запущен на macOS
-if [[ "$(uname)" != "Darwin" ]]; then
-    echo -e "${RED}Этот скрипт предназначен только для macOS${NC}"
+# --------------------------------------------------------------------------
+# Проверка обязательных утилит
+# --------------------------------------------------------------------------
+MISSING=""
+for cmd in curl tar lsof hdiutil diskutil launchctl sw_vers vm_stat sysctl awk sed; do
+    command -v "$cmd" >/dev/null 2>&1 || MISSING="$MISSING $cmd"
+done
+if [ -n "$MISSING" ]; then
+    err "Не найдены обязательные утилиты:$MISSING"
     exit 1
 fi
+if ! command -v ditto >/dev/null 2>&1 && ! command -v unzip >/dev/null 2>&1; then
+    err "Нужен ditto или unzip для распаковки архива"
+    exit 1
+fi
+command -v pfctl >/dev/null 2>&1 || warn "pfctl не найден — настройка firewall будет недоступна"
 
-# Проверка наличия необходимых утилит
-for cmd in curl unzip tar lsof pfctl hdiutil diskutil; do
-    if ! command -v $cmd &> /dev/null; then
-        echo -e "${RED}Утилита $cmd не найдена. Пожалуйста, установите её.${NC}"
-        if [ "$cmd" = "curl" ]; then
-            echo -e "${YELLOW}curl обычно предустановлен в macOS. Если нет, установите через brew install curl${NC}"
-        elif [ "$cmd" = "pfctl" ]; then
-            echo -e "${YELLOW}pfctl является системной утилитой macOS, должна быть доступна по умолчанию${NC}"
-        elif [ "$cmd" = "unzip" ]; then
-            echo -e "${YELLOW}Установите unzip: brew install unzip${NC}"
-        fi
-        exit 1
-    fi
-done
-
+# --------------------------------------------------------------------------
 # Главное меню
-echo "Выберите действие:"
-echo "1) Установка"
-echo "2) Обновление"
-echo "3) Удаление"
-echo -n "Введите номер (1, 2 или 3): "
-read -r choice
+# --------------------------------------------------------------------------
+ACTION="$1"
+if [ -z "$ACTION" ]; then
+    plain "macOS $OS_VER ($(uname -m))"
+    plain "Выберите действие:"
+    plain "1) Установка"
+    plain "2) Обновление"
+    plain "3) Удаление"
+    ask "Введите номер (1, 2 или 3): " ACTION
+fi
 
-case $choice in
-    1)
-        install_vidaa
-        ;;
-    2)
-        update_vidaa
-        ;;
-    3)
-        uninstall_vidaa
-        ;;
+case "$ACTION" in
+    1|install)   install_vidaa ;;
+    2|update)    update_vidaa ;;
+    3|uninstall) uninstall_vidaa ;;
     *)
-        echo -e "${RED}Неверный выбор. Пожалуйста, запустите скрипт снова.${NC}"
+        err "Неверный выбор. Запустите скрипт снова."
         exit 1
         ;;
 esac
