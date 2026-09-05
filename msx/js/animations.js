@@ -901,33 +901,114 @@ var Animations = (function () {
         return !!el && el !== window && el.scrollHeight > el.clientHeight + 1;
     }
 
-    /**
-     * Плавная прокрутка контейнера тваном по scrollTop / scrollLeft.
+    /* ==================== ТВИН ПРОКРУТКИ ====================
      *
-     * ScrollToPlugin для этого не нужен: gsap тянет scrollTop и scrollLeft как любое
-     * числовое свойство DOM-элемента. Плагин (вместе с ScrollTrigger и EasePack) убран
-     * из index.html — он тормозил прокрутку, — поэтому весь плавный скролл приложения
-     * идёт через эту функцию.
+     * Прокрутка — единственная анимация приложения, которой нужен точный
+     * контроль над временем: от него зависит и скорость движения
+     * (SCROLL_SMOOTH в control.js считает длительность из расстояния), и весь
+     * пейсинг загрузки постеров, который ждёт ответа «доехали?». Поэтому здесь
+     * свой маленький движок на requestAnimationFrame, а не gsap.
+     *
+     * Тянуть надо одно число — scrollTop или scrollLeft — по линейной кривой.
+     * Это ровно `el.scrollTop = from + (to - from) * p`, и gsap с его разбором
+     * свойств, плагинами и общим тикером на такую задачу не нужен. Взамен мы
+     * получаем собственный признак «идёт прокрутка»: у gsap.isTweening он
+     * залипал навсегда, если кадры переставали идти (приложение свернули, ТВ
+     * ушёл в заставку), — незавершённый твин так и оставался «в полёте», а на
+     * этом ответе висит вся придержка постеров. Здесь у каждого твина есть срок
+     * по стенным часам, и просроченный больше не считается идущим.
+     *
+     * CSS-переходами это не заменить: scroll-behavior: smooth не даёт задать ни
+     * длительность, ни кривую, распространяется и на мгновенные присваивания
+     * позиции, а узнать его окончание нечем — scrollend появился только
+     * в Chrome 114.
+     */
+    var scrollTweens = [];
+    var scrollTweenRaf = 0;
+
+    /** Индекс активного твина этого контейнера, -1 если его нет */
+    function scrollTweenIndex(container) {
+        for (var i = 0; i < scrollTweens.length; i++) {
+            if (scrollTweens[i].el === container) return i;
+        }
+        return -1;
+    }
+
+    /** Снимает твин, оставляя позицию там, докуда доехали (перебивающий жест) */
+    function stopScrollTween(container) {
+        var i = scrollTweenIndex(container);
+        if (i !== -1) scrollTweens.splice(i, 1);
+    }
+
+    /**
+     * Идёт ли прокрутка контейнера.
+     *
+     * Просрочку (endAt) проверяем отдельно от самого факта наличия твина: если
+     * кадры не идут, твин никуда не двигается и висит в списке, но движением
+     * это уже не является — иначе постеры ждали бы его вечно.
+     */
+    function isScrollTweening(container) {
+        var i = scrollTweenIndex(container);
+        return i !== -1 && Date.now() < scrollTweens[i].endAt;
+    }
+
+    function scrollTweenStep(now) {
+        scrollTweenRaf = 0;
+
+        for (var i = scrollTweens.length - 1; i >= 0; i--) {
+            var t = scrollTweens[i];
+
+            // Первый кадр только засекает старт: между созданием твина и этим
+            // кадром проходит неизвестное время (на слабом ТВ — десятки мс), и
+            // отсчёт от момента создания съедал бы начало движения.
+            if (!t.start) { t.start = now; continue; }
+
+            var p = (now - t.start) / t.dur;
+            if (p > 1) p = 1;
+
+            for (var j = 0; j < t.props.length; j++) {
+                var pr = t.props[j];
+                // На финише присваиваем цель как есть: накопленная за кадры
+                // дробная погрешность иначе оставляла бы контейнер в паре
+                // пикселей от места, и проверки «уже на месте» не срабатывали
+                t.el[pr.name] = (p === 1) ? pr.to : (pr.from + (pr.to - pr.from) * p);
+            }
+
+            if (p === 1 || !t.el.isConnected) scrollTweens.splice(i, 1);
+        }
+
+        if (scrollTweens.length) scrollTweenRaf = requestAnimationFrame(scrollTweenStep);
+    }
+
+    /**
+     * Плавная прокрутка контейнера по scrollTop / scrollLeft.
      *
      * @param {Element} container контейнер с прокруткой
-     * @param {Object}  vars      свойства для твана: scrollTop / scrollLeft
-     *                            (можно добавить любые gsap-свойства, например backgroundColor)
-     * @param {Object}  [options] duration в секундах (0 или отсутствие gsap — мгновенно), ease
+     * @param {Object}  vars      scrollTop и/или scrollLeft — цель в пикселях
+     * @param {Object}  [options] duration в секундах (0 — мгновенно). Кривая
+     *                            всегда линейная: скорость движения в приложении
+     *                            единая, и любое торможение у цели её ломает.
      */
     function tweenScroll(container, vars, options) {
         if (!container || !vars) return;
         options = options || {};
         var duration = typeof options.duration === 'number' ? options.duration : 0.3;
-        var ease = options.ease || 'power1.out';
 
-        if (typeof gsap === 'undefined' || duration <= 0) {
-            // Мгновенно: остальные свойства (тот же backgroundColor) без твана не нужны
-            if (typeof vars.scrollTop === 'number') {
+        var hasTop = typeof vars.scrollTop === 'number';
+        var hasLeft = typeof vars.scrollLeft === 'number';
+        if (!hasTop && !hasLeft) return;
+
+        // Новая цель отменяет прежнюю: движение продолжается с текущего места,
+        // а не с начала прежнего пути
+        stopScrollTween(container);
+
+        if (duration <= 0 || typeof requestAnimationFrame !== 'function') {
+            if (hasTop) {
                 container.scrollTop = vars.scrollTop;
                 container._navPendTop = null;
                 container._navPendTopUntil = 0;
             }
-            if (typeof vars.scrollLeft === 'number') container.scrollLeft = vars.scrollLeft;
+            if (hasLeft) container.scrollLeft = vars.scrollLeft;
             return;
         }
 
@@ -935,21 +1016,26 @@ var Animations = (function () {
         // позицию «на полпути», и проверки видимости в control.js врут —
         // быстрые короткие нажатия то запускали прокрутку, то нет. Читается
         // через pendingScrollDelta (control.js).
-        if (typeof vars.scrollTop === 'number') {
+        if (hasTop) {
             container._navPendTop = vars.scrollTop;
             container._navPendTopUntil = Date.now() + Math.round(duration * 1000) + 50;
         }
 
-        gsap.killTweensOf(container);
+        var props = [];
+        if (hasTop) props.push({ name: 'scrollTop', from: container.scrollTop, to: vars.scrollTop });
+        if (hasLeft) props.push({ name: 'scrollLeft', from: container.scrollLeft, to: vars.scrollLeft });
 
-        var tween = {};
-        for (var k in vars) {
-            if (Object.prototype.hasOwnProperty.call(vars, k)) tween[k] = vars[k];
-        }
-        tween.duration = duration;
-        tween.ease = ease;
-        tween.overwrite = true;
-        gsap.to(container, tween);
+        scrollTweens.push({
+            el: container,
+            props: props,
+            start: 0,
+            dur: duration * 1000,
+            // Запас на кадр-другой: признак «идёт» не должен гаснуть раньше,
+            // чем твин успеет доехать
+            endAt: Date.now() + Math.round(duration * 1000) + 50
+        });
+
+        if (!scrollTweenRaf) scrollTweenRaf = requestAnimationFrame(scrollTweenStep);
     }
 
     // Проверка видимости и прокрутка к элементу, если он не виден
@@ -1075,6 +1161,10 @@ var Animations = (function () {
         isElementInView: isElementInView,
         scrollToIfNotVisible: scrollToIfNotVisible,
         tweenScroll: tweenScroll,
+        // Признак «идёт прокрутка» и снятие твина — вместо gsap.isTweening /
+        // gsap.killTweensOf, которые больше не знают про прокрутку
+        isScrollTweening: isScrollTweening,
+        stopScrollTween: stopScrollTween,
 
         // Конфигурация
         config: config,

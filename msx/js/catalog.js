@@ -39,12 +39,6 @@ var CATALOG_CONSTANTS = {
     ROW_POSTER_CONCURRENCY: 10,
     ROW_POSTER_RETRY_MS: 120,           // как часто переспрашивать «навигация утихла?»
     POSTER_INSERT_GAP_MS: 16,           // пауза между вставками готовых постеров (кадр)
-    // Предохранитель: дольше этого готовый постер не ждёт паузы. Условие
-    // «навигация утихла» завязано на gsap.isTweening, а тикер gsap живёт на
-    // requestAnimationFrame — если кадры перестанут идти (приложение свернули,
-    // ТВ ушёл в заставку), незавершённый твин оставит признак движения навсегда,
-    // и карточки молча остались бы пустыми.
-    POSTER_INSERT_MAX_WAIT_MS: 1200,
     // Длительность проявления постера. Держать в согласии с transition
     // у .catalog-poster-img в styles.css — по ней снимается скелет под ним.
     POSTER_FADE_MS: 380,
@@ -2448,19 +2442,19 @@ function loadInitialPosters() {
  *
  * Поэтому пока тван идёт, индексы карточек складываются в posterDeferred, а
  * загрузка начинается сразу после его завершения: сначала переход, потом
- * картинки. Сигнал — gsap.isTweening(main-container): он ровно совпадает с
- * «переход идёт» и остаётся false, когда прокрутка мгновенная (нет gsap,
- * duration 0, колесо мыши) — там ждать нечего, поведение прежнее.
+ * картинки. Сигнал — Animations.isScrollTweening(main-container): он ровно
+ * совпадает с «переход идёт» и остаётся false, когда прокрутка мгновенная
+ * (duration 0, колесо мыши) — там ждать нечего, поведение прежнее.
  *
  * Первый экран (loadInitialPosters) и допечатка страниц (updatePosterObservers)
  * идут своими путями и не задерживаются: прокрутки в этот момент нет.
  */
 
-/** Идёт ли сейчас тван прокрутки сетки */
+/** Идёт ли сейчас твин прокрутки сетки */
 function isCatalogScrollAnimating() {
-    if (typeof gsap === 'undefined' || typeof gsap.isTweening !== 'function') return false;
+    if (typeof Animations === 'undefined' || typeof Animations.isScrollTweening !== 'function') return false;
     var main = getEl('main-container');
-    return !!main && gsap.isTweening(main);
+    return !!main && Animations.isScrollTweening(main);
 }
 
 /**
@@ -4859,10 +4853,10 @@ window.measureCatalogCardHeight = measureCatalogCardHeight;   // зовёт ui-c
  */
 function isRowScrollAnimating() {
     if (isCatalogScrollAnimating()) return true;
-    if (typeof gsap === 'undefined' || typeof gsap.isTweening !== 'function') return false;
+    if (typeof Animations === 'undefined' || typeof Animations.isScrollTweening !== 'function') return false;
     var f = document.querySelector('#catalog-rows .catalog-row-card.focused');
     var vp = (f && f.closest) ? f.closest('.catalog-row-viewport') : null;
-    return !!vp && gsap.isTweening(vp);
+    return !!vp && Animations.isScrollTweening(vp);
 }
 
 /**
@@ -4930,7 +4924,7 @@ var posterReveals = [];
 var posterRevealTimer = null;
 
 function queuePosterReveal(insert) {
-    posterReveals.push({ run: insert, at: Date.now() });
+    posterReveals.push(insert);
     if (!posterRevealTimer) pumpPosterReveals();
 }
 
@@ -4942,24 +4936,19 @@ function pumpPosterReveals() {
     // ряда, и проверка сводится к вертикальному твину #main-container — ровно
     // тому, что двигает сетку.
     //
-    // Предохранитель по времени — только для твина. Он может «залипнуть»:
-    // признак движения читается через gsap.isTweening, а тикер gsap живёт на
-    // requestAnimationFrame, и если кадры перестанут идти (свернули приложение,
-    // ТВ ушёл в заставку), незавершённый твин оставит его навсегда. У navHold
-    // такой беды нет — он сам гаснет через NAV_HOLD_IDLE_MS тишины, поэтому
-    // зажатую кнопку ждём сколько угодно. Иначе долгое удержание как раз и
-    // приводило бы к залпу постеров посреди движения, ради устранения которого
-    // всё это и заведено.
-    var head = posterReveals[0];
-    var stuckTween = isRowScrollAnimating() &&
-        (Date.now() - head.at) < CATALOG_CONSTANTS.POSTER_INSERT_MAX_WAIT_MS;
-    if (window.navHold || stuckTween) {
+    // Предохранителя по времени здесь больше нет, и он не нужен: оба условия
+    // гаснут сами. navHold — через NAV_HOLD_IDLE_MS тишины, а у твина есть срок
+    // по стенным часам (endAt в Animations), поэтому остановка кадров его не
+    // «заморозит». С gsap.isTweening было иначе, и просроченную вставку
+    // приходилось пропускать силой — а это давало залп постеров посреди
+    // долгого удержания, ради устранения которого всё и заведено.
+    if (window.navHold || isRowScrollAnimating()) {
         posterRevealTimer = setTimeout(pumpPosterReveals, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
         return;
     }
 
-    posterReveals.shift();
-    try { head.run(); } catch (e) { }
+    var run = posterReveals.shift();
+    try { run(); } catch (e) { }
 
     if (posterReveals.length) {
         posterRevealTimer = setTimeout(pumpPosterReveals, CATALOG_CONSTANTS.POSTER_INSERT_GAP_MS);
