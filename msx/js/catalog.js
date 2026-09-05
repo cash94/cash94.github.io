@@ -38,6 +38,13 @@ var CATALOG_CONSTANTS = {
     FOCUS_DELAY_MS: 100,
     ROW_POSTER_CONCURRENCY: 10,
     ROW_POSTER_RETRY_MS: 120,           // как часто переспрашивать «навигация утихла?»
+    POSTER_INSERT_GAP_MS: 16,           // пауза между вставками готовых постеров (кадр)
+    // Предохранитель: дольше этого готовый постер не ждёт паузы. Условие
+    // «навигация утихла» завязано на gsap.isTweening, а тикер gsap живёт на
+    // requestAnimationFrame — если кадры перестанут идти (приложение свернули,
+    // ТВ ушёл в заставку), незавершённый твин оставит признак движения навсегда,
+    // и карточки молча остались бы пустыми.
+    POSTER_INSERT_MAX_WAIT_MS: 1200,
     VISIBILITY_WINDOW_ROWS: 2,          // сколько строк «запаса» держим отрисованными
     VISIBILITY_FALLBACK_MARGIN_PX: 800, // если высоту строки измерить не удалось
     // Фон детального просмотра: сколько зеркал TMDB пробуем на один путь
@@ -4323,14 +4330,14 @@ async function loadRowPoster(card, item) {
     var cacheKey = id + '_' + mt;
 
     var cached = catalogState.posterCache.get(cacheKey);
-    if (cached) { await setRowPosterImg(imgBox, cached); return; }
+    if (cached) { await setRowPosterImg(imgBox, cached, true); return; }
 
     if (item.poster_path) {
         // Размер — getPosterCardSize(), как в сетке: тогда URL совпадает
         // с тем, что уже лежит в posterCache, и setRowPosterImg не пересобирает его.
         var url = getTmdbImageUrl(item.poster_path, getPosterCardSize());
         catalogState.posterCache.set(cacheKey, url);
-        await setRowPosterImg(imgBox, url);
+        await setRowPosterImg(imgBox, url, true);
         return;
     }
 
@@ -4349,7 +4356,7 @@ async function loadRowPoster(card, item) {
 
                 catalogState.posterCache.set(cacheKey, url2);
 
-                if (card.isConnected) await setRowPosterImg(imgBox, url2);
+                if (card.isConnected) await setRowPosterImg(imgBox, url2, true);
 
                 return;
             }
@@ -4468,6 +4475,7 @@ function initRowPosterLazyLoading() {
     if (catalogState.rowPosterObserver) catalogState.rowPosterObserver.disconnect();
     catalogState.rowPosterQueue = [];
     catalogState.activeRowPosterLoads = 0;
+    dropRowPosterInserts();
     if (catalogState.rowPosterQueueTimer) {
         clearTimeout(catalogState.rowPosterQueueTimer);
         catalogState.rowPosterQueueTimer = null;
@@ -4819,7 +4827,68 @@ function processRowPosterQueue() {
     }
 }
 
-function setRowPosterImg(box, url) {
+/**
+ * Очередь ВСТАВОК готовых постеров.
+ *
+ * processRowPosterQueue придерживает только СТАРТ загрузки. Между стартом и
+ * готовностью картинки проходят сотни миллисекунд сети, поэтому пачка, ушедшая
+ * в работу во время паузы, приезжала ровно посреди следующего движения — и
+ * вставлялась без всяких проверок. А вставка это `innerHTML = ''` плюс
+ * appendChild в бокс 260×460 внутри прокручиваемого вьюпорта, то есть layout и
+ * paint на кадре анимации. Отсюда и оставались фризы «особенно когда
+ * подгружаются постеры»: сам скролл уже нативный и дешёвый, дорогой была работа
+ * поверх него.
+ *
+ * Поэтому готовый постер ждёт здесь двух вещей: тишины в навигации (те же
+ * условия, что у очереди загрузки) и своего кадра — вставляем по одной штуке
+ * с интервалом POSTER_INSERT_GAP_MS, иначе десяток разом завершившихся загрузок
+ * снова сложился бы в один тяжёлый кадр.
+ *
+ * Картинка к этому моменту уже скачана и декодирована (img.decode в
+ * setRowPosterImg), так что задержка ничего не грузит заново — она только
+ * выбирает момент, когда тронуть DOM.
+ */
+var rowPosterInserts = [];
+var rowPosterInsertTimer = null;
+
+function queueRowPosterInsert(insert) {
+    rowPosterInserts.push({ run: insert, at: Date.now() });
+    if (!rowPosterInsertTimer) pumpRowPosterInserts();
+}
+
+function pumpRowPosterInserts() {
+    rowPosterInsertTimer = null;
+    if (!rowPosterInserts.length) return;
+
+    var head = rowPosterInserts[0];
+    var waited = Date.now() - head.at;
+    if ((window.navHold || isRowScrollAnimating()) &&
+        waited < CATALOG_CONSTANTS.POSTER_INSERT_MAX_WAIT_MS) {
+        rowPosterInsertTimer = setTimeout(pumpRowPosterInserts, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+        return;
+    }
+
+    rowPosterInserts.shift();
+    try { head.run(); } catch (e) { }
+
+    if (rowPosterInserts.length) {
+        rowPosterInsertTimer = setTimeout(pumpRowPosterInserts, CATALOG_CONSTANTS.POSTER_INSERT_GAP_MS);
+    }
+}
+
+/** Ряды пересобраны — ждущие вставки указывают на оторванные боксы */
+function dropRowPosterInserts() {
+    if (rowPosterInsertTimer) { clearTimeout(rowPosterInsertTimer); rowPosterInsertTimer = null; }
+    rowPosterInserts.length = 0;
+}
+
+/**
+ * @param {boolean} [deferDuringNav] придержать вставку до паузы в навигации.
+ *        Ставят только ряды каталога: на главной постеры ряда грузятся разом при
+ *        его переключении, горизонтальное движение их не задевает, и придержка
+ *        там только оставила бы пустые рамки под фокусом.
+ */
+function setRowPosterImg(box, url, deferDuringNav) {
     return new Promise(function (resolve) {
         // URL уже собран под нужный размер (быстрый путь, posterCache) — не
         // пересобираем, как и в updatePosterDOM: лишний разбор строки, а раньше
@@ -4832,17 +4901,27 @@ function setRowPosterImg(box, url) {
         img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
         var settled = false;
         var settle = function () { if (!settled) { settled = true; resolve(); } };
+
+        // Промис резолвится ПОСЛЕ вставки, а не по готовности картинки: на нём
+        // висит счётчик activeRowPosterLoads, и пока вставки ждут паузы, слоты
+        // очереди заняты — новых загрузок посреди движения не начнётся.
+        var whenIdle = deferDuringNav ? queueRowPosterInsert : function (fn) { fn(); };
+
         var insert = function () {
-            if (box.isConnected && img.naturalWidth > 0) {
-                box.innerHTML = '';
-                img.style.opacity = '1';
-                box.appendChild(img);
-            }
-            settle();
+            whenIdle(function () {
+                if (box.isConnected && img.naturalWidth > 0) {
+                    box.innerHTML = '';
+                    img.style.opacity = '1';
+                    box.appendChild(img);
+                }
+                settle();
+            });
         };
         var fail = function () {
-            if (box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
-            settle();
+            whenIdle(function () {
+                if (box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
+                settle();
+            });
         };
 
         // Как и в updatePosterDOM: зеркало детерминированное, поэтому один раз
