@@ -738,6 +738,36 @@ body {
   padding: 8px;
 }
 
+/* Бейдж рейтинга.
+   Раньше все эти свойства писались инлайном из JS на КАЖДОЙ карточке — около
+   250 символов CSS, которые браузер разбирал заново для каждой из сотен
+   карточек сетки, притом что менялись в них только два цвета, и оба один и тот
+   же. Инлайном остался ровно один: color. Рамку красит currentColor, то есть
+   тот же цвет, а не вторая его копия.
+   Размеры для карточек рядов — ниже; точечные переопределения под узкие экраны
+   стоят в медиазапросах с !important и продолжают работать поверх обоих. */
+.rating-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  font-weight: bold;
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  z-index: 10;
+  border: 1px solid currentColor;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+/* Карточки рядов (в том числе главной) — бейдж мельче и без тени */
+.catalog-row-card .rating-badge {
+  font-size: 13px;
+  padding: 3px 7px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
 .torrent-info {
   padding: 8px;
 }
