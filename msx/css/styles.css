@@ -3594,6 +3594,10 @@ article {
 .torrent-poster {
   contain: layout paint;
   overflow: hidden;
+  /* Содержащий блок для проявляющегося постера (.catalog-poster-img,
+     position: absolute). contain: layout им уже является, но на Chrome 66
+     свойства contain нет — там работает position */
+  position: relative;
 }
 
 /* Skeleton-плейсхолдер для загружающихся постеров */
@@ -4771,17 +4775,34 @@ article {
   }
 }
 
-.catalog-poster-img {
+/* Проявление постера — поверх скелета, а не вместо него.
+   Раньше плейсхолдер убирали в момент СТАРТА загрузки, и всё время, пока идёт
+   сеть, карточка стояла плоским фоном; потом картинка проявлялась из пустоты.
+   Абсолютное позиционирование оставляет скелет на месте под картинкой, так что
+   переход читается как кроссфейд, а снимают плейсхолдер уже после него.
+   Содержащий блок даёт .torrent-poster / .row-poster-img ниже. */
+.catalog-poster-img,
+.row-poster-img>img {
     display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.38s ease-out;
 }
 
-.catalog-poster-img.loaded {
+.catalog-poster-img.loaded,
+.row-poster-img>img.loaded {
     opacity: 1;
+}
+
+/* contain: layout на .torrent-poster уже делает её содержащим блоком, но на
+   Chrome 66 (Vidaa) свойства contain нет — там нужен явный position */
+.row-poster-img {
+    position: relative;
 }
 
 /* ============================================================================
