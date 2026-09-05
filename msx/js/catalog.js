@@ -4225,12 +4225,9 @@ function createCatalogRow(key, items) {
     });
     row.appendChild(header);
 
-    // Карусель.
-    // Вьюпорт — только окно-обрезка (overflow: hidden), а двигается внутренний
-    // трек через transform: translate3d — так кадр обходится композитору без
-    // layout + paint, в отличие от твана scrollLeft. Позицию читают/пишут
-    // getScrollX / setScrollX (control.js), они ищут трек по первому дочернему
-    // элементу вьюпорта с классом catalog-row-track.
+    // Карусель: вьюпорт прокручивается нативно по scrollLeft, трек — просто
+    // флекс-лента с отступами. Позицию читают/пишут getScrollX / setScrollX
+    // (control.js).
     var carousel = document.createElement('div');
     carousel.className = 'catalog-row-carousel';
     var viewport = document.createElement('div');
@@ -4770,15 +4767,16 @@ window.measureCatalogCardHeight = measureCatalogCardHeight;   // зовёт ui-c
 /**
  * Идёт ли прокрутка, задевающая ряды. Два источника: вертикальный тван
  * scrollTop у #main-container (переход на другой ряд) и горизонтальный тван
- * трека той карусели, где сейчас фокус (движение внутри ряда). Трек проверяем
- * только у сфокусированного ряда — остальные при навигации не двигаются.
+ * scrollLeft той карусели, где сейчас фокус (движение внутри ряда). Вьюпорт
+ * проверяем только у сфокусированного ряда — остальные при навигации не
+ * двигаются.
  */
 function isRowScrollAnimating() {
     if (isCatalogScrollAnimating()) return true;
     if (typeof gsap === 'undefined' || typeof gsap.isTweening !== 'function') return false;
     var f = document.querySelector('#catalog-rows .catalog-row-card.focused');
-    var track = (f && f.closest) ? f.closest('.catalog-row-track') : null;
-    return !!track && gsap.isTweening(track);
+    var vp = (f && f.closest) ? f.closest('.catalog-row-viewport') : null;
+    return !!vp && gsap.isTweening(vp);
 }
 
 /**

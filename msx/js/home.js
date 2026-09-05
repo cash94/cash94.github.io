@@ -1231,9 +1231,8 @@
             '<div class="home-row-counter"></div>';
         row.appendChild(header);
 
-        // Карусель: вьюпорт — окно-обрезка, двигается внутренний трек через
-        // transform. Позицию читают/пишут getScrollX/setScrollX (control.js),
-        // они ищут трек по классу catalog-row-track.
+        // Карусель: вьюпорт прокручивается нативно по scrollLeft, трек — просто
+        // флекс-лента. Позицию читают/пишут getScrollX/setScrollX (control.js).
         var carousel = document.createElement('div');
         carousel.className = 'catalog-row-carousel';
         var viewport = document.createElement('div');
