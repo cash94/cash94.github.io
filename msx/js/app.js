@@ -2385,3 +2385,17 @@ if (document.readyState === 'loading') {
   // DOM уже готов (скрипт загружен асинхронно) — запускаем сразу
   init();
 }
+
+// Измеритель длинных кадров по ?perf=1 (public/js/perf-probe.js).
+//
+// Подключается отсюда, а не из index.html: главную страницу сервер отдаёт с
+// зеркала (routes/proxy.js), поэтому строка в локальном index.html заработает
+// только после выкладки, а модули под ?local=1 подменяются сразу. Зонд сам
+// проверяет флаг и не грузится дважды.
+if (location.search.indexOf('perf=1') !== -1 && !window.__perfProbe) {
+  (function () {
+    var s = document.createElement('script');
+    s.src = 'js/perf-probe.js?v=' + Date.now();
+    document.head.appendChild(s);
+  })();
+}
