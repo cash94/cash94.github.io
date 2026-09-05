@@ -1342,7 +1342,7 @@ body.detail-open {
   align-items: center;
   justify-content: center;
   font-size: 38.74px;
-  background: linear-gradient(135deg, #3a3a4a, #2a2a3a);
+  background: #323242;   /* был градиент */
 }
 
 .catalog-actor-info {
@@ -1396,7 +1396,7 @@ body.detail-open {
   align-items: center;
   justify-content: center;
   font-size: 33.2px;
-  background: linear-gradient(135deg, #3a3a4a, #2a2a3a);
+  background: #323242;   /* был градиент */
 }
 
 .catalog-recommendation-rating {
@@ -3127,7 +3127,7 @@ body.detail-open {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #2a2a3a, #1a1a2a);
+  background: #222232;   /* был градиент */
 }
 
 .file-still-container {
@@ -3638,14 +3638,14 @@ article {
 .catalog-poster-loading {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #1a1a2e 0%, #252540 50%, #1a1a2e 100%);
+  background: #1f1f38;   /* был градиент: заливка плоским цветом дешевле при растеризации */
 }
 
 /* Skeleton-плейсхолдер для постеров папок каталогов */
 .catalog-folder-poster-placeholder {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #1a1a2e 0%, #252540 50%, #1a1a2e 100%);
+  background: #1f1f38;   /* был градиент: заливка плоским цветом дешевле при растеризации */
 }
 
 /* ============================================================
@@ -5118,7 +5118,7 @@ article {
 }
 
 #detail-view.torrent-detail-mode .file-still-placeholder {
-  background: linear-gradient(135deg, #23233a, #14141c);
+  background: #1b1b2b;   /* был градиент */
 }
 
 /* Кнопку play показываем только на плитке под фокусом */
