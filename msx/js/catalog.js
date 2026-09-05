@@ -45,6 +45,9 @@ var CATALOG_CONSTANTS = {
     // ТВ ушёл в заставку), незавершённый твин оставит признак движения навсегда,
     // и карточки молча остались бы пустыми.
     POSTER_INSERT_MAX_WAIT_MS: 1200,
+    // Длительность проявления постера. Держать в согласии с transition
+    // у .catalog-poster-img в styles.css — по ней снимается скелет под ним.
+    POSTER_FADE_MS: 380,
     VISIBILITY_WINDOW_ROWS: 2,          // сколько строк «запаса» держим отрисованными
     VISIBILITY_FALLBACK_MARGIN_PX: 800, // если высоту строки измерить не удалось
     // Фон детального просмотра: сколько зеркал TMDB пробуем на один путь
@@ -2769,15 +2772,19 @@ function updatePosterDOM(div, rating, url) {
     var oldImg = div.querySelector('img.catalog-poster-img');
     if (oldImg) oldImg.remove();
 
+    // Плейсхолдер-скелет НЕ снимаем здесь. Раньше снимали — и всё время, пока
+    // идёт сеть (а это сотни миллисекунд), карточка стояла плоским фоном, после
+    // чего постер проявлялся из пустоты. Теперь картинка лежит поверх скелета
+    // (position: absolute в styles.css) и проявляется прямо на нём, а скелет
+    // снимается уже после перехода — переход читается как кроссфейд.
     var placeholder = div.querySelector('.no-poster');
-    if (placeholder) placeholder.remove();
 
     // Вставляем сразу
     div.appendChild(img);
 
-    // Анимация при загрузке (опционально)
     img.onload = function () {
         img.classList.add('loaded');
+        if (placeholder) dropPosterPlaceholder(placeholder);
     };
 
     // Обработка ошибок: зеркало теперь выбирается детерминированно, поэтому
@@ -2797,6 +2804,20 @@ function updatePosterDOM(div, rating, url) {
             div.innerHTML = '<div class="no-poster">Нет постера</div>';
         }
     };
+}
+
+/**
+ * Скелет под проявившимся постером. Ждём конца перехода — иначе снимать нечего
+ * прятать, и кроссфейд превращается обратно во вспышку пустой карточки.
+ *
+ * По таймеру, а не по transitionend: событие не придёт, если карточку в этот
+ * момент погасила оконная видимость (visibility: hidden переход не запускает),
+ * и скелет остался бы под постером навсегда.
+ */
+function dropPosterPlaceholder(placeholder) {
+    setTimeout(function () {
+        if (placeholder && placeholder.parentNode) placeholder.remove();
+    }, CATALOG_CONSTANTS.POSTER_FADE_MS + 60);
 }
 
 // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР ====================
@@ -4897,8 +4918,11 @@ function setRowPosterImg(box, url, deferDuringNav) {
         if (url && url.indexOf('/t/p/' + size + '/') === -1) {
             url = getTmdbImageUrl(url, size);
         }
+        // Геометрия и переход — в styles.css (.row-poster-img > img), там же,
+        // где у сетки. Инлайн тут был со своей копией правил, и одна из них
+        // (opacity) ниже гасилась раньше вставки, см. insert.
         var img = new Image();
-        img.style.cssText = 'width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 0.3s ease';
+        img.decoding = 'async';
         var settled = false;
         var settle = function () { if (!settled) { settled = true; resolve(); } };
 
@@ -4910,9 +4934,22 @@ function setRowPosterImg(box, url, deferDuringNav) {
         var insert = function () {
             whenIdle(function () {
                 if (box.isConnected && img.naturalWidth > 0) {
-                    box.innerHTML = '';
-                    img.style.opacity = '1';
+                    // Скелет остаётся под картинкой до конца проявления — тот же
+                    // кроссфейд, что и в сетке (см. updatePosterDOM)
+                    var placeholder = box.querySelector('.no-poster');
                     box.appendChild(img);
+
+                    // Принудительный пересчёт фиксирует стартовое состояние
+                    // (opacity: 0 из CSS). Без него браузер схлопывает вставку и
+                    // смену класса в одно вычисление, перехода не происходит — на
+                    // этом и держалась прежняя вставка, где постер просто возникал.
+                    // Именно reflow, а не requestAnimationFrame: кадры может не
+                    // быть вовсе (приложение свернули), и картинка осталась бы
+                    // прозрачной до возвращения.
+                    void img.offsetWidth;
+                    img.classList.add('loaded');
+
+                    if (placeholder) dropPosterPlaceholder(placeholder);
                 }
                 settle();
             });
