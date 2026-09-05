@@ -39,6 +39,16 @@
     var NO_POSTERS = location.search.indexOf('noposters=1') !== -1;
     var NO_CV = location.search.indexOf('nocv=1') !== -1;
 
+    // ?perf=1&blink=1 — ловим МИГАНИЕ: кто именно убирает постер из DOM.
+    //
+    // MutationObserver для этого не годится: он приходит после задачи, и стека
+    // вызова в нём уже нет. Поэтому подменяем сами removeChild и remove и
+    // снимаем стек в момент удаления — так видно строку виновника, а не
+    // последствие. Дорого, поэтому только по флагу.
+    var BLINK = location.search.indexOf('blink=1') !== -1;
+    var blinkLog = {};
+    var blinkTotal = 0;
+
     var frames = 0, longFrames = 0, stalls = 0, worst = 0;
     var lastFrame = 0;
     var stats = {};             // имя -> { ms, calls }
@@ -86,6 +96,10 @@
         'updateGridVisibilityWindow',// ещё один полный обход
         'updateFocusableElements',   // обход с offsetParent — принудительный layout
         'rebuildChunkRanges',
+        'hydrateChunk',              // разворот чанка: пересоздание карточек
+        'dehydrateChunk',            // свёртка чанка: удаление карточек
+        'trimGridChunks',
+        'ensureChunksAroundFocus',
         'flushVisibilityToggles',
         'flushDeferredPosters',
         'updatePosterDOM',
@@ -130,6 +144,67 @@
             f2.__neutered = true; f2.__probed = true;
             window.setRowPosterImg = f2;
         }
+    }
+
+    /** Первый кадр стека, который не принадлежит самому зонду */
+    function appFrame(stack) {
+        var lines = String(stack || '').split('\n');
+        for (var i = 0; i < lines.length; i++) {
+            var l = lines[i];
+            if (l.indexOf('perf-probe') !== -1) continue;
+            if (l.indexOf('appFrame') !== -1 || l.indexOf('traceRemoval') !== -1) continue;
+            var m = /at\s+([A-Za-z0-9_$.]+)\s/.exec(l);
+            if (m && m[1] !== 'Object' && m[1] !== 'Function') return m[1];
+            var m2 = /\/js\/([a-z-]+\.js).*?:(\d+):/.exec(l);
+            if (m2) return m2[1] + ':' + m2[2];
+        }
+        return '?';
+    }
+
+    function traceRemoval(node) {
+        if (!node || node.nodeType !== 1) return;
+        var hit = false;
+        if (node.tagName === 'IMG') {
+            hit = node.className && node.className.indexOf('poster') !== -1;
+        } else if (node.querySelector) {
+            hit = !!node.querySelector('img.catalog-poster-img, .row-poster-img img');
+        }
+        if (!hit) return;
+        blinkTotal++;
+        var st;
+        try { throw new Error('x'); } catch (e) { st = e.stack; }
+        var who = appFrame(st);
+        blinkLog[who] = (blinkLog[who] || 0) + 1;
+    }
+
+    function installBlinkTrace() {
+        var origRemoveChild = Node.prototype.removeChild;
+        Node.prototype.removeChild = function (n) {
+            traceRemoval(n);
+            return origRemoveChild.call(this, n);
+        };
+        if (Element.prototype.remove) {
+            var origRemove = Element.prototype.remove;
+            Element.prototype.remove = function () {
+                traceRemoval(this);
+                return origRemove.apply(this, arguments);
+            };
+        }
+        // innerHTML тоже стирает содержимое — за ним следим отдельно
+        try {
+            var d = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+            if (d && d.set) {
+                Object.defineProperty(Element.prototype, 'innerHTML', {
+                    configurable: true,
+                    enumerable: d.enumerable,
+                    get: d.get,
+                    set: function (v) {
+                        traceRemoval(this);
+                        return d.set.call(this, v);
+                    }
+                });
+            }
+        } catch (e) { }
     }
 
     /** Опыт «без content-visibility»: перебиваем правило из styles.css */
@@ -218,11 +293,13 @@
             'худший кадр: ' + Math.round(worst) + 'мс\n' +
             (longTasks ? ('long tasks: ' + longTasks + ' / ' + Math.round(longTaskMs) + 'мс\n') : '') +
             '\nпо времени:\n' + top3(stats, 'мс') +
-            '\nперед рывками:\n' + top3(blame, '');
+            '\nперед рывками:\n' + top3(blame, '') +
+            (BLINK ? ('\nпостер убрал (' + blinkTotal + '):\n' + top3(blinkLog, '')) : '');
     }
 
     function start() {
         if (NO_CV) installNoCv();
+        if (BLINK) installBlinkTrace();
         installWraps();
         setInterval(installWraps, 2000);   // патчи догружаются позже основных модулей
         requestAnimationFrame(tick);

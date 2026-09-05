@@ -2009,23 +2009,8 @@ function hydrateChunk(ch) {
     return true;
 }
 
-/**
- * Чанк, вокруг которого держим развёрнутое окно.
- *
- * Обычно это чанк с фокусом. Но догрузка страниц идёт и без фокуса в сетке —
- * её запускает наблюдатель load-more-trigger при прокрутке. Раньше в этом
- * случае обрезка просто не срабатывала, и карточки копились как прежде,
- * поэтому есть запасной путь: чанк, ближайший к верху видимой области.
- */
-function anchorChunkIndex() {
-    var size = catalogState.chunkSize || getChunkSize();
-
-    var f = document.querySelector('#catalog-grid .torrent-card.catalog-card.focused');
-    if (f && f.dataset.catalogIndex) {
-        var idx = parseInt(f.dataset.catalogIndex, 10);
-        if (!isNaN(idx)) return Math.floor(idx / size);
-    }
-
+/** Чанк, ближайший к верху видимой области */
+function viewportChunkIndex() {
     var mc = getEl('main-container');
     var chunks = catalogState.chunks;
     if (!mc || !chunks || !chunks.length) return -1;
@@ -2038,6 +2023,51 @@ function anchorChunkIndex() {
         if (!card || !card.isConnected) continue;
         var d = Math.abs(card.getBoundingClientRect().top - viewTop);
         if (d < bestDist) { bestDist = d; best = chunks[i].index; }
+    }
+    return best;
+}
+
+/**
+ * Чанки, вокруг которых держим развёрнутое окно. Их ДВА, и это принципиально.
+ *
+ * Раньше якорь был один: чанк с фокусом, а видимая область — только запасной
+ * путь на случай, когда фокуса в сетке нет вовсе. Для пульта этого хватало:
+ * там фокус и есть то место, куда человек смотрит. Но колесом и пальцем можно
+ * уехать сколь угодно далеко, НЕ трогая фокус, — и тогда обрезка считала
+ * «далёким» ровно то, что у человека перед глазами, и сворачивала его.
+ * Наблюдатель тут же разворачивал обратно (эти чанки в пределах
+ * CHUNK_OBSERVER_MARGIN_PX от вьюпорта), следующая обрезка сворачивала снова —
+ * и так по кругу. Это и есть мигание карточек при быстрой прокрутке: чанк
+ * сворачивается и разворачивается.
+ *
+ * Поэтому защищаем оба места сразу — и фокус, и вьюпорт. Обычно это один и тот
+ * же чанк, и ничего не меняется; расходятся они только при прокрутке мимо
+ * фокуса, и вот тогда в DOM временно живёт до шести чанков вместо трёх. Это
+ * честная цена: обе области действительно нужны — в одной человек читает,
+ * в другую вернётся стрелкой.
+ */
+function anchorChunkIndexes() {
+    var out = [];
+    var size = catalogState.chunkSize || getChunkSize();
+
+    var f = document.querySelector('#catalog-grid .torrent-card.catalog-card.focused');
+    if (f && f.dataset.catalogIndex) {
+        var idx = parseInt(f.dataset.catalogIndex, 10);
+        if (!isNaN(idx)) out.push(Math.floor(idx / size));
+    }
+
+    var vp = viewportChunkIndex();
+    if (vp !== -1 && out.indexOf(vp) === -1) out.push(vp);
+
+    return out;
+}
+
+/** Расстояние до ближайшего якоря — по нему решаем, насколько чанк «далёкий» */
+function chunkDistanceToAnchors(index, anchors) {
+    var best = Infinity;
+    for (var i = 0; i < anchors.length; i++) {
+        var d = Math.abs(index - anchors[i]);
+        if (d < best) best = d;
     }
     return best;
 }
@@ -2066,17 +2096,19 @@ function trimGridChunks() {
         return;
     }
 
-    var focusIdx = anchorChunkIndex();
-    if (focusIdx === -1) return;    // не от чего отсчитывать «далёкий» чанк
+    var anchors = anchorChunkIndexes();
+    if (!anchors.length) return;    // не от чего отсчитывать «далёкий» чанк
 
     live.sort(function (a, b) {
-        return Math.abs(b.index - focusIdx) - Math.abs(a.index - focusIdx);
+        return chunkDistanceToAnchors(b.index, anchors) -
+            chunkDistanceToAnchors(a.index, anchors);
     });
 
     // Запоминаем, где стоял фокус: CHUNK_FOCUS_GUARD его чанк защищает, но
-    // защита строится вокруг anchorChunkIndex(), а тот при уже потерянном
-    // фокусе переходит на вьюпорт. Если такое совпадёт с моментом обрезки,
-    // карточка под фокусом может уехать вместе с чанком — ниже поднимем.
+    // защита строится вокруг anchorChunkIndexes(), а там фокуса может не
+    // оказаться вовсе — тогда остаётся только вьюпорт. Если такое совпадёт с
+    // моментом обрезки, карточка под фокусом может уехать вместе с чанком —
+    // ниже поднимем.
     var focusedEl = document.querySelector('#catalog-grid .torrent-card.catalog-card.focused');
     var focusedIdx = focusedEl && focusedEl.dataset
         ? parseInt(focusedEl.dataset.catalogIndex, 10)
@@ -2084,7 +2116,7 @@ function trimGridChunks() {
 
     var removed = 0;
     for (var j = 0; j < live.length && live.length - removed > CHUNK_HYDRATED_KEEP; j++) {
-        if (Math.abs(live[j].index - focusIdx) <= CHUNK_FOCUS_GUARD) continue;
+        if (chunkDistanceToAnchors(live[j].index, anchors) <= CHUNK_FOCUS_GUARD) continue;
         if (dehydrateChunk(live[j])) removed++;
     }
 
@@ -2251,7 +2283,26 @@ function createCatalogCard(item, index) {
     var ratingHtml = rating ?
         '<div class="rating-badge" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:' + ratingColor + ';font-weight:bold;font-size:14px;padding:4px 8px;border-radius:12px;z-index:10;border:1px solid ' + ratingColor + ';box-shadow:0 4px 20px rgba(0,0,0,0.25);">' + rating + '</div>' : '';
 
+    // Адрес постера уже известен — рисуем картинку сразу, вместе с карточкой.
+    //
+    // Раньше `cached` здесь вычислялся и не использовался: карточка всегда
+    // рождалась с пустым скелетом, а постер приезжал потом обычным конвейером.
+    // Для первой отрисовки это незаметно, но чанковая виртуализация ПЕРЕСОЗДАЁТ
+    // карточки при каждом развороте — и на быстрой прокрутке колесом или
+    // пальцем карточка возвращалась пустой, ждала своей очереди на показ
+    // (та придержана, пока идёт движение) и только потом получала постер
+    // обратно. Со стороны это выглядит как мигание, а в отладчике — как
+    // появляющаяся и исчезающая ссылка на картинку.
+    //
+    // Класс loaded ставим сразу: это не новый постер, а вернувшийся, проявлять
+    // его нечему. Скелет остаётся под картинкой до её загрузки — она лежит
+    // поверх (position: absolute в styles.css), так что пустой рамки не будет,
+    // даже если браузер выкинул файл из своего кэша.
     var posterHtml = '<div class="no-poster catalog-poster-loading"></div>';
+    if (cached) {
+        posterHtml += '<img class="catalog-poster-img loaded" decoding="async" alt="" src="' +
+            escapeHtml(cached) + '">';
+    }
 
     var year = getCatalogItemYear(item);
     var badgeText = year || 'Каталог';
@@ -2271,6 +2322,27 @@ function createCatalogCard(item, index) {
         posterHtml: posterHtml,
         metaHtml: '<span>' + (mt === 'tv' ? 'Сериал' : 'Фильм') + '</span><span class="torrent-badge catalog-badge">' + badgeText + '</span>'
     });
+    // Вернувшийся постер: снимаем скелет, когда картинка встала, и откатываемся
+    // на обычный конвейер, если адрес из кэша больше не отдаётся (умерло
+    // зеркало) — конвейер умеет перебирать зеркала, а мы здесь нет.
+    var readyImg = cached ? card.querySelector('img.catalog-poster-img') : null;
+    if (readyImg) {
+        card.dataset.posterRequested = '1';
+        var dropSkeleton = function () {
+            var ph = card.querySelector('.no-poster');
+            if (ph && ph.parentNode) ph.parentNode.removeChild(ph);
+        };
+        if (readyImg.complete && readyImg.naturalWidth > 0) dropSkeleton();
+        readyImg.onload = dropSkeleton;
+        readyImg.onerror = function () {
+            if (readyImg.parentNode) readyImg.parentNode.removeChild(readyImg);
+            card.dataset.posterRequested = '0';
+            if (catalogState.posterObserver) {
+                try { catalogState.posterObserver.observe(card); } catch (e) { }
+            }
+        };
+    }
+
     catalogState.cardElements[index] = card;
     return card;
 }
