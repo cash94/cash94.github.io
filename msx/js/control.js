@@ -2258,7 +2258,7 @@ function pendingScrollDelta(el) {
     return el._navPendTop - el.scrollTop;
 }
 
-/** То же по горизонтали, в координатах scrollLeft (у рядов — трансформация трека) */
+/** То же по горизонтали, в координатах scrollLeft */
 function pendingScrollDeltaX(container) {
     if (!container || typeof container._navPendX !== 'number') return 0;
     if (Date.now() > container._navPendXUntil) return 0;
@@ -2302,10 +2302,9 @@ function scrollTweenOpts(duration) {
 
 /**
  * Режим анимации горизонтальной прокрутки из ui-customizer: none | fast | smooth.
- * На слабых устройствах твин трека подтормаживает (gsap на время анимации поднимает
- * трек ряда — а это ~2900x490 — в слой композитора и отпускает после, и так на
- * каждое нажатие пульта), поэтому выбор оставлен пользователю. Отличать устройства
- * из кода нельзя, а поведение по умолчанию не меняется.
+ * На самых слабых устройствах плавную прокрутку хочется укоротить или убрать
+ * вовсе, поэтому выбор оставлен пользователю. Отличать устройства из кода
+ * нельзя, а поведение по умолчанию не меняется.
  *
  * Без кэша: это чтение строки пару раз на нажатие. getColumns кэшируется только
  * потому, что читает вычисленные стили — здесь инвалидация не нужна.
@@ -2331,79 +2330,42 @@ function scrollAnimDurationX(duration) {
 }
 
 /**
- * Карусели рядов каталога двигаются не нативным скроллом, а трансформацией
- * внутреннего трека (.catalog-row-track, создаётся в catalog.js:createCatalogRow).
- * Причина: твин scrollLeft заставляет браузер каждый кадр пересчитывать layout
- * и перерисовывать контейнер, а translate3d обрабатывается композитором — на
- * Android TV разница заметна.
+ * Горизонталь работает ровно тем же механизмом, что и вертикаль: gsap тянет
+ * scrollLeft нативного скроллера через applyScroll → Animations.tweenScroll.
  *
- * Хелперы ниже дают единый API для обоих случаев: у карусели читается и пишется
- * трансформация трека, у остальных горизонтальных списков (files-list, актёры,
- * рекомендации, трейлеры) — по-прежнему scrollLeft. Ось направлена как у
- * scrollLeft: 0 — начало, растёт вправо, то есть x трека = -offset.
+ * Раньше карусели рядов были исключением — вьюпорт с overflow: hidden, а
+ * позиция жила в transform внутреннего трека (.catalog-row-track), в расчёте на
+ * то, что кадр обойдётся композитору дешевле твина scrollLeft. На Android TV
+ * вышло наоборот: трек — это весь ряд целиком (два десятка карточек, ~5000×490),
+ * и gsap на время твина поднимает его в отдельный слой (force3D: "auto"), а по
+ * окончании отпускает. То есть на КАЖДОЕ нажатие стрелки телевизор растрирует
+ * многомегапиксельную текстуру, а потом перерисовывает ряд обратно — отсюда
+ * рывки и задержки, которых у вертикальной прокрутки нет. Нативный скроллер
+ * рисует только окно вьюпорта и умеет сдвигать уже нарисованное.
  *
  * @param {Element} container контейнер прокрутки
- * @returns {Element|null} трек карусели или null для обычного скроллера
  */
-function getRowTrack(container) {
-    if (!container || !container.classList) return null;
-    if (!container.classList.contains('catalog-row-viewport')) return null;
-    var track = container.firstElementChild;
-    return (track && track.classList && track.classList.contains('catalog-row-track')) ? track : null;
-}
-
-/** Текущее смещение трека по x (px, отрицательное при сдвиге влево) */
-function getTrackX(track) {
-    if (typeof gsap !== 'undefined') {
-        // gsap.getProperty отдаёт актуальное значение и посреди твана;
-        // parseFloat — потому что в разных версиях это число либо '0px'
-        var x = parseFloat(gsap.getProperty(track, 'x'));
-        return isNaN(x) ? 0 : x;
-    }
-    return typeof track._trackX === 'number' ? track._trackX : 0;
-}
-
-/** Ставит смещение трека мгновенно */
-function setTrackX(track, x) {
-    if (typeof gsap !== 'undefined') {
-        // Только через gsap: при прямой записи style.transform он продолжит
-        // считать актуальным своё закэшированное значение
-        gsap.killTweensOf(track);
-        gsap.set(track, { x: x });
-        return;
-    }
-    track._trackX = x;
-    track.style.transform = 'translate3d(' + x + 'px, 0, 0)';
-}
-
-/** Смещение контейнера в координатах scrollLeft */
 function getScrollX(container) {
-    var track = getRowTrack(container);
-    if (!track) return container.scrollLeft;
-    return -getTrackX(track);
+    return container ? container.scrollLeft : 0;
 }
 
-/** Предел смещения: нативный скролл браузер обрезает сам, трек — нет */
 function getMaxScrollX(container) {
-    var track = getRowTrack(container);
-    if (!track) return Math.max(0, container.scrollWidth - container.clientWidth);
-    // width: max-content на старом WebKit может не примениться — тогда карточки
-    // вылезают за трек и реальную ширину содержимого даёт scrollWidth
-    var content = Math.max(track.scrollWidth, track.offsetWidth);
-    return Math.max(0, content - container.clientWidth);
+    if (!container) return 0;
+    return Math.max(0, container.scrollWidth - container.clientWidth);
 }
 
-/** Смещение без анимации (колесо мыши, фолбэк без gsap) */
+/** Смещение без анимации (колесо мыши, драг пальцем) */
 function setScrollXImmediate(container, left) {
-    var track = getRowTrack(container);
+    if (!container) return;
     clearPendingScroll(container, '_navPendX');
-    if (!track) { container.scrollLeft = left; return; }
-    setTrackX(track, -left);
+    // Жест перебивает твин навигации, иначе gsap продолжит тянуть к своей цели
+    if (typeof gsap !== 'undefined') gsap.killTweensOf(container);
+    container.scrollLeft = left;
 }
 
 /**
- * Прокрутка контейнера к позиции left (в координатах scrollLeft), с обрезкой
- * по краям — у трека нативной обрезки нет, уехал бы в пустоту.
+ * Прокрутка контейнера к позиции left, с обрезкой по краям: цель считают по
+ * геометрии карточек, и на последнем экране она уезжает за предел содержимого.
  */
 function setScrollX(container, left, smooth, duration) {
     if (!container) return;
@@ -2411,26 +2373,17 @@ function setScrollX(container, left, smooth, duration) {
     duration = scrollAnimDurationX(duration);   // режим из ui-customizer
 
     var opts = scrollTweenOpts(duration);
+    var animated = smooth && opts.duration > 0;
 
-    var track = getRowTrack(container);
-    if (!track) {
-        if (smooth && opts.duration > 0) markPendingScroll(container, '_navPendX', left, opts.duration);
-        else clearPendingScroll(container, '_navPendX');
-        applyScroll(container, { scrollLeft: left }, smooth, opts.duration, opts.ease);
-        return;
-    }
-    if (!smooth || opts.duration <= 0 || typeof gsap === 'undefined') {
-        setScrollXImmediate(container, left);
-        return;
-    }
-    gsap.killTweensOf(track);
-    markPendingScroll(container, '_navPendX', left, opts.duration);
-    gsap.to(track, {
-        x: -left,
-        duration: opts.duration,
-        ease: opts.ease,
-        overwrite: true
-    });
+    // Уже на месте (с учётом идущего твина) — холостой твин не заводим: он
+    // ничего не двигает, но держит gsap.isTweening, а на нём висит откладывание
+    // постеров (isRowScrollAnimating в catalog.js). Симметрично ветке в
+    // applyScroll для scrollTop.
+    if (animated && Math.abs(container.scrollLeft + pendingScrollDeltaX(container) - left) < 2) return;
+
+    if (animated) markPendingScroll(container, '_navPendX', left, opts.duration);
+    else clearPendingScroll(container, '_navPendX');
+    applyScroll(container, { scrollLeft: left }, smooth, opts.duration, opts.ease);
 }
 
 /**
@@ -2443,8 +2396,8 @@ function setScrollX(container, left, smooth, duration) {
  * Animations.tweenScroll: gsap тянет scrollTop/scrollLeft как обычные числовые
  * свойства, никакого плагина для этого не нужно.
  *
- * Для горизонтальной прокрутки каруселей рядов используйте setScrollX —
- * там вместо scrollLeft двигается трансформация трека.
+ * Горизонталь идёт сюда же, но через setScrollX — он обрезает цель по краям
+ * содержимого и учитывает режим анимации из ui-customizer.
  *
  * @param {Element} container контейнер с прокруткой
  * @param {Object}  vars      scrollTop / scrollLeft (+ любые gsap-свойства)
@@ -2636,8 +2589,7 @@ var CATALOG_ROW_BOTTOM_PAD = 50;
  * видимым рядам, никуда не прокручивая, потом одним рывком прыгал под шапку.
  *
  * Целимся в .catalog-row, а не во вьюпорт карусели: вместе с карточками в кадр
- * должен попадать заголовок ряда. Горизонталь остаётся выше на setScrollX — там
- * позиция живёт в трансформации трека, и scrollLeft писать нельзя.
+ * должен попадать заголовок ряда. Горизонталь остаётся выше на setScrollX.
  *
  * @param {number} dy остаток текущего твина (pendingScrollDelta): считаем от
  *                    позиции ПОКОЯ, иначе серия быстрых нажатий рвётся
@@ -2721,14 +2673,11 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
 
         var hp = 30;
 
-        // Позиция покоя: пока трек едет, живой rect показывал бы «уже видно»
+        // Позиция покоя: пока лента едет, живой rect показывал бы «уже видно»
         var dx = pendingScrollDeltaX(con);
         var isHorizVisible = (r.left - dx) >= cr.left + hp && (r.right - dx) <= cr.right - hp;
 
         if (!isHorizVisible) {
-            // curLeft — смещение контейнера сейчас (у карусели это -x трека,
-            // у обычного списка scrollLeft), r/cr уже учитывают трансформацию,
-            // так что математика та же, что была с scrollLeft
             var curLeft = getScrollX(con);
             var targetLeft;
             if (direction === 'left') {
@@ -2766,8 +2715,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         }
         // Ряды-карусели: вертикаль ведём сами (см. ниже), целясь в .catalog-row,
         // а не в вьюпорт карусели, чтобы вместе с карточками в кадр попадал
-        // заголовок ряда. Горизонталь выше остаётся на setScrollX — там позиция
-        // живёт в трансформации трека, и scrollLeft писать нельзя.
+        // заголовок ряда.
         if (vertEl && isRowViewport) {
             // Одна цель на оба направления: ряд у нижней границы
             // (см. scrollCatalogRowIntoView)
@@ -3566,9 +3514,8 @@ function scrollRowToCard(card) {
     if (cr.left < vr.left + pad) target = cur + (cr.left - vr.left - pad);
     else if (cr.right > vr.right - pad) target = cur + (cr.right - vr.right + pad);
     if (target === null) return;
-    // Через setScrollX (двигает трек карусели трансформацией и сам обрезает по
-    // краям), а не scrollBy({behavior:'smooth'}): нативный плавный скролл на
-    // телевизоре не работает, а ScrollToPlugin убран из index.html.
+    // Через setScrollX, а не scrollBy({behavior:'smooth'}): нативный плавный
+    // скролл на телевизоре не работает, а ScrollToPlugin убран из index.html.
     setScrollX(viewport, target, true, SCROLL_SMOOTH.durationX);
 }
 
@@ -3682,9 +3629,10 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
  * появились ряды главной и каталога (они строятся асинхронно и пересобираются
  * при обновлении подборок), поэтому в рядах колесо не работало вовсе.
  *
- * Пальцем ряды тоже не двигались: у карусели .catalog-row-viewport
- * overflow: hidden, позиция живёт в трансформации трека — нативного скролла,
- * который браузер мог бы подхватить, там просто нет. Отсюда ручной драг.
+ * Драг пальцем свой, не нативный: у рядов touch-action: pan-y — вертикальный
+ * жест обязан доставаться странице (#main-container), иначе главная перестаёт
+ * листаться, а браузер не умеет отдать одну ось странице, оставив вторую
+ * контейнеру, если по горизонтали нужен ещё и fling с нашей инерцией.
  */
 (function () {
     var H_SCROLL_SELECTOR = '.files-list, ' +
@@ -3775,14 +3723,12 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
             0;
 
         var dx = e.deltaX || e.wheelDeltaX || 0;
-        var isCarousel = !!getRowTrack(cnt);
         var delta;
 
         if (Math.abs(dx) > Math.abs(dy)) {
-            // Горизонтальный жест (тачпад, shift+колесо): нативному списку его
-            // отработает сам браузер, а у карусели скроллить нечего — только трек
-            if (!isCarousel) return;
-            delta = dx;
+            // Горизонтальный жест (тачпад, shift+колесо) браузер отработает сам:
+            // все эти контейнеры прокручиваются нативно
+            return;
         } else {
             // На главной вертикальное колесо листает подборки (это делает home.js),
             // а не катает ряд вбок: ряд там показан один, вертикальной прокрутки у
