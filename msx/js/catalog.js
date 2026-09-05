@@ -1912,6 +1912,7 @@ function resetGridChunks() {
         clearTimeout(catalogState.chunkTrimTimer);
         catalogState.chunkTrimTimer = null;
     }
+    for (var i = 0; i < catalogState.chunks.length; i++) cancelHydration(catalogState.chunks[i]);
     catalogState.chunks = [];
     catalogState.chunkSize = 0;
     catalogState.chunkCols = 0;
@@ -1950,14 +1951,12 @@ function initChunkObserver() {
         for (var i = 0; i < entries.length; i++) {
             if (!entries[i].isIntersecting) continue;
             var ch = entries[i].target._chunk;
+            // Порционно: сюда приходят при прокрутке, ждать кадр-другой можно
             if (ch && ch.spacer) { hydrateChunk(ch); grew = true; }
         }
-        if (grew) {
-            if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
-            updatePosterObservers();
-            updateGridVisibilityWindow();
-            scheduleChunkTrim();
-        }
+        // Наблюдателей и кэш фокуса обновляет finishHydration — разворот теперь
+        // заканчивается позже, чем возвращается hydrateChunk
+        if (grew) scheduleChunkTrim();
     }, { root: getEl('main-container'), rootMargin: CHUNK_OBSERVER_MARGIN_PX + 'px 0px', threshold: 0 });
 }
 
@@ -1993,7 +1992,7 @@ function realignChunksToColumns() {
 
     var chunks = catalogState.chunks;
     for (var i = 0; i < chunks.length; i++) {
-        if (chunks[i].spacer) hydrateChunk(chunks[i]);
+        if (chunks[i].spacer) hydrateChunk(chunks[i], true);   // нарезку считаем сразу
     }
 
     catalogState.chunks = [];
@@ -2009,7 +2008,10 @@ function realignChunksToColumns() {
 
 /** Свернуть чанк: карточки → одна распорка той же высоты */
 function dehydrateChunk(ch) {
-    if (!ch || ch.spacer) return false;
+    // Чанк в процессе разворота не сворачиваем: он дотечёт за пару кадров, и
+    // следующий заход обрезки разберётся с ним уже как с обычным. Прерывать
+    // на полпути значит остаться с половиной карточек и распоркой.
+    if (!ch || ch.spacer || ch.hydrating) return false;
     if (!chunkAlignedToRows(ch, (typeof getColumns === 'function' && getColumns()) || 0)) return false;
 
     var first = catalogState.cardElements[ch.start];
@@ -2026,6 +2028,10 @@ function dehydrateChunk(ch) {
     spacer.className = 'catalog-chunk-spacer';
     spacer.style.cssText = 'grid-column:1/-1;height:' + height + 'px;';
     spacer._chunk = ch;
+    // Запоминаем высоту числом: порционный разворот ужимает распорку по шагам,
+    // и без этого ему пришлось бы читать offsetHeight — то есть форсировать
+    // раскладку ровно в тот момент, когда мы стараемся её не трогать.
+    ch.spacerH = height;
 
     var grid = getCatalogGridEl();
     if (!grid) return false;
@@ -2038,30 +2044,155 @@ function dehydrateChunk(ch) {
     }
 
     ch.spacer = spacer;
+    ch.filled = ch.start;       // заполнять снова с начала
     if (catalogState.chunkObserver) catalogState.chunkObserver.observe(spacer);
     return true;
 }
 
-/** Развернуть чанк обратно: распорка → карточки */
-function hydrateChunk(ch) {
-    if (!ch || !ch.spacer) return false;
+/**
+ * Развернуть чанк обратно: распорка → карточки.
+ *
+ * По умолчанию — ПОРЦИЯМИ, по одной строке сетки за кадр. Раньше все 25
+ * карточек вставлялись одной операцией, и вёрстка с отрисовкой всей пачки
+ * падали в тот же кадр — по зонду это и был главный кандидат на худший кадр
+ * (200мс). Работы суммарно столько же, но она размазана по кадрам, а рывок
+ * определяется пиком, а не суммой.
+ *
+ * Ключ к тому, чтобы прокрутка не дёргалась: распорка ужимается ровно на
+ * высоту вставленной строки. Общая высота сетки не меняется ни на пиксель ни
+ * в один момент времени. Высоту строки считаем один раз, делением высоты
+ * распорки на число строк — карточки одинаковые, деление точное, и это
+ * избавляет от чтения геометрии на каждой порции.
+ *
+ * @param {boolean} [immediate] развернуть целиком прямо сейчас. Нужно там, где
+ *        карточки требуются в этой же задаче: чанк под фокусом и пересчёт
+ *        нарезки при смене числа колонок.
+ */
+function hydrateChunk(ch, immediate) {
+    if (!ch) return false;
+    if (ch.hydrating) {
+        // Уже течёт. Просят немедленно — дольём остаток синхронно.
+        if (immediate) finishHydrationNow(ch);
+        return true;
+    }
+    if (!ch.spacer) return false;
 
     var grid = getCatalogGridEl();
     var spacer = ch.spacer;
     if (!grid || spacer.parentNode !== grid) { ch.spacer = null; return false; }
 
+    var cols = (typeof getColumns === 'function' && getColumns()) || 5;
+    var total = ch.end - ch.start;
+
+    if (typeof ch.filled !== 'number' || ch.filled < ch.start) ch.filled = ch.start;
+
+    if (immediate || total <= cols || typeof requestAnimationFrame !== 'function') {
+        insertChunkCards(ch, ch.filled, ch.end);
+        finishHydration(ch);
+        return true;
+    }
+
+    // Курсор заполнения держим на самом чанке: разворот можно прервать
+    // (свернули сетку, сменили каталог), и тогда следующая попытка обязана
+    // продолжить с места, а не вставить уже вставленные карточки заново.
+    if (typeof ch.filled !== 'number' || ch.filled < ch.start) ch.filled = ch.start;
+
+    // Высота распорки известна с момента свёртки; читаем элемент только если
+    // её почему-то нет (распорка от прежнего состояния сетки)
+    var h = (typeof ch.spacerH === 'number' && ch.spacerH > 0)
+        ? ch.spacerH : spacer.offsetHeight;
+
+    ch.hydrating = {
+        cols: cols,
+        h: h,
+        rowH: h / Math.ceil(total / cols),
+        raf: 0
+    };
+    hydrationStep(ch);
+    return true;
+}
+
+/** Вставляет карточки [from, to) перед распоркой чанка */
+function insertChunkCards(ch, from, to) {
+    var grid = getCatalogGridEl();
+    if (!grid || !ch.spacer || ch.spacer.parentNode !== grid) return;
+
     var frag = document.createDocumentFragment();
-    for (var i = ch.start; i < ch.end; i++) {
+    for (var i = from; i < to; i++) {
         var item = catalogState.items[i];
         if (!item) continue;
         frag.appendChild(createCatalogCard(item, i));
     }
+    grid.insertBefore(frag, ch.spacer);
+}
 
-    grid.insertBefore(frag, spacer);
-    if (catalogState.chunkObserver) catalogState.chunkObserver.unobserve(spacer);
-    grid.removeChild(spacer);
+function hydrationStep(ch) {
+    var st = ch.hydrating;
+    if (!st) return;
+    st.raf = 0;
+
+    var grid = getCatalogGridEl();
+    if (!grid || !ch.spacer || ch.spacer.parentNode !== grid) {
+        ch.hydrating = null;
+        ch.spacer = null;
+        return;
+    }
+
+    var to = Math.min(ch.filled + st.cols, ch.end);
+    insertChunkCards(ch, ch.filled, to);
+    ch.filled = to;
+
+    if (ch.filled >= ch.end) { finishHydration(ch); return; }
+
+    // Ужимаем распорку на вставленную строку. Высоту ведём в переменной, а не
+    // читаем из элемента: чтение здесь означало бы принудительную раскладку на
+    // каждой порции, ровно то, от чего мы уходили в focusEl.
+    st.h -= st.rowH;
+    ch.spacer.style.height = Math.max(0, st.h) + 'px';
+
+    st.raf = requestAnimationFrame(function () { hydrationStep(ch); });
+}
+
+/** Долить остаток чанка синхронно — фокус пришёл раньше, чем мы дотекли */
+function finishHydrationNow(ch) {
+    var st = ch.hydrating;
+    if (!st) return;
+    if (st.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(st.raf);
+    insertChunkCards(ch, ch.filled, ch.end);
+    finishHydration(ch);
+}
+
+/**
+ * Разворот закончен: распорка больше не нужна.
+ *
+ * Здесь же — обновление наблюдателей и кэша фокуса. Раньше это делали сами
+ * вызывающие сразу после hydrateChunk(), но теперь она возвращается ДО того,
+ * как карточки появились, и знать про них может только этот момент.
+ */
+function finishHydration(ch) {
+    var grid = getCatalogGridEl();
+    var spacer = ch.spacer;
+
+    if (spacer && spacer.parentNode === grid) {
+        if (catalogState.chunkObserver) catalogState.chunkObserver.unobserve(spacer);
+        grid.removeChild(spacer);
+    }
     ch.spacer = null;
-    return true;
+    ch.hydrating = null;
+    ch.filled = ch.end;         // чанк заполнен целиком
+
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    updatePosterObservers();
+    updateGridVisibilityWindow();
+}
+
+/** Отменить недотёкший разворот (чанк сворачивают или сетку выбрасывают) */
+function cancelHydration(ch) {
+    if (!ch || !ch.hydrating) return;
+    if (ch.hydrating.raf && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(ch.hydrating.raf);
+    }
+    ch.hydrating = null;
 }
 
 /** Чанк, ближайший к верху видимой области */
@@ -2227,17 +2358,21 @@ function ensureChunksAroundFocus(card) {
 
     for (var i = here - 1; i <= here + 1; i++) {
         if (i < 0 || i >= chunks.length) continue;
-        if (chunks[i].spacer && hydrateChunk(chunks[i])) grew = true;
+        // Свой чанк — целиком и сейчас: фокус уже в нём, и следующий шаг стрелки
+        // должен найти соседнюю карточку, а не подождать кадр. Соседние — порциями,
+        // до них человек доберётся не раньше, чем через несколько нажатий.
+        var now = (i === here);
+        if (chunks[i].spacer || chunks[i].hydrating) {
+            if (hydrateChunk(chunks[i], now)) grew = true;
+        }
     }
 
     if (grew) {
-        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
-        updatePosterObservers();
-        updateGridVisibilityWindow();
-        // Обязательно: развернув чанк, мы увеличили окно, и хвост надо
-        // подрезать. Без этого вызова окно только росло — при движении по
-        // сетке чанки поднимались один за другим и не сворачивались никогда,
-        // потому что обрезку планировали лишь догрузка страницы и наблюдатель.
+        // Развернув чанк, мы увеличили окно, и хвост надо подрезать. Без этого
+        // окно только росло — при движении по сетке чанки поднимались один за
+        // другим и не сворачивались никогда, потому что обрезку планировали
+        // лишь догрузка страницы и наблюдатель.
+        // Наблюдателей и кэш фокуса обновляет finishHydration.
         scheduleChunkTrim();
     }
 }
