@@ -2400,15 +2400,15 @@ function scrollAnimDurationX(duration) {
 }
 
 /**
- * Горизонталь работает ровно тем же механизмом, что и вертикаль: gsap тянет
- * scrollLeft нативного скроллера через applyScroll → Animations.tweenScroll.
+ * Горизонталь работает ровно тем же механизмом, что и вертикаль: scrollLeft
+ * нативного скроллера тянет applyScroll → Animations.tweenScroll.
  *
  * Раньше карусели рядов были исключением — вьюпорт с overflow: hidden, а
  * позиция жила в transform внутреннего трека (.catalog-row-track), в расчёте на
  * то, что кадр обойдётся композитору дешевле твина scrollLeft. На Android TV
  * вышло наоборот: трек — это весь ряд целиком (два десятка карточек, ~5000×490),
- * и gsap на время твина поднимает его в отдельный слой (force3D: "auto"), а по
- * окончании отпускает. То есть на КАЖДОЕ нажатие стрелки телевизор растрирует
+ * и анимация трансформации на время твина поднимала его в отдельный слой, а по
+ * окончании отпускала. То есть на КАЖДОЕ нажатие стрелки телевизор растрирует
  * многомегапиксельную текстуру, а потом перерисовывает ряд обратно — отсюда
  * рывки и задержки, которых у вертикальной прокрутки нет. Нативный скроллер
  * рисует только окно вьюпорта и умеет сдвигать уже нарисованное.
@@ -2428,8 +2428,10 @@ function getMaxScrollX(container) {
 function setScrollXImmediate(container, left) {
     if (!container) return;
     clearPendingScroll(container, '_navPendX');
-    // Жест перебивает твин навигации, иначе gsap продолжит тянуть к своей цели
-    if (typeof gsap !== 'undefined') gsap.killTweensOf(container);
+    // Жест перебивает твин навигации, иначе тот продолжит тянуть к своей цели
+    if (typeof Animations !== 'undefined' && Animations.stopScrollTween) {
+        Animations.stopScrollTween(container);
+    }
     container.scrollLeft = left;
 }
 
@@ -2457,7 +2459,7 @@ function setScrollX(container, left, smooth, duration) {
     var animated = smooth && duration > 0;
 
     // Уже на месте (с учётом идущего твина) — холостой твин не заводим: он
-    // ничего не двигает, но держит gsap.isTweening, а на нём висит откладывание
+    // ничего не двигает, но держит признак «идёт прокрутка», а на нём висит откладывание
     // постеров (isRowScrollAnimating в catalog.js). Симметрично ветке в
     // applyScroll для scrollTop.
     if (animated && Math.abs(rest - left) < 2) return;
@@ -2476,16 +2478,16 @@ function setScrollX(container, left, smooth, duration) {
  *
  * Раньше здесь было три ветки: gsap + ScrollToPlugin, нативный
  * scrollTo({behavior:'smooth'}) и мгновенное присваивание. Плагин убран из
- * index.html (тормозил прокрутку), поэтому первая ветка больше не срабатывала,
- * а нативный плавный скролл на телевизоре не работает. Всё идёт через
- * Animations.tweenScroll: gsap тянет scrollTop/scrollLeft как обычные числовые
- * свойства, никакого плагина для этого не нужно.
+ * index.html (тормозил прокрутку), а нативный плавный скролл на телевизоре не
+ * работает — и не дал бы ни задать длительность, ни узнать окончание. Всё идёт
+ * через Animations.tweenScroll: маленький твин на requestAnimationFrame,
+ * который тянет scrollTop/scrollLeft линейно.
  *
  * Горизонталь идёт сюда же, но через setScrollX — он обрезает цель по краям
  * содержимого и учитывает режим анимации из ui-customizer.
  *
  * @param {Element} container контейнер с прокруткой
- * @param {Object}  vars      scrollTop / scrollLeft (+ любые gsap-свойства)
+ * @param {Object}  vars      scrollTop и/или scrollLeft
  * @param {boolean} smooth    false — прыжком
  * @param {number}  [duration] длительность в секундах. Не передавать — тогда
  *                             считается из расстояния по SCROLL_SMOOTH.speedY,
@@ -2509,7 +2511,7 @@ function applyScroll(container, vars, smooth, duration, ease) {
     // Ветки isTopAnchoredTarget и 'detail-view' в scrollToElementIfNeeded зовут
     // applyScroll с {scrollTop: 0} безусловно, не глядя на текущую позицию. Для
     // первой строки сетки это означало полсекунды твина из нуля в ноль: ничего
-    // не двигалось, но gsap.isTweening(#main-container) всё это время отвечал
+    // не двигалось, но признак прокрутки #main-container всё это время отвечал
     // «идёт». А на этом ответе висит откладывание постеров
     // (deferPosterUntilScrollEnds в catalog.js) — весь первый экран сетки стоял
     // пустым ровно на длину холостого твина, перепланируя себя каждый кадр.
@@ -3682,9 +3684,6 @@ function handleRowsNavigation(dir) {
 
 // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 function initControl() {
-    if (window.gsap && window.ScrollToPlugin && gsap.registerPlugin) {
-        gsap.registerPlugin(ScrollToPlugin);
-    }
     setupKeyboardHandlers();
     setupFocusRescue();
     setupPlayerWheelControl();
