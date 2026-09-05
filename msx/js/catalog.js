@@ -725,6 +725,8 @@ var catalogState = {
     posterLoadQueue: [], posterObserver: null, loadMoreObserver: null,
     // Постеры, дождавшиеся конца перехода на другую строку (см. deferPosterUntilScrollEnds)
     posterDeferred: [], posterDeferredRaf: 0,
+    // Очередь загрузки пережидает возобновившееся движение (schedulePosterBatchRetry)
+    posterBatchTimer: null,
     cardElements: {},
     posterCache: new LRUCache(CATALOG_CONSTANTS.MAX_POSTER_CACHE),
     maxPosterCacheSize: CATALOG_CONSTANTS.MAX_POSTER_CACHE,
@@ -2520,6 +2522,10 @@ function resetDeferredPosters() {
     }
     catalogState.posterDeferredRaf = 0;
     catalogState.posterDeferred.length = 0;
+    if (catalogState.posterBatchTimer) {
+        clearTimeout(catalogState.posterBatchTimer);
+        catalogState.posterBatchTimer = null;
+    }
     dropPosterReveals();     // ждущие показа картинки — от прежней сетки
 }
 
@@ -2609,8 +2615,28 @@ function addToPosterQueue(idx) {
     if (!catalogState.isPosterLoading) loadNextPosterBatch();
 }
 
+/**
+ * Движение возобновилось — очередь ждёт следующей остановки.
+ *
+ * Таймер один на всю очередь: пока он взведён, повторные вызовы ничего не
+ * добавляют, иначе каждая карточка, доехавшая до наблюдателя, заводила бы свой.
+ */
+function schedulePosterBatchRetry() {
+    if (catalogState.posterBatchTimer) return;
+    catalogState.posterBatchTimer = setTimeout(function () {
+        catalogState.posterBatchTimer = null;
+        loadNextPosterBatch();
+    }, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+}
+
 function loadNextPosterBatch() {
     if (catalogState.isPosterLoading || catalogState.posterLoadQueue.length === 0) return;
+
+    // Человек снова поехал — новую пачку не начинаем. Раньше проверки здесь не
+    // было вовсе: очередь пережидала только первую остановку, а стоило тронуться
+    // снова — запросы, ответы и вставки шли прямо поверх прокрутки.
+    if (isGridNavBusy()) { schedulePosterBatchRetry(); return; }
+
     catalogState.posterLoadQueue.sort(function (a, b) { return a - b; });
     var next = catalogState.posterLoadQueue.splice(0, catalogState.postersPerBatch);
     loadPosterBatch(next);
@@ -2642,6 +2668,15 @@ function loadPosterBatch(indices) {
                 scheduleIdle(loadNextPosterBatch, 200);
             }
 
+            return;
+        }
+
+        // Движение возобновилось посреди пачки: уже запущенное доедет само (его
+        // не остановить), а новое не начинаем. Таймер заводим только когда в
+        // работе ничего не осталось — иначе повторный вызов придёт из .then()
+        // завершившейся загрузки, и насосов стало бы несколько.
+        if (ptr < indices.length && isGridNavBusy()) {
+            if (active === 0) setTimeout(next, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
             return;
         }
 
