@@ -2461,6 +2461,17 @@ function isCatalogScrollAnimating() {
     return !!main && gsap.isTweening(main);
 }
 
+/**
+ * Навигация по сетке в разгаре: либо едет твин прокрутки, либо кнопку держат.
+ * Второе обязательно — твин теперь заканчивается ДО следующего шага серии
+ * (шаги притормаживаются под скорость прокрутки, см. navStepUntil в
+ * control.js), и по одному лишь isCatalogScrollAnimating постеры влезали бы
+ * в каждую паузу между шагами.
+ */
+function isGridNavBusy() {
+    return !!window.navHold || isCatalogScrollAnimating();
+}
+
 /** Откладывает постер карточки до конца перехода */
 function deferPosterUntilScrollEnds(idx) {
     if (catalogState.posterDeferred.indexOf(idx) === -1) catalogState.posterDeferred.push(idx);
@@ -2475,8 +2486,8 @@ function scheduleDeferredPosters() {
 
 function deferredPostersStep() {
     catalogState.posterDeferredRaf = 0;
-    // Пользователь нажал «вниз» ещё раз — ждём и этот тван
-    if (isCatalogScrollAnimating()) { scheduleDeferredPosters(); return; }
+    // Пользователь ещё едет — ждём и этот шаг, и всю серию
+    if (isGridNavBusy()) { scheduleDeferredPosters(); return; }
     flushDeferredPosters();
 }
 
@@ -2509,6 +2520,7 @@ function resetDeferredPosters() {
     }
     catalogState.posterDeferredRaf = 0;
     catalogState.posterDeferred.length = 0;
+    dropPosterReveals();     // ждущие показа картинки — от прежней сетки
 }
 
 function initPosterLazyLoading() {
@@ -2523,8 +2535,11 @@ function initPosterLazyLoading() {
                 var idx = parseInt(target.dataset.catalogIndex, 10);
                 var it = catalogState.items[idx];
                 if (!it) continue;
-                // Идёт переход на другую строку — постер ждёт его конца
-                if (isCatalogScrollAnimating()) { deferPosterUntilScrollEnds(idx); continue; }
+                // Навигация идёт — постер ждёт её конца. Не только твина: при
+                // зажатой кнопке между шагами есть паузы, в которые прокрутка
+                // уже докрутилась, а движение продолжается, и загрузка успевала
+                // влезть ровно туда (см. navHold в control.js).
+                if (isGridNavBusy()) { deferPosterUntilScrollEnds(idx); continue; }
                 // Есть poster_path — вставляем сразу; в очередь только медленный путь
                 if (!loadPosterDirect(idx, target)) addToPosterQueue(idx);
             }
@@ -2782,9 +2797,16 @@ function updatePosterDOM(div, rating, url) {
     // Вставляем сразу
     div.appendChild(img);
 
+    // Само проявление ждёт паузы в навигации и своего кадра — та же очередь,
+    // что у рядов. Картинку в DOM кладём сразу (её ищут проверки «постер уже
+    // есть» в initPosterLazyLoading и rearmCatalogObservers), но она прозрачна
+    // и лежит поверх скелета, так что до показа ничего не стоит.
     img.onload = function () {
-        img.classList.add('loaded');
-        if (placeholder) dropPosterPlaceholder(placeholder);
+        queuePosterReveal(function () {
+            if (!img.isConnected) return;
+            img.classList.add('loaded');
+            if (placeholder) dropPosterPlaceholder(placeholder);
+        });
     };
 
     // Обработка ошибок: зеркало теперь выбирается детерминированно, поэтому
@@ -4496,7 +4518,7 @@ function initRowPosterLazyLoading() {
     if (catalogState.rowPosterObserver) catalogState.rowPosterObserver.disconnect();
     catalogState.rowPosterQueue = [];
     catalogState.activeRowPosterLoads = 0;
-    dropRowPosterInserts();
+    dropPosterReveals();
     if (catalogState.rowPosterQueueTimer) {
         clearTimeout(catalogState.rowPosterQueueTimer);
         catalogState.rowPosterQueueTimer = null;
@@ -4849,58 +4871,70 @@ function processRowPosterQueue() {
 }
 
 /**
- * Очередь ВСТАВОК готовых постеров.
+ * Очередь ПОЯВЛЕНИЯ готовых постеров — общая для рядов и сетки категории.
  *
- * processRowPosterQueue придерживает только СТАРТ загрузки. Между стартом и
- * готовностью картинки проходят сотни миллисекунд сети, поэтому пачка, ушедшая
- * в работу во время паузы, приезжала ровно посреди следующего движения — и
- * вставлялась без всяких проверок. А вставка это `innerHTML = ''` плюс
- * appendChild в бокс 260×460 внутри прокручиваемого вьюпорта, то есть layout и
- * paint на кадре анимации. Отсюда и оставались фризы «особенно когда
- * подгружаются постеры»: сам скролл уже нативный и дешёвый, дорогой была работа
- * поверх него.
+ * Очереди загрузки (processRowPosterQueue у рядов, posterDeferred у сетки)
+ * придерживают только СТАРТ. Между стартом и готовностью картинки проходят
+ * сотни миллисекунд сети, поэтому пачка, ушедшая в работу во время паузы,
+ * приезжала ровно посреди следующего движения — и показывалась без всяких
+ * проверок. А показ это декод и paint постера в полкарточки поверх
+ * прокручивающегося контейнера, то есть тяжёлый кадр прямо во время перехода.
+ * Отсюда и оставались фризы «особенно когда подгружаются постеры»: сам скролл
+ * уже нативный и дешёвый, дорогой была работа поверх него.
  *
  * Поэтому готовый постер ждёт здесь двух вещей: тишины в навигации (те же
- * условия, что у очереди загрузки) и своего кадра — вставляем по одной штуке
- * с интервалом POSTER_INSERT_GAP_MS, иначе десяток разом завершившихся загрузок
- * снова сложился бы в один тяжёлый кадр.
+ * условия, что у очередей загрузки — твин прокрутки докрутился И кнопку не
+ * держат) и своего кадра: показываем по одному с интервалом
+ * POSTER_INSERT_GAP_MS, иначе десяток разом завершившихся загрузок снова
+ * сложился бы в один кадр.
  *
- * Картинка к этому моменту уже скачана и декодирована (img.decode в
- * setRowPosterImg), так что задержка ничего не грузит заново — она только
- * выбирает момент, когда тронуть DOM.
+ * Картинка к этому моменту уже скачана, так что задержка ничего не грузит
+ * заново — она только выбирает момент, когда тронуть экран.
  */
-var rowPosterInserts = [];
-var rowPosterInsertTimer = null;
+var posterReveals = [];
+var posterRevealTimer = null;
 
-function queueRowPosterInsert(insert) {
-    rowPosterInserts.push({ run: insert, at: Date.now() });
-    if (!rowPosterInsertTimer) pumpRowPosterInserts();
+function queuePosterReveal(insert) {
+    posterReveals.push({ run: insert, at: Date.now() });
+    if (!posterRevealTimer) pumpPosterReveals();
 }
 
-function pumpRowPosterInserts() {
-    rowPosterInsertTimer = null;
-    if (!rowPosterInserts.length) return;
+function pumpPosterReveals() {
+    posterRevealTimer = null;
+    if (!posterReveals.length) return;
 
-    var head = rowPosterInserts[0];
-    var waited = Date.now() - head.at;
-    if ((window.navHold || isRowScrollAnimating()) &&
-        waited < CATALOG_CONSTANTS.POSTER_INSERT_MAX_WAIT_MS) {
-        rowPosterInsertTimer = setTimeout(pumpRowPosterInserts, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+    // isRowScrollAnimating годится и для сетки: там нет сфокусированной карточки
+    // ряда, и проверка сводится к вертикальному твину #main-container — ровно
+    // тому, что двигает сетку.
+    //
+    // Предохранитель по времени — только для твина. Он может «залипнуть»:
+    // признак движения читается через gsap.isTweening, а тикер gsap живёт на
+    // requestAnimationFrame, и если кадры перестанут идти (свернули приложение,
+    // ТВ ушёл в заставку), незавершённый твин оставит его навсегда. У navHold
+    // такой беды нет — он сам гаснет через NAV_HOLD_IDLE_MS тишины, поэтому
+    // зажатую кнопку ждём сколько угодно. Иначе долгое удержание как раз и
+    // приводило бы к залпу постеров посреди движения, ради устранения которого
+    // всё это и заведено.
+    var head = posterReveals[0];
+    var stuckTween = isRowScrollAnimating() &&
+        (Date.now() - head.at) < CATALOG_CONSTANTS.POSTER_INSERT_MAX_WAIT_MS;
+    if (window.navHold || stuckTween) {
+        posterRevealTimer = setTimeout(pumpPosterReveals, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
         return;
     }
 
-    rowPosterInserts.shift();
+    posterReveals.shift();
     try { head.run(); } catch (e) { }
 
-    if (rowPosterInserts.length) {
-        rowPosterInsertTimer = setTimeout(pumpRowPosterInserts, CATALOG_CONSTANTS.POSTER_INSERT_GAP_MS);
+    if (posterReveals.length) {
+        posterRevealTimer = setTimeout(pumpPosterReveals, CATALOG_CONSTANTS.POSTER_INSERT_GAP_MS);
     }
 }
 
 /** Ряды пересобраны — ждущие вставки указывают на оторванные боксы */
-function dropRowPosterInserts() {
-    if (rowPosterInsertTimer) { clearTimeout(rowPosterInsertTimer); rowPosterInsertTimer = null; }
-    rowPosterInserts.length = 0;
+function dropPosterReveals() {
+    if (posterRevealTimer) { clearTimeout(posterRevealTimer); posterRevealTimer = null; }
+    posterReveals.length = 0;
 }
 
 /**
@@ -4929,7 +4963,7 @@ function setRowPosterImg(box, url, deferDuringNav) {
         // Промис резолвится ПОСЛЕ вставки, а не по готовности картинки: на нём
         // висит счётчик activeRowPosterLoads, и пока вставки ждут паузы, слоты
         // очереди заняты — новых загрузок посреди движения не начнётся.
-        var whenIdle = deferDuringNav ? queueRowPosterInsert : function (fn) { fn(); };
+        var whenIdle = deferDuringNav ? queuePosterReveal : function (fn) { fn(); };
 
         var insert = function () {
             whenIdle(function () {
