@@ -757,15 +757,18 @@ body {
   border-radius: 12px;
   z-index: 10;
   border: 1px solid currentColor;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  /* Размытой тени здесь больше нет. Она висела на КАЖДОЙ карточке: радиус 20px
+     на бейдже 40×26 означает растеризацию области вчетверо больше самого
+     бейджа, и так на всех живых карточках сетки, причём заново при каждом
+     входе карточки в кадр (content-visibility). Читаемости она не давала —
+     бейдж и так лежит на своей полупрозрачной подложке поверх постера. */
 }
 
-/* Карточки рядов (в том числе главной) — бейдж мельче и без тени */
+/* Карточки рядов (в том числе главной) — бейдж мельче */
 .catalog-row-card .rating-badge {
   font-size: 13px;
   padding: 3px 7px;
   border-radius: 10px;
-  box-shadow: none;
 }
 
 .torrent-info {
@@ -997,7 +1000,8 @@ body {
   background: rgba(0, 0, 0, 0.3);
   /* Тёмный фон */
   backdrop-filter: none;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  /* Размытая тень убрана: плиток в списке файлов десятки, и каждая
+     растеризовалась с областью больше себя самой */
   border-radius: 12px;
   padding: 0;
   display: flex;
@@ -5085,7 +5089,8 @@ article {
   margin: 0 24px 0 0 !important;
   border-radius: 10px;
   background: #14141c;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  /* Размытая тень убрана, см. .file-item выше. transition оставлен: по нему
+     проявляется кольцо фокуса, а оно без размытия и ничего не стоит */
   transition: box-shadow 0.2s ease;
 }
 
