@@ -350,8 +350,11 @@ function clearFocused() {
     _focusedEls = [];
     for (var i = 0; i < list.length; i++) {
         if (typeof gsap !== 'undefined') gsap.killTweensOf(list[i]);
-        list[i].style.boxShadow = '';
-        list[i].style.transform = '';
+        // Присваивание пустой строки свойству, которого и так нет, — лишняя
+        // пометка дерева стилей грязным. Инлайновые значения ставит только
+        // анимация фокуса, то есть почти никогда.
+        if (list[i].style.boxShadow) list[i].style.boxShadow = '';
+        if (list[i].style.transform) list[i].style.transform = '';
         list[i].classList.remove('focused');
     }
 }
@@ -550,6 +553,27 @@ var CATALOG_CARDS_SELECTOR =
  * карточки могли ещё не появиться, и залипший пустой список означал бы экран
  * без фокуса до следующей инвалидации.
  */
+/**
+ * Показанный сейчас контейнер каталога: сетка категории или ряды.
+ *
+ * Читаем инлайновый style.display, а НЕ offsetParent. Разница принципиальная:
+ * style.display — это чтение атрибута, оно ничего не стоит, а offsetParent
+ * заставляет браузер пересчитать раскладку. На сетке из сотен карточек с
+ * content-visibility такой пересчёт — самая дорогая операция на нажатие
+ * (зонд намерил 527мс на 101 вызов updateFocusableElements).
+ *
+ * Инвариант держат showCatalogGridView / showCatalogRowsView (catalog.js):
+ * показан ровно один из двух, второму ставится display: none. Сетка вдобавок
+ * очищается при уходе из категории, так что пустой она быть не может.
+ */
+function visibleCatalogScope() {
+    var grid = getEl('catalog-grid');
+    if (grid && grid.style.display !== 'none') return grid;
+    var rows = getEl('catalog-rows');
+    if (rows && rows.style.display !== 'none') return rows;
+    return null;
+}
+
 function getCatalogGridCards() {
     if (_gridCardsCache.gen === _focusGen && _gridCardsCache.cards &&
         _gridCardsCache.cards.length > 0 &&
@@ -557,9 +581,18 @@ function getCatalogGridCards() {
         return _gridCardsCache.cards;
     }
 
-    var ac = document.querySelectorAll(CATALOG_CARDS_SELECTOR);
+    // Раньше здесь был обход всех карточек обоих контейнеров с проверкой
+    // VISIBLE() на каждой. Она отсеивала карточки скрытого контейнера — но
+    // ценой принудительной раскладки, и ровно то же самое даёт выбор
+    // контейнера. Погашенные оконной видимостью карточки как проходили
+    // проверку (visibility: hidden оставляет offsetParent), так и проходят.
+    var scope = visibleCatalogScope();
     var c = [];
-    for (var i = 0; i < ac.length; i++) if (VISIBLE(ac[i])) c.push(ac[i]);
+    if (scope) {
+        var ac = scope.querySelectorAll(
+            '.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+        for (var i = 0; i < ac.length; i++) c.push(ac[i]);
+    }
 
     _gridCardsCache.gen = _focusGen;
     _gridCardsCache.cards = c;
@@ -577,8 +610,17 @@ function getTorrentHeader() {
 // Кнопки общей шапки #home-topbar в порядке DOM — он же порядок на экране,
 // поэтому ←/→ идут ровно по строке. Раньше тут был жёсткий список id вкладок.
 function getTorrentTabs() {
-    var b = document.querySelectorAll('#home-topbar .home-nav-btn'), v = [];
-    for (var i = 0; i < b.length; i++) if (VISIBLE(b[i])) v.push(b[i]);
+    // Видимость шапки целиком определяет её секция: отдельные кнопки никто не
+    // прячет, а #torrserver-section переключается инлайновым display. Читаем
+    // его, а не offsetParent кнопок: даже одно чтение геометрии заставляет
+    // браузер пересчитать раскладку всей сетки каталога, а эта функция стоит
+    // в горячем пути updateFocusableElements.
+    var sec = getEl('torrserver-section');
+    if (sec && sec.style.display === 'none') return [];
+    var bar = getEl('home-topbar');
+    if (!bar) return [];
+    var b = bar.querySelectorAll('.home-nav-btn'), v = [];
+    for (var i = 0; i < b.length; i++) v.push(b[i]);
     return v;
 }
 
@@ -1522,8 +1564,15 @@ function updateFocusableElements() {
         // offsetParent делается один раз на изменение DOM, а не здесь заново.
         var cards = getCatalogGridCards();
         for (var i = 0; i < cards.length; i++) list.push(cards[i]);
-        var rowHeaders = document.querySelectorAll('#catalog-rows .catalog-row-header, #catalog-grid .catalog-row-header');
-        for (var rh = 0; rh < rowHeaders.length; rh++) if (rowHeaders[rh] && rowHeaders[rh].offsetParent !== null) list.push(rowHeaders[rh]);
+        // Заголовки берём из того же показанного контейнера — по той же причине,
+        // что и карточки: offsetParent здесь стоил бы полной раскладки сетки,
+        // хотя заголовков всего десяток. Одного чтения геометрии достаточно,
+        // чтобы браузер пересчитал всё.
+        var scope = visibleCatalogScope();
+        if (scope) {
+            var rowHeaders = scope.querySelectorAll('.catalog-row-header');
+            for (var rh = 0; rh < rowHeaders.length; rh++) list.push(rowHeaders[rh]);
+        }
         // window.catalogCards заполняем ДО кнопок шапки: legacy-навигация по
         // сетке считает по нему индексы карточек, шапке там места нет.
         window.catalogCards = list.slice();
@@ -2923,10 +2972,22 @@ function focusEl(el, opts) {
     // одно нажатие несравнимо лучше, чем потерять фокус совсем.
     if (el.isConnected === false) return false;
 
-    clearFocused();
-    el.classList.add('focused');
-    trackFocusedElement(el);
-    rememberScreenFocus(el);
+    // Подсветку переставляем В КОНЦЕ, после всех чтений геометрии.
+    //
+    // Раньше было наоборот: сначала снимали класс со старой карточки и вешали
+    // на новую, а потом читали getBoundingClientRect, чтобы решить, куда
+    // прокручивать. Любая запись стиля помечает дерево грязным, и первое же
+    // чтение геометрии после неё заставляет браузер пересчитать раскладку
+    // синхронно, посреди обработчика нажатия. На сетке в сотни карточек с
+    // content-visibility это самая дорогая операция на нажатие — зонд намерил
+    // 1003мс на 159 нажатий, и focusEl был первым в списке «перед рывками».
+    //
+    // Порядок чтения не меняет ничего: всё происходит в одной задаче, кадр
+    // рисуется один раз в конце, поэтому визуально подсветка появляется в тот
+    // же момент. Проверено, что до конца функции никто не спрашивает
+    // document.querySelector('.focused'): ensureChunksAroundFocus работает по
+    // переданному элементу, а anchorChunkIndex и isRowScrollAnimating зовутся
+    // с задержкой, когда класс уже на месте.
     if (opts.nativeFocus) try { el.focus(); } catch (e) { } else blurEditor();
 
     var container = null;
@@ -3030,6 +3091,12 @@ function focusEl(el, opts) {
             scrollDirection
         );
     }
+
+    // Записи стиля — последними, см. комментарий в начале функции
+    clearFocused();
+    el.classList.add('focused');
+    trackFocusedElement(el);
+    rememberScreenFocus(el);
     return true;
 }
 
