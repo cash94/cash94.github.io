@@ -349,7 +349,8 @@ function clearFocused() {
     var list = _focusedEls;
     _focusedEls = [];
     for (var i = 0; i < list.length; i++) {
-        if (typeof gsap !== 'undefined') gsap.killTweensOf(list[i]);
+        // gsap.killTweensOf отсюда убран: анимаций фокуса на gsap больше нет,
+        // подсветку целиком ведёт CSS
         // Присваивание пустой строки свойству, которого и так нет, — лишняя
         // пометка дерева стилей грязным. Инлайновые значения ставит только
         // анимация фокуса, то есть почти никогда.
