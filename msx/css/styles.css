@@ -3198,6 +3198,19 @@ body.detail-open {
   display: none !important;
 }
 
+/* Появление и скрытие панели управления плеера.
+   Раньше это делал gsap.fromTo/to по opacity и y. Переведено на CSS: обе
+   величины композиторные, поэтому переход идёт мимо главного потока — а панель
+   показывается ровно тогда, когда поток занят стартом плеера. */
+.controls-anim {
+  transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+}
+
+.controls-anim.controls-anim-hidden {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
 /* ===== ПЛАВНЫЙ СКРОЛЛИНГ ===== */
 
 /* Глобальные настройки плавности */
