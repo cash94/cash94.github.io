@@ -105,7 +105,7 @@ function getEl(id) {
 
 function clearDomCache() { domCache = {}; }
 
-function clearFocused() { var f = document.querySelectorAll('.focused'); for (var i = 0; i < f.length; i++) { if (typeof gsap !== 'undefined') gsap.killTweensOf(f[i]); f[i].style.boxShadow = ''; f[i].style.transform = ''; f[i].style.scale = ''; f[i].style.translate = ''; f[i].classList.remove('focused'); } };
+function clearFocused() { var f = document.querySelectorAll('.focused'); for (var i = 0; i < f.length; i++) { f[i].style.boxShadow = ''; f[i].style.transform = ''; f[i].style.scale = ''; f[i].style.translate = ''; f[i].classList.remove('focused'); } };
 
 // Вспомогательные функции
 function escapeHtml(text) {
