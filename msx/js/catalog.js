@@ -33,6 +33,11 @@ var CATALOG_CONSTANTS = {
     // появиться до того, как до него дойдёт фокус, а работа размазана
     // по нажатиям вместо одного залпа.
     ROW_POSTER_MARGIN_X_PX: 400,
+    // Сетка категории: на сколько строк ВНИЗ от фокуса готовим постеры заранее.
+    // Наблюдатель со своими 1200px берёт только то, что рядом с вьюпортом, и при
+    // быстром движении вниз фокус приезжал на пустые рамки. Две строки — это
+    // запас на несколько нажатий, а очередь всё равно ждёт паузы в навигации.
+    GRID_POSTER_PRELOAD_ROWS: 2,
     CATALOG_UPDATE_THRESHOLD_HOURS: 6,
     MAX_POSTER_DECODES: 8,
     FOCUS_DELAY_MS: 100,
@@ -731,6 +736,8 @@ var catalogState = {
     // Постер карточки под фокусом: ждёт конца твина карусели (ensureRowPosterNow)
     focusPosterCard: null,
     focusPosterTimer: null,
+    // Ряд, чьи постеры уже поставлены в очередь целиком (queueFocusedRowPosters)
+    rowPostersQueuedFor: null,
     // Оконная видимость (см. initRowVisibilityWindow / initGridVisibilityWindow)
     rowVisibilityObserver: null,
     gridVisibilityObserver: null,
@@ -2806,26 +2813,71 @@ function resetDeferredPosters() {
     dropPosterReveals();     // ждущие показа картинки — от прежней сетки
 }
 
+/**
+ * Единственная точка входа в загрузку постера сетки: и наблюдатель, и запас
+ * вперёд от фокуса (preloadGridPostersAhead) идут через неё, поэтому карточка
+ * не может уехать в работу дважды.
+ *
+ * Навигация идёт — постер ждёт её конца. Не только твина: при зажатой кнопке
+ * между шагами есть паузы, в которые прокрутка уже докрутилась, а движение
+ * продолжается, и загрузка успевала влезть ровно туда (см. navHold в control.js).
+ */
+function requestGridPoster(idx, card) {
+    if (!card) card = catalogState.cardElements[idx];
+    if (!card || !card.dataset) return;
+    if (card.dataset.posterRequested === '1') return;
+    if (card.querySelector('img.catalog-poster-img')) return;
+    if (isNaN(idx)) idx = parseInt(card.dataset.catalogIndex, 10);
+    if (isNaN(idx) || !catalogState.items[idx]) return;
+
+    card.dataset.posterRequested = '1';
+    if (catalogState.posterObserver) {
+        try { catalogState.posterObserver.unobserve(card); } catch (e) { }
+    }
+
+    if (isGridNavBusy()) { deferPosterUntilScrollEnds(idx); return; }
+    // Есть poster_path — вставляем сразу; в очередь только медленный путь
+    if (!loadPosterDirect(idx, card)) addToPosterQueue(idx);
+}
+
+/**
+ * Запас постеров вниз от фокуса: строка фокуса плюс GRID_POSTER_PRELOAD_ROWS
+ * следующих. Наблюдатель отсчитывает свои 1200px от вьюпорта, а фокус ходит
+ * быстрее прокрутки — на длинном спуске он приезжал в строку раньше, чем до неё
+ * доходил наблюдатель. Зовётся из revealCatalogElement, то есть из focusEl на
+ * каждое перемещение, сразу после ensureChunksAroundFocus: карточки нижних
+ * строк к этому моменту уже подняты из чанков.
+ *
+ * Дороже это не выходит: помечённая карточка снимается с наблюдателя, а сама
+ * загрузка всё так же ждёт паузы в навигации (requestGridPoster). Карточки,
+ * которых ещё нет в DOM, просто пропускаются — их возьмёт следующий проход
+ * или наблюдатель после разворачивания чанка.
+ */
+function preloadGridPostersAhead(card) {
+    if (!card || !card.dataset || !catalogState.items.length) return;
+
+    var idx = parseInt(card.dataset.catalogIndex, 10);
+    if (isNaN(idx)) return;
+
+    var cols = (typeof getColumns === 'function' && getColumns()) || 5;
+    if (cols < 1) cols = 5;
+
+    var start = Math.floor(idx / cols) * cols;
+    var end = Math.min(
+        start + cols * (CATALOG_CONSTANTS.GRID_POSTER_PRELOAD_ROWS + 1),
+        catalogState.items.length
+    );
+
+    for (var i = start; i < end; i++) requestGridPoster(i, catalogState.cardElements[i]);
+}
+
 function initPosterLazyLoading() {
     if (catalogState.posterObserver) catalogState.posterObserver.disconnect();
     catalogState.posterObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
-            if (entries[i].isIntersecting) {
-                var target = entries[i].target;
-                if (target.dataset.posterRequested === '1') continue;
-                target.dataset.posterRequested = '1';
-                catalogState.posterObserver.unobserve(target);
-                var idx = parseInt(target.dataset.catalogIndex, 10);
-                var it = catalogState.items[idx];
-                if (!it) continue;
-                // Навигация идёт — постер ждёт её конца. Не только твина: при
-                // зажатой кнопке между шагами есть паузы, в которые прокрутка
-                // уже докрутилась, а движение продолжается, и загрузка успевала
-                // влезть ровно туда (см. navHold в control.js).
-                if (isGridNavBusy()) { deferPosterUntilScrollEnds(idx); continue; }
-                // Есть poster_path — вставляем сразу; в очередь только медленный путь
-                if (!loadPosterDirect(idx, target)) addToPosterQueue(idx);
-            }
+            if (!entries[i].isIntersecting) continue;
+            var target = entries[i].target;
+            requestGridPoster(parseInt(target.dataset.catalogIndex, 10), target);
         }
     }, { rootMargin: CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX + 'px', threshold: 0.1 });
     var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
@@ -4749,6 +4801,55 @@ function ensureRowPosterNow(card) {
     scheduleFocusRowPoster(0);
 }
 
+/**
+ * Фокус вошёл в ряд — ставим в очередь ВСЕ его постеры, а не только те, что
+ * попали в кадр. Наблюдатель с ROW_POSTER_MARGIN_X_PX видит от силы полторы
+ * карточки за краем экрана, поэтому при движении вправо фокус упирался в пустые
+ * рамки и ждал загрузку. Ряд — это максимум 19 карточек: очередь с её
+ * ROW_POSTER_CONCURRENCY и паузами на время навигации разберёт их сама, не
+ * складывая всё в один кадр.
+ *
+ * Порядок — от карточки под фокусом вправо, хвост слева уходит в конец: то, к
+ * чему человек подойдёт первым, грузится первым.
+ *
+ * Один проход на ряд: повторный вход в тот же ряд ничего не пересобирает,
+ * а при возврате в каталог метку снимает initRowPosterLazyLoading.
+ */
+function queueFocusedRowPosters(card) {
+    var key = card.dataset.catalogKey;
+    if (!key) return;                                   // карточка главной — её грузит home.js
+
+    var row = card.closest ? card.closest('.catalog-row') : null;
+    if (!row || catalogState.rowPostersQueuedFor === row) return;
+    catalogState.rowPostersQueuedFor = row;
+
+    var items = window.catalogRowsData && window.catalogRowsData[key];
+    if (!items) return;
+    if (!catalogState.rowPosterQueue) catalogState.rowPosterQueue = [];
+
+    var cards = row.querySelectorAll('.catalog-row-card');
+    var from = parseInt(card.dataset.itemIndex, 10);
+    if (isNaN(from) || from < 0 || from > cards.length) from = 0;
+
+    var order = [];
+    for (var i = from; i < cards.length; i++) order.push(cards[i]);
+    for (var j = 0; j < from; j++) order.push(cards[j]);
+
+    var queued = 0;
+    for (var k = 0; k < order.length; k++) {
+        var c = order[k];
+        if (c.dataset.posterLoaded === '1') continue;    // уже загружена или в очереди
+        var idx = parseInt(c.dataset.itemIndex, 10);
+        if (isNaN(idx) || !items[idx]) continue;         // «Показать все» — без постера
+        c.dataset.posterLoaded = '1';
+        if (catalogState.rowPosterObserver) catalogState.rowPosterObserver.unobserve(c);
+        catalogState.rowPosterQueue.push({ card: c, item: items[idx] });
+        queued++;
+    }
+
+    if (queued) processRowPosterQueue();
+}
+
 function scheduleFocusRowPoster(delay) {
     if (catalogState.focusPosterTimer) clearTimeout(catalogState.focusPosterTimer);
     catalogState.focusPosterTimer = setTimeout(function () {
@@ -4839,6 +4940,7 @@ function initRowPosterLazyLoading() {
         catalogState.focusPosterTimer = null;
     }
     catalogState.focusPosterCard = null;
+    catalogState.rowPostersQueuedFor = null;   // очередь обнулена — ряд под фокусом наберём заново
 
     catalogState.rowPosterObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
@@ -5089,12 +5191,14 @@ function revealCatalogElement(el) {
     // focusEl на каждое перемещение фокуса.
     if (!el.classList.contains('catalog-row-card')) {
         ensureChunksAroundFocus(el);
+        preloadGridPostersAhead(el);
         return;
     }
 
     var row = el.closest ? el.closest('.catalog-row') : null;
     if (row) row.classList.remove(OFFSCREEN_CLASS);
     ensureRowPosterNow(el);
+    queueFocusedRowPosters(el);
 }
 
 /** Ряды-карусели: гасим ряд целиком вместе с заголовком */
