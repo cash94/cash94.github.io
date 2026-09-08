@@ -35,7 +35,10 @@ var SEEK_ACCELERATION_STEPS = [
  * как быстро жмут и держат ли кнопку, — см. acceptNavStep и NAV_STEP_BASE_MS.
  *
  * speedX / speedY — px/с. Ориентиры: карточка ряда с зазором ≈ 278px, высота
- * ряда каталога ≈ 490px, то есть шаг занимает примерно 0.3с по обеим осям.
+ * ряда каталога ≈ 490px, то есть сам по себе шаг занял бы 0.31с и 0.33с. Ровно
+ * на эту разницу с NAV_STEP_BASE_MS и работает navStepScrollDuration: прокрутка
+ * шага укладывается в общий срок, а эти скорости остаются за всем остальным —
+ * прокруткой мышью, восстановлением позиции и порогом maxDuration.
  */
 var SCROLL_SMOOTH = {
     force: true,
@@ -88,18 +91,29 @@ var navStepUntil = 0;
 // Предохранитель на случай неожиданно длинного твина (доводка через полэкрана):
 // притормаживать автоповтор дольше этого нельзя, иначе пульт «залипнет».
 var NAV_STEP_MAX_WAIT_MS = 420;
-// Пол на длительность шага: столько шаг занимает, даже если прокрутки при нём
-// не было вовсе. Без этого пола темп движения гулял в разы: пока фокус идёт по
-// уже видимой части ряда или строки, прокрутка не заводится, притормаживать
-// нечем — и лента летит со скоростью автоповтора пульта; на краю начинается
-// прокрутка, и движение резко падает до её скорости. То же самое с быстрыми
-// одиночными нажатиями: они не притормаживались вообще.
+// Длительность одного шага навигации — единственное число, задающее темп
+// движения. Столько шаг занимает и когда прокрутки при нём не было вовсе, и
+// когда была: прокрутка шага подгоняется под этот срок (navStepScrollDuration).
 //
-// 300мс — это и есть шаг ленты по обеим осям при нынешних скоростях: карточка
-// ряда с зазором ≈278px при speedX 900 даёт 0.31с, высота ряда ≈490px при
-// speedY 1500 — 0.33с (см. SCROLL_SMOOTH). То есть темп остаётся тем же, каким
-// он был у одиночного нажатия с прокруткой, просто теперь он единый.
-var NAV_STEP_BASE_MS = 300;
+// Без этого темп гулял в разы: пока фокус идёт по уже видимой части ряда или
+// строки, прокрутка не заводится, притормаживать нечем — и лента летит со
+// скоростью автоповтора пульта; на краю начинается прокрутка, и движение
+// падает до её скорости. То же самое с быстрыми одиночными нажатиями: они не
+// притормаживались вообще.
+var NAV_STEP_BASE_MS = 250;
+// Насколько прокрутка шага вправе оказаться быстрее постоянной скорости
+// (SCROLL_SMOOTH.speedX/speedY) ради этого срока. Обычный шаг — карточка или
+// строка — в него укладывается сам, поправка выходит мелкой. Ограничение
+// нужно для редких длинных шагов (переход на ряд, прокрученный в другое место):
+// без него такой переезд ужимался бы в 250мс и читался бы рывком.
+var NAV_STEP_MAX_SPEEDUP = 1.5;
+// Прокрутка считается частью шага, если началась не позже этого срока после
+// него. По времени, а не по navStepArmed: один шаг умеет двигать сразу две оси
+// (переход на другой ряд — и лента вниз, и карусель вбок), и подогнать надо обе,
+// иначе одна докрутится, а вторая продолжит ехать. Два кадра — это всё ещё та
+// же задача обработчика нажатия, фоновые прокрутки сюда не попадают.
+var NAV_STEP_SCROLL_WINDOW_MS = 32;
+var navStepAt = 0;
 // Экраны с анимированной лентой — только на них шаг притормаживается. Настройки
 // и донат не в списке: там нет прокрутки под фокусом, и единый темп читался бы
 // просто как тормоза.
@@ -2426,10 +2440,40 @@ function markNavStep(duration) {
  */
 function acceptNavStep(direction, run) {
     if (NAV_PACED_SCREENS.indexOf(currentScreen()) === -1) return true;
-    if (Date.now() < navStepUntil) { queueNavStep(direction, run); return false; }
-    navStepUntil = Date.now() + NAV_STEP_BASE_MS;
+    var now = Date.now();
+    if (now < navStepUntil) { queueNavStep(direction, run); return false; }
+    navStepUntil = now + NAV_STEP_BASE_MS;
+    navStepAt = now;
     navStepArmed = true;
     return true;
+}
+
+/** Прокрутка, начатая этим шагом навигации (а не фоном) — см. navStepAt */
+function isNavStepScroll() {
+    return navStepAt > 0 && (Date.now() - navStepAt) <= NAV_STEP_SCROLL_WINDOW_MS;
+}
+
+/**
+ * Длительность прокрутки шага: ровно NAV_STEP_BASE_MS, сколько бы px ни
+ * пришлось проехать. Без этой поправки шаг с прокруткой шёл дольше шага без
+ * неё — при speedY 1500 строка в 490px занимает 0.33с против 0.25с у шага, где
+ * прокручивать нечего, — и темп снова разъезжался.
+ *
+ * Поправка касается ТОЛЬКО шагов навигации: всё прочее (краевая прокрутка мышью,
+ * восстановление позиции при возврате, сборка рядов) едет с постоянной
+ * скоростью, как и ехало.
+ *
+ * Мгновенный переезд остаётся мгновенным: 0 приходит либо от режима «none» в
+ * ui-customizer, либо от maxDuration — «это не поездка, а смена места».
+ *
+ * @param {number} natural  длительность по постоянной скорости, сек (0 — сразу)
+ * @param {number} target   срок шага с поправкой на режим прокрутки, сек
+ */
+function navStepScrollDuration(natural, target) {
+    if (!(natural > 0) || !(target > 0)) return natural;
+    if (!isNavStepScroll()) return natural;
+    // Ускорять сильнее, чем в NAV_STEP_MAX_SPEEDUP раз, не даём — см. константу
+    return Math.max(target, natural / NAV_STEP_MAX_SPEEDUP);
 }
 
 /**
@@ -2561,9 +2605,14 @@ function setScrollX(container, left, smooth, duration) {
     // пути, и расстояние (а с ним и длительность) вышло бы заниженным
     var rest = container.scrollLeft + pendingScrollDeltaX(container);
 
+    // Срок шага прогоняем через тот же режим прокрутки, что и саму скорость:
+    // при 'fast' он вдвое короче, при 'none' обнуляется, и поправка отключается
+    // сама собой — там и постоянной скорости нет, позиция ставится сразу.
     duration = (typeof duration === 'number')
         ? scrollAnimDurationX(duration)
-        : speedDuration(left - rest, scrollAnimSpeedX(SCROLL_SMOOTH.speedX));
+        : navStepScrollDuration(
+            speedDuration(left - rest, scrollAnimSpeedX(SCROLL_SMOOTH.speedX)),
+            scrollAnimDurationX(NAV_STEP_BASE_MS / 1000));
 
     var animated = smooth && duration > 0;
 
@@ -2606,11 +2655,14 @@ function setScrollX(container, left, smooth, duration) {
 function applyScroll(container, vars, smooth, duration, ease) {
     if (!container || !vars) return;
 
-    // Вертикаль: длительность из расстояния до позиции покоя — единая скорость
+    // Вертикаль: длительность из расстояния до позиции покоя — единая скорость,
+    // а шаг навигации сверх того подгоняется под единый срок (см. NAV_STEP_BASE_MS)
     if (typeof duration !== 'number' && typeof vars.scrollTop === 'number') {
-        duration = speedDuration(
-            vars.scrollTop - (container.scrollTop + pendingScrollDelta(container)),
-            SCROLL_SMOOTH.speedY);
+        duration = navStepScrollDuration(
+            speedDuration(
+                vars.scrollTop - (container.scrollTop + pendingScrollDelta(container)),
+                SCROLL_SMOOTH.speedY),
+            NAV_STEP_BASE_MS / 1000);
     }
 
     var animated = smooth && typeof duration === 'number' && duration > 0;
@@ -3010,7 +3062,10 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
     }
     Animations.scrollToIfNotVisible(el, container, {
         direction: direction,
-        duration: SCROLL_SMOOTH.fallbackDuration,
+        // Единственный путь, где расстояние считает не этот файл, поэтому и
+        // длительность здесь задана заранее. Шагу навигации отдаём его общий
+        // срок — иначе ровно эта прокрутка выбивалась бы из темпа.
+        duration: isNavStepScroll() ? NAV_STEP_BASE_MS / 1000 : SCROLL_SMOOTH.fallbackDuration,
         ease: SCROLL_SMOOTH.ease,
         offset: 10,
         overwrite: true
