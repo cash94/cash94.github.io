@@ -3140,10 +3140,9 @@ function updatePosterDOM(div, rating, url) {
         url = getTmdbImageUrl(url, size);
     }
 
-    // ⚡ Мгновенная вставка — браузер декодирует асинхронно сам
     var img = new Image();
     img.className = 'catalog-poster-img';
-    img.decoding = 'async';  // Браузер декодирует в фоне
+    img.decoding = 'async';  // подсказка браузеру; настоящий декод ниже, через img.decode()
     img.alt = '';
     img.src = url;
 
@@ -3165,12 +3164,27 @@ function updatePosterDOM(div, rating, url) {
     // что у рядов. Картинку в DOM кладём сразу (её ищут проверки «постер уже
     // есть» в initPosterLazyLoading и rearmCatalogObservers), но она прозрачна
     // и лежит поверх скелета, так что до показа ничего не стоит.
-    img.onload = function () {
+    //
+    // Перед постановкой в очередь — img.decode() (Chromium 64+), как в
+    // setRowPosterImg у рядов. Без него растр разворачивался в первом же кадре
+    // проявления: прозрачный элемент Blink не рисует, а значит и не декодирует,
+    // поэтому вся работа приходилась ровно на снятие opacity — на главный поток,
+    // посреди перехода. decoding='async' тут не спасает, это только подсказка.
+    // Теперь к моменту показа растр готов, и очереди остаётся дешёвая композиция.
+    //
+    // Ошибку декода отдаём тому же показу (как у рядов): битую картинку и так
+    // перехватит onerror с переходом на следующее зеркало.
+    function reveal() {
         queuePosterReveal(function () {
             if (!img.isConnected) return;
             img.classList.add('loaded');
             if (placeholder) dropPosterPlaceholder(placeholder);
         });
+    }
+
+    img.onload = function () {
+        if (typeof img.decode === 'function') img.decode().then(reveal).catch(reveal);
+        else reveal();
     };
 
     // Обработка ошибок: зеркало теперь выбирается детерминированно, поэтому
