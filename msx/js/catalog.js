@@ -33,6 +33,11 @@ var CATALOG_CONSTANTS = {
     // появиться до того, как до него дойдёт фокус, а работа размазана
     // по нажатиям вместо одного залпа.
     ROW_POSTER_MARGIN_X_PX: 400,
+    // Сколько рядов НИЖЕ сфокусированного набираем в очередь заранее. Ряд под
+    // фокусом ставится целиком (queueFocusedRowPosters), но при спуске фокус
+    // приходит в следующий ряд раньше, чем наблюдатель с его 1200px успевает
+    // до него добраться, — и первая карточка встречала пустой рамкой.
+    ROW_POSTER_PRELOAD_ROWS: 1,
     // Сетка категории: на сколько строк ВНИЗ от фокуса готовим постеры заранее.
     // Наблюдатель со своими 1200px берёт только то, что рядом с вьюпортом, и при
     // быстром движении вниз фокус приезжал на пустые рамки. Две строки — это
@@ -4823,26 +4828,55 @@ function ensureRowPosterNow(card) {
  * ROW_POSTER_CONCURRENCY и паузами на время навигации разберёт их сама, не
  * складывая всё в один кадр.
  *
- * Порядок — от карточки под фокусом вправо, хвост слева уходит в конец: то, к
- * чему человек подойдёт первым, грузится первым.
+ * Вместе с рядом фокуса набираем и ROW_POSTER_PRELOAD_ROWS рядов ниже — к
+ * моменту спуска их постеры уже на месте. Порядок постановки и есть порядок
+ * загрузки: сначала ряд под фокусом, потом нижние.
  *
  * Один проход на ряд: повторный вход в тот же ряд ничего не пересобирает,
  * а при возврате в каталог метку снимает initRowPosterLazyLoading.
  */
 function queueFocusedRowPosters(card) {
-    var key = card.dataset.catalogKey;
-    if (!key) return;                                   // карточка главной — её грузит home.js
+    if (!card.dataset.catalogKey) return;               // карточка главной — её грузит home.js
 
     var row = card.closest ? card.closest('.catalog-row') : null;
     if (!row || catalogState.rowPostersQueuedFor === row) return;
     catalogState.rowPostersQueuedFor = row;
 
-    var items = window.catalogRowsData && window.catalogRowsData[key];
-    if (!items) return;
+    // Ряд под фокусом — от карточки под фокусом; ряды ниже — с начала: спускаясь,
+    // человек попадает в них на первую карточку.
+    var queued = queueRowPosters(row, parseInt(card.dataset.itemIndex, 10));
+
+    var next = row;
+    for (var i = 0; i < CATALOG_CONSTANTS.ROW_POSTER_PRELOAD_ROWS; i++) {
+        next = nextCatalogRow(next);
+        if (!next) break;
+        queued += queueRowPosters(next, 0);
+    }
+
+    if (queued) processRowPosterQueue();
+}
+
+/** Следующий ряд-карусель за данным (между рядами могут лежать другие элементы) */
+function nextCatalogRow(row) {
+    var el = row.nextElementSibling;
+    while (el && !el.classList.contains('catalog-row')) el = el.nextElementSibling;
+    return el;
+}
+
+/**
+ * Ставит в очередь все постеры одного ряда, начиная с карточки from и по кругу
+ * (хвост слева уходит в конец): то, к чему человек подойдёт первым, грузится
+ * первым. Ряд ниже экрана ставится с нуля — from там 0.
+ *
+ * @returns {number} сколько карточек добавлено в очередь
+ */
+function queueRowPosters(row, from) {
+    var key = row.dataset.catalogKey;
+    var items = key && window.catalogRowsData && window.catalogRowsData[key];
+    if (!items) return 0;
     if (!catalogState.rowPosterQueue) catalogState.rowPosterQueue = [];
 
     var cards = row.querySelectorAll('.catalog-row-card');
-    var from = parseInt(card.dataset.itemIndex, 10);
     if (isNaN(from) || from < 0 || from > cards.length) from = 0;
 
     var order = [];
@@ -4861,7 +4895,7 @@ function queueFocusedRowPosters(card) {
         queued++;
     }
 
-    if (queued) processRowPosterQueue();
+    return queued;
 }
 
 function scheduleFocusRowPoster(delay) {
