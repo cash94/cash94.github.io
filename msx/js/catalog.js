@@ -1673,8 +1673,8 @@ function getCardTemplate() {
  *
  * @param {Object} config className, dataset, title, metaType, metaBadge,
  *                        ratingText + ratingColor (бейдж), posterUrl (готовый
- *                        постер из кэша — вставляем сразу, чтобы вернувшаяся
- *                        после разворота чанка карточка не была пустой)
+ *                        постер из кэша — кладём сразу, но показываем после
+ *                        декода, см. ниже)
  */
 function createCardElement(config) {
     var card = getCardTemplate().cloneNode(true);
@@ -1696,13 +1696,35 @@ function createCardElement(config) {
         poster.insertBefore(badge, poster.firstChild);
     }
 
+    // Постер из кэша вставляем прозрачным и показываем после img.decode() —
+    // тем же путём, что updatePosterDOM.
+    //
+    // Раньше картинка вешалась сразу с классом loaded, то есть видимой. Растр
+    // при этом разворачивался в кадре ВСТАВКИ карточки, а карточки вставляет
+    // разворот чанка — прямо во время движения по сетке. Это и был последний
+    // синхронный декод на горячем пути: остальные уже ждут своей очереди.
+    //
+    // Плата — карточка, вернувшаяся из распорки, на кадр-два показывает скелет
+    // вместо готового постера. Картинка в кэше браузера, декод короткий, но
+    // мгновенным он не будет: очередь проявления вдобавок ждёт паузы в навигации.
     if (config.posterUrl) {
         var img = document.createElement('img');
-        img.className = 'catalog-poster-img loaded';
+        img.className = 'catalog-poster-img';
         img.decoding = 'async';
         img.alt = '';
         img.src = config.posterUrl;
         poster.appendChild(img);
+
+        var showPoster = function () {
+            queuePosterReveal(function () {
+                if (!img.isConnected) return;
+                img.classList.add('loaded');
+                var ph = poster.querySelector('.no-poster');
+                if (ph) dropPosterPlaceholder(ph);
+            });
+        };
+        if (typeof img.decode === 'function') img.decode().then(showPoster).catch(showPoster);
+        else img.onload = showPoster;
     }
 
     info.firstChild.textContent = config.title || '';
