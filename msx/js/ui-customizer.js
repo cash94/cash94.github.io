@@ -395,9 +395,9 @@
         // Точное значение замеряет measureCatalogCardHeight() в catalog.js по
         // отрисованному ряду и пишет в --catalog-card-h; число здесь — резерв на
         // первый кадр, до замера.
-        var colW = gridColumnWidth();
-        css.push('.torrent-card.catalog-card{contain-intrinsic-size:' + colW + 'px ' +
-            'var(--catalog-card-h,' + Math.round((colW - 2) * 1.5 + cardInfoHeight()) + 'px)!important;}');
+        //var colW = gridColumnWidth();
+        //css.push('.torrent-card.catalog-card{contain-intrinsic-size:' + colW + 'px ' +
+            //'var(--catalog-card-h,' + Math.round((colW - 2) * 1.5 + cardInfoHeight()) + 'px)!important;}');
 
         // 2. ТОТ ЖЕ размер — постеры в рядах-каруселях каталога (.catalog-row-card)
         css.push('.catalog-row-card,.catalog-row-viewport .catalog-row-card{' +
