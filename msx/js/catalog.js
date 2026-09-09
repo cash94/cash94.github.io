@@ -68,7 +68,12 @@ var CATALOG_CONSTANTS = {
     // Сколько ждать картинку, прежде чем считать зеркало молчащим. Ни load, ни
     // error от него может не прийти вовсе, а на промисе загрузки висит слот
     // очереди — см. сторож в setRowPosterImg.
-    POSTER_LOAD_TIMEOUT_MS: 12000,           // пауза между вставками готовых постеров (кадр)
+    POSTER_LOAD_TIMEOUT_MS: 12000,
+    // Отдельный, короткий срок на декодирование уже загруженной картинки.
+    // img.decode() может не резолвиться вовсе, если приложение не рисует кадры
+    // (свернули, ушли в другое приложение, погас экран) — проверено. Картинка
+    // при этом целая, поэтому по истечении просто вставляем её без decode().
+    POSTER_DECODE_GRACE_MS: 1500,           // пауза между вставками готовых постеров (кадр)
     // Длительность проявления постера. Держать в согласии с transition
     // у .catalog-poster-img в styles.css — по ней снимается скелет под ним.
     POSTER_FADE_MS: 380,
@@ -6062,11 +6067,17 @@ function setRowPosterImg(box, url, deferDuringNav) {
             if (posterWatchdog) { clearTimeout(posterWatchdog); posterWatchdog = null; }
         }
 
-        function armPosterWatchdog() {
+        function armPosterWatchdog(ms) {
             stopPosterWatchdog();
             posterWatchdog = setTimeout(function () {
                 posterWatchdog = null;
                 if (settled) return;
+
+                // Картинка на месте, а ждём мы декодирование — оно и зависло.
+                // Вставляем как есть: браузер декодирует её при отрисовке сам,
+                // просто не в фоновом потоке.
+                if (img.complete && img.naturalWidth > 0) { insert(); return; }
+
                 // Смена src сама обрывает прежнюю загрузку, обработчики те же
                 var alt = mirrorRetried ? null : getTmdbNextMirrorUrl(img.src);
                 if (alt && alt !== img.src) {
@@ -6079,7 +6090,7 @@ function setRowPosterImg(box, url, deferDuringNav) {
                 img.onerror = null;
                 img.src = '';
                 fail();
-            }, CATALOG_CONSTANTS.POSTER_LOAD_TIMEOUT_MS);
+            }, ms || CATALOG_CONSTANTS.POSTER_LOAD_TIMEOUT_MS);
         }
 
         // Промис резолвится ПОСЛЕ вставки, а не по готовности картинки: на нём
@@ -6089,6 +6100,9 @@ function setRowPosterImg(box, url, deferDuringNav) {
 
         var insert = function () {
             whenIdle(function () {
+                // Вставить могли уже: decode() резолвится позже сторожа, и оба
+                // приводят сюда. settled ставится в конце этой же функции.
+                if (settled) return;
                 if (box.isConnected && img.naturalWidth > 0) {
                     // Скелет остаётся под картинкой до конца проявления — тот же
                     // кроссфейд, что и в сетке (см. updatePosterDOM)
@@ -6124,6 +6138,9 @@ function setRowPosterImg(box, url, deferDuringNav) {
         };
         var fail = function () {
             whenIdle(function () {
+                // Симметрично insert: постер могли уже вставить, и затирать его
+                // сообщением об ошибке нельзя
+                if (settled) return;
                 if (box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
                 settle();
             });
@@ -6146,10 +6163,17 @@ function setRowPosterImg(box, url, deferDuringNav) {
             fail();
         };
         img.onload = function () {
-            stopPosterWatchdog();
-            // Декодируем в фоновом потоке (Chromium 64+), не блокируя main thread
-            if (typeof img.decode === 'function') img.decode().then(insert).catch(insert);
-            else insert();
+            // Сторож НЕ снимаем, а перевзводим на короткий срок: дальше ждём
+            // декодирование, а оно способно не завершиться никогда (см.
+            // POSTER_DECODE_GRACE_MS). Снимет его settle, когда картинка встанет.
+            if (typeof img.decode === 'function') {
+                armPosterWatchdog(CATALOG_CONSTANTS.POSTER_DECODE_GRACE_MS);
+                // Декодируем в фоновом потоке (Chromium 64+), не блокируя main thread
+                img.decode().then(insert).catch(insert);
+            } else {
+                stopPosterWatchdog();
+                insert();
+            }
         };
         armPosterWatchdog();
         img.src = url;
