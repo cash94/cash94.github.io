@@ -1105,7 +1105,10 @@ function resetDetailBackground() {
     var existingOverlay = getEl('detail-backdrop-overlay'); if (existingOverlay) existingOverlay.remove();
     var detailSubtitle = getEl('detail-subtitle'); if (detailSubtitle) { detailSubtitle.textContent = ''; detailSubtitle.style.display = 'none'; }
     var metaContainer = getEl('catalog-detail-meta'); if (metaContainer) { metaContainer.innerHTML = ''; metaContainer.classList.add('hidden'); }
-    var filesList = getEl('files-list'); if (filesList) { filesList.innerHTML = ''; filesList.style.display = ''; filesList.style.flexDirection = ''; }
+    // Плитки файлов не сносим: они переиспользуются между открытиями
+    // (см. пул ниже), поэтому просто гасим их и служебное сообщение
+    var filesList = getEl('files-list');
+    if (filesList) { clearFilesList(); filesList.style.display = ''; filesList.style.flexDirection = ''; }
     var detailPoster = getEl('detail-poster'); if (detailPoster) detailPoster.innerHTML = '';
     var detailTitleText = getEl('detail-title-text'); if (detailTitleText) detailTitleText.textContent = '';
     var oldProgressBlocks = document.querySelectorAll('#detail-progress');
@@ -1366,7 +1369,12 @@ function clearDetailNetflixBlocks() {
     var row = getEl('detail-meta-row');
     if (row) { row.innerHTML = ''; row.classList.add('hidden'); }
     var actors = getEl('catalog-detail-actors');
-    if (actors) actors.innerHTML = '';
+    // Гасим карточки, а не сносим: ряд актёров — общий пул с каталожной
+    // карточкой (renderDetailActorCards в js/catalog.js)
+    if (actors) {
+        if (typeof window.clearDetailActorCards === 'function') window.clearDetailActorCards(actors);
+        else actors.innerHTML = '';
+    }
     var wrap = getEl('catalog-detail-actors-wrap');
     if (wrap) wrap.classList.add('hidden');
     var filesTitle = getEl('files-list-title');
@@ -1445,7 +1453,7 @@ function renderDetailActorsFromDetails(details) {
 
     var cast = details && details.cast;
     if (!cast || !cast.length) {
-        grid.innerHTML = '';
+        if (typeof window.clearDetailActorCards === 'function') window.clearDetailActorCards(grid);
         wrap.classList.add('hidden');
         return;
     }
@@ -1455,54 +1463,38 @@ function renderDetailActorsFromDetails(details) {
         if (typeof CATALOG_CONSTANTS !== 'undefined' && CATALOG_CONSTANTS.MAX_ACTORS) max = CATALOG_CONSTANTS.MAX_ACTORS;
     } catch (e) { }
 
-    var html = '';
-    var shown = 0;
-    for (var i = 0; i < cast.length && shown < max; i++) {
+    // Приводим cast из /api/tmdb/details к тому виду, что отдаёт
+    // fetchCatalogActors, и отрисовываем общим пулом карточек (js/catalog.js):
+    // контейнер один на оба режима, и собственный innerHTML здесь уничтожил бы
+    // пул каталожной карточки. Заглушка «нет фото» у режимов разная, поэтому
+    // символ передаём параметром.
+    var actors = [];
+    for (var i = 0; i < cast.length && actors.length < max; i++) {
         var a = cast[i];
         if (!a || !a.name) continue;
-
-        var photo = a.profile_path || a.profilePath || '';
-        var src = '';
-        if (photo) {
-            if (typeof getTmdbImageUrl === 'function') src = getTmdbImageUrl(photo, 'w185');
-            else if (typeof buildTmdbPosterUrl === 'function') src = buildTmdbPosterUrl(photo, 'w185');
-        }
-
-        // person-id и person-name читает обработчик ниже: по нажатию открывается
-        // фильмография актёра (loadPersonCatalog в catalog.js). Разметка та же,
-        // что у карточки каталога, но рисуется она здесь отдельно — поэтому и
-        // атрибуты приходится ставить в двух местах.
-        var pid = a.id || a.personId || '';
-        html += '<div class="catalog-actor-card"' +
-            (pid ? ' data-person-id="' + escapeHtml(String(pid)) + '"' : '') +
-            ' data-person-name="' + escapeHtml(a.name) + '">' +
-            '<div class="catalog-actor-photo">' +
-            (src
-                ? '<img src="' + src + '" loading="lazy" decoding="async" alt="' + escapeHtml(a.name) +
-                '" onerror="this.parentElement.innerHTML=\'<div class=&quot;catalog-actor-no-photo&quot;>👤</div>\'">'
-                : '<div class="catalog-actor-no-photo">👤</div>') +
-            '</div>' +
-            '<div class="catalog-actor-info">' +
-            '<div class="catalog-actor-name">' + escapeHtml(a.name) + '</div>' +
-            '<div class="catalog-actor-character">' + escapeHtml(a.character || '') + '</div>' +
-            '</div>' +
-            '</div>';
-        shown++;
+        actors.push({
+            id: a.id || a.personId || '',
+            name: a.name,
+            character: a.character || '',
+            profilePath: a.profile_path || a.profilePath || ''
+        });
     }
 
+    var shown = (typeof window.renderDetailActorCards === 'function')
+        ? window.renderDetailActorCards(grid, actors, '👤')
+        : 0;
+
     if (!shown) {
-        grid.innerHTML = '';
         wrap.classList.add('hidden');
         return;
     }
 
-    grid.innerHTML = html;
     wrap.classList.remove('hidden');
 
     // Нажатие по актёру. В карточке КАТАЛОГА это делает делегированный
     // обработчик на #detail-view (setupDetailDelegation в catalog.js), но
     // торрентный detail через него не проходит — вешаем свой, на сам ряд.
-    // Обработчик один на всю жизнь элемента: grid.innerHTML переписывается,
+    // Обработчик один на всю жизнь элемента: карточки в ряду переиспользуются,
     // а сам grid остаётся, поэтому дубля слушателей не будет.
     if (!grid._actorClickHandler) {
         grid._actorClickHandler = function (e) {
@@ -1815,7 +1807,7 @@ async function showDetail(torrent) {
     var dh = document.querySelector('.detail-header');
     if (dh) dh.style.background = 'rgba(0, 0, 0, 0.3)';
     if (filesList) { filesList.style.display = 'flex'; filesList.style.flexDirection = 'row'; }
-    filesList.innerHTML = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 15px;"><div class="spinner"></div><div style="font-size: 16px; color: #aaa;">Загрузка файлов...</div></div>';
+    showFilesListMessage('<div class="spinner"></div><div>Загрузка файлов...</div>');
     if (typeof Animations !== 'undefined') Animations.animateDetailShow();
     titleEl.textContent = (torrent.title || 'Без названия')
         .replace(/\[\d+\]/g, '')
@@ -1849,24 +1841,14 @@ async function showDetail(torrent) {
         posterImg.innerHTML = poster ? '<img src="' + poster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
 
         if (files.length === 0) {
-            filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #aaa;">📁 Нет файлов</div>';
+            showFilesListMessage('📁 Нет файлов', 'files-list-msg-compact');
         } else {
             // === РЕНДЕР ФАЙЛОВ СРАЗУ (не ждём прогресс) ===
             var videoFiles = files.filter(f => {
                 var n = f.path.split('/').pop().toLowerCase();
                 return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext));
             });
-            filesList.innerHTML = '';
-            var fragment = document.createDocumentFragment();
-            var addedItems = [];
-            for (var i = 0; i < videoFiles.length; i++) {
-                var item = addFileItem(videoFiles[i], torrent.hash, videoFiles.length === 1 ? torrent.title : 'Серия ' + (i + 1), videoFiles.length === 1 ? null : i, null, true);
-                if (item) {
-                    fragment.appendChild(item);
-                    addedItems.push(item);
-                }
-            }
-            filesList.appendChild(fragment);
+            var addedItems = renderFileItems(videoFiles, torrent.hash, torrent.title);
 
             // Количество и общий вес — в строку метаданных под заголовком
             var totalBytes = 0;
@@ -1911,7 +1893,7 @@ async function showDetail(torrent) {
         }
     } catch (e) {
         console.error('Ошибка:', e);
-        filesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #ff6a6a;">❌ Ошибка загрузки файлов: ' + e.message + '</div>';
+        showFilesListMessage('❌ Ошибка загрузки файлов: ' + escapeHtml(e.message), 'files-list-msg-compact files-list-msg-error');
     }
     setTimeout(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
@@ -1928,7 +1910,7 @@ async function showDetail(torrent) {
                     if (focusableElements[i] === progressBtn) { setFocus(i); placed = true; break; }
                 }
             }
-            if (!placed && document.querySelectorAll('.file-item').length > 0) {
+            if (!placed && document.querySelectorAll('#files-list .file-item:not(.hidden)').length > 0) {
                 for (var j = 0; j < focusableElements.length; j++) {
                     if (focusableElements[j].classList && focusableElements[j].classList.contains('file-item')) { setFocus(j); placed = true; break; }
                 }
@@ -2441,16 +2423,19 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
     return result;
 }
 
+// Кадр серии. Контейнер и затемнение теперь всегда есть в плитке (buildFileItem)
+// и просто гасятся классом — разбирать здесь строку разметки больше не нужно.
 function updateFileItemStill(fileItem, stillImage) {
     if (!fileItem || !stillImage) return;
+    if (fileItem._still) {
+        fileItem._still.src = stillImage;
+        fileItem._stillBox.classList.remove('hidden');
+        fileItem._overlay.classList.remove('hidden');
+        return;
+    }
+    // Плитка не из пула (чужой код мог собрать свою) — прежний путь
     var existingContainer = fileItem.querySelector('.file-still-container');
     if (existingContainer) { var img = existingContainer.querySelector('img'); if (img) img.src = stillImage; }
-    else {
-        var tempDiv = document.createElement('div');
-        tempDiv.innerHTML = `<div class="file-still-container"><img src="${stillImage}" onerror="this.parentElement.style.display='none'"></div><div class="file-overlay"></div>`;
-        fileItem.insertBefore(tempDiv.firstChild, fileItem.firstChild);
-        fileItem.insertBefore(tempDiv.firstChild, fileItem.firstChild.nextSibling);
-    }
 }
 
 function updateDetailMetaInfo(tmdbData) {
@@ -2558,27 +2543,207 @@ function setupFilePlayButtonDelegation() {
 }
 // ==================== /ДЕЛЕГИРОВАНИЕ PLAY-КНОПОК ====================
 
-function addFileItem(file, hash, name, episodeIndex, stillImage, returnOnly = false) {
-    var fileName = file.path.split('/').pop() || ('Файл ' + file.id);
-    var fileExt = fileName.split('.').pop().toLowerCase();
-    if (!['mkv', 'mp4', 'avi', 'mov', 'webm', 'm4v'].includes(fileExt)) return null;
-    var item = document.createElement('div'); item.className = 'file-item'; item.dataset.hash = hash; item.dataset.fileId = file.id; item.dataset.fileName = fileName;
-    if (episodeIndex !== undefined && episodeIndex !== null) item.dataset.episodeIndex = episodeIndex;
-    item.innerHTML = `
-        <div class="file-content"><button class="play-btn" data-hash="${hash}" data-file-id="${file.id}" data-episode-index="${episodeIndex !== undefined ? episodeIndex : ''}">▶</button></div>
-        <div class="file-info"><div class="file-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div><div class="file-size">${formatBytes(file.length)}</div></div>
-        <div class="file-progress-container" style="width:100%;height:3px;background:rgba(255,255,255,0.2);border-radius:0 0 12px 12px;overflow:hidden;position:absolute;bottom:0;left:0;"><div class="file-progress-fill" style="width:0%;height:100%;background:#ff8c00;transition:width 0.2s ease;"></div></div>
-    `;
-    // item.querySelector('.play-btn').onclick = function (e) {
-    //     e.stopPropagation();
-    //     var playUrl = file.id ? AppState.currentTorrserverUrl + '/play/' + hash + '/' + file.id : AppState.currentTorrserverUrl + '/play/' + hash + '/1';
-    //     getEl('playback-overlay').classList.add('active'); getEl('detail-view').style.pointerEvents = 'none';
-    //     startHLSPlayback(playUrl, 0, false, episodeIndex).finally(function () { getEl('playback-overlay').classList.remove('active'); getEl('detail-view').style.pointerEvents = 'auto'; });
-    // };
-    // Клик по .play-btn обрабатывается делегированием через setupFilePlayButtonDelegation()
-    if (returnOnly) return item;
-    var filesList = getEl('files-list'); if (filesList) filesList.appendChild(item);
+// ==================== ПУЛ ПЛИТОК ФАЙЛОВ ====================
+/**
+ * У сериала в раздаче бывает и сорок файлов, и шестьдесят, и каждая плитка
+ * собиралась шаблонной строкой с инлайновыми стилями — заново на каждое
+ * открытие карточки. Теперь плитки живут в #files-list постоянно: пул дорастает
+ * до самой длинной раздачи за сеанс, лишние гасятся классом .hidden. Фокус их
+ * не увидит: updateFocusableElements отбирает элементы по offsetParent !== null
+ * (control.js).
+ *
+ * Инлайновые стили полосы прогресса ушли в CSS: правила
+ * .file-progress-container и .file-progress-fill в styles.css уже были и
+ * повторяли их почти один в один.
+ *
+ * Служебные сообщения («Загрузка файлов…», «Нет файлов», ошибка) переехали в
+ * отдельный узел: раньше каждое из них переписывало #files-list целиком и
+ * теперь уничтожило бы пул.
+ */
+
+/** Контейнер списка с узлом под сообщения. Пересобирается, только если список кто-то очистил */
+function ensureFilesListShell() {
+    var list = getEl('files-list');
+    if (!list) return null;
+    if (!list._msg || list._msg.parentNode !== list) {
+        list.innerHTML = '';
+        var msg = document.createElement('div');
+        msg.className = 'files-list-msg hidden';
+        list.appendChild(msg);
+        list._msg = msg;
+        list._pool = [];
+    }
+    return list;
+}
+
+function buildFileItem() {
+    var item = document.createElement('div');
+    item.className = 'file-item hidden';
+
+    var stillBox = document.createElement('div');
+    stillBox.className = 'file-still-container hidden';
+    var still = document.createElement('img');
+    still.decoding = 'async';
+    still.alt = '';
+    stillBox.appendChild(still);
+
+    var overlay = document.createElement('div');
+    overlay.className = 'file-overlay hidden';
+
+    // Кадр не отдался — прячем и его контейнер, и затемнение над ним,
+    // иначе поверх плитки остаётся тёмный прямоугольник ни от чего
+    still.onerror = function () {
+        stillBox.classList.add('hidden');
+        overlay.classList.add('hidden');
+    };
+
+    var content = document.createElement('div');
+    content.className = 'file-content';
+    var play = document.createElement('button');
+    play.className = 'play-btn';
+    play.textContent = '▶';
+    content.appendChild(play);
+
+    var info = document.createElement('div');
+    info.className = 'file-info';
+    var name = document.createElement('div');
+    name.className = 'file-name';
+    var size = document.createElement('div');
+    size.className = 'file-size';
+    info.appendChild(name);
+    info.appendChild(size);
+
+    var progressBox = document.createElement('div');
+    progressBox.className = 'file-progress-container';
+    var fill = document.createElement('div');
+    fill.className = 'file-progress-fill';
+    progressBox.appendChild(fill);
+
+    item.appendChild(stillBox);
+    item.appendChild(overlay);
+    item.appendChild(content);
+    item.appendChild(info);
+    item.appendChild(progressBox);
+
+    item._stillBox = stillBox;
+    item._still = still;
+    item._overlay = overlay;
+    item._play = play;
+    item._name = name;
+    item._size = size;
+    item._fill = fill;
     return item;
+}
+
+/**
+ * Вернуть плитку в исходное состояние и погасить.
+ *
+ * data-атрибуты чистим обязательно: по ним ищут плитку и updateCurrentFileProgress
+ * (js/player.js), и loadProgressForFileItems — погашенная плитка с хэшем прошлой
+ * раздачи отвечала бы на этот поиск вместо нужной.
+ */
+function resetFileItem(item) {
+    if (!item) return;
+    item.classList.add('hidden');
+    item.classList.remove('has-progress');
+    item.classList.remove('focused');
+    item._stillBox.classList.add('hidden');
+    item._overlay.classList.add('hidden');
+    if (item._still.getAttribute('src')) item._still.removeAttribute('src');
+    item._fill.style.width = '';
+    item._fill.style.opacity = '';
+    delete item.dataset.hash;
+    delete item.dataset.fileId;
+    delete item.dataset.fileName;
+    delete item.dataset.episodeIndex;
+    delete item.dataset.progressTimecode;
+    delete item.dataset.progressDuration;
+}
+
+function clearFilesList() {
+    var list = ensureFilesListShell();
+    if (!list) return;
+    for (var i = 0; i < list._pool.length; i++) resetFileItem(list._pool[i]);
+    hideFilesListMessage(list);
+}
+
+function showFilesListMessage(html, modifier) {
+    var list = ensureFilesListShell();
+    if (!list) return;
+    for (var i = 0; i < list._pool.length; i++) resetFileItem(list._pool[i]);
+    list._msg.className = 'files-list-msg' + (modifier ? ' ' + modifier : '');
+    list._msg.innerHTML = html;
+}
+
+function hideFilesListMessage(list) {
+    list = list || ensureFilesListShell();
+    if (!list || !list._msg) return;
+    if (list._msg.innerHTML) list._msg.innerHTML = '';
+    list._msg.className = 'files-list-msg hidden';
+}
+
+function acquireFileItem(list, index) {
+    while (list._pool.length <= index) {
+        var el = buildFileItem();
+        list.appendChild(el);
+        list._pool.push(el);
+    }
+    return list._pool[index];
+}
+
+function fillFileItem(item, file, hash, name, episodeIndex) {
+    var fileName = String(file.path || '').split('/').pop() || ('Файл ' + file.id);
+    resetFileItem(item);
+    item.dataset.hash = hash;
+    item.dataset.fileId = file.id;
+    item.dataset.fileName = fileName;
+    var hasEpisode = episodeIndex !== undefined && episodeIndex !== null;
+    if (hasEpisode) item.dataset.episodeIndex = episodeIndex;
+    item._play.dataset.hash = hash;
+    item._play.dataset.fileId = file.id;
+    item._play.dataset.episodeIndex = hasEpisode ? episodeIndex : '';
+    item._name.textContent = name;
+    item._name.title = name;
+    item._size.textContent = formatBytes(file.length);
+    item.classList.remove('hidden');
+    return item;
+}
+
+var FILE_ITEM_EXTENSIONS = ['mkv', 'mp4', 'avi', 'mov', 'webm', 'm4v'];
+
+/**
+ * Разложить файлы раздачи по плиткам пула и погасить остаток.
+ * @returns {Array} показанные плитки — в том же порядке, что и раньше
+ */
+function renderFileItems(videoFiles, hash, singleTitle) {
+    var list = ensureFilesListShell();
+    if (!list) return [];
+    hideFilesListMessage(list);
+
+    var single = videoFiles.length === 1;
+    var used = [];
+    for (var i = 0; i < videoFiles.length; i++) {
+        var file = videoFiles[i];
+        var ext = String(file.path || '').split('.').pop().toLowerCase();
+        if (FILE_ITEM_EXTENSIONS.indexOf(ext) === -1) continue;
+        var item = acquireFileItem(list, used.length);
+        fillFileItem(item, file, hash, single ? singleTitle : 'Серия ' + (i + 1), single ? null : i);
+        used.push(item);
+    }
+    for (var j = used.length; j < list._pool.length; j++) resetFileItem(list._pool[j]);
+    return used;
+}
+
+/** Совместимость: одиночная плитка через пул. Клик по .play-btn ловит делегирование
+ *  в setupFilePlayButtonDelegation(). */
+function addFileItem(file, hash, name, episodeIndex) {
+    var ext = String(file.path || '').split('.').pop().toLowerCase();
+    if (FILE_ITEM_EXTENSIONS.indexOf(ext) === -1) return null;
+    var list = ensureFilesListShell();
+    if (!list) return null;
+    var used = 0;
+    while (used < list._pool.length && !list._pool[used].classList.contains('hidden')) used++;
+    return fillFileItem(acquireFileItem(list, used), file, hash, name, episodeIndex);
 }
 
 async function loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieStill, totalVideoFiles) {
@@ -2589,12 +2754,12 @@ async function loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieS
             var episodes = (allSeasonEpisodes[seasonNum] || []).slice().sort((a, b) => (a.episodeNumber || 0) - (b.episodeNumber || 0));
             episodes.forEach(ep => { if (ep.stillPath) allStillsInOrder.push({ season: seasonNum, episode: ep.episodeNumber, stillPath: ep.stillPath }); });
         });
-        var fileItems = document.querySelectorAll('.file-item');
+        var fileItems = document.querySelectorAll('#files-list .file-item:not(.hidden)');
         for (var i = 0; i < Math.min(fileItems.length, allStillsInOrder.length); i++) {
             (function (item, url, index) { setTimeout(function () { updateFileItemStill(item, buildTmdbPosterUrl(url, 'w300')); }, index * 30); })(fileItems[i], allStillsInOrder[i].stillPath, i);
         }
     } else if (totalVideoFiles === 1 && movieStill) {
-        var fileItem = document.querySelector('.file-item'); if (fileItem) setTimeout(function () { updateFileItemStill(fileItem, movieStill); }, 100);
+        var fileItem = document.querySelector('#files-list .file-item:not(.hidden)'); if (fileItem) setTimeout(function () { updateFileItemStill(fileItem, movieStill); }, 100);
     }
 }
 
@@ -2626,6 +2791,25 @@ function getVideoFilesForProgress(files) {
         }
     }
     return videoFiles;
+}
+
+/**
+ * Какая из двух отметок просмотра свежее.
+ *
+ * Раньше «последней серией» считалась та, что дальше по списку файлов
+ * (максимальный index). Переключился в плеере с 1-й серии на 2-ю и вышел — всё
+ * совпадало случайно; а стоило вернуться к более ранней серии, и карточка
+ * продолжала предлагать самую дальнюю из просмотренных.
+ *
+ * Время правки отдаёт сам сервер: /api/timecode/batch кладёт в ответ поле
+ * timestamp (это updated_at из таблицы timecodes). Если сервер старый и поля
+ * нет, сравнение откатывается на прежний порядок по индексу.
+ */
+function isNewerWatchEntry(entry, current) {
+    if (entry.timestamp && current.timestamp && entry.timestamp !== current.timestamp) {
+        return entry.timestamp > current.timestamp;
+    }
+    return entry.index > current.index;
 }
 
 function getTorrentProgressBatch(hash, files) {
@@ -2663,10 +2847,11 @@ function getTorrentProgressBatch(hash, files) {
                     timecode: timecode.timecode,
                     duration: timecode.duration || 0,
                     index: file._progressIndex,
+                    timestamp: timecode.timestamp || 0,
                     fileName: String(file.path || file.name || '').split('/').pop()
                 };
                 result.byFileId[String(file.id)] = entry;
-                if (!result.lastWatched || entry.index > result.lastWatched.index) {
+                if (!result.lastWatched || isNewerWatchEntry(entry, result.lastWatched)) {
                     result.lastWatched = entry;
                 }
             }

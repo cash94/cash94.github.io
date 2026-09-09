@@ -679,6 +679,30 @@ async function loadTimecodeFromServer(hash, fileId) {
 }
 
 function clearTimecodeData() { currentTimecodeData = { hash: null, fileId: null, timecode: 0, duration: 0 }; }
+
+/**
+ * Последнее сохранение таймкода, ещё не доехавшее до сервера.
+ *
+ * Выход из плеера отправляет POST /api/timecode/save и тут же, не дожидаясь
+ * ответа, перерисовывает кнопку «Продолжить» — а та читает /api/timecode/batch.
+ * Два запроса гонялись, батч нередко успевал первым и отвечал состоянием ДО
+ * сохранения. Отсюда и «не та серия»: только что просмотренной в ответе ещё не
+ * было, и последней просмотренной оказывалась предыдущая. Помогал лишь выход из
+ * карточки и повторный вход — к тому моменту сохранение уже доезжало.
+ *
+ * Обещание кладём сюда, а updateDetailProgress ждёт его перед чтением батча.
+ * Ошибку глушим: не сохранился таймкод — кнопку всё равно надо перерисовать.
+ */
+var pendingTimecodeSave = null;
+function trackTimecodeSave(promise) {
+  var p = Promise.resolve(promise)['catch'](function () { });
+  pendingTimecodeSave = p;
+  p.then(function () { if (pendingTimecodeSave === p) pendingTimecodeSave = null; });
+  return p;
+}
+function awaitPendingTimecodeSave() {
+  return pendingTimecodeSave || Promise.resolve();
+}
 function startTimecodeSaving() {
   if (timecodeSaveInterval) clearInterval(timecodeSaveInterval);
   timecodeSaveInterval = setInterval(function () { saveTimecodeToServer(); }, 10000);
@@ -1923,7 +1947,7 @@ function showDetailView(field = null) {
       }
       return;
     }
-    saveTimecodeToServer().then(function () { stopTimecodeSaving(); });
+    trackTimecodeSave(saveTimecodeToServer()).then(function () { stopTimecodeSaving(); });
     stopHeartbeat();
     if (nearEndCheckInterval) { clearInterval(nearEndCheckInterval); nearEndCheckInterval = null; }
     lastCleanedSegment = -1; currentEpisodeFiles = []; currentEpisodeIndex = 0; currentTorrentHash = null;
@@ -2013,12 +2037,19 @@ async function updateDetailProgress(torrent) {
   var btn = getEl('detail-progress-btn');
   if (!btn) return null;
 
+  // Сначала дожидаемся сохранения таймкода, которое запустил выход из плеера:
+  // без этого батч ниже отвечает состоянием до сохранения (см. trackTimecodeSave)
+  await awaitPendingTimecodeSave();
+
   // Принудительное обновление: сбрасываем кэш прогресса.
   // Именно torrentProgressCache — тот, из которого читает loadProgressForTorrent.
   // Раньше тут чистился давно осиротевший progressCache, и кнопка «Продолжить»
   // после выхода из плеера могла показывать позицию до минуты назад.
   var cacheKey = torrent.hash;
   if (torrentProgressCache.has(cacheKey)) torrentProgressCache.delete(cacheKey);
+  // Заодно снимаем запрос, уже висящий в воздухе: getTorrentProgressBatch отдал бы
+  // нам именно его — тот самый устаревший ответ, ради которого чистится кэш
+  if (typeof torrentProgressInFlight !== 'undefined') delete torrentProgressInFlight[cacheKey];
 
   // Чистим старые блоки (могли остаться от предыдущей версии)
   var oldProgressBlocks = document.querySelectorAll('#detail-progress');
@@ -2440,10 +2471,12 @@ function updatePlayerTimeline(timelineData) {
     var savedClientId = localStorage.getItem('clientId');
     if (savedClientId && currentTimecodeData.hash && currentTimecodeData.fileId) {
       var timecodeToSave = isCompleted ? Math.floor(currentTimecodeData.duration) : Math.floor(data.time);
-      fetch(SERVER_URL + '/api/timecode/save', {
+      // Через trackTimecodeSave — иначе updateDetailProgress ниже прочитает батч
+      // раньше, чем это сохранение доедет, и покажет предыдущую серию
+      trackTimecodeSave(fetch(SERVER_URL + '/api/timecode/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: timecodeToSave, duration: currentTimecodeData.duration, completed: isCompleted })
-      }).catch(function (e) { });
+      }));
     }
     if (AppState.playFromHash && AppState.isCatalogSerials) { AppState.isCatalogSearch = false; return; }
     else if (AppState.playFromHash) { AppState.playFromHash = false; AppState.isCatalogSearch = false; return; }

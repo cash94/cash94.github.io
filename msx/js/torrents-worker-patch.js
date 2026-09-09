@@ -344,7 +344,9 @@
                 var stillUrl = window.getTmdbImageUrl
                     ? window.getTmdbImageUrl(r.movieStillPosterPath, 'w300')
                     : normalizePosterUrl(r.movieStillPosterPath);
-                var fileItem = document.querySelector('.file-item');
+                // Только видимые: плитки файлов переиспользуются, и погашенные
+                // остаются в #files-list (пул в js/torrents.js)
+                var fileItem = document.querySelector('#files-list .file-item:not(.hidden)');
                 if (fileItem) updateFileItemStill(fileItem, stillUrl);
             }
 
