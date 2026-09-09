@@ -1310,14 +1310,19 @@
         while (homeState.activePosterLoads < HOME.POSTER_CONCURRENCY &&
             homeState.posterQueue.length > 0) {
             var task = homeState.posterQueue.shift();
-            if (!task.card.isConnected) continue;
+            if (!task.card.isConnected) { delete task.card.dataset.posterPending; continue; }
             homeState.activePosterLoads++;
-            loadCardPoster(task.card, task.item)
-                .catch(function () { })
-                .then(function () {
-                    homeState.activePosterLoads--;
-                    setTimeout(processPosterQueue, 5);
-                });
+            // Карточку берём в замыкание: task переиспользуется на следующем
+            // витке while, а снять пометку надо именно с этой
+            (function (card, item) {
+                loadCardPoster(card, item)
+                    .catch(function () { })
+                    .then(function () {
+                        if (card.dataset) delete card.dataset.posterPending;
+                        homeState.activePosterLoads--;
+                        setTimeout(processPosterQueue, 5);
+                    });
+            })(task.card, task.item);
         }
     }
 
@@ -1328,12 +1333,20 @@
         for (var i = 0; i < cards.length; i++) {
             var card = cards[i];
             var box = card.querySelector('.row-poster-img');
+            // Карточка уже в очереди или грузится. Одного posterLoaded мало:
+            // проверка ниже пропускает её, только когда картинка УЖЕ в боксе, а
+            // между постановкой в очередь и вставкой проходит запрос и декод.
+            // В это окно ряд успевают попросить повторно (setActiveRow,
+            // prefetchNeighbourPosters, восстановление фокуса) — и одна карточка
+            // грузилась дважды: два запроса, два декода и два <img> в рамке.
+            if (card.dataset.posterPending === '1') continue;
             // Флаг ставится до самой загрузки, поэтому проверяем и картинку:
             // если очередь успели обнулить, карточка осталась бы пустой навсегда
             if (card.dataset.posterLoaded === '1' && box && box.querySelector('img')) continue;
             var idx = parseInt(card.dataset.itemIndex, 10);
             if (isNaN(idx) || !items[idx]) continue;
             card.dataset.posterLoaded = '1';
+            card.dataset.posterPending = '1';
             homeState.posterQueue.push({ card: card, item: items[idx] });
         }
         processPosterQueue();
@@ -1350,6 +1363,12 @@
     }
 
     function resetPosterQueue() {
+        // Снимаем пометку с тех, до кого очередь не дошла: иначе они навсегда
+        // остались бы «в работе» и второго шанса загрузиться не получили бы
+        for (var i = 0; i < homeState.posterQueue.length; i++) {
+            var c = homeState.posterQueue[i].card;
+            if (c && c.dataset) delete c.dataset.posterPending;
+        }
         homeState.posterQueue = [];
         homeState.activePosterLoads = 0;
         if (homeState.prefetchTimer) {
