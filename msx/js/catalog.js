@@ -5964,12 +5964,6 @@ function dropPosterReveals() {
     dropPosterRevealBatch();
 }
 
-/**
- * @param {boolean} [deferDuringNav] придержать вставку до паузы в навигации.
- *        Ставят только ряды каталога: на главной постеры ряда грузятся разом при
- *        его переключении, горизонтальное движение их не задевает, и придержка
- *        там только оставила бы пустые рамки под фокусом.
- */
 /* ============ ПРОЯВЛЕНИЕ ПОСТЕРОВ — ПАЧКОЙ ============
  *
  * Постер проявляется CSS-переходом из opacity: 0, и чтобы переход состоялся,
@@ -6022,6 +6016,12 @@ function dropPosterRevealBatch() {
     posterRevealBatch.length = 0;
 }
 
+/**
+ * @param {boolean} [deferDuringNav] придержать вставку до паузы в навигации.
+ *        Ставят только ряды каталога: на главной постеры ряда грузятся разом при
+ *        его переключении, горизонтальное движение их не задевает, и придержка
+ *        там только оставила бы пустые рамки под фокусом.
+ */
 function setRowPosterImg(box, url, deferDuringNav) {
     return new Promise(function (resolve) {
         // URL уже собран под нужный размер (быстрый путь, posterCache) — не
@@ -6093,6 +6093,23 @@ function setRowPosterImg(box, url, deferDuringNav) {
                     // Скелет остаётся под картинкой до конца проявления — тот же
                     // кроссфейд, что и в сетке (см. updatePosterDOM)
                     var placeholder = box.querySelector('.no-poster');
+
+                    /* Заменяем, а не дописываем. Одну карточку успевают
+                     * поставить в очередь дважды: home.js пропускает её, только
+                     * когда картинка УЖЕ в боксе (loadRowPosters), а между
+                     * постановкой в очередь и вставкой проходит и запрос, и
+                     * декод. В рамке оказывались два <img> с одним и тем же
+                     * адресом, второй поверх первого, и первый ещё держал
+                     * декодированный кадр. Снимаем src у уходящего — иначе он
+                     * доживёт в памяти до сборки мусора. */
+                    var stale = box.querySelectorAll('img');
+                    for (var q = 0; q < stale.length; q++) {
+                        stale[q].onload = null;
+                        stale[q].onerror = null;
+                        if (stale[q].getAttribute('src')) stale[q].removeAttribute('src');
+                        if (stale[q].parentNode) stale[q].parentNode.removeChild(stale[q]);
+                    }
+
                     box.appendChild(img);
 
                     // Вставили — проявление уходит в общую пачку. Один
