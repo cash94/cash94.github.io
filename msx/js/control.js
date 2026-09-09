@@ -2002,6 +2002,25 @@ function onBack() {
         return true;
     }
 
+    /* Донат — до карточки, а не после.
+     *
+     * Ниже «назад» разбирает экраны в порядке веток, и ветка карточки идёт
+     * раньше донатной. Пока донат нельзя было открыть поверх карточки, это ни
+     * на что не влияло; теперь можно — и «назад» закрывал карточку из-под
+     * оверлея, оставляя сам оверлей висеть.
+     *
+     * Проверяем сам элемент, а не currentScreen(): та функция перебирает экраны
+     * своим порядком и на видимую карточку отвечает 'detail' раньше, чем дойдёт
+     * до доната. Порядок здесь задаёт то, что реально лежит выше: у доната
+     * z-index 1000 против 100 у #detail-view. Настройки следующей веткой — по
+     * той же причине.
+     */
+    var donateScreen = getEl('donate-overlay');
+    if (donateScreen && _isScreenVisible(donateScreen)) {
+        if (typeof window.closeDonateOverlay === 'function') window.closeDonateOverlay();
+        return true;
+    }
+
     if (configScreen && _isScreenVisible(configScreen)) {
         var focusedElement = document.querySelector('.focused');
         var menuItems = getConfigMenuItems();
@@ -2029,6 +2048,13 @@ function onBack() {
             var returnTo = (window.AppState && AppState.configReturnTo) || null;
             if (!returnTo) returnTo = isHomeUnderneath() ? 'home' : 'torrents';
             if (window.AppState) AppState.configReturnTo = null;
+
+            // Настройки открывали поверх карточки — она всё это время стояла
+            // под ними и ждёт возврата
+            if (returnTo === 'detail' && typeof window.restoreDetailAfterOverlay === 'function' &&
+                window.restoreDetailAfterOverlay()) {
+                return true;
+            }
 
             if (returnTo === 'home' && window.HomeScreen) {
                 window.HomeScreen.show({ restoreFocus: true });

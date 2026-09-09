@@ -4663,12 +4663,86 @@ async function showCatalogDetail(item, index, posterUrl) {
  * карточке, и «назад» из неё поведёт по чужим рекомендациям и чужим актёрам.
  */
 
-/** Куда ведёт кнопка шапки. Поиск, донат и настройки свои экраны открывают сами. */
+/**
+ * Кнопки шапки делятся на две группы, и ведут себя они противоположно.
+ *
+ * РАЗДЕЛЫ (ниже) уводят из карточки насовсем: карточка закрывается, путь
+ * возвратов забывается целиком.
+ *
+ * НАЛОЖЕНИЯ (настройки, донат, поиск) открываются ПОВЕРХ карточки — у всех трёх
+ * z-index 1000 против 100 у #detail-view. Карточка остаётся открытой под ними и
+ * ждёт возврата, поэтому ни закрывать её, ни чистить путь нельзя.
+ */
 var DETAIL_NAV_SCREENS = {
     'home-nav-home': 'home',
     'tab-catalog': 'catalog',
     'tab-torrents': 'torrents'
 };
+
+/** Единственная точка входа для шапки, поднятой над карточкой */
+function detailTopbarNavigate(btnId) {
+    if (DETAIL_NAV_SCREENS[btnId]) exitDetailForSectionNav(btnId);
+    else prepareOverlayOverDetail(btnId);
+}
+
+/**
+ * Наложение открывается поверх карточки — готовим возврат в неё.
+ *
+ * Каждое наложение уже умеет возвращаться «туда, откуда пришли», надо лишь
+ * назвать ему это место:
+ *   настройки — AppState.configReturnTo, его считает сам обработчик кнопки из
+ *               currentScreen(), а тот при открытой карточке даёт 'detail';
+ *               здесь делать нечего;
+ *   поиск     — AppState.searchReturnTo, ветка 'detail' в hideSearchResults
+ *               уже написана (возврат из «Торрентов» карточки идёт по ней же);
+ *   донат     — своего поля не имел, добавлено.
+ */
+function prepareOverlayOverDetail(btnId) {
+    // Шапку убираем: она поднималась только чтобы дотянуться до кнопки.
+    // Карточку и путь возвратов не трогаем — мы из неё не уходим.
+    if (window.DetailTopbar && typeof DetailTopbar.ensureHome === 'function') {
+        DetailTopbar.ensureHome();
+    }
+
+    if (btnId === 'tab-search') AppState.searchReturnTo = 'detail';
+    if (btnId === 'tab-donate') AppState.donateReturnTo = 'detail';
+}
+
+/**
+ * Наложение закрылось — вернуть управление карточке, которая всё это время
+ * стояла под ним.
+ *
+ * @returns {boolean} true — карточка на месте и снова главная на экране.
+ *          false — карточки нет, закрывающему наложению решать самому.
+ */
+function restoreDetailAfterOverlay() {
+    var dv = getEl('detail-view');
+    if (!dv || !dv.style.display || dv.style.display === 'none') return false;
+    if (!AppState.currentDetailItem) return false;
+
+    AppState.currentScreen = 'detail';
+    AppState.searchReturnTo = null;
+    AppState.donateReturnTo = null;
+
+    dv.style.pointerEvents = 'auto';
+    var mc = getEl('main-container');
+    if (mc) mc.style.pointerEvents = 'none';
+
+    // Карточка уже отрисована — показываем без затухания, но со снятием
+    // недоигранного закрытия, иначе останется прозрачной
+    if (typeof Animations !== 'undefined' && typeof Animations.ensureDetailVisible === 'function') {
+        Animations.ensureDetailVisible();
+    }
+
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    setTimeout(function () {
+        if (window.ScreenStrategies && ScreenStrategies.detail &&
+            typeof ScreenStrategies.detail.ensureFocus === 'function') {
+            ScreenStrategies.detail.ensureFocus(true);
+        }
+    }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+    return true;
+}
 
 /**
  * Забыть путь возвратов карточки целиком.
@@ -4679,7 +4753,9 @@ var DETAIL_NAV_SCREENS = {
  *   personTrail/Root   — экскурсия по актёрам: из какой карточки ушли к актёру
  *                        и какие флаги приложения были на входе (backToCatalogList);
  *   поля AppState      — какую карточку открыть при возврате из плеера, из
- *                        поиска и по аппаратной кнопке Android.
+ *                        поиска и по аппаратной кнопке Android;
+ *   detailFromHome     — «карточку открыли с главной»; по нему home.js
+ *                        перехватывает возврат из карточки и уводит на главную.
  */
 function clearDetailReturnPath() {
     clearDetailHistory();
@@ -4692,6 +4768,15 @@ function clearDetailReturnPath() {
     AppState.androidBackCatalog = '';
     AppState.detailReturnTo = null;
     AppState.openCatalogDetailOnSearchClose = null;
+
+    /* Снимать обязательно, и вот почему. Флаг ставит home.js при открытии
+     * карточки с главной, а снимает — только его же обёртка showContentScreen,
+     * и лишь когда уходят С ГЛАВНОЙ (AppState.currentScreen === 'home'). Уходя
+     * из КАРТОЧКИ, currentScreen равен 'detail', условие не выполняется, и флаг
+     * оставался поднятым. Дальше home.js перехватывает restoreFocusAfterNavigation
+     * и уводит на главную — поэтому «главная → карточка → шапка → каталог →
+     * карточка → назад» высаживало на главной вместо каталога. */
+    if (window.HomeScreen && HomeScreen.state) HomeScreen.state.detailFromHome = false;
 }
 
 /**
@@ -4743,8 +4828,41 @@ function exitDetailForSectionNav(btnId) {
     }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
 }
 
+/**
+ * Карточка перестала быть точкой возврата, пока над ней открыто наложение.
+ *
+ * Так бывает ровно в одном случае: свободный поиск, открытый из карточки, принял
+ * запрос — дальше он возвращает на главную (см. searchTorrents в torrents.js).
+ * Оставленная карточка не просто держит память: у неё z-index 100 против 1 у
+ * #main-container, и на главной она осталась бы висеть поверх экрана.
+ *
+ * Гасим без затухания и не трогая текущий экран: карточка сейчас под наложением,
+ * её никто не видит, а плавность здесь показывать некому.
+ */
+function dropDetailUnderOverlay() {
+    var dv = getEl('detail-view');
+    if (!dv) return false;
+
+    clearDetailReturnPath();
+    stopTrailerBackground();
+    hideCatalogDetailView();
+
+    dv.style.display = 'none';
+    dv.style.pointerEvents = 'none';
+    var mc = getEl('main-container');
+    if (mc) mc.style.pointerEvents = 'auto';
+
+    if (typeof window.resetDetailBackground === 'function') {
+        try { window.resetDetailBackground(); } catch (e) { }
+    }
+    return true;
+}
+
 window.clearDetailReturnPath = clearDetailReturnPath;
 window.exitDetailForSectionNav = exitDetailForSectionNav;
+window.dropDetailUnderOverlay = dropDetailUnderOverlay;
+window.detailTopbarNavigate = detailTopbarNavigate;
+window.restoreDetailAfterOverlay = restoreDetailAfterOverlay;
 
 function hideCatalogDetailView() {
     var dv = getEl('detail-view');

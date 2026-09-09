@@ -3004,6 +3004,25 @@ JacredUnavailableError.prototype.constructor = JacredUnavailableError;
 
 async function searchTorrents(query) {
     if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
+
+    /* Свободный поиск, открытый из карточки через шапку, возвращает в карточку —
+     * но только пока ничего не искали. Отправленный запрос эту связь рвёт: после
+     * чужих результатов падать обратно в фильм, который уже ни при чём, странно,
+     * поэтому дальше выход из поиска ведёт на главную.
+     *
+     * После проверки на пустой запрос, а не до: нажатие «Искать» с пустой
+     * строкой ничего не ищет и точку возврата менять не должно.
+     *
+     * Поиск «Торренты» из самой карточки под это не подпадает: там запрос задан
+     * карточкой и заперт (setSearchLocked), и возврат в неё как раз обязателен. */
+    if (AppState.searchReturnTo === 'detail' && !AppState.searchLocked) {
+        // Карточку закрываем сразу, а не «когда-нибудь потом»: она лежит под
+        // оверлеем поиска с z-index 100 против 1 у #main-container, и на главной
+        // осталась бы висеть поверх экрана.
+        if (typeof window.dropDetailUnderOverlay === 'function') window.dropDetailUnderOverlay();
+        AppState.searchReturnTo = 'home';
+    }
+
     if (getCurrentSearchMode() === 'globalsearch') return await searchTMDB(query);
     return await searchTorrentsLegacy(query);
 }

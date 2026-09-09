@@ -82,8 +82,15 @@ function showDonateOverlay() {
 
 function closeDonateOverlay() {
     if (donateOverlay) {
-        AppState.currentScreen = AppState.inSearch;
         donateOverlay.classList.add('hidden');
+
+        // Донат открывали поверх карточки — возвращаемся в неё, а не в раздел.
+        // AppState.inSearch ниже указывает на каталог или торренты, то есть на
+        // экран ПОД карточкой: фокус уходил бы туда, куда человек не смотрит.
+        if (typeof window.restoreDetailAfterOverlay === 'function' &&
+            window.restoreDetailAfterOverlay()) return;
+
+        AppState.currentScreen = AppState.inSearch;
         // Возвращаем фокус на кнопку доната
         setTimeout(function () {
             var donateTab = getEl('tab-donate');

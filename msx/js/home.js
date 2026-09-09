@@ -2557,8 +2557,10 @@
             detailView.addEventListener('click', function (e) {
                 var btn = e.target.closest ? e.target.closest('.home-nav-btn') : null;
                 if (!btn) return;
-                if (typeof window.exitDetailForSectionNav === 'function') {
-                    window.exitDetailForSectionNav(btn.id);
+                // Раздел или наложение — решает catalog.js: там же и знание
+                // о том, что за путь возвратов у карточки
+                if (typeof window.detailTopbarNavigate === 'function') {
+                    window.detailTopbarNavigate(btn.id);
                 }
             }, true);
         }
