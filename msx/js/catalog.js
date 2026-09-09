@@ -64,7 +64,11 @@ var CATALOG_CONSTANTS = {
     FOCUS_DELAY_MS: 100,
     ROW_POSTER_CONCURRENCY: 10,
     ROW_POSTER_RETRY_MS: 120,           // как часто переспрашивать «навигация утихла?»
-    POSTER_INSERT_GAP_MS: 16,           // пауза между вставками готовых постеров (кадр)
+    POSTER_INSERT_GAP_MS: 16,
+    // Сколько ждать картинку, прежде чем считать зеркало молчащим. Ни load, ни
+    // error от него может не прийти вовсе, а на промисе загрузки висит слот
+    // очереди — см. сторож в setRowPosterImg.
+    POSTER_LOAD_TIMEOUT_MS: 12000,           // пауза между вставками готовых постеров (кадр)
     // Длительность проявления постера. Держать в согласии с transition
     // у .catalog-poster-img в styles.css — по ней снимается скелет под ним.
     POSTER_FADE_MS: 380,
@@ -767,7 +771,11 @@ var catalogState = {
     chunkSize: 0,
     chunkCols: 0,
     chunkObserver: null,
-    chunkTrimTimer: null
+    chunkTrimTimer: null,
+    // Высота строки сетки вместе с бордерами, замеренная по отрисованным
+    // карточкам (measureCatalogCardHeight). Ею считаются высота распорки и шаг
+    // её ужимания — см. dehydrateChunk.
+    rowBoxH: 0
 };
 
 // catalogCache удалён: единственным его читателем был loadCatalog ниже, а он
@@ -1933,6 +1941,19 @@ var CHUNK_FOCUS_GUARD = 1;       // чанков по обе стороны от
 var CHUNK_OBSERVER_MARGIN_PX = 600;    // за сколько до вьюпорта разворачивать
 var CHUNK_SCROLL_QUIET_MS = 250;       // сколько ждать после последнего события прокрутки
 
+/**
+ * Вертикальный зазор между строками сетки. Читается по одному разу на свёртку
+ * чанка (свёртки идут только в тишине) и запоминается на самом чанке, поэтому
+ * инвалидировать кэш при смене плотности не нужно — его просто нет.
+ */
+function readGridRowGap() {
+    var grid = getCatalogGridEl();
+    if (!grid || !window.getComputedStyle) return 0;
+    var cs = window.getComputedStyle(grid);
+    var gap = parseFloat(cs.rowGap || cs.gridRowGap || cs.gap || '');
+    return (!isNaN(gap) && gap >= 0) ? gap : 0;
+}
+
 /* Тишина прокрутки.
  *
  * Свёртку чанков нельзя делать во время движения — иначе карточки исчезают
@@ -2065,23 +2086,69 @@ function realignChunksToColumns() {
     return true;
 }
 
+/**
+ * Отпустить постер удаляемой карточки.
+ *
+ * Просто выбросить узел из DOM мало: декодированный кадр (при 5 колонках это
+ * примерно 210x315 в RGBA, то есть под четверть мегабайта) держится в памяти до
+ * сборки мусора, а сворачиваем мы чанки по 25 карточек за раз. Снятый src
+ * отпускает кадр сразу и заодно обрывает незавершённую загрузку — тот же приём,
+ * что делает Lampa в onDestroy карточки.
+ *
+ * Обработчики снимаем не для порядка: onerror у постера из кэша возвращает
+ * карточку наблюдателю (createCatalogCard), а карточки этой в сетке уже нет.
+ */
+function releaseCardPoster(card) {
+    if (!card) return;
+    var img = card.querySelector('img.catalog-poster-img');
+    if (!img) return;
+    img.onload = null;
+    img.onerror = null;
+    if (img.getAttribute('src')) img.removeAttribute('src');
+    if (img.parentNode) img.parentNode.removeChild(img);
+}
+
 /** Свернуть чанк: карточки → одна распорка той же высоты */
 function dehydrateChunk(ch) {
     // Чанк в процессе разворота не сворачиваем: он дотечёт за пару кадров, и
     // следующий заход обрезки разберётся с ним уже как с обычным. Прерывать
     // на полпути значит остаться с половиной карточек и распоркой.
     if (!ch || ch.spacer || ch.hydrating) return false;
-    if (!chunkAlignedToRows(ch, (typeof getColumns === 'function' && getColumns()) || 0)) return false;
+    var cols = (typeof getColumns === 'function' && getColumns()) || 0;
+    if (!chunkAlignedToRows(ch, cols)) return false;
 
     var first = catalogState.cardElements[ch.start];
     var last = catalogState.cardElements[ch.end - 1];
     if (!first || !last || !first.isConnected || !last.isConnected) return false;
 
-    // Высоту МЕРЯЕМ, а не считаем из числа строк и gap: посчитанная разъедется
-    // с реальной при любой правке плотности в ui-customizer, а разъехавшаяся
-    // распорка — это тот самый сдвиг, ради отсутствия которого всё и затевалось.
-    var height = last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
+    /* Высота распорки и шаг её ужимания при развороте обязаны считаться по
+     * ОДНОЙ линейке, иначе разворот сдвигает содержимое.
+     *
+     * Мерить геометрию здесь нельзя: сворачиваются чанки заведомо далеко от
+     * вьюпорта, где content-visibility: auto уже пропустил их содержимое, и
+     * getBoundingClientRect отдаёт не настоящую высоту, а объявленный резерв
+     * contain-intrinsic-size. При развороте у вьюпорта те же карточки получают
+     * реальную высоту — разница уходит в сдвиг и ничем не компенсируется.
+     *
+     * Настоящую высоту строки знает measureCatalogCardHeight: он меряет
+     * отрисованный первый ряд и он же кормит --catalog-card-h. Берём число
+     * оттуда. Прежнее опасение «посчитанная разъедется при правке плотности»
+     * снимается тем, что и высота строки, и gap пересчитываются на каждую
+     * свёртку, а не запоминаются один раз на сессию.
+     *
+     * Замера ещё нет (первая сетка, шрифт не приехал) — откатываемся на прежнее
+     * измерение; шаг разворота тогда считается из него же, см. hydrateChunk. */
+    var rows = Math.ceil((ch.end - ch.start) / cols);
+    var gap = readGridRowGap();
+    var boxH = catalogState.rowBoxH || 0;
+    var height = (boxH > 0 && rows > 0)
+        ? rows * boxH + (rows - 1) * gap
+        : (last.getBoundingClientRect().bottom - first.getBoundingClientRect().top);
     if (!(height > 0)) return false;
+
+    // Шаг сетки по вертикали: строка вместе с бордерами плюс зазор до следующей
+    ch.rowStride = (boxH > 0) ? boxH + gap : 0;
+    ch.gapH = gap;
 
     var spacer = document.createElement('div');
     spacer.className = 'catalog-chunk-spacer';
@@ -2098,7 +2165,10 @@ function dehydrateChunk(ch) {
 
     for (var i = ch.start; i < ch.end; i++) {
         var card = catalogState.cardElements[i];
-        if (card && card.parentNode === grid) grid.removeChild(card);
+        if (card) {
+            releaseCardPoster(card);
+            if (card.parentNode === grid) grid.removeChild(card);
+        }
         delete catalogState.cardElements[i];
     }
 
@@ -2161,10 +2231,30 @@ function hydrateChunk(ch, immediate) {
     var h = (typeof ch.spacerH === 'number' && ch.spacerH > 0)
         ? ch.spacerH : spacer.offsetHeight;
 
+    /* Шаг ужимания распорки — это ПОЛНЫЙ шаг сетки: высота строки плюс зазор.
+     *
+     * Раньше здесь стояло h / число_строк, и комментарий выше уверял, что общая
+     * высота не меняется ни на пиксель. Это было не так: h = N*R + (N-1)*G, то
+     * есть h/N = R + G*(N-1)/N — на G/N меньше настоящего шага. Каждая порция
+     * добавляла эти G/N к высоте сетки, а снятие распорки в finishHydration
+     * разом отдавало накопленное обратно. При движении ВНИЗ это происходит под
+     * вьюпортом и не видно; при движении ВВЕРХ порционно растёт чанк НАД ним —
+     * и всё видимое ползёт, а на последнем шаге прыгает. Это и была «ступенька».
+     *
+     * ch.rowStride посчитан при свёртке по той же линейке, что и сама распорка.
+     * Его нет (распорка от прежнего состояния сетки) — восстанавливаем шаг из
+     * высоты и зазора: (h + G) / N даёт ровно R + G. */
+    var rowsTotal = Math.ceil(total / cols);
+    var stride = ch.rowStride;
+    if (!(stride > 0)) {
+        var gapFallback = (typeof ch.gapH === 'number' && ch.gapH >= 0) ? ch.gapH : readGridRowGap();
+        stride = rowsTotal > 0 ? (h + gapFallback) / rowsTotal : h;
+    }
+
     ch.hydrating = {
         cols: cols,
         h: h,
-        rowH: h / Math.ceil(total / cols),
+        rowH: stride,
         raf: 0
     };
     hydrationStep(ch);
@@ -2177,12 +2267,46 @@ function insertChunkCards(ch, from, to) {
     if (!grid || !ch.spacer || ch.spacer.parentNode !== grid) return;
 
     var frag = document.createDocumentFragment();
+    var added = [];
     for (var i = from; i < to; i++) {
         var item = catalogState.items[i];
         if (!item) continue;
-        frag.appendChild(createCatalogCard(item, i));
+        var card = createCatalogCard(item, i);
+        frag.appendChild(card);
+        added.push(card);
     }
     grid.insertBefore(frag, ch.spacer);
+
+    // Наблюдателям отдаём ровно то, что сейчас создали. Раньше это делал
+    // finishHydration через updatePosterObservers + updateGridVisibilityWindow,
+    // а те обходят querySelectorAll'ом ВСЮ сетку и дёргают querySelector на
+    // каждой карточке — и всё это посреди движения по списку.
+    observeNewGridCards(added);
+}
+
+/** Взять под наблюдение конкретные карточки, не обходя сетку целиком */
+function observeNewGridCards(cards) {
+    if (!cards || !cards.length) return;
+
+    // Наблюдателя видимости может не быть вовсе (первая сетка, или его снял
+    // cleanupCatalogState из catalog-memory-fix.js) — этот путь умеет создать
+    // его сам. Наблюдатель постеров так не умеет и без него просто молчит,
+    // ровно как молчал прежний updatePosterObservers из finishHydration:
+    // поднимает его initPosterLazyLoading / rearmCatalogObservers.
+    if (!catalogState.gridVisibilityObserver) updateGridVisibilityWindow();
+
+    var po = catalogState.posterObserver;
+    var vo = catalogState.gridVisibilityObserver;
+    for (var i = 0; i < cards.length; i++) {
+        var card = cards[i];
+        if (po && card.dataset.posterRequested !== '1' && !card.querySelector('img.catalog-poster-img')) {
+            try { po.observe(card); } catch (e) { }
+        }
+        if (vo) {
+            card.classList.remove(OFFSCREEN_CLASS);
+            try { vo.observe(card); } catch (e) { }
+        }
+    }
 }
 
 function hydrationStep(ch) {
@@ -2240,9 +2364,10 @@ function finishHydration(ch) {
     ch.hydrating = null;
     ch.filled = ch.end;         // чанк заполнен целиком
 
+    // Карточки взяты под наблюдение сразу при вставке (observeNewGridCards),
+    // полный обход сетки здесь больше не нужен — он и был главной работой,
+    // которая приходилась на пересечение границы чанка.
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
-    updatePosterObservers();
-    updateGridVisibilityWindow();
 }
 
 /** Отменить недотёкший разворот (чанк сворачивают или сетку выбрасывают) */
@@ -2499,6 +2624,18 @@ function appendCatalogItems(newItems) {
 
     // ⚡ Рендерим все новые элементы сразу (их обычно 18-50 штук)
     if (catalogState.currentCatalog !== currentCatalogKey) return;
+
+    /* Страница дописывается в КОНЕЦ сетки, а rebuildChunkRanges ниже расширяет
+     * границу последнего чанка. Если тот сейчас свёрнут, его распорка стоит
+     * ПЕРЕД дописанными карточками — и следующий разворот пересоздаст узлы для
+     * индексов, которые уже висят в DOM: получаются дубли и скачок высоты.
+     * Достижимо всякий раз, когда страница не кратна размеру чанка, то есть при
+     * любом числе колонок, кроме 5 и 10 (ITEMS_PER_PAGE = 50).
+     * Разворачиваем целиком и сразу: дальше по функции карточки всё равно
+     * создаются пачкой, отдельного кадра тут не сэкономить. */
+    var lastChunk = catalogState.chunks.length
+        ? catalogState.chunks[catalogState.chunks.length - 1] : null;
+    if (lastChunk && (lastChunk.spacer || lastChunk.hydrating)) hydrateChunk(lastChunk, true);
 
     var frag = document.createDocumentFragment();
     for (var i = 0; i < newItems.length; i++) {
@@ -2857,6 +2994,7 @@ function resetDeferredPosters() {
     }
     catalogState.posterDeferredRaf = 0;
     catalogState.posterDeferred.length = 0;
+    dropGridPosterAhead();
     if (catalogState.posterBatchTimer) {
         clearTimeout(catalogState.posterBatchTimer);
         catalogState.posterBatchTimer = null;
@@ -2920,6 +3058,43 @@ function preloadGridPostersAhead(card) {
     );
 
     for (var i = start; i < end; i++) requestGridPoster(i, catalogState.cardElements[i]);
+}
+
+/**
+ * Запас постеров вперёд — в паузу, а не в обработчик нажатия.
+ *
+ * preloadGridPostersAhead делает до полутора десятков вызовов requestGridPoster
+ * на КАЖДОЕ перемещение фокуса, и всё это в том же обработчике клавиши, где
+ * focusEl потом читает геометрию. Пока человек едет, толку от предзагрузки нет
+ * всё равно: requestGridPoster на занятой навигации только складывает индексы
+ * в posterDeferred. Ждём остановки и берём последнюю карточку — промежуточные
+ * всё равно перекрыты запасом в GRID_POSTER_PRELOAD_ROWS строк.
+ */
+var gridPosterAheadTimer = null;
+var gridPosterAheadCard = null;
+
+function scheduleGridPosterAhead(card) {
+    gridPosterAheadCard = card;
+    if (gridPosterAheadTimer) return;
+    gridPosterAheadTimer = setTimeout(runGridPosterAhead, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+}
+
+function runGridPosterAhead() {
+    gridPosterAheadTimer = null;
+    var card = gridPosterAheadCard;
+    if (!card || !card.isConnected) { gridPosterAheadCard = null; return; }
+    if (isGridNavBusy() || isGridScrolling()) {
+        gridPosterAheadTimer = setTimeout(runGridPosterAhead, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+        return;
+    }
+    gridPosterAheadCard = null;
+    preloadGridPostersAhead(card);
+}
+
+/** Сетка выброшена — ждущая карточка указывает в никуда */
+function dropGridPosterAhead() {
+    if (gridPosterAheadTimer) { clearTimeout(gridPosterAheadTimer); gridPosterAheadTimer = null; }
+    gridPosterAheadCard = null;
 }
 
 function initPosterLazyLoading() {
@@ -5421,12 +5596,21 @@ function measureCatalogCardHeight() {
     // то есть без бордеров карточки (иначе резерв был бы на 2px больше реального).
     var cards = grid.querySelectorAll('.torrent-card.catalog-card');
     var h = 0;
+    var boxH = 0;
     for (var i = 0; i < cards.length && i < cols; i++) {
         var poster = cards[i].querySelector('.torrent-poster');
         if (!poster || !poster.offsetHeight) continue;
         if (cards[i].clientHeight > h) h = cards[i].clientHeight;
+        // offsetHeight, в отличие от clientHeight, включает бордеры карточки —
+        // а распорка чанка занимает место именно по внешней границе
+        if (cards[i].offsetHeight > boxH) boxH = cards[i].offsetHeight;
     }
     if (!(h > 0)) return;
+
+    // Линейка для распорок чанков (dehydrateChunk). Пишем ДО раннего выхода
+    // ниже: тот сторожит запись CSS-переменной, а не сам замер, и при неизменной
+    // высоте линейка иначе так и не появилась бы.
+    if (boxH > 0) catalogState.rowBoxH = boxH;
 
     // Пишем только при расхождении: замер зовут из нескольких мест, а лишняя
     // запись переменной — это инвалидация стилей всей сетки
@@ -5565,8 +5749,11 @@ function revealCatalogElement(el) {
     // всё равно поднимался до корня и всегда возвращал null, а звалось это из
     // focusEl на каждое перемещение фокуса.
     if (!el.classList.contains('catalog-row-card')) {
+        // Соседние чанки готовим сразу: следующий шаг стрелки обязан найти
+        // карточку, а не подождать её. А вот запас постеров вперёд — чистая
+        // предзагрузка, в этой задаче она не нужна; см. scheduleGridPosterAhead.
         ensureChunksAroundFocus(el);
-        preloadGridPostersAhead(el);
+        scheduleGridPosterAhead(el);
         return;
     }
 
@@ -5774,6 +5961,7 @@ function pumpPosterReveals() {
 function dropPosterReveals() {
     if (posterRevealTimer) { clearTimeout(posterRevealTimer); posterRevealTimer = null; }
     posterReveals.length = 0;
+    dropPosterRevealBatch();
 }
 
 /**
@@ -5782,6 +5970,58 @@ function dropPosterReveals() {
  *        его переключении, горизонтальное движение их не задевает, и придержка
  *        там только оставила бы пустые рамки под фокусом.
  */
+/* ============ ПРОЯВЛЕНИЕ ПОСТЕРОВ — ПАЧКОЙ ============
+ *
+ * Постер проявляется CSS-переходом из opacity: 0, и чтобы переход состоялся,
+ * стартовое состояние обязано быть посчитано до смены класса. Раньше это делал
+ * void img.offsetWidth сразу после вставки — по одному принудительному
+ * пересчёту РАСКЛАДКИ ВСЕГО ДОКУМЕНТА на каждую картинку.
+ *
+ * В каталоге вставки разнесены на POSTER_INSERT_GAP_MS и это стоило один
+ * пересчёт за кадр. А на главной ряд грузится целиком (HOME.POSTER_CONCURRENCY
+ * = 10) и без придержки: десять пересчётов ложились в один кадр — ровно тот
+ * микрофриз, что заметен при переключении рядов.
+ *
+ * Теперь вставка и проявление разделены: картинки за такт копятся, затем один
+ * setTimeout(0) делает ОДИН пересчёт на всю пачку и снимает классы всем сразу.
+ * Макрозадача, а не микрозадача, намеренно: декоды резолвятся каждый своей
+ * микрозадачей, и Promise-пачка разбилась бы на несколько.
+ */
+var posterRevealBatch = [];
+var posterRevealBatchTimer = null;
+
+function flushPosterRevealBatch() {
+    posterRevealBatchTimer = null;
+    var items = posterRevealBatch;
+    if (!items.length) return;
+    posterRevealBatch = [];
+
+    // Единственный форсированный пересчёт на всю пачку: раскладка считается
+    // для документа целиком, а не для одного элемента, поэтому стартовое
+    // состояние фиксируется сразу всем вставленным картинкам.
+    for (var p = 0; p < items.length; p++) {
+        if (items[p].img.isConnected) { void items[p].img.offsetWidth; break; }
+    }
+
+    for (var i = 0; i < items.length; i++) {
+        if (!items[i].img.isConnected) continue;
+        items[i].img.classList.add('loaded');
+        if (items[i].ph) dropPosterPlaceholder(items[i].ph);
+    }
+}
+
+function queuePosterRevealFlash(img, placeholder) {
+    posterRevealBatch.push({ img: img, ph: placeholder });
+    if (posterRevealBatchTimer) return;
+    posterRevealBatchTimer = setTimeout(flushPosterRevealBatch, 0);
+}
+
+/** Сетка/ряды пересобраны — ждущие проявления картинки уже ничьи */
+function dropPosterRevealBatch() {
+    if (posterRevealBatchTimer) { clearTimeout(posterRevealBatchTimer); posterRevealBatchTimer = null; }
+    posterRevealBatch.length = 0;
+}
+
 function setRowPosterImg(box, url, deferDuringNav) {
     return new Promise(function (resolve) {
         // URL уже собран под нужный размер (быстрый путь, posterCache) — не
@@ -5797,7 +6037,50 @@ function setRowPosterImg(box, url, deferDuringNav) {
         var img = new Image();
         img.decoding = 'async';
         var settled = false;
-        var settle = function () { if (!settled) { settled = true; resolve(); } };
+        var settle = function () {
+            if (settled) return;
+            settled = true;
+            stopPosterWatchdog();
+            resolve();
+        };
+
+        /* Сторож на молчащее зеркало.
+         *
+         * Адрес может не ответить ВООБЩЕ — ни load, ни error. У фона детального
+         * просмотра это уже учтено (DETAIL_BACKDROP_GRACE_MS), а здесь было
+         * опаснее: промис резолвится только после вставки, на нём висит счётчик
+         * activeRowPosterLoads, и десяток молчащих адресов при
+         * ROW_POSTER_CONCURRENCY = 10 останавливал очередь рядов насовсем —
+         * постеры переставали появляться до перезахода в каталог.
+         *
+         * Объявлены declaration'ами, а не переменными: settle зовёт сторож
+         * раньше по тексту, чем тот определён.
+         */
+        var posterWatchdog = null;
+
+        function stopPosterWatchdog() {
+            if (posterWatchdog) { clearTimeout(posterWatchdog); posterWatchdog = null; }
+        }
+
+        function armPosterWatchdog() {
+            stopPosterWatchdog();
+            posterWatchdog = setTimeout(function () {
+                posterWatchdog = null;
+                if (settled) return;
+                // Смена src сама обрывает прежнюю загрузку, обработчики те же
+                var alt = mirrorRetried ? null : getTmdbNextMirrorUrl(img.src);
+                if (alt && alt !== img.src) {
+                    mirrorRetried = true;
+                    armPosterWatchdog();
+                    img.src = alt;
+                    return;
+                }
+                img.onload = null;
+                img.onerror = null;
+                img.src = '';
+                fail();
+            }, CATALOG_CONSTANTS.POSTER_LOAD_TIMEOUT_MS);
+        }
 
         // Промис резолвится ПОСЛЕ вставки, а не по готовности картинки: на нём
         // висит счётчик activeRowPosterLoads, и пока вставки ждут паузы, слоты
@@ -5812,17 +6095,12 @@ function setRowPosterImg(box, url, deferDuringNav) {
                     var placeholder = box.querySelector('.no-poster');
                     box.appendChild(img);
 
-                    // Принудительный пересчёт фиксирует стартовое состояние
-                    // (opacity: 0 из CSS). Без него браузер схлопывает вставку и
-                    // смену класса в одно вычисление, перехода не происходит — на
-                    // этом и держалась прежняя вставка, где постер просто возникал.
-                    // Именно reflow, а не requestAnimationFrame: кадры может не
-                    // быть вовсе (приложение свернули), и картинка осталась бы
-                    // прозрачной до возвращения.
-                    void img.offsetWidth;
-                    img.classList.add('loaded');
-
-                    if (placeholder) dropPosterPlaceholder(placeholder);
+                    // Вставили — проявление уходит в общую пачку. Один
+                    // принудительный пересчёт на всех вместо одного на каждую;
+                    // именно reflow, а не requestAnimationFrame, потому что
+                    // кадров может не быть вовсе (приложение свернули), и
+                    // картинка осталась бы прозрачной до возвращения.
+                    queuePosterRevealFlash(img, placeholder);
                 }
                 settle();
             });
@@ -5838,10 +6116,12 @@ function setRowPosterImg(box, url, deferDuringNav) {
         // пробуем следующее, прежде чем показать «Нет постера».
         var mirrorRetried = false;
         img.onerror = function () {
+            stopPosterWatchdog();
             if (!mirrorRetried) {
                 var alt = getTmdbNextMirrorUrl(img.src);
                 if (alt && alt !== img.src) {
                     mirrorRetried = true;
+                    armPosterWatchdog();
                     img.src = alt;
                     return;
                 }
@@ -5849,10 +6129,12 @@ function setRowPosterImg(box, url, deferDuringNav) {
             fail();
         };
         img.onload = function () {
+            stopPosterWatchdog();
             // Декодируем в фоновом потоке (Chromium 64+), не блокируя main thread
             if (typeof img.decode === 'function') img.decode().then(insert).catch(insert);
             else insert();
         };
+        armPosterWatchdog();
         img.src = url;
     });
 }

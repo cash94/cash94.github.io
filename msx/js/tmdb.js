@@ -2,8 +2,42 @@
 var TMDB_API_URL = '/api/tmdb/search';
 var TMDB_IMAGE_URL = AppState.protocol+'//tsimg.hnar.online/t/p/w342';
 
-// Кэш для постеров
-var posterCache = new Map();
+/* Кэш для постеров.
+ *
+ * Был обычный Map без предела: он живёт всю сессию, а ключ у него — название
+ * плюс год, то есть записи копятся на каждый просмотренный список и не уходят
+ * никогда. На телевизоре с малой памятью это чистая утечка.
+ *
+ * Свой маленький LRU, а не класс из catalog.js: tmdb.js грузится раньше и не
+ * должен от него зависеть. Значения — строка-адрес или null («постера нет»),
+ * поэтому лимит считаем в записях, а не в байтах.
+ */
+var POSTER_CACHE_MAX = 300;
+var posterCacheMap = new Map();
+
+var posterCache = {
+  has: function (key) { return posterCacheMap.has(key); },
+  get: function (key) {
+    if (!posterCacheMap.has(key)) return undefined;
+    // Обращение делает запись свежей: удаляем и кладём обратно в конец
+    var v = posterCacheMap.get(key);
+    posterCacheMap['delete'](key);
+    posterCacheMap.set(key, v);
+    return v;
+  },
+  set: function (key, value) {
+    if (posterCacheMap.has(key)) posterCacheMap['delete'](key);
+    posterCacheMap.set(key, value);
+    while (posterCacheMap.size > POSTER_CACHE_MAX) {
+      // Первый ключ итератора — самый давний по обращению
+      var oldest = posterCacheMap.keys().next();
+      if (oldest.done) break;
+      posterCacheMap['delete'](oldest.value);
+    }
+  },
+  clear: function () { posterCacheMap.clear(); },
+  get size() { return posterCacheMap.size; }
+};
 
 // Функция для очистки названия
 function cleanTitle(title) {
