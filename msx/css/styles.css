@@ -964,6 +964,32 @@ body {
   scrollbar-width: none;
 }
 
+/* Служебные сообщения ряда файлов: «Загрузка файлов…», «Нет файлов», ошибка.
+   Раньше каждое из них подставлялось в #files-list через innerHTML вместе с
+   инлайновыми стилями; теперь плитки файлов переиспользуются и живут в списке
+   постоянно (пул в js/torrents.js), поэтому сообщение — отдельный узел. */
+.files-list-msg {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  font-size: 16px;
+  color: #aaa;
+}
+
+/* Короткие сообщения в одну строку — без высокого отступа */
+.files-list-msg-compact {
+  padding: 20px;
+  font-size: inherit;
+}
+
+.files-list-msg-error {
+  color: #ff6a6a;
+}
+
 /* Скрываем скроллбары для всех контейнеров */
 .files-list::-webkit-scrollbar,
 .catalog-detail-actors-grid::-webkit-scrollbar,
@@ -1310,6 +1336,16 @@ body.detail-open {
   gap: 20px;
   overflow-x: auto;
   padding-bottom: 8px;
+}
+
+/* Служебные сообщения ряда («Загрузка актёров…», «Актёры не найдены»).
+   Отдельный узел, а не innerHTML контейнера: карточки актёров и похожих
+   переиспользуются и живут в ряду постоянно (пул в js/catalog.js), и
+   переписанный контейнер уничтожил бы их. Растягиваем на все колонки —
+   в одной ячейке из двенадцати текст сообщения не помещался. */
+.catalog-detail-row-msg {
+  grid-column: 1 / -1;
+  color: #aaa;
 }
 
 .catalog-actor-card {
