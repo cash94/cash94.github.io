@@ -1168,6 +1168,14 @@
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-tvheadend.png",
         "versions": [
             {
+                "version": "15.0.0.0",
+                "changelog": "- Fix HTSP handling across TVHeadend versions (#114) @Shadowghost, @crobibero\n- Enable Analyzers and migrate to slnx (#113) @Shadowghost, @crobibero",
+                "targetAbi": "12.0.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/tvheadend/tvheadend_15.0.0.0.zip",
+                "checksum": "067c17c9a10e8f2965555caa20820797",
+                "timestamp": "2026-09-09T22:13:47Z"
+            },
+            {
                 "version": "14.0.0.0",
                 "changelog": "- Unstable: Update to latest Jellyfin preview packages (#109) @crobibero, @jellyfin-bot\n- Do not cache failed playback ticket requests (#115) @007hacky007, @crobibero",
                 "targetAbi": "12.0.0.0",
@@ -1341,6 +1349,14 @@
         "category": "MoviesAndShows",
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-tvdb.png",
         "versions": [
+            {
+                "version": "24.0.0.0",
+                "changelog": "- Do not return invalid image URLs (#260) @Shadowghost, @crobibero\n- Check against the Series Tvdb Id instead of GetTvdbId (#267) @scampower3, @crobibero\n- Fix identification of titles containing punctuation (#264) @Shadowghost, @crobibero\n- Use season/episode TVDB IDs from path when available (#239) @IDisposable, @Shadowghost\n- Option to import for original title (#263) @enter-a-random-username, @Shadowghost",
+                "targetAbi": "12.0.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/thetvdb/thetvdb_24.0.0.0.zip",
+                "checksum": "4ed207018366e6711ce6b5f440bcb18f",
+                "timestamp": "2026-09-09T22:18:22Z"
+            },
             {
                 "version": "23.0.0.0",
                 "changelog": "- Unstable: Update to latest Jellyfin preview packages (#244) @crobibero, @jellyfin-bot\n- Add additional crew types to movies (#254) @theguymadmax\n- Assign season and episode numbers for daily shows (#253) @theguymadmax\n- added a zero check (#234) @trajano\n- Fix combined episode processing (#232) @Spacetech",
@@ -1536,6 +1552,14 @@
         "category": "Anime",
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-anidb.png",
         "versions": [
+            {
+                "version": "13.0.0.0",
+                "changelog": "- Close out six open issues across metadata, matching and artwork (#108) @Shadowghost, @crobibero\n- Implement similarity providers and update README (#107) @Shadowghost, @crobibero\n- Set the production year on a series, and fail rather than blank an item while banned (#109) @Shadowghost, @crobibero",
+                "targetAbi": "12.0.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/anidb/anidb_13.0.0.0.zip",
+                "checksum": "ee3a952012bc8a4c306fa45665dec9e7",
+                "timestamp": "2026-09-09T22:18:33Z"
+            },
             {
                 "version": "12.0.0.0",
                 "changelog": "- Unstable: Update to latest Jellyfin preview packages (#99) @crobibero, @jellyfin-bot, @Shadowghost\n- Add Analyzers, migrate to file-scoped namespaces and cleanup code (#105) @Shadowghost, @crobibero\n- Only show defined person images (#103) @enter-a-random-username, @Shadowghost\n- Get correct attribute for ratings (#104) @enter-a-random-username, @Shadowghost\n- Add external link for person (#102) @enter-a-random-username, @Shadowghost\n- fix: download if the file has zero length (#91) @trajano\n- Upgrade Microsoft.Extensions.Http to 9.0.11 (#86) @Shadowghost\n- Revert \"Update dependency Microsoft.Extensions.Http to v10\" (#83) @Shadowghost\n\n### Dependency updates ###\n- Update dependency Microsoft.Extensions.Http to v10 (#73) [@renovate[bot]](https://github.com/apps/renovate)",
@@ -2566,6 +2590,14 @@
         "category": "General",
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-dlna.png",
         "versions": [
+            {
+                "version": "13.0.0.0",
+                "changelog": "- Fix v12 regressions (#243) @Shadowghost, @crobibero\n- Keep genre and artist containers within the library they were browsed in from (#239) @Shadowghost, @crobibero\n- Keep polling the renderer through a transport change (#240) @Shadowghost, @crobibero",
+                "targetAbi": "12.0.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/dlna/dlna_13.0.0.0.zip",
+                "checksum": "9db33dfe8a4c5321a03f4a1c57b00001",
+                "timestamp": "2026-09-09T22:18:57Z"
+            },
             {
                 "version": "12.0.0.0",
                 "changelog": "- Unstable: Update to latest Jellyfin preview packages (#205) @crobibero, @jellyfin-bot\n- Fix browse and search performance, and support Windows Media Player (#236) @Shadowghost, @crobibero\n- Fix DLNA browsing, search and device discovery (#233) @Shadowghost, @crobibero\n- Fix DLNA streaming regressions (#232) @Shadowghost, @crobibero\n- Fixes for PlayTo (#231) @Shadowghost, @crobibero, @sankred9527\n- Safeguard against control characters (#230) @Shadowghost, @crobibero\n- Fix favorite filtering in normal DLNA browsing (#223) @mistaboom, @crobibero\n- Fix logo and framework (#234) @Shadowghost\n- Update Panasonic Viera.xml (#225) @Hisenmisen, @crobibero\n- Serve multi-part videos as separate DLNA items (#229) @Shadowghost, @crobibero\n- Harden Controllers (#228) @Shadowghost, @crobibero\n- Align served MIME types and org_PN values with the DLNA guidelines (#227) @Shadowghost, @crobibero\n- Enable Analyzers and nullable and fix the resulting compiler issues (#226) @Shadowghost, @crobibero\n- sonos speaker profile (#188) @Florin-Popescu, @Shadowghost\n- Update matching for Denon AVR and DRA receivers (#213) @PovlAbrahamsen, @cvium\n- Profile for Movian on PS3 (#190) @GwyndolynMarchant, @cvium",
