@@ -3675,11 +3675,12 @@ article {
    (ширина минус бордеры, aspect-ratio 2/3) плюс 68px подписи.
    Ряды каталога это правило не задевает: у них своя фиксированная геометрия и
    .catalog-row-viewport постоянной высоты, где рост скрытой карточки ничего не
-   двигает. */
+   двигает. 
 #catalog-grid > .torrent-card.catalog-card {
   contain-intrinsic-size: calc((100vw - 88px) / 5)
     var(--catalog-card-h, calc(((100vw - 88px) / 5 - 2px) * 1.5 + 68px));
 }
+    */
 
 .torrent-poster {
   contain: layout paint;
@@ -6203,11 +6204,13 @@ article {
      перебивает ui-customizer.js, здесь — корректное значение на случай, если он
      не загрузился: 6 колонок, gap 6px (плотность compact), padding 8px у
      #catalog-grid и 16px у #torrserver-section, то есть колонка =
-     (100vw - 78px)/6, а высота = постер (aspect-ratio 2/3) + 64px подписи. */
+     (100vw - 78px)/6, а высота = постер (aspect-ratio 2/3) + 64px подписи. 
   #catalog-grid > .torrent-card.catalog-card {
     contain-intrinsic-size: calc((100vw - 78px) / 6)
       var(--catalog-card-h, calc(((100vw - 78px) / 6 - 2px) * 1.5 + 64px));
   }
+
+  */
 
   /* ===== DETAIL-VIEW: карточка фильма ===== */
   .detail-header {
