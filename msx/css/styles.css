@@ -5757,6 +5757,27 @@ article {
   background: linear-gradient(180deg, #000 0%, #000 62%, rgba(0, 0, 0, 0) 100%);
 }
 
+/* Шапка разделов, поднятая поверх открытой карточки (js/home.js: DetailTopbar).
+   Элемент тот же самый — его переносят внутрь #detail-view, потому что снаружи
+   поднять его над карточкой невозможно: #detail-view лежит вне #main-container
+   и перекрывает его (z-index 100 против 1), а #main-container со своим z-index
+   создаёт стековый контекст.
+
+   position: fixed, а не sticky: карточка прокручивается сама, и полоса обязана
+   стоять на месте. Заодно она выпадает из потока — вёрстка карточки посчитана
+   без неё и не должна сдвигаться при показе.
+
+   margin обнуляем: у обычной шапки он отрицательный, чтобы компенсировать
+   padding #torrserver-section, а здесь компенсировать нечего. */
+#home-topbar.detail-topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin: 0;
+  z-index: 60;
+}
+
 /* gap на Vidaa не поддержан — отступ даём соседям через margin */
 #home-topbar > .home-nav-btn + .home-nav-btn {
   margin-left: 22px;
@@ -5846,6 +5867,19 @@ article {
    (строка 2955) и такое же, которое UI Customizer подставляет своим цветом:
    у селектора из двух классов специфичность выше. */
 .home-nav-btn.focused {
+  color: var(--focus-color, #ff8c00);
+  background: transparent;
+  box-shadow: none !important;
+}
+
+/* То же самое, когда шапка поднята поверх открытой карточки (js/home.js:
+   DetailTopbar). Отдельное правило нужно из-за специфичности: и styles.css, и
+   UI Customizer задают `#detail-view .focused{box-shadow:…!important}`
+   (ui-customizer.js: buildFocusCss) — это (1,1,0) против (0,2,0) у правила
+   выше. При равном !important побеждает более специфичный, и на кнопках шапки
+   внутри карточки возвращалась рамка вместо простой смены цвета текста.
+   Здесь (1,2,0), поэтому побеждает уже это правило. */
+#detail-view .home-nav-btn.focused {
   color: var(--focus-color, #ff8c00);
   background: transparent;
   box-shadow: none !important;
