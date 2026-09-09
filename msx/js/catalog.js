@@ -4651,6 +4651,101 @@ async function showCatalogDetail(item, index, posterUrl) {
     });
 }
 
+/* ============ УХОД ИЗ КАРТОЧКИ В РАЗДЕЛ ЧЕРЕЗ ШАПКУ ============
+ *
+ * По карточкам можно ходить долго: рекомендация → карточка → актёр → его
+ * фильмография → снова карточка. «Назад» разматывает этот путь по одному шагу,
+ * и вернуться в каталог с глубины десятка переходов — десяток нажатий. Шапка
+ * разделов (js/home.js: DetailTopbar) даёт выход сразу.
+ *
+ * Ключевое отличие от «назад»: мы уходим НЕ по цепочке, а из неё. Значит саму
+ * цепочку надо забыть целиком — иначе она всплывёт в следующей открытой
+ * карточке, и «назад» из неё поведёт по чужим рекомендациям и чужим актёрам.
+ */
+
+/** Куда ведёт кнопка шапки. Поиск, донат и настройки свои экраны открывают сами. */
+var DETAIL_NAV_SCREENS = {
+    'home-nav-home': 'home',
+    'tab-catalog': 'catalog',
+    'tab-torrents': 'torrents'
+};
+
+/**
+ * Забыть путь возвратов карточки целиком.
+ *
+ * Три независимых накопителя, и уцелевший любой из них ломает следующую
+ * карточку по-своему:
+ *   detailHistory      — стек открытых карточек, по нему ходит «назад» (app.js);
+ *   personTrail/Root   — экскурсия по актёрам: из какой карточки ушли к актёру
+ *                        и какие флаги приложения были на входе (backToCatalogList);
+ *   поля AppState      — какую карточку открыть при возврате из плеера, из
+ *                        поиска и по аппаратной кнопке Android.
+ */
+function clearDetailReturnPath() {
+    clearDetailHistory();
+
+    catalogState.personTrail = [];
+    catalogState.personRoot = null;
+    catalogState.person = null;
+
+    AppState.currentDetailItem = null;
+    AppState.androidBackCatalog = '';
+    AppState.detailReturnTo = null;
+    AppState.openCatalogDetailOnSearchClose = null;
+}
+
+/**
+ * @param {string} [btnId] какую кнопку шапки нажали — по ней открываем раздел,
+ *        если его собственный обработчик этого не сделает.
+ */
+function exitDetailForSectionNav(btnId) {
+    var dv = getEl('detail-view');
+    var mc = getEl('main-container');
+
+    // Шапку возвращаем ПЕРВОЙ. Дальше карточка гаснет, и оставленная внутри неё
+    // шапка погасла бы вместе с ней — раздел остался бы без навигации.
+    if (window.DetailTopbar && typeof DetailTopbar.ensureHome === 'function') {
+        DetailTopbar.ensureHome();
+    }
+
+    clearDetailReturnPath();
+
+    stopTrailerBackground();
+    hideCatalogDetailView();
+
+    if (typeof Animations !== 'undefined' && typeof Animations.animateDetailHide === 'function') {
+        Animations.animateDetailHide();
+    } else if (dv) {
+        dv.style.display = 'none';
+    }
+    if (dv) dv.style.pointerEvents = 'none';
+    if (mc) mc.style.pointerEvents = 'auto';
+
+    var screen = DETAIL_NAV_SCREENS[btnId];
+    if (!screen || screen === 'home') return;   // «Главную» открывает goHome() сам
+
+    AppState.currentScreen = screen;
+
+    // Кнопка своего же раздела ничего не сделает: её обработчик в app.js выходит
+    // по classList.contains('active'). Раз так, показать раздел — на нас.
+    var btn = getEl(btnId);
+    if (!btn || !btn.classList.contains('active')) return;
+
+    if (typeof showContentScreen === 'function') {
+        var scroll = (AppState.contentScroll && AppState.contentScroll[screen]) || 0;
+        showContentScreen(screen, scroll);
+    }
+    setTimeout(function () {
+        if (window.ScreenStrategies && ScreenStrategies[screen] &&
+            typeof ScreenStrategies[screen].ensureFocus === 'function') {
+            ScreenStrategies[screen].ensureFocus(true);
+        }
+    }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
+}
+
+window.clearDetailReturnPath = clearDetailReturnPath;
+window.exitDetailForSectionNav = exitDetailForSectionNav;
+
 function hideCatalogDetailView() {
     var dv = getEl('detail-view');
     if (!dv) return;

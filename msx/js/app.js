@@ -52,6 +52,13 @@ function safeExecute(fn, errorMessage) {
 // Экраны торрентов и каталога остаются смонтированными. При переключении вкладок
 // меняем только видимость и восстанавливаем позицию общего скролл-контейнера.
 function showContentScreen(screen, restoreScrollTop) {
+  // Страховка на случай, если шапку подняли поверх карточки (DetailTopbar в
+  // home.js) и карточку закрыли мимо обычного пути. Шапка физически одна на всё
+  // приложение, и оставленная внутри #detail-view она исчезла бы вместе с ним.
+  if (window.DetailTopbar && typeof DetailTopbar.ensureHome === 'function') {
+    DetailTopbar.ensureHome();
+  }
+
   var torrentsScreen = getEl('content-torrents');
   var catalogScreen = getEl('content-catalog');
   var mainContainer = getEl('main-container');

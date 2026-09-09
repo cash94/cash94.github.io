@@ -738,7 +738,10 @@ function getDetailItems() {
     // Без неё handleNavigation не находил элемент в этом списке (idx === -1) и
     // уходил в ensureFocus, отбрасывая фокус на первую кнопку строки: «влево»
     // с неё прыгало через «Подробнее» сразу на «Играть».
-    var s = ['.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
+    // '#detail-view .home-nav-btn' — кнопки шапки разделов, поднятой поверх
+    // карточки (js/home.js: DetailTopbar). Селектор намеренно привязан к
+    // #detail-view: пока шапка на своём месте, он не совпадает ни с чем.
+    var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
     // Сборный селектор → порядок обхода совпадает с порядком в DOM, а не с
     // порядком селекторов. Важно для торрентного detail: там ряд актёров идёт
     // ПЕРЕД файлами, и «вверх» от плитки должно попадать в него.
@@ -791,6 +794,62 @@ function getConfigContentItems(tabId) {
 }
 
 // ==================== СТРАТЕГИИ ЭКРАНОВ ====================
+/* ============ ШАПКА РАЗДЕЛОВ ПОВЕРХ КАРТОЧКИ ============
+ *
+ * Показывается по «вверх» из верхней строки карточки, прячется по «вниз» и по
+ * «назад». В обычном состоянии карточка выглядит ровно как раньше — полоса
+ * лежит вне потока (styles.css: #home-topbar.detail-topbar) и ничего не двигает.
+ *
+ * Сюда же запоминаем, откуда пришли: вернуть фокус на ту же кнопку — это
+ * разница между «шапка мелькнула» и «шапка сбила меня с места».
+ */
+var detailTopbarReturn = null;
+
+function detailTopbarAvailable() {
+    return !!(window.DetailTopbar && typeof DetailTopbar.show === 'function');
+}
+
+/**
+ * Фокус внутри карточки — тем же способом, что и в шапке: пересобрать список
+ * и уйти через setFocus, а не focusEl. Иначе currentFocusIndex остаётся от
+ * кнопки шапки, и первое же нажатие после её закрытия прыгает не туда.
+ */
+function focusDetailEl(target) {
+    if (!target) return false;
+    updateFocusableElements();
+    var idx = (focusableElements && focusableElements.indexOf) ? focusableElements.indexOf(target) : -1;
+    if (idx !== -1) { setFocus(idx); return true; }
+    return focusEl(target);
+}
+
+function revealDetailTopbar(from) {
+    if (!detailTopbarAvailable()) return false;
+    if (!DetailTopbar.show()) return false;
+
+    // Куда встать, решает сама шапка — там же, где это решает главная
+    var target = DetailTopbar.preferred();
+    if (!target) { DetailTopbar.hide(); return false; }
+
+    detailTopbarReturn = from || null;
+    invalidateFocusCache();
+    DetailTopbar.focus(target);
+    return true;
+}
+
+function hideDetailTopbar(restoreFocus) {
+    if (!detailTopbarAvailable() || !DetailTopbar.isShown()) return false;
+    DetailTopbar.hide();
+    invalidateFocusCache();
+
+    if (restoreFocus) {
+        var back = detailTopbarReturn;
+        if (back && back.isConnected && back.offsetParent !== null) focusDetailEl(back);
+        else if (ScreenStrategies.detail) ScreenStrategies.detail.ensureFocus(true);
+    }
+    detailTopbarReturn = null;
+    return true;
+}
+
 var ScreenStrategies = {
     torrents: {
         getItems: getTorrentCards,
@@ -1236,6 +1295,23 @@ var ScreenStrategies = {
         handleNavigation: function (dir) {
             var items = getDetailItems(), f = (belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null);
             if (!f) return this.ensureFocus(true);
+
+            // Шапка разделов поверх карточки: своя строка, свои правила.
+            // Разбираем её до общего поиска по items — она в них есть, но
+            // ходить по ней надо как по строке, а не как по списку карточки.
+            if (f.classList.contains('home-nav-btn')) {
+                if (!detailTopbarAvailable()) return this.ensureFocus(true);
+                var nav = DetailTopbar.buttons();
+                var ni = nav.indexOf(f);
+                if (ni === -1) return this.ensureFocus(true);
+                // Упор в край не оставляет фокус висеть: перефокусируем ту же
+                // кнопку, как это делает главная (handleHomeNavigation)
+                window.lastNavDirection = dir;
+                if (dir === 'left') { DetailTopbar.focus(nav[Math.max(0, ni - 1)]); return true; }
+                if (dir === 'right') { DetailTopbar.focus(nav[Math.min(nav.length - 1, ni + 1)]); return true; }
+                if (dir === 'down') { hideDetailTopbar(true); return true; }
+                return true;   // «вверх» из шапки идти некуда
+            }
             var idx = -1; for (var i = 0; i < items.length; i++) if (f === items[i]) { idx = i; break; }
             if (idx === -1) return this.ensureFocus(true);
             var tl = [], ac = [], rc = [], fi = [];
@@ -1318,12 +1394,14 @@ var ScreenStrategies = {
                     if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; }
                     return true;
                 }
-                if (dir === 'up') return true;
+                // Выше строки действий в карточке ничего нет — там и поднимаем
+                // шапку разделов. Раньше «вверх» отсюда просто не делало ничего.
+                if (dir === 'up') { revealDetailTopbar(f); return true; }
                 return true;
             }
             if (isB) {
                 if (dir === 'down') { if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'down' }); return true; } return focusEl(items[Math.min(items.length - 1, idx + 1)] || f, { direction: 'down' }); }
-                if (dir === 'up') return true;
+                if (dir === 'up') { revealDetailTopbar(f); return true; }
                 if (dir === 'left' || dir === 'right') return true;
                 return true;
             }
@@ -1542,7 +1620,7 @@ function updateFocusableElements() {
     if (screen === 'detail') {
         // Карточки актёров/рекомендаций — тоже фокусируемые: без них «вверх» из
         // ряда файлов торрентного detail упирается в кнопки шапки
-        var sel = '.detail-progress-btn, .file-item, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn, .catalog-actor-card, .catalog-recommendation-card';
+        var sel = '#detail-view .home-nav-btn, .detail-progress-btn, .file-item, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn, .catalog-actor-card, .catalog-recommendation-card';
         var els = document.querySelectorAll(sel);
         for (var i = 0; i < els.length; i++) if (els[i] && els[i].offsetParent !== null) list.push(els[i]);
         focusableElements = list;
@@ -2014,6 +2092,9 @@ function onBack() {
         return true;
     }
     if (d && _isScreenVisible(d)) {
+        // Шапка поверх карточки — «назад» убирает сперва её. Иначе выход из
+        // карточки происходил бы мимо неё, а фокус оставался бы в никуда.
+        if (hideDetailTopbar(true)) return true;
         if (AppState.trailerPlay) {
             ovh = getEl('catalog-toggle-overview-btn');
             stopTrailerBackground();

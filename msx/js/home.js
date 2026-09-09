@@ -2432,6 +2432,102 @@
         setInterval(tick, 1000);
     }
 
+    // ==================== ШАПКА РАЗДЕЛОВ ПОВЕРХ КАРТОЧКИ ====================
+    /*
+     * Из карточки можно уходить вглубь сколь угодно долго — по рекомендациям и
+     * фильмографиям актёров, — и обратный путь тогда меряется десятком нажатий
+     * «назад». Шапка разделов даёт выход в один шаг: «Главная», «Каталог»,
+     * «Мои торренты» прямо из карточки.
+     *
+     * Копию шапки не делаем. Её кнопки — это ФИЗИЧЕСКИ те же элементы вкладок,
+     * на которых висят обработчики разделов (index.html так и задуман: «не
+     * пересоздаём, а переносим»), а второй набор тех же id сломал бы всё сразу.
+     * Поэтому переносим саму шапку внутрь #detail-view.
+     *
+     * Переносим не на всё время карточки, а только пока шапка показана.
+     * Причина практическая: #detail-view гасят напрямую примерно из полутора
+     * десятков мест, и шапка, оставленная внутри, ушла бы вместе с ним — раздел
+     * остался бы без навигации. Короткое окно закрывает почти всё, а на
+     * остаток есть страховка ensureHome() из showContentScreen (app.js).
+     */
+    var topbarHome = null;      // куда возвращать: { parent, next }
+
+    function detailTopbarShown() {
+        var bar = el('home-topbar');
+        return !!(bar && bar.parentNode && bar.parentNode.id === 'detail-view');
+    }
+
+    function detailTopbarShow() {
+        var bar = el('home-topbar');
+        var dv = el('detail-view');
+        if (!bar || !dv) return false;
+        if (detailTopbarShown()) return true;
+        topbarHome = { parent: bar.parentNode, next: bar.nextSibling };
+        bar.classList.add('detail-topbar');
+        dv.insertBefore(bar, dv.firstChild);
+        return true;
+    }
+
+    /** Вернуть шапку на своё место. Безопасно звать когда угодно. */
+    function detailTopbarEnsureHome() {
+        var bar = el('home-topbar');
+        if (!bar || !detailTopbarShown()) return false;
+        bar.classList.remove('detail-topbar');
+        var parent = topbarHome && topbarHome.parent;
+        if (parent && parent.isConnected) {
+            var next = topbarHome.next;
+            parent.insertBefore(bar, (next && next.parentNode === parent) ? next : null);
+        } else {
+            // Исходного места не осталось — кладём в начало секции, там она и жила
+            var sec = el('torrserver-section');
+            if (sec) sec.insertBefore(bar, sec.firstChild);
+        }
+        topbarHome = null;
+        return true;
+    }
+
+    /*
+     * Фокус в шапке ведём ровно так же, как на главной, — она одна и та же,
+     * и вести себя в карточке иначе ей незачем:
+     *
+     *   • список кнопок — getNavButtons(): фиксированный порядок NAV_BUTTONS
+     *     плюс отсев невидимых. querySelectorAll по классу этого не давал:
+     *     скрытая кнопка попадала в список, и фокус уходил в пустоту;
+     *
+     *   • фокусируем через focusHomeEl(): он пересобирает список фокусируемых и
+     *     зовёт setFocus(idx), а не focusEl напрямую. Разница существенная —
+     *     focusEl не двигает currentFocusIndex в control.js, тот остаётся от
+     *     прошлого элемента, и следующее нажатие уводит фокус не туда;
+     *
+     *   • куда встать при показе — в ту же кнопку, где стояли в прошлый раз
+     *     (homeState.lastNavBtnId). Один счётчик на главную и на карточку:
+     *     шапка одна, и «где я в ней был» тоже должно быть одно.
+     */
+    function detailTopbarFocus(btn) {
+        if (!btn) return false;
+        homeState.lastNavBtnId = btn.id || homeState.lastNavBtnId;
+        focusHomeEl(btn);
+        return true;
+    }
+
+    function detailTopbarPreferred() {
+        var btns = getNavButtons();
+        if (!btns.length) return null;
+        var last = el(homeState.lastNavBtnId);
+        if (last && btns.indexOf(last) !== -1) return last;
+        return el('home-nav-home') || btns[0];
+    }
+
+    window.DetailTopbar = {
+        show: detailTopbarShow,
+        hide: detailTopbarEnsureHome,
+        ensureHome: detailTopbarEnsureHome,
+        isShown: detailTopbarShown,
+        buttons: getNavButtons,
+        focus: detailTopbarFocus,
+        preferred: detailTopbarPreferred
+    };
+
     // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
     function initHome() {
@@ -2449,6 +2545,21 @@
                 var btn = e.target.closest ? e.target.closest('.home-nav-btn') : null;
                 if (!btn) return;
                 onNavButton(btn.id, true);
+            }, true);
+        }
+
+        // Уход в раздел прямо из карточки. Перехват вешаем на #detail-view, а не
+        // на саму шапку: у шапки уже есть свой перехватчик (выше), а порядок
+        // среди перехватов задаёт глубина — предок срабатывает раньше. Нам надо
+        // раньше: карточку сперва закрыть и забыть её путь возвратов.
+        var detailView = el('detail-view');
+        if (detailView) {
+            detailView.addEventListener('click', function (e) {
+                var btn = e.target.closest ? e.target.closest('.home-nav-btn') : null;
+                if (!btn) return;
+                if (typeof window.exitDetailForSectionNav === 'function') {
+                    window.exitDetailForSectionNav(btn.id);
+                }
             }, true);
         }
 
