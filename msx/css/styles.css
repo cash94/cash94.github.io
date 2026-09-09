@@ -3659,8 +3659,8 @@ article {
    contain: layout style paint остаётся — он ограничивает пересчёт раскладки
    границами карточки и слоёв не плодит. */
 .torrent-card.catalog-card {
-  content-visibility: auto;
-  contain-intrinsic-size: 280px 400px;
+  /* content-visibility: auto;
+  contain-intrinsic-size: 280px 400px;*/
   contain: layout style paint;
 }
 
