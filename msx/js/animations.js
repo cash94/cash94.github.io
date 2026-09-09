@@ -30,16 +30,26 @@ var Animations = (function () {
     // Анимация для фокуса (TV пульт)
 
     // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР: ОТКРЫТИЕ / ЗАКРЫТИЕ ====================
-    // Длительности подобраны «в меру»: видно, что экран проявляется и уходит,
-    // но ждать не приходится.
+    // Длительности: переход должен читаться как движение, а не как подмена
+    // кадра. Прежние 0.26–0.32 с на телевизоре выглядели рывком — особенно
+    // закрытие: под картой в это же время раскладывается список, и короткое
+    // затухание успевало кончиться раньше, чем список вставал на место.
+    //
+    // Всё держится на opacity и только на ней: transform по #detail-view выглядел
+    // бы приятнее, но поднял бы карточку в отдельный слой композитора — на
+    // 1920x1080 это лишние мегабайты видеопамяти на каждом открытии, чего этот
+    // проект как раз избегает.
     var DETAIL_FADE = {
-        show: 0.32,          // появление #detail-view
-        hide: 0.26,          // закрытие
+        show: 0.38,          // появление #detail-view
+        hide: 0.40,          // закрытие
         loader: 0.18,        // проявление/скрытие индикатора «Загрузка…»
         loaderDelayMs: 160,  // пауза перед показом индикатора: если всё из кэша, он не мигнёт
         loaderMaxMs: 4000,   // страховка — индикатор не должен зависнуть насовсем
         easeOut: 'cubic-bezier(0.22, 0.61, 0.36, 1)',   // аналог power2.out
-        easeIn: 'cubic-bezier(0.55, 0.09, 0.68, 0.53)'  // аналог power2.in
+        // Прежняя кривая (0.55, 0.09, 0.68, 0.53) стартовала почти отвесно:
+        // первые кадры съедали половину прозрачности, и уход читался как щелчок.
+        // Эта трогается мягко и тормозит к концу.
+        easeIn: 'cubic-bezier(0.4, 0, 0.6, 1)'
     };
 
     var detailHideTween = null;        // текущее затухание при закрытии
@@ -393,9 +403,14 @@ var Animations = (function () {
     // Тот же приём, что и у detail-view: CSS-переход считает композитор, поэтому
     // он доигрывает до конца, даже когда основной поток занят отрисовкой списков.
     var UI_FADE = {
-        screen: 0.36,    // переключение вкладок «Каталог» / «Мои торренты»
-        overlay: 0.2,    // оверлей поиска
-        content: 0.24    // подмена содержимого (возврат из категории каталога в ряды)
+        screen: 0.44,      // переключение вкладок «Каталог» / «Мои торренты»
+        overlay: 0.24,     // оверлей поиска
+        // Подмена содержимого (возврат из категории каталога в ряды). Уход и
+        // приход разной длины намеренно: уходящая сетка может исчезать бодро,
+        // а приходящие ряды должны именно проявиться — они и есть то, ради чего
+        // человек нажал «назад».
+        contentOut: 0.30,
+        content: 0.42
     };
 
     // Элемент спрятан любым из принятых в проекте способов
@@ -456,11 +471,63 @@ var Animations = (function () {
         el.style.opacity = String(from);
 
         var duration = typeof options.duration === 'number' ? options.duration : UI_FADE.screen;
-        return fadeElement(el, 1, duration, options.ease || DETAIL_FADE.easeOut, function () {
+        var ease = options.ease || DETAIL_FADE.easeOut;
+        var done = function () {
             // Возвращаем управление CSS: inline opacity < 1 создаёт контекст наложения
             el.style.opacity = '';
             if (options.onDone) options.onDone();
+        };
+
+        if (!options.startAfterLayout || typeof requestAnimationFrame !== 'function') {
+            return fadeElement(el, 1, duration, ease, done);
+        }
+
+        /*
+         * Появление сразу после тяжёлой отрисовки (ряды каталога — это сотни
+         * карточек). Раньше переход запускался в том же кадре, что и раскладка:
+         * первый кадр анимации браузер отдавал через сотни миллисекунд, уже
+         * заметно продвинувшись по её таймингу, — из плавного проявления
+         * получался скачок с середины.
+         *
+         * Два requestAnimationFrame — это гарантированно один отрисованный кадр
+         * между «показали при нулевой прозрачности» и «включили переход»:
+         * раскладка к этому моменту посчитана и закоммичена, и анимации остаётся
+         * чистый композитор.
+         */
+        var pending = {
+            to: 1,
+            done: false,
+            raf: 0,
+            timer: null,
+            kill: function () { pending.stop(); }
+        };
+        pending.stop = function () {
+            if (pending.done) return false;
+            pending.done = true;
+            if (pending.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pending.raf);
+            pending.raf = 0;
+            if (pending.timer) { clearTimeout(pending.timer); pending.timer = null; }
+            if (el._fadeHandle === pending) el._fadeHandle = null;
+            return true;
+        };
+        el._fadeHandle = pending;
+
+        function start() {
+            if (!pending.stop()) return;
+            fadeElement(el, 1, duration, ease, done);
+        }
+
+        // Страховка: requestAnimationFrame приходит не всегда. Свёрнутое окно
+        // или ушедшее в фон приложение кадров не рисует, и без неё элемент так и
+        // остался бы показанным с нулевой прозрачностью — то есть невидимым.
+        // Дальше подхватывает fadeElement: у него свой доводчик до конечного
+        // значения на случай, если и переход не стартует.
+        pending.timer = setTimeout(start, 250);
+
+        pending.raf = requestAnimationFrame(function () {
+            pending.raf = requestAnimationFrame(start);
         });
+        return pending;
     }
 
     /**

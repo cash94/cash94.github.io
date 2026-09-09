@@ -33,6 +33,10 @@ var CATALOG_CONSTANTS = {
     // появиться до того, как до него дойдёт фокус, а работа размазана
     // по нажатиям вместо одного залпа.
     ROW_POSTER_MARGIN_X_PX: 400,
+    // Ряды актёров и похожих в открытой карточке. Запас маленький по той же
+    // причине, что и у рядов каталога: это горизонтальные скроллеры, и брать
+    // «весь ряд плюс экран» значит собрать десяток декодов в один момент.
+    DETAIL_POSTER_MARGIN_PX: 300,
     // Сколько рядов НИЖЕ сфокусированного набираем в очередь заранее. Ряд под
     // фокусом ставится целиком (queueFocusedRowPosters), но при спуске фокус
     // приходит в следующий ряд раньше, чем наблюдатель с его 1200px успевает
@@ -1758,7 +1762,7 @@ function fadeOutCatalogGrid(onDone, el) {
         return;
     }
     Animations.fadeOut(target, {
-        duration: 0.2,
+        duration: (Animations.UI_FADE && Animations.UI_FADE.contentOut) || 0.3,
         keepFaded: true,
         onDone: function () {
             catalogFadedEl = target;
@@ -1838,7 +1842,15 @@ function showCatalogRowsView() {
     revealAllCatalogRows();
     var wasHidden = rows.style.display === 'none';
     if (wasHidden && typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
-        Animations.fadeIn(rows, { duration: Animations.UI_FADE.content, display: '' });
+        // startAfterLayout: ряды показываются прозрачными, браузер успевает
+        // разложить и отрисовать их кадром, и только следующим кадром стартует
+        // переход. Иначе анимация начиналась одновременно с раскладкой сотен
+        // карточек и была видна уже с середины — тем самым рывком.
+        Animations.fadeIn(rows, {
+            duration: Animations.UI_FADE.content,
+            display: '',
+            startAfterLayout: true
+        });
     } else {
         ensureCatalogGridVisible(rows);
         rows.style.display = '';
@@ -3858,51 +3870,296 @@ function _loadBackdropDecoded(container, url) {
     tryNext();
 }
 
+// ==================== ПУЛ КАРТОЧЕК В РЯДАХ КАРТОЧКИ ====================
+/**
+ * Ряды актёров и похожих строились заново на каждое открытие карточки: около
+ * 160 узлов через innerHTML — и ровно столько же уходило в мусор при следующем
+ * открытии. Узлов при этом всегда не больше потолка (MAX_ACTORS,
+ * MAX_RECOMMENDATIONS), поэтому создаём их один раз, при первом открытии
+ * карточки, и дальше только переписываем текст и адреса картинок. Лишние гасим
+ * классом .hidden: фокус их не увидит, updateFocusableElements отбирает
+ * элементы по offsetParent !== null (control.js).
+ *
+ * Заготовку в index.html не кладём намеренно: тот, кто карточку не откроет,
+ * не должен платить за неё ни разбором разметки на старте, ни памятью.
+ *
+ * Служебные сообщения («Загрузка актёров…», «Актёры не найдены») живут в
+ * отдельном узле рядом с пулом, а не переписывают контейнер целиком — иначе
+ * первое же сообщение уничтожило бы пул.
+ */
+
+/**
+ * Наблюдатель за постерами карточек в рядах детального просмотра.
+ *
+ * До него у картинок стоял loading="lazy", которого в Chrome 66 на телевизорах
+ * попросту нет: все 24 адреса (12 актёров + 12 похожих) уходили в загрузку
+ * сразу при открытии карточки, включая ряд похожих далеко за нижним краем
+ * экрана. Теперь адрес лежит на карточке, а src проставляется, только когда
+ * карточка подъезжает к видимой области.
+ *
+ * root не задаём: с root === null пересечение считается с вьюпортом и с учётом
+ * обрезки всеми промежуточными скроллерами, а ряды здесь — как раз
+ * горизонтальные скроллеры внутри вертикально прокручиваемой карточки.
+ */
+var detailPosterObserver = null;
+
+function getDetailPosterObserver() {
+    if (detailPosterObserver) return detailPosterObserver;
+    if (!('IntersectionObserver' in window)) return null;
+    detailPosterObserver = new IntersectionObserver(function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+            if (!entries[i].isIntersecting) continue;
+            var card = entries[i].target;
+            detailPosterObserver.unobserve(card);
+            applyDetailCardPoster(card);
+        }
+    }, {
+        rootMargin: CATALOG_CONSTANTS.DETAIL_POSTER_MARGIN_PX + 'px',
+        threshold: 0.01
+    });
+    return detailPosterObserver;
+}
+
+/** Карточка доехала до экрана — ставим src и ждём загрузки */
+function applyDetailCardPoster(card) {
+    if (!card || !card._img || !card._posterUrl) return;
+    card._img.src = card._posterUrl;
+}
+
+/**
+ * Назначить карточке постер (или снять его).
+ *
+ * Пока картинка не загрузилась, не показываем ни её, ни заглушку: под ними
+ * тёмный фон .catalog-actor-photo / .catalog-recommendation-poster — ровно то
+ * же, что человек видел раньше во время загрузки. Заглушка появляется, только
+ * когда адреса нет или картинка не отдалась.
+ */
+function setDetailCardPoster(card, url) {
+    if (!card || !card._img) return;
+    var img = card._img;
+    card._posterUrl = url || '';
+
+    var obs = getDetailPosterObserver();
+    if (obs) { try { obs.unobserve(card); } catch (e) { } }
+
+    // Снимаем прежнюю картинку: карточка переиспользуется, и без этого на ней
+    // на мгновение оставался бы постер предыдущего фильма. Заодно
+    // removeAttribute обрывает незавершённую загрузку и отпускает уже
+    // декодированный кадр.
+    img.classList.add('hidden');
+    if (img.getAttribute('src')) img.removeAttribute('src');
+    card._placeholder.classList.add('hidden');
+
+    if (!url) { card._placeholder.classList.remove('hidden'); return; }
+    if (obs) obs.observe(card);
+    else applyDetailCardPoster(card);       // наблюдателя нет — грузим сразу
+}
+
+/** Карточка уходит из ряда: гасим и снимаем с наблюдателя, чтобы не грузить впустую */
+function hideDetailCard(card) {
+    if (!card) return;
+    card.classList.add('hidden');
+    card._posterUrl = '';
+    if (detailPosterObserver) { try { detailPosterObserver.unobserve(card); } catch (e) { } }
+    if (card._img && card._img.getAttribute('src')) card._img.removeAttribute('src');
+    // Данные прошлого фильма на погашенной карточке никому не видны (фокус и
+    // клик до display:none не доходят), но и держать их незачем: обработчики
+    // здесь читают именно dataset, и пустой он — честнее чужого
+    delete card.dataset.personId;
+    delete card.dataset.personName;
+    delete card.dataset.tmdbId;
+    delete card.dataset.mediaType;
+    delete card.dataset.title;
+}
+
+/**
+ * Пул карточек ряда. Пересобирается, только если контейнер кто-то очистил
+ * (например, старым кодом через innerHTML) — тогда узлы уже не его дети.
+ */
+function ensureDetailRowPool(grid, max, build) {
+    if (grid._pool && grid._pool.length === max && grid._msg && grid._msg.parentNode === grid) {
+        return grid._pool;
+    }
+    grid.innerHTML = '';
+    var msg = document.createElement('div');
+    msg.className = 'catalog-detail-row-msg hidden';
+    grid.appendChild(msg);
+    var pool = [];
+    for (var i = 0; i < max; i++) {
+        var card = build();
+        card.classList.add('hidden');
+        grid.appendChild(card);
+        pool.push(card);
+    }
+    grid._pool = pool;
+    grid._msg = msg;
+    return pool;
+}
+
+function showDetailRowMessage(grid, html) {
+    if (!grid || !grid._msg) return;
+    grid._msg.innerHTML = html;
+    grid._msg.classList.remove('hidden');
+}
+
+function hideDetailRowMessage(grid) {
+    if (!grid || !grid._msg) return;
+    if (grid._msg.innerHTML) grid._msg.innerHTML = '';
+    grid._msg.classList.add('hidden');
+}
+
+/**
+ * Пустая карточка актёра. Ссылки на внутренние узлы кладём на неё же: при
+ * заполнении querySelector по каждой карточке обошёлся бы дороже самой правки.
+ */
+function buildActorCard() {
+    var card = document.createElement('div');
+    card.className = 'catalog-actor-card';
+
+    var photo = document.createElement('div');
+    photo.className = 'catalog-actor-photo';
+    var img = document.createElement('img');
+    img.decoding = 'async';
+    img.alt = '';
+    img.className = 'hidden';
+    var noPhoto = document.createElement('div');
+    noPhoto.className = 'catalog-actor-no-photo hidden';
+    img.onload = function () { img.classList.remove('hidden'); noPhoto.classList.add('hidden'); };
+    img.onerror = function () { img.classList.add('hidden'); noPhoto.classList.remove('hidden'); };
+    photo.appendChild(img);
+    photo.appendChild(noPhoto);
+
+    var info = document.createElement('div');
+    info.className = 'catalog-actor-info';
+    var name = document.createElement('div');
+    name.className = 'catalog-actor-name';
+    var character = document.createElement('div');
+    character.className = 'catalog-actor-character';
+    info.appendChild(name);
+    info.appendChild(character);
+
+    card.appendChild(photo);
+    card.appendChild(info);
+    card._img = img;
+    card._placeholder = noPhoto;
+    card._name = name;
+    card._character = character;
+    return card;
+}
+
+/** Пустая карточка «похожего» */
+function buildRecommendationCard() {
+    var card = document.createElement('div');
+    card.className = 'catalog-recommendation-card';
+
+    var posterBox = document.createElement('div');
+    posterBox.className = 'catalog-recommendation-poster';
+    var img = document.createElement('img');
+    img.decoding = 'async';
+    img.alt = '';
+    img.className = 'hidden';
+    var noPoster = document.createElement('div');
+    noPoster.className = 'catalog-recommendation-no-poster hidden';
+    noPoster.textContent = ' ';
+    var rating = document.createElement('div');
+    rating.className = 'catalog-recommendation-rating hidden';
+    img.onload = function () { img.classList.remove('hidden'); noPoster.classList.add('hidden'); };
+    img.onerror = function () { img.classList.add('hidden'); noPoster.classList.remove('hidden'); };
+    posterBox.appendChild(img);
+    posterBox.appendChild(noPoster);
+    posterBox.appendChild(rating);
+
+    var info = document.createElement('div');
+    info.className = 'catalog-recommendation-info';
+    var title = document.createElement('div');
+    title.className = 'catalog-recommendation-title';
+    var year = document.createElement('div');
+    year.className = 'catalog-recommendation-year hidden';
+    info.appendChild(title);
+    info.appendChild(year);
+
+    card.appendChild(posterBox);
+    card.appendChild(info);
+    card._img = img;
+    card._placeholder = noPoster;
+    card._rating = rating;
+    card._title = title;
+    card._year = year;
+    return card;
+}
+
+/**
+ * Заполнить ряд актёров. Общая точка для каталожной карточки и для торрентной
+ * (js/torrents.js зовёт через window.renderDetailActorCards) — иначе второй
+ * режим переписывал бы контейнер своим innerHTML и убивал пул первого.
+ *
+ * @param {HTMLElement} grid контейнер #catalog-detail-actors
+ * @param {Array} actors [{id, name, character, profilePath}]
+ * @param {string} noPhotoText чем заполнять плитку без фото (у режимов разное)
+ * @returns {number} сколько карточек показано
+ */
+function renderDetailActorCards(grid, actors, noPhotoText) {
+    if (!grid) return 0;
+    var pool = ensureDetailRowPool(grid, CATALOG_CONSTANTS.MAX_ACTORS, buildActorCard);
+    var list = actors || [];
+    var shown = 0;
+
+    for (var i = 0; i < pool.length; i++) {
+        var a = list[shown];
+        if (!a || !a.name) { hideDetailCard(pool[i]); continue; }
+
+        var card = pool[i];
+        if (a.id !== undefined && a.id !== null && a.id !== '') card.dataset.personId = String(a.id);
+        else delete card.dataset.personId;
+        card.dataset.personName = a.name;
+        card._name.textContent = a.name;
+        card._character.textContent = a.character || '';
+        card._placeholder.textContent = noPhotoText || 'Нет фото';
+        setDetailCardPoster(card, a.profilePath
+            ? getTmdbImageUrl(a.profilePath, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL)
+            : '');
+        card.classList.remove('hidden');
+        shown++;
+    }
+
+    if (shown) hideDetailRowMessage(grid);
+    else showDetailRowMessage(grid, '<div class="catalog-empty">Актеры не найдены</div>');
+    return shown;
+}
+
+/** Погасить ряд актёров, не разрушая пул (торрентный режим зовёт при сбросе) */
+function clearDetailActorCards(grid) {
+    if (!grid || !grid._pool) return;
+    for (var i = 0; i < grid._pool.length; i++) hideDetailCard(grid._pool[i]);
+    hideDetailRowMessage(grid);
+}
+
+window.renderDetailActorCards = renderDetailActorCards;
+window.clearDetailActorCards = clearDetailActorCards;
+
 /**
  * Рендер списка актёров
+ * @param {object} item - элемент каталога
+ * @param {HTMLElement} aw - обёртка для актёров
+ * @param {Array} [preloadedActors] - если переданы, используем их без запроса
  */
-/**
-Рендер списка актёров
-@param {object} item - элемент каталога
-@param {HTMLElement} aw - обёртка для актёров
-@param {Array} [preloadedActors] - если переданы, используем их без запроса
-*/
 async function renderDetailActors(item, aw, preloadedActors) {
     if (!aw) return;
     var ae = getEl('catalog-detail-actors');
-    var actors;
+    if (!ae) return;
+    var actors = preloadedActors;
 
-    if (preloadedActors) {
-        // Данные уже загружены параллельно — рендерим сразу
-        actors = preloadedActors;
-    } else {
+    if (!actors) {
         // Фоллбэк: грузим как раньше
-        ae.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>';
+        ensureDetailRowPool(ae, CATALOG_CONSTANTS.MAX_ACTORS, buildActorCard);
+        clearDetailActorCards(ae);
+        showDetailRowMessage(ae, '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка актеров...</span></div>');
         aw.classList.remove('hidden');
         actors = await fetchCatalogActors(item);
     }
 
-    if (actors.length > 0) {
-        var frag = document.createDocumentFragment();
-        actors.forEach(function (a) {
-            var d = document.createElement('div');
-            d.className = 'catalog-actor-card';
-            // id и имя нужны обработчику нажатия: он открывает фильмографию
-            // (см. setupDetailDelegation → loadPersonCatalog)
-            if (a.id) d.dataset.personId = a.id;
-            d.dataset.personName = a.name || '';
-            d.innerHTML = '<div class="catalog-actor-photo">' +
-                (a.profilePath ? '<img src="' + getTmdbImageUrl(a.profilePath, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL) + '" loading="lazy" decoding="async" alt="' + escapeHtml(a.name) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-actor-no-photo\\\'>Нет фото</div>\'">' : '<div class="catalog-actor-no-photo">Нет фото</div>') +
-                '</div><div class="catalog-actor-info"><div class="catalog-actor-name">' + escapeHtml(a.name) + '</div><div class="catalog-actor-character">' + escapeHtml(a.character || '') + '</div></div>';
-            frag.appendChild(d);
-        });
-        ae.innerHTML = '';
-        ae.appendChild(frag);
-        aw.classList.remove('hidden');
-    } else {
-        ae.innerHTML = '<div class="catalog-empty">Актеры не найдены</div>';
-        aw.classList.remove('hidden');
-    }
+    renderDetailActorCards(ae, actors, 'Нет фото');
+    aw.classList.remove('hidden');
 }
 
 /**
@@ -3911,31 +4168,55 @@ async function renderDetailActors(item, aw, preloadedActors) {
 function renderDetailRecommendations(src, rw, mt) {
     if (!rw) return;
     var re = getEl('catalog-detail-recommendations');
-    if (src.recommendations && src.recommendations.length > 0) {
-        re.innerHTML = '<div class="catalog-loading"><div class="loading-spinner-small"></div><span>Загрузка похожих фильмов...</span></div>';
-        rw.classList.remove('hidden');
-        var recs = src.recommendations.slice(0, CATALOG_CONSTANTS.MAX_RECOMMENDATIONS);
-        var frag = document.createDocumentFragment();
-        recs.forEach(function (r) {
-            var d = document.createElement('div');
-            d.className = 'catalog-recommendation-card';
-            d.dataset.tmdbId = r.id;
-            d.dataset.mediaType = mt;
-            d.dataset.title = r.title || r.name || 'Без названия';
-            var pu = r.poster_path ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL) : null;
-            d.innerHTML = '<div class="catalog-recommendation-poster">' +
-                (pu ? '<img src="' + pu + '" loading="lazy" decoding="async" alt="' + escapeHtml(d.dataset.title) + '" onerror="this.parentElement.innerHTML=\'<div class=\\\'catalog-recommendation-no-poster\\\'> </div>\'">' : '<div class="catalog-recommendation-no-poster"> </div>') +
-                (r.vote_average ? '<div class="catalog-recommendation-rating">' + Math.round(r.vote_average * 10) / 10 + '</div>' : '') +
-                '</div><div class="catalog-recommendation-info"><div class="catalog-recommendation-title">' + escapeHtml(d.dataset.title) + '</div>' +
-                (r.release_date ? '<div class="catalog-recommendation-year">' + r.release_date.substring(0, 4) + '</div>' : '') +
-                '</div>';
-            frag.appendChild(d);
-        });
-        re.innerHTML = '';
-        re.appendChild(frag);
-    } else {
+    if (!re) return;
+
+    var recs = (src.recommendations && src.recommendations.length)
+        ? src.recommendations.slice(0, CATALOG_CONSTANTS.MAX_RECOMMENDATIONS)
+        : [];
+
+    var pool = ensureDetailRowPool(re, CATALOG_CONSTANTS.MAX_RECOMMENDATIONS, buildRecommendationCard);
+    hideDetailRowMessage(re);
+
+    if (!recs.length) {
+        for (var h = 0; h < pool.length; h++) hideDetailCard(pool[h]);
         rw.classList.add('hidden');
+        return;
     }
+
+    for (var i = 0; i < pool.length; i++) {
+        var r = recs[i];
+        if (!r) { hideDetailCard(pool[i]); continue; }
+
+        var card = pool[i];
+        var title = r.title || r.name || 'Без названия';
+        card.dataset.tmdbId = r.id;
+        card.dataset.mediaType = mt;
+        card.dataset.title = title;
+        card._title.textContent = title;
+
+        if (r.vote_average) {
+            card._rating.textContent = Math.round(r.vote_average * 10) / 10;
+            card._rating.classList.remove('hidden');
+        } else {
+            card._rating.textContent = '';
+            card._rating.classList.add('hidden');
+        }
+
+        if (r.release_date) {
+            card._year.textContent = String(r.release_date).substring(0, 4);
+            card._year.classList.remove('hidden');
+        } else {
+            card._year.textContent = '';
+            card._year.classList.add('hidden');
+        }
+
+        setDetailCardPoster(card, r.poster_path
+            ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL)
+            : '');
+        card.classList.remove('hidden');
+    }
+
+    rw.classList.remove('hidden');
 }
 
 /**
