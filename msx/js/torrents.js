@@ -661,8 +661,8 @@ async function checkServer(shouldLoadTorrents = true) {
         }
         var response = await fetch(testUrl + '/echo', { method: 'GET', headers: headers });
         if (response.ok) {
-            var text = await response.text();
-            if (text.includes('MatriX.')) {
+            //var text = await response.text();
+            //if (text.includes('MatriX.')) {
                 statusIndicator.className = 'status-indicator status-online'; statusText.textContent = 'Сервер доступен ✓';
                 AppState.currentTorrserverUrl = testUrl; AppState.serverOnline = true;
                 if (authCheckbox && authCheckbox.checked) { AppState.authEnabled = true; AppState.authLogin = authLogin ? authLogin.value.trim() : ''; AppState.authPassword = authPassword ? authPassword.value : ''; }
@@ -670,7 +670,7 @@ async function checkServer(shouldLoadTorrents = true) {
                 await saveClientConfig();
                 if (shouldLoadTorrents) await loadTorrents(true);
                 return true;
-            }
+            //}
         }
         throw new Error('Сервер не отвечает');
     } catch (error) {
