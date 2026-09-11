@@ -652,6 +652,39 @@ body {
   color: #4a9eff;
 }
 
+/* Строка характеристик файла по данным ffprobe — между названием и серой
+   строкой с трекером. Свой ряд, а не чипы в .search-result-meta: там цвета
+   заданы через nth-child, и вставка сдвинула бы всю раскраску. */
+.search-result-media-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 7px;
+  margin-bottom: 2px;
+  font-size: 12.5px;
+}
+
+.search-result-media {
+  display: flex;
+  align-items: center;
+  margin-right: 5px;
+  margin-bottom: 5px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  line-height: 1.35;
+  white-space: nowrap;
+  color: #cfd6e2;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* Метка качества и HDR — то, что считывается первым взглядом */
+.search-result-media-tag {
+  color: #f2f5fa;
+  background: rgba(255, 255, 255, 0.14);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
 .search-result-voices {
   display: flex;
   flex-wrap: wrap;
