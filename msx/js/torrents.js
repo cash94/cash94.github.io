@@ -2911,6 +2911,316 @@ async function loadProgressForFileItems(items, hash) {
     }
 }
 
+/* ==================== РАЗБОР ffprobe ====================
+ *
+ * Рядом с каждой раздачей Jacred отдаёт ffprobe — реальные потоки файла:
+ * разрешение, кодеки, битрейт, звуковые дорожки с языками и названиями,
+ * субтитры. Отсюда берётся и качество, и та сводка, что показана в списке.
+ *
+ * Качество берём отсюда, а не из info.quality, потому что info.quality Jacred
+ * выводит из НАЗВАНИЯ и на рипах регулярно ошибается. Замер по выдаче «Дюны»
+ * (169 раздач, 137 с ffprobe): разошёлся с файлом в 25 случаях, и в 24 из них
+ * занизил до 480 — это и есть «в названии 1080p, а в фильтре SD». Ошибается
+ * предсказуемо: нет явного «1080p» в названии (BDRip, WEBRip, WEB-DLRip) —
+ * ставится 480; а когда «(1080p)» есть, но перед ним лишние блоки в скобках
+ * («3D (HSBS) / BDRip (1080p)», «Blu-Ray Remux (1080p)»), разбор до
+ * разрешения не доходит.
+ *
+ * У этих функций есть близнец в torrents-worker.js (нормализацией выдачи
+ * занимается воркер, общего кода с ним нет). Править обе копии.
+ */
+
+/* Обложку раздачи часто вшивают в контейнер ОТДЕЛЬНЫМ видеопотоком, и она
+ * бывает крупнее самого фильма: внутри рипа 1150x480 попадался mjpeg
+ * 3840x2160. Без этого списка такой рип определялся бы как 4K. */
+var FFPROBE_COVER_CODECS = ['mjpeg', 'png', 'bmp', 'gif', 'jpeg', 'webp'];
+
+var FFPROBE_VIDEO_NAMES = {
+    h264: 'H.264', hevc: 'HEVC', av1: 'AV1', vp9: 'VP9',
+    mpeg4: 'MPEG-4', mpeg2video: 'MPEG-2', vc1: 'VC-1', xvid: 'XviD'
+};
+
+/** Сколько дорожек и языков субтитров показываем, прежде чем свернуть в «+N» */
+var FFPROBE_MAX_AUDIO = 4;
+var FFPROBE_MAX_SUBS = 5;
+var FFPROBE_TRACK_TITLE_MAX = 26;
+
+/** Главный видеопоток: самый крупный из тех, что не обложка */
+function pickFfprobeVideoStream(ffprobe) {
+    if (!ffprobe || !ffprobe.length) return null;
+
+    var best = null;
+    for (var i = 0; i < ffprobe.length; i++) {
+        var s = ffprobe[i];
+        if (!s || s.codec_type !== 'video') continue;
+        if (FFPROBE_COVER_CODECS.indexOf(String(s.codec_name || '').toLowerCase()) !== -1) continue;
+
+        var w = s.width || 0, h = s.height || 0;
+        if (!w || !h) continue;
+        if (!best || w * h > best.width * best.height) best = s;
+    }
+    return best;
+}
+
+/**
+ * Качество по размеру кадра.
+ *
+ * Ни ширины, ни высоты поодиночке не хватает. У кино чёрные поля обрезаны
+ * прямо в файле (1920x800, 3840x1608) — по высоте это уехало бы на ступень
+ * вниз. А у кадров 4:3 и обрезанных по бокам (1080x720, 960x720) наоборот
+ * мала ширина. Поэтому берём большее из двух прочтений: собственной высоты и
+ * высоты, восстановленной из ширины по 16:9.
+ *
+ * Отдельно — 3D: там два кадра сложены в один файл, сверху-вниз (1920x2160)
+ * или бок о бок. Такой кадр не бывает почти квадратным или втрое шире
+ * широкоэкранного, так что по форме их и узнаём, возвращая к одному кадру.
+ *
+ * Проверено на 212 раздачах из четырёх выдач, где разрешение названо и в
+ * заголовке: совпало 210. Оба расхождения — там, где врёт заголовок
+ * (1024x576 с подписью «720p | iPad», 960x720 с подписью «1080»).
+ *
+ * Границы подобраны так, чтобы на выходе были только значения из
+ * QUALITY_OPTIONS: качество, которого нет в списке фильтра, сделало бы
+ * раздачу недостижимой ни одним его вариантом.
+ */
+function qualityFromFrame(width, height) {
+    var w = width || 0, h = height || 0;
+    if (!w || !h) return 0;
+
+    if (h > w * 0.9) h = h / 2;        // 3D, кадры сложены сверху-вниз
+    if (w > h * 3) w = w / 2;          // 3D, кадры сложены бок о бок
+
+    var eff = Math.max(h, w * 9 / 16);
+
+    if (eff >= 1700) return 2160;
+    if (eff >= 900) return 1080;
+    if (eff >= 650) return 720;
+    if (eff >= 380) return 480;
+    return 360;
+}
+
+/**
+ * Запасной разбор — по названию, когда ffprobe нет (около пятой части выдачи).
+ *
+ * Берём НАИБОЛЬШЕЕ из встреченных «1080p», «2160p»: в «UHD BDRip 1080p»
+ * первым стоит слово UHD, но настоящее разрешение названо цифрой. Латинская p
+ * и кириллическая р равноправны — на трекерах встречаются обе.
+ */
+function qualityFromTitle(title) {
+    var t = String(title || '');
+    var re = /(\d{3,4})\s*[pi\u0440](?![\da-z\u0430-\u044f])/gi;
+    var best = 0, m;
+
+    while ((m = re.exec(t)) !== null) {
+        var v = parseInt(m[1], 10);
+        if (v > best) best = v;
+    }
+
+    if (best >= 2000) return 2160;
+    if (best >= 1000) return 1080;
+    if (best >= 700) return 720;
+    if (best >= 400) return 480;
+    if (best >= 300) return 360;
+
+    // Цифр нет вовсе — остаётся словесная пометка
+    if (/4\s*[k\u043a]|\buhd\b/i.test(t)) return 2160;
+    return 0;
+}
+
+/* Признаки HDR в названии. Хвост «(?![буквы])» обязателен: без него под HDR
+ * попадала бы студия HDRezka, а она стоит в названии почти каждой второй
+ * раздачи. */
+var HDR_TITLE_RE = /HDR(?![a-z\u0430-\u044f])|HDR10|Dolby\s*Vision|\bDV\s*[\d.]|\bHLG\b|PQ10/i;
+
+/**
+ * SDR или HDR.
+ *
+ * info.videotype Jacred тоже выводит из названия и тоже иногда не дочитывает:
+ * на четырёх раздачах из 449 в заголовке стоит «4K, HEVC, Dolby Vision» или
+ * «4K, HEVC, HDR», а videotype всё равно sdr.
+ *
+ * Поправка односторонняя — только sdr → hdr. Обратный случай тоже встречается
+ * (пять раздач помечены hdr, хотя в названии лишь «10-bit» или AV1, а 10 бит
+ * сами по себе не HDR), но там нечем проверить: цветовых полей ffprobe не
+ * отдаёт. Пропустить значок — ошибка меньшая, чем нарисовать несуществующий.
+ */
+function resolveVideotype(item, info) {
+    var vt = String((info && info.videotype) || (item && item.videotype) || '').toLowerCase();
+    if (vt === 'hdr') return vt;
+
+    var title = String((item && (item.Title || item.title)) || '');
+    if (HDR_TITLE_RE.test(title)) return 'hdr';
+
+    return vt;
+}
+
+/**
+ * Качество раздачи: измеренное важнее заявленного.
+ *
+ * ffprobe (реальный файл) → название (что обещает раздающий) → info.quality
+ * (догадка Jacred). Последняя ступень оставлена, чтобы при пустом ffprobe и
+ * безымянном разрешении поведение было прежним, а не «N/A».
+ */
+function resolveTorrentQuality(item, info) {
+    var v = pickFfprobeVideoStream(item && item.ffprobe);
+    if (v) {
+        var byFrame = qualityFromFrame(v.width, v.height);
+        if (byFrame) return byFrame;
+    }
+
+    var byTitle = qualityFromTitle(item && (item.Title || item.title));
+    if (byTitle) return byTitle;
+
+    return (info && info.quality) || (item && item.quality) || 0;
+}
+
+/** Раскладка звука в привычном виде: «5.1(side)» → «5.1», «stereo» → «2.0» */
+function normalizeChannelLayout(stream) {
+    var layout = String((stream && stream.channel_layout) || '').toLowerCase();
+
+    if (layout) {
+        if (layout.indexOf('mono') !== -1) return '1.0';
+        if (layout.indexOf('stereo') !== -1) return '2.0';
+        // «5.1(side)», «7.1(wide)» — уточнение в скобках лишнее
+        var m = layout.match(/^(\d+\.\d+)/);
+        if (m) return m[1];
+    }
+
+    // Раскладку заполняют не всегда, но число каналов есть почти везде
+    var ch = stream && stream.channels;
+    if (ch === 1) return '1.0';
+    if (ch === 2) return '2.0';
+    if (ch === 6) return '5.1';
+    if (ch === 8) return '7.1';
+    return '';
+}
+
+/** Битрейт одного потока: BPS (тег Matroska) и bit_rate (поле контейнера)
+ *  дополняют друг друга — у одних раздач заполнено одно, у других другое */
+function streamBitrate(stream) {
+    if (!stream) return 0;
+    var bps = parseInt((stream.tags && stream.tags.BPS) || 0, 10) || 0;
+    if (!bps) bps = parseInt(stream.bit_rate || 0, 10) || 0;
+    return bps > 0 ? bps : 0;
+}
+
+/**
+ * Битрейт раздачи — сумма битрейтов потоков, но только если известен битрейт
+ * ВИДЕО. Иначе ноль: пусть лучше числа не будет совсем.
+ *
+ * Оба ограничения вынужденные, каждое проверено на данных.
+ *
+ * Считать из размера и длительности нельзя, хотя соблазн есть: у сборников
+ * Size — это ВЕСЬ сезон, а DURATION — одна серия, и деление завышало
+ * результат до трёх тысяч раз («Во все тяжкие», 1-5 сезоны). Сумма потоков
+ * относится к одному файлу и на фильмах совпадает с делением до сотых.
+ *
+ * А без битрейта видео сумма вырождается в звук: у 179 раздач из 449 битрейт
+ * заполнен только у части звуковых дорожек, и «сумма» давала 0,58 Мбит/с для
+ * раздачи 720p на 3,4 ГБ. Битрейт — это ровно то число, по которому сравнивают
+ * раздачи одного разрешения, поэтому неверное здесь хуже отсутствующего.
+ */
+function ffprobeBitrate(ffprobe, videoStream) {
+    var videoBps = streamBitrate(videoStream);
+    if (!videoBps) return 0;
+
+    var total = videoBps;
+    for (var i = 0; i < ffprobe.length; i++) {
+        var s = ffprobe[i];
+        if (!s || s === videoStream) continue;
+        if (s.codec_type !== 'audio' && s.codec_type !== 'subtitle') continue;
+        total += streamBitrate(s);
+    }
+
+    return total;
+}
+
+/**
+ * Название дорожки коротко.
+ *
+ * Выбирают дорожку по студии, а она на трекерах стоит в скобках:
+ * «Двухголосый закадровый [Кубик в Кубе]». Обрезание с конца съело бы именно
+ * её и оставило четыре неразличимых «Двухголосый закадровый…», поэтому из
+ * длинного названия берём скобки, а обрезаем только если и без них длинно.
+ */
+function shortTrackTitle(title) {
+    var t = String(title || '').replace(/\s+/g, ' ').trim();
+    if (t.length <= FFPROBE_TRACK_TITLE_MAX) return t;
+
+    var bracket = t.match(/[\[(]([^\])]+)[\])]/);
+    if (bracket && bracket[1].length <= FFPROBE_TRACK_TITLE_MAX) return bracket[1].trim();
+
+    return t.slice(0, FFPROBE_TRACK_TITLE_MAX - 1) + '…';
+}
+
+/**
+ * Короткая сводка по файлу для показа в списке — то, что решает, стоит ли
+ * брать именно эту раздачу и пойдёт ли она на конкретном телевизоре:
+ * разрешение, видеокодек (HEVC и AV1 старые приставки не тянут), битрейт,
+ * раскладка звука, языки и названия дорожек, языки субтитров.
+ *
+ * Полный ffprobe не храним: в выдаче бывают сотни раздач, у иной по два
+ * десятка субтитров, и весь этот массив ещё и передаётся из воркера.
+ * Поэтому списки здесь же подрезаются, а остаток считается в more*.
+ */
+function summarizeFfprobe(ffprobe) {
+    if (!ffprobe || !ffprobe.length) return null;
+
+    var v = pickFfprobeVideoStream(ffprobe);
+    var audio = [], subs = [], layout = '', bestChannels = 0;
+    var audioSeen = {}, audioTotal = 0, subsTotal = 0;
+
+    for (var i = 0; i < ffprobe.length; i++) {
+        var s = ffprobe[i];
+        if (!s) continue;
+        var tags = s.tags || {};
+        var lang = String(tags.language || '').toLowerCase();
+
+        if (s.codec_type === 'audio') {
+            audioTotal++;
+
+            // Лучшую раскладку показываем одну на раздачу: человеку важно, есть
+            // ли вообще многоканальный звук, а не какой он у каждой дорожки
+            if ((s.channels || 0) > bestChannels) {
+                bestChannels = s.channels || 0;
+                layout = normalizeChannelLayout(s);
+            }
+
+            var title = shortTrackTitle(tags.title);
+            // Безымянная дорожка без языка чипом не станет — рисовать в ней
+            // нечего. Считать её «дорожкой» тоже нельзя: по наличию дорожек
+            // ниже скрывается список озвучек из info.voices, и такая пустышка
+            // прятала бы единственное, что о раздаче вообще известно
+            if (lang || title) {
+                var key = lang + '\u0000' + title;
+                if (!audioSeen[key]) {
+                    audioSeen[key] = 1;
+                    if (audio.length < FFPROBE_MAX_AUDIO) audio.push({ lang: lang, title: title });
+                }
+            }
+        } else if (s.codec_type === 'subtitle') {
+            subsTotal++;
+            if (lang && subs.indexOf(lang) === -1 && subs.length < FFPROBE_MAX_SUBS) subs.push(lang);
+        }
+    }
+
+    if (!v && !audioTotal && !subsTotal) return null;
+
+    return {
+        w: v ? v.width : 0,
+        h: v ? v.height : 0,
+        vcodec: v ? String(v.codec_name || '').toLowerCase() : '',
+        bitrate: ffprobeBitrate(ffprobe, v),
+        layout: layout,
+        audio: audio,
+        subs: subs,
+        // Сколько РАЗНЫХ дорожек не поместилось. audioTotal считает все, включая
+        // дубли по языку и названию, поэтому вычитаем именно показанные
+        moreAudio: Math.max(0, Object.keys(audioSeen).length - audio.length),
+        moreSubs: 0
+    };
+}
+
 function normalizeSearchResult(item) {
 
     var info = item.info || {};
@@ -2973,8 +3283,9 @@ function normalizeSearchResult(item) {
         tracker: tracker,
         sid: item.Seeders !== undefined ? parseInt(item.Seeders, 10) : (item.sid || 0),
         pir: item.Peers !== undefined ? parseInt(item.Peers, 10) : (item.pir || 0),
-        quality: info.quality || item.quality || 0,
-        videotype: info.videotype || item.videotype || '',
+        quality: resolveTorrentQuality(item, info),
+        media: summarizeFfprobe(item.ffprobe),
+        videotype: resolveVideotype(item, info),
         voices: Array.isArray(info.voices) ? info.voices : (Array.isArray(item.voices) ? item.voices : []),
         types: types,
         released: releasedYear,
@@ -3027,14 +3338,54 @@ async function searchTorrents(query) {
     return await searchTorrentsLegacy(query);
 }
 
-async function searchTorrentsLegacy(query) {
-    if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
-    var encodedQuery = encodeURIComponent(query.trim());
+/**
+ * Что из открытой карточки разрешено подсказать Jacred.
+ *
+ * Подсказки действуют только вместе с замком строки поиска, а замок ставится
+ * ровно тогда, когда ищется название карточки, а не свой запрос (setSearchLocked).
+ * Свободному поиску год и тип пришлись бы от чужого фильма и резали бы выдачу.
+ */
+function getJacredSearchHints() {
+    if (!AppState.searchLocked) return null;
+    return AppState.jacredSearchHints || null;
+}
+window.getJacredSearchHints = getJacredSearchHints;
+
+/**
+ * Собрать URL поиска к Jacred (Jackett JSON API v2.0).
+ *
+ * Кроме самого запроса Jacred принимает year и is_serial (1 — фильм,
+ * 2 — сериал). Оба фильтруют жёстко, поэтому добавляются только тогда,
+ * когда ответ точно известен — из карточки TMDB.
+ *
+ * Строка собирается здесь один раз на весь проект: второй поиск живёт в
+ * torrents-worker-patch.js, и две копии URL разъехались бы при первой же правке.
+ *
+ * @returns {{url: string, host: string}} host отдаётся отдельно для текста ошибки
+ *          «Не отвечает ...».
+ */
+function buildJacredSearchUrl(query, hints) {
     var jacred = getEl('jacred-url');
-    var jacDefault = (jacred && jacred.value !== "") ? jacred.value : "jac.red";
+    var host = (jacred && jacred.value !== "") ? jacred.value : "jac.red";
 
     // Новый API Jackett v2.0
-    var searchUrl = AppState.protocol + '//' + jacDefault + '/api/v2.0/indexers/all/results?Query=' + encodedQuery + '&exact=true';
+    var url = AppState.protocol + '//' + host + '/api/v2.0/indexers/all/results' +
+        '?Query=' + encodeURIComponent(query.trim()) + '&exact=true';
+
+    if (hints === undefined) hints = getJacredSearchHints();
+    if (hints) {
+        if (hints.isSerial) url += '&is_serial=' + hints.isSerial;
+        if (hints.year) url += '&year=' + hints.year;
+    }
+
+    return { url: url, host: host };
+}
+window.buildJacredSearchUrl = buildJacredSearchUrl;
+
+async function searchTorrentsLegacy(query) {
+    if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
+    var target = buildJacredSearchUrl(query);
+    var searchUrl = target.url, jacDefault = target.host;
 
     showLoading('Поиск...');
     try {
@@ -3246,6 +3597,9 @@ window.setSearchLocked = setSearchLocked;
  * восстановить выпотрошенную карточку на выходе из поиска (restoreItem ниже).
  */
 function clearCatalogSearchContext() {
+    // Год и тип были взяты из той же карточки — без неё они бы сузили
+    // чужой запрос до её года и её типа (buildJacredSearchUrl)
+    AppState.jacredSearchHints = null;
     AppState.pendingDetailItem = null;
     AppState.pendingDetailTmdbId = null;
     AppState.pendingDetailPoster = null;
@@ -3713,14 +4067,87 @@ function clearSearchResults() {
 }
 window.clearSearchResults = clearSearchResults;
 
+var QUALITY_LABELS = [
+    { min: 2160, label: '4K' },
+    { min: 1080, label: 'FHD' },
+    { min: 720, label: 'HD' },
+    { min: 0, label: 'SD' }
+];
+
+/** «4K», «FHD», «HD», «SD» — крупная метка, как на постере раздачи */
+function qualityLabel(quality) {
+    for (var i = 0; i < QUALITY_LABELS.length; i++) {
+        if (quality >= QUALITY_LABELS[i].min) return QUALITY_LABELS[i].label;
+    }
+    return '';
+}
+
+function formatBitrate(bps) {
+    if (!bps || bps <= 0) return '';
+    return (bps / 1000000).toFixed(2).replace('.', ',') + ' Мбит/с';
+}
+
+function mediaChip(text, extraClass) {
+    return '<div class="search-result-media' + (extraClass ? ' ' + extraClass : '') + '">' +
+        escapeHtml(text) + '</div>';
+}
+
+/**
+ * Строка характеристик файла над серой строкой с трекером и размером.
+ *
+ * Порядок от «решает сразу» к «решает потом»: метка качества и HDR видно
+ * издалека, дальше точное разрешение и кодек, битрейт (при равном
+ * разрешении именно он отличает хорошую раздачу от сжатой), звук, дорожки,
+ * субтитры.
+ *
+ * Отдельным рядом, а не в существующей строке мета-данных: цвета тех чипов
+ * заданы через nth-child, и любая вставка перекрасила бы весь ряд.
+ */
+function buildMediaRow(result) {
+    var media = result.media;
+    var chips = '';
+
+    var label = qualityLabel(result.quality || 0);
+    if (label) chips += mediaChip(label, 'search-result-media-tag');
+    if (result.videotype === 'hdr') chips += mediaChip('HDR', 'search-result-media-tag');
+
+    if (media) {
+        if (media.w && media.h) chips += mediaChip(media.w + '×' + media.h);
+        if (media.vcodec) chips += mediaChip(FFPROBE_VIDEO_NAMES[media.vcodec] || media.vcodec.toUpperCase());
+
+        var bitrate = formatBitrate(media.bitrate);
+        if (bitrate) chips += mediaChip(bitrate);
+        if (media.layout) chips += mediaChip(media.layout);
+
+        for (var i = 0; i < media.audio.length; i++) {
+            var track = media.audio[i];
+            var name = (track.lang ? track.lang.toUpperCase() : '');
+            if (track.title) name += (name ? ' · ' : '') + track.title;
+            if (name) chips += mediaChip('♪ ' + name);
+        }
+        if (media.moreAudio > 0) chips += mediaChip('♪ +' + media.moreAudio);
+
+        if (media.subs.length) {
+            chips += mediaChip('СТ ' + media.subs.join(', ').toUpperCase());
+        }
+    }
+
+    if (!chips) return '';
+    return '<div class="search-result-media-row">' + chips + '</div>';
+}
+
 function buildSearchResultMarkup(result, index) {
     var voices = Array.isArray(result.voices) ? result.voices : [];
     var hash = extractHashFromMagnet(result.magnet);
     var trackerDisplay = result.tracker || 'Unknown';
+    // Дорожки из ffprobe точнее info.voices: там язык и название каждой,
+    // а не общий список переводов. Есть они — второй список лишний
+    var hasAudioTracks = !!(result.media && result.media.audio && result.media.audio.length);
 
     return '<div class="search-result-item" data-index="' + index + '">' +
         '<div class="search-result-info">' +
         '<div class="search-result-title">' + escapeHtml(result.title || 'Без названия') + '</div>' +
+        buildMediaRow(result) +
         '<div class="search-result-meta">' +
         '<div class="search-result-meta-item">' + escapeHtml(trackerDisplay) + '</div>' +
         '<div class="search-result-meta-item">' + escapeHtml(result.sizeName || formatBytes(result.size)) + '</div>' +
@@ -3729,7 +4156,7 @@ function buildSearchResultMarkup(result, index) {
         '<div class="search-result-meta-item">сиды: ' + (result.sid !== undefined ? result.sid : 0) + '</div>' +
         '<div class="search-result-meta-item">пиры: ' + (result.pir !== undefined ? result.pir : 0) + '</div>' +
         '</div>' +
-        (voices.length > 0 ? '<div class="search-result-voices">' + voices.map(function (voice) { return '<span class="search-result-voice">' + escapeHtml(voice) + '</span>'; }).join('') + '</div>' : '') +
+        (voices.length > 0 && !hasAudioTracks ? '<div class="search-result-voices">' + voices.map(function (voice) { return '<span class="search-result-voice">' + escapeHtml(voice) + '</span>'; }).join('') + '</div>' : '') +
         '</div>' +
         '<button class="search-result-play" data-hash="' + hash + '" data-magnet="' + escapeAttr(result.magnet) + '" data-index="' + index + '" ' + (!hash ? 'disabled' : '') + '>' + (hash ? '▶' : '❌ Нет hash') + '</button>' +
         '</div>';
