@@ -2944,9 +2944,9 @@ var CATALOG_GRID_BOTTOM_PAD = 10;
  * твина живой прямоугольник показывает «полпути», и серия быстрых нажатий
  * получалась рваной — та же причина, что и в соседних ветках.
  */
-function scrollCatalogGridCardIntoView(el, scrollContainer, smooth) {
-    if (!el || !scrollContainer) return;
-
+/** Куда должна встать прокрутка, чтобы строка прижалась к низу, и где она
+ *  окажется сама по себе (позиция покоя). Порог сравнения — CATALOG_GRID_PIN_EPS. */
+function catalogGridPinTarget(el, scrollContainer) {
     var dy = pendingScrollDelta(scrollContainer);
     var restTop = scrollContainer.scrollTop + dy;          // куда встанет прокрутка
     var viewTop = scrollContainer.getBoundingClientRect().top;
@@ -2955,13 +2955,87 @@ function scrollCatalogGridCardIntoView(el, scrollContainer, smooth) {
 
     var target = restTop + (restBottom - (viewBottom - CATALOG_GRID_BOTTOM_PAD));
     var maxTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
-    target = Math.max(0, Math.min(maxTop, target));
+
+    return { rest: restTop, target: Math.max(0, Math.min(maxTop, target)) };
+}
+
+function scrollCatalogGridCardIntoView(el, scrollContainer, smooth) {
+    if (!el || !scrollContainer) return;
+
+    var t = catalogGridPinTarget(el, scrollContainer);
 
     // Уже там (движение влево/вправо внутри строки, упор в край списка) —
     // не пересоздаём твин, иначе прокрутка каждый раз начинала разгон заново
-    if (Math.abs(restTop - target) < 2) return;
+    if (Math.abs(t.rest - t.target) < CATALOG_GRID_PIN_EPS) return;
 
-    applyScroll(scrollContainer, { scrollTop: target }, smooth);
+    applyScroll(scrollContainer, { scrollTop: t.target }, smooth);
+    scheduleCatalogGridPinCheck(scrollContainer);
+}
+
+/* ============ ДОВОДКА ПРИЖАТИЯ ПОСЛЕ ОСТАНОВКИ ============
+ *
+ * Цель выше считается ОДИН раз, в момент нажатия, и дальше твин едет к
+ * запомненному абсолютному числу. Расчёт опирается на предсказание: «к концу
+ * твина карточка поднимется ровно на dy». Это верно, пока единственное, что
+ * движет содержимое, — сама прокрутка.
+ *
+ * При быстрых нажатиях и при удержании кнопки это перестаёт быть верно.
+ * Одновременно с твином идёт порционный разворот чанка (hydrationStep в
+ * catalog.js): строки вставляются по одной за кадр, распорка на столько же
+ * ужимается. Компенсация точна лишь настолько, насколько точна линейка строки
+ * — а она берётся из offsetHeight, то есть округлена до целого пикселя. При
+ * дробной реальной высоте (узкие раскладки вроде 960x540 — там колонка
+ * считается из calc(), и дробь почти неизбежна) каждая вставленная строка
+ * сдвигает содержимое на доли пикселя. За серию шагов набегает больше порога,
+ * и строка замирает чуть ниже нижнего края.
+ *
+ * Само чинится нажатием влево-вправо: там цель считается заново, уже от
+ * устоявшейся геометрии. Ровно это и делаем сами, когда движение кончилось.
+ *
+ * Почему доводкой, а не «посчитать точнее»: причин сдвига несколько
+ * (округление линейки, догрузка страницы, прерванный твин), и проверка по
+ * факту закрывает их все разом, ничего не зная о причине. Стоит она одного
+ * сравнения в момент, когда пульт уже отпущен.
+ */
+var CATALOG_GRID_PIN_EPS = 2;          // px: ближе этого прижатие считаем точным
+var CATALOG_GRID_PIN_CHECK_MS = 120;   // как часто переспрашивать «движение кончилось?»
+var CATALOG_GRID_PIN_MAX_WAIT = 8;     // и сколько раз, чтобы не ждать вечно
+var gridPinTimer = 0;
+
+function scheduleCatalogGridPinCheck(scrollContainer, attempt) {
+    if (!scrollContainer) return;
+    if (gridPinTimer) clearTimeout(gridPinTimer);
+    attempt = attempt || 0;
+
+    gridPinTimer = setTimeout(function () {
+        gridPinTimer = 0;
+
+        // Пока кнопку держат или твин ещё едет, мерить нечего: следующий шаг
+        // всё равно пересчитает цель сам
+        var moving = navHold ||
+            (typeof Animations !== 'undefined' &&
+                typeof Animations.isScrollTweening === 'function' &&
+                Animations.isScrollTweening(scrollContainer));
+        if (moving) {
+            if (attempt < CATALOG_GRID_PIN_MAX_WAIT) {
+                scheduleCatalogGridPinCheck(scrollContainer, attempt + 1);
+            }
+            return;
+        }
+
+        // Берём ТЕКУЩИЙ фокус, а не запомненный: за время ожидания он мог уйти
+        // на другую карточку, и прижимать надо её
+        var el = document.querySelector('#catalog-grid .torrent-card.catalog-card.focused');
+        if (!el || !el.isConnected || !scrollContainer.isConnected) return;
+        if (AppState.currentScreen !== 'catalog') return;
+
+        var t = catalogGridPinTarget(el, scrollContainer);
+        if (Math.abs(t.rest - t.target) < CATALOG_GRID_PIN_EPS) return;
+
+        // Длительность applyScroll считает из расстояния: доводка в несколько
+        // пикселей занимает minDuration и читается как оседание, а не рывок
+        applyScroll(scrollContainer, { scrollTop: t.target }, true);
+    }, CATALOG_GRID_PIN_CHECK_MS);
 }
 
 // Зазор под сфокусированным рядом. 50px — столько же оставляла прежняя ветка
