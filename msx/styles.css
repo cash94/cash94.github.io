@@ -23,6 +23,13 @@ body {
   background: #000000;
   position: relative;
   z-index: 1;
+  /* Якорь прокрутки выключен намеренно. Браузер пытается сам компенсировать
+     изменения высоты выше вьюпорта (разворот чанка сетки), но твин навигации
+     каждый кадр присваивает scrollTop абсолютное значение — компенсация
+     затирается на ходу, а после твина, наоборот, остаётся и смещает точку
+     покоя. Позицией здесь заведует только код прокрутки, и он должен быть
+     единственным её хозяином. */
+  overflow-anchor: none;
 }
 
 #config-screen {
@@ -645,6 +652,39 @@ body {
   color: #4a9eff;
 }
 
+/* Строка характеристик файла по данным ffprobe — между названием и серой
+   строкой с трекером. Свой ряд, а не чипы в .search-result-meta: там цвета
+   заданы через nth-child, и вставка сдвинула бы всю раскраску. */
+.search-result-media-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 7px;
+  margin-bottom: 2px;
+  font-size: 12.5px;
+}
+
+.search-result-media {
+  display: flex;
+  align-items: center;
+  margin-right: 5px;
+  margin-bottom: 5px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  line-height: 1.35;
+  white-space: nowrap;
+  color: #cfd6e2;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* Метка качества и HDR — то, что считывается первым взглядом */
+.search-result-media-tag {
+  color: #f2f5fa;
+  background: rgba(255, 255, 255, 0.14);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
 .search-result-voices {
   display: flex;
   flex-wrap: wrap;
@@ -736,6 +776,39 @@ body {
   font-size: 11px;
   text-align: center;
   padding: 8px;
+}
+
+/* Бейдж рейтинга.
+   Раньше все эти свойства писались инлайном из JS на КАЖДОЙ карточке — около
+   250 символов CSS, которые браузер разбирал заново для каждой из сотен
+   карточек сетки, притом что менялись в них только два цвета, и оба один и тот
+   же. Инлайном остался ровно один: color. Рамку красит currentColor, то есть
+   тот же цвет, а не вторая его копия.
+   Размеры для карточек рядов — ниже; точечные переопределения под узкие экраны
+   стоят в медиазапросах с !important и продолжают работать поверх обоих. */
+.rating-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  font-weight: bold;
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  z-index: 10;
+  border: 1px solid currentColor;
+  /* Размытой тени здесь больше нет. Она висела на КАЖДОЙ карточке: радиус 20px
+     на бейдже 40×26 означает растеризацию области вчетверо больше самого
+     бейджа, и так на всех живых карточках сетки, причём заново при каждом
+     входе карточки в кадр (content-visibility). Читаемости она не давала —
+     бейдж и так лежит на своей полупрозрачной подложке поверх постера. */
+}
+
+/* Карточки рядов (в том числе главной) — бейдж мельче */
+.catalog-row-card .rating-badge {
+  font-size: 13px;
+  padding: 3px 7px;
+  border-radius: 10px;
 }
 
 .torrent-info {
@@ -931,6 +1004,32 @@ body {
   scrollbar-width: none;
 }
 
+/* Служебные сообщения ряда файлов: «Загрузка файлов…», «Нет файлов», ошибка.
+   Раньше каждое из них подставлялось в #files-list через innerHTML вместе с
+   инлайновыми стилями; теперь плитки файлов переиспользуются и живут в списке
+   постоянно (пул в js/torrents.js), поэтому сообщение — отдельный узел. */
+.files-list-msg {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  font-size: 16px;
+  color: #aaa;
+}
+
+/* Короткие сообщения в одну строку — без высокого отступа */
+.files-list-msg-compact {
+  padding: 20px;
+  font-size: inherit;
+}
+
+.files-list-msg-error {
+  color: #ff6a6a;
+}
+
 /* Скрываем скроллбары для всех контейнеров */
 .files-list::-webkit-scrollbar,
 .catalog-detail-actors-grid::-webkit-scrollbar,
@@ -967,7 +1066,8 @@ body {
   background: rgba(0, 0, 0, 0.3);
   /* Тёмный фон */
   backdrop-filter: none;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  /* Размытая тень убрана: плиток в списке файлов десятки, и каждая
+     растеризовалась с областью больше себя самой */
   border-radius: 12px;
   padding: 0;
   display: flex;
@@ -1278,6 +1378,16 @@ body.detail-open {
   padding-bottom: 8px;
 }
 
+/* Служебные сообщения ряда («Загрузка актёров…», «Актёры не найдены»).
+   Отдельный узел, а не innerHTML контейнера: карточки актёров и похожих
+   переиспользуются и живут в ряду постоянно (пул в js/catalog.js), и
+   переписанный контейнер уничтожил бы их. Растягиваем на все колонки —
+   в одной ячейке из двенадцати текст сообщения не помещался. */
+.catalog-detail-row-msg {
+  grid-column: 1 / -1;
+  color: #aaa;
+}
+
 .catalog-actor-card {
   flex: 0 0 auto;
   width: 96.86px;
@@ -1308,7 +1418,7 @@ body.detail-open {
   align-items: center;
   justify-content: center;
   font-size: 38.74px;
-  background: linear-gradient(135deg, #3a3a4a, #2a2a3a);
+  background: #323242;   /* был градиент */
 }
 
 .catalog-actor-info {
@@ -1362,7 +1472,7 @@ body.detail-open {
   align-items: center;
   justify-content: center;
   font-size: 33.2px;
-  background: linear-gradient(135deg, #3a3a4a, #2a2a3a);
+  background: #323242;   /* был градиент */
 }
 
 .catalog-recommendation-rating {
@@ -3093,7 +3203,7 @@ body.detail-open {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #2a2a3a, #1a1a2a);
+  background: #222232;   /* был градиент */
 }
 
 .file-still-container {
@@ -3164,6 +3274,19 @@ body.detail-open {
   display: none !important;
 }
 
+/* Появление и скрытие панели управления плеера.
+   Раньше это делал gsap.fromTo/to по opacity и y. Переведено на CSS: обе
+   величины композиторные, поэтому переход идёт мимо главного потока — а панель
+   показывается ровно тогда, когда поток занят стартом плеера. */
+.controls-anim {
+  transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+}
+
+.controls-anim.controls-anim-hidden {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
 /* ===== ПЛАВНЫЙ СКРОЛЛИНГ ===== */
 
 /* Глобальные настройки плавности */
@@ -3198,8 +3321,11 @@ html {
 .catalog-recommendation-card {
   scroll-snap-align: start;
   scroll-margin-inline: 20px;
-  will-change: transform;
   /* Горизонтальный отступ при скролле */
+  /* will-change: transform убран: это 20 актёров плюс 20 похожих в отдельных
+     слоях, а анимировать там нечего. Раньше он гасился ниже отдельным правилом
+     will-change: auto для catalog-detail-mode — но только для него, и в
+     карточке торрента слои оставались. */
 }
 
 /* Более заметный и плавный outline при фокусе */
@@ -3553,12 +3679,22 @@ article {
   }
 }
 
+/* will-change: transform отсюда убран. Правило ловит все карточки сразу —
+   сетку, ряды каталога и главную, — а это 414 элементов, каждый из которых
+   браузер уводил в отдельный слой композитора (210×372×4 ≈ 312 КБ текстуры на
+   штуку). На телевизоре хуже, чем в настольном Chrome: content-visibility
+   строкой ниже в Chrome 66 не поддерживается, поэтому пропущенные рендером
+   карточки там слой всё равно получали.
+   Анимируется при этом не карточка, а .torrent-poster внутри неё (scale при
+   фокусе) и трек ряда — то есть подсказка стояла не на том элементе. Тот же
+   вывод уже сделан для .catalog-row-track ниже: слой на время твина создаёт
+   сам gsap (force3D: "auto") и отпускает после.
+   contain: layout style paint остаётся — он ограничивает пересчёт раскладки
+   границами карточки и слоёв не плодит. */
 .torrent-card.catalog-card {
-  content-visibility: auto;
-  contain-intrinsic-size: 280px 400px;
+  /* content-visibility: auto;
+  contain-intrinsic-size: 280px 400px;*/
   contain: layout style paint;
-  will-change: transform;
-
 }
 
 /* Карточки сетки категории: резерв под неотрисованной карточкой обязан совпадать
@@ -3572,29 +3708,34 @@ article {
    (ширина минус бордеры, aspect-ratio 2/3) плюс 68px подписи.
    Ряды каталога это правило не задевает: у них своя фиксированная геометрия и
    .catalog-row-viewport постоянной высоты, где рост скрытой карточки ничего не
-   двигает. */
+   двигает. 
 #catalog-grid > .torrent-card.catalog-card {
   contain-intrinsic-size: calc((100vw - 88px) / 5)
     var(--catalog-card-h, calc(((100vw - 88px) / 5 - 2px) * 1.5 + 68px));
 }
+    */
 
 .torrent-poster {
   contain: layout paint;
   overflow: hidden;
+  /* Содержащий блок для проявляющегося постера (.catalog-poster-img,
+     position: absolute). contain: layout им уже является, но на Chrome 66
+     свойства contain нет — там работает position */
+  position: relative;
 }
 
 /* Skeleton-плейсхолдер для загружающихся постеров */
 .catalog-poster-loading {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #1a1a2e 0%, #252540 50%, #1a1a2e 100%);
+  background: #1f1f38;   /* был градиент: заливка плоским цветом дешевле при растеризации */
 }
 
 /* Skeleton-плейсхолдер для постеров папок каталогов */
 .catalog-folder-poster-placeholder {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #1a1a2e 0%, #252540 50%, #1a1a2e 100%);
+  background: #1f1f38;   /* был градиент: заливка плоским цветом дешевле при растеризации */
 }
 
 /* ============================================================
@@ -3855,6 +3996,28 @@ article {
 #catalog-trailer-btn:hover,
 .detail-progress-btn:hover,
 #detail-progress-btn:hover,
+/* Названия новых кнопок длиннее соседних («Открыть карточку», «Избранное»),
+   и при переносе на вторую строку кнопка становится выше остальных — строка
+   действий выглядит неровной. Перенос запрещаем: места в панели хватает. */
+#catalog-favorite-btn,
+#detail-open-card-btn {
+  white-space: nowrap;
+}
+
+/* Звёздочка «Избранного». Кнопка делит оформление с «Подробнее»
+   (класс catalog-toggle-overview-btn), здесь только сама звезда: в избранном —
+   жёлтая и чуть крупнее, иначе ★ и ☆ различаются лишь заливкой и на экране
+   телевизора это малозаметно. */
+.catalog-favorite-btn .favorite-btn-icon {
+  font-size: 1.15em;
+  line-height: 1;
+}
+
+.catalog-favorite-btn.is-favorite .favorite-btn-icon {
+  color: #ffc107;
+  text-shadow: 0 0 10px rgba(255, 193, 7, 0.45);
+}
+
 .catalog-toggle-overview-btn:hover,
 #catalog-toggle-overview-btn:hover {
   background: rgba(255, 255, 255, 0.22) !important;
@@ -4203,36 +4366,36 @@ article {
   position: relative;
 }
 
-/* Вьюпорт больше не прокручивается нативно — он только окно-обрезка.
-   Карусель двигает внутренний трек через transform: translate3d, потому что
-   твин scrollLeft заставляет браузер каждый кадр делать layout + paint всего
-   контейнера, а трансформация уходит в композитор. На Android TV разница
-   заметна. Позиция карусели теперь читается/пишется хелперами
-   getScrollX / setScrollX (control.js), а не через scrollLeft. */
+/* Вьюпорт прокручивается нативно, по scrollLeft — ровно как вертикальные
+   контейнеры по scrollTop, и анимирует его тот же gsap-твин (setScrollX в
+   control.js). Раньше вьюпорт был окном-обрезкой (overflow: hidden), а позиция
+   жила в transform внутреннего трека: считалось, что композитору кадр обойдётся
+   дешевле. На Android TV выходило наоборот — трек это весь ряд целиком
+   (~5000×490), gsap поднимал его в отдельный слой на каждое нажатие пульта и
+   отпускал после, и растеризация такой текстуры туда-обратно и была теми самыми
+   рывками горизонтальной прокрутки. */
 .catalog-row-viewport {
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   /* Палец: вертикаль отдаём браузеру (#main-container скроллится нативно),
-     горизонталь двигаем сами в control.js. Без pan-y браузер может забрать
-     жест себе на первых пикселях, и preventDefault в touchmove опоздает. */
+     горизонталь двигаем сами в control.js — там же инерция после свайпа.
+     Без pan-y браузер может забрать жест себе на первых пикселях, и
+     preventDefault в touchmove опоздает. */
   touch-action: pan-y;
 }
 
-/* Padding перенесён сюда с вьюпорта: у нативного скролла отступы входили в
-   прокручиваемую область, у трека они входят в его ширину — геометрия
-   (и getBoundingClientRect вьюпорта) остаётся прежней. */
+.catalog-row-viewport::-webkit-scrollbar {
+  display: none;
+}
+
 .catalog-row-track {
   display: flex;
   gap: 18px;
   padding: 10px 40px 20px;
   width: -webkit-max-content;
   width: max-content;
-  /* Единичная 2D-трансформация: контекст наложения у трека одинаковый и до
-     первого твана, и после — иначе z-index сфокусированного постера при первом
-     движении карусели менял бы область действия. Слой в композиторе она НЕ
-     создаёт, в отличие от translate3d/will-change: ~8 постоянных слоёв по
-     2900×490 съели бы десятки МБ видеопамяти. Слой создаёт сам gsap на время
-     твана (force3D: "auto" по умолчанию) и отпускает после. */
-  transform: translateX(0);
 }
 
 /* ===== Оконная видимость рядов и карточек (catalog.js) =====
@@ -4270,10 +4433,14 @@ article {
   display: none;
 }
 
-/* Фокус на карточке ряда */
+/* Фокус на карточке ряда.
+   Тени «подъёма» (0 16px 40px) здесь больше нет: блюр в 40px растекается по
+   площади вдвое больше самой карточки, и каждая смена фокуса заставляла
+   перерисовывать её целиком. На телевизоре это давало просадку кадров ровно
+   в тот момент, когда едет доводка прокрутки. Кольцо в 3px рисуется даром. */
 .catalog-row-card.focused .torrent-poster {
   transform: scale(1.05);
-  box-shadow: 0 0 0 3px #4a9eff, 0 16px 40px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 3px #4a9eff;
   z-index: 5;
 }
 
@@ -4414,7 +4581,7 @@ article {
     background: transparent;
     box-sizing: border-box;
     overflow: hidden;
-    will-change: transform;
+    /* will-change: transform убран — см. .torrent-card.catalog-card выше */
   }
 
   .catalog-row-viewport .catalog-row-card .torrent-poster {
@@ -4732,17 +4899,34 @@ article {
   }
 }
 
-.catalog-poster-img {
+/* Проявление постера — поверх скелета, а не вместо него.
+   Раньше плейсхолдер убирали в момент СТАРТА загрузки, и всё время, пока идёт
+   сеть, карточка стояла плоским фоном; потом картинка проявлялась из пустоты.
+   Абсолютное позиционирование оставляет скелет на месте под картинкой, так что
+   переход читается как кроссфейд, а снимают плейсхолдер уже после него.
+   Содержащий блок даёт .torrent-poster / .row-poster-img ниже. */
+.catalog-poster-img,
+.row-poster-img>img {
     display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.38s ease-out;
 }
 
-.catalog-poster-img.loaded {
+.catalog-poster-img.loaded,
+.row-poster-img>img.loaded {
     opacity: 1;
+}
+
+/* contain: layout на .torrent-poster уже делает её содержащим блоком, но на
+   Chrome 66 (Vidaa) свойства contain нет — там нужен явный position */
+.row-poster-img {
+    position: relative;
 }
 
 /* ============================================================================
@@ -4866,7 +5050,7 @@ article {
 #detail-view.torrent-detail-mode #detail-progress-btn:hover,
 #detail-view.torrent-detail-mode #detail-progress-btn.focused {
   background: #ffffff !important;
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00), 0 8px 26px rgba(0, 0, 0, 0.55) !important;
+  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
 #detail-view.torrent-detail-mode #detail-progress-btn .btn-label {
@@ -4930,12 +5114,12 @@ article {
   overflow: visible;
 }
 
+/* Без размытой тени — по той же причине, что и в catalog-detail-mode выше */
 #detail-view.torrent-detail-mode .catalog-actor-photo {
   width: 132px;
   height: 132px;
   margin: 0 auto 12px auto;
   border: 3px solid rgba(255, 255, 255, 0.14) !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -4968,7 +5152,7 @@ article {
 
 #detail-view.torrent-detail-mode .catalog-actor-card.focused .catalog-actor-photo {
   border-color: var(--focus-color, #ff8c00) !important;
-  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35)), 0 8px 26px rgba(0, 0, 0, 0.6) !important;
+  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35)) !important;
 }
 
 #detail-view.torrent-detail-mode .catalog-actor-card.focused .catalog-actor-name {
@@ -4995,7 +5179,8 @@ article {
   margin: 0 24px 0 0 !important;
   border-radius: 10px;
   background: #14141c;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+  /* Размытая тень убрана, см. .file-item выше. transition оставлен: по нему
+     проявляется кольцо фокуса, а оно без размытия и ничего не стоит */
   transition: box-shadow 0.2s ease;
 }
 
@@ -5023,7 +5208,7 @@ article {
 }
 
 #detail-view.torrent-detail-mode .file-still-placeholder {
-  background: linear-gradient(135deg, #23233a, #14141c);
+  background: #1b1b2b;   /* был градиент */
 }
 
 /* Кнопку play показываем только на плитке под фокусом */
@@ -5067,7 +5252,7 @@ article {
 /* Рамка фокуса плитки — толще базовых 3px: с дивана 3px не видно.
    Без transform: scale — плитка внутри overflow-x обрезалась бы по краям */
 #detail-view.torrent-detail-mode .file-item.focused {
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00), 0 14px 40px rgba(0, 0, 0, 0.7) !important;
+  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
   border-radius: 10px;
 }
 
@@ -5605,6 +5790,27 @@ article {
   background: linear-gradient(180deg, #000 0%, #000 62%, rgba(0, 0, 0, 0) 100%);
 }
 
+/* Шапка разделов, поднятая поверх открытой карточки (js/home.js: DetailTopbar).
+   Элемент тот же самый — его переносят внутрь #detail-view, потому что снаружи
+   поднять его над карточкой невозможно: #detail-view лежит вне #main-container
+   и перекрывает его (z-index 100 против 1), а #main-container со своим z-index
+   создаёт стековый контекст.
+
+   position: fixed, а не sticky: карточка прокручивается сама, и полоса обязана
+   стоять на месте. Заодно она выпадает из потока — вёрстка карточки посчитана
+   без неё и не должна сдвигаться при показе.
+
+   margin обнуляем: у обычной шапки он отрицательный, чтобы компенсировать
+   padding #torrserver-section, а здесь компенсировать нечего. */
+#home-topbar.detail-topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin: 0;
+  z-index: 60;
+}
+
 /* gap на Vidaa не поддержан — отступ даём соседям через margin */
 #home-topbar > .home-nav-btn + .home-nav-btn {
   margin-left: 22px;
@@ -5694,6 +5900,19 @@ article {
    (строка 2955) и такое же, которое UI Customizer подставляет своим цветом:
    у селектора из двух классов специфичность выше. */
 .home-nav-btn.focused {
+  color: var(--focus-color, #ff8c00);
+  background: transparent;
+  box-shadow: none !important;
+}
+
+/* То же самое, когда шапка поднята поверх открытой карточки (js/home.js:
+   DetailTopbar). Отдельное правило нужно из-за специфичности: и styles.css, и
+   UI Customizer задают `#detail-view .focused{box-shadow:…!important}`
+   (ui-customizer.js: buildFocusCss) — это (1,1,0) против (0,2,0) у правила
+   выше. При равном !important побеждает более специфичный, и на кнопках шапки
+   внутри карточки возвращалась рамка вместо простой смены цвета текста.
+   Здесь (1,2,0), поэтому побеждает уже это правило. */
+#detail-view .home-nav-btn.focused {
   color: var(--focus-color, #ff8c00);
   background: transparent;
   box-shadow: none !important;
@@ -6052,11 +6271,13 @@ article {
      перебивает ui-customizer.js, здесь — корректное значение на случай, если он
      не загрузился: 6 колонок, gap 6px (плотность compact), padding 8px у
      #catalog-grid и 16px у #torrserver-section, то есть колонка =
-     (100vw - 78px)/6, а высота = постер (aspect-ratio 2/3) + 64px подписи. */
+     (100vw - 78px)/6, а высота = постер (aspect-ratio 2/3) + 64px подписи. 
   #catalog-grid > .torrent-card.catalog-card {
     contain-intrinsic-size: calc((100vw - 78px) / 6)
       var(--catalog-card-h, calc(((100vw - 78px) / 6 - 2px) * 1.5 + 64px));
   }
+
+  */
 
   /* ===== DETAIL-VIEW: карточка фильма ===== */
   .detail-header {
@@ -6441,11 +6662,12 @@ article {
 #detail-view.catalog-detail-mode #catalog-watch-btn:hover,
 #detail-view.catalog-detail-mode #catalog-watch-btn.focused {
   background: #ffffff !important;
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00), 0 8px 26px rgba(0, 0, 0, 0.55) !important;
+  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
 /* «Подробнее» и «Трейлер» — серые вторичные */
 #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
+#detail-view.catalog-detail-mode #catalog-favorite-btn,
 #detail-view.catalog-detail-mode #catalog-trailer-btn {
   background: rgba(109, 109, 110, 0.7) !important;
   color: #ffffff !important;
@@ -6455,11 +6677,13 @@ article {
 }
 
 #detail-view.catalog-detail-mode #catalog-toggle-overview-btn:hover,
+#detail-view.catalog-detail-mode #catalog-favorite-btn:hover,
+#detail-view.catalog-detail-mode #catalog-favorite-btn.focused,
 #detail-view.catalog-detail-mode #catalog-toggle-overview-btn.focused,
 #detail-view.catalog-detail-mode #catalog-trailer-btn:hover,
 #detail-view.catalog-detail-mode #catalog-trailer-btn.focused {
   background: rgba(109, 109, 110, 0.9) !important;
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00), 0 8px 26px rgba(0, 0, 0, 0.55) !important;
+  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
 /* Иконка ▶ внутри «Трейлера»: у кнопки gap обнулён, отступ даёт она сама */
@@ -6503,13 +6727,9 @@ article {
   display: none;
 }
 
-/* will-change: transform стоит на КАЖДОЙ карточке (строка ~2950) — это 20
-   актёров плюс 20 похожих в отдельных слоях; на Vidaa/Android TV composite
-   такого размера уже не вывозит, а анимироваться там нечему (hover'а нет) */
-#detail-view.catalog-detail-mode .catalog-actor-card,
-#detail-view.catalog-detail-mode .catalog-recommendation-card {
-  will-change: auto !important;
-}
+/* Заглушка will-change: auto отсюда убрана — вместе с самим will-change
+   в базовом правиле .catalog-actor-card / .catalog-recommendation-card.
+   Она гасила слои только в этом режиме, а в карточке торрента они оставались. */
 
 #detail-view.catalog-detail-mode .catalog-actor-card {
   width: 150px !important;
@@ -6520,13 +6740,17 @@ article {
   overflow: visible !important;
 }
 
+/* Тени под аватаром нет намеренно. Она была размытая (20px), а на фокусе
+   менялась на 26px — и transition ниже пересчитывал размытие каждый кадр все
+   0,2 с, на каждое нажатие стрелки. Разницу в 6 пикселей радиуса на экране не
+   видно, а кадры на телевизоре она стоила. Остаётся рамка и сплошное кольцо
+   фокуса: они рисуются по контуру и ничего не стоят. */
 #detail-view.catalog-detail-mode .catalog-actor-photo {
   width: 132px !important;
   height: 132px !important;
   margin: 0 auto 12px auto;
   border: 3px solid rgba(255, 255, 255, 0.14) !important;
   border-radius: 50% !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -6563,7 +6787,7 @@ article {
 
 #detail-view.catalog-detail-mode .catalog-actor-card.focused .catalog-actor-photo {
   border-color: var(--focus-color, #ff8c00) !important;
-  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35)), 0 8px 26px rgba(0, 0, 0, 0.6) !important;
+  box-shadow: 0 0 0 4px var(--focus-color-soft, rgba(255, 140, 0, 0.35)) !important;
 }
 
 #detail-view.catalog-detail-mode .catalog-actor-card.focused .catalog-actor-name {
@@ -6628,7 +6852,7 @@ article {
 }
 
 #detail-view.catalog-detail-mode .catalog-recommendation-card.focused .catalog-recommendation-poster {
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00), 0 14px 40px rgba(0, 0, 0, 0.7) !important;
+  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
 #detail-view.catalog-detail-mode .catalog-recommendation-card.focused .catalog-recommendation-title {
@@ -6674,6 +6898,7 @@ article {
   }
 
   #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
+  #detail-view.catalog-detail-mode #catalog-favorite-btn,
   #detail-view.catalog-detail-mode #catalog-trailer-btn {
     padding: 9px 18px !important;
     font-size: 15px !important;
@@ -6799,6 +7024,7 @@ article {
   }
 
   #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
+  #detail-view.catalog-detail-mode #catalog-favorite-btn,
   #detail-view.catalog-detail-mode #catalog-trailer-btn {
     padding: 11px 24px !important;
     font-size: 17px !important;
@@ -6922,6 +7148,7 @@ article {
   }
 
   #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
+  #detail-view.catalog-detail-mode #catalog-favorite-btn,
   #detail-view.catalog-detail-mode #catalog-trailer-btn {
     padding: 7px 14px !important;
     font-size: 13px !important;
@@ -7617,4 +7844,26 @@ article {
   .seek-indicator-step {
     font-size: 15px;
   }
+}
+
+/* ── Вырез экрана ──────────────────────────────────────────────────────────
+   Приложение идёт от края до края: фон, постеры и ряды уходят под вырез.
+   Отодвигается только то, что иначе стало бы нечитаемым, — панель и шапки.
+   Вне медиазапроса намеренно: в горизонтальной ориентации вырез оказывается
+   сбоку, а ширина экрана там больше 600px. При отсутствии выреза переменные
+   нулевые, и правило ничего не меняет.
+   --safe-* задаёт Android-обёртка (MainActivity.publishSafeArea),
+   env() — запасной вариант для обычного браузера. */
+#home-topbar,
+.search-header,
+.detail-header {
+  padding-top: calc(10px + var(--safe-top, env(safe-area-inset-top, 0px)));
+  padding-left: calc(12px + var(--safe-left, env(safe-area-inset-left, 0px)));
+  padding-right: calc(12px + var(--safe-right, env(safe-area-inset-right, 0px)));
+}
+
+.home-row-header,
+.section-title-header {
+  padding-left: calc(var(--safe-left, env(safe-area-inset-left, 0px)));
+  padding-right: calc(var(--safe-right, env(safe-area-inset-right, 0px)));
 }
