@@ -48,8 +48,24 @@
     }
 
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-regular-rounded.css?v=' + VERSION + '">');
-    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-rounded.css?v=' + VERSION + '">');
-    document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-thin-chubby.css?v=' + VERSION + '">');
+    // uicons-thin-rounded и uicons-thin-chubby отсюда убраны. На двоих они
+    // давали РОВНО ДВЕ иконки — fi-tr-volume в разметке плеера и
+    // fi-tc-volume-slash в player.js, обе про громкость. Оба значка есть в
+    // regular-rounded, который всё равно нужен, и заменены на него.
+    //
+    // Что за это платилось:
+    //   • на старте — 68 КБ по сети (527 КБ после распаковки) стилей, которые
+    //     браузер обязан разобрать целиком, а в них тысячи неиспользуемых
+    //     классов. Стили вдобавок блокируют выполнение скриптов, идущих
+    //     следом: по Resource Timing именно эти два файла отвечали последними
+    //     из всех, и блок document.write с двумя десятками модулей не
+    //     начинался, пока они не приедут;
+    //   • при первом показе плеера — 646 КБ и 430 КБ самих шрифтов. Шрифт
+    //     тянется по факту отрисовки глифа, то есть мегабайт с лишним уходил
+    //     на две маленькие иконки, и ровно в момент открытия плеера.
+    //
+    // На телевизоре через Wi-Fi это два лишних обращения к внешнему хосту на
+    // каждый запуск и ещё два — на каждое открытие плеера.
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/styles.css?v=' + VERSION + '">');
     // Фоллбэки для старых браузеров (Chrome 66 на Smart TV): flex-gap, aspect-ratio.
     // Подключается ПОСЛЕ styles.css и работает только при классе no-flex-gap на <html>.
@@ -477,8 +493,8 @@
                собирает .catalog-toggle-overview-btn). Видимостью управляет
                visibleItemsforDetail в js/torrents.js. -->
           <button id="detail-open-card-btn" class="catalog-toggle-overview-btn hidden">Открыть карточку</button>
-          <!-- Звёздочка текстом, а не иконкой шрифта: подключены только
-               uicons-regular/thin, заполненного варианта звезды в них нет,
+          <!-- Звёздочка текстом, а не иконкой шрифта: подключён только
+               uicons-regular-rounded, заполненного варианта звезды в нём нет,
                а ★/☆ рисуются везде, включая Chrome 66 на Vidaa. -->
           <button id="catalog-favorite-btn" class="catalog-toggle-overview-btn catalog-favorite-btn hidden">
             <span class="favorite-btn-icon">☆</span> Избранное
@@ -569,7 +585,7 @@
             </button>
           </div>
           <div class="volume-container">
-            <span id="volume-icon"><i class="fi fi-tr-volume"></i></span>
+            <span id="volume-icon"><i class="fi fi-rr-volume"></i></span>
             <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="1">
             <button class="control-btn" id="fullscreen-btn" title="Полный экран">
               <i class="fi fi-rr-expand"></i>
