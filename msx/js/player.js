@@ -474,7 +474,12 @@ function updateMuteButton() {
   var btn = getEl('mute-btn');
   var videoPlayer = getEl('video-player');
   if (!btn || !videoPlayer) return;
-  btn.innerHTML = videoPlayer.muted ? '<i class="fi fi-tc-volume-slash"></i>' : '<i class="fi fi-rr-volume"></i>';
+  // Оба состояния — из regular-rounded. Раньше выключённый звук брался из
+  // uicons-thin-chubby: ради одного этого значка на старте грузился стиль,
+  // блокирующий скрипты, а при первом показе кнопки — шрифт на 430 КБ
+  // (подробности в index.html). Заодно ушла разница в толщине линий между
+  // двумя состояниями одной и той же кнопки.
+  btn.innerHTML = videoPlayer.muted ? '<i class="fi fi-rr-volume-slash"></i>' : '<i class="fi fi-rr-volume"></i>';
 }
 
 function updateBufferDisplay() {
