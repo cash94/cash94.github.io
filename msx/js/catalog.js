@@ -5854,9 +5854,20 @@ function measureCatalogCardHeight() {
         var poster = cards[i].querySelector('.torrent-poster');
         if (!poster || !poster.offsetHeight) continue;
         if (cards[i].clientHeight > h) h = cards[i].clientHeight;
-        // offsetHeight, в отличие от clientHeight, включает бордеры карточки —
-        // а распорка чанка занимает место именно по внешней границе
-        if (cards[i].offsetHeight > boxH) boxH = cards[i].offsetHeight;
+        // Линейка для распорок — через getBoundingClientRect, а НЕ offsetHeight,
+        // и дело именно в дробях.
+        //
+        // Оба дают внешнюю границу (бордеры включены, в отличие от
+        // clientHeight), но offsetHeight округляет до целого пикселя, а высота
+        // строки целой не бывает. При 960x540 и шести колонках колонка выходит
+        // ровно 147px, постер при aspect-ratio 2/3 — (147-2)*1.5 = 217.5px,
+        // карточка с подписью — 281.5px. offsetHeight отдаёт 282, шаг строки
+        // становится 288 вместо 287.5, и каждая вставленная при развороте
+        // строка сдвигает содержимое на полпикселя: 2.5px на чанк из пяти
+        // строк. Этого хватает, чтобы прижатая к низу строка замерла чуть ниже
+        // края — порог доводки как раз 2px.
+        var boxRect = cards[i].getBoundingClientRect().height;
+        if (boxRect > boxH) boxH = boxRect;
     }
     if (!(h > 0)) return;
 
