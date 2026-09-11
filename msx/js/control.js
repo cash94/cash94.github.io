@@ -151,6 +151,11 @@ var _focusCache = {
     ttl: 100 // мс
 };
 
+// Класс скрытого ряда главной (home.js: CONFIG.HIDDEN_ROW_CLASS). Держим копию
+// здесь: control.js грузится раньше home.js и читать оттуда на горячем пути
+// нечего — значение не меняется за сессию.
+var HOME_HIDDEN_ROW_CLASS = 'home-row-hidden';
+
 // Поколение DOM: инкрементируется в invalidateFocusCache() из всех точек, где
 // реально меняется состав фокусируемых элементов. Для экрана каталога кэш живёт
 // по поколению, а не по 100-мс TTL: там на каждое нажатие стрелки шёл полный
@@ -1632,15 +1637,39 @@ function updateFocusableElements() {
     }
     if (screen === 'home') {
         // Шапка → кнопка «Смотреть» на баннере → карточки ряда, в порядке DOM.
-        // Ряды вне экрана на главной скрыты через display:none (home-row-hidden),
-        // поэтому их карточки отсеивает проверка offsetParent: на экране всегда
-        // ровно один ряд, стрелки вверх/вниз меняют именно его (home.js).
-        var navBtns = document.querySelectorAll('#home-topbar .home-nav-btn');
-        for (var i = 0; i < navBtns.length; i++) if (navBtns[i].offsetParent !== null) list.push(navBtns[i]);
+        //
+        // Ни одного offsetParent, и это главное. Раньше проверка стояла на
+        // каждой кнопке и каждой карточке; первое же такое чтение заставляет
+        // браузер пересчитать раскладку всего документа, а функция стоит на
+        // каждом нажатии пульта. Зонд с микросекундными часами намерил здесь
+        // 0,19мс против 0,031мс в ветке каталога — при пустых рядах, то есть
+        // разница вся приходилась на принудительную раскладку, а не на обход.
+        //
+        // Та же замена, что раньше сделали для сетки (visibleCatalogScope) и
+        // для шапки торрентов (getTorrentTabs): скрывают здесь не отдельные
+        // элементы, а контейнеры, поэтому и спрашивать надо контейнер.
+        var bar = getEl('home-topbar');
+        // Шапку временно уносят в карточку (DetailTopbar в home.js). Экран при
+        // этом 'detail', но если порядок когда-нибудь разъедется, кнопки из
+        // чужого контейнера в список главной попасть не должны
+        var barHere = bar && !(bar.parentNode && bar.parentNode.id === 'detail-view');
+        if (barHere && bar.style.display !== 'none' && !bar.classList.contains('hidden')) {
+            var navBtns = bar.querySelectorAll('.home-nav-btn');
+            for (var i = 0; i < navBtns.length; i++) list.push(navBtns[i]);
+        }
+
         var homePlay = getEl('home-play-btn');
-        if (homePlay && homePlay.offsetParent !== null) list.push(homePlay);
-        var homeCards = document.querySelectorAll('#home-rows .torrent-card.catalog-card');
-        for (var i = 0; i < homeCards.length; i++) if (homeCards[i].offsetParent !== null) list.push(homeCards[i]);
+        if (homePlay && !homePlay.hidden && homePlay.style.display !== 'none') list.push(homePlay);
+
+        // Ряд вне экрана скрыт целиком (home-row-hidden, display: none) — на
+        // экране всегда ровно один, стрелки вверх/вниз меняют именно его
+        // (home.js). Значит спрашиваем ряд, а не каждую его карточку.
+        var homeRows = document.querySelectorAll('#home-rows .catalog-row');
+        for (var hr = 0; hr < homeRows.length; hr++) {
+            if (homeRows[hr].classList.contains(HOME_HIDDEN_ROW_CLASS)) continue;
+            var rowCards = homeRows[hr].querySelectorAll('.torrent-card.catalog-card');
+            for (var rc = 0; rc < rowCards.length; rc++) list.push(rowCards[rc]);
+        }
         focusableElements = list;
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
@@ -3008,8 +3037,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
     if (smooth === undefined) smooth = true;
     if (SCROLL_SMOOTH.force) smooth = true;
     if (!el || !container) return;
-    var r = el.getBoundingClientRect();
-    var cr = container.getBoundingClientRect();
+    // Геометрия читается НЕ здесь, а в ветке isH ниже — единственной, где она
+    // нужна. Наверху эти два getBoundingClientRect считались на каждое
+    // перемещение фокуса, а для сетки категории (контейнер #main-container,
+    // isH = false) ответ никто не спрашивал: ниже управление уходит в
+    // scrollCatalogGridCardIntoView, и та меряет сама. Хвост функции тоже
+    // читает заново, в переменную er.
     var isWindow = container === window || container === document.body;
     var scrollContainer = isWindow ? (window.scrollingElement || document.documentElement) : container;
 
@@ -3023,6 +3056,8 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         container.id === 'files-list';
 
     if (isH) {
+        var r = el.getBoundingClientRect();
+        var cr = container.getBoundingClientRect();
         var con = "";
         if (container.id === 'catalog-detail-actors-wrap' ||
             container.id === 'catalog-detail-recommendations-wrap' ||
@@ -3305,9 +3340,21 @@ function focusEl(el, opts) {
     // страница стояла на месте, и строка уезжала от нижнего края к верхнему.
     // Решение принимают сами scrollCatalogGridCardIntoView /
     // scrollCatalogRowIntoView — если двигаться некуда, они выходят.
-    if (container && !isElementFullyVisible(el, container) || el.id === 'back-from-detail' ||
-        el.id === 'catalog-watch-btn' || isTopAnchoredTarget(el) ||
-        isCatalogGridCard(el) || isCatalogRowCard(el)) {
+    // Сначала дешёвые признаки, проверка видимости — последней, и порядок
+    // здесь не косметика.
+    //
+    // Все пять условий сложены через ИЛИ, то есть результат от порядка не
+    // зависит. Но isElementFullyVisible читает getBoundingClientRect у
+    // элемента и у контейнера, а стояла она первой — и для карточки сетки обе
+    // геометрии считались впустую: isCatalogGridCard ниже всё равно давал
+    // true. Каждое нажатие по сетке платило за два чтения, чей ответ тут же
+    // выбрасывался. Остальные признаки — классы, dataset и кэшированное число
+    // колонок, геометрию не трогают.
+    var needScroll = el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' ||
+        isTopAnchoredTarget(el) || isCatalogGridCard(el) || isCatalogRowCard(el);
+    if (!needScroll && container) needScroll = !isElementFullyVisible(el, container);
+
+    if (needScroll) {
         scrollToElementIfNeeded(
             el,
             container,

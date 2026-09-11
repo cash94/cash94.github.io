@@ -37,10 +37,20 @@
         var controller = _searchController;
         var searchSequence = ++_searchSequence;
 
-        var encodedQuery = encodeURIComponent(query.trim());
-        var jacred = getEl('jacred-url');
-        var jacDefault = (jacred && jacred.value !== '') ? jacred.value : 'jac.red';
-        var searchUrl = AppState.protocol + '//' + jacDefault + '/api/v2.0/indexers/all/results?Query=' + encodedQuery + '&exact=true';
+        // URL собирает torrents.js — там же живут подсказки из карточки
+        // (год и фильм/сериал). Фолбэк на случай, если с зеркала приехала
+        // старая сборка torrents.js: искать без подсказок лучше, чем не искать.
+        var searchUrl, jacDefault;
+        if (typeof window.buildJacredSearchUrl === 'function') {
+            var target = window.buildJacredSearchUrl(query);
+            searchUrl = target.url;
+            jacDefault = target.host;
+        } else {
+            var jacred = getEl('jacred-url');
+            jacDefault = (jacred && jacred.value !== '') ? jacred.value : 'jac.red';
+            searchUrl = AppState.protocol + '//' + jacDefault +
+                '/api/v2.0/indexers/all/results?Query=' + encodeURIComponent(query.trim()) + '&exact=true';
+        }
 
         showLoading('Поиск...');
 

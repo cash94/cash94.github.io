@@ -31,13 +31,18 @@
     //
     //   ?perf=1&noposters=1 — постеры не попадают в DOM вообще (декод и
     //       отрисовка картинок исчезают, вся остальная логика цела);
-    //   ?perf=1&nocv=1      — снят content-visibility с карточек сетки
-    //       (тогда браузер рисует их заранее, а не в момент входа в кадр).
+    //   ?perf=1&nowindow=1  — обезврежено оконное гашение карточек сетки
+    //       (catalog-offscreen), то есть браузер рисует все карточки живых
+    //       чанков, а не только те, что около кадра.
+    //
+    // Опыта nocv=1 больше нет: content-visibility снят из styles.css насовсем,
+    // снимать нечего. Окно видимости заняло его место и теперь единственное,
+    // что ограничивает ОТРИСОВКУ сетки, — поэтому мерить стоит именно его.
     //
     // Прогон делается тем же движением, что и обычный, и сравнивается строка
     // «рывков». Флаги только для замера — в бою не включать.
     var NO_POSTERS = location.search.indexOf('noposters=1') !== -1;
-    var NO_CV = location.search.indexOf('nocv=1') !== -1;
+    var NO_WINDOW = location.search.indexOf('nowindow=1') !== -1;
 
     // ?perf=1&blink=1 — ловим МИГАНИЕ: кто именно убирает постер из DOM.
     //
@@ -56,8 +61,36 @@
     var blame = {};             // имя -> сколько раз оказался перед длинным кадром
 
     function bucket(name) {
-        if (!stats[name]) stats[name] = { ms: 0, calls: 0 };
+        if (!stats[name]) stats[name] = { ms: 0, calls: 0, max: 0 };
         return stats[name];
+    }
+
+    /**
+     * Часы с микросекундами.
+     *
+     * Раньше здесь стоял Date.now() с шагом в целую миллисекунду. На функции,
+     * которую зовут сотню раз за прогон, такой шаг не измеряет, а округляет:
+     * вызов на 0,04 мс попадает то в 0, то в 1 — и сумма получается из шума
+     * округления, а не из работы. performance.now() есть с Chrome 20, то есть
+     * и на Vidaa, и на любом Android TV; Date.now() оставлен на всякий случай.
+     */
+    var clock = (window.performance && typeof performance.now === 'function')
+        ? function () { return performance.now(); }
+        : function () { return Date.now(); };
+
+    /**
+     * Функции, у которых ветка зависит от экрана, считаются по экранам
+     * отдельно: updateFocusableElements на главной обходит карточки рядов с
+     * offsetParent (принудительная раскладка), а в каталоге берёт готовый
+     * список из кэша — это две разные функции под одним именем, и смешанное
+     * среднее по ним не значит ничего.
+     */
+    var BY_SCREEN = { updateFocusableElements: 1, focusEl: 1 };
+
+    function bucketName(name) {
+        if (!BY_SCREEN[name]) return name;
+        var sc = (window.AppState && AppState.currentScreen) || '?';
+        return name + '@' + sc;
     }
 
     /**
@@ -72,15 +105,20 @@
         if (typeof orig !== 'function' || orig.__probed) return false;
 
         var probed = function () {
-            var t0 = Date.now();
+            var t0 = clock();
+            // Имя снимаем ДО вызова: showContentScreen и подобные меняют
+            // AppState.currentScreen прямо внутри, и на выходе экран был бы уже
+            // не тот, в котором работа делалась
+            var key = bucketName(name);
             try {
                 return orig.apply(this, arguments);
             } finally {
-                var dt = Date.now() - t0;
-                var b = bucket(name);
+                var dt = clock() - t0;
+                var b = bucket(key);
                 b.ms += dt;
                 b.calls++;
-                if (dt >= 4) recent.push(name + ':' + dt);
+                if (dt > b.max) b.max = dt;
+                if (dt >= 4) recent.push(key + ':' + Math.round(dt));
             }
         };
         probed.__probed = true;
@@ -107,7 +145,22 @@
         'createCatalogCard',
         'focusEl',
         'scrollToElementIfNeeded',
-        'revealCatalogElement'
+        'revealCatalogElement',
+
+        // Добавлено после того, как из 34 рывков названного виновника получили
+        // только 5: остальные приходились на функции, за которыми зонд не
+        // следил. Разворот чанка идёт ПОРЦИЯМИ по кадрам (hydrationStep), а
+        // показ постера разведён на вставку и проявление — и то и другое
+        // раньше было вне списка.
+        'hydrationStep',             // одна строка сетки за кадр
+        'insertChunkCards',          // сама вставка узлов в грид
+        'finishHydration',           // снятие распорки
+        'setRowPosterImg',           // вставка постера ряда/детали
+        'flushPosterRevealBatch',    // пачка проявлений: один reflow на всех
+        'pumpPosterReveals',         // насос очереди проявлений
+        'processRowPosterQueue',
+        'loadPosterBatch',
+        'runGridPosterAhead'         // упреждающая подкачка постеров сетки
     ];
 
     var wrapped = [];
@@ -207,12 +260,19 @@
         } catch (e) { }
     }
 
-    /** Опыт «без content-visibility»: перебиваем правило из styles.css */
-    function installNoCv() {
+    /**
+     * Опыт «без окна видимости»: класс catalog-offscreen по-прежнему ставится и
+     * снимается, но перестаёт что-либо значить.
+     *
+     * Обезвреживаем именно ЭФФЕКТ класса, а не логику наблюдателя, — тем же
+     * приёмом, что и в опыте без постеров: очереди, наблюдатели и придержки
+     * работают ровно как в бою, из кадра уходит только выигрыш на отрисовке.
+     * Меньше рывков без окна — окно вредит (его переключения дороже экономии);
+     * больше — окно работает, и есть смысл поиграть VISIBILITY_WINDOW_ROWS.
+     */
+    function installNoWindow() {
         var st = document.createElement('style');
-        st.textContent =
-            '.torrent-card.catalog-card{content-visibility:visible !important;' +
-            'contain-intrinsic-size:auto !important;}';
+        st.textContent = '.catalog-offscreen{visibility:visible !important;}';
         document.head.appendChild(st);
     }
 
@@ -276,8 +336,12 @@
         var out = [];
         for (var i = 0; i < keys.length && i < 3; i++) {
             var v = map[keys[i]];
+            // Максимум рядом с суммой: он отличает «сто вызовов по чуть-чуть»
+            // от «один монстр на 200мс», а лечатся эти два случая по-разному
             out.push('  ' + keys[i] + ' ' +
-                (v.ms !== undefined ? (v.ms + unit + ' x' + v.calls) : v));
+                (v.ms !== undefined
+                    ? (Math.round(v.ms) + unit + ' x' + v.calls + ' макс ' + Math.round(v.max) + unit)
+                    : v));
         }
         return out.length ? out.join('\n') : '  —';
     }
@@ -286,7 +350,7 @@
         var el = ensureBox();
         el.textContent =
             (NO_POSTERS ? 'ОПЫТ: без постеров\n' : '') +
-            (NO_CV ? 'ОПЫТ: без content-visibility\n' : '') +
+            (NO_WINDOW ? 'ОПЫТ: без окна видимости\n' : '') +
             'кадров: ' + frames + '\n' +
             'длинных (>' + LONG_FRAME_MS + 'мс): ' + longFrames + '\n' +
             'рывков (>' + STALL_MS + 'мс): ' + stalls + '\n' +
@@ -298,7 +362,7 @@
     }
 
     function start() {
-        if (NO_CV) installNoCv();
+        if (NO_WINDOW) installNoWindow();
         if (BLINK) installBlinkTrace();
         installWraps();
         setInterval(installWraps, 2000);   // патчи догружаются позже основных модулей
