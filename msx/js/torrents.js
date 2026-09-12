@@ -572,13 +572,20 @@ async function addProgressToDetail(torrent, preloadedFiles) {
     for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
     if (!btn.dataset.bound) {
         btn.dataset.bound = '1';
-        btn.addEventListener('click', function (e) {
+        btn.addEventListener('click', async function (e) {
             e.stopPropagation();
             var hash = btn.dataset.hash || '';
             var fileId = parseInt(btn.dataset.fileId || '1', 10) || 1;
             var timecode = parseInt(btn.dataset.timecode || '0', 10) || 0;
             var episodeIndex = parseInt(btn.dataset.episodeIndex || '0', 10) || 0;
-            if (!hash || !AppState.currentTorrserverUrl) return;
+            // Раньше здесь был немой return: с выключенным TorrServer нажатие
+            // «Играть» просто ничего не делало, и понять почему было нельзя.
+            // ensureTorrserverOnline сам объясняет причину баннером.
+            if (!hash) {
+                if (typeof window.showErrorBanner === 'function') window.showErrorBanner('Не удалось начать воспроизведение', 'У раздачи нет hash');
+                return;
+            }
+            if (!(await ensureTorrserverOnline())) return;
             var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
             getEl('playback-overlay').classList.add('active');
             var detailView = getEl('detail-view');
@@ -641,6 +648,16 @@ async function addProgressToDetail(torrent, preloadedFiles) {
     return fileId;
 }
 
+/**
+ * Сколько ждём /echo, прежде чем считать TorrServer лежащим.
+ *
+ * Проба уходит по локальной сети и у живого сервера отвечает мгновенно, а у
+ * мёртвого адреса fetch без ограничения висит до системного таймаута TCP.
+ * Это не абстрактная проблема: на checkServer завязан ensureTorrserverOnline,
+ * то есть каждое нажатие «играть» при выключенном сервере зависало вместе с ним.
+ */
+var TORRSERVER_PROBE_TIMEOUT_MS = 8000;
+
 async function checkServer(shouldLoadTorrents = true) {
     var urlInput = getEl('torrserver-url');
     var statusIndicator = getEl('status-indicator');
@@ -659,7 +676,14 @@ async function checkServer(shouldLoadTorrents = true) {
             var password = authPassword ? authPassword.value : '';
             if (login && password) headers['Authorization'] = 'Basic ' + btoa(login + ':' + password);
         }
-        var response = await fetch(testUrl + '/echo', { method: 'GET', headers: headers });
+        var probe = new AbortController();
+        var probeTimer = setTimeout(function () { probe.abort(); }, TORRSERVER_PROBE_TIMEOUT_MS);
+        var response;
+        try {
+            response = await fetch(testUrl + '/echo', { method: 'GET', headers: headers, signal: probe.signal });
+        } finally {
+            clearTimeout(probeTimer);
+        }
         if (response.ok) {
             //var text = await response.text();
             //if (text.includes('MatriX.')) {
@@ -2500,7 +2524,7 @@ function setupFilePlayButtonDelegation() {
 
     filesList._playDelegationBound = true;
 
-    filesList.addEventListener('click', function (e) {
+    filesList.addEventListener('click', async function (e) {
         var btn = e.target && e.target.closest ? e.target.closest('.play-btn') : null;
         if (!btn) return;
 
@@ -2525,7 +2549,14 @@ function setupFilePlayButtonDelegation() {
             if (!isNaN(parsedEpisode)) episodeIndex = parsedEpisode;
         }
 
-        if (!hash || !AppState.currentTorrserverUrl) return;
+        // Немой return здесь означал: нажал «играть» на серии — ничего не
+        // произошло, причина неизвестна. ensureTorrserverOnline объясняет её
+        // баннером и проверяет не только «адрес задан», но и «сервер отвечает».
+        if (!hash) {
+            if (typeof window.showErrorBanner === 'function') window.showErrorBanner('Не удалось начать воспроизведение', 'У файла нет hash раздачи');
+            return;
+        }
+        if (!(await ensureTorrserverOnline())) return;
 
         var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
 
@@ -3305,13 +3336,64 @@ function normalizeSearchResult(item) {
  * чтобы отличить «трекер-агрегатор лежит» от «искали, но ничего не нашли» —
  * пользователю это разные сообщения.
  */
-function JacredUnavailableError(host, reason) {
+function JacredUnavailableError(host, reason, timedOut) {
     this.name = 'JacredUnavailableError';
     this.jacredHost = host;
+    this.jacredTimeout = !!timedOut;
     this.message = 'Jacred (' + host + ') недоступен: ' + reason;
 }
 JacredUnavailableError.prototype = Object.create(Error.prototype);
 JacredUnavailableError.prototype.constructor = JacredUnavailableError;
+
+/**
+ * Сколько ждём ответа Jacred, прежде чем считать его лежащим.
+ *
+ * Без ограничения fetch к мёртвому хосту висит столько, сколько отмерит
+ * системный стек TCP — на телевизоре это минуты. Всё это время открытая
+ * карточка фильма стоит под оверлеем поиска с крутилкой «Поиск…», кнопка
+ * «Торренты» не отвечает, и выйти можно только «назад». Пятнадцати секунд
+ * живому jac.red хватает с запасом даже на медленном канале.
+ *
+ * Значение общее для обеих реализаций поиска: базовой (ниже) и той, что
+ * подменяет её в torrents-worker-patch.js.
+ */
+var JACRED_TIMEOUT_MS = 15000;
+window.JACRED_TIMEOUT_MS = JACRED_TIMEOUT_MS;
+
+/**
+ * Чем закончился последний поиск торрентов: null — нашли или честно не нашли,
+ * объект — Jacred не ответил.
+ *
+ * Нужен вызывающей стороне. Кнопка «Торренты» в карточке каталога видит только
+ * число найденного, и ноль у неё означал «ничего не нашли» — поверх баннера
+ * «Jacred недоступен» она рисовала свой «Торренты не найдены», подменяя
+ * причину. Теперь по этому признаку она свой баннер не показывает.
+ */
+function setJacredSearchFailure(error) {
+    AppState.lastSearchFailure = (error && error.jacredHost)
+        ? { host: error.jacredHost, timedOut: !!error.jacredTimeout }
+        : null;
+}
+window.setJacredSearchFailure = setJacredSearchFailure;
+
+/**
+ * Текст баннера «Jacred недоступен» — один на обе реализации поиска.
+ *
+ * Секунды берём из window: ждёт ответа torrents-worker-patch.js, и он же
+ * читает значение оттуда. Если с зеркала приедут разные сборки двух файлов,
+ * в баннере всё равно окажется то число, по которому реально ждали.
+ */
+function showJacredUnavailableBanner(error) {
+    if (typeof window.showErrorBanner !== 'function') return false;
+    if (!error || !error.jacredHost) return false;
+    var seconds = Math.round((window.JACRED_TIMEOUT_MS || JACRED_TIMEOUT_MS) / 1000);
+    window.showErrorBanner('Jacred недоступен', error.jacredTimeout
+        ? 'Не отвечает ' + error.jacredHost + ': нет ответа за ' + seconds +
+          ' секунд. Адрес меняется в настройках.'
+        : 'Не отвечает ' + error.jacredHost + '. Адрес меняется в настройках.');
+    return true;
+}
+window.showJacredUnavailableBanner = showJacredUnavailableBanner;
 
 async function searchTorrents(query) {
     if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
@@ -3388,15 +3470,22 @@ async function searchTorrentsLegacy(query) {
     var searchUrl = target.url, jacDefault = target.host;
 
     showLoading('Поиск...');
+    setJacredSearchFailure(null);
+    // Ожидание ответа ограничено: мёртвый хост иначе держит поиск минутами
+    var timeoutController = new AbortController();
+    var timedOut = false;
+    var timeoutId = setTimeout(function () { timedOut = true; timeoutController.abort(); }, JACRED_TIMEOUT_MS);
     try {
         // Отдельно от остальных ошибок ловим «Jacred не отвечает»: сеть, DNS,
-        // выключенный или неверно указанный хост. Именно это чаще всего и
-        // происходит, а alert с текстом «Failed to fetch» на телевизоре не
-        // показывался вовсе — поиск просто молча ничего не находил.
+        // выключенный или неверно указанный хост, молчание дольше таймаута.
+        // Именно это чаще всего и происходит, а alert с текстом «Failed to
+        // fetch» на телевизоре не показывался вовсе — поиск просто молча
+        // ничего не находил.
         var response;
         try {
-            response = await fetch(searchUrl);
+            response = await fetch(searchUrl, { signal: timeoutController.signal });
         } catch (netError) {
+            if (timedOut) throw new JacredUnavailableError(jacDefault, 'нет ответа за ' + JACRED_TIMEOUT_MS + ' мс', true);
             throw new JacredUnavailableError(jacDefault, netError.message);
         }
         if (!response.ok) throw new JacredUnavailableError(jacDefault, 'HTTP ' + response.status);
@@ -3426,17 +3515,22 @@ async function searchTorrentsLegacy(query) {
         // карточку фильма только если искать было что (catalog.js)
         return searchResults.length;
     } catch (error) {
+        // Таймаут мог сработать и на чтении тела ответа, уже после заголовков —
+        // тогда наружу летит голый AbortError. Для человека это тот же самый
+        // «Jacred не ответил», и назвать причину надо так же.
+        if (timedOut && error && error.name === 'AbortError') {
+            error = new JacredUnavailableError(jacDefault, 'нет ответа за ' + JACRED_TIMEOUT_MS + ' мс', true);
+        }
         console.error('Ошибка поиска:', error);
-        if (typeof window.showErrorBanner === 'function') {
-            if (error && error.jacredHost) {
-                window.showErrorBanner('Jacred недоступен',
-                    'Не отвечает ' + error.jacredHost + '. Адрес меняется в настройках.');
-            } else {
+        setJacredSearchFailure(error);
+        if (!showJacredUnavailableBanner(error)) {
+            if (typeof window.showErrorBanner === 'function') {
                 window.showErrorBanner('Ошибка поиска', error.message);
-            }
-        } else alert('Ошибка при поиске: ' + error.message);
+            } else alert('Ошибка при поиске: ' + error.message);
+        }
         return 0;
     } finally {
+        clearTimeout(timeoutId);
         hideLoading();
     }
 }

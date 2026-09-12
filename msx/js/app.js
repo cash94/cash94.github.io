@@ -1615,6 +1615,14 @@ function setupTouchControls(seekSlider, volumeSlider) {
       Math.abs(deltaX) < APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX &&
       Math.abs(deltaY) < APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX) {
 
+      // Список сознательно уже, чем CLICKABLE_SELECTORS: подсветку тапа мы
+      // даём всему кликабельному, а синтетический click досылаем только тому,
+      // у кого он действительно что-то делает.
+      //
+      // .skip-button сюда не входила, хотя в CLICKABLE_SELECTORS была: тап по
+      // «Пропустить» подсвечивал кнопку и на этом заканчивался — она отвечала
+      // только на OK с пульта. Это <div>, а не <button>, поэтому ни одна из
+      // проверок ниже её не ловила.
       var targetToClick = clickableElement || touchTarget;
       if (targetToClick && (
         targetToClick.closest('button') ||
@@ -1626,6 +1634,7 @@ function setupTouchControls(seekSlider, volumeSlider) {
         targetToClick.closest('.episode-item') ||
         targetToClick.closest('.audio-item') ||
         targetToClick.closest('.subtitle-item') ||
+        targetToClick.closest('.skip-button') ||
         targetToClick.id === 'close-search' ||
         targetToClick.id === 'filter-toggle' ||
         targetToClick.id === 'search-btn'

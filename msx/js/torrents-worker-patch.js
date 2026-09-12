@@ -22,10 +22,19 @@
      * это разные сообщения. Класс не заводим — патч грузится в общий скоуп,
      * а признака на объекте достаточно.
      */
-    function makeJacredError(host, reason) {
+    function makeJacredError(host, reason, timedOut) {
         var e = new Error('Jacred (' + host + ') недоступен: ' + reason);
         e.jacredHost = host;
+        e.jacredTimeout = !!timedOut;
         return e;
+    }
+
+    /**
+     * Сколько ждём ответа Jacred. Значение задаёт torrents.js — здесь только
+     * запасное на случай, если с зеркала приехала старая сборка без него.
+     */
+    function jacredTimeoutMs() {
+        return window.JACRED_TIMEOUT_MS || 15000;
     }
 
     // ==================== searchTorrentsLegacy ====================
@@ -53,6 +62,19 @@
         }
 
         showLoading('Поиск...');
+        if (typeof window.setJacredSearchFailure === 'function') window.setJacredSearchFailure(null);
+
+        // Ожидание ответа ограничено таймаутом: без него fetch к мёртвому
+        // хосту висит минутами, а всё это время под оверлеем поиска стоит
+        // открытая карточка фильма с крутилкой «Поиск…» и не отвечает.
+        // Прерываем тем же контроллером, что и отмену новым поиском, —
+        // различаем их флагом timedOut.
+        var timedOut = false;
+        var timeoutId = setTimeout(function () {
+            if (searchSequence !== _searchSequence) return;   // поиск уже сменился
+            timedOut = true;
+            controller.abort();
+        }, jacredTimeoutMs());
 
         try {
             // «Jacred не отвечает» отделяем от прочих ошибок: сеть, DNS,
@@ -63,6 +85,7 @@
             try {
                 response = await fetch(searchUrl, { signal: controller.signal });
             } catch (netError) {
+                if (timedOut) throw makeJacredError(jacDefault, 'нет ответа за ' + jacredTimeoutMs() + ' мс', true);
                 if (netError && netError.name === 'AbortError') throw netError;
                 throw makeJacredError(jacDefault, netError.message);
             }
@@ -109,18 +132,31 @@
             // карточке каталога прячет detail-view только если искать было что.
             return searchResults.length;
         } catch (error) {
-            if (error && error.name === 'AbortError') return 0;
+            // Прерывания бывают двух видов, и путать их нельзя. Новый поиск
+            // отменил старый — молчим: баннер о брошенном запросе только сбил
+            // бы с толку. Сработал таймаут — это отказ Jacred, даже если
+            // прилетел он из чтения тела ответа, а не из самого fetch.
+            if (error && error.name === 'AbortError' && !error.jacredHost) {
+                if (!timedOut) return 0;
+                error = makeJacredError(jacDefault, 'нет ответа за ' + jacredTimeoutMs() + ' мс', true);
+            }
             console.error('Ошибка поиска:', error);
-            if (typeof window.showErrorBanner === 'function') {
-                if (error && error.jacredHost) {
-                    window.showErrorBanner('Jacred недоступен',
-                        'Не отвечает ' + error.jacredHost + '. Адрес меняется в настройках.');
-                } else {
-                    window.showErrorBanner('Ошибка поиска', error.message);
-                }
-            } else alert('Ошибка при поиске: ' + error.message);
+            if (typeof window.setJacredSearchFailure === 'function') window.setJacredSearchFailure(error);
+            var shown = (typeof window.showJacredUnavailableBanner === 'function') &&
+                window.showJacredUnavailableBanner(error);
+            if (!shown) {
+                if (typeof window.showErrorBanner === 'function') {
+                    if (error && error.jacredHost) {
+                        window.showErrorBanner('Jacred недоступен',
+                            'Не отвечает ' + error.jacredHost + '. Адрес меняется в настройках.');
+                    } else {
+                        window.showErrorBanner('Ошибка поиска', error.message);
+                    }
+                } else alert('Ошибка при поиске: ' + error.message);
+            }
             return 0;
         } finally {
+            clearTimeout(timeoutId);
             if (searchSequence === _searchSequence) hideLoading();
         }
     };

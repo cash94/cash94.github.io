@@ -14,6 +14,20 @@ var EPISODES_LOAD_DELAY_MS = 1000;
 var EPISODES_LOAD_DELAY_SEARCH_MS = 1600;
 var MAX_PLAYBACK_RETRIES = 3;
 
+/**
+ * Сколько ждём ответа TorrStream по служебным запросам плеера.
+ *
+ * Все они (/api/file/info, дорожки, субтитры, таймкод, создание HLS-потока)
+ * идут к нашему серверу, а тот — к TorrServer. Если лежит любой из двух, fetch
+ * без ограничения висит столько, сколько отмерит системный стек TCP: на
+ * телевизоре это минуты чёрного экрана с оверлеем «Воспроизведение…».
+ * Пятнадцати секунд живой связке хватает даже на медленном канале.
+ */
+var PLAYER_FETCH_TIMEOUT_MS = 15000;
+
+/** Сколько раз подряд переподключаемся после сетевой ошибки HLS, прежде чем сдаться */
+var MAX_HLS_NETWORK_RETRIES = 5;
+
 // Переменные для таймкода
 var timecodeSaveInterval = null;
 var currentTimecodeData = {
@@ -53,6 +67,69 @@ var currentSkipInfo = null;
 var currentSkipRangeKey = null;
 var skipIntro = 0;
 var skipCredits = 0;
+
+/**
+ * fetch с ограничением по времени. Возвращает то же, что обычный fetch,
+ * но по истечении timeout запрос прерывается и наружу летит AbortError.
+ *
+ * Свой сигнал вызывающей стороны (отмена воспроизведения) не теряется:
+ * подписываемся на него и прерываем запрос вместе с ним.
+ */
+function fetchWithTimeout(url, options, timeoutMs) {
+  options = options || {};
+  var controller = new AbortController();
+  var timer = setTimeout(function () { controller.abort(); }, timeoutMs || PLAYER_FETCH_TIMEOUT_MS);
+  var outer = options.signal;
+  var onOuterAbort = function () { controller.abort(); };
+  if (outer) {
+    if (outer.aborted) controller.abort();
+    else outer.addEventListener('abort', onOuterAbort);
+  }
+  var opts = Object.assign({}, options, { signal: controller.signal });
+  return fetch(url, opts).finally(function () {
+    clearTimeout(timer);
+    if (outer) outer.removeEventListener('abort', onOuterAbort);
+  });
+}
+window.fetchWithTimeout = fetchWithTimeout;
+
+/**
+ * Баннер «воспроизведение не поднялось».
+ *
+ * Раньше на этом месте стоял alert(), а он на телевизоре не показывается вовсе:
+ * человек жал «смотреть», получал чёрный экран плеера — и всё. Причина у отказа
+ * почти всегда одна из двух, и различить их снаружи нельзя: либо не отвечает
+ * наш сервер, либо TorrServer не отдал ему данные о файле.
+ */
+function showPlaybackUnavailableBanner(detail) {
+  var text = 'TorrServer недоступен или TorrStream не смог получить информацию от TorrServer. ' +
+    'Попробуйте перезапустить данный контент или выбрать другую раздачу.';
+  if (typeof window.showErrorBanner === 'function') {
+    window.showErrorBanner('Не удалось начать воспроизведение', text);
+  } else {
+    alert(text + (detail ? '\n\n' + detail : ''));
+  }
+  if (detail) console.warn('▶️ Воспроизведение не поднялось:', detail);
+}
+window.showPlaybackUnavailableBanner = showPlaybackUnavailableBanner;
+
+/**
+ * Не удалось переключить серию / дорожку / субтитры.
+ *
+ * Все три пути перезапускают воспроизведение, поэтому и падают они по одной
+ * причине — связка TorrStream + TorrServer не ответила. Раньше на каждом стоял
+ * свой alert(), то есть на телевизоре — ничего: оверлей «Переключение…» гас, а
+ * почему ничего не переключилось, узнать было неоткуда.
+ */
+function showSwitchFailedBanner(what, detail) {
+  if (typeof window.showErrorBanner === 'function') {
+    window.showErrorBanner('Не удалось переключить ' + what,
+      'TorrServer недоступен или TorrStream не смог получить информацию от TorrServer. ' +
+      'Попробуйте перезапустить данный контент или выбрать другую раздачу.');
+  } else alert('Ошибка при переключении: ' + what);
+  if (detail) console.warn('🔀 Переключение (' + what + ') не удалось:', detail);
+}
+window.showSwitchFailedBanner = showSwitchFailedBanner;
 
 // ==================== ОВЕРЛЕИ И ПОЛНОЭКРАННЫЙ РЕЖИМ ====================
 /**
@@ -102,7 +179,23 @@ window.syncFullscreenOverlays = syncFullscreenOverlays;
 
 document.addEventListener('fullscreenchange', syncFullscreenOverlays);
 document.addEventListener('webkitfullscreenchange', syncFullscreenOverlays);
+// Часть ТВ-браузеров шлёт только свой префикс — без этих двух кнопка
+// «Пропустить» оставалась в <body> и в полноэкранном режиме была не видна
+document.addEventListener('mozfullscreenchange', syncFullscreenOverlays);
+document.addEventListener('MSFullscreenChange', syncFullscreenOverlays);
 
+/**
+ * Кнопка «Пропустить вступление / титры».
+ *
+ * До сих пор она отвечала только пульту: нажатие OK ловил обработчик keydown в
+ * control.js, а собственного слушателя у кнопки не было — ни клик мышью, ни тап
+ * пальцем не делали ничего. Тач-делегирование в app.js доводило тап до
+ * targetToClick.click(), но click-а никто не слушал, и вызов уходил в пустоту.
+ *
+ * Слушатель вешаем на сам узел, а не на document: в полноэкранном режиме
+ * syncFullscreenOverlays переносит кнопку внутрь полноэкранного элемента, и
+ * при переносе узла слушатели сохраняются — значит работает и там.
+ */
 function createSkipButton() {
   if (skipButton) {
     skipButton.remove();
@@ -112,7 +205,34 @@ function createSkipButton() {
   skipButton.id = 'skip-button';
   skipButton.className = 'skip-button hidden';
   skipButton.innerHTML = '⏩ Пропустить';
-  getOverlayHost().appendChild(skipButton);
+  // Кнопка по смыслу, а не по тегу: без role/tabindex её не видят ни
+  // скринридеры, ни нативная фокусировка в полноэкранном режиме
+  skipButton.setAttribute('role', 'button');
+  skipButton.setAttribute('tabindex', '0');
+
+  skipButton.addEventListener('click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof window.executeSkip === 'function') window.executeSkip();
+  });
+
+  // Пояс к делегированию в app.js: часть ТВ-браузеров после touchend не
+  // досылает синтетический click, и тап остался бы без ответа. Двойного
+  // срабатывания не будет — executeSkip первым делом гасит кнопку и снимает
+  // skipButtonActive, а без него сразу возвращает false. Всплытие не
+  // останавливаем: следом должен отработать app.js и снять .touch-active.
+  skipButton.addEventListener('touchend', function (e) {
+    if (e.cancelable) e.preventDefault();
+    if (typeof window.executeSkip === 'function') window.executeSkip();
+  }, { passive: false });
+
+  // В <body>, а не сразу в полноэкранный элемент, — и только потом отдаём
+  // syncFullscreenOverlays. Тот при первом переносе запоминает родителя как
+  // «дом», куда вернуть оверлей при выходе из fullscreen; создай мы кнопку
+  // внутри полноэкранного <video>, домом стал бы он — и после выхода кнопка
+  // уехала бы внутрь видео, где её не видно вовсе.
+  document.body.appendChild(skipButton);
+  syncFullscreenOverlays();
   return skipButton;
 }
 
@@ -134,6 +254,10 @@ window.executeSkip = function () {
 
 function showSkipButton(type, startMs, endMs) {
   if (!skipButton) createSkipButton();
+  // В полноэкранный режим могли войти событием, о котором нам не сообщили
+  // (у префиксов разный набор). Кнопка вне полноэкранного элемента не видна
+  // вовсе, поэтому хост сверяем на каждом показе, а не только по событию.
+  syncFullscreenOverlays();
   var rangeKey = type + '' + startMs + '' + endMs;
   if (skipButtonActive && currentSkipRangeKey === rangeKey) return;
   if (skipButtonActive) hideSkipButton();
@@ -674,7 +798,7 @@ async function loadTimecodeFromServer(hash, fileId) {
   if (!hash || !fileId) return 0;
   try {
     var savedClientId = localStorage.getItem('clientId');
-    var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
+    var response = await fetchWithTimeout(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
     if (response.ok) {
       var data = await response.json();
       if (data.success && data.timecode > 0) return data.timecode;
@@ -1079,7 +1203,7 @@ async function switchToEpisode(index, fileId) {
     var fileName = await getFileNameByHash(currentTorrentHash, fileId);
     if (fileName && AppState.currentDetailItem) updatePlayerTitle(AppState.currentDetailItem.title + ' - ' + fileName);
     renderEpisodesList(); updateEpisodeButtons();
-  } catch (error) { alert('Ошибка при переключении серии'); }
+  } catch (error) { showSwitchFailedBanner('серию', error && error.message); }
   finally {
     getEl('playback-overlay').classList.remove('active');
     document.querySelector('.playback-text').textContent = 'Воспроизведение...';
@@ -1483,6 +1607,46 @@ function resetPlaybackState() {
   if (videoPlayer) videoPlayer.removeEventListener('ended', handleVideoEnded);
 }
 
+/**
+ * Как выглядел экран до входа в плеер — чтобы вернуть его, если плеер не
+ * поднялся.
+ *
+ * transitionToPlayerScreen гасит карточку и секцию TorrServer безусловно, и
+ * при отказе воспроизведения человек оставался на чёрном #player-screen: alert
+ * («Ошибка воспроизведения: … duration») на телевизоре не виден, а под ним
+ * ничего нет. Возвращаем ровно то, что было, вместо showDetailView(): тот
+ * попутно сохраняет таймкод и дропает раздачу с сервера, а мы ничего и не
+ * начинали.
+ */
+function capturePreplaybackScreen() {
+  var dv = getEl('detail-view'), ts = getEl('torrserver-section'), cs = getEl('config-screen');
+  return {
+    screen: AppState.currentScreen,
+    detail: dv ? dv.style.display : null,
+    torrserver: ts ? ts.style.display : null,
+    config: cs ? cs.style.display : null
+  };
+}
+
+function restorePreplaybackScreen(snapshot) {
+  if (!snapshot) return;
+  var ps = getEl('player-screen');
+  if (ps) ps.style.display = 'none';
+  var dv = getEl('detail-view'), ts = getEl('torrserver-section'), cs = getEl('config-screen');
+  if (dv && snapshot.detail !== null) dv.style.display = snapshot.detail;
+  if (ts && snapshot.torrserver !== null) ts.style.display = snapshot.torrserver;
+  if (cs && snapshot.config !== null) cs.style.display = snapshot.config;
+  // Тик буфера отдельно гасить не надо: цепочка в app.js обрывается сама,
+  // как только currentScreen перестал быть 'player'
+  AppState.currentScreen = snapshot.screen;
+  hidePlayerLoading();
+  // Фокус ушёл в плеер вместе с clearFocused() — без возврата пульт мёртв
+  setTimeout(function () {
+    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+    if (typeof setFocus === 'function' && typeof focusableElements !== 'undefined' && focusableElements.length) setFocus(0);
+  }, 80);
+}
+
 function transitionToPlayerScreen() {
   AppState.currentScreen = 'player';
   // Тик буфера и проверки «Пропустить» заводится вместе с плеером и гаснет сам,
@@ -1528,7 +1692,10 @@ async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, sig
   var match = originalUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)\/?/);
   if (!match) {
     console.error('❌ Некорректный URL для воспроизведения:', originalUrl);
-    alert('Ошибка: Некорректная ссылка на видео');
+    // alert на телевизоре не показывается — только баннер
+    if (typeof window.showErrorBanner === 'function') {
+      window.showErrorBanner('Не удалось начать воспроизведение', 'Некорректная ссылка на видео');
+    } else alert('Ошибка: Некорректная ссылка на видео');
     return null;
   }
   currentTimecodeData.hash = match[1]; currentTimecodeData.fileId = match[2]; currentTimecodeData.timecode = 0;
@@ -1608,17 +1775,30 @@ async function initGstPlayback(metadata, initialSeek, signal) {
       AppState.hls.off(Hls.Events.MANIFEST_PARSED, manifestHandler);
     };
     AppState.hls.on(Hls.Events.MANIFEST_PARSED, manifestHandler);
+    var gstNetworkRetries = 0;
     AppState.hls.on(Hls.Events.ERROR, function (event, data) {
       if (data.fatal) {
         hidePlayerLoading(); videoPlayer.removeEventListener('timeupdate', timeUpdateHandler); videoPlayer.removeEventListener('canplay', canPlayHandler);
         clearTimeout(AppState._loadingTimeout);
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) AppState.hls.startLoad();
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          // Раньше здесь был безусловный startLoad(): с лежащим TorrServer он
+          // переподключался бесконечно, молча, и человек сидел перед чёрным
+          // экраном без единого сообщения
+          if (signal.aborted) return;
+          if (++gstNetworkRetries > MAX_HLS_NETWORK_RETRIES) {
+            showPlaybackUnavailableBanner('gst: сеть не отвечает после ' + MAX_HLS_NETWORK_RETRIES + ' попыток');
+            if (typeof showDetailView === 'function') showDetailView();
+            return;
+          }
+          showPlayerLoading('Обрыв связи, попытка ' + gstNetworkRetries + ' из ' + MAX_HLS_NETWORK_RETRIES + '...', null);
+          AppState.hls.startLoad();
+        }
         else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) AppState.hls.recoverMediaError();
       }
     });
     AppState._timeUpdateHandler = timeUpdateHandler; AppState._canPlayHandler = canPlayHandler; AppState._seekExecuted = seekExecuted;
     showPlayerLoading('Подготовка потока...', null);
-  } else throw new Error('Ваш браузер не поддерживает HLS');
+  } else throw new Error('Устройство не поддерживает HLS');
 }
 
 async function initTranscodingOffPlayback(initialSeek, signal) {
@@ -1689,7 +1869,14 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
     detachDirectListeners();
     if (signal.aborted || AppState.currentScreen !== 'player') return;
     hidePlayerLoading();
-    alert('Файл не воспроизводится напрямую: кодек/контейнер не поддерживается устройством');
+    // Причин две и различить их снаружи нельзя: либо TorrServer не отдал файл,
+    // либо устройство не умеет этот кодек. Баннер называет обе — alert здесь
+    // и вовсе не показывался
+    if (typeof window.showErrorBanner === 'function') {
+      window.showErrorBanner('Файл не воспроизводится напрямую',
+        'TorrServer не отдал поток либо кодек/контейнер не поддерживается устройством. ' +
+        'Попробуйте перезапустить контент, выбрать другую раздачу или включить перекодирование.');
+    } else alert('Файл не воспроизводится напрямую: кодек/контейнер не поддерживается устройством');
   };
 
   videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
@@ -1717,7 +1904,19 @@ async function initServerProxyPlayback(metadata, initialSeek, signal) {
   var multiChannelParam = (AppState.multiChannelEnabled === true) ? '&multiChannel=true' : '';
   var savedClientId = localStorage.getItem('clientId');
   var dvParam = '&dv=' + AppState.dvPreferred;
-  var response = await fetch(SERVER_URL + '/hls/stream?url=' + encodeURIComponent(AppState.videoUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam + subParam + dvParam, { signal: signal });
+  // fileInfo проверен в startHLSPlayback — сюда мы попадаем только с данными
+  var streamUrl = SERVER_URL + '/hls/stream?url=' + encodeURIComponent(AppState.videoUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam + subParam + dvParam;
+  var response;
+  try {
+    // С таймаутом: молчащий сервер иначе держит плеер открытым и пустым
+    response = await fetchWithTimeout(streamUrl, { signal: signal }, PLAYER_FETCH_TIMEOUT_MS);
+  } catch (e) {
+    // Отмену воспроизведения пропускаем наверх как есть, а таймаут — как
+    // обычную ошибку: наверху она превратится в баннер, а не в тихий выход
+    if (signal.aborted) throw e;
+    if (e && e.name === 'AbortError') throw new Error('Сервер не создал поток за ' + Math.round(PLAYER_FETCH_TIMEOUT_MS / 1000) + ' с');
+    throw e;
+  }
   if (!response.ok) throw new Error('HTTP ' + response.status);
   var data = await response.json();
   if (!data.success) throw new Error(data.error || 'Ошибка создания потока');
@@ -1790,10 +1989,22 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
     }
   };
   hls.off(Hls.Events.FRAG_CHANGED, fragChangedHandler); hls.on(Hls.Events.FRAG_CHANGED, fragChangedHandler);
+  var networkRetries = 0;
   var errorHandler = function (event, data) {
     if (signal.aborted || !data.fatal) return;
     switch (data.type) {
-      case Hls.ErrorTypes.NETWORK_ERROR: AppState.hls.startLoad(); break;
+      case Hls.ErrorTypes.NETWORK_ERROR:
+        // Число попыток ограничено: раньше startLoad() звался без счётчика, и
+        // при упавшем TorrStream/TorrServer плеер вечно и молча дёргал сервер
+        if (++networkRetries > MAX_HLS_NETWORK_RETRIES) {
+          hidePlayerLoading();
+          showPlaybackUnavailableBanner('HLS: сеть не отвечает после ' + MAX_HLS_NETWORK_RETRIES + ' попыток');
+          if (typeof showDetailView === 'function') showDetailView();
+          break;
+        }
+        showPlayerLoading('Обрыв связи, попытка ' + networkRetries + ' из ' + MAX_HLS_NETWORK_RETRIES + '...', null);
+        AppState.hls.startLoad();
+        break;
       case Hls.ErrorTypes.MEDIA_ERROR:
         var errorMessage = data.error ? data.error.message || data.error : ''; var errorDetails = data.details || '';
         var isUnsupportedCodec = errorMessage.toLowerCase().includes('codec') || errorDetails.toLowerCase().includes('codec');
@@ -1809,7 +2020,12 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
           showPlayerLoading('Ошибка воспроизведения, попытка ' + AppState.playbackRetryCount + '...');
           setTimeout(function () { if (AppState.currentStreamId && !signal.aborted) startHLSPlayback(AppState.videoUrl, videoPlayer.currentTime + AppState.seekOffset, false); }, 2000);
         } else {
-          hidePlayerLoading(); alert('Не удалось воспроизвести видео. Проверьте соединение или формат файла.');
+          hidePlayerLoading();
+          // alert на телевизоре не виден — раньше плеер просто закрывался молча
+          if (typeof window.showErrorBanner === 'function') {
+            window.showErrorBanner('Не удалось воспроизвести видео',
+              'Проверьте соединение или формат файла. Попробуйте перезапустить контент или выбрать другую раздачу.');
+          } else alert('Не удалось воспроизвести видео. Проверьте соединение или формат файла.');
           if (typeof showDetailView === 'function') showDetailView();
         }
         break;
@@ -1881,7 +2097,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   resetPlaybackState();
   currentPlaybackController = new AbortController(); var signal = currentPlaybackController.signal;
   currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; AppState.playbackRetryCount = 0;
-  if (!originalUrl || !originalUrl.trim()) { alert('Ошибка: URL не указан'); return false; }
+  if (!originalUrl || !originalUrl.trim()) {
+    if (typeof window.showErrorBanner === 'function') {
+      window.showErrorBanner('Не удалось начать воспроизведение', 'Ссылка на видео не указана');
+    } else alert('Ошибка: URL не указан');
+    return false;
+  }
   lastPlaybackFromSearch = fromSearch;
   //if (!AppState.transcodingFullOnOff) {
   var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
@@ -1895,12 +2116,25 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   //     var fileName = '';
   //   }
   // }
+  // Обычный режим собирает поток из данных ffprobe, и без них дальше идти
+  // некуда: раньше отсутствие fileInfo вылезало уже внутри
+  // initServerProxyPlayback как «Cannot read properties of null (reading
+  // duration)» — поверх уже открытого пустого плеера. Режимы gst и прямого
+  // файла fileInfo не используют, их не трогаем.
+  var needsFileInfo = !AppState.transcodingOnOff && !AppState.transcodingFullOnOff;
+  if (needsFileInfo && (!fileInfo || fileInfo.success === false)) {
+    showPlaybackUnavailableBanner('/api/file/info не отдал данные о ' +
+      currentTimecodeData.hash + '/' + currentTimecodeData.fileId);
+    return false;
+  }
+
   if (fileName) updatePlayerTitle(fileName);
   else if (AppState.currentDetailItem && AppState.currentDetailItem.title) updatePlayerTitle(AppState.currentDetailItem.title);
   if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
     var currentFileId = (episodeIndex !== null && currentEpisodeFiles[episodeIndex]) ? currentEpisodeFiles[episodeIndex].id : (metadata.match ? metadata.match[2] : null);
     setTimeout(function () { if (!signal.aborted) loadEpisodesInfo(AppState.currentDetailItem.hash, currentFileId); }, fromSearch ? EPISODES_LOAD_DELAY_SEARCH_MS : EPISODES_LOAD_DELAY_MS);
   }
+  var preplayback = capturePreplaybackScreen();
   transitionToPlayerScreen(); AppState.videoUrl = originalUrl;
   var videoPlayer = getEl('video-player');
   videoPlayer.removeEventListener('ended', handleVideoEnded); videoPlayer.addEventListener('ended', handleVideoEnded);
@@ -1915,7 +2149,13 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     showPlayerHint(); return true;
   } catch (error) {
     if (error.name === 'AbortError') return false;
-    alert('Ошибка воспроизведения: ' + error.message); return false;
+    // Поток не поднялся: сервер не ответил, не создал поток или отдал не-200.
+    // Плеер уже открыт, и оставить его так нельзя — под ним чёрный экран,
+    // а alert на телевизоре не виден. Возвращаем то, что было, и объясняем.
+    cancelCurrentPlayback();
+    restorePreplaybackScreen(preplayback);
+    showPlaybackUnavailableBanner(error && error.message);
+    return false;
   }
 }
 
@@ -2165,12 +2405,24 @@ async function updateCurrentFileProgress(hash, fileId, episodeIndex) {
   } catch (error) { }
 }
 
+/**
+ * Данные о файле от TorrStream (он берёт их у TorrServer через ffprobe).
+ *
+ * null здесь означает, что связка не ответила, — и это не мелочь: без
+ * fileInfo обычный режим не соберёт поток. Раньше на нуле всё падало внутри
+ * initServerProxyPlayback на metadata.fileInfo.duration, и человек видел
+ * «Ошибка воспроизведения: … reading 'duration'» поверх пустого плеера.
+ * Теперь проверку делает startHLSPlayback до входа в плеер.
+ */
 async function loadFileInfo(hash, fileId) {
   try {
     var savedClientId = localStorage.getItem('clientId');
-    var response = await fetch(SERVER_URL + '/api/file/info?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
+    var response = await fetchWithTimeout(SERVER_URL + '/api/file/info?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
     if (response.ok) return await response.json();
-  } catch (error) { }
+    console.warn('⚠️ /api/file/info вернул HTTP ' + response.status);
+  } catch (error) {
+    console.warn('⚠️ /api/file/info недоступен:', (error && error.name === 'AbortError') ? 'таймаут' : (error && error.message));
+  }
   return null;
 }
 
@@ -2232,7 +2484,7 @@ async function switchAudioTrack(trackIndex) {
     if (AppState.currentStreamId) { await fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' }); AppState.currentStreamId = null; }
     destroyHls(); await startHLSPlayback(playUrl, currentTime, lastPlaybackFromSearch, currentEpisodeIndex, trackIndex);
     currentAudioTrack = trackIndex; renderAudioTracks();
-  } catch (error) { alert('Ошибка при переключении аудиодорожки'); }
+  } catch (error) { showSwitchFailedBanner('аудиодорожку', error && error.message); }
   finally { getEl('playback-overlay').classList.remove('active'); document.querySelector('.playback-text').textContent = 'Воспроизведение...'; }
 }
 
@@ -2288,7 +2540,7 @@ async function saveAudioPreference(hash, fileId, audioTrack) {
 async function loadAudioPreference(hash, fileId) {
   try {
     var savedClientId = localStorage.getItem('clientId');
-    var response = await fetch(SERVER_URL + '/api/audio/pref/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
+    var response = await fetchWithTimeout(SERVER_URL + '/api/audio/pref/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
     if (response.ok) { var data = await response.json(); if (data.success && data.audioTrack !== null) return data.audioTrack; }
   } catch (error) { }
   return null;
@@ -2330,7 +2582,7 @@ async function switchSubtitleTrack(trackIndex) {
     destroyHls(); currentSubtitleTrack = trackIndex;
     await startHLSPlayback(playUrl, currentTime, lastPlaybackFromSearch, currentEpisodeIndex, currentAudioTrack);
     renderSubtitleTracks();
-  } catch (error) { alert('Ошибка при переключении субтитров'); }
+  } catch (error) { showSwitchFailedBanner('субтитры', error && error.message); }
   finally { getEl('playback-overlay').classList.remove('active'); document.querySelector('.playback-text').textContent = 'Воспроизведение...'; }
 }
 
@@ -2370,7 +2622,7 @@ async function saveSubtitlePreference(hash, fileId, subtitleTrack) {
 async function loadSubtitlePreference(hash, fileId) {
   try {
     var savedClientId = localStorage.getItem('clientId');
-    var response = await fetch(SERVER_URL + '/api/subtitle/pref/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
+    var response = await fetchWithTimeout(SERVER_URL + '/api/subtitle/pref/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
     if (response.ok) { var data = await response.json(); if (data.success && data.subtitleTrack !== null) return data.subtitleTrack; }
   } catch (error) { }
   return -1;
