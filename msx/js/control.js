@@ -1680,8 +1680,18 @@ function updateFocusableElements() {
     if (screen === 'torrents') {
         var searchInput = getEl('search-query'), searchBtn = getEl('search-btn'), settingsBtn = getEl('settings-btn');
         var tabTorrents = getEl('tab-torrents'), tabSearch = getEl('tab-search'), tabCatalog = getEl('tab-catalog');
-        var allCards = document.querySelectorAll('#torrents-grid .torrent-card');
-        var cards = []; for (var i = 0; i < allCards.length; i++) if (allCards[i] && allCards[i].offsetParent !== null) cards.push(allCards[i]);
+        // Видимость спрашиваем у самой сетки, а не у каждой плитки.
+        // renderTorrents кладёт в #torrents-grid ровно по карточке на торрент —
+        // ни пула скрытых, ни оконной видимости здесь нет, поэтому проверка на
+        // каждой отсеивала только один случай: скрыта вся сетка целиком. Его и
+        // проверяем, одним чтением вместо сотни обходов цепочки содержащих
+        // блоков на каждую пересборку списка.
+        var torrentsGrid = getEl('torrents-grid');
+        var cards = [];
+        if (torrentsGrid && torrentsGrid.offsetParent !== null) {
+            var allCards = torrentsGrid.querySelectorAll('.torrent-card');
+            for (var i = 0; i < allCards.length; i++) cards.push(allCards[i]);
+        }
         var cols = getTorrentGridColumns();
         var rows = []; for (var j = 0; j < cards.length; j += cols) rows.push(cards.slice(j, j + cols));
         window.torrentRows = { row1: [searchInput, searchBtn, settingsBtn].filter(Boolean), row2: [tabTorrents, tabSearch, tabCatalog].filter(Boolean), cardRows: rows, allCards: cards };
@@ -1692,7 +1702,12 @@ function updateFocusableElements() {
         // и «Настройки», поэтому перечислять вкладки поимённо больше не нужно.
         var navBtns = getTorrentTabs();
         for (var n = 0; n < navBtns.length; n++) if (focusList.indexOf(navBtns[n]) === -1) focusList.push(navBtns[n]);
-        focusableElements = focusList.filter(function (e) { return e && e.offsetParent !== null; });
+        // Повторной фильтрации по offsetParent здесь больше нет: она читала его
+        // ВТОРОЙ раз у каждой карточки (первый — при сборке cards выше), у обеих
+        // кнопок поиска (их проверили поимённо) и у кнопок шапки, которые
+        // getTorrentTabs и так отдаёт только видимыми. Ни одного нового
+        // элемента она не отсеивала, а список карточек бывает в сотню плиток.
+        focusableElements = focusList;
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
         _focusCache.elements = focusableElements.slice();
@@ -1734,8 +1749,23 @@ function updateFocusableElements() {
         // фокус незачем — как и в «Поиск», который перезапустил бы тот же
         // запрос. Замок ставит setSearchLocked (torrents.js).
         if (window.AppState && AppState.searchLocked) { q = null; sb = null; }
-        var ris = document.querySelectorAll('.search-result-item, .global-search-card');
-        var res = []; for (var i = 0; i < ris.length; i++) if (ris[i] && ris[i].offsetParent !== null) res.push(ris[i]);
+        // Карточки результатов спрашиваем через контейнер, а не каждую по
+        // отдельности. Оконная видимость гасит их классом .search-offscreen, а
+        // это visibility: hidden — offsetParent у таких карточек остаётся, то
+        // есть проверка на каждой не отсеивала ничего. Стоила она при этом
+        // обхода цепочки содержащих блоков для всей выдачи (у Jacred это сотни
+        // раздач), и повторялась не реже раза в _focusCache.ttl, пока человек
+        // идёт по списку стрелками. Скрывается результат только целиком, вместе
+        // с оверлеем, — его и проверяем, одним чтением.
+        //
+        // Тот же приём уже применён к сетке каталога (getCatalogGridCards) и к
+        // кнопкам шапки (getTorrentTabs), там об этом написано подробнее.
+        var resultsHost = getEl('search-results');
+        var res = [];
+        if (resultsHost && resultsHost.offsetParent !== null) {
+            var ris = resultsHost.querySelectorAll('.search-result-item, .global-search-card');
+            for (var i = 0; i < ris.length; i++) res.push(ris[i]);
+        }
 
         var fl = [q, ft, sb, cs];
 
