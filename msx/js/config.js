@@ -79,6 +79,11 @@ var AppState = {
   // откуда он запускал, а не на «Мои торренты».
   returnToSearchResults: false,
   searchResultsHidden: false,
+  // Чем кончился последний поиск торрентов: null — искали и нашли (или честно
+  // не нашли), объект {host, timedOut} — Jacred не ответил. По этому признаку
+  // кнопка «Торренты» в карточке каталога не рисует свой «Торренты не найдены»
+  // поверх баннера «Jacred недоступен» (torrents.js: setJacredSearchFailure).
+  lastSearchFailure: null,
   dvPreferred: false,
   trailerPlay: false,
   clearLastSelected: true,

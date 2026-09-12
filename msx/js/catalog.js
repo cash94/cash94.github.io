@@ -4538,6 +4538,8 @@ async function showCatalogDetail(item, index, posterUrl) {
             // сразу, синхронно с запуском поиска, — и при пустом ответе (или
             // недоступном Jacred) человек оставался на пустом экране поиска без
             // возможности вернуться к фильму иначе как кнопкой «назад».
+            // Поиск не висит бесконечно: ответа Jacred ждём JACRED_TIMEOUT_MS
+            // (torrents.js), после чего промис отдаёт 0 и мы возвращаемся сюда.
             // Пока идёт поиск, карточка остаётся на месте: оверлей поиска лежит
             // выше неё (z-index 1000 против 100) и всё равно её закрывает.
             showCatalogSearch(wb.dataset.searchTitle || title, knownPoster, item)
@@ -4558,7 +4560,14 @@ async function showCatalogDetail(item, index, posterUrl) {
                     dv.style.pointerEvents = 'auto';
                     if (mc) mc.style.pointerEvents = 'none';
 
-                    if (typeof window.showErrorBanner === 'function') {
+                    // Свой баннер — только когда поиск действительно дошёл до
+                    // Jacred и ничего не нашёл. Если Jacred не ответил (сеть,
+                    // мёртвый хост, таймаут), баннер про него поиск уже
+                    // показал, и «Торренты не найдены» поверх подменил бы
+                    // причину: человек решил бы, что раздач нет, хотя их и не
+                    // искали. Признак ставит setJacredSearchFailure
+                    // (torrents.js), сбрасывается он в начале каждого поиска.
+                    if (!AppState.lastSearchFailure && typeof window.showErrorBanner === 'function') {
                         window.showErrorBanner('Торренты не найдены',
                             'По запросу «' + (wb.dataset.searchTitle || title) + '» ничего нет');
                     }
