@@ -2114,7 +2114,16 @@ function releaseCardPoster(card) {
 }
 
 /** Свернуть чанк: карточки → одна распорка той же высоты */
-function dehydrateChunk(ch) {
+/**
+ * @param {number} [gapHint] зазор между строками, уже прочитанный вызывающей
+ *        стороной. Свёртка идёт циклом (trimGridChunks), а readGridRowGap —
+ *        это getComputedStyle: чтение стиля сразу после insertBefore и
+ *        removeChild предыдущей итерации заставляет браузер пересчитать стили
+ *        всей сетки синхронно, и так на каждый свёрнутый чанк. Зазор задаётся
+ *        CSS сетки и от того, сколько карточек мы только что вынули, не
+ *        зависит, поэтому читать его достаточно один раз на проход.
+ */
+function dehydrateChunk(ch, gapHint) {
     // Чанк в процессе разворота не сворачиваем: он дотечёт за пару кадров, и
     // следующий заход обрезки разберётся с ним уже как с обычным. Прерывать
     // на полпути значит остаться с половиной карточек и распоркой.
@@ -2145,7 +2154,7 @@ function dehydrateChunk(ch) {
      * Замера ещё нет (первая сетка, шрифт не приехал) — откатываемся на
      * измерение; шаг разворота тогда считается из него же, см. hydrateChunk. */
     var rows = Math.ceil((ch.end - ch.start) / cols);
-    var gap = readGridRowGap();
+    var gap = (typeof gapHint === 'number' && gapHint >= 0) ? gapHint : readGridRowGap();
     var boxH = catalogState.rowBoxH || 0;
     var height = (boxH > 0 && rows > 0)
         ? rows * boxH + (rows - 1) * gap
@@ -2490,10 +2499,16 @@ function trimGridChunks() {
         ? parseInt(focusedEl.dataset.catalogIndex, 10)
         : NaN;
 
+    // Зазор строк — до цикла: внутри он читался бы через getComputedStyle
+    // после вставок и удалений предыдущей итерации, то есть по принудительному
+    // пересчёту стилей сетки на каждый свёрнутый чанк. Величина одна и та же
+    // для всех итераций: её задаёт CSS сетки, а не её содержимое.
+    var rowGap = readGridRowGap();
+
     var removed = 0;
     for (var j = 0; j < live.length && live.length - removed > CHUNK_HYDRATED_KEEP; j++) {
         if (chunkDistanceToAnchors(live[j].index, anchors) <= CHUNK_FOCUS_GUARD) continue;
-        if (dehydrateChunk(live[j])) removed++;
+        if (dehydrateChunk(live[j], rowGap)) removed++;
     }
 
     if (!removed) return;

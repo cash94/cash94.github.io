@@ -144,6 +144,7 @@
         prefetchTimer: null,
         resizeTimer: null,
         cardWidth: 0,            // текущая ширина карточки (её же держит <style>)
+        heroTopCache: null,      // {h, w, top} — замер отступа баннера, см. cachedHeroTop
         detailFromHome: false,
         heroDetails: {},         // id_mediaType → полные детали TMDB
         hero: {
@@ -1137,25 +1138,73 @@
     }
 
     /**
+     * Отступ баннера от верха контейнера при нулевом margin.
+     *
+     * Замер дорог не сам по себе, а тем, что делается СРАЗУ ПОСЛЕ записи
+     * marginTop. Чтение геометрии после записи заставляет браузер пересчитать
+     * раскладку синхронно, посреди обработчика, — а layoutHome зовётся из
+     * showRow, то есть на каждое нажатие «вверх/вниз» на главной. На слабом
+     * Android TV это и есть рывок при переключении ряда.
+     *
+     * Величина зависит только от высоты липкой шапки и размера контейнера, а
+     * между нажатиями пульта ни то, ни другое не меняется. Поэтому меряем один
+     * раз, а ключом кэша служит сам размер контейнера — он уже прочитан
+     * вызывающей стороной, так что проверка бесплатна и сбрасывать кэш по
+     * resize отдельно не нужно.
+     *
+     * Сброс всё же есть (invalidateHeroTop): высоту шапки может изменить
+     * ui-customizer, не тронув размер окна.
+     */
+    function cachedHeroTop(hero, mc, availH, availW) {
+        var c = homeState.heroTopCache;
+        if (c && c.h === availH && c.w === availW) return c.top;
+
+        // Свой сдвиг снимаем перед замером, иначе прочитали бы позицию,
+        // поднятую прошлым проходом, и баннер уползал бы вверх. Возвращать его
+        // не нужно: layoutHome в конце пишет marginTop заново в любом случае.
+        hero.style.marginTop = '0px';
+        var mcTop = mc ? mc.getBoundingClientRect().top : 0;
+        var top = Math.max(0, Math.round(hero.getBoundingClientRect().top - mcTop));
+
+        homeState.heroTopCache = { h: availH, w: availW, top: top };
+        return top;
+    }
+
+    /** Замер отступа баннера устарел: сменились шрифт, плотность или размер карточек */
+    function invalidateHeroTop() { homeState.heroTopCache = null; }
+    window.invalidateHomeLayoutCache = invalidateHeroTop;
+
+    /**
      * Раскладка «баннер сверху, один ряд снизу». Считаем в JS, а не в CSS: высота
      * карточки приходит из ui-customizer с !important, высота липкой шапки в
      * каждом медиазапросе своя, а ряд должен упираться в нижний край экрана.
+     *
+     * Функция разделена на две фазы: сначала ВСЕ чтения геометрии, потом ВСЕ
+     * записи. Порядок здесь не косметика — раскладку форсирует только первое
+     * чтение после записи, поэтому слипшиеся чтения стоят один пересчёт на всю
+     * функцию, а чередование чтений с записями стоило бы по пересчёту на пару.
      */
     function layoutHome() {
         var hero = ensureHeroDom();
         if (!hero || !isHomeVisible()) return;
         var mc = el('main-container');
-        if (mc && mc.scrollTop) mc.scrollTop = 0;
+
+        // ===== ФАЗА ЧТЕНИЯ: ни одной записи до самого конца блока =====
         var avail = (mc && mc.clientHeight) || window.innerHeight || 720;
-
-        // Свой сдвиг снимаем перед замером, иначе прочитали бы позицию,
-        // поднятую прошлым проходом, и баннер уползал бы вверх
-        hero.style.marginTop = '0px';
-        var mcTop = mc ? mc.getBoundingClientRect().top : 0;
-        var heroTop = Math.max(0, Math.round(hero.getBoundingClientRect().top - mcTop));
-
-        var free = Math.max(200, avail - heroTop - HOME.BOTTOM_PAD_PX);
+        var availW = (mc && mc.clientWidth) || 0;
+        // Прокрутку читаем здесь же, а обнуляем ниже, вместе с остальными
+        // записями: раньше запись стояла перед замерами и делала грязной
+        // раскладку, которую тут же приходилось пересчитывать ради clientHeight
+        var needScrollReset = !!(mc && mc.scrollTop);
+        // Хром ряда — тоже чтение (offsetHeight), и стоять оно должно ДО
+        // cachedHeroTop: тот при промахе кэша пишет marginTop, и всё, что
+        // читается после него, стоило бы ещё одного пересчёта
         var chrome = rowChrome();
+        // Последним: при попадании в кэш не читает и не пишет вовсе
+        var heroTop = cachedHeroTop(hero, mc, avail, availW);
+
+        // ===== ФАЗА ВЫЧИСЛЕНИЙ: чистая арифметика, DOM не трогаем =====
+        var free = Math.max(200, avail - heroTop - HOME.BOTTOM_PAD_PX);
 
         var rowBlock = Math.round(free * HOME.ROW_SHARE);
         var maxRow = free - HOME.HERO_MIN_H;
@@ -1166,11 +1215,13 @@
         if (lim && w > lim) w = lim;
         w = Math.max(HOME.CARD_MIN_W, Math.min(HOME.CARD_MAX_W, w));
         var posterH = Math.round(w * HOME.CARD_ASPECT);
-        applyCardCss(w, posterH);
-
         // Остаток высоты — баннеру. Отрицательный margin заводит его под шапку:
         // та лежит выше по z-index и рисует поверх свой градиент.
         var heroH = Math.max(HOME.HERO_MIN_H, free - (posterH + chrome));
+
+        // ===== ФАЗА ЗАПИСИ: копится до конца кадра, пересчёта не вызывает =====
+        if (needScrollReset) mc.scrollTop = 0;
+        applyCardCss(w, posterH);
         hero.style.marginTop = (-heroTop) + 'px';
         hero.style.height = (heroH + heroTop) + 'px';
     }
@@ -1897,6 +1948,7 @@
         homeState.hero.key = null;
         homeState.hero.pendingKey = null;
         homeState.cardWidth = 0;
+        invalidateHeroTop();      // пока ходили по настройкам, шапка могла стать другой
         homeState.activated = true;
         setActiveRow(Math.min(homeState.activeRow, Math.max(0, homeState.rowEls.length - 1)));
 
@@ -2029,6 +2081,7 @@
             homeState.resizeTimer = setTimeout(function () {
                 homeState.resizeTimer = null;
                 homeState.cardWidth = 0;      // размер мог не измениться — но пересчитать надо
+                invalidateHeroTop();
                 layoutHome();
             }, 150);
         });

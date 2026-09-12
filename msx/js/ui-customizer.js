@@ -471,6 +471,10 @@
         } catch (e) { }
         // Число колонок изменилось — сбрасываем кэш навигации в control.js
         try { if (typeof window.invalidateColumnsCache === 'function') window.invalidateColumnsCache(); } catch (e) { }
+        // ...и замер отступа баннера на главной: шрифт с плотностью меняют
+        // высоту липкой шапки, а размер окна при этом тот же, и по нему одному
+        // главная устаревший замер не заметила бы (home.js: cachedHeroTop)
+        try { if (typeof window.invalidateHomeLayoutCache === 'function') window.invalidateHomeLayoutCache(); } catch (e) { }
         // ...и перекладываем нарезку сетки каталога: чанки виртуализации режутся
         // по строкам, а строка теперь другой ширины. Без этого распорка встала бы
         // посреди ряда и раскладка разъехалась бы (catalog.js: chunkAlignedToRows).
