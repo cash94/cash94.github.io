@@ -850,12 +850,10 @@ async function fetchCatalogActors(item) {
     var cached = getFromTmdbCache('actors', p);
     if (cached !== null) return cached;
     try {
-        var data = getFromTmdbCache('details', p);
-        if (!data) {
-            var url = '/api/tmdb/details?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type);
-            data = await safeFetch(url);
-            if (data && (data.id || data.overview)) saveToTmdbCache('details', p, data);
-        }
+        // Через fetchTmdbDetails, а не своим safeFetch: там дедупликация
+        // висящих запросов, и параллельный fetchCatalogItemDetails уже тянет
+        // ровно этот ответ — второй такой же запрос был чистой потерей времени
+        var data = await fetchTmdbDetails({ id: id, media_type: type });
         var actors = [];
         if (data && data.cast && Array.isArray(data.cast)) {
             var limit = Math.min(CATALOG_CONSTANTS.MAX_ACTORS, data.cast.length);
@@ -872,12 +870,38 @@ async function fetchCatalogActors(item) {
     }
 }
 
+/* Запросы /api/tmdb/details, уже висящие в сети, по ключу «id_тип».
+ *
+ * Открытие карточки стартует fetchCatalogItemDetails и fetchCatalogActors
+ * одновременно, и обе шли за одним и тем же ответом: кэш на момент старта пуст
+ * у обеих. Получалось два одинаковых запроса к прокси, а тот тянет с TMDB
+ * тяжёлый ответ с append_to_response=credits,videos,images,similar,
+ * recommendations. На канале телевизора они мешали друг другу, и открытие
+ * рекомендации ощутимо ждало.
+ *
+ * Теперь второй вызов подхватывает промис первого. */
+var tmdbDetailsInFlight = {};
+
 async function fetchTmdbDetails(item) {
     var id = item && item.id, type = (item && item.media_type) || 'movie';
     if (!id) return null;
     var p = { id: id, type: type };
     var cached = getFromTmdbCache('details', p);
     if (cached !== null) return cached;
+
+    var flightKey = id + '_' + type;
+    if (tmdbDetailsInFlight[flightKey]) return tmdbDetailsInFlight[flightKey];
+
+    var pending = _fetchTmdbDetailsNow(id, type, p);
+    tmdbDetailsInFlight[flightKey] = pending;
+    try {
+        return await pending;
+    } finally {
+        delete tmdbDetailsInFlight[flightKey];
+    }
+}
+
+async function _fetchTmdbDetailsNow(id, type, p) {
     var urls = [
         '/api/tmdb/details?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type),
         '/api/tmdb/item?id=' + encodeURIComponent(id) + '&type=' + encodeURIComponent(type)
@@ -1830,7 +1854,22 @@ function showCatalogGridView() {
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
 }
 
-function showCatalogRowsView() {
+/* Ряды показаны, но ещё невидимы и ждут revealCatalogRowsView. Флаг нужен,
+ * чтобы проявление не сработало там, где показ шёл обычным путём. */
+var catalogRowsRevealPending = false;
+
+/**
+ * @param {{deferReveal?: boolean}} [opts] deferReveal — положить ряды в поток
+ *        невидимыми и не проявлять. По ним уже можно считать геометрию и
+ *        ставить прокрутку, а зритель увидит их только после
+ *        revealCatalogRowsView(). Так возврат из категории показывает ряды
+ *        сразу на нужной строке, а не сверху с последующим прыжком.
+ */
+function showCatalogRowsView(opts) {
+    var deferReveal = !!(opts && opts.deferReveal);
+    // Прошлый отложенный показ мог не дойти до проявления (ушли с каталога
+    // на полпути) — новый заход начинается с чистого состояния
+    catalogRowsRevealPending = false;
     var rows = getCatalogRowsEl(), grid = getCatalogGridEl();
     // Сетку категории не держим в DOM: сотни карточек с постерами на слабом ТВ
     // дороже, чем повторная отрисовка при следующем входе в категорию.
@@ -1849,11 +1888,28 @@ function showCatalogRowsView() {
     // категории, а фокус всё равно уедет на первую карточку первого ряда
     // (restoreRowFocus без lastSelectedRowKey). Без сброса ряды сначала
     // появились бы на чужой позиции и только потом прыгнули наверх.
+    //
+    // При deferReveal обнулять нельзя: там позицию поставит restoreRowFocus,
+    // пока ряды невидимы, и ноль был бы лишним промежуточным состоянием.
     var mc = getEl('main-container');
-    if (mc) mc.scrollTop = 0;
+    if (mc && !deferReveal) mc.scrollTop = 0;
     // Оконная видимость: классы остались от прежней позиции скролла
     revealAllCatalogRows();
     var wasHidden = rows.style.display === 'none';
+
+    if (deferReveal) {
+        ensureCatalogGridVisible(rows);
+        rows.style.display = '';
+        // Невидимыми делаем только те ряды, которых на экране и не было:
+        // гасить уже показанные значило бы мигнуть на ровном месте
+        if (wasHidden) {
+            rows.style.opacity = '0';
+            catalogRowsRevealPending = true;
+        }
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        return;
+    }
+
     if (wasHidden && typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
         // startAfterLayout: ряды показываются прозрачными, браузер успевает
         // разложить и отрисовать их кадром, и только следующим кадром стартует
@@ -1870,6 +1926,26 @@ function showCatalogRowsView() {
     }
     // Сменился видимый контейнер (плюс сетка категории только что очищена)
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+}
+
+/** Проявить ряды, отложенные showCatalogRowsView({ deferReveal: true }) */
+function revealCatalogRowsView() {
+    var rows = getCatalogRowsEl();
+    if (!rows) return;
+    if (!catalogRowsRevealPending) return;
+    catalogRowsRevealPending = false;
+
+    if (typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
+        // startAfterLayout: ряды уже разложены, но постеры и оконная видимость
+        // могли дать ещё работу — переход стартует кадром позже, на чистом
+        // композиторе (подробности в showCatalogRowsView выше)
+        Animations.fadeIn(rows, {
+            duration: Animations.UI_FADE.content,
+            startAfterLayout: true
+        });
+    } else {
+        rows.style.opacity = '';
+    }
 }
 
 /* ==================== ЧАНКОВАЯ ВИРТУАЛИЗАЦИЯ СЕТКИ ====================
@@ -4514,6 +4590,22 @@ function isDetailStillCurrent(item) {
 }
 
 async function showCatalogDetail(item, index, posterUrl) {
+    // Переход карточка→карточка (рекомендация, актёр, «назад» по цепочке):
+    // старую уводим ДО того, как тронем содержимое. Ниже setupDetailLayout и
+    // resetDetailBackdrop чистят заголовок, фон и ряды — делать это на видимой
+    // карточке значит показать её развалившейся, а следом ещё и моргнуть
+    // чёрным. При открытии с нуля гасить нечего, и промис уже выполнен.
+    if (typeof Animations !== 'undefined' && typeof Animations.beginDetailSwap === 'function') {
+        await Animations.beginDetailSwap();
+    }
+    // Остатки прошлой карточки (заголовок, постер, подзаголовок, метаданные,
+    // блоки торрентного режима) снимаем ЗДЕСЬ, а не у вызывающей стороны:
+    // к этому моменту карточка уже погасла, и разбор её на части никто не
+    // видит. Раньше это делал «назад» по цепочке рекомендаций (app.js) прямо
+    // на видимой карточке.
+    if (typeof window.resetDetailBackground === 'function') {
+        try { window.resetDetailBackground(); } catch (e) { }
+    }
     var layout = setupDetailLayout(item, index, posterUrl);
     var dv = layout.dv, mc = layout.mc, aw = layout.aw, rw = layout.rw, savedScroll = layout.savedScroll;
     var title = getCatalogItemTitle(item), mt = item.media_type || 'movie';
@@ -4566,14 +4658,32 @@ async function showCatalogDetail(item, index, posterUrl) {
                         return;
                     }
 
-                    // Ничего не нашли — возвращаем человека в карточку фильма
-                    var so = getEl('search-overlay');
-                    if (so) so.classList.add('hidden');
+                    // Ничего не нашли — возвращаем человека в карточку фильма.
+                    // Порядок важен: сначала показываем карточку, и только
+                    // потом уводим оверлей. Он непрозрачный и лежит выше, так
+                    // что карточка проступает из-под него — вместо прежней
+                    // резкой подмены кадра.
                     AppState.currentScreen = 'detail';
                     AppState.searchReturnTo = null;
                     dv.style.display = 'block';
                     dv.style.pointerEvents = 'auto';
                     if (mc) mc.style.pointerEvents = 'none';
+
+                    var so = getEl('search-overlay');
+                    if (so) {
+                        if (typeof Animations !== 'undefined' && typeof Animations.fadeOut === 'function') {
+                            // Затухание начнётся с текущей прозрачности: если
+                            // оверлей ещё проявлялся, оно просто развернёт его
+                            // обратно, без скачка к единице
+                            Animations.fadeOut(so, {
+                                duration: Animations.UI_FADE.overlay,
+                                display: 'none',
+                                addHidden: true
+                            });
+                        } else {
+                            so.classList.add('hidden');
+                        }
+                    }
 
                     // Свой баннер — только когда поиск действительно дошёл до
                     // Jacred и ничего не нашёл. Если Jacred не ответил (сеть,
@@ -4605,6 +4715,15 @@ async function showCatalogDetail(item, index, posterUrl) {
     // Запускаем все независимые запросы одновременно
     var detailsPromise = fetchCatalogItemDetails(item);
     var actorsPromise = fetchCatalogActors(item);
+
+    /* Шапку рисуем ТОЛЬКО по ответу сети, и это осознанно.
+     *
+     * Была попытка показывать её раньше — из заготовки, которую несёт плитка
+     * «похожего» (там есть постер, кадр, описание, год и рейтинг). На бумаге
+     * выходило мгновенно, на телевизоре — хуже прежнего: пути к картинкам это
+     * ещё не картинки, их надо скачать и декодировать. Человек получал чёрную
+     * карточку с кнопками и ждал ровно столько же, только теперь глядя на
+     * полупустой экран вместо честного индикатора. Откатано. */
 
     // Ждём детали для рендера шапки (обычно самый быстрый запрос)
     var details = await detailsPromise;
@@ -4874,6 +4993,12 @@ function dropDetailUnderOverlay() {
 
     dv.style.display = 'none';
     dv.style.pointerEvents = 'none';
+    // Карточку прячем в обход animateDetailHide, поэтому подложку подмены
+    // снимаем сами: оставшись поднятой, она закрыла бы каталог чёрным, когда
+    // уйдёт оверлей поиска (animations.js: getDetailShade)
+    if (typeof Animations !== 'undefined' && typeof Animations.dropDetailShade === 'function') {
+        Animations.dropDetailShade();
+    }
     var mc = getEl('main-container');
     if (mc) mc.style.pointerEvents = 'auto';
 
@@ -4964,7 +5089,22 @@ function showCatalogSearch(q, pu, item) {
         st.classList.add('active');
         tt.classList.remove('active');
         ct.classList.remove('active');
-        so.classList.remove('hidden');
+        // Оверлей проявляется поверх карточки, а не подменяет её кадром.
+        // Держим момент, когда он станет непрозрачным: только под ним можно
+        // спрятать detail-view так, чтобы зритель этого не заметил (см. возврат
+        // промиса ниже и обработчик кнопки «Торренты» в showCatalogDetail).
+        var overlayShown = null;
+        if (typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
+            overlayShown = new Promise(function (resolve) {
+                Animations.fadeIn(so, {
+                    duration: Animations.UI_FADE.overlay,
+                    display: 'flex',
+                    onDone: resolve
+                });
+            });
+        } else {
+            so.classList.remove('hidden');
+        }
         if (si) { si.value = q; if (document.activeElement === si) si.blur(); }
         // Запрос задан карточкой — править его нельзя, иначе к найденному
         // прикрепится TMDB-контекст совсем другого фильма (см. setSearchLocked)
@@ -5007,7 +5147,15 @@ function showCatalogSearch(q, pu, item) {
         setTimeout(function () {
             if (typeof window.focusSearchHome === 'function') window.focusSearchHome(true);
         }, 200);
-        return searching;
+        // Нашли — отдаём ответ не раньше, чем оверлей стал непрозрачным. Иначе
+        // при мгновенном ответе (кэш, быстрый Jacred) вызывающая сторона
+        // спрячет detail-view посреди проявления, и на кадр-другой станет видно
+        // пустоту под полупрозрачным оверлеем.
+        if (!overlayShown) return searching;
+        return searching.then(function (n) {
+            if (!(n > 0)) return n;
+            return overlayShown.then(function () { return n; });
+        });
     }
     return Promise.resolve(0);
 }
@@ -5203,10 +5351,15 @@ async function showCatalogList(force) {
     var searchTab = getEl('tab-search');
     if (searchTab) searchTab.classList.remove('active');
 
-    // Быстрый путь: ряды уже в DOM — только показываем их обратно
+    // Быстрый путь: ряды уже в DOM — только показываем их обратно.
+    //
+    // Показ отложен: сначала ставим фокус и прокрутку на тот ряд, откуда ушли,
+    // и только потом проявляем. Раньше порядок был обратный — ряды появлялись
+    // на нулевой прокрутке, а через FOCUS_DELAY_MS уезжали на нужную строку, и
+    // этот переезд был отлично виден.
     if (!force && rows.querySelector('.catalog-row') &&
         window.catalogRows && window.catalogRows.length) {
-        showCatalogRowsView();
+        showCatalogRowsView({ deferReveal: true });
         // abortCatalogRequests() выше отключил наблюдателя, поднимаем заново:
         // недогруженные постеры должны продолжить появляться при скролле
         resetStrandedRowPosters();
@@ -5218,14 +5371,28 @@ async function showCatalogList(force) {
         // ряду, который вот-вот заменят.
         await refreshFavoritesRow();
 
-        requestAnimationFrame(function () {
-            if (AppState.currentScreen !== 'catalog' || catalogState.currentCatalog) return;
+        var finishRowsReturn = function () {
+            if (AppState.currentScreen !== 'catalog' || catalogState.currentCatalog) {
+                // Ушли с каталога, пока перестраивались, — ряды всё равно
+                // нельзя оставить невидимыми
+                revealCatalogRowsView();
+                return;
+            }
             if (typeof updateFocusableElements === 'function') updateFocusableElements();
-            setTimeout(function () {
-                if (AppState.currentScreen !== 'catalog' || catalogState.currentCatalog) return;
+            // Прокрутка мгновенная: ряды сейчас невидимы, ехать некуда и
+            // некому смотреть, а к моменту показа лента обязана уже стоять
+            // на месте (control.js: withInstantScroll)
+            if (typeof window.withInstantScroll === 'function') {
+                window.withInstantScroll(restoreRowFocus);
+            } else {
                 restoreRowFocus();
-            }, CATALOG_CONSTANTS.FOCUS_DELAY_MS);
-        });
+            }
+            revealCatalogRowsView();
+        };
+
+        // Кадр на раскладку рядов: до него геометрия ещё от прежнего состояния,
+        // и restoreRowFocus увёл бы прокрутку не туда
+        requestAnimationFrame(finishRowsReturn);
         return true;
     }
 
@@ -6705,7 +6872,22 @@ function backToCatalogList() {
     catalogState.personTrail = [];
     catalogState.personRoot = null;
     catalogState.person = null;
-    if (AppState.backCurrentCatalog === 'person') AppState.backCurrentCatalog = '';
+    /* Открытой категории больше нет — забываем её ПОЛНОСТЬЮ.
+     *
+     * Раньше здесь стояло `if (backCurrentCatalog === 'person')`, то есть ключ
+     * обычной категории переживал выход в ряды. Дальше он всплывал так:
+     * зашли в «Аниме», вышли в ряды, из ряда открыли карточку, из неё — актёра.
+     * openPersonCatalog снимает флаги на входе в экскурсию и, не найдя открытой
+     * сетки, берёт запасной источник — этот самый backCurrentCatalog, то есть
+     * «аниме». На выходе из экскурсии он возвращается обратно, ветка
+     * `!AppState.backCurrentCatalog` ниже не срабатывает, ряды не показываются,
+     * isCatalogRowsMode() отвечает «нет» — и «назад» из карточки уходило в
+     * «Аниме» вместо рядов. Лишний экран в цепочке возврата.
+     *
+     * Ключ восстанавливать некому и незачем: вход в любую категорию ставит его
+     * заново (loadCatalog), а в режиме рядов открытой категории нет по
+     * определению — рядом стоит catalogState.currentCatalog = null. */
+    AppState.backCurrentCatalog = '';
     catalogState.currentCatalog = null;
     catalogState.items = [];
     catalogState.cardElements = {};

@@ -42,6 +42,15 @@ var Animations = (function () {
     var DETAIL_FADE = {
         show: 0.38,          // появление #detail-view
         hide: 0.40,          // закрытие
+        // Уход старой карточки при переходе карточка→карточка (рекомендация,
+        // актёр, «назад» по цепочке). Короче обычного закрытия: это не выход из
+        // карточки, а подмена содержимого, и пауза между ними должна быть
+        // минимальной — иначе вместо мягкой смены получается моргание чёрным.
+        swapOut: 0.16,
+        // Страховка: карточка не имеет права остаться невидимой, если
+        // detailContentReady так и не позвали (ранний выход по
+        // isDetailStillCurrent, оборванная загрузка)
+        revealMaxMs: 4000,
         loader: 0.18,        // проявление/скрытие индикатора «Загрузка…»
         loaderDelayMs: 160,  // пауза перед показом индикатора: если всё из кэша, он не мигнёт
         loaderMaxMs: 4000,   // страховка — индикатор не должен зависнуть насовсем
@@ -53,6 +62,10 @@ var Animations = (function () {
     };
 
     var detailHideTween = null;        // текущее затухание при закрытии
+    var detailRevealPending = false;   // ждём detailContentReady, чтобы проявить карточку
+    var detailRevealTimer = null;      // страховка на случай, если его не позовут
+    var detailShadeEl = null;          // подложка на время подмены карточки
+    var detailSwapFaded = false;       // beginDetailSwap увёл карточку — ждём новую под подложкой
     var detailLoaderEl = null;         // оверлей «Загрузка…» (в body, поверх карточки)
     var detailLoaderShowTimer = null;  // отложенный показ индикатора
     var detailLoaderMaxTimer = null;   // страховочное скрытие индикатора
@@ -200,6 +213,49 @@ var Animations = (function () {
         return detailLoaderEl;
     }
 
+    /**
+     * Непрозрачная подложка под карточкой на время её подмены.
+     *
+     * Подмена идёт через прозрачность самого #detail-view, а под ним лежит
+     * #main-container с рядами или сеткой каталога (z-index 1 против 100). На
+     * середине перехода карточка полупрозрачна — и сквозь неё было видно
+     * каталог: при ходьбе по рекомендациям вперёд и назад он «просвечивал»
+     * снизу на каждом шаге.
+     *
+     * Прятать каталог нельзя: display:none обнуляет scrollTop, и позиция, к
+     * которой человек вернётся, потеряется. Поэтому просто закрываем его
+     * чёрным слоем ровно между ним и карточкой — z-index 99.
+     *
+     * Слой поднимается, пока карточка ещё непрозрачна, и опускается, только
+     * когда новая уже проявилась. Сам он не анимируется: его никто не видит,
+     * его задача — быть фоном перехода вместо каталога.
+     */
+    function getDetailShade(create) {
+        if (detailShadeEl && detailShadeEl.parentNode) return detailShadeEl;
+        if (!create) return null;
+
+        var host = document.body || getEl('detail-view');
+        if (!host) return null;
+
+        detailShadeEl = document.createElement('div');
+        detailShadeEl.id = 'detail-swap-shade';
+        // inset не используем — Chrome 66 его не знает (как и у индикатора выше)
+        detailShadeEl.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;' +
+            'background:#000;z-index:99;display:none;pointer-events:none;';
+        host.appendChild(detailShadeEl);
+        return detailShadeEl;
+    }
+
+    function raiseDetailShade() {
+        var el = getDetailShade(true);
+        if (el) el.style.display = 'block';
+    }
+
+    function dropDetailShade() {
+        var el = getDetailShade(false);
+        if (el) el.style.display = 'none';
+    }
+
     function clearDetailLoaderTimers() {
         if (detailLoaderShowTimer) {
             clearTimeout(detailLoaderShowTimer);
@@ -265,6 +321,7 @@ var Animations = (function () {
     function finishDetailHide(detailView, keepContent) {
         detailView.style.display = 'none';
         detailView.style.pointerEvents = 'none';
+        dropDetailShade();
         if (detailView.dataset) delete detailView.dataset.hiding;
 
         // Готовим элемент к следующему открытию — он должен быть непрозрачным
@@ -289,10 +346,115 @@ var Animations = (function () {
         }
     }
 
-    // Анимация появления детального просмотра
+    function clearDetailRevealTimer() {
+        if (detailRevealTimer) {
+            clearTimeout(detailRevealTimer);
+            detailRevealTimer = null;
+        }
+    }
+
+    /**
+     * Проявить карточку. Зовётся из detailContentReady, то есть когда шапка,
+     * актёры и похожие уже отрисованы, — и из страховочного таймера.
+     */
+    function revealDetail(detailView) {
+        if (!detailRevealPending) return null;
+        detailRevealPending = false;
+        clearDetailRevealTimer();
+
+        detailView = detailView || getEl('detail-view');
+        if (!detailView || detailView.style.display === 'none') {
+            dropDetailShade();
+            return null;
+        }
+
+        return fadeElement(detailView, 1, DETAIL_FADE.show, DETAIL_FADE.easeOut, function () {
+            // Только теперь: пока карточка не стала непрозрачной, снятие слоя
+            // снова открыло бы каталог — ровно на те кадры, ради которых он и
+            // поднимался
+            dropDetailShade();
+        });
+    }
+
+    /**
+     * Увести с экрана карточку, которую сейчас заменят другой.
+     *
+     * Зовётся ПЕРЕД тем, как тронуть содержимое: переход по рекомендации или по
+     * актёру начинается с setupDetailLayout и resetDetailBackdrop, а те чистят
+     * заголовок, фон и ряды прямо под носом у зрителя. Дальше animateDetailShow
+     * обнулял прозрачность одним кадром — вместе это и давало моргание чёрным
+     * на каждом переходе между карточками.
+     *
+     * Открытие с нуля (из сетки, из рядов, из поиска) сюда не попадает: гасить
+     * нечего, промис отдаётся выполненным и переход идёт как раньше.
+     *
+     * @returns {Promise<boolean>} true, если карточку действительно гасили
+     */
+    function beginDetailSwap() {
+        var detailView = getEl('detail-view');
+        if (!detailView || isElementHidden(detailView) || detailView.style.display !== 'block') {
+            return Promise.resolve(false);
+        }
+        // Карточка уже невидима и ждёт проявления: предыдущее открытие не
+        // дошло до detailContentReady, а его перебили новым. Гасить нечего —
+        // затухание из нуля в ноль только задержало бы новую карточку.
+        if (detailRevealPending) return Promise.resolve(false);
+
+        // Карточка выпотрошена и её сейчас соберут заново (возврат из поиска
+        // торрентов, ветка detailGutted в torrents.js: заголовок пуст, потому
+        // что resetDetailBackground прошёлся по ней, пока она стояла под
+        // оверлеем). Уводить пустоту не из чего — и незачем задерживать сборку.
+        //
+        // Но подложку всё равно поднимаем: карточка сейчас видима и через кадр
+        // станет прозрачной, а оверлей поиска над ней уже уходит. Без подложки
+        // в этот зазор было бы видно каталог. Снимет её проявление карточки.
+        var titleEl = getEl('detail-title-text');
+        if (titleEl && !String(titleEl.textContent || '').trim()) {
+            raiseDetailShade();
+            return Promise.resolve(false);
+        }
+
+        cancelDetailHide(detailView);
+        hideDetailLoading(true);
+        detailView.style.pointerEvents = 'none';   // на время подмены карточка не кликается
+
+        // Поднимаем ДО начала затухания, пока карточка ещё непрозрачна: слой
+        // встаёт незаметно, и сквозь тающую карточку виден он, а не каталог
+        raiseDetailShade();
+
+        detailSwapFaded = true;
+
+        return new Promise(function (resolve) {
+            // У fadeElement свой доводчик по таймеру, поэтому промис
+            // выполнится даже если переход не стартует (окно в фоне)
+            fadeElement(detailView, 0, DETAIL_FADE.swapOut, DETAIL_FADE.easeIn, function () {
+                resolve(true);
+            });
+        });
+    }
+
+    /**
+     * Появление детального просмотра.
+     *
+     * Два разных случая, и ведут они себя намеренно по-разному.
+     *
+     * ПОДМЕНА (перед этим отработал beginDetailSwap). Старая карточка уже
+     * погасла, под ней стоит подложка, и показывать нечего, пока новая не
+     * собрана: проявление откладывается до detailContentReady. Иначе на
+     * подмене было видно, как проявляется пустая карточка, а потом в неё по
+     * очереди впрыгивают шапка, актёры и похожие.
+     *
+     * ОТКРЫТИЕ С НУЛЯ (из сетки, из рядов, с главной). Здесь ждать нельзя:
+     * уходящий экран остаётся на виду, а он живой — на главной в баннере как
+     * раз останавливается трейлер. Карточка обязана закрыть его сразу, поэтому
+     * переход стартует здесь же, а содержимое доезжает под индикатором.
+     */
     function animateDetailShow() {
         var detailView = getEl('detail-view');
         if (!detailView) return null;
+
+        var afterSwap = detailSwapFaded;
+        detailSwapFaded = false;
 
         cancelDetailHide(detailView);
 
@@ -302,31 +464,55 @@ var Animations = (function () {
 
         // Убираем остатки прошлых анимаций (сдвиг/масштаб), прозрачность ведём
         // сами — CSS-переходом в fadeElement
-        {
-            clearTransform(detailView);
-            detailView.style.backgroundColor = 'rgb(0, 0, 0)';
-        }
+        clearTransform(detailView);
+        detailView.style.backgroundColor = 'rgb(0, 0, 0)';
         detailView.style.transition = '';
         detailView.style.opacity = '0';
 
         // «Загрузка…» — до вызова detailContentReady() из torrents.js / catalog.js
         showDetailLoading();
 
-        return fadeElement(detailView, 1, DETAIL_FADE.show, DETAIL_FADE.easeOut);
+        if (!afterSwap) {
+            detailRevealPending = false;
+            clearDetailRevealTimer();
+            // dropDetailShade в конце: при обычном открытии подложки нет и
+            // вызов холостой, а вот восстановление выпотрошенной карточки её
+            // поднимает (см. beginDetailSwap) — и снять её может только тот,
+            // кто довёл карточку до непрозрачности
+            return fadeElement(detailView, 1, DETAIL_FADE.show, DETAIL_FADE.easeOut, function () {
+                dropDetailShade();
+            });
+        }
+
+        detailRevealPending = true;
+        clearDetailRevealTimer();
+        // Карточка не имеет права остаться невидимой, если detailContentReady
+        // так и не позовут: showCatalogDetail выходит досрочно, когда за время
+        // загрузки успели открыть другую карточку (isDetailStillCurrent)
+        detailRevealTimer = setTimeout(function () {
+            detailRevealTimer = null;
+            revealDetail();
+        }, DETAIL_FADE.revealMaxMs);
+        return null;
     }
 
-    // Содержимое отрисовано — снимаем индикатор
+    // Содержимое отрисовано — снимаем индикатор и проявляем карточку
     function detailContentReady() {
         hideDetailLoading();
 
+        var detailView = getEl('detail-view');
+        if (!detailView || detailView.style.display === 'none') return;
+
+        if (detailRevealPending) { revealDetail(detailView); return; }
+
         // Страховка от полупрозрачного экрана: если появление уже не идёт
         // (переход снят или не стартовал), карточка обязана быть непрозрачной
-        var detailView = getEl('detail-view');
-        if (detailView && !detailView._fadeHandle && !detailHideTween &&
-            detailView.style.display !== 'none') {
+        if (!detailView._fadeHandle && !detailHideTween) {
             detailView.style.transition = '';
             detailView.style.opacity = '1';
         }
+        // Проявления не было — значит и подложку снимать больше некому
+        dropDetailShade();
     }
 
     /**
@@ -341,6 +527,12 @@ var Animations = (function () {
 
         cancelDetailHide(detailView);
         hideDetailLoading(true);
+        // Показываем немедленно — отложенное проявление больше не нужно и не
+        // должно сработать позже поверх уже показанной карточки
+        detailRevealPending = false;
+        detailSwapFaded = false;
+        clearDetailRevealTimer();
+        dropDetailShade();
 
         detailView.style.display = 'block';
         detailView.style.zIndex = '100';
@@ -372,6 +564,13 @@ var Animations = (function () {
         }
 
         hideDetailLoading(true);
+        // Карточку закрывают — проявлять больше нечего, и подложка обязана
+        // уйти вместе с ней: за карточкой должен показаться каталог, ради
+        // которого её и закрывают
+        detailRevealPending = false;
+        detailSwapFaded = false;
+        clearDetailRevealTimer();
+        dropDetailShade();
 
         // Закрытие уже идёт — второй вызов ничего не перезапускает
         if (detailHideTween) return detailHideTween;
@@ -882,6 +1081,10 @@ var Animations = (function () {
 
         // Основные анимации
         animateDetailShow: animateDetailShow,
+        beginDetailSwap: beginDetailSwap,
+        // Снять подложку подмены снаружи: карточку могут спрятать в обход
+        // animateDetailHide (dropDetailUnderOverlay в catalog.js)
+        dropDetailShade: dropDetailShade,
         animateDetailHide: animateDetailHide,
         ensureDetailVisible: ensureDetailVisible,
         detailContentReady: detailContentReady,

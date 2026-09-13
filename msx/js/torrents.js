@@ -1770,6 +1770,13 @@ async function showDetail(torrent) {
     // Рамки фокуса нового detail читают var(--focus-color) — убеждаемся, что
     // переменная выставлена до первой отрисовки (см. applyFocusColorVars выше)
     applyFocusColorVars();
+    // Открыта другая карточка (переход из каталожной в торрентную, смена
+    // раздачи) — уводим её ДО resetDetailBackground: тот чистит фон, заголовок
+    // и ряды, и на видимой карточке это выглядит как развал с последующим
+    // морганием. Открытие с нуля промис отдаёт выполненным сразу.
+    if (typeof Animations !== 'undefined' && typeof Animations.beginDetailSwap === 'function') {
+        await Animations.beginDetailSwap();
+    }
     resetDetailBackground();
     var known = knownTorrentMeta.get(String(torrent.hash || '').toLowerCase());
 

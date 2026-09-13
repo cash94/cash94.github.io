@@ -840,8 +840,12 @@ function setupNavigation() {
         if (detailHistory.length > 1) {
           detailHistory.pop();
           var lastItem = detailHistory[detailHistory.length - 1];
-          // Открывается другая карточка, затухания не будет — фон сбрасываем сами
-          resetDetailBackground();
+          // resetDetailBackground здесь больше не зовём. Он вычищает заголовок,
+          // постер, подзаголовок и метаданные — то есть разбирает карточку,
+          // которая ещё на экране, и «назад» по рекомендациям выглядело так:
+          // карточка разваливается, потом гаснет, потом собирается новая.
+          // Теперь чисткой занимается сам showCatalogDetail — уже после того,
+          // как beginDetailSwap увёл карточку с глаз.
           window.showCatalogDetail(lastItem, 0, null);
           console.log('🔙 Возврат к элементу:', lastItem.title || lastItem.name);
           return;
@@ -897,7 +901,11 @@ function restoreFocusAfterNavigation(returnTo, context) {
 
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
       hideDetailView();
-      restoreRowFocus();
+      // Позицию ставим мгновенно: карточка только начала таять и ещё
+      // непрозрачна, так что переезд к нужному ряду проходит незаметно.
+      // Плавная прокрутка здесь доезжала бы уже сквозь полупрозрачную карточку.
+      if (typeof window.withInstantScroll === 'function') window.withInstantScroll(restoreRowFocus);
+      else restoreRowFocus();
       return;
     }
 
