@@ -480,6 +480,8 @@ function invalidateFocusCache() {
     _rowsCache.rows = null;
     _gridCardsCache.gen = -1;
     _gridCardsCache.cards = null;
+    _searchResultsCache.gen = -1;
+    _searchResultsCache.items = null;
 }
 window.invalidateFocusCache = invalidateFocusCache;
 
@@ -518,8 +520,23 @@ function currentScreen() {
         if (_isScreenVisible(getEl('player-screen'))) return 'player';
         if (_isScreenVisible(getEl('sync-overlay'))) return 'sync';
         if (_isScreenVisible(getEl('config-screen'))) return 'config';
-        if (_isScreenVisible(getEl('detail-view'))) return 'detail';
+        /* Поиск проверяется РАНЬШЕ карточки, и это принципиально.
+         *
+         * Поиск торрентов из карточки намеренно оставляет #detail-view
+         * показанным под оверлеем: если ничего не нашлось, человека возвращают
+         * в неё, а прятать и показывать её заново — это мигание (см. кнопку
+         * «Торренты» в showCatalogDetail). Но оверлей лежит ВЫШЕ: z-index 1000
+         * против 100.
+         *
+         * Порядок проверок был обратный, и всё время, пока идёт поиск, пульт
+         * принадлежал невидимой карточке под оверлеем. Снаружи это выглядело
+         * так: фокуса на результатах нет, стрелки «не работают» (на самом деле
+         * они ходят по кнопкам и рядам скрытой карточки), а «начинает
+         * работать» ровно в тот момент, когда карточку наконец прячут.
+         *
+         * Кто нарисован выше — тому и пульт. */
         if (_isScreenVisible(getEl('search-overlay'))) return 'search';
+        if (_isScreenVisible(getEl('detail-view'))) return 'detail';
         if (_isScreenVisible(getEl('donate-overlay'))) return 'donate';
 
         // Главная (home.js). Проба идёт после всех оверлеев: _isScreenVisible
@@ -724,18 +741,47 @@ function getSearchFilters() {
     return elements;
 }
 
+var _searchResultsCache = { gen: -1, mode: null, items: null };
+
+/**
+ * Карточки выдачи для навигации пультом.
+ *
+ * Кэш по поколению DOM — как у getCatalogGridCards, и по той же причине:
+ * handleNavigation зовёт эту функцию на КАЖДОЕ нажатие стрелки, а раньше она
+ * обходила весь документ и спрашивала offsetParent у каждой карточки. На
+ * выдаче Jacred это 250 обходов цепочки содержащих блоков за одно нажатие,
+ * поверх такого же прохода в updateFocusableElements.
+ *
+ * Видимость спрашиваем у контейнера, а не у карточек: оконная видимость гасит
+ * их классом .search-offscreen, то есть visibility: hidden, при котором
+ * offsetParent остаётся — проверка на каждой не отсеивала ровно ничего.
+ * Скрывается выдача только целиком, вместе с оверлеем.
+ *
+ * Поколение двигает invalidateFocusCache(); renderSearchResults зовёт его на
+ * каждую вставленную пачку карточек.
+ */
 function getSearchResults() {
     var cm = typeof window.getCurrentSearchMode === 'function' ? window.getCurrentSearchMode() : 'torrentsearch';
-    if (cm === 'torrentsearch') {
-        var i = document.querySelectorAll('.search-result-item'), v = [];
-        for (var j = 0; j < i.length; j++) if (VISIBLE(i[j])) v.push(i[j]);
-        return v;
-    } else if (cm === 'globalsearch') {
-        var i = document.querySelectorAll('.global-search-card'), v = [];
-        for (var j = 0; j < i.length; j++) if (VISIBLE(i[j])) v.push(i[j]);
-        return v;
+    if (cm !== 'torrentsearch' && cm !== 'globalsearch') return [];
+
+    if (_searchResultsCache.gen === _focusGen && _searchResultsCache.mode === cm &&
+        _searchResultsCache.items &&
+        (!_searchResultsCache.items.length || _searchResultsCache.items[0].isConnected !== false)) {
+        return _searchResultsCache.items;
     }
-    return [];
+
+    var host = getEl('search-results');
+    var v = [];
+    if (host && host.offsetParent !== null) {
+        var sel = cm === 'torrentsearch' ? '.search-result-item' : '.global-search-card';
+        var found = host.querySelectorAll(sel);
+        for (var j = 0; j < found.length; j++) v.push(found[j]);
+    }
+
+    _searchResultsCache.gen = _focusGen;
+    _searchResultsCache.mode = cm;
+    _searchResultsCache.items = v;
+    return v;
 }
 
 /**
@@ -1699,12 +1745,9 @@ function updateFocusableElements() {
     if (screen === 'torrents') {
         var searchInput = getEl('search-query'), searchBtn = getEl('search-btn'), settingsBtn = getEl('settings-btn');
         var tabTorrents = getEl('tab-torrents'), tabSearch = getEl('tab-search'), tabCatalog = getEl('tab-catalog');
-        // Видимость спрашиваем у самой сетки, а не у каждой плитки.
-        // renderTorrents кладёт в #torrents-grid ровно по карточке на торрент —
-        // ни пула скрытых, ни оконной видимости здесь нет, поэтому проверка на
-        // каждой отсеивала только один случай: скрыта вся сетка целиком. Его и
-        // проверяем, одним чтением вместо сотни обходов цепочки содержащих
-        // блоков на каждую пересборку списка.
+        // Видимость спрашиваем у самой сетки: renderTorrents кладёт в неё ровно
+        // по карточке на торрент, ни пула скрытых, ни оконной видимости здесь
+        // нет — проверка на каждой ловила только «скрыта вся сетка целиком»
         var torrentsGrid = getEl('torrents-grid');
         var cards = [];
         if (torrentsGrid && torrentsGrid.offsetParent !== null) {
@@ -1721,11 +1764,9 @@ function updateFocusableElements() {
         // и «Настройки», поэтому перечислять вкладки поимённо больше не нужно.
         var navBtns = getTorrentTabs();
         for (var n = 0; n < navBtns.length; n++) if (focusList.indexOf(navBtns[n]) === -1) focusList.push(navBtns[n]);
-        // Повторной фильтрации по offsetParent здесь больше нет: она читала его
-        // ВТОРОЙ раз у каждой карточки (первый — при сборке cards выше), у обеих
-        // кнопок поиска (их проверили поимённо) и у кнопок шапки, которые
-        // getTorrentTabs и так отдаёт только видимыми. Ни одного нового
-        // элемента она не отсеивала, а список карточек бывает в сотню плиток.
+        // Повторной фильтрации по offsetParent нет: карточки отобраны выше,
+        // кнопки поиска проверены поимённо, а getTorrentTabs и так отдаёт
+        // только видимые. Она читала offsetParent ВТОРОЙ раз у каждой плитки.
         focusableElements = focusList;
         _focusCache.timestamp = now;
         _focusCache.screen = screen;
@@ -1769,16 +1810,9 @@ function updateFocusableElements() {
         // запрос. Замок ставит setSearchLocked (torrents.js).
         if (window.AppState && AppState.searchLocked) { q = null; sb = null; }
         // Карточки результатов спрашиваем через контейнер, а не каждую по
-        // отдельности. Оконная видимость гасит их классом .search-offscreen, а
-        // это visibility: hidden — offsetParent у таких карточек остаётся, то
-        // есть проверка на каждой не отсеивала ничего. Стоила она при этом
-        // обхода цепочки содержащих блоков для всей выдачи (у Jacred это сотни
-        // раздач), и повторялась не реже раза в _focusCache.ttl, пока человек
-        // идёт по списку стрелками. Скрывается результат только целиком, вместе
-        // с оверлеем, — его и проверяем, одним чтением.
-        //
-        // Тот же приём уже применён к сетке каталога (getCatalogGridCards) и к
-        // кнопкам шапки (getTorrentTabs), там об этом написано подробнее.
+        // отдельности: .search-offscreen — это visibility: hidden, offsetParent
+        // при нём остаётся, то есть проверка на каждой не отсеивала ничего, а
+        // стоила обхода цепочки содержащих блоков для всей выдачи
         var resultsHost = getEl('search-results');
         var res = [];
         if (resultsHost && resultsHost.offsetParent !== null) {

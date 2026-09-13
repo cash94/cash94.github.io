@@ -3766,11 +3766,12 @@ function hideSearchResults() {
             duration: Animations.UI_FADE.overlay,
             display: 'none',
             addHidden: true,
-            onDone: function () { resetSearchVisibilityWindow(); var sr = getEl('search-results'); if (sr) sr.innerHTML = ''; }
+            onDone: function () { resetSearchVisibilityWindow(); releaseGlobalPosters(); var sr = getEl('search-results'); if (sr) sr.innerHTML = ''; }
         });
     } else {
         searchOverlay.classList.add('hidden'); searchOverlay.style.display = 'none';
         resetSearchVisibilityWindow();
+        releaseGlobalPosters();
         var searchResultsEl = getEl('search-results'); if (searchResultsEl) searchResultsEl.innerHTML = '';
     }
     if (returnTo === 'detail') {
@@ -4358,6 +4359,9 @@ function renderSearchResults() {
     searchResultsDiv._renderId = renderId;
     // Прежние карточки сейчас уедут из DOM вместе с innerHTML
     resetSearchVisibilityWindow();
+    // В том числе сетка глобального поиска, если выдачу Jacred открыли поверх
+    // неё: её постеры иначе остались бы висеть под наблюдателем
+    releaseGlobalPosters();
 
     if (filteredResults.length === 0) {
         searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>' + searchResults.length + '</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"' : 'Введите запрос для поиска') + '</div>';
@@ -4398,14 +4402,37 @@ function renderSearchResults() {
 
     var index = 0;
     var CHUNK_SIZE = 30;
+
     function renderChunk() {
         if (searchResultsDiv._renderId !== renderId) return;
+
+        /* Человек ведёт фокус — хвост списка не дорисовываем.
+         *
+         * Тот же приём, что у обрезки чанков каталога (trimGridChunks в
+         * catalog.js): пока идёт серия нажатий, кадр должен принадлежать
+         * навигации, а не вставке карточек, которых на экране всё равно ещё
+         * нет. На WebView 66 вставка тридцати карточек с пересчётом раскладки
+         * растущего списка занимает кадр целиком, и нажатия копятся в очереди —
+         * отсюда и ощущение, что до конца отрисовки навигации нет. На короткой
+         * выдаче кадров мало и заметить нечего, на полусотне и больше — видно.
+         *
+         * Порцию НЕ уменьшаем: раскладка пересчитывается на каждую вставку и
+         * стоит тем дороже, чем длиннее уже собранный список. Мелкие порции
+         * растягивают общее время отрисовки в разы — проверено моделью, где
+         * 250 карточек по 4 штуки за кадр обошлись вдвое дороже, чем по 30.
+         * Правильный размен здесь — не дробить кадры, а уступать их вводу. */
+        if (window.navHold) { setTimeout(renderChunk, 120); return; }
+
         var html = '';
         var end = Math.min(index + CHUNK_SIZE, filteredResults.length);
         for (; index < end; index++) html += buildSearchResultMarkup(filteredResults[index], index);
         searchResultsDiv.insertAdjacentHTML('beforeend', html);
         // Карточки приходят пачками, значит и наблюдателю их отдаём пачками
         observeSearchResultItems(searchResultsDiv);
+        // Навигация держится на поколении DOM: и список фокусируемых, и выдача
+        // для стрелок (getSearchResults в control.js). Без этого свежая пачка
+        // не попала бы в навигацию.
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
         if (index < filteredResults.length) requestAnimationFrame(renderChunk);
     }
     requestAnimationFrame(renderChunk);
@@ -4467,11 +4494,32 @@ function getRatingColor(rating) { if (rating >= 8) return '#4caf50'; if (rating 
 
 function showGlobalSearchResults() { renderFilteredGlobalResults(globalSearchResults); }
 
+/* Наблюдатель ленивых постеров глобального поиска.
+ *
+ * Держим ссылку, потому что его надо ОТКЛЮЧАТЬ. Раньше он был локальной
+ * переменной: каждая перерисовка выдачи (смена запроса, переключение фильтра
+ * «Фильмы/Сериалы») заводила новый, а старый оставался жив и продолжал
+ * наблюдать за сорока уже выброшенными из DOM картинками. Отпустить их сборщик
+ * не мог, а это до сорока декодированных постеров 342×513 — десятки мегабайт,
+ * которые на телевизоре никуда не девались и давили на память ровно тогда,
+ * когда следом открывался тяжёлый список выдачи Jacred.
+ */
+var globalPosterObserver = null;
+
+function releaseGlobalPosters() {
+    if (!globalPosterObserver) return;
+    try { globalPosterObserver.disconnect(); } catch (e) { }
+    globalPosterObserver = null;
+}
+window.releaseGlobalPosters = releaseGlobalPosters;
+
 function renderFilteredGlobalResults(results) {
     var searchResultsDiv = getEl('search-results');
     var searchOverlay = getEl('search-overlay');
     if (!searchResultsDiv) return;
     if (searchOverlay) searchOverlay.classList.remove('hidden');
+    // Прежняя сетка сейчас уедет из DOM — снимаем с неё наблюдателя
+    releaseGlobalPosters();
 
     if (results.length === 0) {
         searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>0</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Ничего не найдено для "' + escapeHtml(currentSearchQuery) + '" в TMDB' : 'Введите запрос для поиска') + '</div>';
@@ -4510,17 +4558,32 @@ function renderFilteredGlobalResults(results) {
 
         var posterDiv = document.createElement('div');
         posterDiv.className = 'global-search-poster';
-        posterDiv.style.cssText = 'position: relative; aspect-ratio: 2/3; overflow: hidden; background: linear-gradient(135deg, #1a1a2e, #16213e);';
+        /* Пропорции через height:0 + padding-bottom, а НЕ через aspect-ratio.
+         *
+         * aspect-ratio появился только в Chrome 88, а на телевизорах живёт
+         * WebView 66 — там свойство просто игнорируется. Высоту бокса нечем
+         * задать, и её начинает диктовать сама картинка: каждый догруженный
+         * постер менял высоту своей строки, а с ней и всю сетку. Сорок картинок
+         * — сорок полных пересчётов раскладки, да ещё и позиции под фокусом
+         * уезжают из-под человека. Это и есть «тяжело даётся навигация».
+         *
+         * padding-bottom: 150% (те же 2/3) понимают все, и место под постер
+         * зарезервировано до загрузки — сетка встаёт один раз.
+         *
+         * В styles.css такой фоллбэк уже есть для .torrent-poster, но он
+         * прописан под @supports not (aspect-ratio) и инлайновый стиль перебить
+         * не может — поэтому здесь сразу совместимый вариант. */
+        posterDiv.style.cssText = 'position: relative; width: 100%; height: 0; padding-bottom: 150%; overflow: hidden; background: linear-gradient(135deg, #1a1a2e, #16213e);';
 
         if (posterUrl) {
             var img = document.createElement('img');
             img.dataset.src = posterUrl; // Картинка не грузится сразу!
             img.alt = title;
-            img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.3s;';
+            img.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.3s;';
             img.className = 'lazy-poster';
             posterDiv.appendChild(img);
         } else {
-            posterDiv.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">' + mediaType + '</div>';
+            posterDiv.innerHTML = '<div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 48px;">' + mediaType + '</div>';
         }
 
         if (rating) {
@@ -4544,6 +4607,10 @@ function renderFilteredGlobalResults(results) {
     grid.appendChild(fragment);
     searchResultsDiv.appendChild(grid);
 
+    // Навигация пультом держится на поколении DOM: без этого свежая сетка
+    // карточек не попала бы ни в список фокусируемых, ни в getSearchResults
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+
     // IntersectionObserver для ленивой загрузки картинок (поддерживается в Chrome 51+)
     if ('IntersectionObserver' in window) {
         var lazyImages = grid.querySelectorAll('.lazy-poster');
@@ -4554,7 +4621,7 @@ function renderFilteredGlobalResults(results) {
                     img.src = img.dataset.src;
                     img.onload = function () { img.style.opacity = '1'; };
                     img.onerror = function () {
-                        img.parentElement.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px;">🎬</div>';
+                        img.parentElement.innerHTML = '<div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 48px;">🎬</div>';
                     };
                     observer.unobserve(img);
                 }
@@ -4564,6 +4631,7 @@ function renderFilteredGlobalResults(results) {
         });
 
         lazyImages.forEach(function (img) { imageObserver.observe(img); });
+        globalPosterObserver = imageObserver;
     } else {
         // Фоллбэк для совсем старых браузеров
         var lazyImages = grid.querySelectorAll('.lazy-poster');
