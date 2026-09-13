@@ -59,6 +59,25 @@ var SCROLL_SMOOTH = {
     ease: 'none'
 };
 
+/* Прокрутка без анимации на время одной операции.
+ *
+ * Нужна там, где позицию восстанавливают под невидимым содержимым: возврат из
+ * сетки категории к рядам каталога сначала ставит фокус на тот ряд, откуда
+ * ушли, и только потом проявляет ряды. Ехать туда плавно бессмысленно —
+ * зритель этого всё равно не видит, зато к моменту показа лента обязана уже
+ * стоять на месте, иначе ряды появятся сверху и дёрнутся на нужную строку.
+ *
+ * Счётчик, а не флаг: вложенные вызовы не должны гасить друг друга.
+ */
+var _instantScrollDepth = 0;
+
+function withInstantScroll(fn) {
+    _instantScrollDepth++;
+    try { return fn(); }
+    finally { _instantScrollDepth--; }
+}
+window.withInstantScroll = withInstantScroll;
+
 // ==================== СОСТОЯНИЕ ====================
 var focusableElements = [];
 var currentFocusIndex = 0;
@@ -2782,7 +2801,7 @@ function setScrollX(container, left, smooth, duration) {
             speedDuration(left - rest, scrollAnimSpeedX(SCROLL_SMOOTH.speedX)),
             scrollAnimDurationX(NAV_STEP_BASE_MS / 1000));
 
-    var animated = smooth && duration > 0;
+    var animated = smooth && !_instantScrollDepth && duration > 0;
 
     // Уже на месте (с учётом идущего твина) — холостой твин не заводим: он
     // ничего не двигает, но держит признак «идёт прокрутка», а на нём висит откладывание
@@ -2833,7 +2852,7 @@ function applyScroll(container, vars, smooth, duration, ease) {
             NAV_STEP_BASE_MS / 1000);
     }
 
-    var animated = smooth && typeof duration === 'number' && duration > 0;
+    var animated = smooth && !_instantScrollDepth && typeof duration === 'number' && duration > 0;
 
     // Уже на месте — твина не заводим.
     //

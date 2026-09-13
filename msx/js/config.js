@@ -155,16 +155,66 @@ function getAuthHeaders() {
   return headers;
 }
 
-// Показать/скрыть загрузочный оверлей
+/* Показать/скрыть загрузочный оверлей.
+ *
+ * Оверлей чёрный и во весь экран (#loading-overlay в styles.css), поэтому
+ * мгновенное появление и исчезновение читаются как два щелчка. Особенно заметно
+ * при поиске торрентов из карточки фильма: карточка → чёрный экран со
+ * спиннером → результаты, и всё это резкими сменами кадра.
+ *
+ * С затуханием переход выходит непрерывным, и заодно решается вторая половина
+ * задачи: под непрозрачным оверлеем можно спокойно спрятать detail-view — для
+ * зрителя этого просто не существует.
+ *
+ * Прозрачность ведём инлайном, а видимостью по-прежнему управляет класс
+ * .active: display:none обрывает переход мгновенно, поэтому снимаем класс
+ * только в конце затухания.
+ */
+var LOADING_FADE_SEC = 0.22;
+
+function loadingFadeDuration() {
+  if (typeof Animations !== 'undefined' && Animations.UI_FADE &&
+    typeof Animations.UI_FADE.overlay === 'number') return Animations.UI_FADE.overlay;
+  return LOADING_FADE_SEC;
+}
+
 function showLoading(message) {
   var overlay = getEl('loading-overlay');
-  overlay.classList.add('active');
+  if (!overlay) return;
   var textEl = document.querySelector('.loading-text');
   if (textEl) textEl.textContent = message || 'Загрузка...';
+
+  var canFade = typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function';
+  if (!canFade) { overlay.classList.add('active'); return; }
+
+  // Стартовая прозрачность до показа: иначе fadeIn увидит уже непрозрачный
+  // элемент и решит, что анимировать нечего
+  if (!overlay.classList.contains('active')) overlay.style.opacity = '0';
+  overlay.classList.add('active');
+  Animations.fadeIn(overlay, { duration: loadingFadeDuration() });
 }
 
 function hideLoading() {
-  getEl('loading-overlay').classList.remove('active');
+  var overlay = getEl('loading-overlay');
+  if (!overlay) return;
+
+  var canFade = typeof Animations !== 'undefined' && typeof Animations.fadeOut === 'function';
+  if (!canFade || !overlay.classList.contains('active')) {
+    overlay.classList.remove('active');
+    overlay.style.opacity = '';
+    return;
+  }
+
+  // keepFaded: прозрачность нельзя возвращать раньше, чем снят .active, —
+  // иначе оверлей на кадр вспыхнет обратно перед тем, как исчезнуть
+  Animations.fadeOut(overlay, {
+    duration: loadingFadeDuration(),
+    keepFaded: true,
+    onDone: function () {
+      overlay.classList.remove('active');
+      overlay.style.opacity = '';
+    }
+  });
 }
 
 // НОВАЯ ФУНКЦИЯ: Определение платформы
