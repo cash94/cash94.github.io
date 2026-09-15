@@ -187,8 +187,16 @@
         "overview": "Get Music Video metadata from IMVDb",
         "owner": "jellyfin",
         "category": "Music",
-        "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-imvdb.png",
+        "imageUrl": "https://repo.jellyfin.org/files/plugin/images/jellyfin-plugin-imvdb.png",
         "versions": [
+            {
+                "version": "7.0.0.0",
+                "changelog": "- Maintenance (#40) @Shadowghost, @crobibero",
+                "targetAbi": "12.1.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/imvdb/imvdb_7.0.0.0.zip",
+                "checksum": "a1c89a035556e9c96a94d9ac22ca0eb2",
+                "timestamp": "2026-09-15T22:39:43Z"
+            },
             {
                 "version": "6.0.0.0",
                 "changelog": "- Unstable: Update to latest Jellyfin preview packages (#37) @crobibero, @jellyfin-bot\n- Revert \"Update dependency Microsoft.Extensions.Http to v10\" (#33) @Shadowghost\n\n### Dependency updates ###\n- Update dependency Microsoft.Extensions.Http to 9.0.11 (#22) [@renovate[bot]](https://github.com/apps/renovate)\n- Update dependency Microsoft.Extensions.Http to v10 (#31) [@renovate[bot]](https://github.com/apps/renovate)",
@@ -486,6 +494,14 @@
         "category": "LiveTV",
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-nextpvr.png",
         "versions": [
+            {
+                "version": "15.0.0.0",
+                "changelog": "- Maintenance (#82) @Shadowghost, @crobibero",
+                "targetAbi": "12.1.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/nextpvr/nextpvr_15.0.0.0.zip",
+                "checksum": "06fc689c679fd0fa3113ee34daa21164",
+                "timestamp": "2026-09-15T22:37:37Z"
+            },
             {
                 "version": "14.0.0.0",
                 "changelog": "- Unstable: Update to latest Jellyfin preview packages (#78) @crobibero, @jellyfin-bot\n\n### Dependency updates ###\n- Update dependency Microsoft.Extensions.Http to v10 (#73) [@renovate[bot]](https://github.com/apps/renovate)",
@@ -898,6 +914,14 @@
         "category": "MoviesAndShows",
         "versions": [
             {
+                "version": "15.0.0.0",
+                "changelog": "- Fix queue handling (#134) @Shadowghost, @crobibero",
+                "targetAbi": "12.1.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/tmdb-box-sets/tmdb-box-sets_15.0.0.0.zip",
+                "checksum": "a09e829c3fd2cf088b323c807e8b4403",
+                "timestamp": "2026-09-15T22:42:27Z"
+            },
+            {
                 "version": "14.0.0.0",
                 "changelog": "- Unstable: Update to latest Jellyfin preview packages (#127) @crobibero, @claude, @jellyfin-bot",
                 "targetAbi": "12.0.0.0",
@@ -980,6 +1004,14 @@
         "category": "General",
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-trakt.png",
         "versions": [
+            {
+                "version": "33.0.0.0",
+                "changelog": "- Optimize syncing and reduce trakt request volume (#311) @StefanFriptu, @crobibero",
+                "targetAbi": "12.1.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/trakt/trakt_33.0.0.0.zip",
+                "checksum": "209aa134acff0e0049c093f0f461ece6",
+                "timestamp": "2026-09-15T22:37:38Z"
+            },
             {
                 "version": "31.0.0.0",
                 "changelog": "- Unstable: Update to latest Jellyfin preview packages (#287) @crobibero\n- Fix watched movies/shows import only fetching the first page (#298) @rbcetin, @claude, @Shadowghost\n- Fix duplicate watched-history plays for shows with local/trakt numbering mismatches (#303) @InoriHimea, @Shadowghost\n- Fix episode external URL generation (#301) @vicente-higino, @Shadowghost\n- Fix a null-check gap and two exception-swallowing bugs in the sync/API layer (#304) @InoriHimea, @Shadowghost\n- Fix timezone bug in Trakt LastPlayedDate comparison (#308) @jvandenbroek\n\n### Dependency updates ###\n- Update jellyfin/jellyfin-meta-plugins digest to bd147a5 (#284) [@renovate[bot]](https://github.com/apps/renovate)\n\n### CI & build changes ###\n- Update jellyfin/jellyfin-meta-plugins digest to bd147a5 (#284) [@renovate[bot]](https://github.com/apps/renovate)",
@@ -1659,6 +1691,14 @@
         "category": "Anime",
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-anilist.png",
         "versions": [
+            {
+                "version": "15.0.0.0",
+                "changelog": "- Use RateLimiter from AniDb plugin, fix GraphQL (#117) @Shadowghost, @crobibero",
+                "targetAbi": "12.1.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/anilist/anilist_15.0.0.0.zip",
+                "checksum": "7894285e510f2e22b2364df570a546b3",
+                "timestamp": "2026-09-15T22:42:33Z"
+            },
             {
                 "version": "14.0.0.0",
                 "changelog": "- Unstable: Update to latest Jellyfin preview packages (#114) @crobibero, @jellyfin-bot\n- Allow filtering people by role (#110) @HansLehnert, @nielsvanvelzen\n- Add anilist episode provider (#104) @ivanjx, @nielsvanvelzen\n- Change image type for banner images from Backdrop to Banner (#109) @vodkapmp, @nielsvanvelzen",
@@ -2590,6 +2630,14 @@
         "category": "General",
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-dlna.png",
         "versions": [
+            {
+                "version": "14.0.0.0",
+                "changelog": "- Fix track changes that renderers ignore or overrun (#245) @Shadowghost, @crobibero",
+                "targetAbi": "12.1.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/dlna/dlna_14.0.0.0.zip",
+                "checksum": "32bcfdeec406a81b5d1448f3042c438e",
+                "timestamp": "2026-09-15T22:34:11Z"
+            },
             {
                 "version": "13.0.0.0",
                 "changelog": "- Fix v12 regressions (#243) @Shadowghost, @crobibero\n- Keep genre and artist containers within the library they were browsed in from (#239) @Shadowghost, @crobibero\n- Keep polling the renderer through a transport change (#240) @Shadowghost, @crobibero",
