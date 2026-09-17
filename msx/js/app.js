@@ -2131,46 +2131,50 @@ function initJacredUrlStorage() {
   });
 }
 // ==================== ПРОВЕРКА DOLBY VISION ====================
-function checkDolbyVisionSupport() {
-  // Проверка для старых браузеров
-  if (typeof MediaSource === 'undefined' || !MediaSource.isTypeSupported) {
-    console.log('⚠️ MediaSource не поддерживается');
-    return {
-      supported: false,
-      codecs: []
-    };
-  }
+// Поддержка кодека: MSE (hls.js), ManagedMediaSource (Safari/iOS 17+) и
+// нативный <video>. Прежде проверялся только MediaSource с dvh1.08.06, и
+// устройства, умеющие лишь dvhe (часть webOS/Tizen/Vidaa), считались «без DV».
+function isCodecSupportedAnywhere(type) {
+  try {
+    if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported && MediaSource.isTypeSupported(type)) return true;
+  } catch (e) { }
+  try {
+    if (typeof ManagedMediaSource !== 'undefined' && ManagedMediaSource.isTypeSupported && ManagedMediaSource.isTypeSupported(type)) return true;
+  } catch (e) { }
+  try {
+    var v = document.createElement('video');
+    if (v.canPlayType && v.canPlayType(type) === 'probably') return true;
+  } catch (e) { }
+  return false;
+}
 
+function checkDolbyVisionSupport() {
   var tests = [
     { name: 'HEVC Main 10', codec: 'video/mp4; codecs="hvc1.2.4.L150.B0"' },
     { name: 'H.264 (AVC)', codec: 'video/mp4; codecs="avc1.640028"' },
-    { name: 'Dolby Vision Profile 5', codec: 'video/mp4; codecs="dvh1.05.01"' },
-    { name: 'Dolby Vision Profile 8 (HEVC)', codec: 'video/mp4; codecs="dvh1.08.06"' },
-    { name: 'HDR10 (HEVC)', codec: 'video/mp4; codecs="hvc1.2.4.L150.B0"' },
+    { name: 'Dolby Vision Profile 8 (dvh1)', codec: 'video/mp4; codecs="dvh1.08.06"', dv: 'p8' },
+    { name: 'Dolby Vision Profile 8 (dvhe)', codec: 'video/mp4; codecs="dvhe.08.06"', dv: 'p8' },
+    { name: 'Dolby Vision Profile 5 (dvh1)', codec: 'video/mp4; codecs="dvh1.05.06"', dv: 'p5' },
+    { name: 'Dolby Vision Profile 5 (dvhe)', codec: 'video/mp4; codecs="dvhe.05.06"', dv: 'p5' },
+    { name: 'Dolby Vision AV1 (dav1)', codec: 'video/mp4; codecs="dav1.10.06"', dv: 'av1' },
     { name: 'AV1 Main', codec: 'video/mp4; codecs="av01.0.08M.08"' }
   ];
 
   var results = [];
-  var dvSupported = false;
+  var variants = { p8: false, p5: false, av1: false };
 
   console.log('🔍 Проверка поддержки кодеков:');
   for (var i = 0; i < tests.length; i++) {
     var test = tests[i];
-    var supported = MediaSource.isTypeSupported(test.codec);
-    results.push({
-      name: test.name,
-      codec: test.codec,
-      supported: supported
-    });
-    console.log('   ' + (supported ? '✅' : '❌') + ' ' + test.name + ': ' + (supported ? 'поддерживается' : 'НЕ поддерживается'));
-
-    if (test.name.indexOf('Dolby Vision Profile 8') !== -1 && supported) {
-      dvSupported = true;
-    }
+    var supported = isCodecSupportedAnywhere(test.codec);
+    results.push({ name: test.name, codec: test.codec, supported: supported });
+    console.log('   ' + (supported ? '✅' : '❌') + ' ' + test.name);
+    if (supported && test.dv) variants[test.dv] = true;
   }
 
   return {
-    supported: dvSupported,
+    supported: variants.p8 || variants.av1,
+    variants: variants,
     codecs: results
   };
 }
@@ -2216,6 +2220,9 @@ function updateDolbyVisionUI(result) {
   try {
     localStorage.setItem('dolbyVisionSupported', result.supported ? 'true' : 'false');
     localStorage.setItem('supportedCodecs', JSON.stringify(result.codecs));
+    // Результат привязан к браузеру: после обновления прошивки/браузера
+    // старое «не поддерживается» не должно залипать навсегда
+    localStorage.setItem('dolbyVisionCheckUA', navigator.userAgent);
   } catch (e) {
     console.warn('Не удалось сохранить результаты проверки DV:', e);
   }
@@ -2233,7 +2240,8 @@ function initDolbyVisionCheck() {
   try {
     var savedSupported = localStorage.getItem('dolbyVisionSupported');
     var savedCodecs = localStorage.getItem('supportedCodecs');
-    if (savedSupported !== null && savedCodecs) {
+    var savedUA = localStorage.getItem('dolbyVisionCheckUA');
+    if (savedSupported !== null && savedCodecs && savedUA === navigator.userAgent) {
       var result = {
         supported: savedSupported === 'true',
         codecs: JSON.parse(savedCodecs)
@@ -2256,7 +2264,9 @@ function initDolbyVisionCheck() {
   }
 
   if (dvCheckbox) {
-    var savedDvPreferred = localStorage.getItem('dvPreferred') === 'true';
+    // Пока пользователь сам не выбирал, DV включён там, где он поддерживается
+    var rawDvPreferred = localStorage.getItem('dvPreferred');
+    var savedDvPreferred = rawDvPreferred === null ? dvSupported : rawDvPreferred === 'true';
     dvPreferred = savedDvPreferred;
     dvCheckbox.checked = savedDvPreferred;
 
@@ -2327,8 +2337,12 @@ function initDolbyVisionCheck() {
 (function () {
   function runAutoCheck() {
     try {
-      if (localStorage.getItem('dolbyVisionSupported')) {
-        return; // Уже есть сохранённые результаты
+      // Сохранённый положительный результат для этого же браузера — не
+      // перепроверяем. Отрицательный перепроверяем: проверка дешёвая, а
+      // список кодеков расширялся.
+      if (localStorage.getItem('dolbyVisionSupported') === 'true' &&
+        localStorage.getItem('dolbyVisionCheckUA') === navigator.userAgent) {
+        return;
       }
     } catch (e) {
       // localStorage недоступен
@@ -2349,6 +2363,16 @@ function initDolbyVisionCheck() {
           } else {
             dvCheckboxContainer.classList.add('hidden');
           }
+        }
+
+        // Первое обнаружение поддержки: включаем DV, если пользователь
+        // ещё не выбирал сам
+        var rawPref = null;
+        try { rawPref = localStorage.getItem('dvPreferred'); } catch (e) { }
+        if (rawPref === null) {
+          dvPreferred = !!result.supported;
+          if (typeof AppState !== 'undefined') AppState.dvPreferred = dvPreferred;
+          if (dvOnOffEl) dvOnOffEl.checked = dvPreferred;
         }
       } catch (e) {
         console.warn('Ошибка автоматической проверки DV:', e);

@@ -935,7 +935,7 @@ async function seekStream(absoluteSeekTime, source) {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               streamId: AppState.currentStreamId, seekTime: targetTime, multiChannel: AppState.multiChannelEnabled,
-              clientId: savedClientId, duration: AppState.originalDuration, sub: currentSubtitleTrack, dv: AppState.dvPreferred
+              clientId: savedClientId, duration: AppState.originalDuration, sub: currentSubtitleTrack, dv: AppState.dvPreferred ? 'true' : 'false'
             })
           });
           if (!seekResponse.ok) throw new Error('HTTP ' + seekResponse.status);
@@ -1597,6 +1597,9 @@ function createHlsInstance(configOverrides) {
     fragLoadingTimeOut: 15000, manifestLoadingTimeOut: 10000, enableWorker: true, progressive: true,
     maxBufferSize: 60 * 1000 * 1000, maxBufferHole: 0.5
   };
+  // Без явного preferHDR hls.js решает по matchMedia('(dynamic-range: high)'),
+  // а на телевизорах это часто false даже при HDR/DV-панели
+  if (AppState.dvPreferred) defaultConfig.videoPreference = { preferHDR: true };
   return new Hls(Object.assign({}, defaultConfig, configOverrides || {}));
 }
 
@@ -1903,7 +1906,7 @@ async function initServerProxyPlayback(metadata, initialSeek, signal) {
   var subParam = currentSubtitleTrack >= 0 ? ('&sub=' + currentSubtitleTrack) : '';
   var multiChannelParam = (AppState.multiChannelEnabled === true) ? '&multiChannel=true' : '';
   var savedClientId = localStorage.getItem('clientId');
-  var dvParam = '&dv=' + AppState.dvPreferred;
+  var dvParam = '&dv=' + (AppState.dvPreferred ? 'true' : 'false');
   // fileInfo проверен в startHLSPlayback — сюда мы попадаем только с данными
   var streamUrl = SERVER_URL + '/hls/stream?url=' + encodeURIComponent(AppState.videoUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam + subParam + dvParam;
   var response;
