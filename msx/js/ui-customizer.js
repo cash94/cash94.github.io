@@ -30,6 +30,7 @@
         ratingSize: 13,              // оценка (и статус раздачи у торрентов)
         typeSize: 13,                // тип: Фильм/Сериал
         yearSize: 12,                // год на постере
+        heroTextScale: 100,          // весь текст баннера главной, % от базового
         borderRadius: 'medium',      // none | small | medium | large
         density: 'comfortable',      // compact | comfortable | spacious
         animations: 'normal',        // none | reduced | normal (CSS-переходы и анимации)
@@ -74,7 +75,15 @@
         // мелкие цифры не читаются
         ratingSize: { min: 9, max: 35, step: 1, def: 13, fmt: pxLabel },
         typeSize: { min: 9, max: 35, step: 1, def: 13, fmt: pxLabel },
-        yearSize: { min: 8, max: 35, step: 1, def: 12, fmt: pxLabel }
+        yearSize: { min: 8, max: 35, step: 1, def: 12, fmt: pxLabel },
+        // Масштаб текста баннера главной: название, строка с рейтингом и
+        // жанрами, описание. Множитель, а не пиксели: базовые размеры
+        // разные для разных экранов (медиазапросы в styles.css), и ползунок
+        // увеличивает именно их.
+        heroTextScale: {
+            min: 80, max: 220, step: 5, def: 100,
+            fmt: function (v) { return v + '%'; }
+        }
     };
 
     // Старые пресеты. Нужны только для переноса ранее сохранённых настроек в
@@ -216,6 +225,12 @@
         s.ratingSize = clampStep(s.ratingSize, SLIDERS.ratingSize);
         s.typeSize = clampStep(s.typeSize, SLIDERS.typeSize);
         s.yearSize = clampStep(s.yearSize, SLIDERS.yearSize);
+        // Ползунок сначала масштабировал только описание — переносим значение
+        if (s.heroTextScale === undefined && s.heroOverviewScale !== undefined) {
+            s.heroTextScale = s.heroOverviewScale;
+        }
+        delete s.heroOverviewScale;
+        s.heroTextScale = clampStep(s.heroTextScale, SLIDERS.heroTextScale);
         s.focusColor = normalizeColor(s.focusColor);
 
         s.showRatings = !!s.showRatings;
@@ -353,12 +368,14 @@
         css.push('.catalog-actor-card.focused,.catalog-recommendation-card.focused{' +
             'box-shadow:0 0 0 3px ' + c + '!important;}');
 
-        // Карточки рядов-каруселей. Тень «подъёма» убрана вслед за styles.css:
-        // блюр в 40px перерисовывался на каждую смену фокуса и ронял кадры на
-        // телевизоре. Здесь важно повторить правило один в один — иначе
-        // !important отсюда вернул бы её обратно поверх базовой таблицы.
-        css.push('.catalog-row-card.focused .torrent-poster{' +
-            'box-shadow:0 0 0 3px ' + c + '!important;}');
+        // Карточки рядов-каруселей. Кольцо рисует ТОЛЬКО постер: на самой
+        // карточке гасим кольцо общего правила .focused, иначе вокруг постера
+        // (он теперь в своих границах, scale 0.97 → 1) их видно два.
+        // Тень «подъёма» здесь убрана вслед за styles.css: блюр в 40px
+        // перерисовывался на каждую смену фокуса и ронял кадры на телевизоре.
+        css.push('.catalog-row-card.focused{box-shadow:none!important;}');
+        css.push('.catalog-row-card.focused .torrent-poster::after{' +
+            'box-shadow:inset 0 0 0 3px ' + c + '!important;}');
 
         // Карточка «Показать все» (styles.css:3972)
         css.push('.catalog-show-all.focused .show-all-inner{' +
@@ -410,6 +427,7 @@
         var ratingSize = clampStep(currentSettings.ratingSize, SLIDERS.ratingSize);
         var typeSize = clampStep(currentSettings.typeSize, SLIDERS.typeSize);
         var yearSize = clampStep(currentSettings.yearSize, SLIDERS.yearSize);
+        var heroTextScale = clampStep(currentSettings.heroTextScale, SLIDERS.heroTextScale);
         var radius = RADII[currentSettings.borderRadius] || RADII.medium;
         var density = DENSITIES[currentSettings.density] || DENSITIES.comfortable;
         var bright = BRIGHTNESS[currentSettings.posterBrightness] || BRIGHTNESS.normal;
@@ -464,6 +482,12 @@
             'font-size:' + ratingSize + 'px!important;}');
         css.push('.torrent-meta,.torrent-badge{font-size:' + typeSize + 'px!important;}');
         css.push('.card-modern .poster-year{font-size:' + yearSize + 'px!important;}');
+        // Текст баннера главной: название, строка с рейтингом и жанрами,
+        // описание. Множитель к базовому размеру каждого элемента (переменная
+        // --hero-size в styles.css). Именно текст, а не блок: zoom тянул бы
+        // вместе с буквами кнопки и отступы, а баннер масштабировать не нужно.
+        css.push(':root{--hero-text-scale:' + (heroTextScale / 100) + ';}');
+
         // Полоса на постере растёт вместе с тем, что в ней лежит
         css.push('.card-modern .poster-bar{height:' +
             (Math.max(ratingSize, typeSize) + 14) + 'px!important;}');
@@ -697,6 +721,11 @@
             sliderRow('typeSize', SLIDERS.typeSize.min + ' px', SLIDERS.typeSize.max + ' px') +
             '<div class="ui-customizer-hint">Год на постере.</div>' +
             sliderRow('yearSize', SLIDERS.yearSize.min + ' px', SLIDERS.yearSize.max + ' px') +
+            '</div>' +
+
+            '<div class="ui-customizer-group"><h3>Текст на баннере главной</h3>' +
+            '<div class="ui-customizer-hint">Название, рейтинг с жанрами и описание. Кнопки и сам баннер не меняются.</div>' +
+            sliderRow('heroTextScale', SLIDERS.heroTextScale.min + '%', SLIDERS.heroTextScale.max + '%') +
             '</div>' +
 
             '<div class="ui-customizer-group"><h3>Скругление углов</h3><div class="ui-customizer-options">' +
