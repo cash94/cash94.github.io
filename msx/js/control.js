@@ -400,6 +400,38 @@ function restoreScreenFocus(screen) {
     return !!(strategy && strategy.ensureFocus && strategy.ensureFocus(true));
 }
 
+/**
+ * Бегущая строка для длинного названия карточки.
+ *
+ * Включается только у карточки под фокусом: на экране их сотни, и держать
+ * анимацию на всех — десятки одновременных анимаций там, где читают одну.
+ * Сама анимация живёт в CSS (.focused .torrent-title.marquee) и двигает
+ * transform, то есть композитингом. Отсюда — только два замера геометрии на
+ * одно перемещение фокуса.
+ *
+ * Сдвиг считается по фактическому переполнению, скорость — примерно 30 px/с,
+ * чтобы длинное название ехало не быстрее короткого.
+ */
+function applyTitleMarquee(el) {
+    // Только карточки сетки: у рядов название по-прежнему в две строки
+    if (!el || !el.classList || !el.classList.contains('card-modern')) return;
+    var box = el.querySelector('.torrent-title');
+    if (!box) return;
+    var span = box.firstElementChild;
+    if (!span) return;                      // старая разметка без span — просто нечего двигать
+    var overflow = span.scrollWidth - box.clientWidth;
+    if (overflow <= 4) return;              // помещается целиком
+    box.style.setProperty('--mq-shift', -(overflow + 4) + 'px');
+    box.style.setProperty('--mq-dur', Math.min(20, Math.max(6, (overflow + 4) / 30 * 2 + 3)).toFixed(1) + 's');
+    box.classList.add('marquee');
+}
+
+function clearTitleMarquee(el) {
+    if (!el || !el.classList || !el.classList.contains('card-modern')) return;
+    var box = el.querySelector('.torrent-title.marquee');
+    if (box) box.classList.remove('marquee');
+}
+
 function clearFocused() {
     if (!_focusedEls.length) return;
     var list = _focusedEls;
@@ -412,6 +444,7 @@ function clearFocused() {
         // анимация фокуса, то есть почти никогда.
         if (list[i].style.boxShadow) list[i].style.boxShadow = '';
         if (list[i].style.transform) list[i].style.transform = '';
+        clearTitleMarquee(list[i]);
         list[i].classList.remove('focused');
     }
 }
@@ -1104,7 +1137,14 @@ var ScreenStrategies = {
                 // просто пропадало.
                 if (dir === 'left') { if (ci > 0) return focusEl(c[ci - 1] || f); return true; }
                 if (dir === 'right') {
-                    if (ci < c.length - 1) return focusEl(c[ci + 1] || f);
+                    if (ci < c.length - 1) {
+                        var nextCard = c[ci + 1] || f;
+                        var movedRight = focusEl(nextCard);
+                        if (typeof window.prefetchCatalogIfNearEnd === 'function') {
+                            window.prefetchCatalogIfNearEnd(nextCard, cols);
+                        }
+                        return movedRight;
+                    }
                     // Уперлись в конец загруженного — догружаем, как по «вниз»
                     if (c.length < catalogState.totalItems && !catalogState.isLoadingMore) {
                         window.loadMoreCatalogItems().then(function () {
@@ -1118,7 +1158,19 @@ var ScreenStrategies = {
                 }
                 if (dir === 'up') { if (row === 0) return focusEl(t[0] || h[0] || f); return focusEl(c[Math.max(0, ci - cols)] || f); }
                 if (dir === 'down') {
-                    if (ci + cols < c.length) return focusEl(c[Math.min(c.length - 1, ci + cols)] || f);
+                    if (ci + cols < c.length) {
+                        var downCard = c[Math.min(c.length - 1, ci + cols)] || f;
+                        var moved = focusEl(downCard);
+                        // Догрузку запускаем ЗАРАНЕЕ — как только до конца
+                        // загруженного осталось два ряда. Прежде она начиналась
+                        // только на последнем ряду: нажатие «вниз» упиралось,
+                        // ждало ответа сервера, и лишь потом появлялись карточки,
+                        // а постеры — ещё позже.
+                        if (typeof window.prefetchCatalogIfNearEnd === 'function') {
+                            window.prefetchCatalogIfNearEnd(downCard, cols);
+                        }
+                        return moved;
+                    }
                     else if (c.length < catalogState.totalItems && !catalogState.isLoadingMore) {
                         window.loadMoreCatalogItems().then(function () {
                             setTimeout(function () {
@@ -3523,6 +3575,7 @@ function focusEl(el, opts) {
     // Записи стиля — последними, см. комментарий в начале функции
     clearFocused();
     el.classList.add('focused');
+    applyTitleMarquee(el);
     trackFocusedElement(el);
     rememberScreenFocus(el);
     return true;

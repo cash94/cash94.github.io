@@ -998,13 +998,13 @@ function createTorrentCard(torrent) {
     // Тип — общей функцией с detail, чтобы бейдж и запросы TMDB не расходились
     var cardMediaType = getTorrentMediaTypeFromCard(torrent);
 
-    // Статус: просмотр или размер
-    var playStatus;
-    if (torrent.stat_string === 'Torrent working') {
-        playStatus = '<span style="color: #4caf50; font-weight: bold;">▶ Идет просмотр</span>';
-    } else {
-        playStatus = escapeHtml(formatBytes(torrent.torrent_size));
-    }
+    // Статус: идёт просмотр или размер раздачи. Размер живёт в полосе внизу
+    // постера — на месте оценки у карточек каталога; «Идет просмотр» заменяет
+    // его целиком, чтобы полоса оставалась в одну строку.
+    var isPlaying = torrent.stat_string === 'Torrent working';
+    var statusHtml = isPlaying
+        ? '<span class="torrent-playing">Идет просмотр</span>'
+        : '<span class="torrent-size">' + escapeHtml(formatBytes(torrent.torrent_size)) + '</span>';
 
     // Безопасный постер: экранируем URL для атрибута src
     var posterHtml;
@@ -1018,7 +1018,7 @@ function createTorrentCard(torrent) {
 
     // Создаём карточку через createElement (безопаснее innerHTML для структуры)
     var card = document.createElement('div');
-    card.className = 'torrent-card';
+    card.className = 'torrent-card card-modern';
     card.dataset.hash = torrent.hash;
     // Тот же тип, что в бейдже — чтобы его было видно в DOM и можно было брать снаружи
     card.dataset.mediaType = cardMediaType;
@@ -1027,13 +1027,12 @@ function createTorrentCard(torrent) {
     //attachTorrentDeleteLongPress(card, torrent);
 
     card.innerHTML =
-        '<div class="torrent-poster">' + posterHtml + '</div>' +
-        '<div class="torrent-info">' +
-        '<div class="torrent-title">' + escapeHtml(title.length > 60 ? title.substring(0, 60) + '...' : title) + '</div>' +
-        '<div class="torrent-meta">' +
-        '<span>' + playStatus + '</span>' +
-        '<span class="torrent-badge">' + (cardMediaType === 'tv' ? 'Сериал' : 'Фильм') + '</span>' +
+        '<div class="torrent-poster">' + posterHtml +
+        '<div class="poster-bar">' + statusHtml +
+        '<span class="torrent-badge">' + (cardMediaType === 'tv' ? 'Сериал' : 'Фильм') + '</span></div>' +
         '</div>' +
+        '<div class="torrent-info">' +
+        '<div class="torrent-title"><span>' + escapeHtml(title) + '</span></div>' +
         '</div>';
 
     return card;
