@@ -844,6 +844,177 @@ body {
   font-size: 13px;
 }
 
+/* ============================================================================
+   КАРТОЧКА СЕТКИ (.card-modern) — каталог и торренты
+   ----------------------------------------------------------------------------
+   Только сетки: ряды каталога и главной остаются на правилах выше.
+   Постер со скруглением без рамки и подложки, год — плашкой в правом верхнем
+   углу, оценка и тип — в сплошной полосе внизу постера, название одной
+   строкой под постером.
+   Заливки плоские, теней и градиентов нет: этих карточек на экране сотни.
+   ========================================================================== */
+.card-modern {
+  background: none;
+  border: 0;
+  overflow: visible;
+  /* Обязательно: колонки сетки заданы как 1fr, а минимальная ширина элемента
+     сетки по умолчанию равна ширине его содержимого. Название теперь в одну
+     строку без переноса, поэтому длинный заголовок раздувал свою колонку, и
+     колонки получались разной ширины. min-width: 0 разрешает карточке быть
+     уже собственного текста — лишнее обрезается многоточием. */
+  min-width: 0;
+}
+
+/* По той же причине: блок подписи не должен требовать ширины под текст */
+.card-modern .torrent-info {
+  min-width: 0;
+}
+
+.card-modern .torrent-poster {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Полоса метаданных внизу постера */
+.card-modern .poster-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  padding: 0 8px;
+  background: rgba(8, 8, 14, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 5;
+}
+
+/* Оценка живёт в полосе и берёт подложку у неё: своей рамки и фона больше не
+   нужно. Класс сохранён — ui-customizer.js прячет рейтинги по .rating-badge */
+.card-modern .rating-badge {
+  position: static;
+  background: none;
+  border: 0;
+  padding: 0;
+  border-radius: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.card-modern .rating-badge::before {
+  content: '★ ';
+}
+
+/* Тип (Фильм/Сериал) — правая половина полосы, без собственной плашки.
+   Класса .catalog-badge на нём нет намеренно: его фиолетовую заливку пришлось
+   бы перебивать, а настройка «Показывать год» в ui-customizer.js прячет именно
+   .catalog-badge — тип от неё пропадать не должен. */
+.card-modern .torrent-badge {
+  background: none;
+  color: #cfd4e0;
+  padding: 0;
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* Левая часть полосы ужимается первой: на узкой карточке длинная подпись
+   («Идет просмотр») не должна выталкивать тип за край */
+.card-modern .poster-bar>:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Год — плашка в правом верхнем углу постера */
+.card-modern .poster-year {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  background: rgba(8, 8, 14, 0.78);
+  color: #e6e9f0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 8px;
+  z-index: 5;
+}
+
+/* Нечего показывать — не занимаем места */
+.card-modern .rating-badge:empty,
+.card-modern .torrent-badge:empty,
+.card-modern .poster-year:empty {
+  display: none;
+}
+
+/* Карточки торрентов: слева в полосе размер раздачи или отметка просмотра */
+.card-modern .torrent-size {
+  color: #cfd4e0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.card-modern .torrent-playing {
+  color: #4ade80;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.card-modern .torrent-playing::before {
+  content: '▶ ';
+}
+
+.card-modern .torrent-info {
+  padding: 7px 2px 0;
+}
+
+/* Название — одна строка. Длинное едет бегущей строкой, но только у карточки
+   под фокусом: держать анимацию на всех карточках сетки означало бы десятки
+   одновременных анимаций там, где читают одну. */
+.card-modern .torrent-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.25;
+  margin-bottom: 0;
+  height: auto;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-modern .torrent-title>span {
+  display: inline-block;
+}
+
+/* Бегущая строка: двигается transform, то есть композитингом, без пересчёта
+   раскладки. Сдвиг и длительность ставит applyTitleMarquee() в control.js. */
+.card-modern.focused .torrent-title.marquee {
+  text-overflow: clip;
+}
+
+.card-modern.focused .torrent-title.marquee>span {
+  animation: title-marquee var(--mq-dur, 8s) linear 1.2s infinite;
+}
+
+@keyframes title-marquee {
+  0%, 8% { transform: translateX(0); }
+  48%, 60% { transform: translateX(var(--mq-shift, 0)); }
+  96%, 100% { transform: translateX(0); }
+}
+
 .progress-badge {
   position: absolute;
   bottom: 0;
