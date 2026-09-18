@@ -2595,13 +2595,18 @@ function trimGridChunks() {
     // для всех итераций: её задаёт CSS сетки, а не её содержимое.
     var rowGap = readGridRowGap();
 
+    // Сворачиваем ПО ОДНОМУ чанку за проход и сразу планируем следующий.
+    // Прежде цикл убирал все лишние сразу: после долгого листания это разом
+    // сотня с лишним карточек — отдельный рывок ровно в тот момент, когда
+    // человек остановился и смотрит на экран.
     var removed = 0;
     for (var j = 0; j < live.length && live.length - removed > CHUNK_HYDRATED_KEEP; j++) {
         if (chunkDistanceToAnchors(live[j].index, anchors) <= CHUNK_FOCUS_GUARD) continue;
-        if (dehydrateChunk(live[j], rowGap)) removed++;
+        if (dehydrateChunk(live[j], rowGap)) { removed++; break; }
     }
 
     if (!removed) return;
+    if (live.length - removed > CHUNK_HYDRATED_KEEP) scheduleChunkTrim();
 
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     updateGridVisibilityWindow();
@@ -5681,12 +5686,9 @@ function createRowCard(item, key, index) {
     var title = getCatalogItemTitle(item);
     var mt = item.media_type || 'movie';
     var id = item.id;
-    var rating = item.vote_average ? Math.round(item.vote_average * 10) / 10 : null;
     var year = getCatalogItemYear(item);
-    var ratingColor = rating ? getRatingColor(rating) : '';
-
-    var ratingHtml = rating ?
-        '<div class="rating-badge" style="color:' + ratingColor + '">' + rating + '</div>' : '';
+    // Оценки на постере в рядах нет: её место — карточка сетки. Здесь это ещё
+    // и лишний элемент на каждую карточку карусели.
 
     var card = document.createElement('div');
     card.className = 'torrent-card catalog-card catalog-row-card';
@@ -5699,7 +5701,6 @@ function createRowCard(item, key, index) {
     card.innerHTML =
         '<div class="torrent-poster">' +
         '<div class="row-poster-img"><div class="no-poster catalog-poster-loading"></div></div>' +
-        ratingHtml +
         '</div>' +
         '<div class="torrent-info">' +
         '<div class="torrent-title">' + escapeHtml(title.length > 40 ? title.substring(0, 40) + '...' : title) + '</div>' +
@@ -6982,6 +6983,62 @@ window.prefetchCatalogIfNearEnd = function (card, cols) {
     if (rowsLeft > CATALOG_CONSTANTS.PREFETCH_ROWS) return false;
     if (catalogState.isLoadingMore) return true;
     window.checkAndLoadMoreOnNavigation();
+    return true;
+};
+
+/**
+ * Достроить соседний чанк ЗАРАНЕЕ, пока до его границы ещё пара рядов.
+ *
+ * Чанк и так поднимается порциями по строке за кадр (hydrationStep), но если
+ * человек листает быстрее, чем тот дотекает, фокус приходит в недостроенный
+ * чанк — и остаток достраивается разом, прямо в обработчике нажатия
+ * (finishHydrationNow). На телевизоре это и есть «фриз каждые пять рядов».
+ *
+ * Здесь та же работа делается на пару рядов раньше и НЕ в кадре нажатия:
+ * отложенным вызовом, то есть в паузе между нажатиями. Пока кнопку держат,
+ * не вмешиваемся — дёргать DOM во время автоповтора хуже, чем подождать.
+ *
+ * @param {HTMLElement} card карточка, на которую только что встал фокус
+ * @param {number} cols колонок в сетке
+ */
+var _chunkAheadTimer = null;
+window.prefetchChunkAhead = function (card, cols) {
+    if (!card || !card.dataset || window.navHold) return false;
+    var chunks = catalogState.chunks;
+    if (!chunks || !chunks.length) return false;
+
+    var idx = parseInt(card.dataset.catalogIndex, 10);
+    if (isNaN(idx)) return false;
+    if (!cols || cols < 1) cols = getColumns() || 5;
+
+    var size = catalogState.chunkSize || getChunkSize();
+    if (!size) return false;
+
+    // Смотрим на два ряда вперёд и назад: направление движения нам не важно,
+    // достроить нужно тот чанк, к границе которого подошли.
+    var lookahead = CATALOG_CONSTANTS.PREFETCH_ROWS * cols;
+    var here = Math.floor(idx / size);
+    var wanted = [];
+    var ahead = Math.floor((idx + lookahead) / size);
+    var behind = Math.floor((idx - lookahead) / size);
+    if (ahead !== here) wanted.push(ahead);
+    if (behind !== here && behind >= 0) wanted.push(behind);
+
+    var pending = null;
+    for (var i = 0; i < wanted.length; i++) {
+        var ch = chunks[wanted[i]];
+        if (ch && (ch.spacer || ch.hydrating)) { pending = ch; break; }
+    }
+    if (!pending) return false;
+    if (_chunkAheadTimer) return true;
+
+    _chunkAheadTimer = setTimeout(function () {
+        _chunkAheadTimer = null;
+        // За время ожидания могли уехать в другой каталог или свернуть сетку
+        if (!pending || window.navHold) return;
+        if (!pending.spacer && !pending.hydrating) return;
+        hydrateChunk(pending, true);   // достраиваем целиком, но в паузе
+    }, 0);
     return true;
 };
 

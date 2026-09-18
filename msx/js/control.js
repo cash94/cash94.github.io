@@ -1143,6 +1143,9 @@ var ScreenStrategies = {
                         if (typeof window.prefetchCatalogIfNearEnd === 'function') {
                             window.prefetchCatalogIfNearEnd(nextCard, cols);
                         }
+                        if (typeof window.prefetchChunkAhead === 'function') {
+                            window.prefetchChunkAhead(nextCard, cols);
+                        }
                         return movedRight;
                     }
                     // Уперлись в конец загруженного — догружаем, как по «вниз»
@@ -1156,7 +1159,18 @@ var ScreenStrategies = {
                     }
                     return true;
                 }
-                if (dir === 'up') { if (row === 0) return focusEl(t[0] || h[0] || f); return focusEl(c[Math.max(0, ci - cols)] || f); }
+                if (dir === 'up') {
+                    if (row === 0) return focusEl(t[0] || h[0] || f);
+                    var upCard = c[Math.max(0, ci - cols)] || f;
+                    var movedUp = focusEl(upCard);
+                    // Соседний чанк достраиваем заранее, в паузе между нажатиями:
+                    // иначе фокус приходит в недостроенный, и его остаток
+                    // вставляется разом прямо в кадре нажатия
+                    if (typeof window.prefetchChunkAhead === 'function') {
+                        window.prefetchChunkAhead(upCard, cols);
+                    }
+                    return movedUp;
+                }
                 if (dir === 'down') {
                     if (ci + cols < c.length) {
                         var downCard = c[Math.min(c.length - 1, ci + cols)] || f;
@@ -1168,6 +1182,9 @@ var ScreenStrategies = {
                         // а постеры — ещё позже.
                         if (typeof window.prefetchCatalogIfNearEnd === 'function') {
                             window.prefetchCatalogIfNearEnd(downCard, cols);
+                        }
+                        if (typeof window.prefetchChunkAhead === 'function') {
+                            window.prefetchChunkAhead(downCard, cols);
                         }
                         return moved;
                     }

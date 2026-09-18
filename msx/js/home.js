@@ -179,11 +179,6 @@
         }) : '';
     }
 
-    function ratingColor(r) {
-        if (typeof window.getRatingColor === 'function') return window.getRatingColor(r);
-        return r >= 8 ? '#4caf50' : r >= 6 ? '#ffc107' : r >= 4 ? '#ff9800' : '#f44336';
-    }
-
     function itemTitle(item) {
         return (item && (item.title || item.name)) || 'Без названия';
     }
@@ -1231,12 +1226,8 @@
     function createHomeCard(item, key, index) {
         var title = itemTitle(item);
         var mt = item.media_type || 'movie';
-        var rating = item.vote_average ? Math.round(item.vote_average * 10) / 10 : null;
         var year = itemYear(item);
-        var rc = rating ? ratingColor(rating) : '';
-
-        var ratingHtml = rating ?
-            '<div class="rating-badge" style="color:' + rc + '">' + rating + '</div>' : '';
+        // Оценки на постере в рядах нет — как и в рядах каталога
 
         // Классы те же, что у карточки ряда каталога: размеры, фокус и настройки
         // из ui-customizer.js прописаны именно под них
@@ -1254,7 +1245,6 @@
         card.innerHTML =
             '<div class="torrent-poster">' +
             '<div class="row-poster-img"><div class="no-poster catalog-poster-loading"></div></div>' +
-            ratingHtml +
             '</div>' +
             '<div class="torrent-info">' +
             '<div class="torrent-title">' + esc(title.length > 40 ? title.substring(0, 40) + '...' : title) + '</div>' +
