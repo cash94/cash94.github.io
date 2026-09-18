@@ -24,6 +24,12 @@ var CATALOG_CONSTANTS = {
     MAX_RECOMMENDATIONS: 12,
     MAX_TRAILERS: 6,
     LOAD_MORE_MARGIN_PX: 300,
+    // За сколько рядов до конца загруженного начинать тянуть следующую порцию.
+    // Прежде порция запрашивалась, только когда фокус упирался в последний ряд:
+    // нажатие «вниз» вставало, ждало ответ сервера, и лишь потом появлялись
+    // карточки, а постеры — ещё позже. Два ряда дают запасу примерно на два
+    // нажатия, и подгрузка успевает пройти незаметно.
+    PREFETCH_ROWS: 2,
     POSTER_OBSERVER_MARGIN_PX: 1200,
     // Ряды: запас по горизонтали держим маленьким. Вертикальные 1200px — это
     // «следующие ряды», их надо готовить заранее. По горизонтали же 1200px дают
@@ -1693,14 +1699,18 @@ var _cardTemplate = null;
 function getCardTemplate() {
     if (_cardTemplate) return _cardTemplate;
     var card = document.createElement('div');
+    // Год — плашкой в правом верхнем углу постера, оценка и тип — в полосе
+    // внизу постера, название одной строкой под ним. Название лежит в span:
+    // бегущая строка двигает именно его (applyTitleMarquee в control.js).
     card.innerHTML =
         '<div class="torrent-poster">' +
         '<div class="no-poster catalog-poster-loading"></div>' +
+        '<div class="poster-year"></div>' +
+        '<div class="poster-bar"><span class="rating-badge"></span>' +
+        '<span class="torrent-badge"></span></div>' +
         '</div>' +
         '<div class="torrent-info">' +
-        '<div class="torrent-title"></div>' +
-        '<div class="torrent-meta"><span></span>' +
-        '<span class="torrent-badge catalog-badge"></span></div>' +
+        '<div class="torrent-title"><span></span></div>' +
         '</div>';
     _cardTemplate = card;
     return card;
@@ -1719,7 +1729,9 @@ function getCardTemplate() {
  */
 function createCardElement(config) {
     var card = getCardTemplate().cloneNode(true);
-    card.className = 'torrent-card ' + (config.className || '');
+    // card-modern включает оформление карточки сетки (styles.css). Ряды его не
+    // получают: у них прежний вид.
+    card.className = 'torrent-card card-modern ' + (config.className || '');
     for (var key in config.dataset) {
         if (config.dataset.hasOwnProperty(key)) {
             card.dataset[key] = config.dataset[key];
@@ -1728,13 +1740,14 @@ function createCardElement(config) {
 
     var poster = card.firstChild;
     var info = card.lastChild;
+    // [0] скелет, [1] год, [2] полоса (оценка + тип)
+    var yearEl = poster.childNodes[1];
+    var bar = poster.childNodes[2];
 
     if (config.ratingText) {
-        var badge = document.createElement('div');
-        badge.className = 'rating-badge';
+        var badge = bar.firstChild;
         badge.style.color = config.ratingColor || '';
         badge.textContent = config.ratingText;
-        poster.insertBefore(badge, poster.firstChild);
     }
 
     // Постер из кэша вставляем прозрачным и показываем после img.decode() —
@@ -1768,10 +1781,11 @@ function createCardElement(config) {
         else img.onload = showPoster;
     }
 
-    info.firstChild.textContent = config.title || '';
-    var meta = info.lastChild;
-    meta.firstChild.textContent = config.metaType || '';
-    meta.lastChild.textContent = config.metaBadge || '';
+    info.firstChild.firstChild.textContent = config.title || '';
+    bar.lastChild.textContent = config.metaType || '';
+    // В metaBadge приходит год, но у элементов без даты там подпись каталога —
+    // её в плашку года не пускаем
+    yearEl.textContent = /^\d{4}$/.test(config.metaBadge || '') ? config.metaBadge : '';
 
     return card;
 }
@@ -2958,6 +2972,13 @@ function initLoadMoreObserver() {
     if (catalogState.loadMoreObserver) catalogState.loadMoreObserver.disconnect();
     var t = getEl('load-more-trigger');
     if (!t) return;
+    // Запас прокрутки — те же два ряда, что и у навигации пультом. Высоту ряда
+    // знает measureCatalogCardHeight; до первого замера берём прежнюю константу.
+    var rowH = catalogState.rowBoxH || 0;
+    var margin = rowH > 0
+        ? Math.round(rowH * CATALOG_CONSTANTS.PREFETCH_ROWS)
+        : CATALOG_CONSTANTS.LOAD_MORE_MARGIN_PX;
+
     catalogState.loadMoreObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
             if (entries[i].isIntersecting && catalogState.hasMore && !catalogState.isLoadingMore) {
@@ -2966,7 +2987,7 @@ function initLoadMoreObserver() {
                 loadMoreCatalogItems().then(function () { if (sp) sp.style.display = 'none'; });
             }
         }
-    }, { rootMargin: CATALOG_CONSTANTS.LOAD_MORE_MARGIN_PX + 'px', threshold: 0.1 });
+    }, { rootMargin: margin + 'px', threshold: 0.1 });
     catalogState.loadMoreObserver.observe(t);
 }
 
@@ -6932,6 +6953,37 @@ function backToCatalogList() {
 // window.loadMoreAndFocus() удалён — вызовов не было ни в одном модуле.
 // Догрузку по «вниз» из последнего ряда делает ScreenStrategies.catalog
 // (control.js), а по скроллу — initLoadMoreObserver ниже.
+
+/**
+ * Догрузить следующую порцию заранее, если фокус подошёл к концу загруженного
+ * ближе чем на PREFETCH_ROWS рядов.
+ *
+ * Возвращает true, если подгрузка запущена (или уже идёт). Фокус не трогает —
+ * в этом весь смысл: карточки и постеры успевают приехать до того, как
+ * пользователь до них долистает.
+ *
+ * @param {number} focusedIndex индекс карточки под фокусом в сетке
+ * @param {number} totalLoaded  сколько карточек уже в сетке
+ * @param {number} cols         колонок в сетке
+ */
+window.prefetchCatalogIfNearEnd = function (card, cols) {
+    if (!catalogState.currentCatalog || !catalogState.hasMore) return false;
+    if (!card || !card.dataset) return false;
+
+    // Считаем по ЗАГРУЖЕННЫМ элементам, а не по карточкам в DOM: сетка
+    // виртуализирована, и карточки за пределами экрана из DOM убраны — по ним
+    // «до конца» получалось бы всегда близко, и подгрузка шла бы без остановки.
+    var index = parseInt(card.dataset.catalogIndex, 10);
+    var total = catalogState.items ? catalogState.items.length : 0;
+    if (isNaN(index) || total <= 0) return false;
+    if (!cols || cols < 1) cols = 1;
+
+    var rowsLeft = Math.floor((total - 1 - index) / cols);
+    if (rowsLeft > CATALOG_CONSTANTS.PREFETCH_ROWS) return false;
+    if (catalogState.isLoadingMore) return true;
+    window.checkAndLoadMoreOnNavigation();
+    return true;
+};
 
 window.checkAndLoadMoreOnNavigation = function () {
     if (catalogState.currentCatalog && catalogState.hasMore && !catalogState.isLoadingMore) {

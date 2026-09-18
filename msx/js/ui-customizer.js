@@ -23,7 +23,13 @@
         cardSize: 210,               // ЕДИНЫЙ размер карточек и постеров: ширина в px (макс 260 = 260×460)
         detailScale: 100,            // масштаб содержимого detail-view, %
         catalogColumns: 'auto',      // auto | 3..8  (auto = число колонок считается из cardSize)
-        fontSize: 'medium',          // small | medium | large
+        // Размеры подписей карточки — в пикселях, ползунками (см. SLIDERS).
+        // Прежний пресет fontSize (small/medium/large) остался только для
+        // переноса ранее сохранённых настроек, см. normalizeSettings.
+        titleSize: 15,               // название под постером
+        ratingSize: 13,              // оценка (и статус раздачи у торрентов)
+        typeSize: 13,                // тип: Фильм/Сериал
+        yearSize: 12,                // год на постере
         borderRadius: 'medium',      // none | small | medium | large
         density: 'comfortable',      // compact | comfortable | spacious
         animations: 'normal',        // none | reduced | normal (CSS-переходы и анимации)
@@ -51,6 +57,8 @@
         return Math.round(w * CARD_MAX_H / CARD_MAX_W);
     }
 
+    function pxLabel(v) { return v + ' px'; }
+
     // Ползунки: min/max/шаг/значение по умолчанию/подпись
     var SLIDERS = {
         cardSize: {
@@ -60,13 +68,21 @@
         detailScale: {
             min: 60, max: 160, step: 1, def: 100,
             fmt: function (v) { return v + '%'; }
-        }
+        },
+        titleSize: { min: 10, max: 26, step: 1, def: 15, fmt: pxLabel },
+        // Подписи на постере — до 35 px: на крупной сетке и с дальнего дивана
+        // мелкие цифры не читаются
+        ratingSize: { min: 9, max: 35, step: 1, def: 13, fmt: pxLabel },
+        typeSize: { min: 9, max: 35, step: 1, def: 13, fmt: pxLabel },
+        yearSize: { min: 8, max: 35, step: 1, def: 12, fmt: pxLabel }
     };
 
+    // Старые пресеты. Нужны только для переноса ранее сохранённых настроек в
+    // пиксельные размеры (normalizeSettings); в CSS больше не участвуют.
     var FONT_SIZES = {
-        small: { title: '11px', meta: '11px' },
-        medium: { title: '13px', meta: '12px' },
-        large: { title: '15px', meta: '14px' }
+        small: { title: '12px', meta: '11px' },
+        medium: { title: '15px', meta: '13px' },
+        large: { title: '17px', meta: '15px' }
     };
 
     var RADII = { none: '0px', small: '6px', medium: '12px', large: '20px' };
@@ -137,6 +153,17 @@
             if (!legacy) legacy = LEGACY_CARD_TO_W[raw.catalogCardSize];
             if (legacy) raw.cardSize = legacy;
         }
+        // Старый пресет «Размер текста» (small/medium/large) — в пиксельные
+        // размеры ползунков. Тоже ДО слияния с defaultSettings: после него
+        // titleSize уже подставлен дефолтом, и выбор пользователя потерялся бы.
+        if (raw.titleSize === undefined && FONT_SIZES[raw.fontSize]) {
+            var preset = FONT_SIZES[raw.fontSize];
+            raw.titleSize = parseFloat(preset.title);
+            raw.ratingSize = parseFloat(preset.meta);
+            raw.typeSize = parseFloat(preset.meta);
+            raw.yearSize = Math.max(8, parseFloat(preset.meta) - 1);
+        }
+
         delete raw.rowPosterSize;
         delete raw.catalogCardSize;
         return raw;
@@ -182,6 +209,13 @@
 
         s.cardSize = clampStep(s.cardSize, SLIDERS.cardSize);
         s.detailScale = clampStep(s.detailScale, SLIDERS.detailScale);
+
+        delete s.fontSize;
+
+        s.titleSize = clampStep(s.titleSize, SLIDERS.titleSize);
+        s.ratingSize = clampStep(s.ratingSize, SLIDERS.ratingSize);
+        s.typeSize = clampStep(s.typeSize, SLIDERS.typeSize);
+        s.yearSize = clampStep(s.yearSize, SLIDERS.yearSize);
         s.focusColor = normalizeColor(s.focusColor);
 
         s.showRatings = !!s.showRatings;
@@ -261,11 +295,12 @@
     // две строки названия (line-clamp: 2), его нижний margin и строка меты.
     function cardInfoHeight() {
         var density = DENSITIES[currentSettings.density] || DENSITIES.comfortable;
-        var font = FONT_SIZES[currentSettings.fontSize] || FONT_SIZES.medium;
+        var title = clampStep(currentSettings.titleSize, SLIDERS.titleSize);
+        var meta = clampStep(currentSettings.typeSize, SLIDERS.typeSize);
         return 2 * (parseFloat(density.info) || 8) +
-            2 * Math.round((parseFloat(font.title) || 13) * 1.3) +
+            2 * Math.round(title * 1.3) +
             4 +
-            Math.round((parseFloat(font.meta) || 12) * 1.35);
+            Math.round(meta * 1.35);
     }
 
     // Фактическое число колонок сетки.
@@ -371,7 +406,10 @@
         var w = cardWidth();
         var h = posterHeight(w);
         var cols = getColumns();
-        var font = FONT_SIZES[currentSettings.fontSize] || FONT_SIZES.medium;
+        var titleSize = clampStep(currentSettings.titleSize, SLIDERS.titleSize);
+        var ratingSize = clampStep(currentSettings.ratingSize, SLIDERS.ratingSize);
+        var typeSize = clampStep(currentSettings.typeSize, SLIDERS.typeSize);
+        var yearSize = clampStep(currentSettings.yearSize, SLIDERS.yearSize);
         var radius = RADII[currentSettings.borderRadius] || RADII.medium;
         var density = DENSITIES[currentSettings.density] || DENSITIES.comfortable;
         var bright = BRIGHTNESS[currentSettings.posterBrightness] || BRIGHTNESS.normal;
@@ -417,13 +455,23 @@
         // 4. Плотность: внутренний отступ информации
         css.push('.torrent-info{padding:' + density.info + '!important;}');
 
-        // 5. Размер текста (снимаем фикс. высоту .torrent-title, иначе обрежет)
-        css.push('.torrent-title{font-size:' + font.title + '!important;height:auto!important;max-height:none!important;}');
-        css.push('.torrent-meta,.torrent-badge{font-size:' + font.meta + '!important;}');
+        // 5. Размеры подписей — с ползунков, каждый отдельно.
+        //    height/max-height снимаем: у карточек рядов название с фиксированной
+        //    высотой под два ряда строк, и крупный шрифт в неё не влезал бы.
+        css.push('.torrent-title{font-size:' + titleSize + 'px!important;' +
+            'height:auto!important;max-height:none!important;}');
+        css.push('.rating-badge,.card-modern .torrent-playing,.card-modern .torrent-size{' +
+            'font-size:' + ratingSize + 'px!important;}');
+        css.push('.torrent-meta,.torrent-badge{font-size:' + typeSize + 'px!important;}');
+        css.push('.card-modern .poster-year{font-size:' + yearSize + 'px!important;}');
+        // Полоса на постере растёт вместе с тем, что в ней лежит
+        css.push('.card-modern .poster-bar{height:' +
+            (Math.max(ratingSize, typeSize) + 14) + 'px!important;}');
 
         // 6. Рейтинги / год
         if (!currentSettings.showRatings) css.push('.rating-badge{display:none!important;}');
-        if (!currentSettings.showYear) css.push('.catalog-badge{display:none!important;}');
+        // .catalog-badge — год у карточек рядов, .poster-year — у карточек сетки
+        if (!currentSettings.showYear) css.push('.catalog-badge,.card-modern .poster-year{display:none!important;}');
 
         // 7. Яркость постеров
         css.push('.torrent-poster img,.row-poster-img,img.catalog-poster-img{filter:brightness(' + bright + ')!important;}');
@@ -640,9 +688,16 @@
             '</div>' +
             '</div>' +
 
-            '<div class="ui-customizer-group"><h3>Размер текста</h3><div class="ui-customizer-options">' +
-            optionRow('fontSize', [['small', 'Малый'], ['medium', 'Средний'], ['large', 'Большой']]) +
-            '</div></div>' +
+            '<div class="ui-customizer-group"><h3>Размер подписей карточки</h3>' +
+            '<div class="ui-customizer-hint">Название под постером.</div>' +
+            sliderRow('titleSize', SLIDERS.titleSize.min + ' px', SLIDERS.titleSize.max + ' px') +
+            '<div class="ui-customizer-hint">Оценка на постере.</div>' +
+            sliderRow('ratingSize', SLIDERS.ratingSize.min + ' px', SLIDERS.ratingSize.max + ' px') +
+            '<div class="ui-customizer-hint">Тип: фильм или сериал.</div>' +
+            sliderRow('typeSize', SLIDERS.typeSize.min + ' px', SLIDERS.typeSize.max + ' px') +
+            '<div class="ui-customizer-hint">Год на постере.</div>' +
+            sliderRow('yearSize', SLIDERS.yearSize.min + ' px', SLIDERS.yearSize.max + ' px') +
+            '</div>' +
 
             '<div class="ui-customizer-group"><h3>Скругление углов</h3><div class="ui-customizer-options">' +
             optionRow('borderRadius', [['none', 'Без'], ['small', 'Малое'], ['medium', 'Среднее'], ['large', 'Большое']]) +
