@@ -1032,7 +1032,7 @@ function createTorrentCard(torrent) {
         '<span class="torrent-badge">' + (cardMediaType === 'tv' ? 'Сериал' : 'Фильм') + '</span></div>' +
         '</div>' +
         '<div class="torrent-info">' +
-        '<div class="torrent-title"><span>' + escapeHtml(title) + '</span></div>' +
+        '<div class="torrent-title marquee-text"><span>' + escapeHtml(title) + '</span></div>' +
         '</div>';
 
     return card;

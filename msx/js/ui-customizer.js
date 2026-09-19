@@ -368,6 +368,13 @@
         css.push('.catalog-actor-card.focused,.catalog-recommendation-card.focused{' +
             'box-shadow:0 0 0 3px ' + c + '!important;}');
 
+        // Карточки сетки: кольцо рисует слой поверх постера (::after), на самой
+        // карточке гасим — постер уменьшен до 0.97, и кольцо вокруг карточки
+        // висело бы в стороне от него.
+        css.push('.card-modern.focused{box-shadow:none!important;}');
+        css.push('.card-modern.focused .torrent-poster::after{' +
+            'box-shadow:inset 0 0 0 3px ' + c + '!important;}');
+
         // Карточки рядов-каруселей. Кольцо рисует ТОЛЬКО постер: на самой
         // карточке гасим кольцо общего правила .focused, иначе вокруг постера
         // (он теперь в своих границах, scale 0.97 → 1) их видно два.

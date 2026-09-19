@@ -1710,7 +1710,7 @@ function getCardTemplate() {
         '<span class="torrent-badge"></span></div>' +
         '</div>' +
         '<div class="torrent-info">' +
-        '<div class="torrent-title"><span></span></div>' +
+        '<div class="torrent-title marquee-text"><span></span></div>' +
         '</div>';
     _cardTemplate = card;
     return card;
@@ -4330,7 +4330,10 @@ function buildActorCard() {
     var info = document.createElement('div');
     info.className = 'catalog-actor-info';
     var name = document.createElement('div');
-    name.className = 'catalog-actor-name';
+    // marquee-text + span: длинное имя проезжает под фокусом (control.js)
+    name.className = 'catalog-actor-name marquee-text';
+    var nameText = document.createElement('span');
+    name.appendChild(nameText);
     var character = document.createElement('div');
     character.className = 'catalog-actor-character';
     info.appendChild(name);
@@ -4340,7 +4343,7 @@ function buildActorCard() {
     card.appendChild(info);
     card._img = img;
     card._placeholder = noPhoto;
-    card._name = name;
+    card._name = nameText;
     card._character = character;
     return card;
 }
@@ -4370,7 +4373,9 @@ function buildRecommendationCard() {
     var info = document.createElement('div');
     info.className = 'catalog-recommendation-info';
     var title = document.createElement('div');
-    title.className = 'catalog-recommendation-title';
+    title.className = 'catalog-recommendation-title marquee-text';
+    var titleText = document.createElement('span');
+    title.appendChild(titleText);
     var year = document.createElement('div');
     year.className = 'catalog-recommendation-year hidden';
     info.appendChild(title);
@@ -4381,7 +4386,7 @@ function buildRecommendationCard() {
     card._img = img;
     card._placeholder = noPoster;
     card._rating = rating;
-    card._title = title;
+    card._title = titleText;
     card._year = year;
     return card;
 }
@@ -6133,6 +6138,7 @@ function measureCatalogCardHeight() {
  * её высоту задаёт содержимое, а не резерв.
  */
 var _cardHeightObserver = null;
+var _lastGridWidth = -1;
 
 function watchCatalogCardHeight() {
     var grid = getCatalogGridEl();
@@ -6152,14 +6158,34 @@ function watchCatalogCardHeight() {
     }
 
     if (_cardHeightObserver) _cardHeightObserver.disconnect();
-    _cardHeightObserver = new ResizeObserver(function () { measureCatalogCardHeight(); });
-    _cardHeightObserver.observe(card);
+
+    /* Следим за СЕТКОЙ, а не за первой карточкой.
+     *
+     * Карточка для этого не годится: её чанк рано или поздно сворачивается,
+     * элемент уходит из DOM, и наблюдатель остаётся висеть на оторванном узле —
+     * замер перестаёт реагировать на смену размера окна, а ссылка живёт до
+     * следующего watch.
+     *
+     * Но у сетки постоянно меняется ВЫСОТА: распорки чанков ужимаются на каждой
+     * порции разворота, то есть в каждом кадре. Реагировать на это нельзя —
+     * получили бы принудительный пересчёт раскладки на кадр. Высота карточки
+     * зависит только от ширины колонки, поэтому сверяем ширину и на изменение
+     * одной высоты выходим сразу. */
+    _cardHeightObserver = new ResizeObserver(function (entries) {
+        var rect = entries && entries[0] && entries[0].contentRect;
+        var w = rect ? Math.round(rect.width) : -1;
+        if (w === _lastGridWidth) return;
+        _lastGridWidth = w;
+        measureCatalogCardHeight();
+    });
+    _cardHeightObserver.observe(grid);
 }
 
 function unwatchCatalogCardHeight() {
     if (!_cardHeightObserver) return;
     _cardHeightObserver.disconnect();
     _cardHeightObserver = null;
+    _lastGridWidth = -1;
 }
 
 /**
