@@ -1043,7 +1043,7 @@ body {
 }
 
 .focused .marquee-text.marquee>span {
-  animation: title-marquee var(--mq-dur, 8s) linear 1.2s infinite;
+  animation: title-marquee var(--mq-dur, 8s) linear 0.85s infinite;
 }
 
 @keyframes title-marquee {
