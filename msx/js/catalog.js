@@ -6511,18 +6511,21 @@ function flushPosterRevealBatch() {
     if (!items.length) return;
     posterRevealBatch = [];
 
-    // Единственный форсированный пересчёт на всю пачку: раскладка считается
-    // для документа целиком, а не для одного элемента, поэтому стартовое
-    // состояние фиксируется сразу всем вставленным картинкам.
-    for (var p = 0; p < items.length; p++) {
-        if (items[p].img.isConnected) { void items[p].img.offsetWidth; break; }
-    }
-
-    for (var i = 0; i < items.length; i++) {
-        if (!items[i].img.isConnected) continue;
-        items[i].img.classList.add('loaded');
-        if (items[i].ph) dropPosterPlaceholder(items[i].ph);
-    }
+    // Прежде здесь читался offsetWidth — принудительный пересчёт раскладки
+    // ВСЕГО документа, только чтобы зафиксировать стартовое состояние
+    // прозрачности. На сетке это самая дорогая операция конвейера постеров
+    // (до 7 мс в настольном Chrome, на телевизоре кратно больше).
+    //
+    // Тот же результат даёт ожидание кадра: к его началу браузер уже посчитал
+    // стили вставленных картинок сам, и переход стартует с opacity: 0 так же.
+    // Ждать приходится на кадр дольше, но зато не посреди навигации.
+    requestAnimationFrame(function () {
+        for (var i = 0; i < items.length; i++) {
+            if (!items[i].img.isConnected) continue;
+            items[i].img.classList.add('loaded');
+            if (items[i].ph) dropPosterPlaceholder(items[i].ph);
+        }
+    });
 }
 
 function queuePosterRevealFlash(img, placeholder) {
