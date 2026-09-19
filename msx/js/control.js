@@ -403,23 +403,43 @@ function restoreScreenFocus(screen) {
 /**
  * Бегущая строка для длинного названия карточки.
  *
- * Включается только у карточки под фокусом: на экране их сотни, и держать
+ * Включается только у элемента под фокусом: их на экране сотни, и держать
  * анимацию на всех — десятки одновременных анимаций там, где читают одну.
- * Сама анимация живёт в CSS (.focused .torrent-title.marquee) и двигает
- * transform, то есть композитингом. Отсюда — только два замера геометрии на
- * одно перемещение фокуса.
+ * Сама анимация живёт в CSS (.focused .marquee-text.marquee) и двигает
+ * transform, то есть композитингом.
  *
- * Сдвиг считается по фактическому переполнению, скорость — примерно 30 px/с,
- * чтобы длинное название ехало не быстрее короткого.
+ * Замер ОТЛОЖЕН и не делается в кадре нажатия. Причина: scrollWidth сразу
+ * после смены класса .focused — это принудительный пересчёт раскладки всего
+ * документа. На сетке из 75 карточек он стоит 0,6 мс в настольном Chrome, то
+ * есть половину всей стоимости focusEl, а на телевизоре в 10–20 раз больше —
+ * ровно тот подтормаживающий отклик, который видно при листании. Спешить
+ * незачем: строка всё равно трогается не раньше, чем через секунду.
  */
+var MARQUEE_MEASURE_DELAY_MS = 350;
+var _marqueeTimer = null;
+var _marqueeTarget = null;
+
 function applyTitleMarquee(el) {
-    // Прокручиваем любую подпись с классом marquee-text: название карточки
-    // сетки, имя актёра и название «похожего» в detail-view
+    if (_marqueeTimer) { clearTimeout(_marqueeTimer); _marqueeTimer = null; }
+    _marqueeTarget = el || null;
     if (!el || !el.querySelector) return;
+
+    _marqueeTimer = setTimeout(function () {
+        _marqueeTimer = null;
+        // Кнопку держат — фокус вот-вот уедет дальше, мерить нечего
+        if (window.navHold) return;
+        if (_marqueeTarget !== el || !el.isConnected) return;
+        if (!el.classList || !el.classList.contains('focused')) return;
+        startTitleMarquee(el);
+    }, MARQUEE_MEASURE_DELAY_MS);
+}
+
+/** Собственно замер и запуск — уже вне кадра нажатия */
+function startTitleMarquee(el) {
     var box = el.querySelector('.marquee-text');
     if (!box) return;
     var span = box.firstElementChild;
-    if (!span) return;                      // старая разметка без span — просто нечего двигать
+    if (!span) return;                      // старая разметка без span
     var overflow = span.scrollWidth - box.clientWidth;
     if (overflow <= 4) return;              // помещается целиком
     box.style.setProperty('--mq-shift', -(overflow + 4) + 'px');
@@ -428,6 +448,8 @@ function applyTitleMarquee(el) {
 }
 
 function clearTitleMarquee(el) {
+    if (_marqueeTimer) { clearTimeout(_marqueeTimer); _marqueeTimer = null; }
+    _marqueeTarget = null;
     if (!el || !el.querySelector) return;
     var box = el.querySelector('.marquee-text.marquee');
     if (box) box.classList.remove('marquee');
