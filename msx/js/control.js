@@ -413,9 +413,10 @@ function restoreScreenFocus(screen) {
  * чтобы длинное название ехало не быстрее короткого.
  */
 function applyTitleMarquee(el) {
-    // Только карточки сетки: у рядов название по-прежнему в две строки
-    if (!el || !el.classList || !el.classList.contains('card-modern')) return;
-    var box = el.querySelector('.torrent-title');
+    // Прокручиваем любую подпись с классом marquee-text: название карточки
+    // сетки, имя актёра и название «похожего» в detail-view
+    if (!el || !el.querySelector) return;
+    var box = el.querySelector('.marquee-text');
     if (!box) return;
     var span = box.firstElementChild;
     if (!span) return;                      // старая разметка без span — просто нечего двигать
@@ -427,8 +428,8 @@ function applyTitleMarquee(el) {
 }
 
 function clearTitleMarquee(el) {
-    if (!el || !el.classList || !el.classList.contains('card-modern')) return;
-    var box = el.querySelector('.torrent-title.marquee');
+    if (!el || !el.querySelector) return;
+    var box = el.querySelector('.marquee-text.marquee');
     if (box) box.classList.remove('marquee');
 }
 
