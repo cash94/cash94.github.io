@@ -873,6 +873,36 @@ body {
 .card-modern .torrent-poster {
   border-radius: 12px;
   overflow: hidden;
+  /* Чуть уменьшен, под фокусом возвращается к своему размеру — так же, как в
+     рядах. Масштабируется постер, а не карточка: высоту ряда сетки меряет
+     measureCatalogCardHeight() через getBoundingClientRect, и transform на
+     самой карточке занизил бы замер, а по нему считаются распорки чанков. */
+  transform: scale(0.97);
+}
+
+.card-modern.focused .torrent-poster {
+  transform: scale(1);
+  z-index: 5;
+}
+
+/* Кольцо фокуса — по краю постера, поверх картинки: снаружи его обрезает
+   contain: paint у карточки, а inset-тень на самом постере закрыла бы
+   картинка (см. то же решение для карточек рядов). */
+.card-modern.focused {
+  box-shadow: none !important;
+}
+
+.card-modern.focused .torrent-poster::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 3px #ff8c00;
+  pointer-events: none;
+  z-index: 6;
 }
 
 /* Полоса метаданных внизу постера */
@@ -999,13 +1029,20 @@ body {
   display: inline-block;
 }
 
-/* Бегущая строка: двигается transform, то есть композитингом, без пересчёта
-   раскладки. Сдвиг и длительность ставит applyTitleMarquee() в control.js. */
-.card-modern.focused .torrent-title.marquee {
+/* Бегущая строка. Класс marquee-text носит любая подпись, которую имеет смысл
+   прокручивать: название карточки сетки, имя актёра и название «похожего» в
+   detail-view. Двигается transform, то есть композитингом, без пересчёта
+   раскладки; сдвиг и длительность ставит applyTitleMarquee() в control.js,
+   и только для элемента под фокусом. */
+.marquee-text>span {
+  display: inline-block;
+}
+
+.focused .marquee-text.marquee {
   text-overflow: clip;
 }
 
-.card-modern.focused .torrent-title.marquee>span {
+.focused .marquee-text.marquee>span {
   animation: title-marquee var(--mq-dur, 8s) linear 1.2s infinite;
 }
 
