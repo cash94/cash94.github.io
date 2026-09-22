@@ -122,14 +122,9 @@ function buildTmdbPosterUrl(path, size) {
     }
 
     size = size || 'w342';
-    var protocol = 'https:';
-    if (window.AppState && AppState.protocol) {
-        protocol = String(AppState.protocol).replace(/:+$/, '');
-        if (protocol.indexOf(':') === -1) protocol += ':';
-    }
 
-    // Используем tsimg.hnar.online для новых URL
-    return protocol + '//tsimg.hnar.online/t/p/' + size +
+    // Основное зеркало картинок из apiproxy.json (config.js)
+    return getPrimaryImageBase() + size +
         (path.charAt(0) === '/' ? path : '/' + path);
 }
 
@@ -555,6 +550,34 @@ async function saveClientConfig() {
         if (response.ok) return true;
     } catch (error) { console.error('Ошибка сохранения конфигурации:', error); }
     return false;
+}
+
+/**
+ * Прогрев раздачи под пробу файла.
+ *
+ * Первое обращение ffprobe к /play/<hash>/<fileId> приходится на холодную
+ * раздачу: TorrServer ещё ищет пиров и тянет голову файла, поэтому проба на
+ * сервере упирается в таймаут (services/probe.js из-за этого делает повтор).
+ * На экране деталей человек всё равно несколько секунд читает описание — за
+ * это время TorrServer успевает поднять куски, и к нажатию «Играть» проба
+ * проходит сразу.
+ *
+ * Греем ровно тот файл, который запустит кнопка: непросмотренная раздача —
+ * первый, с таймкодом — серию из «Продолжить». Отсюда и место вызова: после
+ * addProgressToDetail, когда таймкоды уже загружены и dataset кнопки проставлен.
+ *
+ * Повторы отсекает сам preloadTorrents (player.js), общий для всех вызовов.
+ */
+function preloadDetailFile(hash, fileId) {
+    if (!hash || !fileId) return;
+    // torrents.js грузится раньше player.js, где объявлен preloadTorrents
+    if (typeof preloadTorrents !== 'function') return;
+    // Таймкоды грузятся асинхронно, и за это время человек мог уйти на другую
+    // карточку: греть раздачу, которой уже нет на экране, незачем.
+    if (AppState.currentScreen !== 'detail') return;
+    var openItem = AppState.currentDetailItem;
+    if (!openItem || String(openItem.hash || '').toLowerCase() !== String(hash).toLowerCase()) return;
+    preloadTorrents(hash, fileId);
 }
 
 async function addProgressToDetail(torrent, preloadedFiles) {
@@ -1513,6 +1536,13 @@ function renderDetailActorsFromDetails(details) {
     }
 
     wrap.classList.remove('hidden');
+    // Ряд общий с каталожной карточкой и не пересоздаётся — без сброса он
+    // открывался там, где его долистали в прошлой карточке. Сбрасывать можно
+    // только после показа: у скрытого ряда запись scrollLeft отбрасывается
+    // (подробнее у resetDetailRowScroll в catalog.js, он грузится позже, но
+    // к открытию карточки уже есть).
+    if (typeof resetDetailRowScroll === 'function') resetDetailRowScroll(grid);
+    else grid.scrollLeft = 0;
 
     // Нажатие по актёру. В карточке КАТАЛОГА это делает делегированный
     // обработчик на #detail-view (setupDetailDelegation в catalog.js), но
@@ -1879,6 +1909,13 @@ async function showDetail(torrent) {
                 return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext));
             });
             var addedItems = renderFileItems(videoFiles, torrent.hash, torrent.title);
+            // Ряд серий — тоже пул плиток в одном и том же #files-list, и
+            // прокрутка прошлой раздачи переходила к новой: долистал сериал до
+            // 24-й серии, открыл другой — а он уже в конце.
+            if (filesList) {
+                if (typeof resetDetailRowScroll === 'function') resetDetailRowScroll(filesList);
+                else filesList.scrollLeft = 0;
+            }
 
             // Количество и общий вес — в строку метаданных под заголовком
             var totalBytes = 0;
@@ -1908,6 +1945,12 @@ async function showDetail(torrent) {
             addProgressToDetail(torrent, files).then(function (lastField) {
                 if (lastField > 0 && typeof updateFocusableElements === 'function') {
                     updateFocusableElements();
+                }
+                // Кнопка уже знает, что запустит: fileId лежит в dataset и для
+                // «Играть» (первый файл), и для «Продолжить N серию».
+                var playBtn = getEl('detail-progress-btn');
+                if (playBtn && playBtn.dataset.hash) {
+                    preloadDetailFile(playBtn.dataset.hash, playBtn.dataset.fileId);
                 }
             });
 
@@ -1972,7 +2015,7 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
 
         size = size || 'w342';
 
-        return protocolBase + '//tsimg.hnar.online/t/p/' + size +
+        return protocolBase + '//' + getPrimaryImageHost() + '/t/p/' + size +
             (path.charAt(0) === '/' ? path : '/' + path);
     }
 
@@ -3709,6 +3752,29 @@ function clearCatalogSearchContext() {
 }
 window.clearCatalogSearchContext = clearCatalogSearchContext;
 
+/**
+ * Фокус на карточку выдачи, из которой открывали фильм.
+ *
+ * Раньше «назад» из карточки фильма возвращал в поиск и ставил фокус в
+ * поисковую строку: приходилось заново листать выдачу до того же места.
+ * Карточку ищем по tmdbId + типу, а не по номеру: выдачу за это время могли
+ * перерисовать (фильтр «Фильмы / Сериалы»), и номер указал бы на чужую.
+ * Нет такой карточки — false, и фокус уходит в строку, как прежде.
+ */
+function focusLastSearchCard() {
+    var key = AppState.lastSearchCardKey;
+    if (!key || typeof focusEl !== 'function') return false;
+    var cards = document.querySelectorAll('#search-results .global-search-card');
+    for (var i = 0; i < cards.length; i++) {
+        if (cards[i].dataset.tmdbId + ':' + cards[i].dataset.mediaType === key) {
+            if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+            focusEl(cards[i]);
+            return true;
+        }
+    }
+    return false;
+}
+
 function showSearchResults(options = {}) {
     var searchOverlay = getEl('search-overlay'); var searchTab = getEl('tab-search'); var torrentsTab = getEl('tab-torrents'); var catalogTab = getEl('tab-catalog'); var searchInput = getEl('search-query');
     if (!searchOverlay || !searchTab || !torrentsTab) return;
@@ -3732,6 +3798,8 @@ function showSearchResults(options = {}) {
     }
     if (options.runSearch && searchInput && searchInput.value.trim()) setTimeout(function () { searchTorrents(searchInput.value.trim()); }, 0);
     setTimeout(function () {
+        // Вернулись из карточки фильма — фокус на ту же карточку выдачи
+        if (options.restoreCard && focusLastSearchCard()) return;
         if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(options.focusQuery !== false); return; }
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
             updateFocusableElements();
@@ -4459,23 +4527,23 @@ async function searchTMDB(query) {
     showLoading('Поиск в TMDB...');
     try {
         var encodedQuery = encodeURIComponent(query.trim());
-        var searchResponses = await Promise.all([
-            fetch('/api/tmdb/search?query=' + encodedQuery + '&type=movie&year=', { signal: controller.signal }),
-            fetch('/api/tmdb/search?query=' + encodedQuery + '&type=tv&year=', { signal: controller.signal })
-        ]);
+        // Фильмы и сериалы — одним запросом: оба похода в TMDB и склейку
+        // делает сервер (/api/tmdb/search/all). Он же и сортирует.
+        var allResults = null;
+        var combined = await fetch('/api/tmdb/search/all?query=' + encodedQuery, { signal: controller.signal });
         if (searchSequence !== tmdbSearchSequence) return;
-        var moviesResponse = searchResponses[0];
-        var tvResponse = searchResponses[1];
-        var allResults = [];
-        if (moviesResponse && moviesResponse.ok) {
-            var moviesData = await moviesResponse.json();
-            if (moviesData.results) moviesData.results.forEach(item => allResults.push({ id: item.id, media_type: 'movie', title: item.title, name: item.title, release_date: item.release_date, vote_average: item.vote_average, vote_count: item.vote_count, overview: item.overview, poster_path: item.poster_path, backdrop_path: item.backdrop_path, searchQuery: query }));
+        if (combined.ok) {
+            var combinedData = await combined.json();
+            if (combinedData && Array.isArray(combinedData.results)) allResults = combinedData.results;
         }
-        if (tvResponse && tvResponse.ok) {
-            var tvData = await tvResponse.json();
-            if (tvData.results) tvData.results.forEach(item => allResults.push({ id: item.id, media_type: 'tv', title: item.name, name: item.name, first_air_date: item.first_air_date, vote_average: item.vote_average, vote_count: item.vote_count, overview: item.overview, poster_path: item.poster_path, backdrop_path: item.backdrop_path, searchQuery: query }));
+        // Маршрута нет (404) — старый серверный бинарник, а js пришёл с
+        // зеркала свежий: делаем как раньше, двумя запросами
+        if (allResults === null && combined.status === 404) {
+            allResults = await searchTMDBLegacy(encodedQuery, controller.signal);
+            if (searchSequence !== tmdbSearchSequence) return;
         }
-        allResults.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0) || (b.vote_count || 0) - (a.vote_count || 0));
+        if (allResults === null) throw new Error('TMDB: HTTP ' + combined.status);
+        for (var ri = 0; ri < allResults.length; ri++) allResults[ri].searchQuery = query;
         globalSearchResults = allResults; currentSearchQuery = query;
         if (currentSearchMode === 'globalsearch') showContentTypeFilter();
         showGlobalSearchResults();
@@ -4487,6 +4555,28 @@ async function searchTMDB(query) {
     } finally {
         if (searchSequence === tmdbSearchSequence) hideLoading();
     }
+}
+
+/**
+ * Прежний путь глобального поиска — для старого сервера без
+ * /api/tmdb/search/all: два запроса и склейка на клиенте.
+ */
+async function searchTMDBLegacy(encodedQuery, signal) {
+    var responses = await Promise.all([
+        fetch('/api/tmdb/search?query=' + encodedQuery + '&type=movie&year=', { signal: signal }),
+        fetch('/api/tmdb/search?query=' + encodedQuery + '&type=tv&year=', { signal: signal })
+    ]);
+    var all = [];
+    if (responses[0] && responses[0].ok) {
+        var moviesData = await responses[0].json();
+        if (moviesData.results) moviesData.results.forEach(function (item) { all.push({ id: item.id, media_type: 'movie', title: item.title, name: item.title, release_date: item.release_date, vote_average: item.vote_average, vote_count: item.vote_count, overview: item.overview, poster_path: item.poster_path, backdrop_path: item.backdrop_path }); });
+    }
+    if (responses[1] && responses[1].ok) {
+        var tvData = await responses[1].json();
+        if (tvData.results) tvData.results.forEach(function (item) { all.push({ id: item.id, media_type: 'tv', title: item.name, name: item.name, first_air_date: item.first_air_date, vote_average: item.vote_average, vote_count: item.vote_count, overview: item.overview, poster_path: item.poster_path, backdrop_path: item.backdrop_path }); });
+    }
+    all.sort(function (a, b) { return (b.vote_average || 0) - (a.vote_average || 0) || (b.vote_count || 0) - (a.vote_count || 0); });
+    return all;
 }
 
 function getRatingColor(rating) { if (rating >= 8) return '#4caf50'; if (rating >= 6) return '#ffc107'; if (rating >= 4) return '#ff9800'; return '#f44336'; }
@@ -4535,71 +4625,63 @@ function renderFilteredGlobalResults(results) {
     statsDiv.innerHTML = 'Найдено в TMDB: <span>' + results.length + '</span>' + (results.length > limit ? ' (показано ' + limit + ')' : '');
     searchResultsDiv.appendChild(statsDiv);
 
+    /* Сетка и карточки — те же, что у сетки каталога.
+     *
+     * Раньше выдача собиралась своими карточками на инлайн-стилях (синяя
+     * рамка, свой бейдж оценки, подпись «Фильм · год» под постером) в сетке,
+     * зашитой на 5 колонок. От каталога она отличалась и видом, и тем, что
+     * настройки «Внешнего вида» её не касались: размер карточек, число
+     * колонок, рейтинги и год. А стрелки вверх-вниз при этом считали колонки
+     * по каталогу (getColumns в control.js) — выбрали 6 колонок, и навигация
+     * по поиску шагала мимо.
+     *
+     * Теперь карточку собирает общий createCardElement (catalog.js), у сетки
+     * те же правила, что у #catalog-grid (styles.css и ui-customizer.js), а
+     * постер ставит updatePosterDOM: размер — из настроек, проявление — через
+     * общую очередь, при ошибке — следующее зеркало.
+     *
+     * Класс global-search-card оставлен: по нему выдачу находит навигация
+     * пульта (control.js). */
     var grid = document.createElement('div');
     grid.className = 'global-search-grid';
-    grid.style.cssText = 'display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; padding: 20px 0;';
 
     var fragment = document.createDocumentFragment();
 
     for (var idx = 0; idx < limit; idx++) {
         var result = results[idx];
         var title = result.title || result.name || 'Без названия';
-        var yearStr = (result.release_date || result.first_air_date) ? new Date(result.release_date || result.first_air_date).getFullYear() : 'N/A';
-        var mediaType = result.media_type === 'tv' ? 'Сериал' : 'Фильм';
-        var rating = result.vote_average ? result.vote_average.toFixed(1) : null;
-        var posterUrl = result.poster_path ? buildTmdbPosterUrl(result.poster_path, 'w342') : null;
+        var date = String(result.release_date || result.first_air_date || '');
+        var year = /^\d{4}/.test(date) ? date.substring(0, 4) : '';
+        var mt = result.media_type === 'tv' ? 'tv' : 'movie';
+        // Как у карточки каталога: одна цифра после запятой, целые — без неё
+        var rating = result.vote_average ? Math.round(result.vote_average * 10) / 10 : null;
 
-        var card = document.createElement('div');
-        card.className = 'global-search-card';
-        card.dataset.tmdbId = result.id;
-        card.dataset.mediaType = result.mediaType;
-        card.style.cssText = 'background: rgba(30, 30, 40, 0.9); border-radius: 12px; overflow: hidden; cursor: pointer; border: 1px solid rgba(74, 158, 255, 0.3);';
+        var card = createCardElement({
+            className: 'global-search-card',
+            dataset: {
+                tmdbId: result.id,
+                mediaType: mt,
+                title: title,
+                rating: rating || '',
+                posterPath: result.poster_path || ''
+            },
+            title: title.substring(0, 60) + (title.length > 60 ? '...' : ''),
+            ratingText: rating || '',
+            ratingColor: rating ? getRatingColor(rating) : '',
+            metaType: mt === 'tv' ? 'Сериал' : 'Фильм',
+            metaBadge: year
+        });
 
-        var posterDiv = document.createElement('div');
-        posterDiv.className = 'global-search-poster';
-        /* Пропорции через height:0 + padding-bottom, а НЕ через aspect-ratio.
-         *
-         * aspect-ratio появился только в Chrome 88, а на телевизорах живёт
-         * WebView 66 — там свойство просто игнорируется. Высоту бокса нечем
-         * задать, и её начинает диктовать сама картинка: каждый догруженный
-         * постер менял высоту своей строки, а с ней и всю сетку. Сорок картинок
-         * — сорок полных пересчётов раскладки, да ещё и позиции под фокусом
-         * уезжают из-под человека. Это и есть «тяжело даётся навигация».
-         *
-         * padding-bottom: 150% (те же 2/3) понимают все, и место под постер
-         * зарезервировано до загрузки — сетка встаёт один раз.
-         *
-         * В styles.css такой фоллбэк уже есть для .torrent-poster, но он
-         * прописан под @supports not (aspect-ratio) и инлайновый стиль перебить
-         * не может — поэтому здесь сразу совместимый вариант. */
-        posterDiv.style.cssText = 'position: relative; width: 100%; height: 0; padding-bottom: 150%; overflow: hidden; background: linear-gradient(135deg, #1a1a2e, #16213e);';
-
-        if (posterUrl) {
-            var img = document.createElement('img');
-            img.dataset.src = posterUrl; // Картинка не грузится сразу!
-            img.alt = title;
-            img.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.3s;';
-            img.className = 'lazy-poster';
-            posterDiv.appendChild(img);
-        } else {
-            posterDiv.innerHTML = '<div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 48px;">' + mediaType + '</div>';
+        if (!result.poster_path) {
+            // Скелет-загрузка без постера так и мигал бы вечно — меняем на
+            // заглушку. Не через updatePosterDOM: тот переписывает весь блок
+            // постера, и вместе с ним пропали бы плашка года и полоса оценки.
+            var ph = card.querySelector('.no-poster');
+            if (ph) {
+                ph.classList.remove('catalog-poster-loading');
+                ph.textContent = 'Нет постера';
+            }
         }
-
-        if (rating) {
-            var ratingDiv = document.createElement('div');
-            ratingDiv.style.cssText = 'position: absolute; top: 8px; right: 8px; background: rgba(0, 0, 0, 0.8); color: ' + getRatingColor(parseFloat(rating)) + '; font-weight: bold; font-size: 12px; padding: 4px 8px; border-radius: 12px; border: 1px solid ' + getRatingColor(parseFloat(rating)) + ';';
-            ratingDiv.textContent = rating;
-            posterDiv.appendChild(ratingDiv);
-        }
-
-        var infoDiv = document.createElement('div');
-        infoDiv.className = 'global-search-info';
-        infoDiv.style.cssText = 'padding: 12px;';
-        infoDiv.innerHTML = '<div class="global-search-title" style="font-weight: 600; font-size: 14px; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + escapeHtml(title) + '</div>' +
-            '<div style="display: flex; justify-content: space-between; font-size: 12px; color: #aaa;"><span>' + mediaType + '</span><span>' + yearStr + '</span></div>';
-
-        card.appendChild(posterDiv);
-        card.appendChild(infoDiv);
         fragment.appendChild(card);
     }
 
@@ -4609,35 +4691,33 @@ function renderFilteredGlobalResults(results) {
     // Навигация пультом держится на поколении DOM: без этого свежая сетка
     // карточек не попала бы ни в список фокусируемых, ни в getSearchResults
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    // Колонки теперь задаёт тот же CSS, что у каталога, — пусть навигация
+    // перечитает их с экрана, а не держит прежнее число
+    if (typeof invalidateColumnsCache === 'function') invalidateColumnsCache();
 
-    // IntersectionObserver для ленивой загрузки картинок (поддерживается в Chrome 51+)
+    // Постеры — лениво, как и раньше: за 300 px до появления в кадре
+    var loadPoster = function (card) {
+        var path = card.dataset.posterPath;
+        if (!path || card.dataset.posterRequested === '1') return;
+        card.dataset.posterRequested = '1';
+        updatePosterDOM(card.querySelector('.torrent-poster'), null, path);
+    };
+    var postered = grid.querySelectorAll('.global-search-card[data-poster-path]:not([data-poster-path=""])');
     if ('IntersectionObserver' in window) {
-        var lazyImages = grid.querySelectorAll('.lazy-poster');
         var imageObserver = new IntersectionObserver(function (entries, observer) {
             entries.forEach(function (entry) {
-                if (entry.isIntersecting) {
-                    var img = entry.target;
-                    img.src = img.dataset.src;
-                    img.onload = function () { img.style.opacity = '1'; };
-                    img.onerror = function () {
-                        img.parentElement.innerHTML = '<div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 48px;">🎬</div>';
-                    };
-                    observer.unobserve(img);
-                }
+                if (!entry.isIntersecting) return;
+                loadPoster(entry.target);
+                observer.unobserve(entry.target);
             });
         }, {
-            rootMargin: '300px 0px' // Начинаем грузить за 300px до появления на экране
+            rootMargin: '300px 0px'
         });
-
-        lazyImages.forEach(function (img) { imageObserver.observe(img); });
+        for (var pi = 0; pi < postered.length; pi++) imageObserver.observe(postered[pi]);
         globalPosterObserver = imageObserver;
     } else {
         // Фоллбэк для совсем старых браузеров
-        var lazyImages = grid.querySelectorAll('.lazy-poster');
-        lazyImages.forEach(function (img) {
-            img.src = img.dataset.src;
-            img.onload = function () { img.style.opacity = '1'; };
-        });
+        for (var pj = 0; pj < postered.length; pj++) loadPoster(postered[pj]);
     }
 
     // Делегирование клика (вешается на grid, а не на каждую карточку)
@@ -4659,9 +4739,30 @@ async function showGlobalSearchDetail(item) {
     AppState.mediaType = item.media_type;
     var posterUrl = item.poster_path ? buildTmdbPosterUrl(item.poster_path, 'w342') : null;
     if (typeof window.showCatalogDetail === 'function') {
-        AppState.searchReturnTo = 'search'; AppState.currentScreen = 'detail';
-        await window.showCatalogDetail(catalogItem, 0, posterUrl);
+        // searchReturnTo НЕ трогаем: это точка выхода из самого поиска (главная,
+        // каталог, торренты). Возврат карточка → поиск держится на AppState.isSearch,
+        // а затёртое здесь значение после второго «назад» уводило в ветку торрентов
+        // мимо главной — фокус терялся.
+        AppState.currentScreen = 'detail';
+        // Какую карточку выдачи открыли — чтобы «назад» вернул фокус на неё,
+        // а не в поисковую строку (focusLastSearchCard)
+        AppState.lastSearchCardKey = item.id + ':' + (item.media_type === 'tv' ? 'tv' : 'movie');
+        // Оверлей поиска снимаем СРАЗУ, а не после await: он лежит выше
+        // #detail-view и индикатора «Загрузка…», и пока showCatalogDetail ждал
+        // /details и актёров, на экране висела выдача, будто нажатие не
+        // сработало. Теперь как в каталоге: нажал → загрузка → карточка.
+        // Чёрная подложка закрывает экран под поиском на время проявления
+        // карточки; снимает её animateDetailShow в конце перехода.
+        var hasShade = typeof Animations !== 'undefined' && typeof Animations.raiseDetailShade === 'function';
+        if (hasShade) Animations.raiseDetailShade();
+        var detailPromise = window.showCatalogDetail(catalogItem, 0, posterUrl);
         var searchOverlay = getEl('search-overlay'); if (searchOverlay) searchOverlay.classList.add('hidden');
+        try {
+            await detailPromise;
+        } catch (e) {
+            if (hasShade && typeof Animations.dropDetailShade === 'function') Animations.dropDetailShade();
+            throw e;
+        }
     }
 }
 

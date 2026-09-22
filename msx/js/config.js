@@ -25,6 +25,13 @@ var AppState = {
   currentScreen: 'config',
   videoUrl: '',
   bufferHidden: false,
+  // Настройка «Автопропуск заставки»: кнопка пропуска отсчитывает и
+  // пропускает сама (player.js, startAutoSkipCountdown). Из localStorage.
+  autoSkipIntro: false,
+  // Настройка «Использовать встроенную клавиатуру» (Прочее): на текстовых
+  // полях вместо системной открывается своя экранная клавиатура (js/osk.js).
+  // Из localStorage.
+  builtinKeyboard: false,
   hls: null,
   currentStreamId: null,
 
@@ -87,8 +94,69 @@ var AppState = {
   dvPreferred: false,
   trailerPlay: false,
   clearLastSelected: true,
-  openInRow: false
+  openInRow: false,
+  // Зеркала картинок TMDB и хост API заставок. Значения по умолчанию —
+  // прежние зашитые; настоящие приходят с сервера из apiproxy.json
+  // (loadClientConfig ниже). Массив меняется НА МЕСТЕ: catalog.js держит
+  // ссылку на него как на свой список mirrors.
+  imageMirrors: [
+    'tsimg.hnar.online',
+    'nl.imagetmdb.com',
+    'mocha.stull.xyz',
+    'proxy.vokino.pro/image',
+    'nmtmdb.duckdns.org'
+  ],
+  skipApiHost: 'tsskip.hnar.online'
 };
+
+/**
+ * Основное зеркало картинок — первое в списке.
+ *
+ * Его берут места, где запасного перехода на следующее зеркало при ошибке
+ * загрузки нет (постеры торрентов, поиск по названию, воркер каталога): там
+ * балансировка по всему списку уронила бы все постеры, попавшие на мёртвый
+ * хост. Балансирует только каталог (getTmdbImageUrl в catalog.js) — у него
+ * такой переход есть.
+ */
+function getPrimaryImageHost() {
+  return (AppState.imageMirrors && AppState.imageMirrors[0]) || 'tsimg.hnar.online';
+}
+
+/** База URL картинок основного зеркала: «https://tsimg.hnar.online/t/p/». */
+function getPrimaryImageBase() {
+  var proto = String(AppState.protocol || 'https:').replace(/:+$/, '') + ':';
+  return proto + '//' + getPrimaryImageHost() + '/t/p/';
+}
+
+/**
+ * Клиентская часть apiproxy.json с сервера (/api/client-config).
+ *
+ * Картинки начинают грузиться раньше, чем придёт ответ, — первые постеры
+ * уходят на зеркала по умолчанию, дальнейшие уже на настоящие. Ждать ответа
+ * перед отрисовкой не стоит: это задержка первого экрана ради редкого случая.
+ * Старый сервер маршрута не знает — тогда просто остаются значения по умолчанию.
+ */
+function loadClientConfig() {
+  return fetch(SERVER_URL + '/api/client-config')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (!data || !data.success) return;
+      if (Array.isArray(data.tmdbImages) && data.tmdbImages.length) {
+        AppState.imageMirrors.length = 0;
+        for (var i = 0; i < data.tmdbImages.length; i++) AppState.imageMirrors.push(String(data.tmdbImages[i]));
+        if (window.CatalogWorker && typeof CatalogWorker.setImageMirrors === 'function') {
+          CatalogWorker.setImageMirrors(AppState.imageMirrors);
+        }
+      }
+      if (data.skipApi) AppState.skipApiHost = String(data.skipApi);
+      console.log('🌐 Зеркала картинок: ' + AppState.imageMirrors.join(', ') + '; заставки: ' + AppState.skipApiHost);
+    })
+    ['catch'](function () { });
+}
+window.getPrimaryImageHost = getPrimaryImageHost;
+window.getPrimaryImageBase = getPrimaryImageBase;
+window.loadClientConfig = loadClientConfig;
+loadClientConfig();
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
 var domCache = {};
