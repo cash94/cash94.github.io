@@ -826,13 +826,19 @@ function setupNavigation() {
       // (скролл, фокус) идёт параллельно, под уходящей карточкой — поэтому реакция
       // мгновенная, а сам переход плавный. Если в истории есть предыдущая карточка,
       // ниже откроется она — закрывать нечего.
-      if (!detailHistory || detailHistory.length <= 1) {
+      var lastInHistory = !detailHistory || detailHistory.length <= 1;
+      // Назад в выдачу поиска: карточку не гасим и экран под поиском не
+      // показываем — выдача проявится поверх карточки сама (ветка 'search' в
+      // restoreFocusAfterNavigation). Иначе между карточкой и выдачей мелькал
+      // экран, с которого пришли в поиск.
+      var backToSearch = lastInHistory && !!(AppState && AppState.isSearch);
+      if (lastInHistory && !backToSearch) {
         hideDetailView();
       }
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
 
       var torrserverSection = getEl('torrserver-section');
-      if (torrserverSection) torrserverSection.style.display = 'block';
+      if (torrserverSection && !backToSearch) torrserverSection.style.display = 'block';
       if (typeof AppState !== 'undefined') AppState.detailReturnTo = AppState.inSearch;
 
       var returnTo = (!AppState || !AppState.isSearch)
@@ -840,6 +846,14 @@ function setupNavigation() {
         : 'search';
 
       console.log('📍 returnTo =', returnTo);
+
+      // Без задержки DETAIL_HIDE_DELAY_MS: она нужна, пока карточка гаснет, а
+      // здесь реакцией на «назад» и служит проявление выдачи
+      if (backToSearch) {
+        clearDetailHistory();
+        restoreFocusAfterNavigation(returnTo, { currentTorrentHash: currentTorrentHash, savedScroll: savedScroll });
+        return;
+      }
 
       setTimeout(function () {
         if (typeof updateFocusableElements !== 'function' || typeof setFocus !== 'function') {
@@ -955,13 +969,28 @@ function restoreFocusAfterNavigation(returnTo, context) {
   }
 
   if (returnTo === 'search') {
-    if (AppState && AppState.isSearch) {
-      if (typeof AppState !== 'undefined') AppState.isSearch = false;
-      // restoreCard — фокус на карточку, из которой открывали фильм, а не в строку
-      if (typeof window.showSearchResults === 'function') window.showSearchResults({ restoreCard: true });
-    } else {
-      if (typeof window.clearSearchResults === 'function') window.clearSearchResults();
+    if (AppState && AppState.isSearch && typeof window.showSearchResults === 'function') {
+      AppState.isSearch = false;
+      // restoreCard — фокус на карточку, из которой открывали фильм, а не в строку.
+      // Выдача проявляется ПОВЕРХ ещё видимой карточки, и прячем карточку, только
+      // когда выдача закрыла экран. Раньше карточка гасла сразу, и сквозь
+      // проявляющуюся выдачу было видно экран, с которого пришли в поиск.
+      // Флаг — на случай, если за время проявления успеют уйти дальше: новую
+      // карточку прятать нельзя (снимает showGlobalSearchDetail), а при выходе из
+      // поиска карточку надо убрать сразу (hideSearchResults в torrents.js)
+      AppState.detailUnderSearch = true;
+      window.showSearchResults({
+        restoreCard: true,
+        onShown: function () {
+          if (!AppState.detailUnderSearch) return;
+          AppState.detailUnderSearch = false;
+          hideDetailView();
+        }
+      });
+      return;
     }
+    if (AppState) AppState.isSearch = false;
+    if (typeof window.clearSearchResults === 'function') window.clearSearchResults();
     hideDetailView();
     return;
   }
