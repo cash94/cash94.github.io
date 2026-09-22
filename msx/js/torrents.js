@@ -1551,6 +1551,12 @@ function renderDetailActorsFromDetails(details) {
     // а сам grid остаётся, поэтому дубля слушателей не будет.
     if (!grid._actorClickHandler) {
         grid._actorClickHandler = function (e) {
+            // Ряд #catalog-detail-actors общий с карточкой каталога, а там клик
+            // уже ловит делегирование на #detail-view. Без этой проверки после
+            // первой же торрентной карточки клик по актёру в каталожной открывал
+            // фильмографию дважды — в путь (personTrail) ложились два шага, и
+            // «назад» проходило «актёр → карточка» по второму кругу.
+            if (typeof isTorrentDetailMode === 'function' && !isTorrentDetailMode()) return;
             var card = e.target.closest ? e.target.closest('.catalog-actor-card') : null;
             if (!card || !card.dataset.personId) return;
             if (typeof window.openPersonCatalog !== 'function') return;
