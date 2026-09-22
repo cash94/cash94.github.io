@@ -1405,6 +1405,14 @@ function openPersonCatalog(personId, personName) {
     if (!personId) return Promise.resolve();
     if (!catalogState.personTrail) catalogState.personTrail = [];
 
+    // Одно нажатие — один шаг пути. Повторный вызов для того же актёра сразу
+    // следом (два обработчика на одном клике, дребезг OK) дописал бы второй шаг,
+    // и «назад» вернулось бы в эту же фильмографию ещё раз
+    var now = Date.now();
+    var last = catalogState.lastPersonOpen;
+    if (last && String(last.id) === String(personId) && now - last.at < 1000) return Promise.resolve();
+    catalogState.lastPersonOpen = { id: personId, at: now };
+
     if (!catalogState.personTrail.length) {
         catalogState.personRoot = {
             fromHome: !!(window.HomeScreen && HomeScreen.state && HomeScreen.state.detailFromHome),
