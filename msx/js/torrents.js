@@ -3790,11 +3790,15 @@ function showSearchResults(options = {}) {
             display: 'flex',
             onDone: function () {
                 if (torrserverSection && AppState.currentScreen === 'search') torrserverSection.style.display = 'none';
+                // Выдача полностью закрыла экран — то, что под ней, можно убирать
+                // (возврат из карточки прячет карточку только теперь)
+                if (typeof options.onShown === 'function') options.onShown();
             }
         });
     } else {
         if (torrserverSection) torrserverSection.style.display = 'none';
         searchOverlay.classList.remove('hidden'); searchOverlay.style.display = 'flex';
+        if (typeof options.onShown === 'function') options.onShown();
     }
     if (options.runSearch && searchInput && searchInput.value.trim()) setTimeout(function () { searchTorrents(searchInput.value.trim()); }, 0);
     setTimeout(function () {
@@ -3818,6 +3822,12 @@ function showSearchResults(options = {}) {
 function hideSearchResults() {
     // Уходим из поиска — контекст карточки больше не действует
     setSearchLocked(false);
+    // Ушли из выдачи раньше, чем она проявилась после возврата из карточки:
+    // карточка всё ещё под ней и без этого осталась бы висеть поверх экрана
+    if (AppState.detailUnderSearch) {
+        AppState.detailUnderSearch = false;
+        if (typeof window.hideDetailView === 'function') window.hideDetailView();
+    }
     var searchOverlay = getEl('search-overlay'); var searchTab = getEl('tab-search'); var torrentsTab = getEl('tab-torrents'); var catalogTab = getEl('tab-catalog'); var searchInput = getEl('search-query'); var modeSelect = getEl('torrent-movie');
     if (modeSelect) modeSelect.value = 'globalsearch';
     if (!searchOverlay || !searchTab || !torrentsTab) return;
@@ -4744,6 +4754,9 @@ async function showGlobalSearchDetail(item) {
         // а затёртое здесь значение после второго «назад» уводило в ветку торрентов
         // мимо главной — фокус терялся.
         AppState.currentScreen = 'detail';
+        // Прежняя карточка ещё могла стоять под проявляющейся выдачей — теперь её
+        // место занимает новая, прятать её по окончании проявления уже нельзя
+        AppState.detailUnderSearch = false;
         // Какую карточку выдачи открыли — чтобы «назад» вернул фокус на неё,
         // а не в поисковую строку (focusLastSearchCard)
         AppState.lastSearchCardKey = item.id + ':' + (item.media_type === 'tv' ? 'tv' : 'movie');

@@ -32,6 +32,9 @@ var AppState = {
   // полях вместо системной открывается своя экранная клавиатура (js/osk.js).
   // Из localStorage.
   builtinKeyboard: false,
+  // Карточка фильма ещё стоит под проявляющейся выдачей поиска (возврат
+  // «назад» из карточки в поиск, app.js) и ждёт, чтобы её спрятали
+  detailUnderSearch: false,
   hls: null,
   currentStreamId: null,
 
