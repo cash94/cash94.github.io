@@ -5,5 +5,13 @@
   ],
   "tmdbDetails": [
     "http://vidaa.hnar.online/cachedetails.json"
-  ]
+  ],
+  "tmdbImages": [
+    "tsimg.hnar.online",
+    "nl.imagetmdb.com",
+    "mocha.stull.xyz",
+    "proxy.vokino.pro/image",
+    "nmtmdb.duckdns.org"
+  ],
+  "skipApi": "tsskip.hnar.online"
 }
