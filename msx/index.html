@@ -112,194 +112,221 @@
   <div id="main-container">
     <!-- Экран настроек TorrServer -->
     <div id="config-screen">
-      <div class="config-card" style="display: flex; gap: 30px;">
-        <!-- Левая колонка - меню -->
-        <div style="flex: 0.8; border-right: 1px solid #2a2a30; padding-right: 20px;">
-          <h1 style="margin-top: 0;">TorrStream</h1>
-          <p class="subtitle">TorrServer + HLS стриминг</p>
+      <!--
+        Экран настроек. Раскладка и вид — в css/styles.css (блок «ЭКРАН
+        НАСТРОЕК»), инлайн-стилей здесь больше нет, кроме style="display" у
+        .tab-content: им переключает вкладки switchConfigTab (control.js).
 
-          <div style="margin-top: 30px;">
-            <div class="menu-item" data-tab="torrserver-tab" id="torrserver-tab"
-              style="padding: 12px 15px; margin-bottom: 10px; background: #1a1a20; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
-              Настройки TorrServer
+        Что держит JS и трогать нельзя: id пунктов меню и вкладок, data-tab,
+        классы .menu-item / .tab-content / .checkbox-container (app.js ищет
+        строку настройки через closest) / .auth-fields.visible, id всех полей.
+        Пульт ходит по input / button / select внутри активной вкладки
+        (getConfigContentItems), поэтому строка-переключатель подсвечивается
+        через сам чекбокс, растянутый на всю строку.
+      -->
+      <div class="config-card">
+        <!-- Левая колонка — разделы -->
+        <div class="settings-sidebar">
+          <div class="settings-brand">TorrStream</div>
+          <h1 class="settings-title">Настройки</h1>
+
+          <div class="settings-nav">
+            <div class="menu-item" data-tab="torrserver-tab" id="torrserver-tab">
+              <i class="fi fi-rr-database"></i><span>TorrServer</span>
             </div>
-            <div class="menu-item" data-tab="torrents-tab" id="torrents-tab"
-              style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
-              Настройки торрент-трекеров
+            <div class="menu-item" data-tab="torrents-tab" id="torrents-tab">
+              <i class="fi fi-rr-search"></i><span>Трекеры</span>
             </div>
-            <div class="menu-item" data-tab="player-tab" id="player-tab"
-              style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
-              Настройки плеера
+            <div class="menu-item" data-tab="player-tab" id="player-tab">
+              <i class="fi fi-rr-play"></i><span>Плеер</span>
             </div>
-            <div class="menu-item" data-tab="appearance-tab" id="appearance-tab"
-              style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
-              Внешний вид
+            <div class="menu-item" data-tab="appearance-tab" id="appearance-tab">
+              <i class="fi fi-rr-palette"></i><span>Внешний вид</span>
             </div>
-            <div class="menu-item" data-tab="sync-tab" id="sync-tab"
-              style="padding: 12px 15px; margin-bottom: 10px; background: #0f0f12; border-radius: 12px; cursor: pointer; transition: all 0.2s;">
-              Синхронизация
+            <div class="menu-item" data-tab="sync-tab" id="sync-tab">
+              <i class="fi fi-rr-refresh"></i><span>Синхронизация</span>
+            </div>
+            <div class="menu-item" data-tab="other-tab" id="other-tab">
+              <i class="fi fi-rr-settings-sliders"></i><span>Прочее</span>
             </div>
           </div>
         </div>
 
-        <!-- Правая колонка - контент (все существующие блоки) -->
-        <div style="flex: 2;">
-          <!-- Блок 1: Настройки TorrServer -->
+        <!-- Правая колонка — содержимое раздела -->
+        <div class="settings-main">
+          <!-- TorrServer -->
           <div id="torrserver-tab-content" class="tab-content" style="display: block;">
             <div class="settings-section">
-              <h2>Настройки TorrServer</h2>
+              <h2>TorrServer</h2>
+              <p class="settings-lead">Сервер, через который идут все раздачи. Настройки сохраняются автоматически.</p>
 
-              <div class="field-label">URL TorrServer</div>
-              <input type="text" class="text-input" id="torrserver-url" placeholder="http://localhost:8090" autofocus>
+              <div class="settings-field">
+                <div class="field-label">Адрес TorrServer</div>
+                <input type="text" class="text-input" id="torrserver-url" placeholder="http://localhost:8090" autofocus>
+                <div class="server-status" id="server-status">
+                  <div class="status-indicator" id="status-indicator"></div>
+                  <span id="status-text">Введите адрес сервера</span>
+                </div>
+              </div>
 
-              <div class="checkbox-container">
-                <input type="checkbox" id="auth-checkbox">
-                <span>Требуется аутентификация</span>
+              <div class="settings-list">
+                <div class="checkbox-container">
+                  <input type="checkbox" id="auth-checkbox">
+                  <span>Требуется аутентификация</span>
+                </div>
               </div>
 
               <div class="auth-fields" id="auth-fields">
-                <div class="field-label">Логин</div>
-                <input type="text" class="text-input" id="auth-login" placeholder="Логин">
-
-                <div class="field-label">Пароль</div>
-                <input type="password" class="text-input" id="auth-password" placeholder="Пароль">
-              </div>
-
-              <div class="server-status" id="server-status">
-                <div class="status-indicator" id="status-indicator"></div>
-                <span id="status-text">Введите адрес сервера</span>
-              </div>
-              <div class="checkbox-container">
-                <input type="checkbox" id="add-to-db">
-                <span>Добавлять торренты в базу</span>
-              </div>
-              <div class="checkbox-container">
-                <input type="checkbox" id="transcoding-off">
-                <span>Включить транскодирование через TorrServer (нужна специальная сборка TorrServer)</span>
-              </div>
-
-              <div class="action-row" style="margin-bottom: 20px;">
-                <button class="btn btn-primary" id="speedtest-btn" style="background: #4a9eff;">Замерить
-                  скорость</button>
-              </div>
-              <div id="speedtest-results"
-                style="display: none; margin-bottom: 20px; padding: 12px; background: #0a0a0f; border-radius: 12px; border: 1px solid #4a9eff;">
-                <div style="font-size: 13px; margin-bottom: 8px; color: #4a9eff;">Результаты замера:</div>
-                <div id="speedtest-torrserver" style="font-size: 12px; color: #ccc;">TorrServer → TorrStream: -- Mbps
-                </div>
-                <div id="speedtest-client" style="font-size: 12px; color: #ccc; margin-top: 5px;">TorrStream → Клиент:
-                  --
-                  Mbps
-                </div>
-                <div id="speedtest-total"
-                  style="font-size: 12px; color: #ff8c00; margin-top: 8px; border-top: 1px solid #333; padding-top: 6px;">
-                  Общая задержка: --
+                <div class="settings-field-row">
+                  <div class="settings-field">
+                    <div class="field-label">Логин</div>
+                    <input type="text" class="text-input" id="auth-login" placeholder="Логин">
+                  </div>
+                  <div class="settings-field">
+                    <div class="field-label">Пароль</div>
+                    <input type="password" class="text-input" id="auth-password" placeholder="Пароль">
+                  </div>
                 </div>
               </div>
 
-              <div class="help-text" style="margin-top: 40px; color: #666; font-size: 12px;">
-                • Введите адрес TorrServer для автоматического подключения<br>
-                • После успешной проверки откроется список торрентов<br>
-                • Настройки сохраняются автоматически
+              <div class="settings-list">
+                <div class="checkbox-container">
+                  <input type="checkbox" id="add-to-db">
+                  <span>Добавлять торренты в базу</span>
+                </div>
+                <div class="checkbox-container">
+                  <input type="checkbox" id="transcoding-off">
+                  <span>Транскодирование через TorrServer<small class="setting-desc">Нужна специальная сборка TorrServer</small></span>
+                </div>
+              </div>
+
+              <div class="settings-subsection">
+                <div class="settings-subtitle">Скорость соединения</div>
+                <div class="action-row">
+                  <button class="btn btn-primary" id="speedtest-btn">Замерить скорость</button>
+                </div>
+                <div id="speedtest-results" class="settings-results" style="display: none;">
+                  <div class="settings-results-title">Результаты замера</div>
+                  <div id="speedtest-torrserver">TorrServer → TorrStream: -- Mbps</div>
+                  <div id="speedtest-client">TorrStream → Клиент: -- Mbps</div>
+                  <div id="speedtest-total" class="settings-results-total">Общая задержка: --</div>
+                </div>
+              </div>
+
+              <div class="help-text">
+                После успешной проверки адреса откроется список торрентов.
               </div>
             </div>
           </div>
 
-          <!-- Блок 2: Настройки торрентов -->
+          <!-- Трекеры -->
           <div id="torrents-tab-content" class="tab-content" style="display: none;">
             <div class="settings-section">
-              <h2>Настройки торрент-трекеров</h2>
-              <div class="field-label">URL Jacred</div>
-              <input type="text" class="text-input" id="jacred-url" placeholder="jac.red" autofocus>
-
-              <div class="help-text" style="margin-top: 20px; color: #666;">
-                • Здесь можно указать адрес вашего или общедоступного парсера jacred<br>
+              <h2>Трекеры</h2>
+              <p class="settings-lead">Поиск раздач идёт через парсер Jacred — свой или общедоступный.</p>
+              <div class="settings-field">
+                <div class="field-label">Адрес Jacred</div>
+                <input type="text" class="text-input" id="jacred-url" placeholder="jac.red" autofocus>
               </div>
             </div>
           </div>
 
-          <!-- Блок 3: Настройки плеера -->
+          <!-- Плеер -->
           <div id="player-tab-content" class="tab-content" style="display: none;">
             <div class="settings-section">
-              <h2>Настройки плеера</h2>
+              <h2>Плеер</h2>
+              <p class="settings-lead">Воспроизведение, звук и поведение плеера.</p>
 
-              <div class="checkbox-container" hidden>
-                <input type="checkbox" id="auto-fullscreen">
-                <span>Автоматический полноэкранный режим при запуске</span>
+              <div class="settings-list">
+                <div class="checkbox-container" hidden>
+                  <input type="checkbox" id="auto-fullscreen">
+                  <span>Автоматический полноэкранный режим при запуске</span>
+                </div>
+                <div class="checkbox-container">
+                  <input type="checkbox" id="hide-clock">
+                  <span>Скрыть часы в плеере</span>
+                </div>
+                <div class="checkbox-container">
+                  <input type="checkbox" id="auto-skip-intro">
+                  <span>Автопропуск заставки<small class="setting-desc">Через 5 секунд; ОК на кнопке — смотреть заставку</small></span>
+                </div>
+                <div class="checkbox-container">
+                  <input type="checkbox" id="transcoding-on-off">
+                  <span>Полностью отключить транскодирование видео</span>
+                </div>
+                <div class="checkbox-container">
+                  <input type="checkbox" id="multi-channel-audio">
+                  <span>Многоканальный звук<small class="setting-desc">Работает, только если отключено транскодирование через TorrServer</small></span>
+                </div>
+                <div class="checkbox-container" hidden>
+                  <input type="checkbox" id="out-player">
+                  <span>Использовать внешний плеер (только android)</span>
+                </div>
+                <div class="checkbox-container">
+                  <input type="checkbox" id="dvOnOff">
+                  <span>Предпочитать Dolby Vision по умолчанию</span>
+                </div>
+                <!-- Показываются только внутри Android-приложения (window.AndroidJS) -->
+                <div class="checkbox-container" id="auto-switch-episodes-container" hidden>
+                  <input type="checkbox" id="auto-switch-episodes">
+                  <span>Переключать серии автоматически</span>
+                </div>
               </div>
-              <div class="checkbox-container">
-                <input type="checkbox" id="hide-clock">
-                <span>Скрыть часы в плеере</span>
-              </div>
-              <div class="checkbox-container">
-                <input type="checkbox" id="transcoding-on-off">
-                <span>Полностью отключить транскодирование видео</span>
-              </div>
-              <div class="checkbox-container">
-                <input type="checkbox" id="multi-channel-audio">
-                <span>Включить многоканальный звук (работает только если отключено транскодирование через
-                  TorrServer)</span>
-              </div>
-              <div class="checkbox-container" hidden>
-                <input type="checkbox" id="out-player">
-                <span>Использовать внешний плеер (только android)</span>
-              </div>
-              <div class="checkbox-container">
-                <input type="checkbox" id="dvOnOff">
-                <span>Предпочитать Dolby Vision по умолчанию</span>
-              </div>
-              <!-- Показываются только внутри Android-приложения (window.AndroidJS) -->
-              <div class="checkbox-container" id="auto-switch-episodes-container" hidden>
-                <input type="checkbox" id="auto-switch-episodes">
-                <span>Переключать серии автоматически</span>
-              </div>
-              <div class="action-row" id="choose-player-container" hidden style="margin-top: 15px;">
+              <div class="action-row" id="choose-player-container" hidden>
                 <button class="btn btn-primary" id="choose-player-btn">Выбрать плеер по умолчанию</button>
               </div>
             </div>
-            <!-- Блок проверки поддержки Dolby Vision -->
-            <div class="settings-group"
-              style="margin-top: 20px; padding: 15px; background: rgba(74, 158, 255, 0.1); border-radius: 12px; border: 1px solid rgba(74, 158, 255, 0.3);">
-              <div class="settings-group-title"
-                style="font-size: 16px; font-weight: 600; color: #4a9eff; margin-bottom: 12px;">
-                🎬 Поддержка Dolby Vision
-              </div>
-              <div class="settings-group-description" style="font-size: 13px; color: #aaa; margin-bottom: 15px;">
-                Автоматическая проверка поддержки HDR10, Dolby Vision и кодеков на вашем устройстве
+
+            <!-- Проверка поддержки Dolby Vision. В Android-приложении прячется
+                 (initDolbyVisionCheck, app.js): там играет внешний плеер, и
+                 проверка кодеков WebView о нём ничего не говорит -->
+            <div class="settings-section settings-group" id="dv-support-section">
+              <h2 class="settings-group-title">Поддержка Dolby Vision</h2>
+              <p class="settings-lead settings-group-description">Проверка HDR10, Dolby Vision и кодеков на этом устройстве.</p>
+
+              <div id="dv-check-status" class="settings-status-card">
+                <div id="dv-status-icon" class="settings-status-icon">⏳</div>
+                <div id="dv-status-text" class="settings-status-text">Проверка не выполнена</div>
               </div>
 
-              <div id="dv-check-status" style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                <div id="dv-status-icon" style="font-size: 24px;">⏳</div>
-                <div id="dv-status-text" style="font-size: 14px; color: #aaa;">Проверка не выполнена</div>
-              </div>
-
-              <div id="dv-codecs-list"
-                style="display: none; margin-top: 10px; padding: 10px; background: rgba(0, 0, 0, 0.3); border-radius: 8px; font-family: monospace; font-size: 12px;">
+              <div id="dv-codecs-list" class="settings-codecs" style="display: none;">
                 <!-- Сюда будут добавлены результаты проверки кодеков -->
               </div>
 
-              <button id="dv-check-btn" class="settings-btn"
-                style="margin-top: 10px; padding: 8px 16px; background: #4a9eff; border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 13px;">
-                🔄 Проверить поддержку
-              </button>
+              <div class="action-row">
+                <button id="dv-check-btn" class="btn settings-btn">Проверить поддержку</button>
+              </div>
             </div>
           </div>
 
-          <!-- Блок 4: Внешний вид (наполняется из js/ui-customizer.js) -->
+          <!-- Внешний вид (наполняется из js/ui-customizer.js) -->
           <div id="appearance-tab-content" class="tab-content" style="display: none;"></div>
 
-          <!-- Блок 5: Синхронизация -->
+          <!-- Синхронизация -->
           <div id="sync-tab-content" class="tab-content" style="display: none;">
             <div class="settings-section">
               <h2>Синхронизация</h2>
-              <div class="action-row" style="margin-bottom: 20px;">
-                <button class="btn btn-primary" id="sync-clients-btn"
-                  style="background: #4a9eff; margin-right: 10px;">Синхронизация</button>
+              <p class="settings-lead">Связать это устройство с другим по четырёхзначному коду.</p>
+              <div class="action-row">
+                <button class="btn btn-primary" id="sync-clients-btn">Синхронизация</button>
               </div>
+              <div class="help-text">
+                Нажмите «Синхронизация», чтобы синхронизировать это устройство или получить код для синхронизации
+                другого.
+              </div>
+            </div>
+          </div>
 
-              <div class="help-text" style="margin-top: 20px; color: #666;">
-                • Нажмите кнопку "Синхронизация" чтобы сихнронизировать это устройство или чтобы получить код для
-                синхронизации другого устройства.<br>
+          <!-- Прочее -->
+          <div id="other-tab-content" class="tab-content" style="display: none;">
+            <div class="settings-section">
+              <h2>Прочее</h2>
+              <p class="settings-lead">Ввод текста и другие настройки устройства.</p>
+              <div class="settings-list">
+                <div class="checkbox-container">
+                  <input type="checkbox" id="builtin-keyboard">
+                  <span>Использовать встроенную клавиатуру<small class="setting-desc">Своя экранная клавиатура вместо системной: русский и английский, цифры и символы, управление с пульта</small></span>
+                </div>
               </div>
             </div>
           </div>
@@ -731,6 +758,9 @@
     //document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-posters-batch-patch.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/player.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/control.js?v=' + VERSION + '"><\/script>');
+    // Встроенная экранная клавиатура — после control.js: берёт его хелперы
+    // клавиш (isOkKey, isBackKey, arrowDir) и focusEl
+    document.write('<script src="https://cash94.github.io/msx/js/osk.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/donate.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/torrserverstats.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/speedtest.js?v=' + VERSION + '"><\/script>');

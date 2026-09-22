@@ -24,7 +24,7 @@ var CLICKABLE_SELECTORS = [
   '.episode-item', '.audio-item', '.subtitle-item', '.close-panel-btn', '.filter-select',
   '.filter-reset-btn', '.progress-continue-btn', '.detail-progress-btn',
   '#close-search', '#filter-toggle', '#search-btn',
-  '#torrserver-tab-content', '#torrents-tab-content', '#player-tab-content', '#sync-tab-content',
+  '#torrserver-tab-content', '#torrents-tab-content', '#player-tab-content', '#sync-tab-content', '#other-tab-content',
   '.menu-item', '.skip-button'
 ].join(', ');
 
@@ -660,6 +660,9 @@ function setupToggleBufferButton(toggleBufferBtn) {
       var bufferStats = getEl('buffer-stats');
       if (bufferStats) bufferStats.classList.add('hidden');
     }
+    // Строка статистики TorrServer появилась или пропала — опрос /cache
+    // переходит на секундный или десятисекундный шаг (torrserverstats.js)
+    if (typeof refreshTorrentStatsCadence === 'function') refreshTorrentStatsCadence();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 }
@@ -947,7 +950,8 @@ function restoreFocusAfterNavigation(returnTo, context) {
   if (returnTo === 'search') {
     if (AppState && AppState.isSearch) {
       if (typeof AppState !== 'undefined') AppState.isSearch = false;
-      if (typeof window.showSearchResults === 'function') window.showSearchResults();
+      // restoreCard — фокус на карточку, из которой открывали фильм, а не в строку
+      if (typeof window.showSearchResults === 'function') window.showSearchResults({ restoreCard: true });
     } else {
       if (typeof window.clearSearchResults === 'function') window.clearSearchResults();
     }
@@ -1828,6 +1832,37 @@ function setupCheckboxes() {
   setupExternalPlayerCheckbox();
   var container = '';
 
+  // Автопропуск заставки. В Android-приложении плеер внешний и кнопки
+  // пропуска там нет — настройку прячем, как и соседние плеерные.
+  var autoSkipCheckbox = getEl('auto-skip-intro');
+  if (autoSkipCheckbox) {
+    if (window.AndroidJS) {
+      var autoSkipContainer = autoSkipCheckbox.closest('.checkbox-container');
+      if (autoSkipContainer) autoSkipContainer.classList.add('hidden');
+    }
+    AppState.autoSkipIntro = localStorage.getItem('autoSkipIntro') === 'true';
+    autoSkipCheckbox.checked = AppState.autoSkipIntro;
+    autoSkipCheckbox.addEventListener('change', function (e) {
+      AppState.autoSkipIntro = e.target.checked;
+      localStorage.setItem('autoSkipIntro', AppState.autoSkipIntro);
+      console.log('⏩ Автопропуск заставки:', AppState.autoSkipIntro ? 'включён' : 'выключен');
+    });
+  }
+
+  // Встроенная экранная клавиатура (раздел «Прочее»). Сама клавиатура — в
+  // js/osk.js, флаг она читает из AppState на каждом открытии поля.
+  var builtinKeyboardCheckbox = getEl('builtin-keyboard');
+  if (builtinKeyboardCheckbox) {
+    AppState.builtinKeyboard = localStorage.getItem('builtinKeyboard') === 'true';
+    builtinKeyboardCheckbox.checked = AppState.builtinKeyboard;
+    builtinKeyboardCheckbox.addEventListener('change', function (e) {
+      AppState.builtinKeyboard = e.target.checked;
+      localStorage.setItem('builtinKeyboard', AppState.builtinKeyboard);
+      if (window.OSK && typeof window.OSK.applySetting === 'function') window.OSK.applySetting();
+      console.log('⌨️ Встроенная клавиатура:', AppState.builtinKeyboard ? 'включена' : 'выключена');
+    });
+  }
+
   // 2. Скрытие часов
   var hideClockCheckbox = getEl('hide-clock');
   if (window.AndroidJS) {
@@ -2231,6 +2266,12 @@ function updateDolbyVisionUI(result) {
 function initDolbyVisionCheck() {
   var checkBtn = getEl('dv-check-btn');
 
+  // Блок «Поддержка Dolby Vision» — только вне Android-приложения. Там видео
+  // открывает внешний плеер (AndroidJS.openPlayer), а проверка здесь мерит
+  // кодеки WebView — к тому, что покажет плеер, она отношения не имеет.
+  var dvSection = getEl('dv-support-section');
+  if (dvSection) dvSection.hidden = !!window.AndroidJS;
+
   // ИСПРАВЛЕНО: убран Optional Chaining (?.)
   var dvOnOffEl = getEl('dvOnOff');
   var dvCheckboxContainer = dvOnOffEl ? dvOnOffEl.closest('.checkbox-container') : null;
@@ -2301,7 +2342,7 @@ function initDolbyVisionCheck() {
   if (checkBtn) {
     checkBtn.addEventListener('click', function () {
       checkBtn.disabled = true;
-      checkBtn.textContent = '⏳ Проверка...';
+      checkBtn.textContent = 'Проверка...';
 
       setTimeout(function () {
         try {
@@ -2327,7 +2368,7 @@ function initDolbyVisionCheck() {
           alert('Ошибка при проверке: ' + e.message);
         }
         checkBtn.disabled = false;
-        checkBtn.textContent = '🔄 Проверить снова';
+        checkBtn.textContent = 'Проверить снова';
       }, 100);
     });
   }

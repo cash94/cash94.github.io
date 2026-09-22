@@ -527,6 +527,26 @@ function getTorrentGridColumns() {
     return _readGridColumns('torrents-grid') || getColumns();
 }
 
+/**
+ * Колонки сетки глобального поиска — по ней самой, а не по каталогу.
+ * Правила колонок у них сейчас общие (styles.css, ui-customizer.js), но
+ * стрелки должны идти по тому, что реально нарисовано: раньше сетка поиска
+ * была зашита на 5 колонок, а навигация считала по каталогу — и промахивалась.
+ */
+function getSearchGridColumns() {
+    var grid = document.querySelector('#search-results .global-search-grid');
+    if (grid) {
+        try {
+            var tpl = window.getComputedStyle(grid).gridTemplateColumns || '';
+            var m = /repeat\(\s*(\d+)/.exec(tpl);
+            if (m) return parseInt(m[1], 10) || getColumns();
+            var parts = tpl.split(' ').filter(function (b) { return b && b !== 'none'; });
+            if (parts.length) return parts.length;
+        } catch (e) { }
+    }
+    return getColumns();
+}
+
 // Функция для инвалидации кэша фокуса
 function invalidateFocusCache() {
     _focusCache.timestamp = 0;
@@ -653,7 +673,7 @@ function belongsToScreen(el, screen) {
     }
     if (screen === 'config') {
         return !!(el.closest('#config-screen') ||
-            ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio', 'torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab', 'jacred-url'].indexOf(el.id) !== -1 ||
+            ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio', 'torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab', 'other-tab', 'jacred-url'].indexOf(el.id) !== -1 ||
             el.classList.contains('settings-btn') || el.classList.contains('menu-item'));
     }
     return false;
@@ -879,7 +899,7 @@ function getDetailItems() {
 }
 
 function getConfigMenuItems() {
-    var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab'];
+    var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab', 'other-tab'];
     var visibleItems = [];
     for (var i = 0; i < ids.length; i++) {
         var element = getEl(ids[i]);
@@ -1354,7 +1374,7 @@ var ScreenStrategies = {
                     return true;
                 }
                 if (ri !== -1) {
-                    var cols = getColumns(), row = Math.floor(ri / cols);
+                    var cols = getSearchGridColumns(), row = Math.floor(ri / cols);
                     if (dir === 'left') return focusEl(r[Math.max(0, ri - 1)] || f);
                     if (dir === 'right') return focusEl(r[Math.min(r.length - 1, ri + 1)] || f);
                     if (dir === 'up') { if (row === 0) return focusEl(q); return focusEl(r[Math.max(0, ri - cols)] || f); }
@@ -1952,7 +1972,7 @@ function updateFocusableElements() {
         return;
     }
     if (screen === 'config') {
-        var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab'];
+        var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab', 'other-tab'];
         var cfg = document.querySelectorAll('.settings-btn');
         for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e && e.offsetParent !== null) list.push(e); }
         for (var i = 0; i < cfg.length; i++) if (cfg[i] && cfg[i].offsetParent !== null) list.push(cfg[i]);
@@ -3963,9 +3983,18 @@ function setupFocusRescue() {
 
     var prevSR = window.showSearchResults;
     if (typeof prevSR === 'function') {
-        window.showSearchResults = function () {
+        window.showSearchResults = function (opts) {
             var o = prevSR.apply(this, arguments);
-            setTimeout(function () { ScreenStrategies.search.ensureFocus(true, true); }, 120);
+            setTimeout(function () {
+                // Возврат из карточки фильма: фокус уже поставлен на карточку
+                // выдачи (focusLastSearchCard, torrents.js) — строкой поиска его
+                // не перебиваем. Раньше этот таймер и уводил фокус из выдачи.
+                if (opts && opts.restoreCard) {
+                    var f = document.querySelector('.focused');
+                    if (f && f.classList.contains('global-search-card')) return;
+                }
+                ScreenStrategies.search.ensureFocus(true, true);
+            }, 120);
             return o;
         };
     }

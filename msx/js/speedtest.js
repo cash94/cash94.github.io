@@ -5,6 +5,7 @@ var SpeedTest = (function () {
 
     var TIMEOUT_MS = 20000; // 20 секунд
     var isRunning = false;
+    var runningDirect = false;   // идущий замер — прямой (TorrServer → Клиент)
     var abortController = null;
 
     // Форматирование скорости в Mbps
@@ -93,32 +94,77 @@ var SpeedTest = (function () {
         }
     }
 
+    /**
+     * Прямой замер — когда видео идёт мимо TorrStream.
+     *
+     * В обычном режиме поток идёт TorrServer → TorrStream → устройство, и
+     * замер повторяет этот путь двумя этапами. Но при транскодировании через
+     * TorrServer, при полностью отключённом транскодировании и в
+     * Android-приложении (внешний плеер) устройство берёт видео у TorrServer
+     * само — тогда и мерить надо этот путь: устройство качает
+     * TorrServer/download/200 напрямую.
+     */
+    function isDirectMode() {
+        if (window.AndroidJS) return true;
+        var s = window.AppState;
+        return !!(s && (s.transcodingOnOff || s.transcodingFullOnOff));
+    }
+
     // Этап 2: Замер на клиенте (TorrStream → Клиент)
-    async function measureServerToClient() {
+    function measureServerToClient() {
+        var testId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        return measureDownload('/api/speedtest/download/' + testId, {}, 'client');
+    }
+
+    // Прямой замер: TorrServer → Клиент, без TorrStream посередине
+    async function measureTorrServerToClient(torrServerUrl) {
+        var headers = getAuthHeaders();
+        headers['accept'] = 'application/octet-stream';
+        try {
+            return await measureDownload(torrServerUrl + '/download/200', headers, 'direct');
+        } catch (error) {
+            if (error && error.status === 401) {
+                throw new Error('Ошибка авторизации TorrServer. Проверьте логин и пароль.');
+            }
+            // fetch бросает TypeError и на обрыв сети, и на отказ CORS — с
+            // устройства TorrServer может быть недоступен, хотя с сервера виден
+            if (error && error.name === 'TypeError') {
+                throw new Error('TorrServer недоступен с этого устройства напрямую');
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Скачивание тестовых 200 MB с замером. Останавливается на 200 MB или по
+     * таймауту 20 с — тогда скорость считается по тому, что успело прийти.
+     */
+    async function measureDownload(url, headers, statusType) {
         var startTime = performance.now();
         var receivedLength = 0;
-        
+
         abortController = new AbortController();
-        
+
         var timeoutId = setTimeout(function () {
             if (abortController) {
                 abortController.abort();
             }
             console.log('⏱️ Таймаут 20 секунд, получено ' + (receivedLength / (1024 * 1024)).toFixed(0) + ' MB');
         }, TIMEOUT_MS);
-        
+
         try {
-            var testId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            var url = '/api/speedtest/download/' + testId;
-            console.log('📡 Запрос к серверу:', url);
-            
+            console.log('📡 Замер скорости:', url);
+
             var response = await fetch(url, {
                 signal: abortController.signal,
-                method: 'GET'
+                method: 'GET',
+                headers: headers || {}
             });
-            
+
             if (!response.ok) {
-                throw new Error('HTTP ' + response.status);
+                var httpError = new Error('HTTP ' + response.status);
+                httpError.status = response.status;
+                throw httpError;
             }
             
             var reader = response.body.getReader();
@@ -134,7 +180,7 @@ var SpeedTest = (function () {
                 var progress = (receivedLength / TEST_FILE_SIZE) * 100;
                 if (progress - lastProgress >= 10) {
                     lastProgress = progress;
-                    updateSpeedtestStatus('client', Math.floor(progress) + '%');
+                    updateSpeedtestStatus(statusType, Math.floor(progress) + '%');
                 }
                 
                 if (receivedLength >= TEST_FILE_SIZE) {
@@ -189,16 +235,94 @@ var SpeedTest = (function () {
         }
     }
 
+    /**
+     * Довести карточку результатов до видимой части экрана.
+     *
+     * На 960×540 и меньше она оказывалась под краем: фокус пульта стоит на
+     * кнопке, экран прокручивается только за фокусом, а карточка лежит ниже
+     * кнопки. Сдвигаем ровно настолько, чтобы карточка поместилась, но не
+     * дальше, чем кнопка упрётся в верхний край, — она остаётся на виду.
+     *
+     * scrollTop ставим сами, как и scrollToActiveConfigItem (control.js) для
+     * этого экрана; идущий твин навигации прежде останавливаем, иначе он
+     * дотянул бы прокрутку обратно к своей цели.
+     */
+    function revealResults() {
+        var el = getEl('speedtest-results');
+        if (!el || el.style.display === 'none') return;
+        var sc = el.parentElement;
+        while (sc && sc !== document.body) {
+            var oy = getComputedStyle(sc).overflowY;
+            if ((oy === 'auto' || oy === 'scroll') && sc.scrollHeight > sc.clientHeight) break;
+            sc = sc.parentElement;
+        }
+        var useWindow = !sc || sc === document.body;
+        var viewTop = useWindow ? 0 : sc.getBoundingClientRect().top;
+        var viewBottom = useWindow ? window.innerHeight : sc.getBoundingClientRect().bottom;
+        var MARGIN = 24;
+        var need = el.getBoundingClientRect().bottom + MARGIN - viewBottom;
+        if (need <= 0) return;
+        var btn = getEl('speedtest-btn');
+        var room = btn ? btn.getBoundingClientRect().top - viewTop - MARGIN : need;
+        var shift = Math.min(need, Math.max(0, room));
+        if (shift <= 0) return;
+        if (useWindow) {
+            window.scrollBy(0, shift);
+        } else {
+            if (typeof Animations !== 'undefined' && Animations.stopScrollTween) Animations.stopScrollTween(sc);
+            sc.scrollTop += shift;
+        }
+    }
+
+    // Прогресс — прямо в кнопке: на ней стоит фокус, и её видно всегда, в
+    // отличие от строки статуса под карточкой результатов. В обычном режиме
+    // этапов два, и процент на втором начинается с нуля — поэтому номер этапа.
+    function setButtonProgress(type, status) {
+        var btn = getEl('speedtest-btn');
+        if (!btn || !btn.disabled) return;
+        var stage = type === 'torrserver' ? ' 1/2' : (type === 'client' ? ' 2/2' : '');
+        btn.innerHTML = 'Замер' + stage + '… ' + status;
+    }
+
     // Обновление статуса в UI
     function updateSpeedtestStatus(type, status) {
+        setButtonProgress(type, status);
         var statusEl = getEl('speedtest-status');
         if (statusEl) {
             if (type === 'torrserver') {
                 statusEl.innerHTML = 'Замер TorrServer → TorrStream: ' + status;
             } else if (type === 'client') {
                 statusEl.innerHTML = 'Замер TorrStream → Клиент: ' + status;
+            } else if (type === 'direct') {
+                statusEl.innerHTML = 'Замер TorrServer → Клиент: ' + status;
             }
         }
+    }
+
+    // Строка второго этапа нужна только в обычном режиме: в прямом этап один
+    function setClientLineVisible(visible) {
+        var clientEl = getEl('speedtest-client');
+        if (clientEl) clientEl.style.display = visible ? '' : 'none';
+    }
+
+    // Показать результаты прямого замера (TorrServer → Клиент)
+    function showDirectResult(result, totalTime) {
+        var resultsDiv = getEl('speedtest-results');
+        var torrEl = getEl('speedtest-torrserver');
+        var totalEl = getEl('speedtest-total');
+
+        if (resultsDiv) resultsDiv.style.display = 'block';
+        setClientLineVisible(false);
+        if (torrEl) torrEl.innerHTML = 'TorrServer → Клиент: ' + result.speedMbps;
+        if (totalEl) {
+            var mb = (result.bytesReceived / (1024 * 1024)).toFixed(0);
+            totalEl.innerHTML = 'Общее время: ' + formatTime(totalTime) + ' | Получено: ' + mb + ' из 200 MB' +
+                (result.timeoutReached ? ' (остановлено по таймауту 20 с)' : '');
+        }
+
+        var statusEl = getEl('speedtest-status');
+        if (statusEl) statusEl.style.display = 'none';
+        setTimeout(revealResults, 0);
     }
 
     // Показать результаты
@@ -209,12 +333,14 @@ var SpeedTest = (function () {
         var totalEl = getEl('speedtest-total');
 
         if (resultsDiv) resultsDiv.style.display = 'block';
+        setClientLineVisible(true);
         if (torrEl) torrEl.innerHTML = 'TorrServer → TorrStream: ' + torrResult.speedMbps;
         if (clientEl) clientEl.innerHTML = 'TorrStream → Клиент: ' + clientResult.speedMbps;
         if (totalEl) totalEl.innerHTML = 'Общее время: ' + formatTime(totalTime) + ' | Тест: 200 MB';
 
         var statusEl = getEl('speedtest-status');
         if (statusEl) statusEl.style.display = 'none';
+        setTimeout(revealResults, 0);
     }
 
     // Показать ошибку
@@ -225,6 +351,7 @@ var SpeedTest = (function () {
         var totalEl = getEl('speedtest-total');
 
         if (resultsDiv) resultsDiv.style.display = 'block';
+        setClientLineVisible(!runningDirect);
         if (torrEl) torrEl.innerHTML = error.message;
         if (clientEl) clientEl.innerHTML = '--';
         if (totalEl) totalEl.innerHTML = 'Ошибка замера';
@@ -233,6 +360,7 @@ var SpeedTest = (function () {
         if (statusEl) statusEl.style.display = 'none';
 
         if (resultsDiv) resultsDiv.style.borderColor = '#ff4e4e';
+        setTimeout(revealResults, 0);
         setTimeout(function () {
             if (resultsDiv) resultsDiv.style.borderColor = '#4a9eff';
         }, 3000);
@@ -253,6 +381,9 @@ var SpeedTest = (function () {
         torrServerUrl = torrServerUrl.trim().replace(/\/$/, '');
 
         isRunning = true;
+        // Режим выбираем в момент запуска: транскодирование могли
+        // переключить на соседней вкладке уже после открытия настроек
+        runningDirect = isDirectMode();
         var startTotalTime = performance.now();
 
         var resultsDiv = getEl('speedtest-results');
@@ -263,7 +394,8 @@ var SpeedTest = (function () {
             resultsDiv.style.borderColor = '#4a9eff';
             var torrEl = getEl('speedtest-torrserver');
             var clientEl = getEl('speedtest-client');
-            if (torrEl) torrEl.innerHTML = 'TorrServer → TorrStream: -- Mbps';
+            setClientLineVisible(!runningDirect);
+            if (torrEl) torrEl.innerHTML = runningDirect ? 'TorrServer → Клиент: -- Mbps' : 'TorrServer → TorrStream: -- Mbps';
             if (clientEl) clientEl.innerHTML = 'TorrStream → Клиент: -- Mbps';
         }
 
@@ -275,18 +407,37 @@ var SpeedTest = (function () {
                 resultsDiv.parentNode.insertBefore(statusEl, resultsDiv.nextSibling);
             }
         }
-        statusEl.style.display = 'block';
-        statusEl.innerHTML = 'Замер TorrServer → TorrStream: 0%';
+        // Строку статуса не показываем: прогресс теперь в самой кнопке, а эта
+        // строка лежала ниже карточки результатов и на небольших экранах уходила
+        // за край. Узел нужен — из его текста имитация прогресса первого этапа
+        // (measureTorrServerToServer) берёт текущий процент.
+        statusEl.style.display = 'none';
+        statusEl.innerHTML = runningDirect ? 'Замер TorrServer → Клиент: 0%' : 'Замер TorrServer → TorrStream: 0%';
 
         var btn = getEl('speedtest-btn');
         var originalBtnText = btn ? btn.innerHTML : '';
         if (btn) {
-            btn.innerHTML = 'Замер скорости...';
+            btn.innerHTML = runningDirect ? 'Замер… 0%' : 'Замер 1/2… 0%';
             btn.disabled = true;
             btn.style.opacity = '0.6';
         }
+        // Карточка с прочерками появилась — показать её сразу, а не после замера
+        revealResults();
 
         try {
+            if (runningDirect) {
+                var directResult = await measureTorrServerToClient(torrServerUrl);
+                var directTime = performance.now() - startTotalTime;
+                if (!(directResult.bytesReceived > 0)) throw new Error('Не удалось загрузить тестовый файл');
+                showDirectResult(directResult, directTime);
+                console.log('SpeedTest (напрямую) завершен:', {
+                    torrServerToClient: directResult.speedMbps,
+                    bytes: directResult.bytesReceived,
+                    totalTime: directTime.toFixed(0) + 'ms'
+                });
+                return true;
+            }
+
             // Этап 1: Серверный замер (TorrServer → TorrStream)
             var torrResult = await measureTorrServerToServer(torrServerUrl);
 
@@ -296,6 +447,7 @@ var SpeedTest = (function () {
 
             // Этап 2: Клиентский замер (TorrStream → Клиент)
             statusEl.innerHTML = 'Замер TorrStream → Клиент: 0%';
+            setButtonProgress('client', '0%');
             var clientResult = await measureServerToClient();
 
             var totalTime = performance.now() - startTotalTime;

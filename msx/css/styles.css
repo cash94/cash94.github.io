@@ -32,70 +32,10 @@ body {
   overflow-anchor: none;
 }
 
-#config-screen {
-  min-height: 100vh;
-  padding: 20px;
-  display: flex;
-  justify-content: center;
-}
+/* Экран настроек: раскладка и вид — в блоке «ЭКРАН НАСТРОЕК» в конце файла.
+   Правила ниже (.settings-section, .text-input, .checkbox-container …) — база,
+   которую тот блок перекрывает под #config-screen. */
 
-.config-card {
-  background: #1e1e2d;
-  border: 1px solid #4a9eff;
-  border-radius: 24px;
-  padding: 30px 24px;
-  max-width: 100%;
-  width: 100%;
-  min-width: 600px;
-  /* Фиксируем минимальную ширину */
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  box-sizing: border-box;
-}
-
-/* Контент внутри config-card */
-.config-card>div {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* Все tab-content внутри config-card */
-.config-card .tab-content {
-  display: none;
-  width: 100%;
-  min-width: 100%;
-  box-sizing: border-box;
-}
-
-.config-card .tab-content[style*="display: block"],
-.config-card .tab-content[style*="display:block"] {
-  display: block;
-  width: 100%;
-}
-
-/* Правая колонка */
-.config-card>div[style*="flex: 2"] {
-  min-width: 0;
-  width: 100%;
-  overflow: hidden;
-}
-
-/* Левая колонка с меню */
-.config-card>div[style*="flex: 0.8"] {
-  flex-shrink: 0;
-}
-
-.config-card h1 {
-  font-size: 32px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  color: #fff;
-}
-
-.config-card .subtitle {
-  font-size: 14px;
-  color: #888;
-  margin-bottom: 24px;
-}
 
 .settings-section {
   background: #0a0a0f;
@@ -736,9 +676,12 @@ body {
   visibility: hidden;
 }
 
+/* .global-search-grid — выдача глобального поиска: та же сетка, что у каталога,
+   чтобы карточки поиска выглядели и считались по колонкам так же */
 #torrents-grid,
 #catalog-grid,
-#catalog-rows {
+#catalog-rows,
+.global-search-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 10px;
@@ -3229,27 +3172,9 @@ body.detail-open {
 }
 
 /* Адаптивная сетка */
-@media (max-width: 768px) {
-  .global-search-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
-    gap: 15px !important;
-  }
-}
 
-@media (max-width: 480px) {
-  .global-search-grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)) !important;
-    gap: 10px !important;
-  }
-
-  .global-search-info {
-    padding: 8px !important;
-  }
-
-  .global-search-title {
-    font-size: 12px !important;
-  }
-}
+/* Отдельных медиа-правил у сетки глобального поиска больше нет: она живёт
+   по правилам сетки каталога (см. .global-search-grid выше). */
 
 /* ===== МИНИМАЛЬНЫЕ FIXES ДЛЯ СТАРЫХ БРАУЗЕРОВ ===== */
 
@@ -3298,21 +3223,6 @@ body.detail-open {
   }
 
   .catalog-trailer-poster img {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-  }
-
-  .global-search-poster {
-    position: relative;
-    width: 100%;
-    height: 0;
-    padding-bottom: 150%;
-  }
-
-  .global-search-poster img {
     position: absolute;
     top: 0;
     left: 0;
@@ -8135,4 +8045,671 @@ article {
 .section-title-header {
   padding-left: calc(var(--safe-left, env(safe-area-inset-left, 0px)));
   padding-right: calc(var(--safe-right, env(safe-area-inset-right, 0px)));
+}
+
+/* ==================== ЭКРАН НАСТРОЕК ====================
+   Вид — как у остального приложения: чёрный фон, белые жирные заголовки,
+   приглушённый серый текст, полупрозрачные кнопки карточки фильма и одно
+   акцентное кольцо фокуса (--focus-color из «Внешнего вида»). Прежняя синяя
+   рамка на весь экран, синие заголовки и нативные чекбоксы из этого стиля
+   выбивались.
+
+   Всё под #config-screen: .btn, .text-input и .checkbox-container как классы
+   встречаются и вне настроек (баннеры ошибок, оверлеи), им не должно прилетать.
+
+   Chrome 66: flex-gap нет, поэтому отступы только через margin — тогда
+   раскладка одинакова и с html.no-flex-gap, и без. :has() тоже нет, поэтому
+   строка-переключатель подсвечивается через сам чекбокс: он растянут на всю
+   строку и лежит под текстом, а пульт фокусирует именно его. */
+
+#config-screen {
+  min-height: 100vh;
+  padding: 56px 64px;
+  box-sizing: border-box;
+  background: #000;
+  color: #e0e0e0;
+}
+
+/* Атрибут hidden должен побеждать display из правил ниже: кнопка выбора
+   плеера, строки только для Android и т.п. прячутся именно им, а
+   .action-row { display: flex } иначе показывал бы их и на телевизоре */
+#config-screen [hidden] {
+  display: none !important;
+}
+
+/* #config-screen показывают как flex-контейнер (style.display = 'flex' из JS),
+   и без явной ширины карточка сжималась бы до содержимого */
+#config-screen .config-card {
+  display: flex;
+  align-items: flex-start;
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 1280px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ---- Левая колонка: заголовок и разделы ---- */
+#config-screen .settings-sidebar {
+  flex: 0 0 280px;
+  width: 280px;
+  margin-right: 56px;
+}
+
+#config-screen .settings-brand {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #6b6b76;
+}
+
+#config-screen .settings-title {
+  margin: 6px 0 32px;
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #fff;
+}
+
+#config-screen .menu-item {
+  display: flex;
+  align-items: center;
+  margin: 0 0 4px;
+  padding: 14px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #9a9aa6;
+  font-size: 18px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+#config-screen .menu-item i {
+  display: inline-block;
+  width: 22px;
+  margin-right: 14px;
+  font-size: 19px;
+  line-height: 1;
+  text-align: center;
+}
+
+#config-screen .menu-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+/* Активный раздел: светлее фон и акцентная полоска слева. Полоска — inset-
+   тенью, а не border-left, чтобы текст не прыгал на 3px при переключении. Под
+   фокусом общее .focused заменяет тень кольцом — так и задумано. */
+#config-screen .menu-item.active {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-left: 0;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 var(--focus-color, #ff8c00);
+}
+
+/* ---- Правая колонка ---- */
+#config-screen .settings-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 880px;
+}
+
+#config-screen .settings-section {
+  margin: 0 0 48px;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+}
+
+#config-screen .settings-section h2 {
+  margin: 0 0 6px;
+  font-size: 30px;
+  font-weight: 700;
+  color: #fff;
+}
+
+#config-screen .settings-group h2 {
+  font-size: 22px;
+}
+
+#config-screen .settings-lead {
+  margin: 0 0 28px;
+  font-size: 16px;
+  line-height: 1.45;
+  color: #9a9aa6;
+}
+
+#config-screen .settings-subsection {
+  margin-top: 32px;
+}
+
+#config-screen .settings-subtitle {
+  margin-bottom: 14px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* ---- Поля ввода ---- */
+#config-screen .settings-field {
+  margin-bottom: 20px;
+}
+
+#config-screen .settings-field-row {
+  display: flex;
+}
+
+#config-screen .settings-field-row .settings-field {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-right: 16px;
+}
+
+#config-screen .settings-field-row .settings-field:last-child {
+  margin-right: 0;
+}
+
+#config-screen .field-label {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #9a9aa6;
+}
+
+#config-screen .text-input {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 14px 16px;
+  box-sizing: border-box;
+  font-size: 17px;
+  color: #fff;
+  background: #141419;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  outline: none;
+  box-shadow: none;
+  transition: border-color 0.15s ease;
+}
+
+#config-screen .text-input::placeholder {
+  color: #5c5c66;
+}
+
+#config-screen .text-input:focus,
+#config-screen .text-input.focused {
+  border-color: var(--focus-color, #ff8c00);
+}
+
+#config-screen .auth-fields {
+  display: none;
+  margin: 0 0 4px;
+}
+
+#config-screen .auth-fields.visible {
+  display: block;
+}
+
+/* Состояние подключения — строка под полем адреса, а не отдельная плашка */
+#config-screen .server-status {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+  padding: 0;
+  background: none;
+  font-size: 14px;
+  color: #9a9aa6;
+}
+
+#config-screen .status-indicator {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-right: 10px;
+  border-radius: 50%;
+  background: #5c5c66;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+}
+
+#config-screen .status-online { background: #4eff6a; }
+#config-screen .status-offline { background: #ff4e4e; }
+#config-screen .status-checking { background: #ffd966; }
+
+/* ---- Список переключателей ----
+   Разделители — линия сверху у каждой строки, а верхнюю у первой ВИДИМОЙ
+   прячет ::before списка: у части строк атрибут hidden, и :first-child
+   попадал бы в скрытую. */
+#config-screen .settings-list {
+  position: relative;
+  margin: 0 0 20px;
+  background: #141419;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+}
+
+#config-screen .settings-list::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 14px;
+  height: 1px;
+  background: #141419;
+  z-index: 1;
+  pointer-events: none;
+}
+
+#config-screen .checkbox-container {
+  position: relative;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  min-height: 62px;
+  margin: 0;
+  padding: 14px 96px 14px 20px;
+  box-sizing: border-box;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+/* Чекбокс — на всю строку и ПОД текстом (z-index -1 внутри контекста
+   строки). Клик в любое место строки попадает в него, текст пропускает
+   клики насквозь (pointer-events: none). Пульт фокусирует этот input, и его
+   .focused — это подсветка всей строки. */
+#config-screen .checkbox-container input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  z-index: -1;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 14px;
+  outline: none;
+  cursor: pointer;
+}
+
+#config-screen .checkbox-container input:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Кольцо внутрь, а не наружу: снаружи оно легло бы на соседние строки */
+#config-screen .checkbox-container input.focused {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 2px var(--focus-color, #ff8c00) !important;
+}
+
+#config-screen .checkbox-container > span {
+  pointer-events: none;
+  font-size: 17px;
+  line-height: 1.35;
+  color: #fff;
+}
+
+#config-screen .setting-desc {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+  color: #8a8a96;
+}
+
+/* Переключатель: ::before — дорожка, ::after — бегунок. Позиционируются от
+   строки (span статичный), состояние — от :checked соседнего input. */
+#config-screen .checkbox-container > span::before,
+#config-screen .checkbox-container > span::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+}
+
+#config-screen .checkbox-container > span::before {
+  right: 20px;
+  width: 46px;
+  height: 26px;
+  margin-top: -13px;
+  border-radius: 13px;
+  background: #3a3a44;
+  transition: background 0.2s ease;
+}
+
+#config-screen .checkbox-container > span::after {
+  right: 43px;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: -webkit-transform 0.2s ease, transform 0.2s ease;
+}
+
+#config-screen .checkbox-container input:checked + span::before {
+  background: var(--focus-color, #ff8c00);
+}
+
+#config-screen .checkbox-container input:checked + span::after {
+  -webkit-transform: translateX(20px);
+  transform: translateX(20px);
+}
+
+/* ---- Кнопки — как на карточке фильма ---- */
+#config-screen .action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 0 0 16px;
+}
+
+#config-screen .action-row > * {
+  margin: 0 12px 0 0;
+}
+
+#config-screen .action-row > *:last-child {
+  margin-right: 0;
+}
+
+#config-screen .btn,
+#config-screen .settings-btn {
+  flex: 0 0 auto;
+  display: inline-block;
+  padding: 12px 26px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+#config-screen .btn:hover,
+#config-screen .settings-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+#config-screen .btn-primary {
+  color: #000;
+  background: #fff;
+}
+
+#config-screen .btn-primary:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+/* ---- Карточки результатов ---- */
+#config-screen .settings-results {
+  margin-top: 4px;
+  padding: 16px 18px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #c8c8d0;
+  background: #141419;
+  /* цвет рамки меняет speedtest.js: синий — замер, красный — ошибка */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+#config-screen .settings-results-title {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a8a96;
+}
+
+#config-screen .settings-results-total {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--focus-color, #ff8c00);
+}
+
+#config-screen .settings-status-card {
+  display: flex;
+  align-items: center;
+  margin: 0 0 16px;
+  padding: 16px 18px;
+  background: #141419;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+}
+
+#config-screen .settings-status-icon {
+  flex: 0 0 auto;
+  margin-right: 14px;
+  font-size: 26px;
+  line-height: 1;
+}
+
+#config-screen .settings-status-text {
+  font-size: 16px;
+  color: #c8c8d0;
+}
+
+#config-screen .settings-codecs {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #c8c8d0;
+  background: #0c0c10;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+}
+
+#config-screen .help-text {
+  margin-top: 24px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #6b6b76;
+}
+
+/* ---- Экраны поменьше: 1280×720 и 960×540 ---- */
+@media (max-width: 1400px) {
+  #config-screen { padding: 40px 44px; }
+  #config-screen .settings-sidebar { flex-basis: 240px; width: 240px; margin-right: 40px; }
+  #config-screen .settings-title { font-size: 34px; margin-bottom: 26px; }
+  #config-screen .settings-section h2 { font-size: 26px; }
+}
+
+@media (max-width: 1000px) {
+  #config-screen { padding: 28px 28px; }
+  #config-screen .settings-sidebar { flex-basis: 200px; width: 200px; margin-right: 28px; }
+  #config-screen .settings-title { font-size: 28px; margin-bottom: 20px; }
+  #config-screen .menu-item { padding: 11px 14px; font-size: 16px; }
+  #config-screen .menu-item i { margin-right: 10px; font-size: 16px; }
+  #config-screen .settings-section { margin-bottom: 36px; }
+  #config-screen .settings-section h2 { font-size: 22px; }
+  #config-screen .settings-lead { font-size: 14px; margin-bottom: 20px; }
+  #config-screen .checkbox-container { min-height: 54px; padding: 12px 88px 12px 16px; }
+  #config-screen .checkbox-container > span { font-size: 15px; }
+  #config-screen .setting-desc { font-size: 13px; }
+  #config-screen .text-input { padding: 12px 14px; font-size: 15px; }
+  #config-screen .btn,
+  #config-screen .settings-btn { padding: 10px 20px; font-size: 15px; }
+}
+
+/* ==================== ВСТРОЕННАЯ КЛАВИАТУРА (js/osk.js) ====================
+   Панель у нижнего края, поверх всего. Вид — как у настроек: тёмная панель,
+   полупрозрачные клавиши, текущая клавиша — белая, «Готово» — цветом фокуса.
+
+   Текущая клавиша отмечена своим классом .osk-current, а НЕ .focused: .focused
+   — это фокус пульта для control.js, и он остаётся на поле ввода. Займи его
+   клавиша — control.js решил бы, что фокус ушёл с экрана.
+
+   Chrome 66: отступы — margin, без flex-gap. */
+
+.osk {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100000;
+  padding: 0 24px 20px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.osk.hidden {
+  display: none;
+}
+
+.osk-panel {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px 16px 12px;
+  box-sizing: border-box;
+  background: #141419;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.7);
+  pointer-events: auto;
+}
+
+/* Строка с набранным текстом: поле на странице клавиатура может закрывать */
+.osk-preview {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  margin-bottom: 12px;
+  padding: 0 16px;
+  background: #0c0c10;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.osk-preview-label {
+  flex: 0 0 auto;
+  margin-right: 12px;
+  font-size: 14px;
+  color: #8a8a96;
+}
+
+.osk-preview-label:empty {
+  display: none;
+}
+
+.osk-preview-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 22px;
+  color: #fff;
+  /* длинная строка — видно её конец, где и идёт набор */
+  direction: rtl;
+  text-align: left;
+  unicode-bidi: plaintext;
+}
+
+.osk-preview-text.osk-preview-empty {
+  color: #5c5c66;
+}
+
+.osk-caret {
+  flex: 0 0 auto;
+  width: 2px;
+  height: 26px;
+  margin-left: 2px;
+  background: var(--focus-color, #ff8c00);
+  -webkit-animation: osk-blink 1s steps(1) infinite;
+  animation: osk-blink 1s steps(1) infinite;
+}
+
+@-webkit-keyframes osk-blink { 50% { opacity: 0; } }
+@keyframes osk-blink { 50% { opacity: 0; } }
+
+.osk-row {
+  display: flex;
+  margin-bottom: 8px;
+}
+
+.osk-row:last-child {
+  margin-bottom: 0;
+}
+
+.osk-key {
+  -webkit-box-flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 52px;
+  margin-right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 500;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.osk-key:last-child {
+  margin-right: 0;
+}
+
+.osk-key:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Служебные клавиши — темнее букв и мельче */
+.osk-row-controls .osk-key {
+  font-size: 17px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.osk-key.osk-on {
+  color: #000;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.osk-row-controls .osk-key-done {
+  color: #000;
+  background: var(--focus-color, #ff8c00);
+}
+
+/* Текущая клавиша — белая, крупно видно с дивана */
+.osk-key.osk-current,
+.osk-row-controls .osk-key.osk-current {
+  color: #000;
+  background: #fff;
+  box-shadow: 0 0 0 3px var(--focus-color, #ff8c00);
+}
+
+/* Экраны поменьше: 960×540 */
+@media (max-width: 1000px) {
+  .osk { padding: 0 12px 12px; }
+  .osk-panel { padding: 12px 12px 10px; border-radius: 14px; }
+  .osk-preview { min-height: 42px; margin-bottom: 10px; }
+  .osk-preview-text { font-size: 18px; }
+  .osk-key { height: 42px; margin-right: 6px; font-size: 18px; }
+  .osk-row { margin-bottom: 6px; }
+  .osk-row-controls .osk-key { font-size: 14px; }
 }

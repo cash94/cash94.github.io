@@ -1085,6 +1085,9 @@ var Animations = (function () {
         // Снять подложку подмены снаружи: карточку могут спрятать в обход
         // animateDetailHide (dropDetailUnderOverlay в catalog.js)
         dropDetailShade: dropDetailShade,
+        // Поднять её снаружи: открытие карточки из поиска (showGlobalSearchDetail)
+        // снимает оверлей раньше, чем карточка проявится
+        raiseDetailShade: raiseDetailShade,
         animateDetailHide: animateDetailHide,
         ensureDetailVisible: ensureDetailVisible,
         detailContentReady: detailContentReady,
