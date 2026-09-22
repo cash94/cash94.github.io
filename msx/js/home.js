@@ -204,7 +204,7 @@
         var p = String(path);
         if (/^https?:\/\//i.test(p)) return p;
         if (p.charAt(0) !== '/') p = '/' + p;
-        return 'https://tsimg.hnar.online/t/p/' + size + p;
+        return getPrimaryImageBase() + size + p;
     }
 
     function posterUrlFor(path) { return tmdbImage(path, posterSize()); }

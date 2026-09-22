@@ -445,7 +445,9 @@
         // 1. Сетка: ширина карточки задаёт число колонок (либо оно задано явно)
         //    grid-gap — для очень старых Grid-реализаций (Chrome < 66), где
         //    непрефиксного gap ещё нет; современные браузеры берут gap ниже.
-        css.push('#catalog-grid,#catalog-rows,#torrents-grid{' +
+        // .global-search-grid — выдача глобального поиска: колонки и отступы
+        //    как у каталога, иначе поиск жил бы по базовым 5 колонкам
+        css.push('#catalog-grid,#catalog-rows,#torrents-grid,.global-search-grid{' +
             'grid-template-columns:repeat(' + cols + ',1fr)!important;' +
             'grid-gap:' + density.gap + '!important;' +
             'gap:' + density.gap + '!important;}');
@@ -1308,13 +1310,16 @@
         var section = document.createElement('div');
         section.className = 'settings-section';
         section.id = 'ui-appearance-entry';
+        // Вид — общий для экрана настроек (styles.css, блок «ЭКРАН НАСТРОЕК»):
+        // заголовок, поясняющая строка, ряд кнопок, подсказка мелким
         section.innerHTML =
             '<h2>Внешний вид</h2>' +
-            '<button class="btn btn-primary ui-appearance-open-btn" id="open-ui-customizer-btn">🎨 Настроить внешний вид</button>' +
-            '<div class="help-text" style="margin-top:10px;color:#666;font-size:12px;">' +
-            'Размер карточек и постеров (ползунок, до 260×460), масштаб детального просмотра, колонки,<br>' +
-            'шрифт, скругление, плотность, анимации, анимация прокрутки, яркость постеров, цвет фокуса.<br>' +
-            'Открыть в любой момент: жёлтая кнопка пульта или клавиша «C».</div>';
+            '<p class="settings-lead">Размер карточек и постеров, масштаб карточки фильма, колонки, ' +
+            'шрифт, скругление, плотность, анимации, яркость постеров и цвет фокуса.</p>' +
+            '<div class="action-row">' +
+            '<button class="btn btn-primary ui-appearance-open-btn" id="open-ui-customizer-btn">Настроить внешний вид</button>' +
+            '</div>' +
+            '<div class="help-text">Открыть в любой момент: жёлтая кнопка пульта или клавиша «C».</div>';
 
         container.appendChild(section);
 

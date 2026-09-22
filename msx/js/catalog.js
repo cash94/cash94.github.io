@@ -102,15 +102,11 @@ var CATALOG_CONSTANTS = {
     }
 };
 
-// Массив доменов, который легко расширять
-var mirrors = [
-    'tsimg.hnar.online',
-    'nl.imagetmdb.com',
-    'mocha.stull.xyz',
-    'proxy.vokino.pro/image',
-    'nmtmdb.duckdns.org'
-    // 'another-mirror.com' // можно добавлять новые через запятую
-];
+// Зеркала картинок — общий массив из config.js (AppState.imageMirrors). Он
+// приходит с сервера из apiproxy.json (поле tmdbImages) и обновляется на
+// месте, поэтому ссылка остаётся живой: новые зеркала подхватываются без
+// перезагрузки страницы. Добавлять зеркала — в apiproxy.json, не сюда.
+var mirrors = AppState.imageMirrors;
 
 /**
  * Выбирает зеркало детерминированно — по пути самого изображения.
@@ -4463,6 +4459,26 @@ async function renderDetailActors(item, aw, preloadedActors) {
 
     renderDetailActorCards(ae, actors, 'Нет фото');
     aw.classList.remove('hidden');
+    resetDetailRowScroll(ae);
+}
+
+/**
+ * Ряд актёров или похожих — в начало.
+ *
+ * Карточки этих рядов берутся из пула, а сами контейнеры не пересоздаются,
+ * поэтому прокрутка прошлого фильма доставалась следующему: долистал до
+ * последнего актёра, открыл рекомендацию — и её ряды уже в самом конце.
+ *
+ * Зовётся ПОСЛЕ показа обёртки, а не в начале showCatalogDetail: пока ряд
+ * скрыт (display:none), запись scrollLeft браузер молча отбрасывает, и после
+ * показа прокрутка возвращается к старой. setScrollXImmediate (control.js)
+ * заодно гасит твин навигации — иначе недоигравшая анимация пульта дотянула
+ * бы ряд обратно к своей цели.
+ */
+function resetDetailRowScroll(el) {
+    if (!el) return;
+    if (typeof setScrollXImmediate === 'function') setScrollXImmediate(el, 0);
+    else el.scrollLeft = 0;
 }
 
 /**
@@ -4520,6 +4536,7 @@ function renderDetailRecommendations(src, rw, mt) {
     }
 
     rw.classList.remove('hidden');
+    resetDetailRowScroll(re);
 }
 
 /**

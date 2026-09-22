@@ -49,6 +49,23 @@ var CatalogWorker = (function () {
     worker.onerror = function (e) {
       console.error('❌ Worker error:', e.message);
     };
+
+    // Зеркала картинок — сразу, как есть на этот момент. Если конфиг с
+    // сервера придёт позже, loadClientConfig (config.js) пришлёт их ещё раз.
+    // Уходит в readyQueue и доедет до воркера вместе с остальным.
+    if (window.AppState && AppState.imageMirrors) setImageMirrors(AppState.imageMirrors);
+  }
+
+  /**
+   * Без ожидания ответа: воркер, пришедший с зеркала в старой сборке, этого
+   * сообщения не знает и не ответит — request() тогда через 10 с отклонился
+   * бы таймаутом на ровном месте.
+   */
+  function setImageMirrors(list) {
+    if (!worker || !list || !list.length) return;
+    var msg = { id: null, type: 'SET_IMAGE_MIRRORS', payload: { mirrors: list.slice() } };
+    if (isReady) worker.postMessage(msg);
+    else readyQueue.push(msg);
   }
 
   function request(type, payload, timeout) {
@@ -79,6 +96,7 @@ var CatalogWorker = (function () {
   return {
     init: init,
     isReady: function () { return isReady; },
+    setImageMirrors: setImageMirrors,
 
     fetchTmdbDetails: function (item) { return request('FETCH_TMDB_DETAILS', { item: item }); },
     fetchActors: function (item) { return request('FETCH_ACTORS', { item: item }); },
