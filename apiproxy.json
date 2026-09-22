@@ -1,0 +1,9 @@
+{
+  "tmdbMode": "failover",
+  "tmdb": [
+    { "api": "http://tsapi.hnar.online", "key": "064ea5b59beec7eccb3fe99059d58a50" }
+  ],
+  "tmdbDetails": [
+    "http://vidaa.hnar.online/cachedetails.json"
+  ]
+}
