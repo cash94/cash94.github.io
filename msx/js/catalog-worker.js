@@ -679,6 +679,26 @@ function normalizeProtocol(protocol) {
   return p;
 }
 
+// Зеркала картинок. Воркер не видит AppState, поэтому список присылает мост
+// (catalog-worker-bridge.js, SET_IMAGE_MIRRORS) — тот же, что пришёл с
+// сервера из apiproxy.json. До сообщения — прежние значения. Как и на главном
+// потоке в местах без перехода на запасное зеркало, берём ОСНОВНОЕ, первое:
+// балансировка без такого перехода уронила бы постеры с мёртвого хоста.
+var IMAGE_MIRRORS = ['tsimg.hnar.online', 'nl.imagetmdb.com', 'mocha.stull.xyz', 'proxy.vokino.pro/image', 'nmtmdb.duckdns.org'];
+
+function primaryImageHost() {
+  return IMAGE_MIRRORS[0] || 'tsimg.hnar.online';
+}
+
+// URL картинки на любом из известных зеркал (и прежнем tsimg — такие адреса
+// лежат в старых кэшах): «https://хост/t/p/w342/путь» → совпадение
+function matchMirrorImageUrl(url) {
+  var m = String(url).match(/^(https?:)\/\/(.+?)(\/t\/p\/[^/]+)(\/.+)$/i);
+  if (!m) return null;
+  if (m[2] !== 'tsimg.hnar.online' && IMAGE_MIRRORS.indexOf(m[2]) === -1) return null;
+  return { host: m[2], path: m[4] };
+}
+
 function buildPosterUrl(posterPath, protocol, size) {
   if (!posterPath) return null;
 
@@ -692,7 +712,7 @@ function buildPosterUrl(posterPath, protocol, size) {
     WORKER_CONSTANTS.IMG_SIZES.POSTER_MEDIUM ||
     'w185';
 
-  return normalizeProtocol(protocol) + '//tsimg.hnar.online/t/p/' + finalSize + path;
+  return normalizeProtocol(protocol) + '//' + primaryImageHost() + '/t/p/' + finalSize + path;
 }
 
 function normalizePosterUrl(url, protocol, size) {
@@ -706,7 +726,7 @@ function normalizePosterUrl(url, protocol, size) {
     WORKER_CONSTANTS.IMG_SIZES.POSTER_MEDIUM ||
     'w185';
 
-  if (url.indexOf('tsimg.hnar.online/t/p/') !== -1) {
+  if (matchMirrorImageUrl(url)) {
     url = url.replace(/^https?:/, proto);
     url = url.replace(/\/t\/p\/[^/]+\//, '/t/p/' + finalSize + '/');
   }
@@ -1233,8 +1253,10 @@ function workerCheckCatalogUpdate(id, iso) {
 
 function workerSaveToHistory(id, title, mt, pp) {
   var save = pp || null;
-  var pre = 'https://tsimg.hnar.online/t/p/' + WORKER_CONSTANTS.IMG_SIZES.POSTER_MEDIUM;
-  if (save && save.indexOf(pre) === 0) save = save.replace(pre, '');
+  // В историю кладём путь картинки, а не адрес: зеркало могут сменить, а
+  // путь TMDB — нет. Раньше отрезался только адрес tsimg размера w200.
+  var mm = save ? matchMirrorImageUrl(save) : null;
+  if (mm) save = mm.path;
   return safeFetch('/api/history/add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1653,6 +1675,14 @@ self.onmessage = function (e) {
   var payload = msg.payload;
 
   switch (type) {
+    // --- Зеркала картинок из apiproxy.json (ответа не ждут) ---
+    case 'SET_IMAGE_MIRRORS':
+      if (payload && Array.isArray(payload.mirrors) && payload.mirrors.length) {
+        IMAGE_MIRRORS = payload.mirrors.slice();
+      }
+      if (id) self.postMessage({ id: id, type: 'RESULT', data: true });
+      break;
+
     // --- TMDB Details ---
     case 'FETCH_TMDB_DETAILS':
       workerFetchTmdbDetails(payload.item).then(function (data) {

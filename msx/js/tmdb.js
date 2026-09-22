@@ -1,6 +1,10 @@
 // TMDB API через свой прокси
 var TMDB_API_URL = '/api/tmdb/search';
-var TMDB_IMAGE_URL = AppState.protocol+'//tsimg.hnar.online/t/p/w342';
+// Основное зеркало картинок из apiproxy.json (config.js). Функция, а не
+// строка: конфиг приходит с сервера уже после загрузки этого файла.
+function tmdbImageUrl(posterPath) {
+  return getPrimaryImageBase() + 'w342' + posterPath;
+}
 
 /* Кэш для постеров.
  *
@@ -235,7 +239,7 @@ async function searchPoster(title, year, mediaType, retry) {
     // Формируем прямой URL к изображению
     var posterUrl = window.getTmdbImageUrl
       ? window.getTmdbImageUrl(posterPath, 'w342')
-      : TMDB_IMAGE_URL + posterPath;
+      : tmdbImageUrl(posterPath);
     console.log('✅ Найден прямой URL постера:', posterUrl);
 
     // Сохраняем в кэш

@@ -10,7 +10,6 @@ var torrentStatsCache = {
   totalPeers: 0,
   connectedSeeders: 0
 };
-var torrentStatsInterval = null;
 
 // Функция для получения статистики TorrServer
 async function fetchTorrentStatsForBuffer(hash) {
@@ -120,28 +119,108 @@ function formatSize(bytes) {
   return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
-// Запуск интервала обновления статистики
+// ==================== Частота опроса /cache ====================
+//
+// Статистику показывает только строка «TorrServer: … скорость … пиры» в HUD
+// плеера, других потребителей у неё нет. Пока HUD скрыт, опрашивать TorrServer
+// раз в пару секунд незачем: никто этих цифр не видит. Поэтому частота зависит
+// от того, видна ли строка: открыт HUD — раз в секунду, скрыт — раз в 10 с.
+// «Не видна» — это ещё и скрытый жёлтой кнопкой буфер (AppState.bufferHidden):
+// тогда строки нет даже при открытом HUD.
+//
+// Цепочка setTimeout, а не setInterval: следующий запрос планируется только
+// после ответа на предыдущий. Прежний setInterval на медленном TorrServer
+// накладывал запросы друг на друга.
+//
+// HUD прячут и показывают двое: player.js (setPlayerControlsIdle) и control.js
+// (hidePlayerControls / showPlayerControls). Оба работают классом idle-hidden
+// на #controls-container, поэтому смену видимости ловим MutationObserver'ом на
+// этом классе, а не вызовами из каждого пути. При открытии HUD данные нужны
+// сразу, а не через оставшиеся до десяти секунд, — тогда запрос уходит
+// немедленно.
+
+var TORRENT_STATS_VISIBLE_MS = 1000;
+var TORRENT_STATS_HIDDEN_MS = 10000;
+var torrentStatsTimer = null;
+var torrentStatsRunning = false;
+var torrentStatsInFlight = false;
+var torrentStatsLastAt = 0;
+var torrentStatsObserver = null;
+var torrentStatsWasVisible = false;
+
+function isTorrentStatsVisible() {
+  if (typeof AppState !== 'undefined' && AppState.bufferHidden) return false;
+  var controls = getEl('controls-container');
+  return !!controls && !controls.classList.contains('idle-hidden');
+}
+
+function scheduleTorrentStats(delay) {
+  if (torrentStatsTimer) clearTimeout(torrentStatsTimer);
+  torrentStatsTimer = setTimeout(torrentStatsTick, delay);
+}
+
+function torrentStatsTick() {
+  torrentStatsTimer = null;
+  if (!torrentStatsRunning || torrentStatsInFlight) return;
+  torrentStatsInFlight = true;
+  torrentStatsLastAt = Date.now();
+  var done = function () {
+    torrentStatsInFlight = false;
+    if (!torrentStatsRunning) return;
+    scheduleTorrentStats(isTorrentStatsVisible() ? TORRENT_STATS_VISIBLE_MS : TORRENT_STATS_HIDDEN_MS);
+  };
+  updateTorrentStatsCache().then(done, done);
+}
+
+/**
+ * Пересчитать частоту после смены видимости. Строка стала видна — запрос
+ * сразу (если последний был не только что), дальше раз в секунду. Скрылась —
+ * ничего не делаем: уже назначенный тик отработает и сам перейдёт на 10 с.
+ */
+function refreshTorrentStatsCadence() {
+  if (!torrentStatsRunning) return;
+  var visible = isTorrentStatsVisible();
+  var becameVisible = visible && !torrentStatsWasVisible;
+  torrentStatsWasVisible = visible;
+  if (!becameVisible || torrentStatsInFlight) return;
+  var sinceLast = Date.now() - torrentStatsLastAt;
+  scheduleTorrentStats(sinceLast >= TORRENT_STATS_VISIBLE_MS ? 0 : TORRENT_STATS_VISIBLE_MS - sinceLast);
+}
+
+function watchTorrentStatsVisibility() {
+  if (torrentStatsObserver || typeof MutationObserver !== 'function') return;
+  var controls = getEl('controls-container');
+  if (!controls) return;
+  torrentStatsObserver = new MutationObserver(refreshTorrentStatsCadence);
+  torrentStatsObserver.observe(controls, { attributes: true, attributeFilter: ['class'] });
+}
+
+// Запуск опроса статистики
 function startTorrentStatsUpdates() {
   stopTorrentStatsUpdates();
 
-  console.log('📊 Запуск интервала обновления статистики TorrServer');
+  console.log('📊 Запуск опроса статистики TorrServer');
 
-  // Первоначальное обновление
-  updateTorrentStatsCache();
-
-  // Обновляем каждые 2 секунды
-  torrentStatsInterval = setInterval(function () {
-    updateTorrentStatsCache();
-  }, 2000);
+  torrentStatsRunning = true;
+  torrentStatsWasVisible = isTorrentStatsVisible();
+  watchTorrentStatsVisibility();
+  // Первоначальное обновление — сразу
+  scheduleTorrentStats(0);
 }
 
-// Остановка интервала обновления статистики
+// Остановка опроса статистики
 function stopTorrentStatsUpdates() {
-  if (torrentStatsInterval) {
-    clearInterval(torrentStatsInterval);
-    torrentStatsInterval = null;
-    console.log('📊 Остановлен интервал обновления статистики TorrServer');
+  var wasRunning = torrentStatsRunning;
+  torrentStatsRunning = false;
+  if (torrentStatsTimer) {
+    clearTimeout(torrentStatsTimer);
+    torrentStatsTimer = null;
   }
+  if (torrentStatsObserver) {
+    torrentStatsObserver.disconnect();
+    torrentStatsObserver = null;
+  }
+  if (wasRunning) console.log('📊 Остановлен опрос статистики TorrServer');
 }
 
 // Экспортируем функции для использования в других модулях
@@ -152,4 +231,4 @@ window.formatSize = formatSize;
 window.startTorrentStatsUpdates = startTorrentStatsUpdates;
 window.stopTorrentStatsUpdates = stopTorrentStatsUpdates;
 window.torrentStatsCache = torrentStatsCache;
-window.torrentStatsInterval = torrentStatsInterval;
+window.refreshTorrentStatsCadence = refreshTorrentStatsCadence;

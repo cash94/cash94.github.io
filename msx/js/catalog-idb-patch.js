@@ -14,9 +14,23 @@
     var _catalogsListCacheTime = 0;
     var CATALOGS_LIST_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 часов
 
+    // Запрос, который сейчас в полёте.
+    //
+    // Вход в каталог зовёт fetchCatalogsWithCache дважды и почти одновременно:
+    // loadFullCatalog греет список, а отрисовка шапки просит у него дату
+    // обновления. Память заполнялась только по приходу ответа, поэтому оба
+    // вызова промахивались мимо кэша и /api/catalogs уходил дважды. Держим сам
+    // промис — второй вызов дожидается первого вместо своего запроса.
+    var _catalogsListInFlight = null;
+    // Растёт на инвалидации: ответ, отправленный до неё, не должен сесть в кэш
+    // уже устаревшим.
+    var _catalogsListGeneration = 0;
+
     function invalidateCatalogsListCache() {
         _catalogsListCache = null;
         _catalogsListCacheTime = 0;
+        _catalogsListInFlight = null;
+        _catalogsListGeneration++;
     }
 
     function fetchCatalogsWithCache() {
@@ -27,8 +41,14 @@
             return Promise.resolve(_catalogsListCache);
         }
 
+        if (_catalogsListInFlight) {
+            return _catalogsListInFlight;
+        }
+
+        var generation = _catalogsListGeneration;
+
         // Запрашиваем с сервера
-        return fetch(SERVER_URL + '/api/catalogs')
+        var request = fetch(SERVER_URL + '/api/catalogs')
             .then(function (response) {
                 if (!response.ok) {
                     throw new Error('HTTP ' + response.status);
@@ -37,8 +57,10 @@
             })
             .then(function (data) {
                 if (data && data.success && Array.isArray(data.catalogs)) {
-                    _catalogsListCache = data.catalogs;
-                    _catalogsListCacheTime = Date.now();
+                    if (generation === _catalogsListGeneration) {
+                        _catalogsListCache = data.catalogs;
+                        _catalogsListCacheTime = Date.now();
+                    }
                     return data.catalogs;
                 }
                 throw new Error('Invalid catalogs response');
@@ -51,6 +73,19 @@
                 }
                 return [];
             });
+
+        _catalogsListInFlight = request;
+
+        // Отметку снимаем в обеих ветках, но только свою: инвалидация могла уже
+        // поставить сюда чужой, более свежий запрос.
+        var release = function () {
+            if (_catalogsListInFlight === request) {
+                _catalogsListInFlight = null;
+            }
+        };
+        request.then(release, release);
+
+        return request;
     }
 
     function getCatalogInfoFromCache(catalogKey) {

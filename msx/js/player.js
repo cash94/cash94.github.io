@@ -25,6 +25,17 @@ var MAX_PLAYBACK_RETRIES = 3;
  */
 var PLAYER_FETCH_TIMEOUT_MS = 15000;
 
+/**
+ * Отдельный, заметно больший таймаут для /api/file/info.
+ *
+ * Там сервер запускает ffprobe по сети на TorrServer, и первая проба холодной
+ * раздачи спокойно уходит за 15 с: TorrServer ищет пиров и тянет голову файла.
+ * Сервер на такой случай пробует ещё раз с дедлайном 40 с (services/probe.js),
+ * и общий таймаут запроса обязан этот бюджет перекрывать — иначе клиент
+ * оборвёт пробу ровно перед тем, как она удастся.
+ */
+var FILE_INFO_FETCH_TIMEOUT_MS = 60000;
+
 /** Сколько раз подряд переподключаемся после сетевой ошибки HLS, прежде чем сдаться */
 var MAX_HLS_NETWORK_RETRIES = 5;
 
@@ -236,7 +247,60 @@ function createSkipButton() {
   return skipButton;
 }
 
+/**
+ * Автопропуск заставки (настройка «Автопропуск заставки», AppState.autoSkipIntro).
+ *
+ * Вместо «нажми, чтобы пропустить» кнопка отсчитывает AUTO_SKIP_INTRO_SEC и
+ * пропускает сама, а нажатие на неё — наоборот, отменяет: заставку хотят
+ * посмотреть. Пока видео на паузе, отсчёт стоит — иначе, поставив на паузу
+ * в начале заставки, человек возвращался бы уже после неё.
+ *
+ * Титры сами не пропускаем: там пропуск — это переход на следующую серию, и
+ * делать его без спроса значит обрывать сцену после титров.
+ */
+var AUTO_SKIP_INTRO_SEC = 5;
+var autoSkipTimer = null;
+var autoSkipLeft = 0;
+
+function autoSkipLabel() {
+  return '⏩ Пропуск заставки через ' + autoSkipLeft + ' · ОК — смотреть';
+}
+
+function startAutoSkipCountdown() {
+  stopAutoSkipCountdown();
+  autoSkipLeft = AUTO_SKIP_INTRO_SEC;
+  if (skipButton) skipButton.innerHTML = autoSkipLabel();
+  autoSkipTimer = setInterval(function () {
+    if (!skipButtonActive || !currentSkipInfo) { stopAutoSkipCountdown(); return; }
+    var videoPlayer = getEl('video-player');
+    if (videoPlayer && videoPlayer.paused) return;
+    autoSkipLeft--;
+    if (autoSkipLeft <= 0) {
+      stopAutoSkipCountdown();
+      console.log('⏩ Автопропуск заставки');
+      performSkip();
+      return;
+    }
+    if (skipButton) skipButton.innerHTML = autoSkipLabel();
+  }, 1000);
+}
+
+function stopAutoSkipCountdown() {
+  if (autoSkipTimer) { clearInterval(autoSkipTimer); autoSkipTimer = null; }
+}
+
 window.executeSkip = function () {
+  if (!skipButtonActive || !currentSkipInfo) return false;
+  // Идёт автоотсчёт — нажатие значит «не пропускай»
+  if (autoSkipTimer) {
+    console.log('⏩ Автопропуск заставки отменён');
+    hideSkipButton();
+    return true;
+  }
+  return performSkip();
+};
+
+function performSkip() {
   if (!skipButtonActive || !currentSkipInfo) return false;
   var videoPlayer = getEl('video-player');
   if (!videoPlayer) return false;
@@ -250,7 +314,7 @@ window.executeSkip = function () {
   }
   hideSkipButton();
   return true;
-};
+}
 
 function showSkipButton(type, startMs, endMs) {
   if (!skipButton) createSkipButton();
@@ -276,7 +340,13 @@ function showSkipButton(type, startMs, endMs) {
   skipButtonActive = true;
   if (typeof window.focusEl === 'function') window.focusEl(skipButton);
 
-  skipButtonTimeout = setTimeout(function () { hideSkipButton(); }, 10000);
+  if (type === 'intro' && AppState.autoSkipIntro) {
+    // Своё время жизни у кнопки в этом режиме — отсчёт. Десятисекундного
+    // автоскрытия нет: на паузе отсчёт стоит, и кнопка должна его дождаться.
+    startAutoSkipCountdown();
+  } else {
+    skipButtonTimeout = setTimeout(function () { hideSkipButton(); }, 10000);
+  }
   setTimeout(function () {
     if (skipButton && skipButtonActive) skipButton.classList.add('filled');
   }, 50);
@@ -284,6 +354,7 @@ function showSkipButton(type, startMs, endMs) {
 }
 
 function hideSkipButton() {
+  stopAutoSkipCountdown();
   if (skipButton) {
     skipButton.classList.add('hidden');
     skipButton.classList.remove('visible');
@@ -606,6 +677,45 @@ function updateMuteButton() {
   btn.innerHTML = videoPlayer.muted ? '<i class="fi fi-rr-volume-slash"></i>' : '<i class="fi fi-rr-volume"></i>';
 }
 
+/**
+ * Прогрев следующей серии, пока досматривается текущая.
+ *
+ * Переход на следующую серию (автоматически по окончании, «Пропустить титры»,
+ * кнопка ▶▶) раньше начинался с холодной раздачи: TorrServer только тогда
+ * начинал тянуть её голову, а сервер — пробовать файл, и человек смотрел на
+ * «Переключение на серию…» те же секунды, что при первом запуске. За три
+ * минуты до конца делаем обе вещи заранее: preload в TorrServer и
+ * /api/file/info — сервер положит пробу в кэш навсегда, и к переходу
+ * /api/playback/prepare ответит сразу.
+ *
+ * Одна попытка на серию. Ролики короче шести минут не трогаем: там «за три
+ * минуты до конца» — это почти сразу после старта.
+ */
+var NEXT_EPISODE_WARMUP_SEC = 180;
+var warmedNextEpisodeKey = null;
+
+function maybeWarmNextEpisode(absoluteTime) {
+  if (!currentTorrentHash || !currentEpisodeFiles || !currentEpisodeFiles.length) return;
+  var next = currentEpisodeFiles[currentEpisodeIndex + 1];
+  if (!next || !next.id) return;
+  var videoPlayer = getEl('video-player');
+  var total = AppState.originalDuration || AppState.expectedDuration || (videoPlayer && videoPlayer.duration);
+  if (!total || !isFinite(total) || total < 2 * NEXT_EPISODE_WARMUP_SEC) return;
+  if (total - absoluteTime > NEXT_EPISODE_WARMUP_SEC) return;
+  var key = currentTorrentHash + ':' + next.id;
+  if (warmedNextEpisodeKey === key) return;
+  warmedNextEpisodeKey = key;
+
+  console.log('🔥 Прогрев следующей серии: ' + (currentEpisodeIndex + 2));
+  preloadTorrents(currentTorrentHash, next.id);
+  // Пробу файла нужна только обычному режиму — транскодирование живёт без неё
+  if (!AppState.transcodingOnOff && !AppState.transcodingFullOnOff) {
+    var savedClientId = localStorage.getItem('clientId');
+    fetchWithTimeout(SERVER_URL + '/api/file/info?hash=' + currentTorrentHash + '&fileId=' + next.id +
+      '&clientId=' + encodeURIComponent(savedClientId), null, FILE_INFO_FETCH_TIMEOUT_MS)['catch'](function () { });
+  }
+}
+
 function updateBufferDisplay() {
   var bufferStats = getEl('buffer-stats');
   var subtitleElement = getEl('player-subtitle');
@@ -616,6 +726,7 @@ function updateBufferDisplay() {
   // строка буфера. Раньше проверка жила внутри ветки отрисовки, и жёлтая кнопка
   // на пульте (скрыть буфер) заодно отключала пропуск заставки.
   checkAndShowSkipButton(videoPlayer.currentTime + AppState.seekOffset);
+  maybeWarmNextEpisode(videoPlayer.currentTime + AppState.seekOffset);
 
   if (AppState.bufferHidden) {
     bufferStats.classList.add('hidden');
@@ -1103,8 +1214,23 @@ async function loadEpisodesInfo(hash, currentFileId) {
   } catch (error) { console.error('Ошибка загрузки серий:', error); }
 }
 
+/**
+ * Диапазоны заставки и титров для серии.
+ *
+ * Счётчики показов сбрасываются здесь же. Они считают тики внутри диапазона и
+ * относятся к одной серии: показ идёт по условию skipIntro == 1, то есть на
+ * первом тике. Раньше обнуляли их только в showDetailView, на выходе из
+ * плеера, — поэтому на второй серии подряд счётчик был уже далеко за единицей,
+ * и кнопка не появлялась, пока не выйдешь из плеера и не зайдёшь заново.
+ *
+ * Сброс привязан именно к загрузке данных, а не к переключению серии: между
+ * переключением и ответом tsskip проходит около секунды, и обнулённые заранее
+ * счётчики успели бы показать кнопку по диапазонам предыдущей серии.
+ */
 async function fetchSkipData(tmdbId, season, episode) {
-  var url = AppState.protocol + '//tsskip.hnar.online/v2/media?tmdb_id=' + tmdbId + '&season=' + season + '&episode=' + episode;
+  skipIntro = 0;
+  skipCredits = 0;
+  var url = AppState.protocol + '//' + AppState.skipApiHost + '/v2/media?tmdb_id=' + tmdbId + '&season=' + season + '&episode=' + episode;
   try {
     var response = await fetch(url);
     var data = await response.json();
@@ -1177,6 +1303,10 @@ function renderEpisodesList() {
 async function switchToEpisode(index, fileId) {
   stopTorrentStatsUpdates();
   currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; thisisseek = false;
+  // Кнопка на экране относится к прежней серии: её диапазон в новой ничего не
+  // значит. Сама она сбрасывается и по первому тику вне диапазона, но до него
+  // успевает повисеть поверх переключения.
+  hideSkipButton();
   stopHeartbeat();
   if (!currentTorrentHash || !AppState.currentTorrserverUrl) return;
   if (index === currentEpisodeIndex) { toggleEpisodesPanel(); return; }
@@ -1379,12 +1509,94 @@ function setupEpisodesButton() {
   setupPlayerPanelsOutsideClick();
 }
 
+/**
+ * Просит TorrServer поднять куски файла заранее.
+ *
+ * Вызывается из двух мест: отсюда, перед стартом воспроизведения, и из
+ * showDetail (torrents.js) — там прогрев идёт ещё пока человек читает описание,
+ * чтобы серверный ffprobe не уткнулся в холодную раздачу.
+ */
+
+/**
+ * Когда какой файл грели: ключ '<hash>:<fileId>' → отметка времени.
+ *
+ * Открыть карточку и нажать «Играть» — это два прогрева одного файла подряд,
+ * второй бесполезен. Просто убрать вызов из preparePlaybackMetadata нельзя:
+ * переключение серии внутри плеера (next/prev, список серий, автопереход по
+ * окончании) идёт мимо экрана деталей, и там прогрев единственный.
+ *
+ * Отметка со сроком, а не «однажды за сеанс»: через полчаса TorrServer уже
+ * мог вытеснить куски из кэша, а лишний preload стоит одного запроса против
+ * пятнадцати секунд таймаута ffprobe на холодной раздаче.
+ */
+var preloadedFilesAt = {};
+var PRELOAD_TTL_MS = 5 * 60 * 1000;
+var PRELOADED_FILES_LIMIT = 200;
+var preloadedFilesCount = 0;
+
+function wasPreloadedRecently(hash, fileId) {
+  var key = String(hash).toLowerCase() + ':' + fileId;
+  var at = preloadedFilesAt[key];
+  if (at && Date.now() - at < PRELOAD_TTL_MS) return true;
+  if (!at) {
+    // Переполнение сбрасываем целиком: худшее последствие — лишний preload
+    // для файла, открытого две сотни карточек назад.
+    if (preloadedFilesCount >= PRELOADED_FILES_LIMIT) {
+      preloadedFilesAt = {};
+      preloadedFilesCount = 0;
+    }
+    preloadedFilesCount++;
+  }
+  preloadedFilesAt[key] = Date.now();
+  return false;
+}
+/**
+ * Прогрев в полёте — не больше одного.
+ *
+ * TorrServer держит ответ на ?preload=preload открытым, пока буферизует: на
+ * прогретой раздаче это секунда, на холодной — сколько угодно. Пока прогрев
+ * звали только перед стартом воспроизведения, один висящий запрос никому не
+ * мешал. С прогревом на экране деталей каждая открытая карточка добавляла свой,
+ * а браузер держит к одному хосту лишь шесть соединений по HTTP/1.1 — после
+ * пяти-шести карточек всё остальное к TorrServer (stat, /torrents, постеры)
+ * вставало в очередь, и приложение выглядело зависшим.
+ *
+ * Поэтому новый прогрев отменяет предыдущий: он всё равно спекулятивный, и
+ * греть карточку, с которой человек уже ушёл, незачем. Отменённый файл убираем
+ * из отметок, иначе при возврате на ту же карточку прогрев не повторился бы —
+ * хотя ничего и не прогрелось.
+ */
+var pendingPreload = null;
+
+function abortPendingPreload() {
+  if (!pendingPreload) return;
+  var stale = pendingPreload;
+  pendingPreload = null;
+  delete preloadedFilesAt[stale.key];
+  try { stale.controller.abort(); } catch (e) { }
+}
+
 function preloadTorrents(hash, fileId) {
   if (!hash || !fileId || !AppState.currentTorrserverUrl) return;
+  if (wasPreloadedRecently(hash, fileId)) return;
+  var key = String(hash).toLowerCase() + ':' + fileId;
   var preloadUrl = AppState.currentTorrserverUrl + "/stream?link=" + hash + "&index=" + fileId + "&preload=preload";
-  return fetch(preloadUrl, { method: 'GET', keepalive: true })
-    .then(function (response) { return new Promise(function (resolve) { setTimeout(resolve, 4000); }); })
-    .catch(function (error) { return Promise.resolve(); });
+  // Без заголовков авторизации TorrServer с включённым паролем отдаёт 401, и
+  // прогрев молча не происходит — заметить это по поведению нельзя.
+  var headers = (typeof getAuthHeaders === 'function') ? getAuthHeaders() : {};
+  var options = { method: 'GET', keepalive: true, headers: headers };
+  var controller = (typeof AbortController === 'function') ? new AbortController() : null;
+  abortPendingPreload();
+  if (controller) {
+    options.signal = controller.signal;
+    pendingPreload = { key: key, controller: controller };
+  }
+  var done = function () {
+    if (pendingPreload && pendingPreload.key === key) pendingPreload = null;
+  };
+  return fetch(preloadUrl, options)
+    .then(function (response) { done(); return new Promise(function (resolve) { setTimeout(resolve, 4000); }); })
+    .catch(function (error) { done(); return Promise.resolve(); });
 }
 
 function getCurrentItemPoster() {
@@ -1549,7 +1761,7 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       // Данные для кнопки «Пропустить»: встроенный плеер сам дёргает этот API на
       // каждую серию (номер эпизода он берёт из index= в ссылке файла). Адрес
       // передаём отсюда, чтобы смена хоста не требовала пересборки приложения.
-      skip_api: (AppState.protocol || 'https:') + '//tsskip.hnar.online/v2/media',
+      skip_api: (AppState.protocol || 'https:') + '//' + AppState.skipApiHost + '/v2/media',
       tmdb_id: AppState.currentTMDB || null,
       season: AppState.currentSeason || null,
       // Периодическое сохранение таймкода прямо из встроенного плеера. Веб-плеер
@@ -1705,22 +1917,20 @@ async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, sig
   // if (AppState.transcodingFullOnOff) {
   //   return true;
   // }
+  // Позицию спрашиваем, только если её не передали явно (initialSeek === null)
+  var wantTimecode = initialSeek === null;
   var requests = [
-    loadFileInfo(currentTimecodeData.hash, currentTimecodeData.fileId),
-    loadAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId),
-    getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId),
-    loadSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId)
+    loadPlaybackPrepare(currentTimecodeData.hash, currentTimecodeData.fileId, wantTimecode),
+    getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId)
   ];
   if (initialSeek === null || initialSeek === 0) preloadTorrents(currentTimecodeData.hash, currentTimecodeData.fileId);
-  var timecodePromise = null;
-  if (initialSeek === null) {
-    timecodePromise = loadTimecodeFromServer(currentTimecodeData.hash, currentTimecodeData.fileId);
-    requests.push(timecodePromise);
-  }
   var promiseResults = await Promise.all(requests);
   if (signal.aborted) return null;
-  var fileInfo = promiseResults[0]; var savedAudioTrack = promiseResults[1]; var fileName = promiseResults[2];
-  var savedSubTrack = promiseResults[3]; var savedTimecode = promiseResults[4] || null;
+  var prepared = promiseResults[0]; var fileName = promiseResults[1];
+  var fileInfo = prepared.fileInfo;
+  var savedAudioTrack = prepared.audioTrack;
+  var savedSubTrack = prepared.subtitleTrack;
+  var savedTimecode = prepared.timecode || null;
   if (fileInfo && fileInfo.audio) { currentAudioTracks = fileInfo.audio; currentAudioTrack = audioTrack !== null ? audioTrack : 0; }
   if (fileInfo && fileInfo.subtitles) currentSubTracks = fileInfo.subtitles;
   if (savedAudioTrack !== null && savedAudioTrack < currentAudioTracks.length) {
@@ -1729,7 +1939,7 @@ async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, sig
   } else currentAudioTrack = audioTrack !== null ? audioTrack : 0;
   if (savedSubTrack !== null && savedSubTrack < currentSubTracks.length) currentSubtitleTrack = savedSubTrack;
   var seekTime = initialSeek;
-  if (seekTime === null && timecodePromise) seekTime = savedTimecode > 0 ? savedTimecode : 0;
+  if (seekTime === null && wantTimecode) seekTime = savedTimecode > 0 ? savedTimecode : 0;
   return { match: match, fileInfo: fileInfo, savedAudioTrack: savedAudioTrack, fileName: fileName, savedSubTrack: savedSubTrack, savedTimecode: savedTimecode, seekTime: seekTime, audioTrack: audioTrack };
 }
 
@@ -2239,13 +2449,26 @@ function showDetailView(field = null) {
 
     getEl('torrserver-section').style.display = 'block';
   }
-  if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
-    dropTorrentToServer(AppState.currentDetailItem.hash).then(function (result) { })['catch'](function (error) { });
-  }
-  refreshTorrentsList().then(function () {
-    if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
-      var cacheKey = AppState.currentDetailItem.hash; if (torrentProgressCache.has(cacheKey)) torrentProgressCache.delete(cacheKey);
-    }
+  // Сначала drop, только потом список.
+  //
+  // Раньше оба запроса уходили параллельно, и список успевал вернуться до
+  // того, как TorrServer применил остановку: карточка отрисовывалась в
+  // состоянии «до», с прежней статистикой раздачи.
+  //
+  // Неудачный drop список не отменяет — раздачу могли остановить раньше или
+  // сервер моргнул, а устаревшие карточки хуже лишнего запроса.
+  //
+  // Хэш запоминаем сразу: цепочка разрешится через пару сотен миллисекунд, и
+  // к этому моменту открытой может быть уже другая карточка, а чистить кэш
+  // прогресса надо у той раздачи, которую только что смотрели.
+  var watchedHash = (AppState.currentDetailItem && AppState.currentDetailItem.hash) || null;
+  var dropped = watchedHash
+    ? dropTorrentToServer(watchedHash)['catch'](function (error) { return null; })
+    : Promise.resolve(null);
+  dropped.then(function () {
+    return refreshTorrentsList();
+  }).then(function () {
+    if (watchedHash && torrentProgressCache.has(watchedHash)) torrentProgressCache.delete(watchedHash);
   })['catch'](function (error) { });
   if (lastPlaybackFromSearch && lastAddedTorrentHash) {
     setTimeout(function () {
@@ -2383,29 +2606,31 @@ async function updateDetailProgress(torrent) {
     '<span class="btn-label">▶ Продолжить</span>' +
     '<span class="btn-hint">' + hint + '</span>';
 
-  // Обновляем полосу прогресса на элементе файла (как в оригинале)
-  await updateCurrentFileProgress(torrent.hash, progress.fileId, progress.episodeIndex);
+  // Полосу на плитке красим тем, что уже вернул батч по этой раздаче
+  updateCurrentFileProgress(torrent.hash, progress.fileId, progress.timecode, progress.duration);
 
   return fileId;
 }
 
-async function updateCurrentFileProgress(hash, fileId, episodeIndex) {
+/**
+ * Полоса прогресса на плитке файла.
+ *
+ * Таймкод и длительность приходят аргументами, а не запросом. Раньше здесь был
+ * свой /api/timecode/get по тому же hash+fileId, хотя вызывающий уже держал
+ * эти же два числа: их только что вернул /api/timecode/batch, причём сразу по
+ * всем файлам раздачи. То есть на выходе из плеера сервер спрашивали дважды об
+ * одном и том же. Данные там свежие — updateDetailProgress перед батчем чистит
+ * torrentProgressCache и дожидается сохранения таймкода.
+ */
+function updateCurrentFileProgress(hash, fileId, timecode, duration) {
   if (!hash || !fileId) return;
+  if (!(timecode > 0) || !(duration > 0)) return;
   var fileItems = document.querySelectorAll('.file-item'); var targetItem = null;
   for (var i = 0; i < fileItems.length; i++) { if (fileItems[i].dataset.hash === hash && fileItems[i].dataset.fileId == fileId) { targetItem = fileItems[i]; break; } }
   if (!targetItem) return;
-  try {
-    var savedClientId = localStorage.getItem('clientId');
-    var response = await fetch(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
-    if (response.ok) {
-      var data = await response.json();
-      if (data.success && data.timecode > 0 && data.duration && data.duration > 0) {
-        var progressPercent = Math.min((data.timecode / data.duration) * 100, 98);
-        var progressFill = targetItem.querySelector('.file-progress-fill');
-        if (progressFill) { progressFill.style.width = progressPercent + '%'; if (progressPercent > 5) targetItem.classList.add('has-progress'); }
-      }
-    }
-  } catch (error) { }
+  var progressPercent = Math.min((timecode / duration) * 100, 98);
+  var progressFill = targetItem.querySelector('.file-progress-fill');
+  if (progressFill) { progressFill.style.width = progressPercent + '%'; if (progressPercent > 5) targetItem.classList.add('has-progress'); }
 }
 
 /**
@@ -2420,7 +2645,7 @@ async function updateCurrentFileProgress(hash, fileId, episodeIndex) {
 async function loadFileInfo(hash, fileId) {
   try {
     var savedClientId = localStorage.getItem('clientId');
-    var response = await fetchWithTimeout(SERVER_URL + '/api/file/info?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
+    var response = await fetchWithTimeout(SERVER_URL + '/api/file/info?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId), null, FILE_INFO_FETCH_TIMEOUT_MS);
     if (response.ok) return await response.json();
     console.warn('⚠️ /api/file/info вернул HTTP ' + response.status);
   } catch (error) {
@@ -2538,6 +2763,92 @@ async function saveAudioPreference(hash, fileId, audioTrack) {
     var savedClientId = localStorage.getItem('clientId');
     var response = await fetch(SERVER_URL + '/api/audio/pref/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hash: hash, fileId: fileId, audioTrack: audioTrack, clientId: savedClientId }) });
   } catch (error) { }
+}
+
+/**
+ * Сохранённые дорожки — аудио и субтитры — одним запросом.
+ *
+ * На сервере обе лежат в одной строке media_prefs, и раздельные маршруты
+ * читали её дважды одним и тем же запросом. Здесь одно обращение.
+ *
+ * Откат на пару старых маршрутов нужен не для красоты: index.html тянет js с
+ * зеркала, а SERVER_URL — это локальный сервер, поэтому свежий клиент
+ * регулярно встречается со старым серверным бинарником. Без отката там молча
+ * подставилась бы дорожка по умолчанию, и понять это можно было бы только на слух.
+ */
+async function loadMediaPreferences(hash, fileId) {
+  var savedClientId = localStorage.getItem('clientId');
+  var query = '?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId);
+  try {
+    var response = await fetchWithTimeout(SERVER_URL + '/api/media/prefs/get' + query);
+    if (response.ok) {
+      var data = await response.json();
+      if (data.success) {
+        return {
+          audioTrack: data.audioTrack !== null && data.audioTrack !== undefined ? data.audioTrack : null,
+          subtitleTrack: data.subtitleTrack !== null && data.subtitleTrack !== undefined ? data.subtitleTrack : -1
+        };
+      }
+    }
+  } catch (error) { }
+  var pair = await Promise.all([loadAudioPreference(hash, fileId), loadSubtitlePreference(hash, fileId)]);
+  return { audioTrack: pair[0], subtitleTrack: pair[1] };
+}
+
+/**
+ * Всё для старта воспроизведения одним запросом: сведения о файле,
+ * сохранённые дорожки и (если wantTimecode) позиция просмотра.
+ *
+ * Раньше это были /api/file/info, /api/media/prefs/get и /api/timecode/get
+ * по одному и тому же hash+fileId. Имя файла сюда не входит — его
+ * getFileNameByHash берёт из списка торрентов на клиенте.
+ *
+ * Откат на старые запросы — в двух случаях по-разному:
+ *  - маршрута нет (404 — старый серверный бинарник, а js пришёл с зеркала
+ *    свежий) → все три прежних запроса;
+ *  - новый маршрут не уложился в таймаут → только дорожки и позицию. Таймаут
+ *    значит, что сервер всё ещё пробует файл, и повтор /api/file/info стоил
+ *    бы ещё до минуты ожидания ради того же результата.
+ *
+ * @returns {Promise<{fileInfo: object|null, audioTrack: number|null, subtitleTrack: number, timecode: number|null}>}
+ */
+async function loadPlaybackPrepare(hash, fileId, wantTimecode) {
+  var savedClientId = localStorage.getItem('clientId');
+  var url = SERVER_URL + '/api/playback/prepare?hash=' + hash + '&fileId=' + fileId +
+    '&clientId=' + encodeURIComponent(savedClientId) + (wantTimecode ? '&timecode=1' : '');
+  var timedOut = false;
+  try {
+    var response = await fetchWithTimeout(url, null, FILE_INFO_FETCH_TIMEOUT_MS);
+    if (response.ok) {
+      var data = await response.json();
+      if (data && data.success) {
+        if (data.fileInfoError) console.warn('⚠️ /api/playback/prepare: ' + data.fileInfoError);
+        var prefs = data.prefs || {};
+        return {
+          fileInfo: data.fileInfo || null,
+          audioTrack: prefs.audioTrack !== null && prefs.audioTrack !== undefined ? prefs.audioTrack : null,
+          subtitleTrack: prefs.subtitleTrack !== null && prefs.subtitleTrack !== undefined ? prefs.subtitleTrack : -1,
+          timecode: wantTimecode ? (data.timecode || 0) : null
+        };
+      }
+    }
+    console.warn('⚠️ /api/playback/prepare вернул HTTP ' + response.status + ' — старые запросы');
+  } catch (error) {
+    timedOut = !!(error && error.name === 'AbortError');
+    console.warn('⚠️ /api/playback/prepare недоступен:', timedOut ? 'таймаут' : (error && error.message));
+  }
+  var results = await Promise.all([
+    timedOut ? Promise.resolve(null) : loadFileInfo(hash, fileId),
+    loadMediaPreferences(hash, fileId),
+    wantTimecode ? loadTimecodeFromServer(hash, fileId) : Promise.resolve(null)
+  ]);
+  var fallbackPrefs = results[1] || {};
+  return {
+    fileInfo: results[0],
+    audioTrack: fallbackPrefs.audioTrack !== undefined ? fallbackPrefs.audioTrack : null,
+    subtitleTrack: fallbackPrefs.subtitleTrack !== undefined ? fallbackPrefs.subtitleTrack : -1,
+    timecode: results[2]
+  };
 }
 
 async function loadAudioPreference(hash, fileId) {

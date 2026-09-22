@@ -269,26 +269,13 @@
                 }
                 // Fallback: заменяем вручную
                 if (path.indexOf('image.tmdb.org') !== -1) {
-                    var mirrors = [
-                        'tsimg.hnar.online',
-                        'nl.imagetmdb.com',
-                        'mocha.stull.xyz',
-                        'proxy.vokino.pro/image',
-                        'nmtmdb.duckdns.org'
-                    ];
-                    var randomProxy = mirrors[Math.floor(Math.random() * mirrors.length)];
-                    return path.replace(/image\.tmdb\.org/g, randomProxy);
+                    return path.replace(/image\.tmdb\.org/g, getPrimaryImageHost());
                 }
                 return path;
             }
 
-            var protocol = 'https:';
-            if (window.AppState && AppState.protocol) {
-                protocol = String(AppState.protocol).replace(/:+$/, '');
-                if (protocol.indexOf(':') === -1) protocol += ':';
-            }
-
-            return protocol + '//tsimg.hnar.online/t/p/w342' +
+            // Основное зеркало картинок из apiproxy.json (config.js)
+            return getPrimaryImageBase() + 'w342' +
                 (path.charAt(0) === '/' ? path : '/' + path);
         }
 
@@ -432,7 +419,7 @@
         if (details.backdrop_path && elements.detailViewDiv) {
             var bp = window.getTmdbImageUrl
                 ? window.getTmdbImageUrl(details.backdrop_path, 'w1280')
-                : AppState.protocol + '//tsimg.hnar.online/t/p/w1280' + details.backdrop_path;
+                : getPrimaryImageBase() + 'w1280' + details.backdrop_path;
 
             // Кинематографичный скрим вместо ровного затемнения: снизу — почти
             // чёрный (под ряды актёров и файлов), слева — под текст, справа кадр
