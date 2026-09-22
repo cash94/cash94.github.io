@@ -175,6 +175,12 @@ fix_binary() {
         if ! codesign -v "$f" >/dev/null 2>&1; then
             codesign --force --sign - "$f" >/dev/null 2>&1
         fi
+        # Без подписи ядро убивает процесс на Apple Silicon сразу при запуске,
+        # а установка при этом рапортовала бы об успехе — проверяем результат
+        if ! codesign -v "$f" >/dev/null 2>&1; then
+            warn "Не удалось подписать $(basename "$f") — на Apple Silicon он не запустится."
+            warn "Выполните вручную: codesign --force --sign - \"$f\""
+        fi
     fi
 }
 
