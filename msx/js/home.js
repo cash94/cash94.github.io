@@ -1997,7 +1997,19 @@
                     if (screens[i] !== homeScreen) screens[i].hidden = true;
                 }
             }
-            if (homeScreen) homeScreen.hidden = (screen !== 'home');
+            // Приход на главную — тем же проявлением, что у вкладок «Каталог» и
+            // «Мои торренты» (showContentScreen в app.js). Только если главная была
+            // спрятана: возврат из карточки или поиска, под которыми она так и
+            // стояла, мигать не должен.
+            if (homeScreen) {
+                var canFade = typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function';
+                if (screen === 'home' && homeScreen.hidden && canFade) {
+                    Animations.fadeIn(homeScreen, { duration: Animations.UI_FADE.screen });
+                } else {
+                    if (canFade) Animations.resetFade(homeScreen);
+                    homeScreen.hidden = (screen !== 'home');
+                }
+            }
             // «Главная» подсвечена по тому же правилу, что вкладки разделов:
             // .active — у того пункта, чей экран открыт
             if (homeBtn) {

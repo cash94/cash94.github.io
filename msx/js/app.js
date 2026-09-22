@@ -719,7 +719,14 @@ function setupNavigation() {
         if (from && from !== 'config') AppState.configReturnTo = from;
       }
       if (torrserverSection) torrserverSection.style.display = 'none';
-      if (configScreen) configScreen.style.display = 'flex';
+      if (configScreen) {
+        // Проявление как у вкладок (showContentScreen); fadeIn сам выставит display
+        if (typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
+          Animations.fadeIn(configScreen, { display: 'flex', duration: Animations.UI_FADE.screen });
+        } else {
+          configScreen.style.display = 'flex';
+        }
+      }
       if (typeof AppState !== 'undefined') AppState.currentScreen = 'config';
       setTimeout(function () {
         if (typeof updateFocusableElements === 'function') updateFocusableElements();
