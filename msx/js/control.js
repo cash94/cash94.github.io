@@ -2260,7 +2260,15 @@ function onBack() {
             configState.initialized = false;
             configScreen.style.display = 'none';
             var torrserverSection = getEl('torrserver-section');
-            if (torrserverSection) torrserverSection.style.display = 'block';
+            // Экран, в который возвращаемся, проявляется так же, как при входе
+            // в настройки (app.js, #settings-btn), — иначе туда плавно, обратно рывком
+            if (torrserverSection) {
+                if (typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
+                    Animations.fadeIn(torrserverSection, { display: 'block', duration: Animations.UI_FADE.screen });
+                } else {
+                    torrserverSection.style.display = 'block';
+                }
+            }
             // Из настроек возвращаемся туда, откуда пришли.
             //
             // Раньше вариантов было два: главная, если она осталась под
