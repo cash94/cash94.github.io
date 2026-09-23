@@ -109,7 +109,7 @@ var AppState = {
     'proxy.vokino.pro/image',
     'nmtmdb.duckdns.org'
   ],
-  skipApiHost: 'tsskip.hnar.online'
+  skipApiHost: 'tsskip.torrstream.online'
 };
 
 /**
