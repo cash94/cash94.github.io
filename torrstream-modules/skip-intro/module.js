@@ -1,5 +1,5 @@
 // Модуль: Skip Intro
-// version: '1.0.0'
+// version: '1.0.1'
 // Данные о заставках и титрах с запасным источником.
 //
 // Основной источник — tsskip.torrstream.online (зеркало api.theintrodb.org),
@@ -27,6 +27,8 @@ var REQUEST_TIMEOUT = 8000;
 // пользователи, и вчерашнее «нет» завтра может стать «есть»
 var CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 var NEGATIVE_TTL_MS = 60 * 60 * 1000;
+// Сбой (не ответило зеркало TMDB или introdb) — не «данных нет», держим недолго
+var FAILURE_TTL_MS = 2 * 60 * 1000;
 var CACHE_MAX = 500;
 
 // Запасные значения: те же, что зашиты в сервере (services/api-proxy.js)
@@ -101,45 +103,76 @@ function safeUrl(url) {
   return String(url).replace(/api_key=[^&]*/, 'api_key=…');
 }
 
-// Зеркало TMDB и ключ берём из общего конфига; он же лежит на сервере, но
-// модулю доступен только HTTP, а apiproxy.json открыт
-var proxyConf = null;
-var proxyConfAt = 0;
+// Зеркала TMDB и ключ берём из общего конфига; он же лежит на сервере, но
+// модулю доступен только HTTP, а apiproxy.json открыт.
+//
+// 1.0.0 держала конфиг сутки и брала из него только первое зеркало. Когда в
+// apiproxy.json сменили зеркала, модуль ещё сутки ходил на старое, уже не
+// отвечавшее, — и запасной источник молча не работал. Теперь конфиг живёт
+// полчаса и перечитывается сразу, если не ответило ни одно зеркало, а зеркала
+// перебираются по порядку.
+var CONFIG_TTL_MS = 30 * 60 * 1000;
+var proxyMirrors = null;
+var proxyMirrorsAt = 0;
 
-function tmdbConfig(ctx) {
-  if (proxyConf && Date.now() - proxyConfAt < CACHE_TTL_MS) return Promise.resolve(proxyConf);
+function tmdbMirrors(ctx) {
+  if (proxyMirrors && Date.now() - proxyMirrorsAt < CONFIG_TTL_MS) return Promise.resolve(proxyMirrors);
   return fetchJson(APIPROXY_URL, ctx).then(function (r) {
-    var conf = { api: FALLBACK_TMDB_API, key: FALLBACK_TMDB_KEY };
-    var data = r.data;
-    if (data) {
-      // Формат: либо { tmdbApi, tmdbApiKey }, либо { tmdb: [{ api, key }] }
-      if (typeof data.tmdbApi === 'string' && data.tmdbApi) conf.api = data.tmdbApi;
-      if (typeof data.tmdbApiKey === 'string' && data.tmdbApiKey) conf.key = data.tmdbApiKey;
-      if (Array.isArray(data.tmdb) && data.tmdb.length) {
-        var first = data.tmdb[0];
-        if (first && first.api) conf.api = first.api;
-        if (first && first.key) conf.key = first.key;
-      }
+    var data = r.data || {};
+    // Формат: { tmdb: [{ api, key }], tmdbApiKey } или старый { tmdbApi, tmdbApiKey }
+    var commonKey = (typeof data.tmdbApiKey === 'string' && data.tmdbApiKey) ? data.tmdbApiKey : FALLBACK_TMDB_KEY;
+    var list = [];
+    if (Array.isArray(data.tmdb)) {
+      data.tmdb.forEach(function (m) {
+        if (m && typeof m.api === 'string' && m.api) list.push({ api: m.api, key: m.key || commonKey });
+      });
     }
-    conf.api = String(conf.api).replace(/\/+$/, '');
-    proxyConf = conf;
-    proxyConfAt = Date.now();
-    return conf;
+    if (typeof data.tmdbApi === 'string' && data.tmdbApi) list.push({ api: data.tmdbApi, key: commonKey });
+    // Зашитое зеркало — последним: на случай, если конфиг не скачался вовсе
+    list.push({ api: FALLBACK_TMDB_API, key: FALLBACK_TMDB_KEY });
+
+    var seen = {};
+    proxyMirrors = list
+      .map(function (m) { return { api: String(m.api).replace(/\/+$/, ''), key: m.key }; })
+      .filter(function (m) { if (seen[m.api]) return false; seen[m.api] = true; return true; });
+    // Конфиг не скачался — не держим запасной список полчаса, перечитаем при следующем запросе
+    proxyMirrorsAt = r.data ? Date.now() : 0;
+    return proxyMirrors;
   });
 }
 
-// IMDB-идентификатор сериала: introdb работает только с ним
-var imdbCache = new Map();
+// IMDB-идентификатор сериала: introdb работает только с ним.
+// Найденный держим неделю (он не меняется), неудачу — десять минут: в 1.0.0
+// неудача запоминалась до перезапуска сервера.
+var IMDB_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+var IMDB_NEGATIVE_TTL_MS = 10 * 60 * 1000;
+var imdbCache = new Map();   // tmdbId → { imdb, at }
 
 function resolveImdbId(tmdbId, ctx) {
-  var cached = imdbCache.get(tmdbId);
-  if (cached !== undefined) return Promise.resolve(cached);
-  return tmdbConfig(ctx).then(function (conf) {
-    var url = conf.api + '/tv/' + tmdbId + '/external_ids?api_key=' + conf.key;
-    return fetchJson(url, ctx).then(function (r) {
-      var imdb = (r.data && r.data.imdb_id) ? String(r.data.imdb_id) : null;
+  var hit = imdbCache.get(tmdbId);
+  if (hit && Date.now() - hit.at < (hit.imdb ? IMDB_TTL_MS : IMDB_NEGATIVE_TTL_MS)) {
+    return Promise.resolve(hit.imdb);
+  }
+
+  return tmdbMirrors(ctx).then(function (mirrors) {
+    var i = 0;
+    var failures = [];
+    var tryNext = function () {
+      if (i >= mirrors.length) {
+        ctx.log.warn('IMDB для TMDB ' + tmdbId + ' не получен ни с одного зеркала: ' + failures.join('; '));
+        proxyMirrorsAt = 0;   // вдруг зеркала в apiproxy.json уже сменили
+        return null;
+      }
+      var m = mirrors[i++];
+      return fetchJson(m.api + '/tv/' + tmdbId + '/external_ids?api_key=' + m.key, ctx).then(function (r) {
+        if (r.data && r.data.imdb_id) return String(r.data.imdb_id);
+        failures.push(m.api + ' → ' + (r.status || 'нет ответа'));
+        return tryNext();
+      });
+    };
+    return Promise.resolve(tryNext()).then(function (imdb) {
       if (imdbCache.size > CACHE_MAX) imdbCache.clear();
-      imdbCache.set(tmdbId, imdb);
+      imdbCache.set(tmdbId, { imdb: imdb, at: Date.now() });
       return imdb;
     });
   });
@@ -193,7 +226,7 @@ function hasSegments(data) {
 
 module.exports = {
   name: 'skip-intro',
-  version: '1.0.0',
+  version: '1.0.1',
 
   init: function (app, ctx) {
     ctx.log.log('Инициализация Skip Intro...');
@@ -220,8 +253,11 @@ module.exports = {
       var primary = 'https://' + PRIMARY_HOST + '/v2/media?tmdb_id=' + tmdbId +
         '&season=' + season + '&episode=' + episode;
 
-      var notFound = function () {
-        cacheSet(key, false, NEGATIVE_TTL_MS);
+      // Настоящее «данных нет» кэшируем на час, а сбой (не нашёлся IMDB, источник
+      // ответил ошибкой) — на пару минут: иначе один неудачный момент на
+      // сервере час выглядел бы как отсутствие заставок у серии
+      var notFound = function (isFailure) {
+        cacheSet(key, false, isFailure ? FAILURE_TTL_MS : NEGATIVE_TTL_MS);
         res.status(404).json({ error: 'media not found' });
       };
 
@@ -235,12 +271,17 @@ module.exports = {
         return resolveImdbId(tmdbId, ctx).then(function (imdbId) {
           if (!imdbId) {
             ctx.log.log('IMDB для TMDB ' + tmdbId + ' не найден — запасной источник пропущен');
-            return notFound();
+            return notFound(true);
           }
           var url = INTRODB_URL + '?imdb_id=' + encodeURIComponent(imdbId) +
             '&season=' + season + '&episode=' + episode;
           return fetchJson(url, ctx).then(function (alt) {
-            if (alt.status !== 200 || !alt.data) return notFound();
+            if (alt.status === 404) return notFound(false);
+            if (alt.status !== 200 || !alt.data) {
+              ctx.log.warn('introdb ответил ' + (alt.status || 'нет ответа') + ' для ' + imdbId +
+                ' S' + season + 'E' + episode);
+              return notFound(true);
+            }
             var converted = convertIntrodb(alt.data, tmdbId, season, episode);
             if (!converted) return notFound();
             ctx.log.log('Заставки из introdb: ' + imdbId + ' S' + season + 'E' + episode +
@@ -259,7 +300,7 @@ module.exports = {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.json({
         module: 'skip-intro',
-        version: '1.0.0',
+        version: '1.0.1',
         ok: true,
         primary: PRIMARY_HOST,
         fallback: 'api.introdb.app',
