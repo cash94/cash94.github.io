@@ -103,7 +103,7 @@ var AppState = {
   // (loadClientConfig ниже). Массив меняется НА МЕСТЕ: catalog.js держит
   // ссылку на него как на свой список mirrors.
   imageMirrors: [
-    'tsimg.hnar.online',
+    'tsimg.torrstream.online',
     'nl.imagetmdb.com',
     'mocha.stull.xyz',
     'proxy.vokino.pro/image',
@@ -122,10 +122,10 @@ var AppState = {
  * такой переход есть.
  */
 function getPrimaryImageHost() {
-  return (AppState.imageMirrors && AppState.imageMirrors[0]) || 'tsimg.hnar.online';
+  return (AppState.imageMirrors && AppState.imageMirrors[0]) || 'tsimg.torrstream.online';
 }
 
-/** База URL картинок основного зеркала: «https://tsimg.hnar.online/t/p/». */
+/** База URL картинок основного зеркала: «https://tsimg.torrstream.online/t/p/». */
 function getPrimaryImageBase() {
   var proto = String(AppState.protocol || 'https:').replace(/:+$/, '') + ':';
   return proto + '//' + getPrimaryImageHost() + '/t/p/';
