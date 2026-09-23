@@ -109,7 +109,12 @@ var AppState = {
     'proxy.vokino.pro/image',
     'nmtmdb.duckdns.org'
   ],
-  skipApiHost: 'tsskip.torrstream.online'
+  skipApiHost: 'tsskip.torrstream.online',
+  // База API заставок. Пусто — ходим напрямую на skipApiHost, как раньше.
+  // Если на сервере стоит модуль skip-intro, сюда встаёт его адрес: он делает
+  // то же самое, но при отсутствии данных спрашивает запасной источник
+  // (см. getSkipApiBase ниже и loadSkipApiBase).
+  skipApiBase: ''
 };
 
 /**
@@ -156,10 +161,36 @@ function loadClientConfig() {
     })
     ['catch'](function () { });
 }
+/**
+ * База API заставок: адрес, к которому дописывается «/v2/media?...».
+ *
+ * Модуль на своём сервере предпочтительнее прямого обращения: он держит тот же
+ * основной источник, но добавляет запасной, кэш и работает same-origin (без
+ * смешанного содержимого на https-страницах).
+ */
+function getSkipApiBase() {
+  if (AppState.skipApiBase) return AppState.skipApiBase;
+  return AppState.protocol + '//' + AppState.skipApiHost;
+}
+
+/** Есть ли на сервере модуль skip-intro. Ответ — один раз при старте. */
+function loadSkipApiBase() {
+  return fetch(SERVER_URL + '/api/skip/status')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (!data || !data.ok) return;
+      AppState.skipApiBase = SERVER_URL + '/api/skip';
+      console.log('🎬 Заставки через модуль сервера: ' + data.primary + ' → ' + data.fallback);
+    })
+    ['catch'](function () { });
+}
+
 window.getPrimaryImageHost = getPrimaryImageHost;
 window.getPrimaryImageBase = getPrimaryImageBase;
+window.getSkipApiBase = getSkipApiBase;
 window.loadClientConfig = loadClientConfig;
 loadClientConfig();
+loadSkipApiBase();
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
 var domCache = {};
