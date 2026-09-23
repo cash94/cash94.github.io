@@ -1779,6 +1779,11 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       var playlist = buildEpisodesPlaylist(currentEpisodeIndex, seekTime);
       if (playlist) playerData.playlist = playlist;
     }
+    // Basic-авторизация TorrServer. Встроенный плеер вешает эти заголовки и на
+    // видеопоток, и на опрос /cache (строка статистики под заголовком): без них
+    // при включённой авторизации TorrServer отвечает 401 на то и на другое
+    var authHeaders = getAuthHeaders();
+    if (authHeaders && authHeaders.Authorization) playerData.headers = { Authorization: authHeaders.Authorization };
     lastPlaybackFromSearch = fromSearch;
     if (!AppState.playFromHash) AppState.inSearch = 'torrents';
     else { AppState.currentDetailItem = AppState.androidBackCatalog; AppState.inSearch = 'catalog'; }
