@@ -20,6 +20,13 @@
       "description": "Подборки Кинопоиска рядами на главной: 14 коллекций с маппингом в TMDB.",
       "url": "https://cash94.github.io/torrstream-modules/kinopoisk-collections/module.js",
       "sha256": "c9163ff21f1f2b0390dc48bdda47179718f772f507a7cebceca59ce1a7129029"
+    },
+    "skip-intro": {
+      "name": "skip-intro",
+      "version": "1.0.0",
+      "description": "Заставки и титры: tsskip + запасной источник api.introdb.app",
+      "url": "https://cash94.github.io/torrstream-modules/skip-intro/module.js",
+      "sha256": "9f1eb4d212dc4df2344f4124be485e55d1397dc3ce1b36c4937ddc5adc958fcb"
     }
   }
 }

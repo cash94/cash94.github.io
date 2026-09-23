@@ -1230,7 +1230,7 @@ async function loadEpisodesInfo(hash, currentFileId) {
 async function fetchSkipData(tmdbId, season, episode) {
   skipIntro = 0;
   skipCredits = 0;
-  var url = AppState.protocol + '//' + AppState.skipApiHost + '/v2/media?tmdb_id=' + tmdbId + '&season=' + season + '&episode=' + episode;
+  var url = getSkipApiBase() + '/v2/media?tmdb_id=' + tmdbId + '&season=' + season + '&episode=' + episode;
   try {
     var response = await fetch(url);
     var data = await response.json();
@@ -1761,7 +1761,7 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       // Данные для кнопки «Пропустить»: встроенный плеер сам дёргает этот API на
       // каждую серию (номер эпизода он берёт из index= в ссылке файла). Адрес
       // передаём отсюда, чтобы смена хоста не требовала пересборки приложения.
-      skip_api: (AppState.protocol || 'https:') + '//' + AppState.skipApiHost + '/v2/media',
+      skip_api: getSkipApiBase() + '/v2/media',
       tmdb_id: AppState.currentTMDB || null,
       season: AppState.currentSeason || null,
       // Периодическое сохранение таймкода прямо из встроенного плеера. Веб-плеер
