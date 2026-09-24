@@ -4869,9 +4869,10 @@ async function showCatalogDetail(item, index, posterUrl) {
  * РАЗДЕЛЫ (ниже) уводят из карточки насовсем: карточка закрывается, путь
  * возвратов забывается целиком.
  *
- * НАЛОЖЕНИЯ (настройки, донат, поиск) открываются ПОВЕРХ карточки — у всех трёх
- * z-index 1000 против 100 у #detail-view. Карточка остаётся открытой под ними и
- * ждёт возврата, поэтому ни закрывать её, ни чистить путь нельзя.
+ * НАЛОЖЕНИЯ (настройки, донат, поиск) открываются ПОВЕРХ карточки. Карточка
+ * остаётся открытой под ними и ждёт возврата, поэтому ни закрывать её, ни
+ * чистить путь нельзя. Поиск лежит в body с z-index 1000 против 100 у
+ * #detail-view и перекрывает её сам; настройки — нет (см. prepareOverlayOverDetail).
  */
 var DETAIL_NAV_SCREENS = {
     'home-nav-home': 'home',
@@ -4906,6 +4907,24 @@ function prepareOverlayOverDetail(btnId) {
 
     if (btnId === 'tab-search') AppState.searchReturnTo = 'detail';
     if (btnId === 'tab-donate') AppState.donateReturnTo = 'detail';
+
+    // #config-screen живёт внутри #main-container, а у того z-index 1 — это
+    // отдельный контекст наложения, и никакой z-index самих настроек не поднимет
+    // их выше карточки (100). Они открывались, но под ней. Поэтому карточку на
+    // время настроек прячем visibility — display не трогаем: по нему
+    // restoreDetailAfterOverlay узнаёт, что возвращаться есть куда. Видимость
+    // вернёт ensureDetailVisible (оттуда же) или любое новое открытие карточки.
+    // Трейлер останавливаем: он играет со звуком и продолжал бы под настройками.
+    if (btnId === 'settings-btn') {
+        var dv = getEl('detail-view');
+        if (dv && dv.style.display && dv.style.display !== 'none') {
+            stopTrailerBackground();
+            dv.style.visibility = 'hidden';
+            dv.style.pointerEvents = 'none';
+            var mc = getEl('main-container');
+            if (mc) mc.style.pointerEvents = 'auto';
+        }
+    }
 }
 
 /**

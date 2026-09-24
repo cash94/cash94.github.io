@@ -434,7 +434,9 @@ function normalizeSearchResult(item) {
 // ==================== computeFilteredAndSorted ====================
 function computeFilteredAndSorted(searchResults, f) {
     var filtered = searchResults.filter(function (item) {
-        if (f.quality !== 'all' && (item.quality || 0) !== parseInt(f.quality, 10)) return false;
+        // Качество — одно значение или несколько через запятую («2160,1080»)
+        if (f.quality && f.quality !== 'all' &&
+            String(f.quality).split(',').indexOf(String(item.quality || 0)) === -1) return false;
         if (f.tracker !== 'all') {
             var trackerField = (item.tracker || '').toLowerCase();
             if (trackerField.indexOf(f.tracker.toLowerCase()) === -1) return false;

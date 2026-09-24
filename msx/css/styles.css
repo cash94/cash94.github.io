@@ -340,13 +340,15 @@ body {
   cursor: default;
 }
 
-/* «Поиск» — единственное акцентное действие в строке */
+/* «Поиск» — единственное акцентное действие в строке. Цвет — цвет фокуса из
+   «Внешнего вида» (--focus-color-* ставит js/ui-customizer.js), как и у чипов
+   раздач ниже: экран поиска держится в одном цвете. */
 .search-action-btn {
   padding: 11px 22px;
-  background: rgba(74, 158, 255, 0.14);
-  border: 1px solid rgba(74, 158, 255, 0.35);
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  border: 1px solid var(--focus-color-soft, rgba(255, 140, 0, 0.35));
   border-radius: 12px;
-  color: #9ac6ff;
+  color: var(--focus-color-text, #ffb459);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -372,9 +374,9 @@ body {
 
 /* Панель фильтров открыта */
 .filter-toggle-btn.active {
-  background: rgba(74, 158, 255, 0.16);
-  border-color: rgba(74, 158, 255, 0.4);
-  color: #9ac6ff;
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  border-color: var(--focus-color-soft, rgba(255, 140, 0, 0.35));
+  color: var(--focus-color-text, #ffb459);
 }
 
 .close-search-btn {
@@ -503,7 +505,7 @@ body {
   top: 0;
   bottom: 0;
   width: 3px;
-  background: #4a9eff;
+  background: var(--focus-color, #ff8c00);
   opacity: 0.4;
 }
 
@@ -557,24 +559,22 @@ body {
 }
 
 /* Порядок чипов задан разметкой: 1 — трекер, 2 — размер, 3 — год и дата,
-   4 — тип и качество, 5 — сиды, 6 — пиры. Третий оставляем нейтральным. */
+   4 — тип и качество, 5 — сиды, 6 — пиры. Первые четыре — в цвете фокуса,
+   как кнопка «Поиск» и корешок карточки; сиды и пиры сохраняют смысловые
+   зелёный и красный. */
+.search-result-meta-item:nth-child(-n+4) {
+  color: var(--focus-color-text, #ffb459);
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+}
+
 .search-result-meta-item:nth-child(1) {
-  color: #7fb6ff;
-  background: rgba(74, 158, 255, 0.13);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-.search-result-meta-item:nth-child(2) {
-  color: #ffc078;
-  background: rgba(255, 160, 60, 0.12);
-  font-weight: 600;
-}
-
+.search-result-meta-item:nth-child(2),
 .search-result-meta-item:nth-child(4) {
-  color: #c9b4ff;
-  background: rgba(140, 110, 255, 0.14);
   font-weight: 600;
 }
 
@@ -4789,7 +4789,7 @@ article {
   position: fixed;
   top: 0;
   right: 0;
-  width: 400px;
+  width: 460px;
   height: 100vh;
   background: #0d0d14;
   border-left: 1px solid rgba(255, 255, 255, 0.07);
@@ -4842,17 +4842,26 @@ article {
   cursor: pointer;
   color: #98a1b0;
   font-size: 18px;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition: none;
 }
 
 /* ВОЗВРАЩАЕМ box-shadow для фокуса */
+.filter-back-btn:hover,
+.filter-close-btn:hover,
 .filter-back-btn:focus-visible,
 .filter-close-btn:focus-visible,
 .filter-back-btn.focused,
 .filter-close-btn.focused {
-  background: rgba(74, 158, 255, 0.2);
-  box-shadow: 0 0 0 2px #4a9eff;
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  box-shadow: 0 0 0 2px var(--focus-color, #ff8c00);
   outline: none;
+}
+
+/* Отступ — у кнопки, а не у заголовка: .filter-panel-title ниже задаёт
+   margin: 0 и перебивал общий «* + *», поэтому «Фильтры» вплотную прилипали
+   к стрелке. Кнопка «Назад» показывается не всегда — отступ живёт с ней. */
+.filter-back-btn {
+  margin-right: 12px;
 }
 
 .filter-panel-title {
@@ -4887,7 +4896,7 @@ article {
   border: 1px solid transparent;
   border-radius: 12px;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition: none;
   text-align: left;
   width: 100%;
 }
@@ -4898,8 +4907,8 @@ article {
 
 .filter-item:hover,
 .filter-item.focused {
-  background: rgba(74, 158, 255, 0.1);
-  box-shadow: 0 0 0 2px #4a9eff;       /* чёткий фокус */
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  box-shadow: 0 0 0 2px var(--focus-color, #ff8c00);       /* чёткий фокус */
 }
 
 .filter-item-label {
@@ -4925,10 +4934,11 @@ article {
 }
 
 /* Фильтр уведён со значения по умолчанию — класс ставит updateFilterValueDisplays()
-   в js/app.js. Видно, какие фильтры реально сужают выдачу. */
+   в js/app.js. Видно, какие фильтры реально сужают выдачу: подложка в цвете
+   фокуса, текст — белый, как у названий фильтров. */
 .filter-item.filter-item-set .filter-item-value {
-  background: rgba(74, 158, 255, 0.13);
-  color: #7fb6ff;
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  color: #fff;
 }
 
 .filter-item i.fi-rr-angle-right {
@@ -4951,7 +4961,7 @@ article {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition: none;
 }
 
 .filter-reset-btn-new > * + * {
@@ -4962,6 +4972,20 @@ article {
 .filter-reset-btn-new.focused {
   background: rgba(255, 107, 107, 0.2);
   box-shadow: 0 0 0 2px #ff6b6b;
+}
+
+/* Фокус в панели фильтров: подсветка проявляется плавно, а гаснет сразу.
+   Было наоборот, и получался шлейф: общее .focused { transition: none
+   !important } делало появление мгновенным, а переход самих элементов
+   растягивал на 0,15 с угасание — за фокусом тянулся хвост. Теперь у
+   элементов перехода нет (гаснут сразу), а состоянию с фокусом он возвращён;
+   !important и два класса нужны, чтобы перебить то общее правило. */
+.filter-back-btn.focused,
+.filter-close-btn.focused,
+.filter-item.focused,
+.filter-value-item.focused,
+.filter-reset-btn-new.focused {
+  transition: background 0.15s, box-shadow 0.15s !important;
 }
 
 /* Экран значений */
@@ -4985,7 +5009,7 @@ article {
   border: 1px solid transparent;
   border-radius: 12px;
   cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
+  transition: none;
   text-align: left;
   width: 100%;
 }
@@ -4996,18 +5020,18 @@ article {
 
 .filter-value-item:hover,
 .filter-value-item.focused {
-  background: rgba(74, 158, 255, 0.15);
-  box-shadow: 0 0 0 2px #4a9eff;
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  box-shadow: 0 0 0 2px var(--focus-color, #ff8c00);
 }
 
 .filter-value-item.selected {
-  background: rgba(60, 220, 130, 0.1);
-  border-color: rgba(60, 220, 130, 0.28);
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  border-color: var(--focus-color-soft, rgba(255, 140, 0, 0.35));
 }
 
 .filter-value-item.selected::before {
   content: '✓';
-  color: #6fe3a1;
+  color: var(--focus-color-text, #ffb459);
   font-weight: bold;
   font-size: 15px;
   margin-right: 10px;
@@ -7422,7 +7446,7 @@ article {
 
 @media screen and (min-width: 960px) and (max-width: 1399px) {
   .filter-panel {
-    width: 420px;
+    width: 480px;
   }
 
   .filter-panel-header {
@@ -7462,7 +7486,7 @@ article {
 
 @media screen and (min-width: 1400px) {
   .filter-panel {
-    width: 460px;
+    width: 520px;
   }
 
   .filter-panel-header {
@@ -7593,7 +7617,7 @@ article {
   }
 
   .filter-panel {
-    width: 300px;
+    width: 360px;
   }
 
   .filter-panel-header {
@@ -7701,7 +7725,7 @@ article {
   }
 
   .filter-panel {
-    width: 380px;
+    width: 440px;
   }
 
   .filter-panel-header {
@@ -8217,6 +8241,46 @@ article {
 
 #config-screen .settings-field-row .settings-field:last-child {
   margin-right: 0;
+}
+
+/* Ряд кнопок-вариантов: фильтры поиска по умолчанию (setupSearchFilterDefaults,
+   app.js). Отступы — margin, а не gap: Chrome 66 flex-gap не знает. */
+#config-screen .settings-chips {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 -8px -8px 0;
+}
+
+#config-screen .settings-chip {
+  margin: 0 8px 8px 0;
+  padding: 10px 18px;
+  background: #141419;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #cfd4dc;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+#config-screen .settings-chip:hover {
+  background: #1d1d26;
+}
+
+#config-screen .settings-chip.active {
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  border-color: var(--focus-color-soft, rgba(255, 140, 0, 0.35));
+  color: #fff;
+  font-weight: 600;
+}
+
+#config-screen .settings-chip.focused {
+  border-color: var(--focus-color, #ff8c00);
+}
+
+#config-screen .field-hint {
+  font-weight: 400;
+  color: #6c6c78;
 }
 
 #config-screen .field-label {

@@ -461,6 +461,8 @@ var Animations = (function () {
         detailView.style.display = 'block';
         detailView.style.zIndex = '100';
         detailView.style.pointerEvents = 'auto';
+        // Могла остаться спрятанной под настройками (prepareOverlayOverDetail)
+        detailView.style.visibility = '';
 
         // Убираем остатки прошлых анимаций (сдвиг/масштаб), прозрачность ведём
         // сами — CSS-переходом в fadeElement
@@ -537,6 +539,8 @@ var Animations = (function () {
         detailView.style.display = 'block';
         detailView.style.zIndex = '100';
         detailView.style.pointerEvents = 'auto';
+        // Возврат из настроек: там карточку прятали visibility (prepareOverlayOverDetail)
+        detailView.style.visibility = '';
 
         clearTransform(detailView);
         detailView.style.transition = '';

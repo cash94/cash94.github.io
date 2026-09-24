@@ -137,6 +137,16 @@
         return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + alpha + ')';
     }
 
+    // Цвет, разбавленный белым на долю amount (0..1): светлый текст на
+    // полупрозрачной подложке того же цвета. color-mix() в Chrome 66 нет,
+    // поэтому считаем здесь.
+    function tint(hex, amount) {
+        var n = parseInt(normalizeColor(hex).slice(1), 16);
+        var ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+        for (var i = 0; i < 3; i++) ch[i] = Math.round(ch[i] + (255 - ch[i]) * amount);
+        return 'rgb(' + ch[0] + ',' + ch[1] + ',' + ch[2] + ')';
+    }
+
     // Миграция со старых раздельных настроек -> единый cardSize
     var LEGACY_ROW_TO_W = { small: 170, medium: 210, large: 260 };
     var LEGACY_CARD_TO_W = { small: 150, medium: 190, large: 220, xlarge: 260 };
@@ -347,7 +357,10 @@
         // Переменная для правил, которым нужен свой размер/форма рамки, а цвет —
         // выбранный пользователем (торрентный detail-view в styles.css).
         // Перечислять их здесь не нужно: они сами читают var(--focus-color).
-        css.push(':root{--focus-color:' + c + ';--focus-color-soft:' + rgba(c, 0.35) + ';}');
+        // --focus-color-bg и --focus-color-text — плашки и акцентные кнопки в
+        // цвете фокуса (экран поиска торрентов), чтобы интерфейс был в одном цвете.
+        css.push(':root{--focus-color:' + c + ';--focus-color-soft:' + rgba(c, 0.35) +
+            ';--focus-color-bg:' + rgba(c, 0.14) + ';--focus-color-text:' + tint(c, 0.35) + ';}');
 
         // Общий фокус (styles.css:2952) и detail-view (styles.css:3693)
         css.push('.focused{box-shadow:0 0 0 3px ' + c + '!important;}');
@@ -398,13 +411,15 @@
         css.push('.control-btn.focused{background:' + rgba(c, 0.2) + '!important;' +
             'box-shadow:0 0 0 2px ' + c + '!important;}');
 
-        // Панель фильтров (styles.css:4160/4204/4282)
-        css.push('.filter-back-btn:focus-visible,.filter-close-btn:focus-visible,' +
+        // Панель фильтров. :hover вместе с .focused: мышью панель подсвечивалась
+        // исходным синим, а пультом — выбранным цветом
+        css.push('.filter-back-btn:hover,.filter-close-btn:hover,' +
+            '.filter-back-btn:focus-visible,.filter-close-btn:focus-visible,' +
             '.filter-back-btn.focused,.filter-close-btn.focused{' +
             'background:' + rgba(c, 0.2) + '!important;box-shadow:0 0 0 2px ' + c + '!important;}');
-        css.push('.filter-item.focused{background:' + rgba(c, 0.1) + '!important;' +
+        css.push('.filter-item:hover,.filter-item.focused{background:' + rgba(c, 0.1) + '!important;' +
             'box-shadow:0 0 0 2px ' + c + '!important;}');
-        css.push('.filter-value-item.focused{background:' + rgba(c, 0.15) + '!important;' +
+        css.push('.filter-value-item:hover,.filter-value-item.focused{background:' + rgba(c, 0.15) + '!important;' +
             'box-shadow:0 0 0 2px ' + c + '!important;}');
 
         // Кнопка «пропустить» в плеере (styles.css:3085/3091)
@@ -525,6 +540,10 @@
         // 10. Анимации (none/reduced помогают производительности на слабых ТВ)
         if (currentSettings.animations === 'none') {
             css.push('*,*::before,*::after{transition:none!important;animation:none!important;}');
+            // Фокус панели фильтров задаёт переход с !important и двумя классами
+            // (styles.css) — общее правило выше его не перебивает
+            css.push('.filter-back-btn.focused,.filter-close-btn.focused,.filter-item.focused,' +
+                '.filter-value-item.focused,.filter-reset-btn-new.focused{transition:none!important;}');
         } else if (currentSettings.animations === 'reduced') {
             css.push('*,*::before,*::after{transition-duration:.1s!important;animation-duration:.1s!important;}');
         }

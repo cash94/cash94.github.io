@@ -1353,12 +1353,20 @@ function setupSearchFilters() {
       filterValuesList.innerHTML = '';
       var currentValue = filterSelect.value;
       var options = filterSelect.querySelectorAll('option');
+      // Качество выбирается набором: OK ставит и снимает галочку, экран не
+      // закрывается. Отмеченные значения — из currentQualityFilter, select
+      // держит только одно значение и здесь не источник правды.
+      var multi = filterId === 'filter-quality' && typeof window.parseQualityFilter === 'function';
+      var multiSelected = multi ? window.parseQualityFilter(currentQualityFilter) : null;
 
       for (var i = 0; i < options.length; i++) {
         var option = options[i];
         var item = document.createElement('button');
         item.className = 'filter-value-item';
-        if (option.value === currentValue) {
+        var isSelected = multi
+          ? (option.value === 'all' ? !multiSelected.length : multiSelected.indexOf(option.value) !== -1)
+          : option.value === currentValue;
+        if (isSelected) {
           item.classList.add('selected');
         }
 
@@ -1372,6 +1380,10 @@ function setupSearchFilters() {
 
         item.addEventListener('click', (function (fid, val, lbl) {
           return function () {
+            if (fid === 'filter-quality' && typeof window.toggleQualityFilterValue === 'function') {
+              toggleQualityValue(val);
+              return;
+            }
             applyFilterValue(fid, val, lbl);
           };
         })(filterId, option.value, option.textContent));
@@ -1391,6 +1403,21 @@ function setupSearchFilters() {
           if (firstItem) focusEl(firstItem);
         }
       }, 50);
+    }
+
+    // Качество: переключить одно значение и остаться на экране значений —
+    // чтобы отметить 1080 и 720, не заходя в фильтр дважды
+    function toggleQualityValue(value) {
+      currentQualityFilter = window.toggleQualityFilterValue(currentQualityFilter, value);
+      var selected = window.parseQualityFilter(currentQualityFilter);
+      var items = filterValuesList.querySelectorAll('.filter-value-item');
+      for (var i = 0; i < items.length; i++) {
+        var v = items[i].dataset.value;
+        var on = (v === 'all') ? !selected.length : selected.indexOf(v) !== -1;
+        items[i].classList.toggle('selected', on);
+      }
+      if (typeof applyFiltersAndSort === 'function') applyFiltersAndSort();
+      updateFilterValueDisplays();
     }
 
     // Применить значение фильтра
@@ -1466,6 +1493,15 @@ function setupSearchFilters() {
         var fid = filterIds[i];
         var sel = getEl(fid);
         var display = getEl('filter-value-' + fid);
+        if (fid === 'filter-quality' && display && typeof window.qualityFilterLabel === 'function') {
+          // Несколько значений select не выразит — подпись собираем сами
+          display.textContent = window.qualityFilterLabel(currentQualityFilter);
+          if (display.parentNode && display.parentNode.classList) {
+            display.parentNode.classList.toggle('filter-item-set',
+              window.parseQualityFilter(currentQualityFilter).length > 0);
+          }
+          continue;
+        }
         if (sel && display) {
           var selectedOption = sel.options[sel.selectedIndex];
           display.textContent = selectedOption ? selectedOption.textContent : 'Все';
@@ -1483,6 +1519,11 @@ function setupSearchFilters() {
       }
     }
 
+    // Подписи надо обновлять и тогда, когда значения меняют не из панели:
+    // syncSearchFilterButtons (torrents.js) выставляет select'ам значения по
+    // умолчанию без события change, и панель показывала «Все» при HDR и «Сиды ↓»
+    window.updateFilterValueDisplays = updateFilterValueDisplays;
+
     // Обработчики кликов на filter-item (открытие экрана значений)
     var filterItems = filterPanel.querySelectorAll('.filter-item');
     for (var fi = 0; fi < filterItems.length; fi++) {
@@ -1499,12 +1540,16 @@ function setupSearchFilters() {
     // Обработчик кнопки "Назад"
     if (filterBackBtn) {
       filterBackBtn.addEventListener('click', function () {
+        // Возвращаемся на строку того фильтра, из которого вышли: из качества
+        // (множественный выбор) выходят именно «назад», а не выбором значения
+        var fromId = currentFilterId;
         showFilterMainScreen();
         setTimeout(function () {
           if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
           if (typeof updateFocusableElements === 'function') updateFocusableElements();
-          var firstItem = filterPanel.querySelector('.filter-item');
-          if (firstItem) focusEl(firstItem);
+          var target = (fromId && filterPanel.querySelector('.filter-item[data-filter="' + fromId + '"]')) ||
+            filterPanel.querySelector('.filter-item');
+          if (target) focusEl(target);
         }, 50);
       });
     }
@@ -1844,6 +1889,68 @@ function setupAutoFullscreen() {
   }
 }
 
+// ==================== ФИЛЬТРЫ ПОИСКА ПО УМОЛЧАНИЮ ====================
+/**
+ * Раздел «Прочее → Фильтры поиска по умолчанию»: три ряда кнопок — сортировка,
+ * качество (можно несколько), тип видео. Списки значений — те же, что у панели
+ * фильтров (torrents.js), чтобы настройка не разошлась с самими фильтрами.
+ *
+ * Новое значение по умолчанию сразу становится и текущим фильтром: иначе,
+ * выбрав здесь «1080p», человек увидел бы в поиске всё подряд до первого
+ * нажатия «Сбросить».
+ */
+function setupSearchFilterDefaults() {
+  var box = getEl('search-filter-defaults');
+  if (!box || typeof window.getSearchFilterDefaults !== 'function') return;
+
+  var groups = [
+    { key: 'sort', title: 'Сортировка', options: window.SORT_OPTIONS },
+    { key: 'quality', title: 'Качество', hint: 'можно выбрать несколько', options: window.QUALITY_OPTIONS },
+    { key: 'videotype', title: 'Тип видео', options: window.VIDEOTYPE_OPTIONS }
+  ];
+
+  var html = '';
+  for (var g = 0; g < groups.length; g++) {
+    var grp = groups[g];
+    html += '<div class="settings-field">' +
+      '<div class="field-label">' + grp.title + (grp.hint ? ' <span class="field-hint">— ' + grp.hint + '</span>' : '') + '</div>' +
+      '<div class="settings-chips" data-group="' + grp.key + '">';
+    for (var i = 0; i < grp.options.length; i++) {
+      var o = grp.options[i];
+      html += '<button class="settings-chip" data-group="' + grp.key + '" data-value="' + o.value + '">' + o.label + '</button>';
+    }
+    html += '</div></div>';
+  }
+  box.innerHTML = html;
+
+  function render() {
+    var d = window.getSearchFilterDefaults();
+    var qualityList = window.parseQualityFilter(d.quality);
+    var chips = box.querySelectorAll('.settings-chip');
+    for (var i = 0; i < chips.length; i++) {
+      var c = chips[i], grp = c.dataset.group, val = c.dataset.value, on;
+      if (grp === 'quality') on = (val === 'all') ? !qualityList.length : qualityList.indexOf(val) !== -1;
+      else on = d[grp] === val;
+      c.classList.toggle('active', on);
+    }
+  }
+
+  box.addEventListener('click', function (e) {
+    var chip = e.target.closest ? e.target.closest('.settings-chip') : null;
+    if (!chip) return;
+    var grp = chip.dataset.group, val = chip.dataset.value;
+    var d = window.getSearchFilterDefaults();
+    if (grp === 'quality') d.quality = window.toggleQualityFilterValue(d.quality, val);
+    else d[grp] = val;
+    window.saveSearchFilterDefaults(d);
+    window.applySearchFilterDefaults(grp);
+    if (typeof syncSearchFilterButtons === 'function') syncSearchFilterButtons();
+    render();
+  });
+
+  render();
+}
+
 // ==================== ЧЕКБОКСЫ ====================
 function setupCheckboxWithStorage(elementId, storageKey, stateKey, onChange) {
   var checkbox = getEl(elementId);
@@ -1898,6 +2005,8 @@ function setupCheckboxes() {
       console.log('⌨️ Встроенная клавиатура:', AppState.builtinKeyboard ? 'включена' : 'выключена');
     });
   }
+
+  setupSearchFilterDefaults();
 
   // 2. Скрытие часов
   var hideClockCheckbox = getEl('hide-clock');
