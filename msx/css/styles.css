@@ -5697,6 +5697,24 @@ article {
   display: none !important;
 }
 
+/* Прогретый соседний ряд (home.js: WARM_ROW_CLASS): разложен и посчитан, но
+   невидим и высоты не занимает — лежит поверх показанного. При переходе на
+   него браузеру не нужно заново считать стили всего ряда. Класс
+   home-row-hidden на нём остаётся: по нему ряд исключают из списков фокуса. */
+#home-rows {
+  position: relative;
+}
+
+#home-rows .catalog-row.home-row-hidden.home-row-warm {
+  display: block !important;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* У подборок TMDB нет экрана-сетки, открывать заголовок нечем.
    Раскладку (flex + space-between) заголовок уже получил от .catalog-row-header —
    счётчик справа встаёт на место сам. */

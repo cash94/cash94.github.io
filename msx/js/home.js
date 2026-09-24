@@ -45,6 +45,14 @@
         // (catalog-offscreen), но там ряды остаются на своих местах в потоке,
         // а здесь скрытый ряд не должен занимать высоту вовсе.
         HIDDEN_ROW_CLASS: 'home-row-hidden',
+        // Соседний ряд (±1 от показанного), заранее разложенный, но невидимый:
+        // position: absolute + visibility: hidden поверх показанного. Первый
+        // показ ряда из display:none — это расчёт стилей ~190 элементов прямо
+        // в обработчике «вниз» (замер на Chrome 66: 35 мс на ПК против 5 мс у
+        // уже показанного). Прогретый ряд переключается за те же 5 мс.
+        // HIDDEN_ROW_CLASS на нём остаётся — по нему списки фокуса (getItems
+        // здесь и в control.js) отсекают ряды вне экрана.
+        WARM_ROW_CLASS: 'home-row-warm',
 
         // --- баннер и раскладка ---
         // Доля свободной высоты под ряд; остальное достаётся баннеру
@@ -70,6 +78,13 @@
         TRAILER_DELAY_MS: 5000,
         // Длина окружности кругляшка: 2πr при r = 19 (см. viewBox 0 0 44 44)
         RING_LEN: 119.4,
+        // Шаг заполнения кругляшка. Не CSS-переход: анимация stroke-dashoffset
+        // идёт на главном потоке, и все 5 с отсчёта — а он заводится заново на
+        // каждой карточке, то есть всё время, пока листают ряд, — браузер
+        // пересчитывал и перерисовывал кадр 60 раз в секунду (замер на Chrome 66:
+        // ~70 кадров главного потока и ~55 отрисовок за 2 с против 4 и 2 без
+        // кругляшка). Таймером — 4 обновления в секунду.
+        RING_TICK_MS: 250,
         // Как часто проверять, что играющий трейлер всё ещё «свой» и на экране
         WATCHDOG_MS: 1000,
         // Постеры соседних рядов подтягиваем заранее, но не мешая текущему
@@ -152,6 +167,7 @@
             item: null,
             timer: null,         // дебаунс смены баннера
             ringTimer: null,     // «кругляшок заполнился»
+            ringTick: null,      // шаги заполнения кругляшка (RING_TICK_MS)
             ringDone: false,
             gen: 0,              // поколение: гасит ответы по устаревшему элементу
             backdropUrl: null,
@@ -783,23 +799,28 @@
 
     function ringBar() { return document.querySelector('#home-hero-ring .home-ring-bar'); }
 
+    /** Заполнение ступеньками по таймеру — см. HOME.RING_TICK_MS */
     function runHeroRing() {
+        stopRingTick();
         var ring = el('home-hero-ring');
         if (ring) ring.hidden = false;
         var bar = ringBar();
         if (!bar) return;
-        bar.style.transition = 'none';
         bar.style.strokeDashoffset = HOME.RING_LEN;
-        // Двойной кадр: без него сброс и запуск склеятся в один стиль и анимации
-        // не будет (тот же приём, что в startTrailerBackground)
-        requestAnimationFrame(function () {
-            requestAnimationFrame(function () {
-                if (!bar.isConnected) return;
-                bar.style.transition = 'stroke-dashoffset ' +
-                    (HOME.TRAILER_DELAY_MS / 1000) + 's linear';
-                bar.style.strokeDashoffset = '0';
-            });
-        });
+        var started = Date.now();
+        homeState.hero.ringTick = setInterval(function () {
+            var p = Math.min(1, (Date.now() - started) / HOME.TRAILER_DELAY_MS);
+            if (!bar.isConnected) { stopRingTick(); return; }
+            bar.style.strokeDashoffset = (HOME.RING_LEN * (1 - p)).toFixed(1);
+            if (p >= 1) stopRingTick();
+        }, HOME.RING_TICK_MS);
+    }
+
+    function stopRingTick() {
+        if (homeState.hero.ringTick) {
+            clearInterval(homeState.hero.ringTick);
+            homeState.hero.ringTick = null;
+        }
     }
 
     function resetHeroRing() {
@@ -810,13 +831,11 @@
         homeState.hero.ringDone = false;
         hideHeroRing();
         var bar = ringBar();
-        if (bar) {
-            bar.style.transition = 'none';
-            bar.style.strokeDashoffset = HOME.RING_LEN;
-        }
+        if (bar) bar.style.strokeDashoffset = HOME.RING_LEN;
     }
 
     function hideHeroRing() {
+        stopRingTick();
         var ring = el('home-hero-ring');
         if (ring) ring.hidden = true;
     }
@@ -1032,12 +1051,25 @@
         }
     }
 
+    /**
+     * hls.destroy() синхронно отцепляет MediaSource и чистит буферы — ~50 мс
+     * на ПК, в разы дольше на ТВ. Зовётся он при смене карточки, то есть ровно
+     * посреди прокрутки ряда, и замораживал её. Видео уже остановлено и убрано
+     * из разметки (stopHeroTrailer) — звука и картинки нет, так что сам разбор
+     * откладываем на простой.
+     */
+    function destroyHlsLater(hls) {
+        var run = function () { try { hls.destroy(); } catch (e) { } };
+        if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 1500 });
+        else setTimeout(run, 600);
+    }
+
     function stopHeroTrailer() {
         stopHeroWatchdog();
         var hero = el('home-hero');
         if (hero) hero.classList.remove('home-hero-playing');
         if (homeState.hero.hls) {
-            try { homeState.hero.hls.destroy(); } catch (e) { }
+            destroyHlsLater(homeState.hero.hls);
             homeState.hero.hls = null;
         }
         var video = homeState.hero.video || el('home-hero-video');
@@ -1394,14 +1426,26 @@
         processPosterQueue();
     }
 
-    /** Соседние ряды — заранее, но после текущего: вверх/вниз тогда без пустых постеров */
+    /**
+     * Соседние ряды — заранее, но после текущего: вверх/вниз тогда без пустых
+     * постеров и без расчёта стилей в момент нажатия (WARM_ROW_CLASS). По паузе:
+     * пока ряды листают, соседи меняются на каждом шаге.
+     */
     function prefetchNeighbourPosters(index) {
         if (homeState.prefetchTimer) clearTimeout(homeState.prefetchTimer);
         homeState.prefetchTimer = setTimeout(function () {
             homeState.prefetchTimer = null;
+            if (homeState.activeRow !== index) return;
+            warmRow(index + 1);
+            warmRow(index - 1);
             loadRowPosters(index + 1);
             loadRowPosters(index - 1);
         }, HOME.PREFETCH_DELAY_MS);
+    }
+
+    function warmRow(i) {
+        var row = homeState.rowEls[i];
+        if (row && i !== homeState.activeRow) row.classList.add(HOME.WARM_ROW_CLASS);
     }
 
     function resetPosterQueue() {
@@ -1431,8 +1475,14 @@
         var changed = homeState.activeRow !== index;
         homeState.activeRow = index;
         for (var i = 0; i < homeState.rowEls.length; i++) {
-            if (i === index) homeState.rowEls[i].classList.remove(HOME.HIDDEN_ROW_CLASS);
-            else homeState.rowEls[i].classList.add(HOME.HIDDEN_ROW_CLASS);
+            var cl = homeState.rowEls[i].classList;
+            if (i === index) cl.remove(HOME.HIDDEN_ROW_CLASS);
+            else cl.add(HOME.HIDDEN_ROW_CLASS);
+            // Прогрев — только у соседей нового ряда, и заводит его
+            // prefetchNeighbourPosters по паузе. Прогретые соседи прежнего ряда
+            // возвращаются в display:none, кроме тех, кто и новому сосед:
+            // гасить и тут же разогревать их заново незачем.
+            if (i === index || Math.abs(i - index) > 1) cl.remove(HOME.WARM_ROW_CLASS);
         }
         homeState.lastRowKey = homeState.rowKeys[index];
         if (changed) invalidateFocus();
@@ -2319,7 +2369,8 @@
         // Проверка та же, что у жестов, но без цели события: таймер живёт сам
         if (playerBusy() || !isHomeVisible()) { stopHoverScroll(); return; }
         // Ряд под курсором могли сменить стрелками — скрытый двигать незачем
-        if (v.offsetParent === null) { stopHoverScroll(); return; }
+        // (прогретый соседний ряд разложен, offsetParent у него есть — смотрим класс)
+        if (v.offsetParent === null || (v.closest && v.closest('.' + HOME.HIDDEN_ROW_CLASS))) { stopHoverScroll(); return; }
         if (typeof getScrollX !== 'function' || typeof setScrollX !== 'function') { stopHoverScroll(); return; }
 
         var cur = getScrollX(v);
