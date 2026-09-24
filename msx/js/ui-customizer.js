@@ -409,7 +409,7 @@
 
         // Кнопки плеера (styles.css:1515)
         css.push('.control-btn.focused{background:' + rgba(c, 0.2) + '!important;' +
-            'box-shadow:0 0 0 2px ' + c + '!important;}');
+            'box-shadow:0 0 0 3px ' + c + '!important;}');
 
         // Панель фильтров. :hover вместе с .focused: мышью панель подсвечивалась
         // исходным синим, а пультом — выбранным цветом
@@ -543,7 +543,9 @@
             // Фокус панели фильтров задаёт переход с !important и двумя классами
             // (styles.css) — общее правило выше его не перебивает
             css.push('.filter-back-btn.focused,.filter-close-btn.focused,.filter-item.focused,' +
-                '.filter-value-item.focused,.filter-reset-btn-new.focused{transition:none!important;}');
+                '.filter-value-item.focused,.filter-reset-btn-new.focused,' +
+                '.control-btn.focused,.audio-item.focused,.episode-item.focused,.subtitle-item.focused,' +
+                '#exit-player-btn.focused,.close-panel-btn.focused{transition:none!important;}');
         } else if (currentSettings.animations === 'reduced') {
             css.push('*,*::before,*::after{transition-duration:.1s!important;animation-duration:.1s!important;}');
         }

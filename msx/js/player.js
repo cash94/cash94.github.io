@@ -716,6 +716,29 @@ function maybeWarmNextEpisode(absoluteTime) {
   }
 }
 
+/**
+ * Один показатель строки HUD: приглушённая подпись и крупное значение
+ * (стили .hud-stat в styles.css). Значения — числа и время, которые мы
+ * считаем сами, поэтому экранировать нечего.
+ */
+function hudStat(label, value, valueClass) {
+  return '<span class="hud-stat"><span class="hud-stat-label">' + label + '</span>' +
+    '<span class="hud-stat-value' + (valueClass ? ' ' + valueClass : '') + '">' + value + '</span></span>';
+}
+
+// Строки HUD переписываем, только когда текст поменялся: функция зовётся
+// несколько раз в секунду, а пересборка разметки на телевизоре — не бесплатна
+function setHudHtml(el, html) {
+  if (el && el._hudHtml !== html) { el.innerHTML = html; el._hudHtml = html; }
+}
+
+// Цвет запаса буфера: меньше 10 с — вот-вот встанет, до 20 с — впритык
+function bufferLevelClass(seconds) {
+  if (seconds < 10) return 'hud-low';
+  if (seconds < 20) return 'hud-mid';
+  return 'hud-ok';
+}
+
 function updateBufferDisplay() {
   var bufferStats = getEl('buffer-stats');
   var subtitleElement = getEl('player-subtitle');
@@ -751,20 +774,27 @@ function updateBufferDisplay() {
       var remainingHours = Math.floor(remainingTime / 3600);
       var remainingMinutes = Math.floor((remainingTime % 3600) / 60);
       var remainingSeconds = Math.floor(remainingTime % 60);
-      var remainingText = remainingHours > 0 ? remainingHours + ' ч ' + (remainingMinutes > 0 ? remainingMinutes + ' мин' : '') : (remainingMinutes > 0 ? remainingMinutes + ' мин ' + (remainingSeconds > 0 ? remainingSeconds + ' сек' : '') : remainingSeconds + ' сек');
+      var remainingText = (remainingHours > 0 ? remainingHours + ' ч ' + (remainingMinutes > 0 ? remainingMinutes + ' мин' : '') : (remainingMinutes > 0 ? remainingMinutes + ' мин ' + (remainingSeconds > 0 ? remainingSeconds + ' сек' : '') : remainingSeconds + ' сек')).trim();
       var endTime = new Date(Date.now() + remainingTime * 1000);
       var endTimeText = endTime.getHours().toString().padStart(2, '0') + ':' + endTime.getMinutes().toString().padStart(2, '0');
-      var torrServerText = '';
+      var torrServerHtml = '';
       if (currentTimecodeData.hash && typeof torrentStatsCache !== 'undefined' && torrentStatsCache.preloadSize > 0) {
-        torrServerText = 'TorrServer: ' + formatSize(torrentStatsCache.preloaded) + ' | скорость: ' + formatSpeed(torrentStatsCache.downloadSpeed);
-        if (torrentStatsCache.activePeers > 0) torrServerText += ' | пиры: ' + torrentStatsCache.activePeers + ' / ' + torrentStatsCache.totalPeers + ' - ' + torrentStatsCache.connectedSeeders;
+        torrServerHtml = hudStat('TorrServer', formatSize(torrentStatsCache.preloaded)) +
+          hudStat('Скорость', formatSpeed(torrentStatsCache.downloadSpeed));
+        if (torrentStatsCache.activePeers > 0) {
+          torrServerHtml += hudStat('Пиры', torrentStatsCache.activePeers + ' / ' + torrentStatsCache.totalPeers) +
+            hudStat('Сиды', torrentStatsCache.connectedSeeders);
+        }
       }
-      bufferStats.innerText = 'Буфер: ' + bufferAheadText + ' | до конца: ' + remainingText + ' | конец в: ' + endTimeText;
-      if (subtitleElement) subtitleElement.innerText = torrServerText || '';
+      setHudHtml(bufferStats,
+        hudStat('Буфер', bufferAheadText, bufferLevelClass(bufferAhead)) +
+        hudStat('До конца', remainingText) +
+        hudStat('Конец в', endTimeText));
+      setHudHtml(subtitleElement, torrServerHtml);
     }
   } else {
-    bufferStats.innerText = 'буфер: 0%';
-    if (subtitleElement) subtitleElement.innerText = '';
+    setHudHtml(bufferStats, hudStat('Буфер', '0 сек', 'hud-low'));
+    setHudHtml(subtitleElement, '');
   }
 }
 

@@ -70,9 +70,9 @@ html.no-flex-gap .search-filters > *:last-child {
   margin-right: 0;
 }
 
-/* styles.css:659, 1356 */
-html.no-flex-gap .progress-content > * + *,
-html.no-flex-gap .player-title-container > * + * {
+/* styles.css:659. У .player-title-container отступа больше нет: gap там 0,
+   расстояние задаёт margin-top у .player-subtitle (ХУД плеера) */
+html.no-flex-gap .progress-content > * + * {
   margin-top:4px;
 }
 
