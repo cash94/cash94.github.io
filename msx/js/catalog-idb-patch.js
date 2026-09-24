@@ -871,9 +871,9 @@
         if (catalogState.currentCatalog === 'person') {
             var pname = (catalogState.person && catalogState.person.name) || 'Фильмография';
             header.innerHTML =
-                '<div style="display:flex;flex-direction:column;gap:5px">' +
+                '<div class="fg-col-5" style="display:flex;flex-direction:column;gap:5px">' +
                 '<span style="font-size:20px;font-weight:600;color:#4a9eff">' + escapeHtml(pname) + '</span>' +
-                '<div style="display:flex;gap:15px;font-size:12px;color:#aaa">' +
+                '<div class="fg-row-15" style="display:flex;gap:15px;font-size:12px;color:#aaa">' +
                 '<span>фильмы и сериалы с этим актёром</span>' +
                 '</div>' +
                 '</div>' +
@@ -885,9 +885,9 @@
 
         if (catalogState.currentCatalog === 'history') {
             header.innerHTML =
-                '<div style="display:flex;flex-direction:column;gap:5px">' +
+                '<div class="fg-col-5" style="display:flex;flex-direction:column;gap:5px">' +
                 '<span style="font-size:20px;font-weight:600;color:#4a9eff">' + name + '</span>' +
-                '<div style="display:flex;gap:15px;font-size:12px;color:#aaa">' +
+                '<div class="fg-row-15" style="display:flex;gap:15px;font-size:12px;color:#aaa">' +
                 '<span>' + catalogState.items.length + ' записей</span>' +
                 '</div>' +
                 '</div>';
@@ -904,9 +904,9 @@
 
         // Базовая структура заголовка
         header.innerHTML =
-            '<div style="display:flex;flex-direction:column;gap:5px">' +
+            '<div class="fg-col-5" style="display:flex;flex-direction:column;gap:5px">' +
             '<span style="font-size:20px;font-weight:600;color:#4a9eff">' + name + '</span>' +
-            '<div class="catalog-meta-info" style="display:flex;gap:15px;font-size:12px;color:#aaa;flex-wrap:wrap">' +
+            '<div class="catalog-meta-info fg-wrap-15" style="display:flex;gap:15px;font-size:12px;color:#aaa;flex-wrap:wrap">' +
             '<span>' + catalogState.items.length + ' / ' + (catalogState.totalItems || catalogState.items.length) + '</span>' +
             '<span class="catalog-update-date">Загрузка даты...</span>' +
             '</div>' +
