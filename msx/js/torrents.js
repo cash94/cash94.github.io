@@ -855,8 +855,8 @@ async function loadTorrents(silent = false) {
                     getEl('config-screen').style.display = 'flex';
                     getEl('torrserver-section').style.display = 'none';
                     // Настройки открыты не пользователем, а из-за недоступного
-                    // сервера — возвращаться отсюда логично к торрентам
-                    AppState.configReturnTo = 'torrents';
+                    // сервера — «назад» вернёт туда, откуда их вызвали (стек, nav.js)
+                    if (window.Nav) Nav.push('config', { key: 'config' });
                     AppState.currentScreen = 'config';
                 }
 
@@ -1664,7 +1664,7 @@ function renderDetailActorsFromDetails(details) {
             // Ряд #catalog-detail-actors общий с карточкой каталога, а там клик
             // уже ловит делегирование на #detail-view. Без этой проверки после
             // первой же торрентной карточки клик по актёру в каталожной открывал
-            // фильмографию дважды — в путь (personTrail) ложились два шага, и
+            // фильмографию дважды — в путь возвратов ложились два шага, и
             // «назад» проходило «актёр → карточка» по второму кругу.
             if (typeof isTorrentDetailMode === 'function' && !isTorrentDetailMode()) return;
             var card = e.target.closest ? e.target.closest('.catalog-actor-card') : null;
@@ -1762,6 +1762,7 @@ function revealTorrentDetailExtras(torrent, details) {
         // Возврат из карточки уводит в каталог, а пришли мы из списка торрентов —
         // поправляем, иначе «назад» высадит не туда
         AppState.androidBackCatalog = item;
+        if (window.Nav) Nav.push('detail', Nav.detailData(item));
         window.showCatalogDetail(item, AppState.catalogIndex || 0, item.poster_path);
     };
 }
@@ -1911,6 +1912,7 @@ applyFocusColorVars();
 
 async function showDetail(torrent) {
     if (torrent && torrent.hash) window.lastSelectedTorrentHash = torrent.hash;
+    if (window.Nav && torrent) Nav.push('torrent-detail', { key: 't:' + String(torrent.hash || '').toLowerCase(), label: torrent.title || torrent.hash, torrent: torrent });
     if (typeof currentFocusIndex !== 'undefined') window.lastSelectedTorrentIndex = currentFocusIndex;
     // Рамки фокуса нового detail читают var(--focus-color) — убеждаемся, что
     // переменная выставлена до первой отрисовки (см. applyFocusColorVars выше)
@@ -1947,16 +1949,9 @@ async function showDetail(torrent) {
     }
     AppState.currentScreen = 'detail';
     if (!window.AndroidJS || !AppState.transcodingFullOnOff) {
-        AppState.detailReturnTo = 'torrents';
         AppState.currentDetailItem = torrent;
     } else {
-        if (AppState.playFromHash) {
-            AppState.currentDetailItem = AppState.androidBackCatalog;
-            AppState.detailReturnTo = 'catalog';
-        } else {
-            AppState.detailReturnTo = 'torrents';
-            AppState.currentDetailItem = torrent;
-        }
+        AppState.currentDetailItem = AppState.playFromHash ? AppState.androidBackCatalog : torrent;
     }
     hideCatalogDetailExtra();
     visibleItemsforDetail('showDetail');
@@ -3566,19 +3561,24 @@ async function searchTorrents(query) {
     /* Свободный поиск, открытый из карточки через шапку, возвращает в карточку —
      * но только пока ничего не искали. Отправленный запрос эту связь рвёт: после
      * чужих результатов падать обратно в фильм, который уже ни при чём, странно,
-     * поэтому дальше выход из поиска ведёт на главную.
+     * поэтому дальше выход из поиска ведёт туда, откуда открывали карточку:
+     * на главную, в категорию, в фильмографию (Nav.dropDetailsUnderTop).
      *
      * После проверки на пустой запрос, а не до: нажатие «Искать» с пустой
      * строкой ничего не ищет и точку возврата менять не должно.
      *
      * Поиск «Торренты» из самой карточки под это не подпадает: там запрос задан
      * карточкой и заперт (setSearchLocked), и возврат в неё как раз обязателен. */
-    if (AppState.searchReturnTo === 'detail' && !AppState.searchLocked) {
+    var navTop = window.Nav ? Nav.top() : null;
+    var navUnder = window.Nav ? Nav.prev() : null;
+    var overCard = !!(navTop && navTop.screen === 'search' && navUnder &&
+        (navUnder.screen === 'detail' || navUnder.screen === 'torrent-detail'));
+    if (overCard && !AppState.searchLocked) {
         // Карточку закрываем сразу, а не «когда-нибудь потом»: она лежит под
         // оверлеем поиска с z-index 100 против 1 у #main-container, и на главной
         // осталась бы висеть поверх экрана.
         if (typeof window.dropDetailUnderOverlay === 'function') window.dropDetailUnderOverlay();
-        AppState.searchReturnTo = 'home';
+        Nav.dropDetailsUnderTop('свой запрос из поиска над карточкой');
     }
 
     if (getCurrentSearchMode() === 'globalsearch') return await searchTMDB(query);
@@ -3894,7 +3894,31 @@ function focusLastSearchCard() {
     return false;
 }
 
+/**
+ * Фокус на раздачу, которую открывали из выдачи «Поиска торрентов» (детали
+ * раздачи или плеер) — вернувшись, человек продолжает с того же места списка.
+ * Хэш кладёт обработчик кнопки воспроизведения. Нет такой — первая раздача.
+ */
+function focusLastSearchResult() {
+    if (typeof focusEl !== 'function') return false;
+    var items = document.querySelectorAll('#search-results .search-result-item');
+    if (!items.length) return false;
+    var hash = String(AppState.lastSearchResultHash || '').toLowerCase();
+    var target = items[0];
+    if (hash) {
+        for (var i = 0; i < items.length; i++) {
+            var btn = items[i].querySelector('.search-result-play');
+            if (btn && String(btn.dataset.hash || '').toLowerCase() === hash) { target = items[i]; break; }
+        }
+    }
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    focusEl(target);
+    return true;
+}
+window.focusLastSearchResult = focusLastSearchResult;
+
 function showSearchResults(options = {}) {
+    if (window.Nav) Nav.push('search', { key: 'search' });
     var searchOverlay = getEl('search-overlay'); var searchTab = getEl('tab-search'); var torrentsTab = getEl('tab-torrents'); var catalogTab = getEl('tab-catalog'); var searchInput = getEl('search-query');
     if (!searchOverlay || !searchTab || !torrentsTab) return;
     if (searchInput && document.activeElement === searchInput) searchInput.blur();
@@ -3923,6 +3947,8 @@ function showSearchResults(options = {}) {
     setTimeout(function () {
         // Вернулись из карточки фильма — фокус на ту же карточку выдачи
         if (options.restoreCard && focusLastSearchCard()) return;
+        // Выдача раздач (вернулись из деталей раздачи) — на ту, что открывали
+        if (options.restoreCard && focusLastSearchResult()) return;
         if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(options.focusQuery !== false); return; }
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
             updateFocusableElements();
@@ -3938,7 +3964,15 @@ function showSearchResults(options = {}) {
     }, 80);
 }
 
-function hideSearchResults() {
+/**
+ * Закрыть поиск и вернуться туда, откуда его открыли.
+ *
+ * Место возврата — запись стека переходов под поиском (nav.js). opts.returnTo —
+ * для тех, кто закрывает поиск не «назад», а уходя дальше: фильмография актёра,
+ * открытая из выдачи, — там наверху стека уже не поиск.
+ */
+function hideSearchResults(opts) {
+    opts = opts || {};
     // Уходим из поиска — контекст карточки больше не действует
     setSearchLocked(false);
     // Ушли из выдачи раньше, чем она проявилась после возврата из карточки:
@@ -3950,7 +3984,9 @@ function hideSearchResults() {
     var searchOverlay = getEl('search-overlay'); var searchTab = getEl('tab-search'); var torrentsTab = getEl('tab-torrents'); var catalogTab = getEl('tab-catalog'); var searchInput = getEl('search-query'); var modeSelect = getEl('torrent-movie');
     if (modeSelect) modeSelect.value = 'globalsearch';
     if (!searchOverlay || !searchTab || !torrentsTab) return;
-    var returnTo = AppState.searchReturnTo || AppState.inSearch;
+    var navEntry = window.Nav ? Nav.pop('search') : null;
+    var navBack = window.Nav ? Nav.returnTarget(navEntry) : null;
+    var returnTo = opts.returnTo || navBack || AppState.inSearch;
     var torrserverSection = getEl('torrserver-section');
     // Контент показываем сразу — он проявляется из-под уходящего оверлея
     if (torrserverSection) torrserverSection.style.display = 'block';
@@ -3972,7 +4008,6 @@ function hideSearchResults() {
     }
     if (returnTo === 'detail') {
         AppState.currentScreen = 'detail'; var mainContainer = getEl('main-container'); if (mainContainer && AppState.backupScroll > 0) mainContainer.scrollTop = AppState.backupScroll;
-        AppState.searchReturnTo = null;
         if (catalogTab) catalogTab.classList.remove('active'); torrentsTab.classList.remove('active');
         var detailView = getEl('detail-view');
         if (typeof Animations !== 'undefined' && typeof Animations.ensureDetailVisible === 'function') {
@@ -3986,21 +4021,38 @@ function hideSearchResults() {
         // каталога и сразу прячет её, а затухание в конце зовёт
         // resetDetailBackground — тот чистит заголовок, подзаголовок, постер и ряд
         // актёров. Показывать половину карточки нельзя — рисуем её заново.
+        //
+        // Карточку под поиском знает стек переходов: запись 'detail' под ним.
+        // Её же надо нарисовать заново, если на её месте сейчас другое — детали
+        // раздачи, открытые из выдачи (они занимают тот же #detail-view).
         var detailTitleEl = getEl('detail-title-text');
-        var restoreItem = AppState.pendingDetailItem || AppState.androidBackCatalog || AppState.currentDetailItem;
-        var detailGutted = !!(detailTitleEl && !String(detailTitleEl.textContent || '').trim() &&
-            restoreItem && restoreItem.id && !isTorrentDetailMode() &&
-            typeof window.showCatalogDetail === 'function');
+        var navItem = navEntry && navEntry.screen === 'detail' && navEntry.data && navEntry.data.item;
+        var underTorrent = navEntry && navEntry.screen === 'torrent-detail';
+        var restoreItem = navItem || AppState.pendingDetailItem || AppState.androidBackCatalog || AppState.currentDetailItem;
+        var shownItem = AppState.currentDetailItem;
+        var detailGutted = !!(!underTorrent && restoreItem && restoreItem.id &&
+            typeof window.showCatalogDetail === 'function' && (
+                isTorrentDetailMode() ||
+                (detailTitleEl && !String(detailTitleEl.textContent || '').trim()) ||
+                (navItem && (!shownItem || String(shownItem.id) !== String(navItem.id)))));
+        // Фокус — на «Поиск торрентов» карточки: вернулись из него же
+        var focusDetailWatch = function () {
+            if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+                updateFocusableElements(); var watchBtn = getEl('catalog-watch-btn'); if (watchBtn) { for (var i = 0; i < focusableElements.length; i++) { if (focusableElements[i].id === 'catalog-watch-btn') { setFocus(i); return; } } }
+            }
+            if (typeof window.ensureCatalogDetailFocus === 'function') window.ensureCatalogDetailFocus(true);
+        };
         if (detailGutted) {
-            // showCatalogDetail сам поставит фокус на «Поиск торрентов»
-            window.showCatalogDetail(restoreItem, AppState.catalogIndex || 0, AppState.catalogPu || null);
+            // Карточку рисуем заново и ставим фокус, когда она готова: сама она
+            // не перебивает фокус, оставшийся на строке уходящего поиска
+            var redraw = navItem
+                ? window.showCatalogDetail(navItem, navEntry.data.index || 0, null)
+                : window.showCatalogDetail(restoreItem, AppState.catalogIndex || 0, AppState.catalogPu || null);
+            Promise.resolve(redraw).then(function () {
+                if (AppState.currentScreen === 'detail') setTimeout(focusDetailWatch, 100);
+            });
         } else {
-            setTimeout(function () {
-                if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-                    updateFocusableElements(); var watchBtn = getEl('catalog-watch-btn'); if (watchBtn) { for (var i = 0; i < focusableElements.length; i++) { if (focusableElements[i].id === 'catalog-watch-btn') { setFocus(i); return; } } }
-                }
-                if (typeof window.ensureCatalogDetailFocus === 'function') window.ensureCatalogDetailFocus(true);
-            }, 100);
+            setTimeout(focusDetailWatch, 100);
         }
     } else if (returnTo === 'catalog') {
         if (catalogTab) catalogTab.classList.add('active'); torrentsTab.classList.remove('active'); AppState.currentScreen = 'catalog';
@@ -4031,8 +4083,6 @@ function hideSearchResults() {
         }, 80);
     }
     if (searchInput && document.activeElement === searchInput) searchInput.blur();
-    AppState.searchReturnTo = null;
-    AppState.openCatalogDetailOnSearchClose = null;
 }
 
 // «Сбросить» возвращает к значениям по умолчанию из настроек, а не к «Все»
@@ -4283,7 +4333,7 @@ async function playFromHash(hash, magnet, searchResult = null) {
                 title: addedTorrent.title
             });
         }
-        if (!window.AndroidJS || !AppState.transcodingFullOnOff) { AppState.currentDetailItem = addedTorrent; if (typeof clearDetailHistory === 'function') clearDetailHistory(); }
+        if (!window.AndroidJS || !AppState.transcodingFullOnOff) { AppState.currentDetailItem = addedTorrent; }
         if (!isSerial) {
             var fileId = 1;
             if (window.AndroidJS) {
@@ -4306,7 +4356,6 @@ async function playFromHash(hash, magnet, searchResult = null) {
                 var playURL = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
                 var searchOverlay = getEl('search-overlay');
                 if (searchOverlay) searchOverlay.classList.add('hidden');
-                AppState.returnToSearchResults = true;
                 await startHLSPlayback(playURL, null, true, fileId);
                 return true;
             }
@@ -4315,19 +4364,17 @@ async function playFromHash(hash, magnet, searchResult = null) {
             document.querySelector('.playback-text').textContent = 'Воспроизведение...';
             var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
             // Результаты поиска не уничтожаем — только прячем оверлей, как в ветке
-            // transcodingFullOnOff выше: из плеера вернёмся прямо в них
-            // (showDetailView, ветка returnToSearchResults). Раньше здесь был
-            // hideSearchResults() + inSearch = 'torrents', и выход из плеера уводил
-            // в detail торрента, а оттуда — на «Мои торренты», а не туда, откуда запускали.
+            // transcodingFullOnOff выше: из плеера вернёмся прямо в них — под
+            // записью плеера в стеке переходов лежит поиск (showDetailView).
+            // Раньше здесь был hideSearchResults() + inSearch = 'torrents', и выход
+            // из плеера уводил в detail торрента, а оттуда — на «Мои торренты».
             var searchOverlay = getEl('search-overlay');
             if (searchOverlay) searchOverlay.classList.add('hidden');
-            AppState.returnToSearchResults = true;
             var started = await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
             // Плеер не поднялся (нет метаданных, файл не отдался) — результаты
             // поиска уже спрятаны, и без возврата экран остался бы пустым:
             // раньше на этом месте hideSearchResults() уводил на «Мои торренты».
             if (!started && AppState.currentScreen !== 'player') {
-                AppState.returnToSearchResults = false;
                 AppState.playFromHash = false;
                 AppState.currentScreen = 'search';
                 if (searchOverlay) searchOverlay.classList.remove('hidden');
@@ -4335,14 +4382,13 @@ async function playFromHash(hash, magnet, searchResult = null) {
             }
         } else {
             AppState.currentDetailItem = addedTorrent; AppState.isCatalogSerials = true;
-            // Результаты поиска не уничтожаем — только прячем оверлей.
-            // Вернёмся к ним при выходе из detail (back-from-detail).
-            // Так же ведёт себя обычный режим: раньше он звал hideSearchResults()
-            // и ставил inSearch = 'torrents', поэтому «назад» из деталей сериала
-            // уходило сразу на «Мои торренты», минуя поиск и карточку каталога.
+            // Результаты поиска не уничтожаем — только прячем оверлей. «Назад» из
+            // деталей раздачи вернёт в них: под записью раздачи в стеке
+            // переходов лежит поиск (back-from-detail). Раньше здесь звали
+            // hideSearchResults() и ставили inSearch = 'torrents', и «назад» из
+            // деталей сериала уходило на «Мои торренты», минуя поиск и карточку.
             var searchOverlay = getEl('search-overlay');
             if (searchOverlay) searchOverlay.classList.add('hidden');
-            AppState.searchResultsHidden = true;
             // Дальше из поиска уходим туда, откуда его открыли: 'catalog' — только
             // если под поиском действительно карточка каталога (поиск запущен из неё).
             // Со вкладки «Поиск» карточки нет, и уводить в каталог некуда.
@@ -4590,6 +4636,7 @@ function renderSearchResults() {
                 // по этому флагу «назад» из деталей и плеера возвращает в поиск,
                 // а не на «Мои торренты» (app.js: restoreFocusAfterNavigation)
                 AppState.playFromHash = true;
+                AppState.lastSearchResultHash = hash;
                 playFromHash(hash, playBtn.dataset.magnet, searchResult);
             }
             return;
@@ -4679,6 +4726,9 @@ async function searchTMDB(query) {
         if (allResults === null) throw new Error('TMDB: HTTP ' + combined.status);
         for (var ri = 0; ri < allResults.length; ri++) allResults[ri].searchQuery = query;
         globalSearchResults = allResults; currentSearchQuery = query;
+        // Запись поиска в стеке переходов помнит, что это выдача TMDB и по
+        // какому запросу, — чтобы вернуть её, если её подменят раздачами
+        if (window.Nav) { var navSearch = Nav.top(); if (navSearch && navSearch.screen === 'search') { navSearch.data.tmdb = true; navSearch.data.query = query; navSearch.data.label = query; } }
         if (currentSearchMode === 'globalsearch') showContentTypeFilter();
         showGlobalSearchResults();
     } catch (error) {
@@ -4716,6 +4766,29 @@ async function searchTMDBLegacy(encodedQuery, signal) {
 function getRatingColor(rating) { if (rating >= 8) return '#4caf50'; if (rating >= 6) return '#ffc107'; if (rating >= 4) return '#ff9800'; return '#f44336'; }
 
 function showGlobalSearchResults() { renderFilteredGlobalResults(globalSearchResults); }
+
+/**
+ * Вернуть выдачу TMDB, если её подменили.
+ *
+ * «Поиск торрентов» из карточки открывает тот же оверлей и кладёт в него
+ * раздачи, а при закрытии и вовсе чистит список. Сами результаты TMDB при этом
+ * целы (globalSearchResults), поэтому «назад» к ним перерисовывает их из
+ * памяти — без повторного запроса. entry — запись 'search' стека (nav.js).
+ */
+function restoreSearchEntry(entry) {
+    var d = entry && entry.data;
+    if (!d || !d.tmdb || !globalSearchResults.length) return false;
+    if (document.querySelector('#search-results .global-search-card')) return false;
+    setSearchLocked(false);
+    if (typeof window.clearCatalogSearchContext === 'function') window.clearCatalogSearchContext();
+    var modeSelect = getEl('torrent-movie'); if (modeSelect) modeSelect.value = 'globalsearch';
+    currentSearchMode = 'globalsearch';
+    var searchInput = getEl('search-query'); if (searchInput && d.query) searchInput.value = d.query;
+    if (d.query) currentSearchQuery = d.query;
+    showGlobalSearchResults();
+    return true;
+}
+window.restoreSearchEntry = restoreSearchEntry;
 
 /* Наблюдатель ленивых постеров глобального поиска.
  *
@@ -4860,10 +4933,7 @@ function renderFilteredGlobalResults(results) {
         if (card) {
             var tmdbId = card.dataset.tmdbId;
             var result = results.find(function (r) { return String(r.id) === tmdbId; });
-            if (result) {
-                AppState.isSearch = true;
-                showGlobalSearchDetail(result);
-            }
+            if (result) showGlobalSearchDetail(result);
         }
     };
 }
@@ -4873,10 +4943,8 @@ async function showGlobalSearchDetail(item) {
     AppState.mediaType = item.media_type;
     var posterUrl = item.poster_path ? buildTmdbPosterUrl(item.poster_path, 'w342') : null;
     if (typeof window.showCatalogDetail === 'function') {
-        // searchReturnTo НЕ трогаем: это точка выхода из самого поиска (главная,
-        // каталог, торренты). Возврат карточка → поиск держится на AppState.isSearch,
-        // а затёртое здесь значение после второго «назад» уводило в ветку торрентов
-        // мимо главной — фокус терялся.
+        // Точку выхода из самого поиска (главная, каталог, торренты) и возврат
+        // карточка → поиск помнит стек переходов (nav.js)
         AppState.currentScreen = 'detail';
         // Прежняя карточка ещё могла стоять под проявляющейся выдачей — теперь её
         // место занимает новая, прятать её по окончании проявления уже нельзя
@@ -4892,6 +4960,7 @@ async function showGlobalSearchDetail(item) {
         // карточки; снимает её animateDetailShow в конце перехода.
         var hasShade = typeof Animations !== 'undefined' && typeof Animations.raiseDetailShade === 'function';
         if (hasShade) Animations.raiseDetailShade();
+        if (window.Nav) Nav.push('detail', Nav.detailData(catalogItem));
         var detailPromise = window.showCatalogDetail(catalogItem, 0, posterUrl);
         var searchOverlay = getEl('search-overlay'); if (searchOverlay) searchOverlay.classList.add('hidden');
         try {

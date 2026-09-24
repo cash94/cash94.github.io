@@ -55,6 +55,7 @@ function initDonateOverlay() {
 }
 
 function showDonateOverlay() {
+    if (window.Nav) Nav.push('donate', { key: 'donate' });
     initDonateOverlay();
     if (donateOverlay) {
         AppState.currentScreen = 'donate';
@@ -81,6 +82,8 @@ function showDonateOverlay() {
 }
 
 function closeDonateOverlay() {
+    // Куда вернуться — запись стека переходов под донатом (nav.js)
+    var navBack = window.Nav ? Nav.returnTarget(Nav.pop('donate')) : null;
     if (donateOverlay) {
         donateOverlay.classList.add('hidden');
 
@@ -90,7 +93,7 @@ function closeDonateOverlay() {
         if (typeof window.restoreDetailAfterOverlay === 'function' &&
             window.restoreDetailAfterOverlay()) return;
 
-        AppState.currentScreen = AppState.inSearch;
+        AppState.currentScreen = navBack || AppState.inSearch;
         // Возвращаем фокус на кнопку доната
         setTimeout(function () {
             var donateTab = getEl('tab-donate');

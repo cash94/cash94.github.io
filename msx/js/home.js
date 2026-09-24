@@ -145,7 +145,6 @@
         resizeTimer: null,
         cardWidth: 0,            // текущая ширина карточки (её же держит <style>)
         heroTopCache: null,      // {h, w, top} — замер отступа баннера, см. cachedHeroTop
-        detailFromHome: false,
         heroDetails: {},         // id_mediaType → полные детали TMDB
         hero: {
             key: null,           // id_mediaType показанного элемента
@@ -1648,7 +1647,7 @@
     function openHomeItem(item, key, index) {
         homeState.lastRowKey = key;
         homeState.lastColIndex = index;
-        homeState.detailFromHome = true;
+        if (window.Nav) Nav.push('detail', Nav.detailData(item, index));
         suspendHero();
         scrollHomeToTop();
         if (window.AppState) {
@@ -1684,7 +1683,6 @@
                 AppState.catalogIndex = homeState.lastColIndex;
             }
             window.showCatalogSearch(title, poster, item);
-            if (window.AppState) AppState.searchReturnTo = 'home';
             return true;
         }
         // Поиска нет — открываем карточку, там кнопка «Смотреть» своя
@@ -1702,7 +1700,6 @@
     }
 
     function openSearchFromHome() {
-        if (window.AppState) AppState.searchReturnTo = 'home';
         // Свободный поиск с главной — строка редактируемая, контекст карточки
         // каталога (если был) больше не действует
         if (typeof window.setSearchLocked === 'function') window.setSearchLocked(false);
@@ -1754,6 +1751,7 @@
      * (showHome прячет чужие экраны и снимает hidden с #content-home).
      */
     function goHome() {
+        if (window.Nav) Nav.reset('home');
         if (!isHomeVisible()) return showHome({ restoreFocus: true });
         if (!homeState.rowEls.length) return true;
         return focusRow(0);
@@ -1919,8 +1917,6 @@
 
         if (window.AppState) {
             AppState.inSearch = 'home';
-            AppState.searchReturnTo = null;
-            AppState.isSearch = false;
             AppState.isCatalogSearch = false;
         }
         ensureHeroDom();
@@ -1988,7 +1984,6 @@
                 // Главная не прокручивается — возвращаться на неё всегда сверху
                 AppState.contentScroll = AppState.contentScroll || {};
                 AppState.contentScroll.home = 0;
-                homeState.detailFromHome = false;
                 suspendHero();
             }
             // Экраны раздела живут в DOM постоянно, видимость переключается
@@ -2026,20 +2021,8 @@
             if (window.AppState) AppState.currentScreen = screen;
         };
 
-        // 2. Возврат из детального просмотра. app.js вычисляет returnTo как
-        //    catalog / torrents / search и зовёт эту функцию по имени.
-        var origRestoreFocus = window.restoreFocusAfterNavigation;
-        window.restoreFocusAfterNavigation = function (returnTo) {
-            if (homeState.detailFromHome && returnTo !== 'search') {
-                homeState.detailFromHome = false;
-                if (typeof window.hideDetailView === 'function') window.hideDetailView();
-                showHome({ restoreFocus: true });
-                return;
-            }
-            if (typeof origRestoreFocus === 'function') {
-                return origRestoreFocus.apply(this, arguments);
-            }
-        };
+        // 2. Возврат из карточки на главную ведёт стек переходов (nav.js):
+        //    restoreFocusAfterNavigation('home') в app.js.
 
         // 3. Закрытие доната. Он целится фокусом в кнопку #tab-donate, а на
         //    главной она скрыта — фокус остался бы нигде.
@@ -2718,6 +2701,7 @@
         initGestures();
 
         // Главная открывается сразу, не дожидаясь проверки TorrServer
+        if (window.Nav) Nav.reset('home');
         showHome({ initial: true });
         console.log('🏠 Главная страница инициализирована');
     }

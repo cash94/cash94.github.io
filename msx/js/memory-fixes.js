@@ -175,12 +175,6 @@
             }
         }
 
-        // 3. Очистка detailHistory
-        if (typeof detailHistory !== 'undefined' && detailHistory.length > 50) {
-            console.log('🧹 Очистка detailHistory: ' + detailHistory.length + ' -> 50');
-            detailHistory.splice(0, detailHistory.length - 50);
-        }
-
         // tmdbCache здесь не трогаем: у него свой планировщик в catalog.js
         // (startTmdbCleanup → cleanOldTmdbCache), и он же делает trimToMax
 

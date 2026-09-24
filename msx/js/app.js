@@ -706,18 +706,10 @@ function setupNavigation() {
     settingsBtn.addEventListener('click', function () {
       var torrserverSection = getEl('torrserver-section');
       var configScreen = getEl('config-screen');
-      // Куда возвращаться по «назад» из настроек. Считаем ДО подмены экранов:
-      // currentScreen() смотрит на то, что сейчас видно, а через мгновение
-      // #torrserver-section будет погашен целиком. Читает это control.js (onBack).
-      if (typeof AppState !== 'undefined') {
-        var from = (typeof currentScreen === 'function')
-          ? currentScreen()
-          : AppState.currentScreen;
-        // 'config' записать нельзя: настройки могли открыть поверх уже открытых
-        // (например, ветка «сервер недоступен» в torrents.js), и тогда возврат
-        // указывал бы сам на себя. В таком случае прежнее значение сохраняем.
-        if (from && from !== 'config') AppState.configReturnTo = from;
-      }
+      // Куда вернёт «назад» из настроек, помнит стек переходов (nav.js): запись
+      // кладём здесь, снимает её onBack (control.js). Повторное открытие поверх
+      // уже открытых (ветка «сервер недоступен», torrents.js) стек склеит сам.
+      if (window.Nav) Nav.push('config', { key: 'config' });
       if (torrserverSection) torrserverSection.style.display = 'none';
       if (configScreen) {
         // Проявление как у вкладок (showContentScreen); fadeIn сам выставит display
@@ -739,6 +731,12 @@ function setupNavigation() {
   if (backFromDetail) {
     backFromDetail.addEventListener('click', function () {
       console.log('🔙 Возврат из детального просмотра');
+      // Куда возвращаться, решает стек переходов (nav.js): под записью карточки
+      // лежит то, откуда её открыли, — предыдущая карточка цепочки, раздача,
+      // сетка, раздел или выдача поиска.
+      var navLeft = window.Nav ? Nav.top() : null;
+      var navTo = (navLeft && (navLeft.screen === 'detail' || navLeft.screen === 'torrent-detail'))
+        ? Nav.pop(navLeft.screen) : null;
       var mainContainer = getEl('main-container');
       // Фон карточки здесь больше не сбрасываем: подложка должна оставаться на месте,
       // пока идёт затухание. Её снимает animations.js в конце анимации закрытия
@@ -749,109 +747,61 @@ function setupNavigation() {
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
 
-      // searchResultsHidden ставит playFromHash — теперь в любом режиме, не только
-      // AndroidJS/transcodingFullOnOff: результаты поиска живы, из деталей торрента
-      // возвращаемся в них, а под ними уже ждёт карточка каталога.
-      if (window.AndroidJS || AppState.transcodingFullOnOff || AppState.searchResultsHidden) {
-        if (AppState.searchResultsHidden) {
-          var searchOverlay = getEl('search-overlay');
-          // Здесь сразу открывается другая карточка, поэтому фон сбрасываем сами
-          // (в конце затухания это сделать уже нельзя — затухания не будет)
-          resetDetailBackground();
-          // Финальные действия (общие для ветки, где не ждём)
-          function finishSearchRestore() {
-            AppState.playFromHash = false;
-            AppState.isCatalogSerials = false;
-            AppState.currentScreen = 'search';
-            AppState.searchResultsHidden = false;
-            AppState.clearLastSelected = false;
-            setTimeout(function () {
-              // keepContent: карточку каталога только что перерисовали выше и
-              // прячем её на время — пользователь уходит в поиск торрентов и
-              // вернётся в неё же (hideSearchResults, ветка returnTo === 'detail').
-              // Без флага затухание в конце вызывает resetDetailBackground, а тот
-              // вычищает заголовок, подзаголовок и ряд актёров: на возврате
-              // оставались только описание, кнопки, фон и похожие фильмы.
-              hideDetailView({ keepContent: true });
-              if (searchOverlay) {
-                searchOverlay.classList.remove('hidden');
-                searchOverlay.style.display = 'flex';
-              }
-              if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(); }
-            }, 80);
-          }
-
-          // Карточки каталога под поиском может не быть: поиск открывали со
-          // вкладки «Поиск», и в androidBackCatalog лежит не элемент TMDB, а
-          // торрент (или пусто). Тогда возвращаем только результаты поиска —
-          // showCatalogDetail на таком объекте промиса не вернёт и «назад» встанет.
-          var backCatalogItem = AppState.androidBackCatalog;
-          if (!backCatalogItem || !backCatalogItem.id || typeof window.showCatalogDetail !== 'function') {
-            if (searchOverlay) searchOverlay.classList.remove('hidden');
-            finishSearchRestore();
-            return;
-          }
-
-          if (!AppState.openInRow) {
-            //window.loadCatalog(AppState.backCurrentCatalog).then(function () {
-            var mc = getEl('main-container');
-            if (mc && AppState.backupScroll > 0) {
-              mc.scrollTop = AppState.backupScroll;
-            }
-            if (searchOverlay) {
-              searchOverlay.classList.remove('hidden');
-            }
-            window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
-              finishSearchRestore();
-            });
-            //});
-            return;
-          } else {
-            AppState.currentScreen = 'catalog';
-            // Ждём, пока загрузится список
-            //window.loadCatalogList().then(function () {
-            if (searchOverlay) {
-              searchOverlay.classList.remove('hidden');
-            }
-            window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu).then(function () {
-              finishSearchRestore();
-            });
-            //});
-            return;
-          }
-        }
+      // Детали раздачи, открытые из выдачи «Поиска торрентов», уходят обратно в
+      // выдачу (ниже, ветка поиска): она не уничтожена, оверлей только спрятан.
+      // Каталожную карточку под поиском перерисует hideSearchResults, когда до
+      // неё дойдёт «назад», — по записи 'detail' в стеке.
+      if (navLeft && navLeft.screen === 'torrent-detail' && navTo && navTo.screen === 'search') {
+        AppState.playFromHash = false;
+        AppState.isCatalogSerials = false;
       }
 
-      // Затухание запускаем сразу по нажатию «назад»: восстановление списка ниже
+      // Запасной путь — карточку открыли в обход стека: в раздел, где мы были
+      var target = navTo ? navTo.screen : null;
+      if (!target) target = (AppState.inSearch === 'catalog' || AppState.inSearch === 'home') ? AppState.inSearch : 'torrents';
+      console.log('📍 «назад» из карточки →', target);
+
+      // Предыдущая карточка той же цепочки (рекомендации, «Открыть карточку» из
+      // раздачи): закрывать нечего, новая подменит текущую через beginDetailSwap.
+      // resetDetailBackground здесь не зовём — он разобрал бы карточку, которая
+      // ещё на экране; чисткой занимается сам showCatalogDetail / showDetail.
+      if (target === 'detail' || target === 'torrent-detail') {
+        setTimeout(function () {
+          if (target === 'detail') window.showCatalogDetail(navTo.data.item, navTo.data.index || 0, null);
+          else if (typeof window.showDetail === 'function') window.showDetail(navTo.data.torrent);
+        }, APP_CONSTANTS.DETAIL_HIDE_DELAY_MS);
+        return;
+      }
+
+      // Затухание запускаем сразу по нажатию «назад»: восстановление экрана ниже
       // (скролл, фокус) идёт параллельно, под уходящей карточкой — поэтому реакция
-      // мгновенная, а сам переход плавный. Если в истории есть предыдущая карточка,
-      // ниже откроется она — закрывать нечего.
-      var lastInHistory = !detailHistory || detailHistory.length <= 1;
+      // мгновенная, а сам переход плавный.
+      //
       // Назад в выдачу поиска: карточку не гасим и экран под поиском не
       // показываем — выдача проявится поверх карточки сама (ветка 'search' в
       // restoreFocusAfterNavigation). Иначе между карточкой и выдачей мелькал
       // экран, с которого пришли в поиск.
-      var backToSearch = lastInHistory && !!(AppState && AppState.isSearch);
-      if (lastInHistory && !backToSearch) {
-        hideDetailView();
-      }
+      var backToSearch = target === 'search';
+      if (!backToSearch) hideDetailView();
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
 
       var torrserverSection = getEl('torrserver-section');
       if (torrserverSection && !backToSearch) torrserverSection.style.display = 'block';
-      if (typeof AppState !== 'undefined') AppState.detailReturnTo = AppState.inSearch;
 
-      var returnTo = (!AppState || !AppState.isSearch)
-        ? ((AppState && AppState.detailReturnTo === 'catalog') ? 'catalog' : 'torrents')
-        : 'search';
-
-      console.log('📍 returnTo =', returnTo);
+      var returnTo = target === 'grid' ? 'catalog' : target;
+      // Прокрутка того экрана, куда возвращаемся, — из его записи в стеке
+      if (navTo && navTo.restore && typeof navTo.restore.scrollTop === 'number') savedScroll = navTo.restore.scrollTop;
+      // Под карточкой не бывает настроек, доната или плеера — но если стек так
+      // говорит, лучше уйти в текущий раздел, чем в никуда
+      if (['home', 'catalog', 'torrents', 'search'].indexOf(returnTo) === -1) {
+        returnTo = (AppState.inSearch === 'catalog' || AppState.inSearch === 'home') ? AppState.inSearch : 'torrents';
+      }
+      var restoreCtx = { currentTorrentHash: currentTorrentHash, savedScroll: savedScroll, navEntry: navTo };
 
       // Без задержки DETAIL_HIDE_DELAY_MS: она нужна, пока карточка гаснет, а
       // здесь реакцией на «назад» и служит проявление выдачи
       if (backToSearch) {
-        clearDetailHistory();
-        restoreFocusAfterNavigation(returnTo, { currentTorrentHash: currentTorrentHash, savedScroll: savedScroll });
+        restoreFocusAfterNavigation('search', restoreCtx);
         return;
       }
 
@@ -861,23 +811,7 @@ function setupNavigation() {
           return;
         }
 
-        if (detailHistory.length > 1) {
-          detailHistory.pop();
-          var lastItem = detailHistory[detailHistory.length - 1];
-          // resetDetailBackground здесь больше не зовём. Он вычищает заголовок,
-          // постер, подзаголовок и метаданные — то есть разбирает карточку,
-          // которая ещё на экране, и «назад» по рекомендациям выглядело так:
-          // карточка разваливается, потом гаснет, потом собирается новая.
-          // Теперь чисткой занимается сам showCatalogDetail — уже после того,
-          // как beginDetailSwap увёл карточку с глаз.
-          window.showCatalogDetail(lastItem, 0, null);
-          console.log('🔙 Возврат к элементу:', lastItem.title || lastItem.name);
-          return;
-        } else {
-          clearDetailHistory();
-        }
-
-        restoreFocusAfterNavigation(returnTo, { currentTorrentHash: currentTorrentHash, savedScroll: savedScroll });
+        restoreFocusAfterNavigation(returnTo, restoreCtx);
 
         // Страховка: если ветка выше не тронула карточку, закрываем её здесь.
         // Повторный вызов ничего не перезапускает — анимация уже идёт.
@@ -904,17 +838,22 @@ function hideDetailView(opts) {
   if (detailView) detailView.style.display = 'none';
 }
 
-function restoreFocusAfterNavigation(returnTo, context) {
-  if (returnTo === 'catalog' && AppState.playFromHash && AppState.isCatalogSerials) {
-    AppState.playFromHash = false;
-    AppState.isCatalogSerials = false;
-    showContentScreen('catalog', AppState.backupScroll);
-    window.loadCatalog(AppState.backCurrentCatalog).then(function () {
-      window.showCatalogDetail(AppState.androidBackCatalog, AppState.catalogIndex, AppState.catalogPu);
-    });
-    return;
-  }
+// Прокрутку раздела запоминает его запись в стеке переходов (nav.js) в момент
+// ухода из него. Общему AppState.backupScroll верить нельзя: пока открыт поиск
+// или плеер, раздел скрыт и #main-container прокручен в ноль, а перерисовка
+// карточки по дороге обратно (setupDetailLayout) записывает этот ноль поверх.
+if (window.Nav) {
+  var navScrollSnapshot = {
+    snapshot: function () {
+      var mc = getEl('main-container');
+      return { scrollTop: mc ? mc.scrollTop : 0 };
+    }
+  };
+  Nav.register('catalog', navScrollSnapshot);
+  Nav.register('torrents', navScrollSnapshot);
+}
 
+function restoreFocusAfterNavigation(returnTo, context) {
   if (returnTo === 'catalog') {
     showContentScreen('catalog', context.savedScroll);
 
@@ -968,9 +907,19 @@ function restoreFocusAfterNavigation(returnTo, context) {
     return;
   }
 
+  // Карточку открывали с главной (раньше это перехватывал home.js по флагу
+  // detailFromHome — теперь место возврата знает стек)
+  if (returnTo === 'home' && window.HomeScreen && typeof window.HomeScreen.show === 'function') {
+    hideDetailView();
+    window.HomeScreen.show({ restoreFocus: true });
+    return;
+  }
+
   if (returnTo === 'search') {
-    if (AppState && AppState.isSearch && typeof window.showSearchResults === 'function') {
-      AppState.isSearch = false;
+    if (typeof window.showSearchResults === 'function') {
+      // Выдачу TMDB могли подменить раздачами («Поиск торрентов» из карточки):
+      // вернуть её из памяти, иначе проявится пустой или чужой список
+      if (typeof window.restoreSearchEntry === 'function') window.restoreSearchEntry(context && context.navEntry);
       // restoreCard — фокус на карточку, из которой открывали фильм, а не в строку.
       // Выдача проявляется ПОВЕРХ ещё видимой карточки, и прячем карточку, только
       // когда выдача закрыла экран. Раньше карточка гасла сразу, и сквозь
@@ -989,7 +938,6 @@ function restoreFocusAfterNavigation(returnTo, context) {
       });
       return;
     }
-    if (AppState) AppState.isSearch = false;
     if (typeof window.clearSearchResults === 'function') window.clearSearchResults();
     hideDetailView();
     return;
@@ -1119,20 +1067,7 @@ function setupSearch() {
 
   if (closeSearchBtn && typeof hideSearchResults === 'function') {
     closeSearchBtn.addEventListener('click', function () {
-      // Цепочка: карточка каталога → поиск → detail.
-      // Если вернулись из detail в поиск — закрытие открывает карточку обратно
-      if (AppState && AppState.openCatalogDetailOnSearchClose) {
-        var catalogItem = AppState.openCatalogDetailOnSearchClose;
-        AppState.openCatalogDetailOnSearchClose = null;
-        AppState.searchReturnTo = null;
-        if (catalogItem && catalogItem.id && typeof window.showCatalogDetail === 'function') {
-          var searchOverlay = getEl('search-overlay');
-          if (searchOverlay) searchOverlay.classList.add('hidden');
-          window.showCatalogDetail(catalogItem, AppState.catalogIndex || 0, AppState.catalogPu || null);
-          return;
-        }
-        // пришли не из карточки каталога — обычное закрытие
-      }
+      // Куда вернуться, в том числе в карточку под поиском, знает стек (nav.js)
       hideSearchResults();
     });
   }
@@ -1146,6 +1081,7 @@ function setupSearch() {
         window.pendingCatalogItem = null;
         if (typeof AppState !== 'undefined') AppState.inSearch = 'torrents';
         hideSearchResults();
+        if (window.Nav) Nav.reset('torrents');
         tabTorrents.classList.add('active');
         if (tabSearch) tabSearch.classList.remove('active');
         if (tabCatalog) tabCatalog.classList.remove('active');
@@ -1208,6 +1144,7 @@ function setupSearch() {
         if (tabSearchEl) tabSearchEl.classList.remove('active');
         tabCatalog.classList.add('active');
         showContentScreen('catalog');
+        if (window.Nav) Nav.reset('catalog');
         // Смотрим на активный вид: открыта категория — на её сетку, иначе на ряды.
         // Раньше вид был один, и проверять было нечего.
         var catalogView = (typeof catalogState !== 'undefined' && catalogState.currentCatalog)
