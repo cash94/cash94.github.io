@@ -653,12 +653,6 @@ var tmdbCache = new LRUTTLCache(
     TMDB_CACHE_CONFIG.ttl
 );
 
-var detailHistory = [];
-
-function clearDetailHistory() {
-    detailHistory = [];
-}
-
 function getTmdbCacheKey(endpoint, params) {
     var keys = Object.keys(params).sort();
     var sorted = {};
@@ -1389,21 +1383,15 @@ window.syncFavoriteButton = syncFavoriteButton;
  * «Назад» из сетки уводит в список категорий, как и из любой другой.
  */
 /**
- * Переход в фильмографию — новый шаг пути.
+ * Переход в фильмографию — новый шаг в стеке переходов (nav.js).
  *
- * Путь (catalogState.personTrail) — стек карточек, ИЗ которых уходили к актёру.
- * Каждый шаг помнит и саму карточку, и фильмографию, которой она принадлежала:
- * без второго поля цепочка «актёр → фильм → актёр» замкнулась бы сама на себя,
- * потому что возврат из фильма смотрит на текущую сетку, а она уже чужая.
- *
- * Флаги приложения (personRoot) снимаются один раз, на входе в экскурсию, и
- * возвращаются на выходе. Полагаться на них по ходу нельзя: обработчик «назад»
- * в app.js перед вычислением returnTo делает detailReturnTo = inSearch, то есть
- * затирает то, что мы могли бы туда положить.
+ * Обратный путь «фильмография → карточка, из которой ушли к актёру → её
+ * сетка» стек помнит сам: запись 'grid' с актёром лежит над записью карточки,
+ * а под карточкой — сетка или раздел, откуда её открыли, со снимком позиции
+ * (Nav.register('grid') ниже). Разбирает его backToCatalogList.
  */
 function openPersonCatalog(personId, personName) {
     if (!personId) return Promise.resolve();
-    if (!catalogState.personTrail) catalogState.personTrail = [];
 
     // Одно нажатие — один шаг пути. Повторный вызов для того же актёра сразу
     // следом (два обработчика на одном клике, дребезг OK) дописал бы второй шаг,
@@ -1413,34 +1401,7 @@ function openPersonCatalog(personId, personName) {
     if (last && String(last.id) === String(personId) && now - last.at < 1000) return Promise.resolve();
     catalogState.lastPersonOpen = { id: personId, at: now };
 
-    if (!catalogState.personTrail.length) {
-        catalogState.personRoot = {
-            fromHome: !!(window.HomeScreen && HomeScreen.state && HomeScreen.state.detailFromHome),
-            realCatalog: (catalogState.currentCatalog && catalogState.currentCatalog !== 'person')
-                ? catalogState.currentCatalog
-                : (AppState.backCurrentCatalog !== 'person' ? AppState.backCurrentCatalog : ''),
-            isSearch: !!AppState.isSearch,
-            inSearch: AppState.inSearch,
-            detailReturnTo: AppState.detailReturnTo,
-            // Позиция в категории, из которой уходим. localStorage один на все
-            // сетки, и за экскурсию его перетрут фильмографии — без снимка
-            // возврат в категорию встал бы на чужую карточку
-            lastIndex: catalogState.lastSelectedIndex,
-            lastId: catalogState.lastSelectedId,
-            storedIndex: (function () {
-                try { return localStorage.getItem('lastCatalogCardIndex'); } catch (e) { return null; }
-            })()
-        };
-    }
-
-    catalogState.personTrail.push({
-        item: AppState.currentDetailItem || null,
-        index: catalogState.lastSelectedIndex || 0,
-        // Сетка, из карточки которой уходим. null — карточку открыли из
-        // каталога, с главной или из поиска, то есть это начало экскурсии
-        person: catalogState.currentCatalog === 'person' ? catalogState.person : null
-    });
-
+    if (window.Nav) Nav.push('grid', { key: 'person:' + personId, label: personName || personId });
     return showPersonCatalog(personId, personName);
 }
 
@@ -1459,9 +1420,6 @@ function showPersonCatalog(personId, personName) {
     abortCatalogRequests();
 
     // Уходим из карточки: без этого сетка отрисуется под открытым detail-view.
-    // Историю карточек тоже сбрасываем — иначе «назад» из фильмографии полезет
-    // обратно по цепочке рекомендаций, из которой мы только что вышли.
-    if (typeof clearDetailHistory === 'function') clearDetailHistory();
     if (typeof hideCatalogDetailView === 'function') hideCatalogDetailView();
     // hideCatalogDetailView снимает только свой класс раскладки. Уйти сюда
     // можно и из торрентной карточки — её класс тогда остался бы на #detail-view,
@@ -1525,12 +1483,11 @@ function showPersonCatalog(personId, personName) {
     AppState.backCurrentCatalog = 'person';
     // Из поиска карточка открывается поверх оверлея результатов, и он остался бы
     // висеть над сеткой. Закрываем его до смены экрана, назначив возврат в
-    // каталог: сам hideSearchResults уводит туда, куда указывает searchReturnTo.
+    // каталог явно: наверху стека переходов уже фильмография, а не поиск.
     var searchOverlay = getEl('search-overlay');
     if (searchOverlay && !searchOverlay.hidden && searchOverlay.style.display !== 'none' &&
         typeof hideSearchResults === 'function') {
-        AppState.searchReturnTo = 'catalog';
-        hideSearchResults();
+        hideSearchResults({ returnTo: 'catalog' });
     }
 
     // Карточку открывают и из каталога, и с главной, и из поиска, а сетка
@@ -1541,24 +1498,12 @@ function showPersonCatalog(personId, personName) {
     if (typeof showContentScreen === 'function') showContentScreen('catalog');
     else AppState.currentScreen = 'catalog';
 
-    // Признак «карточка открыта с главной» перебил бы возврат: пропатченный
-    // restoreFocusAfterNavigation увёл бы «назад» из фильма на главную, а не в
-    // эту сетку. Трейлер баннера тоже останавливаем — экран он больше не свой.
-    if (window.HomeScreen) {
-        if (HomeScreen.state) HomeScreen.state.detailFromHome = false;
-        if (typeof HomeScreen.stopTrailer === 'function') HomeScreen.stopTrailer();
-    }
+    // Трейлер баннера главной останавливаем — экран он больше не свой
+    if (window.HomeScreen && typeof HomeScreen.stopTrailer === 'function') HomeScreen.stopTrailer();
 
-    // Куда уводит «назад» из карточки, открытой уже отсюда: в эту же сетку,
-    // даже если сюда пришли из поиска или с главной.
-    //
-    // Решает здесь именно inSearch. Обработчик «назад» в app.js первым делом
-    // делает detailReturnTo = inSearch и только потом сравнивает его с
-    // 'catalog' — то есть значение, положенное в detailReturnTo, до сравнения
-    // не доживает. С главной там лежало 'home', и возврат уходил в торренты.
+    // Текущий раздел — каталог (для тех, кто ещё смотрит на inSearch).
+    // Куда вернёт «назад» из карточки, открытой отсюда, знает стек переходов.
     AppState.inSearch = 'catalog';
-    AppState.detailReturnTo = 'catalog';
-    AppState.isSearch = false;
     showCatalogLoading('Загрузка фильмографии...');
 
     return safeFetch(SERVER_URL + '/api/tmdb/person/credits?id=' + encodeURIComponent(personId), { timeout: 15000 })
@@ -3574,18 +3519,10 @@ function dropPosterPlaceholder(placeholder) {
 }
 
 // ==================== ДЕТАЛЬНЫЙ ПРОСМОТР ====================
-function pushDetailHistory(item) {
-    var last = detailHistory[detailHistory.length - 1];
-    if (last && last.id === item.id) return;
-    detailHistory.push(item);
-    if (detailHistory.length > CATALOG_CONSTANTS.MAX_DETAIL_HISTORY) detailHistory.shift();
-}
-
 /**
  * Подготовка DOM для детального просмотра
  */
 function setupDetailLayout(item, index, posterUrl) {
-    pushDetailHistory(item);
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
     var dv = getEl('detail-view'), mc = getEl('main-container');
@@ -4607,6 +4544,9 @@ function setupDetailDelegation(dv) {
         // Клик по рекомендации
         var recCard = e.target.closest('.catalog-recommendation-card');
         if (recCard) {
+            if (window.Nav) Nav.push('detail', Nav.detailData({
+                id: recCard.dataset.tmdbId, media_type: recCard.dataset.mediaType, title: recCard.dataset.title
+            }));
             showCatalogDetail({
                 id: recCard.dataset.tmdbId,
                 media_type: recCard.dataset.mediaType,
@@ -4679,7 +4619,6 @@ async function showCatalogDetail(item, index, posterUrl) {
     resetDetailBackdrop();
     AppState.currentDetailItem = item;
     AppState.currentScreen = 'detail';
-    AppState.detailReturnTo = 'catalog';
     if (typeof Animations !== 'undefined') Animations.animateDetailShow();
     dv.style.pointerEvents = 'auto';
     if (mc) mc.style.pointerEvents = 'none';
@@ -4695,7 +4634,6 @@ async function showCatalogDetail(item, index, posterUrl) {
 
         wb.onclick = function () {
             AppState.currentScreen = 'search';
-            AppState.isSearch = false;
 
             // Карточку прячем ТОЛЬКО когда поиск что-то нашёл. Раньше её гасили
             // сразу, синхронно с запуском поиска, — и при пустом ответе (или
@@ -4720,7 +4658,7 @@ async function showCatalogDetail(item, index, posterUrl) {
                     // что карточка проступает из-под него — вместо прежней
                     // резкой подмены кадра.
                     AppState.currentScreen = 'detail';
-                    AppState.searchReturnTo = null;
+                    if (window.Nav) Nav.pop('search');
                     dv.style.display = 'block';
                     dv.style.pointerEvents = 'auto';
                     if (mc) mc.style.pointerEvents = 'none';
@@ -4887,16 +4825,11 @@ function detailTopbarNavigate(btnId) {
 }
 
 /**
- * Наложение открывается поверх карточки — готовим возврат в неё.
+ * Наложение открывается поверх карточки.
  *
- * Каждое наложение уже умеет возвращаться «туда, откуда пришли», надо лишь
- * назвать ему это место:
- *   настройки — AppState.configReturnTo, его считает сам обработчик кнопки из
- *               currentScreen(), а тот при открытой карточке даёт 'detail';
- *               здесь делать нечего;
- *   поиск     — AppState.searchReturnTo, ветка 'detail' в hideSearchResults
- *               уже написана (возврат из «Торрентов» карточки идёт по ней же);
- *   донат     — своего поля не имел, добавлено.
+ * Куда из него вернуться, помнит стек переходов (nav.js): под записью
+ * наложения лежит карточка. Здесь только то, что стеку не по силам: убрать
+ * шапку и, для настроек, спрятать карточку на время (см. ниже).
  */
 function prepareOverlayOverDetail(btnId) {
     // Шапку убираем: она поднималась только чтобы дотянуться до кнопки.
@@ -4904,9 +4837,6 @@ function prepareOverlayOverDetail(btnId) {
     if (window.DetailTopbar && typeof DetailTopbar.ensureHome === 'function') {
         DetailTopbar.ensureHome();
     }
-
-    if (btnId === 'tab-search') AppState.searchReturnTo = 'detail';
-    if (btnId === 'tab-donate') AppState.donateReturnTo = 'detail';
 
     // #config-screen живёт внутри #main-container, а у того z-index 1 — это
     // отдельный контекст наложения, и никакой z-index самих настроек не поднимет
@@ -4940,8 +4870,6 @@ function restoreDetailAfterOverlay() {
     if (!AppState.currentDetailItem) return false;
 
     AppState.currentScreen = 'detail';
-    AppState.searchReturnTo = null;
-    AppState.donateReturnTo = null;
 
     dv.style.pointerEvents = 'auto';
     var mc = getEl('main-container');
@@ -4966,36 +4894,15 @@ function restoreDetailAfterOverlay() {
 /**
  * Забыть путь возвратов карточки целиком.
  *
- * Три независимых накопителя, и уцелевший любой из них ломает следующую
- * карточку по-своему:
- *   detailHistory      — стек открытых карточек, по нему ходит «назад» (app.js);
- *   personTrail/Root   — экскурсия по актёрам: из какой карточки ушли к актёру
- *                        и какие флаги приложения были на входе (backToCatalogList);
- *   поля AppState      — какую карточку открыть при возврате из плеера, из
- *                        поиска и по аппаратной кнопке Android;
- *   detailFromHome     — «карточку открыли с главной»; по нему home.js
- *                        перехватывает возврат из карточки и уводит на главную.
+ * Сам путь — это стек переходов (nav.js), его сбрасывает Nav.reset при уходе
+ * в раздел. Здесь — то, что ещё живёт в AppState: какую карточку открыть при
+ * возврате из плеера, из поиска и по аппаратной кнопке Android.
  */
 function clearDetailReturnPath() {
-    clearDetailHistory();
-
-    catalogState.personTrail = [];
-    catalogState.personRoot = null;
     catalogState.person = null;
 
     AppState.currentDetailItem = null;
     AppState.androidBackCatalog = '';
-    AppState.detailReturnTo = null;
-    AppState.openCatalogDetailOnSearchClose = null;
-
-    /* Снимать обязательно, и вот почему. Флаг ставит home.js при открытии
-     * карточки с главной, а снимает — только его же обёртка showContentScreen,
-     * и лишь когда уходят С ГЛАВНОЙ (AppState.currentScreen === 'home'). Уходя
-     * из КАРТОЧКИ, currentScreen равен 'detail', условие не выполняется, и флаг
-     * оставался поднятым. Дальше home.js перехватывает restoreFocusAfterNavigation
-     * и уводит на главную — поэтому «главная → карточка → шапка → каталог →
-     * карточка → назад» высаживало на главной вместо каталога. */
-    if (window.HomeScreen && HomeScreen.state) HomeScreen.state.detailFromHome = false;
 }
 
 /**
@@ -5003,6 +4910,7 @@ function clearDetailReturnPath() {
  *        если его собственный обработчик этого не сделает.
  */
 function exitDetailForSectionNav(btnId) {
+    if (window.Nav && DETAIL_NAV_SCREENS[btnId]) Nav.reset(DETAIL_NAV_SCREENS[btnId]);
     var dv = getEl('detail-view');
     var mc = getEl('main-container');
 
@@ -5127,6 +5035,7 @@ function onCatalogItemClick(item, index) {
     AppState.catalogIndex = index;
     AppState.catalogPu = pu;
     AppState.androidBackCatalog = item;
+    if (window.Nav) Nav.push('detail', Nav.detailData(item, index));
     showCatalogDetail(item, index, pu);
 }
 
@@ -5186,7 +5095,7 @@ function showCatalogSearch(q, pu, item) {
         if (typeof window.setSearchLocked === 'function') window.setSearchLocked(true, q);
         window.pendingCatalogPoster = pu;
         window.pendingCatalogItem = item;
-        AppState.searchReturnTo = 'detail';
+        if (window.Nav) Nav.push('search', { key: 'search', label: q });
         if (item) {
             pu = getCatalogKnownPosterUrl(item, pu);
 
@@ -6754,6 +6663,7 @@ function onRowItemClick(item, key, index) {
     AppState.catalogIndex = index;
     AppState.androidBackCatalog = item;
     AppState.openInRow = true;
+    if (window.Nav) Nav.push('detail', Nav.detailData(item, index));
     showCatalogDetail(item, index, null);
 }
 
@@ -6786,6 +6696,7 @@ function focusRowCardByElement(card) {
  */
 function rememberRowEntry(key, card) {
     if (!key) return;
+    if (window.Nav) Nav.push('grid', { key: 'cat:' + key, label: key });
     catalogState.lastSelectedRowKey = key;
     catalogState.lastSelectedColIndex =
         (card && card.classList && card.classList.contains('catalog-show-all')) ? 'showall' : null;
@@ -6915,75 +6826,74 @@ function showCatalogError(msg) {
 
 function hideCatalogLoading() { }
 
+/**
+ * Сетка под карточкой, в которую возвращаемся из фильмографии.
+ *
+ * Пока смотрели фильмографию, на экране каталога жила она, а под карточкой
+ * лежит другое: категория, другая фильмография, ряды или вовсе главная. under —
+ * запись стека под карточкой; для сетки в ней снимок (Nav.register('grid')),
+ * сделанный, когда из неё уходили в карточку. Сетку не рисуем — только
+ * выставляем состояние, по которому её поднимет restoreFocusAfterNavigation
+ * (items пуст → loadCatalog заново). Не сетка — показываем ряды: так каталог не
+ * останется с осиротевшей фильмографией.
+ */
+function prepareGridUnderDetail(under) {
+    var r = (under && under.screen === 'grid' && under.restore) || null;
+    catalogState.items = [];
+    catalogState.cardElements = {};
+    if (r && r.person) {
+        catalogState.person = r.person;
+        catalogState.currentCatalog = 'person';
+        AppState.backCurrentCatalog = 'person';
+    } else {
+        catalogState.person = null;
+        catalogState.currentCatalog = null;
+        AppState.backCurrentCatalog = (r && r.catalogKey) || '';
+    }
+    if (r) {
+        catalogState.lastSelectedIndex = r.lastIndex || 0;
+        catalogState.lastSelectedId = r.lastId || null;
+        try {
+            if (r.storedIndex === null || r.storedIndex === undefined) localStorage.removeItem('lastCatalogCardIndex');
+            else localStorage.setItem('lastCatalogCardIndex', r.storedIndex);
+        } catch (e) { }
+    }
+    if (!AppState.backCurrentCatalog && typeof showCatalogRowsView === 'function') showCatalogRowsView();
+}
+
+// Снимок сетки в момент ухода из неё в карточку — по нему prepareGridUnderDetail
+// вернёт ту же категорию или фильмографию на ту же позицию
+if (window.Nav) Nav.register('grid', {
+    snapshot: function () {
+        var stored = null;
+        try { stored = localStorage.getItem('lastCatalogCardIndex'); } catch (e) { }
+        var isPerson = catalogState.currentCatalog === 'person';
+        return {
+            person: isPerson ? catalogState.person : null,
+            catalogKey: isPerson ? null : catalogState.currentCatalog,
+            lastIndex: catalogState.lastSelectedIndex,
+            lastId: catalogState.lastSelectedId,
+            storedIndex: stored,
+            scrollTop: (getEl('main-container') || {}).scrollTop || 0
+        };
+    }
+});
+
 function backToCatalogList() {
-    // Назад по пути экскурсии по актёрам: снимаем последний шаг и
-    // возвращаемся в карточку, из которой ушли к этому актёру.
-    if (catalogState.currentCatalog === 'person' &&
-        catalogState.personTrail && catalogState.personTrail.length &&
+    // Назад из сетки — по стеку переходов (nav.js). Фильмографию открывали из
+    // карточки: возвращаемся в неё, а сетку под ней готовим заранее, чтобы
+    // следующее «назад» из карточки вернуло туда, откуда её открыли.
+    var navTo = window.Nav ? Nav.pop('grid') : null;
+    if (navTo && navTo.screen === 'detail' && navTo.data && navTo.data.item &&
         typeof showCatalogDetail === 'function') {
-
-        var step = catalogState.personTrail.pop();
-        var root = catalogState.personRoot;
-
         abortCatalogRequests();
-
-        // Какой фильмографии принадлежала та карточка — в неё же уйдёт
-        // следующее «назад» из неё. Элементы чистим обязательно: в сетке
-        // лежит содержимое той фильмографии, из которой мы сейчас уходим, и
-        // без сброса быстрый путь возврата показал бы чужую.
-        catalogState.person = step.person || null;
-        catalogState.items = [];
-        catalogState.cardElements = {};
-        catalogState.currentCatalog = step.person ? 'person' : null;
-        AppState.backCurrentCatalog = step.person
-            ? 'person'
-            : ((root && root.realCatalog) || '');
-
-        // Экскурсия началась не с сетки категории, а с рядов-каруселей или с
-        // главной — возвращаться некуда: ключа категории нет, и loadCatalog('')
-        // в app.js (restoreFocusAfterNavigation) выходит на первой же строке.
-        // Без переключения вида на экране осталась бы сетка фильмографии при
-        // закрытом состоянии каталога (currentCatalog = null, items пуст):
-        // постеры не грузятся и пишут «Каталог закрыт», а «назад» из карточки
-        // ставит фокус на её осиротевшие карточки — состояние, из которого
-        // пульт уже не выбирается. Ряды же делают isCatalogRowsMode() честным,
-        // и возврат из карточки уходит в restoreRowFocus().
-        if (!step.person && !AppState.backCurrentCatalog &&
-            typeof showCatalogRowsView === 'function') {
-            showCatalogRowsView();
-        }
-
-        // Путь кончился — приложение возвращается к своим флагам, и следующее
-        // «назад» из карточки уйдёт туда, откуда экскурсия начиналась
-        if (!catalogState.personTrail.length && root) {
-            if (window.HomeScreen && HomeScreen.state) HomeScreen.state.detailFromHome = root.fromHome;
-            AppState.isSearch = root.isSearch;
-            AppState.inSearch = root.inSearch;
-            AppState.detailReturnTo = root.detailReturnTo;
-            // Позицию в категории тоже возвращаем: за экскурсию её перетёрли
-            catalogState.lastSelectedIndex = root.lastIndex || 0;
-            catalogState.lastSelectedId = root.lastId || null;
-            try {
-                if (root.storedIndex === null || root.storedIndex === undefined) {
-                    localStorage.removeItem('lastCatalogCardIndex');
-                } else {
-                    localStorage.setItem('lastCatalogCardIndex', root.storedIndex);
-                }
-            } catch (e) { }
-            catalogState.personRoot = null;
-        }
-
-        if (step.item) {
-            showCatalogDetail(step.item, step.index, null);
-            return;
-        }
-        // Карточки в шаге нет — уходим обычным путём, в список категорий
+        prepareGridUnderDetail(Nav.prev());
+        showCatalogDetail(navTo.data.item, navTo.data.index || 0, null);
+        return;
     }
 
     abortCatalogRequests();
-    // Выход в список категорий заканчивает экскурсию целиком
-    catalogState.personTrail = [];
-    catalogState.personRoot = null;
+    // Выход в список категорий
     catalogState.person = null;
     /* Открытой категории больше нет — забываем её ПОЛНОСТЬЮ.
      *
@@ -7275,5 +7185,3 @@ window.catalog = {
     tmdbCache: { clear: clearTmdbCache, stats: getTmdbCacheStats }
 };
 window.showCatalogDetail = showCatalogDetail;
-window.detailHistory = detailHistory;
-window.clearDetailHistory = clearDetailHistory;

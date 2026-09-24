@@ -2269,17 +2269,12 @@ function onBack() {
                     torrserverSection.style.display = 'block';
                 }
             }
-            // Из настроек возвращаемся туда, откуда пришли.
-            //
-            // Раньше вариантов было два: главная, если она осталась под
-            // настройками, иначе торренты. Из каталога это давало
-            // currentScreen = 'torrents' поверх видимого #content-catalog —
-            // карточек торрентов на экране нет, и фокус падал на кнопки шапки.
-            // Экран запоминает обработчик открытия настроек (AppState.configReturnTo),
-            // проверка isHomeUnderneath остаётся запасным вариантом.
-            var returnTo = (window.AppState && AppState.configReturnTo) || null;
+            // Из настроек возвращаемся туда, откуда пришли: это запись стека
+            // переходов под настройками (nav.js). Запасной вариант — если
+            // настройки открыли в обход стека: главная, когда она под ними,
+            // иначе торренты.
+            var returnTo = window.Nav ? Nav.returnTarget(Nav.pop('config')) : null;
             if (!returnTo) returnTo = isHomeUnderneath() ? 'home' : 'torrents';
-            if (window.AppState) AppState.configReturnTo = null;
 
             // Настройки открывали поверх карточки — она всё это время стояла
             // под ними и ждёт возврата
@@ -2327,24 +2322,13 @@ function onBack() {
         return true;
     }
     if (s && !s.classList.contains('hidden') && _isScreenVisible(s)) {
-        // Та же цепочка, что и в closeSearchBtn:
-        // если вернулись из detail в поиск — «назад» открывает карточку каталога
-        if (AppState && AppState.openCatalogDetailOnSearchClose) {
-            var catalogItem = AppState.openCatalogDetailOnSearchClose;
-            AppState.openCatalogDetailOnSearchClose = null;
-            AppState.searchReturnTo = null;
-            if (catalogItem && catalogItem.id && typeof window.showCatalogDetail === 'function') {
-                s.classList.add('hidden');
-                window.showCatalogDetail(catalogItem, AppState.catalogIndex || 0, AppState.catalogPu || null);
-                return true;
-            }
-        }
         if (typeof window.hideSearchResults === 'function') {
             window.hideSearchResults();
             // hideSearchResults сам возвращает фокус на главную (ветка
             // returnTo === 'home'), кнопку поиска в этом случае не трогаем.
             // Ищем её по id: порядок кнопок в шапке теперь задаёт вёрстка.
-            if (!isHomeUnderneath()) focusEl(getEl('tab-search'));
+            // В карточку под поиском фокус ставит сама карточка
+            if (!isHomeUnderneath() && AppState.currentScreen !== 'detail') focusEl(getEl('tab-search'));
         }
         else leaveSearchToTorrents();
         return true;
@@ -3736,7 +3720,7 @@ function openSearchScreen(fi) {
 
 function leaveSearchToTorrents() {
     if (typeof window.hideSearchResults === 'function') window.hideSearchResults();
-    else { clickEl(getEl('close-search') || getEl('tab-torrents')); setTimeout(function () { var rt = (window.AppState && AppState.searchReturnTo === 'catalog') ? 'catalog' : 'torrents'; if (rt === 'catalog') ScreenStrategies.catalog.ensureFocus(true); else ScreenStrategies.torrents.ensureFocus(true); }, 150); }
+    else { clickEl(getEl('close-search') || getEl('tab-torrents')); setTimeout(function () { var rt = (window.AppState && AppState.inSearch === 'catalog') ? 'catalog' : 'torrents'; if (rt === 'catalog') ScreenStrategies.catalog.ensureFocus(true); else ScreenStrategies.torrents.ensureFocus(true); }, 150); }
 }
 
 function closeFilterPanel() {

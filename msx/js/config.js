@@ -60,8 +60,6 @@ var AppState = {
   lastFocusedElement: null,
   isSearch: false,
   inSearch: 'torrents',
-  searchReturnTo: 'torrents',
-  detailReturnTo: 'torrents',
   restoringFocus: false,
 
   //Синхронизация
@@ -87,8 +85,6 @@ var AppState = {
   // только спрятали оверлей. Выход из плеера (player.js: showDetailView) и выход
   // из деталей торрента (app.js: back-from-detail) возвращают человека туда,
   // откуда он запускал, а не на «Мои торренты».
-  returnToSearchResults: false,
-  searchResultsHidden: false,
   // Чем кончился последний поиск торрентов: null — искали и нашли (или честно
   // не нашли), объект {host, timedOut} — Jacred не ответил. По этому признаку
   // кнопка «Торренты» в карточке каталога не рисует свой «Торренты не найдены»
@@ -96,7 +92,6 @@ var AppState = {
   lastSearchFailure: null,
   dvPreferred: false,
   trailerPlay: false,
-  clearLastSelected: true,
   openInRow: false,
   // Зеркала картинок TMDB и хост API заставок. Значения по умолчанию —
   // прежние зашитые; настоящие приходят с сервера из apiproxy.json

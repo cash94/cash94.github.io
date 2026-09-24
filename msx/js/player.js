@@ -1868,6 +1868,7 @@ function restorePreplaybackScreen(snapshot) {
 }
 
 function transitionToPlayerScreen() {
+  if (window.Nav) Nav.push('player', { key: 'player' });
   AppState.currentScreen = 'player';
   // Тик буфера и проверки «Пропустить» заводится вместе с плеером и гаснет сам,
   // когда экран сменится (app.js)
@@ -2389,6 +2390,10 @@ function cancelCurrentPlayback() {
 }
 
 function showDetailView(field = null) {
+  // Куда вернуться из плеера — запись стека переходов под ним (nav.js). Плеер
+  // мог и не подняться (ошибка до transitionToPlayerScreen) — тогда его записи
+  // в стеке нет, и место возврата — то, что наверху сейчас.
+  var navUnder = window.Nav ? (Nav.pop('player') || Nav.top()) : null;
   if (!window.AndroidJS) {
     currentSubtitleTrack = -1; stopTorrentStatsUpdates(); hideSkipButton(); skipIntro = 0; skipCredits = 0;
     currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; thisisseek = false;
@@ -2429,10 +2434,9 @@ function showDetailView(field = null) {
     getEl('player-screen').style.display = 'none';
     getEl('config-screen').style.display = 'none';
 
-    // Пришли из поиска (флаг ставит playFromHash — в любом режиме, не только
-    // при transcodingFullOnOff) — просто возвращаем оверлей с результатами
-    if (AppState.returnToSearchResults) {
-      AppState.returnToSearchResults = false;
+    // Запускали из выдачи поиска (под плеером в стеке — поиск): просто
+    // возвращаем оверлей с результатами, раздачу не открываем и не останавливаем
+    if (navUnder && navUnder.screen === 'search') {
       lastPlaybackFromSearch = false;
       AppState.playFromHash = false;
       AppState.isCatalogSearch = false;
@@ -2442,6 +2446,8 @@ function showDetailView(field = null) {
       var mainContainer = getEl('main-container');
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
       setTimeout(function () {
+        // На ту раздачу, которую запускали (torrents.js: focusLastSearchResult)
+        if (typeof window.focusLastSearchResult === 'function' && window.focusLastSearchResult()) return;
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
           updateFocusableElements();
           for (var i = 0; i < focusableElements.length; i++) {
