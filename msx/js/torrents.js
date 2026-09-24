@@ -4649,7 +4649,24 @@ function renderSearchResults() {
     };
 
     var index = 0;
-    var CHUNK_SIZE = 30;
+    // Первая порция — сразу, в ближайший кадр: 15 раздач с запасом покрывают
+    // экран (на 1080p их видно около девяти). Хвост — такими же порциями, но
+    // в простой (requestIdleCallback). Раньше весь список шёл по 30 на кадр
+    // подряд: на полутора сотнях раздач это пять-шесть задач по 175–270 мс в
+    // первые две секунды (Chrome 66, замер при CPU x4) — ровно тогда, когда
+    // человек начинает листать выдачу, и нажатия ждали за ними в очереди.
+    // Порция в 15 вдвое короче, а простой браузер находит между нажатиями.
+    var FIRST_CHUNK_SIZE = 15;
+    var CHUNK_SIZE = 15;
+
+    function scheduleNextChunk() {
+        if (typeof window.requestIdleCallback === 'function') {
+            // timeout — чтобы хвост дорисовался и при непрерывной анимации
+            window.requestIdleCallback(function () { renderChunk(); }, { timeout: 400 });
+        } else {
+            setTimeout(renderChunk, 16);
+        }
+    }
 
     function renderChunk() {
         if (searchResultsDiv._renderId !== renderId) return;
@@ -4664,15 +4681,14 @@ function renderSearchResults() {
          * отсюда и ощущение, что до конца отрисовки навигации нет. На короткой
          * выдаче кадров мало и заметить нечего, на полусотне и больше — видно.
          *
-         * Порцию НЕ уменьшаем: раскладка пересчитывается на каждую вставку и
-         * стоит тем дороже, чем длиннее уже собранный список. Мелкие порции
-         * растягивают общее время отрисовки в разы — проверено моделью, где
-         * 250 карточек по 4 штуки за кадр обошлись вдвое дороже, чем по 30.
-         * Правильный размен здесь — не дробить кадры, а уступать их вводу. */
+         * Совсем мелко не дробим: раскладка пересчитывается на каждую вставку,
+         * и 250 карточек по 4 штуки за кадр обошлись вдвое дороже, чем по 30
+         * (проверено моделью). 15 в простой — компромисс, см. CHUNK_SIZE.
+         * Главный размен здесь — уступать кадры вводу. */
         if (window.navHold) { setTimeout(renderChunk, 120); return; }
 
         var html = '';
-        var end = Math.min(index + CHUNK_SIZE, filteredResults.length);
+        var end = Math.min(index + (index === 0 ? FIRST_CHUNK_SIZE : CHUNK_SIZE), filteredResults.length);
         for (; index < end; index++) html += buildSearchResultMarkup(filteredResults[index], index);
         searchResultsDiv.insertAdjacentHTML('beforeend', html);
         // Карточки приходят пачками, значит и наблюдателю их отдаём пачками
@@ -4681,7 +4697,7 @@ function renderSearchResults() {
         // для стрелок (getSearchResults в control.js). Без этого свежая пачка
         // не попала бы в навигацию.
         if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
-        if (index < filteredResults.length) requestAnimationFrame(renderChunk);
+        if (index < filteredResults.length) scheduleNextChunk();
     }
     requestAnimationFrame(renderChunk);
 }

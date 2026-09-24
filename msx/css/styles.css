@@ -481,43 +481,42 @@ body {
   padding: 14px 20px 32px 20px;
 }
 
-.search-result-item {
+/* Прокручиваемый список — контекст наложения. Иначе Chrome 66 выносит каждую
+   видимую карточку в отдельный слой поверх слоя прокрутки (и ещё слой
+   обрезки к ней) и пересчитывает их на каждой вставке порции: на выдаче
+   в полторы сотни раздач слоёв было 45, стало 18. */
+.search-results-list {
   position: relative;
+  z-index: 0;
+}
+
+/* Цветной «корешок» слева — левая рамка карточки. Под фокусом загорается
+   выбранным цветом: --focus-color и --focus-color-soft задаёт
+   js/ui-customizer.js, #ff8c00 — значение по умолчанию.
+   Раньше это был ::before с position: absolute и opacity: 0.4 — у каждой
+   карточки лишний слой отрисовки (и position: relative ради него), а
+   карточек в выдаче бывают сотни. Левый отступ меньше на 2px: рамка шире
+   прежней на столько же. */
+.search-result-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px 12px 20px;
+  padding: 12px 16px 12px 18px;
   margin-bottom: 8px;
   /* 12px, а не крупнее: .focused ниже по файлу ставит свой border-radius: 12px,
      и при другом значении рамка фокуса не совпала бы с углами карточки */
   border-radius: 12px;
   background: #14141c;
   border: 1px solid rgba(255, 255, 255, 0.06);
+  border-left: 3px solid var(--focus-color-soft, rgba(255, 140, 0, 0.35));
   overflow: hidden;
-}
-
-/* Цветной «корешок» слева. Под фокусом загорается выбранным цветом:
-   --focus-color задаёт js/ui-customizer.js, #ff8c00 — значение по умолчанию. */
-.search-result-item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--focus-color, #ff8c00);
-  opacity: 0.4;
 }
 
 .search-result-item:hover,
 .search-result-item.focused {
   background: #1b1b28;
   border-color: rgba(255, 255, 255, 0.14);
-}
-
-.search-result-item.focused::before {
-  background: var(--focus-color, #ff8c00);
-  opacity: 1;
+  border-left-color: var(--focus-color, #ff8c00);
 }
 
 .search-result-info {
