@@ -1180,6 +1180,8 @@
      * функцию, а чередование чтений с записями стоило бы по пересчёту на пару.
      */
     function layoutHome() {
+        // Спрятана под карточкой — все замеры дали бы нули; пересчитаем при возврате
+        if (cover.on) { cover.layoutPending = true; return; }
         var hero = ensureHeroDom();
         if (!hero || !isHomeVisible()) return;
         var mc = el('main-container');
@@ -1539,6 +1541,7 @@
 
     /** Возврат фокуса туда, откуда уходили (detail, поиск, донат) */
     function restoreHomeFocus() {
+        uncoverHome();
         if (!homeState.rowEls.length) return focusTopbar();
         var idx = homeState.rowKeys.indexOf(homeState.lastRowKey);
         if (idx === -1) idx = Math.min(homeState.activeRow, homeState.rowEls.length - 1);
@@ -1890,6 +1893,7 @@
         opts = opts || {};
         var screen = el('content-home');
         if (!screen) return false;
+        uncoverHome();
 
         var section = el('torrserver-section');
         // index.html отдаёт секцию с display:none — показываем сами, до ответа
@@ -2494,6 +2498,83 @@
         setInterval(tick, 1000);
     }
 
+    // ==================== ГЛАВНАЯ ПОД КАРТОЧКОЙ ====================
+    /*
+     * Карточка (#detail-view) — position: fixed поверх всего, и главная под ней
+     * оставалась в раскладке: ~1700 элементов из ~2500, которые браузер
+     * продолжал учитывать при каждом пересчёте стилей. Замер: переход фокуса в
+     * карточке на ~20% дороже, общий пересчёт (смена «Внешнего вида») — на ~60%.
+     *
+     * Поэтому, когда карточка проявилась полностью, главную убираем из
+     * раскладки классом (display: none), а при начале любого ухода из карточки
+     * возвращаем. Не атрибутом hidden: по нему «назад» решает, что под
+     * карточкой главная (isHomeUnderneath в control.js).
+     *
+     * Каталог так не прячем: там вернуть надо ещё и вертикальную прокрутку
+     * длинной сетки, а она при display: none теряется.
+     *
+     * Возврат синхронный в трёх местах — animateDetailHide (animations.js),
+     * showHome и restoreHomeFocus: сразу за ними идут замеры и прокрутка рядов,
+     * а у спрятанной главной всё это нули. Наблюдатель за #detail-view ниже —
+     * страховка для полутора десятков мест, которые гасят карточку напрямую.
+     */
+    var COVER_CLASS = 'home-under-detail';
+    // Позже появления карточки (DETAIL_FADE.show = 380 мс) с запасом: прятать
+    // главную можно только под непрозрачной карточкой, иначе она мигнёт
+    var COVER_DELAY_MS = 700;
+    var cover = { on: false, timer: null, rows: null, layoutPending: false };
+
+    function detailShownState(dv) {
+        if (!dv || !dv.style.display || dv.style.display === 'none') return false;
+        return dv.getAttribute('data-hiding') !== '1';
+    }
+
+    function coverHome() {
+        cover.timer = null;
+        var screen = el('content-home');
+        var dv = el('detail-view');
+        if (cover.on || !screen || screen.hidden || !detailShownState(dv)) return;
+        // Карточка ещё проявляется (или ждёт содержимое под «Загрузка…») — ждём
+        if (parseFloat(window.getComputedStyle(dv).opacity) < 0.99) {
+            cover.timer = setTimeout(coverHome, COVER_DELAY_MS);
+            return;
+        }
+        // Прокрутку каруселей запоминаем: Chrome 66 может её не сохранить
+        var vps = screen.querySelectorAll('.catalog-row-viewport');
+        cover.rows = [];
+        for (var i = 0; i < vps.length; i++) cover.rows.push([vps[i], vps[i].scrollLeft]);
+        screen.classList.add(COVER_CLASS);
+        cover.on = true;
+    }
+
+    /** Вернуть главную в раскладку. Безопасно звать когда угодно. */
+    function uncoverHome() {
+        if (cover.timer) { clearTimeout(cover.timer); cover.timer = null; }
+        if (!cover.on) return false;
+        cover.on = false;
+        var screen = el('content-home');
+        if (screen) screen.classList.remove(COVER_CLASS);
+        var rows = cover.rows || [];
+        cover.rows = null;
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i][0].isConnected && rows[i][0].scrollLeft !== rows[i][1]) rows[i][0].scrollLeft = rows[i][1];
+        }
+        if (cover.layoutPending) {
+            cover.layoutPending = false;
+            layoutHome();
+        }
+        return true;
+    }
+
+    function watchDetailForCover() {
+        var dv = el('detail-view');
+        if (!dv || typeof MutationObserver === 'undefined') return;
+        new MutationObserver(function () {
+            if (!detailShownState(dv)) { uncoverHome(); return; }
+            if (!cover.on && !cover.timer) cover.timer = setTimeout(coverHome, COVER_DELAY_MS);
+        }).observe(dv, { attributes: true, attributeFilter: ['style', 'data-hiding'] });
+    }
+
     // ==================== ШАПКА РАЗДЕЛОВ ПОВЕРХ КАРТОЧКИ ====================
     /*
      * Из карточки можно уходить вглубь сколь угодно долго — по рекомендациям и
@@ -2631,6 +2712,7 @@
         if (rows) rows.addEventListener('click', onHomeRowsClick);
 
         startTopbarClock();
+        watchDetailForCover();
         patchGlobals();
         registerStrategy();
         initGestures();
@@ -2650,6 +2732,7 @@
         refresh: refreshHome,
         layout: layoutHome,
         stopTrailer: suspendHero,
+        uncover: uncoverHome,
         rearmTrailer: rearmHeroTrailer,
         state: homeState
     };

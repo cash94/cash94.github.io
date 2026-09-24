@@ -560,6 +560,10 @@ var Animations = (function () {
      * (подробности в finishDetailHide).
      */
     function animateDetailHide(onDone, opts) {
+        // Главную под карточкой прятали из раскладки (home.js, «Главная под
+        // карточкой») — возвращаем до затухания: она должна проступить сквозь
+        // уходящую карточку, а следом за этим вызовом идут её замеры и фокус
+        if (window.HomeScreen && typeof HomeScreen.uncover === 'function') HomeScreen.uncover();
         var keepContent = !!(opts && opts.keepContent);
         var detailView = getEl('detail-view');
         if (!detailView) {
