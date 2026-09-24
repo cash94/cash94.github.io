@@ -1904,7 +1904,9 @@ body.detail-open {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.15s ease;
+  /* Без перехода: иначе подсветка уходящей кнопки гаснет 0,2 с, и за фокусом
+     тянется шлейф. Появление фокуса плавное — см. «ПЛЕЕР: ХУД ДЛЯ ТЕЛЕВИЗОРА» */
+  transition: none;
   padding: 0;
   line-height: 1;
 }
@@ -2049,8 +2051,8 @@ body.detail-open {
   width: 34px;
   height: 34px;
   flex-shrink: 0;
-  background: rgba(74, 158, 255, 0.13);
-  color: #7fb6ff;
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  color: #fff;
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -2099,8 +2101,8 @@ body.detail-open {
 }
 
 .audio-language {
-  color: #7fb6ff;
-  background: rgba(74, 158, 255, 0.13);
+  color: #fff;
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -2121,9 +2123,9 @@ body.detail-open {
 }
 
 .episode-play {
-  background: rgba(74, 158, 255, 0.13);
-  color: #7fb6ff;
-  border: 1px solid rgba(74, 158, 255, 0.25);
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   width: 32px;
   height: 32px;
   flex-shrink: 0;
@@ -2137,8 +2139,8 @@ body.detail-open {
 }
 
 .current-episode-badge {
-  background: rgba(74, 158, 255, 0.13);
-  color: #7fb6ff;
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  color: #fff;
   padding: 3px 10px;
   border-radius: 8px;
   font-size: 11.5px;
@@ -2216,7 +2218,7 @@ body.detail-open {
   cursor: pointer;
   backdrop-filter: none;
   /* box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25); */
-  transition: all 0.2s ease;
+  transition: none;
 
   /* Убираем контур */
   outline: none;
@@ -3247,15 +3249,18 @@ body.detail-open {
   text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
 }
 
+/* Цифры одной ширины, чтобы счётчики не дёргались, но шрифт — обычный
+   интерфейсный: моноширинный Courier на телевизоре читался хуже и выглядел
+   чужеродно рядом с остальным интерфейсом */
 #time-display,
 #current-time,
 #duration-time,
 #buffer-stats,
+#clock-display,
 .player-subtitle {
-  font-family: 'Courier New', 'Monaco', 'Menlo', monospace !important;
-  font-weight: normal !important;
+  font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif !important;
   letter-spacing: normal !important;
-  font-feature-settings: normal !important;
+  font-feature-settings: 'tnum' 1 !important;
   font-variant-numeric: tabular-nums !important;
 }
 
@@ -3726,7 +3731,8 @@ article {
   border: 1px solid transparent;
   border-radius: 12px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  /* Без перехода — против шлейфа фокуса, как у кнопок плеера */
+  transition: none;
 }
 
 .audio-item:hover,
@@ -3759,8 +3765,8 @@ article {
 }
 
 .subtitle-language {
-  background: rgba(74, 158, 255, 0.13);
-  color: #7fb6ff;
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  color: #fff;
   padding: 2px 8px;
   border-radius: 8px;
   font-size: 11.5px;
@@ -8783,4 +8789,230 @@ article {
   .osk-key { height: 42px; margin-right: 6px; font-size: 18px; }
   .osk-row { margin-bottom: 6px; }
   .osk-row-controls .osk-key { font-size: 14px; }
+}
+
+
+/* ===================== ПЛЕЕР: ХУД ДЛЯ ТЕЛЕВИЗОРА =====================
+   Плеер смотрят с дивана, за 2–3 метра, а прежние размеры (14 px заголовок,
+   11–12 px статистика) подбирались под монитор — на 1080p это мелочь. Размеры
+   здесь в vw: 1vw = 19 px на 1920 и 12,8 px на 1280, то есть текст растёт
+   вместе с экраном. Для узких экранов ниже нижняя граница в пикселях —
+   clamp() в Chrome 66 нет.
+
+   Сверху и снизу — затемняющие полосы во всю ширину вместо «таблеток» на
+   полупрозрачном фоне. Это псевдоэлементы заголовка и панели управления: они
+   наследуют их прозрачность и видимость и гаснут вместе с ними, без JS.
+   Отступы — margin, а не gap: flex-gap в Chrome 66 нет. */
+
+/* --- Верх: кнопка выхода, название, статистика TorrServer, часы --- */
+#exit-player-btn {
+  top: 1.6vw;
+  left: 1.6vw;
+  width: 3vw;
+  height: 3vw;
+  font-size: 1.4vw;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.player-title-container {
+  top: 1.6vw;
+  left: 6.2vw;                 /* правее кнопки выхода */
+  right: 11vw;                 /* левее часов */
+  transform: none;
+  max-width: none;
+  align-items: flex-start;
+  text-align: left;
+  gap: 0;
+}
+
+.player-title {
+  position: relative;
+  max-width: 100%;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 1.9vw;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+
+/* Затемнение сверху. position: fixed работает от окна, потому что у
+   контейнера заголовка больше нет transform (иначе fixed считался бы от него) */
+.player-title::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 13vw;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.55) 50%, rgba(0, 0, 0, 0) 100%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.player-subtitle {
+  max-width: 100%;
+  margin-top: 0.5vw;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 1.2vw;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+}
+
+#clock-display {
+  top: 1.7vw;
+  right: 2vw;
+  font-size: 1.9vw;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+
+/* --- Низ: время, перемотка, кнопки, строка буфера --- */
+#controls-container {
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 3.5vw 2.2vw;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Затемнение снизу: выше самой панели, чтобы накрыть и строку буфера */
+#controls-container::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 17vw;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.6) 50%, rgba(0, 0, 0, 0) 100%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+#time-display {
+  font-size: 1.3vw;
+  margin-bottom: 0.7vw;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+}
+
+#seek-slider {
+  height: 0.35vw;
+  min-height: 4px;
+}
+
+#seek-slider::-webkit-slider-thumb {
+  width: 1.2vw;
+  height: 1.2vw;
+  min-width: 14px;
+  min-height: 14px;
+}
+
+.button-row {
+  margin-top: 0.9vw;
+}
+
+.control-btn {
+  width: 3.4vw;
+  height: 3.4vw;
+  font-size: 1.6vw;
+}
+
+.volume-container {
+  max-width: 12vw;
+}
+
+/* Строка буфера — над временем, у левого края, на затемнении панели.
+   z-index выше панели (225), иначе её затемнение легло бы поверх текста */
+#buffer-stats {
+  left: 3.5vw;
+  bottom: 12.2vw;               /* над панелью: её высота ~11,2vw */
+  transform: none;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 1.3vw;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  z-index: 226;
+}
+
+#player-hint {
+  bottom: 0.5vw;
+  font-size: 0.95vw;
+  padding: 0;
+}
+
+/* --- Строки показателей: буфер внизу, TorrServer вверху ---
+   Каждый показатель — приглушённая подпись и крупное значение, между ними
+   тонкий разделитель (player.js: hudStat). Размер задаёт строка-родитель. */
+.hud-stat {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.hud-stat + .hud-stat {
+  margin-left: 1.1em;
+  padding-left: 1.1em;
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.hud-stat-label {
+  margin-right: 0.45em;
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.hud-stat-value {
+  font-weight: 700;
+  color: #fff;
+}
+
+/* Запас буфера: красный — вот-вот встанет, жёлтый — впритык, зелёный — с запасом */
+.hud-stat-value.hud-low { color: #ff8a80; }
+.hud-stat-value.hud-mid { color: #ffd166; }
+.hud-stat-value.hud-ok { color: #7ee2a8; }
+
+/* --- Фокус: появляется плавно, гаснет сразу (без шлейфа) ---
+   Переходы с самих элементов сняты выше; общее .focused { transition: none
+   !important } делало мгновенным и появление — возвращаем его для фокуса,
+   два класса и !important нужны, чтобы перебить то общее правило. */
+.control-btn.focused,
+.audio-item.focused,
+.episode-item.focused,
+.subtitle-item.focused,
+#exit-player-btn.focused,
+.close-panel-btn.focused {
+  transition: background 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+/* --- Узкие экраны (телефон): нижняя граница размеров в пикселях --- */
+@media (max-width: 900px) {
+  #exit-player-btn { top: 12px; left: 12px; width: 36px; height: 36px; font-size: 18px; }
+  .player-title-container { top: 12px; left: 60px; right: 80px; }
+  .player-title { font-size: 16px; }
+  .player-title::before { height: 110px; }
+  .player-subtitle { margin-top: 4px; font-size: 12px; }
+  #clock-display { top: 14px; right: 14px; font-size: 16px; }
+  #controls-container { padding: 0 14px 16px; }
+  #controls-container::before { height: 170px; }
+  #time-display { font-size: 12px; margin-bottom: 6px; }
+  .button-row { margin-top: 8px; }
+  .control-btn { width: 40px; height: 40px; font-size: 20px; }
+  .volume-container { max-width: 110px; }
+  #buffer-stats { left: 14px; bottom: 126px; font-size: 12px; }   /* панель ~116px */
+  #player-hint { bottom: 2px; font-size: 11px; }
 }
