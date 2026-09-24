@@ -231,10 +231,11 @@
         // Videotype
         var videotypeFilter = getEl('filter-videotype');
         if (videotypeFilter) {
-            var currentVt = videotypeFilter.value;
+            // Переменная, а не select.value — см. updateAvailableVideotype (torrents.js)
+            var currentVt = currentvideotypeFilter || 'all';
             videotypeFilter.innerHTML = '<option value="all">Все</option>' +
                 fd.videotypes.map(function (v) {
-                    return '<option value="' + escapeHtml(v) + '"' + (currentVt !== 'all' && v === currentVt ? ' selected' : '') + '>' + escapeHtml(v) + '</option>';
+                    return '<option value="' + escapeHtml(v) + '"' + (currentVt !== 'all' && v === currentVt ? ' selected' : '') + '>' + escapeHtml(v.toUpperCase()) + '</option>';
                 }).join('');
             if (currentVt !== 'all' && fd.videotypes.indexOf(currentVt) === -1) {
                 videotypeFilter.value = 'all';

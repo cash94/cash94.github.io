@@ -329,6 +329,15 @@
                 </div>
               </div>
             </div>
+
+            <!-- Фильтры поиска по умолчанию. Кнопки строит setupSearchFilterDefaults
+                 (app.js) из списков torrents.js; стрелки влево/вправо ходят внутри
+                 ряда, вверх/вниз — между рядами (handleConfigNavigation, control.js) -->
+            <div class="settings-section settings-group">
+              <h2 class="settings-group-title">Фильтры поиска по умолчанию</h2>
+              <p class="settings-lead settings-group-description">С этими значениями открывается поиск торрентов. К ним же возвращает кнопка «Сбросить» в фильтрах.</p>
+              <div id="search-filter-defaults"></div>
+            </div>
           </div>
         </div>
       </div>

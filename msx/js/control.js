@@ -3840,8 +3840,30 @@ function handleConfigNavigation(dir) {
         for (var i = 0; i < contentItems.length; i++) {
             if (currentFocused === contentItems[i]) { currentContentIndex = i; break; }
         }
-        if (dir === 'up') { if (currentContentIndex > 0) return focusEl(contentItems[currentContentIndex - 1]); return true; }
-        if (dir === 'down') { if (currentContentIndex < contentItems.length - 1 && currentContentIndex !== -1) return focusEl(contentItems[currentContentIndex + 1]); return true; }
+        // Ряды кнопок-вариантов (.settings-chips, «Прочее → Фильтры поиска»):
+        // влево/вправо — внутри ряда, вверх/вниз — через весь ряд целиком,
+        // иначе до следующей настройки пришлось бы прощёлкать десяток кнопок
+        var chipRow = (currentFocused.classList && currentFocused.classList.contains('settings-chip'))
+            ? currentFocused.parentNode : null;
+        if (chipRow && (dir === 'left' || dir === 'right')) {
+            var sib = dir === 'left' ? currentFocused.previousElementSibling : currentFocused.nextElementSibling;
+            if (sib) return focusEl(sib);
+            return true;
+        }
+        if (dir === 'up' || dir === 'down') {
+            if (currentContentIndex === -1) return true;
+            var step = dir === 'up' ? -1 : 1;
+            var j = currentContentIndex + step;
+            while (chipRow && j >= 0 && j < contentItems.length && contentItems[j].parentNode === chipRow) j += step;
+            if (j < 0 || j >= contentItems.length) return true;
+            var target = contentItems[j];
+            // В ряд вариантов входим на выбранное значение, а не на крайнюю кнопку
+            if (target.classList.contains('settings-chip')) {
+                target = target.parentNode.querySelector('.settings-chip.active') ||
+                    target.parentNode.querySelector('.settings-chip') || target;
+            }
+            return focusEl(target);
+        }
         if (dir === 'left' || dir === 'right') return true;
         if (dir === 'enter') {
             if (currentFocused) {

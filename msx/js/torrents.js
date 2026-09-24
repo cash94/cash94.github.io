@@ -10,6 +10,10 @@ var tmdbSearchController = null;
 var tmdbSearchSequence = 0;
 
 // Настройки фильтрации и сортировки
+// Сортировка, качество и тип видео стартуют со значений по умолчанию из
+// настроек («Прочее» → «Фильтры поиска»): см. applySearchFilterDefaults ниже.
+// Качество — список через запятую («2160,1080») или 'all': выбрать можно
+// несколько значений сразу.
 var currentSort = 'date-desc';
 var currentQualityFilter = 'all';
 var currentTrackerFilter = 'all';
@@ -207,12 +211,115 @@ var SORT_OPTIONS = [
 
 var QUALITY_OPTIONS = [
     { value: 'all', label: 'Все' },
-    { value: '2160', label: '4K (2160p)' },
-    { value: '1080', label: 'Full HD (1080p)' },
-    { value: '720', label: 'HD (720p)' },
-    { value: '480', label: 'SD (480p)' },
-    { value: '360', label: '360p' }
+    { value: '2160', label: '4K (2160p)', short: '4K' },
+    { value: '1080', label: 'Full HD (1080p)', short: '1080p' },
+    { value: '720', label: 'HD (720p)', short: '720p' },
+    { value: '480', label: 'SD (480p)', short: '480p' },
+    { value: '360', label: '360p', short: '360p' }
 ];
+
+// Тип видео у раздач Jacred — только эти два. Список самого фильтра строится
+// из выдачи, а этот нужен настройке значения по умолчанию: выдачи там ещё нет.
+var VIDEOTYPE_OPTIONS = [
+    { value: 'all', label: 'Все' },
+    { value: 'sdr', label: 'SDR' },
+    { value: 'hdr', label: 'HDR' }
+];
+
+// ==================== КАЧЕСТВО: НЕСКОЛЬКО ЗНАЧЕНИЙ ====================
+// Строка фильтра → массив значений в порядке QUALITY_OPTIONS. Пустой — «Все».
+// Чужие значения отбрасываем: фильтр по качеству, которого нет в списке,
+// скрыл бы всю выдачу без возможности это увидеть в панели.
+function parseQualityFilter(value) {
+    if (!value || value === 'all') return [];
+    var parts = String(value).split(',');
+    var out = [];
+    for (var i = 1; i < QUALITY_OPTIONS.length; i++) {
+        var v = QUALITY_OPTIONS[i].value;
+        for (var j = 0; j < parts.length; j++) {
+            if (parts[j].trim() === v) { out.push(v); break; }
+        }
+    }
+    return out;
+}
+
+function qualityFilterFromList(list) {
+    var clean = parseQualityFilter((list || []).join(','));
+    return clean.length ? clean.join(',') : 'all';
+}
+
+// Выбраны все варианты — то же, что «Все»: так фильтр не подсвечивается как
+// сужающий выдачу, хотя по сути ничего не отсекает
+function toggleQualityFilterValue(filter, value) {
+    if (value === 'all') return 'all';
+    var list = parseQualityFilter(filter);
+    var idx = list.indexOf(String(value));
+    if (idx === -1) list.push(String(value)); else list.splice(idx, 1);
+    var result = qualityFilterFromList(list);
+    return parseQualityFilter(result).length === QUALITY_OPTIONS.length - 1 ? 'all' : result;
+}
+
+function qualityFilterMatches(filter, quality) {
+    var list = parseQualityFilter(filter);
+    if (!list.length) return true;
+    return list.indexOf(String(quality || 0)) !== -1;
+}
+
+// Подпись для панели фильтров: «4K, 1080p, 720p»
+function qualityFilterLabel(filter) {
+    var list = parseQualityFilter(filter);
+    if (!list.length) return 'Все';
+    var labels = [];
+    for (var i = 1; i < QUALITY_OPTIONS.length; i++) {
+        if (list.indexOf(QUALITY_OPTIONS[i].value) !== -1) labels.push(QUALITY_OPTIONS[i].short);
+    }
+    return labels.join(', ');
+}
+
+// ==================== ФИЛЬТРЫ ПО УМОЛЧАНИЮ ====================
+// Хранятся на устройстве, как и прочие настройки интерфейса. Меняются в
+// «Настройки → Прочее»; применяются при старте, кнопкой «Сбросить» и, для
+// типа видео, в начале каждого нового поиска (clearSearchResults).
+var SEARCH_FILTER_DEFAULTS_KEY = 'searchFilterDefaults';
+
+function hasFilterOption(options, value) {
+    for (var i = 0; i < options.length; i++) if (options[i].value === value) return true;
+    return false;
+}
+
+function getSearchFilterDefaults() {
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem(SEARCH_FILTER_DEFAULTS_KEY) || '{}') || {}; } catch (e) { saved = {}; }
+    return {
+        sort: hasFilterOption(SORT_OPTIONS, saved.sort) ? saved.sort : 'date-desc',
+        quality: qualityFilterFromList(parseQualityFilter(saved.quality)),
+        videotype: hasFilterOption(VIDEOTYPE_OPTIONS, saved.videotype) ? saved.videotype : 'all'
+    };
+}
+
+function saveSearchFilterDefaults(defaults) {
+    try { localStorage.setItem(SEARCH_FILTER_DEFAULTS_KEY, JSON.stringify(defaults)); } catch (e) { }
+}
+
+/** Выставить текущим фильтрам значения по умолчанию — все или один: 'sort' | 'quality' | 'videotype' */
+function applySearchFilterDefaults(only) {
+    var d = getSearchFilterDefaults();
+    if (!only || only === 'sort') currentSort = d.sort;
+    if (!only || only === 'quality') currentQualityFilter = d.quality;
+    if (!only || only === 'videotype') currentvideotypeFilter = d.videotype;
+}
+
+window.QUALITY_OPTIONS = QUALITY_OPTIONS;
+window.SORT_OPTIONS = SORT_OPTIONS;
+window.VIDEOTYPE_OPTIONS = VIDEOTYPE_OPTIONS;
+window.parseQualityFilter = parseQualityFilter;
+window.toggleQualityFilterValue = toggleQualityFilterValue;
+window.qualityFilterLabel = qualityFilterLabel;
+window.getSearchFilterDefaults = getSearchFilterDefaults;
+window.saveSearchFilterDefaults = saveSearchFilterDefaults;
+window.applySearchFilterDefaults = applySearchFilterDefaults;
+
+applySearchFilterDefaults();
 
 // === УНИВЕРСАЛЬНЫЙ FETCH ДЛЯ TORRSERVER ===
 async function torrServerFetch(endpoint, options = {}) {
@@ -262,6 +369,8 @@ function syncSearchFilterButtons() {
 
     var videotypeFilter = getEl('filter-videotype');
     if (videotypeFilter) videotypeFilter.value = (currentvideotypeFilter && currentvideotypeFilter !== 'all') ? currentvideotypeFilter : 'all';
+
+    if (typeof window.updateFilterValueDisplays === 'function') window.updateFilterValueDisplays();
 }
 
 function toggleSearchFiltersPanel(forceOpen) {
@@ -274,6 +383,7 @@ function toggleSearchFiltersPanel(forceOpen) {
     var shouldOpen = (forceOpen === undefined) ? !panel.classList.contains('active') : !!forceOpen;
 
     if (shouldOpen) {
+        if (typeof window.updateFilterValueDisplays === 'function') window.updateFilterValueDisplays();
         panel.classList.add('active');
         if (overlay) overlay.classList.add('active');
         if (toggleBtn) toggleBtn.classList.add('active');
@@ -3640,7 +3750,7 @@ function updateAvailableTrackers() {
 
 function applyFiltersAndSort() {
     filteredResults = searchResults.filter(item => {
-        if (currentQualityFilter !== 'all' && (item.quality || 0) !== parseInt(currentQualityFilter, 10)) return false;
+        if (!qualityFilterMatches(currentQualityFilter, item.quality)) return false;
         if (currentTrackerFilter !== 'all') {
             var trackerField = (item.tracker || '').toLowerCase();
             if (trackerField.indexOf(currentTrackerFilter.toLowerCase()) === -1) return false;
@@ -3689,8 +3799,11 @@ function updateAvailableVideotype() {
     var videotypeSet = {}; var videotypeFilter = getEl('filter-videotype'); if (!videotypeFilter) return;
     searchResults.forEach(r => { if (r.videotype && r.videotype.trim()) videotypeSet[r.videotype.trim()] = true; });
     var availablevideotype = Object.keys(videotypeSet).sort();
-    var currentvideotype = videotypeFilter.value;
-    videotypeFilter.innerHTML = '<option value="all">Все</option>' + availablevideotype.map(v => `<option value="${escapeHtml(v)}" ${currentvideotype !== 'all' && v === currentvideotype ? 'selected' : ''}>${escapeHtml(v)}</option>`).join('');
+    // Переменная, а не videotypeFilter.value: до первой выдачи варианта «hdr»
+    // в select нет, value у него пустое, и значение по умолчанию из настроек
+    // сбрасывалось бы в «Все», не дождавшись списка
+    var currentvideotype = currentvideotypeFilter || 'all';
+    videotypeFilter.innerHTML = '<option value="all">Все</option>' + availablevideotype.map(v => `<option value="${escapeHtml(v)}" ${currentvideotype !== 'all' && v === currentvideotype ? 'selected' : ''}>${escapeHtml(v.toUpperCase())}</option>`).join('');
     if (currentvideotype !== 'all' && !videotypeSet[currentvideotype]) { videotypeFilter.value = 'all'; currentvideotypeFilter = 'all'; }
 }
 
@@ -3922,10 +4035,12 @@ function hideSearchResults() {
     AppState.openCatalogDetailOnSearchClose = null;
 }
 
+// «Сбросить» возвращает к значениям по умолчанию из настроек, а не к «Все»
 function resetFilters() {
-    currentSort = 'date-desc'; currentQualityFilter = 'all'; currentTrackerFilter = 'all'; currentYearFilter = ''; currentSeasonFilter = 'all'; currentVoiceFilter = 'all'; currentvideotypeFilter = 'all';
+    currentTrackerFilter = 'all'; currentYearFilter = ''; currentSeasonFilter = 'all'; currentVoiceFilter = 'all';
+    applySearchFilterDefaults();
     syncSearchFilterButtons();
-    ['filter-year', 'filter-season', 'filter-voice', 'filter-videotype'].forEach(id => { var el = getEl(id); if (el) el.value = 'all'; });
+    ['filter-year', 'filter-season', 'filter-voice'].forEach(id => { var el = getEl(id); if (el) el.value = 'all'; });
     applyFiltersAndSort();
 }
 
@@ -4247,7 +4362,10 @@ window.playFromHash = playFromHash;
 
 function clearSearchResults() {
     searchResults = []; filteredResults = []; currentSearchQuery = ''; availableTrackers = [];
-    currentTrackerFilter = 'all'; currentSeasonFilter = 'all'; currentVoiceFilter = 'all'; currentvideotypeFilter = 'all';
+    currentTrackerFilter = 'all'; currentSeasonFilter = 'all'; currentVoiceFilter = 'all';
+    // Тип видео подстраивается под выдачу (нет HDR-раздач — «Все»), поэтому
+    // каждый новый поиск начинает с него заново, со значения по умолчанию
+    applySearchFilterDefaults('videotype');
     syncSearchFilterButtons();
 }
 window.clearSearchResults = clearSearchResults;
