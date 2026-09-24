@@ -2874,9 +2874,9 @@ function addCatalogHeader(grid) {
     if (catalogState.currentCatalog === 'person') {
         var pname = (catalogState.person && catalogState.person.name) || 'Фильмография';
         header.innerHTML =
-            '<div style="display:flex;flex-direction:column;gap:5px">' +
+            '<div class="fg-col-5" style="display:flex;flex-direction:column;gap:5px">' +
             '<span style="font-size:20px;font-weight:600;color:#4a9eff">' + escapeHtml(pname) + '</span>' +
-            '<div style="display:flex;gap:15px;font-size:12px;color:#aaa"><span>фильмы и сериалы с этим актёром</span></div>' +
+            '<div class="fg-row-15" style="display:flex;gap:15px;font-size:12px;color:#aaa"><span>фильмы и сериалы с этим актёром</span></div>' +
             '</div>' +
             '<span style="font-size:14px;color:#aaa;background:rgba(0,0,0,0.3);padding:5px 12px;border-radius:20px">' +
             catalogState.items.length + '</span>';
@@ -2884,7 +2884,7 @@ function addCatalogHeader(grid) {
         return;
     }
     if (catalogState.currentCatalog === 'history') {
-        header.innerHTML = '<div style="display:flex;flex-direction:column;gap:5px"><span style="font-size:20px;font-weight:600;color:#4a9eff">' + name + '</span><div style="display:flex;gap:15px;font-size:12px;color:#aaa"><span>' + catalogState.items.length + ' записей</span></div></div>';
+        header.innerHTML = '<div class="fg-col-5" style="display:flex;flex-direction:column;gap:5px"><span style="font-size:20px;font-weight:600;color:#4a9eff">' + name + '</span><div class="fg-row-15" style="display:flex;gap:15px;font-size:12px;color:#aaa"><span>' + catalogState.items.length + ' записей</span></div></div>';
         var btn = getEl('clear-history-btn');
         if (btn) btn.onclick = clearHistory;
         grid.appendChild(header);
@@ -2900,7 +2900,7 @@ function addCatalogHeader(grid) {
             }
             if (info && info.lastModifiedISO) {
                 checkAndUpdateCatalogIfNeeded(info.id, info.lastModifiedISO);
-                header.innerHTML += '<div style="display:flex;gap:15px;font-size:12px;color:#aaa;margin-top:4px"><span>' + formatLastModifiedDate(info.lastModifiedISO) + '</span></div>';
+                header.innerHTML += '<div class="fg-row-15" style="display:flex;gap:15px;font-size:12px;color:#aaa;margin-top:4px"><span>' + formatLastModifiedDate(info.lastModifiedISO) + '</span></div>';
             }
         }
     });
@@ -4513,7 +4513,7 @@ function renderDetailTrailers(src) {
             d.dataset.videoTitle = v.name || 'Трейлер';
             d.innerHTML = '<div class="catalog-trailer-poster" style="position:relative;aspect-ratio:4/3;overflow:hidden;border-radius:12px;background:linear-gradient(135deg,#1a1a2e,#16213e)"><img src="https://img.youtube.com/vi/' + v.key + '/mqdefault.jpg" alt="' + escapeHtml(v.name || 'Трейлер') + '" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'></div>\'"><div class="catalog-trailer-play-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s;cursor:pointer"><div style="width:60px;height:60px;background:rgba(74,158,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;color:white">▶</div></div>' +
                 (v.duration ? '<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:white;font-size:12px;padding:3px 8px;border-radius:12px;font-family:monospace">' + formatDuration(v.duration) + '</div>' : '') +
-                '</div><div class="catalog-trailer-info hidden" style="padding:10px"><div class="catalog-trailer-title" style="font-size:14px;font-weight:600;color:#fff;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(v.name || 'Трейлер') + '</div><div class="catalog-trailer-meta" style="display:flex;gap:10px;font-size:12px;color:#aaa"><span>Трейлер</span>' + (v.duration ? '<span>⏱️ ' + formatDuration(v.duration) + '</span>' : '') + '</div></div>';
+                '</div><div class="catalog-trailer-info hidden" style="padding:10px"><div class="catalog-trailer-title" style="font-size:14px;font-weight:600;color:#fff;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(v.name || 'Трейлер') + '</div><div class="catalog-trailer-meta fg-row-10" style="display:flex;gap:10px;font-size:12px;color:#aaa"><span>Трейлер</span>' + (v.duration ? '<span>⏱️ ' + formatDuration(v.duration) + '</span>' : '') + '</div></div>';
             frag.appendChild(d);
         });
         te2.innerHTML = '';

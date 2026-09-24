@@ -346,48 +346,40 @@ html.no-flex-gap .catalog-show-all .show-all-inner > * + * {
 }
 
 /* ============== 1b. Инлайновые gap в разметке ==============
-   Те же отступы для элементов, у которых gap задан прямо в
-   атрибуте style (index.html и шаблоны в js/*.js). Селекторы
-   ловят точную подстроку атрибута, поэтому при правке инлайнового
-   стиля надо поправить и правило здесь. */
+   Те же отступы для элементов, у которых gap задан прямо в атрибуте style
+   (шаблоны в js/*.js). Элементы помечены классами fg-*, и правила ловят их по
+   классу.
 
-/* index.html */
-html.no-flex-gap [style*="gap: 30px"]:not([style*="column"]):not([style*="wrap"]) > * + * {
-  margin-left:30px;
-}
+   Раньше здесь были селекторы по подстроке атрибута:
+   [style*="gap:15px"]:not([style*="wrap"]) > * + *. На Chrome 66 они дорого
+   стоили: вставка или удаление ЛЮБОГО ребёнка в контейнере с атрибутом style
+   (у #catalog-grid он есть) пересчитывала стили всех его детей. В сетке
+   категории чанки подливаются по строке за кадр, и каждый кадр прокрутки
+   пересчитывал ~1000 элементов (20–35 мс на ПК, в разы дольше на ТВ).
+   Не возвращать поиск по style — добавлять класс в шаблон. */
 
-/* index.html */
-html.no-flex-gap [style*="gap: 10px"]:not([style*="column"]):not([style*="wrap"]) > * + * {
-  margin-left:10px;
-}
-
-/* js/catalog-idb-patch.js, js/catalog-worker-patch.js, js/catalog.js */
-html.no-flex-gap [style*="flex-direction:column"][style*="gap:5px"] > * + * {
+/* шапка сетки категории: js/catalog.js, js/catalog-idb-patch.js */
+html.no-flex-gap .fg-col-5 > * + * {
   margin-top:5px;
 }
 
-/* js/catalog-idb-patch.js, js/catalog-worker-patch.js, js/catalog.js */
-html.no-flex-gap [style*="gap:15px"]:not([style*="column"]):not([style*="wrap"]) > * + * {
+/* js/catalog.js, js/catalog-idb-patch.js */
+html.no-flex-gap .fg-row-15 > * + * {
   margin-left:15px;
 }
 
 /* js/catalog-idb-patch.js */
-html.no-flex-gap [style*="flex-wrap:wrap"][style*="gap:15px"]:not([style*="column"]) > * {
+html.no-flex-gap .fg-wrap-15 > * {
   margin-right:15px;
   margin-bottom:15px;
 }
-html.no-flex-gap [style*="flex-wrap:wrap"][style*="gap:15px"]:not([style*="column"]) > *:last-child {
+html.no-flex-gap .fg-wrap-15 > *:last-child {
   margin-right: 0;
 }
 
-/* js/catalog.js */
-html.no-flex-gap [style*="gap:10px"]:not([style*="column"]):not([style*="wrap"]) > * + * {
+/* мета трейлера в карточке: js/catalog.js */
+html.no-flex-gap .fg-row-10 > * + * {
   margin-left:10px;
-}
-
-/* js/torrents.js */
-html.no-flex-gap [style*="flex-direction: column"][style*="gap: 15px"] > * + * {
-  margin-top:15px;
 }
 
 /* ===================== 2. ASPECT-RATIO ===================== */

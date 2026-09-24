@@ -521,8 +521,17 @@
         // .catalog-badge — год у карточек рядов, .poster-year — у карточек сетки
         if (!currentSettings.showYear) css.push('.catalog-badge,.card-modern .poster-year{display:none!important;}');
 
-        // 7. Яркость постеров
-        css.push('.torrent-poster img,.row-poster-img,img.catalog-poster-img{filter:brightness(' + bright + ')!important;}');
+        // 7. Яркость постеров.
+        //    При «Обычной» фильтра нет вовсе: brightness(1) ничего не меняет в
+        //    картинке, но не бесплатен — на Chrome 66 (Android TV) каждый кадр
+        //    с отфильтрованными постерами рисовался втрое дольше (замер в
+        //    эмуляторе: 42 мс против 14 мс на кадр ряда каталога).
+        //    Фильтр — только на саму картинку: раньше он стоял и на обёртке
+        //    .row-poster-img, и на img внутри неё, и «Приглушённая» затемняла
+        //    постеры рядов дважды (0.8 × 0.8).
+        if (bright !== BRIGHTNESS.normal) {
+            css.push('.torrent-poster img,.row-poster-img>img,img.catalog-poster-img{filter:brightness(' + bright + ')!important;}');
+        }
 
         // 8. Масштаб detail-view.
         //    zoom вешаем на содержимое (а не на сам #detail-view — он position:fixed inset:0
