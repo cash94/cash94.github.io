@@ -898,6 +898,48 @@ function getDetailItems() {
     return a;
 }
 
+/**
+ * Быстрый путь для «влево/вправо» внутри ленты карточки: файлы, актёры,
+ * похожие. Соседа ищем среди братьев в разметке, а не в полном списке
+ * getDetailItems().
+ *
+ * Тот собирает 14 селекторов по всему документу и у каждой находки
+ * спрашивает offsetParent — а сразу после прошлого шага (смена .focused,
+ * прокрутка ленты) раскладка грязная, и первое же чтение пересчитывает её
+ * синхронно. В ряду из 76 файлов сериала это стоило 20–45 мс на нажатие даже
+ * на ПК (Chrome 66), а шагу нужен лишь соседний элемент той же ленты.
+ *
+ * Поведение то же, что у веток isF / isA / isR в handleNavigation: у края
+ * ленты файлы стоят на месте, а актёры и похожие перефокусируют ту же
+ * карточку. Скрытые элементы ленты (заглушки с .hidden) пропускаются.
+ * Вверх/вниз и всё прочее — через общий путь.
+ *
+ * @returns {boolean} true — шаг сделан здесь
+ */
+var DETAIL_LANE_CLASSES = ['file-item', 'catalog-actor-card', 'catalog-recommendation-card'];
+
+function detailLaneStep(dir) {
+    if (dir !== 'left' && dir !== 'right') return false;
+    var f = document.querySelector('.focused');
+    if (!f || !f.classList || !belongsToScreen(f, 'detail')) return false;
+    var lane = null;
+    for (var i = 0; i < DETAIL_LANE_CLASSES.length; i++) {
+        if (f.classList.contains(DETAIL_LANE_CLASSES[i])) { lane = DETAIL_LANE_CLASSES[i]; break; }
+    }
+    if (!lane) return false;
+    // Скрытость — по классу и атрибуту, а не VISIBLE(): offsetParent после
+    // прошлого шага снова заставил бы пересчитать раскладку. Заглушки в лентах
+    // прячутся именно классом .hidden.
+    var sib = f;
+    do {
+        sib = dir === 'left' ? sib.previousElementSibling : sib.nextElementSibling;
+    } while (sib && !(sib.classList && sib.classList.contains(lane) &&
+        !sib.hidden && !sib.classList.contains('hidden') && sib.style.display !== 'none'));
+    if (sib) focusEl(sib, { direction: dir });
+    else if (lane !== 'file-item') focusEl(f, { direction: dir });
+    return true;
+}
+
 function getConfigMenuItems() {
     var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab', 'other-tab'];
     var visibleItems = [];
@@ -1475,6 +1517,7 @@ var ScreenStrategies = {
             return focusEl(items[0]); // || getEl('back-from-detail'));
         },
         handleNavigation: function (dir) {
+            if (detailLaneStep(dir)) return true;
             var items = getDetailItems(), f = (belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null);
             if (!f) return this.ensureFocus(true);
 
