@@ -2028,6 +2028,19 @@ function setupCheckboxes() {
     });
   }
 
+  // Предзагрузка перед воспроизведением. Флаг читает startHLSPlayback
+  // (player.js) на каждом запуске, само окно — в torrserverstats.js.
+  var preloadCheckbox = getEl('preload-before-play');
+  if (preloadCheckbox) {
+    AppState.preloadBeforePlay = localStorage.getItem('preloadBeforePlay') === 'true';
+    preloadCheckbox.checked = AppState.preloadBeforePlay;
+    preloadCheckbox.addEventListener('change', function (e) {
+      AppState.preloadBeforePlay = e.target.checked;
+      localStorage.setItem('preloadBeforePlay', AppState.preloadBeforePlay);
+      console.log('⏳ Предзагрузка:', AppState.preloadBeforePlay ? 'включена' : 'выключена');
+    });
+  }
+
   // 4. Транскодирование
   var transcodingCheckbox = getEl('transcoding-off');
   if (window.AndroidJS) {

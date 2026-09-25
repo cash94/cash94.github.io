@@ -4391,8 +4391,22 @@ async function playFromHash(hash, magnet, searchResult = null) {
         if (!window.AndroidJS || !AppState.transcodingFullOnOff) { AppState.currentDetailItem = addedTorrent; }
         if (!isSerial) {
             var fileId = 1;
+            // Плеер не поднялся или предзагрузку отменили «Назад» — результаты
+            // поиска уже спрятаны, и без возврата экран остался бы пустым
+            var restoreSearchAfterFailedStart = function (searchOverlay) {
+                if (AppState.currentScreen === 'player') return;
+                AppState.playFromHash = false;
+                AppState.currentScreen = 'search';
+                if (searchOverlay) searchOverlay.classList.remove('hidden');
+                setTimeout(function () { if (typeof window.focusSearchHome === 'function') window.focusSearchHome(); }, 80);
+            };
             if (window.AndroidJS) {
                 getEl('playback-overlay').classList.remove('active');
+                // Нативный плеер открывается мимо startHLSPlayback, поэтому окно
+                // предзагрузки (настройка «Предзагрузка») — здесь. Отменили —
+                // остаёмся в результатах поиска, они и не прятались
+                if (AppState.preloadBeforePlay && typeof runPlaybackPreload === 'function' &&
+                    !(await runPlaybackPreload(hash, fileId, addedTorrent.title))) return false;
                 var playURL = AppState.currentTorrserverUrl + "/stream?link=" + hash + "&index=" + fileId + "&play=play";
                 // Через openAndroidPlayer, а не напрямую: там дедуп повторного
                 // запуска и запись currentTimecodeData, от которой зависит
@@ -4411,7 +4425,7 @@ async function playFromHash(hash, magnet, searchResult = null) {
                 var playURL = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
                 var searchOverlay = getEl('search-overlay');
                 if (searchOverlay) searchOverlay.classList.add('hidden');
-                await startHLSPlayback(playURL, null, true, fileId);
+                if (!(await startHLSPlayback(playURL, null, true, fileId))) restoreSearchAfterFailedStart(searchOverlay);
                 return true;
             }
             var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
@@ -4426,15 +4440,8 @@ async function playFromHash(hash, magnet, searchResult = null) {
             var searchOverlay = getEl('search-overlay');
             if (searchOverlay) searchOverlay.classList.add('hidden');
             var started = await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
-            // Плеер не поднялся (нет метаданных, файл не отдался) — результаты
-            // поиска уже спрятаны, и без возврата экран остался бы пустым:
-            // раньше на этом месте hideSearchResults() уводил на «Мои торренты».
-            if (!started && AppState.currentScreen !== 'player') {
-                AppState.playFromHash = false;
-                AppState.currentScreen = 'search';
-                if (searchOverlay) searchOverlay.classList.remove('hidden');
-                setTimeout(function () { if (typeof window.focusSearchHome === 'function') window.focusSearchHome(); }, 80);
-            }
+            // Раньше на этом месте hideSearchResults() уводил на «Мои торренты»
+            if (!started) restoreSearchAfterFailedStart(searchOverlay);
         } else {
             AppState.currentDetailItem = addedTorrent; AppState.isCatalogSerials = true;
             // Результаты поиска не уничтожаем — только прячем оверлей. «Назад» из

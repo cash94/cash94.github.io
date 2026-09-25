@@ -2323,6 +2323,17 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (fromSearch === undefined) fromSearch = false;
   if (episodeIndex === undefined) episodeIndex = null;
   if (audioTrack === undefined) audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
+  // Настройка «Предзагрузка»: до плеера — окно с буфером и статистикой раздачи
+  // (torrserverstats.js). Только при запуске из интерфейса: смена серии,
+  // дорожки и перезапуск потока идут изнутри плеера, и там окно ни к чему.
+  // «Назад» в окне — отмена: возвращаем false, как при неподнявшемся плеере.
+  if (AppState.preloadBeforePlay && AppState.currentScreen !== 'player' && typeof runPlaybackPreload === 'function') {
+    var preloadRef = parseStreamRef(originalUrl);
+    if (preloadRef) {
+      var preloadTitle = AppState.currentDetailItem ? (AppState.currentDetailItem.title || AppState.currentDetailItem.name || '') : '';
+      if (!(await runPlaybackPreload(preloadRef.hash, preloadRef.fileId, preloadTitle))) return false;
+    }
+  }
   if (window.AndroidJS) {
     var androidRef = parseStreamRef(originalUrl);
 

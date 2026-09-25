@@ -28,6 +28,10 @@ var AppState = {
   // Настройка «Автопропуск заставки»: кнопка пропуска отсчитывает и
   // пропускает сама (player.js, startAutoSkipCountdown). Из localStorage.
   autoSkipIntro: false,
+  // Настройка «Предзагрузка» (TorrServer): перед стартом плеера набрать буфер
+  // в окне со статистикой раздачи (torrserverstats.js, runPlaybackPreload).
+  // Из localStorage.
+  preloadBeforePlay: false,
   // Настройка «Использовать встроенную клавиатуру» (Прочее): на текстовых
   // полях вместо системной открывается своя экранная клавиатура (js/osk.js).
   // Из localStorage.
