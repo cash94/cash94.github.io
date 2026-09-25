@@ -1257,6 +1257,7 @@ async function getTmdbDetailsWithCache(tmdbId, mediaType) {
 function resetDetailBackground() {
     var detailView = getEl('detail-view');
     if (!detailView) return;
+    detailView.dataset.torrentHash = '';   // собранной карточки раздачи больше нет
     detailView.style.backgroundImage = ''; detailView.style.backgroundColor = '#000000';
     var existingOverlay = getEl('detail-backdrop-overlay'); if (existingOverlay) existingOverlay.remove();
     var detailSubtitle = getEl('detail-subtitle'); if (detailSubtitle) { detailSubtitle.textContent = ''; detailSubtitle.style.display = 'none'; }
@@ -1910,8 +1911,53 @@ applyFocusColorVars();
     setTimeout(function () { waitForUiCustomizer(triesLeft - 1); }, 300);
 })(20);
 
+/**
+ * Карточка этой раздачи уже собрана в разметке и сейчас скрыта: закрыли её
+ * «назад» и открываем снова. Тогда разбирать и собирать заново незачем — на
+ * медленном ТВ это и было «морганием»: в видимую карточку по очереди
+ * впрыгивали плитки серий без кадров, пустые кружки актёров, их фото.
+ *
+ * Метку ставит полная сборка (detailView.dataset.torrentHash), снимает
+ * resetDetailBackground. Карточка каталога переключает режим
+ * (visibleItemsforDetail → catalog-detail-mode) — тогда проверка не пройдёт.
+ */
+function isTorrentDetailReusable(torrent) {
+    var dv = getEl('detail-view');
+    var hash = torrent && torrent.hash ? String(torrent.hash) : '';
+    if (!dv || !hash || dv.dataset.torrentHash !== hash) return false;
+    if (!dv.classList.contains('torrent-detail-mode') || dv.style.display !== 'none') return false;
+    var title = getEl('detail-title-text');
+    if (!title || !String(title.textContent || '').trim()) return false;
+    var item = document.querySelector('#files-list .file-item:not(.hidden)');
+    return !!(item && item.dataset.hash === hash);
+}
+
+/** Фокус на «Играть/Продолжить», иначе на первую плитку (после открытия карточки) */
+function focusTorrentDetailStart() {
+    if (typeof updateFocusableElements !== 'function' || typeof setFocus !== 'function') return;
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    updateFocusableElements();
+    // Фокус ставим на «Играть/Продолжить», а не на первую плитку. Строка
+    // метаданных и ряд актёров приходят из TMDB позже и сдвигают ряд файлов
+    // вниз — вместе со сфокусированной плиткой, и она уезжала за экран.
+    // Кнопка стоит в шапке, выше всего, что подгружается, и не двигается.
+    var progressBtn = getEl('detail-progress-btn');
+    if (progressBtn && progressBtn.offsetParent !== null) {
+        for (var i = 0; i < focusableElements.length; i++) {
+            if (focusableElements[i] === progressBtn) { setFocus(i); return; }
+        }
+    }
+    if (document.querySelectorAll('#files-list .file-item:not(.hidden)').length > 0) {
+        for (var j = 0; j < focusableElements.length; j++) {
+            if (focusableElements[j].classList && focusableElements[j].classList.contains('file-item')) { setFocus(j); return; }
+        }
+    }
+    setFocus(0);
+}
+
 async function showDetail(torrent) {
     if (torrent && torrent.hash) window.lastSelectedTorrentHash = torrent.hash;
+    var reuse = isTorrentDetailReusable(torrent);
     if (window.Nav && torrent) Nav.push('torrent-detail', { key: 't:' + String(torrent.hash || '').toLowerCase(), label: torrent.title || torrent.hash, torrent: torrent });
     if (typeof currentFocusIndex !== 'undefined') window.lastSelectedTorrentIndex = currentFocusIndex;
     // Рамки фокуса нового detail читают var(--focus-color) — убеждаемся, что
@@ -1921,10 +1967,10 @@ async function showDetail(torrent) {
     // раздачи) — уводим её ДО resetDetailBackground: тот чистит фон, заголовок
     // и ряды, и на видимой карточке это выглядит как развал с последующим
     // морганием. Открытие с нуля промис отдаёт выполненным сразу.
-    if (typeof Animations !== 'undefined' && typeof Animations.beginDetailSwap === 'function') {
+    if (!reuse && typeof Animations !== 'undefined' && typeof Animations.beginDetailSwap === 'function') {
         await Animations.beginDetailSwap();
     }
-    resetDetailBackground();
+    if (!reuse) resetDetailBackground();
     var known = knownTorrentMeta.get(String(torrent.hash || '').toLowerCase());
 
     if (known) {
@@ -1953,6 +1999,32 @@ async function showDetail(torrent) {
     } else {
         AppState.currentDetailItem = AppState.playFromHash ? AppState.androidBackCatalog : torrent;
     }
+
+    if (reuse) {
+        // Та же раздача, карточка собрана — показываем сразу как есть. Свежим
+        // может быть только прогресс просмотра (вернулись из плеера): его и
+        // обновляем, списком файлов из кэша.
+        var dvReuse = getEl('detail-view');
+        if (typeof Animations !== 'undefined') Animations.animateDetailShow();
+        getTorrentFilesWithCache(torrent, false).then(function (files) {
+            var items = [].slice.call(document.querySelectorAll('#files-list .file-item:not(.hidden)'));
+            if (items.length) loadProgressForFileItems(items, torrent.hash);
+            return addProgressToDetail(torrent, files);
+        }).then(function (lastField) {
+            if (lastField > 0 && typeof updateFocusableElements === 'function') updateFocusableElements();
+            var playBtn = getEl('detail-progress-btn');
+            if (playBtn && playBtn.dataset.hash) preloadDetailFile(playBtn.dataset.hash, playBtn.dataset.fileId);
+        }).catch(function () { });
+        setTimeout(function () {
+            focusTorrentDetailStart();
+            if (typeof Animations !== 'undefined' && typeof Animations.detailContentReady === 'function') {
+                Animations.detailContentReady();
+            }
+        }, 0);
+        AppState.mediaType = '';
+        return;
+    }
+
     hideCatalogDetailExtra();
     visibleItemsforDetail('showDetail');
 
@@ -2020,6 +2092,9 @@ async function showDetail(torrent) {
                 return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext));
             });
             var addedItems = renderFileItems(videoFiles, torrent.hash, torrent.title);
+            // Карточка этой раздачи собрана — повторный вход её переиспользует
+            // (isTorrentDetailReusable)
+            if (detailViewDiv) detailViewDiv.dataset.torrentHash = String(torrent.hash || '');
             // Ряд серий — тоже пул плиток в одном и том же #files-list, и
             // прокрутка прошлой раздачи переходила к новой: долистал сериал до
             // 24-й серии, открыл другой — а он уже в конце.
@@ -2080,27 +2155,7 @@ async function showDetail(torrent) {
         showFilesListMessage('❌ Ошибка загрузки файлов: ' + escapeHtml(e.message), 'files-list-msg-compact files-list-msg-error');
     }
     setTimeout(function () {
-        if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
-            if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
-            updateFocusableElements();
-            // Фокус ставим на «Играть/Продолжить», а не на первую плитку. Строка
-            // метаданных и ряд актёров приходят из TMDB позже и сдвигают ряд файлов
-            // вниз — вместе со сфокусированной плиткой, и она уезжала за экран.
-            // Кнопка стоит в шапке, выше всего, что подгружается, и не двигается.
-            var placed = false;
-            var progressBtn = getEl('detail-progress-btn');
-            if (progressBtn && progressBtn.offsetParent !== null) {
-                for (var i = 0; i < focusableElements.length; i++) {
-                    if (focusableElements[i] === progressBtn) { setFocus(i); placed = true; break; }
-                }
-            }
-            if (!placed && document.querySelectorAll('#files-list .file-item:not(.hidden)').length > 0) {
-                for (var j = 0; j < focusableElements.length; j++) {
-                    if (focusableElements[j].classList && focusableElements[j].classList.contains('file-item')) { setFocus(j); placed = true; break; }
-                }
-            }
-            if (!placed) setFocus(0);
-        }
+        focusTorrentDetailStart();
         // Всё отрисовано и фокус на месте — снимаем индикатор «Загрузка…»
         if (typeof Animations !== 'undefined' && typeof Animations.detailContentReady === 'function') {
             Animations.detailContentReady();

@@ -3680,6 +3680,7 @@ function showPlayerControls(preferredFocusId) {
     if (preferredFocusId === undefined) preferredFocusId = 'play-pause-btn';
     var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn', 'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn', 'audio-btn', 'subtitles-btn', 'player-title'];
     for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e) e.classList.remove('idle-hidden'); }
+    if (typeof window.setPlayerCursorHidden === 'function') window.setPlayerCursorHidden(false);
     if (typeof window.syncPlayerTitleVisibility === 'function') window.syncPlayerTitleVisibility(true);
     var pt = getEl('player-title'); if (pt) pt.classList.remove('hidden');
     if (typeof Animations !== 'undefined') Animations.animateControlsShow();
@@ -3729,6 +3730,7 @@ function hidePlayerControls() {
     if (typeof Animations !== 'undefined') Animations.animateControlsHide();
     var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn', 'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn', 'audio-btn', 'subtitles-btn', 'player-title'];
     for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e) e.classList.add('idle-hidden'); }
+    if (typeof window.setPlayerCursorHidden === 'function') window.setPlayerCursorHidden(true);
     if (typeof window.syncPlayerTitleVisibility === 'function') window.syncPlayerTitleVisibility(false);
     var pt = getEl('player-title'); if (pt) pt.classList.add('hidden');
     var focused = document.querySelectorAll('.focused');
