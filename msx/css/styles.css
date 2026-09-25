@@ -1718,6 +1718,13 @@ body.detail-open {
   z-index: 205;
 }
 
+/* Курсор прячется вместе с панелью плеера (player.js: setPlayerCursorHidden).
+   Со звёздочкой: у кнопок, ползунков и оверлеев свой cursor: pointer. */
+#player-screen.player-cursor-hidden,
+#player-screen.player-cursor-hidden * {
+  cursor: none !important;
+}
+
 #buffer-stats {
   position: fixed;
   bottom: 120px;

@@ -578,8 +578,20 @@ function setPlayerControlsIdle(hidden) {
     else els[i].classList.remove('idle-hidden');
   }
   syncPlayerTitleVisibility(!hidden);
+  setPlayerCursorHidden(hidden);
 }
 window.setPlayerControlsIdle = setPlayerControlsIdle;
+
+/**
+ * Курсор мыши над плеером прячется вместе с панелью и возвращается с ней
+ * (движение мыши → resetMouseIdleTimer). Зовут и отсюда, и control.js
+ * (hidePlayerControls / showPlayerControls — панель с пульта).
+ */
+function setPlayerCursorHidden(hidden) {
+  var ps = getEl('player-screen');
+  if (ps) ps.classList.toggle('player-cursor-hidden', !!hidden);
+}
+window.setPlayerCursorHidden = setPlayerCursorHidden;
 
 function resetMouseIdleTimer() {
   var playerScreen = getEl('player-screen');

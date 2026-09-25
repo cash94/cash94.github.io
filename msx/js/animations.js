@@ -341,7 +341,17 @@ var Animations = (function () {
         // и на возврате из поиска (hideSearchResults, ветка returnTo === 'detail')
         // показывалась половина карточки — описание, кнопки, фон и похожие есть,
         // остального нет.
-        if (!keepContent && typeof window.resetDetailBackground === 'function') {
+        //
+        // Собранную карточку раздачи («Мои торренты») тоже не чистим: повторный
+        // вход в ту же раздачу показывает её как есть (torrents.js:
+        // isTorrentDetailReusable), без разбора и сборки заново — на ТВ сборка
+        // на глазах и была «морганием». Флагом keepContent тут не обойтись:
+        // после затухания карточку закрывают ещё раз, страховочно, уже без
+        // флага. Следующая другая карточка чистит всё сама перед показом
+        // (showDetail / showCatalogDetail → resetDetailBackground).
+        var keptTorrentCard = !!(detailView.dataset && detailView.dataset.torrentHash &&
+            detailView.classList.contains('torrent-detail-mode'));
+        if (!keepContent && !keptTorrentCard && typeof window.resetDetailBackground === 'function') {
             try { window.resetDetailBackground(); } catch (e) { }
         }
     }
