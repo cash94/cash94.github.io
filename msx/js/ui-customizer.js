@@ -22,6 +22,7 @@
     var defaultSettings = {
         cardSize: 210,               // ЕДИНЫЙ размер карточек и постеров: ширина в px (макс 260 = 260×460)
         detailScale: 100,            // масштаб содержимого detail-view, %
+        detailTextScale: 100,        // шрифт описания в detail-view, % от базового
         catalogColumns: 'auto',      // auto | 3..8  (auto = число колонок считается из cardSize)
         // Размеры подписей карточки — в пикселях, ползунками (см. SLIDERS).
         // Прежний пресет fontSize (small/medium/large) остался только для
@@ -82,6 +83,14 @@
         // увеличивает именно их.
         heroTextScale: {
             min: 80, max: 220, step: 5, def: 100,
+            fmt: function (v) { return v + '%'; }
+        },
+        // Шрифт описания в карточке фильма. Жалобы: на 1080p с дивана не
+        // прочитать. Масштаб всего detail-view (detailScale) тут не выход — он
+        // тянет и кнопки, и постеры, а нужно только текст. Множитель, как у
+        // баннера: базовые размеры описания свои под каждый экран.
+        detailTextScale: {
+            min: 80, max: 200, step: 5, def: 100,
             fmt: function (v) { return v + '%'; }
         }
     };
@@ -241,6 +250,7 @@
         }
         delete s.heroOverviewScale;
         s.heroTextScale = clampStep(s.heroTextScale, SLIDERS.heroTextScale);
+        s.detailTextScale = clampStep(s.detailTextScale, SLIDERS.detailTextScale);
         s.focusColor = normalizeColor(s.focusColor);
 
         s.showRatings = !!s.showRatings;
@@ -431,12 +441,8 @@
         // Сама панель настройки — живой предпросмотр выбранного цвета.
         // Селектор длиннее, чем в injectPanelStyles(), чтобы победить
         // независимо от порядка тегов <style> в head.
-        // Сама панель настройки — живой предпросмотр выбранного цвета (через box-shadow).
         css.push('.ui-customizer-overlay .ui-customizer-panel .ui-focused{' +
-            'box-shadow:0 0 0 3px ' + c + ', 0 0 0 6px ' + rgba(c, 0.25) + '!important;outline:none!important;}');
-
-        // Выбранный образец в палитре обводим его же цветом
-        css.push('.ui-customizer-panel .ui-swatch[data-value="' + c + '"]{border-color:' + c + '!important;}');
+            'box-shadow:0 0 0 3px ' + c + '!important;outline:none!important;}');
 
         return css;
     }
@@ -450,6 +456,7 @@
         var typeSize = clampStep(currentSettings.typeSize, SLIDERS.typeSize);
         var yearSize = clampStep(currentSettings.yearSize, SLIDERS.yearSize);
         var heroTextScale = clampStep(currentSettings.heroTextScale, SLIDERS.heroTextScale);
+        var detailTextScale = clampStep(currentSettings.detailTextScale, SLIDERS.detailTextScale);
         var radius = RADII[currentSettings.borderRadius] || RADII.medium;
         var density = DENSITIES[currentSettings.density] || DENSITIES.comfortable;
         var bright = BRIGHTNESS[currentSettings.posterBrightness] || BRIGHTNESS.normal;
@@ -511,6 +518,10 @@
         // --hero-size в styles.css). Именно текст, а не блок: zoom тянул бы
         // вместе с буквами кнопки и отступы, а баннер масштабировать не нужно.
         css.push(':root{--hero-text-scale:' + (heroTextScale / 100) + ';}');
+        // Описание в карточке фильма (#catalog-detail-overview) и торрента
+        // (#detail-subtitle): все их font-size в styles.css умножаются на эту
+        // переменную. Обрезка по строкам остаётся — длинное раскрывает «Подробнее».
+        css.push(':root{--detail-text-scale:' + (detailTextScale / 100) + ';}');
 
         // Полоса на постере растёт вместе с тем, что в ней лежит
         css.push('.card-modern .poster-bar{height:' +
@@ -570,6 +581,16 @@
             document.head.appendChild(style);
         }
         style.textContent = buildSettingsCss();
+        // torrents.js (applyFocusColorVars) дублирует --focus-color инлайном на
+        // <html>, а инлайн перебивает :root из <style> выше. Пишем туда же, иначе
+        // при выборе цвета в панели всё, что берёт цвет из переменной (ползунки
+        // и переключатели панели, настройки, экран поиска), оставалось старого
+        // цвета до «Сохранить».
+        try {
+            var fc = focusColor();
+            document.documentElement.style.setProperty('--focus-color', fc);
+            document.documentElement.style.setProperty('--focus-color-soft', rgba(fc, 0.35));
+        } catch (e) { }
         // Размер карточки/шрифт/плотность изменились — прежний замер высоты ряда
         // больше не годится. Снимаем его, чтобы заработал резерв из buildSettingsCss,
         // и перезамеряем на следующем кадре, когда сетка уже перестроится.
@@ -629,56 +650,74 @@
         var s = document.createElement('style');
         s.id = 'ui-customizer-panel-style';
         s.textContent = [
-            '.ui-customizer-overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.75);}',
+            // Оформление — как у экрана «Настройки» (styles.css, #config-screen):
+            // тёмные плашки с полупрозрачной рамкой, белые заголовки, выбранное
+            // значение и главная кнопка — белые, переключатели вместо галок.
+            // Акцентный цвет один — цвет фокуса (--focus-color из buildFocusCss):
+            // кольцо фокуса, заливка ползунка, включённый переключатель.
+            '.ui-customizer-overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.8);}',
             '.ui-customizer-overlay.hidden{display:none;}',
-            '.ui-customizer-panel{width:92vw;max-width:760px;max-height:88vh;display:flex;flex-direction:column;background:#15151b;border:1px solid #2a2a30;border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,0.6);overflow:hidden;}',
-            '.ui-customizer-header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #2a2a30;}',
-            '.ui-customizer-header h2{margin:0;font-size:20px;color:#fff;}',
-            '.ui-customizer-close{background:#1e1e28;color:#fff;border:1px solid #33333d;border-radius:10px;width:40px;height:40px;font-size:18px;cursor:pointer;line-height:1;}',
+            '.ui-customizer-panel{width:92vw;max-width:760px;max-height:88vh;display:flex;flex-direction:column;background:#0e0e12;border:1px solid rgba(255,255,255,0.08);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,0.7);overflow:hidden;color:#e0e0e0;}',
+            '.ui-customizer-header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:20px 24px 16px;border-bottom:1px solid rgba(255,255,255,0.06);}',
+            '.ui-customizer-header h2{margin:0;font-size:24px;font-weight:700;color:#fff;}',
+            '.ui-customizer-close{display:flex;align-items:center;justify-content:center;flex:0 0 auto;width:40px;height:40px;padding:0;background:rgba(255,255,255,0.12);color:#fff;border:0;border-radius:50%;font-size:15px;line-height:1;cursor:pointer;}',
+            '.ui-customizer-close i{display:block;line-height:1;}',
+            '.ui-customizer-close:hover{background:rgba(255,255,255,0.2);}',
             // min-height:0 обязателен, иначе flex-элемент не сжимается и скролл ломается
-            '.ui-customizer-content{flex:1 1 auto;min-height:0;padding:0 22px 12px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}',
-            '.ui-customizer-group{padding:0 0 12px;border-bottom:1px solid #202028;}',
+            '.ui-customizer-content{flex:1 1 auto;min-height:0;padding:0 24px 12px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}',
+            '.ui-customizer-group{padding:0 0 16px;border-bottom:1px solid rgba(255,255,255,0.06);}',
             '.ui-customizer-group:last-child{border-bottom:none;}',
             // Залипающий заголовок: всегда видно, какой параметр настраиваешь
             '.ui-customizer-group h3{position:sticky;top:0;z-index:3;display:flex;align-items:baseline;justify-content:space-between;' +
-            'margin:0 -22px 10px;padding:12px 22px 8px;font-size:14px;font-weight:600;color:#9fb4cc;text-transform:uppercase;letter-spacing:.4px;background:#15151b;}',
-            '.ui-customizer-hint{margin:-4px 0 8px;font-size:12px;color:#6f7889;text-transform:none;letter-spacing:0;}',
+            'margin:0 -24px 8px;padding:16px 24px 8px;font-size:17px;font-weight:700;color:#fff;background:#0e0e12;}',
+            '.ui-customizer-hint{margin:0 0 10px;font-size:13px;line-height:1.4;color:#8a8a96;}',
             // ВАЖНО: внутри панели отступы делаются margin'ами, а не gap.
             // gap во flexbox работает только с Chrome 84, а панель должна
             // выглядеть одинаково и на старых ТВ (Chrome 66) — там всё
             // «слипалось» в одну кучу. Значения подобраны так, чтобы
             // геометрия совпадала с прежними gap.
             '.ui-customizer-options{display:flex;flex-wrap:wrap;margin:-4px;}',   // -4px + 4px у детей = зазор 8px
-            '.ui-option{background:#1e1e28;color:#cfd4dc;border:1px solid #33333d;border-radius:10px;margin:4px;padding:9px 16px;font-size:14px;cursor:pointer;transition:background .15s,border-color .15s;}',
-            '.ui-option:hover{background:rgba(38,38,51,0.5);}',
-            '.ui-option.active{background:#4a9eff;border-color:#4a9eff;color:#fff;font-weight:600;}',
+            // Варианты — как .settings-chip в настройках, выбранный — белый
+            '.ui-option{background:rgba(255,255,255,0.06);color:#cfd4dc;border:1px solid rgba(255,255,255,0.1);border-radius:10px;margin:4px;padding:9px 18px;font-family:inherit;font-size:15px;cursor:pointer;transition:background .15s,color .15s;}',
+            '.ui-option:hover{background:rgba(255,255,255,0.12);}',
+            '.ui-option.active,.ui-option.active:hover{background:#fff;border-color:#fff;color:#000;font-weight:600;}',
             // Палитра цвета фокуса
-            '.ui-swatch{display:inline-flex;align-items:center;padding:8px 15px 8px 10px;}',
+            '.ui-swatch{display:inline-flex;align-items:center;padding:8px 16px 8px 10px;}',
             '.ui-swatch>*+*{margin-left:9px;}',
-            '.ui-swatch-dot{flex:0 0 auto;width:18px;height:18px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.5);}',
-            // 3 класса — перебивает .ui-option.active независимо от порядка правил
-            '.ui-option.ui-swatch.active{background:#22222c;color:#fff;font-weight:600;}',
-            '.ui-swatch.active .ui-swatch-dot{box-shadow:inset 0 0 0 2px #fff,0 0 0 1px rgba(0,0,0,.6);}',
-            // Ползунок
-            '.ui-slider{display:flex;align-items:center;padding:8px 4px;border-radius:10px;user-select:none;-webkit-user-select:none;}',
-            '.ui-slider>*+*{margin-left:16px;}',
-            '.ui-slider-track{position:relative;flex:1 1 auto;height:8px;background:#262630;border-radius:6px;cursor:pointer;}',
-            '.ui-slider-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:#4a9eff;border-radius:6px;}',
-            '.ui-slider-thumb{position:absolute;top:50%;left:0;width:22px;height:22px;margin:-11px 0 0 -11px;background:#fff;border:2px solid #4a9eff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.55);}',
-            '.ui-slider-val{flex:0 0 auto;min-width:104px;text-align:right;font-size:15px;font-weight:600;color:#e8edf5;}',
-            '.ui-slider.ui-focused .ui-slider-track{background:#33333f;}',
-            '.ui-slider.ui-focused .ui-slider-thumb{width:26px;height:26px;margin:-13px 0 0 -13px;}',
-            '.ui-slider-ends{display:flex;justify-content:space-between;margin-top:2px;font-size:11px;color:#5d6675;}',
-            '.ui-checkbox{display:flex;align-items:center;padding:8px 4px;color:#cfd4dc;font-size:14px;cursor:pointer;border-radius:10px;}',
-            '.ui-checkbox>*+*{margin-left:10px;}',
-            '.ui-checkbox input{width:18px;height:18px;accent-color:#4a9eff;}',
-            '.ui-customizer-footer{flex:0 0 auto;display:flex;justify-content:space-between;padding:16px 22px;border-top:1px solid #2a2a30;}',
+            // Тонкая тёмная обводка — чтобы «Белый» было видно на белой выбранной кнопке
+            '.ui-swatch-dot{flex:0 0 auto;width:18px;height:18px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.35);}',
+            // Ползунок: заливка — цветом фокуса, бегунок белый, как у переключателей
+            '.ui-slider{display:flex;align-items:center;padding:10px 8px;border-radius:10px;user-select:none;-webkit-user-select:none;}',
+            '.ui-slider>*+*{margin-left:18px;}',
+            '.ui-slider-track{position:relative;flex:1 1 auto;height:6px;background:rgba(255,255,255,0.14);border-radius:3px;cursor:pointer;}',
+            '.ui-slider-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--focus-color,#ff8c00);border-radius:3px;}',
+            '.ui-slider-thumb{position:absolute;top:50%;left:0;width:20px;height:20px;margin:-10px 0 0 -10px;background:#fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.5);}',
+            '.ui-slider-val{flex:0 0 auto;min-width:104px;text-align:right;font-size:16px;font-weight:600;color:#fff;}',
+            '.ui-slider.ui-focused .ui-slider-thumb{width:24px;height:24px;margin:-12px 0 0 -12px;}',
+            '.ui-slider-ends{display:flex;justify-content:space-between;margin:0 8px 4px;font-size:12px;color:#6c6c78;}',
+            // Галки — переключателями, как на экране «Настройки»: ::before —
+            // дорожка, ::after — бегунок. Сам input спрятан, но остаётся —
+            // activateFocused() и клик по label меняют его checked.
+            '.ui-checkbox{position:relative;display:flex;align-items:center;min-height:52px;margin:0;padding:10px 84px 10px 12px;box-sizing:border-box;color:#fff;font-size:16px;cursor:pointer;border-radius:10px;}',
+            '.ui-checkbox:hover{background:rgba(255,255,255,0.03);}',
+            '.ui-checkbox input{position:absolute;width:1px;height:1px;margin:0;opacity:0;pointer-events:none;}',
+            '.ui-checkbox>span::before,.ui-checkbox>span::after{content:"";position:absolute;top:50%;}',
+            '.ui-checkbox>span::before{right:12px;width:46px;height:26px;margin-top:-13px;border-radius:13px;background:#3a3a44;transition:background .2s ease;}',
+            '.ui-checkbox>span::after{right:35px;width:20px;height:20px;margin-top:-10px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.4);transition:-webkit-transform .2s ease,transform .2s ease;}',
+            '.ui-checkbox input:checked+span::before{background:var(--focus-color,#ff8c00);}',
+            '.ui-checkbox input:checked+span::after{-webkit-transform:translateX(20px);transform:translateX(20px);}',
+            '.ui-customizer-footer{flex:0 0 auto;display:flex;justify-content:space-between;padding:16px 24px 20px;border-top:1px solid rgba(255,255,255,0.06);}',
             '.ui-customizer-footer>*+*{margin-left:12px;}',
-            '.ui-cust-btn{flex:1;padding:12px 18px;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;border:1px solid #33333d;background:#1e1e28;color:#cfd4dc;}',
-            '.ui-cust-btn.primary{background:#4a9eff;border-color:#4a9eff;color:#fff;}',
-            // Индикатор фокуса для навигации пультом (через box-shadow, чтобы не обрезался в overflow-контейнерах)
-            '.ui-customizer-panel .ui-focused{box-shadow:0 0 0 3px #4a9eff, 0 0 0 6px rgba(74,158,255,0.25)!important;outline:none!important;}',
-            '.ui-customizer-panel .ui-checkbox.ui-focused,.ui-customizer-panel .ui-slider.ui-focused{background:#22222c;}',
+            // Кнопки — как .btn / .btn-primary в настройках
+            '.ui-cust-btn{flex:1;padding:12px 26px;border-radius:8px;font-family:inherit;font-size:16px;font-weight:600;cursor:pointer;border:0;background:rgba(255,255,255,0.12);color:#fff;transition:background .15s;}',
+            '.ui-cust-btn:hover{background:rgba(255,255,255,0.2);}',
+            '.ui-cust-btn.primary{background:#fff;color:#000;}',
+            '.ui-cust-btn.primary:hover{background:rgba(255,255,255,0.85);}',
+            // Индикатор фокуса для навигации пультом (через box-shadow, чтобы не обрезался в overflow-контейнерах).
+            // Цвет перекрывает buildFocusCss() выбранным цветом фокуса.
+            '.ui-customizer-panel .ui-focused{box-shadow:0 0 0 3px var(--focus-color,#ff8c00)!important;outline:none!important;}',
+            // Строки (ползунок, переключатель) — кольцом внутрь, как строки настроек
+            '.ui-customizer-overlay .ui-customizer-panel .ui-checkbox.ui-focused,.ui-customizer-overlay .ui-customizer-panel .ui-slider.ui-focused{background:rgba(255,255,255,0.06);box-shadow:inset 0 0 0 2px var(--focus-color,#ff8c00)!important;}',
             // Кнопка входа в настройках
             '.ui-appearance-open-btn{margin-top:8px;}'
         ].join('\n');
@@ -730,8 +769,8 @@
         overlay.innerHTML =
             '<div class="ui-customizer-panel" id="ui-customizer-panel" role="dialog" aria-label="Настройка интерфейса">' +
             '<div class="ui-customizer-header">' +
-            '<h2>🎨 Настройка интерфейса</h2>' +
-            '<button class="ui-customizer-close" id="ui-close-customizer" title="Закрыть">X</button>' +
+            '<h2>Внешний вид</h2>' +
+            '<button class="ui-customizer-close" id="ui-close-customizer" title="Закрыть"><i class="fi fi-rr-cross"></i></button>' +
             '</div>' +
             '<div class="ui-customizer-content">' +
             '<div class="ui-customizer-group"><h3>Размер карточек и постеров</h3>' +
@@ -742,6 +781,11 @@
             '<div class="ui-customizer-group"><h3>Масштаб детального просмотра</h3>' +
             '<div class="ui-customizer-hint">Шапка, описание, кнопки, актёры и список файлов на экране фильма.</div>' +
             sliderRow('detailScale', SLIDERS.detailScale.min + '%', SLIDERS.detailScale.max + '%') +
+            '</div>' +
+
+            '<div class="ui-customizer-group"><h3>Текст описания</h3>' +
+            '<div class="ui-customizer-hint">Размер шрифта описания на экране фильма. Кнопки, постеры и остальное не меняются.</div>' +
+            sliderRow('detailTextScale', SLIDERS.detailTextScale.min + '%', SLIDERS.detailTextScale.max + '%') +
             '</div>' +
 
             '<div class="ui-customizer-group"><h3>Количество колонок</h3>' +
