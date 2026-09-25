@@ -198,6 +198,12 @@
                   <input type="checkbox" id="transcoding-off">
                   <span>Транскодирование через TorrServer<small class="setting-desc">Нужна специальная сборка TorrServer</small></span>
                 </div>
+                <!-- Окно предзагрузки и её логика — в js/torrserverstats.js
+                     (runPlaybackPreload), зовёт его startHLSPlayback (player.js) -->
+                <div class="checkbox-container">
+                  <input type="checkbox" id="preload-before-play">
+                  <span>Предзагрузка<small class="setting-desc">Перед запуском набрать 32 МБ буфера и показать скорость, пиры и сиды раздачи. «Назад» — отменить</small></span>
+                </div>
               </div>
 
               <div class="settings-subsection">
