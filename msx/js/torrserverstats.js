@@ -254,6 +254,7 @@ function getPreloadPanel() {
   root.id = 'preload-panel';
   root.innerHTML =
     '<div class="preload-card" role="dialog" aria-live="polite">' +
+    '<div class="preload-eyebrow">TorrServer</div>' +
     '<div class="preload-title">Предзагрузка</div>' +
     '<div class="preload-name"></div>' +
     '<div class="preload-bar"><div class="preload-bar-fill"></div></div>' +
@@ -265,7 +266,7 @@ function getPreloadPanel() {
     '</div>' +
     '<div class="preload-actions">' +
     '<button type="button" class="preload-btn" data-action="cancel"><span class="preload-key">←</span>Отменить</button>' +
-    '<button type="button" class="preload-btn" data-action="play"><span class="preload-key">ОК</span>Смотреть сейчас</button>' +
+    '<button type="button" class="preload-btn preload-btn-primary" data-action="play"><span class="preload-key">ОК</span>Смотреть сейчас</button>' +
     '</div>' +
     '</div>';
   document.body.appendChild(root);
