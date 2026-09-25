@@ -293,7 +293,9 @@
                 <!-- Сюда будут добавлены результаты проверки кодеков -->
               </div>
 
-              <div class="action-row">
+              <!-- Ручная проверка скрыта: она и так идёт сама при запуске.
+                   Кнопку не удаляем — на неё завязан initDolbyVisionCheck (app.js) -->
+              <div class="action-row" hidden>
                 <button id="dv-check-btn" class="btn settings-btn">Проверить поддержку</button>
               </div>
             </div>
