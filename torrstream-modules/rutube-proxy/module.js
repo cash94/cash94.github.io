@@ -1,5 +1,5 @@
 // Модуль: RuTube Proxy
-// version: '1.2.3'
+// version: '1.6.0'
 // Проксирует запросы к RuTube API и HLS-потоки, добавляя заголовки и cookie.
 // Обходит CORS на Android TV: все запросы hls.js идут same-origin через сервер.
 //
@@ -28,8 +28,17 @@ var HLS_HEADERS = {
   'Cookie': RUTUBE_COOKIE
 };
 
-var REQUEST_TIMEOUT = 10000;
+var REQUEST_TIMEOUT = 15000;
 var HLS_PROXY_PATH = '/api/rutube/hls/proxy';
+
+// Повтор одиночного сбоя. Обрыв соединения с CDN RuTube (ECONNRESET, таймаут,
+// 502–504) — обычное дело, а без повтора он сразу превращался в 500 для
+// hls.js, тот переспрашивал соседние сегменты, и в лог сыпались десятки
+// одинаковых «fetch failed».
+var RETRIES = 1;
+var RETRY_DELAY_MS = 300;
+// Ошибки копим и пишем одной сводкой не чаще раза в столько
+var ERROR_REPORT_MS = 30000;
 
 // ★ Домены RuTube: основной + CDN для HLS-сегментов
 var RUTUBE_DOMAINS = ['rutube.ru', 'rtbcdn.ru'];
@@ -101,14 +110,143 @@ function rewriteRutubePlaylist(text, baseUrl) {
   return result.join('\n');
 }
 
+// ==================== ЗАПРОСЫ К RUTUBE ====================
+
+/**
+ * Запрос с таймаутом на весь ответ — заголовки И тело.
+ *
+ * AbortController в песочницу модулей не передаётся (module-loader.js), и
+ * прежняя проверка `typeof AbortController` всегда была ложной: таймаута не
+ * было вовсе, зависший запрос висел до внутренних таймаутов undici и падал
+ * безликим «fetch failed». Отменить fetch без него нельзя, поэтому таймаут —
+ * гонкой: клиент получает ответ вовремя, а запоздавший результат просто
+ * выбрасывается.
+ *
+ * @param {Function} read  что сделать с Response: r.json() / r.text() / r.arrayBuffer()
+ * @returns {Promise<{status, headers, body}>}
+ */
+function fetchWithTimeout(url, headers, read) {
+  return new Promise(function (resolve, reject) {
+    var done = false;
+    var timer = setTimeout(function () {
+      if (done) return;
+      done = true;
+      var e = new Error('нет ответа за ' + (REQUEST_TIMEOUT / 1000) + ' с');
+      e.code = 'TIMEOUT';
+      reject(e);
+    }, REQUEST_TIMEOUT);
+
+    fetch(url, { headers: headers }).then(function (r) {
+      if (!r.ok) return { status: r.status, headers: r.headers, body: null };
+      return read(r).then(function (body) {
+        return { status: r.status, headers: r.headers, body: body };
+      });
+    }).then(function (out) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(out);
+    }, function (e) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      reject(e);
+    });
+  });
+}
+
+/** Сбой, который есть смысл повторить: сеть, таймаут, 502–504 от RuTube */
+function isTransient(result, err) {
+  if (err) return true;
+  return result && (result.status === 502 || result.status === 503 || result.status === 504);
+}
+
+/**
+ * fetchWithTimeout с одним повтором. clientGone() — клиент уже закрыл
+ * соединение (трейлер остановили, фокус ушёл): тогда не повторяем и ошибку не
+ * считаем — отвечать всё равно некому.
+ */
+function fetchRetry(url, headers, read, clientGone, attempt) {
+  attempt = attempt || 0;
+  return fetchWithTimeout(url, headers, read).then(function (result) {
+    if (attempt < RETRIES && isTransient(result, null) && !clientGone()) {
+      return delay(RETRY_DELAY_MS).then(function () { return fetchRetry(url, headers, read, clientGone, attempt + 1); });
+    }
+    return result;
+  }, function (e) {
+    if (attempt < RETRIES && !clientGone()) {
+      return delay(RETRY_DELAY_MS).then(function () { return fetchRetry(url, headers, read, clientGone, attempt + 1); });
+    }
+    throw e;
+  });
+}
+
+function delay(ms) {
+  return new Promise(function (r) { setTimeout(r, ms); });
+}
+
+/** Причина сбоя одним словом: у undici e.message — просто «fetch failed», суть в cause */
+function errorReason(e) {
+  if (!e) return 'ошибка';
+  if (e.code) return e.code;
+  var c = e.cause;
+  if (c && (c.code || c.message)) return c.code || c.message;
+  return e.message || 'ошибка';
+}
+
+function hostOf(url) {
+  try { return new URL(url).host; } catch (e) { return '?'; }
+}
+
+/**
+ * Сводка ошибок: вместо строки на каждый сегмент — одна строка раз в
+ * ERROR_REPORT_MS: сколько, каких и с каких хостов.
+ */
+function createErrorReporter(log) {
+  var counts = {};
+  var total = 0;
+  var timer = null;
+  function flush() {
+    timer = null;
+    if (!total) return;
+    var parts = [];
+    for (var k in counts) if (counts.hasOwnProperty(k)) parts.push(k + ' ×' + counts[k]);
+    log.warn('Сбои запросов к RuTube за ' + (ERROR_REPORT_MS / 1000) + ' с: ' + total + ' (' + parts.join(', ') + ')');
+    counts = {};
+    total = 0;
+  }
+  return {
+    add: function (kind, url, reason) {
+      var key = kind + ' ' + hostOf(url) + ': ' + reason;
+      counts[key] = (counts[key] || 0) + 1;
+      total++;
+      if (!timer) timer = setTimeout(flush, ERROR_REPORT_MS);
+    },
+    stop: function () {
+      if (timer) clearTimeout(timer);
+      flush();
+    }
+  };
+}
+
+/** Клиент закрыл соединение раньше ответа */
+function watchClient(req, res) {
+  var gone = false;
+  req.on('close', function () { if (!res.writableEnded) gone = true; });
+  return function () { return gone || res.destroyed; };
+}
+
 // ==================== МОДУЛЬ ====================
+
+var reporter = null;
 
 module.exports = {
   name: 'rutube-proxy',
-  version: '1.5.0',
+  version: '1.6.0',
 
   init: function (app, ctx) {
     ctx.log.log('Инициализация RuTube proxy...');
+    reporter = createErrorReporter(ctx.log);
 
     // ---------- 1. JSON API прокси ----------
     app.get('/api/rutube/proxy', function (req, res) {
@@ -121,28 +259,21 @@ module.exports = {
         return res.status(400).json({ error: 'Only HTTPS allowed' });
       }
 
-      var fetchOptions = { headers: HEADERS };
-      var timeoutId = null;
-      if (typeof AbortController !== 'undefined') {
-        var controller = new AbortController();
-        timeoutId = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT);
-        fetchOptions.signal = controller.signal;
-      }
-
-      fetch(targetUrl, fetchOptions)
-        .then(function (response) {
-          if (timeoutId) clearTimeout(timeoutId);
-          if (!response.ok) {
-            return res.status(response.status).json({ error: 'Upstream error: ' + response.status });
+      var clientGone = watchClient(req, res);
+      fetchRetry(targetUrl, HEADERS, function (r) { return r.json(); }, clientGone)
+        .then(function (result) {
+          if (clientGone()) return;
+          if (!result.body) {
+            reporter.add('API', targetUrl, 'HTTP ' + result.status);
+            return res.status(result.status).json({ error: 'Upstream error: ' + result.status });
           }
-          return response.json().then(function (data) {
-            res.json(data);
-          });
+          res.json(result.body);
         })
         .catch(function (e) {
-          if (timeoutId) clearTimeout(timeoutId);
-          ctx.log.error('Proxy error:', e.message);
-          if (!res.headersSent) res.status(500).json({ error: e.message });
+          if (clientGone()) return;
+          var reason = errorReason(e);
+          reporter.add('API', targetUrl, reason);
+          if (!res.headersSent) res.status(reason === 'TIMEOUT' ? 504 : 502).json({ error: reason });
         });
     });
 
@@ -154,66 +285,50 @@ module.exports = {
         return res.status(400).send('Invalid URL');
       }
 
-      var fetchOptions = { headers: HLS_HEADERS };
-      var timeoutId = null;
-      if (typeof AbortController !== 'undefined') {
-        var controller = new AbortController();
-        timeoutId = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT);
-        fetchOptions.signal = controller.signal;
-      }
+      var isPlaylist = targetUrl.indexOf('.m3u8') !== -1;
+      var clientGone = watchClient(req, res);
 
-      fetch(targetUrl, fetchOptions)
-        .then(function (upstream) {
-          if (timeoutId) clearTimeout(timeoutId);
-
-          if (!upstream.ok) {
-            return res.status(upstream.status).send('Upstream error: ' + upstream.status);
+      fetchRetry(targetUrl, HLS_HEADERS, function (r) {
+        // Тип определяем по заголовку, если в URL нет .m3u8
+        var ct = r.headers.get('content-type') || '';
+        if (ct.indexOf('mpegurl') !== -1) isPlaylist = true;
+        return isPlaylist ? r.text() : r.arrayBuffer();
+      }, clientGone)
+        .then(function (result) {
+          if (clientGone()) return;
+          if (!result.body) {
+            reporter.add('HLS', targetUrl, 'HTTP ' + result.status);
+            return res.status(result.status).send('Upstream error: ' + result.status);
           }
-
-          var contentType = upstream.headers.get('content-type') || '';
-          var isPlaylist = contentType.indexOf('mpegurl') !== -1 ||
-            targetUrl.indexOf('.m3u8') !== -1;
 
           // CORS для клиента + запрет кэширования
           res.setHeader('Access-Control-Allow-Origin', '*');
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 
           if (isPlaylist) {
-            // Плейлист: читаем, переписываем URL (абсолютные и относительные), отдаём
-            return upstream.text().then(function (text) {
-              // ★ targetUrl — база для резолва относительных путей сегментов
-              var rewritten = rewriteRutubePlaylist(text, targetUrl);
-
-              // Отладка: сколько URL переписано / осталось прямыми
-              var proxied = (rewritten.match(/\/api\/rutube\/hls\/proxy\?u=/g) || []).length;
-              var direct = (rewritten.match(/https?:\/\/[^\s"']*(rutube\.ru|rtbcdn\.ru)[^\s"']*/g) || []).length;
-              ctx.log.log('HLS playlist: переписано=' + proxied + ', прямых RuTube осталось=' + direct);
-              if (direct > 0) {
-                var leftover = rewritten.match(/https?:\/\/[^\s"']*(rutube\.ru|rtbcdn\.ru)[^\s"']*/g) || [];
-                ctx.log.warn('⚠️ Непереписанные URL:\n' + leftover.join('\n'));
-              }
-
-              res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-              res.send(rewritten);
-            });
+            // ★ targetUrl — база для резолва относительных путей сегментов
+            var rewritten = rewriteRutubePlaylist(result.body, targetUrl);
+            var leftover = rewritten.match(/https?:\/\/[^\s"']*(rutube\.ru|rtbcdn\.ru)[^\s"']*/g) || [];
+            if (leftover.length) ctx.log.warn('⚠️ Непереписанные URL:\n' + leftover.join('\n'));
+            res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+            res.send(rewritten);
           } else {
             // Сегмент (.mp4/.ts): отдаём бинарно
-            return upstream.arrayBuffer().then(function (buf) {
-              res.setHeader('Content-Type', contentType || 'video/mp4');
-              res.send(Buffer.from(buf));
-            });
+            res.setHeader('Content-Type', result.headers.get('content-type') || 'video/mp4');
+            res.send(Buffer.from(result.body));
           }
         })
         .catch(function (e) {
-          if (timeoutId) clearTimeout(timeoutId);
-          ctx.log.error('HLS proxy error:', e.message);
-          if (!res.headersSent) res.status(500).send(e.message);
+          if (clientGone()) return;
+          var reason = errorReason(e);
+          reporter.add('HLS', targetUrl, reason);
+          if (!res.headersSent) res.status(reason === 'TIMEOUT' ? 504 : 502).send(reason);
         });
     });
 
     // ---------- 3. Проверка работоспособности ----------
     app.get('/api/rutube/status', function (req, res) {
-      res.json({ module: 'rutube-proxy', version: '1.5.0', ok: true });
+      res.json({ module: 'rutube-proxy', version: '1.6.0', ok: true });
     });
 
     ctx.log.log('RuTube proxy зарегистрирован: /api/rutube/proxy, ' + HLS_PROXY_PATH);
@@ -221,6 +336,8 @@ module.exports = {
   },
 
   destroy: function () {
+    if (reporter) reporter.stop();
+    reporter = null;
     console.log('[rutube-proxy] Уничтожение...');
   }
 };
