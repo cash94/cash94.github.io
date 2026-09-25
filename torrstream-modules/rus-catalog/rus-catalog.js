@@ -5,6 +5,13 @@
 var SOURCE_CATALOGS = ['movie', 'tv', 'cartoons', 'cartoons_tv'];
 var UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;   // автообновление раз в 6 часов
 var REQUEST_TIMEOUT = 15000;
+// Сервер отдаёт каталог страницами не больше 500 элементов
+// (routes: Math.min(500, limit)). Раньше модуль просил limit=100000 и получал
+// только первые 500 — всё, что дальше, в «Русские» не попадало
+// (movie 955, tv 834, cartoons_tv 723 элемента).
+var PAGE_SIZE = 500;
+// Страховка от бесконечного цикла, если сервер перестанет отдавать hasMore
+var MAX_PAGES = 200;
 var INIT_DELAY_MS = 8000;                        // задержка первой сборки
 var MAX_RETRIES = 5;
 
@@ -12,7 +19,9 @@ var rusState = {
     items: [],
     allIndex: 0,
     lastUpdated: 0,
-    building: false
+    building: false,
+    // Promise текущей сборки: второй запрос ждёт её, а не получает пустоту
+    buildPromise: null
 };
 var updateTimer = null;
 var serverUrl = '';
@@ -85,16 +94,27 @@ function loadItemsDirect(name) {
     }
 }
 
-// Способ 2: внутренний HTTP API
+// Способ 2: внутренний HTTP API — постранично, до конца каталога
 async function loadItemsHttp(name, log) {
-    var url = getServerUrl() + '/api/catalog/' + name + '/items?from=0&limit=100000';
+    var all = [];
+    var from = 0;
     try {
-        var resp = await fetch(url);
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        var data = await resp.json();
-        return (data && data.success && Array.isArray(data.items)) ? data.items : [];
+        for (var page = 0; page < MAX_PAGES; page++) {
+            var url = getServerUrl() + '/api/catalog/' + name + '/items?from=' + from + '&limit=' + PAGE_SIZE;
+            var resp = await fetch(url);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var data = await resp.json();
+            var items = (data && data.success && Array.isArray(data.items)) ? data.items : [];
+            for (var i = 0; i < items.length; i++) all.push(items[i]);
+            var more = data && data.pagination && data.pagination.hasMore;
+            if (!items.length || !more) break;
+            from += items.length;
+        }
+        return all;
     } catch (e) {
-        log.error('[' + name + '] HTTP-загрузка: ' + e.message);
+        // Недочитанный каталог хуже прежнего: отдаём пусто, сборка решит сама
+        // (пустой результат не затирает готовый каталог, см. buildRusCatalog)
+        log.error('[' + name + '] HTTP-загрузка (с ' + from + '): ' + (e.cause && e.cause.code || e.message));
         return [];
     }
 }
@@ -108,8 +128,15 @@ async function loadItems(name, log) {
 
 // ==================== СБОРКА КАТАЛОГА ====================
 
-async function buildRusCatalog(log, retryCount) {
-    if (rusState.building) return;
+function buildRusCatalog(log, retryCount) {
+    if (rusState.building && rusState.buildPromise) return rusState.buildPromise;
+    rusState.buildPromise = doBuildRusCatalog(log, retryCount).then(function () {
+        rusState.buildPromise = null;
+    });
+    return rusState.buildPromise;
+}
+
+async function doBuildRusCatalog(log, retryCount) {
     retryCount = retryCount || 0;
     rusState.building = true;
     log.log('Сборка каталога «Русские»...');
@@ -122,7 +149,13 @@ async function buildRusCatalog(log, retryCount) {
             }
         }
 
-        // Пусто и есть попытки — каталоги могли ещё не загрузиться, повторяем
+        // Пусто — каталоги могли ещё не загрузиться (или не ответил сервер).
+        // Готовый каталог пустотой не затираем.
+        if (collected.length === 0 && rusState.items.length) {
+            log.log('Исходные каталоги пусты — оставляем прежние ' + rusState.items.length + ' элементов');
+            return;
+        }
+        // Пусто и есть попытки — повторяем
         if (collected.length === 0 && retryCount < MAX_RETRIES) {
             rusState.building = false;
             log.log('Пусто, повтор через 10с (попытка ' + (retryCount + 1) + '/' + MAX_RETRIES + ')');
@@ -172,7 +205,7 @@ function tryWriteRusJson(items, log) {
 
 module.exports = {
     name: 'rus-catalog',
-    version: '1.0.4',
+    version: '1.1.0',
 
     init: function (app, ctx) {
         var log = ctx.log;
@@ -198,8 +231,9 @@ module.exports = {
                 });
             }
 
-            // Ленивая сборка при первом запросе
-            if (rusState.items.length === 0 && !rusState.building) {
+            // Ленивая сборка при первом запросе. Идёт уже — ждём её же
+            // (buildRusCatalog вернёт текущую), а не отдаём пустоту.
+            if (rusState.items.length === 0) {
                 buildRusCatalog(log, 0).then(respond);
             } else {
                 respond();
