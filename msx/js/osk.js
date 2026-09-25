@@ -31,6 +31,11 @@
 // Пока клавиатура открыта, все клавиши пульта принадлежат ей: обработчик в
 // capture-фазе гасит событие, и control.js его не видит.
 //
+// Курсор. Клавиши ◀ ▶ после «Пробела» двигают место набора по строке: букву,
+// «⌫» и «Пробел» кладут/стирают у курсора, а не в конце. Ошибку в середине
+// адреса так правят, не стирая всё, что после неё. Открывается клавиатура с
+// курсором в конце строки.
+//
 // Совместимость: ES5 (Chrome 66 на телевизорах), flex без gap.
 
 var OSK = (function () {
@@ -63,9 +68,10 @@ var OSK = (function () {
     var USER_GESTURE_MS = 1500;
     var WATCH_MS = 400;
 
-    var root = null, previewLabel = null, previewText = null, rowsEl = null;
+    var root = null, previewLabel = null, previewText = null, previewAfter = null, rowsEl = null;
     var target = null;           // поле, в которое печатаем
     var value = '';
+    var caret = 0;               // позиция курсора в value: 0 … value.length
     var lang = 'ru';
     var mode = 'letters';        // letters | sym
     var shift = false;
@@ -103,12 +109,14 @@ var OSK = (function () {
         root.innerHTML =
             '<div class="osk-panel" role="dialog" aria-label="Экранная клавиатура">' +
             '<div class="osk-preview"><span class="osk-preview-label"></span>' +
-            '<span class="osk-preview-text"></span><span class="osk-caret"></span></div>' +
+            '<span class="osk-preview-text"></span><span class="osk-caret"></span>' +
+            '<span class="osk-preview-after"></span></div>' +
             '<div class="osk-rows"></div>' +
             '</div>';
         document.body.appendChild(root);
         previewLabel = root.querySelector('.osk-preview-label');
         previewText = root.querySelector('.osk-preview-text');
+        previewAfter = root.querySelector('.osk-preview-after');
         rowsEl = root.querySelector('.osk-rows');
 
         // Мышь и тач: нажатие по клавише. mousedown гасим, чтобы клик по
@@ -135,7 +143,9 @@ var OSK = (function () {
             { type: 'shift', label: '⇧', wide: 1, hidden: mode === 'sym' },
             { type: 'lang', label: lang === 'ru' ? 'EN' : 'RU', wide: 1, hidden: mode === 'sym' },
             { type: 'mode', label: mode === 'sym' ? 'АБВ' : '123', wide: 1 },
-            { type: 'space', label: 'Пробел', wide: 4 },
+            { type: 'space', label: 'Пробел', wide: 3 },
+            { type: 'left', label: '◀', wide: 1 },
+            { type: 'right', label: '▶', wide: 1 },
             { type: 'back', label: '⌫', wide: 1 },
             { type: 'clear', label: 'Очистить', wide: 2 },
             { type: 'done', label: 'Готово', wide: 2 }
@@ -191,9 +201,25 @@ var OSK = (function () {
 
     function paintPreview() {
         var shown = target && target.type === 'password' ? value.replace(/./g, '•') : value;
-        previewText.textContent = shown;
+        // Текст до курсора и после — разными блоками: у длинной строки виден
+        // конец того, что до курсора, и начало того, что после (см. styles.css)
+        previewText.textContent = shown.slice(0, caret);
+        previewAfter.textContent = shown.slice(caret);
         previewText.classList.toggle('osk-preview-empty', !shown);
         if (!shown) previewText.textContent = (target && target.getAttribute('placeholder')) || '';
+    }
+
+    function setCaret(pos) {
+        caret = Math.max(0, Math.min(value.length, pos));
+        paintPreview();
+    }
+
+    /** Стереть символ перед курсором */
+    function backspace() {
+        if (caret <= 0) return;
+        value = value.slice(0, caret - 1) + value.slice(caret);
+        caret--;
+        writeToField();
     }
 
     // Подпись над строкой: .field-label рядом с полем, иначе placeholder
@@ -224,7 +250,8 @@ var OSK = (function () {
     function insert(ch) {
         var max = target && target.maxLength > 0 ? target.maxLength : 0;
         if (max && value.length >= max) return;
-        value += ch;
+        value = value.slice(0, caret) + ch + value.slice(caret);
+        caret += ch.length;
         writeToField();
     }
 
@@ -239,8 +266,10 @@ var OSK = (function () {
             return;
         }
         if (key.type === 'space') return insert(' ');
-        if (key.type === 'back') { value = value.slice(0, -1); return writeToField(); }
-        if (key.type === 'clear') { value = ''; return writeToField(); }
+        if (key.type === 'back') return backspace();
+        if (key.type === 'left') return setCaret(caret - 1);
+        if (key.type === 'right') return setCaret(caret + 1);
+        if (key.type === 'clear') { value = ''; caret = 0; return writeToField(); }
         if (key.type === 'shift') { shift = !shift; return render(); }
         if (key.type === 'lang') {
             lang = lang === 'ru' ? 'en' : 'ru';
@@ -313,6 +342,7 @@ var OSK = (function () {
         ensureDom();
         target = el;
         value = String(el.value || '');
+        caret = value.length;
         var init = initialLayout(el);
         lang = init.lang;
         mode = init.mode;
@@ -389,7 +419,7 @@ var OSK = (function () {
         stop(e);
         // Физическая клавиатура: Backspace стирает, а не закрывает. Проверяем
         // по e.key, а не по коду: код 8 у части пультов значит «назад»
-        if (e.key === 'Backspace') { value = value.slice(0, -1); return writeToField(); }
+        if (e.key === 'Backspace') return backspace();
         // «Назад» — раньше стрелок, в том же порядке, что и control.js: код
         // 10009 есть и в LEFT, и в BACK, а на Tizen это именно «назад»
         if (typeof isBackKey === 'function' ? isBackKey(kc) : kc === 27) return close(false);
