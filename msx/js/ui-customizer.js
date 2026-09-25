@@ -820,9 +820,19 @@
             // Цвет перекрывает buildFocusCss() выбранным цветом фокуса.
             '.ui-customizer-panel .ui-focused{box-shadow:0 0 0 3px var(--focus-color,#ff8c00)!important;outline:none!important;}',
             // Строки (ползунок, переключатель) — кольцом внутрь, как строки настроек
-            '.ui-customizer-overlay .ui-customizer-panel .ui-checkbox.ui-focused,.ui-customizer-overlay .ui-customizer-panel .ui-slider.ui-focused{background:rgba(255,255,255,0.06);box-shadow:inset 0 0 0 2px var(--focus-color,#ff8c00)!important;}',
-            // Кнопка входа в настройках
-            '.ui-appearance-open-btn{margin-top:8px;}'
+            '.ui-customizer-overlay .ui-customizer-panel .ui-checkbox.ui-focused,.ui-customizer-overlay .ui-customizer-panel .ui-slider.ui-focused,' +
+            '#appearance-tab-content .ui-customizer-panel .ui-checkbox.ui-focused,#appearance-tab-content .ui-customizer-panel .ui-slider.ui-focused{background:rgba(255,255,255,0.06);box-shadow:inset 0 0 0 2px var(--focus-color,#ff8c00)!important;}',
+            // Встроенная в раздел «Внешний вид» настроек (embedPanel). Масштаб
+            // уже даёт zoom самого экрана настроек — свой снимаем, иначе
+            // умножился бы дважды. Высота — на экран за вычетом его полей, чтобы
+            // прокручивалось содержимое панели (с залипающими заголовками), а
+            // не весь экран. Изменения тут сохраняются сразу, как и прочие
+            // настройки, поэтому «Сохранить» и крестик не нужны.
+            '#appearance-tab-content .ui-customizer-panel{zoom:1;width:auto;max-width:none;max-height:calc(100vh / var(--settings-zoom,1.2) - 96px);box-shadow:none;}',
+            '#appearance-tab-content .ui-customizer-close,#appearance-tab-content #ui-apply-settings{display:none;}',
+            '.ui-embed-hint{display:none;margin:4px 0 0;font-size:13px;color:#8a8a96;}',
+            '#appearance-tab-content .ui-embed-hint{display:block;}',
+
         ].join('\n');
         document.head.appendChild(s);
     }
@@ -872,7 +882,8 @@
         overlay.innerHTML =
             '<div class="ui-customizer-panel" id="ui-customizer-panel" role="dialog" aria-label="Настройка интерфейса">' +
             '<div class="ui-customizer-header">' +
-            '<h2>Внешний вид</h2>' +
+            '<div><h2>Внешний вид</h2>' +
+            '<div class="ui-embed-hint">Всплывающим окном — в любом разделе: жёлтая кнопка пульта или клавиша «C».</div></div>' +
             '<button class="ui-customizer-close" id="ui-close-customizer" title="Закрыть"><i class="fi fi-rr-cross"></i></button>' +
             '</div>' +
             '<div class="ui-customizer-content">' +
@@ -1006,6 +1017,16 @@
         currentSettings[el.dataset.setting] = v;
         updateSliders();
         applySettings();   // живой предпросмотр
+        autoSave();
+    }
+
+    /**
+     * В разделе настроек (встроенная панель) изменения сохраняются сразу —
+     * как и все прочие настройки. Во всплывающем окне — как раньше, по
+     * «Сохранить».
+     */
+    function autoSave() {
+        if (!isOpen()) saveSettings();
     }
 
     function nudgeSlider(el, direction) {
@@ -1076,6 +1097,7 @@
                 currentSettings[opt.dataset.setting] = opt.dataset.value;
                 updateActiveButtons();
                 applySettings();
+                autoSave();
                 setFocus(opt);
                 return;
             }
@@ -1090,16 +1112,19 @@
         if (ratings) ratings.addEventListener('change', function () {
             currentSettings.showRatings = this.checked;
             applySettings();
+            autoSave();
         });
         var year = document.getElementById('ui-show-year');
         if (year) year.addEventListener('change', function () {
             currentSettings.showYear = this.checked;
             applySettings();
+            autoSave();
         });
         var trailers = document.getElementById('ui-hero-trailers');
         if (trailers) trailers.addEventListener('change', function () {
             currentSettings.heroTrailers = this.checked;
             applySettings();            // гасит играющий трейлер / заводит отсчёт заново
+            autoSave();
         });
 
         // Готово (применить + сохранить + закрыть)
@@ -1115,7 +1140,9 @@
         if (reset) reset.addEventListener('click', function () {
             currentSettings = resolvedDefaults();
             updateActiveButtons();
+            updateSliders();
             applySettings();
+            autoSave();
         });
 
         // Закрыть
@@ -1138,10 +1165,79 @@
         return !!(overlay && !overlay.classList.contains('hidden'));
     }
 
+    // ==================== ВСТРОЕННАЯ ПАНЕЛЬ (раздел «Внешний вид») ====================
+    //
+    // Панель одна. Обычно она стоит прямо в разделе «Внешний вид» настроек
+    // (#appearance-tab-content), по горячей клавише переезжает во всплывающее
+    // окно, а при его закрытии возвращается обратно. Навигация пультом — та же
+    // своя (moveFocus/setFocus ниже): вход — OK на пункте меню «Внешний вид»
+    // (control.js: handleConfigNavigation), выход — «назад» или влево с левого
+    // края, фокус возвращается на пункт меню.
+    var embeddedEngaged = false;
+
+    function embedPanel() {
+        var tab = document.getElementById('appearance-tab-content');
+        var panel = document.getElementById('ui-customizer-panel');
+        if (!tab || !panel || panel.parentNode === tab) return;
+        tab.appendChild(panel);
+        updateActiveButtons();
+        updateSliders();
+    }
+
+    function tabVisible() {
+        var tab = document.getElementById('appearance-tab-content');
+        var cs = document.getElementById('config-screen');
+        return !!(tab && cs && tab.style.display !== 'none' && cs.style.display !== 'none' && tab.offsetParent !== null);
+    }
+
+    /** Пульт перешёл из меню настроек в панель */
+    function enterEmbedded() {
+        embedPanel();
+        if (!tabVisible()) return false;
+        embeddedEngaged = true;
+        // Фокус приложения (.focused) с пункта меню снимаем: у панели свой,
+        // иначе на экране было бы два фокуса
+        var f = document.querySelector('.focused');
+        if (f) f.classList.remove('focused');
+        updateActiveButtons();
+        updateSliders();
+        var content = document.querySelector('#appearance-tab-content .ui-customizer-content');
+        if (content) content.scrollTop = 0;
+        var first = getFocusables('content')[0] || getFocusables()[0];
+        setFocus(first, true);
+        return true;
+    }
+
+    /** Обратно в меню настроек, на пункт «Внешний вид» */
+    function exitEmbedded() {
+        embeddedEngaged = false;
+        if (focusedEl) focusedEl.classList.remove('ui-focused');
+        focusedEl = null;
+        var item = document.getElementById('appearance-tab');
+        if (item && typeof window.focusEl === 'function') window.focusEl(item);
+    }
+
+    // Пульт внутри встроенной панели. Настройки могли закрыть в обход
+    // (мышью, сменой экрана) — тогда режим снимаем молча.
+    function isEmbeddedEngaged() {
+        if (embeddedEngaged && !tabVisible()) {
+            embeddedEngaged = false;
+            if (focusedEl) focusedEl.classList.remove('ui-focused');
+        }
+        return embeddedEngaged;
+    }
+
     function openCustomizer() {
         createCustomizerPanel();
         var overlay = document.getElementById('ui-customizer-overlay');
         if (!overlay) return;
+        // Панель могла стоять в разделе настроек — переносим в окно
+        var panelEl = document.getElementById('ui-customizer-panel');
+        if (panelEl && panelEl.parentNode !== overlay) overlay.appendChild(panelEl);
+        if (embeddedEngaged) {
+            embeddedEngaged = false;
+            if (focusedEl) focusedEl.classList.remove('ui-focused');
+        }
         updateActiveButtons();
         overlay.classList.remove('hidden');
         previousBodyOverflow = document.body.style.overflow;
@@ -1161,6 +1257,10 @@
         var overlay = document.getElementById('ui-customizer-overlay');
         if (overlay) overlay.classList.add('hidden');
         document.body.style.overflow = previousBodyOverflow;
+        // Панель — обратно в раздел «Внешний вид»
+        if (focusedEl) focusedEl.classList.remove('ui-focused');
+        focusedEl = null;
+        embedPanel();
         // Восстанавливаем фокус приложения на ТОМ экране, откуда панель открыли.
         // Раньше здесь был только каталог, а входят в панель как раз из настроек
         // (кнопка «Настроить внешний вид» в разделе «Внешний вид»).
@@ -1336,37 +1436,36 @@
     //          вверх выходим в header, вниз — в footer (влево/вправо не выходят).
     // footer:  вверх -> последний элемент content; вниз не работает;
     //          влево/вправо — только между кнопками футера.
+    // Возвращает true, если фокус сдвинулся (встроенной панели это нужно:
+    // влево с левого края — выход в меню настроек)
     function moveFocus(dir) {
         var all = getFocusables();
-        if (!all.length) return;
-        if (!focusedEl || all.indexOf(focusedEl) === -1) { setFocus(all[0]); return; }
+        if (!all.length) return false;
+        if (!focusedEl || all.indexOf(focusedEl) === -1) { setFocus(all[0]); return true; }
 
         var area = areaOf(focusedEl) || 'content';
 
         if (area === 'header') {
-            if (dir === 'up') return;
+            if (dir === 'up') return false;
             if (dir === 'down') {
-                if (!focusEdgeOf('content', false)) focusEdgeOf('footer', false);
-                return;
+                return focusEdgeOf('content', false) || focusEdgeOf('footer', false);
             }
-            moveWithin(getFocusables('header'), dir);   // сейчас в header одна кнопка
-            return;
+            return moveWithin(getFocusables('header'), dir);   // сейчас в header одна кнопка
         }
 
         if (area === 'footer') {
-            if (dir === 'down') return;                 // ниже футера ничего нет
+            if (dir === 'down') return false;           // ниже футера ничего нет
             if (dir === 'up') {
-                if (!focusEdgeOf('content', true)) focusEdgeOf('header', false);
-                return;
+                return focusEdgeOf('content', true) || focusEdgeOf('header', false);
             }
-            moveWithin(getFocusables('footer'), dir);
-            return;
+            return moveWithin(getFocusables('footer'), dir);
         }
 
         // content
-        if (moveWithin(getFocusables('content'), dir)) return;
-        if (dir === 'up') focusEdgeOf('header', false);
-        else if (dir === 'down') focusEdgeOf('footer', false);
+        if (moveWithin(getFocusables('content'), dir)) return true;
+        if (dir === 'up') return focusEdgeOf('header', false);
+        if (dir === 'down') return focusEdgeOf('footer', false);
+        return false;
     }
 
     function activateFocused() {
@@ -1476,6 +1575,31 @@
             return;
         }
 
+        // --- Пульт во встроенной панели (раздел «Внешний вид» настроек) ---
+        if (isEmbeddedEngaged() && OPEN_KEYS.indexOf(kc) === -1) {
+            if (isBackKeyCode(kc)) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                exitEmbedded();
+                return;
+            }
+            if (isOkKeyCode(kc)) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                activateFocused();
+                return;
+            }
+            var edir = arrowDirCode(kc);
+            if (edir) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                if (focusedEl && focusedEl.classList.contains('ui-slider') && (edir === 'left' || edir === 'right')) {
+                    nudgeSlider(focusedEl, edir === 'right' ? 1 : -1);
+                } else if (!moveFocus(edir) && edir === 'left') {
+                    exitEmbedded();
+                }
+                return;
+            }
+            return;
+        }
+
         // --- Панель закрыта: горячая клавиша открытия ---
         if (OPEN_KEYS.indexOf(kc) !== -1 && !isEditing()) {
             var scr = currentAppScreen();
@@ -1486,44 +1610,13 @@
         }
     }, true);
 
-    // ==================== КНОПКА ВХОДА В НАСТРОЙКАХ ====================
-    // getConfigContentItems() в control.js собирает <button> внутри активного
-    // таба, поэтому кнопка внутри appearance-tab-content доступна и с пульта, и мышью.
-
-    function addEntryButton() {
-        var container = document.getElementById('appearance-tab-content');
-        if (!container || document.getElementById('open-ui-customizer-btn')) return;
-
-        var section = document.createElement('div');
-        section.className = 'settings-section';
-        section.id = 'ui-appearance-entry';
-        // Вид — общий для экрана настроек (styles.css, блок «ЭКРАН НАСТРОЕК»):
-        // заголовок, поясняющая строка, ряд кнопок, подсказка мелким
-        section.innerHTML =
-            '<h2>Внешний вид</h2>' +
-            '<p class="settings-lead">Размер карточек и постеров, масштаб карточки фильма, колонки, ' +
-            'шрифт, скругление, плотность, анимации, яркость постеров и цвет фокуса.</p>' +
-            '<div class="action-row">' +
-            '<button class="btn btn-primary ui-appearance-open-btn" id="open-ui-customizer-btn">Настроить внешний вид</button>' +
-            '</div>' +
-            '<div class="help-text">Открыть в любой момент: жёлтая кнопка пульта или клавиша «C».</div>';
-
-        container.appendChild(section);
-
-        var btn = document.getElementById('open-ui-customizer-btn');
-        if (btn) btn.addEventListener('click', function (e) {
-            if (e && e.stopPropagation) e.stopPropagation();
-            openCustomizer();
-        });
-    }
-
     // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
     function init() {
         applySettings();       // применяем сохранённое сразу
         injectPanelStyles();
         createCustomizerPanel();
-        addEntryButton();
+        embedPanel();          // сама панель — прямо в разделе «Внешний вид»
         console.log('✅ UI Customizer инициализирован');
     }
 
@@ -1540,7 +1633,7 @@
         resizeTimer = setTimeout(function () {
             resizeTimer = null;
             applySettings();
-            if (isOpen()) updateSliders();
+            if (isOpen() || tabVisible()) updateSliders();
         }, 150);
     });
 
@@ -1556,6 +1649,7 @@
         getFocusColor: focusColor,
         getScrollAnim: scrollAnim,       // control.js: длительность твинов горизонтальной прокрутки
         getHeroTrailers: function () { return currentSettings.heroTrailers !== false; }, // home.js: заводить ли отсчёт трейлера
+        enterEmbedded: enterEmbedded,   // control.js: OK на пункте меню «Внешний вид»
         get: function () { return Object.assign({}, currentSettings); },
         set: function (partial) {
             if (partial && typeof partial === 'object') {
