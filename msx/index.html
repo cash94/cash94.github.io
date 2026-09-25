@@ -262,9 +262,11 @@
                   <input type="checkbox" id="out-player">
                   <span>Использовать внешний плеер (только android)</span>
                 </div>
+                <!-- Строка видна только там, где DV поддерживается (initDolbyVisionCheck),
+                     поэтому подпись о поддержке здесь всегда верна -->
                 <div class="checkbox-container">
                   <input type="checkbox" id="dvOnOff">
-                  <span>Предпочитать Dolby Vision по умолчанию</span>
+                  <span>Предпочитать Dolby Vision по умолчанию<small class="setting-desc">На этом устройстве есть поддержка Dolby Vision</small></span>
                 </div>
                 <!-- Показываются только внутри Android-приложения (window.AndroidJS) -->
                 <div class="checkbox-container" id="auto-switch-episodes-container" hidden>
