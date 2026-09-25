@@ -3870,6 +3870,16 @@ function handleConfigNavigation(dir) {
         if (dir === 'left' || dir === 'right') return true;
         if (dir === 'enter') {
             var selectedTabId = currentFocused.id;
+            // «Внешний вид»: в разделе стоит панель ui-customizer.js со своей
+            // навигацией — отдаём пульт ей (выход из неё — «назад» или влево с
+            // левого края, фокус вернётся на этот пункт меню)
+            if (selectedTabId === 'appearance-tab' && window.UICustomizer &&
+                typeof UICustomizer.enterEmbedded === 'function') {
+                configState.activeTabId = selectedTabId;
+                setConfigMenuActive(selectedTabId);
+                switchConfigTab(selectedTabId);
+                if (UICustomizer.enterEmbedded()) return true;
+            }
             configState.activeTabId = selectedTabId;
             configState.isOnMenu = false;
             setConfigMenuActive(selectedTabId);
