@@ -76,13 +76,19 @@
         BACKDROP_MIRROR_TRIES: 3,
         // Логотип названия. Обычно он уже лежит в элементе подборки (item.logo,
         // сервер кладёт его при сборке), а картинки логотипов показанного ряда
-        // грузятся заранее (preloadRowLogos) — баннер ставит логотип сразу.
+        // грузятся заранее (preloadNearLogos) — баннер ставит логотип сразу.
         // Нет поля logo («Продолжить просмотр», старый сервер) — спрашиваем
         // GET /api/tmdb/logo. Пока ждём — текст названия невидим; не дождались
         // за LOGO_WAIT_MS — показываем текст, логотип придёт — встанет на место.
         LOGO_WAIT_MS: 700,
         LOGO_FETCH_TIMEOUT_MS: 6000,
         LOGO_SIZE: 'w500',
+        // Заранее грузим логотипы карточек рядом с фокусом (±LOGO_NEAR), в
+        // простое и не больше LOGO_PRELOAD_MAX за раз. Раньше грузился сразу
+        // весь ряд (20 картинок) в момент перехода на него — замер на
+        // эмуляторе ТВ: +25–30 мс к каждому «вниз» против версии без логотипов.
+        LOGO_NEAR: 2,
+        LOGO_PRELOAD_MAX: 2,
         // Столько заполняется кругляшок; заполнился — включаем трейлер
         TRAILER_DELAY_MS: 5000,
         // Длина окружности кругляшка: 2πr при r = 19 (см. viewBox 0 0 44 44)
@@ -892,21 +898,40 @@
     }
 
     /**
-     * Логотипы всего показанного ряда — заранее, пока человек смотрит на
-     * первую карточку: листаешь — логотип уже в кэше и встаёт сразу, без
-     * «сначала пусто, потом появилось». Берём только известные из данных
-     * подборки; за теми, у кого поля нет, отдельно не ходим.
+     * Логотипы соседних карточек — заранее: шагнул вбок — логотип уже в кэше
+     * и встаёт сразу, без «сначала пусто, потом появилось». Только в простое
+     * (requestIdleCallback) и не больше LOGO_PRELOAD_MAX новых загрузок за
+     * раз: во время листания главный поток занят постерами и прокруткой.
+     * Берём только известные из данных подборки; за теми, у кого поля нет,
+     * отдельно не ходим.
      */
-    function preloadRowLogos(index) {
-        var key = homeState.rowKeys[index];
-        var items = key ? homeState.data[key] : null;
-        if (!items) return;
-        for (var i = 0; i < items.length; i++) {
-            var k = heroKey(items[i]);
-            if (!k) continue;
-            var info = knownLogo(items[i], k);
-            if (info) preloadLogo(k, info, null);
+    var logoPreloadJob = null;
+
+    function preloadNearLogos(items, idx) {
+        if (logoPreloadJob !== null) {
+            if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(logoPreloadJob);
+            else clearTimeout(logoPreloadJob);
         }
+        var runJob = function () {
+            logoPreloadJob = null;
+            var started = 0;
+            // Сначала ближние: +1, -1, +2, -2
+            for (var d = 1; d <= HOME.LOGO_NEAR && started < HOME.LOGO_PRELOAD_MAX; d++) {
+                var pair = [idx + d, idx - d];
+                for (var j = 0; j < 2 && started < HOME.LOGO_PRELOAD_MAX; j++) {
+                    var it = items[pair[j]];
+                    var k = it ? heroKey(it) : null;
+                    if (!k) continue;
+                    var info = knownLogo(it, k);
+                    if (!info || info.loaded || info.loading) continue;
+                    preloadLogo(k, info, null);
+                    started++;
+                }
+            }
+        };
+        logoPreloadJob = (typeof window.requestIdleCallback === 'function')
+            ? window.requestIdleCallback(runJob, { timeout: 1500 })
+            : setTimeout(runJob, 400);
     }
 
     function setHeroLogoState(hasLogo, url) {
@@ -918,8 +943,11 @@
         }
         var img = hasLogo ? document.querySelector('#home-hero-logo img') : null;
         if (img && img.getAttribute('src') !== url) img.setAttribute('src', url);
-        body.classList.toggle('home-hero-has-logo', !!hasLogo);
-        body.classList.remove('home-hero-logo-wait');
+        // Классы трогаем, только если они меняются: каждое касание — пересчёт
+        // стилей подписей баннера, а зовётся это на каждой смене карточки
+        var cl = body.classList;
+        if (cl.contains('home-hero-has-logo') !== !!hasLogo) cl.toggle('home-hero-has-logo', !!hasLogo);
+        if (cl.contains('home-hero-logo-wait')) cl.remove('home-hero-logo-wait');
     }
 
     /**
@@ -1625,8 +1653,6 @@
             if (homeState.activeRow !== index) return;
             warmRow(index + 1);
             warmRow(index - 1);
-            // Логотипы — своего ряда: баннер показывает только его карточки
-            preloadRowLogos(index);
             loadRowPosters(index + 1);
             loadRowPosters(index - 1);
         }, HOME.PREFETCH_DELAY_MS);
@@ -1743,6 +1769,7 @@
         var idx = parseInt(card.dataset.itemIndex, 10);
         if (!items || isNaN(idx) || !items[idx]) return;
         setHeroItem(items[idx]);
+        preloadNearLogos(items, idx);
     }
 
     /** Фокус в показанный ряд, на запомненную для него карточку */
