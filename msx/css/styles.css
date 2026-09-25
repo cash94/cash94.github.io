@@ -8755,11 +8755,33 @@ article {
   color: #5c5c66;
 }
 
+/* Текст после курсора (◀ ▶ на клавиатуре). Обычное направление: у длинного
+   хвоста видно его начало — то, что сразу за курсором. */
+.osk-preview-after {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 22px;
+  color: #fff;
+}
+
+.osk-preview-after:empty {
+  display: none;
+}
+
+/* Отрицательные поля: в раскладке курсор нулевой ширины. Иначе посреди строки
+   в фазе «погас» на его месте оставался зазор, и «torrstre|m» читалось как
+   «torrstre m» — будто там пробел. */
 .osk-caret {
   flex: 0 0 auto;
   width: 2px;
   height: 26px;
-  margin-left: 2px;
+  margin-left: -1px;
+  margin-right: -1px;
+  position: relative;
+  z-index: 1;
   background: var(--focus-color, #ff8c00);
   -webkit-animation: osk-blink 1s steps(1) infinite;
   animation: osk-blink 1s steps(1) infinite;
@@ -8835,7 +8857,8 @@ article {
   .osk { padding: 0 12px 12px; }
   .osk-panel { padding: 12px 12px 10px; border-radius: 14px; }
   .osk-preview { min-height: 42px; margin-bottom: 10px; }
-  .osk-preview-text { font-size: 18px; }
+  .osk-preview-text,
+  .osk-preview-after { font-size: 18px; }
   .osk-key { height: 42px; margin-right: 6px; font-size: 18px; }
   .osk-row { margin-bottom: 6px; }
   .osk-row-controls .osk-key { font-size: 14px; }
