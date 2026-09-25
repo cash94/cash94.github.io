@@ -2394,11 +2394,14 @@ function updateDolbyVisionUI(result) {
 function initDolbyVisionCheck() {
   var checkBtn = getEl('dv-check-btn');
 
-  // Блок «Поддержка Dolby Vision» — только вне Android-приложения. Там видео
-  // открывает внешний плеер (AndroidJS.openPlayer), а проверка здесь мерит
-  // кодеки WebView — к тому, что покажет плеер, она отношения не имеет.
+  // Блок «Поддержка Dolby Vision» (статус и список кодеков) не показываем:
+  // с крупными настройками он уходил под прокрутку, а нужен был лишь ради
+  // переключателя «Предпочитать Dolby Vision». Итог проверки теперь — подпись
+  // под этим переключателем (index.html), а сам он виден только при
+  // поддержке (ниже). Проверка и её результаты в localStorage работают как
+  // раньше — блок остаётся в разметке скрытым.
   var dvSection = getEl('dv-support-section');
-  if (dvSection) dvSection.hidden = !!window.AndroidJS;
+  if (dvSection) dvSection.hidden = true;
 
   // ИСПРАВЛЕНО: убран Optional Chaining (?.)
   var dvOnOffEl = getEl('dvOnOff');
