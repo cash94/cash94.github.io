@@ -23,6 +23,7 @@
         cardSize: 210,               // ЕДИНЫЙ размер карточек и постеров: ширина в px (макс 260 = 260×460)
         detailScale: 100,            // масштаб содержимого detail-view, %
         detailTextScale: 100,        // шрифт описания в detail-view, % от базового
+        topbarScale: 100,            // шрифт шапки (разделы, лупа, часы), % от базового
         catalogColumns: 'auto',      // auto | 3..8  (auto = число колонок считается из cardSize)
         // Размеры подписей карточки — в пикселях, ползунками (см. SLIDERS).
         // Прежний пресет fontSize (small/medium/large) остался только для
@@ -91,6 +92,14 @@
         // баннера: базовые размеры описания свои под каждый экран.
         detailTextScale: {
             min: 80, max: 200, step: 5, def: 100,
+            fmt: function (v) { return v + '%'; }
+        },
+        // Шрифт шапки: TorrStream, разделы, лупа, «Настройки», часы и дата.
+        // Шапка — одна строка без переноса: на 1920 px в неё влезает и 150%,
+        // а на 960/1280 — около 130%. Не влезает выбранное — fitTopbarScale
+        // уменьшает до того, что влезает. Отступы между пунктами не растут.
+        topbarScale: {
+            min: 80, max: 150, step: 5, def: 100,
             fmt: function (v) { return v + '%'; }
         }
     };
@@ -251,6 +260,7 @@
         delete s.heroOverviewScale;
         s.heroTextScale = clampStep(s.heroTextScale, SLIDERS.heroTextScale);
         s.detailTextScale = clampStep(s.detailTextScale, SLIDERS.detailTextScale);
+        s.topbarScale = clampStep(s.topbarScale, SLIDERS.topbarScale);
         s.focusColor = normalizeColor(s.focusColor);
 
         s.showRatings = !!s.showRatings;
@@ -457,6 +467,7 @@
         var yearSize = clampStep(currentSettings.yearSize, SLIDERS.yearSize);
         var heroTextScale = clampStep(currentSettings.heroTextScale, SLIDERS.heroTextScale);
         var detailTextScale = clampStep(currentSettings.detailTextScale, SLIDERS.detailTextScale);
+        var topbarScale = clampStep(currentSettings.topbarScale, SLIDERS.topbarScale);
         var radius = RADII[currentSettings.borderRadius] || RADII.medium;
         var density = DENSITIES[currentSettings.density] || DENSITIES.comfortable;
         var bright = BRIGHTNESS[currentSettings.posterBrightness] || BRIGHTNESS.normal;
@@ -522,6 +533,10 @@
         // (#detail-subtitle): все их font-size в styles.css умножаются на эту
         // переменную. Обрезка по строкам остаётся — длинное раскрывает «Подробнее».
         css.push(':root{--detail-text-scale:' + (detailTextScale / 100) + ';}');
+        // Шапка разделов (#home-topbar): все её font-size в styles.css
+        // умножаются на эту переменную. Высота шапки от этого меняется —
+        // главная перекладывается в applySettings (HomeScreen.layout).
+        css.push(':root{--topbar-scale:' + (topbarScale / 100) + ';}');
 
         // Полоса на постере растёт вместе с тем, что в ней лежит
         css.push('.card-modern .poster-bar{height:' +
@@ -573,6 +588,71 @@
         return css.join('\n');
     }
 
+    // ==================== ШАПКА: ПОДГОНКА ПО ШИРИНЕ ====================
+    //
+    // Замер шапки при последнем показе: {w: ширина окна, avail, fixed, unit}.
+    // unit — ширина всех пунктов при масштабе 1 (текст растёт с масштабом),
+    // fixed — отступы между ними и поля шапки (от масштаба не зависят).
+    // Нужен потому, что панель «Внешний вид» открывают из «Настроек», а там
+    // шапка скрыта и мерить нечего — берём замер, сделанный при запуске.
+    var topbarMetrics = null;
+    // Ширина окна, для которой подгонка сделана по живому замеру. Пока null —
+    // ensureTopbarFit (его зовёт showContentScreen при показе раздела) доделает.
+    var topbarFitWidth = null;
+
+    function measureTopbar(tb, scale) {
+        var kids = tb.children, textW = 0, fixed = 0;
+        for (var i = 0; i < kids.length; i++) {
+            var cs = getComputedStyle(kids[i]);
+            if (cs.position === 'absolute' || cs.display === 'none') continue;
+            textW += kids[i].getBoundingClientRect().width;
+            // margin-left:auto у лупы — это свободное место, а не отступ
+            if (kids[i].id !== 'tab-search') fixed += parseFloat(cs.marginLeft) || 0;
+            fixed += parseFloat(cs.marginRight) || 0;
+        }
+        var tcs = getComputedStyle(tb);
+        fixed += (parseFloat(tcs.paddingLeft) || 0) + (parseFloat(tcs.paddingRight) || 0);
+        topbarMetrics = { w: window.innerWidth, avail: tb.clientWidth, fixed: fixed, unit: textW / scale };
+    }
+
+    /**
+     * Масштаб шапки с ползунка, но не больше того, что влезает в строку.
+     * Урезанный пишем инлайном на <html> — он перебивает :root из <style>.
+     */
+    function fitTopbarScale() {
+        var root = document.documentElement;
+        var want = clampStep(currentSettings.topbarScale, SLIDERS.topbarScale) / 100;
+        root.style.removeProperty('--topbar-scale');
+        topbarFitWidth = null;
+        var tb = document.getElementById('home-topbar');
+        if (!tb) return;
+        if (tb.clientWidth > 0) {
+            measureTopbar(tb, want);
+            topbarFitWidth = window.innerWidth;
+        }
+        var m = topbarMetrics;
+        if (!m || m.w !== window.innerWidth || !(m.unit > 0)) return;
+        if (m.fixed + m.unit * want <= m.avail) return;
+        var fit = Math.floor((m.avail - m.fixed) / m.unit * 20) / 20;
+        if (fit < SLIDERS.topbarScale.min / 100) fit = SLIDERS.topbarScale.min / 100;
+        if (fit < want) root.style.setProperty('--topbar-scale', String(fit));
+    }
+
+    /**
+     * Шапку показали (showContentScreen): если подгонку ещё не делали по живому
+     * замеру для этой ширины окна — делаем. Иначе выходим сразу, так что звать
+     * на каждый показ раздела дёшево. Высота шапки могла смениться — сбрасываем
+     * замер отступа баннера главной (home.js: cachedHeroTop).
+     */
+    function ensureTopbarFit() {
+        if (topbarFitWidth === window.innerWidth) return;
+        var tb = document.getElementById('home-topbar');
+        if (!tb || !tb.clientWidth) return;
+        fitTopbarScale();
+        try { if (typeof window.invalidateHomeLayoutCache === 'function') window.invalidateHomeLayoutCache(); } catch (e) { }
+    }
+    window.ensureTopbarFit = ensureTopbarFit;
+
     function applySettings() {
         var style = document.getElementById('ui-customizer-style');
         if (!style) {
@@ -591,6 +671,7 @@
             document.documentElement.style.setProperty('--focus-color', fc);
             document.documentElement.style.setProperty('--focus-color-soft', rgba(fc, 0.35));
         } catch (e) { }
+        try { fitTopbarScale(); } catch (e) { }
         // Размер карточки/шрифт/плотность изменились — прежний замер высоты ряда
         // больше не годится. Снимаем его, чтобы заработал резерв из buildSettingsCss,
         // и перезамеряем на следующем кадре, когда сетка уже перестроится.
@@ -607,6 +688,11 @@
         // высоту липкой шапки, а размер окна при этом тот же, и по нему одному
         // главная устаревший замер не заметила бы (home.js: cachedHeroTop)
         try { if (typeof window.invalidateHomeLayoutCache === 'function') window.invalidateHomeLayoutCache(); } catch (e) { }
+        // Сброса замера мало: ползунок «Шапка» меняет её высоту прямо на
+        // глазах, и без перекладки баннер главной уезжал бы под шапку или
+        // отрывался от неё до следующего resize. Вне главной layout ничего не
+        // делает, а при возврате на неё главная переложится сама.
+        try { if (window.HomeScreen && typeof HomeScreen.layout === 'function') HomeScreen.layout(); } catch (e) { }
         // ...и перекладываем нарезку сетки каталога: чанки виртуализации режутся
         // по строкам, а строка теперь другой ширины. Без этого распорка встала бы
         // посреди ряда и раскладка разъехалась бы (catalog.js: chunkAlignedToRows).
@@ -781,6 +867,11 @@
             '<div class="ui-customizer-group"><h3>Масштаб детального просмотра</h3>' +
             '<div class="ui-customizer-hint">Шапка, описание, кнопки, актёры и список файлов на экране фильма.</div>' +
             sliderRow('detailScale', SLIDERS.detailScale.min + '%', SLIDERS.detailScale.max + '%') +
+            '</div>' +
+
+            '<div class="ui-customizer-group"><h3>Шапка</h3>' +
+            '<div class="ui-customizer-hint">Размер шрифта верхней строки: TorrStream, разделы, лупа, «Настройки», часы и дата. Не влезет в экран — шапка уменьшится до того, что влезает.</div>' +
+            sliderRow('topbarScale', SLIDERS.topbarScale.min + '%', SLIDERS.topbarScale.max + '%') +
             '</div>' +
 
             '<div class="ui-customizer-group"><h3>Текст описания</h3>' +

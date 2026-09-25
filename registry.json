@@ -16,10 +16,10 @@
     },
     "kinopoisk-collections": {
       "name": "kinopoisk-collections",
-      "version": "3.1.0",
-      "description": "Подборки Кинопоиска рядами на главной (зомби, вампиры, катастрофы, мультфильмы) с маппингом в TMDB через зеркала из apiproxy.json.",
+      "version": "3.3.0",
+      "description": "Подборки Кинопоиска рядами на главной (зомби, вампиры, катастрофы, мультфильмы) с маппингом в TMDB через зеркала сервера (запасной путь — свои из apiproxy.json) и логотипами названий.",
       "url": "https://cash94.github.io/torrstream-modules/kinopoisk-collections/module.js",
-      "sha256": "84e4509524fd99960badbac55254afcea330d7a10eabd6a5f1dcb45fc38c3f40"
+      "sha256": "6d26216726e266ff1daf5b180ec76344713a16633229e36606dc12acd465032c"
     },
     "skip-intro": {
       "name": "skip-intro",

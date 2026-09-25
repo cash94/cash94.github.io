@@ -74,6 +74,15 @@
         // Сколько зеркал TMDB пробуем на один путь: первое + следующие по кругу.
         // Всех пяти не берём — кандидатов и так два набора (кадр и постер).
         BACKDROP_MIRROR_TRIES: 3,
+        // Логотип названия. Обычно он уже лежит в элементе подборки (item.logo,
+        // сервер кладёт его при сборке), а картинки логотипов показанного ряда
+        // грузятся заранее (preloadRowLogos) — баннер ставит логотип сразу.
+        // Нет поля logo («Продолжить просмотр», старый сервер) — спрашиваем
+        // GET /api/tmdb/logo. Пока ждём — текст названия невидим; не дождались
+        // за LOGO_WAIT_MS — показываем текст, логотип придёт — встанет на место.
+        LOGO_WAIT_MS: 700,
+        LOGO_FETCH_TIMEOUT_MS: 6000,
+        LOGO_SIZE: 'w500',
         // Столько заполняется кругляшок; заполнился — включаем трейлер
         TRAILER_DELAY_MS: 5000,
         // Длина окружности кругляшка: 2πr при r = 19 (см. viewBox 0 0 44 44)
@@ -161,6 +170,11 @@
         cardWidth: 0,            // текущая ширина карточки (её же держит <style>)
         heroTopCache: null,      // {h, w, top} — замер отступа баннера, см. cachedHeroTop
         heroDetails: {},         // id_mediaType → полные детали TMDB
+        // id_mediaType → {url, loaded} | null (логотипа нет). Нет ключа — ещё
+        // не спрашивали. На сессию: сервер держит свой кэш на неделю.
+        logos: {},
+        logoInflight: {},
+        logoUnsupported: false,  // сервер без /api/tmdb/logo (старая версия)
         hero: {
             key: null,           // id_mediaType показанного элемента
             pendingKey: null,    // то же для элемента, ждущего в дебаунсе
@@ -175,7 +189,8 @@
             trailerSearched: false,
             video: null,
             hls: null,
-            watchdog: null        // «главная ещё на экране?» пока играет трейлер
+            watchdog: null,       // «главная ещё на экране?» пока играет трейлер
+            logoTimer: null       // LOGO_WAIT_MS: не дождались логотипа → текст
         }
     };
 
@@ -359,7 +374,9 @@
     var DB_STORE = 'collections';
     // Версия проекции подборки. Записи первой версии лежат без backdrop_path и
     // overview — баннеру они не годятся, поэтому считаем их просроченными.
-    var ITEMS_SCHEMA_VERSION = 2;
+    // 3 — элементы несут logo (логотип названия): подборки, сохранённые раньше,
+    // перезапрашиваем разом, а не спрашиваем логотип на каждой карточке.
+    var ITEMS_SCHEMA_VERSION = 3;
     var dbPromise = null;
 
     function openDb() {
@@ -525,6 +542,7 @@
             '<div class="home-ring-icon">▶</div>' +
             '</div>' +
             '<div id="home-hero-body">' +
+            '<div id="home-hero-logo"><img alt=""></div>' +
             '<h1 id="home-hero-title"></h1>' +
             '<div id="home-hero-meta"></div>' +
             '<div id="home-hero-overview"></div>' +
@@ -764,6 +782,7 @@
 
         var cached = homeState.heroDetails[k] || null;
         renderHero(item, cached);
+        applyHeroLogo(item, k, gen);
 
         if (cached || (item.backdrop_path && item.overview)) {
             if (!cached) homeState.heroDetails[k] = item;
@@ -792,6 +811,146 @@
         }).catch(function () {
             if (gen !== homeState.hero.gen) return;
             startTrailerCountdown(item, null, gen);
+        });
+    }
+
+    // ==================== БАННЕР: ЛОГОТИП НАЗВАНИЯ ====================
+
+    /**
+     * Логотип из данных элемента: {url, loaded} — есть, null — у TMDB нет,
+     * undefined — данные о нём молчат (поля logo нет).
+     */
+    function logoFromData(src) {
+        if (!src || !Object.prototype.hasOwnProperty.call(src, 'logo')) return undefined;
+        return (src.logo && src.logo.file_path)
+            ? { url: tmdbImage(src.logo.file_path, HOME.LOGO_SIZE), loaded: false }
+            : null;
+    }
+
+    /** Что известно о логотипе без сети: запомненное, из элемента, из деталей */
+    function knownLogo(item, k) {
+        if (Object.prototype.hasOwnProperty.call(homeState.logos, k)) return homeState.logos[k];
+        var info = logoFromData(item);
+        if (info === undefined) info = logoFromData(homeState.heroDetails[k]);
+        if (info !== undefined) homeState.logos[k] = info;
+        return info;
+    }
+
+    /** Ответ /api/tmdb/logo — для элементов без поля logo */
+    function fetchHeroLogo(item, k) {
+        var known = knownLogo(item, k);
+        if (known !== undefined) return Promise.resolve(known);
+        if (homeState.logoUnsupported) return Promise.resolve(null);
+        if (homeState.logoInflight[k]) return homeState.logoInflight[k];
+
+        var url = serverUrl() + '/api/tmdb/logo?id=' + encodeURIComponent(item.id) +
+            '&type=' + ((item.media_type === 'tv') ? 'tv' : 'movie');
+        var timeout = new Promise(function (resolve, reject) {
+            setTimeout(function () { reject(new Error('timeout')); }, HOME.LOGO_FETCH_TIMEOUT_MS);
+        });
+        var p = Promise.race([fetch(url), timeout]).then(function (r) {
+            // 404 — сервер старше этой возможности: больше не спрашиваем
+            if (r.status === 404) { homeState.logoUnsupported = true; return null; }
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json().then(function (d) {
+                var info = logoFromData(d || {});
+                if (info === undefined) info = null;
+                homeState.logos[k] = info;
+                return info;
+            });
+        }).catch(function () {
+            // Сбой сети не запоминаем — в следующий раз спросим снова
+            return null;
+        });
+        homeState.logoInflight[k] = p;
+        p.then(function () { delete homeState.logoInflight[k]; });
+        return p;
+    }
+
+    /**
+     * Картинка логотипа в кэш браузера. done(true|false) — один раз на
+     * загрузку; не отдалась — на эту сессию элемент живёт с текстом.
+     */
+    function preloadLogo(k, info, done) {
+        if (info.loaded) { if (done) done(true); return; }
+        if (!info.waiters) info.waiters = [];
+        if (done) info.waiters.push(done);
+        if (info.loading) return;
+        info.loading = true;
+        var im = new Image();
+        var finish = function (ok) {
+            info.loading = false;
+            info.loaded = ok;
+            if (!ok) homeState.logos[k] = null;
+            var w = info.waiters;
+            info.waiters = [];
+            for (var i = 0; i < w.length; i++) w[i](ok);
+        };
+        im.onload = function () { finish(true); };
+        im.onerror = function () { finish(false); };
+        im.src = info.url;
+    }
+
+    /**
+     * Логотипы всего показанного ряда — заранее, пока человек смотрит на
+     * первую карточку: листаешь — логотип уже в кэше и встаёт сразу, без
+     * «сначала пусто, потом появилось». Берём только известные из данных
+     * подборки; за теми, у кого поля нет, отдельно не ходим.
+     */
+    function preloadRowLogos(index) {
+        var key = homeState.rowKeys[index];
+        var items = key ? homeState.data[key] : null;
+        if (!items) return;
+        for (var i = 0; i < items.length; i++) {
+            var k = heroKey(items[i]);
+            if (!k) continue;
+            var info = knownLogo(items[i], k);
+            if (info) preloadLogo(k, info, null);
+        }
+    }
+
+    function setHeroLogoState(hasLogo, url) {
+        var body = el('home-hero-body');
+        if (!body) return;
+        if (homeState.hero.logoTimer) {
+            clearTimeout(homeState.hero.logoTimer);
+            homeState.hero.logoTimer = null;
+        }
+        var img = hasLogo ? document.querySelector('#home-hero-logo img') : null;
+        if (img && img.getAttribute('src') !== url) img.setAttribute('src', url);
+        body.classList.toggle('home-hero-has-logo', !!hasLogo);
+        body.classList.remove('home-hero-logo-wait');
+    }
+
+    /**
+     * Логотип вместо текста названия. Картинку сначала грузим отдельным Image и
+     * только загруженную ставим в баннер — иначе на месте названия мелькала бы
+     * пустота. Уже загруженный в этой сессии логотип ставится сразу.
+     */
+    function applyHeroLogo(item, k, gen) {
+        var body = el('home-hero-body');
+        if (!body) return;
+        var known = k ? knownLogo(item, k) : null;
+        if (known === null || (known === undefined && homeState.logoUnsupported)) {
+            setHeroLogoState(false);
+            return;
+        }
+        if (known && known.loaded) { setHeroLogoState(true, known.url); return; }
+
+        body.classList.remove('home-hero-has-logo');
+        body.classList.add('home-hero-logo-wait');
+        if (homeState.hero.logoTimer) clearTimeout(homeState.hero.logoTimer);
+        homeState.hero.logoTimer = setTimeout(function () {
+            homeState.hero.logoTimer = null;
+            if (gen === homeState.hero.gen) body.classList.remove('home-hero-logo-wait');
+        }, HOME.LOGO_WAIT_MS);
+
+        fetchHeroLogo(item, k).then(function (info) {
+            if (gen !== homeState.hero.gen) return;
+            if (!info) { setHeroLogoState(false); return; }
+            preloadLogo(k, info, function (ok) {
+                if (gen === homeState.hero.gen) setHeroLogoState(ok, info.url);
+            });
         });
     }
 
@@ -1438,6 +1597,8 @@
             if (homeState.activeRow !== index) return;
             warmRow(index + 1);
             warmRow(index - 1);
+            // Логотипы — своего ряда: баннер показывает только его карточки
+            preloadRowLogos(index);
             loadRowPosters(index + 1);
             loadRowPosters(index - 1);
         }, HOME.PREFETCH_DELAY_MS);
