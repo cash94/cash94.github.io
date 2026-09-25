@@ -33,9 +33,27 @@
 var KP_API_KEY = '85d30ae5-d875-4c5f-900d-8e37bb20625e';
 var KP_BASE = 'https://kinopoiskapiunofficial.tech/api/v2.2/films/collections';
 
-// Тот же ключ и то же зеркало, что использует сам сервер (services/tmdb.js).
-var TMDB_API_KEY = '064ea5b59beec7eccb3fe99059d58a50';
-var TMDB_BASE = 'https://tsapi.hnar.online';
+// Зеркала TMDB — те же, что у сервера: список берём из того же apiproxy.json
+// на cash94.github.io, откуда его читает services/api-proxy.js. Зеркало,
+// зашитое сюда раньше (tsapi.hnar.online), умерло, и все подборки собирались
+// «0 из 20», хотя сам сервер давно ходил через другие. Теперь смена зеркал
+// в apiproxy.json доходит и до модуля, без выпуска новой версии.
+//
+// Встроенный список — на случай, если конфиг не скачался. Правило обхода то
+// же, что у сервера в режиме failover: не ответило — следующее.
+var APIPROXY_URL = 'https://cash94.github.io/apiproxy.json';
+// Столько живёт прочитанный конфиг зеркал
+var APIPROXY_TTL_MS = 60 * 60 * 1000;
+var DEFAULT_TMDB_KEY = '064ea5b59beec7eccb3fe99059d58a50';
+var DEFAULT_TMDB_MIRRORS = [
+    { api: 'http://tsapi.torrstream.online', key: DEFAULT_TMDB_KEY },
+    { api: 'http://nmapi.duckdns.org', key: DEFAULT_TMDB_KEY }
+];
+// { list: [{ api, key }], ts } — из apiproxy.json; null — ещё не читали
+var mirrorConfig = null;
+var mirrorConfigInflight = null;
+// Индекс зеркала, ответившего последним: с него и начинаем следующий запрос
+var mirrorIndex = 0;
 
 // Ряд главной показывает 20 карточек — ровно страница Кинопоиска. Поэтому
 // каждая подборка это ровно один запрос к Кинопоиску, сколько бы элементов в
@@ -46,8 +64,8 @@ var TTL_MS = 3 * 24 * 60 * 60 * 1000;
 // Одновременных запросов к TMDB при сборке. Выше 6 зеркало начинает терять
 // ответы: на 8 из ста элементов не сопоставились 28 против шести на четырёх.
 var TMDB_CONCURRENCY = 6;
-// Один повтор на элемент: одиночные обрывы к зеркалу — обычное дело, а терять
-// из-за них карточку жалко.
+// Один лишний круг по зеркалам: одиночные обрывы к зеркалу — обычное дело, а
+// терять из-за них карточку жалко.
 var TMDB_RETRIES = 1;
 var FETCH_TIMEOUT_MS = 15000;
 // Пауза между подборками при прогреве
@@ -121,14 +139,6 @@ function fetchJson(url, options) {
     });
 }
 
-/** То же, что fetchJson, но с повтором: обрыв к зеркалу — не повод терять элемент */
-function fetchJsonRetry(url, options, retries) {
-    return fetchJson(url, options).catch(function (e) {
-        if (!retries || destroyed) throw e;
-        return fetchJsonRetry(url, options, retries - 1);
-    });
-}
-
 /** Прогон списка с ограничением параллельности */
 function mapLimit(list, limit, worker) {
     return new Promise(function (resolve) {
@@ -174,16 +184,71 @@ function fetchKpPage(type) {
 
 // ==================== TMDB ====================
 
+/** Список зеркал: из apiproxy.json (раз в час), при неудаче — прежний или встроенный */
+function getMirrors() {
+    if (mirrorConfig && (Date.now() - mirrorConfig.ts) < APIPROXY_TTL_MS) {
+        return Promise.resolve(mirrorConfig.list);
+    }
+    if (mirrorConfigInflight) return mirrorConfigInflight;
+    mirrorConfigInflight = fetchJson(APIPROXY_URL + '?t=' + Date.now()).then(function (cfg) {
+        var list = [];
+        var raw = (cfg && Array.isArray(cfg.tmdb)) ? cfg.tmdb : [];
+        for (var i = 0; i < raw.length; i++) {
+            if (raw[i] && typeof raw[i].api === 'string' && raw[i].api) {
+                list.push({ api: raw[i].api.replace(/\/+$/, ''), key: raw[i].key || DEFAULT_TMDB_KEY });
+            }
+        }
+        if (!list.length) throw new Error('в apiproxy.json нет зеркал tmdb');
+        mirrorConfig = { list: list, ts: Date.now() };
+        mirrorIndex = 0;
+        return list;
+    }).catch(function () {
+        // Не скачалось — живём со старым списком (или встроенным) ещё час,
+        // а не дёргаем конфиг на каждый из восьмидесяти запросов сборки
+        var list = mirrorConfig ? mirrorConfig.list : DEFAULT_TMDB_MIRRORS;
+        mirrorConfig = { list: list, ts: Date.now() };
+        return list;
+    }).then(function (list) {
+        mirrorConfigInflight = null;
+        return list;
+    });
+    return mirrorConfigInflight;
+}
+
+/**
+ * GET к TMDB. pathAndQuery — путь и query без api_key и без хоста, например
+ * 'find/tt0432348?external_source=imdb_id&language=ru-RU'.
+ */
+function tmdbJson(pathAndQuery) {
+    return getMirrors().then(function (mirrors) {
+        return tmdbJsonFromMirrors(mirrors, pathAndQuery, 0);
+    });
+}
+
+function tmdbJsonFromMirrors(mirrors, pathAndQuery, attempt) {
+    var total = mirrors.length * (1 + TMDB_RETRIES);
+    var idx = (mirrorIndex + attempt) % mirrors.length;
+    var m = mirrors[idx];
+    var sep = pathAndQuery.indexOf('?') === -1 ? '?' : '&';
+    var url = m.api + '/' + pathAndQuery + sep + 'api_key=' + encodeURIComponent(m.key);
+    return fetchJson(url).then(function (data) {
+        mirrorIndex = idx;
+        return data;
+    }, function (e) {
+        if (destroyed || attempt + 1 >= total) throw e;
+        return tmdbJsonFromMirrors(mirrors, pathAndQuery, attempt + 1);
+    });
+}
+
 function kpMediaType(kpItem) {
     return kpItem && kpItem.type === 'TV_SERIES' ? 'tv' : 'movie';
 }
 
 /** Точный путь: imdbId → TMDB */
 function tmdbByImdb(imdbId, mediaType) {
-    var url = TMDB_BASE + '/find/' + encodeURIComponent(imdbId) +
-        '?api_key=' + TMDB_API_KEY + '&external_source=imdb_id&language=ru-RU';
+    var path = 'find/' + encodeURIComponent(imdbId) + '?external_source=imdb_id&language=ru-RU';
 
-    return fetchJsonRetry(url, null, TMDB_RETRIES).then(function (data) {
+    return tmdbJson(path).then(function (data) {
         if (!data) return null;
         var movies = Array.isArray(data.movie_results) ? data.movie_results : [];
         var shows = Array.isArray(data.tv_results) ? data.tv_results : [];
@@ -201,11 +266,10 @@ function tmdbByImdb(imdbId, mediaType) {
 function tmdbBySearch(title, year, mediaType) {
     if (!title) return Promise.resolve(null);
     var endpoint = mediaType === 'tv' ? 'search/tv' : 'search/movie';
-    var url = TMDB_BASE + '/' + endpoint +
-        '?api_key=' + TMDB_API_KEY + '&language=ru-RU&query=' + encodeURIComponent(title);
-    if (year) url += (mediaType === 'tv' ? '&first_air_date_year=' : '&year=') + year;
+    var path = endpoint + '?language=ru-RU&query=' + encodeURIComponent(title);
+    if (year) path += (mediaType === 'tv' ? '&first_air_date_year=' : '&year=') + year;
 
-    return fetchJsonRetry(url, null, TMDB_RETRIES).then(function (data) {
+    return tmdbJson(path).then(function (data) {
         var results = (data && Array.isArray(data.results)) ? data.results : [];
         if (!results.length) return null;
         return { raw: results[0], media_type: mediaType };
@@ -299,6 +363,13 @@ function buildCollection(key, log) {
                 }
                 log.log('Подборка ' + key + ': ' + items.length + ' из ' + slice.length +
                     ' (не сопоставлено с TMDB: ' + (slice.length - items.length) + ')');
+                // Ни одного сопоставления — это отказ зеркал, а не пустая
+                // подборка. Прежний ряд, даже протухший, лучше пустого; в кэш
+                // пустоту не кладём, следующий запрос соберёт заново.
+                if (!items.length) {
+                    if (cache[key] && cache[key].items.length) return cache[key].items;
+                    return items;
+                }
                 cache[key] = { ts: Date.now(), items: items };
                 return items;
             });
@@ -332,11 +403,12 @@ function getCollection(key, log) {
 
 module.exports = {
     name: 'kinopoisk-collections',
-    version: '3.0.0',
+    version: '3.1.0',
 
     init: function (app, ctx) {
         var log = ctx.log;
         destroyed = false;
+        mirrorConfig = null;
 
         // Список доступных подборок — по нему фронт может строить ряды,
         // не дублируя названия у себя.
