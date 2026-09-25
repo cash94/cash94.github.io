@@ -24,6 +24,7 @@
         detailScale: 100,            // масштаб содержимого detail-view, %
         detailTextScale: 100,        // шрифт описания в detail-view, % от базового
         topbarScale: 100,            // шрифт шапки (разделы, лупа, часы), % от базового
+        settingsScale: 100,          // размер экрана «Настройки», % от базового
         catalogColumns: 'auto',      // auto | 3..8  (auto = число колонок считается из cardSize)
         // Размеры подписей карточки — в пикселях, ползунками (см. SLIDERS).
         // Прежний пресет fontSize (small/medium/large) остался только для
@@ -95,11 +96,17 @@
             fmt: function (v) { return v + '%'; }
         },
         // Шрифт шапки: TorrStream, разделы, лупа, «Настройки», часы и дата.
-        // Шапка — одна строка без переноса: на 1920 px в неё влезает и 150%,
-        // а на 960/1280 — около 130%. Не влезает выбранное — fitTopbarScale
-        // уменьшает до того, что влезает. Отступы между пунктами не растут.
+        // Шапка — одна строка без переноса: на 1920 px в неё влезает около
+        // 180%, а на 960/1280 — около 130%. Не влезает выбранное —
+        // fitTopbarScale уменьшает до того, что влезает. Отступы не растут.
         topbarScale: {
-            min: 80, max: 150, step: 5, def: 100,
+            min: 80, max: 200, step: 5, def: 100,
+            fmt: function (v) { return v + '%'; }
+        },
+        // Весь экран «Настройки» — zoom на #config-screen (styles.css). 100% —
+        // базовый размер, он и так в 1.2 раза крупнее прежнего.
+        settingsScale: {
+            min: 80, max: 160, step: 5, def: 100,
             fmt: function (v) { return v + '%'; }
         }
     };
@@ -261,6 +268,7 @@
         s.heroTextScale = clampStep(s.heroTextScale, SLIDERS.heroTextScale);
         s.detailTextScale = clampStep(s.detailTextScale, SLIDERS.detailTextScale);
         s.topbarScale = clampStep(s.topbarScale, SLIDERS.topbarScale);
+        s.settingsScale = clampStep(s.settingsScale, SLIDERS.settingsScale);
         s.focusColor = normalizeColor(s.focusColor);
 
         s.showRatings = !!s.showRatings;
@@ -468,6 +476,7 @@
         var heroTextScale = clampStep(currentSettings.heroTextScale, SLIDERS.heroTextScale);
         var detailTextScale = clampStep(currentSettings.detailTextScale, SLIDERS.detailTextScale);
         var topbarScale = clampStep(currentSettings.topbarScale, SLIDERS.topbarScale);
+        var settingsScale = clampStep(currentSettings.settingsScale, SLIDERS.settingsScale);
         var radius = RADII[currentSettings.borderRadius] || RADII.medium;
         var density = DENSITIES[currentSettings.density] || DENSITIES.comfortable;
         var bright = BRIGHTNESS[currentSettings.posterBrightness] || BRIGHTNESS.normal;
@@ -537,6 +546,9 @@
         // умножаются на эту переменную. Высота шапки от этого меняется —
         // главная перекладывается в applySettings (HomeScreen.layout).
         css.push(':root{--topbar-scale:' + (topbarScale / 100) + ';}');
+        // Экран «Настройки» (zoom на #config-screen) и панель «Внешний вид»:
+        // базовые 1.2 × ползунок
+        css.push(':root{--settings-zoom:' + (1.2 * settingsScale / 100).toFixed(3) + ';}');
 
         // Полоса на постере растёт вместе с тем, что в ней лежит
         css.push('.card-modern .poster-bar{height:' +
@@ -743,7 +755,12 @@
             // кольцо фокуса, заливка ползунка, включённый переключатель.
             '.ui-customizer-overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.8);}',
             '.ui-customizer-overlay.hidden{display:none;}',
-            '.ui-customizer-panel{width:92vw;max-width:760px;max-height:88vh;display:flex;flex-direction:column;background:#0e0e12;border:1px solid rgba(255,255,255,0.08);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,0.7);overflow:hidden;color:#e0e0e0;}',
+            // Размер — тем же масштабом, что и экран «Настройки», из которого
+            // панель открывают (--settings-zoom: базовые 1.2 × ползунок
+            // «Экран Настройки»): на ТВ 1080p прежний был мелковат. vw/vh под
+            // zoom тоже умножаются — делим на него, иначе панель вылезла бы за
+            // экран. calc с var() в Chrome 66 работает.
+            '.ui-customizer-panel{zoom:var(--settings-zoom,1.2);width:calc(92vw / var(--settings-zoom,1.2));max-width:760px;max-height:calc(88vh / var(--settings-zoom,1.2));display:flex;flex-direction:column;background:#0e0e12;border:1px solid rgba(255,255,255,0.08);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,0.7);overflow:hidden;color:#e0e0e0;}',
             '.ui-customizer-header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:20px 24px 16px;border-bottom:1px solid rgba(255,255,255,0.06);}',
             '.ui-customizer-header h2{margin:0;font-size:24px;font-weight:700;color:#fff;}',
             '.ui-customizer-close{display:flex;align-items:center;justify-content:center;flex:0 0 auto;width:40px;height:40px;padding:0;background:rgba(255,255,255,0.12);color:#fff;border:0;border-radius:50%;font-size:15px;line-height:1;cursor:pointer;}',
@@ -872,6 +889,11 @@
             '<div class="ui-customizer-group"><h3>Шапка</h3>' +
             '<div class="ui-customizer-hint">Размер шрифта верхней строки: TorrStream, разделы, лупа, «Настройки», часы и дата. Не влезет в экран — шапка уменьшится до того, что влезает.</div>' +
             sliderRow('topbarScale', SLIDERS.topbarScale.min + '%', SLIDERS.topbarScale.max + '%') +
+            '</div>' +
+
+            '<div class="ui-customizer-group"><h3>Экран «Настройки»</h3>' +
+            '<div class="ui-customizer-hint">Размер всего экрана настроек — разделы, подписи, поля, переключатели, кнопки — и этой панели.</div>' +
+            sliderRow('settingsScale', SLIDERS.settingsScale.min + '%', SLIDERS.settingsScale.max + '%') +
             '</div>' +
 
             '<div class="ui-customizer-group"><h3>Текст описания</h3>' +

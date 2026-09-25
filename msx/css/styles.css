@@ -8245,9 +8245,31 @@ article {
    строка-переключатель подсвечивается через сам чекбокс: он растянут на всю
    строку и лежит под текстом, а пульт фокусирует именно его. */
 
+/* Раскладка на весь экран: разделы прижаты к левому краю, настройки — на всё
+   оставшееся место справа (раньше блок стоял по центру шириной 1280 px, и на
+   ТВ по бокам оставались пустые поля).
+
+   Размер — через zoom: весь экран настроек крупнее целиком, с отступами,
+   полями и переключателями, а не одни шрифты. Базово в 1.2 раза крупнее
+   прежнего (с дивана на ТВ приходилось приглядываться), дальше — ползунком
+   «Экран Настройки» в «Внешнем виде» (ui-customizer.js пишет --settings-zoom).
+
+   zoom — на самом #config-screen, а не на карточке внутри: он же и
+   прокручивается, а Chrome 66 отдаёт getBoundingClientRect элементов под zoom
+   без учёта увеличения. Будь zoom у карточки, пункты мерились бы в одном
+   масштабе, а контейнер прокрутки — в другом, и доводка фокуса (focusEl)
+   считала бы пункт у нижнего края видимым, когда он уже за экраном.
+   vh под zoom тоже умножается — поэтому высота делится на него. */
 #config-screen {
-  min-height: 100vh;
-  padding: 56px 64px;
+  zoom: var(--settings-zoom, 1.2);
+  min-height: calc(100vh / var(--settings-zoom, 1.2));
+  /* Своя прокрутка: окно у приложения не прокручивается, и всё, что ниже
+     экрана, было недостижимо — фокус уходил за край. Доводку фокуса по нему
+     делает focusEl (control.js, ветка config). */
+  height: calc(100vh / var(--settings-zoom, 1.2));
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 48px 40px;
   box-sizing: border-box;
   background: #000;
   color: #e0e0e0;
@@ -8267,9 +8289,9 @@ article {
   align-items: flex-start;
   flex: 1 1 auto;
   width: 100%;
-  max-width: 1280px;
+  max-width: none;
   min-width: 0;
-  margin: 0 auto;
+  margin: 0;
   padding: 0;
   background: none;
   border: 0;
@@ -8344,7 +8366,6 @@ article {
 #config-screen .settings-main {
   flex: 1 1 auto;
   min-width: 0;
-  max-width: 880px;
 }
 
 #config-screen .settings-section {
@@ -8749,14 +8770,14 @@ article {
 
 /* ---- Экраны поменьше: 1280×720 и 960×540 ---- */
 @media (max-width: 1400px) {
-  #config-screen { padding: 40px 44px; }
+  #config-screen { padding: 36px 32px; }
   #config-screen .settings-sidebar { flex-basis: 240px; width: 240px; margin-right: 40px; }
   #config-screen .settings-title { font-size: 34px; margin-bottom: 26px; }
   #config-screen .settings-section h2 { font-size: 26px; }
 }
 
 @media (max-width: 1000px) {
-  #config-screen { padding: 28px 28px; }
+  #config-screen { padding: 24px 20px; }
   #config-screen .settings-sidebar { flex-basis: 200px; width: 200px; margin-right: 28px; }
   #config-screen .settings-title { font-size: 28px; margin-bottom: 20px; }
   #config-screen .menu-item { padding: 11px 14px; font-size: 16px; }

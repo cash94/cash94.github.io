@@ -3331,6 +3331,17 @@ function scrollCatalogRowIntoView(viewport, vertEl, dy, smooth) {
 function isTopAnchoredTarget(target) {
     if (!target || !target.classList) return false;
     if (target.classList.contains('home-nav-btn')) return true;
+    // Настройки: левое меню и первый пункт открытого раздела — экран в самый
+    // верх, иначе после прокрутки вниз и обратно заголовки раздела оставались
+    // срезанными сверху (пункт-то виден, прокручивать «незачем»). Проверка —
+    // только на экране настроек: сама она не дешёвая.
+    if (AppState.currentScreen === 'config') {
+        if (target.classList.contains('menu-item')) return true;
+        if (typeof configState !== 'undefined' && configState.activeTabId) {
+            var cItems = getConfigContentItems(configState.activeTabId);
+            if (cItems.length && cItems[0] === target) return true;
+        }
+    }
     if (target.classList.contains('catalog-row-card')) {
         return isFirstRowViewport(target.closest ? target.closest('.catalog-row-viewport') : null);
     }
@@ -3595,7 +3606,12 @@ function focusEl(el, opts) {
     // стать .catalog-row-viewport (горизонтальная доводка каруселью). Сама
     // главная по вертикали не прокручивается — баннер и ряд считаны ровно на
     // высоту экрана, поэтому #main-container для её кнопок остаётся no-op.
-    if (s === 'catalog' || s === 'torrents' || s === 'config' || s === 'home') {
+    if (s === 'config') {
+        // Настройки лежат не в #main-container, а в своём #config-screen, и
+        // прокручивается он сам (styles.css). Раньше доводка шла по
+        // #main-container — впустую, и пункты ниже экрана были недостижимы.
+        container = getEl('config-screen');
+    } else if (s === 'catalog' || s === 'torrents' || s === 'home') {
         var rowVp = (isRowCard && el.closest) ? el.closest('.catalog-row-viewport') : null;
         container = rowVp || getEl('main-container');
     } else if (s === 'search') {
