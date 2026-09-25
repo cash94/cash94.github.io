@@ -1850,13 +1850,28 @@ body.detail-open {
   pointer-events: none !important;
 }
 
+/* Время и перемотка — одной строкой: текущее время, полоса, длительность
+   (как во встроенном плеере Android). Отступы — margin, а не gap: flex-gap
+   в Chrome 66 нет. */
 #time-display {
   color: white;
-  font-size: 13px;
+  font-size: 15px;
   font-family: monospace;
   display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
+  align-items: center;
+}
+
+#time-display #current-time,
+#time-display #duration-time {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+#time-display #seek-slider {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  margin: 0 12px;
 }
 
 #seek-slider,
@@ -9047,9 +9062,12 @@ article {
 }
 
 #time-display {
-  font-size: 1.3vw;
-  margin-bottom: 0.7vw;
+  font-size: 1.55vw;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+}
+
+#time-display #seek-slider {
+  margin: 0 1.2vw;
 }
 
 #seek-slider {
@@ -9078,11 +9096,12 @@ article {
   max-width: 12vw;
 }
 
-/* Строка буфера — над временем, у левого края, на затемнении панели.
-   z-index выше панели (225), иначе её затемнение легло бы поверх текста */
+/* Строка буфера — прямо над строкой времени и перемотки, у левого края, на
+   затемнении панели. z-index выше панели (225), иначе её затемнение легло бы
+   поверх текста */
 #buffer-stats {
   left: 3.5vw;
-  bottom: 12.2vw;               /* над панелью: её высота ~11,2vw */
+  bottom: 10vw;                 /* над панелью: её высота ~9,2vw */
   transform: none;
   padding: 0;
   background: none;
@@ -9156,10 +9175,11 @@ article {
   #clock-display { top: 14px; right: 14px; font-size: 16px; }
   #controls-container { padding: 0 14px 16px; }
   #controls-container::before { height: 170px; }
-  #time-display { font-size: 12px; margin-bottom: 6px; }
+  #time-display { font-size: 14px; }
+  #time-display #seek-slider { margin: 0 10px; }
   .button-row { margin-top: 8px; }
   .control-btn { width: 40px; height: 40px; font-size: 20px; }
   .volume-container { max-width: 110px; }
-  #buffer-stats { left: 14px; bottom: 126px; font-size: 12px; }   /* панель ~116px */
+  #buffer-stats { left: 14px; bottom: 98px; font-size: 12px; }    /* панель ~90px */
   #player-hint { bottom: 2px; font-size: 11px; }
 }
