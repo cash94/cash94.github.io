@@ -4029,7 +4029,7 @@ article {
 
 .detail-subtitle,
 #detail-subtitle {
-  font-size: 20px !important;
+  font-size: calc(20px * var(--detail-text-scale, 1)) !important;
   display: -webkit-box !important;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
@@ -4057,6 +4057,10 @@ article {
 
 /* ============================================================
    ОПИСАНИЕ — clamp 3 строки + кнопка «Подробнее»
+   Размер шрифта описания везде (и здесь, и в медиазапросах, и у
+   #detail-subtitle — описания в карточке торрента) умножается на
+   --detail-text-scale: ползунок «Текст описания» в «Внешнем виде»
+   (ui-customizer.js). Новое правило с font-size описания — тоже через него.
    ============================================================ */
 .catalog-detail-overview,
 #catalog-detail-overview {
@@ -4064,7 +4068,7 @@ article {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 15px !important;
+  font-size: calc(15px * var(--detail-text-scale, 1)) !important;
   line-height: 1.6 !important;
   color: rgba(255, 255, 255, 0.85) !important;
   margin-bottom: 18px !important;
@@ -5222,7 +5226,7 @@ article {
 }
 
 #detail-view.torrent-detail-mode #detail-subtitle {
-  font-size: 19px !important;
+  font-size: calc(19px * var(--detail-text-scale, 1)) !important;
   line-height: 1.45;
   -webkit-line-clamp: 2;
   max-width: 980px;
@@ -5492,7 +5496,7 @@ article {
   }
 
   #detail-view.torrent-detail-mode #detail-subtitle {
-    font-size: 15px !important;
+    font-size: calc(15px * var(--detail-text-scale, 1)) !important;
   }
 
   #detail-view.torrent-detail-mode .catalog-detail-panel {
@@ -5579,7 +5583,7 @@ article {
   }
 
   #detail-view.torrent-detail-mode #detail-subtitle {
-    font-size: 15px !important;
+    font-size: calc(15px * var(--detail-text-scale, 1)) !important;
     line-height: 1.4;
     max-width: 760px;
   }
@@ -6554,7 +6558,7 @@ article {
 
   .detail-subtitle,
   #detail-subtitle {
-    font-size: 13px !important;
+    font-size: calc(13px * var(--detail-text-scale, 1)) !important;
     -webkit-line-clamp: 2;
   }
 
@@ -6575,7 +6579,7 @@ article {
 
   .catalog-detail-overview,
   #catalog-detail-overview {
-    font-size: 13px !important;
+    font-size: calc(13px * var(--detail-text-scale, 1)) !important;
     line-height: 1.45 !important;
     margin-bottom: 10px !important;
     -webkit-line-clamp: 2;
@@ -6708,7 +6712,7 @@ article {
   }
 
   #detail-view.torrent-detail-mode #detail-subtitle {
-    font-size: 12px !important;
+    font-size: calc(12px * var(--detail-text-scale, 1)) !important;
     line-height: 1.35;
     max-width: 700px;
   }
@@ -6880,7 +6884,7 @@ article {
 }
 
 #detail-view.catalog-detail-mode #catalog-detail-overview {
-  font-size: 17px !important;
+  font-size: calc(17px * var(--detail-text-scale, 1)) !important;
   line-height: 1.55 !important;
   -webkit-line-clamp: 3;
   max-width: 900px;
@@ -7147,7 +7151,7 @@ article {
   }
 
   #detail-view.catalog-detail-mode #catalog-detail-overview {
-    font-size: 14px !important;
+    font-size: calc(14px * var(--detail-text-scale, 1)) !important;
     line-height: 1.45 !important;
     -webkit-line-clamp: 2;
     max-width: 620px;
@@ -7273,7 +7277,7 @@ article {
   }
 
   #detail-view.catalog-detail-mode #catalog-detail-overview {
-    font-size: 15px !important;
+    font-size: calc(15px * var(--detail-text-scale, 1)) !important;
     line-height: 1.45 !important;
     -webkit-line-clamp: 2;
     max-width: 820px;
@@ -7397,7 +7401,7 @@ article {
   }
 
   #detail-view.catalog-detail-mode #catalog-detail-overview {
-    font-size: 13px !important;
+    font-size: calc(13px * var(--detail-text-scale, 1)) !important;
     line-height: 1.4 !important;
     -webkit-line-clamp: 2;
     max-width: 600px;
