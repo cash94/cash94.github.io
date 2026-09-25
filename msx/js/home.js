@@ -1146,16 +1146,21 @@
         // заранее, оно на Android TV успевает нарисовать свой значок «плей»
         // (CSS его прячет, но пустой чёрный слой всё равно виден лишним мигом)
         // Класс на баннере ставим здесь же, а не по событию playing: на нём висит
-        // и гашение кадра, и плавный уход подписей (название, рейтинги, описание,
-        // «Смотреть»), а они должны уходить ровно тогда, когда появляется
-        // картинка трейлера. Снимает его stopHeroTrailer — то есть любая
-        // остановка возвращает подписи обратно.
+        // гашение кадра-картинки и вписывание трейлера справа, а это должно
+        // случиться ровно тогда, когда появляется картинка трейлера. Снимает его
+        // stopHeroTrailer — любая остановка возвращает баннер как был.
         function revealVideo() {
             if (homeState.hero.video !== video) return;
+            if (video.classList.contains('home-hero-video-on')) return;
+            fitTrailerBox(video);
             video.classList.add('home-hero-video-on');
             var hero = el('home-hero');
             if (hero) hero.classList.add('home-hero-playing');
         }
+        // Размер кадра известен с метаданных и может смениться при переходе
+        // hls.js на другое качество
+        video.addEventListener('loadedmetadata', function () { fitTrailerBox(video); });
+        video.addEventListener('resize', function () { fitTrailerBox(video); });
         video.addEventListener('playing', function () {
             revealVideo();
             startVolumeFade();
@@ -1185,6 +1190,26 @@
         }
 
         startHeroWatchdog();
+    }
+
+    /**
+     * Ширина кадра трейлера (см. «Трейлер почти целиком» в styles.css): высота
+     * баннера × пропорция кадра, но не шире баннера. Кадр во всю высоту
+     * баннера — вровень с картинкой, так же уходит верхом под шапку.
+     * Пишется в --trailer-w на #home-hero.
+     */
+    // Блок кадра шире пропорции ролика на столько (влево): кадр целиком по
+    // высоте выходил узковат. Лишнее срезает object-fit: cover — по ~4%
+    // сверху и снизу, на глаз незаметно.
+    var TRAILER_WIDEN = 1.08;
+
+    function fitTrailerBox(video) {
+        var hero = el('home-hero');
+        if (!hero || !video) return;
+        var ar = (video.videoWidth && video.videoHeight) ? video.videoWidth / video.videoHeight : 16 / 9;
+        var h = hero.clientHeight - 2;                  // видео на 2px короче баннера
+        var w = Math.min(hero.clientWidth, Math.round(h * ar * TRAILER_WIDEN));
+        if (w > 0) hero.style.setProperty('--trailer-w', w + 'px');
     }
 
     /**
@@ -1411,6 +1436,9 @@
         applyCardCss(w, posterH);
         hero.style.marginTop = (-heroTop) + 'px';
         hero.style.height = (heroH + heroTop) + 'px';
+        // Высота баннера сменилась, а трейлер играет — вписываем кадр заново.
+        // Чтение после записей, но только пока идёт трейлер: это редкость.
+        if (homeState.hero.video) fitTrailerBox(homeState.hero.video);
     }
 
     // ==================== РАЗМЕТКА РЯДОВ ====================
