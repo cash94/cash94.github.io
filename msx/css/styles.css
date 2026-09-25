@@ -1702,6 +1702,8 @@ body.detail-open {
   background: #000;
   z-index: 200;
   display: none;
+  /* «Обрезка»: кадр больше экрана (app.js: applyVideoBox) — лишнее прячем */
+  overflow: hidden;
 }
 
 #player-screen video {
@@ -5982,9 +5984,18 @@ article {
   line-height: 1.4;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  /* Уже подписей: во всю ширину блока строки описания выходили слишком
+     длинными и заходили на трейлер справа */
+  max-width: 65%;
+  /* По ширине — иначе правый край узкой колонки шёл «лесенкой». Переносы
+     уменьшают пробелы между словами там, где браузер их умеет (на Chrome 66
+     для ТВ — не везде; без них просто чуть шире пробелы) */
+  text-align: justify;
+  -webkit-hyphens: auto;
+  hyphens: auto;
 }
 
 /* ВАЖНО: у .home-hero-btn НЕТ display — иначе перебивается [hidden] из
@@ -6315,7 +6326,7 @@ article {
   #home-hero-overview {
     margin-bottom: 9px;
     --hero-size: 12px;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 4;
   }
 
   .home-hero-btn {
@@ -6495,7 +6506,7 @@ article {
     margin-bottom: 7px;
     --hero-size: 11px;
     line-height: 1.35;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 4;
   }
 
   .home-hero-btn {

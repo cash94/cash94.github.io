@@ -206,15 +206,57 @@ function setupVideoPlayerControls() {
     return;
   }
 
+  // Режим масштаба задаётся не только object-fit, но и самим прямоугольником
+  // <video>. На части ТВ (жалобы с Vidaa) видео выводится аппаратным слоем,
+  // который берёт у элемента лишь положение и размер, а object-fit не видит:
+  // кнопка там переключала режимы вхолостую. Поэтому для «С полосами»,
+  // «Обрезка» и «Оригинал» считаем прямоугольник кадра сами (applyVideoBox),
+  // а object-fit оставляем — в обычном браузере он даёт то же самое.
+  // «Растянуть» — весь экран; если слой сам держит пропорции, там он выглядит
+  // как «С полосами», иначе его не сделать.
+  var zoomMode = 'contain';
+
+  function applyVideoBox() {
+    var st = video.style;
+    var ps = getEl('player-screen');
+    var cw = (ps && ps.clientWidth) || window.innerWidth;
+    var ch = (ps && ps.clientHeight) || window.innerHeight;
+    var vw = video.videoWidth, vh = video.videoHeight;
+    if (zoomMode === 'fill' || !vw || !vh || !cw || !ch) {
+      st.position = st.left = st.top = st.width = st.height = st.maxWidth = st.maxHeight = '';
+      return;
+    }
+    var r = zoomMode === 'cover' ? Math.max(cw / vw, ch / vh)
+      : zoomMode === 'none' ? 1
+      : Math.min(cw / vw, ch / vh);
+    var w = Math.round(vw * r), h = Math.round(vh * r);
+    st.position = 'absolute';
+    st.maxWidth = 'none';
+    st.maxHeight = 'none';
+    st.width = w + 'px';
+    st.height = h + 'px';
+    st.left = Math.round((cw - w) / 2) + 'px';
+    st.top = Math.round((ch - h) / 2) + 'px';
+  }
+
   function setVideoObjectFit(mode) {
+    zoomMode = mode;
     video.classList.remove('video-object-fit-contain', 'video-object-fit-fill',
       'video-object-fit-cover', 'video-object-fit-none');
     if (mode === 'contain') video.classList.add('video-object-fit-contain');
     else if (mode === 'fill') video.classList.add('video-object-fit-fill');
     else if (mode === 'cover') video.classList.add('video-object-fit-cover');
     else video.classList.add('video-object-fit-none');
-    void video.offsetHeight;
+    applyVideoBox();
   }
+
+  // Прямоугольник зависит от размера кадра и экрана: новый ролик или серия,
+  // смена качества в потоке, поворот/resize окна, вход в полный экран
+  video.addEventListener('loadedmetadata', applyVideoBox);
+  video.addEventListener('resize', applyVideoBox);
+  window.addEventListener('resize', applyVideoBox);
+  document.addEventListener('fullscreenchange', applyVideoBox);
+  document.addEventListener('webkitfullscreenchange', applyVideoBox);
 
   setVideoObjectFit('contain');
 
