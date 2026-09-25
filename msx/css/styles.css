@@ -5826,12 +5826,17 @@ article {
   pointer-events: auto;
 }
 
+/* Высота на 2px меньше баннера. Видео — отдельный слой, и на нижней кромке,
+   совпадающей с краем баннера, он рисовал светлую полоску: крайний ряд
+   кадра вылезал из-под затемнения (баннер стоит с дробным сдвигом под шапку,
+   а на ТВ ещё и DPR 1.25/1.5). Укороченное на 2px видео полоски не даёт —
+   проверено; под ним чёрный фон баннера, а затемнение у края и так чёрное. */
 .home-hero-video {
   position: absolute;
   left: 0;
   top: 0;
   width: 100%;
-  height: 100%;
+  height: calc(100% - 2px);
   object-fit: cover;
   opacity: 0;
   /* Не только прозрачность: на Android TV видео живёт в отдельном слое, и его
@@ -5884,7 +5889,9 @@ article {
   top: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0) 24%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.45) 68%, rgba(0, 0, 0, 0.92) 100%);
+  /* Внизу — чистый чёрный: под баннером страница #000, и при 0.92 на светлом
+     кадре кромка баннера проступала серой чертой */
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0) 24%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.45) 68%, rgba(0, 0, 0, 0.92) 97%, #000 100%);
 }
 
 #home-hero-body {
@@ -5916,6 +5923,41 @@ article {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Логотип названия вместо текста (home.js, applyHeroLogo). Показ — классами
+   на #home-hero-body, а не атрибутом hidden: у заголовка свой display
+   (-webkit-box), и hidden его не перебил бы.
+     .home-hero-has-logo  — логотип загружен: он виден, текст убран;
+     .home-hero-logo-wait — логотип ещё ищем: текст невидим, но место
+                            держит, чтобы описание не прыгало вверх-вниз.
+   Размер от той же --hero-size, что у текста названия, и того же множителя
+   из настроек: ползунок «Текст на баннере главной» растит и логотип. */
+#home-hero-logo {
+  display: none;
+  margin: 0 0 12px;
+  --hero-size: 38px;
+  max-width: calc(var(--hero-size) * 12 * var(--hero-text-scale, 1));
+}
+
+#home-hero-logo img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(var(--hero-size) * 2.6 * var(--hero-text-scale, 1));
+}
+
+.home-hero-has-logo #home-hero-logo {
+  display: block;
+}
+
+.home-hero-has-logo #home-hero-title {
+  display: none;
+}
+
+.home-hero-logo-wait #home-hero-title {
+  visibility: hidden;
 }
 
 #home-hero-meta {
@@ -6035,7 +6077,11 @@ article {
 /* ===== Общая шапка раздела =====
    Одна строка на все экраны (#content-home / #content-torrents /
    #content-catalog), поэтому «Главная» доступна из любого места. Раскладка как
-   у Netflix: название и разделы слева, лупа и «Настройки» — у правого края. */
+   у Netflix: название и разделы слева, лупа и «Настройки» — у правого края.
+
+   Все размеры шрифта шапки (TorrStream, пункты, лупа, часы, дата — здесь и в
+   медиазапросах под ТВ ниже) умножаются на --topbar-scale: ползунок «Шапка» в
+   «Внешнем виде» (ui-customizer.js). Новый font-size в шапке — тоже через неё. */
 #home-topbar {
   position: -webkit-sticky;
   position: sticky;
@@ -6092,7 +6138,7 @@ article {
 #home-topbar .section-title-header {
   flex: none;
   margin: 0 32px 0 0;
-  font-size: 28px;
+  font-size: calc(28px * var(--topbar-scale, 1));
   line-height: 1;
   color: #ff8c00;
 }
@@ -6120,7 +6166,7 @@ article {
   color: #b3b3b3;
   cursor: pointer;
   font-family: inherit;
-  font-size: 19px;
+  font-size: calc(19px * var(--topbar-scale, 1));
   font-weight: 400;
   line-height: 1.2;
   white-space: nowrap;
@@ -6138,7 +6184,7 @@ article {
   border: 2px solid transparent;
   border-color: transparent !important;
   border-radius: 50%;
-  font-size: 21px;
+  font-size: calc(21px * var(--topbar-scale, 1));
   line-height: 1;
   color: #fff;
 }
@@ -6198,7 +6244,7 @@ article {
 }
 
 #home-clock-time {
-  font-size: 32px;
+  font-size: calc(32px * var(--topbar-scale, 1));
   font-weight: 600;
   line-height: 1;
   color: #fff;
@@ -6215,13 +6261,13 @@ article {
 /* line-height 1.1, а не 1.15: две строки должны уложиться в высоту строки
    кнопок (19px × 1.2 + 12px = 34.8), иначе шапка растёт из-за даты */
 #home-clock-day {
-  font-size: 16px;
+  font-size: calc(16px * var(--topbar-scale, 1));
   line-height: 1.1;
   color: #b3b3b3;
 }
 
 #home-clock-weekday {
-  font-size: 15px;
+  font-size: calc(15px * var(--topbar-scale, 1));
   line-height: 1.1;
   color: #8a8a8a;
 }
@@ -6250,6 +6296,11 @@ article {
 
   #home-hero-title {
     margin: 0 0 6px;
+    --hero-size: 26px;
+  }
+
+  #home-hero-logo {
+    margin: 0 0 8px;
     --hero-size: 26px;
   }
 
@@ -6298,17 +6349,17 @@ article {
 
   #home-topbar .section-title-header {
     margin: 0 22px 0 0;
-    font-size: 22px;
+    font-size: calc(22px * var(--topbar-scale, 1));
   }
 
   .home-nav-btn {
     padding: 4px 2px;
-    font-size: 16px;
+    font-size: calc(16px * var(--topbar-scale, 1));
   }
 
   .home-nav-btn.home-nav-icon {
     padding: 5px;
-    font-size: 17px;
+    font-size: calc(17px * var(--topbar-scale, 1));
   }
 
   /* Часы: суммарно ~27px в высоту — ровно строка кнопок (16px × 1.2 + 8px) */
@@ -6317,7 +6368,7 @@ article {
   }
 
   #home-clock-time {
-    font-size: 26px;
+    font-size: calc(26px * var(--topbar-scale, 1));
   }
 
   #home-clock-date {
@@ -6325,11 +6376,11 @@ article {
   }
 
   #home-clock-day {
-    font-size: 13px;
+    font-size: calc(13px * var(--topbar-scale, 1));
   }
 
   #home-clock-weekday {
-    font-size: 12px;
+    font-size: calc(12px * var(--topbar-scale, 1));
   }
 }
 
@@ -6373,17 +6424,17 @@ article {
 
   #home-topbar .section-title-header {
     margin: 0 18px 0 0;
-    font-size: 20px;
+    font-size: calc(20px * var(--topbar-scale, 1));
   }
 
   .home-nav-btn {
     padding: 3px 2px;
-    font-size: 15px;
+    font-size: calc(15px * var(--topbar-scale, 1));
   }
 
   .home-nav-btn.home-nav-icon {
     padding: 4px;
-    font-size: 16px;
+    font-size: calc(16px * var(--topbar-scale, 1));
   }
 
   /* Часы: 540px по высоте — самый тесный бюджет, поэтому строки поджаты
@@ -6393,7 +6444,7 @@ article {
   }
 
   #home-clock-time {
-    font-size: 23px;
+    font-size: calc(23px * var(--topbar-scale, 1));
   }
 
   #home-clock-date {
@@ -6401,12 +6452,12 @@ article {
   }
 
   #home-clock-day {
-    font-size: 12px;
+    font-size: calc(12px * var(--topbar-scale, 1));
     line-height: 1.05;
   }
 
   #home-clock-weekday {
-    font-size: 11px;
+    font-size: calc(11px * var(--topbar-scale, 1));
     line-height: 1.05;
   }
 
@@ -6424,6 +6475,11 @@ article {
 
   #home-hero-title {
     margin: 0 0 4px;
+    --hero-size: 22px;
+  }
+
+  #home-hero-logo {
+    margin: 0 0 6px;
     --hero-size: 22px;
   }
 

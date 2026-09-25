@@ -54,6 +54,11 @@ var mirrorConfig = null;
 var mirrorConfigInflight = null;
 // Индекс зеркала, ответившего последним: с него и начинаем следующий запрос
 var mirrorIndex = 0;
+// ctx.tmdbGet от сервера (module-loader.js): GET к TMDB через его зеркала из
+// apiproxy.json, с их проверкой здоровья и переключением. Есть — идём им, а
+// свои зеркала ниже остаются запасом: для серверов старше этой возможности и
+// на случай, если серверный путь не ответил.
+var serverTmdbGet = null;
 
 // Ряд главной показывает 20 карточек — ровно страница Кинопоиска. Поэтому
 // каждая подборка это ровно один запрос к Кинопоиску, сколько бы элементов в
@@ -220,6 +225,24 @@ function getMirrors() {
  * 'find/tt0432348?external_source=imdb_id&language=ru-RU'.
  */
 function tmdbJson(pathAndQuery) {
+    if (serverTmdbGet) {
+        return tmdbJsonFromServer(pathAndQuery).catch(function () {
+            if (destroyed) throw new Error('модуль остановлен');
+            return tmdbJsonOwn(pathAndQuery);
+        });
+    }
+    return tmdbJsonOwn(pathAndQuery);
+}
+
+/** Через сервер: ctx.tmdbGet отдаёт Response, ключ и хост подставляет сам */
+function tmdbJsonFromServer(pathAndQuery) {
+    return Promise.resolve(serverTmdbGet(pathAndQuery)).then(function (r) {
+        if (!r || !r.ok) throw new Error('HTTP ' + (r ? r.status : '?'));
+        return r.json();
+    });
+}
+
+function tmdbJsonOwn(pathAndQuery) {
     return getMirrors().then(function (mirrors) {
         return tmdbJsonFromMirrors(mirrors, pathAndQuery, 0);
     });
@@ -288,6 +311,45 @@ function resolveTmdb(kpItem) {
     return tmdbBySearch(title, kpItem.year, mediaType);
 }
 
+// ==================== ЛОГОТИП НАЗВАНИЯ ====================
+//
+// Баннер главной показывает вместо текста названия логотип (item.logo). Выбор
+// тот же, что у сервера (pickLogo в services/tmdb.js): русский, английский,
+// без языка; PNG раньше SVG; затем по голосам. Логотип кладём в элемент сразу,
+// чтобы телевизор не спрашивал его отдельно на каждую карточку.
+var LOGO_LANGS = ['ru', 'en', null];
+
+function pickLogo(logos) {
+    if (!Array.isArray(logos) || !logos.length) return null;
+    for (var li = 0; li < LOGO_LANGS.length; li++) {
+        var lang = LOGO_LANGS[li];
+        var list = logos.filter(function (l) { return l && l.file_path && (l.iso_639_1 || null) === lang; });
+        if (!list.length) continue;
+        list.sort(function (a, b) {
+            var svgA = /\.svg$/i.test(a.file_path) ? 1 : 0;
+            var svgB = /\.svg$/i.test(b.file_path) ? 1 : 0;
+            if (svgA !== svgB) return svgA - svgB;
+            return (b.vote_average || 0) - (a.vote_average || 0) || (b.width || 0) - (a.width || 0);
+        });
+        return { file_path: list[0].file_path, aspect_ratio: list[0].aspect_ratio || null, lang: lang || '' };
+    }
+    return null;
+}
+
+/**
+ * item.logo: объект или null («логотипа нет»). Сбой запроса — поля нет вовсе,
+ * и телевизор спросит /api/tmdb/logo сам.
+ */
+function attachLogo(item) {
+    if (!item) return item;
+    var path = (item.media_type === 'tv' ? 'tv/' : 'movie/') + item.id +
+        '/images?include_image_language=ru,en,null';
+    return tmdbJson(path).then(function (data) {
+        item.logo = pickLogo(data && data.logos);
+        return item;
+    }, function () { return item; });
+}
+
 // ==================== СБОРКА ПОДБОРКИ ====================
 
 /**
@@ -348,7 +410,7 @@ function buildCollection(key, log) {
 
             return mapLimit(slice, TMDB_CONCURRENCY, function (kpItem) {
                 return resolveTmdb(kpItem).then(function (hit) {
-                    return projectItem(kpItem, hit);
+                    return attachLogo(projectItem(kpItem, hit));
                 });
             }).then(function (mapped) {
                 var items = [];
@@ -403,12 +465,13 @@ function getCollection(key, log) {
 
 module.exports = {
     name: 'kinopoisk-collections',
-    version: '3.1.0',
+    version: '3.3.0',
 
     init: function (app, ctx) {
         var log = ctx.log;
         destroyed = false;
         mirrorConfig = null;
+        serverTmdbGet = typeof ctx.tmdbGet === 'function' ? ctx.tmdbGet : null;
 
         // Список доступных подборок — по нему фронт может строить ряды,
         // не дублируя названия у себя.
@@ -488,6 +551,7 @@ module.exports = {
 
     destroy: function () {
         destroyed = true;
+        serverTmdbGet = null;
         for (var i = 0; i < timers.length; i++) clearTimeout(timers[i]);
         timers = [];
         cache = {};

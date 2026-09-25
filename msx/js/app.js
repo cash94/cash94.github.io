@@ -95,6 +95,10 @@ function showContentScreen(screen, restoreScrollTop) {
     incoming.hidden = false;
   }
 
+  // Шапка снова на экране: ползунок «Шапка» мог быть выставлен, пока она была
+  // скрыта (панель «Внешний вид» открывают из настроек), — подгоняем по ширине
+  if (typeof window.ensureTopbarFit === 'function') window.ensureTopbarFit();
+
   if (typeof AppState !== 'undefined') {
     AppState.currentScreen = screen;
     AppState.contentScroll = AppState.contentScroll || {};
