@@ -199,6 +199,10 @@ var CATALOG_CONFIG = {
     favorites: { name: 'Избранное', url: null, mediaType: 'favorites', isFavorites: true }
 };
 
+// Сколько всего элементов в категории — для карточки «Показать все» в ряду.
+// Живёт дольше перестройки рядов: устаревшее число лучше пустого места.
+window.catalogRowTotals = window.catalogRowTotals || {};
+
 var TMDB_GENRES = {
     movie: { 28: 'Боевик', 12: 'Приключения', 16: 'Анимация', 35: 'Комедия', 80: 'Криминал', 99: 'Документальный', 18: 'Драма', 10751: 'Семейный', 14: 'Фэнтези', 36: 'История', 27: 'Ужасы', 10402: 'Музыка', 9648: 'Детектив', 10749: 'Мелодрама', 878: 'Фантастика', 10770: 'ТВ фильм', 53: 'Триллер', 10752: 'Военный', 37: 'Вестерн' },
     tv: { 10759: 'Боевик', 16: 'Анимация', 35: 'Комедия', 80: 'Криминал', 99: 'Документальный', 18: 'Драма', 10751: 'Семейный', 10762: 'Детский', 9648: 'Детектив', 10763: 'Новости', 10764: 'Реалити', 10765: 'Фантастика', 10766: 'Мыльная опера', 10767: 'Ток-шоу', 10768: 'Война и политика', 37: 'Вестерн' }
@@ -5560,6 +5564,7 @@ async function loadRowItems(key) {
     if (key === 'history') {
         var data = await safeFetch(SERVER_URL + '/api/history', { timeout: 10000 });
         if (data && data.success && data.history && data.history.length) {
+            window.catalogRowTotals[key] = data.history.length;
             return data.history.slice(0, LIMIT).map(function (item) {
                 var pp = item.posterPath;
                 if (pp && pp.indexOf('http') !== 0) pp = (pp.indexOf('/') === 0 ? pp : '/' + pp);
@@ -5678,10 +5683,18 @@ function createShowAllCard(key) {
     var card = document.createElement('div');
     card.className = 'torrent-card catalog-folder-card catalog-row-card catalog-show-all';
     card.dataset.catalogKey = key;
+    // Сколько всего в категории и когда она обновлялась — раньше это была
+    // полоса над сеткой. Число кладёт loadRowItems (catalogRowTotals), дату
+    // дописывает catalog-idb-patch.js по /api/catalogs.
+    var total = window.catalogRowTotals && window.catalogRowTotals[key];
     card.innerHTML =
         '<div class="show-all-inner">' +
         '<div class="show-all-icon">→</div>' +
         '<div class="show-all-text">Показать<br>все</div>' +
+        '<div class="show-all-meta">' +
+        '<div class="show-all-count">' + (total ? 'Всего: ' + total : '') + '</div>' +
+        '<div class="show-all-date"></div>' +
+        '</div>' +
         '</div>';
     return card;
 }

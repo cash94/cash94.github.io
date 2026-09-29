@@ -1386,7 +1386,9 @@ var ScreenStrategies = {
                             // вместо парсинга data-result, которого нет в DOM
                             var idx = pb ? parseInt(pb.dataset.index, 10) : -1;
                             var sr = (!isNaN(idx) && idx >= 0 && idx < filteredResults.length) ? filteredResults[idx] : null;
-                            if (m && typeof window.addTorrentSearchToServer === 'function') window.addTorrentSearchToServer(m, h, sr).then(function () {
+                            if (m && typeof window.addTorrentSearchToServer === 'function') window.addTorrentSearchToServer(m, h, sr).then(function (ok) {
+                                // null — сервер недоступен или отказал (сообщение уже показано)
+                                if (!ok) return;
                                 var oh = pb.innerHTML; pb.style.display = 'block'; pb.innerHTML = '✓';
                                 setTimeout(function () { pb.style.display = 'none'; pb.innerHTML = oh; }, 2000);
                             }).catch(function (e) { console.error('Ошибка добавления торрента:', e); });

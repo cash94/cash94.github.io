@@ -645,14 +645,23 @@
 
     var _origLoadRowItems = window.loadRowItems || loadRowItems;
 
+    // Когда ряд лёг в IndexedDB — запасная дата для карточки «Показать все»,
+    // если /api/catalogs про категорию не знает (например, «Русские»)
+    var _rowStamps = {};
+
     window.loadRowItems = loadRowItems = async function (key) {
         var LIMIT = 10;
 
         // Избранное лежит локально в IndexedDB, серверного /items у него нет
         if (key === 'favorites') {
-            return (typeof window.loadFavoritesItems === 'function')
-                ? window.loadFavoritesItems(LIMIT)
-                : (_origLoadRowItems ? _origLoadRowItems.call(window, key) : []);
+            if (typeof window.loadFavoritesItems !== 'function') {
+                return _origLoadRowItems ? _origLoadRowItems.call(window, key) : [];
+            }
+            // Список целиком (он локальный и короткий) — ради числа на
+            // карточке «Показать все»; в ряд идут первые LIMIT
+            var favs = await window.loadFavoritesItems(0);
+            window.catalogRowTotals[key] = favs.length;
+            return favs.slice(0, LIMIT);
         }
 
         // История не является каталогом /items, её оставляем как было
@@ -677,6 +686,8 @@
             var result = await CatalogWorker.catalogGetFresh(key, cfg.url, CATALOG_FULL_LIMIT, LIMIT);
 
             if (result && result.data && Array.isArray(result.data.items)) {
+                if (result.data.totalItems) window.catalogRowTotals[key] = result.data.totalItems;
+                if (result.timestamp) _rowStamps[key] = result.timestamp;
                 return result.data.items.slice(0, LIMIT);
             }
 
@@ -848,27 +859,70 @@
     // ==================== addCatalogHeader ====================
     // Убираем лишний запрос /api/catalogs из шапки, чтобы каталоги читались только из IDB.
 
+    /** Дата обновления категории: с сервера, иначе — когда её положили в IndexedDB */
+    function catalogUpdateText(key, catalogs) {
+        for (var i = 0; i < catalogs.length; i++) {
+            if (catalogs[i].id === key && catalogs[i].lastModifiedISO) {
+                return formatShowAllDate(catalogs[i].lastModifiedISO);
+            }
+        }
+        var meta = getCatalogIdbMeta(key);
+        var ts = (meta && meta.timestamp) || _rowStamps[key];
+        return ts ? formatShowAllDate(new Date(ts).toISOString()) : '';
+    }
+
+    /** «29.09 15:06» — карточка узкая, полная дата с «(… назад)» в неё не лезет */
+    function formatShowAllDate(iso) {
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' +
+            ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    }
+
+    // ==================== createShowAllCard ====================
+    // Дата обновления на карточке «Показать все». /api/catalogs один на все
+    // ряды и закэширован, так что пятнадцать карточек — один запрос.
+
+    var _origCreateShowAllCard = window.createShowAllCard || createShowAllCard;
+
+    window.createShowAllCard = createShowAllCard = function (key) {
+        var card = _origCreateShowAllCard.call(window, key);
+        var dateEl = card.querySelector('.show-all-date');
+        var cfg = window.CATALOG_CONFIG && CATALOG_CONFIG[key];
+
+        // У истории и избранного серверной даты нет
+        if (!dateEl || !cfg || !cfg.url) return card;
+
+        fetchCatalogsWithCache()
+            .then(function (catalogs) {
+                var text = catalogUpdateText(key, catalogs);
+                // Только цифры и точки — innerHTML безопасен; перенос, чтобы
+                // влезло и в самую узкую карточку (120 px)
+                if (text) dateEl.innerHTML = 'обновлено<br>' + text;
+            })
+            .catch(function () {});
+
+        return card;
+    };
+
+    // ==================== addCatalogHeader ====================
+    // Полосы «Фильмы 50 / 957, обновлено …» над сеткой больше нет: число и дата
+    // переехали на карточку «Показать все» в ряду. Осталась шапка фильмографии
+    // (имя актёра больше негде показать) и проверка свежести каталога — её
+    // запускал именно показ шапки.
+
     window.addCatalogHeader = addCatalogHeader = function (grid) {
         if (!grid) return null;
 
-        var header = document.createElement('div');
-        header.className = 'catalog-header';
-        header.style.cssText =
-            'grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;' +
-            'margin-bottom:20px;padding:15px 20px;background:rgba(74,158,255,0.1);' +
-            'border-radius:16px;border:1px solid rgba(74,158,255,0.3);flex-wrap:wrap;gap:10px;';
+        var key = catalogState.currentCatalog;
 
-        var name =
-            window.CATALOG_CONFIG &&
-                CATALOG_CONFIG[catalogState.currentCatalog] &&
-                CATALOG_CONFIG[catalogState.currentCatalog].name
-                ? CATALOG_CONFIG[catalogState.currentCatalog].name
-                : 'Каталог';
-
-        // Фильмография актёра: имени в CATALOG_CONFIG нет, оно меняется от
-        // актёра к актёру. Даты обновления у неё тоже нет — /api/catalogs про
-        // такую категорию не знает, поэтому выходим до запроса.
-        if (catalogState.currentCatalog === 'person') {
+        if (key === 'person') {
+            var header = document.createElement('div');
+            header.className = 'catalog-header';
+            header.style.cssText =
+                'grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;' +
+                'margin-bottom:20px;padding:15px 20px;background:rgba(74,158,255,0.1);' +
+                'border-radius:16px;border:1px solid rgba(74,158,255,0.3);flex-wrap:wrap;gap:10px;';
             var pname = (catalogState.person && catalogState.person.name) || 'Фильмография';
             header.innerHTML =
                 '<div class="fg-col-5" style="display:flex;flex-direction:column;gap:5px">' +
@@ -883,85 +937,20 @@
             return header;
         }
 
-        if (catalogState.currentCatalog === 'history') {
-            header.innerHTML =
-                '<div class="fg-col-5" style="display:flex;flex-direction:column;gap:5px">' +
-                '<span style="font-size:20px;font-weight:600;color:#4a9eff">' + name + '</span>' +
-                '<div class="fg-row-15" style="display:flex;gap:15px;font-size:12px;color:#aaa">' +
-                '<span>' + catalogState.items.length + ' записей</span>' +
-                '</div>' +
-                '</div>';
+        var cfg = window.CATALOG_CONFIG && CATALOG_CONFIG[key];
 
-            var btn = getEl('clear-history-btn');
+        // История, избранное — серверного каталога нет, проверять нечего
+        if (!cfg || !cfg.url) return null;
 
-            if (btn && typeof clearHistory === 'function') {
-                btn.onclick = clearHistory;
-            }
-
-            grid.appendChild(header);
-            return header;
-        }
-
-        // Базовая структура заголовка
-        header.innerHTML =
-            '<div class="fg-col-5" style="display:flex;flex-direction:column;gap:5px">' +
-            '<span style="font-size:20px;font-weight:600;color:#4a9eff">' + name + '</span>' +
-            '<div class="catalog-meta-info fg-wrap-15" style="display:flex;gap:15px;font-size:12px;color:#aaa;flex-wrap:wrap">' +
-            '<span>' + catalogState.items.length + ' / ' + (catalogState.totalItems || catalogState.items.length) + '</span>' +
-            '<span class="catalog-update-date">Загрузка даты...</span>' +
-            '</div>' +
-            '</div>' +
-            '<span style="font-size:14px;color:#aaa;background:rgba(0,0,0,0.3);padding:5px 12px;border-radius:20px">' +
-            getPageSize() + ' на страницу' +
-            '</span>';
-
-        grid.appendChild(header);
-
-        // Запрашиваем список каталогов с кэшированием
         fetchCatalogsWithCache()
             .then(function (catalogs) {
-                if (!header.isConnected) return;
-
-                var catalogInfo = null;
-
+                if (catalogState.currentCatalog !== key) return;
                 for (var i = 0; i < catalogs.length; i++) {
-                    if (catalogs[i].id === catalogState.currentCatalog) {
-                        catalogInfo = catalogs[i];
-                        break;
-                    }
-                }
-
-                var dateElement = header.querySelector('.catalog-update-date');
-
-                if (!dateElement) return;
-
-                if (catalogInfo && catalogInfo.lastModifiedISO) {
-                    // Проверяем, нужно ли обновить каталог
-                    if (typeof checkAndUpdateCatalogIfNeeded === 'function') {
-                        checkAndUpdateCatalogIfNeeded(catalogInfo.id, catalogInfo.lastModifiedISO);
-                    }
-
-                    // Форматируем серверную дату
-                    var dateText =
-                        typeof formatLastModifiedDate === 'function'
-                            ? formatLastModifiedDate(catalogInfo.lastModifiedISO)
-                            : new Date(catalogInfo.lastModifiedISO).toLocaleString();
-
-                    dateElement.textContent = 'Обновлено: ' + dateText;
-                } else {
-                    // Fallback на локальный timestamp из IndexedDB
-                    var meta = getCatalogIdbMeta(catalogState.currentCatalog);
-                    var ts = (meta && meta.timestamp) || catalogState.idbTimestamp || null;
-
-                    if (ts) {
-                        var dateText =
-                            typeof formatLastModifiedDate === 'function'
-                                ? formatLastModifiedDate(new Date(ts).toISOString())
-                                : new Date(ts).toLocaleString();
-
-                        dateElement.textContent = 'Обновлено: ' + dateText;
-                    } else {
-                        dateElement.textContent = '';
+                    if (catalogs[i].id === key && catalogs[i].lastModifiedISO) {
+                        if (typeof checkAndUpdateCatalogIfNeeded === 'function') {
+                            checkAndUpdateCatalogIfNeeded(key, catalogs[i].lastModifiedISO);
+                        }
+                        return;
                     }
                 }
             })
@@ -969,7 +958,7 @@
                 console.warn('⚠️ Failed to load catalogs list:', error);
             });
 
-        return header;
+        return null;
     };
 
     console.log('✅ Catalog IndexedDB patch applied: limit=' + CATALOG_FULL_LIMIT + ', ttl=6h');

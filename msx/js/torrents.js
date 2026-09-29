@@ -4196,7 +4196,10 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
         link: magnet,
         title: torrname,
         category: mediaType,
-        save_to_db: AppState.addToDbEnabled
+        // Настройка «Добавлять в базу» решает за запуск просмотра; явное
+        // «добавить» (стрелка вправо в поиске) сохраняет всегда — иначе
+        // TorrServer держит торрент только до перезапуска
+        save_to_db: options.saveToDb === true ? true : AppState.addToDbEnabled
     };
 
     if (poster) {
@@ -4264,7 +4267,7 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
     }
 }
 
-window.addTorrentSearchToServer = function (magnet, hash, searchResult) { return addTorrentToServer(magnet, hash, searchResult, { refreshList: false }); };
+window.addTorrentSearchToServer = function (magnet, hash, searchResult) { return addTorrentToServer(magnet, hash, searchResult, { refreshList: false, saveToDb: true }); };
 
 async function refreshTorrentsList() {
     var focusedCard = document.querySelector('.torrent-card.focused');
