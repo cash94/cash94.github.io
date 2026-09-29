@@ -6180,10 +6180,12 @@ article {
   min-width: 0;
 }
 
-/* Только для телефонного меню: иконка у названия, подпись у лупы, затемнение */
+/* Только для телефонного меню: иконка у названия, подпись у лупы, затемнение,
+   кнопка меню в карточке фильма */
 .home-menu-icon,
 .home-nav-label,
-#home-nav-backdrop {
+#home-nav-backdrop,
+#detail-menu-btn {
   display: none;
 }
 
@@ -9710,6 +9712,32 @@ article {
 
   #detail-view > .detail-header {
     margin-top: calc(60vw - 96px);
+  }
+
+  /* Три полоски в левом верхнем углу карточки — то же меню разделов, что на
+     главной. Кружок-подложка: под ним кадр фильма, и белая иконка на светлом
+     кадре потерялась бы. Место и размер — как у иконки в шапке, которая встаёт
+     сюда же, когда меню открыто. */
+  #detail-menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: calc(6px + var(--safe-top, env(safe-area-inset-top, 0px)));
+    left: 8px;
+    z-index: 50;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #detail-menu-btn .fi {
+    line-height: 1;
   }
 
   /* Настройки: без ТВ-увеличения (zoom 1.2 × ползунок — для дивана, на

@@ -2944,9 +2944,34 @@
         return document.body.classList.contains('mobile-nav-open');
     }
 
+    // Шапка поднята в карточку ради меню (кнопка ≡ в карточке) — при закрытии
+    // меню её надо вернуть. Отдельный флаг: пультом шапку в карточку поднимает
+    // control.js, и её мы не трогаем.
+    var topbarRaisedForMenu = false;
+
     function setMobileNav(open) {
         if (open && !mobileNavApplies()) return;
         document.body.classList.toggle('mobile-nav-open', !!open);
+        if (!open && topbarRaisedForMenu) {
+            topbarRaisedForMenu = false;
+            detailTopbarEnsureHome();
+        }
+    }
+
+    /**
+     * ≡ в карточке фильма: меню разделов живёт в шапке, а шапка — снаружи
+     * карточки, под ней (#detail-view перекрывает #main-container). Поднимаем
+     * её в карточку тем же DetailTopbar, что и стрелка вверх с пульта, — на
+     * время, пока открыто меню: держать её там всё время карточки нельзя, её
+     * гасят вместе с карточкой (см. «ШАПКА РАЗДЕЛОВ ПОВЕРХ КАРТОЧКИ»).
+     */
+    function openMenuFromDetail() {
+        if (!mobileNavApplies()) return;
+        if (!detailTopbarShown()) {
+            if (!detailTopbarShow()) return;
+            topbarRaisedForMenu = true;
+        }
+        setMobileNav(true);
     }
 
     // То же для экрана настроек: заголовок «Настройки» открывает список
@@ -2976,6 +3001,8 @@
     }
 
     function initMobileNav(topbar) {
+        var detailMenu = el('detail-menu-btn');
+        if (detailMenu) detailMenu.addEventListener('click', openMenuFromDetail);
         var logo = topbar.querySelector('.section-title-header');
         if (logo) {
             logo.addEventListener('click', function () { setMobileNav(!mobileNavOpen()); });
