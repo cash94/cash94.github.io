@@ -1965,6 +1965,7 @@
         openHomeItem(items[idx], key, idx);
     }
 
+
     function openSearchFromHome() {
         // Свободный поиск с главной — строка редактируемая, контекст карточки
         // каталога (если был) больше не действует
@@ -2923,6 +2924,59 @@
 
     // ==================== ИНИЦИАЛИЗАЦИЯ ====================
 
+    // ==================== МЕНЮ РАЗДЕЛОВ НА ТЕЛЕФОНЕ ====================
+    //
+    // В книжной ориентации телефона кнопки шапки не помещаются в строку: они
+    // лежат в #home-nav-drawer, который styles.css (блок «Телефон, книжная
+    // ориентация») превращает в выезжающую слева панель. Открывает её нажатие на
+    // название, закрывают затемнение, выбор раздела и «Назад». На ТВ и ПК
+    // медиазапрос не срабатывает, класс на body ничего не меняет, а название
+    // клик просто игнорирует.
+
+    var MOBILE_NAV_QUERY = '(max-width: 600px) and (orientation: portrait)';
+    var BACK_KEYS = { 8: 1, 27: 1, 461: 1, 10009: 1 };
+
+    function mobileNavApplies() {
+        return !!(window.matchMedia && window.matchMedia(MOBILE_NAV_QUERY).matches);
+    }
+
+    function mobileNavOpen() {
+        return document.body.classList.contains('mobile-nav-open');
+    }
+
+    function setMobileNav(open) {
+        if (open && !mobileNavApplies()) return;
+        document.body.classList.toggle('mobile-nav-open', !!open);
+    }
+
+    function initMobileNav(topbar) {
+        var logo = topbar.querySelector('.section-title-header');
+        if (logo) {
+            logo.addEventListener('click', function () { setMobileNav(!mobileNavOpen()); });
+        }
+        var backdrop = el('home-nav-backdrop');
+        if (backdrop) backdrop.addEventListener('click', function () { setMobileNav(false); });
+
+        // «Назад» закрывает меню и дальше не идёт: иначе control.js ещё и увёл бы
+        // с экрана. Перехват на window раньше всех; popstate-обработчик
+        // приложения тоже приходит сюда синтетическим Escape.
+        window.addEventListener('keydown', function (e) {
+            if (!mobileNavOpen()) return;
+            if (!BACK_KEYS[e.keyCode] && e.key !== 'Escape' && e.key !== 'GoBack') return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            setMobileNav(false);
+        }, true);
+
+        // Повернули телефон — панель там уже не нужна
+        if (window.matchMedia) {
+            var mq = window.matchMedia(MOBILE_NAV_QUERY);
+            var onChange = function () { if (!mq.matches) setMobileNav(false); };
+            if (mq.addEventListener) mq.addEventListener('change', onChange);
+            else if (mq.addListener) mq.addListener(onChange);
+        }
+    }
+
     function initHome() {
         var screen = el('content-home');
         if (!screen) {
@@ -2937,8 +2991,11 @@
             topbar.addEventListener('click', function (e) {
                 var btn = e.target.closest ? e.target.closest('.home-nav-btn') : null;
                 if (!btn) return;
+                // Раздел выбран — меню на телефоне закрываем сразу, до перехода
+                setMobileNav(false);
                 onNavButton(btn.id, true);
             }, true);
+            initMobileNav(topbar);
         }
 
         // Уход в раздел прямо из карточки. Перехват вешаем на #detail-view, а не

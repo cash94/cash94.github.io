@@ -364,15 +364,24 @@
            существующая логика разделов работала без изменений.
            Новая тут только «Главная» — её обслуживает home.js. -->
       <div id="home-topbar">
-        <div class="section-title-header">TorrStream</div>
-        <button class="home-nav-btn active" id="home-nav-home">Главная</button>
-        <button class="view-tab home-nav-btn" id="tab-catalog">Каталог</button>
-        <button class="view-tab home-nav-btn" id="tab-torrents">Мои торренты</button>
-        <button class="view-tab home-nav-btn" id="tab-donate">Донат</button>
-        <!-- Лупа и «Настройки» уходят к правому краю: margin-left: auto у #tab-search -->
-        <button class="view-tab home-nav-btn home-nav-icon" id="tab-search" title="Поиск"><i
-            class="fi fi-rr-search"></i></button>
-        <div class="settings-btn home-nav-btn" id="settings-btn">Настройки</div>
+        <!-- На телефоне в книжной ориентации название открывает боковое меню с
+             кнопками разделов (home.js: MobileNav); иконка видна только там. -->
+        <div class="section-title-header"><i class="fi fi-rr-menu-burger home-menu-icon"></i>TorrStream</div>
+        <!-- Обёртка кнопок разделов. На ТВ и ПК у неё display: contents — кнопки
+             ведут себя как прямые дети шапки; на телефоне она становится
+             выезжающей слева панелью. Кнопки те же самые: их обработчики и
+             навигация пультом (control.js: .home-nav-btn) не меняются. -->
+        <div id="home-nav-drawer">
+          <button class="home-nav-btn active" id="home-nav-home">Главная</button>
+          <button class="view-tab home-nav-btn" id="tab-catalog">Каталог</button>
+          <button class="view-tab home-nav-btn" id="tab-torrents">Мои торренты</button>
+          <button class="view-tab home-nav-btn" id="tab-donate">Донат</button>
+          <!-- Лупа и «Настройки» уходят к правому краю: margin-left: auto у #tab-search -->
+          <button class="view-tab home-nav-btn home-nav-icon" id="tab-search" title="Поиск"><i
+              class="fi fi-rr-search"></i><span class="home-nav-label">Поиск</span></button>
+          <div class="settings-btn home-nav-btn" id="settings-btn">Настройки</div>
+        </div>
+        <div id="home-nav-backdrop"></div>
         <!-- Часы у правого края. Класса .home-nav-btn тут намеренно нет: по нему
              control.js собирает фокусируемое (#home-topbar .home-nav-btn), а часы
              фокус принимать не должны. Текст ставит home.js (startTopbarClock). -->

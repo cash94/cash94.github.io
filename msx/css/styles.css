@@ -6154,7 +6154,7 @@ article {
 }
 
 /* gap на Vidaa не поддержан — отступ даём соседям через margin */
-#home-topbar > .home-nav-btn + .home-nav-btn {
+#home-nav-drawer > .home-nav-btn + .home-nav-btn {
   margin-left: 22px;
 }
 
@@ -6166,6 +6166,25 @@ article {
 
 #home-topbar #settings-btn {
   margin-left: 22px;
+}
+
+/* Обёртка кнопок разделов (index.html). На ТВ и ПК — обычная строка, которая
+   забирает всё место между названием и часами: лупа с «Настройками» уходят
+   к её правому краю тем же margin-left: auto, что и раньше. Не display:
+   contents — его нет в Chromium 56 старых Tizen. На телефоне в книжной
+   ориентации она же — выезжающее слева меню (блок в конце файла). */
+#home-nav-drawer {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Только для телефонного меню: иконка у названия, подпись у лупы, затемнение */
+.home-menu-icon,
+.home-nav-label,
+#home-nav-backdrop {
+  display: none;
 }
 
 /* Название раздела в роли логотипа. Оно же разрывает цепочку
@@ -6378,7 +6397,7 @@ article {
     margin: -16px -16px 6px;
   }
 
-  #home-topbar > .home-nav-btn + .home-nav-btn,
+  #home-nav-drawer > .home-nav-btn + .home-nav-btn,
   #home-topbar #settings-btn {
     margin-left: 16px;
   }
@@ -6453,7 +6472,7 @@ article {
     margin: -16px -16px 4px;
   }
 
-  #home-topbar > .home-nav-btn + .home-nav-btn,
+  #home-nav-drawer > .home-nav-btn + .home-nav-btn,
   #home-topbar #settings-btn {
     margin-left: 14px;
   }
@@ -9390,4 +9409,229 @@ article {
 .preload-btn .preload-key {
   margin-right: 8px;
   opacity: 0.5;
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Телефон, книжная ориентация
+   ════════════════════════════════════════════════════════════════════════════
+   Интерфейс рассчитан на ТВ: строка шапки на 1920 px и баннер с текстом в левой
+   половине кадра. На ширине телефона шапка уходила за край, а текст баннера
+   сжимался до столбика в одно слово. Телевизоры и ПК в этот запрос не попадают
+   никогда: книжной ориентации при ширине до 600 px у них не бывает.
+
+   Шапка: остаются название с иконкой меню и часы, кнопки разделов уезжают в
+   боковую панель — её открывает нажатие на название (home.js: MobileNav). */
+@media screen and (max-width: 600px) and (orientation: portrait) {
+  #home-topbar {
+    padding: calc(10px + var(--safe-top, env(safe-area-inset-top, 0px))) 16px 10px;
+    margin: -16px -16px 6px;
+  }
+
+  #home-topbar .section-title-header {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    padding: 4px 0;
+    font-size: 22px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .home-menu-icon {
+    display: inline-block;
+    margin-right: 12px;
+    color: #fff;
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  #home-topbar #home-clock {
+    margin-left: auto;
+  }
+
+  #home-clock-date {
+    display: none;
+  }
+
+  #home-clock-time {
+    font-size: 20px;
+  }
+
+  #home-nav-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 200;
+    flex-direction: column;
+    align-items: stretch;
+    width: 78%;
+    max-width: 300px;
+    padding: calc(76px + var(--safe-top, env(safe-area-inset-top, 0px))) 0 24px;
+    overflow-y: auto;
+    background: linear-gradient(180deg, #181824 0%, #0c0c12 100%);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
+    transform: translateX(-105%);
+    visibility: hidden;
+    /* visibility гаснет после выезда: закрытое меню не должно ловить касания */
+    transition: transform 0.25s ease, visibility 0s linear 0.25s;
+  }
+
+  /* Название в шапке меню — тем же шрифтом и цветом, что и в строке */
+  #home-nav-drawer::before {
+    content: "TorrStream";
+    position: absolute;
+    top: calc(22px + var(--safe-top, env(safe-area-inset-top, 0px)));
+    left: 24px;
+    color: #ff8c00;
+    font-family: "Bitcount Prop Double", monospace;
+    font-size: 26px;
+    font-weight: 600;
+  }
+
+  body.mobile-nav-open #home-nav-drawer {
+    transform: none;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  /* Два id + класс: перебивает #home-topbar #tab-search / #settings-btn */
+  #home-topbar #home-nav-drawer .home-nav-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    margin: 0;
+    padding: 14px 24px;
+    color: #d8d8d8;
+    font-size: 18px;
+    text-align: left;
+  }
+
+  #home-topbar #home-nav-drawer .home-nav-btn.active {
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+  }
+
+  /* Полоса у текущего раздела — псевдоэлементом, а не рамкой: у .view-tab есть
+     старое border-color: #000 !important, и рамка выходила чёрной */
+  #home-topbar #home-nav-drawer .home-nav-btn.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: #ff8c00;
+  }
+
+  #home-nav-drawer .home-nav-icon .fi {
+    font-size: 17px;
+  }
+
+  .home-nav-label {
+    display: inline;
+    margin-left: 12px;
+  }
+
+  #home-nav-backdrop {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 199;
+    background: rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.25s ease, visibility 0s linear 0.25s;
+  }
+
+  body.mobile-nav-open #home-nav-backdrop {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  /* Баннер: текст во всю ширину кадра, а не в левой половине */
+  #home-hero-body {
+    left: 16px;
+    right: 16px;
+    bottom: 14px;
+  }
+
+  #home-hero-title {
+    --hero-size: 28px;
+  }
+
+  #home-hero-logo {
+    --hero-size: 28px;
+    max-width: 75%;
+  }
+
+  #home-hero-meta {
+    --hero-size: 13px;
+  }
+
+  #home-hero-overview {
+    --hero-size: 14px;
+    max-width: none;
+    -webkit-line-clamp: 3;
+    /* По ширине на узкой колонке раздвигало слова дырами */
+    text-align: left;
+  }
+
+  /* Ряды главной и каталога — от края экрана, вровень с текстом баннера:
+     отступ 40px рассчитан на ТВ, а справа он выдавливал «Показать все» */
+  #home-rows .catalog-row-header,
+  #home-rows .catalog-row-track,
+  #catalog-rows .catalog-row-header,
+  #catalog-rows .catalog-row-track {
+    padding-left: 0;
+  }
+
+  #home-rows .catalog-row-header,
+  #catalog-rows .catalog-row-header {
+    padding-right: 0;
+  }
+
+  #catalog-rows .catalog-row-title {
+    font-size: 19px;
+  }
+
+  #home-rows .catalog-row-title {
+    font-size: 19px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Карточка фильма: главная кнопка во всю ширину, остальные — одной строкой
+     поровну. Раньше кнопки делили строку по две, «Поиск торрентов» переносился
+     на две строки, становился выше соседей, и рамка фокуса налезала на ряд
+     ниже. Отступы margin'ом, а не gap: так же, как во всём файле. */
+  #catalog-detail-actions {
+    flex-wrap: wrap;
+    margin-right: -8px;
+  }
+
+  #catalog-detail-actions > button {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0 8px 8px 0;
+    padding: 10px 8px;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #catalog-detail-actions > #catalog-watch-btn,
+  #catalog-detail-actions > #detail-progress-btn {
+    flex: 0 0 calc(100% - 8px);
+    padding: 12px 16px;
+    font-size: 16px;
+  }
 }

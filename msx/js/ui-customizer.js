@@ -368,6 +368,12 @@
 
         // Столько карточек шириной w влезает в ряд с зазором gap
         var n = Math.floor((gridAvailWidth() + gap) / (w + gap));
+        // Телефон в книжной ориентации: размер карточки рассчитан на ТВ, и в
+        // ширину экрана влезала одна — постер во весь экран, один фильм на
+        // прокрутку. Там меньше двух колонок не делаем (тот же медиазапрос,
+        // что у блока «Телефон, книжная ориентация» в styles.css).
+        if (n < 2 && window.matchMedia &&
+            window.matchMedia('(max-width: 600px) and (orientation: portrait)').matches) n = 2;
         if (n < 1) n = 1;
         if (n > 12) n = 12;
         return n;
@@ -613,10 +619,22 @@
     var topbarFitWidth = null;
 
     function measureTopbar(tb, scale) {
-        var kids = tb.children, textW = 0, fixed = 0;
+        // Кнопки разделов лежат в #home-nav-drawer (index.html). Сама обёртка
+        // растянута на всё свободное место, её ширина — не текст: меряем её
+        // детей. На телефоне она выезжающая панель (position: fixed) и в строку
+        // шапки не входит вовсе — её пропускает проверка ниже.
+        var kids = [], textW = 0, fixed = 0;
+        for (var k = 0; k < tb.children.length; k++) {
+            var child = tb.children[k];
+            if (child.id === 'home-nav-drawer' && getComputedStyle(child).position !== 'fixed') {
+                for (var d = 0; d < child.children.length; d++) kids.push(child.children[d]);
+            } else {
+                kids.push(child);
+            }
+        }
         for (var i = 0; i < kids.length; i++) {
             var cs = getComputedStyle(kids[i]);
-            if (cs.position === 'absolute' || cs.display === 'none') continue;
+            if (cs.position === 'absolute' || cs.position === 'fixed' || cs.display === 'none') continue;
             textW += kids[i].getBoundingClientRect().width;
             // margin-left:auto у лупы — это свободное место, а не отступ
             if (kids[i].id !== 'tab-search') fixed += parseFloat(cs.marginLeft) || 0;
