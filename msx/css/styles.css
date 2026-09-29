@@ -9628,10 +9628,13 @@ article {
     text-overflow: ellipsis;
   }
 
-  /* Карточка фильма: главная кнопка во всю ширину, остальные — одной строкой
-     поровну. Раньше кнопки делили строку по две, «Поиск торрентов» переносился
-     на две строки, становился выше соседей, и рамка фокуса налезала на ряд
-     ниже. Отступы margin'ом, а не gap: так же, как во всём файле. */
+  /* Карточка фильма: все кнопки одной строкой, одной высоты. «Поиск
+     торрентов» — значком магнита, «Избранное» — одной звёздочкой: с надписями
+     в строку они не помещались, кнопки делили строку по две, «Поиск
+     торрентов» переносился на две строки и налезал рамкой фокуса на ряд ниже.
+     Текст у кнопок остаётся в разметке (font-size: 0) — его читает озвучка.
+     display не трогаем: кнопки прячут инлайновым display (трейлер, торрентный
+     режим), и !important его бы перебил. Отступы margin'ом, как во всём файле. */
   #catalog-detail-actions {
     flex-wrap: wrap;
     margin-right: -8px;
@@ -9639,18 +9642,45 @@ article {
 
   #catalog-detail-actions > button {
     flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
     min-width: 0;
+    height: 42px;
     margin: 0 8px 8px 0;
-    padding: 10px 8px;
+    padding: 0 8px;
     font-size: 14px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  #catalog-detail-actions > #catalog-watch-btn,
+  /* Префикс #detail-view.catalog-detail-mode и !important — против правил
+     размера кнопок для ТВ (там font-size задан так же, с !important) */
+  #detail-view.catalog-detail-mode #catalog-detail-actions > #catalog-watch-btn,
+  #detail-view.catalog-detail-mode #catalog-detail-actions > #catalog-favorite-btn {
+    flex: 0 0 48px;
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+
+  /* !important — против content: none !important для ТВ-стиля кнопки */
+  #detail-view.catalog-detail-mode #catalog-detail-actions > #catalog-watch-btn::before {
+    content: "\ec79" !important;
+    font-family: "uicons-regular-rounded";
+    font-size: 20px;
+    font-weight: normal;
+    line-height: 1;
+  }
+
+  #detail-view.catalog-detail-mode #catalog-favorite-btn .favorite-btn-icon {
+    font-size: 21px !important;
+    line-height: 1;
+  }
+
+  /* «Играть» в карточке торрента — по-прежнему во всю ширину */
   #catalog-detail-actions > #detail-progress-btn {
     flex: 0 0 calc(100% - 8px);
+    height: auto;
     padding: 12px 16px;
     font-size: 16px;
   }
