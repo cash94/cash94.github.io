@@ -1235,6 +1235,16 @@
         var hero = el('home-hero');
         if (!hero || !video) return;
         var ar = (video.videoWidth && video.videoHeight) ? video.videoWidth / video.videoHeight : 16 / 9;
+        // Телефон в книжной ориентации: баннер там выше, чем широк, и кадр по
+        // его высоте срезался бы с боков больше чем наполовину. Кадр — во всю
+        // ширину в своих пропорциях, сразу под шапкой (баннер заведён под неё
+        // отрицательным margin — на столько же и опускаем). Раскладка — в
+        // styles.css, блок «Телефон, книжная ориентация».
+        if (mobileNavApplies()) {
+            hero.style.setProperty('--trailer-top', (-(parseFloat(hero.style.marginTop) || 0)) + 'px');
+            hero.style.setProperty('--trailer-h', Math.round(hero.clientWidth / ar) + 'px');
+            return;
+        }
         var h = hero.clientHeight - 2;                  // видео на 2px короче баннера
         var w = Math.min(hero.clientWidth, Math.round(h * ar * TRAILER_WIDEN));
         if (w > 0) hero.style.setProperty('--trailer-w', w + 'px');

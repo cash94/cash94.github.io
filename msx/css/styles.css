@@ -9608,6 +9608,21 @@ article {
     font-size: 19px;
   }
 
+  /* Трейлер во всю ширину баннера в своих пропорциях, сразу под шапкой
+     (--trailer-top и --trailer-h считает fitTrailerBox в home.js). На ТВ кадр
+     вписан по высоте и прижат вправо — здесь по высоте срезалась бы большая
+     часть кадра с боков. Низ кадра растворяется в картинке баннера, на которой
+     лежат название и описание; левой маски, как на ТВ, нет. */
+  #home-hero.home-hero-playing .home-hero-video {
+    top: var(--trailer-top, 0px);
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: var(--trailer-h, 56.25vw);
+    -webkit-mask-image: linear-gradient(180deg, #000 72%, rgba(0, 0, 0, 0) 100%);
+    mask-image: linear-gradient(180deg, #000 72%, rgba(0, 0, 0, 0) 100%);
+  }
+
   #home-rows .catalog-row-title {
     font-size: 19px;
     white-space: nowrap;
