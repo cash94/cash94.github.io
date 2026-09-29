@@ -4509,7 +4509,7 @@ article {
 
 .catalog-row-showall-hint {
   font-size: 14px;
-  color: #4a9eff;
+  color: #fff;
   opacity: 0.85;
 }
 
@@ -4658,8 +4658,8 @@ article {
   width: 260px;
   height: 460px;
   border-radius: 14px;
-  background: rgba(74, 158, 255, 0.10);
-  border: 2px dashed rgba(74, 158, 255, 0.4);
+  background: #1a1a1f;
+  border: 2px dashed rgba(255, 255, 255, 0.6);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -4669,14 +4669,14 @@ article {
 
 .catalog-show-all .show-all-icon {
   font-size: 56px;
-  color: #4a9eff;
+  color: #fff;
   line-height: 1;
 }
 
 .catalog-show-all .show-all-text {
   font-size: 18px;
   font-weight: 600;
-  color: #ccc;
+  color: #fff;
   text-align: center;
 }
 
@@ -4709,10 +4709,10 @@ article {
 }
 
 .catalog-show-all.focused .show-all-inner {
-  background: rgba(74, 158, 255, 0.22);
-  border-color: #4a9eff;
+  background: #26262d;
+  border-color: #ff8c00;
   transform: scale(1.05);
-  box-shadow: 0 0 0 3px #4a9eff;
+  box-shadow: 0 0 0 3px #ff8c00;
 }
 
 .catalog-show-all.focused .show-all-text {
@@ -9483,6 +9483,12 @@ article {
     line-height: 1;
   }
 
+  /* Меню полупрозрачное: логотип строки просвечивал бы сквозь заголовок
+     меню, стоящий ровно на его месте */
+  body.mobile-nav-open #home-topbar .section-title-header {
+    visibility: hidden;
+  }
+
   #home-topbar #home-clock {
     margin-left: auto;
   }
@@ -9507,11 +9513,9 @@ article {
     max-width: 300px;
     padding: calc(76px + var(--safe-top, env(safe-area-inset-top, 0px))) 0 24px;
     overflow-y: auto;
-    /* Полупрозрачное: под меню видно экран. Размытие — где браузер умеет
-       (телефоны), на Chrome 66 остаётся просто полупрозрачный фон. */
-    background: linear-gradient(180deg, rgba(24, 24, 36, 0.72) 0%, rgba(12, 12, 18, 0.72) 100%);
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
+    /* Полупрозрачное: под меню видно экран. Без backdrop-filter — размытие
+       пересчитывается на каждый кадр выезда и прокрутки под меню. */
+    background: linear-gradient(180deg, rgba(24, 24, 36, 0.8) 0%, rgba(12, 12, 18, 0.8) 100%);
     box-shadow: 8px 0 32px rgba(0, 0, 0, 0.45);
     transform: translateX(-105%);
     visibility: hidden;
@@ -9831,10 +9835,7 @@ article {
     padding: calc(76px + var(--safe-top, env(safe-area-inset-top, 0px))) 12px 24px;
     overflow-y: auto;
     box-sizing: border-box;
-    /* Полупрозрачное, как меню разделов (#home-nav-drawer) */
-    background: linear-gradient(180deg, rgba(24, 24, 36, 0.72) 0%, rgba(12, 12, 18, 0.72) 100%);
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
+    background: linear-gradient(180deg, #181824 0%, #0c0c12 100%);
     box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
     transform: translateX(-105%);
     visibility: hidden;
@@ -9865,7 +9866,7 @@ article {
     right: 0;
     bottom: 0;
     z-index: 199;
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.55);
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.25s ease, visibility 0s linear 0.25s;

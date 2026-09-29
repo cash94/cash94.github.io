@@ -434,7 +434,7 @@
 
         // Карточка «Показать все» (styles.css:3972)
         css.push('.catalog-show-all.focused .show-all-inner{' +
-            'border-color:' + c + '!important;background:' + rgba(c, 0.22) + '!important;' +
+            'border-color:' + c + '!important;background:#26262d!important;' +
             'box-shadow:0 0 0 3px ' + c + '!important;}');
 
         // Заголовок ряда (styles.css:3983/3987)
@@ -809,7 +809,7 @@
             // Тонкая тёмная обводка — чтобы «Белый» было видно на белой выбранной кнопке
             '.ui-swatch-dot{flex:0 0 auto;width:18px;height:18px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.35);}',
             // Ползунок: заливка — цветом фокуса, бегунок белый, как у переключателей
-            '.ui-slider{display:flex;align-items:center;padding:10px 8px;border-radius:10px;user-select:none;-webkit-user-select:none;}',
+            '.ui-slider{display:flex;align-items:center;padding:10px 8px;border-radius:10px;user-select:none;-webkit-user-select:none;touch-action:pan-y;}',
             '.ui-slider>*+*{margin-left:18px;}',
             '.ui-slider-track{position:relative;flex:1 1 auto;height:6px;background:rgba(255,255,255,0.14);border-radius:3px;cursor:pointer;}',
             '.ui-slider-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--focus-color,#ff8c00);border-radius:3px;}',
@@ -1084,6 +1084,40 @@
             document.addEventListener('mousemove', onMove, true);
             document.addEventListener('mouseup', onUp, true);
         });
+
+        // Касание. Мышиные события телефон присылает только в конце тапа —
+        // поэтому ползунок можно было лишь «тыкать», но не тянуть. Тянем по
+        // горизонтальному жесту; вертикальный отдаём прокрутке панели
+        // (touch-action: pan-y у .ui-slider), иначе ряд ползунков во всю ширину
+        // не давал бы листать настройки.
+        var touch = null;
+        el.addEventListener('touchstart', function (e) {
+            if (e.touches.length !== 1) { touch = null; return; }
+            touch = { x: e.touches[0].clientX, y: e.touches[0].clientY, drag: false };
+        }, { passive: true });
+
+        el.addEventListener('touchmove', function (e) {
+            if (!touch || e.touches.length !== 1) return;
+            var p = e.touches[0];
+            if (!touch.drag) {
+                var dx = Math.abs(p.clientX - touch.x), dy = Math.abs(p.clientY - touch.y);
+                if (dx < 6 && dy < 6) return;
+                if (dy >= dx) { touch = null; return; }   // это прокрутка
+                touch.drag = true;
+                setFocus(el, true);
+            }
+            e.preventDefault();
+            setSliderValue(el, valueFromPointer(el, p.clientX));
+        }, { passive: false });
+
+        el.addEventListener('touchend', function (e) {
+            // Протяжка закончилась — гасим мышиные события, которые браузер
+            // досылает следом: они вернули бы значение в точку отпускания,
+            // а оно уже стоит
+            if (touch && touch.drag && e.cancelable) e.preventDefault();
+            touch = null;
+        });
+        el.addEventListener('touchcancel', function () { touch = null; });
     }
 
     // ==================== СИНХРОНИЗАЦИЯ КНОПОК <-> НАСТРОЙКИ ====================
