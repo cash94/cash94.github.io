@@ -9507,8 +9507,12 @@ article {
     max-width: 300px;
     padding: calc(76px + var(--safe-top, env(safe-area-inset-top, 0px))) 0 24px;
     overflow-y: auto;
-    background: linear-gradient(180deg, #181824 0%, #0c0c12 100%);
-    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
+    /* Полупрозрачное: под меню видно экран. Размытие — где браузер умеет
+       (телефоны), на Chrome 66 остаётся просто полупрозрачный фон. */
+    background: linear-gradient(180deg, rgba(24, 24, 36, 0.72) 0%, rgba(12, 12, 18, 0.72) 100%);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.45);
     transform: translateX(-105%);
     visibility: hidden;
     /* visibility гаснет после выезда: закрытое меню не должно ловить касания */
@@ -9580,7 +9584,7 @@ article {
     right: 0;
     bottom: 0;
     z-index: 199;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgba(0, 0, 0, 0.3);
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.25s ease, visibility 0s linear 0.25s;
@@ -9754,12 +9758,13 @@ article {
     top: calc(6px + var(--safe-top, env(safe-area-inset-top, 0px)));
     left: 8px;
     z-index: 50;
+    /* Без кружка-подложки — только полоски; тень держит их видимыми на
+       светлом кадре. 40×40 — область касания, а не рисунок. */
     width: 40px;
     height: 40px;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.45);
     color: #fff;
-    font-size: 20px;
+    font-size: 22px;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
@@ -9826,7 +9831,10 @@ article {
     padding: calc(76px + var(--safe-top, env(safe-area-inset-top, 0px))) 12px 24px;
     overflow-y: auto;
     box-sizing: border-box;
-    background: linear-gradient(180deg, #181824 0%, #0c0c12 100%);
+    /* Полупрозрачное, как меню разделов (#home-nav-drawer) */
+    background: linear-gradient(180deg, rgba(24, 24, 36, 0.72) 0%, rgba(12, 12, 18, 0.72) 100%);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
     box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
     transform: translateX(-105%);
     visibility: hidden;
@@ -9857,7 +9865,7 @@ article {
     right: 0;
     bottom: 0;
     z-index: 199;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgba(0, 0, 0, 0.3);
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.25s ease, visibility 0s linear 0.25s;
