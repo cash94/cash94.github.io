@@ -1120,6 +1120,11 @@ function setupSearch() {
 
   if (tabTorrents && typeof hideSearchResults === 'function' && typeof loadTorrents === 'function') {
     tabTorrents.addEventListener('click', function () {
+      // Уже загруженный список сверяем с TorrServer на каждое нажатие, в том
+      // числе повторное: торрент мог добавиться в обход этого экрана
+      if (AppState.torrentsLoaded && typeof window.syncTorrentsList === 'function') {
+        window.syncTorrentsList();
+      }
       if (!tabTorrents.classList.contains('active')) {
         console.log('📁 Переключение на вкладку "Мои торренты"');
         AppState.currentScreen = 'torrents';

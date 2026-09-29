@@ -976,6 +976,45 @@ async function refreshTorrents(showLoadingFlag = true) {
 
 window.refreshTorrents = refreshTorrents;
 
+/**
+ * Тихая сверка списка с TorrServer — по кнопке «Мои торренты».
+ *
+ * Список грузится один раз за сессию, а торрент мог добавиться в обход этого
+ * экрана: стрелкой в поиске, из карточки, с другого устройства. Перерисовываем
+ * только если состав действительно поменялся — иначе каждое нажатие вкладки
+ * заново тянуло бы постеры и сбрасывало прокрутку. Фокус после перерисовки
+ * ставит сам renderTorrents — на первую карточку.
+ */
+function torrentsSignature(list) {
+    var parts = [];
+    for (var i = 0; i < list.length; i++) {
+        parts.push((list[i].hash || '') + '|' + (list[i].title || ''));
+    }
+    return parts.join(',');
+}
+
+async function syncTorrentsList() {
+    if (AppState.torrentsLoading || !AppState.torrentsLoaded) return false;
+    try {
+        var response = await torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'list' }) });
+        if (!response.ok) return false;
+        var data = await response.json();
+        var list = Array.isArray(data) ? data : [];
+        if (torrentsSignature(list) === torrentsSignature(AppState.torrents || [])) return false;
+
+        AppState.torrents = list;
+        renderTorrents();
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+
+        return true;
+    } catch (e) {
+        console.warn('⚠️ Сверка списка торрентов не удалась:', e);
+        return false;
+    }
+}
+
+window.syncTorrentsList = syncTorrentsList;
+
 // ==================== ВСПОМОГАТЕЛЬНАЯ: экранирование для атрибутов ====================
 function escapeAttr(value) {
     if (!value) return '';
