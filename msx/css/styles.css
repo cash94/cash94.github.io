@@ -9608,19 +9608,17 @@ article {
     font-size: 19px;
   }
 
-  /* Трейлер во всю ширину баннера в своих пропорциях, сразу под шапкой
-     (--trailer-top и --trailer-h считает fitTrailerBox в home.js). На ТВ кадр
-     вписан по высоте и прижат вправо — здесь по высоте срезалась бы большая
-     часть кадра с боков. Низ кадра растворяется в картинке баннера, на которой
-     лежат название и описание; левой маски, как на ТВ, нет. */
+  /* Трейлер — на весь баннер, как картинка: по ширине и по высоте (лишнее
+     по бокам срезает object-fit: cover). На ТВ кадр вписан по высоте и
+     прижат вправо, а слева растворяется маской — здесь маска не нужна, и
+     ширину из --trailer-w (fitTrailerBox в home.js) перебиваем. Подписи лежат
+     поверх под затемнением баннера, как и на картинке. */
   #home-hero.home-hero-playing .home-hero-video {
-    top: var(--trailer-top, 0px);
     left: 0;
     right: 0;
     width: 100%;
-    height: var(--trailer-h, 56.25vw);
-    -webkit-mask-image: linear-gradient(180deg, #000 72%, rgba(0, 0, 0, 0) 100%);
-    mask-image: linear-gradient(180deg, #000 72%, rgba(0, 0, 0, 0) 100%);
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 
   #home-rows .catalog-row-title {
@@ -9655,6 +9653,33 @@ article {
     flex: 0 0 calc(100% - 8px);
     padding: 12px 16px;
     font-size: 16px;
+  }
+
+  /* Карточка фильма: кадр — яркой полосой во всю ширину сверху, как в
+     мобильных приложениях, а не приглушённым фоном на весь экран. Иначе всё
+     содержимое прижималось к верху, а низ экрана пустовал. Полоса
+     прокручивается вместе с карточкой: её держит #detail-view (он сам
+     скроллер), для этого #catalog-detail-extra перестаёт быть опорой для
+     абсолютного позиционирования. Низ кадра растворяется в чёрном, название
+     заходит на него. !important — против таких же в правилах для ТВ. */
+  #detail-view #catalog-detail-extra {
+    position: static;
+  }
+
+  #detail-view .catalog-detail-backdrop {
+    position: absolute !important;
+    bottom: auto !important;
+    height: 60vw !important;
+    min-width: 0 !important;
+    background-size: cover !important;
+    background-position: center center !important;
+    opacity: 0.9 !important;
+    -webkit-mask-image: linear-gradient(180deg, #000 55%, rgba(0, 0, 0, 0) 100%);
+    mask-image: linear-gradient(180deg, #000 55%, rgba(0, 0, 0, 0) 100%);
+  }
+
+  #detail-view > .detail-header {
+    margin-top: calc(60vw - 96px);
   }
 
   /* Настройки: без ТВ-увеличения (zoom 1.2 × ползунок — для дивана, на
