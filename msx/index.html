@@ -128,7 +128,10 @@
         <!-- Левая колонка — разделы -->
         <div class="settings-sidebar">
           <div class="settings-brand">TorrStream</div>
-          <h1 class="settings-title">Настройки</h1>
+          <!-- На телефоне в книжной ориентации заголовок открывает список
+               разделов выезжающей панелью (home.js: MobileNav). Иконка видна
+               только там. -->
+          <h1 class="settings-title"><i class="fi fi-rr-menu-burger settings-menu-icon"></i>Настройки</h1>
 
           <div class="settings-nav">
             <div class="menu-item" data-tab="torrserver-tab" id="torrserver-tab">
@@ -150,6 +153,7 @@
               <i class="fi fi-rr-settings-sliders"></i><span>Прочее</span>
             </div>
           </div>
+          <div id="settings-nav-backdrop"></div>
         </div>
 
         <!-- Правая колонка — содержимое раздела -->

@@ -360,6 +360,13 @@
     // Считаем в JS (а не через CSS auto-fill), потому что control.js разбирает
     // grid-template-columns регуляркой repeat(<число>) — 'auto-fill' её ломает.
     function getColumns() {
+        // Телефон в книжной ориентации — всегда две колонки, какой бы ни была
+        // настройка: размер карточки и число колонок подбирают для ТВ, а на
+        // узком экране одна колонка — постер во весь экран, три — мелко.
+        // Медиазапрос тот же, что у блока «Телефон, книжная ориентация» в styles.css.
+        if (window.matchMedia &&
+            window.matchMedia('(max-width: 600px) and (orientation: portrait)').matches) return 2;
+
         var explicit = explicitColumns();
         if (explicit) return explicit;
 
@@ -368,12 +375,6 @@
 
         // Столько карточек шириной w влезает в ряд с зазором gap
         var n = Math.floor((gridAvailWidth() + gap) / (w + gap));
-        // Телефон в книжной ориентации: размер карточки рассчитан на ТВ, и в
-        // ширину экрана влезала одна — постер во весь экран, один фильм на
-        // прокрутку. Там меньше двух колонок не делаем (тот же медиазапрос,
-        // что у блока «Телефон, книжная ориентация» в styles.css).
-        if (n < 2 && window.matchMedia &&
-            window.matchMedia('(max-width: 600px) and (orientation: portrait)').matches) n = 2;
         if (n < 1) n = 1;
         if (n > 12) n = 12;
         return n;
@@ -815,7 +816,11 @@
             '.ui-slider-thumb{position:absolute;top:50%;left:0;width:20px;height:20px;margin:-10px 0 0 -10px;background:#fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.5);}',
             '.ui-slider-val{flex:0 0 auto;min-width:104px;text-align:right;font-size:16px;font-weight:600;color:#fff;}',
             '.ui-slider.ui-focused .ui-slider-thumb{width:24px;height:24px;margin:-12px 0 0 -12px;}',
-            '.ui-slider-ends{display:flex;justify-content:space-between;margin:0 8px 4px;font-size:12px;color:#6c6c78;}',
+            // Подписи краёв — ровно под концами дорожки: справа от неё в строке
+            // ещё отступ 18px и значение (min-width 104px), поэтому правый край
+            // подписей сдвинут на 8 + 18 + 104. Раньше они шли во всю строку, и
+            // правая («160%», «260 × 460») стояла под значением, а не под концом.
+            '.ui-slider-ends{display:flex;justify-content:space-between;margin:0 130px 4px 8px;font-size:12px;color:#6c6c78;}',
             // Галки — переключателями, как на экране «Настройки»: ::before —
             // дорожка, ::after — бегунок. Сам input спрятан, но остаётся —
             // activateFocused() и клик по label меняют его checked.

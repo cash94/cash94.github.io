@@ -2949,6 +2949,32 @@
         document.body.classList.toggle('mobile-nav-open', !!open);
     }
 
+    // То же для экрана настроек: заголовок «Настройки» открывает список
+    // разделов, выбор раздела и затемнение его закрывают.
+    function settingsNavOpen() {
+        return document.body.classList.contains('settings-nav-open');
+    }
+
+    function setSettingsNav(open) {
+        if (open && !mobileNavApplies()) return;
+        document.body.classList.toggle('settings-nav-open', !!open);
+    }
+
+    function initSettingsNav() {
+        var title = document.querySelector('#config-screen .settings-title');
+        if (title) title.addEventListener('click', function () { setSettingsNav(!settingsNavOpen()); });
+        var backdrop = el('settings-nav-backdrop');
+        if (backdrop) backdrop.addEventListener('click', function () { setSettingsNav(false); });
+        var nav = document.querySelector('#config-screen .settings-nav');
+        if (nav) {
+            // Раздел переключает обработчик самого пункта, мы только закрываем.
+            // На перехвате: обработчик пункта останавливает всплытие
+            nav.addEventListener('click', function (e) {
+                if (e.target.closest && e.target.closest('.menu-item')) setSettingsNav(false);
+            }, true);
+        }
+    }
+
     function initMobileNav(topbar) {
         var logo = topbar.querySelector('.section-title-header');
         if (logo) {
@@ -2961,20 +2987,26 @@
         // с экрана. Перехват на window раньше всех; popstate-обработчик
         // приложения тоже приходит сюда синтетическим Escape.
         window.addEventListener('keydown', function (e) {
-            if (!mobileNavOpen()) return;
+            if (!mobileNavOpen() && !settingsNavOpen()) return;
             if (!BACK_KEYS[e.keyCode] && e.key !== 'Escape' && e.key !== 'GoBack') return;
             e.preventDefault();
             e.stopImmediatePropagation();
             setMobileNav(false);
+            setSettingsNav(false);
         }, true);
 
         // Повернули телефон — панель там уже не нужна
         if (window.matchMedia) {
             var mq = window.matchMedia(MOBILE_NAV_QUERY);
-            var onChange = function () { if (!mq.matches) setMobileNav(false); };
+            var onChange = function () {
+                if (mq.matches) return;
+                setMobileNav(false);
+                setSettingsNav(false);
+            };
             if (mq.addEventListener) mq.addEventListener('change', onChange);
             else if (mq.addListener) mq.addListener(onChange);
         }
+        initSettingsNav();
     }
 
     function initHome() {

@@ -8381,6 +8381,13 @@ article {
   box-shadow: inset 3px 0 0 var(--focus-color, #ff8c00);
 }
 
+/* Только для телефона: иконка меню и затемнение (блок «Телефон, книжная
+   ориентация» в конце файла) */
+#config-screen .settings-menu-icon,
+#settings-nav-backdrop {
+  display: none;
+}
+
 /* ---- Правая колонка ---- */
 #config-screen .settings-main {
   flex: 1 1 auto;
@@ -9633,5 +9640,152 @@ article {
     flex: 0 0 calc(100% - 8px);
     padding: 12px 16px;
     font-size: 16px;
+  }
+
+  /* Настройки: без ТВ-увеличения (zoom 1.2 × ползунок — для дивана, на
+     телефоне это вдвое крупнее нужного), сверху строка с меню, разделы — в
+     выезжающей слева панели, настройки во всю ширину. */
+  #config-screen {
+    zoom: 1;
+    height: 100vh;
+    min-height: 100vh;
+    padding: 0 16px 32px;
+  }
+
+  #config-screen .config-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #config-screen .settings-sidebar {
+    position: -webkit-sticky;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    flex: none;
+    width: auto;
+    margin: 0 -16px 8px;
+    padding: calc(12px + var(--safe-top, env(safe-area-inset-top, 0px))) 16px 12px;
+    background: #000;
+  }
+
+  #config-screen .settings-brand {
+    display: none;
+  }
+
+  #config-screen .settings-title {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    font-size: 22px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #config-screen .settings-menu-icon {
+    display: inline-block;
+    margin-right: 12px;
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  #config-screen .settings-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 200;
+    width: 78%;
+    max-width: 300px;
+    padding: calc(76px + var(--safe-top, env(safe-area-inset-top, 0px))) 12px 24px;
+    overflow-y: auto;
+    box-sizing: border-box;
+    background: linear-gradient(180deg, #181824 0%, #0c0c12 100%);
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition: transform 0.25s ease, visibility 0s linear 0.25s;
+  }
+
+  #config-screen .settings-nav::before {
+    content: "Настройки";
+    position: absolute;
+    top: calc(24px + var(--safe-top, env(safe-area-inset-top, 0px)));
+    left: 24px;
+    color: #fff;
+    font-size: 24px;
+    font-weight: 800;
+  }
+
+  body.settings-nav-open #config-screen .settings-nav {
+    transform: none;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  #settings-nav-backdrop {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 199;
+    background: rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.25s ease, visibility 0s linear 0.25s;
+  }
+
+  body.settings-nav-open #settings-nav-backdrop {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  #config-screen .settings-section h2 {
+    font-size: 24px;
+  }
+
+  /* Два поля в ряд на узком экране — друг под другом */
+  #config-screen .settings-field-row {
+    flex-direction: column;
+  }
+
+  #config-screen .settings-field-row .settings-field {
+    margin-right: 0;
+  }
+
+  /* «Внешний вид» внутри настроек: без своей высоты и прокрутки — на
+     телефоне это было окно в окне с пустым местом под ним; страница и так
+     прокручивается. Два id — перебивают стили, которые ui-customizer.js
+     вставляет своим <style> позже этого файла. */
+  #config-screen #appearance-tab-content .ui-customizer-panel {
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  #config-screen #appearance-tab-content .ui-customizer-content {
+    overflow: visible;
+    padding: 0;
+  }
+
+  #config-screen #appearance-tab-content .ui-customizer-header,
+  #config-screen #appearance-tab-content .ui-customizer-footer {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  /* Заголовки групп не залипают: сверху уже липкая строка «Настройки», а
+     их отрицательные поля рассчитаны на отступы панели, которых здесь нет, —
+     они вылезали за край экрана */
+  #config-screen #appearance-tab-content .ui-customizer-group h3 {
+    position: static;
+    margin: 0 0 8px;
+    padding: 16px 0 8px;
+    background: transparent;
   }
 }
