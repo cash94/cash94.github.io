@@ -3533,6 +3533,22 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
     });
 }
 
+/**
+ * Контейнер прокрутки экрана настроек. Обычно — правая колонка
+ * (.settings-main): левая с разделами стоит на месте. На телефоне в книжной
+ * ориентации колонок нет, и прокручивается весь #config-screen (styles.css).
+ * Различаем по вычисленному overflow — раскладку решает CSS.
+ */
+function getConfigScroller() {
+    var main = document.querySelector('#config-screen .settings-main');
+    if (main) {
+        var oy = getComputedStyle(main).overflowY;
+        if (oy === 'auto' || oy === 'scroll') return main;
+    }
+    return getEl('config-screen');
+}
+window.getConfigScroller = getConfigScroller;
+
 function byId(id) { return getEl(id); };
 
 function focusEl(el, opts) {
@@ -3609,10 +3625,11 @@ function focusEl(el, opts) {
     // главная по вертикали не прокручивается — баннер и ряд считаны ровно на
     // высоту экрана, поэтому #main-container для её кнопок остаётся no-op.
     if (s === 'config') {
-        // Настройки лежат не в #main-container, а в своём #config-screen, и
-        // прокручивается он сам (styles.css). Раньше доводка шла по
-        // #main-container — впустую, и пункты ниже экрана были недостижимы.
-        container = getEl('config-screen');
+        // Настройки лежат не в #main-container, а в своём #config-screen.
+        // Раньше доводка шла по #main-container — впустую, и пункты ниже
+        // экрана были недостижимы. Что именно прокручивается — см.
+        // getConfigScroller.
+        container = getConfigScroller();
     } else if (s === 'catalog' || s === 'torrents' || s === 'home') {
         var rowVp = (isRowCard && el.closest) ? el.closest('.catalog-row-viewport') : null;
         container = rowVp || getEl('main-container');

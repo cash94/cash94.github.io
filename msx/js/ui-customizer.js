@@ -847,11 +847,18 @@
             '#appearance-tab-content .ui-customizer-panel .ui-checkbox.ui-focused,#appearance-tab-content .ui-customizer-panel .ui-slider.ui-focused{background:rgba(255,255,255,0.06);box-shadow:inset 0 0 0 2px var(--focus-color,#ff8c00)!important;}',
             // Встроенная в раздел «Внешний вид» настроек (embedPanel). Масштаб
             // уже даёт zoom самого экрана настроек — свой снимаем, иначе
-            // умножился бы дважды. Высота — на экран за вычетом его полей, чтобы
-            // прокручивалось содержимое панели (с залипающими заголовками), а
-            // не весь экран. Изменения тут сохраняются сразу, как и прочие
-            // настройки, поэтому «Сохранить» и крестик не нужны.
-            '#appearance-tab-content .ui-customizer-panel{zoom:1;width:auto;max-width:none;max-height:calc(100vh / var(--settings-zoom,1.2) - 96px);box-shadow:none;}',
+            // умножился бы дважды. Своего окна прокрутки нет: прокручивается
+            // весь экран настроек, как у прочих разделов (левое меню при этом
+            // липкое). Раньше панель держала высоту «экран минус поля» и
+            // прокручивала себя сама — на невысоком экране (960×540 под zoom
+            // 1.2, телефон боком) шапка и «Сбросить» съедали её почти целиком.
+            // Доводку фокуса ведёт scrollFocusIntoView — по #config-screen.
+            // Изменения тут сохраняются сразу, как и прочие настройки, поэтому
+            // «Сохранить» и крестик не нужны.
+            '#appearance-tab-content .ui-customizer-panel{zoom:1;width:auto;max-width:none;max-height:none;overflow:visible;box-shadow:none;}',
+            '#appearance-tab-content .ui-customizer-content{overflow:visible;}',
+            // Заголовкам групп липнуть не к чему — окно панели убрано
+            '#appearance-tab-content .ui-customizer-group h3{position:static;}',
             '#appearance-tab-content .ui-customizer-close,#appearance-tab-content #ui-apply-settings{display:none;}',
             '.ui-embed-hint{display:none;margin:4px 0 0;font-size:13px;color:#8a8a96;}',
             '#appearance-tab-content .ui-embed-hint{display:block;}',
@@ -1258,8 +1265,6 @@
         if (f) f.classList.remove('focused');
         updateActiveButtons();
         updateSliders();
-        var content = document.querySelector('#appearance-tab-content .ui-customizer-content');
-        if (content) content.scrollTop = 0;
         var first = getFocusables('content')[0] || getFocusables()[0];
         setFocus(first, true);
         return true;
@@ -1389,8 +1394,57 @@
     // Прокрутка к элементу с учётом заголовка параметра:
     // если элемент в первой строке своей группы — показываем группу вместе с <h3>.
     function scrollFocusIntoView(el) {
+        if (!el) return;
+
+        // Встроенная панель своего окна прокрутки не имеет — докручиваем экран
+        // настроек (его правую колонку). Первая строка группы — цель вся группа,
+        // чтобы заголовок параметра был виден вместе с ней; сюда же и
+        // «Сбросить» из подвала панели.
+        //
+        // Считаем сами, а не общей доводкой control.js: экран под zoom, и в
+        // новых Chrome прямоугольники элементов крупнее единиц scrollTop во
+        // столько же раз (в Chrome 66 — нет, оба без увеличения). Общая
+        // доводка это не учитывала и перелетала цель — вверх элемент уходил за
+        // нижний край. Коэффициент (scale) меряем на месте — верно в обоих.
+        if (el.closest && el.closest('#appearance-tab-content')) {
+            // Правая колонка настроек, на телефоне в книжной — весь экран
+            var screen = typeof window.getConfigScroller === 'function'
+                ? window.getConfigScroller()
+                : document.getElementById('config-screen');
+            if (!screen) return;
+            var grp = el.closest('.ui-customizer-group');
+            var target = el;
+            if (grp) {
+                var items = grp.querySelectorAll(FOCUS_SELECTOR);
+                var eTop = el.getBoundingClientRect().top;
+                var first = true;
+                for (var k = 0; k < items.length; k++) {
+                    if (items[k] !== el && items[k].getBoundingClientRect().bottom <= eTop + 1) { first = false; break; }
+                }
+                if (first) target = grp;
+            }
+            var sRect = screen.getBoundingClientRect();
+            var scale = screen.clientHeight ? sRect.height / screen.clientHeight : 1;
+            if (!(scale > 0)) scale = 1;
+            var pad = 12 * scale;
+            var viewTop = sRect.top + pad, viewBottom = sRect.top + sRect.height - pad;
+            var tRect = target.getBoundingClientRect();
+            var d = 0;
+            if (tRect.top < viewTop || tRect.height > viewBottom - viewTop) d = tRect.top - viewTop;
+            else if (tRect.bottom > viewBottom) d = tRect.bottom - viewBottom;
+            if (!d) return;
+            var maxTop = Math.max(0, screen.scrollHeight - screen.clientHeight);
+            var to = Math.max(0, Math.min(maxTop, screen.scrollTop + d / scale));
+            if (window.Animations && typeof Animations.tweenScroll === 'function') {
+                Animations.tweenScroll(screen, { scrollTop: to }, { duration: 0.2 });
+            } else {
+                screen.scrollTop = to;
+            }
+            return;
+        }
+
         var content = document.querySelector('#ui-customizer-panel .ui-customizer-content');
-        if (!content || !el || !content.contains(el)) return;
+        if (!content || !content.contains(el)) return;
 
         var PAD = 10;
         var eRect = el.getBoundingClientRect();

@@ -8303,22 +8303,23 @@ article {
    прежнего (с дивана на ТВ приходилось приглядываться), дальше — ползунком
    «Экран Настройки» в «Внешнем виде» (ui-customizer.js пишет --settings-zoom).
 
-   zoom — на самом #config-screen, а не на карточке внутри: он же и
-   прокручивается, а Chrome 66 отдаёт getBoundingClientRect элементов под zoom
-   без учёта увеличения. Будь zoom у карточки, пункты мерились бы в одном
-   масштабе, а контейнер прокрутки — в другом, и доводка фокуса (focusEl)
-   считала бы пункт у нижнего края видимым, когда он уже за экраном.
+   zoom — на самом #config-screen, а не на карточке внутри: Chrome 66 отдаёт
+   getBoundingClientRect элементов под zoom без учёта увеличения, и контейнер
+   прокрутки (.settings-main) обязан лежать под тем же zoom, что и пункты —
+   иначе доводка фокуса (focusEl) мерила бы их в разных масштабах.
    vh под zoom тоже умножается — поэтому высота делится на него. */
 #config-screen {
   zoom: var(--settings-zoom, 1.2);
   min-height: calc(100vh / var(--settings-zoom, 1.2));
-  /* Своя прокрутка: окно у приложения не прокручивается, и всё, что ниже
-     экрана, было недостижимо — фокус уходил за край. Доводку фокуса по нему
-     делает focusEl (control.js, ветка config). */
+  /* Сам экран не прокручивается: прокручивается правая колонка
+     (.settings-main), левая стоит на месте. Раньше прокручивался весь экран,
+     а колонка липла (sticky) — и на каждом кадре плавной прокрутки её
+     переставляли заново, с запаздыванием: микродёргания. Вертикальные поля —
+     внутри колонок, чтобы текст уезжал под край экрана, а не под чёрную
+     полосу поля. Доводку фокуса делает focusEl (control.js, ветка config). */
   height: calc(100vh / var(--settings-zoom, 1.2));
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 48px 40px;
+  overflow: hidden;
+  padding: 0 40px;
   box-sizing: border-box;
   background: #000;
   color: #e0e0e0;
@@ -8335,7 +8336,8 @@ article {
    и без явной ширины карточка сжималась бы до содержимого */
 #config-screen .config-card {
   display: flex;
-  align-items: flex-start;
+  /* Колонки — на всю высоту экрана: у каждой своя область прокрутки */
+  align-items: stretch;
   flex: 1 1 auto;
   width: 100%;
   max-width: none;
@@ -8350,9 +8352,16 @@ article {
 
 /* ---- Левая колонка: заголовок и разделы ---- */
 #config-screen .settings-sidebar {
-  flex: 0 0 280px;
-  width: 280px;
-  margin-right: 56px;
+  /* 280 px под пункты + по 6 px с боков под кольцо фокуса (3 px наружу): у
+     колонки своя прокрутка (на невысоком экране разделы не влезают), и её
+     overflow обрезал бы кольцо по краю. Поля отрицательные на ту же
+     величину — пункты стоят там же, где стояли. */
+  flex: 0 0 292px;
+  width: 292px;
+  padding: 48px 6px;
+  margin: 0 50px 0 -6px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 #config-screen .settings-brand {
@@ -8422,6 +8431,12 @@ article {
 #config-screen .settings-main {
   flex: 1 1 auto;
   min-width: 0;
+  /* Единственное, что прокручивается на экране. Поля по 6 px — под кольцо
+     фокуса у полей и переключателей, как у левой колонки. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 48px 6px;
+  margin: 0 -6px;
 }
 
 #config-screen .settings-section {
@@ -8824,17 +8839,22 @@ article {
   color: #6b6b76;
 }
 
-/* ---- Экраны поменьше: 1280×720 и 960×540 ---- */
+/* ---- Экраны поменьше: 1280×720 и 960×540 ----
+   Вертикальные поля — у колонок, а не у экрана (он сам не прокручивается);
+   ширина колонки и отступ справа — с поправкой на её поля 6 px под кольцо
+   фокуса (см. .settings-sidebar выше). */
 @media (max-width: 1400px) {
-  #config-screen { padding: 36px 32px; }
-  #config-screen .settings-sidebar { flex-basis: 240px; width: 240px; margin-right: 40px; }
+  #config-screen { padding: 0 32px; }
+  #config-screen .settings-sidebar { flex-basis: 252px; width: 252px; margin-right: 34px; padding: 36px 6px; }
+  #config-screen .settings-main { padding: 36px 6px; }
   #config-screen .settings-title { font-size: 34px; margin-bottom: 26px; }
   #config-screen .settings-section h2 { font-size: 26px; }
 }
 
 @media (max-width: 1000px) {
-  #config-screen { padding: 24px 20px; }
-  #config-screen .settings-sidebar { flex-basis: 200px; width: 200px; margin-right: 28px; }
+  #config-screen { padding: 0 20px; }
+  #config-screen .settings-sidebar { flex-basis: 212px; width: 212px; margin-right: 22px; padding: 24px 6px; }
+  #config-screen .settings-main { padding: 24px 6px; }
   #config-screen .settings-title { font-size: 28px; margin-bottom: 20px; }
   #config-screen .menu-item { padding: 11px 14px; font-size: 16px; }
   #config-screen .menu-item i { margin-right: 10px; font-size: 16px; }
@@ -9753,10 +9773,21 @@ article {
     margin-top: calc(60vw - 96px);
   }
 
+  /* Карточка торрента («Мои торренты») рисует кадр не в
+     .catalog-detail-backdrop, а фоном самого #detail-view (showDetail в
+     torrents.js, инлайном, с затемняющими градиентами поверх) — на всю высоту
+     прокрутки. Сужаем его до той же полосы 60vw сверху: по высоте полосы, по
+     ширине с обрезкой краёв, без растяжения; local — едет вместе с карточкой.
+     Градиенты сжимаются в ту же полосу и дают растворение низа кадра. */
+  #detail-view.torrent-detail-mode {
+    background-size: auto 60vw !important;
+    background-position: center top !important;
+    background-attachment: local !important;
+  }
+
   /* Три полоски в левом верхнем углу карточки — то же меню разделов, что на
-     главной. Кружок-подложка: под ним кадр фильма, и белая иконка на светлом
-     кадре потерялась бы. Место и размер — как у иконки в шапке, которая встаёт
-     сюда же, когда меню открыто. */
+     главной. Место и размер — как у иконки в шапке, которая встаёт сюда же,
+     когда меню открыто. */
   #detail-menu-btn {
     display: flex;
     align-items: center;
@@ -9788,11 +9819,24 @@ article {
     height: 100vh;
     min-height: 100vh;
     padding: 0 16px 32px;
+    /* Здесь, в отличие от ТВ, прокручивается весь экран: сверху липкая
+       строка «Настройки», разделы — в выезжающей панели */
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
+  /* Высота по содержимому (не по экрану): иначе липкая строка «Настройки»
+     уезжала бы вместе с карточкой — sticky не выходит за пределы родителя */
   #config-screen .config-card {
     flex-direction: column;
     align-items: stretch;
+    align-self: flex-start;
+  }
+
+  #config-screen .settings-main {
+    overflow: visible;
+    padding: 0;
+    margin: 0;
   }
 
   #config-screen .settings-sidebar {
@@ -9802,6 +9846,9 @@ article {
     z-index: 5;
     flex: none;
     width: auto;
+    /* Своя прокрутка колонки здесь не нужна: это строка заголовка, а
+       разделы выезжают отдельной панелью */
+    overflow: visible;
     margin: 0 -16px 8px;
     padding: calc(12px + var(--safe-top, env(safe-area-inset-top, 0px))) 16px 12px;
     background: #000;
@@ -9928,5 +9975,45 @@ article {
     margin: 0 0 8px;
     padding: 16px 0 8px;
     background: transparent;
+  }
+}
+
+/* ==================== ТЕЛЕФОН, АЛЬБОМНАЯ ОРИЕНТАЦИЯ: НАСТРОЙКИ ====================
+   Высота экрана — 350–450 px, ТВ-увеличение (zoom 1.2) съедало её целиком.
+   Здесь: без увеличения и с тонкими полями. Прокрутка только у правой
+   колонки и «Внешний вид» без своего окна — это базовые правила.
+   Условие по высоте, а не по «сенсорности»: у телевизоров она от 540 px. */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  #config-screen {
+    zoom: 1;
+    height: 100vh;
+    min-height: 100vh;
+    padding: 0 24px;
+  }
+
+  #config-screen .settings-sidebar {
+    flex: 0 0 222px;
+    width: 222px;
+    padding: 16px 6px;
+    margin-right: 18px;
+  }
+
+  #config-screen .settings-main {
+    padding: 16px 6px;
+  }
+
+  #config-screen .settings-title {
+    margin: 2px 0 12px;
+    font-size: 26px;
+  }
+
+  #config-screen .menu-item {
+    margin-bottom: 2px;
+    padding: 9px 14px;
+    font-size: 16px;
+  }
+
+  #config-screen .settings-section {
+    margin-bottom: 28px;
   }
 }
