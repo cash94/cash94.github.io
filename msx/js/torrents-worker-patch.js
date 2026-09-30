@@ -432,6 +432,9 @@
             elements.detailViewDiv.style.backgroundSize = 'cover';
             elements.detailViewDiv.style.backgroundPosition = 'center';
             elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
+            // Тот же кадр без затемнения — для телефона в книжной ориентации:
+            // там он рисуется яркой полосой, как в карточке каталога (styles.css)
+            elements.detailViewDiv.style.setProperty('--torrent-backdrop', 'url(' + bp + ')');
 
             // Блок с созданием оверлея больше не нужен, его можно смело удалить:
             /*

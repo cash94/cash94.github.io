@@ -9773,16 +9773,20 @@ article {
     margin-top: calc(60vw - 96px);
   }
 
-  /* Карточка торрента («Мои торренты») рисует кадр не в
-     .catalog-detail-backdrop, а фоном самого #detail-view (showDetail в
-     torrents.js, инлайном, с затемняющими градиентами поверх) — на всю высоту
-     прокрутки. Сужаем его до той же полосы 60vw сверху: по высоте полосы, по
-     ширине с обрезкой краёв, без растяжения; local — едет вместе с карточкой.
-     Градиенты сжимаются в ту же полосу и дают растворение низа кадра. */
+  /* Карточка торрента («Мои торренты») рисует кадр фоном самого
+     #detail-view (showDetail в torrents.js) — с затемняющими градиентами
+     поверх и на всю высоту прокрутки. Здесь этот фон гасим, а тот же кадр без
+     затемнения (--torrent-backdrop, его ставит torrents.js) показываем в
+     .catalog-detail-backdrop — ровно как в карточке каталога: та же полоса,
+     яркость и растворение низа (правило выше). Сам .catalog-detail-backdrop
+     в режиме торрента скрыт классом .hidden — отсюда display. */
   #detail-view.torrent-detail-mode {
-    background-size: auto 60vw !important;
-    background-position: center top !important;
-    background-attachment: local !important;
+    background-image: none !important;
+  }
+
+  #detail-view.torrent-detail-mode .catalog-detail-backdrop {
+    display: block !important;
+    background-image: var(--torrent-backdrop) !important;
   }
 
   /* Три полоски в левом верхнем углу карточки — то же меню разделов, что на

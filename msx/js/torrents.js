@@ -1298,6 +1298,7 @@ function resetDetailBackground() {
     if (!detailView) return;
     detailView.dataset.torrentHash = '';   // собранной карточки раздачи больше нет
     detailView.style.backgroundImage = ''; detailView.style.backgroundColor = '#000000';
+    detailView.style.removeProperty('--torrent-backdrop');
     var existingOverlay = getEl('detail-backdrop-overlay'); if (existingOverlay) existingOverlay.remove();
     var detailSubtitle = getEl('detail-subtitle'); if (detailSubtitle) { detailSubtitle.textContent = ''; detailSubtitle.style.display = 'none'; }
     var metaContainer = getEl('catalog-detail-meta'); if (metaContainer) { metaContainer.innerHTML = ''; metaContainer.classList.add('hidden'); }
@@ -2588,6 +2589,10 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
             elements.detailViewDiv.style.backgroundSize = 'cover';
             elements.detailViewDiv.style.backgroundPosition = 'center';
             elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
+            // Тот же кадр без затемнения — для телефона в книжной ориентации:
+            // там он рисуется яркой полосой в .catalog-detail-backdrop, как в
+            // карточке каталога, а фон выше гасится (styles.css)
+            elements.detailViewDiv.style.setProperty('--torrent-backdrop', 'url("' + backdropUrl + '")');
         }
 
         if (details.overview) {
@@ -4178,6 +4183,24 @@ function hideSearchResults(opts) {
     }
     if (searchInput && document.activeElement === searchInput) searchInput.blur();
 }
+
+/**
+ * Поиск торрентов из карточки фильма: фильтры — снова по умолчанию, если
+ * фильм другой. Иначе качество, трекер или озвучка, выбранные под прошлый
+ * фильм, молча резали выдачу следующего. Тот же фильм (вернулись из плеера и
+ * ищут заново) фильтры сохраняет. Как «Сбросить», но без applyFiltersAndSort:
+ * на экране ещё прошлые результаты, их вот-вот заменит новый поиск.
+ */
+var lastCardSearchKey = null;
+function resetFiltersForCardSearch(key) {
+    if (key && key === lastCardSearchKey) return;
+    lastCardSearchKey = key || null;
+    currentTrackerFilter = 'all'; currentYearFilter = ''; currentSeasonFilter = 'all'; currentVoiceFilter = 'all';
+    applySearchFilterDefaults();
+    syncSearchFilterButtons();
+    ['filter-year', 'filter-season', 'filter-voice'].forEach(function (id) { var el = getEl(id); if (el) el.value = 'all'; });
+}
+window.resetFiltersForCardSearch = resetFiltersForCardSearch;
 
 // «Сбросить» возвращает к значениям по умолчанию из настроек, а не к «Все»
 function resetFilters() {

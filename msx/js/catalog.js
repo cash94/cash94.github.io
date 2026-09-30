@@ -5122,6 +5122,13 @@ function showCatalogSearch(q, pu, item) {
         // служит запасным источником типа, когда у самого item его нет
         AppState.jacredSearchHints = buildJacredSearchHints(item);
 
+        // Другой фильм — фильтры поиска снова по умолчанию (torrents.js)
+        if (typeof window.resetFiltersForCardSearch === 'function') {
+            window.resetFiltersForCardSearch(item && (item.id || item.tmdbId)
+                ? (item.media_type || '') + ':' + (item.id || item.tmdbId)
+                : q);
+        }
+
         // Возвращаем промис с числом найденного: вызывающая сторона (кнопка
         // «Торренты» в карточке) прячет detail-view только если искать было что.
         var searching = Promise.resolve(0);
