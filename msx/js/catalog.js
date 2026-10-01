@@ -1147,7 +1147,7 @@ async function loadHistoryCatalog() {
     AppState.mediaType = 'history';
     showCatalogLoading('Загрузка истории просмотра...');
     try {
-        var data = await safeFetch(SERVER_URL + '/api/history');
+        var data = await safeFetch(withClientId(SERVER_URL + '/api/history'));
         if (data && data.success && data.history && data.history.length > 0) {
             catalogState.items = data.history.map(function (item, idx) {
                 var pp = item.posterPath;
@@ -1613,7 +1613,7 @@ function showEmptyHistory() {
 async function clearHistory() {
     if (!confirm('Очистить историю просмотра?')) return;
     try {
-        var d = await safeFetch(SERVER_URL + '/api/history/clear', { method: 'DELETE' });
+        var d = await safeFetch(withClientId(SERVER_URL + '/api/history/clear'), { method: 'DELETE' });
         if (d && d.success) await loadHistoryCatalog();
         else alert('Ошибка очистки');
     } catch (e) {
@@ -5622,7 +5622,7 @@ async function loadRowItems(key) {
     var LIMIT = 10;
     if (key === 'favorites') return await loadFavoritesItems(LIMIT);
     if (key === 'history') {
-        var data = await safeFetch(SERVER_URL + '/api/history', { timeout: 10000 });
+        var data = await safeFetch(withClientId(SERVER_URL + '/api/history'), { timeout: 10000 });
         if (data && data.success && data.history && data.history.length) {
             window.catalogRowTotals[key] = data.history.length;
             return data.history.slice(0, LIMIT).map(function (item) {
@@ -7151,7 +7151,7 @@ window.addToWatchHistory = async function (id, title, mt, pp) {
             var tmdbPath = save.match(/\/t\/p\/[^/]+(\/[^?#]+)(?:[?#].*)?$/i);
             if (tmdbPath) save = tmdbPath[1];
         }
-        var d = await safeFetch('/api/history/add', {
+        var d = await safeFetch(withClientId('/api/history/add'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tmdbId: String(id), title: title, mediaType: mt, posterPath: save })

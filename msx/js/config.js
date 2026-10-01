@@ -427,6 +427,24 @@ window.getEl = getEl;
 window.clearFocused = clearFocused;
 
 
+// ==================== clientId В ЗАПРОСАХ ====================
+//
+// Всё, что сервер хранит «по клиенту» (история, таймкоды, дорожки, настройки
+// TorrServer), он ищет по clientId из запроса. Без него сервер вычисляет
+// идентификатор сам — по IP и браузеру, — и запрос попадает в чужие (пустые)
+// данные: так история не синхронизировалась между устройствами аккаунта, хотя
+// таймкоды, которые clientId передают, синхронизировались.
+//
+// В адресе, а не в теле: сервер определяет клиента ещё до разбора тела.
+function withClientId(url) {
+  var id = null;
+  try { id = localStorage.getItem('clientId'); } catch (e) { }
+  if (!id) return url;
+  return url + (url.indexOf('?') === -1 ? '?' : '&') + 'clientId=' + encodeURIComponent(id);
+}
+
+window.withClientId = withClientId;
+
 // ==================== BACKSPACE В ПОЛЕ ВВОДА И ОДИН «НАЗАД» НА НАЖАТИЕ ====================
 //
 // Код 8 — это и Backspace, и «Назад» пульта Vidaa, поэтому он стоит в

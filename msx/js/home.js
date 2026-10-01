@@ -455,7 +455,7 @@
     // ==================== ДАННЫЕ РЯДОВ ====================
 
     function loadHistoryItems() {
-        return homeFetch(serverUrl() + '/api/history').then(function (data) {
+        return homeFetch(withClientId(serverUrl() + '/api/history')).then(function (data) {
             if (!data || !data.success || !data.history || !data.history.length) return [];
             return data.history.slice(0, HOME.ITEMS_PER_ROW).map(function (it) {
                 // В истории путь постера лежит без ведущего слэша (или уже полным

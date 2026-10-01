@@ -1228,8 +1228,15 @@ function workerLoadAllCatalogItems(catalogUrl) {
     });
 }
 
-function workerLoadHistory() {
-  return safeFetch('/api/history', { timeout: WORKER_CONSTANTS.FETCH_TIMEOUT_MS });
+// clientId передаёт мост (catalog-worker-bridge.js): localStorage воркеру
+// недоступен, а без clientId сервер отдал бы историю «по IP и браузеру»
+function withWorkerClientId(url, clientId) {
+  if (!clientId) return url;
+  return url + (url.indexOf('?') === -1 ? '?' : '&') + 'clientId=' + encodeURIComponent(clientId);
+}
+
+function workerLoadHistory(clientId) {
+  return safeFetch(withWorkerClientId('/api/history', clientId), { timeout: WORKER_CONSTANTS.FETCH_TIMEOUT_MS });
 }
 
 function workerFetchAvailableCatalogs() {
@@ -1251,21 +1258,21 @@ function workerCheckCatalogUpdate(id, iso) {
   return Promise.resolve(false);
 }
 
-function workerSaveToHistory(id, title, mt, pp) {
+function workerSaveToHistory(id, title, mt, pp, clientId) {
   var save = pp || null;
   // В историю кладём путь картинки, а не адрес: зеркало могут сменить, а
   // путь TMDB — нет. Раньше отрезался только адрес tsimg размера w200.
   var mm = save ? matchMirrorImageUrl(save) : null;
   if (mm) save = mm.path;
-  return safeFetch('/api/history/add', {
+  return safeFetch(withWorkerClientId('/api/history/add', clientId), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tmdbId: String(id), title: title, mediaType: mt, posterPath: save })
   });
 }
 
-function workerClearHistory() {
-  return safeFetch('/api/history/clear', { method: 'DELETE' });
+function workerClearHistory(clientId) {
+  return safeFetch(withWorkerClientId('/api/history/clear', clientId), { method: 'DELETE' });
 }
 
 // ==================== ДЕДУПЛИКАЦИЯ ====================
@@ -1753,7 +1760,7 @@ self.onmessage = function (e) {
 
     // --- History ---
     case 'LOAD_HISTORY':
-      workerLoadHistory().then(function (data) {
+      workerLoadHistory(payload && payload.clientId).then(function (data) {
         self.postMessage({ id: id, type: 'RESULT', data: data });
       });
       break;
@@ -1774,14 +1781,14 @@ self.onmessage = function (e) {
 
     // --- Save to History ---
     case 'SAVE_TO_HISTORY':
-      workerSaveToHistory(payload.id, payload.title, payload.mt, payload.pp).then(function (data) {
+      workerSaveToHistory(payload.id, payload.title, payload.mt, payload.pp, payload.clientId).then(function (data) {
         self.postMessage({ id: id, type: 'RESULT', data: data });
       });
       break;
 
     // --- Clear History ---
     case 'CLEAR_HISTORY':
-      workerClearHistory().then(function (data) {
+      workerClearHistory(payload && payload.clientId).then(function (data) {
         self.postMessage({ id: id, type: 'RESULT', data: data });
       });
       break;

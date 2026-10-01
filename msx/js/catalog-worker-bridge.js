@@ -68,6 +68,11 @@ var CatalogWorker = (function () {
     else readyQueue.push(msg);
   }
 
+  /** clientId страницы — для запросов воркера к данным «по клиенту» (история) */
+  function currentClientId() {
+    try { return localStorage.getItem('clientId') || null; } catch (e) { return null; }
+  }
+
   function request(type, payload, timeout) {
     timeout = timeout || 10000;
     return new Promise(function (resolve, reject) {
@@ -132,11 +137,12 @@ var CatalogWorker = (function () {
     tmdbDetailsCacheClear: function () { return request('TMDB_DETAILS_CACHE_CLEAR', {}); },
     loadCatalogItems: function (url, from, limit) { return request('LOAD_CATALOG_ITEMS', { url: url, from: from, limit: limit }); },
     loadAllCatalogItems: function (url) { return request('LOAD_ALL_CATALOG_ITEMS', { url: url }, 15000); },
-    loadHistory: function () { return request('LOAD_HISTORY', {}); },
+    // clientId — из localStorage страницы: у воркера его нет (см. withClientId в config.js)
+    loadHistory: function () { return request('LOAD_HISTORY', { clientId: currentClientId() }); },
     fetchCatalogs: function () { return request('FETCH_CATALOGS', {}); },
     checkCatalogUpdate: function (id, iso) { return request('CHECK_CATALOG_UPDATE', { catalogId: id, iso: iso }); },
-    saveToHistory: function (id, title, mt, pp) { return request('SAVE_TO_HISTORY', { id: id, title: title, mt: mt, pp: pp }); },
-    clearHistory: function () { return request('CLEAR_HISTORY', {}); },
+    saveToHistory: function (id, title, mt, pp) { return request('SAVE_TO_HISTORY', { id: id, title: title, mt: mt, pp: pp, clientId: currentClientId() }); },
+    clearHistory: function () { return request('CLEAR_HISTORY', { clientId: currentClientId() }); },
     deduplicate: function (items, ids) { return request('DEDUPLICATE', { newItems: items, loadedItemIds: ids }); },
     mergeDetails: function (base, extra) { return request('MERGE_DETAILS', { base: base, extra: extra }); },
     normalizeGenres: function (src) { return request('NORMALIZE_GENRES', { src: src }); },
