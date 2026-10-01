@@ -1583,7 +1583,7 @@ function clearDetailNetflixBlocks() {
     if (filesTitle) filesTitle.classList.add('hidden');
 }
 
-// Строка вида «2019 · 8.4 · 3 сезона · 48 мин · Драма · 24 серии · 96 ГБ · [4K]».
+// Строка вида «2019 · 8.4 · 3 сезона · 48 мин · Драма · США · 24 серии · 96 ГБ · [4K]».
 // Данные приходят из двух источников (TMDB и список файлов) в непредсказуемом
 // порядке, поэтому обе стороны только пишут в detailMetaState и перерисовывают.
 function renderDetailMetaRow() {
@@ -1617,6 +1617,9 @@ function renderDetailMetaRow() {
             }
             if (names.length) parts.push(escapeHtml(names.join(', ')));
         }
+
+        var countries = typeof window.getCatalogCountries === 'function' ? window.getCatalogCountries(d, 2) : [];
+        if (countries.length) parts.push(escapeHtml(countries.join(', ')));
     }
 
     var count = detailMetaState.filesCount;

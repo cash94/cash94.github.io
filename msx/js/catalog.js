@@ -996,6 +996,57 @@ function getNormalizedCatalogGenres(src) {
     return u;
 }
 
+// Страны по коду ISO 3166-1. TMDB отдаёт их названия по-английски даже при
+// language=ru-RU, а Intl.DisplayNames появился только в Chrome 81 (на ТВ —
+// Chrome 66), поэтому словарь. Чего в нём нет — остаётся английское название.
+var COUNTRY_NAMES_RU = {
+    US: 'США', GB: 'Великобритания', RU: 'Россия', SU: 'СССР', UA: 'Украина', BY: 'Беларусь',
+    KZ: 'Казахстан', FR: 'Франция', DE: 'Германия', IT: 'Италия', ES: 'Испания', PT: 'Португалия',
+    NL: 'Нидерланды', BE: 'Бельгия', CH: 'Швейцария', AT: 'Австрия', SE: 'Швеция', NO: 'Норвегия',
+    DK: 'Дания', FI: 'Финляндия', IS: 'Исландия', IE: 'Ирландия', PL: 'Польша', CZ: 'Чехия',
+    SK: 'Словакия', HU: 'Венгрия', RO: 'Румыния', BG: 'Болгария', GR: 'Греция', TR: 'Турция',
+    IL: 'Израиль', IN: 'Индия', CN: 'Китай', HK: 'Гонконг', TW: 'Тайвань', JP: 'Япония',
+    KR: 'Южная Корея', TH: 'Таиланд', ID: 'Индонезия', PH: 'Филиппины', VN: 'Вьетнам',
+    MY: 'Малайзия', SG: 'Сингапур', AU: 'Австралия', NZ: 'Новая Зеландия', CA: 'Канада',
+    MX: 'Мексика', BR: 'Бразилия', AR: 'Аргентина', CL: 'Чили', CO: 'Колумбия', PE: 'Перу',
+    ZA: 'ЮАР', EG: 'Египет', NG: 'Нигерия', MA: 'Марокко', IR: 'Иран', AE: 'ОАЭ',
+    SA: 'Саудовская Аравия', LT: 'Литва', LV: 'Латвия', EE: 'Эстония', GE: 'Грузия',
+    AM: 'Армения', AZ: 'Азербайджан', UZ: 'Узбекистан', RS: 'Сербия', HR: 'Хорватия',
+    SI: 'Словения', BA: 'Босния и Герцеговина', LU: 'Люксембург', MT: 'Мальта', CY: 'Кипр',
+    XC: 'Чехословакия', YU: 'Югославия', DD: 'ГДР', XG: 'ГДР'
+};
+
+/**
+ * Страны фильма по-русски, не больше limit. Сначала страна происхождения
+ * (origin_country — у «Бойцовского клуба» это США), затем остальные страны
+ * производства: в production_countries порядок алфавитный, и иначе первой
+ * шла бы Германия.
+ */
+function getCatalogCountries(src, limit) {
+    if (!src) return [];
+    var codes = [], names = {};
+    var oc = src.origin_country;
+    if (Array.isArray(oc)) for (var i = 0; i < oc.length; i++) if (oc[i]) codes.push(String(oc[i]).toUpperCase());
+    var pc = src.production_countries;
+    if (Array.isArray(pc)) for (var j = 0; j < pc.length; j++) {
+        var c = pc[j];
+        if (!c || !c.iso_3166_1) continue;
+        var code = String(c.iso_3166_1).toUpperCase();
+        codes.push(code);
+        if (c.name) names[code] = c.name;
+    }
+    var out = [], seen = {};
+    for (var k = 0; k < codes.length && out.length < (limit || 2); k++) {
+        if (seen[codes[k]]) continue;
+        seen[codes[k]] = 1;
+        var name = COUNTRY_NAMES_RU[codes[k]] || names[codes[k]];
+        if (name) out.push(name);
+    }
+    return out;
+}
+
+window.getCatalogCountries = getCatalogCountries;
+
 function getSafeCatalogRating(s) {
     var r = Number((s && s.vote_average) || (s && s.rating) || (s && s.tmdb_rating));
     return Number.isFinite(r) && r > 0 && r <= 10 ? Math.round(r * 10) / 10 : null;
@@ -1010,6 +1061,8 @@ function getCatalogItemSubtitle(item, details) {
     if (year) parts.push(year);
     if (safe) parts.push(safe);
     if (genres[0]) parts.push(genres[0]);
+    var countries = getCatalogCountries(s, 2);
+    if (countries.length) parts.push(countries.join(', '));
     var txt = parts.join(' • ');
     var el = getEl('detail-subtitle');
     if (el) { el.textContent = txt; el.style.display = 'block'; }
