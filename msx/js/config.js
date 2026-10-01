@@ -495,3 +495,41 @@ window.addEventListener('keydown', function (e) {
     e.stopImmediatePropagation();
   }
 }, true);
+
+// ==================== ЗАКРЫЛИ КЛАВИАТУРУ — СНИМАЕМ ФОКУС С ПОЛЯ (ТЕЛЕФОН) ====================
+//
+// На новых Android (проверено на 15) жест «Назад» не доходит до страницы, пока
+// в WebView стоит фокус в поле ввода: первый свайп закрывает клавиатуру, а
+// дальше WebView глотает жест, и страница его не видит, — «назад» не работает,
+// пока не ткнёшь пальцем мимо поля. Системная кнопка «Назад» при этом доходит.
+//
+// Поэтому на сенсорных устройствах, как только клавиатура закрылась, снимаем
+// фокус с поля сами. Закрытие видно по высоте окна: с клавиатурой оно ниже,
+// без неё — возвращается. Поворот экрана (меняется ширина) не в счёт.
+// Телевизоры с пультом (maxTouchPoints = 0) не затрагиваются: там «Назад» в
+// поле разбирает control.js.
+(function () {
+  if (!navigator.maxTouchPoints) return;
+  var vv = window.visualViewport;
+  var target = vv || window;
+  function size() {
+    return vv ? { w: Math.round(vv.width), h: Math.round(vv.height) }
+              : { w: window.innerWidth, h: window.innerHeight };
+  }
+  var last = size();
+  var keyboardShown = false;
+  target.addEventListener('resize', function () {
+    var cur = size();
+    var a = document.activeElement;
+    var editing = isTextEntryElement(a);
+    if (cur.w !== last.w) {
+      keyboardShown = false;            // поворот, а не клавиатура
+    } else if (cur.h < last.h) {
+      if (editing) keyboardShown = true;
+    } else if (cur.h > last.h && keyboardShown) {
+      keyboardShown = false;
+      if (editing) { try { a.blur(); } catch (e) { } }
+    }
+    last = cur;
+  });
+})();
