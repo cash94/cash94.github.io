@@ -9,10 +9,19 @@
 body {
   background: #000000;
   color: #e0e0e0;
-  font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  /* Inter — css/inter.css; системные шрифты — запас, пока он грузится */
+  font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
   overflow: hidden;
   width: 100vw;
   height: 100vh;
+}
+
+/* Кнопки и поля по умолчанию берут системный шрифт, а не шрифт страницы */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 #main-container {
@@ -3281,7 +3290,7 @@ body.detail-open {
 #buffer-stats,
 #clock-display,
 .player-subtitle {
-  font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif !important;
+  font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif !important;
   letter-spacing: normal !important;
   font-feature-settings: 'tnum' 1 !important;
   font-variant-numeric: tabular-nums !important;
