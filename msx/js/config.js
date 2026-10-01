@@ -425,3 +425,55 @@ AppState.platform = detectPlatform();
 console.log('📱 Платформа: ' + AppState.platform);
 window.getEl = getEl;
 window.clearFocused = clearFocused;
+
+
+// ==================== BACKSPACE В ПОЛЕ ВВОДА И ОДИН «НАЗАД» НА НАЖАТИЕ ====================
+//
+// Код 8 — это и Backspace, и «Назад» пульта Vidaa, поэтому он стоит в
+// BACK. Раньше модули разбирали это сами, каждый по-своему: «пока поле не
+// пустое — клавиша полю, опустело — это уже „Назад“». На Android TV с
+// G-Board это давало тяжёлый сбой: зажали стирание — текст кончился —
+// автоповтор того же Backspace превращался в «Назад», фокус с поля снимался,
+// клавиатура закрывалась посреди удержания и не получала отпускания, а
+// дальше повторы шли пачкой «Назад» по всем экранам. Выглядело как залипшая
+// кнопка, помогала только перезагрузка устройства.
+//
+// Теперь одно правило на всё приложение: пока нативный фокус в текстовом
+// поле, Backspace только стирает (действие браузера по умолчанию), и ни один
+// обработчик его не видит. Из поля выводят настоящие «Назад» (Esc, пульты
+// webOS/Tizen), стрелки и ОК. Встроенная клавиатура (osk.js) нативный фокус с
+// поля снимает и клавиши разбирает сама — её это правило не касается.
+//
+// И второе: зажатый «Назад» срабатывает один раз. Автоповтор его не
+// повторяет — иначе удержание кнопки пролистывало бы экраны каскадом.
+//
+// Перехватчик стоит на window в фазе захвата и регистрируется первым из всех
+// (config.js грузится раньше остальных модулей), поэтому
+// stopImmediatePropagation отсекает и обработчики на window, и всё остальное.
+function isTextEntryElement(el) {
+  if (!el || el === document.body) return false;
+  if (el.isContentEditable) return true;
+  if (el.disabled || el.readOnly) return false;
+  if (el.tagName === 'TEXTAREA') return true;
+  if (el.tagName !== 'INPUT') return false;
+  var t = (el.type || 'text').toLowerCase();
+  return ['text', 'search', 'url', 'email', 'password', 'tel', 'number'].indexOf(t) !== -1;
+}
+
+window.isTextEntryElement = isTextEntryElement;
+
+window.addEventListener('keydown', function (e) {
+  var kc = e.keyCode || e.which;
+
+  if ((kc === 8 || e.key === 'Backspace') && isTextEntryElement(document.activeElement)) {
+    e.stopImmediatePropagation();   // без preventDefault: стирание делает браузер
+    return;
+  }
+
+  if (e.repeat && isKeyPressed('BACK', kc)) {
+    // Встроенная клавиатура: там удержание «⌫» стирает подряд — пусть
+    if (window.OSK && typeof OSK.isOpen === 'function' && OSK.isOpen()) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+}, true);

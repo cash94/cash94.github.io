@@ -387,29 +387,8 @@ function initSync() {
             var isBackKey = [8, 27, 461, 10009].indexOf(e.keyCode) !== -1 ||
                 (typeof isKeyPressed === 'function' &&
                     (isKeyPressed('BACK', e.keyCode) || isKeyPressed('EXIT', e.keyCode)));
-            var a = document.activeElement,
-                ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
-
-            if (ed) {
-                // Проверяем, пустое ли поле
-                var isEmpty = false;
-
-                if (a.tagName === 'SELECT') {
-                    isEmpty = (a.selectedIndex === -1 || a.value === '');
-                } else {
-                    isEmpty = (a.value === '' || a.value === null);
-                }
-
-                if (isEmpty) {
-                    if (isBackKey) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        closeSyncOverlay();
-                    }
-                } else {
-                    return;
-                }
-            }
+            // Backspace в поле кода сюда не доходит — он там стирает (config.js).
+            // Раньше пустое поле превращало его в «Назад» и закрывало окно.
             if (isBackKey) {
                 e.preventDefault();
                 e.stopPropagation();

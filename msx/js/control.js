@@ -2546,13 +2546,11 @@ function setupKeyboardHandlers() {
         var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
         var skipBtn = getEl('skip-button'); if (k == 13 && skipBtn && !skipBtn.classList.contains('hidden') && skipBtn.classList.contains('focused')) { if (typeof window.executeSkip === 'function') { window.executeSkip(); return true; } }
 
-        if (ed) {
-            var isEmpty = false;
-            if (a.tagName === 'SELECT') { isEmpty = (a.selectedIndex === -1 || a.value === ''); }
-            else { isEmpty = (a.value === '' || a.value === null); }
-            if (!isEmpty) return;
-        }
-
+        // Нативный фокус в поле — клавиши его. Раньше пустое поле пускало
+        // клавиши в навигацию, и Backspace (он же «Назад» на Vidaa) после
+        // стирания последней буквы уводил с экрана. Backspace в поле теперь
+        // вообще не доходит до обработчиков (config.js).
+        if (ed) return;
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
         // Дальше — плеер и запасной путь. Экраны поиска, торрентов, каталога,
@@ -4014,20 +4012,18 @@ function setupFocusRescue() {
         if (['home', 'torrents', 'catalog', 'search', 'detail', 'config', 'donate'].indexOf(s) === -1) return;
         var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
         if (isBackKey(e.keyCode)) {
-            if (ed) {
-                var isEmpty = false;
-                if (a.tagName === 'SELECT') { isEmpty = (a.selectedIndex === -1 || a.value === ''); }
-                else { isEmpty = (a.value === '' || a.value === null); }
-                if (!isEmpty && e.keyCode != 27) return;
-                else { a.blur(); return; }
-            }
             e.preventDefault();
             e.stopImmediatePropagation();
+            // В поле ввода «Назад» только выводит из поля, с экрана не уходит.
+            // Backspace сюда из поля не попадает вовсе — он там стирает
+            // (config.js), — так что это настоящий «Назад»: Esc, пульт.
+            // Раньше в непустом поле он не делал ничего, а в пустом снимал
+            // фокус — и следующий повтор того же Backspace уже уводил с экрана.
+            if (ed) { blurEditor(); if (s === 'search') ScreenStrategies.search.ensureFocus(true, true); else if (s === 'catalog') ScreenStrategies.catalog.ensureFocus(true); else if (s === 'config') ScreenStrategies.config.ensureFocus(true); else if (s === 'detail') ScreenStrategies.detail.ensureFocus(true); else ScreenStrategies.torrents.ensureFocus(true); return; }
             var po = getEl('playback-overlay'), ip = po && po.classList.contains('active');
             if (ip) { cancelCurrentPlayback(); return; }
             if (isCustomFilterMenuOpen()) { closeCustomFilterMenu(); return; }
             if (s === 'catalog' && window.catalogState && window.catalogState.currentCatalog) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); }
-            if (ed) { blurEditor(); if (s === 'search') ScreenStrategies.search.ensureFocus(true, true); else if (s === 'catalog') ScreenStrategies.catalog.ensureFocus(true); else if (s === 'config') ScreenStrategies.config.ensureFocus(true); else if (s === 'detail') ScreenStrategies.detail.ensureFocus(true); else ScreenStrategies.torrents.ensureFocus(true); return; }
             onBack();
             return;
         }
