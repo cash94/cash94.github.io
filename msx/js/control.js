@@ -673,7 +673,7 @@ function belongsToScreen(el, screen) {
     }
     if (screen === 'config') {
         return !!(el.closest('#config-screen') ||
-            ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio', 'torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab', 'other-tab', 'jacred-url'].indexOf(el.id) !== -1 ||
+            ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio', 'torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'other-tab', 'jacred-url'].indexOf(el.id) !== -1 ||
             el.classList.contains('settings-btn') || el.classList.contains('menu-item'));
     }
     return false;
@@ -941,7 +941,7 @@ function detailLaneStep(dir) {
 }
 
 function getConfigMenuItems() {
-    var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab', 'other-tab'];
+    var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'other-tab'];
     var visibleItems = [];
     for (var i = 0; i < ids.length; i++) {
         var element = getEl(ids[i]);
@@ -2017,7 +2017,7 @@ function updateFocusableElements() {
         return;
     }
     if (screen === 'config') {
-        var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'sync-tab', 'other-tab'];
+        var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'other-tab'];
         var cfg = document.querySelectorAll('.settings-btn');
         for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e && e.offsetParent !== null) list.push(e); }
         for (var i = 0; i < cfg.length; i++) if (cfg[i] && cfg[i].offsetParent !== null) list.push(cfg[i]);
@@ -3912,13 +3912,20 @@ function handleConfigNavigation(dir) {
         for (var i = 0; i < contentItems.length; i++) {
             if (currentFocused === contentItems[i]) { currentContentIndex = i; break; }
         }
-        // Ряды кнопок-вариантов (.settings-chips, «Прочее → Фильтры поиска»):
+        // Ряды кнопок: варианты (.settings-chips, «Прочее → Фильтры поиска») и
+        // действия (.action-row, например «Войти / Регистрация» в «Аккаунте»):
         // влево/вправо — внутри ряда, вверх/вниз — через весь ряд целиком,
-        // иначе до следующей настройки пришлось бы прощёлкать десяток кнопок
-        var chipRow = (currentFocused.classList && currentFocused.classList.contains('settings-chip'))
-            ? currentFocused.parentNode : null;
+        // иначе до следующей настройки пришлось бы прощёлкать все его кнопки
+        var rowOf = function (el) {
+            if (!el || !el.parentNode || !el.classList) return null;
+            if (el.classList.contains('settings-chip')) return el.parentNode;
+            var p = el.parentNode;
+            return (p.classList && p.classList.contains('action-row')) ? p : null;
+        };
+        var chipRow = rowOf(currentFocused);
         if (chipRow && (dir === 'left' || dir === 'right')) {
             var sib = dir === 'left' ? currentFocused.previousElementSibling : currentFocused.nextElementSibling;
+            while (sib && !VISIBLE(sib)) sib = dir === 'left' ? sib.previousElementSibling : sib.nextElementSibling;
             if (sib) return focusEl(sib);
             return true;
         }
@@ -3929,10 +3936,18 @@ function handleConfigNavigation(dir) {
             while (chipRow && j >= 0 && j < contentItems.length && contentItems[j].parentNode === chipRow) j += step;
             if (j < 0 || j >= contentItems.length) return true;
             var target = contentItems[j];
-            // В ряд вариантов входим на выбранное значение, а не на крайнюю кнопку
+            // В ряд вариантов входим на выбранное значение, в ряд действий —
+            // на первую кнопку, а не на крайнюю со стороны входа
             if (target.classList.contains('settings-chip')) {
                 target = target.parentNode.querySelector('.settings-chip.active') ||
                     target.parentNode.querySelector('.settings-chip') || target;
+            } else {
+                var targetRow = rowOf(target);
+                if (targetRow) {
+                    for (var k = 0; k < contentItems.length; k++) {
+                        if (contentItems[k].parentNode === targetRow) { target = contentItems[k]; break; }
+                    }
+                }
             }
             return focusEl(target);
         }

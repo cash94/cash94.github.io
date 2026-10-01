@@ -146,6 +146,9 @@
             <div class="menu-item" data-tab="appearance-tab" id="appearance-tab">
               <i class="fi fi-rr-palette"></i><span>Внешний вид</span>
             </div>
+            <div class="menu-item" data-tab="account-tab" id="account-tab">
+              <i class="fi fi-rr-user"></i><span>Аккаунт</span>
+            </div>
             <div class="menu-item" data-tab="sync-tab" id="sync-tab">
               <i class="fi fi-rr-refresh"></i><span>Синхронизация</span>
             </div>
@@ -317,6 +320,74 @@
           <div id="appearance-tab-content" class="tab-content" style="display: none;"></div>
 
           <!-- Синхронизация -->
+          <!-- Аккаунт (js/account.js). Четыре состояния, переключаются атрибутом
+               hidden: вход, «вы вошли», код восстановления после регистрации,
+               восстановление пароля. Пульт ходит по видимым полям и кнопкам
+               вкладки сам (getConfigContentItems). -->
+          <div id="account-tab-content" class="tab-content" style="display: none;">
+            <div class="settings-section">
+              <h2>Аккаунт</h2>
+              <p class="settings-lead">Общие на всех ваших устройствах история просмотров, позиции просмотра, выбор озвучки и субтитров и настройки TorrServer.</p>
+
+              <!-- Вход и регистрация -->
+              <div id="account-signed-out">
+                <div class="settings-field">
+                  <div class="field-label">Логин</div>
+                  <input type="text" class="text-input" id="account-login" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="32" placeholder="Латинские буквы и цифры">
+                </div>
+                <div class="settings-field">
+                  <div class="field-label">Пароль</div>
+                  <input type="password" class="text-input" id="account-password" autocomplete="current-password" maxlength="128" placeholder="Не меньше 6 символов">
+                </div>
+                <div class="action-row">
+                  <button class="btn btn-primary" id="account-login-btn">Войти</button>
+                  <button class="btn" id="account-register-btn">Регистрация</button>
+                  <button class="btn" id="account-forgot-btn">Забыли пароль?</button>
+                </div>
+              </div>
+
+              <!-- Вошли -->
+              <div id="account-signed-in" hidden>
+                <p class="account-status">Вы вошли как <b id="account-current-login"></b></p>
+                <div class="action-row">
+                  <button class="btn" id="account-logout-btn">Выйти</button>
+                </div>
+                <div class="help-text">После выхода устройство вернётся к своей прежней истории. Всё, что вы смотрели под аккаунтом, останется в нём.</div>
+              </div>
+
+              <!-- Код восстановления — один раз, сразу после регистрации -->
+              <div id="account-recovery-banner" hidden>
+                <p class="settings-lead">Аккаунт <b id="account-new-login"></b> создан. Сохраните код восстановления — сфотографируйте экран или запишите. Только по нему можно задать новый пароль, если вы его забудете. Больше он показан не будет.</p>
+                <div class="account-recovery-code" id="account-recovery-code"></div>
+                <div class="action-row">
+                  <button class="btn btn-primary" id="account-recovery-ok-btn">Код сохранён</button>
+                </div>
+              </div>
+
+              <!-- Восстановление пароля по коду -->
+              <div id="account-recover" hidden>
+                <div class="settings-field">
+                  <div class="field-label">Код восстановления</div>
+                  <input type="text" class="text-input" id="account-recover-code" autocapitalize="characters" spellcheck="false" maxlength="16" placeholder="XXXX-XXXX">
+                </div>
+                <div id="account-recover-step2" hidden>
+                  <p class="account-status">Логин: <b id="account-recover-login"></b></p>
+                  <div class="settings-field">
+                    <div class="field-label">Новый пароль</div>
+                    <input type="password" class="text-input" id="account-new-password" autocomplete="new-password" maxlength="128" placeholder="Не меньше 6 символов">
+                  </div>
+                </div>
+                <div class="action-row">
+                  <button class="btn btn-primary" id="account-recover-check-btn">Проверить код</button>
+                  <button class="btn btn-primary" id="account-recover-reset-btn" hidden>Сохранить пароль и войти</button>
+                  <button class="btn" id="account-recover-cancel-btn">Отмена</button>
+                </div>
+              </div>
+
+              <div class="account-message" id="account-message" hidden></div>
+            </div>
+          </div>
+
           <div id="sync-tab-content" class="tab-content" style="display: none;">
             <div class="settings-section">
               <h2>Синхронизация</h2>
@@ -804,6 +875,7 @@
     document.write('<script src="https://cash94.github.io/msx/js/torrserverstats.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/speedtest.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/sync.js?v=' + VERSION + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/account.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/animations.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/app.js?v=' + VERSION + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/memory-fixes.js?v=' + VERSION + '"><\/script>');

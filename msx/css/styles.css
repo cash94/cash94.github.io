@@ -8832,6 +8832,42 @@ article {
   border-radius: 12px;
 }
 
+/* ---- Аккаунт (js/account.js) ---- */
+#config-screen .account-status {
+  margin: 0 0 16px;
+  font-size: 18px;
+  color: #cfd0d6;
+}
+
+#config-screen .account-status b {
+  color: #fff;
+}
+
+/* Код восстановления — крупно и моноширинно: его переписывают с экрана */
+#config-screen .account-recovery-code {
+  display: inline-block;
+  margin: 4px 0 20px;
+  padding: 14px 22px;
+  font-family: "Consolas", "Roboto Mono", monospace;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #fff;
+  background: #141419;
+  border: 1px dashed rgba(255, 255, 255, 0.35);
+  border-radius: 10px;
+}
+
+#config-screen .account-message {
+  margin-top: 4px;
+  font-size: 15px;
+  color: #9ad99a;
+}
+
+#config-screen .account-message.account-message-error {
+  color: #ff7b7b;
+}
+
 #config-screen .help-text {
   margin-top: 24px;
   font-size: 14px;

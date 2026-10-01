@@ -24,7 +24,7 @@ var CLICKABLE_SELECTORS = [
   '.episode-item', '.audio-item', '.subtitle-item', '.close-panel-btn', '.filter-select',
   '.filter-reset-btn', '.progress-continue-btn', '.detail-progress-btn',
   '#close-search', '#filter-toggle', '#search-btn',
-  '#torrserver-tab-content', '#torrents-tab-content', '#player-tab-content', '#sync-tab-content', '#other-tab-content',
+  '#torrserver-tab-content', '#torrents-tab-content', '#player-tab-content', '#account-tab-content', '#sync-tab-content', '#other-tab-content',
   '.menu-item', '.skip-button'
 ].join(', ');
 

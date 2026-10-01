@@ -625,7 +625,12 @@ async function loadClientConfig() {
         if (response.ok) {
             var data = await response.json();
             AppState.clientId = data.clientId;
-            if (localStorage.getItem('clientId') !== data.clientId) localStorage.setItem('clientId', data.clientId);
+            // Берём clientId сервера, только если за время запроса его никто не
+            // поменял: сервер выдаёт новый, когда своего у устройства нет. Иначе
+            // ответ на запрос, ушедший ещё со старым clientId, перетирал бы
+            // смену аккаунта (account.js), сделанную в эту же секунду.
+            var currentClientId = localStorage.getItem('clientId');
+            if (currentClientId === savedClientId && currentClientId !== data.clientId) localStorage.setItem('clientId', data.clientId);
             if (data.config) {
                 var urlInput = getEl('torrserver-url');
                 var authCheckbox = getEl('auth-checkbox');
