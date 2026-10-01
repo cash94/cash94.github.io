@@ -244,6 +244,41 @@ function stopTorrentStatsUpdates() {
 
 var PRELOAD_TARGET_BYTES = 32 * 1024 * 1024;
 var PRELOAD_POLL_MS = 1000;
+
+// Проба файла (ffprobe на сервере) — пока идёт предзагрузка, а не после неё.
+// Раньше плеер после окна ещё ждал /api/playback/prepare, а тот — ffprobe по
+// сети на TorrServer. Теперь, как только набрались первые мегабайты (голова
+// файла, с которой ffprobe и работает), шлём /api/file/info в фоне: сервер
+// кладёт пробу в кэш, и к концу предзагрузки плеер получает всё сразу. Не
+// успела — не страшно: сервер склеивает одновременные пробы одного файла
+// (services/probe.js), и запрос плеера дождётся той же самой.
+var PRELOAD_PROBE_AFTER_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Нужна ли проба этому запуску: Android отдаёт ссылку своему плееру и пробу
+ * не спрашивает, режимы транскодирования живут без неё — как и прогрев
+ * следующей серии (maybeWarmNextEpisode, player.js).
+ */
+function preloadWantsProbe() {
+  return !window.AndroidJS && !AppState.transcodingOnOff && !AppState.transcodingFullOnOff;
+}
+
+function startPreloadProbe(state) {
+  if (state.probeStarted || !preloadWantsProbe()) return;
+  state.probeStarted = true;
+  var clientId = null;
+  try { clientId = localStorage.getItem('clientId'); } catch (e) { }
+  var url = SERVER_URL + '/api/file/info?hash=' + state.hash + '&fileId=' + state.fileId +
+    (clientId ? '&clientId=' + encodeURIComponent(clientId) : '');
+  console.log('🔎 Проба файла во время предзагрузки');
+  // Ответ не нужен — только кэш на сервере. Таймаут — как у плеера: холодная
+  // проба уходит за 15 с, и обрывать её раньше сервера нельзя
+  if (typeof fetchWithTimeout === 'function') {
+    fetchWithTimeout(url, null, typeof FILE_INFO_FETCH_TIMEOUT_MS === 'number' ? FILE_INFO_FETCH_TIMEOUT_MS : 60000)['catch'](function () { });
+  } else {
+    fetch(url)['catch'](function () { });
+  }
+}
 var activePlaybackPreload = null;
 var preloadSwallowKeyup = false;
 var preloadPanelEls = null;
@@ -318,6 +353,7 @@ function playbackPreloadTick(state) {
       state.stats = stats;
       state.loaded = Math.max(state.loaded, stats.preloaded_bytes || 0);
     }
+    if (state.loaded >= PRELOAD_PROBE_AFTER_BYTES) startPreloadProbe(state);
     renderPlaybackPreload(state);
     if (state.loaded >= PRELOAD_TARGET_BYTES) { finishPlaybackPreload(state, true); return; }
     schedulePlaybackPreloadTick(state, PRELOAD_POLL_MS);
@@ -389,7 +425,8 @@ function runPlaybackPreload(hash, fileId, title) {
       controller: (typeof AbortController === 'function') ? new AbortController() : null,
       stats: null,
       loaded: 0,
-      error: ''
+      error: '',
+      probeStarted: false
     };
     activePlaybackPreload = state;
 
