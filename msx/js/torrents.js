@@ -617,6 +617,78 @@ function attachTorrentDeleteLongPress(card, torrent) {
     // Функция оставлена только для совместимости, если где-то ещё вызывается.
 }
 
+// ==================== СВОЙ TORRSERVER НА УСТРОЙСТВЕ ====================
+//
+// Настройки TorrServer сервер хранит по clientId, а под аккаунтом (и после
+// «Синхронизации» по коду) clientId у устройств общий — значит, и TorrServer
+// один на всех: поменял адрес на одном телевизоре, и он поменялся на другом.
+// У кого серверов несколько, включают «Свой TorrServer на этом устройстве»:
+// адрес, логин и пароль тогда живут в localStorage и с сервером не ходят ни
+// туда, ни обратно. Сервер и его API при этом не меняются.
+var TS_LOCAL_FLAG = 'tsLocalOnly';
+var TS_LOCAL_CONFIG = 'tsLocalConfig';
+
+function isLocalTorrServer() {
+    try { return localStorage.getItem(TS_LOCAL_FLAG) === '1'; } catch (e) { return false; }
+}
+
+function readLocalTorrServerConfig() {
+    try { return JSON.parse(localStorage.getItem(TS_LOCAL_CONFIG) || 'null'); } catch (e) { return null; }
+}
+
+/** Текущие значения полей раздела TorrServer. */
+function torrServerFieldsConfig() {
+    return {
+        url: getEl('torrserver-url').value.trim(),
+        authEnabled: getEl('auth-checkbox').checked,
+        login: getEl('auth-login').value.trim(),
+        password: getEl('auth-password').value
+    };
+}
+
+/** Раскладывает настройки по полям — и серверные, и локальные. */
+function applyTorrServerConfig(cfg) {
+    if (!cfg) return;
+    var urlInput = getEl('torrserver-url');
+    var authCheckbox = getEl('auth-checkbox');
+    var authLogin = getEl('auth-login');
+    var authPassword = getEl('auth-password');
+    var authFields = getEl('auth-fields');
+    if (cfg.url) urlInput.value = cfg.url;
+    authCheckbox.checked = !!cfg.authEnabled;
+    AppState.authEnabled = !!cfg.authEnabled;
+    if (authFields) authFields.classList.toggle('visible', !!cfg.authEnabled);
+    authLogin.value = cfg.login || '';
+    authPassword.value = cfg.password || '';
+}
+
+function setupLocalTorrServerToggle() {
+    var box = getEl('ts-local-only');
+    if (!box) return;
+    box.checked = isLocalTorrServer();
+    box.addEventListener('change', function () {
+        if (box.checked) {
+            // Устройство остаётся на том сервере, что сейчас в полях, — просто
+            // дальше он хранится здесь, а не в общих настройках
+            try {
+                localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig()));
+                localStorage.setItem(TS_LOCAL_FLAG, '1');
+            } catch (e) { }
+            return;
+        }
+        // Обратно на общие: берём настройки аккаунта с сервера и проверяем их
+        try { localStorage.removeItem(TS_LOCAL_FLAG); localStorage.removeItem(TS_LOCAL_CONFIG); } catch (e) { }
+        loadClientConfig().then(function () {
+            if (typeof checkServer === 'function') checkServer(true);
+        });
+    });
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupLocalTorrServerToggle);
+else setupLocalTorrServerToggle();
+
+window.isLocalTorrServer = isLocalTorrServer;
+
 async function loadClientConfig() {
     try {
         var savedClientId = localStorage.getItem('clientId');
@@ -631,19 +703,16 @@ async function loadClientConfig() {
             // смену аккаунта (account.js), сделанную в эту же секунду.
             var currentClientId = localStorage.getItem('clientId');
             if (currentClientId === savedClientId && currentClientId !== data.clientId) localStorage.setItem('clientId', data.clientId);
-            if (data.config) {
-                var urlInput = getEl('torrserver-url');
-                var authCheckbox = getEl('auth-checkbox');
-                var authLogin = getEl('auth-login');
-                var authPassword = getEl('auth-password');
-                if (data.config.url) urlInput.value = data.config.url;
-                if (data.config.authEnabled) {
-                    authCheckbox.checked = true;
-                    AppState.authEnabled = true;
-                    getEl('auth-fields').classList.add('visible');
-                    if (data.config.login) authLogin.value = data.config.login;
-                    if (data.config.hasPassword) authPassword.value = data.config.password;
-                }
+            // Свой TorrServer на устройстве — серверные настройки не трогают поля
+            if (isLocalTorrServer()) {
+                applyTorrServerConfig(readLocalTorrServerConfig());
+            } else if (data.config) {
+                applyTorrServerConfig({
+                    url: data.config.url,
+                    authEnabled: data.config.authEnabled,
+                    login: data.config.login,
+                    password: data.config.hasPassword ? data.config.password : ''
+                });
             }
             return data;
         }
@@ -652,6 +721,11 @@ async function loadClientConfig() {
 }
 
 async function saveClientConfig() {
+    // Свой TorrServer — только на устройстве, общие настройки не трогаем
+    if (isLocalTorrServer()) {
+        try { localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig())); } catch (e) { }
+        return true;
+    }
     var config = {
         url: getEl('torrserver-url').value.trim(),
         authEnabled: getEl('auth-checkbox').checked,
