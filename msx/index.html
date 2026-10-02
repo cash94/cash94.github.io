@@ -187,22 +187,20 @@
                   <input type="checkbox" id="auth-checkbox">
                   <span>Требуется аутентификация</span>
                 </div>
-              </div>
-
-              <div class="auth-fields" id="auth-fields">
-                <div class="settings-field-row">
-                  <div class="settings-field">
-                    <div class="field-label">Логин</div>
-                    <input type="text" class="text-input" id="auth-login" placeholder="Логин">
-                  </div>
-                  <div class="settings-field">
-                    <div class="field-label">Пароль</div>
-                    <input type="password" class="text-input" id="auth-password" placeholder="Пароль">
+                <!-- Внутри того же списка, сразу под своим переключателем: отдельным
+                     блоком между двумя списками он оставлял пустую полосу -->
+                <div class="auth-fields" id="auth-fields">
+                  <div class="settings-field-row">
+                    <div class="settings-field">
+                      <div class="field-label">Логин</div>
+                      <input type="text" class="text-input" id="auth-login" placeholder="Логин">
+                    </div>
+                    <div class="settings-field">
+                      <div class="field-label">Пароль</div>
+                      <input type="password" class="text-input" id="auth-password" placeholder="Пароль">
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              <div class="settings-list">
                 <div class="checkbox-container">
                   <input type="checkbox" id="add-to-db">
                   <span>Добавлять торренты в базу</span>

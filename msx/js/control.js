@@ -3547,6 +3547,43 @@ function getConfigScroller() {
 }
 window.getConfigScroller = getConfigScroller;
 
+/**
+ * Доводка прокрутки настроек: в кадр встаёт вся настройка — подпись и все
+ * строки её значений, а не одна кнопка под фокусом. Общая доводка
+ * (scrollToElementIfNeeded) при одиночном шаге показывала только саму кнопку,
+ * и у ряда, перенесённого на несколько строк («Прочее → Тип видео» на
+ * 960×540), нижние строки оставались под экраном; при удержании стрелки
+ * работала другая её ветка, и там было видно всё.
+ *
+ * Экран настроек под zoom (ui-customizer): в новых Chrome прямоугольники
+ * крупнее единиц scrollTop во столько же раз, в Chrome 66 — нет. Коэффициент
+ * меряем на месте, как scrollFocusIntoView в ui-customizer.js.
+ */
+function scrollConfigIntoView(el, scroller) {
+    // Пункты меню слева в прокрутку не входят (кроме книжной ориентации)
+    if (!el || !scroller || !scroller.clientHeight || !scroller.contains(el)) return;
+    var sRect = scroller.getBoundingClientRect();
+    var scale = sRect.height / scroller.clientHeight;
+    if (!(scale > 0)) scale = 1;
+    var pad = 24;                                       // в единицах scrollTop
+    var view = scroller.clientHeight;
+    var block = (el.closest && el.closest('.settings-field, .checkbox-container, .action-row')) || el;
+    var bRect = block.getBoundingClientRect();
+    // Настройка выше экрана целиком не влезет — тогда хотя бы сама кнопка
+    if (bRect.height / scale > view - 2 * pad) { block = el; bRect = el.getBoundingClientRect(); }
+    // Позиция покоя: идущий твин ещё дотянет на pendingScrollDelta
+    var cur = scroller.scrollTop;
+    var rest = cur + pendingScrollDelta(scroller);
+    var top = (bRect.top - sRect.top) / scale + cur;    // в координатах содержимого
+    var bottom = top + bRect.height / scale;
+    var target;
+    if (top < rest + pad) target = top - pad;
+    else if (bottom > rest + view - pad) target = bottom - view + pad;
+    else return;
+    target = Math.max(0, Math.min(scroller.scrollHeight - view, target));
+    if (Math.abs(target - rest) > 2) applyScroll(scroller, { scrollTop: target }, true);
+}
+
 function byId(id) { return getEl(id); };
 
 function focusEl(el, opts) {
@@ -3687,9 +3724,20 @@ function focusEl(el, opts) {
     // true. Каждое нажатие по сетке платило за два чтения, чей ответ тут же
     // выбрасывался. Остальные признаки — классы, dataset и кэшированное число
     // колонок, геометрию не трогают.
-    var needScroll = el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' ||
-        isTopAnchoredTarget(el) || isCatalogGridCard(el) || isCatalogRowCard(el);
-    if (!needScroll && container) needScroll = !isElementFullyVisible(el, container);
+    var needScroll = false;
+    if (s === 'config') {
+        // Пункт меню и первый элемент раздела — в самый верх (isTopAnchoredTarget),
+        // остальное — вся настройка целиком в кадре
+        if (isTopAnchoredTarget(el)) {
+            if (container && container.scrollTop + pendingScrollDelta(container) > 1) applyScroll(container, { scrollTop: 0 }, true);
+        } else {
+            scrollConfigIntoView(el, container);
+        }
+    } else {
+        needScroll = el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' ||
+            isTopAnchoredTarget(el) || isCatalogGridCard(el) || isCatalogRowCard(el);
+        if (!needScroll && container) needScroll = !isElementFullyVisible(el, container);
+    }
 
     if (needScroll) {
         scrollToElementIfNeeded(
@@ -3913,28 +3961,44 @@ function handleConfigNavigation(dir) {
         for (var i = 0; i < contentItems.length; i++) {
             if (currentFocused === contentItems[i]) { currentContentIndex = i; break; }
         }
-        // Ряды кнопок: варианты (.settings-chips, «Прочее → Фильтры поиска») и
-        // действия (.action-row, например «Войти / Регистрация» в «Аккаунте»):
-        // влево/вправо — внутри ряда, вверх/вниз — через весь ряд целиком,
-        // иначе до следующей настройки пришлось бы прощёлкать все его кнопки
+        // Ряды: варианты (.settings-chips, «Прочее → Фильтры поиска»), действия
+        // (.action-row, «Войти / Регистрация» в «Аккаунте») и поля в строку
+        // (.settings-field-row, логин и пароль TorrServer): влево/вправо —
+        // внутри ряда, вверх/вниз — через весь ряд целиком, иначе до следующей
+        // настройки пришлось бы прощёлкать все его элементы. Поля в строку
+        // рядом считаются, только пока стоят рядом: на телефоне они друг под
+        // другом, и там это обычные пункты для вверх/вниз.
         var rowOf = function (el) {
             if (!el || !el.parentNode || !el.classList) return null;
             if (el.classList.contains('settings-chip')) return el.parentNode;
             var p = el.parentNode;
-            return (p.classList && p.classList.contains('action-row')) ? p : null;
+            if (p.classList && p.classList.contains('action-row')) return p;
+            var fr = el.closest ? el.closest('.settings-field-row') : null;
+            if (fr && getComputedStyle(fr).flexDirection !== 'column') return fr;
+            return null;
         };
         var chipRow = rowOf(currentFocused);
         if (chipRow && (dir === 'left' || dir === 'right')) {
-            var sib = dir === 'left' ? currentFocused.previousElementSibling : currentFocused.nextElementSibling;
-            while (sib && !VISIBLE(sib)) sib = dir === 'left' ? sib.previousElementSibling : sib.nextElementSibling;
+            var inRow = [];
+            for (var r = 0; r < contentItems.length; r++) {
+                if (chipRow.contains(contentItems[r])) inRow.push(contentItems[r]);
+            }
+            var sib = inRow[inRow.indexOf(currentFocused) + (dir === 'left' ? -1 : 1)];
             if (sib) return focusEl(sib);
             return true;
+        }
+        // Ряд вариантов, перенесённый на несколько строк: вверх/вниз сначала
+        // ходят по его строкам — на ближайшую по горизонтали кнопку соседней
+        // строки, — и только с крайней строки уходят на соседнюю настройку
+        if (chipRow && currentFocused.classList.contains('settings-chip') && (dir === 'up' || dir === 'down')) {
+            var lineTarget = chipInNextLine(chipRow, currentFocused, dir);
+            if (lineTarget) return focusEl(lineTarget);
         }
         if (dir === 'up' || dir === 'down') {
             if (currentContentIndex === -1) return true;
             var step = dir === 'up' ? -1 : 1;
             var j = currentContentIndex + step;
-            while (chipRow && j >= 0 && j < contentItems.length && contentItems[j].parentNode === chipRow) j += step;
+            while (chipRow && j >= 0 && j < contentItems.length && chipRow.contains(contentItems[j])) j += step;
             if (j < 0 || j >= contentItems.length) return true;
             var target = contentItems[j];
             // В ряд вариантов входим на выбранное значение, в ряд действий —
@@ -3946,7 +4010,7 @@ function handleConfigNavigation(dir) {
                 var targetRow = rowOf(target);
                 if (targetRow) {
                     for (var k = 0; k < contentItems.length; k++) {
-                        if (contentItems[k].parentNode === targetRow) { target = contentItems[k]; break; }
+                        if (targetRow.contains(contentItems[k])) { target = contentItems[k]; break; }
                     }
                 }
             }
@@ -3964,6 +4028,34 @@ function handleConfigNavigation(dir) {
         if (dir === 'back') { configState.isOnMenu = true; return focusEl(getEl(configState.activeTabId)); }
     }
     return false;
+}
+
+/**
+ * Кнопка ряда на соседней строке (dir — 'up' | 'down'), ближайшая по
+ * горизонтали к from; null — from уже на крайней строке ряда.
+ */
+function chipInNextLine(row, from, dir) {
+    var fr = from.getBoundingClientRect();
+    var fx = fr.left + fr.width / 2;
+    var lineTop = null, best = null, bestDx = Infinity;
+    var kids = row.children;
+    // Ближайшая строка в нужную сторону: её верх
+    for (var i = 0; i < kids.length; i++) {
+        if (kids[i] === from || !VISIBLE(kids[i])) continue;
+        var r = kids[i].getBoundingClientRect();
+        var beyond = dir === 'down' ? r.top >= fr.bottom - 1 : r.bottom <= fr.top + 1;
+        if (!beyond) continue;
+        if (lineTop === null || (dir === 'down' ? r.top < lineTop : r.top > lineTop)) lineTop = r.top;
+    }
+    if (lineTop === null) return null;
+    for (var j = 0; j < kids.length; j++) {
+        if (kids[j] === from || !VISIBLE(kids[j])) continue;
+        var rr = kids[j].getBoundingClientRect();
+        if (Math.abs(rr.top - lineTop) > 2) continue;
+        var dx = Math.abs(rr.left + rr.width / 2 - fx);
+        if (dx < bestDx) { bestDx = dx; best = kids[j]; }
+    }
+    return best;
 }
 
 function switchConfigTab(tabId) {

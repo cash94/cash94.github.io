@@ -8584,6 +8584,19 @@ article {
   display: block;
 }
 
+/* Логин и пароль — продолжение строки «Требуется аутентификация» внутри
+   .settings-list: без своей линии сверху, с отступами строк списка */
+#config-screen .settings-list .auth-fields {
+  margin: 0;
+  padding: 0 20px 18px;
+}
+
+/* Нижний отступ блоку даёт padding выше — у полей свой не нужен (на
+   телефоне, где они друг под другом, отступ между ними — ниже, в @media) */
+#config-screen .settings-list .auth-fields .settings-field {
+  margin-bottom: 0;
+}
+
 /* Состояние подключения — строка под полем адреса, а не отдельная плашка */
 #config-screen .server-status {
   display: flex;
@@ -9991,6 +10004,10 @@ article {
 
   #config-screen .settings-field-row .settings-field {
     margin-right: 0;
+  }
+
+  #config-screen .settings-list .auth-fields .settings-field + .settings-field {
+    margin-top: 16px;
   }
 
   /* «Внешний вид» внутри настроек: без своей высоты и прокрутки — на
