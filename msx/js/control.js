@@ -2511,6 +2511,19 @@ function setupKeyboardHandlers() {
             return;
         }
 
+        // То же для карточки истории (главная, каталог): отпустили до срока —
+        // обычное OK, после удаления по таймеру — ничего
+        if (isOkKey(k) && okHoldFocused && !isCustomFilterMenuOpen() &&
+            (currentScreen() === 'home' || currentScreen() === 'catalog')) {
+            var hSame = document.querySelector('.focused') === okHoldFocused;
+            var hDone = okHoldHandled;
+            clearOkHold();
+            okHoldHandled = false;
+            okHoldFocused = null;
+            if (!hDone && hSame) onOk();
+            return;
+        }
+
         if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) {
             if (seekHoldInterval) {
                 clearInterval(seekHoldInterval);
@@ -4170,6 +4183,28 @@ function setupFocusRescue() {
                             if (okHoldFocused) okHoldFocused.dataset.suppressClick = '1';
                             if (h && typeof window.removeTorrentByHash === 'function') await window.removeTorrentByHash(h, { skipConfirm: true });
                             setTimeout(function () { if (okHoldFocused) delete okHoldFocused.dataset.suppressClick; }, 1500);
+                        }, OK_HOLD_DELETE_MS);
+                    }
+                    return;
+                }
+            }
+            // Долгое OK на карточке истории — «Продолжить просмотр» на главной,
+            // «История» в каталоге — убирает запись (removeHistoryCard,
+            // catalog.js). Как у торрентов: обычное нажатие тогда срабатывает
+            // на отпускании (keyup в setupKeyboardHandlers)
+            if ((s === 'home' || s === 'catalog') && typeof window.getHistoryCardEntry === 'function') {
+                // OK всё ещё держат после удаления: фокус уже на соседней
+                // карточке (может, и не из истории), и автоповтор открыл бы её
+                if (e.repeat && okHoldFocused) return;
+                var hf = document.querySelector('.focused');
+                if (hf && window.getHistoryCardEntry(hf)) {
+                    if (!e.repeat) {
+                        okHoldHandled = false;
+                        okHoldFocused = hf;
+                        clearOkHold();
+                        okHoldTimer = setTimeout(function () {
+                            okHoldHandled = true;
+                            if (okHoldFocused && typeof window.removeHistoryCard === 'function') window.removeHistoryCard(okHoldFocused);
                         }, OK_HOLD_DELETE_MS);
                     }
                     return;

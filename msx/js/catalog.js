@@ -1622,6 +1622,133 @@ async function clearHistory() {
     }
 }
 
+// ==================== УДАЛЕНИЕ ИЗ ИСТОРИИ ====================
+//
+// Одна запись истории — долгим OK на карточке (control.js, как удаление
+// торрента) или правой кнопкой мыши / долгим тапом (contextmenu ниже). Карточки
+// истории — в трёх местах: «Продолжить просмотр» на главной (home.js), ряд
+// «История» и её сетка в каталоге. Сервер — DELETE /api/history/remove.
+
+/**
+ * Запись истории за карточкой: { tmdbId, mediaType, title } или null, если
+ * карточка не из истории.
+ */
+function getHistoryCardEntry(card) {
+    if (!card || !card.dataset) return null;
+    var d = card.dataset;
+    if ((d.homeKey === 'history' || d.catalogKey === 'history') && d.itemId) {
+        return { tmdbId: d.itemId, mediaType: d.mediaType === 'tv' ? 'tv' : 'movie', title: d.title || '' };
+    }
+    // Сетка «Истории»: у её карточек нет data-catalog-key, запись — по индексу
+    if (catalogState.currentCatalog === 'history' && d.catalogIndex !== undefined && !d.catalogKey && !d.homeKey) {
+        var it = catalogState.items[parseInt(d.catalogIndex, 10)];
+        if (it && it.isHistoryItem) {
+            return { tmdbId: String(it.id), mediaType: it.media_type === 'tv' ? 'tv' : 'movie', title: getCatalogItemTitle(it) };
+        }
+    }
+    return null;
+}
+
+/** Убирает запись из ряда «История» каталога на месте, без перезагрузки рядов */
+function removeHistoryRowItem(id, mediaType, focusNext) {
+    var row = document.querySelector('.catalog-row[data-catalog-key="history"]');
+    if (!row) return false;
+    var target = null;
+    var cards = row.querySelectorAll('.catalog-row-card[data-item-id]');
+    for (var i = 0; i < cards.length; i++) {
+        if (String(cards[i].dataset.itemId) === String(id) && cards[i].dataset.mediaType === mediaType) { target = cards[i]; break; }
+    }
+    if (!target) return false;
+    var idx = parseInt(target.dataset.itemIndex, 10);
+    var next = target.nextElementSibling || target.previousElementSibling;
+    var data = window.catalogRowsData && window.catalogRowsData.history;
+    if (data && !isNaN(idx)) data.splice(idx, 1);
+    // Номера за удалённой — на одну меньше: по ним клик находит запись в catalogRowsData
+    for (var k = 0; k < cards.length; k++) {
+        var ki = parseInt(cards[k].dataset.itemIndex, 10);
+        if (!isNaN(ki) && ki > idx) cards[k].dataset.itemIndex = ki - 1;
+    }
+    var rows = window.catalogRows || [];
+    for (var r = 0; r < rows.length; r++) {
+        var pos = rows[r].indexOf(target);
+        if (pos === -1) continue;
+        rows[r].splice(pos, 1);
+        // Осталась одна «Показать все» — ряд пуст, убираем его целиком
+        if (!data || !data.length) { rows.splice(r, 1); row.parentNode.removeChild(row); next = null; }
+        break;
+    }
+    if (target.parentNode) target.parentNode.removeChild(target);
+    if (window.catalogRowTotals && window.catalogRowTotals.history) {
+        window.catalogRowTotals.history--;
+        var cnt = row.querySelector('.show-all-count');
+        if (cnt) cnt.textContent = window.catalogRowTotals.history ? 'Всего: ' + window.catalogRowTotals.history : '';
+    }
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    if (focusNext) {
+        if (next && document.body.contains(next)) focusEl(next);
+        else if (window.ScreenStrategies && ScreenStrategies.catalog) ScreenStrategies.catalog.ensureFocus(true);
+    }
+    return true;
+}
+
+/**
+ * Удаляет запись истории за карточкой: сервер, затем все места, где она
+ * видна. Подтверждения нет — как у долгого OK на торренте; запись вернётся
+ * сама при следующем просмотре.
+ */
+async function removeHistoryCard(card) {
+    var entry = getHistoryCardEntry(card);
+    if (!entry) return false;
+    var wasFocused = card.classList.contains('focused');
+    try {
+        var d = await safeFetch(withClientId(SERVER_URL + '/api/history/remove'), {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tmdbId: entry.tmdbId, mediaType: entry.mediaType })
+        });
+        if (!d || !d.success) throw new Error('нет ответа');
+    } catch (e) {
+        console.warn('История: не удалено', e);
+        if (typeof showToast === 'function') showToast('Не удалось удалить из истории');
+        return false;
+    }
+    console.log('🗑️ Из истории: ' + entry.title + ' (' + entry.mediaType + ' ' + entry.tmdbId + ')');
+
+    // Главная и ряды каталога собраны заранее и сами не обновятся — правим
+    // оба места, фокус переносим только там, где стояла карточка
+    var onHome = !!card.dataset.homeKey;
+    var inRow = card.dataset.catalogKey === 'history';
+    if (window.HomeScreen && typeof HomeScreen.removeHistoryItem === 'function') {
+        HomeScreen.removeHistoryItem(entry.tmdbId, entry.mediaType, onHome && wasFocused);
+    }
+    removeHistoryRowItem(entry.tmdbId, entry.mediaType, inRow && wasFocused);
+    if (!onHome && !inRow) {
+        // Сетка «Истории»: перечитываем и ставим фокус на соседнюю карточку
+        var gi = parseInt(card.dataset.catalogIndex, 10) || 0;
+        await loadHistoryCatalog();
+        if (wasFocused && catalogState.currentCatalog === 'history') {
+            setTimeout(function () {
+                var g = getCatalogGridEl();
+                var list = g ? g.querySelectorAll('[data-catalog-index]') : [];
+                if (list.length) focusEl(list[Math.min(gi, list.length - 1)]);
+            }, 120);
+        }
+    }
+    if (typeof showToast === 'function') showToast('Удалено из истории: ' + entry.title);
+    return true;
+}
+
+window.getHistoryCardEntry = getHistoryCardEntry;
+window.removeHistoryCard = removeHistoryCard;
+
+// Мышь и тач: правая кнопка / долгий тап по карточке истории
+document.addEventListener('contextmenu', function (e) {
+    var card = e.target && e.target.closest ? e.target.closest('.torrent-card') : null;
+    if (!card || !getHistoryCardEntry(card)) return;
+    e.preventDefault();
+    removeHistoryCard(card);
+});
+
 async function loadMoreCatalogItems(reset) {
     reset = reset || false;
     if (!catalogState.currentCatalog || catalogState.isLoadingMore) return Promise.resolve(false);

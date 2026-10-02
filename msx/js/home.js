@@ -1804,6 +1804,56 @@
         return focusHomeEl(target);
     }
 
+    /**
+     * Убирает запись из «Продолжить просмотр» на месте: запрос на сервер уже
+     * ушёл (removeHistoryCard, catalog.js), а ряд собирается один раз за показ
+     * главной — перезагружать её ради одной карточки незачем. focusNext —
+     * карточка была под фокусом: ставим его на соседнюю.
+     */
+    function removeHistoryItem(id, mediaType, focusNext) {
+        var ri = homeState.rowKeys.indexOf('history');
+        if (ri === -1) return false;
+        var cards = homeState.rows[ri];
+        var ci = -1;
+        for (var i = 0; i < cards.length; i++) {
+            if (String(cards[i].dataset.itemId) === String(id) && cards[i].dataset.mediaType === mediaType) { ci = i; break; }
+        }
+        if (ci === -1) return false;
+        var card = cards[ci];
+        if (card.parentNode) card.parentNode.removeChild(card);
+        cards.splice(ci, 1);
+        if (homeState.data.history) homeState.data.history.splice(ci, 1);
+        // По itemIndex баннер и клик находят запись в homeState.data
+        for (var k = ci; k < cards.length; k++) cards[k].dataset.itemIndex = k;
+        invalidateFocus();
+
+        if (cards.length) {
+            homeState.rowCols[ri] = Math.min(ci, cards.length - 1);
+            if (homeState.lastRowKey === 'history') homeState.lastColIndex = homeState.rowCols[ri];
+            if (focusNext) focusCard(ri, homeState.rowCols[ri]);
+            return true;
+        }
+
+        // Последняя карточка — ряд убираем целиком, показываем соседний
+        var rowEl = homeState.rowEls[ri];
+        if (rowEl.parentNode) rowEl.parentNode.removeChild(rowEl);
+        var wasActive = homeState.activeRow === ri;
+        homeState.rows.splice(ri, 1);
+        homeState.rowEls.splice(ri, 1);
+        homeState.rowKeys.splice(ri, 1);
+        homeState.rowCols.splice(ri, 1);
+        if (homeState.activeRow > ri) homeState.activeRow--;
+        updateRowCounters();
+        invalidateFocus();
+        if (!homeState.rowEls.length) return focusNext ? focusTopbar() : true;
+        if (wasActive) {
+            homeState.activeRow = -1;   // иначе setActiveRow не сочтёт ряд сменившимся
+            setActiveRow(Math.min(ri, homeState.rowEls.length - 1));
+            if (focusNext) focusActiveRowCard(0);
+        }
+        return true;
+    }
+
     /** Возврат фокуса туда, откуда уходили (detail, поиск, донат) */
     function restoreHomeFocus() {
         uncoverHome();
@@ -3101,6 +3151,7 @@
         stopTrailer: suspendHero,
         uncover: uncoverHome,
         rearmTrailer: rearmHeroTrailer,
+        removeHistoryItem: removeHistoryItem,
         state: homeState
     };
 
