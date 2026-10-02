@@ -1572,7 +1572,23 @@
             return moveWithin(getFocusables('footer'), dir);
         }
 
-        // content
+        // content: влево/вправо — только между значениями одной настройки, по
+        // порядку кнопок (ряд может переноситься на вторую строку). Геометрия
+        // тут уводила с крайнего значения на соседнюю настройку («Просторный»
+        // → «Количество колонок»); между настройками ходят вверх/вниз.
+        if (dir === 'left' || dir === 'right') {
+            var row = focusedEl.closest('.ui-customizer-options');
+            if (!row) return false;
+            var opts = [];
+            var list = row.querySelectorAll(FOCUS_SELECTOR);
+            for (var i = 0; i < list.length; i++) {
+                if (list[i].offsetParent !== null) opts.push(list[i]);
+            }
+            var next = opts[opts.indexOf(focusedEl) + (dir === 'right' ? 1 : -1)];
+            if (!next) return false;
+            setFocus(next);
+            return true;
+        }
         if (moveWithin(getFocusables('content'), dir)) return true;
         if (dir === 'up') return focusEdgeOf('header', false);
         if (dir === 'down') return focusEdgeOf('footer', false);
