@@ -918,6 +918,15 @@ function restoreFocusAfterNavigation(returnTo, context) {
       return;
     }
 
+    // Сетка «Избранное», где в карточке сняли звёздочку, — перечитать
+    // (reloadFavoritesGrid, catalog.js): иначе фильм остаётся в сетке
+    if (catalogState.currentCatalog === 'favorites' && catalogState.favoritesGridStale &&
+      typeof window.reloadFavoritesGrid === 'function') {
+      hideDetailView();
+      window.reloadFavoritesGrid();
+      return;
+    }
+
     // если каталог уже загружен и сетка в DOM — НЕ перерендериваем
     var catalogGrid = getEl('catalog-grid');
     if (catalogState.currentCatalog === AppState.backCurrentCatalog &&

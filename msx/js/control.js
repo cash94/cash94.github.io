@@ -92,6 +92,14 @@ var accelerationTimer = null;
 var okHoldTimer = null;
 var okHoldHandled = false;
 var okHoldFocused = null;
+// OK ещё не отпустили. Android WebView (Chrome 66) шлёт удержание пульта серией
+// обычных keydown с e.repeat = false — по одному e.repeat каждое из них
+// выглядело новым нажатием, таймер долгого OK перезапускался и не срабатывал
+// никогда (в браузере на ПК повторы помечены, там работало). Отметка времени —
+// страховка от потерянного keyup: дольше OK_HELD_STALE_MS тишины = отпустили.
+var okKeyHeld = false;
+var okKeyLastDown = 0;
+var OK_HELD_STALE_MS = 1500;
 // Кнопку навигации ДЕРЖАТ. На скорость прокрутки не влияет — она единая; флаг
 // нужен каталогу (window.navHold), чтобы не вставлять постеры и не трогать DOM,
 // пока идёт перемещение по строкам.
@@ -2498,6 +2506,7 @@ function setupKeyboardHandlers() {
     // слушателя на document в разных функциях и фазах.
     document.addEventListener('keyup', function (e) {
         var k = e.keyCode;
+        if (isOkKey(k)) okKeyHeld = false;
 
         // Долгое OK на карточке торрента: отпустили — либо обычный клик,
         // либо ничего, если удаление уже отработало по таймеру
@@ -4168,11 +4177,15 @@ function setupFocusRescue() {
         if (isOkKey(e.keyCode)) {
             e.preventDefault();
             e.stopImmediatePropagation();
+            var okNow = Date.now();
+            var okRepeat = e.repeat || (okKeyHeld && okNow - okKeyLastDown < OK_HELD_STALE_MS);
+            okKeyHeld = true;
+            okKeyLastDown = okNow;
             if (isCustomFilterMenuOpen()) { applyCustomFilterMenuSelection(); return; }
             if (s === 'torrents') {
                 var f = document.querySelector('.focused');
                 if (f && f.classList.contains('torrent-card')) {
-                    if (!e.repeat) {
+                    if (!okRepeat) {
                         okHoldHandled = false;
                         okHoldFocused = f;
                         clearOkHold();
@@ -4195,10 +4208,10 @@ function setupFocusRescue() {
             if ((s === 'home' || s === 'catalog') && typeof window.getHistoryCardEntry === 'function') {
                 // OK всё ещё держат после удаления: фокус уже на соседней
                 // карточке (может, и не из истории), и автоповтор открыл бы её
-                if (e.repeat && okHoldFocused) return;
+                if (okRepeat && okHoldFocused) return;
                 var hf = document.querySelector('.focused');
                 if (hf && window.getHistoryCardEntry(hf)) {
-                    if (!e.repeat) {
+                    if (!okRepeat) {
                         okHoldHandled = false;
                         okHoldFocused = hf;
                         clearOkHold();

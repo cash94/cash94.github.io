@@ -1239,7 +1239,32 @@ function setupFavoriteButton(item) {
 function invalidateFavoritesRow() {
     if (window.catalogRowsData) delete window.catalogRowsData.favorites;
     catalogState.favoritesRowStale = true;
+    // Карточку открыли из сетки «Избранное» — её тоже перечитать на возврате
+    // (reloadFavoritesGrid): без этого снятый с избранного фильм оставался в ней
+    if (catalogState.currentCatalog === 'favorites') catalogState.favoritesGridStale = true;
 }
+
+/**
+ * Возврат из карточки в сетку «Избранное», где за это время сняли звёздочку
+ * (зовёт restoreFocusAfterNavigation, app.js). Перечитываем сетку и ставим
+ * фокус на соседнюю с открытой карточку. Избранное опустело — уходим к рядам:
+ * в пустой сетке фокусу встать некуда, раньше он там и терялся.
+ */
+function reloadFavoritesGrid() {
+    var idx = catalogState.lastSelectedIndex || 0;
+    return loadFavoritesCatalog().then(function () {
+        if (!catalogState.items.length) { backToCatalogList(); return; }
+        var target = Math.min(idx, catalogState.items.length - 1);
+        catalogState.lastSelectedIndex = target;
+        setTimeout(function () {
+            var g = getCatalogGridEl();
+            var card = g && g.querySelector('[data-catalog-index="' + target + '"]');
+            if (card) focusEl(card);
+            else if (typeof window.ensureCatalogFocus === 'function') window.ensureCatalogFocus(true);
+        }, 120);
+    });
+}
+window.reloadFavoritesGrid = reloadFavoritesGrid;
 
 /**
  * Запись для избранного из элемента каталога.
@@ -1304,7 +1329,11 @@ function refreshFavoritesRow() {
     var container = getCatalogRowsEl();
     if (!container) return Promise.resolve(false);
 
-    return loadFavoritesItems(10).then(function (items) {
+    // Весь список, а не десяток: «Всего: N» на «Показать все» берётся из
+    // catalogRowTotals, и без пересчёта там оставалось прежнее число
+    return loadFavoritesItems(0).then(function (all) {
+        if (window.catalogRowTotals) window.catalogRowTotals.favorites = all.length;
+        var items = all.slice(0, 10);
         var existing = container.querySelector('.catalog-row[data-catalog-key="favorites"]');
 
         // Избранное опустело — ряд убираем совсем, как это делает
@@ -1390,6 +1419,7 @@ function showEmptyFavorites() {
 function loadFavoritesCatalog() {
     abortCatalogRequests();
     catalogState.currentCatalog = 'favorites';
+    catalogState.favoritesGridStale = false;
     catalogState.cardElements = {};
     catalogState.items = [];
     catalogState.totalItems = 0;
@@ -6931,6 +6961,13 @@ function restoreRowFocus() {
         if (firstInRow && firstInRow.offsetParent !== null) {
             focusRowCardByElement(firstInRow);
             return;
+        }
+        // 2б) Ряда нет вовсе — избранное опустело, и refreshFavoritesRow его
+        //     убрал. На соседний ряд выше, а не в самое начало каталога
+        var order = Object.keys(CATALOG_CONFIG);
+        for (var k = order.indexOf(savedKey) - 1; k >= 0; k--) {
+            var prev = document.querySelector('.catalog-row-card[data-catalog-key="' + order[k] + '"]');
+            if (prev && prev.offsetParent !== null) { focusRowCardByElement(prev); return; }
         }
     }
 
