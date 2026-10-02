@@ -687,6 +687,84 @@ function setupLocalTorrServerToggle() {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupLocalTorrServerToggle);
 else setupLocalTorrServerToggle();
 
+// ==================== TORRSERVER, УСТАНОВЛЕННЫЙ НА САМОМ УСТРОЙСТВЕ ====================
+//
+// Только в Android-приложении: TorrServer стоит на том же телевизоре или
+// приставке, адрес — http://localhost:8090. Такой адрес верен лишь для этого
+// устройства, поэтому заодно включается «Свой TorrServer на этом устройстве»:
+// иначе localhost ушёл бы в общие настройки аккаунта и сломал TorrServer на
+// остальных его устройствах. Выключили — возвращаем всё, как было до включения.
+var TS_DEVICE_FLAG = 'tsDeviceServer';
+var TS_DEVICE_BACKUP = 'tsDeviceBackup';
+var TS_DEVICE_URL = 'http://localhost:8090';
+
+function isDeviceTorrServer() {
+    try { return localStorage.getItem(TS_DEVICE_FLAG) === '1'; } catch (e) { return false; }
+}
+
+/** Поле адреса и «Свой TorrServer» под включённым переключателем не меняются */
+function lockDeviceTorrServerFields(on) {
+    var urlInput = getEl('torrserver-url');
+    var localBox = getEl('ts-local-only');
+    if (urlInput) urlInput.disabled = on;
+    if (localBox) localBox.disabled = on;
+}
+
+function setupDeviceTorrServerToggle() {
+    var row = getEl('ts-device-row');
+    var box = getEl('ts-device-server');
+    if (!row || !box || !window.AndroidJS) return;
+    row.hidden = false;
+    var localBox = getEl('ts-local-only');
+
+    box.checked = isDeviceTorrServer();
+    lockDeviceTorrServerFields(box.checked);
+    // Адрес в полях мог прийти старый (настройки до обновления) — поправим
+    if (box.checked && getEl('torrserver-url').value.trim() !== TS_DEVICE_URL) {
+        getEl('torrserver-url').value = TS_DEVICE_URL;
+    }
+
+    box.addEventListener('change', function () {
+        var urlInput = getEl('torrserver-url');
+        if (box.checked) {
+            try {
+                localStorage.setItem(TS_DEVICE_BACKUP, JSON.stringify({
+                    cfg: torrServerFieldsConfig(),
+                    wasLocal: isLocalTorrServer()
+                }));
+                localStorage.setItem(TS_DEVICE_FLAG, '1');
+                localStorage.setItem(TS_LOCAL_FLAG, '1');
+            } catch (e) { }
+            if (localBox) localBox.checked = true;
+            urlInput.value = TS_DEVICE_URL;
+            lockDeviceTorrServerFields(true);
+            try { localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig())); } catch (e) { }
+            checkServer(true);
+            return;
+        }
+
+        var backup = null;
+        try { backup = JSON.parse(localStorage.getItem(TS_DEVICE_BACKUP) || 'null'); } catch (e) { }
+        try { localStorage.removeItem(TS_DEVICE_FLAG); localStorage.removeItem(TS_DEVICE_BACKUP); } catch (e) { }
+        lockDeviceTorrServerFields(false);
+        if (backup && backup.wasLocal) {
+            // До включения сервер и так был свой — возвращаем его адрес
+            applyTorrServerConfig(backup.cfg);
+            if (backup.cfg && !backup.cfg.url) urlInput.value = '';
+            try { localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig())); } catch (e) { }
+            checkServer(true);
+            return;
+        }
+        // Был общий сервер аккаунта — снова берём его с сервера
+        if (localBox) localBox.checked = false;
+        try { localStorage.removeItem(TS_LOCAL_FLAG); localStorage.removeItem(TS_LOCAL_CONFIG); } catch (e) { }
+        loadClientConfig().then(function () { checkServer(true); });
+    });
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupDeviceTorrServerToggle);
+else setupDeviceTorrServerToggle();
+
 window.isLocalTorrServer = isLocalTorrServer;
 
 async function loadClientConfig() {

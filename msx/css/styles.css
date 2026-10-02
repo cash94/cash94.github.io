@@ -8768,6 +8768,13 @@ article {
   transform: translateX(20px);
 }
 
+/* Заблокированные поле и переключатель — приглушены: под «TorrServer,
+   установленный на этом устройстве» (torrents.js) их менять нельзя */
+#config-screen .text-input:disabled,
+#config-screen .checkbox-container input:disabled + span {
+  opacity: 0.5;
+}
+
 /* ---- Кнопки — как на карточке фильма ---- */
 #config-screen .action-row {
   display: flex;

@@ -178,6 +178,11 @@
               </div>
 
               <div class="settings-list">
+                <!-- Только в Android-приложении (js/torrents.js: setupDeviceTorrServerToggle) -->
+                <div class="checkbox-container" id="ts-device-row" hidden>
+                  <input type="checkbox" id="ts-device-server">
+                  <span>Использовать TorrServer, установленный на этом устройстве<small class="setting-desc">Адрес http://localhost:8090 — TorrServer на этом телевизоре, приставке или телефоне</small></span>
+                </div>
                 <!-- js/torrents.js: isLocalTorrServer / setupLocalTorrServerToggle -->
                 <div class="checkbox-container">
                   <input type="checkbox" id="ts-local-only">
