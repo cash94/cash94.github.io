@@ -804,10 +804,12 @@
             '.ui-option:hover{background:rgba(255,255,255,0.12);}',
             '.ui-option.active,.ui-option.active:hover{background:#fff;border-color:#fff;color:#000;font-weight:600;}',
             // Палитра цвета фокуса
-            '.ui-swatch{display:inline-flex;align-items:center;padding:8px 16px 8px 10px;}',
-            '.ui-swatch>*+*{margin-left:9px;}',
+            // Только кружок цвета, без названия: квадратная кнопка с кружком посередине
+            // Десять цветов — сетка 2 × 5 (grid в Chrome 66 есть, отступы — margin кнопок)
+            '.ui-customizer-options.ui-swatches{display:grid;grid-template-columns:repeat(5,auto);justify-content:start;}',
+            '.ui-swatch{display:inline-flex;align-items:center;justify-content:center;padding:8px;}',
             // Тонкая тёмная обводка — чтобы «Белый» было видно на белой выбранной кнопке
-            '.ui-swatch-dot{flex:0 0 auto;width:18px;height:18px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.35);}',
+            '.ui-swatch-dot{flex:0 0 auto;width:24px;height:24px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.35);}',
             // Ползунок: заливка — цветом фокуса, бегунок белый, как у переключателей
             '.ui-slider{display:flex;align-items:center;padding:10px 8px;border-radius:10px;user-select:none;-webkit-user-select:none;touch-action:pan-y;}',
             '.ui-slider>*+*{margin-left:18px;}',
@@ -882,9 +884,10 @@
         var html = '';
         for (var i = 0; i < FOCUS_COLORS.length; i++) {
             var c = FOCUS_COLORS[i][0];
-            html += '<button class="ui-option ui-swatch" data-setting="focusColor" data-value="' + c + '" title="' + c + '">' +
+            // Название цвета — только подсказкой мыши и для экранного диктора
+            html += '<button class="ui-option ui-swatch" data-setting="focusColor" data-value="' + c + '"' +
+                ' title="' + FOCUS_COLORS[i][1] + '" aria-label="' + FOCUS_COLORS[i][1] + '">' +
                 '<span class="ui-swatch-dot" style="background:' + c + '"></span>' +
-                '<span>' + FOCUS_COLORS[i][1] + '</span>' +
                 '</button>';
         }
         return html;
@@ -989,7 +992,7 @@
 
             '<div class="ui-customizer-group"><h3>Цвет фокуса</h3>' +
             '<div class="ui-customizer-hint">Цвет рамки вокруг выбранного элемента: карточки, кнопки, ряды, фильтры, плеер.</div>' +
-            '<div class="ui-customizer-options">' + swatchRow() + '</div>' +
+            '<div class="ui-customizer-options ui-swatches">' + swatchRow() + '</div>' +
             '</div>' +
 
             '<div class="ui-customizer-group"><h3>Отображение элементов</h3>' +
@@ -1235,8 +1238,8 @@
     // (#appearance-tab-content), по горячей клавише переезжает во всплывающее
     // окно, а при его закрытии возвращается обратно. Навигация пультом — та же
     // своя (moveFocus/setFocus ниже): вход — OK на пункте меню «Внешний вид»
-    // (control.js: handleConfigNavigation), выход — «назад» или влево с левого
-    // края, фокус возвращается на пункт меню.
+    // (control.js: handleConfigNavigation) или вправо с него, выход — только
+    // «назад», фокус возвращается на пункт меню.
     var embeddedEngaged = false;
 
     function embedPanel() {
@@ -1547,8 +1550,7 @@
     //          вверх выходим в header, вниз — в footer (влево/вправо не выходят).
     // footer:  вверх -> последний элемент content; вниз не работает;
     //          влево/вправо — только между кнопками футера.
-    // Возвращает true, если фокус сдвинулся (встроенной панели это нужно:
-    // влево с левого края — выход в меню настроек)
+    // Возвращает true, если фокус сдвинулся.
     function moveFocus(dir) {
         var all = getFocusables();
         if (!all.length) return false;
@@ -1719,8 +1721,10 @@
                 e.preventDefault(); e.stopImmediatePropagation();
                 if (focusedEl && focusedEl.classList.contains('ui-slider') && (edir === 'left' || edir === 'right')) {
                     nudgeSlider(focusedEl, edir === 'right' ? 1 : -1);
-                } else if (!moveFocus(edir) && edir === 'left') {
-                    exitEmbedded();
+                } else {
+                    // Из панели в меню настроек — только «Назад», не влево: кто
+                    // держит стрелку, листая значения, не должен вылетать в меню
+                    moveFocus(edir);
                 }
                 return;
             }

@@ -3889,8 +3889,8 @@ function handleConfigNavigation(dir) {
         if (dir === 'right' || dir === 'enter') {
             var selectedTabId = currentFocused.id;
             // «Внешний вид»: в разделе стоит панель ui-customizer.js со своей
-            // навигацией — отдаём пульт ей (выход из неё — «назад» или влево с
-            // левого края, фокус вернётся на этот пункт меню)
+            // навигацией — отдаём пульт ей (выход из неё — «назад», фокус
+            // вернётся на этот пункт меню)
             if (selectedTabId === 'appearance-tab' && window.UICustomizer &&
                 typeof UICustomizer.enterEmbedded === 'function') {
                 configState.activeTabId = selectedTabId;
