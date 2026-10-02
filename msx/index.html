@@ -170,18 +170,43 @@
 
               <div class="settings-field">
                 <div class="field-label">Адрес TorrServer</div>
-                <input type="text" class="text-input" id="torrserver-url" placeholder="http://localhost:8090" autofocus>
+                <input type="text" class="text-input" id="torrserver-url" placeholder="192.168.1.10:8090" autofocus>
                 <div class="server-status" id="server-status">
                   <div class="status-indicator" id="status-indicator"></div>
                   <span id="status-text">Введите адрес сервера</span>
                 </div>
+                <!-- Поиск TorrServer в сети по mDNS — только в Android-приложении
+                     (AndroidJS.tsDiscover*, torrents.js: setupTorrServerDiscovery) -->
+                <div class="ts-discover" id="ts-discover" hidden>
+                  <div class="action-row">
+                    <button class="btn" id="ts-discover-btn">Найти TorrServer в сети</button>
+                  </div>
+                  <div class="settings-status-text" id="ts-discover-status" hidden></div>
+                  <div class="ts-discover-list" id="ts-discover-list"></div>
+                </div>
               </div>
 
               <div class="settings-list">
+                <!-- Протокол для адреса без http:// / https:// (js/torrents.js: normalizeTorrServerUrl) -->
+                <div class="checkbox-container">
+                  <input type="checkbox" id="ts-https">
+                  <span>Сервер работает по HTTPS<small class="setting-desc">Адрес можно вводить без http:// и https:// — протокол подставится по этому переключателю</small></span>
+                </div>
                 <!-- Только в Android-приложении (js/torrents.js: setupDeviceTorrServerToggle) -->
                 <div class="checkbox-container" id="ts-device-row" hidden>
                   <input type="checkbox" id="ts-device-server">
                   <span>Использовать TorrServer, установленный на этом устройстве<small class="setting-desc">Адрес http://localhost:8090 — TorrServer на этом телевизоре, приставке или телефоне</small></span>
+                </div>
+                <!-- Встроенный TorrServer приложения (AndroidJS.tsLocal*, torrents.js:
+                     setupDeviceTorrServerPanel). В APK без этих методов не показывается -->
+                <div class="ts-device-panel" id="ts-device-panel" hidden>
+                  <div class="settings-status-text" id="ts-device-status"></div>
+                  <div class="action-row">
+                    <button class="btn btn-primary" id="ts-device-install" hidden>Скачать TorrServer</button>
+                    <button class="btn btn-primary" id="ts-device-start" hidden>Запустить</button>
+                    <button class="btn" id="ts-device-update" hidden>Обновить</button>
+                    <button class="btn" id="ts-device-stop" hidden>Остановить</button>
+                  </div>
                 </div>
                 <!-- js/torrents.js: isLocalTorrServer / setupLocalTorrServerToggle -->
                 <div class="checkbox-container">

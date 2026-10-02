@@ -8610,6 +8610,46 @@ article {
 
 /* Логин и пароль — продолжение строки «Требуется аутентификация» внутри
    .settings-list: без своей линии сверху, с отступами строк списка */
+/* Поиск TorrServer в сети (torrents.js: setupTorrServerDiscovery) */
+#config-screen .ts-discover {
+  margin-top: 14px;
+}
+
+#config-screen .ts-discover .settings-status-text {
+  margin-top: 10px;
+  font-size: 15px;
+  color: #9a9aa6;
+}
+
+#config-screen .ts-discover-list .btn {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  text-align: left;
+  white-space: normal;
+}
+
+#config-screen .ts-discover-list .ts-discover-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #9a9aa6;
+}
+
+/* Встроенный TorrServer — продолжение строки «TorrServer на этом устройстве»,
+   как поля логина и пароля у «Требуется аутентификация» */
+#config-screen .settings-list .ts-device-panel {
+  padding: 0 20px 18px;
+}
+
+#config-screen .ts-device-panel .settings-status-text {
+  margin-bottom: 12px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #9a9aa6;
+}
+
 #config-screen .settings-list .auth-fields {
   margin: 0;
   padding: 0 20px 18px;

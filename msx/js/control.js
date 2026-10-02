@@ -976,15 +976,14 @@ function getConfigContentItems(tabId) {
     var tabContentId = tabId + '-content';
     var tabContent = getEl(tabContentId);
     if (!tabContent) return [];
+    // Один запрос — порядок документа, то есть тот, в котором элементы видны на
+    // экране. Раньше шли сначала все поля, потом все кнопки: кнопка внутри списка
+    // переключателей (встроенный TorrServer) оказывалась в самом конце, и «вниз»
+    // её перепрыгивало
     var visibleItems = [];
-    var interactiveSelectors = ['input:not([type="hidden"])', 'button', 'select', 'textarea'];
-    for (var i = 0; i < interactiveSelectors.length; i++) {
-        var elements = tabContent.querySelectorAll(interactiveSelectors[i]);
-        for (var j = 0; j < elements.length; j++) {
-            if (VISIBLE(elements[j]) && visibleItems.indexOf(elements[j]) === -1) {
-                visibleItems.push(elements[j]);
-            }
-        }
+    var elements = tabContent.querySelectorAll('input:not([type="hidden"]), button, select, textarea');
+    for (var j = 0; j < elements.length; j++) {
+        if (VISIBLE(elements[j])) visibleItems.push(elements[j]);
     }
     return visibleItems;
 }

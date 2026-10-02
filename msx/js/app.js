@@ -2271,7 +2271,10 @@ function setupSpeedTest() {
   speedtestBtn.addEventListener('click', async function () {
     console.log('📡 Запуск замера скорости...');
     var torrserverUrlInput = getEl('torrserver-url');
-    var torrServerUrl = torrserverUrlInput ? torrserverUrlInput.value.trim() : '';
+    // С протоколом, даже если его не ввели (torrents.js: normalizeTorrServerUrl)
+    var torrServerUrl = typeof window.torrServerUrlFromField === 'function'
+      ? window.torrServerUrlFromField()
+      : (torrserverUrlInput ? torrserverUrlInput.value.trim() : '');
 
     if (!torrServerUrl) {
       var resultsDiv = getEl('speedtest-results');

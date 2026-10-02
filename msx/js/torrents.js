@@ -636,10 +636,65 @@ function readLocalTorrServerConfig() {
     try { return JSON.parse(localStorage.getItem(TS_LOCAL_CONFIG) || 'null'); } catch (e) { return null; }
 }
 
+// ==================== АДРЕС TORRSERVER: ПРОТОКОЛ ====================
+//
+// Адрес можно вводить без протокола («192.168.1.10:8090»): http:// или https://
+// подставляет переключатель «Сервер работает по HTTPS». Своего значения у него
+// нет — он всегда показывает протокол сохранённого адреса, а включение или
+// выключение меняет протокол в самом адресе.
+
+/** Полный адрес: с протоколом и без «/» в конце */
+function normalizeTorrServerUrl(raw) {
+    var v = String(raw || '').trim();
+    if (!v) return '';
+    if (!/^https?:\/\//i.test(v)) {
+        var https = getEl('ts-https');
+        v = (https && https.checked ? 'https://' : 'http://') + v.replace(/^\/+/, '');
+    }
+    return v.replace(/\/+$/, '');
+}
+
+/** Адрес из поля в полном виде — его читают проверка, сохранение и замер скорости */
+function torrServerUrlFromField() {
+    var el = getEl('torrserver-url');
+    return el ? normalizeTorrServerUrl(el.value) : '';
+}
+window.torrServerUrlFromField = torrServerUrlFromField;
+
+/** Переключатель HTTPS — по протоколу в поле (если он там указан) */
+function syncHttpsToggle() {
+    var cb = getEl('ts-https');
+    var el = getEl('torrserver-url');
+    if (!cb || !el) return;
+    var v = el.value.trim();
+    if (/^https?:\/\//i.test(v)) cb.checked = /^https:/i.test(v);
+}
+
+function setupTorrServerUrlProtocol() {
+    var cb = getEl('ts-https');
+    var el = getEl('torrserver-url');
+    if (!cb || !el) return;
+    syncHttpsToggle();
+    // Ушли из поля — показываем адрес полностью, с протоколом
+    el.addEventListener('change', function () {
+        if (el.value.trim()) el.value = normalizeTorrServerUrl(el.value);
+        syncHttpsToggle();
+    });
+    cb.addEventListener('change', function () {
+        var v = el.value.trim();
+        if (!v) return;
+        el.value = (cb.checked ? 'https://' : 'http://') + v.replace(/^https?:\/\//i, '');
+        checkServer(true);
+    });
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupTorrServerUrlProtocol);
+else setupTorrServerUrlProtocol();
+
 /** Текущие значения полей раздела TorrServer. */
 function torrServerFieldsConfig() {
     return {
-        url: getEl('torrserver-url').value.trim(),
+        url: torrServerUrlFromField(),
         authEnabled: getEl('auth-checkbox').checked,
         login: getEl('auth-login').value.trim(),
         password: getEl('auth-password').value
@@ -655,6 +710,7 @@ function applyTorrServerConfig(cfg) {
     var authPassword = getEl('auth-password');
     var authFields = getEl('auth-fields');
     if (cfg.url) urlInput.value = cfg.url;
+    syncHttpsToggle();
     authCheckbox.checked = !!cfg.authEnabled;
     AppState.authEnabled = !!cfg.authEnabled;
     if (authFields) authFields.classList.toggle('visible', !!cfg.authEnabled);
@@ -706,8 +762,11 @@ function isDeviceTorrServer() {
 function lockDeviceTorrServerFields(on) {
     var urlInput = getEl('torrserver-url');
     var localBox = getEl('ts-local-only');
+    var httpsBox = getEl('ts-https');
     if (urlInput) urlInput.disabled = on;
     if (localBox) localBox.disabled = on;
+    if (httpsBox) httpsBox.disabled = on;
+    syncHttpsToggle();
 }
 
 function setupDeviceTorrServerToggle() {
@@ -737,11 +796,14 @@ function setupDeviceTorrServerToggle() {
             } catch (e) { }
             if (localBox) localBox.checked = true;
             urlInput.value = TS_DEVICE_URL;
+            syncHttpsToggle();
             lockDeviceTorrServerFields(true);
             try { localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig())); } catch (e) { }
             checkServer(true);
+            deviceTorrServerPanel.onToggle(true);
             return;
         }
+        deviceTorrServerPanel.onToggle(false);
 
         var backup = null;
         try { backup = JSON.parse(localStorage.getItem(TS_DEVICE_BACKUP) || 'null'); } catch (e) { }
@@ -762,8 +824,213 @@ function setupDeviceTorrServerToggle() {
     });
 }
 
+/**
+ * Встроенный TorrServer приложения: скачать, запустить, остановить, обновить.
+ *
+ * Всё делает приложение (AndroidJS.tsLocal*, TorrServerManager): здесь только
+ * кнопки и статус. Методы мгновенные, работа идёт в фоне — поэтому статус
+ * опрашиваем, пока панель на экране. Если на localhost:8090 уже работает чужой
+ * TorrServer (TorrServe), приложение свою копию не запускает — им и пользуемся.
+ */
+var deviceTorrServerPanel = (function () {
+    var POLL_MS = 1500;
+    var timer = null;
+    var wasRunning = null;
+    var lastStatus = null;
+
+    function bridge() {
+        return !!(window.AndroidJS && typeof AndroidJS.tsLocalStatus === 'function');
+    }
+
+    function readStatus() {
+        try { return JSON.parse(AndroidJS.tsLocalStatus()); } catch (e) { return null; }
+    }
+
+    function show(id, on) {
+        var el = getEl(id);
+        if (el) el.hidden = !on;
+    }
+
+    function render(st) {
+        var text;
+        if (!st.supported) text = 'Процессор этого устройства TorrServer не поддерживает';
+        else if (st.downloading) text = 'Скачиваю TorrServer… ' + (st.progress || 0) + '%';
+        else if (st.running && st.own) text = 'Работает встроенный TorrServer ' + (st.version || '');
+        else if (st.running) text = 'На устройстве уже работает TorrServer ' + (st.runningVersion || '') + ' — используется он';
+        else if (st.installed) text = 'TorrServer ' + (st.version || '') + ' установлен, но не запущен';
+        else text = 'TorrServer на устройстве не найден. Можно скачать официальную сборку (около 65 МБ)';
+        if (st.error && !st.downloading) text += '. Ошибка: ' + st.error;
+        var status = getEl('ts-device-status');
+        if (status) status.textContent = text;
+
+        var busy = st.downloading;
+        var external = st.running && !st.own;
+        show('ts-device-install', st.supported && !st.installed && !external && !busy);
+        show('ts-device-start', st.installed && !st.running && !busy);
+        show('ts-device-stop', st.own && !busy);
+        show('ts-device-update', st.installed && !external && !busy && st.latest && st.latest !== st.version);
+        var upd = getEl('ts-device-update');
+        if (upd && st.latest) upd.textContent = 'Обновить до ' + st.latest;
+
+        // Сервер поднялся — сразу проверяем адрес, не дожидаясь, пока это сделает человек
+        if (st.running && wasRunning === false) checkServer(true);
+        wasRunning = !!st.running;
+
+        // Кнопка под фокусом пропала (нажали «Скачать» — началась загрузка):
+        // фокус на сам переключатель, иначе он остался бы на скрытом элементе
+        var f = document.querySelector('#ts-device-panel .focused');
+        if (f && f.hidden) focusEl(getEl('ts-device-server'));
+    }
+
+    function tick() {
+        var panel = getEl('ts-device-panel');
+        if (!panel || panel.hidden) { stop(); return; }
+        // Настройки закрыты — не опрашиваем: статус дёргает ещё и проверку порта
+        if (panel.offsetParent === null) return;
+        var st = readStatus();
+        if (!st) return;
+        lastStatus = st;
+        render(st);
+    }
+
+    function start() {
+        if (timer) return;
+        tick();
+        timer = setInterval(tick, POLL_MS);
+    }
+
+    function stop() {
+        if (timer) { clearInterval(timer); timer = null; }
+    }
+
+    function act(method) {
+        try { AndroidJS[method](); } catch (e) { console.warn('TorrServer: ' + method, e); }
+        setTimeout(tick, 300);
+    }
+
+    function setup() {
+        if (!bridge()) return;
+        var bind = function (id, method) {
+            var b = getEl(id);
+            if (b) b.addEventListener('click', function () { act(method); });
+        };
+        bind('ts-device-install', 'tsLocalInstall');
+        bind('ts-device-start', 'tsLocalStart');
+        bind('ts-device-stop', 'tsLocalStop');
+        bind('ts-device-update', 'tsLocalInstall');
+        if (isDeviceTorrServer()) onToggle(true, true);
+    }
+
+    /** Переключатель включили (или он уже включён при запуске) / выключили */
+    function onToggle(on, atStartup) {
+        var panel = getEl('ts-device-panel');
+        if (!panel || !bridge()) return;
+        panel.hidden = !on;
+        if (!on) {
+            stop();
+            // Свой TorrServer больше не нужен — освобождаем память устройства.
+            // Зовём всегда, даже если сейчас работает чужой: остановка заодно
+            // снимает автозапуск, иначе следующий запуск приложения поднял бы
+            // встроенный сервер при выключенном переключателе
+            act('tsLocalStop');
+            return;
+        }
+        try { AndroidJS.tsLocalCheckUpdate(); } catch (e) { }
+        wasRunning = null;
+        // Установлен, но не работает — запускаем сами; при старте приложения это
+        // уже сделал автозапуск (TorrServerManager.autostartIfNeeded)
+        var st0 = readStatus();
+        if (!atStartup && st0 && st0.installed && !st0.running) act('tsLocalStart');
+        start();
+    }
+
+    return { setup: setup, onToggle: onToggle, status: function () { return lastStatus; } };
+})();
+
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupDeviceTorrServerToggle);
 else setupDeviceTorrServerToggle();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', deviceTorrServerPanel.setup);
+else deviceTorrServerPanel.setup();
+
+// ==================== ПОИСК TORRSERVER В СЕТИ (mDNS) ====================
+//
+// TorrServer объявляет себя в локальной сети сервисом _torrserver._tcp (mDNS,
+// по умолчанию включено). Искать умеет только Android-приложение
+// (TorrServerDiscovery): у браузера доступа к mDNS нет — на остальных
+// платформах кнопки не видно. Выбор сервера подставляет его адрес в поле и
+// проверяет, как ручной ввод.
+function setupTorrServerDiscovery() {
+    var box = getEl('ts-discover');
+    var btn = getEl('ts-discover-btn');
+    var status = getEl('ts-discover-status');
+    var list = getEl('ts-discover-list');
+    if (!box || !btn || !window.AndroidJS || typeof AndroidJS.tsDiscoverStart !== 'function') return;
+    var timer = null;
+
+    // Под «TorrServer на этом устройстве» адрес фиксирован — искать нечего
+    function syncVisibility() {
+        box.hidden = isDeviceTorrServer();
+    }
+    syncVisibility();
+    var deviceBox = getEl('ts-device-server');
+    if (deviceBox) deviceBox.addEventListener('change', syncVisibility);
+
+    function setStatus(text) {
+        status.textContent = text;
+        status.hidden = !text;
+    }
+
+    function render(st) {
+        var servers = st.servers || [];
+        list.innerHTML = '';
+        for (var i = 0; i < servers.length; i++) {
+            var s = servers[i];
+            var item = document.createElement('button');
+            item.className = 'btn';
+            item.dataset.url = s.url;
+            var meta = s.url.replace(/^http:\/\//, '') + (s.version ? ' · ' + s.version : '') + (s.self ? ' · это устройство' : '');
+            item.innerHTML = escapeHtml(s.name || 'TorrServer') + '<span class="ts-discover-meta">' + escapeHtml(meta) + '</span>';
+            list.appendChild(item);
+        }
+        if (st.error) setStatus(st.error);
+        else if (st.discovering) setStatus(servers.length ? 'Ищу… найдено: ' + servers.length : 'Ищу TorrServer в сети…');
+        else setStatus(servers.length ? 'Найдено: ' + servers.length + '. Выберите сервер' :
+            'TorrServer в сети не найден. Он должен быть в той же сети, с включённым Bonjour (mDNS) в его настройках');
+        btn.textContent = st.discovering ? 'Поиск…' : 'Найти TorrServer в сети';
+    }
+
+    function poll() {
+        var st;
+        try { st = JSON.parse(AndroidJS.tsDiscoverStatus()); } catch (e) { return; }
+        render(st);
+        if (!st.discovering && timer) { clearInterval(timer); timer = null; }
+    }
+
+    btn.addEventListener('click', function () {
+        if (timer) return;
+        try { AndroidJS.tsDiscoverStart(); } catch (e) { setStatus('Поиск недоступен'); return; }
+        list.innerHTML = '';
+        setStatus('Ищу TorrServer в сети…');
+        btn.textContent = 'Поиск…';
+        // Первый опрос — после того как приложение начнёт поиск: иначе прочли
+        // бы прошлое «поиск закончен» и сразу остановились
+        setTimeout(function () { poll(); timer = setInterval(poll, 700); }, 400);
+    });
+
+    list.addEventListener('click', function (e) {
+        var item = e.target.closest ? e.target.closest('button[data-url]') : null;
+        if (!item) return;
+        var urlInput = getEl('torrserver-url');
+        if (!urlInput || urlInput.disabled) return;
+        urlInput.value = item.dataset.url;
+        syncHttpsToggle();
+        setStatus('Выбран ' + item.dataset.url);
+        checkServer(true);
+    });
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupTorrServerDiscovery);
+else setupTorrServerDiscovery();
 
 window.isLocalTorrServer = isLocalTorrServer;
 
@@ -805,7 +1072,7 @@ async function saveClientConfig() {
         return true;
     }
     var config = {
-        url: getEl('torrserver-url').value.trim(),
+        url: torrServerUrlFromField(),
         authEnabled: getEl('auth-checkbox').checked,
         login: getEl('auth-login').value.trim(),
         clientId: localStorage.getItem('clientId')
@@ -958,7 +1225,13 @@ async function checkServer(shouldLoadTorrents = true) {
     var authCheckbox = getEl('auth-checkbox');
     var authLogin = getEl('auth-login');
     var authPassword = getEl('auth-password');
-    var url = urlInput.value.trim();
+    // Без протокола — подставляем; в поле пишем только когда его не редактируют,
+    // иначе протокол появлялся бы посреди набора адреса
+    var url = normalizeTorrServerUrl(urlInput.value);
+    if (url && document.activeElement !== urlInput && urlInput.value.trim() !== url) {
+        urlInput.value = url;
+        syncHttpsToggle();
+    }
     if (!url) { statusIndicator.className = 'status-indicator status-offline'; statusText.textContent = 'Введите адрес сервера'; return false; }
     statusIndicator.className = 'status-indicator status-checking'; statusText.textContent = 'Проверка...';
     try {
