@@ -3884,8 +3884,9 @@ function handleConfigNavigation(dir) {
             }
             return true;
         }
-        if (dir === 'left' || dir === 'right') return true;
-        if (dir === 'enter') {
+        if (dir === 'left') return true;
+        // Вправо с пункта меню — то же, что OK: раздел справа, туда и идём
+        if (dir === 'right' || dir === 'enter') {
             var selectedTabId = currentFocused.id;
             // «Внешний вид»: в разделе стоит панель ui-customizer.js со своей
             // навигацией — отдаём пульт ей (выход из неё — «назад» или влево с
