@@ -1771,6 +1771,85 @@ async function removeHistoryCard(card) {
 window.getHistoryCardEntry = getHistoryCardEntry;
 window.removeHistoryCard = removeHistoryCard;
 
+/**
+ * Вся история просмотра — DELETE /api/history/clear, затем убираем её со
+ * всех экранов, где она уже собрана: ряд главной, ряд каталога, сетка.
+ * Таймкоды (позиции в фильмах) — отдельное хранилище, их это не трогает.
+ */
+async function clearAllHistory() {
+    var d = await safeFetch(withClientId(SERVER_URL + '/api/history/clear'), { method: 'DELETE' });
+    if (!d || !d.success) throw new Error('сервер не ответил');
+
+    if (window.HomeScreen && typeof HomeScreen.removeHistoryItem === 'function') {
+        var hs = HomeScreen.state;
+        var hItems = (hs && hs.data && hs.data.history) ? hs.data.history.slice() : [];
+        for (var i = 0; i < hItems.length; i++) {
+            HomeScreen.removeHistoryItem(hItems[i].id, hItems[i].media_type === 'tv' ? 'tv' : 'movie', false);
+        }
+    }
+    var rItems = (window.catalogRowsData && window.catalogRowsData.history) ? window.catalogRowsData.history.slice() : [];
+    for (var j = 0; j < rItems.length; j++) {
+        removeHistoryRowItem(rItems[j].id, rItems[j].media_type === 'tv' ? 'tv' : 'movie', false);
+    }
+    if (catalogState.currentCatalog === 'history') showEmptyHistory();
+    console.log('🧹 История просмотра очищена');
+    return true;
+}
+
+/**
+ * Кнопка «Очистить историю» в настройках («Прочее»). Первое нажатие её
+ * взводит — красная, «Нажмите ещё раз»; второе в течение CLEAR_ARM_MS
+ * очищает. Не нажали — возвращается в исходное состояние.
+ */
+function setupClearHistoryButton() {
+    var btn = getEl('clear-history-settings-btn');
+    var status = getEl('clear-history-status');
+    if (!btn) return;
+    var CLEAR_ARM_MS = 4000;
+    var LABEL = btn.textContent;
+    var armTimer = null;
+    var busy = false;
+
+    function disarm() {
+        if (armTimer) { clearTimeout(armTimer); armTimer = null; }
+        btn.classList.remove('btn-armed');
+        btn.textContent = LABEL;
+    }
+    function showStatus(text) {
+        if (!status) return;
+        status.textContent = text;
+        status.hidden = !text;
+    }
+
+    btn.addEventListener('click', function () {
+        if (busy) return;
+        if (!armTimer) {
+            btn.classList.add('btn-armed');
+            btn.textContent = 'Нажмите ещё раз, чтобы очистить';
+            showStatus('');
+            armTimer = setTimeout(disarm, CLEAR_ARM_MS);
+            return;
+        }
+        disarm();
+        busy = true;
+        btn.textContent = 'Очищаю…';
+        clearAllHistory().then(function () {
+            showStatus('История очищена');
+            if (typeof showToast === 'function') showToast('История просмотра очищена');
+        }, function (e) {
+            console.warn('История не очищена', e);
+            showStatus('Не удалось очистить историю — сервер не ответил');
+        }).then(function () {
+            busy = false;
+            btn.textContent = LABEL;
+        });
+    });
+}
+
+window.clearAllHistory = clearAllHistory;
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupClearHistoryButton);
+else setupClearHistoryButton();
+
 // Мышь и тач: правая кнопка / долгий тап по карточке истории
 document.addEventListener('contextmenu', function (e) {
     var card = e.target && e.target.closest ? e.target.closest('.torrent-card') : null;

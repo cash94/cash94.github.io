@@ -2045,6 +2045,11 @@
     function onNavButton(id, viaClick) {
         homeState.lastNavBtnId = id;
 
+        // Переход в раздел из шапки поверх карточки раздачи — та закрывается,
+        // раздачу останавливаем, как и по «назад» (torrents.js)
+        if (window.AppState && AppState.currentScreen === 'detail' &&
+            typeof window.dropOpenTorrentDetail === 'function') window.dropOpenTorrentDetail();
+
         // «Главная» — единственная кнопка шапки без своего обработчика
         if (id === 'home-nav-home') return goHome();
 

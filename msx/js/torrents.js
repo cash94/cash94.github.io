@@ -759,6 +759,9 @@ async function saveClientConfig() {
  */
 function preloadDetailFile(hash, fileId) {
     if (!hash || !fileId) return;
+    // Android отдаёт ссылку своему плееру, пробы ffprobe там нет — прогрев под
+    // неё только держал бы раздачу работающей и тратил память TorrServer
+    if (window.AndroidJS) return;
     // torrents.js грузится раньше player.js, где объявлен preloadTorrents
     if (typeof preloadTorrents !== 'function') return;
     // Таймкоды грузятся асинхронно, и за это время человек мог уйти на другую
@@ -4302,6 +4305,57 @@ async function dropTorrentToServer(hash) {
     } catch (error) { console.error('Ошибка остановки торрента:', error); throw error; }
 }
 window.dropTorrentToServer = dropTorrentToServer;
+
+/**
+ * Уходим из карточки раздачи — drop на TorrServer, как при выходе из плеера.
+ *
+ * Открытая карточка поднимает раздачу в TorrServer (список файлов, прогрев
+ * preloadDetailFile), и без drop она так и оставалась работать: в списке висела
+ * «Идет просмотр», а несколько открытых по очереди карточек грели каждая свою
+ * раздачу и расходовали память устройства с TorrServer.
+ *
+ * Зовут: «назад» из карточки (app.js) и переход в раздел из шапки поверх неё
+ * (home.js). Запуск воспроизведения сюда не попадает — раздачу, которую сейчас
+ * будут смотреть, останавливать нельзя; её остановит выход из плеера.
+ */
+function dropOpenTorrentDetail() {
+    var it = AppState.currentDetailItem;
+    var dv = getEl('detail-view');
+    // Каталожная карточка (TMDB) раздачи не держит
+    if (!it || !it.hash || (dv && dv.classList.contains('catalog-detail-mode'))) return;
+    var hash = it.hash;
+    if (typeof abortPendingPreload === 'function') abortPendingPreload();
+    // Мимо dropTorrentToServer: тот при недоступном TorrServer показывает
+    // баннер ошибки, а на выходе из карточки он ни к чему
+    torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'drop', hash: hash }) })
+        .then(function (r) { if (r && r.ok) markTorrentStopped(hash); })['catch'](function () { });
+}
+window.dropOpenTorrentDetail = dropOpenTorrentDetail;
+
+/**
+ * Плашку «Идет просмотр» снимаем на месте. Перерисовка списка сбивала бы
+ * фокус, а сверка syncTorrentsList статус не сравнивает вовсе.
+ */
+function markTorrentStopped(hash) {
+    var h = String(hash).toLowerCase();
+    var list = AppState.torrents || [];
+    var torrent = null;
+    for (var i = 0; i < list.length; i++) {
+        if (String(list[i].hash || '').toLowerCase() === h) { torrent = list[i]; break; }
+    }
+    if (!torrent) return;
+    torrent.stat_string = 'Torrent in db';
+    var cards = document.querySelectorAll('.torrent-card[data-hash]');
+    for (var j = 0; j < cards.length; j++) {
+        if (String(cards[j].dataset.hash).toLowerCase() !== h) continue;
+        var playing = cards[j].querySelector('.torrent-playing');
+        if (!playing) continue;
+        var size = document.createElement('span');
+        size.className = 'torrent-size';
+        size.textContent = formatBytes(torrent.torrent_size);
+        playing.parentNode.replaceChild(size, playing);
+    }
+}
 
 async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
     var refreshList = options.refreshList !== false;

@@ -792,6 +792,8 @@ function setupNavigation() {
 
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
+      // Карточка раздачи закрывается — раздачу останавливаем (torrents.js)
+      if (typeof window.dropOpenTorrentDetail === 'function') window.dropOpenTorrentDetail();
 
       // Детали раздачи, открытые из выдачи «Поиска торрентов», уходят обратно в
       // выдачу (ниже, ветка поиска): она не уничтожена, оверлей только спрятан.

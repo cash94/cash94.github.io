@@ -427,6 +427,18 @@
               <p class="settings-lead settings-group-description">С этими значениями открывается поиск торрентов. К ним же возвращает кнопка «Сбросить» в фильтрах.</p>
               <div id="search-filter-defaults"></div>
             </div>
+
+            <!-- Очистка всей истории просмотра (catalog.js: setupClearHistoryButton).
+                 Подтверждение — повторным нажатием: confirm() в Android-приложении
+                 молча отвечает «нет», а на телевизорах его бывает не видно -->
+            <div class="settings-section settings-group">
+              <h2 class="settings-group-title">История просмотра</h2>
+              <p class="settings-lead settings-group-description">«Продолжить просмотр» на главной и «История» в каталоге. Позиции просмотра в фильмах и сериалах не удаляются.</p>
+              <div class="action-row">
+                <button class="btn" id="clear-history-settings-btn">Очистить историю</button>
+              </div>
+              <div id="clear-history-status" class="settings-status-text" hidden></div>
+            </div>
           </div>
         </div>
       </div>

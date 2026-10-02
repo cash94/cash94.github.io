@@ -8815,6 +8815,14 @@ article {
   background: rgba(255, 255, 255, 0.85);
 }
 
+/* Кнопка необратимого действия после первого нажатия: второе — подтверждение
+   (catalog.js: setupClearHistoryButton) */
+#config-screen .btn.btn-armed,
+#config-screen .btn.btn-armed:hover {
+  color: #fff;
+  background: #c62828;
+}
+
 /* ---- Карточки результатов ---- */
 #config-screen .settings-results {
   margin-top: 4px;
