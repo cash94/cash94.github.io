@@ -2662,7 +2662,7 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
 
     if (details) {
         if (details.backdrop_path && elements.detailViewDiv) {
-            var backdropUrl = normalizePosterUrl(details.backdrop_path, 'original');
+            var backdropUrl = normalizePosterUrl(details.backdrop_path, 'w1280');
 
             elements.detailViewDiv.style.backgroundImage =
                 'linear-gradient(to top, rgba(0, 0, 0, 0.97) 0%, rgba(0, 0, 0, 0.82) 32%, rgba(0, 0, 0, 0.38) 64%, rgba(0, 0, 0, 0.25) 100%), ' +
