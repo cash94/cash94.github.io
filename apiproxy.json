@@ -1,0 +1,18 @@
+{
+  "tmdbMode": "failover",
+  "tmdb": [
+    { "api": "http://tsapi.torrstream.online", "key": "064ea5b59beec7eccb3fe99059d58a50" },
+    { "api": "http://nmapi.duckdns.org", "key": "064ea5b59beec7eccb3fe99059d58a50" }
+  ],
+  "tmdbDetails": [
+    "http://vidaa.torrstream.online/cachedetails.json"
+  ],
+  "tmdbImages": [
+    "tsimg.torrstream.online",
+    "nl.imagetmdb.com",
+    "mocha.stull.xyz",
+    "proxy.vokino.pro/image",
+    "nmtmdb.duckdns.org"
+  ],
+  "skipApi": "tsskip.torrstream.online"
+}

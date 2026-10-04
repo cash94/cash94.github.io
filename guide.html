@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ff8a1f">
+  <title>Помощник NUM</title>
+  <style>
+    :root {
+      --bg: #f5f3f0;
+      --surface: #ffffff;
+      --surface-2: #f0ece7;
+      --text: #1d1b19;
+      --muted: #6b645d;
+      --line: #e4ded6;
+      --accent: #ff8a1f;
+      --accent-ink: #b45300;
+      --accent-soft: #fff1e3;
+      --ok: #1f9d55;
+      --ok-soft: #e5f6ec;
+      --bad: #d93a2f;
+      --bad-soft: #fdeceb;
+      --warn: #b26a00;
+      --warn-soft: #fff5dc;
+      --info: #2563eb;
+      --info-soft: #e8efff;
+      --radius: 18px;
+      --radius-sm: 12px;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 6px 24px rgba(0, 0, 0, .06);
+      --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Consolas, monospace;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121212;
+        --surface: #1c1c1e;
+        --surface-2: #26262a;
+        --text: #f3f1ee;
+        --muted: #a39d96;
+        --line: #33323a;
+        --accent: #ff9a3c;
+        --accent-ink: #ffb670;
+        --accent-soft: #3a2616;
+        --ok: #3ccf7a;
+        --ok-soft: #13301f;
+        --bad: #ff6b5f;
+        --bad-soft: #3a1917;
+        --warn: #ffc24a;
+        --warn-soft: #362a10;
+        --info: #7aa5ff;
+        --info-soft: #172642;
+        --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 24px rgba(0, 0, 0, .3);
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 17px/1.55 system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--info); }
+
+    .wrap {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 16px 16px calc(40px + env(safe-area-inset-bottom));
+    }
+
+    /* ---------- Шапка ---------- */
+    .hero {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 20px 4px 8px;
+    }
+
+    .cat-wrap {
+      position: relative;
+      flex: none;
+      width: clamp(110px, 30vw, 160px);
+      text-align: center;
+    }
+
+    .cat {
+      display: block;
+      width: 100%;
+      height: auto;
+      cursor: grab;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+      outline: none;
+    }
+
+    .cat:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; border-radius: 16px; }
+
+    .pet-hint { display: block; margin-top: -2px; font-size: .75rem; color: var(--muted); }
+
+    #catBody { transform-box: view-box; transform-origin: 100px 216px; animation: breathe 3.6s ease-in-out infinite; }
+    #catHead { transform-box: view-box; transform-origin: 100px 132px; transition: transform .4s; }
+    #catTail { transform-box: view-box; transform-origin: 136px 208px; animation: tail 2.8s ease-in-out infinite alternate; }
+    .cat-eye { transform-box: fill-box; transform-origin: center; animation: blink 5s infinite; transition: transform .3s; }
+
+    @keyframes breathe { 50% { transform: scale(1.012, 1.02); } }
+    @keyframes tail { from { transform: rotate(-7deg); } to { transform: rotate(9deg); } }
+    @keyframes blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.08); } }
+
+    /* мурлычет: жмурится, наклоняет голову, дрожит, хвост ходит быстрее */
+    .cat.purring .cat-eye { animation: none; transform: scaleY(.18); }
+    .cat.purring #catHead { animation: purr .09s linear infinite alternate; }
+    .cat.purring #catBody { animation: purr-body .09s linear infinite alternate; }
+    .cat.purring #catTail { animation-duration: .7s; }
+
+    @keyframes purr { from { transform: rotate(-6deg) translateY(0); } to { transform: rotate(-6deg) translateY(.9px); } }
+    @keyframes purr-body { from { transform: scale(1.01, 1.015); } to { transform: scale(1.01, 1.015) translateY(.6px); } }
+
+    .heart {
+      position: absolute;
+      left: 50%;
+      top: 30%;
+      font-size: 20px;
+      pointer-events: none;
+      animation: heart 1.4s ease-out forwards;
+    }
+
+    @keyframes heart {
+      from { opacity: 1; transform: translate(-50%, 0) scale(.6); }
+      to { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), -70px) scale(1.2); }
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(1.5rem, 5vw, 2rem);
+      line-height: 1.15;
+      letter-spacing: -.02em;
+    }
+
+    .hero p { margin: 4px 0 0; color: var(--muted); }
+
+    .bubble::before {
+      content: '';
+      position: absolute;
+      top: -9px;
+      left: clamp(46px, 14vw, 72px);
+      border: 10px solid transparent;
+      border-top: 0;
+      border-bottom-color: var(--accent-soft);
+    }
+
+    .bubble {
+      position: relative;
+      margin: 12px 0 20px;
+      padding: 14px 18px;
+      background: var(--accent-soft);
+      color: var(--accent-ink);
+      border-radius: var(--radius);
+      font-weight: 600;
+    }
+
+    /* ---------- Карточки выбора ---------- */
+    .section-title {
+      margin: 28px 4px 12px;
+      font-size: .8rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+      gap: 12px;
+    }
+
+    .card-btn {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      width: 100%;
+      padding: 18px;
+      text-align: left;
+      font: inherit;
+      color: inherit;
+      background: var(--surface);
+      border: 2px solid transparent;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      transition: border-color .15s, transform .15s;
+    }
+
+    .card-btn:hover { border-color: var(--accent); }
+    .card-btn:active { transform: scale(.98); }
+    .card-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+    .card-btn .ico {
+      flex: none;
+      display: grid;
+      place-items: center;
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      font-size: 26px;
+      background: var(--surface-2);
+    }
+
+    .card-btn b { display: block; font-size: 1.08rem; line-height: 1.3; }
+    .card-btn span.desc { display: block; margin-top: 4px; font-size: .92rem; color: var(--muted); line-height: 1.4; }
+    .card-btn .go { margin-left: auto; align-self: center; color: var(--muted); font-size: 1.4rem; }
+
+    .card-btn.small { padding: 14px 16px; align-items: center; }
+    .card-btn.small .ico { width: 40px; height: 40px; font-size: 22px; }
+
+    /* ---------- Страница решения ---------- */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      margin: 0 -16px;
+      padding: 10px 16px;
+      background: color-mix(in srgb, var(--bg) 88%, transparent);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .back {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 48px;
+      padding: 0 18px 0 12px;
+      font: inherit;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      cursor: pointer;
+    }
+
+    .back:hover { border-color: var(--accent); }
+
+    .page-head { margin: 12px 4px 20px; }
+    .page-head .ico { font-size: 40px; line-height: 1; }
+    .page-head h2 { margin: 8px 0 4px; font-size: clamp(1.4rem, 4.5vw, 1.8rem); line-height: 1.2; letter-spacing: -.01em; }
+    .page-head p { margin: 0; color: var(--muted); }
+
+    .panel {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .panel > h3 { margin: 0 0 12px; font-size: 1.15rem; }
+    .panel > p:first-child { margin-top: 0; }
+    .panel > :last-child { margin-bottom: 0; }
+
+    .tabs {
+      display: flex;
+      gap: 6px;
+      padding: 5px;
+      margin-bottom: 16px;
+      background: var(--surface-2);
+      border-radius: 14px;
+    }
+
+    .tabs button {
+      flex: 1;
+      min-height: 46px;
+      padding: 8px 10px;
+      font: inherit;
+      font-weight: 600;
+      font-size: .95rem;
+      color: var(--muted);
+      background: transparent;
+      border: 0;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    .tabs button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+    /* Шаги */
+    .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+
+    .steps > li {
+      position: relative;
+      counter-increment: step;
+      padding: 0 0 22px 52px;
+    }
+
+    .steps > li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: -2px;
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .steps > li::after {
+      content: '';
+      position: absolute;
+      left: 17px;
+      top: 38px;
+      bottom: 4px;
+      width: 2px;
+      background: var(--line);
+    }
+
+    .steps > li:last-child { padding-bottom: 0; }
+    .steps > li:last-child::after { display: none; }
+    .steps > li > p { margin: 0 0 8px; }
+    .steps > li > p:first-child { font-weight: 600; padding-top: 3px; }
+    .steps ul { margin: 6px 0; padding-left: 20px; }
+    .steps li li { margin: 4px 0; }
+
+    /* Путь в настройках */
+    .path { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+
+    .path span {
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      font-weight: 600;
+      font-size: .95rem;
+    }
+
+    .path i { font-style: normal; color: var(--muted); }
+
+    .set {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 6px;
+      background: var(--surface-2);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .on { color: var(--ok); font-weight: 700; }
+    .off { color: var(--bad); font-weight: 700; }
+
+    /* Подсказки */
+    .note {
+      display: flex;
+      gap: 12px;
+      padding: 14px 16px;
+      margin: 0 0 16px;
+      border-radius: var(--radius-sm);
+      background: var(--warn-soft);
+      color: var(--text);
+    }
+
+    .note .ni { flex: none; font-size: 1.3rem; line-height: 1.3; }
+    .note p { margin: 0; }
+    .note p + p { margin-top: 6px; }
+    .note.info { background: var(--info-soft); }
+
+    details.more {
+      margin: 0 0 16px;
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+    }
+
+    details.more summary {
+      padding: 14px 16px;
+      font-weight: 600;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    details.more summary::-webkit-details-marker { display: none; }
+    details.more summary::before { content: '＋ '; color: var(--accent); }
+    details.more[open] summary::before { content: '－ '; }
+    details.more .inner { padding: 0 16px 14px; }
+    details.more ul { margin: 0; padding-left: 20px; }
+
+    /* Скриншоты */
+    figure.shot { margin: 10px 0 4px; }
+
+    figure.shot img {
+      display: block;
+      width: 100%;
+      max-width: 560px;
+      height: auto;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--line);
+      cursor: zoom-in;
+    }
+
+    figure.shot figcaption { margin-top: 6px; font-size: .85rem; color: var(--muted); }
+
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      place-items: center;
+      padding: 16px;
+      background: rgba(0, 0, 0, .85);
+      cursor: zoom-out;
+    }
+
+    .lightbox.open { display: grid; }
+    .lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; }
+
+    /* Проверка серверов изображений */
+    .tester { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0; }
+
+    .srv {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      border: 2px solid transparent;
+    }
+
+    .srv .dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--muted); }
+    .srv b { display: block; }
+    .srv small { color: var(--muted); }
+    .srv.checking .dot { animation: pulse 1s infinite; }
+    .srv.ok { background: var(--ok-soft); border-color: var(--ok); }
+    .srv.ok .dot { background: var(--ok); }
+    .srv.bad { background: var(--bad-soft); }
+    .srv.bad .dot { background: var(--bad); }
+
+    @keyframes pulse { 50% { opacity: .25; } }
+
+    .combo {
+      margin-top: 12px;
+      padding: 16px;
+      border-radius: var(--radius-sm);
+      border: 2px solid var(--line);
+    }
+
+    .combo.best { border-color: var(--ok); background: var(--ok-soft); }
+    .combo h4 { margin: 0 0 10px; font-size: 1rem; }
+
+    .badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--ok);
+      color: #fff;
+      font-size: .75rem;
+      vertical-align: middle;
+    }
+
+    .kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; margin: 0; }
+    .kv dt { color: var(--muted); }
+    .kv dd { margin: 0; font-weight: 700; text-align: right; }
+    .kv dd small { display: block; font-weight: 400; color: var(--muted); }
+
+    .result-empty { padding: 14px 16px; border-radius: var(--radius-sm); background: var(--bad-soft); }
+
+    .manual-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+    .manual-links a {
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    /* Кнопки */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 48px;
+      padding: 0 20px;
+      font: inherit;
+      font-weight: 600;
+      color: #fff;
+      background: var(--accent);
+      border: 0;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+
+    .btn.ghost { background: var(--surface-2); color: var(--text); }
+    .btn:active { transform: scale(.98); }
+
+    /* Списки серверов */
+    .list { display: grid; gap: 8px; }
+
+    .item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 12px 12px 14px;
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+    }
+
+    .item .txt { flex: 1; min-width: 0; font-family: var(--mono); font-size: .9rem; overflow-wrap: anywhere; }
+    .item .txt a { color: var(--info); }
+
+    .copy {
+      flex: none;
+      min-height: 40px;
+      padding: 0 14px;
+      font: inherit;
+      font-size: .85rem;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      cursor: pointer;
+    }
+
+    .copy.done { color: var(--ok); border-color: var(--ok); }
+
+    .loading { color: var(--muted); padding: 8px 0; }
+
+    /* Обратная связь */
+    .feedback { text-align: center; }
+    .feedback h3 { margin: 0 0 14px; }
+    .feedback .row { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+    .feedback .row .btn { min-width: 170px; }
+    .feedback .btn.yes { background: var(--ok); }
+    .feedback .btn.no { background: var(--surface-2); color: var(--text); }
+    .feedback .msg { display: none; margin-top: 0; padding: 16px; border-radius: var(--radius-sm); }
+    .feedback .msg.ok { background: var(--ok-soft); }
+    .feedback .msg.help { background: var(--warn-soft); }
+
+    [hidden] { display: none !important; }
+
+    .view { animation: in .25s ease-out; }
+    @keyframes in { from { opacity: 0; transform: translateY(8px); } }
+
+    footer { margin-top: 32px; text-align: center; color: var(--muted); font-size: .85rem; }
+
+    @media (max-width: 480px) {
+      body { font-size: 16px; }
+      .panel { padding: 16px; }
+      .steps > li { padding-left: 46px; }
+      .feedback .row .btn { flex: 1; min-width: 0; }
+      .kv { grid-template-columns: 1fr; gap: 0; }
+      .kv dd { text-align: left; margin-bottom: 8px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+
+    <!-- ================= ГЛАВНАЯ ================= -->
+    <main id="home" class="view">
+      <header class="hero">
+        <div class="cat-wrap" id="catWrap">
+          <svg class="cat" id="cat" viewBox="0 0 200 230" role="button" tabindex="0" aria-label="Кот-сфинкс. Погладьте его!">
+            <defs>
+              <radialGradient id="catSkin" cx="45%" cy="30%" r="75%">
+                <stop offset="0" stop-color="#f8d3c1" />
+                <stop offset=".65" stop-color="#e9b49d" />
+                <stop offset="1" stop-color="#d39480" />
+              </radialGradient>
+              <radialGradient id="catEar" cx="50%" cy="75%" r="75%">
+                <stop offset="0" stop-color="#f9bdb3" />
+                <stop offset="1" stop-color="#e48c86" />
+              </radialGradient>
+              <radialGradient id="catIris" cx="50%" cy="40%" r="60%">
+                <stop offset="0" stop-color="#e3ef7c" />
+                <stop offset=".55" stop-color="#95c23f" />
+                <stop offset="1" stop-color="#4c7a22" />
+              </radialGradient>
+            </defs>
+
+            <ellipse cx="100" cy="222" rx="66" ry="6" fill="#000" opacity=".12" />
+
+            <!-- хвост -->
+            <path id="catTail" d="M136 208 C168 210 186 190 180 164 C176 146 162 140 156 152" fill="none" stroke="#e0a58f" stroke-width="9" stroke-linecap="round" />
+
+            <!-- тело -->
+            <g id="catBody">
+              <path d="M62 216 C42 210 44 162 60 138 C72 121 88 114 100 114 C112 114 128 121 140 138 C156 162 158 210 138 216 Z" fill="url(#catSkin)" />
+              <path d="M78 134 Q100 144 122 134 M82 148 Q100 155 118 148 M86 162 Q100 167 114 162" fill="none" stroke="#c4826d" stroke-width="1.6" stroke-linecap="round" opacity=".45" />
+              <path d="M79 164 C75 186 75 204 77 214 M121 164 C125 186 125 204 123 214" fill="none" stroke="#c4826d" stroke-width="2" stroke-linecap="round" opacity=".35" />
+              <ellipse cx="84" cy="215" rx="14" ry="7" fill="#f2c5b0" />
+              <ellipse cx="116" cy="215" rx="14" ry="7" fill="#f2c5b0" />
+              <path d="M80 213 v4 M86 213 v4 M112 213 v4 M118 213 v4" stroke="#c4826d" stroke-width="1.2" stroke-linecap="round" opacity=".5" />
+            </g>
+
+            <!-- голова -->
+            <g id="catHead">
+              <path d="M60 80 C48 52 44 28 50 12 C66 20 86 36 94 52 Z" fill="url(#catSkin)" />
+              <path d="M140 80 C152 52 156 28 150 12 C134 20 114 36 106 52 Z" fill="url(#catSkin)" />
+              <path d="M64 72 C57 52 55 36 58 25 C69 33 81 45 86 55 Z" fill="url(#catEar)" />
+              <path d="M136 72 C143 52 145 36 142 25 C131 33 119 45 114 55 Z" fill="url(#catEar)" />
+
+              <path d="M100 42 C132 42 152 62 151 90 C150 114 128 134 100 134 C72 134 50 114 49 90 C48 62 68 42 100 42 Z" fill="url(#catSkin)" />
+
+              <path d="M92 50 Q100 47 108 50 M84 57 Q100 51 116 57 M88 64 Q100 60 112 64" fill="none" stroke="#c4826d" stroke-width="1.6" stroke-linecap="round" opacity=".5" />
+
+              <ellipse cx="70" cy="106" rx="11" ry="6" fill="#f0908a" opacity=".35" />
+              <ellipse cx="130" cy="106" rx="11" ry="6" fill="#f0908a" opacity=".35" />
+
+              <g transform="rotate(-10 80 88)">
+                <g class="cat-eye">
+                  <path d="M65 88 Q80 73 95 88 Q80 101 65 88 Z" fill="url(#catIris)" stroke="#6b3d2e" stroke-width="1.6" />
+                  <ellipse class="cat-pupil" cx="80" cy="87.5" rx="2.6" ry="6" fill="#161616" />
+                  <circle cx="84" cy="84" r="2" fill="#fff" opacity=".9" />
+                </g>
+              </g>
+              <g transform="rotate(10 120 88)">
+                <g class="cat-eye">
+                  <path d="M105 88 Q120 73 135 88 Q120 101 105 88 Z" fill="url(#catIris)" stroke="#6b3d2e" stroke-width="1.6" />
+                  <ellipse class="cat-pupil" cx="120" cy="87.5" rx="2.6" ry="6" fill="#161616" />
+                  <circle cx="124" cy="84" r="2" fill="#fff" opacity=".9" />
+                </g>
+              </g>
+
+              <path d="M94 104 L106 104 Q106 109 100 111 Q94 109 94 104 Z" fill="#d9767a" />
+              <path d="M100 111 V115 M100 115 Q94 121 89 117 M100 115 Q106 121 111 117" fill="none" stroke="#9c5a4c" stroke-width="1.8" stroke-linecap="round" />
+              <path d="M58 107 L78 110 M60 116 L78 114 M142 107 L122 110 M140 116 L122 114" stroke="#b07a68" stroke-width="1" stroke-linecap="round" opacity=".6" />
+            </g>
+          </svg>
+          <span class="pet-hint">погладь меня 🐾</span>
+        </div>
+        <div>
+          <h1>Помощник NUM</h1>
+          <p>Решаем проблемы с приложением по шагам</p>
+        </div>
+      </header>
+
+      <div class="bubble" id="bubble">Мяу! Нажмите на то, что у вас не работает, и я покажу, что делать.</div>
+
+      <div class="section-title">Что не работает?</div>
+      <div class="grid">
+        <button class="card-btn" data-go="posters">
+          <span class="ico">🖼️</span>
+          <span><b>Нет картинок (постеров)</b><span class="desc">Вместо обложек пусто, или в подборках есть дата, но нет названий</span></span>
+          <span class="go">›</span>
+        </button>
+        <button class="card-btn" data-go="torrents">
+          <span class="ico">🔍</span>
+          <span><b>Не находит торренты</b><span class="desc">Поиск долгий, не работает или пишет «Нет результата»</span></span>
+          <span class="go">›</span>
+        </button>
+        <button class="card-btn" data-go="titles">
+          <span class="ico">🎬</span>
+          <span><b>Нет названий фильмов</b><span class="desc">Пустые названия, старая дата обновления или в подборках 0</span></span>
+          <span class="go">›</span>
+        </button>
+        <button class="card-btn" data-go="auth">
+          <span class="ico">🔒</span>
+          <span><b>Зависает на «Аутентификация»</b><span class="desc">Приложение не идёт дальше этого экрана</span></span>
+          <span class="go">›</span>
+        </button>
+      </div>
+
+      <div class="section-title">Поддержать</div>
+      <div class="grid">
+        <button class="card-btn small" data-go="support">
+          <span class="ico">💖</span>
+          <span><b>Поддержать автора NUM</b></span>
+          <span class="go">›</span>
+        </button>
+        <button class="card-btn small" data-go="otherSupport">
+          <span class="ico">🤝</span>
+          <span><b>Поддержать источники, прокси и Jackett</b></span>
+          <span class="go">›</span>
+        </button>
+      </div>
+
+      <footer>Не нашли свою проблему? Напишите в чат приложения NUM.</footer>
+    </main>
+
+    <!-- ================= ПОСТЕРЫ ================= -->
+    <section id="posters" class="view" hidden>
+      <div class="topbar"><button class="back" data-back>‹ Назад</button></div>
+      <div class="page-head">
+        <div class="ico">🖼️</div>
+        <h2>Не видно постеров</h2>
+        <p>Нужно выбрать сервер картинок, который у вас работает.</p>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="p-auto">Способ 1: подобрать сервер</button>
+        <button role="tab" aria-selected="false" data-tab="p-proxy">Способ 2: прокси</button>
+      </div>
+
+      <div id="p-auto">
+        <div class="note">
+          <span class="ni">⚠️</span>
+          <div>
+            <p><b>Выключите VPN</b> на этом телефоне или компьютере.</p>
+            <p>Устройство должно быть подключено к тому же интернету (Wi-Fi), что и приставка/телевизор.</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Шаг 1. Проверяем серверы</h3>
+          <p>Страница сама проверит, какие серверы картинок у вас открываются.</p>
+          <div class="tester" id="tester"></div>
+          <button class="btn ghost" id="retest">↻ Проверить ещё раз</button>
+          <details class="more" style="margin-top:14px">
+            <summary>Проверить вручную</summary>
+            <div class="inner">
+              <p style="margin-top:0">Нажмите на каждую ссылку. Если открылась картинка — сервер работает.</p>
+              <div class="manual-links" id="manualLinks"></div>
+            </div>
+          </details>
+        </div>
+
+        <div class="panel">
+          <h3>Шаг 2. Что выставить в NUM</h3>
+          <div id="combos"><p class="loading">Ждём окончания проверки…</p></div>
+        </div>
+
+        <div class="panel">
+          <h3>Шаг 3. Где это в приложении</h3>
+          <ol class="steps">
+            <li>
+              <p>Откройте настройки</p>
+              <div class="path"><span>⚙️ Настройки</span><i>›</i><span>Информация о видео</span></div>
+              <figure class="shot"><img src="img/settings.png" alt="Главный экран NUM, кнопка настроек" loading="lazy"><figcaption>Кнопка «Настройки» на главном экране</figcaption></figure>
+              <figure class="shot"><img src="img/tmdb.png" alt="Экран «Информация о видео»" loading="lazy"><figcaption>Экран «Информация о видео»</figcaption></figure>
+            </li>
+            <li>
+              <p>Выставьте три пункта, как показано в шаге 2</p>
+              <ul>
+                <li><span class="set">Сервер API TMDB</span></li>
+                <li><span class="set">Сервер изображений</span></li>
+                <li><span class="set">Доступ к TMDB</span></li>
+              </ul>
+            </li>
+            <li>
+              <p>Перезапустите приложение — это обязательно!</p>
+              <p>Любым способом:</p>
+              <ul>
+                <li>дважды нажмите «Назад» на пульте, или зажмите «Назад»;</li>
+                <li>или <span class="set">Настройки Android › Приложения › NUM › Остановить</span>;</li>
+                <li>или выключите приставку из розетки и включите снова.</li>
+              </ul>
+            </li>
+          </ol>
+        </div>
+      </div>
+
+      <div id="p-proxy" hidden>
+        <div class="panel">
+          <ol class="steps">
+            <li>
+              <p>Откройте настройки</p>
+              <div class="path"><span>⚙️ Настройки</span><i>›</i><span>Информация о видео</span></div>
+            </li>
+            <li>
+              <p>Выставьте так:</p>
+              <dl class="kv">
+                <dt>Сервер API TMDB</dt><dd>TMDB</dd>
+                <dt>Сервер изображений</dt><dd>TMDB</dd>
+                <dt>Доступ к TMDB</dt><dd>Использовать прокси-сервер</dd>
+              </dl>
+            </li>
+            <li>
+              <p>Ниже на том же экране заполните настройки прокси</p>
+              <p>Возьмите любой прокси из списка ниже и впишите его в поля <span class="set">Прокси хост или IP</span>, <span class="set">Прокси порт</span> и выберите <span class="set">Тип прокси</span>.</p>
+              <figure class="shot"><img src="img/proxy.png" alt="Настройки прокси-сервера" loading="lazy"><figcaption>Настройки прокси-сервера</figcaption></figure>
+            </li>
+            <li>
+              <p>Перезапустите приложение</p>
+              <p>Дважды нажмите «Назад» на пульте или выключите приставку из розетки.</p>
+            </li>
+          </ol>
+        </div>
+
+        <div class="panel">
+          <h3>Список прокси-серверов</h3>
+          <div class="list" data-list="proxy"><p class="loading">Загружаем список…</p></div>
+          <p style="color:var(--muted);font-size:.9rem">Если прокси не работает — попробуйте следующий из списка.</p>
+        </div>
+      </div>
+
+      <div class="panel feedback" data-feedback></div>
+    </section>
+
+    <!-- ================= ТОРРЕНТЫ ================= -->
+    <section id="torrents" class="view" hidden>
+      <div class="topbar"><button class="back" data-back>‹ Назад</button></div>
+      <div class="page-head">
+        <div class="ico">🔍</div>
+        <h2>Не находит торренты</h2>
+        <p>Настроим, где приложение ищет раздачи.</p>
+      </div>
+
+      <div class="panel">
+        <ol class="steps">
+          <li>
+            <p>Откройте настройки трекеров</p>
+            <div class="path"><span>⚙️ Настройки</span><i>›</i><span>Настройки торрентов</span><i>›</i><span>Настройки торрент-трекеров</span></div>
+            <figure class="shot"><img src="img/trackers.png" alt="Настройки торрент-трекеров" loading="lazy"><figcaption>Экран «Настройки торрент-трекеров»</figcaption></figure>
+          </li>
+          <li>
+            <p>Выключите все переключатели</p>
+            <p>RuTor, NUMParser, TorrServer, MegaPeer и остальные — все в положение <span class="off">выкл.</span></p>
+          </li>
+          <li>
+            <p>Включите только</p>
+            <ul>
+              <li><span class="set">Поиск c Jackett</span> — <span class="on">вкл.</span></li>
+            </ul>
+          </li>
+          <li>
+            <p>Поля адресов оставьте пустыми</p>
+            <p><span class="set">Адрес Torrs</span> и <span class="set">Адрес Jackett</span> — ничего не вписывайте, приложение выберет само.</p>
+          </li>
+        </ol>
+      </div>
+
+      <div class="section-title">Всё равно не работает?</div>
+
+      <details class="more">
+        <summary>Поиск медленный или не работает</summary>
+        <div class="inner">
+          <p style="margin-top:0">Выключите <span class="set">Поиск c Torrs</span> и оставьте включённым только <span class="set">Поиск c Jackett</span>.</p>
+        </div>
+      </details>
+
+      <details class="more">
+        <summary>Пишет «Нет результата»</summary>
+        <div class="inner">
+          <ol class="steps">
+            <li>
+              <p>Поищите по оригинальному названию</p>
+              <p>Например, не «Дюна», а «Dune».</p>
+            </li>
+            <li>
+              <p>Проверьте, вышел ли фильм в цифре</p>
+              <p>Поищите в интернете «название + цифровой релиз». Если фильм только в кино — хороших раздач ещё нет.</p>
+            </li>
+            <li>
+              <p>Хотите смотреть даже в плохом качестве?</p>
+              <div class="path"><span>⚙️ Настройки</span><i>›</i><span>Настройки торрентов</span><i>›</i><span>Настройки качества торрентов</span></div>
+              <p>Включите <span class="set">Выдавать торренты с низким качеством</span>.</p>
+              <figure class="shot"><img src="img/quality.png" alt="Настройки качества торрентов" loading="lazy"><figcaption>Экран «Настройки качества торрентов»</figcaption></figure>
+            </li>
+            <li>
+              <p>Или впишите свой Jackett из списка ниже</p>
+              <p>В поле <span class="set">Адрес Jackett</span> (и <span class="set">Jackett API Key</span>, если он указан). Проверить, работает ли Jackett, можно, открыв его ссылку.</p>
+            </li>
+          </ol>
+        </div>
+      </details>
+
+      <div class="panel">
+        <h3>Список Jackett-серверов</h3>
+        <div class="list" data-list="jackett"><p class="loading">Загружаем список…</p></div>
+      </div>
+
+      <div class="panel feedback" data-feedback></div>
+    </section>
+
+    <!-- ================= НАЗВАНИЯ ================= -->
+    <section id="titles" class="view" hidden>
+      <div class="topbar"><button class="back" data-back>‹ Назад</button></div>
+      <div class="page-head">
+        <div class="ico">🎬</div>
+        <h2>Нет названий фильмов</h2>
+        <p>Или старая дата обновления, или в подборках 0.</p>
+      </div>
+
+      <div class="panel">
+        <ol class="steps">
+          <li>
+            <p>Откройте настройки данных</p>
+            <div class="path"><span>⚙️ Настройки</span><i>›</i><span>Управление данными</span></div>
+            <figure class="shot"><img src="img/data.png" alt="Экран «Управление данными»" loading="lazy"><figcaption>Экран «Управление данными»</figcaption></figure>
+          </li>
+          <li>
+            <p>Выберите источник</p>
+            <p><span class="set">Источник данных приложения</span> → <b>YouROK</b></p>
+          </li>
+          <li>
+            <p>Оставьте ссылку пустой</p>
+            <p>Поле <span class="set">Ссылка на свой источник данных</span> — ничего не вписывайте.</p>
+            <p>Не помогло? Впишите туда любой источник из списка ниже.</p>
+          </li>
+        </ol>
+      </div>
+
+      <div class="panel">
+        <h3>Список источников данных</h3>
+        <div class="list" data-list="nmprs"><p class="loading">Загружаем список…</p></div>
+      </div>
+
+      <div class="panel feedback" data-feedback></div>
+    </section>
+
+    <!-- ================= АУТЕНТИФИКАЦИЯ ================= -->
+    <section id="auth" class="view" hidden>
+      <div class="topbar"><button class="back" data-back>‹ Назад</button></div>
+      <div class="page-head">
+        <div class="ico">🔒</div>
+        <h2>Зависает на «Аутентификация»</h2>
+      </div>
+
+      <div class="note">
+        <span class="ni">📡</span>
+        <div>
+          <p>Скорее всего, ваш провайдер заблокировал конфигурацию «антизапрет».</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <p>Определите свою проблему по описанию в инструкции и воспользуйтесь её решением — так приложение заработает без сторонних обходов блокировок.</p>
+        <p>Посмотрите пункт <span class="set">Настройки › Обход блокировок Роскомнадзора</span> в самом приложении.</p>
+      </div>
+
+      <div class="panel feedback" data-feedback></div>
+    </section>
+
+    <!-- ================= ПОДДЕРЖКА АВТОРА ================= -->
+    <section id="support" class="view" hidden>
+      <div class="topbar"><button class="back" data-back>‹ Назад</button></div>
+      <div class="page-head">
+        <div class="ico">💖</div>
+        <h2>Поддержать автора</h2>
+        <p>Если хотите поддержать развитие NUM — вот способы:</p>
+      </div>
+      <div class="panel">
+        <div class="list" data-list="support"><p class="loading">Загружаем…</p></div>
+      </div>
+      <p style="text-align:center;font-weight:600">Спасибо за вашу поддержку! 🐱</p>
+    </section>
+
+    <!-- ================= ПОДДЕРЖКА ИСТОЧНИКОВ ================= -->
+    <section id="otherSupport" class="view" hidden>
+      <div class="topbar"><button class="back" data-back>‹ Назад</button></div>
+      <div class="page-head">
+        <div class="ico">🤝</div>
+        <h2>Поддержать источники, прокси и Jackett</h2>
+        <p>Эти сервисы держат другие люди. Поддержать их можно так:</p>
+      </div>
+      <div class="panel">
+        <div class="list" data-list="otherSupport"><p class="loading">Загружаем…</p></div>
+      </div>
+      <p style="text-align:center;font-weight:600">Спасибо за вашу поддержку! 🌟</p>
+    </section>
+
+  </div>
+
+  <div class="lightbox" id="lightbox"><img alt=""></div>
+
+  <template id="feedbackTpl">
+    <div class="ask">
+      <h3>Помогло?</h3>
+      <div class="row">
+        <button class="btn yes" data-fb="yes">👍 Да, работает</button>
+        <button class="btn no" data-fb="no">👎 Нет, не помогло</button>
+      </div>
+    </div>
+    <p class="msg ok">🎉 Отлично! Кот-сфинкс рад, что смог помочь. Приятного просмотра! 🐱</p>
+    <p class="msg help">😿 Жаль. Напишите в чат приложения NUM и опишите, что уже попробовали — там помогут разобраться.</p>
+  </template>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var LISTS = {
+        proxy: 'https://cash94.github.io/numproxy.txt',
+        jackett: 'https://cash94.github.io/jackett.txt',
+        nmprs: 'https://cash94.github.io/nmprs.txt',
+        support: 'https://cash94.github.io/support.txt',
+        otherSupport: 'https://cash94.github.io/OtherSupport.txt'
+      };
+
+      // Серверы картинок и какие настройки подходят, если сервер открылся
+      var SERVERS = [
+        { id: 'torrs', name: 'Torrs', url: 'https://tmdb.torrs.ru/TMDBimg/3/t/p//w342/ilgFnREE6Md30RbDdAZfx4U4Iiy.jpg', api: ['Torrs', 'TMDB'] },
+        { id: 'johnny', name: 'Johnny', url: 'https://nmtmdb.duckdns.org/t/p/w342/ilgFnREE6Md30RbDdAZfx4U4Iiy.jpg', api: ['Johnny', 'TMDB'] },
+        { id: 'lampa', name: 'Lampa', url: 'https://nl.imagetmdb.com/t/p//w342/ilgFnREE6Md30RbDdAZfx4U4Iiy.jpg', api: ['TMDB', 'Torrs', 'Johnny'] },
+        { id: 'tmdb', name: 'TMDB', url: 'https://image.tmdb.org/t/p//w342/ilgFnREE6Md30RbDdAZfx4U4Iiy.jpg', api: ['TMDB'] }
+      ];
+      var CHECK_TIMEOUT = 10000;
+
+      var PURR = ['Муррр… 🐱', 'Мяу! 😸', 'Мур-мур-мур… 🐾', 'Мррр… приятно! 😻'];
+      var HOME_TEXT = 'Мяу! Нажмите на то, что у вас не работает, и я покажу, что делать.';
+
+      var $ = function (sel, root) { return (root || document).querySelector(sel); };
+      var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+
+      // ---------- Навигация (через #адрес, чтобы работала кнопка «Назад» браузера) ----------
+      var views = $$('.view');
+
+      function show() {
+        var id = location.hash.slice(1) || 'home';
+        if (!document.getElementById(id) || !document.getElementById(id).classList.contains('view')) id = 'home';
+        views.forEach(function (v) { v.hidden = v.id !== id; });
+        window.scrollTo(0, 0);
+        if (id === 'posters' && !tested) runTest();
+      }
+
+      var cameFromHome = false;
+      $$('[data-go]').forEach(function (b) {
+        b.addEventListener('click', function () { cameFromHome = true; location.hash = b.dataset.go; });
+      });
+      $$('[data-back]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          if (cameFromHome) { cameFromHome = false; history.back(); }
+          else location.hash = '';
+        });
+      });
+      window.addEventListener('hashchange', show);
+
+      // ---------- Вкладки ----------
+      $$('.tabs').forEach(function (tabs) {
+        var btns = $$('[data-tab]', tabs);
+        btns.forEach(function (b) {
+          b.addEventListener('click', function () {
+            btns.forEach(function (x) {
+              var on = x === b;
+              x.setAttribute('aria-selected', on);
+              document.getElementById(x.dataset.tab).hidden = !on;
+            });
+          });
+        });
+      });
+
+      // ---------- Скриншоты: прячем, если файла нет; увеличиваем по нажатию ----------
+      var lightbox = $('#lightbox');
+      $$('figure.shot img').forEach(function (img) {
+        var drop = function () { img.closest('figure').remove(); };
+        if (img.complete && img.naturalWidth === 0) drop();
+        img.addEventListener('error', drop);
+        img.addEventListener('click', function () {
+          $('img', lightbox).src = img.src;
+          lightbox.classList.add('open');
+        });
+      });
+      lightbox.addEventListener('click', function () { lightbox.classList.remove('open'); });
+
+      // ---------- Обратная связь ----------
+      $$('[data-feedback]').forEach(function (box) {
+        box.appendChild($('#feedbackTpl').content.cloneNode(true));
+        $$('[data-fb]', box).forEach(function (b) {
+          b.addEventListener('click', function () {
+            var yes = b.dataset.fb === 'yes';
+            $('.ask', box).hidden = true;
+            $(yes ? '.msg.ok' : '.msg.help', box).style.display = 'block';
+          });
+        });
+      });
+
+      // ---------- Кот: глажка и мурлыканье ----------
+      var bubble = $('#bubble');
+      var cat = $('#cat');
+      var catWrap = $('#catWrap');
+      var PURR_SECONDS = 2.5;
+      var audioCtx = null;
+      var purrUntil = 0;
+      var purrTimer, bubbleTimer;
+
+      // Синтез мурчания (из прежней версии страницы)
+      function playPurr() {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        if (!audioCtx) audioCtx = new AC();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        var duration = PURR_SECONDS;
+        var sampleRate = audioCtx.sampleRate;
+        var buffer = audioCtx.createBuffer(1, Math.floor(sampleRate * duration), sampleRate);
+        var data = buffer.getChannelData(0);
+        var baseFreq = 24.5, purrRate = 24.5, noise = 0, i;
+
+        var noiseBuffer = new Float32Array(buffer.length);
+        for (i = 0; i < noiseBuffer.length; i++) {
+          noise = noise * 0.95 + (Math.random() - 0.5) * 0.1;
+          noiseBuffer[i] = noise;
+        }
+
+        for (i = 0; i < buffer.length; i++) {
+          var t = i / sampleRate;
+          var pulse = (Math.sin(t * purrRate * 2 * Math.PI) + Math.sin(t * purrRate * 1.3 * 2 * Math.PI) * 0.4) / 1.4;
+          var f = baseFreq + pulse * 2.2 + Math.sin(t * 0.5) * 0.8;
+          var breath = 0.72 + 0.28 * Math.sin(t * 0.58);
+          var amp = Math.pow(Math.min(1, t * 3.5), 1.2) * Math.pow(Math.exp(-t * 0.4), 0.9) * 0.6 * breath;
+          var tone = Math.sin(2 * Math.PI * f * t) +
+            Math.sin(2 * Math.PI * f * 2 * t) * 0.28 +
+            Math.sin(2 * Math.PI * f * 3 * t) * 0.14 +
+            Math.sin(2 * Math.PI * f * 4 * t) * 0.07 +
+            Math.sin(2 * Math.PI * f * 0.5 * t) * 0.12;
+          var vibration = Math.sin(2 * Math.PI * (38 + Math.sin(t * 0.3) * 4) * t) * 0.05;
+          var s = tone * amp + vibration * amp + noiseBuffer[i] * 0.12 * amp * (0.4 + Math.abs(pulse) * 0.6);
+          data[i] = Math.tanh(s * 0.7);
+        }
+
+        var src = audioCtx.createBufferSource();
+        var gain = audioCtx.createGain();
+        var lowpass = audioCtx.createBiquadFilter();
+        var comp = audioCtx.createDynamicsCompressor();
+        lowpass.type = 'lowpass';
+        lowpass.frequency.value = 130;
+        lowpass.Q.value = 0.5;
+        comp.threshold.value = -20;
+        comp.knee.value = 20;
+        comp.ratio.value = 8;
+        comp.attack.value = 0.001;
+        comp.release.value = 0.2;
+
+        var now = audioCtx.currentTime;
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.9, now + 0.3);
+        gain.gain.setValueAtTime(0.9, now + duration * 0.4);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+        src.buffer = buffer;
+        src.connect(lowpass);
+        lowpass.connect(comp);
+        comp.connect(gain);
+        gain.connect(audioCtx.destination);
+        src.start(now);
+      }
+
+      function spawnHeart() {
+        var h = document.createElement('span');
+        h.className = 'heart';
+        h.textContent = Math.random() < .5 ? '💗' : '🐾';
+        h.style.setProperty('--dx', (Math.random() * 60 - 30) + 'px');
+        catWrap.appendChild(h);
+        setTimeout(function () { h.remove(); }, 1500);
+      }
+
+      function pet() {
+        var now = Date.now();
+        spawnHeart();
+        // пока мурчит — новый звук не запускаем, только продлеваем «довольный» вид
+        if (now >= purrUntil) {
+          purrUntil = now + PURR_SECONDS * 1000;
+          try { playPurr(); } catch (e) { /* без звука */ }
+          bubble.textContent = PURR[Math.floor(Math.random() * PURR.length)];
+        }
+        cat.classList.add('purring');
+        clearTimeout(purrTimer);
+        purrTimer = setTimeout(function () { cat.classList.remove('purring'); }, Math.max(purrUntil - now, 1200));
+        clearTimeout(bubbleTimer);
+        bubbleTimer = setTimeout(function () { bubble.textContent = HOME_TEXT; }, PURR_SECONDS * 1000 + 800);
+      }
+
+      // Нажатие — погладить
+      cat.addEventListener('click', pet);
+      cat.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pet(); }
+      });
+
+      // Проведение мышью или пальцем по коту — тоже глажка
+      var stroke = 0, lastX = null, lastY = null, pressed = false;
+      cat.addEventListener('pointerdown', function (e) { pressed = true; lastX = e.clientX; lastY = e.clientY; });
+      window.addEventListener('pointerup', function () { pressed = false; });
+      cat.addEventListener('pointerleave', function () { lastX = lastY = null; stroke = 0; });
+      cat.addEventListener('pointermove', function (e) {
+        if (e.pointerType !== 'mouse' && !pressed) return;
+        if (lastX !== null) stroke += Math.abs(e.clientX - lastX) + Math.abs(e.clientY - lastY);
+        lastX = e.clientX;
+        lastY = e.clientY;
+        if (stroke > 160) { stroke = 0; pet(); }
+      });
+
+      // ---------- Проверка серверов картинок ----------
+      var tested = false;
+      var tester = $('#tester');
+      var manual = $('#manualLinks');
+
+      SERVERS.forEach(function (s) {
+        var el = document.createElement('div');
+        el.className = 'srv';
+        el.id = 'srv-' + s.id;
+        el.innerHTML = '<span class="dot"></span><span><b>' + s.name + '</b><small>—</small></span>';
+        tester.appendChild(el);
+
+        var a = document.createElement('a');
+        a.href = s.url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = s.name;
+        manual.appendChild(a);
+      });
+
+      function checkImage(url) {
+        return new Promise(function (resolve) {
+          var img = new Image();
+          var done = false;
+          var finish = function (ok) { if (!done) { done = true; resolve(ok); } };
+          var t = setTimeout(function () { finish(false); }, CHECK_TIMEOUT);
+          img.onload = function () { clearTimeout(t); finish(img.naturalWidth > 0); };
+          img.onerror = function () { clearTimeout(t); finish(false); };
+          img.src = url + (url.indexOf('?') < 0 ? '?' : '&') + '_=' + Date.now();
+        });
+      }
+
+      function runTest() {
+        tested = true;
+        $('#combos').innerHTML = '<p class="loading">Проверяем серверы…</p>';
+        var results = {};
+        return Promise.all(SERVERS.map(function (s) {
+          var el = document.getElementById('srv-' + s.id);
+          el.className = 'srv checking';
+          $('small', el).textContent = 'проверяем…';
+          return checkImage(s.url).then(function (ok) {
+            results[s.id] = ok;
+            el.className = 'srv ' + (ok ? 'ok' : 'bad');
+            $('small', el).textContent = ok ? 'работает' : 'не открывается';
+          });
+        })).then(function () { renderCombos(results); });
+      }
+
+      function renderCombos(results) {
+        var box = $('#combos');
+        var working = SERVERS.filter(function (s) { return results[s.id]; });
+        if (!working.length) {
+          box.innerHTML = '<div class="result-empty"><b>Ни один сервер не открылся.</b><br>' +
+            'Проверьте, что VPN выключен, и нажмите «Проверить ещё раз». Если снова ничего — используйте <b>Способ 2: прокси</b> (вкладка вверху).</div>';
+          return;
+        }
+        box.innerHTML = '';
+        working.forEach(function (s, i) {
+          var alt = s.api.slice(1);
+          var div = document.createElement('div');
+          div.className = 'combo' + (i === 0 ? ' best' : '');
+          div.innerHTML =
+            '<h4>' + (i === 0 ? 'Вариант для вас<span class="badge">Рекомендуем</span>' : 'Запасной вариант: ' + s.name) + '</h4>' +
+            '<dl class="kv">' +
+            '<dt>Сервер API TMDB</dt><dd>' + s.api[0] + (alt.length ? '<small>или ' + alt.join(', ') + '</small>' : '') + '</dd>' +
+            '<dt>Сервер изображений</dt><dd>' + s.name + '</dd>' +
+            '<dt>Доступ к TMDB</dt><dd>NUM DNS<small>или Quad9 DoH</small></dd>' +
+            '</dl>';
+          box.appendChild(div);
+        });
+        var p = document.createElement('p');
+        p.style.cssText = 'margin:12px 0 0;color:var(--muted);font-size:.9rem';
+        p.textContent = 'Не помог первый вариант — попробуйте запасной. После каждой смены настроек перезапускайте приложение.';
+        box.appendChild(p);
+      }
+
+      $('#retest').addEventListener('click', runTest);
+
+      // ---------- Списки с сервера ----------
+      function copyText(text, btn) {
+        var ok = function () {
+          btn.textContent = 'Скопировано ✓';
+          btn.classList.add('done');
+          setTimeout(function () { btn.textContent = 'Копировать'; btn.classList.remove('done'); }, 1800);
+        };
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).then(ok, function () { fallbackCopy(text); ok(); });
+        } else { fallbackCopy(text); ok(); }
+      }
+
+      function fallbackCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (e) { /* ничего */ }
+        ta.remove();
+      }
+
+      function renderList(box, text) {
+        var lines = text.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+        box.innerHTML = '';
+        if (!lines.length) { box.innerHTML = '<p class="loading">Список пока пуст.</p>'; return; }
+        lines.forEach(function (line) {
+          var item = document.createElement('div');
+          item.className = 'item';
+          var txt = document.createElement('div');
+          txt.className = 'txt';
+          line.split(/(https?:\/\/\S+)/i).forEach(function (part) {
+            if (!part) return;
+            if (/^https?:\/\//i.test(part)) {
+              var a = document.createElement('a');
+              a.href = part;
+              a.target = '_blank';
+              a.rel = 'noopener noreferrer';
+              a.textContent = part;
+              txt.appendChild(a);
+            } else {
+              txt.appendChild(document.createTextNode(part));
+            }
+          });
+          var url = line.match(/https?:\/\/\S+/i);
+          var btn = document.createElement('button');
+          btn.className = 'copy';
+          btn.textContent = 'Копировать';
+          btn.addEventListener('click', function () { copyText(url ? url[0] : line, btn); });
+          item.appendChild(txt);
+          item.appendChild(btn);
+          box.appendChild(item);
+        });
+      }
+
+      Object.keys(LISTS).forEach(function (key) {
+        var boxes = $$('[data-list="' + key + '"]');
+        fetch(LISTS[key], { cache: 'no-cache' })
+          .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+          .then(function (text) { boxes.forEach(function (b) { renderList(b, text); }); })
+          .catch(function () {
+            boxes.forEach(function (b) {
+              b.innerHTML = '<p class="loading">Не удалось загрузить список. Обновите страницу чуть позже.</p>';
+            });
+          });
+      });
+
+      show();
+    })();
+  </script>
+</body>
+
+</html>

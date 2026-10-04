@@ -1,0 +1,2653 @@
+// app.js - Инициализация приложения и обработчики событий
+// ==================== КОНСТАНТЫ ====================
+var APP_CONSTANTS = {
+  DEBOUNCE_DELAY_MS: 300,
+  CHECK_SERVER_TIMEOUT_MS: 500,
+  FOCUS_RESTORE_DELAY_MS: 100,
+  IDLE_TIMEOUT_MS: 3000,
+  TOUCH_TAP_THRESHOLD_MS: 300,
+  TOUCH_MOVE_THRESHOLD_PX: 10,
+  INITIAL_CHECK_DELAY_MS: 1000,
+  NAVIGATION_DELAY_MS: 300,
+  DETAIL_HIDE_DELAY_MS: 250,
+  FILTER_PANEL_DELAY_MS: 60,
+  ZOOM_TOAST_DURATION_MS: 1500,
+  HINT_DISPLAY_DURATION_MS: 2000,
+  JACRED_SAVE_DELAY_MS: 500
+};
+
+var CLICKABLE_SELECTORS = [
+  'button', '.control-btn', '.play-btn', '.torrent-card', '.file-item',
+  '.search-result-item', '.back-btn', '.settings-btn', '.view-tab',
+  '#play-pause-btn', '#mute-btn', '#prev-episode-btn', '#next-episode-btn',
+  '#episodes-btn', '#audio-btn', '#subtitles-btn', '#exit-player-btn', '#toggle-buffer-btn',
+  '.episode-item', '.audio-item', '.subtitle-item', '.close-panel-btn', '.filter-select',
+  '.filter-reset-btn', '.progress-continue-btn', '.detail-progress-btn',
+  '#close-search', '#filter-toggle', '#search-btn',
+  '#torrserver-tab-content', '#torrents-tab-content', '#player-tab-content', '#account-tab-content', '#sync-tab-content', '#other-tab-content',
+  '.menu-item', '.skip-button'
+].join(', ');
+
+// ==================== УТИЛИТЫ ====================
+function debounce(fn, delay) {
+  var timeoutId;
+  return function () {
+    var context = this, args = arguments;
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(function () {
+      fn.apply(context, args);
+    }, delay);
+  };
+}
+
+function safeExecute(fn, errorMessage) {
+  try {
+    return fn();
+  } catch (error) {
+    console.error(errorMessage, error);
+    return null;
+  }
+}
+
+// Экраны торрентов и каталога остаются смонтированными. При переключении вкладок
+// меняем только видимость и восстанавливаем позицию общего скролл-контейнера.
+function showContentScreen(screen, restoreScrollTop) {
+  // Страховка на случай, если шапку подняли поверх карточки (DetailTopbar в
+  // home.js) и карточку закрыли мимо обычного пути. Шапка физически одна на всё
+  // приложение, и оставленная внутри #detail-view она исчезла бы вместе с ним.
+  if (window.DetailTopbar && typeof DetailTopbar.ensureHome === 'function') {
+    DetailTopbar.ensureHome();
+  }
+
+  var torrentsScreen = getEl('content-torrents');
+  var catalogScreen = getEl('content-catalog');
+  var mainContainer = getEl('main-container');
+  if (!torrentsScreen || !catalogScreen) return;
+
+  if (typeof AppState !== 'undefined' && mainContainer &&
+    (AppState.currentScreen === 'torrents' || AppState.currentScreen === 'catalog')) {
+    AppState.contentScroll = AppState.contentScroll || {};
+    AppState.contentScroll[AppState.currentScreen] = mainContainer.scrollTop;
+  }
+
+  // Уходящий экран убираем сразу: оба экрана лежат в общем потоке #main-container,
+  // одновременно показать их нельзя — вторая вкладка встала бы под первой.
+  // Поэтому плавно проявляем только приходящий, и только когда вкладка реально
+  // сменилась (возврат из detail не должен мигать).
+  var hasScreenFade = typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function';
+  var incoming = screen === 'torrents' ? torrentsScreen : (screen === 'catalog' ? catalogScreen : null);
+  var outgoing = incoming === torrentsScreen ? catalogScreen : torrentsScreen;
+  var wasHidden = incoming ? incoming.hidden : false;
+
+  if (hasScreenFade) Animations.resetFade(outgoing);
+  outgoing.hidden = true;
+
+  if (!incoming) {
+    // Неизвестный экран — как раньше, прячем оба
+    if (hasScreenFade) Animations.resetFade(torrentsScreen);
+    torrentsScreen.hidden = true;
+    catalogScreen.hidden = true;
+  } else if (wasHidden && hasScreenFade) {
+    // fadeIn сам снимает hidden и ведёт прозрачность от 0 к 1
+    Animations.fadeIn(incoming, { duration: Animations.UI_FADE.screen });
+  } else {
+    if (hasScreenFade) Animations.resetFade(incoming);
+    incoming.hidden = false;
+  }
+
+  // Шапка снова на экране: ползунок «Шапка» мог быть выставлен, пока она была
+  // скрыта (панель «Внешний вид» открывают из настроек), — подгоняем по ширине
+  if (typeof window.ensureTopbarFit === 'function') window.ensureTopbarFit();
+
+  if (typeof AppState !== 'undefined') {
+    AppState.currentScreen = screen;
+    AppState.contentScroll = AppState.contentScroll || {};
+    // При возврате из detail передаётся позиция каталога явно: detail не является
+    // контентным экраном и не может обновить сохранённый scroll сам.
+    if (typeof restoreScrollTop === 'number') {
+      AppState.contentScroll[screen] = restoreScrollTop;
+    }
+  }
+
+  requestAnimationFrame(function () {
+    if (!mainContainer || typeof AppState === 'undefined' || !AppState.contentScroll) return;
+    mainContainer.scrollTop = AppState.contentScroll[screen] || 0;
+    if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+  });
+}
+window.showContentScreen = showContentScreen;
+
+// ==================== СОСТОЯНИЕ ====================
+var hideClockEnabled = false;
+var addToDbEnabled = false;
+var transcodingOnOff = false;
+var multiChannelEnabled = false;
+var dvPreferred = false;
+var detailView = getEl('detail-view');
+
+// ==================== ИНИЦИАЛИЗАЦИЯ ====================
+function initialServerCheck() {
+  setTimeout(function () {
+    var torrserverUrlInput = getEl('torrserver-url');
+    if (torrserverUrlInput && torrserverUrlInput.value && torrserverUrlInput.value.trim() !== '') {
+      console.log('🔍 Автоматическая проверка сервера...');
+      if (typeof checkServer === 'function') checkServer(true);
+    } else {
+      console.log('ℹ️ URL сервера не задан, пробуем использовать SERVER_URL с портом 8090');
+      safeExecute(function () {
+        var serverUrl = SERVER_URL;
+        var urlObj = new URL(serverUrl);
+        urlObj.port = '8090';
+        var torrserverUrl = urlObj.toString().replace(/\/$/, '');
+        console.log('🔄 Автоматически установлен URL TorrServer:', torrserverUrl);
+        if (torrserverUrlInput) torrserverUrlInput.value = torrserverUrl;
+        if (typeof checkServer === 'function') checkServer(true);
+      }, '❌ Ошибка при парсинге SERVER_URL');
+    }
+  }, APP_CONSTANTS.INITIAL_CHECK_DELAY_MS);
+}
+
+async function init() {
+  try {
+    console.log('🚀 Начало инициализации приложения');
+
+    safeExecute(loadClientConfig, '❌ Ошибка загрузки конфигурации');
+    checkAppVersion();
+
+    if (!window.AndroidJS) {
+      setupVideoPlayerControls();
+      setupClockVisibility();
+    }
+
+    setupNavigation();
+    setupSearch();
+    setupSearchFilters();
+    setupServerCheck();
+    setupAuth();
+    setupPlayerAutoHide();
+    setupTouchControls(getEl('seek-slider'), getEl('volume-slider'));
+    setupFullscreen();
+    setupAutoFullscreen();
+    setupSpeedTest();
+
+    if (typeof initSearchModeToggle === 'function') initSearchModeToggle();
+
+    initialServerCheck();
+    setupCheckboxes();
+    initJacredUrlStorage();
+    setupConfigMenu();
+
+    if (typeof AppState !== 'undefined') {
+      AppState.addToDbEnabled = addToDbEnabled;
+      AppState.multiChannelEnabled = multiChannelEnabled;
+      console.log('📦 AppState.addToDbEnabled =', AppState.addToDbEnabled);
+      console.log('🎵 AppState.multiChannelEnabled =', AppState.multiChannelEnabled);
+    }
+    initDolbyVisionCheck();
+
+    console.log('✅ Инициализация приложения завершена');
+  } catch (error) {
+    console.error('❌ Критическая ошибка при инициализации:', error);
+    showInitError();
+  }
+}
+
+function setupVideoPlayerControls() {
+  var requiredElements = [
+    'seek-slider', 'volume-slider', 'play-pause-btn', 'mute-btn',
+    'toggle-buffer-btn', 'exit-player-btn', 'player-overlay', 'video-player'
+  ];
+  var modes = ['contain', 'fill', 'cover', 'none'];
+  var modeIndex = 0;
+  var video = getEl('video-player');
+
+  if (!video) {
+    console.error('Video player element not found');
+    return;
+  }
+
+  // Режим масштаба задаётся не только object-fit, но и самим прямоугольником
+  // <video>. На части ТВ (жалобы с Vidaa) видео выводится аппаратным слоем,
+  // который берёт у элемента лишь положение и размер, а object-fit не видит:
+  // кнопка там переключала режимы вхолостую. Поэтому для «С полосами»,
+  // «Обрезка» и «Оригинал» считаем прямоугольник кадра сами (applyVideoBox),
+  // а object-fit оставляем — в обычном браузере он даёт то же самое.
+  // «Растянуть» — весь экран; если слой сам держит пропорции, там он выглядит
+  // как «С полосами», иначе его не сделать.
+  var zoomMode = 'contain';
+
+  function applyVideoBox() {
+    var st = video.style;
+    var ps = getEl('player-screen');
+    var cw = (ps && ps.clientWidth) || window.innerWidth;
+    var ch = (ps && ps.clientHeight) || window.innerHeight;
+    var vw = video.videoWidth, vh = video.videoHeight;
+    if (zoomMode === 'fill' || !vw || !vh || !cw || !ch) {
+      st.position = st.left = st.top = st.width = st.height = st.maxWidth = st.maxHeight = '';
+      return;
+    }
+    var r = zoomMode === 'cover' ? Math.max(cw / vw, ch / vh)
+      : zoomMode === 'none' ? 1
+      : Math.min(cw / vw, ch / vh);
+    var w = Math.round(vw * r), h = Math.round(vh * r);
+    st.position = 'absolute';
+    st.maxWidth = 'none';
+    st.maxHeight = 'none';
+    st.width = w + 'px';
+    st.height = h + 'px';
+    st.left = Math.round((cw - w) / 2) + 'px';
+    st.top = Math.round((ch - h) / 2) + 'px';
+  }
+
+  function setVideoObjectFit(mode) {
+    zoomMode = mode;
+    video.classList.remove('video-object-fit-contain', 'video-object-fit-fill',
+      'video-object-fit-cover', 'video-object-fit-none');
+    if (mode === 'contain') video.classList.add('video-object-fit-contain');
+    else if (mode === 'fill') video.classList.add('video-object-fit-fill');
+    else if (mode === 'cover') video.classList.add('video-object-fit-cover');
+    else video.classList.add('video-object-fit-none');
+    applyVideoBox();
+  }
+
+  // Прямоугольник зависит от размера кадра и экрана: новый ролик или серия,
+  // смена качества в потоке, поворот/resize окна, вход в полный экран
+  video.addEventListener('loadedmetadata', applyVideoBox);
+  video.addEventListener('resize', applyVideoBox);
+  window.addEventListener('resize', applyVideoBox);
+  document.addEventListener('fullscreenchange', applyVideoBox);
+  document.addEventListener('webkitfullscreenchange', applyVideoBox);
+
+  setVideoObjectFit('contain');
+
+  var zoomBtn = getEl('zoom-mode-btn');
+  if (zoomBtn) {
+    zoomBtn.onclick = function () {
+      modeIndex = (modeIndex + 1) % modes.length;
+      setVideoObjectFit(modes[modeIndex]);
+      var modeNames = {
+        'contain': 'С полосами',
+        'fill': 'Растянуть',
+        'cover': 'Обрезка',
+        'none': 'Оригинал'
+      };
+      showToast(modeNames[modes[modeIndex]]);
+    };
+  }
+
+  var missingElements = requiredElements.filter(function (el) { return !getEl(el); });
+  if (missingElements.length > 0) {
+    console.warn('⚠️ Отсутствуют DOM элементы:', missingElements);
+  }
+
+  var seekSlider = getEl('seek-slider');
+  var volumeSlider = getEl('volume-slider');
+  var playPauseBtn = getEl('play-pause-btn');
+  var muteBtn = getEl('mute-btn');
+  var toggleBufferBtn = getEl('toggle-buffer-btn');
+  var exitPlayerBtn = getEl('exit-player-btn');
+  var overlay = getEl('player-overlay');
+
+  if (seekSlider) {
+    seekSlider.value = 0;
+    seekSlider.max = 100;
+    setupSeekSliderEvents(seekSlider, video);
+  }
+  if (volumeSlider) volumeSlider.value = 1;
+  if (playPauseBtn && video) setupPlayPauseButton(playPauseBtn, video);
+  if (muteBtn && video && volumeSlider) setupMuteButton(muteBtn, video, volumeSlider);
+  if (volumeSlider && video) setupVolumeSlider(volumeSlider, video);
+  if (exitPlayerBtn) setupExitButton(exitPlayerBtn);
+
+  if (typeof setupEpisodesButton === 'function') setupEpisodesButton();
+  if (typeof setupAudioButton === 'function') setupAudioButton();
+  if (typeof setupSubtitlesButton === 'function') setupSubtitlesButton();
+
+  setupEpisodeNavigation();
+  if (video) setupVideoEvents(video, volumeSlider, seekSlider);
+  if (toggleBufferBtn) setupToggleBufferButton(toggleBufferBtn);
+  if (overlay) setupOverlayControls(overlay);
+
+  var savedVolume = localStorage.getItem('playerVolume');
+  if (savedVolume !== null && video) {
+    video.volume = parseFloat(savedVolume);
+    if (volumeSlider) volumeSlider.value = video.volume;
+  }
+}
+
+function showToast(message) {
+  var toast = document.createElement('div');
+  toast.textContent = message;
+  toast.style.cssText = 'position:fixed;bottom:20%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:8px 16px;border-radius:8px;z-index:9999;font-size:14px;pointer-events:none;';
+  // В полноэкранном режиме виден только полноэкранный элемент и его потомки
+  var host = (typeof window.getOverlayHost === 'function') ? window.getOverlayHost() : document.body;
+  host.appendChild(toast);
+  setTimeout(function () {
+    if (toast && toast.remove) toast.remove();
+    else if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
+  }, APP_CONSTANTS.ZOOM_TOAST_DURATION_MS);
+}
+
+/**
+ * Крупный баннер об ошибке — замена alert() в путях воспроизведения и поиска.
+ *
+ * alert() на телевизоре бесполезен: WebView либо не показывает его вовсе, либо
+ * рисует системный диалог, который не виден в полноэкранном режиме и не
+ * управляется пультом. Поэтому ошибки, которые пользователь ОБЯЗАН увидеть
+ * (TorrServer недоступен, Jacred не отвечает), показываем своим блоком.
+ *
+ * showToast для этого мелковат — он про мимолётные подсказки вроде зума.
+ * Здесь крупный шрифт, красная рамка и время показа подлиннее.
+ *
+ * Хост берём через getOverlayHost(): в полноэкранном режиме браузер рисует
+ * только полноэкранный элемент и его потомков, и баннер в body был бы не виден.
+ */
+var ERROR_BANNER_ID = 'app-error-banner';
+var ERROR_BANNER_MS = 6000;
+var errorBannerTimer = null;
+
+function showErrorBanner(message, detail) {
+  if (!message) return;
+
+  var host = (typeof window.getOverlayHost === 'function') ? window.getOverlayHost() : document.body;
+  if (!host) return;
+
+  // Второй баннер поверх первого не копим — заменяем текст
+  var banner = document.getElementById(ERROR_BANNER_ID);
+  if (banner && banner.parentNode !== host) {
+    if (banner.remove) banner.remove(); else banner.parentNode.removeChild(banner);
+    banner = null;
+  }
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = ERROR_BANNER_ID;
+    banner.style.cssText =
+      'position:fixed;top:12%;left:50%;transform:translateX(-50%);' +
+      'max-width:80%;box-sizing:border-box;' +
+      'background:rgba(20,10,10,0.96);border:2px solid #ff5050;border-radius:16px;' +
+      'padding:20px 32px;text-align:center;z-index:10060;pointer-events:none;' +
+      'box-shadow:0 8px 40px rgba(0,0,0,0.6);';
+    host.appendChild(banner);
+  }
+
+  banner.innerHTML =
+    '<div style="font-size:22px;font-weight:600;color:#ff8a8a;line-height:1.3">' +
+    escapeBannerText(message) + '</div>' +
+    (detail ? '<div style="font-size:15px;color:#c8c8c8;margin-top:10px;line-height:1.35">' +
+      escapeBannerText(detail) + '</div>' : '');
+
+  if (errorBannerTimer) clearTimeout(errorBannerTimer);
+  errorBannerTimer = setTimeout(function () {
+    errorBannerTimer = null;
+    var b = document.getElementById(ERROR_BANNER_ID);
+    if (!b) return;
+    if (b.remove) b.remove(); else if (b.parentNode) b.parentNode.removeChild(b);
+  }, ERROR_BANNER_MS);
+}
+
+function escapeBannerText(s) {
+  return String(s == null ? '' : s).replace(/[&<>]/g, function (m) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[m];
+  });
+}
+
+window.showErrorBanner = showErrorBanner;
+
+// ==================== ПРОВЕРКА ВЕРСИИ ====================
+function checkAppVersion() {
+  fetch('/api/version')
+    .then(function (response) { return response.json(); })
+    .then(function (data) {
+      var serverVersion = data.version;
+      var currentVersion = AppState.currentVersion;
+      if (serverVersion !== currentVersion) {
+        console.warn('⚠️ Версии не совпадают: локальная ' + currentVersion + ', серверная ' + serverVersion);
+        var sectionTitle = document.querySelector('.section-title-header');
+        if (sectionTitle && !document.querySelector('.version-warning')) {
+          var warningBlock = document.createElement('div');
+          warningBlock.className = 'version-warning';
+          warningBlock.style.cssText = 'color: #ff4444; font-size: 14px; margin-top: 8px; text-align: center;';
+          warningBlock.textContent = 'Требуется обновить TorrStream. Версия сервера ' + serverVersion + ', версия клиента ' + currentVersion;
+          sectionTitle.parentNode.insertBefore(warningBlock, sectionTitle.nextSibling);
+        }
+      }
+    })
+    .catch(function (error) { console.error('❌ Ошибка проверки версии:', error); });
+}
+
+// ==================== ОБРАБОТЧИКИ ПЛЕЕРА ====================
+function setupSeekSliderEvents(seekSlider, videoPlayer) {
+  var currentTimeEl = getEl('current-time');
+  var loadingOverlay = getEl('loading-player-overlay');
+  var loadingTimeEl = getEl('loading-time');
+
+  // Переменная для отслеживания начального значения ползунка при начале перетаскивания
+  var seekStartValue = 0;
+
+  seekSlider.addEventListener('mousedown', function () {
+    if (typeof AppState !== 'undefined') {
+      AppState.isSliderDragging = true;
+      AppState.suppressTimeUpdate = true;
+    }
+    // Запоминаем значение в момент начала перетаскивания
+    seekStartValue = parseFloat(seekSlider.value) || 0;
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+
+  seekSlider.addEventListener('touchstart', function () {
+    if (typeof AppState !== 'undefined') {
+      AppState.isSliderDragging = true;
+      AppState.suppressTimeUpdate = true;
+    }
+    // Запоминаем значение в момент начала перетаскивания
+    seekStartValue = parseFloat(seekSlider.value) || 0;
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+
+  seekSlider.addEventListener('input', function (e) {
+    var newPreviewTime = parseFloat(e.target.value);
+    if (isFinite(newPreviewTime)) {
+      if (typeof AppState !== 'undefined') {
+        AppState.previewTime = newPreviewTime;
+      }
+      if (currentTimeEl) currentTimeEl.textContent = formatTime(newPreviewTime);
+      if (typeof AppState !== 'undefined' && (AppState.isSeeking || (loadingOverlay && loadingOverlay.classList.contains('active')))) {
+        if (loadingTimeEl) loadingTimeEl.textContent = formatTime(newPreviewTime);
+      }
+
+      // ПОКАЗЫВАЕМ ОВЕРЛЕЙ ПЕРЕМОТКИ ПРИ ПЕРЕТАСКИВАНИИ ПОЛЗУНКА
+      if (typeof window.showSeekOverlay === 'function') {
+        // Определяем направление на основе сравнения с начальным значением
+        var direction = newPreviewTime >= seekStartValue ? 1 : -1;
+        window.showSeekOverlay(newPreviewTime, direction);
+      }
+    }
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+
+  seekSlider.addEventListener('change', async function (e) {
+    var targetAbsoluteTime = parseFloat(e.target.value);
+    if (typeof AppState !== 'undefined') {
+      AppState.isSliderDragging = false;
+      AppState.previewTime = targetAbsoluteTime;
+      AppState.suppressTimeUpdate = true;
+    }
+
+    // СКРЫВАЕМ ОВЕРЛЕЙ С ЗАДЕРЖКОЙ после окончания перетаскивания
+    if (typeof window.scheduleHideSeekOverlay === 'function') {
+      window.scheduleHideSeekOverlay();
+    }
+
+    if (!isFinite(targetAbsoluteTime) || targetAbsoluteTime < 0) {
+      if (typeof AppState !== 'undefined') {
+        AppState.previewTime = null;
+        AppState.suppressTimeUpdate = false;
+      }
+      return;
+    }
+    console.log('🎚️ Seek to: ' + formatTime(targetAbsoluteTime));
+
+    if (!AppState || !AppState.hls) {
+      if (videoPlayer) {
+        videoPlayer.currentTime = targetAbsoluteTime - (AppState && AppState.seekOffset || 0);
+      }
+      if (typeof AppState !== 'undefined') {
+        AppState.previewTime = null;
+        AppState.suppressTimeUpdate = false;
+      }
+      if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
+      if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+      return;
+    }
+
+    if (typeof seekStream === 'function') {
+      await seekStream(targetAbsoluteTime, 'slider');
+    }
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+
+  seekSlider.addEventListener('mouseup', function () {
+    // СКРЫВАЕМ ОВЕРЛЕЙ С ЗАДЕРЖКОЙ
+    if (typeof window.scheduleHideSeekOverlay === 'function') {
+      window.scheduleHideSeekOverlay();
+    }
+
+    setTimeout(function () {
+      if (!AppState || !AppState.isSliderDragging) return;
+      if (typeof AppState !== 'undefined') {
+        AppState.isSliderDragging = false;
+        if (!AppState.isSeeking) {
+          AppState.previewTime = null;
+          AppState.suppressTimeUpdate = false;
+        }
+      }
+      if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
+    }, 200);
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+
+  seekSlider.addEventListener('touchend', function () {
+    // СКРЫВАЕМ ОВЕРЛЕЙ С ЗАДЕРЖКОЙ
+    if (typeof window.scheduleHideSeekOverlay === 'function') {
+      window.scheduleHideSeekOverlay();
+    }
+
+    setTimeout(function () {
+      if (!AppState || !AppState.isSliderDragging) return;
+      if (typeof AppState !== 'undefined') {
+        AppState.isSliderDragging = false;
+        if (!AppState.isSeeking) {
+          AppState.previewTime = null;
+          AppState.suppressTimeUpdate = false;
+        }
+      }
+      if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
+    }, 200);
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+}
+
+function setupPlayPauseButton(playPauseBtn, videoPlayer) {
+  playPauseBtn.addEventListener('click', function (e) {
+    var loadingOverlay = getEl('loading-player-overlay');
+    if (AppState && (AppState.isSeeking || (loadingOverlay && loadingOverlay.classList.contains('active')))) {
+      e.preventDefault();
+      return;
+    }
+    if (videoPlayer.paused) {
+      videoPlayer.play().then(function () {
+        if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
+      }).catch(function () { });
+    } else {
+      videoPlayer.pause();
+      if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
+    }
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+}
+
+function setupMuteButton(muteBtn, videoPlayer, volumeSlider) {
+  muteBtn.addEventListener('click', function () {
+    var loadingOverlay = getEl('loading-player-overlay');
+    if (AppState && (AppState.isSeeking || (loadingOverlay && loadingOverlay.classList.contains('active')))) return;
+    videoPlayer.muted = !videoPlayer.muted;
+    if (typeof updateMuteButton === 'function') updateMuteButton();
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+}
+
+function setupVolumeSlider(volumeSlider, videoPlayer) {
+  volumeSlider.addEventListener('input', function (e) {
+    var loadingOverlay = getEl('loading-player-overlay');
+    if (AppState && (AppState.isSeeking || (loadingOverlay && loadingOverlay.classList.contains('active')))) return;
+    var vol = parseFloat(e.target.value);
+    videoPlayer.volume = vol;
+    if (vol > 0 && videoPlayer.muted) {
+      videoPlayer.muted = false;
+      if (typeof updateMuteButton === 'function') updateMuteButton();
+    }
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    localStorage.setItem('playerVolume', vol);
+  });
+}
+
+function setupExitButton(exitPlayerBtn) {
+  exitPlayerBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (typeof showDetailView === 'function') showDetailView(currentTimecodeData.fileId);
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    if (typeof window.exitPlayer === 'function') window.exitPlayer();
+  });
+}
+
+function setupEpisodeNavigation() {
+  var prevEpisodeBtn = getEl('prev-episode-btn');
+  var nextEpisodeBtn = getEl('next-episode-btn');
+
+  if (prevEpisodeBtn) {
+    prevEpisodeBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (typeof prevEpisode === 'function') prevEpisode();
+      if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    });
+  }
+  if (nextEpisodeBtn) {
+    nextEpisodeBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (typeof nextEpisode === 'function') nextEpisode();
+      if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    });
+  }
+}
+
+function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
+  var handlers = {
+    volumechange: function () {
+      if (volumeSlider) volumeSlider.value = videoPlayer.volume;
+      if (typeof updateMuteButton === 'function') updateMuteButton();
+      if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+      localStorage.setItem('playerVolume', videoPlayer.volume);
+    },
+    timeupdate: function () {
+      if (typeof isSeekHoldActive !== 'undefined' && isSeekHoldActive) return;
+      if (AppState && (AppState.isSliderDragging || AppState.suppressTimeUpdate)) return;
+      var totalDuration = (AppState && (AppState.originalDuration || AppState.expectedDuration)) || videoPlayer.duration;
+      if (totalDuration && isFinite(totalDuration) && totalDuration > 0) {
+        if (seekSlider) seekSlider.max = totalDuration;
+        var absoluteTime = videoPlayer.currentTime + (AppState && AppState.seekOffset || 0);
+        if (seekSlider) seekSlider.value = Math.min(absoluteTime, totalDuration);
+        if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
+      }
+    },
+    loadedmetadata: function () {
+      console.log('📊 loadedmeta', videoPlayer.duration);
+      if (AppState && AppState.expectedDuration && typeof forceUpdateDuration === 'function') {
+        forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
+      }
+      if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    },
+    progress: function () {
+      if (typeof updateBufferDisplay === 'function') updateBufferDisplay();
+    },
+    ended: function () {
+      console.log('🏁 Видео закончилось');
+      if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    }
+  };
+
+  Object.keys(handlers).forEach(function (event) {
+    videoPlayer.addEventListener(event, handlers[event]);
+  });
+}
+
+/**
+ * Тик строки буфера и проверки «Пропустить вступление / титры».
+ *
+ * Живёт ровно столько, сколько открыт плеер. Раньше здесь стоял вечный
+ * setInterval на 300 мс: он просыпался больше трёх раз в секунду и на главной,
+ * и в каталоге, и в настройках — только чтобы посмотреть на AppState и уснуть
+ * обратно. На телевизоре это заметная фоновая работа за всю сессию.
+ *
+ * Цепочка на setTimeout обрывается сама, как только экран перестал быть
+ * плеерным, поэтому отдельная «остановка» никому не нужна: достаточно позвать
+ * startBufferUpdates() там, где плеер открывается.
+ *
+ * Условия !bufferHidden в тике нет намеренно: на нём же висит проверка
+ * вступления и титров, и со скрытой строкой буфера (жёлтая кнопка на пульте)
+ * кнопка «Пропустить» переставала появляться. Саму строку updateBufferDisplay
+ * при скрытом буфере всё так же не перерисовывает.
+ */
+var BUFFER_TICK_MS = 300;
+var bufferTickTimer = null;
+
+function bufferTick() {
+  bufferTickTimer = null;
+  if (typeof AppState === 'undefined' || !AppState) return;
+  if (AppState.currentScreen !== 'player') return;   // ушли из плеера — цепочка кончилась
+  if (!AppState.isSeeking && typeof updateBufferDisplay === 'function') updateBufferDisplay();
+  bufferTickTimer = setTimeout(bufferTick, BUFFER_TICK_MS);
+}
+
+function startBufferUpdates() {
+  if (bufferTickTimer) return;   // уже идёт, второй цепочки не нужно
+  bufferTick();
+}
+window.startBufferUpdates = startBufferUpdates;
+
+function setupToggleBufferButton(toggleBufferBtn) {
+  toggleBufferBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (typeof AppState !== 'undefined') AppState.bufferHidden = !AppState.bufferHidden;
+    toggleBufferBtn.style.opacity = AppState && AppState.bufferHidden ? '0.6' : '1';
+    toggleBufferBtn.title = AppState && AppState.bufferHidden ? 'показать буфер' : 'скрыть буфер';
+    if (AppState && !AppState.bufferHidden && typeof updateBufferDisplay === 'function') {
+      updateBufferDisplay();
+    } else {
+      var bufferStats = getEl('buffer-stats');
+      if (bufferStats) bufferStats.classList.add('hidden');
+    }
+    // Строка статистики TorrServer появилась или пропала — опрос /cache
+    // переходит на секундный или десятисекундный шаг (torrserverstats.js)
+    if (typeof refreshTorrentStatsCadence === 'function') refreshTorrentStatsCadence();
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+}
+
+function setupOverlayControls(overlay) {
+  function showControls() {
+    overlay.classList.add('touch-active');
+    clearTimeout(overlay.timer);
+    overlay.timer = setTimeout(function () {
+      if (!overlay.matches(':hover')) overlay.classList.remove('touch-active');
+    }, APP_CONSTANTS.IDLE_TIMEOUT_MS);
+  }
+
+  overlay.addEventListener('mousemove', function () {
+    showControls();
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+
+  overlay.addEventListener('touchstart', function (e) {
+    showControls();
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    if (e.touches.length === 1) e.preventDefault();
+  }, { passive: false });
+
+  var lastTap = 0;
+  overlay.addEventListener('touchend', function (e) {
+    var currentTime = Date.now();
+    if (currentTime - lastTap < 300) {
+      if (overlay.classList.contains('touch-active')) overlay.classList.remove('touch-active');
+      else showControls();
+    } else showControls();
+    lastTap = currentTime;
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+}
+
+// ==================== НАВИГАЦИЯ ====================
+function setupNavigation() {
+  var settingsBtn = getEl('settings-btn');
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', function () {
+      var torrserverSection = getEl('torrserver-section');
+      var configScreen = getEl('config-screen');
+      // Куда вернёт «назад» из настроек, помнит стек переходов (nav.js): запись
+      // кладём здесь, снимает её onBack (control.js). Повторное открытие поверх
+      // уже открытых (ветка «сервер недоступен», torrents.js) стек склеит сам.
+      if (window.Nav) Nav.push('config', { key: 'config' });
+      if (torrserverSection) torrserverSection.style.display = 'none';
+      if (configScreen) {
+        // Проявление как у вкладок (showContentScreen); fadeIn сам выставит display
+        if (typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
+          Animations.fadeIn(configScreen, { display: 'flex', duration: Animations.UI_FADE.screen });
+        } else {
+          configScreen.style.display = 'flex';
+        }
+      }
+      if (typeof AppState !== 'undefined') AppState.currentScreen = 'config';
+      setTimeout(function () {
+        if (typeof updateFocusableElements === 'function') updateFocusableElements();
+        if (typeof setFocus === 'function') setFocus(0);
+      }, APP_CONSTANTS.NAVIGATION_DELAY_MS);
+    });
+  }
+
+  var backFromDetail = getEl('back-from-detail');
+  if (backFromDetail) {
+    backFromDetail.addEventListener('click', function () {
+      console.log('🔙 Возврат из детального просмотра');
+      // Куда возвращаться, решает стек переходов (nav.js): под записью карточки
+      // лежит то, откуда её открыли, — предыдущая карточка цепочки, раздача,
+      // сетка, раздел или выдача поиска.
+      var navLeft = window.Nav ? Nav.top() : null;
+      var navTo = (navLeft && (navLeft.screen === 'detail' || navLeft.screen === 'torrent-detail'))
+        ? Nav.pop(navLeft.screen) : null;
+      var mainContainer = getEl('main-container');
+      // Фон карточки здесь больше не сбрасываем: подложка должна оставаться на месте,
+      // пока идёт затухание. Её снимает animations.js в конце анимации закрытия
+      // (finishDetailHide), а ветки ниже, которые сразу открывают другую карточку,
+      // делают это сами.
+      var savedScroll = typeof AppState.backupScroll === 'number' ? AppState.backupScroll : 0;
+
+      var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
+      console.log('🔍 Hash для восстановления:', currentTorrentHash);
+      // Карточка раздачи закрывается — раздачу останавливаем (torrents.js)
+      if (typeof window.dropOpenTorrentDetail === 'function') window.dropOpenTorrentDetail();
+
+      // Детали раздачи, открытые из выдачи «Поиска торрентов», уходят обратно в
+      // выдачу (ниже, ветка поиска): она не уничтожена, оверлей только спрятан.
+      // Каталожную карточку под поиском перерисует hideSearchResults, когда до
+      // неё дойдёт «назад», — по записи 'detail' в стеке.
+      if (navLeft && navLeft.screen === 'torrent-detail' && navTo && navTo.screen === 'search') {
+        AppState.playFromHash = false;
+        AppState.isCatalogSerials = false;
+      }
+
+      // Запасной путь — карточку открыли в обход стека: в раздел, где мы были
+      var target = navTo ? navTo.screen : null;
+      if (!target) target = (AppState.inSearch === 'catalog' || AppState.inSearch === 'home') ? AppState.inSearch : 'torrents';
+      console.log('📍 «назад» из карточки →', target);
+
+      // Предыдущая карточка той же цепочки (рекомендации, «Открыть карточку» из
+      // раздачи): закрывать нечего, новая подменит текущую через beginDetailSwap.
+      // resetDetailBackground здесь не зовём — он разобрал бы карточку, которая
+      // ещё на экране; чисткой занимается сам showCatalogDetail / showDetail.
+      if (target === 'detail' || target === 'torrent-detail') {
+        setTimeout(function () {
+          if (target === 'detail') window.showCatalogDetail(navTo.data.item, navTo.data.index || 0, null);
+          else if (typeof window.showDetail === 'function') window.showDetail(navTo.data.torrent);
+        }, APP_CONSTANTS.DETAIL_HIDE_DELAY_MS);
+        return;
+      }
+
+      // Затухание запускаем сразу по нажатию «назад»: восстановление экрана ниже
+      // (скролл, фокус) идёт параллельно, под уходящей карточкой — поэтому реакция
+      // мгновенная, а сам переход плавный.
+      //
+      // Назад в выдачу поиска: карточку не гасим и экран под поиском не
+      // показываем — выдача проявится поверх карточки сама (ветка 'search' в
+      // restoreFocusAfterNavigation). Иначе между карточкой и выдачей мелькал
+      // экран, с которого пришли в поиск.
+      var backToSearch = target === 'search';
+      if (!backToSearch) hideDetailView();
+      if (mainContainer) mainContainer.style.pointerEvents = 'auto';
+
+      var torrserverSection = getEl('torrserver-section');
+      if (torrserverSection && !backToSearch) torrserverSection.style.display = 'block';
+
+      var returnTo = target === 'grid' ? 'catalog' : target;
+      // Прокрутка того экрана, куда возвращаемся, — из его записи в стеке
+      if (navTo && navTo.restore && typeof navTo.restore.scrollTop === 'number') savedScroll = navTo.restore.scrollTop;
+      // Под карточкой не бывает настроек, доната или плеера — но если стек так
+      // говорит, лучше уйти в текущий раздел, чем в никуда
+      if (['home', 'catalog', 'torrents', 'search'].indexOf(returnTo) === -1) {
+        returnTo = (AppState.inSearch === 'catalog' || AppState.inSearch === 'home') ? AppState.inSearch : 'torrents';
+      }
+      var restoreCtx = { currentTorrentHash: currentTorrentHash, savedScroll: savedScroll, navEntry: navTo };
+
+      // Без задержки DETAIL_HIDE_DELAY_MS: она нужна, пока карточка гаснет, а
+      // здесь реакцией на «назад» и служит проявление выдачи
+      if (backToSearch) {
+        restoreFocusAfterNavigation('search', restoreCtx);
+        return;
+      }
+
+      setTimeout(function () {
+        if (typeof updateFocusableElements !== 'function' || typeof setFocus !== 'function') {
+          console.error('❌ Функции навигации еще не загружены');
+          return;
+        }
+
+        restoreFocusAfterNavigation(returnTo, restoreCtx);
+
+        // Страховка: если ветка выше не тронула карточку, закрываем её здесь.
+        // Повторный вызов ничего не перезапускает — анимация уже идёт.
+        if (typeof Animations !== 'undefined') Animations.animateDetailHide();
+      }, APP_CONSTANTS.DETAIL_HIDE_DELAY_MS);
+    });
+    AppState.isCatalogSearch = false;
+  }
+}
+
+/**
+ * Прячем детальный просмотр плавно.
+ *
+ * display:none ставит сама анимация в конце затухания (animations.js:
+ * animateDetailHide). Прямое присваивание display:none обрывало бы затухание:
+ * раньше все ветки ниже прятали элемент сразу, а Animations.animateDetailHide()
+ * вызывался уже по скрытому — поэтому карточка закрывалась резко.
+ */
+function hideDetailView(opts) {
+  if (typeof Animations !== 'undefined' && typeof Animations.animateDetailHide === 'function') {
+    Animations.animateDetailHide(null, opts);
+    return;
+  }
+  if (detailView) detailView.style.display = 'none';
+}
+
+// Прокрутку раздела запоминает его запись в стеке переходов (nav.js) в момент
+// ухода из него. Общему AppState.backupScroll верить нельзя: пока открыт поиск
+// или плеер, раздел скрыт и #main-container прокручен в ноль, а перерисовка
+// карточки по дороге обратно (setupDetailLayout) записывает этот ноль поверх.
+if (window.Nav) {
+  var navScrollSnapshot = {
+    snapshot: function () {
+      var mc = getEl('main-container');
+      return { scrollTop: mc ? mc.scrollTop : 0 };
+    }
+  };
+  Nav.register('catalog', navScrollSnapshot);
+  Nav.register('torrents', navScrollSnapshot);
+}
+
+function restoreFocusAfterNavigation(returnTo, context) {
+  if (returnTo === 'catalog') {
+    showContentScreen('catalog', context.savedScroll);
+
+    // Пока была открыта карточка, периодическая чистка памяти могла отключить
+    // IntersectionObserver'ы каталога. Сетка ниже не перерисовывается, поэтому
+    // поднимаем наблюдателей вручную — иначе постеры больше не догружаются.
+    if (typeof window.rearmCatalogObservers === 'function') window.rearmCatalogObservers();
+
+    if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
+      hideDetailView();
+      // Позицию ставим мгновенно: карточка только начала таять и ещё
+      // непрозрачна, так что переезд к нужному ряду проходит незаметно.
+      // Плавная прокрутка здесь доезжала бы уже сквозь полупрозрачную карточку.
+      if (typeof window.withInstantScroll === 'function') window.withInstantScroll(restoreRowFocus);
+      else restoreRowFocus();
+      return;
+    }
+
+    // Сетка «Избранное», где в карточке сняли звёздочку, — перечитать
+    // (reloadFavoritesGrid, catalog.js): иначе фильм остаётся в сетке
+    if (catalogState.currentCatalog === 'favorites' && catalogState.favoritesGridStale &&
+      typeof window.reloadFavoritesGrid === 'function') {
+      hideDetailView();
+      window.reloadFavoritesGrid();
+      return;
+    }
+
+    // если каталог уже загружен и сетка в DOM — НЕ перерендериваем
+    var catalogGrid = getEl('catalog-grid');
+    if (catalogState.currentCatalog === AppState.backCurrentCatalog &&
+      catalogState.items.length > 0 && catalogGrid && catalogGrid.children.length > 0) {
+
+      hideDetailView();
+
+      // Восстанавливаем скролл ДО фокусировки
+      var mc = getEl('main-container');
+      if (mc && typeof context.savedScroll === 'number') {
+        mc.scrollTop = context.savedScroll;
+      }
+
+      // Фокус на нужную карточку без перерендера
+      if (typeof window.ensureCatalogFocus === 'function') {
+        window.ensureCatalogFocus(true);
+      }
+      return;
+    }
+
+    // Только если каталог реально нужно загрузить заново
+    window.loadCatalog(AppState.backCurrentCatalog).then(function () {
+      // Восстанавливаем скролл ДО фокусировки
+      var mc = getEl('main-container');
+      if (mc && typeof context.savedScroll === 'number') {
+        mc.scrollTop = context.savedScroll;
+      }
+      hideDetailView();
+      if (typeof window.ensureCatalogFocus === 'function') {
+        window.ensureCatalogFocus(true);
+      }
+    });
+    return;
+  }
+
+  // Карточку открывали с главной (раньше это перехватывал home.js по флагу
+  // detailFromHome — теперь место возврата знает стек)
+  if (returnTo === 'home' && window.HomeScreen && typeof window.HomeScreen.show === 'function') {
+    hideDetailView();
+    window.HomeScreen.show({ restoreFocus: true });
+    return;
+  }
+
+  if (returnTo === 'search') {
+    if (typeof window.showSearchResults === 'function') {
+      // Выдачу TMDB могли подменить раздачами («Поиск торрентов» из карточки):
+      // вернуть её из памяти, иначе проявится пустой или чужой список
+      if (typeof window.restoreSearchEntry === 'function') window.restoreSearchEntry(context && context.navEntry);
+      // restoreCard — фокус на карточку, из которой открывали фильм, а не в строку.
+      // Выдача проявляется ПОВЕРХ ещё видимой карточки, и прячем карточку, только
+      // когда выдача закрыла экран. Раньше карточка гасла сразу, и сквозь
+      // проявляющуюся выдачу было видно экран, с которого пришли в поиск.
+      // Флаг — на случай, если за время проявления успеют уйти дальше: новую
+      // карточку прятать нельзя (снимает showGlobalSearchDetail), а при выходе из
+      // поиска карточку надо убрать сразу (hideSearchResults в torrents.js)
+      AppState.detailUnderSearch = true;
+      window.showSearchResults({
+        restoreCard: true,
+        onShown: function () {
+          if (!AppState.detailUnderSearch) return;
+          AppState.detailUnderSearch = false;
+          hideDetailView();
+        }
+      });
+      return;
+    }
+    if (typeof window.clearSearchResults === 'function') window.clearSearchResults();
+    hideDetailView();
+    return;
+  }
+
+  if (returnTo === 'torrents') {
+    if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
+    showContentScreen('torrents');
+
+    // Скролл восстанавливаем синхронно, ДО фокусировки, как в ветке каталога:
+    // showContentScreen применяет его только в requestAnimationFrame, а
+    // ensureTorrentFocus проверяет видимость карточки прямо сейчас. Иначе он
+    // решает, что скроллить не нужно, а кадром позже rAF уводит список наверх.
+    var mcTorrents = getEl('main-container');
+    var savedTorrentsScroll = AppState.contentScroll ? AppState.contentScroll.torrents : null;
+    if (mcTorrents && typeof savedTorrentsScroll === 'number') {
+      mcTorrents.scrollTop = savedTorrentsScroll;
+    }
+
+    if (context.currentTorrentHash) {
+      window.lastSelectedTorrentHash = context.currentTorrentHash;
+      console.log('💾 Сохранен hash для восстановления:', context.currentTorrentHash);
+    }
+
+    updateFocusableElements();
+
+    if (typeof window.ensureTorrentFocus === 'function') {
+      hideDetailView();
+      window.ensureTorrentFocus(true);
+      console.log('🎯 Фокус восстановлен через ensureTorrentFocus');
+      return;
+    }
+
+    var targetIndex = findTorrentCardIndex(context.currentTorrentHash);
+    if (targetIndex === -1 && typeof lastSelectedTorrentIndex !== 'undefined') {
+      targetIndex = findTorrentCardByIndex(lastSelectedTorrentIndex);
+    }
+    if (targetIndex === -1) {
+      targetIndex = findFirstTorrentCardIndex();
+    }
+
+    setFocus(targetIndex !== -1 ? targetIndex : 0);
+    hideDetailView();
+  }
+}
+
+function findTorrentCardIndex(hash) {
+  if (!hash) return -1;
+  console.log('🔍 Поиск карточки с hash:', hash);
+  var fLen = focusableElements.length;
+  for (var i = 0; i < fLen; i++) {
+    var el = focusableElements[i];
+    if (el.classList && el.classList.contains('torrent-card')) {
+      var cardHash = el.dataset.hash;
+      if (cardHash && cardHash.toLowerCase() === hash.toLowerCase()) {
+        console.log('✅ Найдена карточка по hash, индекс:', i);
+        return i;
+      }
+    }
+  }
+  return -1;
+}
+
+function findTorrentCardByIndex(savedIndex) {
+  console.log('🔍 Поиск по сохраненному индексу:', savedIndex);
+  var cardIndices = [];
+  var fLen = focusableElements.length;
+  for (var j = 0; j < fLen; j++) {
+    if (focusableElements[j].classList && focusableElements[j].classList.contains('torrent-card')) {
+      cardIndices.push(j);
+    }
+  }
+  if (savedIndex < cardIndices.length) {
+    var targetIndex = cardIndices[savedIndex];
+    console.log('✅ Найдена карточка по индексу, глобальный индекс:', targetIndex);
+    return targetIndex;
+  }
+  return -1;
+}
+
+function findFirstTorrentCardIndex() {
+  var fLen = focusableElements.length;
+  for (var k = 0; k < fLen; k++) {
+    if (focusableElements[k].classList && focusableElements[k].classList.contains('torrent-card')) {
+      console.log('⚠️ Используем первую карточку, индекс:', k);
+      return k;
+    }
+  }
+  return -1;
+}
+
+// ==================== ПОИСК ====================
+function setupSearch() {
+  var searchInput = getEl('search-query');
+  var searchBtn = getEl('search-btn');
+  var closeSearchBtn = getEl('close-search');
+  var tabTorrents = getEl('tab-torrents');
+  var tabSearch = getEl('tab-search');
+  var tabCatalog = getEl('tab-catalog');
+
+  if (searchBtn && searchInput) {
+    searchBtn.addEventListener('click', function () {
+      // Под замком кнопка бессмысленна: запрос задан карточкой фильма и не
+      // меняется, результаты уже на экране. А снять здесь замок означало бы
+      // открыть ровно ту дыру, ради которой он и появился — поэтому просто
+      // ничего не делаем. С пульта кнопка в этом режиме и так недостижима
+      // (control.js убирает её из фокусируемых), это про мышь и тач.
+      if (window.AppState && AppState.searchLocked) return;
+
+      var query = searchInput.value.trim();
+      // Свободный поиск: контекст карточки каталога больше не действует
+      if (typeof window.clearCatalogSearchContext === 'function') window.clearCatalogSearchContext();
+      if (typeof showSearchResults === 'function') showSearchResults();
+      if (query && typeof searchTorrents === 'function') searchTorrents(query);
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var query = searchInput.value.trim();
+        if (typeof searchTorrents === 'function') searchTorrents(query);
+      }
+    });
+  }
+
+  if (closeSearchBtn && typeof hideSearchResults === 'function') {
+    closeSearchBtn.addEventListener('click', function () {
+      // Куда вернуться, в том числе в карточку под поиском, знает стек (nav.js)
+      hideSearchResults();
+    });
+  }
+
+  if (tabTorrents && typeof hideSearchResults === 'function' && typeof loadTorrents === 'function') {
+    tabTorrents.addEventListener('click', function () {
+      // Уже загруженный список сверяем с TorrServer на каждое нажатие, в том
+      // числе повторное: торрент мог добавиться в обход этого экрана
+      if (AppState.torrentsLoaded && typeof window.syncTorrentsList === 'function') {
+        window.syncTorrentsList();
+      }
+      if (!tabTorrents.classList.contains('active')) {
+        console.log('📁 Переключение на вкладку "Мои торренты"');
+        AppState.currentScreen = 'torrents';
+        window.pendingCatalogPoster = null;
+        window.pendingCatalogItem = null;
+        if (typeof AppState !== 'undefined') AppState.inSearch = 'torrents';
+        hideSearchResults();
+        if (window.Nav) Nav.reset('torrents');
+        tabTorrents.classList.add('active');
+        if (tabSearch) tabSearch.classList.remove('active');
+        if (tabCatalog) tabCatalog.classList.remove('active');
+        // Оверлей поиска прячет сам hideSearchResults — в конце затухания.
+        // Ставить .hidden здесь нельзя: display:none оборвал бы переход.
+        showContentScreen('torrents');
+        var torrentsGrid = getEl('torrents-grid');
+        if (!AppState.torrentsLoaded && !AppState.torrentsLoading) {
+          if (torrentsGrid) {
+          torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div class="loading-spinner" style="margin: 0 auto 20px;"></div><div style="font-size: 16px; color: #aaa;">Загрузка торрентов...</div></div>';
+          }
+          loadTorrents(true).catch(function (error) {
+            console.error('Ошибка загрузки торрентов:', error);
+            if (torrentsGrid) {
+              torrentsGrid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;"><div style="font-size: 48px; margin-bottom: 20px;">❌</div><div style="font-size: 16px; color: #ff6a6a;">Ошибка загрузки торрентов</div><button class="btn" style="margin-top: 20px;" onclick="getEl(\'tab-torrents\').click()">Попробовать снова</button></div>';
+            }
+          });
+        }
+      }
+    });
+  }
+
+  if (tabSearch && typeof showSearchResults === 'function') {
+    tabSearch.addEventListener('click', function () {
+      // Осознанный переход к свободному поиску: снимаем замок и забываем,
+      // из какой карточки пришли — иначе к найденному прикрепится чужой TMDB
+      if (typeof window.setSearchLocked === 'function') window.setSearchLocked(false);
+      if (typeof window.clearCatalogSearchContext === 'function') window.clearCatalogSearchContext();
+      showSearchResults();
+      if (searchInput && searchInput.value.trim() && typeof searchResults !== 'undefined' && searchResults.length === 0 && typeof searchTorrents === 'function') {
+        searchTorrents(searchInput.value.trim());
+      }
+    });
+  }
+
+  if (tabCatalog && typeof window.loadCatalogList === 'function') {
+    tabCatalog.addEventListener('click', function () {
+      if (typeof AppState !== 'undefined') AppState.inSearch = 'catalog';
+      if (!tabCatalog.classList.contains('active')) {
+        window.pendingCatalogPoster = null;
+        window.pendingCatalogItem = null;
+        // Обычное открытие вкладки всегда начинает каталог с первой карточки.
+        // Состояние lastSelected* сохраняется только для возврата из detail.
+        if (typeof catalogState !== 'undefined') {
+          catalogState.lastSelectedIndex = 0;
+          catalogState.lastSelectedId = null;
+          catalogState.lastSelectedRowKey = null;
+          catalogState.lastSelectedColIndex = 0;
+        }
+        if (typeof AppState !== 'undefined') {
+          AppState.contentScroll = AppState.contentScroll || {};
+          AppState.contentScroll.catalog = 0;
+        }
+        localStorage.removeItem('lastCatalogCardIndex');
+        if (typeof hideSearchResults === 'function') hideSearchResults();
+        // .hidden на оверлее поиска ставит hideSearchResults в конце затухания
+        var tabTorrentsEl = getEl('tab-torrents');
+        var tabSearchEl = getEl('tab-search');
+        if (tabTorrentsEl) tabTorrentsEl.classList.remove('active');
+        if (tabSearchEl) tabSearchEl.classList.remove('active');
+        tabCatalog.classList.add('active');
+        showContentScreen('catalog');
+        if (window.Nav) Nav.reset('catalog');
+        // Смотрим на активный вид: открыта категория — на её сетку, иначе на ряды.
+        // Раньше вид был один, и проверять было нечего.
+        var catalogView = (typeof catalogState !== 'undefined' && catalogState.currentCatalog)
+          ? getEl('catalog-grid')
+          : getEl('catalog-rows');
+        if (!catalogView || !catalogView.hasChildNodes()) {
+          window.loadCatalogList();
+        } else {
+          // DOM уже тёплый, поэтому загрузки нет; задаём первую карточку явно.
+          setTimeout(function () {
+            if (AppState.currentScreen === 'catalog' && typeof window.ensureCatalogFocus === 'function') {
+              window.ensureCatalogFocus(true);
+            }
+          }, APP_CONSTANTS.FOCUS_RESTORE_DELAY_MS);
+        }
+      }
+    });
+  }
+}
+
+// ==================== ФИЛЬТРЫ ПОИСКА ====================
+function createFilterHandler(setter) {
+  return function (e) {
+    setter(e.target.value);
+    if (typeof applyFiltersAndSort === 'function') applyFiltersAndSort();
+  };
+}
+
+function setupSearchFilters() {
+  var filterToggleBtn = getEl('filter-toggle');
+  var torrentmovie = getEl('torrent-movie');
+  var sortBy = getEl('sort-by');
+  var filterQuality = getEl('filter-quality');
+  var filterTracker = getEl('filter-tracker');
+  var filterYear = getEl('filter-year');
+  var resetFiltersBtn = getEl('reset-filters');
+  var filterSeason = getEl('filter-season');
+  var filterVoice = getEl('filter-voice');
+  var filtervideotype = getEl('filter-videotype');
+
+  // ==================== ОТКРЫТИЕ ПАНЕЛИ ФИЛЬТРОВ ====================
+  if (filterToggleBtn) {
+    filterToggleBtn.addEventListener('click', function () {
+      console.log('🔘 filter-toggle нажат');
+      var opened = false;
+      if (typeof toggleSearchFiltersPanel === 'function') {
+        opened = toggleSearchFiltersPanel();
+        console.log('Панель открыта:', opened);
+      } else {
+        console.warn('toggleSearchFiltersPanel не определена');
+        var panel = getEl('search-filters-panel');
+        if (panel) {
+          if (panel.classList.contains('collapsed')) {
+            panel.classList.remove('collapsed');
+            panel.classList.add('active');
+            filterToggleBtn.classList.add('active');
+            opened = true;
+          } else {
+            panel.classList.add('collapsed');
+            panel.classList.remove('active');
+            filterToggleBtn.classList.remove('active');
+            opened = false;
+          }
+        }
+      }
+      if (opened && typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+        setTimeout(function () {
+          if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+          updateFocusableElements();
+          var panel = getEl('search-filters-panel');
+          if (panel && panel.classList.contains('active')) {
+            var closeBtn = getEl('filter-close-btn');
+            if (closeBtn && closeBtn.offsetParent !== null) {
+              focusEl(closeBtn);
+            } else {
+              var firstItem = panel.querySelector('.filter-item');
+              if (firstItem) focusEl(firstItem);
+            }
+          }
+        }, APP_CONSTANTS.FILTER_PANEL_DELAY_MS);
+      }
+    });
+  }
+
+  // ==================== ОБРАБОТЧИКИ SELECT'ов (для совместимости) ====================
+  var filterConfigs = [
+    { el: torrentmovie, setter: function (v) { if (typeof currentSearchMode !== 'undefined') currentSearchMode = v; } },
+    { el: sortBy, setter: function (v) { if (typeof currentSort !== 'undefined') currentSort = v; } },
+    { el: filterQuality, setter: function (v) { if (typeof currentQualityFilter !== 'undefined') currentQualityFilter = v; } },
+    { el: filterTracker, setter: function (v) { if (typeof currentTrackerFilter !== 'undefined') currentTrackerFilter = v; } },
+    { el: filterYear, setter: function (v) { if (typeof currentYearFilter !== 'undefined') currentYearFilter = (v === 'all') ? '' : v; } },
+    { el: filterSeason, setter: function (v) { if (typeof currentSeasonFilter !== 'undefined') currentSeasonFilter = v; } },
+    { el: filterVoice, setter: function (v) { if (typeof currentVoiceFilter !== 'undefined') currentVoiceFilter = v; } },
+    { el: filtervideotype, setter: function (v) { if (typeof currentvideotypeFilter !== 'undefined') currentvideotypeFilter = v; } }
+  ];
+
+  filterConfigs.forEach(function (config) {
+    if (config.el) {
+      config.el.addEventListener('change', createFilterHandler(config.setter));
+    }
+  });
+
+  if (resetFiltersBtn && typeof resetFilters === 'function') {
+    resetFiltersBtn.addEventListener('click', function () {
+      resetFilters();
+      setTimeout(function () {
+        updateFilterValueDisplays();
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        if (typeof updateFocusableElements === 'function') updateFocusableElements();
+      }, 100);
+    });
+  }
+
+  // ==================== DRILL-DOWN ПАНЕЛЬ ФИЛЬТРОВ ====================
+  var filterPanel = getEl('search-filters-panel');
+  if (filterPanel) {
+    var filterMainScreen = filterPanel.querySelector('.filter-main-screen');
+    var filterValuesScreen = filterPanel.querySelector('.filter-values-screen');
+    var filterValuesList = filterPanel.querySelector('#filter-values-list');
+    var filterBackBtn = getEl('filter-back-btn');
+    var filterCloseBtn = getEl('filter-close-btn');
+    var currentFilterId = null;
+
+    // Показать главный экран
+    function showFilterMainScreen() {
+      if (filterMainScreen) filterMainScreen.style.display = 'block';
+      if (filterValuesScreen) filterValuesScreen.style.display = 'none';
+      if (filterBackBtn) filterBackBtn.style.display = 'none';
+      currentFilterId = null;
+      updateFilterValueDisplays();
+    }
+
+    // Показать экран значений фильтра
+    function showFilterValuesScreen(filterId) {
+      var filterSelect = getEl(filterId);
+      if (!filterSelect || !filterValuesList) return;
+
+      currentFilterId = filterId;
+      if (filterMainScreen) filterMainScreen.style.display = 'none';
+      if (filterValuesScreen) filterValuesScreen.style.display = 'block';
+      if (filterBackBtn) filterBackBtn.style.display = 'flex';
+
+      filterValuesList.innerHTML = '';
+      var currentValue = filterSelect.value;
+      var options = filterSelect.querySelectorAll('option');
+      // Качество выбирается набором: OK ставит и снимает галочку, экран не
+      // закрывается. Отмеченные значения — из currentQualityFilter, select
+      // держит только одно значение и здесь не источник правды.
+      var multi = filterId === 'filter-quality' && typeof window.parseQualityFilter === 'function';
+      var multiSelected = multi ? window.parseQualityFilter(currentQualityFilter) : null;
+
+      for (var i = 0; i < options.length; i++) {
+        var option = options[i];
+        var item = document.createElement('button');
+        item.className = 'filter-value-item';
+        var isSelected = multi
+          ? (option.value === 'all' ? !multiSelected.length : multiSelected.indexOf(option.value) !== -1)
+          : option.value === currentValue;
+        if (isSelected) {
+          item.classList.add('selected');
+        }
+
+        var label = document.createElement('span');
+        label.className = 'filter-value-label';
+        label.textContent = option.textContent;
+        item.appendChild(label);
+        item.dataset.value = option.value;
+        item.dataset.label = option.textContent;
+        item.dataset.filterId = filterId;
+
+        item.addEventListener('click', (function (fid, val, lbl) {
+          return function () {
+            if (fid === 'filter-quality' && typeof window.toggleQualityFilterValue === 'function') {
+              toggleQualityValue(val);
+              return;
+            }
+            applyFilterValue(fid, val, lbl);
+          };
+        })(filterId, option.value, option.textContent));
+
+        filterValuesList.appendChild(item);
+      }
+
+      // Фокус на текущем выбранном значении
+      setTimeout(function () {
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        if (typeof updateFocusableElements === 'function') updateFocusableElements();
+        var selectedItem = filterValuesList.querySelector('.filter-value-item.selected');
+        if (selectedItem && selectedItem.offsetParent !== null) {
+          focusEl(selectedItem);
+        } else {
+          var firstItem = filterValuesList.querySelector('.filter-value-item');
+          if (firstItem) focusEl(firstItem);
+        }
+      }, 50);
+    }
+
+    // Качество: переключить одно значение и остаться на экране значений —
+    // чтобы отметить 1080 и 720, не заходя в фильтр дважды
+    function toggleQualityValue(value) {
+      currentQualityFilter = window.toggleQualityFilterValue(currentQualityFilter, value);
+      var selected = window.parseQualityFilter(currentQualityFilter);
+      var items = filterValuesList.querySelectorAll('.filter-value-item');
+      for (var i = 0; i < items.length; i++) {
+        var v = items[i].dataset.value;
+        var on = (v === 'all') ? !selected.length : selected.indexOf(v) !== -1;
+        items[i].classList.toggle('selected', on);
+      }
+      if (typeof applyFiltersAndSort === 'function') applyFiltersAndSort();
+      updateFilterValueDisplays();
+    }
+
+    // Применить значение фильтра
+    function applyFilterValue(filterId, value, label) {
+      var filterSelect = getEl(filterId);
+      if (filterSelect) {
+        filterSelect.value = value;
+
+        // Обновляем переменные фильтров напрямую
+        switch (filterId) {
+          case 'torrent-movie':
+            if (typeof currentSearchMode !== 'undefined') {
+              currentSearchMode = value;
+              if (typeof getCurrentSearchMode === 'function') getCurrentSearchMode();
+            }
+            break;
+          case 'sort-by':
+            if (typeof currentSort !== 'undefined') currentSort = value;
+            break;
+          case 'filter-quality':
+            if (typeof currentQualityFilter !== 'undefined') currentQualityFilter = value;
+            break;
+          case 'filter-tracker':
+            if (typeof currentTrackerFilter !== 'undefined') currentTrackerFilter = value;
+            break;
+          case 'filter-year':
+            if (typeof currentYearFilter !== 'undefined') currentYearFilter = (value === 'all') ? '' : value;
+            break;
+          case 'filter-season':
+            if (typeof currentSeasonFilter !== 'undefined') currentSeasonFilter = value;
+            break;
+          case 'filter-voice':
+            if (typeof currentVoiceFilter !== 'undefined') currentVoiceFilter = value;
+            break;
+          case 'filter-videotype':
+            if (typeof currentvideotypeFilter !== 'undefined') currentvideotypeFilter = value;
+            break;
+        }
+
+        // Dispatch change event для совместимости
+        try {
+          var event = new Event('change', { bubbles: true });
+          filterSelect.dispatchEvent(event);
+        } catch (e) { }
+
+        // Применяем фильтры
+        if (typeof applyFiltersAndSort === 'function') {
+          applyFiltersAndSort();
+        }
+      }
+
+      // Возврат на главный экран
+      showFilterMainScreen();
+
+      // Фокус на filter-item который редактировали
+      setTimeout(function () {
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        if (typeof updateFocusableElements === 'function') updateFocusableElements();
+        var targetItem = filterPanel.querySelector('.filter-item[data-filter="' + filterId + '"]');
+        if (targetItem) {
+          focusEl(targetItem);
+        }
+      }, 50);
+    }
+
+    // Обновить отображаемые значения на главном экране
+    function updateFilterValueDisplays() {
+      var filterIds = [
+        'torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker',
+        'filter-year', 'filter-season', 'filter-voice', 'filter-videotype'
+      ];
+      for (var i = 0; i < filterIds.length; i++) {
+        var fid = filterIds[i];
+        var sel = getEl(fid);
+        var display = getEl('filter-value-' + fid);
+        if (fid === 'filter-quality' && display && typeof window.qualityFilterLabel === 'function') {
+          // Несколько значений select не выразит — подпись собираем сами
+          display.textContent = window.qualityFilterLabel(currentQualityFilter);
+          if (display.parentNode && display.parentNode.classList) {
+            display.parentNode.classList.toggle('filter-item-set',
+              window.parseQualityFilter(currentQualityFilter).length > 0);
+          }
+          continue;
+        }
+        if (sel && display) {
+          var selectedOption = sel.options[sel.selectedIndex];
+          display.textContent = selectedOption ? selectedOption.textContent : 'Все';
+
+          // Подсвечиваем фильтры, уведённые со значения по умолчанию: у всех этих
+          // select'ов первый option и есть дефолт («Все», «Глобальный поиск»,
+          // «Сначала новые»). Класс красит чип со значением в синий (styles.css),
+          // чтобы сразу было видно, какие фильтры реально сужают выдачу.
+          var item = display.parentNode;
+          if (item && item.classList) {
+            if (sel.selectedIndex > 0) item.classList.add('filter-item-set');
+            else item.classList.remove('filter-item-set');
+          }
+        }
+      }
+    }
+
+    // Подписи надо обновлять и тогда, когда значения меняют не из панели:
+    // syncSearchFilterButtons (torrents.js) выставляет select'ам значения по
+    // умолчанию без события change, и панель показывала «Все» при HDR и «Сиды ↓»
+    window.updateFilterValueDisplays = updateFilterValueDisplays;
+
+    // Обработчики кликов на filter-item (открытие экрана значений)
+    var filterItems = filterPanel.querySelectorAll('.filter-item');
+    for (var fi = 0; fi < filterItems.length; fi++) {
+      filterItems[fi].addEventListener('click', (function (item) {
+        return function () {
+          var filterId = item.dataset.filter;
+          if (filterId) {
+            showFilterValuesScreen(filterId);
+          }
+        };
+      })(filterItems[fi]));
+    }
+
+    // Обработчик кнопки "Назад"
+    if (filterBackBtn) {
+      filterBackBtn.addEventListener('click', function () {
+        // Возвращаемся на строку того фильтра, из которого вышли: из качества
+        // (множественный выбор) выходят именно «назад», а не выбором значения
+        var fromId = currentFilterId;
+        showFilterMainScreen();
+        setTimeout(function () {
+          if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+          if (typeof updateFocusableElements === 'function') updateFocusableElements();
+          var target = (fromId && filterPanel.querySelector('.filter-item[data-filter="' + fromId + '"]')) ||
+            filterPanel.querySelector('.filter-item');
+          if (target) focusEl(target);
+        }, 50);
+      });
+    }
+
+    // Обработчик кнопки "Закрыть"
+    if (filterCloseBtn) {
+      filterCloseBtn.addEventListener('click', function () {
+        if (typeof closeFilterPanel === 'function') closeFilterPanel();
+      });
+    }
+
+    // Обработчик кнопки "Сбросить" (новая, внутри панели)
+    var resetBtnNew = filterPanel.querySelector('.filter-reset-btn-new');
+    if (resetBtnNew) {
+      resetBtnNew.addEventListener('click', function () {
+        if (typeof resetFilters === 'function') resetFilters();
+        setTimeout(function () {
+          updateFilterValueDisplays();
+          if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+          if (typeof updateFocusableElements === 'function') updateFocusableElements();
+          var firstItem = filterPanel.querySelector('.filter-item');
+          if (firstItem) focusEl(firstItem);
+        }, 100);
+      });
+    }
+
+    // Инициализация отображаемых значений
+    updateFilterValueDisplays();
+
+    // Наблюдатель за изменениями select'ов (для синхронизации при внешних изменениях)
+    var observeIds = ['torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker',
+      'filter-year', 'filter-season', 'filter-voice', 'filter-videotype'];
+    for (var oi = 0; oi < observeIds.length; oi++) {
+      var obsSel = getEl(observeIds[oi]);
+      if (obsSel) {
+        obsSel.addEventListener('change', updateFilterValueDisplays);
+      }
+    }
+  }
+}
+
+// ==================== ПРОВЕРКА СЕРВЕРА ====================
+function setupServerCheck() {
+  var torrserverUrl = getEl('torrserver-url');
+  if (torrserverUrl) {
+    var debouncedCheck = debounce(function () {
+      if (typeof checkServer === 'function') checkServer(true);
+    }, APP_CONSTANTS.DEBOUNCE_DELAY_MS);
+    torrserverUrl.addEventListener('input', debouncedCheck);
+  }
+}
+
+// ==================== АВТОРИЗАЦИЯ ====================
+function setupAuth() {
+  var authCheckbox = getEl('auth-checkbox');
+  var authLogin = getEl('auth-login');
+  var authPassword = getEl('auth-password');
+
+  var debouncedCheckAuth = debounce(function () {
+    if (typeof checkServer === 'function') checkServer(true);
+  }, APP_CONSTANTS.DEBOUNCE_DELAY_MS);
+
+  if (authCheckbox) {
+    authCheckbox.addEventListener('change', function (e) {
+      if (typeof AppState !== 'undefined') AppState.authEnabled = e.target.checked;
+      var authFields = getEl('auth-fields');
+      if (authFields) {
+        if (AppState && AppState.authEnabled) authFields.classList.add('visible');
+        else authFields.classList.remove('visible');
+      }
+      setTimeout(debouncedCheckAuth, APP_CONSTANTS.CHECK_SERVER_TIMEOUT_MS);
+    });
+  }
+
+  if (authLogin) authLogin.addEventListener('input', debouncedCheckAuth);
+  if (authPassword) authPassword.addEventListener('input', debouncedCheckAuth);
+}
+
+// ==================== АВТОСКРЫТИЕ ПЛЕЕРА ====================
+function setupPlayerAutoHide() {
+  var playerScreen = getEl('player-screen');
+  if (!playerScreen || typeof resetMouseIdleTimer !== 'function') return;
+  // Хватает трёх слушателей на самом экране. Раньше те же два вешались ещё и на
+  // каждую кнопку управления (около двух десятков лишних подписок): все они
+  // лежат внутри #player-screen, и любое движение мыши над ними всё равно
+  // приходит сюда через mousemove.
+  playerScreen.addEventListener('mousemove', resetMouseIdleTimer);
+  playerScreen.addEventListener('mousedown', resetMouseIdleTimer);
+  playerScreen.addEventListener('mouseenter', resetMouseIdleTimer);
+}
+
+// ==================== СЕНСОРНОЕ УПРАВЛЕНИЕ ====================
+function setupTouchControls(seekSlider, volumeSlider) {
+  var touchTarget = null;
+  var touchStartX = 0;
+  var touchStartY = 0;
+  var touchStartTime = 0;
+  var touchMoved = false;
+
+  // ============ ОБРАБОТЧИКИ (логика без изменений) ============
+  function handleTouchStart(e) {
+    var target = e.target;
+
+    // Пропускаем элементы в search-overlay (кроме кнопок)
+    var isInSearchOverlay = target.closest && target.closest('#search-overlay');
+    var isCloseBtn = target.id === 'close-search' || (target.closest && target.closest('#close-search'));
+    var isFilterBtn = target.id === 'filter-toggle' || (target.closest && target.closest('#filter-toggle'));
+    if ((isCloseBtn || isFilterBtn) && isInSearchOverlay) return;
+
+    touchTarget = target;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    touchStartTime = Date.now();
+    touchMoved = false;
+
+    if (touchTarget.closest('button') || touchTarget.closest('.control-btn')) {
+      touchTarget.classList.add('touch-active');
+    }
+  }
+
+  // Запасной пояс к preventDefault: часть WebView всё равно досылает настоящий
+  // click (иногда — уже после возврата из внешнего плеера, вместе с resume).
+  // Такой click узнаём по isTrusted и по тому же элементу, и глушим один раз.
+  var syntheticClickTarget = null;
+  var syntheticClickTime = 0;
+  function suppressNextRealClick(el) {
+    syntheticClickTarget = el;
+    syntheticClickTime = Date.now();
+  }
+  document.addEventListener('click', function (e) {
+    if (!syntheticClickTarget || !e.isTrusted) return;
+    if (Date.now() - syntheticClickTime > 1500) { syntheticClickTarget = null; return; }
+    if (e.target !== syntheticClickTarget && !syntheticClickTarget.contains(e.target)) return;
+    syntheticClickTarget = null;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }, true);
+
+  function handleTouchEnd(e) {
+    if (!touchStartX) return;
+
+    var deltaX = e.changedTouches[0].clientX - touchStartX;
+    var deltaY = e.changedTouches[0].clientY - touchStartY;
+    var deltaTime = Date.now() - touchStartTime;
+
+    if (touchTarget) touchTarget.classList.remove('touch-active');
+
+    var elementAtTouch = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+    var clickableElement = null;
+    if (elementAtTouch) {
+      clickableElement = elementAtTouch.closest(CLICKABLE_SELECTORS);
+    }
+
+    // Тап (не свайп, не долгое нажатие)
+    if (!touchMoved && deltaTime < APP_CONSTANTS.TOUCH_TAP_THRESHOLD_MS &&
+      Math.abs(deltaX) < APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX &&
+      Math.abs(deltaY) < APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX) {
+
+      // Список сознательно уже, чем CLICKABLE_SELECTORS: подсветку тапа мы
+      // даём всему кликабельному, а синтетический click досылаем только тому,
+      // у кого он действительно что-то делает.
+      //
+      // .skip-button сюда не входила, хотя в CLICKABLE_SELECTORS была: тап по
+      // «Пропустить» подсвечивал кнопку и на этом заканчивался — она отвечала
+      // только на OK с пульта. Это <div>, а не <button>, поэтому ни одна из
+      // проверок ниже её не ловила.
+      var targetToClick = clickableElement || touchTarget;
+      if (targetToClick && (
+        targetToClick.closest('button') ||
+        targetToClick.closest('.control-btn') ||
+        targetToClick.closest('.play-btn') ||
+        targetToClick.closest('.torrent-card') ||
+        targetToClick.closest('.file-item') ||
+        targetToClick.closest('.search-result-item') ||
+        targetToClick.closest('.episode-item') ||
+        targetToClick.closest('.audio-item') ||
+        targetToClick.closest('.subtitle-item') ||
+        targetToClick.closest('.skip-button') ||
+        targetToClick.id === 'close-search' ||
+        targetToClick.id === 'filter-toggle' ||
+        targetToClick.id === 'search-btn'
+      )) {
+        e.stopPropagation();
+        // preventDefault гасит «совместимостные» mouse/click, которые WebView
+        // шлёт следом за touchend. Без него каждый тап приходил дважды: сначала
+        // наш синтетический click, потом настоящий — и AndroidJS.openPlayer
+        // запускал две копии плеера подряд (вторая всплывала при выходе).
+        if (e.cancelable) e.preventDefault();
+        suppressNextRealClick(targetToClick);
+        targetToClick.click();
+      }
+    }
+
+    touchStartX = 0;
+    touchStartY = 0;
+  }
+
+  function handleTouchCancel(e) {
+    if (touchTarget) touchTarget.classList.remove('touch-active');
+    touchStartX = 0;
+    touchStartY = 0;
+  }
+
+  // ============ ДЕЛЕГИРОВАНИЕ: один listener на document ============
+  // Работает с ЛЮБЫМИ динамически добавленными элементами.
+  // Не нужен MutationObserver. Не нужен setupTouchButtons.
+  document.addEventListener('touchstart', function (e) {
+    var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
+    if (el) handleTouchStart.call(el, e);
+  }, { passive: true });
+
+  // touchend — НЕ passive: внутри нужен preventDefault против дубля клика.
+  // На скролл это не влияет (его определяют touchstart/touchmove).
+  document.addEventListener('touchend', function (e) {
+    var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
+    if (el) handleTouchEnd.call(el, e);
+  }, { passive: false });
+
+  document.addEventListener('touchcancel', function (e) {
+    var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
+    if (el) handleTouchCancel.call(el, e);
+  }, { passive: true });
+
+  // ============ СЛАЙДЕРЫ (без изменений) ============
+  if (seekSlider) {
+    seekSlider.addEventListener('touchstart', function (e) {
+      e.stopPropagation();
+      if (typeof AppState !== 'undefined') {
+        AppState.isSliderDragging = true;
+        AppState.suppressTimeUpdate = true;
+      }
+    }, { passive: true });
+    seekSlider.addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
+    seekSlider.addEventListener('touchend', function (e) {
+      e.stopPropagation();
+      if (typeof AppState !== 'undefined') AppState.isSliderDragging = false;
+      setTimeout(function () {
+        if (typeof AppState !== 'undefined') AppState.suppressTimeUpdate = false;
+      }, 100);
+    }, { passive: true });
+  }
+
+  if (volumeSlider) {
+    volumeSlider.addEventListener('touchstart', function (e) { e.stopPropagation(); }, { passive: true });
+    volumeSlider.addEventListener('touchmove', function (e) { e.stopPropagation(); }, { passive: true });
+    volumeSlider.addEventListener('touchend', function (e) { e.stopPropagation(); }, { passive: true });
+  }
+
+  // ============ MutationObserver и setupTouchButtons УДАЛЕНЫ ============
+  // Больше не нужны: делегирование обрабатывает все элементы автоматически.
+}
+
+// ==================== ПОЛНОЭКРАННЫЙ РЕЖИМ ====================
+function setupFullscreen() {
+  var fullscreenBtn = getEl('fullscreen-btn');
+  if (!fullscreenBtn) return;
+
+  function toggleFullscreen() {
+    var isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!isFullscreen) {
+      // Именно documentElement, а не #player-screen. В полноэкранном режиме
+      // браузер рисует только полноэкранный элемент и его потомков, а
+      // #playback-overlay («Переключение на серию…»), #loading-overlay и кнопка
+      // пропуска лежат в <body> рядом с плеером — с #player-screen их не было
+      // видно вообще. То же самое делает setupAutoFullscreen ниже.
+      var element = document.documentElement;
+      if (element.requestFullscreen) element.requestFullscreen();
+      else if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();
+      else if (element.mozRequestFullScreen) element.mozRequestFullScreen();
+      else if (element.msRequestFullscreen) element.msRequestFullscreen();
+      fullscreenBtn.innerHTML = '<i class="fi fi-rr-compress"></i>';
+      fullscreenBtn.title = 'Выйти из полноэкранного режима';
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+      else if (document.msExitFullscreen) document.msExitFullscreen();
+      fullscreenBtn.innerHTML = '<i class="fi fi-rr-expand"></i>';
+      fullscreenBtn.title = 'Полный экран';
+    }
+  }
+
+  function updateFullscreenIcon() {
+    var isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    fullscreenBtn.innerHTML = isFullscreen ? '<i class="fi fi-rr-compress"></i>' : '<i class="fi fi-rr-expand"></i>';
+    fullscreenBtn.title = isFullscreen ? 'Выйти из полноэкранного режима' : 'Полный экран';
+    // Если полноэкранным стал не документ (часть ТВ-браузеров разворачивает
+    // сам <video>), player.js перенесёт оверлеи внутрь него
+    if (typeof window.syncFullscreenOverlays === 'function') window.syncFullscreenOverlays();
+  }
+
+  fullscreenBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    toggleFullscreen();
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+  });
+
+  document.addEventListener('fullscreenchange', updateFullscreenIcon);
+  document.addEventListener('webkitfullscreenchange', updateFullscreenIcon);
+}
+
+function setupAutoFullscreen() {
+  var autoFullscreenCheckbox = getEl('auto-fullscreen');
+  if (!autoFullscreenCheckbox) return;
+
+  var savedAutoFullscreen = localStorage.getItem('autoFullscreen') === 'true';
+  autoFullscreenCheckbox.checked = savedAutoFullscreen;
+
+  autoFullscreenCheckbox.addEventListener('change', function (e) {
+    localStorage.setItem('autoFullscreen', e.target.checked);
+    if (e.target.checked) {
+      var element = document.documentElement;
+      if (element.requestFullscreen) element.requestFullscreen();
+      else if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();
+      else if (element.mozRequestFullScreen) element.mozRequestFullScreen();
+      else if (element.msRequestFullscreen) element.msRequestFullscreen();
+    }
+  });
+
+  function enterFullscreenIfEnabled() {
+    var autoFullscreen = localStorage.getItem('autoFullscreen') === 'true';
+    if (autoFullscreen) {
+      setTimeout(function () {
+        var element = document.documentElement;
+        if (element.requestFullscreen) element.requestFullscreen();
+        else if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();
+        else if (element.mozRequestFullScreen) element.mozRequestFullScreen();
+        else if (element.msRequestFullscreen) element.msRequestFullscreen();
+      }, 500);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', enterFullscreenIfEnabled);
+  } else {
+    enterFullscreenIfEnabled();
+  }
+}
+
+// ==================== ФИЛЬТРЫ ПОИСКА ПО УМОЛЧАНИЮ ====================
+/**
+ * Раздел «Прочее → Фильтры поиска по умолчанию»: три ряда кнопок — сортировка,
+ * качество (можно несколько), тип видео. Списки значений — те же, что у панели
+ * фильтров (torrents.js), чтобы настройка не разошлась с самими фильтрами.
+ *
+ * Новое значение по умолчанию сразу становится и текущим фильтром: иначе,
+ * выбрав здесь «1080p», человек увидел бы в поиске всё подряд до первого
+ * нажатия «Сбросить».
+ */
+function setupSearchFilterDefaults() {
+  var box = getEl('search-filter-defaults');
+  if (!box || typeof window.getSearchFilterDefaults !== 'function') return;
+
+  var groups = [
+    { key: 'sort', title: 'Сортировка', options: window.SORT_OPTIONS },
+    { key: 'quality', title: 'Качество', hint: 'можно выбрать несколько', options: window.QUALITY_OPTIONS },
+    { key: 'videotype', title: 'Тип видео', options: window.VIDEOTYPE_OPTIONS }
+  ];
+
+  var html = '';
+  for (var g = 0; g < groups.length; g++) {
+    var grp = groups[g];
+    html += '<div class="settings-field">' +
+      '<div class="field-label">' + grp.title + (grp.hint ? ' <span class="field-hint">— ' + grp.hint + '</span>' : '') + '</div>' +
+      '<div class="settings-chips" data-group="' + grp.key + '">';
+    for (var i = 0; i < grp.options.length; i++) {
+      var o = grp.options[i];
+      html += '<button class="settings-chip" data-group="' + grp.key + '" data-value="' + o.value + '">' + o.label + '</button>';
+    }
+    html += '</div></div>';
+  }
+  box.innerHTML = html;
+
+  function render() {
+    var d = window.getSearchFilterDefaults();
+    var qualityList = window.parseQualityFilter(d.quality);
+    var chips = box.querySelectorAll('.settings-chip');
+    for (var i = 0; i < chips.length; i++) {
+      var c = chips[i], grp = c.dataset.group, val = c.dataset.value, on;
+      if (grp === 'quality') on = (val === 'all') ? !qualityList.length : qualityList.indexOf(val) !== -1;
+      else on = d[grp] === val;
+      c.classList.toggle('active', on);
+    }
+  }
+
+  box.addEventListener('click', function (e) {
+    var chip = e.target.closest ? e.target.closest('.settings-chip') : null;
+    if (!chip) return;
+    var grp = chip.dataset.group, val = chip.dataset.value;
+    var d = window.getSearchFilterDefaults();
+    if (grp === 'quality') d.quality = window.toggleQualityFilterValue(d.quality, val);
+    else d[grp] = val;
+    window.saveSearchFilterDefaults(d);
+    window.applySearchFilterDefaults(grp);
+    if (typeof syncSearchFilterButtons === 'function') syncSearchFilterButtons();
+    render();
+  });
+
+  render();
+}
+
+// ==================== ЧЕКБОКСЫ ====================
+function setupCheckboxWithStorage(elementId, storageKey, stateKey, onChange) {
+  var checkbox = getEl(elementId);
+  if (!checkbox) return;
+
+  var saved = localStorage.getItem(storageKey) === 'true';
+  if (stateKey && typeof AppState !== 'undefined') AppState[stateKey] = saved;
+  checkbox.checked = saved;
+
+  checkbox.addEventListener('change', function (e) {
+    var value = e.target.checked;
+    localStorage.setItem(storageKey, value);
+    if (stateKey && typeof AppState !== 'undefined') AppState[stateKey] = value;
+    if (onChange) onChange(value);
+  });
+
+  return saved;
+}
+
+function setupCheckboxes() {
+  // 1. Внешний плеер
+  setupExternalPlayerCheckbox();
+  var container = '';
+
+  // Автопропуск заставки. В Android-приложении плеер внешний и кнопки
+  // пропуска там нет — настройку прячем, как и соседние плеерные.
+  var autoSkipCheckbox = getEl('auto-skip-intro');
+  if (autoSkipCheckbox) {
+    if (window.AndroidJS) {
+      var autoSkipContainer = autoSkipCheckbox.closest('.checkbox-container');
+      if (autoSkipContainer) autoSkipContainer.classList.add('hidden');
+    }
+    AppState.autoSkipIntro = localStorage.getItem('autoSkipIntro') === 'true';
+    autoSkipCheckbox.checked = AppState.autoSkipIntro;
+    autoSkipCheckbox.addEventListener('change', function (e) {
+      AppState.autoSkipIntro = e.target.checked;
+      localStorage.setItem('autoSkipIntro', AppState.autoSkipIntro);
+      console.log('⏩ Автопропуск заставки:', AppState.autoSkipIntro ? 'включён' : 'выключен');
+    });
+  }
+
+  // Встроенная экранная клавиатура (раздел «Прочее»). Сама клавиатура — в
+  // js/osk.js, флаг она читает из AppState на каждом открытии поля.
+  var builtinKeyboardCheckbox = getEl('builtin-keyboard');
+  if (builtinKeyboardCheckbox) {
+    AppState.builtinKeyboard = localStorage.getItem('builtinKeyboard') === 'true';
+    builtinKeyboardCheckbox.checked = AppState.builtinKeyboard;
+    builtinKeyboardCheckbox.addEventListener('change', function (e) {
+      AppState.builtinKeyboard = e.target.checked;
+      localStorage.setItem('builtinKeyboard', AppState.builtinKeyboard);
+      if (window.OSK && typeof window.OSK.applySetting === 'function') window.OSK.applySetting();
+      console.log('⌨️ Встроенная клавиатура:', AppState.builtinKeyboard ? 'включена' : 'выключена');
+    });
+  }
+
+  setupSearchFilterDefaults();
+
+  // 2. Скрытие часов
+  var hideClockCheckbox = getEl('hide-clock');
+  if (window.AndroidJS) {
+    container = hideClockCheckbox.closest('.checkbox-container');
+    if (container) container.classList.add('hidden');
+  }
+  if (hideClockCheckbox) {
+    var savedHideClock = localStorage.getItem('hideClockEnabled') === 'true';
+    hideClockEnabled = savedHideClock;
+    hideClockCheckbox.checked = savedHideClock;
+    hideClockCheckbox.addEventListener('change', function (e) {
+      hideClockEnabled = e.target.checked;
+      localStorage.setItem('hideClockEnabled', hideClockEnabled);
+      setupClockVisibility();
+      console.log('🕐 Скрытие часов:', hideClockEnabled ? 'включено' : 'выключено');
+    });
+  }
+
+  // 3. Добавление в базу
+  var addToDbCheckbox = getEl('add-to-db');
+  if (addToDbCheckbox) {
+    var savedAddToDb = localStorage.getItem('addToDbEnabled') === 'true';
+    addToDbEnabled = savedAddToDb;
+    addToDbCheckbox.checked = savedAddToDb;
+    if (typeof AppState !== 'undefined') {
+      AppState.addToDbEnabled = addToDbEnabled;
+    }
+    addToDbCheckbox.addEventListener('change', function (e) {
+      addToDbEnabled = e.target.checked;
+      localStorage.setItem('addToDbEnabled', addToDbEnabled);
+      if (typeof AppState !== 'undefined') {
+        AppState.addToDbEnabled = addToDbEnabled;
+      }
+      console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
+    });
+  }
+
+  // Предзагрузка перед воспроизведением. Флаг читает startHLSPlayback
+  // (player.js) на каждом запуске, само окно — в torrserverstats.js.
+  var preloadCheckbox = getEl('preload-before-play');
+  if (preloadCheckbox) {
+    AppState.preloadBeforePlay = localStorage.getItem('preloadBeforePlay') === 'true';
+    preloadCheckbox.checked = AppState.preloadBeforePlay;
+    preloadCheckbox.addEventListener('change', function (e) {
+      AppState.preloadBeforePlay = e.target.checked;
+      localStorage.setItem('preloadBeforePlay', AppState.preloadBeforePlay);
+      console.log('⏳ Предзагрузка:', AppState.preloadBeforePlay ? 'включена' : 'выключена');
+    });
+  }
+
+  // 4. Транскодирование
+  var transcodingCheckbox = getEl('transcoding-off');
+  if (window.AndroidJS) {
+    container = transcodingCheckbox.closest('.checkbox-container');
+    if (container) container.classList.add('hidden');
+  }
+  if (transcodingCheckbox) {
+    var savedTranscoding = localStorage.getItem('transcodingOnOff') === 'true';
+    transcodingOnOff = savedTranscoding;
+    transcodingCheckbox.checked = savedTranscoding;
+    if (typeof AppState !== 'undefined') {
+      AppState.transcodingOnOff = transcodingOnOff;
+    }
+    transcodingCheckbox.addEventListener('change', function (e) {
+      transcodingOnOff = e.target.checked;
+      localStorage.setItem('transcodingOnOff', transcodingOnOff);
+      if (typeof AppState !== 'undefined') {
+        AppState.transcodingOnOff = transcodingOnOff;
+      }
+      console.log('🎬 Транскодирование:', transcodingOnOff ? 'включено' : 'выключено');
+    });
+  }
+
+  // 5. Многоканальный звук
+  var multiChannelCheckbox = getEl('multi-channel-audio');
+  if (window.AndroidJS) {
+    container = multiChannelCheckbox.closest('.checkbox-container');
+    if (container) container.classList.add('hidden');
+  }
+  if (multiChannelCheckbox) {
+    var savedMultiChannel = localStorage.getItem('multiChannelEnabled') === 'true';
+    multiChannelEnabled = savedMultiChannel;
+    multiChannelCheckbox.checked = savedMultiChannel;
+    if (typeof AppState !== 'undefined') {
+      AppState.multiChannelEnabled = multiChannelEnabled;
+    }
+    multiChannelCheckbox.addEventListener('change', function (e) {
+      multiChannelEnabled = e.target.checked;
+      localStorage.setItem('multiChannelEnabled', multiChannelEnabled);
+      if (typeof AppState !== 'undefined') {
+        AppState.multiChannelEnabled = multiChannelEnabled;
+      }
+      console.log('🎵 Многоканальный звук:', multiChannelEnabled ? 'включен' : 'выключен');
+      if (multiChannelEnabled) {
+        var hint = getEl('player-hint');
+        if (hint) {
+          var originalText = hint.textContent;
+          hint.textContent = 'Многоканальный звук включен. Новые потоки будут использовать оригинальные аудиодорожки (AC3/E-AC3/AAC)';
+          hint.style.opacity = '1';
+          setTimeout(function () {
+            hint.textContent = originalText;
+            hint.style.opacity = '0';
+          }, 3000);
+        }
+      }
+    });
+  }
+
+  // 6. Включить или отключить полностью транскодинг
+  var transcodingCheckboxOnOff = getEl('transcoding-on-off');
+  if (window.AndroidJS) {
+    container = transcodingCheckboxOnOff.closest('.checkbox-container');
+    if (container) container.classList.add('hidden');
+  }
+  if (transcodingCheckboxOnOff) {
+    var savedTranscodingFull = localStorage.getItem('transcodingFullOnOff') === 'true';
+    transcodingFullOnOff = savedTranscodingFull;
+    transcodingCheckboxOnOff.checked = savedTranscodingFull;
+    if (typeof AppState !== 'undefined') {
+      AppState.transcodingFullOnOff = transcodingFullOnOff;
+    }
+    transcodingCheckboxOnOff.addEventListener('change', function (e) {
+      transcodingFullOnOff = e.target.checked;
+      localStorage.setItem('transcodingFullOnOff', transcodingFullOnOff);
+      if (typeof AppState !== 'undefined') {
+        AppState.transcodingFullOnOff = transcodingFullOnOff;
+      }
+      console.log('🎬 Транскодирование:', transcodingFullOnOff ? 'включено' : 'выключено');
+    });
+  }
+
+  if (window.AndroidJS) {
+    // 7. Плеер по умолчанию и автопереключение серий — только в Android-приложении,
+    // т.к. воспроизведение там всегда идёт через внешний плеер (AndroidJS.openPlayer).
+    var choosePlayerContainer = getEl('choose-player-container');
+    if (choosePlayerContainer) choosePlayerContainer.hidden = false;
+    var choosePlayerBtn = getEl('choose-player-btn');
+    if (choosePlayerBtn) {
+      choosePlayerBtn.addEventListener('click', function () {
+        if (typeof AndroidJS.choosePlayer === 'function') AndroidJS.choosePlayer();
+      });
+    }
+
+    var autoSwitchContainer = getEl('auto-switch-episodes-container');
+    if (autoSwitchContainer) autoSwitchContainer.hidden = false;
+    setupCheckboxWithStorage('auto-switch-episodes', 'autoSwitchEpisodes', 'autoSwitchEpisodes');
+  } else {
+    // 7. Инициализация проверки Dolby Vision (безопасный вызов)
+    if (typeof initDolbyVisionCheck === 'function') {
+      try {
+        initDolbyVisionCheck();
+      } catch (e) {
+        console.warn('⚠️ Ошибка инициализации Dolby Vision check:', e);
+      }
+    } else {
+      console.log('ℹ️ initDolbyVisionCheck не найдена, пропускаем');
+    }
+  }
+}
+
+function setupExternalPlayerCheckbox() {
+  var externalPlayerCheckbox = getEl('out-player');
+  if (!externalPlayerCheckbox) return;
+
+  var savedExternalPlayer = localStorage.getItem('externalPlayerEnabled') === 'true';
+  window.externalPlayerEnabled = savedExternalPlayer;
+  externalPlayerCheckbox.checked = savedExternalPlayer;
+
+  if (typeof AppState !== 'undefined') AppState.externalPlayerEnabled = window.externalPlayerEnabled;
+  console.log('📱 Внешний плеер:', window.externalPlayerEnabled ? 'включен' : 'выключен');
+
+  externalPlayerCheckbox.addEventListener('change', function (e) {
+    window.externalPlayerEnabled = e.target.checked;
+    localStorage.setItem('externalPlayerEnabled', window.externalPlayerEnabled);
+    if (typeof AppState !== 'undefined') AppState.externalPlayerEnabled = window.externalPlayerEnabled;
+    console.log('📱 Внешний плеер:', window.externalPlayerEnabled ? 'включен' : 'выключен');
+    if (window.externalPlayerEnabled && typeof showPlayerHint === 'function') {
+      showPlayerHint('Внешний плеер включен. При воспроизведении будет открыт выбор приложений.');
+    } else if (!window.externalPlayerEnabled && typeof showPlayerHint === 'function') {
+      showPlayerHint('Внешний плеер выключен. Используется встроенный плеер.');
+    }
+  });
+}
+
+function setupClockVisibility() {
+  var clockDisplay = getEl('clock-display');
+  if (clockDisplay) {
+    clockDisplay.style.display = hideClockEnabled ? 'none' : 'block';
+  }
+}
+
+// ==================== МЕНЮ КОНФИГУРАЦИИ ====================
+function setupConfigMenu() {
+  if (!Element.prototype.closest) {
+    Element.prototype.closest = function (selector) {
+      var element = this;
+      while (element && element.nodeType === 1) {
+        if (element.matches(selector)) return element;
+        element = element.parentNode;
+      }
+      return null;
+    };
+  }
+
+  var menuItems = document.querySelectorAll('.menu-item');
+  for (var i = 0; i < menuItems.length; i++) {
+    var menuItem = menuItems[i];
+    menuItem.removeEventListener('click', menuItem._configClickHandler);
+
+    var clickHandler = function (event) {
+      if (event.stopPropagation) event.stopPropagation();
+      var tabId = this.getAttribute('data-tab') || this.id;
+      var isActive = this.classList.contains('active');
+      console.log('🔘 Нажато меню:', tabId, 'Активно:', isActive);
+
+      if (isActive) {
+        var content = getEl(tabId + '-content');
+        if (content) content.style.display = 'none';
+        this.classList.remove('active');
+        if (this.blur) this.blur();
+      } else {
+        if (typeof switchConfigTab === 'function') switchConfigTab(tabId);
+        if (typeof setConfigMenuActive === 'function') setConfigMenuActive(this.id);
+        if (this.focus) this.focus();
+      }
+    };
+
+    menuItem._configClickHandler = clickHandler;
+    menuItem.addEventListener('click', clickHandler);
+  }
+  console.log('✅ Настройки меню инициализированы, элементов:', menuItems.length);
+}
+
+// ==================== ОШИБКИ ====================
+function showInitError() {
+  var errorDiv = document.createElement('div');
+  errorDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: #ff6a6a; padding: 20px; border-radius: 12px; text-align: center; z-index: 10000; border: 1px solid #ff6a6a;';
+  errorDiv.innerHTML = '<div style="font-size: 48px; margin-bottom: 10px;">⚠️</div>' +
+    '<div style="margin-bottom: 10px;">Ошибка инициализации приложения</div>' +
+    '<div style="font-size: 12px; color: #aaa;">Попробуйте обновить страницу</div>' +
+    '<button onclick="location.reload()" style="margin-top: 15px; padding: 8px 20px; background: #4a9eff; border: none; border-radius: 6px; color: white; cursor: pointer;">Обновить</button>';
+  document.body.appendChild(errorDiv);
+}
+
+// ==================== МЫШЬ И ИНТЕРФЕЙС ====================
+function showPlayerHint(message) {
+  var hint = getEl('player-hint');
+  if (!hint) return;
+  hint.textContent = message;
+  hint.style.opacity = '1';
+  clearTimeout(window.hintTimeout);
+  window.hintTimeout = setTimeout(function () {
+    hint.style.opacity = '0';
+  }, APP_CONSTANTS.HINT_DISPLAY_DURATION_MS);
+}
+
+// ==================== ТЕСТ СКОРОСТИ ====================
+function setupSpeedTest() {
+  var speedtestBtn = getEl('speedtest-btn');
+  if (!speedtestBtn) return;
+
+  speedtestBtn.addEventListener('click', async function () {
+    console.log('📡 Запуск замера скорости...');
+    var torrserverUrlInput = getEl('torrserver-url');
+    // С протоколом, даже если его не ввели (torrents.js: normalizeTorrServerUrl)
+    var torrServerUrl = typeof window.torrServerUrlFromField === 'function'
+      ? window.torrServerUrlFromField()
+      : (torrserverUrlInput ? torrserverUrlInput.value.trim() : '');
+
+    if (!torrServerUrl) {
+      var resultsDiv = getEl('speedtest-results');
+      var torrEl = getEl('speedtest-torrserver');
+      if (resultsDiv) resultsDiv.style.display = 'block';
+      if (torrEl) torrEl.innerHTML = '❌ Укажите URL TorrServer';
+      setTimeout(function () {
+        if (torrEl && torrEl.innerHTML === '❌ Укажите URL TorrServer') {
+          torrEl.innerHTML = 'TorrServer → Сервер: -- Mbps';
+        }
+      }, 3000);
+      return;
+    }
+
+    if (typeof SpeedTest !== 'undefined' && SpeedTest.run) {
+      await SpeedTest.run(torrServerUrl);
+    } else {
+      console.error('❌ Модуль SpeedTest не загружен');
+      var resultsDiv = getEl('speedtest-results');
+      if (resultsDiv) {
+        resultsDiv.style.display = 'block';
+        resultsDiv.innerHTML = '<div style="color: #ff4e4e;">❌ Модуль замера скорости не загружен. Обновите страницу.</div>';
+      }
+    }
+  });
+}
+
+// ==================== JACRED URL ====================
+function initJacredUrlStorage() {
+  var jacredUrlInput = getEl('jacred-url');
+  if (!jacredUrlInput) return;
+
+  var savedUrl = localStorage.getItem('jacred-url');
+  if (savedUrl) {
+    jacredUrlInput.value = savedUrl;
+    console.log('📦 Загружен jacred URL:', savedUrl);
+  }
+
+  var debouncedSave = debounce(function () {
+    var value = jacredUrlInput.value.trim();
+    localStorage.setItem('jacred-url', value);
+    console.log('💾 Сохранён jacred URL:', value);
+  }, APP_CONSTANTS.JACRED_SAVE_DELAY_MS);
+
+  jacredUrlInput.addEventListener('input', debouncedSave);
+  jacredUrlInput.addEventListener('blur', function () {
+    var value = jacredUrlInput.value.trim();
+    localStorage.setItem('jacred-url', value);
+  });
+}
+// ==================== ПРОВЕРКА DOLBY VISION ====================
+// Поддержка кодека: MSE (hls.js), ManagedMediaSource (Safari/iOS 17+) и
+// нативный <video>. Прежде проверялся только MediaSource с dvh1.08.06, и
+// устройства, умеющие лишь dvhe (часть webOS/Tizen/Vidaa), считались «без DV».
+function isCodecSupportedAnywhere(type) {
+  try {
+    if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported && MediaSource.isTypeSupported(type)) return true;
+  } catch (e) { }
+  try {
+    if (typeof ManagedMediaSource !== 'undefined' && ManagedMediaSource.isTypeSupported && ManagedMediaSource.isTypeSupported(type)) return true;
+  } catch (e) { }
+  try {
+    var v = document.createElement('video');
+    if (v.canPlayType && v.canPlayType(type) === 'probably') return true;
+  } catch (e) { }
+  return false;
+}
+
+function checkDolbyVisionSupport() {
+  var tests = [
+    { name: 'HEVC Main 10', codec: 'video/mp4; codecs="hvc1.2.4.L150.B0"' },
+    { name: 'H.264 (AVC)', codec: 'video/mp4; codecs="avc1.640028"' },
+    { name: 'Dolby Vision Profile 8 (dvh1)', codec: 'video/mp4; codecs="dvh1.08.06"', dv: 'p8' },
+    { name: 'Dolby Vision Profile 8 (dvhe)', codec: 'video/mp4; codecs="dvhe.08.06"', dv: 'p8' },
+    { name: 'Dolby Vision Profile 5 (dvh1)', codec: 'video/mp4; codecs="dvh1.05.06"', dv: 'p5' },
+    { name: 'Dolby Vision Profile 5 (dvhe)', codec: 'video/mp4; codecs="dvhe.05.06"', dv: 'p5' },
+    { name: 'Dolby Vision AV1 (dav1)', codec: 'video/mp4; codecs="dav1.10.06"', dv: 'av1' },
+    { name: 'AV1 Main', codec: 'video/mp4; codecs="av01.0.08M.08"' }
+  ];
+
+  var results = [];
+  var variants = { p8: false, p5: false, av1: false };
+
+  console.log('🔍 Проверка поддержки кодеков:');
+  for (var i = 0; i < tests.length; i++) {
+    var test = tests[i];
+    var supported = isCodecSupportedAnywhere(test.codec);
+    results.push({ name: test.name, codec: test.codec, supported: supported });
+    console.log('   ' + (supported ? '✅' : '❌') + ' ' + test.name);
+    if (supported && test.dv) variants[test.dv] = true;
+  }
+
+  return {
+    supported: variants.p8 || variants.av1,
+    variants: variants,
+    codecs: results
+  };
+}
+
+function updateDolbyVisionUI(result) {
+  var statusIcon = getEl('dv-status-icon');
+  var statusText = getEl('dv-status-text');
+  var codecsList = getEl('dv-codecs-list');
+
+  if (!statusIcon || !statusText) return;
+
+  if (result.supported) {
+    statusIcon.textContent = '✅';
+    statusIcon.style.color = '#4caf50';
+    statusText.innerHTML = '<span style="color: #4caf50; font-weight: 600;">Dolby Vision поддерживается</span>';
+    statusText.innerHTML += '<div style="font-size: 12px; color: #aaa; margin-top: 4px;">Ваше устройство может воспроизводить контент в Dolby Vision</div>';
+  } else {
+    statusIcon.textContent = '❌';
+    statusIcon.style.color = '#ff6a6a';
+    statusText.innerHTML = '<span style="color: #ff6a6a; font-weight: 600;">Dolby Vision НЕ поддерживается</span>';
+    statusText.innerHTML += '<div style="font-size: 12px; color: #aaa; margin-top: 4px;">Будет использоваться стандартное HDR или SDR</div>';
+  }
+
+  if (codecsList && result.codecs && result.codecs.length > 0) {
+    var html = '<div style="color: #888; margin-bottom: 8px;">Поддержка кодеков:</div>';
+    for (var i = 0; i < result.codecs.length; i++) {
+      var codec = result.codecs[i];
+      var icon = codec.supported ? '✅' : '❌';
+      var color = codec.supported ? '#4caf50' : '#ff6a6a';
+      html += '<div style="margin: 4px 0; color: ' + color + ';">';
+      html += icon + ' ' + codec.name;
+      html += '</div>';
+    }
+    codecsList.innerHTML = html;
+    codecsList.style.display = 'block';
+  }
+
+  if (typeof AppState !== 'undefined') {
+    AppState.dolbyVisionSupported = result.supported;
+    AppState.supportedCodecs = result.codecs;
+  }
+
+  try {
+    localStorage.setItem('dolbyVisionSupported', result.supported ? 'true' : 'false');
+    localStorage.setItem('supportedCodecs', JSON.stringify(result.codecs));
+    // Результат привязан к браузеру: после обновления прошивки/браузера
+    // старое «не поддерживается» не должно залипать навсегда
+    localStorage.setItem('dolbyVisionCheckUA', navigator.userAgent);
+  } catch (e) {
+    console.warn('Не удалось сохранить результаты проверки DV:', e);
+  }
+}
+
+function initDolbyVisionCheck() {
+  var checkBtn = getEl('dv-check-btn');
+
+  // Блок «Поддержка Dolby Vision» (статус и список кодеков) не показываем:
+  // с крупными настройками он уходил под прокрутку, а нужен был лишь ради
+  // переключателя «Предпочитать Dolby Vision». Итог проверки теперь — подпись
+  // под этим переключателем (index.html), а сам он виден только при
+  // поддержке (ниже). Проверка и её результаты в localStorage работают как
+  // раньше — блок остаётся в разметке скрытым.
+  var dvSection = getEl('dv-support-section');
+  if (dvSection) dvSection.hidden = true;
+
+  // ИСПРАВЛЕНО: убран Optional Chaining (?.)
+  var dvOnOffEl = getEl('dvOnOff');
+  var dvCheckboxContainer = dvOnOffEl ? dvOnOffEl.closest('.checkbox-container') : null;
+  var dvCheckbox = dvOnOffEl;
+
+  var dvSupported = false;
+  try {
+    var savedSupported = localStorage.getItem('dolbyVisionSupported');
+    var savedCodecs = localStorage.getItem('supportedCodecs');
+    var savedUA = localStorage.getItem('dolbyVisionCheckUA');
+    if (savedSupported !== null && savedCodecs && savedUA === navigator.userAgent) {
+      var result = {
+        supported: savedSupported === 'true',
+        codecs: JSON.parse(savedCodecs)
+      };
+      updateDolbyVisionUI(result);
+      dvSupported = result.supported;
+    }
+  } catch (e) {
+    console.warn('Не удалось загрузить сохранённые результаты DV:', e);
+  }
+
+  if (dvCheckboxContainer) {
+    if (dvSupported) {
+      dvCheckboxContainer.classList.remove('hidden');
+      console.log('✅ Dolby Vision поддерживается - чекбокс предпочтения виден');
+    } else {
+      dvCheckboxContainer.classList.add('hidden');
+      console.log('❌ Dolby Vision не поддерживается - чекбокс предпочтения скрыт');
+    }
+  }
+
+  if (dvCheckbox) {
+    // Пока пользователь сам не выбирал, DV включён там, где он поддерживается
+    var rawDvPreferred = localStorage.getItem('dvPreferred');
+    var savedDvPreferred = rawDvPreferred === null ? dvSupported : rawDvPreferred === 'true';
+    dvPreferred = savedDvPreferred;
+    dvCheckbox.checked = savedDvPreferred;
+
+    if (typeof AppState !== 'undefined') {
+      AppState.dvPreferred = dvPreferred;
+    }
+    console.log('🎬 Предпочтение Dolby Vision:', dvPreferred ? 'включено' : 'выключено');
+
+    dvCheckbox.addEventListener('change', function (e) {
+      dvPreferred = e.target.checked;
+      try {
+        localStorage.setItem('dvPreferred', dvPreferred);
+      } catch (err) {
+        console.warn('Не удалось сохранить предпочтение DV:', err);
+      }
+
+      if (typeof AppState !== 'undefined') {
+        AppState.dvPreferred = dvPreferred;
+      }
+
+      console.log('🎬 Предпочтение Dolby Vision:', dvPreferred ? 'включено' : 'выключено');
+
+      if (typeof showPlayerHint === 'function') {
+        var msg = dvPreferred
+          ? '🎬 Dolby Vision будет предпочитаться при наличии'
+          : '🎬 Стандартное HDR будет использоваться по умолчанию';
+        showPlayerHint(msg);
+      }
+    });
+  }
+
+  if (checkBtn) {
+    checkBtn.addEventListener('click', function () {
+      checkBtn.disabled = true;
+      checkBtn.textContent = 'Проверка...';
+
+      setTimeout(function () {
+        try {
+          var result = checkDolbyVisionSupport();
+          updateDolbyVisionUI(result);
+
+          if (dvCheckboxContainer) {
+            if (result.supported) {
+              dvCheckboxContainer.classList.remove('hidden');
+            } else {
+              dvCheckboxContainer.classList.add('hidden');
+            }
+          }
+
+          if (typeof showPlayerHint === 'function') {
+            var msg = result.supported
+              ? '✅ Dolby Vision поддерживается на вашем устройстве'
+              : '❌ Dolby Vision не поддерживается, будет использоваться HDR/SDR';
+            showPlayerHint(msg);
+          }
+        } catch (e) {
+          console.error('Ошибка проверки DV:', e);
+          alert('Ошибка при проверке: ' + e.message);
+        }
+        checkBtn.disabled = false;
+        checkBtn.textContent = 'Проверить снова';
+      }, 100);
+    });
+  }
+}
+
+// Автоматическая проверка при загрузке (один раз)
+(function () {
+  function runAutoCheck() {
+    try {
+      // Сохранённый положительный результат для этого же браузера — не
+      // перепроверяем. Отрицательный перепроверяем: проверка дешёвая, а
+      // список кодеков расширялся.
+      if (localStorage.getItem('dolbyVisionSupported') === 'true' &&
+        localStorage.getItem('dolbyVisionCheckUA') === navigator.userAgent) {
+        return;
+      }
+    } catch (e) {
+      // localStorage недоступен
+    }
+
+    setTimeout(function () {
+      try {
+        var result = checkDolbyVisionSupport();
+        updateDolbyVisionUI(result);
+
+        // ИСПРАВЛЕНО: убран Optional Chaining
+        var dvOnOffEl = getEl('dvOnOff');
+        var dvCheckboxContainer = dvOnOffEl ? dvOnOffEl.closest('.checkbox-container') : null;
+
+        if (dvCheckboxContainer) {
+          if (result.supported) {
+            dvCheckboxContainer.classList.remove('hidden');
+          } else {
+            dvCheckboxContainer.classList.add('hidden');
+          }
+        }
+
+        // Первое обнаружение поддержки: включаем DV, если пользователь
+        // ещё не выбирал сам
+        var rawPref = null;
+        try { rawPref = localStorage.getItem('dvPreferred'); } catch (e) { }
+        if (rawPref === null) {
+          dvPreferred = !!result.supported;
+          if (typeof AppState !== 'undefined') AppState.dvPreferred = dvPreferred;
+          if (dvOnOffEl) dvOnOffEl.checked = dvPreferred;
+        }
+      } catch (e) {
+        console.warn('Ошибка автоматической проверки DV:', e);
+      }
+    }, 1000);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', runAutoCheck);
+  } else {
+    runAutoCheck();
+  }
+})();
+
+window.checkDolbyVisionSupport = checkDolbyVisionSupport;
+
+
+// ==================== ЭКСПОРТ ====================
+window.setupSpeedTest = setupSpeedTest;
+window.showPlayerHint = showPlayerHint;
+window.updateTimeDisplay = updateTimeDisplay;
+window.updatePlayPauseButton = updatePlayPauseButton;
+window.updateMuteButton = updateMuteButton;
+window.updateBufferDisplay = updateBufferDisplay;
+window.forceUpdateDuration = forceUpdateDuration;
+window.destroyHls = destroyHls;
+window.seekStream = seekStream;
+window.checkPlaylistExists = checkPlaylistExists;
+window.reloadHlsPlaylist = reloadHlsPlaylist;
+window.getFileNameByHash = getFileNameByHash;
+window.syncPlayerTitleVisibility = syncPlayerTitleVisibility;
+window.updatePlayerTitle = updatePlayerTitle;
+window.updateEpisodeButtons = updateEpisodeButtons;
+window.showPlayerLoading = showPlayerLoading;
+window.hidePlayerLoading = hidePlayerLoading;
+window.startTimecodeSaving = startTimecodeSaving;
+window.stopTimecodeSaving = stopTimecodeSaving;
+window.saveTimecodeToServer = saveTimecodeToServer;
+window.loadTimecodeFromServer = loadTimecodeFromServer;
+window.clearTimecodeData = clearTimecodeData;
+window.startNearEndCheck = startNearEndCheck;
+window.exitPlayer = exitPlayer;
+window.switchToEpisode = switchToEpisode;
+window.toggleEpisodesPanel = toggleEpisodesPanel;
+window.renderEpisodesList = renderEpisodesList;
+window.toggleAudioPanel = toggleAudioPanel;
+window.switchAudioTrack = switchAudioTrack;
+window.renderAudioTracks = renderAudioTracks;
+window.loadFileInfo = loadFileInfo;
+window.saveAudioPreference = saveAudioPreference;
+window.loadAudioPreference = loadAudioPreference;
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function () {
+    init();
+  });
+} else {
+  // DOM уже готов (скрипт загружен асинхронно) — запускаем сразу
+  init();
+}
+
+// Измеритель длинных кадров по ?perf=1 (public/js/perf-probe.js).
+//
+// Подключается отсюда, а не из index.html: главную страницу сервер отдаёт с
+// зеркала (routes/proxy.js), поэтому строка в локальном index.html заработает
+// только после выкладки, а модули под ?local=1 подменяются сразу. Зонд сам
+// проверяет флаг и не грузится дважды.
+if (location.search.indexOf('perf=1') !== -1 && !window.__perfProbe) {
+  (function () {
+    var s = document.createElement('script');
+    s.src = 'js/perf-probe.js?v=' + Date.now();
+    document.head.appendChild(s);
+  })();
+}
