@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TorrStream — установка</title>
+<!--
+  Страница для Downloader by AFTVnews (и любого браузера на ТВ): на неё ведёт
+  код Downloader, а ссылки на APK она берёт сама — TorrStream из последнего
+  релиза cash94/TorrStream-Android (GitHub API), TorrStream Server — из релиза
+  #vidaa под постоянными именами. Поэтому код создаётся один раз и не устаревает.
+
+  ES5 и никаких внешних файлов: встроенный браузер Downloader на старых
+  приставках — WebView уровня Chrome 50–66. Управление пультом: ссылки
+  фокусируются стрелками, рамка фокуса крупная.
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: #0b0b0f; color: #fff; }
+  body {
+    font-family: Roboto, "Segoe UI", Arial, sans-serif;
+    padding: 4vh 6vw 6vh;
+    -webkit-text-size-adjust: 100%;
+  }
+  h1 { font-size: 34px; margin: 0 0 6px; }
+  h1 span { color: #ff8c00; }
+  .lead { color: #9a9aa6; font-size: 17px; margin: 0 0 26px; line-height: 1.4; }
+  .cols { display: -webkit-box; display: -webkit-flex; display: flex; -webkit-flex-wrap: wrap; flex-wrap: wrap; margin: 0 -10px; }
+  .card {
+    -webkit-box-flex: 1; -webkit-flex: 1 1 380px; flex: 1 1 380px;
+    margin: 0 10px 20px; padding: 22px 24px;
+    background: #17171d; border: 1px solid #24242c; border-radius: 16px;
+  }
+  .card h2 { font-size: 24px; margin: 0 0 4px; }
+  .card p { color: #9a9aa6; font-size: 15px; margin: 0 0 16px; line-height: 1.4; }
+  .btn {
+    display: block; position: relative;
+    margin: 0 0 12px; padding: 16px 20px;
+    background: #26262e; color: #fff; text-decoration: none;
+    border: 3px solid transparent; border-radius: 12px;
+    font-size: 19px; font-weight: bold; outline: none;
+  }
+  .btn small { display: block; margin-top: 4px; color: #9a9aa6; font-size: 14px; font-weight: normal; }
+  .btn.primary { background: #ff8c00; color: #000; }
+  .btn.primary small { color: #3a2200; }
+  .btn:focus, .btn:hover { border-color: #ff8c00; background: #32323c; }
+  .btn.primary:focus, .btn.primary:hover { border-color: #fff; background: #ff9d26; }
+  .tag {
+    display: inline-block; margin-left: 8px; padding: 2px 8px; vertical-align: middle;
+    background: rgba(0, 0, 0, 0.25); border-radius: 10px; font-size: 12px; font-weight: bold;
+  }
+  .btn:not(.primary) .tag { background: #3a3a44; }
+  .meta { color: #6b6b78; font-size: 14px; margin: 4px 0 0; min-height: 18px; }
+  .help { color: #9a9aa6; font-size: 15px; line-height: 1.5; margin: 6px 0 0; }
+  .help b { color: #fff; }
+</style>
+</head>
+<body>
+<h1>Torr<span>Stream</span> — установка</h1>
+<p class="lead">Выберите, что установить. Кнопка «Рекомендуется» подходит этому устройству;
+  если установка не прошла — попробуйте вторую.</p>
+
+<div class="cols">
+  <div class="card">
+    <h2>TorrStream</h2>
+    <p>Приложение для телевизора: каталог, поиск и просмотр через TorrServer.</p>
+    <a class="btn" id="app-v7" href="https://github.com/cash94/TorrStream-Android/releases/latest">
+      Fire TV и большинство Android TV<small>armeabi-v7a (32 бит)</small></a>
+    <a class="btn" id="app-v8" href="https://github.com/cash94/TorrStream-Android/releases/latest">
+      64-битные приставки и телефоны<small>arm64-v8a</small></a>
+    <div class="meta" id="app-meta"></div>
+  </div>
+
+  <div class="card">
+    <h2>TorrStream Server</h2>
+    <p>Сервер TorrStream на телефоне или приставке — для телевизоров Vidaa и других в той же Wi-Fi сети.</p>
+    <a class="btn" id="srv-v7" href="https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-AndroidServer-armeabi-v7a.apk">
+      32-битные устройства<small>armeabi-v7a</small></a>
+    <a class="btn" id="srv-v8" href="https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-AndroidServer-arm64-v8a.apk">
+      64-битные устройства<small>arm64-v8a</small></a>
+    <div class="meta" id="srv-meta"></div>
+  </div>
+</div>
+
+<p class="help"><b>Не устанавливается?</b> Разрешите Downloader устанавливать приложения:
+  Настройки → Моё устройство (или «Приложения») → Установка неизвестных приложений → Downloader.
+  На Fire TV почти всегда нужна 32-битная версия — даже на 64-битных моделях.</p>
+
+<script>
+(function () {
+  // Разрядность процесса браузера: «aarch64» — 64 бит, armv7l/armv8l — 32 бит.
+  // armv8l — 64-битный процессор с 32-битной системой (Fire TV): ему нужен v7.
+  // Ошибиться в безопасную сторону: 32-битный APK ставится и на 64-битные приставки.
+  var p = (navigator.platform || '') + ' ' + (navigator.userAgent || '');
+  var is64 = /aarch64|arm64/i.test(p);
+
+  function mark(id) {
+    var el = document.getElementById(id);
+    if (!el) return null;
+    el.className += ' primary';
+    el.firstChild.nodeValue = el.firstChild.nodeValue.replace(/\s+$/, '');
+    var tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.appendChild(document.createTextNode('Рекомендуется'));
+    el.insertBefore(tag, el.firstChild.nextSibling);
+    return el;
+  }
+  var first = mark(is64 ? 'app-v8' : 'app-v7');
+  mark(is64 ? 'srv-v8' : 'srv-v7');
+  // Фокус сразу на рекомендуемой кнопке — пульту не нужно её искать
+  if (first && first.focus) setTimeout(function () { first.focus(); }, 50);
+
+  function mb(n) { return (n / 1048576).toFixed(0) + ' МБ'; }
+  function date(s) { return s ? s.slice(8, 10) + '.' + s.slice(5, 7) + '.' + s.slice(0, 4) : ''; }
+  function setText(id, t) { var el = document.getElementById(id); if (el) el.textContent = t; }
+
+  function getJson(url, done) {
+    try {
+      var x = new XMLHttpRequest();
+      x.open('GET', url, true);
+      x.timeout = 15000;
+      x.onload = function () {
+        if (x.status !== 200) return done(null);
+        try { done(JSON.parse(x.responseText)); } catch (e) { done(null); }
+      };
+      x.onerror = x.ontimeout = function () { done(null); };
+      x.send();
+    } catch (e) { done(null); }
+  }
+
+  function findAsset(assets, re) {
+    for (var i = 0; i < (assets || []).length; i++) if (re.test(assets[i].name)) return assets[i];
+    return null;
+  }
+
+  // TorrStream: имена с версией (TorrStream-1.1.3-armeabi-v7a.apk) — ищем по окончанию.
+  // Не ответил GitHub — ссылки остаются на страницу релиза, она тоже открывается.
+  getJson('https://api.github.com/repos/cash94/TorrStream-Android/releases/latest', function (rel) {
+    if (!rel) return;
+    var v7 = findAsset(rel.assets, /armeabi-v7a\.apk$/), v8 = findAsset(rel.assets, /arm64-v8a\.apk$/);
+    if (v7) document.getElementById('app-v7').href = v7.browser_download_url;
+    if (v8) document.getElementById('app-v8').href = v8.browser_download_url;
+    var a = v7 || v8;
+    setText('app-meta', 'Версия ' + (rel.tag_name || '').replace(/^v/, '') +
+      (a ? ' · ' + mb(a.size) : '') + (rel.published_at ? ' · ' + date(rel.published_at) : ''));
+  });
+
+  // Server: ссылки постоянные, отсюда только размер и дата
+  getJson('https://api.github.com/repos/cash94/cash94.github.io/releases/295626151', function (rel) {
+    if (!rel) return;
+    var a = findAsset(rel.assets, /^TorrStream-AndroidServer-armeabi-v7a\.apk$/);
+    if (a) setText('srv-meta', 'Обновлён ' + date(a.updated_at) + ' · ' + mb(a.size));
+  });
+})();
+</script>
+</body>
+</html>
