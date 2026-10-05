@@ -7,8 +7,9 @@
 <!--
   Страница для Downloader by AFTVnews (и любого браузера на ТВ): на неё ведёт
   код Downloader, а ссылки на APK она берёт сама — TorrStream из последнего
-  релиза cash94/TorrStream-Android (GitHub API), TorrStream Server — из релиза
-  #vidaa под постоянными именами. Поэтому код создаётся один раз и не устаревает.
+  релиза cash94/TorrStream-Android (GitHub API), TorrStream Server — из последнего
+  релиза cash94/TorrStream-AndroidServer (постоянные имена, releases/latest/download).
+  Поэтому код создаётся один раз и не устаревает.
 
   ES5 и никаких внешних файлов: встроенный браузер Downloader на старых
   приставках — WebView уровня Chrome 50–66. Управление пультом: ссылки
@@ -73,9 +74,9 @@
   <div class="card">
     <h2>TorrStream Server</h2>
     <p>Сервер TorrStream на телефоне или приставке — для телевизоров Vidaa и других в той же Wi-Fi сети.</p>
-    <a class="btn" id="srv-v7" href="https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-AndroidServer-armeabi-v7a.apk">
+    <a class="btn" id="srv-v7" href="https://github.com/cash94/TorrStream-AndroidServer/releases/latest/download/TorrStream-AndroidServer-armeabi-v7a.apk">
       32-битные устройства<small>armeabi-v7a</small></a>
-    <a class="btn" id="srv-v8" href="https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-AndroidServer-arm64-v8a.apk">
+    <a class="btn" id="srv-v8" href="https://github.com/cash94/TorrStream-AndroidServer/releases/latest/download/TorrStream-AndroidServer-arm64-v8a.apk">
       64-битные устройства<small>arm64-v8a</small></a>
     <div class="meta" id="srv-meta"></div>
   </div>
@@ -144,11 +145,12 @@
       (a ? ' · ' + mb(a.size) : '') + (rel.published_at ? ' · ' + date(rel.published_at) : ''));
   });
 
-  // Server: ссылки постоянные, отсюда только размер и дата
-  getJson('https://api.github.com/repos/cash94/cash94.github.io/releases/295626151', function (rel) {
+  // Server: ссылки постоянные (releases/latest/download), отсюда только версия и размер
+  getJson('https://api.github.com/repos/cash94/TorrStream-AndroidServer/releases/latest', function (rel) {
     if (!rel) return;
     var a = findAsset(rel.assets, /^TorrStream-AndroidServer-armeabi-v7a\.apk$/);
-    if (a) setText('srv-meta', 'Обновлён ' + date(a.updated_at) + ' · ' + mb(a.size));
+    setText('srv-meta', 'Версия ' + (rel.tag_name || '').replace(/^v/, '') +
+      (a ? ' · ' + mb(a.size) : '') + (rel.published_at ? ' · ' + date(rel.published_at) : ''));
   });
 })();
 </script>
