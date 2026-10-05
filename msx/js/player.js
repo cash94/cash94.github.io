@@ -3008,7 +3008,8 @@ async function loadSubtitlePreference(hash, fileId) {
 
 async function handleVideoEnded() {
   stopHeartbeat(); stopTorrentStatsUpdates(); await saveTimecodeToServer();
-  if (currentEpisodeFiles.length > 0 && currentEpisodeIndex < currentEpisodeFiles.length - 1) {
+  // «Переключать серии автоматически» выключено — серия заканчивается так же, как фильм
+  if (AppState.autoSwitchEpisodes && currentEpisodeFiles.length > 0 && currentEpisodeIndex < currentEpisodeFiles.length - 1) {
     getEl('playback-overlay').classList.add('active'); document.querySelector('.playback-text').textContent = 'Автоматическое переключение на серию ' + (currentEpisodeIndex + 2) + '...';
     try { var nextFile = currentEpisodeFiles[currentEpisodeIndex + 1]; await switchToEpisode(currentEpisodeIndex + 1, nextFile.id); }
     catch (error) { }

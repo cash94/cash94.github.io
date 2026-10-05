@@ -24,6 +24,7 @@
         detailScale: 100,            // масштаб содержимого detail-view, %
         detailTextScale: 100,        // шрифт описания в detail-view, % от базового
         topbarScale: 100,            // шрифт шапки (разделы, лупа, часы), % от базового
+        topbarStyle: 'text',         // text | icons — пункты шапки подписями или иконками
         settingsScale: 100,          // размер экрана «Настройки», % от базового
         catalogColumns: 'auto',      // auto | 3..8  (auto = число колонок считается из cardSize)
         // Размеры подписей карточки — в пикселях, ползунками (см. SLIDERS).
@@ -268,6 +269,7 @@
         s.heroTextScale = clampStep(s.heroTextScale, SLIDERS.heroTextScale);
         s.detailTextScale = clampStep(s.detailTextScale, SLIDERS.detailTextScale);
         s.topbarScale = clampStep(s.topbarScale, SLIDERS.topbarScale);
+        s.topbarStyle = s.topbarStyle === 'icons' ? 'icons' : 'text';
         s.settingsScale = clampStep(s.settingsScale, SLIDERS.settingsScale);
         s.focusColor = normalizeColor(s.focusColor);
 
@@ -702,6 +704,13 @@
             document.documentElement.style.setProperty('--focus-color', fc);
             document.documentElement.style.setProperty('--focus-color-soft', rgba(fc, 0.35));
         } catch (e) { }
+        // Шапка иконками — классом на <html>: подписи и иконки лежат в разметке
+        // обе (index.html), styles.css показывает нужные. До подгонки по ширине:
+        // иконки занимают меньше места, чем подписи
+        try {
+            document.documentElement.classList.toggle('topbar-icons', currentSettings.topbarStyle === 'icons');
+            topbarFitWidth = null;
+        } catch (e) { }
         try { fitTopbarScale(); } catch (e) { }
         // Размер карточки/шрифт/плотность изменились — прежний замер высоты ряда
         // больше не годится. Снимаем его, чтобы заработал резерв из buildSettingsCss,
@@ -934,6 +943,12 @@
             '<div class="ui-customizer-hint">Размер шрифта верхней строки: TorrStream, разделы, лупа, «Настройки», часы и дата. Не влезет в экран — шапка уменьшится до того, что влезает.</div>' +
             sliderRow('topbarScale', SLIDERS.topbarScale.min + '%', SLIDERS.topbarScale.max + '%') +
             '</div>' +
+
+            '<div class="ui-customizer-group"><h3>Вид шапки</h3>' +
+            '<div class="ui-customizer-hint">Разделы подписями или иконками: главная — домик, настройки — шестерёнка. Иконки занимают меньше места.</div>' +
+            '<div class="ui-customizer-options">' +
+            optionRow('topbarStyle', [['text', 'Текст'], ['icons', 'Иконки']]) +
+            '</div></div>' +
 
             '<div class="ui-customizer-group"><h3>Экран «Настройки»</h3>' +
             '<div class="ui-customizer-hint">Размер всего экрана настроек — разделы, подписи, поля, переключатели, кнопки — и этой панели.</div>' +

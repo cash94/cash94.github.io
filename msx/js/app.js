@@ -161,6 +161,7 @@ async function init() {
 
     setupNavigation();
     setupSearch();
+    setupFavoritesTab();
     setupSearchFilters();
     setupServerCheck();
     setupAuth();
@@ -1147,6 +1148,8 @@ function setupSearch() {
         tabTorrents.classList.add('active');
         if (tabSearch) tabSearch.classList.remove('active');
         if (tabCatalog) tabCatalog.classList.remove('active');
+        var tabFavoritesEl = getEl('tab-favorites');
+        if (tabFavoritesEl) tabFavoritesEl.classList.remove('active');
         // Оверлей поиска прячет сам hideSearchResults — в конце затухания.
         // Ставить .hidden здесь нельзя: display:none оборвал бы переход.
         showContentScreen('torrents');
@@ -1202,11 +1205,20 @@ function setupSearch() {
         // .hidden на оверлее поиска ставит hideSearchResults в конце затухания
         var tabTorrentsEl = getEl('tab-torrents');
         var tabSearchEl = getEl('tab-search');
+        var tabFavoritesEl = getEl('tab-favorites');
         if (tabTorrentsEl) tabTorrentsEl.classList.remove('active');
         if (tabSearchEl) tabSearchEl.classList.remove('active');
+        if (tabFavoritesEl) tabFavoritesEl.classList.remove('active');
         tabCatalog.classList.add('active');
         showContentScreen('catalog');
         if (window.Nav) Nav.reset('catalog');
+        // «Избранное» открывали кнопкой шапки — это был отдельный раздел, и
+        // «Каталог» после него начинается с рядов, а не с той же сетки
+        if (typeof catalogState !== 'undefined' && catalogState.favoritesFromTopbar) {
+          catalogState.favoritesFromTopbar = false;
+          window.loadCatalogList();
+          return;
+        }
         // Смотрим на активный вид: открыта категория — на её сетку, иначе на ряды.
         // Раньше вид был один, и проверять было нечего.
         var catalogView = (typeof catalogState !== 'undefined' && catalogState.currentCatalog)
@@ -1225,6 +1237,45 @@ function setupSearch() {
       }
     });
   }
+}
+
+/**
+ * «Избранное» в шапке — та же категория каталога, что открывается из ряда
+ * «Избранное» (loadFavoritesCatalog), но как отдельный раздел: подсвечена своя
+ * кнопка, а «Каталог» после неё открывает ряды (обработчик вкладки выше).
+ * «Назад» из сетки ведёт в ряды каталога — как из любой категории.
+ */
+function setupFavoritesTab() {
+  var tabFavorites = getEl('tab-favorites');
+  if (!tabFavorites || typeof window.loadFavoritesCatalog !== 'function') return;
+  tabFavorites.addEventListener('click', function () {
+    // Как у остальных вкладок: свой открытый раздел повторно не открываем
+    if (tabFavorites.classList.contains('active')) return;
+    AppState.inSearch = 'catalog';
+    window.pendingCatalogPoster = null;
+    window.pendingCatalogItem = null;
+    if (typeof hideSearchResults === 'function') hideSearchResults();
+    ['tab-torrents', 'tab-search', 'tab-catalog'].forEach(function (id) {
+      var t = getEl(id);
+      if (t) t.classList.remove('active');
+    });
+    tabFavorites.classList.add('active');
+    showContentScreen('catalog');
+    if (window.Nav) Nav.reset('catalog');
+    if (typeof catalogState !== 'undefined') catalogState.favoritesFromTopbar = true;
+    // Раздел начинается с первой карточки, как и вкладка «Каталог»
+    localStorage.removeItem('lastCatalogCardIndex');
+    Promise.resolve(window.loadFavoritesCatalog()).then(function () {
+      setTimeout(function () {
+        if (AppState.currentScreen !== 'catalog' || !tabFavorites.classList.contains('active')) return;
+        // Фокус остался на спрятанной главной; в пустом избранном карточек нет —
+        // ставим его на саму кнопку, иначе пульт «теряется»
+        if (typeof window.ensureCatalogFocus === 'function' && window.ensureCatalogFocus(true)) return;
+        if (typeof updateFocusableElements === 'function') updateFocusableElements();
+        if (typeof focusEl === 'function') focusEl(tabFavorites);
+      }, APP_CONSTANTS.FOCUS_RESTORE_DELAY_MS);
+    });
+  });
 }
 
 // ==================== ФИЛЬТРЫ ПОИСКА ====================
@@ -1282,7 +1333,7 @@ function setupSearchFilters() {
             if (closeBtn && closeBtn.offsetParent !== null) {
               focusEl(closeBtn);
             } else {
-              var firstItem = panel.querySelector('.filter-item');
+              var firstItem = panel.querySelector('.filter-item:not(.hidden)');
               if (firstItem) focusEl(firstItem);
             }
           }
@@ -1547,7 +1598,7 @@ function setupSearchFilters() {
           if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
           if (typeof updateFocusableElements === 'function') updateFocusableElements();
           var target = (fromId && filterPanel.querySelector('.filter-item[data-filter="' + fromId + '"]')) ||
-            filterPanel.querySelector('.filter-item');
+            filterPanel.querySelector('.filter-item:not(.hidden)');
           if (target) focusEl(target);
         }, 50);
       });
@@ -1569,7 +1620,7 @@ function setupSearchFilters() {
           updateFilterValueDisplays();
           if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
           if (typeof updateFocusableElements === 'function') updateFocusableElements();
-          var firstItem = filterPanel.querySelector('.filter-item');
+          var firstItem = filterPanel.querySelector('.filter-item:not(.hidden)');
           if (firstItem) focusEl(firstItem);
         }, 100);
       });
@@ -2017,6 +2068,9 @@ function setupCheckboxes() {
     var savedHideClock = localStorage.getItem('hideClockEnabled') === 'true';
     hideClockEnabled = savedHideClock;
     hideClockCheckbox.checked = savedHideClock;
+    // init() уже вызвал setupClockVisibility(), но до чтения сохранённого значения —
+    // без повторного вызова после перезагрузки часы снова видны в плеере
+    setupClockVisibility();
     hideClockCheckbox.addEventListener('change', function (e) {
       hideClockEnabled = e.target.checked;
       localStorage.setItem('hideClockEnabled', hideClockEnabled);
@@ -2138,8 +2192,16 @@ function setupCheckboxes() {
     });
   }
 
+  // Автопереключение серий — для всех. В браузере до появления настройки серии
+  // переключались всегда, поэтому там без сохранённого значения она включена;
+  // в Android-приложении по умолчанию выключена, как и была
+  if (!window.AndroidJS && localStorage.getItem('autoSwitchEpisodes') === null) {
+    localStorage.setItem('autoSwitchEpisodes', 'true');
+  }
+  setupCheckboxWithStorage('auto-switch-episodes', 'autoSwitchEpisodes', 'autoSwitchEpisodes');
+
   if (window.AndroidJS) {
-    // 7. Плеер по умолчанию и автопереключение серий — только в Android-приложении,
+    // 7. Плеер по умолчанию — только в Android-приложении,
     // т.к. воспроизведение там всегда идёт через внешний плеер (AndroidJS.openPlayer).
     var choosePlayerContainer = getEl('choose-player-container');
     if (choosePlayerContainer) choosePlayerContainer.hidden = false;
@@ -2149,10 +2211,6 @@ function setupCheckboxes() {
         if (typeof AndroidJS.choosePlayer === 'function') AndroidJS.choosePlayer();
       });
     }
-
-    var autoSwitchContainer = getEl('auto-switch-episodes-container');
-    if (autoSwitchContainer) autoSwitchContainer.hidden = false;
-    setupCheckboxWithStorage('auto-switch-episodes', 'autoSwitchEpisodes', 'autoSwitchEpisodes');
   } else {
     // 7. Инициализация проверки Dolby Vision (безопасный вызов)
     if (typeof initDolbyVisionCheck === 'function') {

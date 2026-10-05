@@ -5108,6 +5108,7 @@ async function showCatalogDetail(item, index, posterUrl) {
 var DETAIL_NAV_SCREENS = {
     'home-nav-home': 'home',
     'tab-catalog': 'catalog',
+    'tab-favorites': 'catalog',
     'tab-torrents': 'torrents'
 };
 
@@ -5648,6 +5649,10 @@ async function showCatalogList(force) {
 
     var catalogTab = getEl('tab-catalog');
     if (catalogTab) catalogTab.classList.add('active');
+    // Ряды — это «Каталог», даже если уходим из «Избранного», открытого шапкой
+    catalogState.favoritesFromTopbar = false;
+    var favoritesTab = getEl('tab-favorites');
+    if (favoritesTab) favoritesTab.classList.remove('active');
     var torrentsTab = getEl('tab-torrents');
     if (torrentsTab) torrentsTab.classList.remove('active');
     var searchTab = getEl('tab-search');

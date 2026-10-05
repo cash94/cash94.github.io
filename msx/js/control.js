@@ -654,14 +654,14 @@ function belongsToScreen(el, screen) {
     if (screen === 'torrents') {
         return el.closest('.torrent-card') || el.classList.contains('file-item') ||
             el.classList.contains('home-nav-btn') ||
-            ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-donate', 'back-from-detail', 'tab-catalog'].indexOf(el.id) !== -1;
+            ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-donate', 'tab-favorites', 'back-from-detail', 'tab-catalog'].indexOf(el.id) !== -1;
     }
     if (screen === 'catalog') {
         return el.closest('.torrent-card.catalog-card') || el.closest('.torrent-card.catalog-folder-card') ||
             el.closest('#catalog-grid') || el.closest('#catalog-rows') ||
             el.id === 'back-from-catalog' || el.classList.contains('file-item') || el.classList.contains('back-btn') ||
             el.classList.contains('home-nav-btn') ||
-            ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-catalog', 'tab-donate'].indexOf(el.id) !== -1;
+            ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-catalog', 'tab-donate', 'tab-favorites'].indexOf(el.id) !== -1;
     }
     if (screen === 'search') {
         // ★ Проверяем панель фильтров
@@ -1332,7 +1332,7 @@ var ScreenStrategies = {
             var t = getSearchTop(), fl = getSearchFilters(), r = getSearchResults(), q = getEl('search-query');
             var panel = getEl('search-filters-panel');
             if (panel && panel.classList.contains('active')) {
-                var firstItem = panel.querySelector('.filter-item, .filter-value-item');
+                var firstItem = panel.querySelector('.filter-item:not(.hidden), .filter-value-item');
                 if (firstItem) return focusEl(firstItem);
             }
             return focusEl((preferInput && q) ? q : (t[0] || fl[0] || r[0] || q));
@@ -1482,7 +1482,7 @@ var ScreenStrategies = {
                     setTimeout(function () {
                         invalidateFocusCache();
                         updateFocusableElements();
-                        var firstItem = panel.querySelector('.filter-item');
+                        var firstItem = panel.querySelector('.filter-item:not(.hidden)');
                         if (firstItem) focusEl(firstItem);
                     }, 50);
                     return true;
@@ -1496,7 +1496,7 @@ var ScreenStrategies = {
                     setTimeout(function () {
                         invalidateFocusCache();
                         updateFocusableElements();
-                        var firstItem = panel.querySelector('.filter-item');
+                        var firstItem = panel.querySelector('.filter-item:not(.hidden)');
                         if (firstItem) focusEl(firstItem);
                     }, 50);
                     return true;
@@ -3909,7 +3909,7 @@ function openFilterPanelAndFocus() {
             if (closeBtn && VISIBLE(closeBtn)) {
                 focusEl(closeBtn);
             } else {
-                var firstItem = panel.querySelector('.filter-item');
+                var firstItem = panel.querySelector('.filter-item:not(.hidden)');
                 if (firstItem) focusEl(firstItem);
             }
         }, 150);

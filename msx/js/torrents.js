@@ -4361,6 +4361,11 @@ function updateAvailableVideotype() {
 function setSearchLocked(locked, query) {
     AppState.searchLocked = !!locked;
 
+    // Режим «Глобальный / Торренты» карточка тоже задаёт сама (ищутся раздачи
+    // её фильма): переключение на глобальный поиск увело бы выдачу от карточки
+    var modeItem = document.querySelector('.filter-item[data-filter="torrent-movie"]');
+    if (modeItem) modeItem.classList.toggle('hidden', !!locked);
+
     var input = getEl('search-query');
     if (!input) return;
 
@@ -4459,6 +4464,7 @@ function showSearchResults(options = {}) {
     if (searchInput && document.activeElement === searchInput) searchInput.blur();
     var torrserverSection = getEl('torrserver-section');
     searchTab.classList.add('active'); torrentsTab.classList.remove('active'); if (catalogTab) catalogTab.classList.remove('active');
+    var favoritesTab = getEl('tab-favorites'); if (favoritesTab) favoritesTab.classList.remove('active');
     AppState.currentScreen = 'search'; syncSearchFilterButtons(); toggleSearchFiltersPanel(false);
     if (typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
         // Контент под оверлеем прячем только после проявления: иначе на 0.2 с
@@ -4590,7 +4596,12 @@ function hideSearchResults(opts) {
             setTimeout(focusDetailWatch, 100);
         }
     } else if (returnTo === 'catalog') {
-        if (catalogTab) catalogTab.classList.add('active'); torrentsTab.classList.remove('active'); AppState.currentScreen = 'catalog';
+        // Под поиском «Избранное», открытое кнопкой шапки, — подсвечиваем её, а не «Каталог»
+        var favTab = getEl('tab-favorites');
+        var favFromTopbar = !!(favTab && typeof catalogState !== 'undefined' && catalogState.favoritesFromTopbar);
+        if (favFromTopbar) favTab.classList.add('active');
+        else if (catalogTab) catalogTab.classList.add('active');
+        torrentsTab.classList.remove('active'); AppState.currentScreen = 'catalog';
         setTimeout(function () {
             // focusCatalogCardByIndex работает только по сетке категории и
             // возвращает false, если карточек нет (открыты ряды-карусели) —

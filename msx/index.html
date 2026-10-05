@@ -313,8 +313,8 @@
                   <input type="checkbox" id="dvOnOff">
                   <span>Предпочитать Dolby Vision по умолчанию<small class="setting-desc">На этом устройстве есть поддержка Dolby Vision</small></span>
                 </div>
-                <!-- Показываются только внутри Android-приложения (window.AndroidJS) -->
-                <div class="checkbox-container" id="auto-switch-episodes-container" hidden>
+                <!-- Веб-плеер: следующая серия по окончании текущей; Android: плейлист серий для нативного плеера -->
+                <div class="checkbox-container" id="auto-switch-episodes-container">
                   <input type="checkbox" id="auto-switch-episodes">
                   <span>Переключать серии автоматически</span>
                 </div>
@@ -491,14 +491,20 @@
              выезжающей слева панелью. Кнопки те же самые: их обработчики и
              навигация пультом (control.js: .home-nav-btn) не меняются. -->
         <div id="home-nav-drawer">
-          <button class="home-nav-btn active" id="home-nav-home">Главная</button>
-          <button class="view-tab home-nav-btn" id="tab-catalog">Каталог</button>
-          <button class="view-tab home-nav-btn" id="tab-torrents">Мои торренты</button>
-          <button class="view-tab home-nav-btn" id="tab-donate">Донат</button>
+          <!-- Иконка .home-nav-glyph видна в режиме «Шапка: иконки» (ui-customizer.js,
+               класс topbar-icons на <html>) и в телефонном меню, подпись .home-nav-text —
+               в остальных случаях -->
+          <button class="home-nav-btn active" id="home-nav-home" title="Главная"><i class="fi fi-rr-home home-nav-glyph"></i><span class="home-nav-text">Главная</span></button>
+          <button class="view-tab home-nav-btn" id="tab-catalog" title="Каталог"><i class="fi fi-rr-apps home-nav-glyph"></i><span class="home-nav-text">Каталог</span></button>
+          <button class="view-tab home-nav-btn" id="tab-torrents" title="Мои торренты"><i class="fi fi-rr-download home-nav-glyph"></i><span class="home-nav-text">Мои торренты</span></button>
+          <button class="view-tab home-nav-btn" id="tab-donate" title="Донат"><i class="fi fi-rr-hand-holding-heart home-nav-glyph"></i><span class="home-nav-text">Донат</span></button>
+          <!-- Категория «Избранное» каталога (app.js: setupFavoritesTab) -->
+          <button class="view-tab home-nav-btn" id="tab-favorites" title="Избранное"><i class="fi fi-rr-star home-nav-glyph"></i><span class="home-nav-text">Избранное</span></button>
           <!-- Лупа и «Настройки» уходят к правому краю: margin-left: auto у #tab-search -->
           <button class="view-tab home-nav-btn home-nav-icon" id="tab-search" title="Поиск"><i
               class="fi fi-rr-search"></i><span class="home-nav-label">Поиск</span></button>
-          <div class="settings-btn home-nav-btn" id="settings-btn">Настройки</div>
+          <div class="settings-btn home-nav-btn" id="settings-btn" title="Настройки"><i
+              class="fi fi-rr-settings home-nav-glyph"></i><span class="home-nav-text">Настройки</span></div>
         </div>
         <div id="home-nav-backdrop"></div>
         <!-- Часы у правого края. Класса .home-nav-btn тут намеренно нет: по нему

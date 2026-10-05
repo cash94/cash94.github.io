@@ -154,7 +154,7 @@
     // (#tab-*, #settings-btn): свои обработчики у них уже есть, новая тут
     // только «Главная» (#home-nav-home).
     var NAV_BUTTONS = ['home-nav-home', 'tab-catalog', 'tab-torrents',
-        'tab-donate', 'tab-search', 'settings-btn'];
+        'tab-donate', 'tab-favorites', 'tab-search', 'settings-btn'];
 
     var homeState = {
         built: false,            // ряды собраны и лежат в DOM
