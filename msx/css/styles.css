@@ -3586,6 +3586,31 @@ article {
   display: none !important;
 }
 
+/* Субтитры прямого файла (player.js: showNativeCues) — свой блок вместо
+   встроенной отрисовки <video>: на ТВ она бывает мелкой или её нет. Внутри
+   #player-screen, поэтому виден и в полноэкранном режиме */
+.native-subtitles {
+  display: none;
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 9%;
+  z-index: 5;
+  text-align: center;
+  white-space: pre-line;
+  color: #fff;
+  font-size: 2.6vw;
+  font-weight: 600;
+  line-height: 1.3;
+  text-shadow: 0 0 4px #000, 0 0 4px #000, 2px 2px 3px #000;
+  pointer-events: none;
+}
+
+/* Над открытой панелью управления (перемотка, кнопки, строка буфера) */
+.native-subtitles.native-subtitles-raised {
+  bottom: 26%;
+}
+
 .video-object-fit-contain {
   object-fit: contain !important;
 }

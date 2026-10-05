@@ -2068,6 +2068,11 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
   destroyHls();   // заодно снимает слушатели прошлого прямого файла
 
   // Прямой файл — без hls.js, отдаём ссылку нативному <video>
+  // Субтитры — дорожки самого <video> (refreshNativeSubtitles), не ffprobe
+  resetNativeSubtitles();
+  currentSubTracks = [];
+  renderSubtitleTracks();
+  listenNativeTextTracks(videoPlayer);
   AppState.seekOffset = 0;
   AppState.expectedDuration = null;
   AppState.originalDuration = null;
@@ -2120,6 +2125,7 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
       currentAudioTrack = enabled >= 0 ? enabled : 0;
       renderAudioTracks();
     }
+    refreshNativeSubtitles(videoPlayer);
   };
 
   var onCanPlay = function () {
@@ -2414,6 +2420,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     if (AppState.transcodingOnOff) {
       await initGstPlayback(metadata, initialSeek, signal);
     } else if (AppState.transcodingFullOnOff) {
+      nativeSubState.savedPref = (metadata && metadata.savedSubTrack !== null && metadata.savedSubTrack !== undefined)
+        ? metadata.savedSubTrack : -1;
       await initTranscodingOffPlayback(initialSeek, signal);
     } else {
       await initServerProxyPlayback(metadata, initialSeek, signal);
@@ -2448,6 +2456,7 @@ function showDetailView(field = null) {
   // в стеке нет, и место возврата — то, что наверху сейчас.
   var navUnder = window.Nav ? (Nav.pop('player') || Nav.top()) : null;
   if (!window.AndroidJS) {
+    resetNativeSubtitles();
     currentSubtitleTrack = -1; stopTorrentStatsUpdates(); hideSkipButton(); skipIntro = 0; skipCredits = 0;
     currentBufferAhead = 0; wasImmediatePause = false; pauseTimer = null; pauseStartTime = null; thisisseek = false;
     var seekSlider = getEl('seek-slider'); if (seekSlider) seekSlider.value = 0;
@@ -2796,6 +2805,138 @@ function switchNativeAudioTrack(videoPlayer, index) {
   }
 }
 
+// ==================== СУБТИТРЫ ПРЯМОГО ФАЙЛА ====================
+//
+// В режиме «Полностью отключить транскодирование» (и всегда на webOS) файл
+// играет сам <video>, и субтитры из MKV сервер не вшивает — их некому. Но
+// браузеры ТВ (Vidaa) отдают встроенные дорожки файла так же, как отдают
+// audioTracks: списком video.textTracks. Выбранную дорожку ставим в режим
+// 'hidden' — браузер грузит её текст и шлёт cuechange, но сам не рисует, —
+// а текст выводим своим блоком #native-subtitles: на ТВ встроенная отрисовка
+// бывает мелкой или её нет вовсе. Остальные дорожки — 'disabled'.
+var nativeSubState = { tracks: [], active: null, onCue: null, savedPref: -1, listening: false };
+
+function collectNativeTextTracks(videoPlayer) {
+  var list = videoPlayer && videoPlayer.textTracks, out = [];
+  if (!list) return out;
+  for (var i = 0; i < list.length; i++) {
+    // Главы и описания — не субтитры
+    if (list[i].kind === 'chapters' || list[i].kind === 'descriptions') continue;
+    out.push(list[i]);
+  }
+  return out;
+}
+
+function nativeSubtitleBox() {
+  var box = getEl('native-subtitles');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'native-subtitles';
+    box.className = 'native-subtitles';
+    var ps = getEl('player-screen');
+    (ps || document.body).appendChild(box);
+    // Панель управления открыта — поднимаем текст над ней, иначе он ложится на
+    // перемотку. Следим за её классом idle-hidden: панель показывают и прячут
+    // и player.js, и control.js, и таймер бездействия
+    var controls = getEl('controls-container');
+    var sync = function () {
+      var shown = !!controls && !controls.classList.contains('idle-hidden');
+      box.classList.toggle('native-subtitles-raised', shown);
+    };
+    if (controls && typeof MutationObserver === 'function') {
+      new MutationObserver(sync).observe(controls, { attributes: true, attributeFilter: ['class'] });
+    }
+    sync();
+  }
+  return box;
+}
+
+// Текст реплики без разметки: теги WebVTT/SRT (<i>, <font>) и команды ASS ({\an8})
+function nativeCueText(cue) {
+  return String((cue && cue.text) || '')
+    .replace(/\{\\[^}]*\}/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\\N/g, '\n')
+    .replace(/^\s+|\s+$/g, '');
+}
+
+function showNativeCues(track) {
+  var box = nativeSubtitleBox();
+  var lines = [];
+  var cues = track && track.activeCues;
+  if (cues) {
+    for (var i = 0; i < cues.length; i++) {
+      var t = nativeCueText(cues[i]);
+      if (t) lines.push(t);
+    }
+  }
+  box.textContent = lines.join('\n');
+  box.style.display = lines.length ? 'block' : 'none';
+}
+
+function applyNativeSubtitle(index) {
+  if (nativeSubState.active && nativeSubState.onCue) {
+    nativeSubState.active.removeEventListener('cuechange', nativeSubState.onCue);
+  }
+  nativeSubState.active = null;
+  nativeSubState.onCue = null;
+  var tracks = nativeSubState.tracks;
+  for (var i = 0; i < tracks.length; i++) {
+    try { tracks[i].mode = (i === index) ? 'hidden' : 'disabled'; } catch (e) { }
+  }
+  var track = (index >= 0 && index < tracks.length) ? tracks[index] : null;
+  if (track) {
+    nativeSubState.active = track;
+    nativeSubState.onCue = function () { showNativeCues(track); };
+    track.addEventListener('cuechange', nativeSubState.onCue);
+  }
+  showNativeCues(track);
+  currentSubtitleTrack = track ? index : -1;
+}
+
+/** Список дорожек у <video> сменился (новый файл, дорожка дописалась) */
+function refreshNativeSubtitles(videoPlayer) {
+  if (!AppState.transcodingFullOnOff) return;
+  var tracks = collectNativeTextTracks(videoPlayer);
+  nativeSubState.tracks = tracks;
+  currentSubTracks = tracks.map(function (t, i) {
+    return { title: t.label || ('Субтитры ' + (i + 1)), language: t.language || 'und', format: '' };
+  });
+  // Уже выбранная в этом сеансе (соседняя серия) или сохранённая для файла
+  var want = currentSubtitleTrack >= 0 ? currentSubtitleTrack : nativeSubState.savedPref;
+  applyNativeSubtitle(want >= 0 && want < tracks.length ? want : -1);
+  renderSubtitleTracks();
+}
+
+/** Слушаем появление дорожек: часть браузеров отдаёт их позже loadedmetadata */
+function listenNativeTextTracks(videoPlayer) {
+  if (nativeSubState.listening || !videoPlayer || !videoPlayer.textTracks ||
+    typeof videoPlayer.textTracks.addEventListener !== 'function') return;
+  nativeSubState.listening = true;
+  var onChange = function () {
+    if (AppState.transcodingFullOnOff && AppState.currentScreen === 'player') refreshNativeSubtitles(videoPlayer);
+  };
+  videoPlayer.textTracks.addEventListener('addtrack', onChange);
+  videoPlayer.textTracks.addEventListener('removetrack', onChange);
+}
+
+/** Новый файл или выход из плеера: снять подписку и спрятать текст */
+function resetNativeSubtitles() {
+  applyNativeSubtitle(-1);
+  nativeSubState.tracks = [];
+  var box = getEl('native-subtitles');
+  if (box) { box.textContent = ''; box.style.display = 'none'; }
+}
+
+function switchNativeSubtitleTrack(index) {
+  applyNativeSubtitle(index);
+  if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+    saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, currentSubtitleTrack);
+  }
+  renderSubtitleTracks();
+  toggleSubtitlesPanel();
+}
+
 function toggleAudioPanel() { return togglePlayerPanel('audio'); }
 
 function setupAudioButton() {
@@ -2926,7 +3067,6 @@ async function loadAudioPreference(hash, fileId) {
 
 function renderSubtitleTracks() {
   var subtitlesList = getEl('subtitles-list'); if (!subtitlesList) return;
-  if (AppState.transcodingFullOnOff) { subtitlesList.innerHTML = '<div class="search-result-empty">Нет субтитров</div>'; return; }
   if (!currentSubTracks || currentSubTracks.length === 0) { subtitlesList.innerHTML = '<div class="search-result-empty">Нет субтитров</div>'; return; }
   var html = ''; var isOff = currentSubtitleTrack === -1;
   html += '<div class="subtitle-item ' + (isOff ? 'active' : '') + '" data-track-index="-1"><div class="subtitle-icon">🚫</div><div class="subtitle-info"><div class="subtitle-title">Выключить субтитры</div></div><div class="subtitle-check">✓</div></div>';
@@ -2947,6 +3087,8 @@ function renderSubtitleTracks() {
 
 async function switchSubtitleTrack(trackIndex) {
   if (trackIndex === currentSubtitleTrack) { toggleSubtitlesPanel(); return; }
+  // Прямой файл: дорожка уже в <video>, поток не перезапускаем
+  if (AppState.transcodingFullOnOff) { switchNativeSubtitleTrack(trackIndex); return; }
   thisisseek = false; await saveTimecodeToServer();
   if (currentTimecodeData.hash && currentTimecodeData.fileId) await saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
   var subtitlesPanel = getEl('subtitles-panel'); var subtitlesBtn = getEl('subtitles-btn');
