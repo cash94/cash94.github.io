@@ -1104,9 +1104,10 @@ async function saveClientConfig() {
  */
 function preloadDetailFile(hash, fileId) {
     if (!hash || !fileId) return;
-    // Android отдаёт ссылку своему плееру, пробы ffprobe там нет — прогрев под
-    // неё только держал бы раздачу работающей и тратил память TorrServer
-    if (window.AndroidJS) return;
+    // Android отдаёт ссылку своему плееру, webOS играет файл напрямую с
+    // TorrServer — пробы ffprobe нет у обоих, и прогрев под неё только держал
+    // бы раздачу работающей и тратил память TorrServer
+    if (window.AndroidJS || AppState.platform === 'webos') return;
     // torrents.js грузится раньше player.js, где объявлен preloadTorrents
     if (typeof preloadTorrents !== 'function') return;
     // Таймкоды грузятся асинхронно, и за это время человек мог уйти на другую

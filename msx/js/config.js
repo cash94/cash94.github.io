@@ -326,7 +326,10 @@ function detectPlatform() {
     return 'vidaa';
   } else if (ua.indexOf('android') !== -1 && ua.indexOf('tv') !== -1) {
     return 'androidtv';
-  } else if (ua.indexOf('webos') !== -1) {
+  } else if (ua.indexOf('webos') !== -1 || ua.indexOf('web0s') !== -1 ||
+    typeof window.PalmSystem !== 'undefined' || typeof window.webOSSystem !== 'undefined') {
+    // LG пишет в User-Agent «Web0S» — через ноль, а не букву o. PalmSystem /
+    // webOSSystem есть у приложений webOS (TorrStream-webOS) и браузера ТВ
     return 'webos';
   } else if (ua.indexOf('tizen') !== -1) {
     return 'tizen';

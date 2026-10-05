@@ -2122,12 +2122,21 @@ function setupCheckboxes() {
   }
 
   // 4. Транскодирование
+  // Приложения для ТВ — Android и webOS (TorrStream-webOS) — одинаковы во всём,
+  // кроме плеера: Android отдаёт поток внешнему плееру, webOS играет файл
+  // <video> напрямую с TorrServer. Серверное транскодирование не нужно обоим,
+  // и его настройки (здесь, многоканальный звук, полное отключение) скрыты
+  var tvApp = !!window.AndroidJS || AppState.platform === 'webos';
   var transcodingCheckbox = getEl('transcoding-off');
-  if (window.AndroidJS) {
+  if (AppState.platform === 'webos' && transcodingCheckbox) {
+    transcodingCheckbox.checked = false;
+    AppState.transcodingOnOff = false;
+  }
+  if (tvApp) {
     container = transcodingCheckbox.closest('.checkbox-container');
     if (container) container.classList.add('hidden');
   }
-  if (transcodingCheckbox) {
+  if (transcodingCheckbox && AppState.platform !== 'webos') {
     var savedTranscoding = localStorage.getItem('transcodingOnOff') === 'true';
     transcodingOnOff = savedTranscoding;
     transcodingCheckbox.checked = savedTranscoding;
@@ -2146,7 +2155,7 @@ function setupCheckboxes() {
 
   // 5. Многоканальный звук
   var multiChannelCheckbox = getEl('multi-channel-audio');
-  if (window.AndroidJS) {
+  if (tvApp) {
     container = multiChannelCheckbox.closest('.checkbox-container');
     if (container) container.classList.add('hidden');
   }
@@ -2181,9 +2190,19 @@ function setupCheckboxes() {
 
   // 6. Включить или отключить полностью транскодинг
   var transcodingCheckboxOnOff = getEl('transcoding-on-off');
-  if (window.AndroidJS) {
+  if (tvApp) {
     container = transcodingCheckboxOnOff.closest('.checkbox-container');
     if (container) container.classList.add('hidden');
+  }
+  // webOS (LG): видео играет аппаратный плеер телевизора прямо с TorrServer —
+  // <video> там сам открывает MKV, HEVC, многоканальный звук, без ffmpeg и
+  // серверного HLS. Прямой режим включаем всегда и в localStorage не пишем:
+  // переключатель скрыт выше, как в Android-приложении
+  if (transcodingCheckboxOnOff && AppState.platform === 'webos') {
+    transcodingFullOnOff = true;
+    AppState.transcodingFullOnOff = true;
+    transcodingCheckboxOnOff.checked = true;
+    transcodingCheckboxOnOff = null;   // обработчик ниже не вешаем
   }
   if (transcodingCheckboxOnOff) {
     var savedTranscodingFull = localStorage.getItem('transcodingFullOnOff') === 'true';
