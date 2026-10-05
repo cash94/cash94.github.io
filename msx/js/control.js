@@ -2597,7 +2597,9 @@ function setupKeyboardHandlers() {
                     else if (f.id === 'toggle-buffer-btn') { var tb = getEl('toggle-buffer-btn'); if (tb) tb.click(); done = true; }
                     else if (f.id === 'seek-slider') { var t = parseFloat(f.value); if (typeof window.showPlayerLoading === 'function') window.showPlayerLoading('⏱️ ' + formatTime(t)); setTimeout(function () { if (typeof window.hidePlayerLoading === 'function') window.hidePlayerLoading(); }, 1000); done = true; }
                     else { f.click(); done = true; }
-                    if (done) setTimeout(function () { hidePlayerControls(); }, 400);
+                    // Панель не прячем сразу после нажатия: пауза, масштаб, звук — человек
+                    // хочет увидеть результат и нажать ещё. Гасит её таймер бездействия
+                    // (IDLE_TIMEOUT в player.js), он перезапускается на каждом нажатии
                     if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
                     return;
                 }

@@ -216,6 +216,13 @@ function setupVideoPlayerControls() {
   // «Растянуть» — весь экран; если слой сам держит пропорции, там он выглядит
   // как «С полосами», иначе его не сделать.
   var zoomMode = 'contain';
+  var FIT_CLASSES = ['video-object-fit-contain', 'video-object-fit-fill',
+    'video-object-fit-cover', 'video-object-fit-none'];
+
+  function setFitClass(fit) {
+    for (var i = 0; i < FIT_CLASSES.length; i++) video.classList.remove(FIT_CLASSES[i]);
+    video.classList.add('video-object-fit-' + fit);
+  }
 
   function applyVideoBox() {
     var st = video.style;
@@ -225,8 +232,17 @@ function setupVideoPlayerControls() {
     var vw = video.videoWidth, vh = video.videoHeight;
     if (zoomMode === 'fill' || !vw || !vh || !cw || !ch) {
       st.position = st.left = st.top = st.width = st.height = st.maxWidth = st.maxHeight = '';
+      // Прямоугольник не посчитан (размер кадра ещё неизвестен) — режим целиком
+      // на object-fit, в том числе none для «Оригинала»
+      setFitClass(zoomMode);
       return;
     }
+    // «Оригинал»: прямоугольник ниже уже ровно 1:1 с кадром, и object-fit: none
+    // ничего к нему не добавляет. А старые WebView (Chrome 66 на ТВ) видео с
+    // object-fit: none рисуют мимо обычного масштабирования — картинка сыпалась
+    // на пиксели, хотя у 1080p-кадра на экране 1920 рамка та же, что у
+    // «С полосами». При точной рамке contain даёт тот же результат обычным путём
+    setFitClass(zoomMode === 'none' ? 'contain' : zoomMode);
     var r = zoomMode === 'cover' ? Math.max(cw / vw, ch / vh)
       : zoomMode === 'none' ? 1
       : Math.min(cw / vw, ch / vh);
@@ -242,13 +258,7 @@ function setupVideoPlayerControls() {
 
   function setVideoObjectFit(mode) {
     zoomMode = mode;
-    video.classList.remove('video-object-fit-contain', 'video-object-fit-fill',
-      'video-object-fit-cover', 'video-object-fit-none');
-    if (mode === 'contain') video.classList.add('video-object-fit-contain');
-    else if (mode === 'fill') video.classList.add('video-object-fit-fill');
-    else if (mode === 'cover') video.classList.add('video-object-fit-cover');
-    else video.classList.add('video-object-fit-none');
-    applyVideoBox();
+    applyVideoBox();   // и прямоугольник, и класс object-fit
   }
 
   // Прямоугольник зависит от размера кадра и экрана: новый ролик или серия,

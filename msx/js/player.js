@@ -50,7 +50,7 @@ var currentTimecodeData = {
 
 // Переменные для скрытия элементов
 var mouseIdleTimer = null;
-var IDLE_TIMEOUT = 3000; // 3 секунды
+var IDLE_TIMEOUT = 4000; // 4 секунды без нажатий и движения мыши — панель плеера гаснет
 
 // Переменные для хранения информации об аудиодорожках
 var currentAudioTracks = [];
