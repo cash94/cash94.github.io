@@ -524,6 +524,7 @@
                 <a href="#install">Установка</a>
                 <a href="#guide">Инструкция</a>
                 <a href="#remote">Пульт</a>
+                <a href="#help">Помощь</a>
                 <a href="#donate">Поддержать</a>
             </nav>
         </div>
@@ -543,6 +544,7 @@
             <div class="cta">
                 <a class="btn btn-primary" href="setup.html">📥 Установить на устройство</a>
                 <a class="btn btn-ghost" href="#guide">📘 Как пользоваться</a>
+                <a class="btn btn-ghost" href="https://t.me/torrstream" target="_blank" rel="noopener">💬 Группа в Telegram</a>
             </div>
 
             <div class="hero-shot">
@@ -642,16 +644,41 @@
             </div>
 
             <div class="step">
-                <p>Нужны две вещи: <strong>TorrServer</strong> (раздаёт торренты) и
-                    <strong>TorrStream</strong> (то, что вы видите на экране). Программа TorrStream
-                    запускается на компьютере или роутере в вашей сети, а телевизор открывает её по адресу.
-                </p>
+                <p>Нужны две вещи в одной домашней сети: <strong>TorrServer</strong> (качает торрент
+                    и отдаёт видео) и <strong>TorrStream</strong> (то, что вы видите на экране).
+                    Как поставить TorrStream — зависит от телевизора:</p>
+            </div>
+
+            <div class="features">
+                <div class="feature">
+                    <span class="ico">📺</span>
+                    <h3>Android TV, Fire TV, приставки</h3>
+                    <p>Приложение TorrStream ставится прямо на устройство: в приложении
+                        <strong>Downloader</strong> введите код <span class="pill">2252342</span>.
+                        TorrServer можно скачать и запустить прямо из его настроек.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">💻</span>
+                    <h3>Vidaa + компьютер</h3>
+                    <p>На телевизор Hisense / Vidaa — приложение из магазина vidaapp.cfd, а сервер
+                        TorrStream — на компьютере с Windows, Linux или macOS в той же сети.</p>
+                </div>
+                <div class="feature">
+                    <span class="ico">📱</span>
+                    <h3>Vidaa + Android-телефон</h3>
+                    <p>Компьютера нет — сервером станет Android-телефон или приставка: приложение
+                        <strong>TorrStream Server</strong>, TorrServer ставится в нём же.</p>
+                </div>
+            </div>
+
+            <div class="step">
                 <div class="note">
-                    <b>Важно:</b> адрес TorrStream и адрес TorrServer — это два разных адреса.
-                    Не перепутайте их при первой настройке.
+                    <b>Важно:</b> адрес сервера TorrStream (порт 3000) и адрес TorrServer (порт 8090) —
+                    это два разных адреса. Не перепутайте их при первой настройке.
                 </div>
                 <div class="cta" style="justify-content:flex-start;margin-top:16px">
-                    <a class="btn btn-primary" href="setup.html">📄 Пошаговая установка (Vidaa и другие ТВ)</a>
+                    <a class="btn btn-primary" href="setup.html">📄 Пошаговая установка</a>
+                    <a class="btn btn-ghost" href="https://cash94.github.io/apk/">🤖 Скачать для Android</a>
                 </div>
             </div>
         </section>
@@ -670,10 +697,15 @@
                     <h3>Подключение к TorrServer</h3>
                 </div>
                 <p>Откройте <strong>Настройки</strong> в шапке и на вкладке «Настройки TorrServer»
-                    укажите адрес с протоколом — например <span class="pill">http://192.168.1.10:8090</span>.
+                    укажите адрес — например <span class="pill">192.168.1.10:8090</span>
+                    (<span class="pill">http://</span> подставится сам, для HTTPS есть переключатель).
                     Кружок рядом покажет состояние: <strong>зелёный</strong> — сервер отвечает,
                     <strong>красный</strong> — недоступен.
                 </p>
+                <p>В приложении для Android адрес можно не вводить: кнопка «Найти TorrServer в сети»
+                    покажет серверы в вашей сети, а переключатель «Использовать TorrServer, установленный
+                    на этом устройстве» с кнопкой «Скачать TorrServer» поставит и запустит его прямо
+                    на приставке.</p>
                 <p>Здесь же включается авторизация, добавление торрентов в базу и транскодирование,
                     а кнопка «Замерить скорость» проверит канал до сервера.</p>
                 <div class="shot"><img src="07-settings.webp" alt="Настройки TorrServer" loading="lazy"
@@ -733,9 +765,9 @@
                 </div>
                 <p>Описание, рейтинг, год и жанры, а под ними — кнопки действий:</p>
                 <div class="keys" style="margin:12px 0">
-                    <div class="key-row"><kbd>Поиск</kbd><span>подобрать раздачи под этот фильм</span></div>
+                    <div class="key-row"><kbd>Поиск торрентов</kbd><span>подобрать раздачи под этот фильм</span></div>
                     <div class="key-row"><kbd>Подробнее</kbd><span>полное описание и детали</span></div>
-                    <div class="key-row"><kbd>★</kbd><span>добавить в избранное</span></div>
+                    <div class="key-row"><kbd>☆ Избранное</kbd><span>добавить в избранное — оно открывается и кнопкой «Избранное» в шапке</span></div>
                     <div class="key-row"><kbd>▶ Трейлер</kbd><span>трейлер во встроенном плеере</span></div>
                 </div>
                 <p>Ниже — ряд <strong>«В главных ролях»</strong> и <strong>«Похожие фильмы»</strong>.
@@ -868,6 +900,26 @@
         </section>
 
         <!-- ── ДОНАТ ─────────────────────────────────────────────── -->
+        <!-- ── ПОМОЩЬ ────────────────────────────────────────────── -->
+        <section id="help">
+            <div class="sec-head">
+                <div class="kicker">Помощь</div>
+                <h2>Вопросы и поддержка</h2>
+            </div>
+            <div class="step">
+                <p>Поддержка TorrStream — в группе в Telegram: там помогут с установкой и настройкой,
+                    туда же пишите об ошибках и пожеланиях. В закреплённом сообщении — короткая
+                    инструкция для всех устройств.</p>
+                <p>Чтобы помогли быстрее, сразу укажите: устройство (модель телевизора, приставки
+                    или телефона), где установлены TorrServer и сервер TorrStream, что делали и что
+                    увидели — со скриншотом. Для TorrStream Server приложите журнал:
+                    «Журнал» → «Отправить».</p>
+                <div class="cta" style="justify-content:flex-start;margin-top:16px">
+                    <a class="btn btn-primary" href="https://t.me/torrstream" target="_blank" rel="noopener">💬 t.me/torrstream</a>
+                </div>
+            </div>
+        </section>
+
         <section id="donate">
             <div class="sec-head">
                 <div class="kicker">Поддержка</div>
@@ -882,7 +934,8 @@
 
         <footer>
             <p>TorrStream — стриминг торрентов в локальной сети и не только.</p>
-            <p style="margin-top:6px"><a href="setup.html">Инструкция по установке</a></p>
+            <p style="margin-top:6px"><a href="setup.html">Инструкция по установке</a> ·
+                <a href="https://t.me/torrstream" target="_blank" rel="noopener">Поддержка в Telegram</a></p>
         </footer>
     </div>
 

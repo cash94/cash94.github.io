@@ -215,6 +215,28 @@
             margin: 18px 0;
         }
 
+        /* подпись группы карточек: «Android TV…», «Hisense / Vidaa…» */
+        .group-label {
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #8e9fc3;
+            margin: 6px 8px 12px;
+        }
+
+        .big-code {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 1.6rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            color: #ffb35c;
+        }
+
+        .card-content a {
+            color: #9ec1ff;
+        }
+
         .footer-tip {
             text-align: center;
             font-size: 0.7rem;
@@ -256,7 +278,87 @@
     <div class="container">
         <div class="hero">
             <h1>🎬 TorrStream</h1>
-            <p>установка + настройка на телевизоре Vidaa</p>
+            <p>установка на телевизор и сервер TorrStream</p>
+        </div>
+
+        <div class="group-label">📺 Android TV, Fire TV, приставки</div>
+
+        <!-- Android TV / Fire TV: приложение TorrStream через Downloader -->
+        <div class="card collapsed" id="cardAndroidTv">
+            <div class="os-header">
+                <span class="os-icon">🤖</span>
+                <span class="os-title">Android TV / Fire TV</span>
+                <span class="toggle-indicator">▼</span>
+            </div>
+            <div class="card-content">
+                <div class="step-badge">📥 УСТАНОВКА ПРИЛОЖЕНИЯ</div>
+                <ul class="tv-steps-list">
+                    <li><span class="step-num">1</span><span>Установить приложение <b>Downloader</b> (by AFTVnews) из
+                        магазина приложений приставки</span></li>
+                    <li><span class="step-num">2</span><span>Открыть Downloader и ввести код</span></li>
+                </ul>
+                <div class="code-panel">
+                    <span class="big-code">2252342</span>
+                    <button class="copy-icon-btn" data-copy="2252342">📋 Копировать</button>
+                </div>
+                <ul class="tv-steps-list">
+                    <li><span class="step-num">3</span><span>На открывшейся странице нажать кнопку
+                        «Рекомендуется» — APK скачается, подтвердить установку</span></li>
+                </ul>
+                <div class="info-grid">Вместо кода можно ввести адрес
+                    <a href="https://cash94.github.io/apk/">cash94.github.io/apk</a>. Не устанавливается — разрешите
+                    Downloader установку неизвестных приложений в настройках приставки.</div>
+
+                <div class="divider-light"></div>
+                <div class="step-badge">🧲 TORRSERVER</div>
+                <ul class="tv-steps-list">
+                    <li><span class="step-num">1</span><span>Открыть TorrStream → Настройки → Настройки TorrServer</span></li>
+                    <li><span class="step-num">2</span><span>TorrServer на самой приставке: включить «Использовать
+                        TorrServer, установленный на этом устройстве» и нажать «Скачать TorrServer»</span></li>
+                    <li><span class="step-num">3</span><span>TorrServer на другом устройстве: кнопка «Найти TorrServer в
+                        сети» или ввести адрес вручную (пример: 192.168.1.30:8090)</span></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="group-label">📺 Hisense / Vidaa — сервер TorrStream на одном из устройств в сети</div>
+
+        <!-- Android-телефон как сервер для Vidaa: TorrStream Server -->
+        <div class="card collapsed" id="cardAndroidServer">
+            <div class="os-header">
+                <span class="os-icon">📱</span>
+                <span class="os-title">Android-телефон</span>
+                <span class="toggle-indicator">▼</span>
+            </div>
+            <div class="card-content">
+                <div class="step-badge">📥 ПРИЛОЖЕНИЕ TORRSTREAM SERVER</div>
+                <ul class="tv-steps-list">
+                    <li><span class="step-num">1</span><span>На телефоне открыть
+                        <a href="https://cash94.github.io/apk/">cash94.github.io/apk</a> (на приставке — код
+                        <b>2252342</b> в Downloader) → TorrStream Server → «Рекомендуется»</span></li>
+                    <li><span class="step-num">2</span><span>Открыть TorrStream Server и нажать «Разрешить работу в
+                        фоне» — иначе система усыпит сервер с выключенным экраном</span></li>
+                    <li><span class="step-num">3</span><span>По желанию «Установить TorrServer» — тогда торренты будет
+                        отдавать сам телефон</span></li>
+                    <li><span class="step-num">4</span><span>Нажать «Запустить сервер» — на экране появится адрес для
+                        телевизора (пример: http://192.168.1.30:3000)</span></li>
+                </ul>
+                <div class="info-grid">Телефон и телевизор должны быть в одной Wi-Fi сети. Если TorrServer работает
+                    на телефоне, его адрес телевизор подставит сам.</div>
+                <div class="divider-light"></div>
+                <div class="step-badge">📺 Действия на телевизоре</div>
+                <ul class="tv-steps-list">
+                    <li><span class="step-num">1</span><span>Открыть браузер на ТВ и перейти по адресу vidaapp.cfd → найти
+                        TorrStream → установить</span></li>
+                    <li><span class="step-num">2</span><span>Перезагрузить телевизор</span></li>
+                    <li><span class="step-num">3</span><span>Запустить TorrStream и ввести адрес с экрана TorrStream Server
+                        (пример:
+                        http://192.168.1.30:3000)</span></li>
+                    <li><span class="step-num">4</span><span>В поле TorrServer указать адрес TorrServer
+                        (пример:
+                        http://192.168.1.30:8090)</span></li>
+                </ul>
+            </div>
         </div>
 
         <!-- Windows x64 (по умолчанию свернут) -->
@@ -289,16 +391,15 @@
                 <div class="divider-light"></div>
                 <div class="step-badge">📺 Действия на телевизоре</div>
                 <ul class="tv-steps-list">
-                    <li><span class="step-num">1</span> Открыть браузер на ТВ и перейти по адресу vidaapp.cfd → найти
-                        TorrStream → установить</li>
-                    <li><span class="step-num">2</span> Перезагрузить телевизор</li>
-                    <li><span class="step-num">3</span> Запустить TorrStream и ввести адрес который указан в консоли
+                    <li><span class="step-num">1</span><span>Открыть браузер на ТВ и перейти по адресу vidaapp.cfd → найти
+                        TorrStream → установить</span></li>
+                    <li><span class="step-num">2</span><span>Перезагрузить телевизор</span></li>
+                    <li><span class="step-num">3</span><span>Запустить TorrStream и ввести адрес который указан в консоли
                         (пример:
-                        http://192.168.1.30:3000)
-                    </li>
-                    <li><span class="step-num">4</span> В поле TorrServer указать адрес TorrServer
+                        http://192.168.1.30:3000)</span></li>
+                    <li><span class="step-num">4</span><span>В поле TorrServer указать адрес TorrServer
                         (пример:
-                        http://192.168.1.30:8090)</li>
+                        http://192.168.1.30:8090)</span></li>
                 </ul>
                 <div class="warning-block">⚠️ Если TorrServer установлен локально, а программа установлена на VPS —
                     такая связка работать НЕ будет!</div>
@@ -328,16 +429,15 @@
                 <div class="divider-light"></div>
                 <div class="step-badge">📺 Действия на телевизоре</div>
                 <ul class="tv-steps-list">
-                    <li><span class="step-num">1</span> Открыть браузер на ТВ и перейти по адресу vidaapp.cfd → найти
-                        TorrStream → установить</li>
-                    <li><span class="step-num">2</span> Перезагрузить телевизор</li>
-                    <li><span class="step-num">3</span> Запустить TorrStream и ввести адрес который указан в консоли
+                    <li><span class="step-num">1</span><span>Открыть браузер на ТВ и перейти по адресу vidaapp.cfd → найти
+                        TorrStream → установить</span></li>
+                    <li><span class="step-num">2</span><span>Перезагрузить телевизор</span></li>
+                    <li><span class="step-num">3</span><span>Запустить TorrStream и ввести адрес который указан в консоли
                         (пример:
-                        http://192.168.1.30:3000)
-                    </li>
-                    <li><span class="step-num">4</span> В поле TorrServer указать адрес TorrServer
+                        http://192.168.1.30:3000)</span></li>
+                    <li><span class="step-num">4</span><span>В поле TorrServer указать адрес TorrServer
                         (пример:
-                        http://192.168.1.30:8090)</li>
+                        http://192.168.1.30:8090)</span></li>
                 </ul>
                 <div class="warning-block">⚠️ Если TorrServer установлен локально, а программа установлена на VPS —
                     такая связка работать НЕ будет!</div>
@@ -367,16 +467,15 @@
                 <div class="divider-light"></div>
                 <div class="step-badge">📺 Действия на телевизоре</div>
                 <ul class="tv-steps-list">
-                    <li><span class="step-num">1</span> Открыть браузер на ТВ и перейти по адресу vidaapp.cfd → найти
-                        TorrStream → установить</li>
-                    <li><span class="step-num">2</span> Перезагрузить телевизор</li>
-                    <li><span class="step-num">3</span> Запустить TorrStream и ввести адрес который указан в консоли
+                    <li><span class="step-num">1</span><span>Открыть браузер на ТВ и перейти по адресу vidaapp.cfd → найти
+                        TorrStream → установить</span></li>
+                    <li><span class="step-num">2</span><span>Перезагрузить телевизор</span></li>
+                    <li><span class="step-num">3</span><span>Запустить TorrStream и ввести адрес который указан в консоли
                         (пример:
-                        http://192.168.1.30:3000)
-                    </li>
-                    <li><span class="step-num">4</span> В поле TorrServer указать адрес TorrServer
+                        http://192.168.1.30:3000)</span></li>
+                    <li><span class="step-num">4</span><span>В поле TorrServer указать адрес TorrServer
                         (пример:
-                        http://192.168.1.30:8090)</li>
+                        http://192.168.1.30:8090)</span></li>
                 </ul>
                 <div class="warning-block">⚠️ Если TorrServer установлен локально, а программа установлена на VPS —
                     такая связка работать НЕ будет!</div>
@@ -384,7 +483,10 @@
         </div>
 
         <div class="footer-tip">
-            💡 Нажмите на заголовок платформы, чтобы развернуть инструкцию
+            💡 Нажмите на заголовок платформы, чтобы развернуть инструкцию<br>
+            📘 <a href="guide.html" style="color:#9ec1ff">Как пользоваться TorrStream</a><br>
+            💬 Вопросы и помощь — в группе Telegram
+            <a href="https://t.me/torrstream" target="_blank" rel="noopener" style="color:#9ec1ff">t.me/torrstream</a>
         </div>
     </div>
 
