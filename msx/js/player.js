@@ -3007,6 +3007,10 @@ async function loadSubtitlePreference(hash, fileId) {
 }
 
 async function handleVideoEnded() {
+  // Конец ловят двое — событие 'ended' и startNearEndCheck; срабатывает первый
+  if (playbackEndHandled) return;
+  playbackEndHandled = true;
+  if (nearEndCheckInterval) { clearInterval(nearEndCheckInterval); nearEndCheckInterval = null; }
   stopHeartbeat(); stopTorrentStatsUpdates(); await saveTimecodeToServer();
   // «Переключать серии автоматически» выключено — серия заканчивается так же, как фильм
   if (AppState.autoSwitchEpisodes && currentEpisodeFiles.length > 0 && currentEpisodeIndex < currentEpisodeFiles.length - 1) {
@@ -3021,16 +3025,42 @@ async function handleVideoEnded() {
 }
 
 /**
- * Раньше здесь крутился секундный интервал с пустым телом if — просыпался
- * каждую секунду всё время просмотра и ничего не делал. Конец файла ловит
- * событие 'ended' (handleVideoEnded), отдельная проверка не нужна.
+ * Конец файла по времени воспроизведения.
  *
- * Функцию и nearEndCheckInterval оставляем: их гасят из полудюжины мест
- * (выход из плеера, смена серии, ошибки), и все эти вызовы должны остаться
- * рабочими, если проверка когда-нибудь вернётся.
+ * Одного события 'ended' мало: серверный HLS-поток (services/hls.js) ffmpeg
+ * пишет с omit_endlist — в плейлисте нет #EXT-X-ENDLIST, hls.js считает поток
+ * незаконченным, и в конце видео просто встаёт в ожидании данных, 'ended' не
+ * приходит никогда. Из-за этого в веб-плеере не переключались серии.
+ *
+ * Поэтому раз в секунду сверяем абсолютную позицию (currentTime + seekOffset)
+ * с длительностью файла: до конца меньше END_EPS_SEC — конец; или видео стоит
+ * без движения END_STALL_MS в последних END_STALL_ZONE_SEC (последний сегмент
+ * часто короче, чем обещает длительность). Пауза пользователя и перемотка —
+ * не конец. Зовут из всех путей воспроизведения после старта и после перемотки.
  */
+var END_EPS_SEC = 1.5;
+var END_STALL_ZONE_SEC = 20;
+var END_STALL_MS = 4000;
+var playbackEndHandled = false;
+
 function startNearEndCheck() {
   if (nearEndCheckInterval) { clearInterval(nearEndCheckInterval); nearEndCheckInterval = null; }
+  playbackEndHandled = false;
+  var lastAbs = -1, lastMoveAt = Date.now();
+  nearEndCheckInterval = setInterval(function () {
+    var v = getEl('video-player');
+    var now = Date.now();
+    if (!v || AppState.currentScreen !== 'player' || AppState.isSeeking || v.paused) { lastMoveAt = now; return; }
+    var total = AppState.originalDuration || AppState.expectedDuration || 0;
+    if (!(total > 0)) return;
+    var abs = (v.currentTime || 0) + (AppState.seekOffset || 0);
+    if (Math.abs(abs - lastAbs) > 0.05) { lastAbs = abs; lastMoveAt = now; }
+    var left = total - abs;
+    if (left <= END_EPS_SEC || (left <= END_STALL_ZONE_SEC && now - lastMoveAt >= END_STALL_MS)) {
+      console.log('🏁 Конец файла: позиция ' + abs.toFixed(1) + ' из ' + total.toFixed(1) + ' с');
+      handleVideoEnded();
+    }
+  }, 1000);
 }
 
 function exitPlayer() { if (nearEndCheckInterval) { clearInterval(nearEndCheckInterval); nearEndCheckInterval = null; } }
