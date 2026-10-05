@@ -349,6 +349,11 @@
         try {
             var r = await TorrentsWorker.loadAllTmdbData(torrent);
             if (!r) throw new Error('Empty worker result');
+            // Пока ждали Worker, открыли другую раздачу — в карточку ничего не
+            // пишем (torrents.js: isOpenTorrentDetail). Результат отдаём:
+            // вызывающий сам проверит, к той ли раздаче он относится
+            if (elements.detailViewDiv && typeof window.isOpenTorrentDetail === 'function' &&
+                !window.isOpenTorrentDetail(torrent)) return r;
 
             if (elements.titleEl && r.cleanTitle) {
                 elements.titleEl.textContent = r.cleanTitle;

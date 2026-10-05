@@ -1117,17 +1117,27 @@ function preloadDetailFile(hash, fileId) {
     preloadTorrents(hash, fileId);
 }
 
+/**
+ * Какая раздача сейчас открыта в карточке (hash в нижнем регистре).
+ *
+ * Карточка торрента одна на все раздачи, а её данные — прогресс просмотра,
+ * детали TMDB — приходят асинхронно. Открыл одну раздачу, сразу другую — и
+ * ответ по первой, пришедший позже, ложился на вторую: «Продолжить» запускал
+ * старую раздачу, «Открыть карточку» вёл в чужой фильм. Каждый, кто пишет в
+ * карточку после await, сверяется с этой меткой (isOpenTorrentDetail).
+ */
+var openTorrentDetailHash = '';
+
+function isOpenTorrentDetail(torrent) {
+    return !!(torrent && torrent.hash) &&
+        String(torrent.hash).toLowerCase() === openTorrentDetailHash;
+}
+window.isOpenTorrentDetail = isOpenTorrentDetail;
+
 async function addProgressToDetail(torrent, preloadedFiles) {
     if (!torrent || !torrent.hash) return null;
     var btn = getEl('detail-progress-btn');
     if (!btn) return null;
-    btn.classList.remove('hidden');
-    btn.style.removeProperty('display');
-    var extra = getEl('catalog-detail-extra');
-    if (extra) {
-        extra.classList.remove('hidden');
-        extra.style.removeProperty('display');
-    }
     var oldProgressBlocks = document.querySelectorAll('#detail-progress');
     for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
     if (!btn.dataset.bound) {
@@ -1156,16 +1166,33 @@ async function addProgressToDetail(torrent, preloadedFiles) {
             });
         });
     }
+    // Кнопку показываем только готовой — с подписью и данными этой раздачи.
+    // Раньше она появлялась сразу, со всем, что осталось от прошлой карточки
+    // («Продолжить» чужой серии), и быстрое нажатие запускало старую раздачу.
+    var showButton = function () {
+        btn.classList.remove('hidden');
+        btn.style.removeProperty('display');
+        var extra = getEl('catalog-detail-extra');
+        if (extra) {
+            extra.classList.remove('hidden');
+            extra.style.removeProperty('display');
+        }
+    };
+
+    // === Передаём файлы, чтобы loadProgressForTorrent не запрашивал повторно ===
+    var progress = await loadProgressForTorrent(torrent, preloadedFiles);
+    // Пока ждали, открыли другую раздачу — её кнопку не трогаем
+    if (!isOpenTorrentDetail(torrent)) return null;
     btn.dataset.hash = torrent.hash;
     btn.dataset.fileId = '1';
     btn.dataset.timecode = '0';
     btn.dataset.episodeIndex = '0';
     btn.classList.remove('has-progress');
-    btn.innerHTML = '<span class="btn-label">▶ Играть</span>';
-
-    // === Передаём файлы, чтобы loadProgressForTorrent не запрашивал повторно ===
-    var progress = await loadProgressForTorrent(torrent, preloadedFiles);
-    if (!progress || !(progress.timecode > 0)) return null;
+    if (!progress || !(progress.timecode > 0)) {
+        btn.innerHTML = '<span class="btn-label">▶ Играть</span>';
+        showButton();
+        return null;
+    }
     var fileId = parseInt(progress.fileId, 10) || 1;
     var timecode = progress.timecode;
     var episodeIndex = progress.episodeIndex || 0;
@@ -1205,6 +1232,7 @@ async function addProgressToDetail(torrent, preloadedFiles) {
     btn.innerHTML =
         '<span class="btn-label">▶ Продолжить</span>' +
         '<span class="btn-hint">' + hint + '</span>';
+    showButton();
     return fileId;
 }
 
@@ -2177,6 +2205,9 @@ function renderDetailActorsFromDetails(details) {
  * @param {object} details ответ TMDB (может быть null)
  */
 function revealTorrentDetailExtras(torrent, details) {
+    // Детали пришли по раздаче, которую уже закрыли, — «Открыть карточку»
+    // повела бы в её фильм
+    if (!isOpenTorrentDetail(torrent)) return;
     // --- «Подробнее» ---
     var overviewText = (details && details.overview) || '';
     var ov = getEl('catalog-detail-overview');
@@ -2264,8 +2295,15 @@ function visibleItemsforDetail(change) {
             var el = getEl(id);
             if (el) el.classList.add('hidden');
         });
+        var progressBtn = getEl('detail-progress-btn');
+        if (progressBtn) {
+            progressBtn.classList.add('hidden');
+            progressBtn.dataset.hash = '';
+        }
 
-        var massVisible = ['catalog-detail-extra', 'detail-progress-btn'];
+        // «Играть/Продолжить» здесь не показываем: её покажет addProgressToDetail,
+        // когда будет знать, что именно запускать (см. там же)
+        var massVisible = ['catalog-detail-extra'];
         massVisible.forEach(function (id) {
             var el = getEl(id);
             if (el) {
@@ -2417,6 +2455,7 @@ function focusTorrentDetailStart() {
     // метаданных и ряд актёров приходят из TMDB позже и сдвигают ряд файлов
     // вниз — вместе со сфокусированной плиткой, и она уезжала за экран.
     // Кнопка стоит в шапке, выше всего, что подгружается, и не двигается.
+    detailAutoFocusEl = null;
     var progressBtn = getEl('detail-progress-btn');
     if (progressBtn && progressBtn.offsetParent !== null) {
         for (var i = 0; i < focusableElements.length; i++) {
@@ -2425,14 +2464,24 @@ function focusTorrentDetailStart() {
     }
     if (document.querySelectorAll('#files-list .file-item:not(.hidden)').length > 0) {
         for (var j = 0; j < focusableElements.length; j++) {
-            if (focusableElements[j].classList && focusableElements[j].classList.contains('file-item')) { setFocus(j); return; }
+            if (focusableElements[j].classList && focusableElements[j].classList.contains('file-item')) {
+                setFocus(j);
+                // Кнопка «Играть» ещё не готова — запоминаем, куда встали вместо
+                // неё: придёт кнопка, а человек отсюда не уходил — фокус переедет
+                detailAutoFocusEl = focusableElements[j];
+                return;
+            }
         }
     }
     setFocus(0);
 }
 
+/** Плитка, на которую focusTorrentDetailStart поставил фокус вместо кнопки «Играть» */
+var detailAutoFocusEl = null;
+
 async function showDetail(torrent) {
     if (torrent && torrent.hash) window.lastSelectedTorrentHash = torrent.hash;
+    openTorrentDetailHash = torrent && torrent.hash ? String(torrent.hash).toLowerCase() : '';
     var reuse = isTorrentDetailReusable(torrent);
     if (window.Nav && torrent) Nav.push('torrent-detail', { key: 't:' + String(torrent.hash || '').toLowerCase(), label: torrent.title || torrent.hash, torrent: torrent });
     if (typeof currentFocusIndex !== 'undefined') window.lastSelectedTorrentIndex = currentFocusIndex;
@@ -2542,7 +2591,7 @@ async function showDetail(torrent) {
     // Актёры и метаданные не зависят от списка файлов — рисуем отдельной ветвью,
     // иначе при пустом/ошибочном списке файлов ряд актёров вообще не появится.
     tmdbPromise.then(function (tmdbData) {
-        if (!tmdbData) return;
+        if (!tmdbData || !isOpenTorrentDetail(torrent)) return;
         detailMetaState.isTvSeries = !!tmdbData.isTvSeries;
         renderDetailMetaRow();
         renderDetailActorsFromDetails(tmdbData.details);
@@ -2550,6 +2599,9 @@ async function showDetail(torrent) {
 
     try {
         var files = await filesPromise;
+        // Пока грузился список файлов, открыли другую раздачу — её карточку
+        // (файлы, фокус) рисует уже свой вызов showDetail
+        if (!isOpenTorrentDetail(torrent)) return;
         var poster = torrent.poster || '';
         if (!poster && torrent.data) {
             try {
@@ -2605,8 +2657,12 @@ async function showDetail(torrent) {
 
             // === ПРОГРЕСС АСИНХРОННО (передаём файлы, чтобы не запрашивать повторно) ===
             addProgressToDetail(torrent, files).then(function (lastField) {
-                if (lastField > 0 && typeof updateFocusableElements === 'function') {
-                    updateFocusableElements();
+                if (!isOpenTorrentDetail(torrent)) return;
+                if (typeof updateFocusableElements === 'function') updateFocusableElements();
+                // Кнопка появилась позже первой плитки: если фокус всё ещё там,
+                // куда его поставили при открытии, — переводим на неё
+                if (detailAutoFocusEl && document.querySelector('.focused') === detailAutoFocusEl) {
+                    focusTorrentDetailStart();
                 }
                 // Кнопка уже знает, что запустит: fileId лежит в dataset и для
                 // «Играть» (первый файл), и для «Продолжить N серию».
@@ -2618,6 +2674,7 @@ async function showDetail(torrent) {
 
             // === TMDB-данные применяем когда готовы ===
             tmdbPromise.then(function (tmdbData) {
+                if (!tmdbData || !isOpenTorrentDetail(torrent)) return;
                 if (tmdbData.cleanTitle && tmdbData.cleanTitle !== 'Без названия') titleEl.textContent = tmdbData.cleanTitle;
                 if (tmdbData.seasonNumbers && tmdbData.seasonNumbers.length > 1) {
                     var seasonsText = titleEl.textContent;
@@ -3013,6 +3070,9 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
             console.warn('Ошибка загрузки TMDB details:', e);
         }
     }
+
+    // Пока ждали TMDB, открыли другую раздачу — фон и описание этой не рисуем
+    if (details && elements.detailViewDiv && !isOpenTorrentDetail(torrent)) details = null;
 
     if (details) {
         if (details.backdrop_path && elements.detailViewDiv) {
