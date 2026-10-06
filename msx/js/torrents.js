@@ -769,10 +769,279 @@ function lockDeviceTorrServerFields(on) {
     syncHttpsToggle();
 }
 
+
+/**
+ * Встроенный TorrServer на webOS (LG) — то же, что TorrServerManager в
+ * Android-приложении, но средствами телевизора.
+ *
+ * Только в отдельной сборке приложения (TorrStream-webOS, id
+ * com.torrstream.app.ts): её запускалка открывает сервер с ?tsdevice=1. Нужен
+ * root через Homebrew Channel: команды выполняет его служба
+ * luna://org.webosbrew.hbchannel.service/exec (как и в torrserv.matrix.app).
+ *
+ * Бинарник — официальная сборка YouROK/TorrServer под linux-arm7 (пользовательское
+ * пространство webOS 32-битное). Всё лежит в DIR: сам TorrServer, его база,
+ * version, pid и журнал. Загрузка и сервер идут в фоне (nohup … &) — exec ждёт
+ * закрытия вывода команды, поэтому вывод фоновых процессов уходит в файлы.
+ * Автозапуск при включении ТВ — скрипт в /var/lib/webosbrew/init.d (его
+ * запускает Homebrew Channel); он, как и кнопка «Запустить», не поднимает
+ * свою копию, если на 8090 уже кто-то отвечает.
+ */
+var WebOSTorrServer = (function () {
+    var DIR = '/media/developer/torrstream-torrserver';
+    var INIT = '/var/lib/webosbrew/init.d/60-torrstream-torrserver';
+    var ASSET = 'TorrServer-linux-arm7';
+    var RELEASE_API = 'https://api.github.com/repos/YouROK/TorrServer/releases/latest';
+    var HB = 'luna://org.webosbrew.hbchannel.service';
+
+    var st = {
+        supported: true, installed: false, version: '', running: false, own: false,
+        runningVersion: '', downloading: false, progress: 0, error: '', latest: '',
+        unsupportedText: ''
+    };
+    var release = null;        // {tag, url, size} последнего релиза
+    var refreshing = false;
+    var afterInstall = '';     // 'start' — запустить, когда скачается
+    var probedAt = 0;
+    var execPending = [];
+    var rooted = null;         // null — ещё не спрашивали Homebrew Channel
+    var rootError = '';
+
+    function enabled() {
+        return AppState.platform === 'webos' && /[?&]tsdevice=1(&|$)/.test(location.search);
+    }
+
+    /**
+     * Вызов службы Homebrew Channel; cb(r) — её ответ или {returnValue:false,
+     * errorText} (нет моста, нет Homebrew Channel, нет ответа за timeoutMs).
+     */
+    function hb(method, params, cb, timeoutMs) {
+        var done = false;
+        var finish = function (r) { if (!done) { done = true; cb(r); } };
+        try {
+            if (typeof window.PalmServiceBridge === 'undefined') { finish({ returnValue: false, errorText: 'нет PalmServiceBridge' }); return; }
+            var bridge = new window.PalmServiceBridge();
+            // Ссылку держим до ответа: без неё объект может собрать сборщик
+            // мусора, и ответ не придёт (вызовы идут параллельно — список)
+            execPending.push(bridge);
+            var release = function () {
+                var i = execPending.indexOf(bridge);
+                if (i !== -1) execPending.splice(i, 1);
+            };
+            bridge.onservicecallback = function (msg) {
+                release();
+                var r = {};
+                try { r = JSON.parse(msg); } catch (e) { }
+                finish(r);
+            };
+            // Homebrew Channel не установлен — ответа может и не быть вовсе
+            setTimeout(function () { release(); finish({ returnValue: false, errorText: 'Homebrew Channel не отвечает' }); }, timeoutMs || 5000);
+            bridge.call(HB + '/' + method, JSON.stringify(params || {}));
+        } catch (e) { finish({ returnValue: false, errorText: e.message }); }
+    }
+
+    /** Команда от root через Homebrew Channel; cb(err, stdout) */
+    function exec(command, cb) {
+        if (rooted !== true) { cb(rootError || 'нет root'); return; }
+        hb('exec', { command: command }, function (r) {
+            if (r.returnValue === false) cb(r.errorText || r.stderrString || 'ошибка', r.stdoutString || '');
+            else cb(null, r.stdoutString || '');
+        }, 120000);
+    }
+
+    /**
+     * Есть ли root: служба Homebrew Channel отвечает checkRoot. Без root (или без
+     * самого Homebrew Channel) встроенный TorrServer не ставим — приложение при
+     * этом работает как обычно, а уже запущенным TorrServer пользоваться можно.
+     */
+    function checkRoot(done) {
+        if (rooted !== null) { done(); return; }
+        hb('checkRoot', {}, function (r) {
+            rooted = r.returnValue === true;
+            if (!rooted) {
+                rootError = /не отвечает|PalmServiceBridge/.test(r.errorText || '')
+                    ? 'Встроенный TorrServer ставится только на телевизор с Homebrew Channel и root'
+                    : 'Нужен root: Homebrew Channel работает без него';
+            }
+            done();
+        });
+    }
+
+    function echo(done) {
+        var x = new XMLHttpRequest(), fin = false;
+        var finish = function (v) { if (!fin) { fin = true; done(v); } };
+        try {
+            x.open('GET', 'http://127.0.0.1:8090/echo?_=' + Date.now(), true);
+            x.timeout = 1500;
+            x.onload = function () { finish(x.status === 200 ? String(x.responseText || '').trim().slice(0, 40) : ''); };
+            x.onerror = x.ontimeout = function () { finish(''); };
+            x.send();
+        } catch (e) { finish(''); }
+    }
+
+    function fetchRelease(done) {
+        var x = new XMLHttpRequest();
+        try {
+            x.open('GET', RELEASE_API, true);
+            x.timeout = 15000;
+            x.onload = function () {
+                var rel = null;
+                try {
+                    var d = JSON.parse(x.responseText);
+                    for (var i = 0; i < (d.assets || []).length; i++) {
+                        if (d.assets[i].name === ASSET) {
+                            rel = { tag: d.tag_name, url: d.assets[i].browser_download_url, size: d.assets[i].size };
+                        }
+                    }
+                } catch (e) { }
+                if (rel) { release = rel; st.latest = rel.tag; }
+                done(rel);
+            };
+            x.onerror = x.ontimeout = function () { done(null); };
+            x.send();
+        } catch (e) { done(null); }
+    }
+
+    /** Состояние: что установлено, что качается, жив ли наш процесс, кто на 8090 */
+    function refresh() {
+        if (refreshing) return;
+        refreshing = true;
+        checkRoot(function () {
+            if (rooted) { refreshRooted(); return; }
+            // Без root: ставить нечего, но чужой TorrServer на 8090 использовать можно
+            echo(function (ver) {
+                refreshing = false;
+                st.running = !!ver;
+                st.runningVersion = ver;
+                st.own = false; st.installed = false; st.downloading = false;
+                st.supported = !!ver;
+                st.unsupportedText = rootError;
+            });
+        });
+    }
+
+    function refreshRooted() {
+        var cmd = 'cd ' + DIR + ' 2>/dev/null || { echo NODIR; exit 0; }; ' +
+            '[ -x TorrServer ] && echo I; ' +
+            '[ -f version ] && sed "s/^/V:/" version | head -1; ' +
+            '[ -f pid ] && kill -0 $(cat pid) 2>/dev/null && echo R; ' +
+            '[ -f dl ] && echo D; ' +
+            '[ -f TorrServer.part ] && echo P:$(wc -c < TorrServer.part); ' +
+            '[ -f err ] && sed "s/^/E:/" err | head -1; true';
+        exec(cmd, function (err, out) {
+            if (err) {
+                refreshing = false;
+                st.supported = false;
+                st.unsupportedText = 'Нужен Homebrew Channel с root (' + err + ')';
+                return;
+            }
+            st.supported = true;
+            var lines = String(out).split('\n');
+            var has = function (k) { return lines.indexOf(k) !== -1; };
+            var val = function (p) {
+                for (var i = 0; i < lines.length; i++) if (lines[i].indexOf(p) === 0) return lines[i].slice(p.length).trim();
+                return '';
+            };
+            var wasDownloading = st.downloading;
+            st.installed = has('I');
+            st.version = val('V:');
+            st.own = has('R');
+            st.downloading = has('D');
+            var part = parseInt(val('P:'), 10) || 0;
+            st.progress = st.downloading && release && release.size ? Math.min(99, Math.round(part * 100 / release.size)) : 0;
+            st.error = val('E:');
+            echo(function (ver) {
+                refreshing = false;
+                st.running = !!ver;
+                st.runningVersion = ver;
+                // Скачалось — запускаем (при обновлении старый процесс уже остановлен)
+                if (wasDownloading && !st.downloading && afterInstall && st.installed && !st.error) {
+                    afterInstall = '';
+                    start();
+                }
+            });
+        });
+    }
+
+    function status() {
+        // Панель спрашивает раз в 1,5 с — отдаём последнее известное и обновляем
+        if (Date.now() - probedAt > 1000) { probedAt = Date.now(); refresh(); }
+        return st;
+    }
+
+    function install() {
+        st.error = '';
+        var go = function (rel) {
+            if (!rel) { st.error = 'не удалось получить релиз TorrServer с GitHub'; return; }
+            st.downloading = true; st.progress = 0;
+            afterInstall = 'start';
+            // Обновление поверх работающего: наш процесс останавливаем, файл
+            // заменяем целиком (mv), после загрузки refresh запустит заново
+            var cmd = 'mkdir -p ' + DIR + ' && cd ' + DIR + ' && rm -f err && touch dl && ' +
+                '( [ -f pid ] && kill $(cat pid) 2>/dev/null; ' +
+                '( curl -fsSL -o TorrServer.part "' + rel.url + '" || wget -q -O TorrServer.part "' + rel.url + '" ) ' +
+                '&& chmod +x TorrServer.part && mv -f TorrServer.part TorrServer && echo "' + rel.tag + '" > version ' +
+                '|| { echo "не удалось скачать TorrServer" > err; rm -f TorrServer.part; }; rm -f dl ) ' +
+                '> /dev/null 2>&1 < /dev/null &';
+            exec(cmd, function (err) { if (err) { st.error = String(err); st.downloading = false; } refresh(); });
+        };
+        if (release) go(release); else fetchRelease(go);
+    }
+
+    function start() {
+        // На 8090 уже кто-то есть (свой или чужой TorrServer) — вторую копию не поднимаем
+        echo(function (ver) {
+            if (ver) { refresh(); return; }
+            var script = [
+                '#!/bin/sh',
+                '# TorrStream: встроенный TorrServer (автозапуск Homebrew Channel)',
+                'DIR=' + DIR,
+                'curl -s -m 3 http://127.0.0.1:8090/echo > /dev/null 2>&1 && exit 0',
+                'cd $DIR || exit 0',
+                'GODEBUG=madvdontneed=1 nohup ./TorrServer -p 8090 -d $DIR > $DIR/ts.log 2>&1 < /dev/null &',
+                'echo $! > $DIR/pid'
+            ];
+            var cmd = 'cd ' + DIR + ' && printf "%s\\n" ' + script.map(function (l) { return "'" + l + "'"; }).join(' ') +
+                ' > autostart.sh && chmod +x autostart.sh && mkdir -p /var/lib/webosbrew/init.d && ' +
+                'ln -sf ' + DIR + '/autostart.sh ' + INIT + ' && sh ' + DIR + '/autostart.sh';
+            exec(cmd, function (err) { if (err) st.error = String(err); setTimeout(refresh, 1500); });
+        });
+    }
+
+    function stop() {
+        // Как на Android: остановка снимает и автозапуск
+        exec('[ -f ' + DIR + '/pid ] && kill $(cat ' + DIR + '/pid) 2>/dev/null; rm -f ' + DIR + '/pid ' + INIT + '; true',
+            function () { setTimeout(refresh, 800); });
+    }
+
+    function checkUpdate() { fetchRelease(function () { }); }
+
+    return { enabled: enabled, status: status, install: install, start: start, stop: stop, checkUpdate: checkUpdate, refresh: refresh };
+})();
+window.WebOSTorrServer = WebOSTorrServer;
+
+/**
+ * Встроенный TorrServer — общий интерфейс для панели: Android-приложение
+ * (AndroidJS.tsLocal*) или сборка webOS с TorrServer (WebOSTorrServer).
+ */
+function deviceTorrServerBridge() {
+    if (window.AndroidJS && typeof AndroidJS.tsLocalStatus === 'function') {
+        return {
+            status: function () { try { return JSON.parse(AndroidJS.tsLocalStatus()); } catch (e) { return null; } },
+            install: function () { AndroidJS.tsLocalInstall(); },
+            start: function () { AndroidJS.tsLocalStart(); },
+            stop: function () { AndroidJS.tsLocalStop(); },
+            checkUpdate: function () { AndroidJS.tsLocalCheckUpdate(); }
+        };
+    }
+    if (WebOSTorrServer.enabled()) return WebOSTorrServer;
+    return null;
+}
+
 function setupDeviceTorrServerToggle() {
     var row = getEl('ts-device-row');
     var box = getEl('ts-device-server');
-    if (!row || !box || !window.AndroidJS) return;
+    if (!row || !box || !deviceTorrServerBridge()) return;
     row.hidden = false;
     var localBox = getEl('ts-local-only');
 
@@ -839,11 +1108,12 @@ var deviceTorrServerPanel = (function () {
     var lastStatus = null;
 
     function bridge() {
-        return !!(window.AndroidJS && typeof AndroidJS.tsLocalStatus === 'function');
+        return !!deviceTorrServerBridge();
     }
 
     function readStatus() {
-        try { return JSON.parse(AndroidJS.tsLocalStatus()); } catch (e) { return null; }
+        var b = deviceTorrServerBridge();
+        return b ? b.status() : null;
     }
 
     function show(id, on) {
@@ -853,7 +1123,7 @@ var deviceTorrServerPanel = (function () {
 
     function render(st) {
         var text;
-        if (!st.supported) text = 'Процессор этого устройства TorrServer не поддерживает';
+        if (!st.supported) text = st.unsupportedText || 'Процессор этого устройства TorrServer не поддерживает';
         else if (st.downloading) text = 'Скачиваю TorrServer… ' + (st.progress || 0) + '%';
         else if (st.running && st.own) text = 'Работает встроенный TorrServer ' + (st.version || '');
         else if (st.running) text = 'На устройстве уже работает TorrServer ' + (st.runningVersion || '') + ' — используется он';
@@ -904,7 +1174,7 @@ var deviceTorrServerPanel = (function () {
     }
 
     function act(method) {
-        try { AndroidJS[method](); } catch (e) { console.warn('TorrServer: ' + method, e); }
+        try { deviceTorrServerBridge()[method](); } catch (e) { console.warn('TorrServer: ' + method, e); }
         setTimeout(tick, 300);
     }
 
@@ -914,10 +1184,10 @@ var deviceTorrServerPanel = (function () {
             var b = getEl(id);
             if (b) b.addEventListener('click', function () { act(method); });
         };
-        bind('ts-device-install', 'tsLocalInstall');
-        bind('ts-device-start', 'tsLocalStart');
-        bind('ts-device-stop', 'tsLocalStop');
-        bind('ts-device-update', 'tsLocalInstall');
+        bind('ts-device-install', 'install');
+        bind('ts-device-start', 'start');
+        bind('ts-device-stop', 'stop');
+        bind('ts-device-update', 'install');
         if (isDeviceTorrServer()) onToggle(true, true);
     }
 
@@ -932,15 +1202,24 @@ var deviceTorrServerPanel = (function () {
             // Зовём всегда, даже если сейчас работает чужой: остановка заодно
             // снимает автозапуск, иначе следующий запуск приложения поднял бы
             // встроенный сервер при выключенном переключателе
-            act('tsLocalStop');
+            act('stop');
             return;
         }
-        try { AndroidJS.tsLocalCheckUpdate(); } catch (e) { }
+        try { deviceTorrServerBridge().checkUpdate(); } catch (e) { }
         wasRunning = null;
         // Установлен, но не работает — запускаем сами; при старте приложения это
         // уже сделал автозапуск (TorrServerManager.autostartIfNeeded)
         var st0 = readStatus();
-        if (!atStartup && st0 && st0.installed && !st0.running) act('tsLocalStart');
+        if (!atStartup && st0 && st0.installed && !st0.running) act('start');
+        // webOS: автозапуска при старте приложения, как у Android
+        // (TorrServerManager), нет — TorrServer поднимает init.d при включении
+        // ТВ. Если его за это время остановили, поднимаем, когда статус придёт
+        if (atStartup && WebOSTorrServer.enabled()) {
+            setTimeout(function () {
+                var s = readStatus();
+                if (s && s.supported && s.installed && !s.running && !s.downloading) act('start');
+            }, 2500);
+        }
         start();
     }
 
