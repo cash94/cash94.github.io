@@ -3589,6 +3589,37 @@ article {
 /* Субтитры прямого файла (player.js: showNativeCues) — свой блок вместо
    встроенной отрисовки <video>: на ТВ она бывает мелкой или её нет. Внутри
    #player-screen, поэтому виден и в полноэкранном режиме */
+/* Настройки → Прочее → «Об устройстве» (app.js: renderDeviceInfo) */
+#config-screen .device-info {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  padding: 6px 18px;
+}
+
+#config-screen .device-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.95em;
+}
+
+#config-screen .device-info-row:last-child {
+  border-bottom: 0;
+}
+
+#config-screen .device-info-label {
+  color: #9a9aa6;
+  margin-right: 16px;
+  flex: none;
+}
+
+#config-screen .device-info-value {
+  color: #fff;
+  text-align: right;
+}
+
 .native-subtitles {
   display: none;
   position: absolute;

@@ -2285,6 +2285,54 @@ function setupClockVisibility() {
   }
 }
 
+// ==================== ОБ УСТРОЙСТВЕ ====================
+// Раздел «Прочее» → «Об устройстве»: в каком приложении открыт TorrStream,
+// что за платформа и каким плеером пойдёт видео. Нужен, чтобы человек (и
+// поддержка в группе) сразу видел, по какой ветке работает его устройство.
+var PLATFORM_NAMES = {
+  vidaa: 'Hisense Vidaa',
+  androidtv: 'Android TV',
+  webos: 'LG webOS',
+  tizen: 'Samsung Tizen',
+  smarttv: 'Smart TV',
+  ios: 'iOS',
+  android: 'Android',
+  desktop: 'Компьютер'
+};
+
+function deviceAppName() {
+  if (window.AndroidJS) return 'Android-приложение TorrStream';
+  if (AppState.platform === 'webos') return 'Приложение TorrStream для webOS';
+  return 'Браузер (web)';
+}
+
+function devicePlayerName() {
+  if (window.AndroidJS) return 'Внешний плеер Android';
+  if (AppState.transcodingFullOnOff) return 'Встроенный, файл напрямую с TorrServer';
+  if (AppState.transcodingOnOff) return 'Встроенный, транскодирование TorrServer (HLS)';
+  return 'Встроенный, поток через сервер TorrStream (HLS)';
+}
+
+function renderDeviceInfo() {
+  var box = getEl('device-info');
+  if (!box) return;
+  var dpr = window.devicePixelRatio || 1;
+  var rows = [
+    ['Приложение', deviceAppName()],
+    ['Платформа', PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'],
+    ['Плеер', devicePlayerName()],
+    ['Версия', AppState.currentVersion || '—'],
+    ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + (Math.round(dpr * 100) / 100) + ')' : '')]
+  ];
+  var html = '';
+  for (var i = 0; i < rows.length; i++) {
+    html += '<div class="device-info-row"><span class="device-info-label">' + escapeHtml(rows[i][0]) +
+      '</span><span class="device-info-value">' + escapeHtml(String(rows[i][1])) + '</span></div>';
+  }
+  box.innerHTML = html;
+}
+window.renderDeviceInfo = renderDeviceInfo;
+
 // ==================== МЕНЮ КОНФИГУРАЦИИ ====================
 function setupConfigMenu() {
   if (!Element.prototype.closest) {

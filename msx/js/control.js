@@ -4086,6 +4086,9 @@ function switchConfigTab(tabId) {
     for (var i = 0; i < tabContents.length; i++) tabContents[i].style.display = 'none';
     var selectedTab = getEl(tabId + '-content');
     if (selectedTab) selectedTab.style.display = 'block';
+    // «Об устройстве» — свежие сведения при каждом открытии: режим плеера
+    // меняется переключателями на вкладке «Плеер»
+    if (tabId === 'other-tab' && typeof window.renderDeviceInfo === 'function') window.renderDeviceInfo();
 }
 
 function setConfigMenuActive(menuItemId) {
