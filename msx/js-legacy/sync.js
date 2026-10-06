@@ -1,0 +1,412 @@
+/* Сборка для старых браузеров (Chrome 53) из js/sync.js — tools/legacy-build/build.js. Руками не править. */
+function asyncGeneratorStep(n, t, e, r, o, a, c) {try {var i = n[a](c),u = i.value;} catch (n) {return void e(n);}i.done ? t(u) : Promise.resolve(u).then(r, o);}function _asyncToGenerator(n) {return function () {var t = this,e = arguments;return new Promise(function (r, o) {var a = n.apply(t, e);function _next(n) {asyncGeneratorStep(a, r, o, _next, _throw, "next", n);}function _throw(n) {asyncGeneratorStep(a, r, o, _next, _throw, "throw", n);}_next(void 0);});};}
+
+
+var syncOverlay = null;
+var countdownInterval = null;
+
+function initSyncOverlay() {
+  if (syncOverlay) return;
+
+  syncOverlay = document.createElement('div');
+  syncOverlay.id = 'sync-overlay';
+  syncOverlay.className = 'sync-overlay hidden';
+  syncOverlay.innerHTML = '\n        <div class="sync-overlay-backdrop"></div>\n        <div class="sync-overlay-panel">\n            <div class="sync-overlay-header">\n                <h3>Синхронизация клиентов</h3>\n                <button class="sync-close-btn" id="sync-close-btn">X</button>\n            </div>\n            <div class="sync-overlay-content">\n                <div class="sync-instruction">\n                    Для того чтобы синхронизировать это устройство с другим, нужно на другом устройстве ввести нижепредставленный четырехзначный код\n                </div>\n                \n                <div class="sync-code-container">\n                    <div class="sync-code" id="sync-code">----</div>\n                </div>\n                \n                <div class="sync-expiry" id="sync-expiry">\n                    Код действует 5 минут\n                </div>\n                \n                <div class="sync-input-section">\n                    <div class="sync-input-label">Введите код с другого устройства:</div>\n                    <input type="text" class="sync-code-input" id="sync-code-input" maxlength="4" placeholder="____" autocomplete="off" data-osk-layout="sym">\n                </div>\n                \n                <div id="sync-message" class="sync-message hidden"></div>\n                <div id="sync-countdown" class="sync-countdown hidden"></div>\n            </div>\n        </div>\n    ';
+
+  document.body.appendChild(syncOverlay);
+
+
+  var closeBtn = getEl('sync-close-btn');
+  var backdrop = syncOverlay.querySelector('.sync-overlay-backdrop');
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', closeSyncOverlay);
+  }
+
+  if (backdrop) {
+    backdrop.addEventListener('click', closeSyncOverlay);
+  }
+
+
+  var codeInput = getEl('sync-code-input');
+  if (codeInput) {
+    codeInput.addEventListener('input', function (e) {
+
+      var oldValue = this.value;
+      this.value = this.value.replace(/[^0-9]/g, '').slice(0, 4);
+
+
+      if (this.value.length === 4 && this.value !== oldValue) {
+        verifySyncCode();
+      }
+    });
+
+    codeInput.addEventListener('keypress', function (e) {
+
+      if (e.key < '0' || e.key > '9') {
+        e.preventDefault();
+      }
+    });
+
+    codeInput.addEventListener('keyup', function (e) {
+
+      if (this.value.length === 4 && this.value.length === 4) {
+        verifySyncCode();
+      }
+    });
+  }
+}
+
+function generateSyncCode() {
+
+  var code = Math.floor(Math.random() * 9000) + 1000;
+  return code.toString();
+}
+
+function updateSyncCodeDisplay() {
+  var syncCodeElement = getEl('sync-code');
+  if (syncCodeElement && AppState.syncCode) {
+    syncCodeElement.textContent = AppState.syncCode;
+  }
+}
+
+function showSyncMessage(message, isError) {
+  var messageDiv = getEl('sync-message');
+  if (messageDiv) {
+    messageDiv.textContent = message;
+    messageDiv.className = 'sync-message ' + (isError ? 'sync-message-error' : 'sync-message-success');
+    messageDiv.classList.remove('hidden');
+
+    setTimeout(function () {
+      messageDiv.classList.add('hidden');
+    }, 5000);
+  }
+}
+
+function startCountdown(seconds) {
+  var countdownDiv = getEl('sync-countdown');
+  var secondsLeft = seconds;
+
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+  }
+
+  countdownDiv.classList.remove('hidden');
+
+  countdownInterval = setInterval(function () {
+    countdownDiv.textContent = 'Перезагрузка через ' + secondsLeft + ' секунд...';
+    secondsLeft--;
+
+    if (secondsLeft < 0) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      location.reload();
+    }
+  }, 1000);
+}function
+
+verifySyncCode() {return _verifySyncCode.apply(this, arguments);}function _verifySyncCode() {_verifySyncCode = _asyncToGenerator(function* () {
+    var codeInput = getEl('sync-code-input');
+    var code = codeInput.value.trim();
+
+    if (!code || code.length !== 4) {
+      return;
+    }
+
+
+    codeInput.disabled = true;
+
+    try {
+      var response = yield fetch(SERVER_URL + '/api/sync/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ code: code })
+      });
+
+      var data = yield response.json();
+
+      if (response.ok && data.success) {
+
+        if (localStorage.getItem('clientId') !== data.clientId) {
+          localStorage.setItem('clientId', data.clientId);
+          showSyncMessage('Код подтвержден! Приложение перезагрузится через 3 секунды...', false);
+          startCountdown(3);
+        } else {
+          showSyncMessage('Это устройство уже синхронизировано с этим кодом', false);
+          setTimeout(function () {
+            closeSyncOverlay();
+          }, 2000);
+        }
+      } else {
+        var errorMsg = data.error || 'Неверный или просроченный код';
+        showSyncMessage(errorMsg, true);
+
+        codeInput.value = '';
+        codeInput.disabled = false;
+        codeInput.focus();
+      }
+    } catch (error) {
+      console.error('Ошибка проверки кода:', error);
+      showSyncMessage('Ошибка соединения с сервером', true);
+      codeInput.value = '';
+      codeInput.disabled = false;
+      codeInput.focus();
+    }
+  });return _verifySyncCode.apply(this, arguments);}function
+
+createSyncCode() {return _createSyncCode.apply(this, arguments);}function _createSyncCode() {_createSyncCode = _asyncToGenerator(function* () {
+    if (!AppState.syncCode) {
+      AppState.syncCode = generateSyncCode();
+    }
+
+    var savedClientId = localStorage.getItem('clientId');
+
+    try {
+      var response = yield fetch(SERVER_URL + '/api/sync/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          code: AppState.syncCode,
+          clientId: savedClientId
+        })
+      });
+
+      var data = yield response.json();
+
+      if (response.ok && data.success) {
+        console.log('Код синхронизации создан:', AppState.syncCode);
+        updateSyncCodeDisplay();
+        return true;
+      } else {
+
+        if (response.status === 409) {
+          AppState.syncCode = generateSyncCode();
+          return yield createSyncCode();
+        }
+        console.error('Ошибка создания кода:', data.error);
+        return false;
+      }
+    } catch (error) {
+      console.error('Ошибка создания кода синхронизации:', error);
+      return false;
+    }
+  });return _createSyncCode.apply(this, arguments);}
+
+function startSyncCodeTimer() {
+
+  if (AppState.syncCodeTimer) {
+    clearTimeout(AppState.syncCodeTimer);
+  }
+
+
+  AppState.syncCodeTimer = setTimeout(function () {
+
+    if (syncOverlay && !syncOverlay.classList.contains('hidden')) {
+
+      AppState.syncCode = generateSyncCode();
+      createSyncCode().then(function (success) {
+        if (success) {
+          updateSyncCodeDisplay();
+
+          var codeInput = getEl('sync-code-input');
+          if (codeInput) {
+            codeInput.value = '';
+            codeInput.disabled = false;
+          }
+
+          var expiryElement = getEl('sync-expiry');
+          if (expiryElement) {
+            var originalText = expiryElement.textContent;
+            expiryElement.textContent = 'Код обновлен! Действует 5 минут';
+            expiryElement.style.color = '#4a9eff';
+            setTimeout(function () {
+              expiryElement.textContent = originalText;
+              expiryElement.style.color = '';
+            }, 3000);
+          }
+          startSyncCodeTimer();
+        }
+      });
+    }
+  }, 300000);
+}function
+
+showSyncOverlay() {return _showSyncOverlay.apply(this, arguments);}function _showSyncOverlay() {_showSyncOverlay = _asyncToGenerator(function* () {
+    AppState.syncCodeScreen = true;
+    initSyncOverlay();
+    if (syncOverlay) {
+
+      var messageDiv = getEl('sync-message');
+      if (messageDiv) messageDiv.classList.add('hidden');
+
+      var countdownDiv = getEl('sync-countdown');
+      if (countdownDiv) countdownDiv.classList.add('hidden');
+
+
+      var codeInput = getEl('sync-code-input');
+      if (codeInput) {
+        codeInput.value = '';
+        codeInput.disabled = false;
+      }
+
+
+      AppState.syncCode = generateSyncCode();
+      var created = yield createSyncCode();
+
+      if (created) {
+        updateSyncCodeDisplay();
+
+        startSyncCodeTimer();
+      } else {
+        showSyncMessage('Ошибка создания кода, попробуйте позже', true);
+      }
+
+      AppState.currentScreen = 'sync';
+      syncOverlay.classList.remove('hidden');
+
+
+      setTimeout(function () {
+        if (codeInput) {
+
+          var focusedElements = document.querySelectorAll('.focused');
+          for (var i = 0; i < focusedElements.length; i++) {
+            focusedElements[i].classList.remove('focused');
+          }
+
+
+
+          codeInput.classList.add('focused');
+          if (typeof window.trackFocusedElement === 'function') {
+            window.trackFocusedElement(codeInput);
+          }
+          codeInput.focus();
+
+
+          if (typeof updateFocusableElements === 'function') {
+            updateFocusableElements();
+            for (var j = 0; j < focusableElements.length; j++) {
+              if (focusableElements[j].id === 'sync-code-input') {
+                currentFocusIndex = j;
+                break;
+              }
+            }
+          }
+        }
+      }, 100);
+    }
+  });return _showSyncOverlay.apply(this, arguments);}
+
+function closeSyncOverlay() {
+  AppState.syncCodeScreen = false;
+  if (syncOverlay) {
+
+    if (AppState.syncCodeTimer) {
+      clearTimeout(AppState.syncCodeTimer);
+      AppState.syncCodeTimer = null;
+    }
+
+
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+
+    AppState.currentScreen = 'config';
+    syncOverlay.classList.add('hidden');
+
+
+    setTimeout(function () {
+      var syncBtn = getEl('sync-clients-btn');
+      if (syncBtn && typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+        updateFocusableElements();
+        var syncIndex = -1;
+        for (var i = 0; i < focusableElements.length; i++) {
+          if (focusableElements[i].id === 'sync-clients-btn') {
+            syncIndex = i;
+            break;
+          }
+        }
+        if (syncIndex !== -1) {
+          setFocus(syncIndex);
+        }
+      }
+    }, 100);
+  }
+}
+
+function toggleSyncOverlay() {
+  if (syncOverlay && !syncOverlay.classList.contains('hidden')) {
+    closeSyncOverlay();
+  } else {
+    showSyncOverlay();
+  }
+}
+
+
+function setupSyncButton() {
+  var syncBtn = getEl('sync-clients-btn');
+  if (!syncBtn) {
+    console.warn('⚠️ Кнопка sync-clients-btn не найдена');
+    return;
+  }
+
+  syncBtn.addEventListener('click', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('🔄 Открытие окна синхронизации');
+    showSyncOverlay();
+  });
+
+  console.log('✅ Кнопка синхронизации настроена');
+}
+
+
+function addSyncStyles() {
+  var styleId = 'sync-styles';
+  if (getEl(styleId)) return;
+
+  var style = document.createElement('style');
+  style.id = styleId;
+  style.textContent = '\n        .sync-overlay {\n            position: fixed;\n            top: 0;\n            left: 0;\n            right: 0;\n            bottom: 0;\n            z-index: 1000;\n            display: flex;\n            align-items: center;\n            justify-content: center;\n            pointer-events: auto;\n        }\n\n        .sync-overlay.hidden {\n            display: none;\n        }\n\n        .sync-overlay-backdrop {\n            position: absolute;\n            top: 0;\n            left: 0;\n            right: 0;\n            bottom: 0;\n            background: rgba(0, 0, 0, 0.85);\n            backdrop-filter: blur(8px);\n        }\n\n        .sync-overlay-panel {\n            position: relative;\n            background: linear-gradient(135deg, #1e1e2e 0%, #2a2a3a 100%);\n            border-radius: 24px;\n            width: 90%;\n            max-width: 500px;\n            max-height: 85vh;\n            overflow-y: auto;\n            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);\n            border: 1px solid rgba(74, 158, 255, 0.3);\n            animation: syncFadeIn 0.3s ease-out;\n        }\n\n        @keyframes syncFadeIn {\n            from {\n                opacity: 0;\n                transform: scale(0.95);\n            }\n            to {\n                opacity: 1;\n                transform: scale(1);\n            }\n        }\n\n        .sync-overlay-header {\n            display: flex;\n            align-items: center;\n            justify-content: space-between;\n            padding: 20px 24px;\n            border-bottom: 1px solid rgba(74, 158, 255, 0.2);\n            background: rgba(0, 0, 0, 0.3);\n            border-radius: 24px 24px 0 0;\n        }\n\n        .sync-overlay-header h3 {\n            margin: 0;\n            font-size: 20px;\n            font-weight: 600;\n            color: #4a9eff;\n        }\n\n        .sync-close-btn {\n            background: rgba(255, 255, 255, 0.1);\n            border: none;\n            font-size: 20px;\n            cursor: pointer;\n            color: #fff;\n            padding: 8px 12px;\n            border-radius: 12px;\n            transition: all 0.2s;\n        }\n\n        .sync-close-btn:hover,\n        .sync-close-btn.focused {\n            background: rgba(255, 255, 255, 0.2);\n            transform: scale(1.05);\n        }\n\n        .sync-overlay-content {\n            padding: 24px;\n        }\n\n        .sync-instruction {\n            text-align: center;\n            color: #ccc;\n            line-height: 1.5;\n            margin-bottom: 30px;\n            font-size: 14px;\n        }\n\n        .sync-code-container {\n            display: flex;\n            justify-content: center;\n            margin-bottom: 20px;\n        }\n\n        .sync-code {\n            font-size: 64px;\n            font-weight: bold;\n            font-family: monospace;\n            letter-spacing: 20px;\n            text-align: center;\n            background: rgba(0, 0, 0, 0.5);\n            padding: 30px 20px;\n            border-radius: 16px;\n            color: #4a9eff;\n            text-shadow: 0 0 10px rgba(74, 158, 255, 0.5);\n            border: 2px solid rgba(74, 158, 255, 0.3);\n            min-width: 280px;\n        }\n\n        .sync-expiry {\n            text-align: center;\n            color: #ff8c00;\n            font-size: 14px;\n            margin-bottom: 30px;\n            padding: 8px;\n            background: rgba(255, 140, 0, 0.1);\n            border-radius: 8px;\n        }\n\n        .sync-input-section {\n            margin-top: 20px;\n        }\n\n        .sync-input-label {\n            color: #ccc;\n            font-size: 14px;\n            margin-bottom: 12px;\n            text-align: center;\n        }\n\n        .sync-code-input {\n            width: 100%;\n            padding: 16px;\n            font-size: 32px;\n            text-align: center;\n            font-family: monospace;\n            letter-spacing: 10px;\n            background: rgba(0, 0, 0, 0.5);\n            border: 2px solid rgba(74, 158, 255, 0.3);\n            border-radius: 12px;\n            color: #fff;\n            outline: none;\n            transition: all 0.2s;\n            box-sizing: border-box;\n        }\n\n        .sync-code-input:focus,\n        .sync-code-input.focused {\n            border-color: #4a9eff;\n            box-shadow: 0 0 10px rgba(74, 158, 255, 0.3);\n        }\n\n        .sync-code-input:disabled {\n            opacity: 0.5;\n            cursor: not-allowed;\n        }\n\n        .sync-message {\n            margin-top: 15px;\n            padding: 10px;\n            border-radius: 8px;\n            text-align: center;\n            font-size: 14px;\n        }\n\n        .sync-message-success {\n            background: rgba(76, 175, 80, 0.2);\n            color: #4caf50;\n            border: 1px solid #4caf50;\n        }\n\n        .sync-message-error {\n            background: rgba(244, 67, 54, 0.2);\n            color: #f44336;\n            border: 1px solid #f44336;\n        }\n\n        .sync-countdown {\n            margin-top: 15px;\n            padding: 10px;\n            background: rgba(74, 158, 255, 0.2);\n            border-radius: 8px;\n            text-align: center;\n            font-size: 14px;\n            color: #4a9eff;\n        }\n\n        .hidden {\n            display: none;\n        }\n\n        /* Фокус для навигации с пульта */\n        .sync-close-btn.focused,\n        .sync-code-input.focused {\n            outline: 2px solid #4a9eff;\n            outline-offset: 2px;\n        }\n    ';
+
+  document.head.appendChild(style);
+}
+
+
+function initSync() {
+  console.log('🔄 Модуль синхронизации инициализирован');
+  addSyncStyles();
+  setupSyncButton();
+
+
+  document.addEventListener('keydown', function (e) {
+    if (syncOverlay && !syncOverlay.classList.contains('hidden')) {
+      var isBackKey = [8, 27, 461, 10009].indexOf(e.keyCode) !== -1 ||
+      typeof isKeyPressed === 'function' && (
+      isKeyPressed('BACK', e.keyCode) || isKeyPressed('EXIT', e.keyCode));
+
+
+      if (isBackKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSyncOverlay();
+      }
+    }
+  });
+}
+
+
+window.showSyncOverlay = showSyncOverlay;
+window.closeSyncOverlay = closeSyncOverlay;
+window.toggleSyncOverlay = toggleSyncOverlay;
+
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initSync);
+} else {
+  initSync();
+}

@@ -1,0 +1,102 @@
+/*
+ * Старые браузеры (webOS 4 — Chrome 53). Подключается из index.html только при
+ * LEGACY_JS, после всех стилей; все правила — под html.legacy-browser.
+ * В Chrome 53 нет CSS Grid (57), position: sticky (56) и env() (69).
+ */
+
+/* Отступы под вырез экрана — var(--safe-*, env(...)). env() Chrome 53 не
+   знает, и без заданной переменной всё правило недействительно: у шапки
+   пропадали поля, часы уезжали за правый край. Заданная переменная до env()
+   не доходит. Android-обёртка ставит свои значения инлайном — они главнее. */
+html.legacy-browser {
+  --safe-top: 0px;
+  --safe-left: 0px;
+  --safe-right: 0px;
+}
+
+/* Шапка: без sticky она становится обычным блоком, и z-index у неё не
+   работает — баннер главной ложился поверх, пунктов меню не было видно.
+   relative возвращает ей слой; прилипания нет, но экраны с прокруткой
+   (каталог, торренты) это переживают. */
+html.legacy-browser #home-topbar {
+  position: relative;
+}
+
+/* Затемнение под текстом карточки (#detail-view::before) держится на sticky.
+   Без него это обычный блок: z-index не работает, и фон с постером ложится
+   поверх градиента. Ставим его fixed — как сам фон .catalog-detail-backdrop,
+   он так же стоит на месте при прокрутке. */
+html.legacy-browser #detail-view::before {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin-bottom: 0;
+}
+
+/* ── Сетки карточек: grid → flex с переносом ─────────────────────────────
+   Колонки и отступ берутся те же, что у grid: здесь — значения по
+   умолчанию (5 колонок, 10px), под настройки «Внешнего вида» их
+   переписывает ui-customizer.js (legacyGridCss). Отступ между карточками —
+   поле справа и снизу у каждой; контейнер на ширину одного отступа шире
+   (margin-right: -gap), чтобы последняя колонка вставала к краю, как в grid;
+   100% уже включает этот отступ, поэтому колонка — 100% / N - gap.
+   Растянутые на всю ширину узлы (grid-column: 1/-1) находим двумя путями:
+   у тех, что вставлены HTML-строкой, атрибут style остаётся как написан,
+   и по нему видно grid-column; у созданных через style.cssText Chrome 53
+   непонятное свойство из атрибута выбрасывает — их ловим по классу
+   (распорка виртуализации, заголовок каталога, «Загрузка…»). Без этого
+   распорка занимала одну колонку и сдвигала всю сетку на клетку. */
+html.legacy-browser #catalog-grid,
+html.legacy-browser #torrents-grid,
+html.legacy-browser .global-search-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  margin-right: -10px;
+}
+
+html.legacy-browser #catalog-grid > *,
+html.legacy-browser #torrents-grid > *,
+html.legacy-browser .global-search-grid > * {
+  flex: 0 0 auto;
+  /* 0.05px — запас на дробные пиксели: сумма пяти колонок не должна
+     превысить строку, иначе последняя карточка уедет на следующую */
+  width: calc(100% / 5 - 10px - 0.05px);
+  margin: 0 10px 10px 0;
+}
+
+html.legacy-browser #catalog-grid > [style*="grid-column"],
+html.legacy-browser #torrents-grid > [style*="grid-column"],
+html.legacy-browser .global-search-grid > [style*="grid-column"],
+html.legacy-browser #catalog-grid > .catalog-chunk-spacer,
+html.legacy-browser #catalog-grid > .catalog-header,
+html.legacy-browser #catalog-grid > .load-more-trigger {
+  width: calc(100% - 10px);
+}
+
+/* Трейлеры в карточке: grid в 6 колонок инлайном (catalog.js) */
+html.legacy-browser #catalog-detail-trailers[style*="grid"] {
+  display: flex !important;
+  flex-wrap: wrap;
+  margin-right: -16px;
+}
+
+html.legacy-browser #catalog-detail-trailers[style*="grid"] > * {
+  flex: 0 0 auto;
+  width: calc(100% / 6 - 16px - 0.05px);
+  margin: 0 16px 16px 0;
+}
+
+/* Сообщение в ряду актёров/похожих — на всю ширину ряда */
+html.legacy-browser .catalog-detail-row-msg {
+  width: 100%;
+}
+
+/* Цвет фокуса в «Внешнем виде»: сетка 5 × 2. Перенос по ширине пяти
+   кнопок: 8 + 24 + 8 поля, 2 рамка, 4 + 4 margin = 50px */
+html.legacy-browser .ui-customizer-options.ui-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 258px;   /* 5 × 50 + 8 (margin -4px контейнера с двух сторон) */
+}
