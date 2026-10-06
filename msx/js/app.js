@@ -2313,6 +2313,34 @@ function devicePlayerName() {
   return 'Встроенный, поток через сервер TorrStream (HLS)';
 }
 
+/**
+ * Браузер и его версия по userAgent. Порядок важен: Edge, Opera, Яндекс и
+ * Samsung пишут в userAgent ещё и «Chrome/…», а Chrome — «Safari/…».
+ * На телевизорах и в Android-приложении это встроенный Chromium — по его
+ * версии и видно, что умеет страница.
+ */
+function browserVersionName() {
+  var ua = navigator.userAgent || '';
+  var known = [
+    ['Edge', /Edg(?:e|A|iOS)?\/([\d.]+)/],
+    ['Opera', /OPR\/([\d.]+)/],
+    ['Яндекс Браузер', /YaBrowser\/([\d.]+)/],
+    ['Samsung Internet', /SamsungBrowser\/([\d.]+)/],
+    ['Firefox', /Firefox\/([\d.]+)/],
+    ['Chrome', /(?:Chrome|CriOS)\/([\d.]+)/],
+    ['Safari', /Version\/([\d.]+).*Safari/]
+  ];
+  for (var i = 0; i < known.length; i++) {
+    var m = ua.match(known[i][1]);
+    if (m) {
+      // Android System WebView помечает себя «; wv)»
+      var wv = known[i][0] === 'Chrome' && /; wv\)/.test(ua) ? 'WebView ' : '';
+      return wv + known[i][0] + ' ' + m[1];
+    }
+  }
+  return '—';
+}
+
 function renderDeviceInfo() {
   var box = getEl('device-info');
   if (!box) return;
@@ -2322,6 +2350,8 @@ function renderDeviceInfo() {
     ['Платформа', PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'],
     ['Плеер', devicePlayerName()],
     ['Версия', AppState.currentVersion || '—'],
+    ['Браузер', browserVersionName()],
+    ['User-Agent', navigator.userAgent || '—'],
     ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + (Math.round(dpr * 100) / 100) + ')' : '')]
   ];
   // webOS: как прошёл поиск субтитров у медиасервиса при последнем запуске

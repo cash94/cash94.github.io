@@ -3618,6 +3618,10 @@ article {
 #config-screen .device-info-value {
   color: #fff;
   text-align: right;
+  min-width: 0;
+  /* User-Agent и диагностика webOS длинные — переносим, а не за край */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .native-subtitles {
