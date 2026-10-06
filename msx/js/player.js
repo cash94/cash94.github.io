@@ -2115,7 +2115,9 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
     // Дорожки прямого файла отдаёт сам <video>. Раньше их только печатали в
     // консоль, поэтому панель аудио в этом режиме всегда была пустой, хотя
     // переключение (switchNativeAudioTrack) уже было написано.
-    var nativeTracks = collectNativeAudioTracks(videoPlayer);
+    // На webOS список звука ведёт конвейер (webosSubsApply) — если он уже
+    // пришёл, не перетираем его дорожками <video>
+    var nativeTracks = webosAudio.mode ? [] : collectNativeAudioTracks(videoPlayer);
     if (nativeTracks.length) {
       currentAudioTracks = nativeTracks;
       var enabled = -1;
@@ -2797,6 +2799,12 @@ async function switchAudioTrack(trackIndex) {
 function switchNativeAudioTrack(videoPlayer, index) {
   if (webosAudio.mode && webosSubs.mediaId) {
     lunaCall('selectTrack', { type: 'audio', mediaId: webosSubs.mediaId, index: index });
+    // Как Lampa, дублируем выбор в audioTracks: на части прошивок срабатывает
+    // только один из двух способов
+    var at = videoPlayer && videoPlayer.audioTracks;
+    if (at && at.length === webosAudio.list.length) {
+      for (var j = 0; j < at.length; j++) at[j].enabled = (j === index);
+    }
     currentAudioTrack = index;
     if (currentTimecodeData.hash && currentTimecodeData.fileId) {
       saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, index);
@@ -2835,8 +2843,9 @@ var webosSubs = { mediaId: null, timer: null, bridge: null, list: null, enabled:
 // Что произошло при последнем запуске — для раздела «Об устройстве»: без
 // телевизора под рукой иначе не понять, на каком шаге оборвалось
 var webosSubsDiag = { bridge: '', mediaId: '', waitedMs: 0, responses: 0, keys: '', sourceInfo: false, tracks: null, audio: null, probe: '', error: '' };
-// Звук на webOS: если <video> не отдал audioTracks, список берём у конвейера
-// (audioTrackInfo) и переключаем через selectTrack type 'audio', как Lampa
+// Звук на webOS, как в Lampa: список — у конвейера (audioTrackInfo), он главнее
+// video.audioTracks (там ни подписей, ни кодека, ни каналов); переключение —
+// selectTrack type 'audio'. Подписи потом добавляет ffprobe (applyWebosProbe)
 var webosAudio = { mode: false, list: [] };
 window.webosSubsDiag = webosSubsDiag;
 
@@ -2912,14 +2921,20 @@ function webosSetSubtitle(index) {
 function webosSubsApply(info) {
   var audio = (info && info.audioTrackInfo) || [];
   webosSubsDiag.audio = audio.length;
-  if (audio.length && !currentAudioTracks.length) {
+  if (audio.length) {
     webosAudio.mode = true;
     webosAudio.list = audio;
     currentAudioTracks = audio.map(function (a, i) {
       var lang = a.language && a.language !== '(null)' ? a.language : '';
       return { title: lang ? (LANG_NAMES[lang] || lang.toUpperCase()) : 'Дорожка ' + (i + 1), language: lang || 'und', channels: a.channels || null, codec: a.codec || null };
     });
-    currentAudioTrack = 0;
+    // Какая играет: по audioTracks, если списки совпали, иначе прежний выбор
+    var vp = getEl('video-player'), at = vp && vp.audioTracks, playing = -1;
+    if (at && at.length === audio.length) {
+      for (var k = 0; k < at.length; k++) if (at[k].enabled) { playing = k; break; }
+    }
+    if (playing < 0) playing = currentAudioTrack >= 0 && currentAudioTrack < audio.length ? currentAudioTrack : 0;
+    currentAudioTrack = playing;
     renderAudioTracks();
   }
   var subs = (info && info.subtitleTrackInfo) || [];
@@ -2945,8 +2960,9 @@ function webosSubsApply(info) {
 // com.torrstream.app.service с методом ffprobe (статический ffprobe внутри
 // ipk, как в Lampa) — она читает заголовок файла с TorrServer и возвращает
 // потоки: язык, название, кодек, каналы, «по умолчанию»/«принудительные».
-// Сопоставляем по порядку: N-я аудиодорожка файла — N-я в списке плеера.
-var webosProbe = { gen: 0, streams: null };
+// Сопоставляем по порядку (alignProbeStreams): webOS показывает не все потоки
+// файла, но порядок сохраняет.
+var webosProbe = { gen: 0, streams: null, count: '' };
 var LANG_NAMES = {
   rus: 'Русский', ru: 'Русский', eng: 'English', en: 'English', ukr: 'Українська', uk: 'Українська',
   bel: 'Беларуская', kaz: 'Қазақша', jpn: '日本語', ja: '日本語', kor: '한국어', chi: '中文', zho: '中文',
@@ -2954,6 +2970,42 @@ var LANG_NAMES = {
   por: 'Português', pol: 'Polski', tur: 'Türkçe', ara: 'العربية', heb: 'עברית', hin: 'हिन्दी'
 };
 var TEXT_SUB_CODECS = { subrip: 1, srt: 1, ass: 1, ssa: 1, webvtt: 1, mov_text: 1, text: 1 };
+// DTS и TrueHD телевизоры LG с 2020 года не играют и в списке звука не показывают
+var HIDDEN_AUDIO_CODECS = { dts: 1, truehd: 1, mlp: 1 };
+
+/** Язык для сравнения: у плеера «ru», у ffprobe «rus» — это одно и то же */
+function langKey(l) {
+  l = String(l || '').toLowerCase();
+  if (!l || l === 'und' || l === 'unknown' || l === '(null)') return '';
+  return LANG_NAMES[l] || l;
+}
+
+/**
+ * Какой поток ffprobe стоит за каждой дорожкой плеера. webOS прячет то, что не
+ * умеет играть (DTS/TrueHD, картинки-субтитры), поэтому его список — потоки
+ * файла с пропусками. По очереди: число совпало как есть → без скрытых кодеков
+ * → по порядку с проверкой языка (каждой дорожке — ближайший следующий поток
+ * того же языка). null — сопоставить не удалось, подписи не трогаем.
+ */
+function alignProbeStreams(tracks, streams, hidden) {
+  if (!tracks.length || !streams.length) return null;
+  if (streams.length === tracks.length) return streams;
+  var visible = streams.filter(function (s) { return !hidden(s); });
+  if (visible.length === tracks.length) return visible;
+  var sources = [visible, streams];
+  for (var n = 0; n < sources.length; n++) {
+    var src = sources[n], out = [], j = 0;
+    if (src.length < tracks.length) continue;
+    for (var i = 0; i < tracks.length; i++) {
+      var want = langKey(tracks[i].language);
+      while (j < src.length && want && langKey(probeLang(src[j])) && langKey(probeLang(src[j])) !== want) j++;
+      if (j >= src.length) break;
+      out.push(src[j++]);
+    }
+    if (out.length === tracks.length) return out;
+  }
+  return null;
+}
 
 function probeLang(s) {
   var l = (s && s.tags && s.tags.language) || '';
@@ -2969,7 +3021,11 @@ function probeTitle(s, kind, i) {
   return t || name || ((kind === 'audio' ? 'Дорожка ' : 'Субтитры ') + (i + 1));
 }
 
-/** Подписи из ffprobe — в списки плеера, если число дорожек сошлось */
+/**
+ * Подписи из ffprobe — в списки плеера. Зовётся несколько раз (пришёл ответ,
+ * <video> отдал дорожки, конвейер прислал sourceInfo); уже подписанный список
+ * (probed) не трогаем, новый список дорожек приходит без этой метки.
+ */
 function applyWebosProbe() {
   var streams = webosProbe.streams;
   if (!streams) return;
@@ -2978,28 +3034,31 @@ function applyWebosProbe() {
     if (streams[i].codec_type === 'audio') audio.push(streams[i]);
     else if (streams[i].codec_type === 'subtitle') subs.push(streams[i]);
   }
-  if (audio.length && currentAudioTracks.length === audio.length) {
-    currentAudioTracks = currentAudioTracks.map(function (t, k) {
-      var a = audio[k];
-      return { title: probeTitle(a, 'audio', k), language: probeLang(a) || t.language, channels: a.channels || null, codec: (a.codec_name || '').toUpperCase() };
-    });
-    renderAudioTracks();
-  }
-  if (currentSubTracks.length) {
-    // webOS может не показывать картинки-субтитры (PGS) — тогда сверяем с текстовыми
-    var pick = subs;
-    if (pick.length !== currentSubTracks.length) {
-      pick = subs.filter(function (s) { return TEXT_SUB_CODECS[s.codec_name]; });
-      if (pick.length !== currentSubTracks.length) pick = null;
+  var diag = [];
+  if (currentAudioTracks.length && !currentAudioTracks[0].probed) {
+    var a = alignProbeStreams(currentAudioTracks, audio, function (s) { return HIDDEN_AUDIO_CODECS[s.codec_name]; });
+    if (a) {
+      currentAudioTracks = currentAudioTracks.map(function (t, k) {
+        return { title: probeTitle(a[k], 'audio', k), language: probeLang(a[k]) || t.language, channels: a[k].channels || null, codec: (a[k].codec_name || '').toUpperCase(), probed: true };
+      });
+      renderAudioTracks();
     }
-    if (pick) {
+    diag.push('звук ' + currentAudioTracks.length + '/' + audio.length + (a ? ' ✓' : ' ✗'));
+  }
+  if (currentSubTracks.length && !currentSubTracks[0].probed) {
+    // Картинки-субтитры (PGS) webOS может не показывать — их и отбрасываем
+    var s = alignProbeStreams(currentSubTracks, subs, function (x) { return !TEXT_SUB_CODECS[x.codec_name]; });
+    if (s) {
       currentSubTracks = currentSubTracks.map(function (t, k) {
-        var s = pick[k], d = s.disposition || {};
-        return { title: probeTitle(s, 'subtitle', k), language: probeLang(s) || t.language, format: (s.codec_name || '').toUpperCase(), default: !!d.default, forced: !!d.forced };
+        var d = s[k].disposition || {};
+        return { title: probeTitle(s[k], 'subtitle', k), language: probeLang(s[k]) || t.language, format: (s[k].codec_name || '').toUpperCase(), default: !!d.default, forced: !!d.forced, probed: true };
       });
       renderSubtitleTracks();
     }
+    diag.push('субтитры ' + currentSubTracks.length + '/' + subs.length + (s ? ' ✓' : ' ✗'));
   }
+  // В «Об устройстве»: сколько дорожек у плеера / в файле и сошлось ли
+  if (diag.length) webosSubsDiag.probe = webosProbe.count + ' · ' + diag.join(', ');
 }
 
 /** Спросить службу ffprobe о файле, который сейчас назначен <video> */
@@ -3019,7 +3078,8 @@ function webosProbeStart(playURL) {
     try { parsed = JSON.parse(r.data || '{}'); } catch (e) { }
     if (!parsed || !parsed.streams) { webosSubsDiag.probe = 'пустой ответ'; return; }
     webosProbe.streams = parsed.streams;
-    webosSubsDiag.probe = 'потоков: ' + parsed.streams.length;
+    webosProbe.count = 'потоков: ' + parsed.streams.length;
+    webosSubsDiag.probe = webosProbe.count;
     applyWebosProbe();
   }, function (r) {
     if (gen !== webosProbe.gen) return;
