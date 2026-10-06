@@ -341,25 +341,6 @@
 
     // Фактическая ширина колонки: сетка растягивает карточку до 1fr, поэтому она
     // не равна заданной cardWidth() — обычно чуть больше.
-    /**
-     * Колонки и отступ сеток для браузеров без CSS Grid — переписывает
-     * значения по умолчанию из css/legacy.css (5 колонок, 10px)
-     */
-    function legacyGridCss(cols, gap) {
-        var grids = ['#catalog-grid', '#torrents-grid', '.global-search-grid'];
-        var sel = function (suffix) {
-            return grids.map(function (g) { return 'html.legacy-browser ' + g + suffix; }).join(',');
-        };
-        return sel('') + '{margin-right:-' + gap + '!important;}' +
-            sel('>*') + '{width:calc(100% / ' + cols + ' - ' + gap + ' - 0.05px)!important;' +
-            'margin:0 ' + gap + ' ' + gap + ' 0!important;}' +
-            sel('>[style*="grid-column"]') + ',' +
-            ['.catalog-chunk-spacer', '.catalog-header', '.load-more-trigger'].map(function (c) {
-                return 'html.legacy-browser #catalog-grid>' + c;
-            }).join(',') +
-            '{width:calc(100% - ' + gap + ')!important;}';
-    }
-
     function gridColumnWidth() {
         var cols = getColumns();
         return Math.floor((gridAvailWidth() - (cols - 1) * densityGap()) / cols);
@@ -521,11 +502,6 @@
             'grid-template-columns:repeat(' + cols + ',1fr)!important;' +
             'grid-gap:' + density.gap + '!important;' +
             'gap:' + density.gap + '!important;}');
-        // Старые браузеры без CSS Grid (webOS 4 — Chrome 53): та же сетка на
-        // flex с переносом, см. css/legacy.css. Остальным не нужно
-        if (document.documentElement.className.indexOf('legacy-browser') !== -1) {
-            css.push(legacyGridCss(cols, density.gap));
-        }
 
         // Подсказка для content-visibility, чтобы скролл не «прыгал».
         // Резерв под неотрисованной карточкой должен совпадать с реальной высотой
