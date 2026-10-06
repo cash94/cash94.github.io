@@ -774,10 +774,11 @@ function lockDeviceTorrServerFields(on) {
  * Встроенный TorrServer на webOS (LG) — то же, что TorrServerManager в
  * Android-приложении, но средствами телевизора.
  *
- * Только в отдельной сборке приложения (TorrStream-webOS, id
- * com.torrstream.app.ts): её запускалка открывает сервер с ?tsdevice=1. Нужен
- * root через Homebrew Channel: команды выполняет его служба
- * luna://org.webosbrew.hbchannel.service/exec (как и в torrserv.matrix.app).
+ * В приложении TorrStream-webOS (с 1.0.2 — в основной сборке; до неё была
+ * отдельная com.torrstream.app.ts с меткой ?tsdevice=1). Ставить и запускать
+ * свой TorrServer можно только с root через Homebrew Channel: команды выполняет
+ * его служба luna://org.webosbrew.hbchannel.service/exec (как и в
+ * torrserv.matrix.app). Без root — только уже работающий TorrServer на 8090.
  *
  * Бинарник — официальная сборка YouROK/TorrServer под linux-arm7 (пользовательское
  * пространство webOS 32-битное). Всё лежит в DIR: сам TorrServer, его база,
@@ -808,7 +809,7 @@ var WebOSTorrServer = (function () {
     var rootError = '';
 
     function enabled() {
-        return AppState.platform === 'webos' && /[?&]tsdevice=1(&|$)/.test(location.search);
+        return AppState.platform === 'webos';
     }
 
     /**
