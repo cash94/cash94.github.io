@@ -2126,7 +2126,6 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
       renderAudioTracks();
     }
     refreshNativeSubtitles(videoPlayer);
-    webosSubsStart(videoPlayer);
   };
 
   var onCanPlay = function () {
@@ -2158,8 +2157,11 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
     if (!started && !signal.aborted) startPlayback();
   }, LOADING_TIMEOUT_MS);
 
+  var staleMediaId = videoPlayer.mediaId;
   videoPlayer.src = playURL;
   videoPlayer.load();
+  // webOS: mediaId и подписку ловим сразу, как Lampa (см. webosSubsStart)
+  webosSubsStart(videoPlayer, staleMediaId);
   AppState.nativeVideoPlayer = videoPlayer;
   hidePlayerLoading();
 }
@@ -2817,22 +2819,34 @@ function switchNativeAudioTrack(videoPlayer, index) {
 //   4. после перемотки конвейер субтитры гасит — включаем заново (seeked).
 // В отличие от Lampa подписку не закрываем вызовом unload (тот выгружает
 // медиа, и Lampa потом пересоздаёт <video>), а просто отменяем.
-var webosSubs = { mediaId: null, timer: null, bridge: null, list: null, enabled: false, index: -1, onSeeked: null };
+var webosSubs = { mediaId: null, timer: null, bridge: null, list: null, enabled: false, index: -1, onSeeked: null, gen: 0 };
+// Что произошло при последнем запуске — для раздела «Об устройстве»: без
+// телевизора под рукой иначе не понять, на каком шаге оборвалось
+var webosSubsDiag = { bridge: '', mediaId: '', waitedMs: 0, responses: 0, keys: '', sourceInfo: false, tracks: null, error: '' };
+window.webosSubsDiag = webosSubsDiag;
+
+function lunaBridgeName() {
+  if (window.webOS && webOS.service && webOS.service.request) return 'webOS.service';
+  if (typeof window.PalmServiceBridge !== 'undefined') return 'PalmServiceBridge';
+  return '';
+}
 
 function lunaAvailable() {
-  return !!((window.webOS && webOS.service && webOS.service.request) || typeof window.PalmServiceBridge !== 'undefined');
+  return !!lunaBridgeName();
 }
 
 /** Вызов Luna: через webOSTV.js, если он есть, иначе напрямую PalmServiceBridge */
 function lunaCall(method, params, onSuccess, onFailure) {
   var uri = 'luna://com.webos.media';
   var fail = function (r) {
-    console.warn('webOS luna ' + method + ' failed:', r && (r.errorText || r.errorCode));
+    var text = (r && (r.errorText || r.errorCode)) || 'ошибка';
+    console.warn('webOS luna ' + method + ' failed:', text);
+    webosSubsDiag.error = method + ': ' + text;
     if (onFailure) onFailure(r);
   };
   try {
     if (window.webOS && webOS.service && webOS.service.request) {
-      return webOS.service.request(uri, { method: method, parameters: params, onSuccess: onSuccess, onFailure: fail });
+      return webOS.service.request(uri, { method: method, parameters: params, onSuccess: onSuccess, onFailure: fail, subscribe: !!params.subscribe });
     }
     if (typeof window.PalmServiceBridge === 'undefined') { fail({ errorText: 'нет PalmServiceBridge' }); return null; }
     var bridge = new window.PalmServiceBridge();
@@ -2872,34 +2886,65 @@ function webosSetSubtitle(index) {
   }
 }
 
-/** Новый файл в <video>: ищем mediaId и спрашиваем у конвейера дорожки */
-function webosSubsStart(videoPlayer) {
+/** sourceInfo пришёл — строим список и включаем сохранённую дорожку */
+function webosSubsApply(info) {
+  var subs = (info && info.subtitleTrackInfo) || [];
+  webosSubs.list = subs;
+  webosSubsDiag.tracks = subs.length;
+  if (!subs.length) return;
+  nativeSubState.mode = 'webos';
+  currentSubTracks = subs.map(function (s, i) {
+    var lang = s.language && s.language !== '(null)' ? s.language : '';
+    return { title: s.title || s.name || (lang ? lang.toUpperCase() : 'Субтитры ' + (i + 1)), language: lang || 'und', format: s.type || '' };
+  });
+  var want = currentSubtitleTrack >= 0 ? currentSubtitleTrack : nativeSubState.savedPref;
+  currentSubtitleTrack = (want >= 0 && want < subs.length) ? want : -1;
+  if (currentSubtitleTrack >= 0) webosSetSubtitle(currentSubtitleTrack);
+  renderSubtitleTracks();
+}
+
+/**
+ * Файл назначен <video> — ищем его mediaId и подписываемся у конвейера.
+ * Зовём сразу после src/load(), а не по loadedmetadata: sourceInfo конвейер
+ * присылает, когда открывает файл, и к loadedmetadata его уже не повторит —
+ * Lampa поэтому ловит mediaId с самого начала. staleId — mediaId прошлого
+ * файла: тот же элемент <video>, и пока конвейер не выдал новый, он висит там.
+ */
+function webosSubsStart(videoPlayer, staleId) {
   webosSubsReset();
-  if (AppState.platform !== 'webos' || !lunaAvailable() || !videoPlayer) return;
-  var tries = 0;
+  if (AppState.platform !== 'webos' || !videoPlayer) return;
+  webosSubsDiag.bridge = lunaBridgeName() || 'нет';
+  webosSubsDiag.mediaId = ''; webosSubsDiag.waitedMs = 0; webosSubsDiag.responses = 0;
+  webosSubsDiag.keys = ''; webosSubsDiag.sourceInfo = false; webosSubsDiag.tracks = null; webosSubsDiag.error = '';
+  if (!lunaAvailable()) return;
+  var gen = ++webosSubs.gen;
+  var startedAt = Date.now();
   webosSubs.timer = setInterval(function () {
-    tries++;
-    if (AppState.currentScreen !== 'player' || tries > 100) { webosSubsCancel(); return; }   // ~30 с
-    if (!videoPlayer.mediaId) return;
+    var waited = Date.now() - startedAt;
+    webosSubsDiag.waitedMs = waited;
+    if (gen !== webosSubs.gen || AppState.currentScreen !== 'player' || waited > 30000) { webosSubsCancel(); return; }
+    var id = videoPlayer.mediaId;
+    // Прошлый mediaId принимаем, только если нового за 3 с так и не появилось:
+    // конвейер может и переиспользовать его
+    if (!id || (id === staleId && waited < 3000)) return;
     clearInterval(webosSubs.timer); webosSubs.timer = null;
-    webosSubs.mediaId = videoPlayer.mediaId;
-    var mediaId = webosSubs.mediaId;
-    webosSubs.bridge = lunaCall('subscribe', { mediaId: mediaId, subscribe: true }, function (r) {
-      if (webosSubs.mediaId !== mediaId || webosSubs.list || !r || !r.sourceInfo) return;
-      var info = (r.sourceInfo.programInfo || [])[0] || {};
-      var subs = info.subtitleTrackInfo || [];
-      webosSubs.list = subs;
+    webosSubs.mediaId = id;
+    webosSubsDiag.mediaId = String(id);
+    var deadline = setTimeout(function () {
+      if (gen === webosSubs.gen && !webosSubs.list) {
+        if (!webosSubsDiag.error) webosSubsDiag.error = 'sourceInfo не пришёл за 20 с';
+        webosSubsCancel();
+      }
+    }, 20000);
+    webosSubs.bridge = lunaCall('subscribe', { mediaId: id, subscribe: true }, function (r) {
+      if (gen !== webosSubs.gen || webosSubs.list) return;
+      webosSubsDiag.responses++;
+      if (r && !webosSubsDiag.keys) webosSubsDiag.keys = Object.keys(r).join(',');
+      if (!r || !r.sourceInfo) return;
+      webosSubsDiag.sourceInfo = true;
+      clearTimeout(deadline);
+      webosSubsApply((r.sourceInfo.programInfo || [])[0] || {});
       webosSubsCancel();   // дорожки получены, подписка больше не нужна
-      if (!subs.length) return;
-      nativeSubState.mode = 'webos';
-      currentSubTracks = subs.map(function (s, i) {
-        var lang = s.language && s.language !== '(null)' ? s.language : '';
-        return { title: s.title || s.name || (lang ? lang.toUpperCase() : 'Субтитры ' + (i + 1)), language: lang || 'und', format: s.type || '' };
-      });
-      var want = currentSubtitleTrack >= 0 ? currentSubtitleTrack : nativeSubState.savedPref;
-      currentSubtitleTrack = (want >= 0 && want < subs.length) ? want : -1;
-      if (currentSubtitleTrack >= 0) webosSetSubtitle(currentSubtitleTrack);
-      renderSubtitleTracks();
     });
   }, 300);
   // После перемотки конвейер выключает субтитры — включаем выбранную заново
@@ -2910,6 +2955,7 @@ function webosSubsStart(videoPlayer) {
 }
 
 function webosSubsReset() {
+  webosSubs.gen++;
   webosSubsCancel();
   var v = getEl('video-player');
   if (v && webosSubs.onSeeked) v.removeEventListener('seeked', webosSubs.onSeeked);

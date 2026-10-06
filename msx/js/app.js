@@ -2324,6 +2324,23 @@ function renderDeviceInfo() {
     ['Версия', AppState.currentVersion || '—'],
     ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + (Math.round(dpr * 100) / 100) + ')' : '')]
   ];
+  // webOS: как прошёл поиск субтитров у медиасервиса при последнем запуске
+  // видео (player.js: webosSubsStart) — чтобы по отчёту было видно, где обрыв
+  if (AppState.platform === 'webos') {
+    var d = window.webosSubsDiag;
+    var subs;
+    if (!d || !d.bridge) subs = 'видео ещё не запускали';
+    else if (d.bridge === 'нет') subs = 'нет доступа к Luna (PalmServiceBridge)';
+    else {
+      subs = d.bridge + ' · mediaId: ' + (d.mediaId || ('нет за ' + Math.round(d.waitedMs / 1000) + ' с')) +
+        ' · ответов: ' + d.responses +
+        ' · sourceInfo: ' + (d.sourceInfo ? 'да' : 'нет') +
+        (d.tracks !== null ? ' · дорожек: ' + d.tracks : '') +
+        (d.keys ? ' · поля: ' + d.keys : '') +
+        (d.error ? ' · ошибка: ' + d.error : '');
+    }
+    rows.push(['Субтитры webOS', subs]);
+  }
   var html = '';
   for (var i = 0; i < rows.length; i++) {
     html += '<div class="device-info-row"><span class="device-info-label">' + escapeHtml(rows[i][0]) +
