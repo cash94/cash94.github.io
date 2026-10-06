@@ -321,6 +321,67 @@
             </div>
         </div>
 
+        <div class="group-label">📺 LG webOS</div>
+
+        <!-- LG webOS: ipk TorrStream-webOS, установка через Dev Manager -->
+        <div class="card collapsed" id="cardWebOS">
+            <div class="os-header">
+                <span class="os-icon">📺</span>
+                <span class="os-title">LG webOS</span>
+                <span class="toggle-indicator">▼</span>
+            </div>
+            <div class="card-content">
+                <div class="step-badge">📥 СКАЧАТЬ ПРИЛОЖЕНИЕ (IPK)</div>
+                <ul class="tv-steps-list">
+                    <li><span class="step-num">1</span><span><a href="https://github.com/cash94/TorrStream-webOS/releases/latest/download/TorrStream-webOS.ipk">TorrStream-webOS.ipk</a> — обычное
+                        приложение, работает на любом LG</span></li>
+                    <li><span class="step-num">2</span><span><a href="https://github.com/cash94/TorrStream-webOS/releases/latest/download/TorrStream-webOS-TorrServer.ipk">TorrStream-webOS-TorrServer.ipk</a> —
+                        отдельное приложение со встроенным TorrServer. Сам TorrServer оно ставит только на
+                        телевизор с root (Homebrew Channel); без root работает как обычное</span></li>
+                </ul>
+                <div class="info-grid">Ставится программой <b>webOS Dev Manager</b>:
+                    <a href="https://github.com/webosbrew/dev-manager-desktop/releases/latest">github.com/webosbrew/dev-manager-desktop</a> — для Windows (.msi), macOS (.dmg),
+                    Linux (.deb, .AppImage) и Android-смартфона (<b>universal.apk</b>). Телевизор и компьютер (смартфон) —
+                    в одной сети, VPN выключен.</div>
+
+                <div class="divider-light"></div>
+                <div class="step-badge">🔓 БЕЗ ROOT — РЕЖИМ РАЗРАБОТЧИКА</div>
+                <ul class="tv-steps-list">
+                    <li><span class="step-num">1</span><span>Зарегистрироваться на сайте LG Developer</span></li>
+                    <li><span class="step-num">2</span><span>На ТВ установить из магазина приложение <b>Developer Mode</b>,
+                        войти учётной записью LG, включить <b>Dev Mode Status</b> (ТВ перезагрузится) и <b>Key Server</b></span></li>
+                    <li><span class="step-num">3</span><span>В Dev Manager добавить устройство → «Use Developer Mode»: имя,
+                        IP телевизора и passphrase — оба видны в Developer Mode на ТВ</span></li>
+                    <li><span class="step-num">4</span><span>Install → выбрать скачанный ipk → дождаться установки</span></li>
+                </ul>
+                <div class="warning-block">⚠️ Сессия режима разработчика ограничена по времени — продлевайте её кнопкой
+                    Extend в приложении Developer Mode, иначе установленные так приложения пропадут.
+                    Подробно: <a href="https://webos-forums.ru/post182943.html#p182943" style="color:#ffc9ac">webos-forums.ru</a></div>
+
+                <div class="divider-light"></div>
+                <div class="step-badge">🔑 С ROOT — HOMEBREW CHANNEL</div>
+                <ul class="tv-steps-list">
+                    <li><span class="step-num">1</span><span>В настройках Homebrew Channel включить SSH и перезагрузить ТВ</span></li>
+                    <li><span class="step-num">2</span><span>В Dev Manager «Add device»: IP телевизора, порт <b>22</b>,
+                        пользователь <b>root</b>, пароль <b>alpine</b></span></li>
+                    <li><span class="step-num">3</span><span>Install → выбрать скачанный ipk. Перезагрузить ТВ при
+                        необходимости: вкладка Terminal → reboot</span></li>
+                </ul>
+                <div class="info-grid">Подробно: <a href="https://telegra.ph/Ustanovka-IPK-prilozhenij-08-14">telegra.ph — установка IPK-приложений</a>.
+                    Встроенный TorrServer (сборка с TorrServer) работает только так — с root.</div>
+
+                <div class="divider-light"></div>
+                <div class="step-badge">📺 НА ТЕЛЕВИЗОРЕ</div>
+                <ul class="tv-steps-list">
+                    <li><span class="step-num">1</span><span>Открыть TorrStream — он сам подключится к torrstream.online.
+                        Другой сервер: нажать ОК во время отсчёта на заставке</span></li>
+                    <li><span class="step-num">2</span><span>Настройки → TorrServer: адрес вашего TorrServer
+                        (пример: 192.168.1.30:8090) или, в сборке с TorrServer, «Использовать TorrServer, установленный
+                        на этом устройстве» → «Скачать TorrServer»</span></li>
+                </ul>
+            </div>
+        </div>
+
         <div class="group-label">📺 Hisense / Vidaa — сервер TorrStream на одном из устройств в сети</div>
 
         <!-- Android-телефон как сервер для Vidaa: TorrStream Server -->
