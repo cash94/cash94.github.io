@@ -2936,8 +2936,16 @@
         "description": "Provides book and author metadata from OpenLibrary.org for your Jellyfin book libraries. Automatically fetches book descriptions, series information, publication dates, genres, and author biographies from the OpenLibrary API.\n",
         "overview": "OpenLibrary metadata provider for Jellyfin",
         "owner": "jellyfin",
-        "category": "Metadata",
+        "category": "Books",
         "versions": [
+            {
+                "version": "2.0.0.0",
+                "changelog": "- Fix: Set ClientSideRateLimitedHandler to public (#9) @jordanmichaelrushing, @crobibero",
+                "targetAbi": "12.2.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/openlibrary/openlibrary_2.0.0.0.zip",
+                "checksum": "8d5dbc80e566847827b1693ae5e53509",
+                "timestamp": "2026-10-06T00:41:44Z"
+            },
             {
                 "version": "1.0.0.0",
                 "changelog": "Initial release - Book metadata provider - Author/person metadata provider - Support for book descriptions, series, genres, and publication dates - Support for author biographies and birth/death dates\n",
