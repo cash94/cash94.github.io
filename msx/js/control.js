@@ -4693,12 +4693,12 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
             // все эти контейнеры прокручиваются нативно
             return;
         } else {
-            // На главной вертикальное колесо листает подборки (это делает home.js),
-            // а не катает ряд вбок: ряд там показан один, вертикальной прокрутки у
-            // страницы нет, и иначе дальше первой подборки мышью не уйти. Событие
-            // отдаём как есть — default не отменяем, чтобы обработчик главной его
-            // увидел. Shift + колесо остаётся горизонтальным жестом для ряда.
-            if (!e.shiftKey && cnt.closest && cnt.closest('#home-rows')) return;
+            // Вертикальное колесо ряды вбок не катает — нигде: оно листает
+            // страницу (каталог, карточку фильма) или подборки (главная, home.js).
+            // Ряды мышью двигает курсор у края (краевая прокрутка ниже). Событие
+            // отдаём как есть, default не отменяем. Shift + колесо остаётся
+            // горизонтальным жестом для ряда.
+            if (!e.shiftKey) return;
             delta = dy;
         }
         if (!delta) return;
@@ -4784,4 +4784,112 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     // Слушатели делегированы, обходить контейнеры больше не нужно —
     // функция оставлена, чтобы не падали внешние вызовы
     window.initSmoothHorizontalScroll = function () { };
+})();
+
+/**
+ * Мышь у края ряда — ряд едет в эту сторону. Каталог (ряды-карусели) и
+ * карточка фильма (актёры, похожие, серии) — так же, как на главной
+ * (home.js: startHoverScroll, у неё своя версия, связанная с её фокусом).
+ *
+ * Колесо ряды вбок не катает (обработчик выше), а горизонтального жеста у
+ * обычной мыши нет — без этого до дальних карточек указателем не добраться.
+ * Курсор у правого или левого края ряда — ряд едет шагами по карточке, пока
+ * не упрётся; ряд у упора зону освобождает.
+ */
+(function () {
+    var EDGE_SELECTOR = '#catalog-rows .catalog-row-viewport, ' +
+        '#detail-view .files-list, ' +
+        '#detail-view .catalog-detail-actors-grid, ' +
+        '#detail-view .catalog-detail-recommendations-grid';
+    var STEP_MS = 320;       // как HOME.HOVER_SCROLL_MS
+    var STEP_SEC = 0.3;      // как HOME.HOVER_SCROLL_SEC
+
+    var hover = { el: null, dir: 0, timer: null };
+    var metrics = { el: null, at: 0, box: null, step: 0 };
+    var lastMoveAt = 0, lastX = -1, lastY = -1, touchedAt = 0;
+
+    /** Шаг — расстояние между соседними карточками (ряд каталога — через трек) */
+    function cardStep(el) {
+        var all = el.children;
+        if (all.length === 1 && all[0].children.length > 1) all = all[0].children;
+        // Только видимые: в рядах карточки фильма первым лежит скрытая заглушка
+        // «Загрузка…» (.catalog-detail-row-msg), и шаг по ней выходил в 48px
+        var items = [];
+        for (var i = 0; i < all.length && items.length < 2; i++) {
+            if (all[i].offsetWidth > 0) items.push(all[i]);
+        }
+        if (items.length > 1) {
+            var s = items[1].offsetLeft - items[0].offsetLeft;
+            if (s > 10) return s;
+        }
+        if (items.length === 1) return items[0].offsetWidth;
+        return Math.max(120, (el.clientWidth || 600) * 0.25);
+    }
+
+    // getBoundingClientRect посреди твина — пересчёт стилей; mousemove частый,
+    // а раскладка меняется только на resize: полсекунды кэша хватает
+    function rowMetrics(el) {
+        var now = Date.now();
+        if (metrics.el !== el || now - metrics.at > 500) {
+            metrics.el = el;
+            metrics.at = now;
+            metrics.box = el.getBoundingClientRect();
+            metrics.step = cardStep(el);
+        }
+        return metrics;
+    }
+
+    function stop() {
+        if (hover.timer) { clearInterval(hover.timer); hover.timer = null; }
+        hover.el = null;
+        hover.dir = 0;
+    }
+
+    function stepOnce() {
+        var el = hover.el;
+        if (!el || !el.isConnected || !hover.dir || el.offsetParent === null) { stop(); return; }
+        var screen = window.AppState && AppState.currentScreen;
+        if (screen !== 'catalog' && screen !== 'detail') { stop(); return; }
+        var cur = getScrollX(el), max = getMaxScrollX(el);
+        if ((hover.dir < 0 && cur <= 0.5) || (hover.dir > 0 && cur >= max - 0.5)) { stop(); return; }
+        setScrollX(el, cur + hover.dir * rowMetrics(el).step, true, STEP_SEC);
+    }
+
+    /** @returns {boolean} true — ряд поехал, false — уже у края */
+    function start(el, dir) {
+        if (hover.el === el && hover.dir === dir && hover.timer) return true;
+        stop();
+        hover.el = el;
+        hover.dir = dir;
+        stepOnce();
+        if (!hover.dir) return false;
+        hover.timer = setInterval(stepOnce, STEP_MS);
+        return true;
+    }
+
+    document.addEventListener('touchstart', function () { touchedAt = Date.now(); stop(); }, { passive: true });
+
+    document.addEventListener('mousemove', function (e) {
+        var now = Date.now();
+        // Тап рисует ещё и mousemove — курсора там нет
+        if (now - touchedAt < 800) return;
+        if (now - lastMoveAt < 50) return;
+        // Ряд поехал под неподвижным курсором — это не жест мышью
+        if (e.clientX === lastX && e.clientY === lastY) return;
+        lastMoveAt = now; lastX = e.clientX; lastY = e.clientY;
+
+        var el = (e.target && e.target.closest) ? e.target.closest(EDGE_SELECTOR) : null;
+        if (!el || getMaxScrollX(el) <= 0) { stop(); return; }
+        var m = rowMetrics(el);
+        var w = m.box.width || el.clientWidth || 0;
+        // Зона примерно в карточку, но не уже 60px и не больше трети ряда
+        var zone = Math.max(60, Math.min(m.step, w * 0.3));
+        if (e.clientX >= m.box.right - zone) { if (start(el, 1)) return; }
+        else if (e.clientX <= m.box.left + zone) { if (start(el, -1)) return; }
+        stop();
+    }, { passive: true });
+
+    // Курсор ушёл за окно — mousemove больше не придёт
+    document.addEventListener('mouseout', function (e) { if (!e.relatedTarget) stop(); }, { passive: true });
+    window.addEventListener('blur', stop);
 })();
