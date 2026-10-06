@@ -9315,6 +9315,24 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   .osk-row-controls .osk-key { font-size: 14px; }
 }
 
+/* Большие экраны: 1920×1080. Размеры выше — в пикселях под 1280×720, и на
+   1080p панель (не шире 1100px) занимала чуть больше половины ширины с
+   мелкими клавишами. Здесь всё ×1.5 — как 1280×720, растянутые на 1920 */
+@media (min-width: 1600px) {
+  .osk { padding: 0 36px 30px; }
+  .osk-panel { max-width: 1650px; padding: 24px 24px 18px; border-radius: 26px; }
+  .osk-preview { min-height: 78px; margin-bottom: 18px; padding: 0 24px; border-radius: 15px; }
+  .osk-preview-label { margin-right: 18px; font-size: 21px; }
+  .osk-preview-text,
+  .osk-preview-after { font-size: 33px; }
+  .osk-caret { width: 3px; height: 39px; }
+  .osk-key { height: 78px; margin-right: 12px; font-size: 33px; border-radius: 12px; }
+  .osk-row { margin-bottom: 12px; }
+  .osk-row-controls .osk-key { font-size: 25px; }
+  .osk-key.osk-current,
+  .osk-row-controls .osk-key.osk-current { box-shadow: 0 0 0 4px var(--focus-color, #ff8c00); }
+}
+
 
 /* ===================== ПЛЕЕР: ХУД ДЛЯ ТЕЛЕВИЗОРА =====================
    Плеер смотрят с дивана, за 2–3 метра, а прежние размеры (14 px заголовок,
