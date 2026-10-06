@@ -2336,6 +2336,8 @@ function renderDeviceInfo() {
         ' · ответов: ' + d.responses +
         ' · sourceInfo: ' + (d.sourceInfo ? 'да' : 'нет') +
         (d.tracks !== null ? ' · дорожек: ' + d.tracks : '') +
+        (d.audio !== null && d.audio !== undefined ? ' · звук: ' + d.audio : '') +
+        (d.probe ? ' · ffprobe: ' + d.probe : '') +
         (d.keys ? ' · поля: ' + d.keys : '') +
         (d.error ? ' · ошибка: ' + d.error : '');
     }

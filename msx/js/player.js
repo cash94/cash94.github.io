@@ -2126,6 +2126,7 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
       renderAudioTracks();
     }
     refreshNativeSubtitles(videoPlayer);
+    if (AppState.platform === 'webos') applyWebosProbe();
   };
 
   var onCanPlay = function () {
@@ -2162,6 +2163,7 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
   videoPlayer.load();
   // webOS: mediaId и подписку ловим сразу, как Lampa (см. webosSubsStart)
   webosSubsStart(videoPlayer, staleMediaId);
+  webosProbeStart(playURL);
   AppState.nativeVideoPlayer = videoPlayer;
   hidePlayerLoading();
 }
@@ -2793,6 +2795,16 @@ async function switchAudioTrack(trackIndex) {
 }
 
 function switchNativeAudioTrack(videoPlayer, index) {
+  if (webosAudio.mode && webosSubs.mediaId) {
+    lunaCall('selectTrack', { type: 'audio', mediaId: webosSubs.mediaId, index: index });
+    currentAudioTrack = index;
+    if (currentTimecodeData.hash && currentTimecodeData.fileId) {
+      saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, index);
+    }
+    renderAudioTracks();
+    toggleAudioPanel();
+    return;
+  }
   if (!videoPlayer) return;
   if (AppState.transcodingFullOnOff && videoPlayer.audioTracks && videoPlayer.audioTracks.length > 0) {
     for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
@@ -2822,7 +2834,10 @@ function switchNativeAudioTrack(videoPlayer, index) {
 var webosSubs = { mediaId: null, timer: null, bridge: null, list: null, enabled: false, index: -1, onSeeked: null, gen: 0 };
 // Что произошло при последнем запуске — для раздела «Об устройстве»: без
 // телевизора под рукой иначе не понять, на каком шаге оборвалось
-var webosSubsDiag = { bridge: '', mediaId: '', waitedMs: 0, responses: 0, keys: '', sourceInfo: false, tracks: null, error: '' };
+var webosSubsDiag = { bridge: '', mediaId: '', waitedMs: 0, responses: 0, keys: '', sourceInfo: false, tracks: null, audio: null, probe: '', error: '' };
+// Звук на webOS: если <video> не отдал audioTracks, список берём у конвейера
+// (audioTrackInfo) и переключаем через selectTrack type 'audio', как Lampa
+var webosAudio = { mode: false, list: [] };
 window.webosSubsDiag = webosSubsDiag;
 
 function lunaBridgeName() {
@@ -2835,13 +2850,20 @@ function lunaAvailable() {
   return !!lunaBridgeName();
 }
 
-/** Вызов Luna: через webOSTV.js, если он есть, иначе напрямую PalmServiceBridge */
+/** Вызов медиасервиса webOS (luna://com.webos.media) */
 function lunaCall(method, params, onSuccess, onFailure) {
-  var uri = 'luna://com.webos.media';
+  return lunaRequest('luna://com.webos.media', method, params, onSuccess, onFailure);
+}
+
+/**
+ * Вызов любой службы Luna: через webOSTV.js, если он есть, иначе напрямую
+ * PalmServiceBridge. quiet — ошибку не писать в диагностику субтитров.
+ */
+function lunaRequest(uri, method, params, onSuccess, onFailure, quiet) {
   var fail = function (r) {
     var text = (r && (r.errorText || r.errorCode)) || 'ошибка';
     console.warn('webOS luna ' + method + ' failed:', text);
-    webosSubsDiag.error = method + ': ' + text;
+    if (!quiet) webosSubsDiag.error = method + ': ' + text;
     if (onFailure) onFailure(r);
   };
   try {
@@ -2888,10 +2910,22 @@ function webosSetSubtitle(index) {
 
 /** sourceInfo пришёл — строим список и включаем сохранённую дорожку */
 function webosSubsApply(info) {
+  var audio = (info && info.audioTrackInfo) || [];
+  webosSubsDiag.audio = audio.length;
+  if (audio.length && !currentAudioTracks.length) {
+    webosAudio.mode = true;
+    webosAudio.list = audio;
+    currentAudioTracks = audio.map(function (a, i) {
+      var lang = a.language && a.language !== '(null)' ? a.language : '';
+      return { title: lang ? (LANG_NAMES[lang] || lang.toUpperCase()) : 'Дорожка ' + (i + 1), language: lang || 'und', channels: a.channels || null, codec: a.codec || null };
+    });
+    currentAudioTrack = 0;
+    renderAudioTracks();
+  }
   var subs = (info && info.subtitleTrackInfo) || [];
   webosSubs.list = subs;
   webosSubsDiag.tracks = subs.length;
-  if (!subs.length) return;
+  if (!subs.length) { applyWebosProbe(); return; }
   nativeSubState.mode = 'webos';
   currentSubTracks = subs.map(function (s, i) {
     var lang = s.language && s.language !== '(null)' ? s.language : '';
@@ -2901,7 +2935,98 @@ function webosSubsApply(info) {
   currentSubtitleTrack = (want >= 0 && want < subs.length) ? want : -1;
   if (currentSubtitleTrack >= 0) webosSetSubtitle(currentSubtitleTrack);
   renderSubtitleTracks();
+  applyWebosProbe();
 }
+
+// ==================== WEBOS: НАЗВАНИЯ ДОРОЖЕК ЧЕРЕЗ FFPROBE ====================
+//
+// Конвейер webOS отдаёт дорожки почти без подписей: у субтитров код языка, у
+// звука и того меньше. Приложение TorrStream-webOS несёт свою службу
+// com.torrstream.app.service с методом ffprobe (статический ffprobe внутри
+// ipk, как в Lampa) — она читает заголовок файла с TorrServer и возвращает
+// потоки: язык, название, кодек, каналы, «по умолчанию»/«принудительные».
+// Сопоставляем по порядку: N-я аудиодорожка файла — N-я в списке плеера.
+var webosProbe = { gen: 0, streams: null };
+var LANG_NAMES = {
+  rus: 'Русский', ru: 'Русский', eng: 'English', en: 'English', ukr: 'Українська', uk: 'Українська',
+  bel: 'Беларуская', kaz: 'Қазақша', jpn: '日本語', ja: '日本語', kor: '한국어', chi: '中文', zho: '中文',
+  ger: 'Deutsch', deu: 'Deutsch', fre: 'Français', fra: 'Français', spa: 'Español', ita: 'Italiano',
+  por: 'Português', pol: 'Polski', tur: 'Türkçe', ara: 'العربية', heb: 'עברית', hin: 'हिन्दी'
+};
+var TEXT_SUB_CODECS = { subrip: 1, srt: 1, ass: 1, ssa: 1, webvtt: 1, mov_text: 1, text: 1 };
+
+function probeLang(s) {
+  var l = (s && s.tags && s.tags.language) || '';
+  return l && l !== 'und' ? l : '';
+}
+
+function probeTitle(s, kind, i) {
+  // Названия бывают в кавычках прямо в файле: "Русский 5.1"
+  var t = String((s && s.tags && s.tags.title) || '').replace(/^["'«\s]+|["'»\s]+$/g, '');
+  var lang = probeLang(s);
+  var name = LANG_NAMES[lang] || (lang ? lang.toUpperCase() : '');
+  if (t && name && t.toLowerCase().indexOf(name.toLowerCase()) === -1) return t + ' · ' + name;
+  return t || name || ((kind === 'audio' ? 'Дорожка ' : 'Субтитры ') + (i + 1));
+}
+
+/** Подписи из ffprobe — в списки плеера, если число дорожек сошлось */
+function applyWebosProbe() {
+  var streams = webosProbe.streams;
+  if (!streams) return;
+  var audio = [], subs = [];
+  for (var i = 0; i < streams.length; i++) {
+    if (streams[i].codec_type === 'audio') audio.push(streams[i]);
+    else if (streams[i].codec_type === 'subtitle') subs.push(streams[i]);
+  }
+  if (audio.length && currentAudioTracks.length === audio.length) {
+    currentAudioTracks = currentAudioTracks.map(function (t, k) {
+      var a = audio[k];
+      return { title: probeTitle(a, 'audio', k), language: probeLang(a) || t.language, channels: a.channels || null, codec: (a.codec_name || '').toUpperCase() };
+    });
+    renderAudioTracks();
+  }
+  if (currentSubTracks.length) {
+    // webOS может не показывать картинки-субтитры (PGS) — тогда сверяем с текстовыми
+    var pick = subs;
+    if (pick.length !== currentSubTracks.length) {
+      pick = subs.filter(function (s) { return TEXT_SUB_CODECS[s.codec_name]; });
+      if (pick.length !== currentSubTracks.length) pick = null;
+    }
+    if (pick) {
+      currentSubTracks = currentSubTracks.map(function (t, k) {
+        var s = pick[k], d = s.disposition || {};
+        return { title: probeTitle(s, 'subtitle', k), language: probeLang(s) || t.language, format: (s.codec_name || '').toUpperCase(), default: !!d.default, forced: !!d.forced };
+      });
+      renderSubtitleTracks();
+    }
+  }
+}
+
+/** Спросить службу ffprobe о файле, который сейчас назначен <video> */
+function webosProbeStart(playURL) {
+  webosProbe.streams = null;
+  var gen = ++webosProbe.gen;
+  if (AppState.platform !== 'webos' || !lunaAvailable()) return;
+  var uri = playURL;
+  // Basic-авторизация TorrServer — в адрес: службе заголовки не передать
+  if (AppState.authEnabled && AppState.authLogin) {
+    uri = uri.replace(/^(https?:\/\/)/, '$1' + encodeURIComponent(AppState.authLogin) + ':' + encodeURIComponent(AppState.authPassword || '') + '@');
+  }
+  webosSubsDiag.probe = 'запрос…';
+  lunaRequest('luna://com.torrstream.app.service', 'ffprobe', { uri: uri }, function (r) {
+    if (gen !== webosProbe.gen) return;
+    var parsed = null;
+    try { parsed = JSON.parse(r.data || '{}'); } catch (e) { }
+    if (!parsed || !parsed.streams) { webosSubsDiag.probe = 'пустой ответ'; return; }
+    webosProbe.streams = parsed.streams;
+    webosSubsDiag.probe = 'потоков: ' + parsed.streams.length;
+    applyWebosProbe();
+  }, function (r) {
+    if (gen !== webosProbe.gen) return;
+    webosSubsDiag.probe = 'ошибка: ' + ((r && (r.errorText || r.errorCode)) || '?');
+  }, true);
+}
+
 
 /**
  * Файл назначен <video> — ищем его mediaId и подписываемся у конвейера.
@@ -2964,6 +3089,8 @@ function webosSubsReset() {
   webosSubs.list = null;
   webosSubs.enabled = false;
   webosSubs.index = -1;
+  webosAudio.mode = false;
+  webosAudio.list = [];
   if (nativeSubState.mode === 'webos') nativeSubState.mode = 'tracks';
 }
 
