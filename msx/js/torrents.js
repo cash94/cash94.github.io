@@ -794,12 +794,25 @@ var WebOSTorrServer = (function () {
     var ASSET = 'TorrServer-linux-arm7';
     var RELEASE_API = 'https://api.github.com/repos/YouROK/TorrServer/releases/latest';
     var HB = 'luna://org.webosbrew.hbchannel.service';
+    // Сторонний ipk TorrServer (torrserv.matrix.app, @aabytt): бинарник
+    // torrserver (строчными — у нас TorrServer), автозапуск — ссылка в init.d и
+    // флаг в downloads. Сами его не трогаем: работающий — используем, пока
+    // человек не нажмёт «Остановить его и запустить встроенный»; из автозапуска
+    // убираем, только если он ответит «Убрать» (иначе при включении ТВ он может
+    // занять порт 8090 раньше встроенного)
+    var MATRIX_DIR = '/media/developer/apps/usr/palm/applications/torrserv.matrix.app';
+    var MATRIX_INIT = '/var/lib/webosbrew/init.d/60-torrservmatrixapp';
+    var MATRIX_FLAG = '/media/internal/downloads/ts_autostart_flag';
 
     var st = {
         supported: true, installed: false, version: '', running: false, own: false,
         runningVersion: '', downloading: false, progress: 0, error: '', latest: '',
-        unsupportedText: ''
+        unsupportedText: '', note: '', matrix: false, matrixAutostart: false,
+        canReplace: false,   // работает чужой TorrServer, а root есть — можно заменить встроенным
+        ask: ''              // вопрос «убрать ли matrix из автозапуска», ждём ответа
     };
+    var pending = null;      // что сделать после ответа на вопрос
+    var asked = false;       // в этом сеансе уже спрашивали
     var release = null;        // {tag, url, size} последнего релиза
     var refreshing = false;
     var afterInstall = '';     // 'start' — запустить, когда скачается
@@ -915,6 +928,7 @@ var WebOSTorrServer = (function () {
                 st.running = !!ver;
                 st.runningVersion = ver;
                 st.own = false; st.installed = false; st.downloading = false;
+                st.canReplace = false;
                 st.supported = !!ver;
                 st.unsupportedText = rootError;
             });
@@ -922,7 +936,11 @@ var WebOSTorrServer = (function () {
     }
 
     function refreshRooted() {
-        var cmd = 'cd ' + DIR + ' 2>/dev/null || { echo NODIR; exit 0; }; ' +
+        // matrix проверяем первым: нашей папки до первой установки нет, и
+        // строка с cd ниже на этом заканчивает команду
+        var cmd = '[ -d ' + MATRIX_DIR + ' ] && echo M; ' +
+            '[ -e ' + MATRIX_INIT + ' ] && echo MA; ' +
+            'cd ' + DIR + ' 2>/dev/null || { echo NODIR; exit 0; }; ' +
             '[ -x TorrServer ] && echo I; ' +
             '[ -f version ] && sed "s/^/V:/" version | head -1; ' +
             '[ -f pid ] && kill -0 $(cat pid) 2>/dev/null && echo R; ' +
@@ -951,10 +969,13 @@ var WebOSTorrServer = (function () {
             var part = parseInt(val('P:'), 10) || 0;
             st.progress = st.downloading && release && release.size ? Math.min(99, Math.round(part * 100 / release.size)) : 0;
             st.error = val('E:');
+            st.matrix = has('M');
+            st.matrixAutostart = has('MA');
             echo(function (ver) {
                 refreshing = false;
                 st.running = !!ver;
                 st.runningVersion = ver;
+                st.canReplace = !!ver && !st.own;
                 // Скачалось — запускаем (при обновлении старый процесс уже остановлен)
                 if (wasDownloading && !st.downloading && afterInstall && st.installed && !st.error) {
                     afterInstall = '';
@@ -989,7 +1010,59 @@ var WebOSTorrServer = (function () {
         if (release) go(release); else fetchRelease(go);
     }
 
+    /** Выключить автозапуск torrserv.matrix.app */
+    function disableMatrixAutostart(done) {
+        // Как его собственная ветка «выключить» (run_torrserver): ссылка в init.d,
+        // флаг и файлы status/action — само приложение тоже покажет «выключено»
+        var cmd = 'rm -f ' + MATRIX_INIT + ' ' + MATRIX_FLAG + '; ' +
+            '[ -d ' + MATRIX_DIR + ' ] && { echo disabled > ' + MATRIX_DIR + '/status; echo enable > ' + MATRIX_DIR + '/action; }; true';
+        exec(cmd, function () { st.matrixAutostart = false; done(); });
+    }
+
+    /**
+     * Перед запуском встроенного: matrix в автозапуске — спрашиваем, убрать ли
+     * его оттуда. true — вопрос задан, продолжит answer().
+     */
+    function askAutostart(next) {
+        if (asked || !st.matrix || !st.matrixAutostart) return false;
+        st.ask = 'TorrServer из приложения torrserv.matrix.app запускается при включении телевизора. ' +
+            'Убрать его из автозапуска? Если оставить, он может занять порт раньше встроенного';
+        pending = next;
+        return true;
+    }
+
+    function answer(remove) {
+        asked = true;
+        st.ask = '';
+        var next = pending;
+        pending = null;
+        if (!next) return;
+        if (remove) disableMatrixAutostart(next); else next();
+    }
+
+    /** Остановить работающий на 8090 чужой TorrServer (matrix или любой другой) */
+    function stopForeign(done) {
+        // matrix — по имени процесса; любой другой — по процессу на порту 8090
+        var cmd = 'pidof torrserver > /dev/null 2>&1 && { killall torrserver 2>/dev/null || kill $(pidof torrserver); }; ' +
+            'P=$(netstat -tlnp 2>/dev/null | grep ":8090 " | sed -n "s#.* \\([0-9][0-9]*\\)/.*#\\1#p" | head -1); ' +
+            '[ -n "$P" ] && [ "$P" != "$(cat ' + DIR + '/pid 2>/dev/null)" ] && kill $P; true';
+        exec(cmd, function () { setTimeout(done, 1500); });   // порт освобождается не сразу
+    }
+
+    /** «Остановить его и запустить встроенный» */
+    function replace() {
+        var go = function () {
+            stopForeign(function () { if (st.installed) startNow(); else install(); });
+        };
+        if (!askAutostart(go)) go();
+    }
+
     function start() {
+        if (askAutostart(startNow)) return;
+        startNow();
+    }
+
+    function startNow() {
         // На 8090 уже кто-то есть (свой или чужой TorrServer) — вторую копию не поднимаем
         echo(function (ver) {
             if (ver) { refresh(); return; }
@@ -1017,7 +1090,11 @@ var WebOSTorrServer = (function () {
 
     function checkUpdate() { fetchRelease(function () { }); }
 
-    return { enabled: enabled, status: status, install: install, start: start, stop: stop, checkUpdate: checkUpdate, refresh: refresh };
+    return {
+        enabled: enabled, status: status, install: install, start: start, stop: stop,
+        checkUpdate: checkUpdate, refresh: refresh, replace: replace,
+        answerRemove: function () { answer(true); }, answerKeep: function () { answer(false); }
+    };
 })();
 window.WebOSTorrServer = WebOSTorrServer;
 
@@ -1124,22 +1201,28 @@ var deviceTorrServerPanel = (function () {
 
     function render(st) {
         var text;
-        if (!st.supported) text = st.unsupportedText || 'Процессор этого устройства TorrServer не поддерживает';
+        if (st.ask) text = st.ask;
+        else if (!st.supported) text = st.unsupportedText || 'Процессор этого устройства TorrServer не поддерживает';
         else if (st.downloading) text = 'Скачиваю TorrServer… ' + (st.progress || 0) + '%';
         else if (st.running && st.own) text = 'Работает встроенный TorrServer ' + (st.version || '');
         else if (st.running) text = 'На устройстве уже работает TorrServer ' + (st.runningVersion || '') + ' — используется он';
         else if (st.installed) text = 'TorrServer ' + (st.version || '') + ' установлен, но не запущен';
         else text = 'TorrServer на устройстве не найден. Можно скачать официальную сборку (около 65 МБ)';
+        if (st.note && !st.downloading) text += '. ' + st.note;
         if (st.error && !st.downloading) text += '. Ошибка: ' + st.error;
         var status = getEl('ts-device-status');
         if (status) status.textContent = text;
 
-        var busy = st.downloading;
+        // Пока ждём ответа «убрать ли из автозапуска» — только его кнопки
+        var busy = st.downloading || !!st.ask;
         var external = st.running && !st.own;
         show('ts-device-install', st.supported && !st.installed && !external && !busy);
         show('ts-device-start', st.installed && !st.running && !busy);
         show('ts-device-stop', st.own && !busy);
         show('ts-device-update', st.installed && !external && !busy && st.latest && st.latest !== st.version);
+        show('ts-device-replace', external && !!st.canReplace && !busy);
+        show('ts-device-autostart-off', !!st.ask);
+        show('ts-device-autostart-keep', !!st.ask);
         var upd = getEl('ts-device-update');
         if (upd && st.latest) upd.textContent = 'Обновить до ' + st.latest;
 
@@ -1189,6 +1272,10 @@ var deviceTorrServerPanel = (function () {
         bind('ts-device-start', 'start');
         bind('ts-device-stop', 'stop');
         bind('ts-device-update', 'install');
+        // Только webOS: заменить чужой TorrServer встроенным и ответ про автозапуск
+        bind('ts-device-replace', 'replace');
+        bind('ts-device-autostart-off', 'answerRemove');
+        bind('ts-device-autostart-keep', 'answerKeep');
         if (isDeviceTorrServer()) onToggle(true, true);
     }
 

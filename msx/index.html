@@ -207,6 +207,11 @@
                     <button class="btn btn-primary" id="ts-device-start" hidden>Запустить</button>
                     <button class="btn" id="ts-device-update" hidden>Обновить</button>
                     <button class="btn" id="ts-device-stop" hidden>Остановить</button>
+                    <!-- webOS с root: работает чужой TorrServer — заменить встроенным;
+                         вопрос, убрать ли torrserv.matrix.app из автозапуска -->
+                    <button class="btn" id="ts-device-replace" hidden>Остановить его и запустить встроенный</button>
+                    <button class="btn btn-primary" id="ts-device-autostart-off" hidden>Убрать из автозапуска</button>
+                    <button class="btn" id="ts-device-autostart-keep" hidden>Оставить в автозапуске</button>
                   </div>
                 </div>
                 <!-- js/torrents.js: isLocalTorrServer / setupLocalTorrServerToggle -->
