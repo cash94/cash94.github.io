@@ -4453,6 +4453,10 @@ var detailPosterObserver = null;
 function getDetailPosterObserver() {
     if (detailPosterObserver) return detailPosterObserver;
     if (!('IntersectionObserver' in window)) return null;
+    // webOS 4 (Chrome 53): наблюдатель за карточками рядов детального
+    // просмотра там не срабатывает — фото актёров и постеры похожих так и
+    // оставались пустыми. Карточек всего по 12 в ряду, грузим их сразу
+    if (document.documentElement.className.indexOf('legacy-browser') !== -1) return null;
     detailPosterObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
             if (!entries[i].isIntersecting) continue;

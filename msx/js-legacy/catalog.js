@@ -4454,6 +4454,10 @@ var detailPosterObserver = null;
 function getDetailPosterObserver() {
   if (detailPosterObserver) return detailPosterObserver;
   if (!('IntersectionObserver' in window)) return null;
+
+
+
+  if (document.documentElement.className.indexOf('legacy-browser') !== -1) return null;
   detailPosterObserver = new IntersectionObserver(function (entries) {
     for (var i = 0; i < entries.length; i++) {
       if (!entries[i].isIntersecting) continue;

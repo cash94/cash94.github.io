@@ -129,3 +129,11 @@ html.legacy-browser .ui-checkbox input:checked + span::after {
   transform: none;
   right: 15px;
 }
+
+/* Трейлер в баннере главной: маска растворяет левый край кадра. На webOS
+   видео выводит отдельный аппаратный слой, и с маской он не рисуется — был
+   только звук. Без маски у кадра резкий левый край, зато он виден. */
+html.legacy-browser #home-hero.home-hero-playing .home-hero-video {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
