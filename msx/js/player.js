@@ -2126,6 +2126,7 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
       renderAudioTracks();
     }
     refreshNativeSubtitles(videoPlayer);
+    webosSubsStart(videoPlayer);
   };
 
   var onCanPlay = function () {
@@ -2805,6 +2806,121 @@ function switchNativeAudioTrack(videoPlayer, index) {
   }
 }
 
+// ==================== СУБТИТРЫ НА WEBOS: МЕДИАСЕРВИС LUNA ====================
+//
+// На webOS браузер video.textTracks встроенными дорожками не заполняет — их
+// знает медиаконвейер телевизора (luna://com.webos.media), так же делает Lampa:
+//   1. ждём video.mediaId — его выдаёт конвейер, когда файл открыт;
+//   2. subscribe по mediaId → sourceInfo.programInfo[0].subtitleTrackInfo;
+//   3. включение — setSubtitleEnable + selectTrack {type: 'text', index},
+//      текст рисует сам телевизор (наш блок #native-subtitles не нужен);
+//   4. после перемотки конвейер субтитры гасит — включаем заново (seeked).
+// В отличие от Lampa подписку не закрываем вызовом unload (тот выгружает
+// медиа, и Lampa потом пересоздаёт <video>), а просто отменяем.
+var webosSubs = { mediaId: null, timer: null, bridge: null, list: null, enabled: false, index: -1, onSeeked: null };
+
+function lunaAvailable() {
+  return !!((window.webOS && webOS.service && webOS.service.request) || typeof window.PalmServiceBridge !== 'undefined');
+}
+
+/** Вызов Luna: через webOSTV.js, если он есть, иначе напрямую PalmServiceBridge */
+function lunaCall(method, params, onSuccess, onFailure) {
+  var uri = 'luna://com.webos.media';
+  var fail = function (r) {
+    console.warn('webOS luna ' + method + ' failed:', r && (r.errorText || r.errorCode));
+    if (onFailure) onFailure(r);
+  };
+  try {
+    if (window.webOS && webOS.service && webOS.service.request) {
+      return webOS.service.request(uri, { method: method, parameters: params, onSuccess: onSuccess, onFailure: fail });
+    }
+    if (typeof window.PalmServiceBridge === 'undefined') { fail({ errorText: 'нет PalmServiceBridge' }); return null; }
+    var bridge = new window.PalmServiceBridge();
+    bridge.onservicecallback = function (msg) {
+      var r = {};
+      try { r = JSON.parse(msg); } catch (e) { }
+      if (r.returnValue === false || r.errorCode) fail(r);
+      else if (onSuccess) onSuccess(r);
+    };
+    bridge.call(uri + '/' + method, JSON.stringify(params));
+    return bridge;   // держим ссылку: подписка живёт, пока жив объект
+  } catch (e) { fail({ errorText: e.message }); return null; }
+}
+
+function webosSubsCancel() {
+  if (webosSubs.timer) { clearInterval(webosSubs.timer); webosSubs.timer = null; }
+  if (webosSubs.bridge) {
+    try { if (typeof webosSubs.bridge.cancel === 'function') webosSubs.bridge.cancel(); } catch (e) { }
+    webosSubs.bridge = null;
+  }
+}
+
+function webosSetSubtitle(index) {
+  if (!webosSubs.mediaId) return;
+  var on = index >= 0;
+  lunaCall('setSubtitleEnable', { mediaId: webosSubs.mediaId, enable: on });
+  webosSubs.enabled = on;
+  webosSubs.index = index;
+  if (on) {
+    var mediaId = webosSubs.mediaId;
+    // Как в Lampa: дорожку выбираем с паузой после включения — сразу конвейер
+    // выбор не принимает
+    setTimeout(function () {
+      if (webosSubs.mediaId !== mediaId) return;
+      lunaCall('selectTrack', { type: 'text', mediaId: mediaId, index: index });
+    }, 500);
+  }
+}
+
+/** Новый файл в <video>: ищем mediaId и спрашиваем у конвейера дорожки */
+function webosSubsStart(videoPlayer) {
+  webosSubsReset();
+  if (AppState.platform !== 'webos' || !lunaAvailable() || !videoPlayer) return;
+  var tries = 0;
+  webosSubs.timer = setInterval(function () {
+    tries++;
+    if (AppState.currentScreen !== 'player' || tries > 100) { webosSubsCancel(); return; }   // ~30 с
+    if (!videoPlayer.mediaId) return;
+    clearInterval(webosSubs.timer); webosSubs.timer = null;
+    webosSubs.mediaId = videoPlayer.mediaId;
+    var mediaId = webosSubs.mediaId;
+    webosSubs.bridge = lunaCall('subscribe', { mediaId: mediaId, subscribe: true }, function (r) {
+      if (webosSubs.mediaId !== mediaId || webosSubs.list || !r || !r.sourceInfo) return;
+      var info = (r.sourceInfo.programInfo || [])[0] || {};
+      var subs = info.subtitleTrackInfo || [];
+      webosSubs.list = subs;
+      webosSubsCancel();   // дорожки получены, подписка больше не нужна
+      if (!subs.length) return;
+      nativeSubState.mode = 'webos';
+      currentSubTracks = subs.map(function (s, i) {
+        var lang = s.language && s.language !== '(null)' ? s.language : '';
+        return { title: s.title || s.name || (lang ? lang.toUpperCase() : 'Субтитры ' + (i + 1)), language: lang || 'und', format: s.type || '' };
+      });
+      var want = currentSubtitleTrack >= 0 ? currentSubtitleTrack : nativeSubState.savedPref;
+      currentSubtitleTrack = (want >= 0 && want < subs.length) ? want : -1;
+      if (currentSubtitleTrack >= 0) webosSetSubtitle(currentSubtitleTrack);
+      renderSubtitleTracks();
+    });
+  }, 300);
+  // После перемотки конвейер выключает субтитры — включаем выбранную заново
+  webosSubs.onSeeked = function () {
+    if (webosSubs.enabled && webosSubs.index >= 0) webosSetSubtitle(webosSubs.index);
+  };
+  videoPlayer.addEventListener('seeked', webosSubs.onSeeked);
+}
+
+function webosSubsReset() {
+  webosSubsCancel();
+  var v = getEl('video-player');
+  if (v && webosSubs.onSeeked) v.removeEventListener('seeked', webosSubs.onSeeked);
+  webosSubs.onSeeked = null;
+  webosSubs.mediaId = null;
+  webosSubs.list = null;
+  webosSubs.enabled = false;
+  webosSubs.index = -1;
+  if (nativeSubState.mode === 'webos') nativeSubState.mode = 'tracks';
+}
+
 // ==================== СУБТИТРЫ ПРЯМОГО ФАЙЛА ====================
 //
 // В режиме «Полностью отключить транскодирование» (и всегда на webOS) файл
@@ -2814,7 +2930,7 @@ function switchNativeAudioTrack(videoPlayer, index) {
 // 'hidden' — браузер грузит её текст и шлёт cuechange, но сам не рисует, —
 // а текст выводим своим блоком #native-subtitles: на ТВ встроенная отрисовка
 // бывает мелкой или её нет вовсе. Остальные дорожки — 'disabled'.
-var nativeSubState = { tracks: [], active: null, onCue: null, savedPref: -1, listening: false };
+var nativeSubState = { tracks: [], active: null, onCue: null, savedPref: -1, listening: false, mode: 'tracks' };
 
 function collectNativeTextTracks(videoPlayer) {
   var list = videoPlayer && videoPlayer.textTracks, out = [];
@@ -2897,6 +3013,8 @@ function applyNativeSubtitle(index) {
 /** Список дорожек у <video> сменился (новый файл, дорожка дописалась) */
 function refreshNativeSubtitles(videoPlayer) {
   if (!AppState.transcodingFullOnOff) return;
+  // На webOS список даёт медиасервис (webosSubsStart), textTracks там пустые
+  if (nativeSubState.mode === 'webos') return;
   var tracks = collectNativeTextTracks(videoPlayer);
   nativeSubState.tracks = tracks;
   currentSubTracks = tracks.map(function (t, i) {
@@ -2922,6 +3040,7 @@ function listenNativeTextTracks(videoPlayer) {
 
 /** Новый файл или выход из плеера: снять подписку и спрятать текст */
 function resetNativeSubtitles() {
+  webosSubsReset();
   applyNativeSubtitle(-1);
   nativeSubState.tracks = [];
   var box = getEl('native-subtitles');
@@ -2929,7 +3048,12 @@ function resetNativeSubtitles() {
 }
 
 function switchNativeSubtitleTrack(index) {
-  applyNativeSubtitle(index);
+  if (nativeSubState.mode === 'webos') {
+    webosSetSubtitle(index);
+    currentSubtitleTrack = index >= 0 ? index : -1;
+  } else {
+    applyNativeSubtitle(index);
+  }
   if (currentTimecodeData.hash && currentTimecodeData.fileId) {
     saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, currentSubtitleTrack);
   }

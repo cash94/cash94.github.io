@@ -326,10 +326,13 @@ function detectPlatform() {
     return 'vidaa';
   } else if (ua.indexOf('android') !== -1 && ua.indexOf('tv') !== -1) {
     return 'androidtv';
-  } else if (ua.indexOf('webos') !== -1 || ua.indexOf('web0s') !== -1 ||
-    typeof window.PalmSystem !== 'undefined' || typeof window.webOSSystem !== 'undefined') {
-    // LG пишет в User-Agent «Web0S» — через ноль, а не букву o. PalmSystem /
-    // webOSSystem есть у приложений webOS (TorrStream-webOS) и браузера ТВ
+  } else if (typeof window.PalmSystem !== 'undefined' || typeof window.webOSSystem !== 'undefined') {
+    // webOS — только внутри приложения TorrStream-webOS, как Android — по
+    // window.AndroidJS. Эти объекты (и PalmServiceBridge для вызовов Luna)
+    // среда приложений webOS сама кладёт в каждую страницу, открытую в
+    // приложении, — в том числе в torrstream.online после перехода из ipk.
+    // Свою переменную из ipk передать нельзя: переход её стирает. По
+    // User-Agent («Web0S») не определяем: браузер телевизора — обычный браузер
     return 'webos';
   } else if (ua.indexOf('tizen') !== -1) {
     return 'tizen';
