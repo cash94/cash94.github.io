@@ -24,7 +24,7 @@ var CLICKABLE_SELECTORS = [
   '.episode-item', '.audio-item', '.subtitle-item', '.close-panel-btn', '.filter-select',
   '.filter-reset-btn', '.progress-continue-btn', '.detail-progress-btn',
   '#close-search', '#filter-toggle', '#search-btn',
-  '#torrserver-tab-content', '#torrents-tab-content', '#player-tab-content', '#account-tab-content', '#sync-tab-content', '#other-tab-content',
+  '#torrserver-tab-content', '#torrents-tab-content', '#player-tab-content', '#account-tab-content', '#sync-tab-content', '#other-tab-content', '#device-tab-content',
   '.menu-item', '.skip-button'
 ].join(', ');
 
@@ -2286,7 +2286,7 @@ function setupClockVisibility() {
 }
 
 // ==================== ОБ УСТРОЙСТВЕ ====================
-// Раздел «Прочее» → «Об устройстве»: в каком приложении открыт TorrStream,
+// Раздел настроек «Об устройстве»: в каком приложении открыт TorrStream,
 // что за платформа и каким плеером пойдёт видео. Нужен, чтобы человек (и
 // поддержка в группе) сразу видел, по какой ветке работает его устройство.
 var PLATFORM_NAMES = {

@@ -154,6 +154,9 @@
             <div class="menu-item" data-tab="other-tab" id="other-tab">
               <i class="fi fi-rr-settings-sliders"></i><span>Прочее</span>
             </div>
+            <div class="menu-item" data-tab="device-tab" id="device-tab">
+              <i class="fi fi-rr-info"></i><span>Об устройстве</span>
+            </div>
           </div>
           <div id="settings-nav-backdrop"></div>
         </div>
@@ -467,11 +470,15 @@
               </div>
               <div id="clear-history-status" class="settings-status-text" hidden></div>
             </div>
+          </div>
 
-            <!-- Что за устройство и каким плеером идёт видео (app.js: renderDeviceInfo,
-                 обновляется при каждом открытии раздела — control.js: switchConfigTab) -->
-            <div class="settings-section settings-group">
-              <h2 class="settings-group-title">Об устройстве</h2>
+          <!-- Об устройстве: в каком приложении открыт TorrStream и каким плеером идёт
+               видео (app.js: renderDeviceInfo, обновляется при каждом открытии раздела —
+               control.js: switchConfigTab) -->
+          <div id="device-tab-content" class="tab-content" style="display: none;">
+            <div class="settings-section">
+              <h2>Об устройстве</h2>
+              <p class="settings-lead">Пригодится, если пишете в поддержку: приложите эти сведения к вопросу.</p>
               <div class="device-info" id="device-info"></div>
             </div>
           </div>
