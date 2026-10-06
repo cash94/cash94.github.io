@@ -100,3 +100,32 @@ html.legacy-browser .ui-customizer-options.ui-swatches {
   flex-wrap: wrap;
   max-width: 258px;   /* 5 × 50 + 8 (margin -4px контейнера с двух сторон) */
 }
+
+/* Переключатели в настройках: бегунок (span::after) ехал через transform с
+   переходом, а в Chrome 53 переход transform у псевдоэлемента застревает в
+   начальной точке — цвет дорожки менялся, бегунок оставался слева, и
+   казалось, что нажатие не сработало. Двигаем его через right: 43px →
+   23px, то есть те же 20px. */
+html.legacy-browser #config-screen .checkbox-container > span::after {
+  -webkit-transition: right 0.2s ease;
+  transition: right 0.2s ease;
+}
+
+html.legacy-browser #config-screen .checkbox-container input:checked + span::after {
+  -webkit-transform: none;
+  transform: none;
+  right: 23px;
+}
+
+/* То же у переключателей «Внешнего вида» (ui-customizer.js, .ui-checkbox):
+   бегунок right 35px → 15px вместо translateX(20px) */
+html.legacy-browser .ui-checkbox > span::after {
+  -webkit-transition: right 0.2s ease;
+  transition: right 0.2s ease;
+}
+
+html.legacy-browser .ui-checkbox input:checked + span::after {
+  -webkit-transform: none;
+  transform: none;
+  right: 15px;
+}
