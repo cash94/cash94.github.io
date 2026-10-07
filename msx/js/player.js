@@ -1939,16 +1939,20 @@ var DEFAULT_PLAYER_HINT = '← Назад для выхода';
  * показывает «Нажмите Back ещё раз для выхода». Раньше текст игнорировался,
  * и вместо предупреждения всплывала обычная подсказка.
  */
-function showPlayerHint(message) {
+function showPlayerHint(message, durationMs) {
   var playerHint = getEl('player-hint');
   if (!playerHint) return;
   playerHint.textContent = message || DEFAULT_PLAYER_HINT;
   playerHint.style.opacity = '1';
+  // Предупреждение показываем и при скрытом HUD (styles.css:
+  // .player-hint-alert): «Нажмите Назад ещё раз» приходит именно тогда
+  playerHint.classList.toggle('player-hint-alert', !!message);
   if (AppState.hintTimeout) clearTimeout(AppState.hintTimeout);
   AppState.hintTimeout = setTimeout(function () {
     playerHint.style.opacity = '0';
+    playerHint.classList.remove('player-hint-alert');
     playerHint.textContent = DEFAULT_PLAYER_HINT;
-  }, 4000);
+  }, durationMs || 4000);
 }
 
 async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal) {

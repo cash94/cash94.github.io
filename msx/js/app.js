@@ -12,7 +12,6 @@ var APP_CONSTANTS = {
   DETAIL_HIDE_DELAY_MS: 250,
   FILTER_PANEL_DELAY_MS: 60,
   ZOOM_TOAST_DURATION_MS: 1500,
-  HINT_DISPLAY_DURATION_MS: 2000,
   JACRED_SAVE_DELAY_MS: 500
 };
 
@@ -738,21 +737,76 @@ function setupOverlayControls(overlay) {
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 
+  // Клик или касание по самому видео (не по кнопкам): одно — пауза и снятие
+  // с паузы, два подряд — полный экран и выход из него (кнопки «Полный
+  // экран» в панели больше нет). Одиночное ждёт VIDEO_DOUBLE_TAP_MS: иначе
+  // двойной клик успевал бы поставить паузу и тут же снять её.
+  var VIDEO_DOUBLE_TAP_MS = 300;
+  var tapTimer = null;
+  var tapStartX = 0, tapStartY = 0, lastTouchAt = 0;
+
+  function anyPlayerPanelOpen() {
+    if (typeof PLAYER_PANELS === 'undefined' || typeof isPlayerPanelOpen !== 'function') return false;
+    for (var name in PLAYER_PANELS) if (isPlayerPanelOpen(name)) return true;
+    return false;
+  }
+
+  function toggleVideoPause() {
+    var vp = getEl('video-player');
+    if (!vp) return;
+    if (vp.paused) {
+      var p = vp.play();
+      if (p && typeof p.catch === 'function') p.catch(function () { });
+    } else {
+      vp.pause();
+    }
+    if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
+  }
+
+  function videoTap() {
+    // Открыта панель серий/звука/субтитров — нажатие мимо неё только
+    // закрывает панель (клик закроет и обработчик на document)
+    if (anyPlayerPanelOpen()) {
+      if (typeof closePlayerPanels === 'function') closePlayerPanels();
+      return;
+    }
+    if (tapTimer) {
+      clearTimeout(tapTimer);
+      tapTimer = null;
+      if (typeof window.togglePlayerFullscreen === 'function') window.togglePlayerFullscreen();
+      return;
+    }
+    tapTimer = setTimeout(function () {
+      tapTimer = null;
+      toggleVideoPause();
+    }, VIDEO_DOUBLE_TAP_MS);
+  }
+
   overlay.addEventListener('touchstart', function (e) {
     showControls();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
-    if (e.touches.length === 1) e.preventDefault();
+    if (e.touches.length === 1) {
+      e.preventDefault();
+      tapStartX = e.touches[0].clientX;
+      tapStartY = e.touches[0].clientY;
+    }
   }, { passive: false });
 
-  var lastTap = 0;
   overlay.addEventListener('touchend', function (e) {
-    var currentTime = Date.now();
-    if (currentTime - lastTap < 300) {
-      if (overlay.classList.contains('touch-active')) overlay.classList.remove('touch-active');
-      else showControls();
-    } else showControls();
-    lastTap = currentTime;
+    lastTouchAt = Date.now();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    // По кнопкам и ползункам — их обрабатывает делегирование касаний
+    if (e.target !== overlay) return;
+    var t = e.changedTouches && e.changedTouches[0];
+    if (t && (Math.abs(t.clientX - tapStartX) > 20 || Math.abs(t.clientY - tapStartY) > 20)) return;
+    videoTap();
+  });
+
+  overlay.addEventListener('click', function (e) {
+    if (e.target !== overlay) return;
+    // Следом за касанием браузер может прислать и click — его не считаем
+    if (Date.now() - lastTouchAt < 800) return;
+    videoTap();
   });
 }
 
@@ -1901,6 +1955,10 @@ function setupFullscreen() {
     if (typeof window.syncFullscreenOverlays === 'function') window.syncFullscreenOverlays();
   }
 
+  // Двойной клик/касание по видео (setupOverlayControls) — кнопку
+  // «Полный экран» из панели убрали, переключаем отсюда же
+  window.togglePlayerFullscreen = toggleFullscreen;
+
   fullscreenBtn.addEventListener('click', function (e) {
     e.stopPropagation();
     toggleFullscreen();
@@ -2436,16 +2494,9 @@ function showInitError() {
 }
 
 // ==================== МЫШЬ И ИНТЕРФЕЙС ====================
-function showPlayerHint(message) {
-  var hint = getEl('player-hint');
-  if (!hint) return;
-  hint.textContent = message;
-  hint.style.opacity = '1';
-  clearTimeout(window.hintTimeout);
-  window.hintTimeout = setTimeout(function () {
-    hint.style.opacity = '0';
-  }, APP_CONSTANTS.HINT_DISPLAY_DURATION_MS);
-}
+// showPlayerHint — в player.js. Здесь была вторая, упрощённая копия: app.js
+// грузится позже и перекрывала ту, поэтому «Нажмите Назад ещё раз» при
+// скрытом HUD не было видно.
 
 // ==================== ТЕСТ СКОРОСТИ ====================
 function setupSpeedTest() {

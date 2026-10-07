@@ -3229,6 +3229,36 @@ body.detail-open {
   transition: opacity 0.2s ease;
 }
 
+/* Предупреждение «Нажмите Назад ещё раз» (control.js → showPlayerHint с
+   текстом) видно и при скрытом HUD: первое нажатие Назад приходит именно
+   тогда, а под idle-hidden подсказка прозрачна — предупреждения не было. */
+#player-hint.player-hint-alert.idle-hidden {
+  opacity: 1 !important;
+}
+
+/* Само предупреждение — плашкой посередине у нижнего края, крупно: обычная
+   подсказка там мелкая и серая, с дивана её не прочесть. vw — как у
+   подсказки и остального ХУДа (на 1280 это ~19px). */
+#player-hint.player-hint-alert {
+  bottom: 6vw;
+  padding: 0.7vw 1.6vw;
+  font-size: 1.5vw;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 1.6vw;
+  white-space: nowrap;
+}
+
+/* Кнопка «Выход» в углу, громкость и «Полный экран» в плеере не показываем:
+   выход — двойным Назад, полный экран — двойным кликом или касанием по
+   видео (app.js: setupOverlayControls). Узлы остаются в DOM: синяя кнопка
+   пульта и обработчики дергают их .click(). */
+#exit-player-btn,
+#player-screen .volume-container {
+  display: none !important;
+}
+
 /* Адаптивная сетка */
 
 /* Отдельных медиа-правил у сетки глобального поиска больше нет: она живёт
@@ -8431,6 +8461,19 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 .section-title-header {
   padding-left: calc(var(--safe-left, env(safe-area-inset-left, 0px)));
   padding-right: calc(var(--safe-right, env(safe-area-inset-right, 0px)));
+}
+
+/* Chrome 68 и старше (webOS 5): env() появился только в Chrome 69. Без него
+   правило с var(--safe-*, env(...)) целиком недействительно, и у шапки
+   пропадали поля — пункты прижимались к краям экрана. Заданная переменная до
+   env() не доходит. Где env() есть, правило не срабатывает, и вырез экрана
+   учитывается как раньше; Android-обёртка ставит свои --safe-* инлайном. */
+@supports not (padding-top: env(safe-area-inset-top)) {
+  :root {
+    --safe-top: 0px;
+    --safe-left: 0px;
+    --safe-right: 0px;
+  }
 }
 
 /* ==================== ЭКРАН НАСТРОЕК ====================
