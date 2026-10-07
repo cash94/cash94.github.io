@@ -1081,22 +1081,31 @@ var WebOSTorrServer = (function () {
                 '#!/bin/sh',
                 '# TorrStream: запуск TorrServer вне группы процессов службы',
                 'DIR=' + DIR,
+                'exec > $DIR/ts.log 2>&1 < /dev/null',
                 'CG=/sys/fs/cgroup',
                 'if [ -f $CG/cgroup.controllers ]; then echo $$ > $CG/cgroup.procs; else for f in $CG/*/cgroup.procs; do echo $$ > $f; done; fi 2>/dev/null',
+                // Первой строкой журнала — как запущен и в какой группе оказался:
+                // по ней видно, ушёл ли он из группы службы Homebrew Channel
+                'echo "[TorrStream] запуск: ${TS_LAUNCH:-nohup}; cgroup: $(head -n 1 /proc/$$/cgroup 2>/dev/null)"',
                 'cd $DIR || exit 0',
+                'export GODEBUG=madvdontneed=1',
                 './TorrServer -p 8090 -d $DIR &',
                 'echo $! > $DIR/pid',
                 'wait $!',
                 'echo "[TorrStream] TorrServer завершился, код $?"'
             ];
+            // systemd-run (webOS с systemd) запускает run.sh отдельной службой
+            // самого systemd — её не гасят вместе со службой Homebrew Channel,
+            // так же «снаружи» работает нативное приложение torrserv.matrix.app.
+            // Нет systemd-run или он не сработал — по-старому, setsid + nohup
             var script = [
                 '#!/bin/sh',
                 '# TorrStream: встроенный TorrServer (автозапуск Homebrew Channel)',
                 'DIR=' + DIR,
                 'curl -s -m 3 http://127.0.0.1:8090/echo > /dev/null 2>&1 && exit 0',
                 'cd $DIR || exit 0',
-                // setsid (если есть) — ещё и от сигналов сеанса Homebrew Channel
-                'GODEBUG=madvdontneed=1 $(command -v setsid) nohup sh $DIR/run.sh > $DIR/ts.log 2>&1 < /dev/null &'
+                'if command -v systemd-run > /dev/null 2>&1; then systemctl reset-failed torrstream-torrserver > /dev/null 2>&1; systemd-run --unit=torrstream-torrserver --setenv=TS_LAUNCH=systemd-run /bin/sh $DIR/run.sh > $DIR/launch.log 2>&1 && exit 0; fi',
+                '$(command -v setsid) nohup sh $DIR/run.sh > /dev/null 2>&1 < /dev/null &'
             ];
             var lines = function (list) { return list.map(function (l) { return "'" + l + "'"; }).join(' '); };
             var cmd = 'cd ' + DIR + ' && rm -f err && ' +
@@ -1141,7 +1150,8 @@ var WebOSTorrServer = (function () {
             'else S="процесс сразу завершился"; fi; ' +
             'K=""; grep -q "код 137" ts.log 2>/dev/null && K=" (его убила система — нехватка памяти или ограничения службы)"; ' +
             'L=$(grep -v "^[[:space:]]*$" ts.log 2>/dev/null | tail -n 3 | cut -c1-160 | tr "\\n" "|" | sed "s/|$//; s/|/ | /g"); ' +
-            'echo "TorrServer не запустился: ${R:-$S}$K${L:+. Журнал: $L} (процессор $(uname -m))" > err';
+            'F=$(grep -m 1 "TorrStream. запуск" ts.log 2>/dev/null | cut -c1-160); ' +
+            'echo "TorrServer не запустился: ${R:-$S}$K${L:+. Журнал: $L}${F:+. $F} (процессор $(uname -m))" > err';
         exec(cmd, function () { st.starting = false; refresh(); });
     }
 
