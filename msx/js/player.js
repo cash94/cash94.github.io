@@ -593,6 +593,18 @@ function setPlayerCursorHidden(hidden) {
 }
 window.setPlayerCursorHidden = setPlayerCursorHidden;
 
+// Движение мыши не показывает HUD до этого момента. На webOS аэромышь пульта
+// двигает курсор от малейшего движения руки, и HUD, который «Назад» только что
+// спрятал, тут же возвращался (control.js: playerBackPress). Глушим только
+// движение — клики и нажатия пульта работают как обычно.
+var playerMouseMuteUntil = 0;
+function mutePlayerMouse(ms) { playerMouseMuteUntil = Date.now() + ms; }
+function isPlayerMouseMuted() { return Date.now() < playerMouseMuteUntil; }
+/** Движение мыши над плеером: показать HUD, если движение сейчас не заглушено. */
+function onPlayerMouseMove() {
+  if (!isPlayerMouseMuted()) resetMouseIdleTimer();
+}
+
 function resetMouseIdleTimer() {
   var playerScreen = getEl('player-screen');
   if (!playerScreen || playerScreen.style.display !== 'block') return;

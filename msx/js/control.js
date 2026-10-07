@@ -90,20 +90,34 @@ var PLAYER_BACK_EXIT_MS = 2000;
 
 /**
  * «Назад» в плеере — с пульта и правой кнопкой мыши (setupMouseControls):
- * открытые HUD или панель сначала прячутся; дальше первое нажатие
- * предупреждает, второе за PLAYER_BACK_EXIT_MS — выход из плеера.
+ * открытая панель (серии, дорожки) только закрывается; иначе первое нажатие
+ * прячет HUD и предупреждает, второе за PLAYER_BACK_EXIT_MS — выход из плеера.
+ *
+ * Второе нажатие выходит, даже если HUD к этому времени снова на экране: на
+ * webOS аэромышь пульта показывает HUD от малейшего движения руки, и когда
+ * «Назад» лишь прятал HUD и сбрасывал счётчик, выйти было нельзя — HUD
+ * появлялся, «Назад» его прятал, и так по кругу. Заодно на время ожидания
+ * второго нажатия движение мыши HUD не показывает (mutePlayerMouse).
  *
  * @param {boolean} [fromMouse] правая кнопка: HUD к этому моменту всегда
- *        виден — его показало само движение и нажатие мыши, — поэтому прячем
- *        только открытую панель, иначе до выхода дело не доходило бы никогда
+ *        виден — его показало само движение и нажатие мыши, — поэтому его
+ *        не прячем, только закрываем панель
  */
 function playerBackPress(fromMouse) {
-    if (fromMouse ? hidePlayerPanelsOnly() : hidePlayerUi()) { lastPlayerBackPressAt = 0; return; }
+    if (hidePlayerPanelsOnly()) {
+        if (!fromMouse) hidePlayerUi();
+        lastPlayerBackPressAt = 0;
+        return;
+    }
     var now = Date.now();
     if (now - lastPlayerBackPressAt < PLAYER_BACK_EXIT_MS) {
         lastPlayerBackPressAt = 0;
         if (typeof window.showDetailView === 'function') window.showDetailView();
     } else {
+        if (!fromMouse) {
+            hidePlayerUi();
+            if (typeof window.mutePlayerMouse === 'function') window.mutePlayerMouse(PLAYER_BACK_EXIT_MS);
+        }
         lastPlayerBackPressAt = now;
         if (typeof window.showPlayerHint === 'function') window.showPlayerHint('Нажмите «Назад» ещё раз, чтобы выйти из плеера', PLAYER_BACK_EXIT_MS);
     }

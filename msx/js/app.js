@@ -733,6 +733,8 @@ function setupOverlayControls(overlay) {
   }
 
   overlay.addEventListener('mousemove', function () {
+    // Сразу после «Назад» движение HUD не показывает (player.js: mutePlayerMouse)
+    if (typeof isPlayerMouseMuted === 'function' && isPlayerMouseMuted()) return;
     showControls();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
@@ -1750,9 +1752,12 @@ function setupPlayerAutoHide() {
   // каждую кнопку управления (около двух десятков лишних подписок): все они
   // лежат внутри #player-screen, и любое движение мыши над ними всё равно
   // приходит сюда через mousemove.
-  playerScreen.addEventListener('mousemove', resetMouseIdleTimer);
+  // Движение — через onPlayerMouseMove: сразу после «Назад» оно HUD не
+  // показывает (дрожание аэромыши webOS), нажатие кнопки мыши — всегда
+  var onMove = typeof onPlayerMouseMove === 'function' ? onPlayerMouseMove : resetMouseIdleTimer;
+  playerScreen.addEventListener('mousemove', onMove);
   playerScreen.addEventListener('mousedown', resetMouseIdleTimer);
-  playerScreen.addEventListener('mouseenter', resetMouseIdleTimer);
+  playerScreen.addEventListener('mouseenter', onMove);
 }
 
 // ==================== СЕНСОРНОЕ УПРАВЛЕНИЕ ====================
