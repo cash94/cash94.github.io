@@ -809,7 +809,8 @@ var WebOSTorrServer = (function () {
         runningVersion: '', downloading: false, progress: 0, error: '', latest: '',
         unsupportedText: '', note: '', matrix: false, matrixAutostart: false,
         canReplace: false,   // работает чужой TorrServer, а root есть — можно заменить встроенным
-        ask: ''              // вопрос «убрать ли matrix из автозапуска», ждём ответа
+        ask: '',             // вопрос «убрать ли matrix из автозапуска», ждём ответа
+        starting: false      // нажали «Запустить» — ждём, отзовётся ли он на 8090
     };
     var pending = null;      // что сделать после ответа на вопрос
     var asked = false;       // в этом сеансе уже спрашивали
@@ -976,6 +977,8 @@ var WebOSTorrServer = (function () {
                 st.running = !!ver;
                 st.runningVersion = ver;
                 st.canReplace = !!ver && !st.own;
+                // Поднялся позже, чем ждал verifyStart, — его ошибка уже неправда
+                if (ver && st.own && st.error) { st.error = ''; exec('rm -f ' + DIR + '/err', function () { }); }
                 // Скачалось — запускаем (при обновлении старый процесс уже остановлен)
                 if (wasDownloading && !st.downloading && afterInstall && st.installed && !st.error) {
                     afterInstall = '';
@@ -1075,11 +1078,48 @@ var WebOSTorrServer = (function () {
                 'GODEBUG=madvdontneed=1 nohup ./TorrServer -p 8090 -d $DIR > $DIR/ts.log 2>&1 < /dev/null &',
                 'echo $! > $DIR/pid'
             ];
-            var cmd = 'cd ' + DIR + ' && printf "%s\\n" ' + script.map(function (l) { return "'" + l + "'"; }).join(' ') +
+            var cmd = 'cd ' + DIR + ' && rm -f err && printf "%s\\n" ' + script.map(function (l) { return "'" + l + "'"; }).join(' ') +
                 ' > autostart.sh && chmod +x autostart.sh && mkdir -p /var/lib/webosbrew/init.d && ' +
                 'ln -sf ' + DIR + '/autostart.sh ' + INIT + ' && sh ' + DIR + '/autostart.sh';
-            exec(cmd, function (err) { if (err) st.error = String(err); setTimeout(refresh, 1500); });
+            st.error = '';
+            st.starting = true;
+            exec(cmd, function (err) {
+                if (err) { st.starting = false; st.error = String(err); setTimeout(refresh, 300); return; }
+                verifyStart(0);
+            });
         });
+    }
+
+    /**
+     * После «Запустить»: ждём ответа на 8090 (до ~15 с — первый запуск создаёт
+     * базу). Не отозвался — выясняем почему и пишем причину в err: её
+     * показывает панель («Ошибка: …»). Раньше кнопка молча ничего не делала.
+     */
+    var START_CHECKS = 10, START_CHECK_MS = 1500;
+
+    function verifyStart(n) {
+        echo(function (ver) {
+            if (ver) { st.starting = false; refresh(); return; }
+            // Процесс уже умер (refresh не видит его pid) — ждать дальше нечего
+            var dead = n >= 2 && !st.own;
+            if (n < START_CHECKS && !dead) { setTimeout(function () { verifyStart(n + 1); }, START_CHECK_MS); return; }
+            diagnoseStart();
+        });
+    }
+
+    function diagnoseStart() {
+        // Сначала то, что мешает запуститься вовсе, потом — что осталось в
+        // журнале самого TorrServer (ошибка exec у nohup тоже попадает туда)
+        var cmd = 'cd ' + DIR + ' 2>/dev/null || exit 0; R=""; ' +
+            '[ -f TorrServer ] || R="нет файла TorrServer — скачайте его заново"; ' +
+            '[ -z "$R" ] && [ ! -x TorrServer ] && R="у файла TorrServer нет права на запуск"; ' +
+            '[ -z "$R" ] && grep " /media/developer " /proc/mounts | grep -q noexec && R="раздел /media/developer подключён без права запуска (noexec)"; ' +
+            'if [ -f pid ] && kill -0 $(cat pid) 2>/dev/null; then S="процесс работает, но не отвечает на порту 8090"; ' +
+            'else S="процесс сразу завершился"; fi; ' +
+            'L=$(grep -iE "error|fatal|panic|denied|not found|format|address|bind|cannot|failed" ts.log 2>/dev/null | tail -n 1 | cut -c1-200); ' +
+            '[ -z "$L" ] && L=$(grep -v "^[[:space:]]*$" ts.log 2>/dev/null | tail -n 1 | cut -c1-200); ' +
+            'echo "TorrServer не запустился: ${R:-$S}${L:+ — $L} (процессор $(uname -m))" > err';
+        exec(cmd, function () { st.starting = false; refresh(); });
     }
 
     function stop() {
@@ -1204,17 +1244,18 @@ var deviceTorrServerPanel = (function () {
         if (st.ask) text = st.ask;
         else if (!st.supported) text = st.unsupportedText || 'Процессор этого устройства TorrServer не поддерживает';
         else if (st.downloading) text = 'Скачиваю TorrServer… ' + (st.progress || 0) + '%';
+        else if (st.starting && !st.running) text = 'Запускаю TorrServer…';
         else if (st.running && st.own) text = 'Работает встроенный TorrServer ' + (st.version || '');
         else if (st.running) text = 'На устройстве уже работает TorrServer ' + (st.runningVersion || '') + ' — используется он';
         else if (st.installed) text = 'TorrServer ' + (st.version || '') + ' установлен, но не запущен';
         else text = 'TorrServer на устройстве не найден. Можно скачать официальную сборку (около 65 МБ)';
         if (st.note && !st.downloading) text += '. ' + st.note;
-        if (st.error && !st.downloading) text += '. Ошибка: ' + st.error;
+        if (st.error && !st.downloading && !st.starting) text += '. Ошибка: ' + st.error;
         var status = getEl('ts-device-status');
         if (status) status.textContent = text;
 
         // Пока ждём ответа «убрать ли из автозапуска» — только его кнопки
-        var busy = st.downloading || !!st.ask;
+        var busy = st.downloading || !!st.ask || !!st.starting;
         var external = st.running && !st.own;
         show('ts-device-install', st.supported && !st.installed && !external && !busy);
         show('ts-device-start', st.installed && !st.running && !busy);
