@@ -3070,7 +3070,10 @@ function webosProbeStart(playURL) {
   webosProbe.streams = null;
   var gen = ++webosProbe.gen;
   if (AppState.platform !== 'webos' || !lunaAvailable()) return;
-  var uri = playURL;
+  // localhost — 127.0.0.1: статическому ffprobe имена не разрешить даже
+  // localhost («Failed to resolve hostname localhost» на webOS 25 со
+  // встроенным TorrServer)
+  var uri = playURL.replace(/^(https?:\/\/)localhost(?=[:\/]|$)/i, '$1127.0.0.1');
   // Basic-авторизация TorrServer — в адрес: службе заголовки не передать
   if (AppState.authEnabled && AppState.authLogin) {
     uri = uri.replace(/^(https?:\/\/)/, '$1' + encodeURIComponent(AppState.authLogin) + ':' + encodeURIComponent(AppState.authPassword || '') + '@');
@@ -3113,6 +3116,10 @@ function webosSubsStart(videoPlayer, staleId) {
     webosSubsDiag.waitedMs = waited;
     if (gen !== webosSubs.gen || AppState.currentScreen !== 'player' || waited > 30000) { webosSubsCancel(); return; }
     var id = videoPlayer.mediaId;
+    // webOS 25 до появления настоящего отдаёт строку-заглушку
+    // «<invalid mediaId>» — с ней subscribe отвечает ошибкой; ждём дальше,
+    // а в диагностике показываем, что видели
+    if (id && /^<|invalid/i.test(String(id))) { webosSubsDiag.mediaId = String(id) + ' (ждём)'; return; }
     // Прошлый mediaId принимаем, только если нового за 3 с так и не появилось:
     // конвейер может и переиспользовать его
     if (!id || (id === staleId && waited < 3000)) return;
