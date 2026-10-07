@@ -27,6 +27,10 @@
       if (m) {
         try {
           var data = JSON.parse(decodeURIComponent(m[1]));
+          // Хранилище — целиком как у переславшей страницы: иначе здесь
+          // остались бы ключи, которые там уже удалили (тот же флаг
+          // встроенного TorrServer), и приложение тут же уехало бы обратно
+          localStorage.clear();
           for (var k in data) {
             if (Object.prototype.hasOwnProperty.call(data, k)) localStorage.setItem(k, data[k]);
           }
