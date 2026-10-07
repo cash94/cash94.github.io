@@ -754,6 +754,18 @@ var TS_DEVICE_FLAG = 'tsDeviceServer';
 var TS_DEVICE_BACKUP = 'tsDeviceBackup';
 var TS_DEVICE_URL = 'http://localhost:8090';
 
+/**
+ * Адрес TorrServer на этом устройстве. На webOS встроенный поднимается на
+ * 18090, если 8090 занят (WebOSTorrServer: run.sh), — адрес даёт мост.
+ */
+function deviceTorrServerUrl() {
+    var b = deviceTorrServerBridge();
+    if (b && typeof b.url === 'function') {
+        try { return b.url() || TS_DEVICE_URL; } catch (e) { }
+    }
+    return TS_DEVICE_URL;
+}
+
 function isDeviceTorrServer() {
     try { return localStorage.getItem(TS_DEVICE_FLAG) === '1'; } catch (e) { return false; }
 }
@@ -810,7 +822,8 @@ var WebOSTorrServer = (function () {
         unsupportedText: '', note: '', matrix: false, matrixAutostart: false,
         canReplace: false,   // работает чужой TorrServer, а root есть — можно заменить встроенным
         ask: '',             // вопрос «убрать ли matrix из автозапуска», ждём ответа
-        starting: false      // нажали «Запустить» — ждём, отзовётся ли он на 8090
+        starting: false,     // нажали «Запустить» — ждём, отзовётся ли он на 8090
+        port: '8090'         // на каком порту поднялся встроенный (run.sh пишет в port)
     };
     var pendingYes = null;   // что сделать после ответа на вопрос (st.ask)
     var pendingNo = null;
@@ -887,11 +900,12 @@ var WebOSTorrServer = (function () {
         });
     }
 
-    function echo(done) {
+    /** Версия TorrServer на порту port (по умолчанию 8090) или '' */
+    function echo(done, port) {
         var x = new XMLHttpRequest(), fin = false;
         var finish = function (v) { if (!fin) { fin = true; done(v); } };
         try {
-            x.open('GET', 'http://127.0.0.1:8090/echo?_=' + Date.now(), true);
+            x.open('GET', 'http://127.0.0.1:' + (port || '8090') + '/echo?_=' + Date.now(), true);
             x.timeout = 1500;
             x.onload = function () { finish(x.status === 200 ? String(x.responseText || '').trim().slice(0, 40) : ''); };
             x.onerror = x.ontimeout = function () { finish(''); };
@@ -952,7 +966,8 @@ var WebOSTorrServer = (function () {
             '[ -f pid ] && kill -0 $(cat pid) 2>/dev/null && echo R; ' +
             '[ -f dl ] && echo D; ' +
             '[ -f TorrServer.part ] && echo P:$(wc -c < TorrServer.part); ' +
-            '[ -f err ] && sed "s/^/E:/" err | head -1; true';
+            '[ -f err ] && sed "s/^/E:/" err | head -1; ' +
+            '[ -f port ] && sed "s/^/PORT:/" port | head -1; true';
         exec(cmd, function (err, out) {
             if (err) {
                 refreshing = false;
@@ -977,6 +992,8 @@ var WebOSTorrServer = (function () {
             st.error = val('E:');
             st.matrix = has('M');
             st.matrixAutostart = has('MA');
+            st.port = val('PORT:') || '8090';
+            // Свой жив — спрашиваем его порт; иначе — 8090, где бывает чужой
             echo(function (ver) {
                 refreshing = false;
                 st.running = !!ver;
@@ -989,7 +1006,7 @@ var WebOSTorrServer = (function () {
                     afterInstall = '';
                     start();
                 }
-            });
+            }, st.own ? st.port : '8090');
         });
     }
 
@@ -1071,10 +1088,10 @@ var WebOSTorrServer = (function () {
      * приложения refresh ещё мог не успеть его выставить.
      */
     function whoRuns(cb) {
-        echo(function (ver) {
-            if (!ver) { cb(null); return; }
-            exec('[ -f ' + DIR + '/pid ] && kill -0 $(cat ' + DIR + '/pid) 2>/dev/null && echo R; true', function (err, out) {
-                cb({ ver: ver, own: !err && String(out).indexOf('R') !== -1, noRoot: !!err });
+        exec('[ -f ' + DIR + '/pid ] && kill -0 $(cat ' + DIR + '/pid) 2>/dev/null && echo R; true', function (err, out) {
+            if (!err && String(out).indexOf('R') !== -1) { cb({ ver: st.version, own: true }); return; }
+            echo(function (ver) {
+                cb(ver ? { ver: ver, own: false, noRoot: !!err } : null);
             });
         });
     }
@@ -1146,10 +1163,14 @@ var WebOSTorrServer = (function () {
                 'echo "[TorrStream] запуск: ${TS_LAUNCH:-nohup}; cgroup: $(head -n 1 /proc/$$/cgroup 2>/dev/null)"',
                 'cd $DIR || exit 0',
                 'export GODEBUG=madvdontneed=1',
-                './TorrServer -p 8090 -d $DIR &',
-                'echo $! > $DIR/pid',
-                'wait $!',
-                'echo "[TorrStream] TorrServer завершился, код $?"'
+                // 8090 бывает занят не TorrServer (на /echo не отвечает) —
+                // тогда 18090; приложение узнаёт порт из файла port
+                'run() { echo $1 > $DIR/port; ./TorrServer -p $1 -d $DIR & echo $! > $DIR/pid; wait $!; }',
+                'PORT=8090',
+                'netstat -tln 2>/dev/null | grep -q ":8090 " && { echo "[TorrStream] порт 8090 занят — запускаю на 18090"; PORT=18090; }',
+                'run $PORT; CODE=$?',
+                'if [ $PORT = 8090 ] && grep -q "8090: bind" $DIR/ts.log; then echo "[TorrStream] порт 8090 занят — пробую 18090"; run 18090; CODE=$?; fi',
+                'echo "[TorrStream] TorrServer завершился, код $CODE"'
             ];
             // systemd-run (webOS с systemd) запускает run.sh отдельной службой
             // самого systemd — её не гасят вместе со службой Homebrew Channel,
@@ -1159,7 +1180,8 @@ var WebOSTorrServer = (function () {
                 '#!/bin/sh',
                 '# TorrStream: встроенный TorrServer (автозапуск Homebrew Channel)',
                 'DIR=' + DIR,
-                'curl -s -m 3 http://127.0.0.1:8090/echo > /dev/null 2>&1 && exit 0',
+                '[ -f $DIR/pid ] && kill -0 $(cat $DIR/pid) 2>/dev/null && exit 0',
+                'curl -sf -m 3 http://127.0.0.1:8090/echo > /dev/null 2>&1 && exit 0',
                 'cd $DIR || exit 0',
                 'if command -v systemd-run > /dev/null 2>&1; then systemctl reset-failed torrstream-torrserver > /dev/null 2>&1; systemd-run --unit=torrstream-torrserver --setenv=TS_LAUNCH=systemd-run /bin/sh $DIR/run.sh > $DIR/launch.log 2>&1 && exit 0; fi',
                 '$(command -v setsid) nohup sh $DIR/run.sh > /dev/null 2>&1 < /dev/null &'
@@ -1187,12 +1209,15 @@ var WebOSTorrServer = (function () {
     var START_CHECKS = 10, START_CHECK_MS = 1500;
 
     function verifyStart(n) {
-        echo(function (ver) {
-            if (ver) { st.starting = false; refresh(); return; }
-            // Процесс уже умер (refresh не видит его pid) — ждать дальше нечего
-            var dead = n >= 2 && !st.own;
-            if (n < START_CHECKS && !dead) { setTimeout(function () { verifyStart(n + 1); }, START_CHECK_MS); return; }
-            diagnoseStart();
+        exec('cat ' + DIR + '/port 2>/dev/null; true', function (err, out) {
+            var port = String(out || '').trim() || '8090';
+            echo(function (ver) {
+                if (ver) { st.starting = false; st.port = port; refresh(); return; }
+                // Процесс уже умер (refresh не видит его pid) — ждать дальше нечего
+                var dead = n >= 2 && !st.own;
+                if (n < START_CHECKS && !dead) { setTimeout(function () { verifyStart(n + 1); }, START_CHECK_MS); return; }
+                diagnoseStart();
+            }, port);
         });
     }
 
@@ -1203,7 +1228,7 @@ var WebOSTorrServer = (function () {
             '[ -f TorrServer ] || R="нет файла TorrServer — скачайте его заново"; ' +
             '[ -z "$R" ] && [ ! -x TorrServer ] && R="у файла TorrServer нет права на запуск"; ' +
             '[ -z "$R" ] && grep " /media/developer " /proc/mounts | grep -q noexec && R="раздел /media/developer подключён без права запуска (noexec)"; ' +
-            'if [ -f pid ] && kill -0 $(cat pid) 2>/dev/null; then S="процесс работает, но не отвечает на порту 8090"; ' +
+            'if [ -f pid ] && kill -0 $(cat pid) 2>/dev/null; then S="процесс работает, но не отвечает на порту $(cat port 2>/dev/null || echo 8090)"; ' +
             'else S="процесс сразу завершился"; fi; ' +
             'K=""; grep -q "код 137" ts.log 2>/dev/null && K=" (его убила система — нехватка памяти или ограничения службы)"; ' +
             'L=$(grep -v "^[[:space:]]*$" ts.log 2>/dev/null | tail -n 3 | cut -c1-160 | tr "\\n" "|" | sed "s/|$//; s/|/ | /g"); ' +
@@ -1223,6 +1248,8 @@ var WebOSTorrServer = (function () {
     return {
         enabled: enabled, status: status, install: install, start: start, stop: stop,
         checkUpdate: checkUpdate, refresh: refresh, replace: replace,
+        // Адрес: свой работает — на его порту; иначе 8090 (там и чужой)
+        url: function () { return 'http://localhost:' + (st.own ? st.port : '8090'); },
         answerRemove: function () { answer(true); }, answerKeep: function () { answer(false); },
         // Ответ на вопрос в панели (st.ask): «да» — левая кнопка, «нет» — правая
         answerYes: function () { answer(true); }, answerNo: function () { answer(false); }
@@ -1258,8 +1285,8 @@ function setupDeviceTorrServerToggle() {
     box.checked = isDeviceTorrServer();
     lockDeviceTorrServerFields(box.checked);
     // Адрес в полях мог прийти старый (настройки до обновления) — поправим
-    if (box.checked && getEl('torrserver-url').value.trim() !== TS_DEVICE_URL) {
-        getEl('torrserver-url').value = TS_DEVICE_URL;
+    if (box.checked && getEl('torrserver-url').value.trim() !== deviceTorrServerUrl()) {
+        getEl('torrserver-url').value = deviceTorrServerUrl();
     }
 
     box.addEventListener('change', function () {
@@ -1274,7 +1301,7 @@ function setupDeviceTorrServerToggle() {
                 localStorage.setItem(TS_LOCAL_FLAG, '1');
             } catch (e) { }
             if (localBox) localBox.checked = true;
-            urlInput.value = TS_DEVICE_URL;
+            urlInput.value = deviceTorrServerUrl();
             syncHttpsToggle();
             lockDeviceTorrServerFields(true);
             try { localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig())); } catch (e) { }
@@ -1331,7 +1358,22 @@ var deviceTorrServerPanel = (function () {
         if (el) el.hidden = !on;
     }
 
+    /**
+     * Встроенный поднялся на другом порту (на webOS — 18090, если 8090 занят)
+     * — адрес в поле и в настройках этого устройства за ним
+     */
+    function syncDeviceUrl() {
+        if (!isDeviceTorrServer()) return;
+        var urlInput = getEl('torrserver-url');
+        var url = deviceTorrServerUrl();
+        if (!urlInput || urlInput.value.trim() === url) return;
+        urlInput.value = url;
+        try { localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig())); } catch (e) { }
+        checkServer(true);
+    }
+
     function render(st) {
+        syncDeviceUrl();
         var text;
         if (st.ask) text = st.ask;
         else if (!st.supported) text = st.unsupportedText || 'Процессор этого устройства TorrServer не поддерживает';
