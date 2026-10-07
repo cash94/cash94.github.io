@@ -87,6 +87,27 @@ var lastPlayerBackPressAt = 0;
 // Окно второго нажатия Назад для выхода из плеера; столько же висит и
 // предупреждение «нажмите ещё раз» (player.js: showPlayerHint)
 var PLAYER_BACK_EXIT_MS = 2000;
+
+/**
+ * «Назад» в плеере — с пульта и правой кнопкой мыши (setupMouseControls):
+ * открытые HUD или панель сначала прячутся; дальше первое нажатие
+ * предупреждает, второе за PLAYER_BACK_EXIT_MS — выход из плеера.
+ *
+ * @param {boolean} [fromMouse] правая кнопка: HUD к этому моменту всегда
+ *        виден — его показало само движение и нажатие мыши, — поэтому прячем
+ *        только открытую панель, иначе до выхода дело не доходило бы никогда
+ */
+function playerBackPress(fromMouse) {
+    if (fromMouse ? hidePlayerPanelsOnly() : hidePlayerUi()) { lastPlayerBackPressAt = 0; return; }
+    var now = Date.now();
+    if (now - lastPlayerBackPressAt < PLAYER_BACK_EXIT_MS) {
+        lastPlayerBackPressAt = 0;
+        if (typeof window.showDetailView === 'function') window.showDetailView();
+    } else {
+        lastPlayerBackPressAt = now;
+        if (typeof window.showPlayerHint === 'function') window.showPlayerHint('Нажмите «Назад» ещё раз, чтобы выйти из плеера', PLAYER_BACK_EXIT_MS);
+    }
+}
 var seekHoldInterval = null;
 var seekHoldStep = 5;
 var seekHoldDelay = 150;
@@ -2691,7 +2712,7 @@ function setupKeyboardHandlers() {
             if (isKeyPressed('GREEN', k)) { e.preventDefault(); var eb = getEl('episodes-btn'); if (eb) eb.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
             if (isKeyPressed('YELLOW', k)) { e.preventDefault(); var tb = getEl('toggle-buffer-btn'); if (tb) tb.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
             if (isKeyPressed('BLUE', k)) { e.preventDefault(); var eb = getEl('exit-player-btn'); if (eb) eb.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
-            if (isKeyPressed('BACK', k) || isKeyPressed('EXIT', k)) { e.preventDefault(); if (hidePlayerUi()) { lastPlayerBackPressAt = 0; return; } var now = Date.now(); if (now - lastPlayerBackPressAt < PLAYER_BACK_EXIT_MS) { lastPlayerBackPressAt = 0; if (typeof window.showDetailView === 'function') window.showDetailView(); } else { lastPlayerBackPressAt = now; if (typeof window.showPlayerHint === 'function') window.showPlayerHint('Нажмите «Назад» ещё раз, чтобы выйти из плеера', PLAYER_BACK_EXIT_MS); } return; }
+            if (isKeyPressed('BACK', k) || isKeyPressed('EXIT', k)) { e.preventDefault(); playerBackPress(); return; }
             if (isKeyPressed('FF', k)) { e.preventDefault(); vp.currentTime = Math.min(vp.duration, vp.currentTime + 30); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
             if (isKeyPressed('REW', k)) { e.preventDefault(); vp.currentTime = Math.max(0, vp.currentTime - 30); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
             if (!cv) return;
@@ -4398,8 +4419,10 @@ function setupMouseControls() {
         e.preventDefault();
         e.stopPropagation();
 
-        // Вызываем функцию "Назад"
-        onBack();
+        // «Назад»: в плеере — как с пульта (двойное нажатие для выхода),
+        // onBack плеер не разбирает — там правая кнопка ничего не делала
+        if (AppState.currentScreen === 'player') playerBackPress(true);
+        else onBack();
 
         return false;
     });

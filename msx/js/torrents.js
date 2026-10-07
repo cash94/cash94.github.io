@@ -1069,20 +1069,40 @@ var WebOSTorrServer = (function () {
         // На 8090 уже кто-то есть (свой или чужой TorrServer) — вторую копию не поднимаем
         echo(function (ver) {
             if (ver) { refresh(); return; }
+            // run.sh — сам запуск. Первым делом уходит в корневую cgroup: на
+            // webOS с systemd (webOS 22+) команда Homebrew Channel выполняется
+            // внутри его службы, и когда служба засыпает, systemd гасит ВСЮ её
+            // группу процессов — TorrServer получал SIGTERM («Server stopped
+            // gracefully») сразу после запуска, вместе с обёрткой. Дети
+            // наследуют группу, поэтому переносим саму обёртку до запуска.
+            // pid — самого TorrServer (его гасит «Остановить»); когда он
+            // выходит, в журнал дописывается код (137 — убила система).
+            var run = [
+                '#!/bin/sh',
+                '# TorrStream: запуск TorrServer вне группы процессов службы',
+                'DIR=' + DIR,
+                'CG=/sys/fs/cgroup',
+                'if [ -f $CG/cgroup.controllers ]; then echo $$ > $CG/cgroup.procs; else for f in $CG/*/cgroup.procs; do echo $$ > $f; done; fi 2>/dev/null',
+                'cd $DIR || exit 0',
+                './TorrServer -p 8090 -d $DIR &',
+                'echo $! > $DIR/pid',
+                'wait $!',
+                'echo "[TorrStream] TorrServer завершился, код $?"'
+            ];
             var script = [
                 '#!/bin/sh',
                 '# TorrStream: встроенный TorrServer (автозапуск Homebrew Channel)',
                 'DIR=' + DIR,
                 'curl -s -m 3 http://127.0.0.1:8090/echo > /dev/null 2>&1 && exit 0',
                 'cd $DIR || exit 0',
-                // Обёртка: pid — самого TorrServer (его гасит «Остановить»), а
-                // когда он выходит, в журнал дописывается код. Код 137 — процесс
-                // убила система, иначе вышел сам; без этого причина не видна.
-                // setsid (если есть) — чтобы не зависеть от сеанса Homebrew Channel
-                'GODEBUG=madvdontneed=1 $(command -v setsid) nohup sh -c "./TorrServer -p 8090 -d $DIR & echo \\$! > $DIR/pid; wait \\$!; echo \\"[TorrStream] TorrServer завершился, код \\$?\\"" > $DIR/ts.log 2>&1 < /dev/null &'
+                // setsid (если есть) — ещё и от сигналов сеанса Homebrew Channel
+                'GODEBUG=madvdontneed=1 $(command -v setsid) nohup sh $DIR/run.sh > $DIR/ts.log 2>&1 < /dev/null &'
             ];
-            var cmd = 'cd ' + DIR + ' && rm -f err && printf "%s\\n" ' + script.map(function (l) { return "'" + l + "'"; }).join(' ') +
-                ' > autostart.sh && chmod +x autostart.sh && mkdir -p /var/lib/webosbrew/init.d && ' +
+            var lines = function (list) { return list.map(function (l) { return "'" + l + "'"; }).join(' '); };
+            var cmd = 'cd ' + DIR + ' && rm -f err && ' +
+                'printf "%s\\n" ' + lines(run) + ' > run.sh && chmod +x run.sh && ' +
+                'printf "%s\\n" ' + lines(script) + ' > autostart.sh && chmod +x autostart.sh && ' +
+                'mkdir -p /var/lib/webosbrew/init.d && ' +
                 'ln -sf ' + DIR + '/autostart.sh ' + INIT + ' && sh ' + DIR + '/autostart.sh';
             st.error = '';
             st.starting = true;
