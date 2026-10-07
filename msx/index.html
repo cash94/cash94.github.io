@@ -10,6 +10,45 @@
   <meta name="tv" content="true">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <link rel="icon" type="image/x-icon" href="https://cash94.github.io/msx/favicon16.ico">
+  <!-- webOS (Chrome 94+): TorrServer на самом телевизоре (localhost) доступен
+       только с https-страницы (Private Network Access), а удалённый http
+       TorrServer — только с http (смешанное содержимое). У http:// и https://
+       одного сервера разные localStorage, поэтому приложение переезжает между
+       ними вместе с данными (torrents.js: webosSchemeSwitch): данные приходят
+       в адресе (#lsxfer=…), метка webosScheme помнит, где основной экземпляр.
+       Запускалка всегда открывает http. Только внутри приложения webOS —
+       ссылка в обычном браузере ничего не подменит. До любых модулей: они
+       читают localStorage при загрузке. -->
+  <script>
+    (function () {
+      if (!(window.PalmSystem || window.webOSSystem)) return;
+      var cur = location.protocol === 'https:' ? 'https' : 'http';
+      var m = /(?:^#|&)lsxfer=([^&]*)/.exec(location.hash);
+      if (m) {
+        try {
+          var data = JSON.parse(decodeURIComponent(m[1]));
+          for (var k in data) {
+            if (Object.prototype.hasOwnProperty.call(data, k)) localStorage.setItem(k, data[k]);
+          }
+        } catch (e) { }
+        try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
+        return;
+      }
+      var want = '';
+      try { want = localStorage.getItem('webosScheme') || ''; } catch (e) { }
+      if (!want || want === cur) return;
+      var target = want + '://' + location.host + location.pathname + location.search;
+      // На http — сразу (он есть всегда); на https — только если отвечает
+      if (want === 'http') { location.replace(target); return; }
+      var x = new XMLHttpRequest();
+      try {
+        x.open('GET', want + '://' + location.host + '/api/version?_=' + new Date().getTime(), true);
+        x.timeout = 4000;
+        x.onload = function () { if (x.status === 200) location.replace(target); };
+        x.send();
+      } catch (e) { }
+    })();
+  </script>
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-K43Y9GMGR9"></script>
   <script>
     window.dataLayer = window.dataLayer || [];

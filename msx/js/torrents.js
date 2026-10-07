@@ -770,6 +770,55 @@ function isDeviceTorrServer() {
     try { return localStorage.getItem(TS_DEVICE_FLAG) === '1'; } catch (e) { return false; }
 }
 
+/**
+ * webOS с Chrome 94+: встроенный TorrServer на localhost доступен только с
+ * https-страницы (Private Network Access), а удалённый http TorrServer —
+ * только с http. Включили встроенный — переезжаем на https этого же сервера,
+ * выключили — обратно на http. См. ранний скрипт в index.html: он принимает
+ * переданный localStorage и помнит, где основной экземпляр (webosScheme).
+ */
+function webosNeedsSchemeSwitch() {
+    if (!(window.PalmSystem || window.webOSSystem)) return false;
+    var m = /Chrome\/(\d+)/.exec(navigator.userAgent || '');
+    return !!m && parseInt(m[1], 10) >= 94;
+}
+
+/** Переехать на http(s) этого же сервера вместе с localStorage */
+function webosSchemeSwitch(target) {
+    if (!webosNeedsSchemeSwitch()) return;
+    var cur = location.protocol === 'https:' ? 'https' : 'http';
+    if (cur === target) return;
+    var go = function () {
+        var data = {};
+        try {
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                data[k] = localStorage.getItem(k);
+            }
+        } catch (e) { }
+        data.webosScheme = target;
+        try { localStorage.setItem('webosScheme', target); } catch (e) { }
+        location.replace(target + '://' + location.host + location.pathname + location.search +
+            '#lsxfer=' + encodeURIComponent(JSON.stringify(data)));
+    };
+    // На http — сразу; на https — только если он отвечает (иначе остаёмся,
+    // а не уводим на страницу ошибки)
+    if (target === 'http') { go(); return; }
+    var x = new XMLHttpRequest();
+    try {
+        x.open('GET', target + '://' + location.host + '/api/version?_=' + Date.now(), true);
+        x.timeout = 5000;
+        x.onload = function () { if (x.status === 200) go(); };
+        x.send();
+    } catch (e) { }
+}
+
+/** Схема под переключатель: встроенный включён — https, выключен — http */
+function webosSyncScheme() {
+    if (!webosNeedsSchemeSwitch()) return;
+    webosSchemeSwitch(isDeviceTorrServer() ? 'https' : 'http');
+}
+
 /** Поле адреса и «Свой TorrServer» под включённым переключателем не меняются */
 function lockDeviceTorrServerFields(on) {
     var urlInput = getEl('torrserver-url');
@@ -1025,7 +1074,8 @@ var WebOSTorrServer = (function () {
             // Обновление поверх работающего: наш процесс останавливаем, файл
             // заменяем целиком (mv), после загрузки refresh запустит заново
             var cmd = 'mkdir -p ' + DIR + ' && cd ' + DIR + ' && rm -f err && touch dl && ' +
-                '( [ -f pid ] && kill $(cat pid) 2>/dev/null; ' +
+                '( [ -f pid ] && kill -0 $(cat pid) 2>/dev/null && echo "[TorrStream] $(date "+%F %T") остановлен для обновления" >> ts.log; ' +
+                '[ -f pid ] && kill $(cat pid) 2>/dev/null; ' +
                 '( curl -fsSL -o TorrServer.part "' + rel.url + '" || wget -q -O TorrServer.part "' + rel.url + '" ) ' +
                 '&& chmod +x TorrServer.part && mv -f TorrServer.part TorrServer && echo "' + rel.tag + '" > version ' +
                 '|| { echo "не удалось скачать TorrServer" > err; rm -f TorrServer.part; }; rm -f dl ) ' +
@@ -1101,7 +1151,7 @@ var WebOSTorrServer = (function () {
         // matrix — по имени процесса; любой другой — по процессу на порту 8090
         var cmd = 'pidof torrserver > /dev/null 2>&1 && { killall torrserver 2>/dev/null || kill $(pidof torrserver); }; ' +
             'P=$(netstat -tlnp 2>/dev/null | grep ":8090 " | sed -n "s#.* \\([0-9][0-9]*\\)/.*#\\1#p" | head -1); ' +
-            '[ -n "$P" ] && [ "$P" != "$(cat ' + DIR + '/pid 2>/dev/null)" ] && kill $P; true';
+            '[ -n "$P" ] && [ "$P" != "$(cat ' + DIR + '/pid 2>/dev/null)" ] && { echo "[TorrStream] $(date "+%F %T") остановлен чужой TorrServer на 8090 (pid $P)" >> ' + DIR + '/ts.log; kill $P; }; true';
         exec(cmd, function () { setTimeout(done, 1500); });   // порт освобождается не сразу
     }
 
@@ -1155,12 +1205,14 @@ var WebOSTorrServer = (function () {
                 '#!/bin/sh',
                 '# TorrStream: запуск TorrServer вне группы процессов службы',
                 'DIR=' + DIR,
-                'exec > $DIR/ts.log 2>&1 < /dev/null',
+                // Журнал — в режиме дозаписи: остановки из приложения дописывают
+                // в него свою отметку, а открытый с начала файл её затирал бы
+                ': > $DIR/ts.log; exec >> $DIR/ts.log 2>&1 < /dev/null',
                 'CG=/sys/fs/cgroup',
                 'if [ -f $CG/cgroup.controllers ]; then echo $$ > $CG/cgroup.procs; else for f in $CG/*/cgroup.procs; do echo $$ > $f; done; fi 2>/dev/null',
                 // Первой строкой журнала — как запущен и в какой группе оказался:
                 // по ней видно, ушёл ли он из группы службы Homebrew Channel
-                'echo "[TorrStream] запуск: ${TS_LAUNCH:-nohup}; cgroup: $(head -n 1 /proc/$$/cgroup 2>/dev/null)"',
+                'echo "[TorrStream] $(date "+%F %T") запуск: ${TS_LAUNCH:-nohup}; cgroup: $(head -n 1 /proc/$$/cgroup 2>/dev/null)"',
                 'cd $DIR || exit 0',
                 'export GODEBUG=madvdontneed=1',
                 // 8090 бывает занят не TorrServer (на /echo не отвечает) —
@@ -1170,7 +1222,7 @@ var WebOSTorrServer = (function () {
                 'netstat -tln 2>/dev/null | grep -q ":8090 " && { echo "[TorrStream] порт 8090 занят — запускаю на 18090"; PORT=18090; }',
                 'run $PORT; CODE=$?',
                 'if [ $PORT = 8090 ] && grep -q "8090: bind" $DIR/ts.log; then echo "[TorrStream] порт 8090 занят — пробую 18090"; run 18090; CODE=$?; fi',
-                'echo "[TorrStream] TorrServer завершился, код $CODE"'
+                'echo "[TorrStream] $(date "+%F %T") TorrServer завершился, код $CODE"'
             ];
             // systemd-run (webOS с systemd) запускает run.sh отдельной службой
             // самого systemd — её не гасят вместе со службой Homebrew Channel,
@@ -1231,6 +1283,7 @@ var WebOSTorrServer = (function () {
             'if [ -f pid ] && kill -0 $(cat pid) 2>/dev/null; then S="процесс работает, но не отвечает на порту $(cat port 2>/dev/null || echo 8090)"; ' +
             'else S="процесс сразу завершился"; fi; ' +
             'K=""; grep -q "код 137" ts.log 2>/dev/null && K=" (его убила система — нехватка памяти или ограничения службы)"; ' +
+            'grep -q "код 0$" ts.log 2>/dev/null && K=" (его штатно остановили — сигнал завершения)"; ' +
             'L=$(grep -v "^[[:space:]]*$" ts.log 2>/dev/null | tail -n 3 | cut -c1-160 | tr "\\n" "|" | sed "s/|$//; s/|/ | /g"); ' +
             'F=$(grep -m 1 "TorrStream. запуск" ts.log 2>/dev/null | cut -c1-160); ' +
             'echo "TorrServer не запустился: ${R:-$S}$K${L:+. Журнал: $L}${F:+. $F} (процессор $(uname -m))" > err';
@@ -1239,7 +1292,8 @@ var WebOSTorrServer = (function () {
 
     function stop() {
         // Как на Android: остановка снимает и автозапуск
-        exec('[ -f ' + DIR + '/pid ] && kill $(cat ' + DIR + '/pid) 2>/dev/null; rm -f ' + DIR + '/pid ' + INIT + '; true',
+        exec('[ -f ' + DIR + '/pid ] && kill -0 $(cat ' + DIR + '/pid) 2>/dev/null && echo "[TorrStream] $(date "+%F %T") остановлен из приложения (кнопка «Остановить» или выключен переключатель)" >> ' + DIR + '/ts.log; ' +
+            '[ -f ' + DIR + '/pid ] && kill $(cat ' + DIR + '/pid) 2>/dev/null; rm -f ' + DIR + '/pid ' + INIT + '; true',
             function () { setTimeout(refresh, 800); });
     }
 
@@ -1284,12 +1338,16 @@ function setupDeviceTorrServerToggle() {
 
     box.checked = isDeviceTorrServer();
     lockDeviceTorrServerFields(box.checked);
+    webosSyncScheme();
     // Адрес в полях мог прийти старый (настройки до обновления) — поправим
     if (box.checked && getEl('torrserver-url').value.trim() !== deviceTorrServerUrl()) {
         getEl('torrserver-url').value = deviceTorrServerUrl();
     }
 
     box.addEventListener('change', function () {
+        // webOS: включили — на https, выключили — на http (после того, как
+        // обработчик ниже сохранит настройки)
+        setTimeout(webosSyncScheme, 300);
         var urlInput = getEl('torrserver-url');
         if (box.checked) {
             try {
