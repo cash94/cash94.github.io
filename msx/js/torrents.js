@@ -1075,8 +1075,11 @@ var WebOSTorrServer = (function () {
                 'DIR=' + DIR,
                 'curl -s -m 3 http://127.0.0.1:8090/echo > /dev/null 2>&1 && exit 0',
                 'cd $DIR || exit 0',
-                'GODEBUG=madvdontneed=1 nohup ./TorrServer -p 8090 -d $DIR > $DIR/ts.log 2>&1 < /dev/null &',
-                'echo $! > $DIR/pid'
+                // Обёртка: pid — самого TorrServer (его гасит «Остановить»), а
+                // когда он выходит, в журнал дописывается код. Код 137 — процесс
+                // убила система, иначе вышел сам; без этого причина не видна.
+                // setsid (если есть) — чтобы не зависеть от сеанса Homebrew Channel
+                'GODEBUG=madvdontneed=1 $(command -v setsid) nohup sh -c "./TorrServer -p 8090 -d $DIR & echo \\$! > $DIR/pid; wait \\$!; echo \\"[TorrStream] TorrServer завершился, код \\$?\\"" > $DIR/ts.log 2>&1 < /dev/null &'
             ];
             var cmd = 'cd ' + DIR + ' && rm -f err && printf "%s\\n" ' + script.map(function (l) { return "'" + l + "'"; }).join(' ') +
                 ' > autostart.sh && chmod +x autostart.sh && mkdir -p /var/lib/webosbrew/init.d && ' +
@@ -1116,9 +1119,9 @@ var WebOSTorrServer = (function () {
             '[ -z "$R" ] && grep " /media/developer " /proc/mounts | grep -q noexec && R="раздел /media/developer подключён без права запуска (noexec)"; ' +
             'if [ -f pid ] && kill -0 $(cat pid) 2>/dev/null; then S="процесс работает, но не отвечает на порту 8090"; ' +
             'else S="процесс сразу завершился"; fi; ' +
-            'L=$(grep -iE "error|fatal|panic|denied|not found|format|address|bind|cannot|failed" ts.log 2>/dev/null | tail -n 1 | cut -c1-200); ' +
-            '[ -z "$L" ] && L=$(grep -v "^[[:space:]]*$" ts.log 2>/dev/null | tail -n 1 | cut -c1-200); ' +
-            'echo "TorrServer не запустился: ${R:-$S}${L:+ — $L} (процессор $(uname -m))" > err';
+            'K=""; grep -q "код 137" ts.log 2>/dev/null && K=" (его убила система — нехватка памяти или ограничения службы)"; ' +
+            'L=$(grep -v "^[[:space:]]*$" ts.log 2>/dev/null | tail -n 3 | cut -c1-160 | tr "\\n" "|" | sed "s/|$//; s/|/ | /g"); ' +
+            'echo "TorrServer не запустился: ${R:-$S}$K${L:+. Журнал: $L} (процессор $(uname -m))" > err';
         exec(cmd, function () { st.starting = false; refresh(); });
     }
 
