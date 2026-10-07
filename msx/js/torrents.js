@@ -812,8 +812,13 @@ var WebOSTorrServer = (function () {
         ask: '',             // вопрос «убрать ли matrix из автозапуска», ждём ответа
         starting: false      // нажали «Запустить» — ждём, отзовётся ли он на 8090
     };
-    var pending = null;      // что сделать после ответа на вопрос
-    var asked = false;       // в этом сеансе уже спрашивали
+    var pendingYes = null;   // что сделать после ответа на вопрос (st.ask)
+    var pendingNo = null;
+    var asked = false;       // про автозапуск matrix в этом сеансе уже спрашивали
+    // «Нет, использовать его» на вопрос о чужом TorrServer — помним между
+    // запусками, чтобы не спрашивать каждый раз; кнопка «Остановить его и
+    // запустить встроенный» в панели остаётся
+    var KEEP_FOREIGN_KEY = 'tsDeviceKeepForeign';
     var release = null;        // {tag, url, size} последнего релиза
     var refreshing = false;
     var afterInstall = '';     // 'start' — запустить, когда скачается
@@ -1022,25 +1027,56 @@ var WebOSTorrServer = (function () {
         exec(cmd, function () { st.matrixAutostart = false; done(); });
     }
 
+    function keepForeign() {
+        try { return localStorage.getItem(KEEP_FOREIGN_KEY) === '1'; } catch (e) { return false; }
+    }
+
+    function setKeepForeign(on) {
+        try { if (on) localStorage.setItem(KEEP_FOREIGN_KEY, '1'); else localStorage.removeItem(KEEP_FOREIGN_KEY); } catch (e) { }
+    }
+
+    /** Вопрос в панели: текст, подписи двух кнопок и что делать по каждой */
+    function ask(text, yesLabel, noLabel, onYes, onNo) {
+        st.ask = text;
+        st.askYes = yesLabel;
+        st.askNo = noLabel;
+        pendingYes = onYes;
+        pendingNo = onNo;
+    }
+
+    function answer(yes) {
+        st.ask = '';
+        var f = yes ? pendingYes : pendingNo;
+        pendingYes = pendingNo = null;
+        if (f) f();
+    }
+
     /**
      * Перед запуском встроенного: matrix в автозапуске — спрашиваем, убрать ли
      * его оттуда. true — вопрос задан, продолжит answer().
      */
     function askAutostart(next) {
         if (asked || !st.matrix || !st.matrixAutostart) return false;
-        st.ask = 'TorrServer из приложения torrserv.matrix.app запускается при включении телевизора. ' +
-            'Убрать его из автозапуска? Если оставить, он может занять порт раньше встроенного';
-        pending = next;
+        asked = true;
+        ask('TorrServer из приложения torrserv.matrix.app запускается при включении телевизора. ' +
+            'Убрать его из автозапуска? Если оставить, он может занять порт раньше встроенного',
+            'Убрать из автозапуска', 'Оставить в автозапуске',
+            function () { disableMatrixAutostart(next); }, next);
         return true;
     }
 
-    function answer(remove) {
-        asked = true;
-        st.ask = '';
-        var next = pending;
-        pending = null;
-        if (!next) return;
-        if (remove) disableMatrixAutostart(next); else next();
+    /**
+     * Кто отвечает на 8090: cb(null) — никто, cb({ver, own}) — own, если это
+     * наш процесс (его pid). Своё st.own для этого не годится: при запуске
+     * приложения refresh ещё мог не успеть его выставить.
+     */
+    function whoRuns(cb) {
+        echo(function (ver) {
+            if (!ver) { cb(null); return; }
+            exec('[ -f ' + DIR + '/pid ] && kill -0 $(cat ' + DIR + '/pid) 2>/dev/null && echo R; true', function (err, out) {
+                cb({ ver: ver, own: !err && String(out).indexOf('R') !== -1, noRoot: !!err });
+            });
+        });
     }
 
     /** Остановить работающий на 8090 чужой TorrServer (matrix или любой другой) */
@@ -1054,15 +1090,36 @@ var WebOSTorrServer = (function () {
 
     /** «Остановить его и запустить встроенный» */
     function replace() {
+        setKeepForeign(false);
         var go = function () {
             stopForeign(function () { if (st.installed) startNow(); else install(); });
         };
         if (!askAutostart(go)) go();
     }
 
+    /**
+     * «Запустить» — и сам запуск при включении переключателя и старте
+     * приложения. Сначала смотрим, кто уже на 8090: чужой TorrServer (например
+     * torrserv.matrix.app) — спрашиваем, заменить ли его встроенным; «нет» —
+     * пользуемся им. Раньше встроенный запускался сразу, не глядя на чужой.
+     */
     function start() {
-        if (askAutostart(startNow)) return;
-        startNow();
+        whoRuns(function (r) {
+            if (r && r.own) { refresh(); return; }
+            if (r) {
+                // Без root заменить нечем — пользуемся тем, что работает
+                if (r.noRoot || keepForeign() || st.ask) { refresh(); return; }
+                ask('На устройстве уже работает TorrServer ' + r.ver +
+                    (st.matrix ? ' из приложения torrserv.matrix.app' : '') +
+                    '. Остановить его и запустить встроенный?',
+                    'Остановить и запустить встроенный', 'Нет, использовать его',
+                    replace,
+                    function () { setKeepForeign(true); refresh(); });
+                return;
+            }
+            if (askAutostart(startNow)) return;
+            startNow();
+        });
     }
 
     function startNow() {
@@ -1166,7 +1223,9 @@ var WebOSTorrServer = (function () {
     return {
         enabled: enabled, status: status, install: install, start: start, stop: stop,
         checkUpdate: checkUpdate, refresh: refresh, replace: replace,
-        answerRemove: function () { answer(true); }, answerKeep: function () { answer(false); }
+        answerRemove: function () { answer(true); }, answerKeep: function () { answer(false); },
+        // Ответ на вопрос в панели (st.ask): «да» — левая кнопка, «нет» — правая
+        answerYes: function () { answer(true); }, answerNo: function () { answer(false); }
     };
 })();
 window.WebOSTorrServer = WebOSTorrServer;
@@ -1297,6 +1356,13 @@ var deviceTorrServerPanel = (function () {
         show('ts-device-replace', external && !!st.canReplace && !busy);
         show('ts-device-autostart-off', !!st.ask);
         show('ts-device-autostart-keep', !!st.ask);
+        // Две кнопки вопроса общие: про автозапуск matrix и про замену чужого
+        // TorrServer встроенным — подписи берём у самого вопроса
+        if (st.ask) {
+            var yesBtn = getEl('ts-device-autostart-off'), noBtn = getEl('ts-device-autostart-keep');
+            if (yesBtn && st.askYes && yesBtn.textContent !== st.askYes) yesBtn.textContent = st.askYes;
+            if (noBtn && st.askNo && noBtn.textContent !== st.askNo) noBtn.textContent = st.askNo;
+        }
         var upd = getEl('ts-device-update');
         if (upd && st.latest) upd.textContent = 'Обновить до ' + st.latest;
 
@@ -1371,16 +1437,20 @@ var deviceTorrServerPanel = (function () {
         wasRunning = null;
         // Установлен, но не работает — запускаем сами; при старте приложения это
         // уже сделал автозапуск (TorrServerManager.autostartIfNeeded)
-        var st0 = readStatus();
-        if (!atStartup && st0 && st0.installed && !st0.running) act('start');
-        // webOS: автозапуска при старте приложения, как у Android
-        // (TorrServerManager), нет — TorrServer поднимает init.d при включении
-        // ТВ. Если его за это время остановили, поднимаем, когда статус придёт
-        if (atStartup && WebOSTorrServer.enabled()) {
+        if (WebOSTorrServer.enabled()) {
+            // webOS: и при включении, и при старте приложения (автозапуска, как
+            // у Android, нет — TorrServer поднимает init.d при включении ТВ)
+            // зовём start() всегда, когда статус придёт: он сам смотрит, кто на
+            // 8090 — свой (ничего), чужой, например torrserv.matrix.app
+            // (вопрос, заменить ли встроенным), никто (запуск). Раньше по
+            // «установлен и не работает» встроенный запускался, не спросив
             setTimeout(function () {
                 var s = readStatus();
-                if (s && s.supported && s.installed && !s.running && !s.downloading) act('start');
-            }, 2500);
+                if (s && s.supported && s.installed && !s.downloading && !s.ask) act('start');
+            }, atStartup ? 2500 : 1500);
+        } else {
+            var st0 = readStatus();
+            if (!atStartup && st0 && st0.installed && !st0.running) act('start');
         }
         start();
     }
