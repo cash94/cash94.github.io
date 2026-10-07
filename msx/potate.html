@@ -772,6 +772,54 @@
                 font-size: 22px;
             }
         }
+
+        /* ---- Вход в админку и вкладка «Доступ» ---- */
+        .auth-screen {
+            position: fixed; inset: 0; top: 0; left: 0; right: 0; bottom: 0;
+            background: #0f1419; z-index: 2000;
+            display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .auth-screen[hidden] { display: none; }
+        .auth-card {
+            width: 100%; max-width: 420px; background: #1a2332; border: 1px solid #3a4a5c;
+            border-radius: 12px; padding: 28px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+        .auth-card h2 { margin-bottom: 6px; font-size: 22px; }
+        .auth-card p { color: #8899a6; font-size: 14px; margin-bottom: 18px; line-height: 1.45; }
+        .auth-card label { display: block; font-size: 13px; color: #8899a6; margin: 12px 0 6px; }
+        .auth-card input, .access-form input, .access-form select {
+            width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid #3a4a5c;
+            background: #0f1419; color: #fff; font-size: 15px;
+        }
+        .auth-card .btn { width: 100%; margin-top: 18px; padding: 11px; font-size: 15px; }
+        .auth-error { color: #ff6b6b; font-size: 14px; margin-top: 12px; min-height: 18px; }
+        .auth-server { color: #5a6c7d; font-size: 12px; margin-top: 16px; word-break: break-all; }
+        .admin-user { font-size: 13px; color: #cfe3f5; }
+        .toggle-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 16px;
+            padding: 14px 0; border-bottom: 1px solid #2a3a4c;
+        }
+        .toggle-row:last-child { border-bottom: 0; }
+        .toggle-row .info-label { color: #e1e8ed; font-size: 15px; }
+        .toggle-row small { display: block; color: #8899a6; font-size: 12px; margin-top: 4px; max-width: 620px; line-height: 1.4; }
+        .switch { position: relative; width: 46px; height: 26px; flex: none; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .switch span {
+            position: absolute; inset: 0; top: 0; left: 0; right: 0; bottom: 0; cursor: pointer;
+            background: #3a4a5c; border-radius: 13px; transition: background 0.2s;
+        }
+        .switch span::after {
+            content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+            background: #fff; border-radius: 50%; transition: left 0.2s;
+        }
+        .switch input:checked + span { background: #27ae60; }
+        .switch input:checked + span::after { left: 23px; }
+        .access-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-top: 12px; }
+        .access-form > div { flex: 1 1 160px; }
+        .access-form label { display: block; font-size: 12px; color: #8899a6; margin-bottom: 5px; }
+        .access-note { background: #0f1419; border: 1px solid #2a3a4c; border-radius: 8px; padding: 12px 14px;
+            color: #cfe3f5; font-size: 13px; margin-top: 12px; line-height: 1.5; }
+        .access-note code { background: #1a2332; padding: 2px 6px; border-radius: 4px; }
     </style>
 </head>
 
@@ -788,6 +836,40 @@
                 <div class="status-dot" id="statusDot"></div>
                 <span id="statusText">Не подключено</span>
             </div>
+            <span class="admin-user" id="adminUser"></span>
+            <button class="btn btn-secondary" id="adminLogoutBtn" onclick="adminLogout()" hidden>Выйти</button>
+        </div>
+    </div>
+
+
+    <!-- Вход в админку: первый администратор или вход (routes/admin.js) -->
+    <div class="auth-screen" id="authScreen" hidden>
+        <div class="auth-card">
+            <div id="authSetup" hidden>
+                <h2>👑 Создайте администратора</h2>
+                <p>На сервере ещё нет администратора. Эта учётная запись получит доступ к админке и управлению пользователями. Логин — латиница и цифры, пароль — от 6 символов.</p>
+                <label for="setupLogin">Логин</label>
+                <input id="setupLogin" autocomplete="username">
+                <label for="setupPassword">Пароль</label>
+                <input id="setupPassword" type="password" autocomplete="new-password">
+                <div id="setupCodeWrap" hidden>
+                    <label for="setupCode">Код из журнала сервера</label>
+                    <input id="setupCode" autocomplete="off" placeholder="Например: 1A2B3C4D">
+                    <p style="margin:8px 0 0">Вход не с самого сервера: код напечатан в журнале (консоли) сервера при запуске — так администратора не займёт посторонний.</p>
+                </div>
+                <button class="btn btn-success" onclick="doSetup()">Создать и войти</button>
+            </div>
+            <div id="authLogin" hidden>
+                <h2>🔐 Вход в админку</h2>
+                <p>Войдите учётной записью администратора.</p>
+                <label for="adminLogin">Логин</label>
+                <input id="adminLogin" autocomplete="username">
+                <label for="adminPassword">Пароль</label>
+                <input id="adminPassword" type="password" autocomplete="current-password">
+                <button class="btn btn-success" onclick="doAdminLogin()">Войти</button>
+            </div>
+            <div class="auth-error" id="authError"></div>
+            <div class="auth-server" id="authServer"></div>
         </div>
     </div>
 
@@ -798,6 +880,7 @@
         <button class="tab-btn" onclick="switchTab('traffic', event)">📊 Трафик</button>
         <button class="tab-btn" onclick="switchTab('monitoring', event)">📊 Мониторинг</button>
         <button class="tab-btn" onclick="switchTab('system', event)">⚙️ Система</button>
+        <button class="tab-btn" onclick="switchTab('access', event)">🔐 Доступ</button>
     </div>
 
     <div class="content">
@@ -908,6 +991,55 @@
             </div>
         </div>
 
+
+        <!-- Доступ: вход по паролю, пользователи, очистка -->
+        <div class="tab-content" id="tab-access">
+            <div class="section">
+                <div class="section-header">
+                    <h2>🔐 Доступ к TorrStream</h2>
+                </div>
+                <div class="toggle-row">
+                    <div>
+                        <div class="info-label">Вход по логину и паролю</div>
+                        <small>Включено — приложение, видео и все запросы к данным только после входа. Без пароля — запросы с самого сервера и (ниже) из домашней сети. Регистрироваться самим нельзя: учётные записи создаёт администратор. MSX при включённом входе не работает.</small>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="accessAuthEnabled" onchange="saveAccessSettings({ authEnabled: this.checked })"><span></span></label>
+                </div>
+                <div class="toggle-row">
+                    <div>
+                        <div class="info-label">Без пароля из домашней сети</div>
+                        <small>Устройства с адресами 192.168.x.x, 10.x.x.x и т. п. входят без пароля. Через обратный прокси (nginx) адрес клиента берётся из X-Forwarded-For.</small>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="accessAllowLan" onchange="saveAccessSettings({ allowLan: this.checked })"><span></span></label>
+                </div>
+                <div class="access-note" id="accessYou"></div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>👤 Пользователи</h2>
+                </div>
+                <div id="usersList" class="table-wrap"><div class="loading">Загрузка...</div></div>
+                <div class="access-form">
+                    <div><label for="newUserLogin">Логин</label><input id="newUserLogin" autocomplete="off"></div>
+                    <div><label for="newUserPassword">Пароль</label><input id="newUserPassword" type="text" autocomplete="off"></div>
+                    <div style="flex:0 1 150px"><label for="newUserRole">Роль</label>
+                        <select id="newUserRole"><option value="user">Пользователь</option><option value="admin">Администратор</option></select></div>
+                    <div style="flex:0 0 auto"><button class="btn btn-success" onclick="createUser()">➕ Создать</button></div>
+                </div>
+                <div class="access-note" id="newUserResult" hidden></div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>🧹 Очистка данных</h2>
+                    <button class="btn" onclick="runCleanup()">Очистить сейчас</button>
+                </div>
+                <div style="color:#8899a6; font-size:13px; line-height:1.5">Раз в сутки удаляются таймкоды, запомненные аудиодорожки и субтитры старше 30 дней и клиенты, у которых всё старше 30 дней (вместе с их историей). Учётные записи и база сведений о файлах (fileInfo) не очищаются.</div>
+                <div class="access-note" id="cleanupInfo">—</div>
+            </div>
+        </div>
+
         <!-- Система -->
         <div class="tab-content" id="tab-system">
             <div class="section">
@@ -939,10 +1071,22 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        let SERVER_URL = localStorage.getItem('torrstream_server') || 'http://localhost:3000';
+        // Админка открыта с самого сервера (/potate) — по умолчанию он и есть
+        // нужный; иначе последний сохранённый адрес
+        let SERVER_URL = localStorage.getItem('torrstream_server') ||
+            (/^https?:$/.test(location.protocol) ? location.origin : 'http://localhost:3000');
         let connected = false;
         let monitoringTimer = null;
-        const ADMIN_TOKEN = 'videoloop-admin';
+        // Токен сессии администратора (services/access.js) — по серверу: адрес
+        // в шапке можно поменять. Прежний общий x-admin-token больше не принимается
+        const TOKENS_KEY = 'torrstream_admin_tokens';
+        function adminTokens() { try { return JSON.parse(localStorage.getItem(TOKENS_KEY) || '{}'); } catch (e) { return {}; } }
+        function adminToken() { return adminTokens()[SERVER_URL] || ''; }
+        function setAdminToken(t) {
+            const all = adminTokens();
+            if (t) all[SERVER_URL] = t; else delete all[SERVER_URL];
+            localStorage.setItem(TOKENS_KEY, JSON.stringify(all));
+        }
 
         document.getElementById('serverUrl').value = SERVER_URL;
 
@@ -975,7 +1119,7 @@
                 .then(data => {
                     setConnected(true);
                     console.log('✅ Подключено к серверу версии:', data.version);
-                    refreshCurrentTab();
+                    checkAdminAccess();
                 })
                 .catch(e => {
                     setConnected(false);
@@ -1001,6 +1145,7 @@
             else if (id === 'traffic') loadTrafficMonths();
             else if (id === 'monitoring') loadMonitoring();
             else if (id === 'system') loadSystemInfo();
+            else if (id === 'access') loadAccess();
         }
 
         async function apiFetch(path, options = {}) {
@@ -1009,13 +1154,257 @@
                 throw new Error('Not connected');
             }
             const headers = options.headers || {};
-            headers['x-admin-token'] = ADMIN_TOKEN;
+            const token = adminToken();
+            if (token) headers['Authorization'] = 'Bearer ' + token;
             if (options.body && typeof options.body === 'string') {
                 headers['Content-Type'] = 'application/json';
             }
             const res = await fetch(SERVER_URL + path, { ...options, headers });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            if (res.status === 401) { showAuth('login', 'Сессия закончилась — войдите снова'); throw new Error('Нужен вход'); }
+            if (!res.ok) {
+                let msg = `HTTP ${res.status}`;
+                try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (e) { }
+                throw new Error(msg);
+            }
             return res.json();
+        }
+
+        // ====== ВХОД В АДМИНКУ ======
+        let adminState = null;
+
+        function authError(text) { document.getElementById('authError').textContent = text || ''; }
+
+        /** Экран входа: 'setup' — первый администратор, 'login' — вход, null — скрыть */
+        function showAuth(mode, error) {
+            const screen = document.getElementById('authScreen');
+            screen.hidden = !mode;
+            document.getElementById('authSetup').hidden = mode !== 'setup';
+            document.getElementById('authLogin').hidden = mode !== 'login';
+            document.getElementById('authServer').textContent = mode ? 'Сервер: ' + SERVER_URL : '';
+            authError(error);
+            if (mode === 'setup') {
+                document.getElementById('setupCodeWrap').hidden = !(adminState && adminState.setupCodeRequired);
+                setTimeout(() => document.getElementById('setupLogin').focus(), 50);
+            } else if (mode === 'login') {
+                setTimeout(() => document.getElementById('adminLogin').focus(), 50);
+            }
+        }
+
+        function setAdminUser(user) {
+            document.getElementById('adminUser').textContent = user ? '👑 ' + user.login : '';
+            document.getElementById('adminLogoutBtn').hidden = !user;
+        }
+
+        async function authRequest(path, body) {
+            const headers = { 'Content-Type': 'application/json' };
+            const token = adminToken();
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+            const res = await fetch(SERVER_URL + path, { method: body ? 'POST' : 'GET', headers, body: body ? JSON.stringify(body) : undefined });
+            let data = {};
+            try { data = await res.json(); } catch (e) { }
+            data._status = res.status;
+            return data;
+        }
+
+        /** После подключения: есть ли администратор и вошли ли мы им */
+        async function checkAdminAccess() {
+            try {
+                adminState = await authRequest('/api/admin/state');
+            } catch (e) {
+                showToast('Не удалось узнать состояние входа: ' + e.message, true);
+                return;
+            }
+            if (adminState._status === 404) {
+                // Старый сервер без входа в админку
+                showToast('Сервер старой версии: вход в админку не поддерживается', true);
+                return;
+            }
+            if (!adminState.hasAdmin) { setAdminUser(null); showAuth('setup'); return; }
+            if (!adminState.user || adminState.user.role !== 'admin') {
+                setAdminUser(null);
+                showAuth('login', adminState.user ? 'Учётная запись ' + adminState.user.login + ' — не администратор' : '');
+                return;
+            }
+            setAdminUser(adminState.user);
+            showAuth(null);
+            refreshCurrentTab();
+        }
+
+        async function doSetup() {
+            const login = document.getElementById('setupLogin').value.trim();
+            const password = document.getElementById('setupPassword').value;
+            const code = document.getElementById('setupCode').value.trim();
+            if (!login || !password) { authError('Введите логин и пароль'); return; }
+            const d = await authRequest('/api/admin/setup', { login, password, code });
+            if (!d.success) { authError(d.error || 'Не удалось создать администратора'); return; }
+            setAdminToken(d.token);
+            showToast('Администратор создан. Код восстановления пароля: ' + d.recoveryCode);
+            alert('Администратор ' + d.login + ' создан.\n\nКод восстановления пароля (сохраните его — больше он не покажется):\n' + d.recoveryCode);
+            checkAdminAccess();
+        }
+
+        async function doAdminLogin() {
+            const login = document.getElementById('adminLogin').value.trim();
+            const password = document.getElementById('adminPassword').value;
+            if (!login || !password) { authError('Введите логин и пароль'); return; }
+            setAdminToken('');
+            const d = await authRequest('/api/account/login', { login, password });
+            if (!d.success) { authError(d.error || 'Не удалось войти'); return; }
+            if (d.role !== 'admin') { authError('Учётная запись ' + d.login + ' — не администратор'); return; }
+            setAdminToken(d.token);
+            document.getElementById('adminPassword').value = '';
+            checkAdminAccess();
+        }
+
+        async function adminLogout() {
+            try { await authRequest('/api/account/logout', {}); } catch (e) { }
+            setAdminToken('');
+            setAdminUser(null);
+            checkAdminAccess();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' || document.getElementById('authScreen').hidden) return;
+            if (!document.getElementById('authSetup').hidden) doSetup();
+            else if (!document.getElementById('authLogin').hidden) doAdminLogin();
+        });
+
+        // ====== ДОСТУП: настройки, пользователи, очистка ======
+        const ROLE_NAMES = { admin: 'Администратор', user: 'Пользователь' };
+
+        function escapeHtml(t) {
+            return String(t == null ? '' : t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        async function loadAccess() {
+            try {
+                adminState = await authRequest('/api/admin/state');
+                document.getElementById('accessAuthEnabled').checked = !!adminState.authEnabled;
+                document.getElementById('accessAllowLan').checked = !!adminState.allowLan;
+                // local считает сервер: сам сервер или домашняя сеть (если разрешена)
+                document.getElementById('accessYou').innerHTML = adminState.local
+                    ? '🏠 Это устройство сервер считает своим (сам сервер или домашняя сеть) — оно пускается без пароля.'
+                    : '🌐 Это устройство — снаружи: при включённом входе оно пускается только с паролем (в админку вы уже вошли).';
+            } catch (e) {
+                showToast('Ошибка: ' + e.message, true);
+            }
+            loadUsers();
+            loadCleanup();
+        }
+
+        async function saveAccessSettings(patch) {
+            if (patch.authEnabled === true && !confirm('Включить вход по логину и паролю?\n\nПосле этого приложение и видео будут доступны только вошедшим пользователям (кроме самого сервера' + (adminState && adminState.allowLan ? ' и домашней сети' : '') + '). Убедитесь, что учётные записи для всех, кто смотрит, созданы.')) {
+                document.getElementById('accessAuthEnabled').checked = false;
+                return;
+            }
+            try {
+                const d = await apiFetch('/api/admin/settings', { method: 'POST', body: JSON.stringify(patch) });
+                showToast('Сохранено: вход ' + (d.authEnabled ? 'включён' : 'выключен') + ', домашняя сеть ' + (d.allowLan ? 'без пароля' : 'с паролем'));
+            } catch (e) {
+                showToast('Не сохранилось: ' + e.message, true);
+            }
+            loadAccess();
+        }
+
+        async function loadUsers() {
+            const el = document.getElementById('usersList');
+            try {
+                const d = await apiFetch('/api/admin/users');
+                const me = adminState && adminState.user ? adminState.user.login : '';
+                if (!d.users || !d.users.length) { el.innerHTML = '<div class="empty-state">Нет пользователей</div>'; return; }
+                let html = '<table><thead><tr><th>Логин</th><th>Роль</th><th>Создан</th><th>Последний вход</th><th></th></tr></thead><tbody>';
+                d.users.forEach((u) => {
+                    const isMe = u.login === me;
+                    html += `<tr>
+                        <td><b>${escapeHtml(u.login)}</b>${isMe ? ' <span class="badge badge-info">это вы</span>' : ''}</td>
+                        <td><select onchange="setUserRole(${u.userId}, this.value)">
+                            <option value="user"${u.role === 'user' ? ' selected' : ''}>${ROLE_NAMES.user}</option>
+                            <option value="admin"${u.role === 'admin' ? ' selected' : ''}>${ROLE_NAMES.admin}</option>
+                        </select></td>
+                        <td>${formatDate(u.createdAt)}</td>
+                        <td>${u.lastLogin ? timeAgo(u.lastLogin) : '—'}</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-secondary" onclick="resetUserPassword(${u.userId}, '${escapeHtml(u.login)}')">🔑 Пароль</button>
+                            ${isMe ? '' : `<button class="btn btn-danger" onclick="deleteUser(${u.userId}, '${escapeHtml(u.login)}')">🗑️</button>`}
+                        </td></tr>`;
+                });
+                el.innerHTML = html + '</tbody></table>';
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        async function createUser() {
+            const login = document.getElementById('newUserLogin').value.trim();
+            const password = document.getElementById('newUserPassword').value;
+            const role = document.getElementById('newUserRole').value;
+            const out = document.getElementById('newUserResult');
+            try {
+                const d = await apiFetch('/api/admin/users', { method: 'POST', body: JSON.stringify({ login, password, role }) });
+                out.hidden = false;
+                out.innerHTML = `✅ Создан <b>${escapeHtml(d.login)}</b> (${ROLE_NAMES[d.role]}). Код восстановления пароля: <code>${escapeHtml(d.recoveryCode)}</code> — передайте его вместе с паролем, больше он не покажется.`;
+                document.getElementById('newUserLogin').value = '';
+                document.getElementById('newUserPassword').value = '';
+                loadUsers();
+            } catch (e) {
+                showToast('Не создан: ' + e.message, true);
+            }
+        }
+
+        async function setUserRole(userId, role) {
+            try {
+                await apiFetch('/api/admin/users/' + userId, { method: 'POST', body: JSON.stringify({ role }) });
+                showToast('Роль изменена');
+            } catch (e) {
+                showToast('Не изменилось: ' + e.message, true);
+            }
+            loadUsers();
+        }
+
+        async function resetUserPassword(userId, login) {
+            const password = prompt('Новый пароль для ' + login + ' (от 6 символов). Все его входы на устройствах будут закрыты:');
+            if (!password) return;
+            try {
+                await apiFetch('/api/admin/users/' + userId, { method: 'POST', body: JSON.stringify({ password }) });
+                showToast('Пароль ' + login + ' изменён');
+            } catch (e) {
+                showToast('Не изменился: ' + e.message, true);
+            }
+        }
+
+        async function deleteUser(userId, login) {
+            if (!confirm('Удалить пользователя ' + login + '? Его входы на устройствах закроются. История и таймкоды останутся в базе, пока их не уберёт очистка.')) return;
+            try {
+                await apiFetch('/api/admin/users/' + userId, { method: 'DELETE' });
+                showToast('Удалён ' + login);
+            } catch (e) {
+                showToast('Не удалён: ' + e.message, true);
+            }
+            loadUsers();
+        }
+
+        function renderCleanup(d) {
+            const el = document.getElementById('cleanupInfo');
+            const l = d && d.last;
+            if (!l) { el.textContent = 'Очистка ещё не запускалась (первый запуск — через минуту после старта сервера).'; return; }
+            el.innerHTML = l.ok
+                ? `Последняя очистка: ${formatDate(l.at)} — удалено таймкодов <b>${l.timecodes}</b>, дорожек <b>${l.prefs}</b>, клиентов <b>${l.clients}</b>.`
+                : `Последняя очистка ${formatDate(l.at)} не удалась: ${escapeHtml(l.error)}`;
+        }
+
+        async function loadCleanup() {
+            try { renderCleanup(await apiFetch('/api/admin/cleanup')); } catch (e) { }
+        }
+
+        async function runCleanup() {
+            if (!confirm('Удалить таймкоды, запомненные дорожки и неактивных клиентов старше 30 дней сейчас?')) return;
+            try {
+                const d = await apiFetch('/api/admin/cleanup', { method: 'POST' });
+                renderCleanup(d);
+                showToast('Очистка выполнена');
+            } catch (e) {
+                showToast('Ошибка очистки: ' + e.message, true);
+            }
         }
 
         function formatBytes(bytes) {
