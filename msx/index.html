@@ -171,7 +171,11 @@
 
               <div class="settings-field">
                 <div class="field-label">Адрес TorrServer</div>
-                <input type="text" class="text-input" id="torrserver-url" placeholder="192.168.1.10:8090" autofocus>
+                <!-- Без autofocus: старые движки (Chrome 68, webOS 5) фокусировали поле
+                     ещё до стилей, пока настройки не спрятаны, — на запуске
+                     на мгновение выезжала системная клавиатура. Фокус
+                     расставляет control.js -->
+                <input type="text" class="text-input" id="torrserver-url" placeholder="192.168.1.10:8090">
                 <div class="server-status" id="server-status">
                   <div class="status-indicator" id="status-indicator"></div>
                   <span id="status-text">Введите адрес сервера</span>
@@ -279,7 +283,7 @@
               <p class="settings-lead">Поиск раздач идёт через парсер Jacred — свой или общедоступный.</p>
               <div class="settings-field">
                 <div class="field-label">Адрес Jacred</div>
-                <input type="text" class="text-input" id="jacred-url" placeholder="jac.red" autofocus>
+                <input type="text" class="text-input" id="jacred-url" placeholder="jac.red">
               </div>
             </div>
           </div>

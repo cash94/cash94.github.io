@@ -2474,6 +2474,10 @@ function setupConfigMenu() {
         if (typeof setConfigMenuActive === 'function') setConfigMenuActive(this.id);
         if (this.focus) this.focus();
       }
+      // Рамка пульта (.focused) — туда же, куда нажали мышью или пальцем: иначе
+      // она оставалась на прежнем разделе (по умолчанию «TorrServer»), и пульт
+      // продолжал бы от него
+      if (typeof focusEl === 'function') focusEl(this);
     };
 
     menuItem._configClickHandler = clickHandler;
