@@ -4528,6 +4528,49 @@ function scrollRowToCard(card) {
     setScrollX(viewport, target, true);
 }
 
+// Запас от края вьюпорта, при котором карточка считается видимой целиком, — как
+// hp в scrollToElementIfNeeded: иначе карточку, которую мы сочли видимой,
+// доводка всё равно прокрутила бы
+var ROW_CARD_VISIBLE_PAD = 30;
+
+/**
+ * Индекс карточки соседнего ряда, которая на экране ближе всего по горизонтали к
+ * from, — то есть под ней (над ней).
+ *
+ * Раньше бралась карточка с тем же номером: ряды прокручены каждый по-своему, и
+ * с 10-й карточки одного ряда фокус уходил на 10-ю другого, хотя под ним была
+ * 5-я, — карусель уезжала к ней через полряда.
+ *
+ * Из карточек, видимых целиком, — ближайшая; обрезанная краем — только если
+ * видимых нет: карусели выровнены по-разному, и ближайшей по центру бывает
+ * карточка на краю, а её доводка прокрутила бы, сдвинув ряд без нужды.
+ *
+ * Координаты — от позиции покоя: посреди твина прокрутки (стрелку только что
+ * нажали) экранная позиция — середина пути; pendingScrollDeltaX — его остаток.
+ */
+function nearestRowCardIndex(from, targetRow) {
+    if (!targetRow || !targetRow.length) return 0;
+    // closest — по разу на ряд, не на карточку: подъём по DOM в горячем пути
+    var fromVp = from.closest ? from.closest('.catalog-row-viewport') : null;
+    var toVp = targetRow[0].closest ? targetRow[0].closest('.catalog-row-viewport') : null;
+    var fr = from.getBoundingClientRect();
+    var x = (fr.left + fr.right) / 2 - (fromVp ? pendingScrollDeltaX(fromVp) : 0);
+    var dx = toVp ? pendingScrollDeltaX(toVp) : 0;
+    var vr = toVp ? toVp.getBoundingClientRect() : null;
+    var best = 0, bestD = Infinity, bestVis = -1, bestVisD = Infinity;
+    for (var i = 0; i < targetRow.length; i++) {
+        var r = targetRow[i].getBoundingClientRect();
+        var left = r.left - dx, right = r.right - dx;
+        var d = Math.abs((left + right) / 2 - x);
+        if (d < bestD) { bestD = d; best = i; }
+        if (vr && left >= vr.left + ROW_CARD_VISIBLE_PAD && right <= vr.right - ROW_CARD_VISIBLE_PAD && d < bestVisD) {
+            bestVisD = d;
+            bestVis = i;
+        }
+    }
+    return bestVis !== -1 ? bestVis : best;
+}
+
 // Фокус карточки в ряду + скролл карусели
 function focusRowCard(ri, ci, rows) {
     if (!rows || !rows[ri] || !rows[ri][ci]) return true;
@@ -4561,17 +4604,11 @@ function handleRowsNavigation(dir) {
             return true; // правый край («Показать все») — стоим
         }
         if (dir === 'up') {
-            if (pos.row > 0) {
-                var tc = Math.min(pos.col, rows[pos.row - 1].length - 1);
-                return focusRowCard(pos.row - 1, tc, rows);
-            }
+            if (pos.row > 0) return focusRowCard(pos.row - 1, nearestRowCardIndex(f, rows[pos.row - 1]), rows);
             return focusEl(t[0] || h[0] || f); // верхний ряд → на табы
         }
         if (dir === 'down') {
-            if (pos.row < rows.length - 1) {
-                var tc2 = Math.min(pos.col, rows[pos.row + 1].length - 1);
-                return focusRowCard(pos.row + 1, tc2, rows);
-            }
+            if (pos.row < rows.length - 1) return focusRowCard(pos.row + 1, nearestRowCardIndex(f, rows[pos.row + 1]), rows);
             return true; // последний ряд — стоим
         }
         return true;
