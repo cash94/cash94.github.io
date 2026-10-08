@@ -837,7 +837,11 @@ function getSearchFilters() {
 
     // Панель открыта - собираем элементы
     var elements = [];
-    var filterItems = panel.querySelectorAll('.filter-item');
+    if (window.AppState && AppState.searchLocked) {
+        var filterItems = panel.querySelectorAll('.filter-item:not([data-filter="torrent-movie"])');
+    } else {
+        var filterItems = panel.querySelectorAll('.filter-item');
+    }
     var filterValueItems = panel.querySelectorAll('.filter-value-item');
     var backBtn = getEl('filter-back-btn');
     var closeBtn = getEl('filter-close-btn');
@@ -1735,7 +1739,11 @@ function handleFilterPanelNavigation(dir, currentElement) {
     invalidateFocusCache();
     updateFocusableElements();
 
-    var filterItems = Array.from(panel.querySelectorAll('.filter-item'));
+    if (window.AppState && AppState.searchLocked) {
+        var filterItems = Array.from(panel.querySelectorAll('.filter-item:not([data-filter="torrent-movie"])'));
+    } else {
+        var filterItems = Array.from(panel.querySelectorAll('.filter-item'));
+    }
     var filterValueItems = Array.from(panel.querySelectorAll('.filter-value-item'));
     var backBtn = getEl('filter-back-btn');
     var closeBtn = getEl('filter-close-btn');
