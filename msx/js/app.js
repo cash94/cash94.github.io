@@ -2454,6 +2454,26 @@ function renderDeviceInfo() {
 }
 window.renderDeviceInfo = renderDeviceInfo;
 
+/**
+ * «Об устройстве» → «Проверка масштабирования видео». Модуль подгружается по
+ * первому нажатию с того же адреса, что и app.js (зеркало или public при
+ * ?local=1): в общей загрузке он не нужен.
+ */
+function openVideoScaleTest() {
+  if (window.VideoScaleTest) { window.VideoScaleTest.open(); return; }
+  var own = document.querySelector('script[src*="/js/app.js"]');
+  var el = document.createElement('script');
+  el.src = own ? own.src.replace('/js/app.js', '/js/video-scale-test.js') : '/js/video-scale-test.js';
+  el.onload = function () { if (window.VideoScaleTest) window.VideoScaleTest.open(); };
+  el.onerror = function () { showToast('Не удалось загрузить проверку масштабирования'); };
+  document.head.appendChild(el);
+}
+
+// Делегирование: кнопка в разметке настроек, OK пульта приходит к ней кликом
+document.addEventListener('click', function (e) {
+  if (e.target && e.target.id === 'video-scale-test-btn') openVideoScaleTest();
+});
+
 // ==================== МЕНЮ КОНФИГУРАЦИИ ====================
 function setupConfigMenu() {
   if (!Element.prototype.closest) {
