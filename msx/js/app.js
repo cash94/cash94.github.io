@@ -197,7 +197,7 @@ function setupVideoPlayerControls() {
     'seek-slider', 'volume-slider', 'play-pause-btn', 'mute-btn',
     'toggle-buffer-btn', 'exit-player-btn', 'player-overlay', 'video-player'
   ];
-  var modes = ['contain', 'fill', 'cover', 'none'];
+  var modes = ['contain', 'fill', 'cover', 'zoom', 'none'];
   var modeIndex = 0;
   var video = getEl('video-player');
 
@@ -215,6 +215,11 @@ function setupVideoPlayerControls() {
   // что каждый режим — своя рамка (applyVideoBox), а object-fit: fill только
   // вписывает кадр в неё; в обычном браузере результат тот же.
   var zoomMode = 'contain';
+  // «Увеличить»: кадр больше «С полосами» во столько раз, чтобы фильм 2,40:1 с
+  // впечатанными в кадр 16:9 чёрными полосами заполнил экран по высоте. Где
+  // кончается изображение, плеер не знает (пикселей видео на ТВ страница не
+  // видит), поэтому коэффициент фиксированный: 2,40 / (16/9) = 1,35
+  var ZOOM_FACTOR = 2.4 / (16 / 9);
   var FIT_CLASSES = ['video-object-fit-contain', 'video-object-fit-fill',
     'video-object-fit-cover', 'video-object-fit-none'];
 
@@ -240,8 +245,8 @@ function setupVideoPlayerControls() {
       st.position = st.left = st.top = st.width = st.height = st.maxWidth = st.maxHeight = '';
       // Прямоугольник не посчитан (размер кадра ещё неизвестен) или не действует
       // (полноэкранный <video>) — режим целиком на object-fit, в том числе none
-      // для «Оригинала»
-      setFitClass(zoomMode);
+      // для «Оригинала»; у «Увеличить» своего object-fit нет — ближе всего cover
+      setFitClass(zoomMode === 'zoom' ? 'cover' : zoomMode);
       return;
     }
     // Рамка уже нужного размера — кадр просто вписывается в неё. Для «С полосами»,
@@ -256,6 +261,7 @@ function setupVideoPlayerControls() {
     } else {
       var r = zoomMode === 'cover' ? Math.max(cw / vw, ch / vh)
         : zoomMode === 'none' ? 1
+        : zoomMode === 'zoom' ? Math.min(cw / vw, ch / vh) * ZOOM_FACTOR
         : Math.min(cw / vw, ch / vh);
       w = Math.round(vw * r);
       h = Math.round(vh * r);
@@ -293,6 +299,7 @@ function setupVideoPlayerControls() {
         'contain': 'С полосами',
         'fill': 'Растянуть',
         'cover': 'Обрезка',
+        'zoom': 'Увеличить',
         'none': 'Оригинал'
       };
       showToast(modeNames[modes[modeIndex]]);
