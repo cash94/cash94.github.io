@@ -206,14 +206,14 @@ function setupVideoPlayerControls() {
     return;
   }
 
-  // Режим масштаба задаётся не только object-fit, но и самим прямоугольником
-  // <video>. На части ТВ (жалобы с Vidaa) видео выводится аппаратным слоем,
-  // который берёт у элемента лишь положение и размер, а object-fit не видит:
-  // кнопка там переключала режимы вхолостую. Поэтому для «С полосами»,
-  // «Обрезка» и «Оригинал» считаем прямоугольник кадра сами (applyVideoBox),
-  // а object-fit оставляем — в обычном браузере он даёт то же самое.
-  // «Растянуть» — весь экран; если слой сам держит пропорции, там он выглядит
-  // как «С полосами», иначе его не сделать.
+  // Режим масштаба задаётся прямоугольником самого <video>, а не object-fit. На
+  // части ТВ (Hisense Vidaa) видео выводит аппаратный слой: он берёт у элемента
+  // только положение и размер в пикселях, а object-fit не видит — кнопка там
+  // переключала режимы вхолостую. Проверка на Vidaa (Об устройстве → «Проверка
+  // масштабирования видео», js/video-scale-test.js) показала: object-fit не
+  // работает ни в одном режиме, а рамка нужного размера — во всех четырёх. Так
+  // что каждый режим — своя рамка (applyVideoBox), а object-fit: fill только
+  // вписывает кадр в неё; в обычном браузере результат тот же.
   var zoomMode = 'contain';
   var FIT_CLASSES = ['video-object-fit-contain', 'video-object-fit-fill',
     'video-object-fit-cover', 'video-object-fit-none'];
@@ -236,25 +236,30 @@ function setupVideoPlayerControls() {
     var cw = (ps && ps.clientWidth) || window.innerWidth;
     var ch = (ps && ps.clientHeight) || window.innerHeight;
     var vw = video.videoWidth, vh = video.videoHeight;
-    if (zoomMode === 'fill' || !vw || !vh || !cw || !ch || videoItselfFullscreen()) {
+    if (!vw || !vh || !cw || !ch || videoItselfFullscreen()) {
       st.position = st.left = st.top = st.width = st.height = st.maxWidth = st.maxHeight = '';
       // Прямоугольник не посчитан (размер кадра ещё неизвестен) или не действует
       // (полноэкранный <video>) — режим целиком на object-fit, в том числе none
-      // для «Оригинала». Подмена none на contain ниже годится только при точной
-      // рамке 1:1: без неё «Оригинал» выглядел ровно как «С полосами»
+      // для «Оригинала»
       setFitClass(zoomMode);
       return;
     }
-    // «Оригинал»: прямоугольник ниже уже ровно 1:1 с кадром, и object-fit: none
-    // ничего к нему не добавляет. А старые WebView (Chrome 66 на ТВ) видео с
-    // object-fit: none рисуют мимо обычного масштабирования — картинка сыпалась
-    // на пиксели, хотя у 1080p-кадра на экране 1920 рамка та же, что у
-    // «С полосами». При точной рамке contain даёт тот же результат обычным путём
-    setFitClass(zoomMode === 'none' ? 'contain' : zoomMode);
-    var r = zoomMode === 'cover' ? Math.max(cw / vw, ch / vh)
-      : zoomMode === 'none' ? 1
-      : Math.min(cw / vw, ch / vh);
-    var w = Math.round(vw * r), h = Math.round(vh * r);
+    // Рамка уже нужного размера — кадр просто вписывается в неё. Для «С полосами»,
+    // «Обрезки» и «Оригинала» у рамки пропорции кадра, и fill ничего не искажает;
+    // для «Растянуть» рамка — весь экран. Заодно старые WebView (Chrome 66 на ТВ)
+    // не видят object-fit: none, с которым картинка «Оригинала» сыпалась на пиксели
+    setFitClass('fill');
+    var w, h;
+    if (zoomMode === 'fill') {
+      w = cw;
+      h = ch;
+    } else {
+      var r = zoomMode === 'cover' ? Math.max(cw / vw, ch / vh)
+        : zoomMode === 'none' ? 1
+        : Math.min(cw / vw, ch / vh);
+      w = Math.round(vw * r);
+      h = Math.round(vh * r);
+    }
     st.position = 'absolute';
     st.maxWidth = 'none';
     st.maxHeight = 'none';
