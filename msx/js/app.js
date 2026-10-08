@@ -223,16 +223,25 @@ function setupVideoPlayerControls() {
     video.classList.add('video-object-fit-' + fit);
   }
 
+  // На весь экран развёрнут сам <video> (часть ТВ-браузеров, мобильный Chrome):
+  // размер и место ему тогда задаёт браузер (стили :fullscreen с !important),
+  // наша рамка не действует, и режим держится только на object-fit
+  function videoItselfFullscreen() {
+    return (document.fullscreenElement || document.webkitFullscreenElement) === video;
+  }
+
   function applyVideoBox() {
     var st = video.style;
     var ps = getEl('player-screen');
     var cw = (ps && ps.clientWidth) || window.innerWidth;
     var ch = (ps && ps.clientHeight) || window.innerHeight;
     var vw = video.videoWidth, vh = video.videoHeight;
-    if (zoomMode === 'fill' || !vw || !vh || !cw || !ch) {
+    if (zoomMode === 'fill' || !vw || !vh || !cw || !ch || videoItselfFullscreen()) {
       st.position = st.left = st.top = st.width = st.height = st.maxWidth = st.maxHeight = '';
-      // Прямоугольник не посчитан (размер кадра ещё неизвестен) — режим целиком
-      // на object-fit, в том числе none для «Оригинала»
+      // Прямоугольник не посчитан (размер кадра ещё неизвестен) или не действует
+      // (полноэкранный <video>) — режим целиком на object-fit, в том числе none
+      // для «Оригинала». Подмена none на contain ниже годится только при точной
+      // рамке 1:1: без неё «Оригинал» выглядел ровно как «С полосами»
       setFitClass(zoomMode);
       return;
     }

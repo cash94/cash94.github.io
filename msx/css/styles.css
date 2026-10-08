@@ -9401,7 +9401,7 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 
 .player-title-container {
   top: 1.6vw;
-  left: 6.2vw;                 /* правее кнопки выхода */
+  left: 3.5vw;                 /* по краю панели внизу: кнопки выхода в углу больше нет */
   right: 11vw;                 /* левее часов */
   transform: none;
   max-width: none;
@@ -9591,7 +9591,7 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 /* --- Узкие экраны (телефон): нижняя граница размеров в пикселях --- */
 @media (max-width: 900px) {
   #exit-player-btn { top: 12px; left: 12px; width: 36px; height: 36px; font-size: 18px; }
-  .player-title-container { top: 12px; left: 60px; right: 80px; }
+  .player-title-container { top: 12px; left: 14px; right: 80px; }
   .player-title { font-size: 16px; }
   .player-title::before { height: 110px; }
   .player-subtitle { margin-top: 4px; font-size: 12px; }
