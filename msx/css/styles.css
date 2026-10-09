@@ -5456,10 +5456,8 @@ article {
   font-weight: 700 !important;
 }
 
-#detail-view.torrent-detail-mode #detail-progress-btn:hover,
-#detail-view.torrent-detail-mode #detail-progress-btn.focused {
+#detail-view.torrent-detail-mode #detail-progress-btn:hover {
   background: #ffffff !important;
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
 #detail-view.torrent-detail-mode #detail-progress-btn .btn-label {
@@ -7245,7 +7243,7 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 
 /* --- КНОПКИ ------------------------------------------------------------- */
 /* gap обнуляем везде: в Chrome 66 у flex он не работает, разбег дают margin */
-#detail-view.catalog-detail-mode #catalog-detail-actions {
+#detail-view #catalog-detail-actions {
   gap: 0 !important;
   margin-bottom: 0;
 }
@@ -7253,15 +7251,16 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 /* margin-right, а не «+ button»: между видимыми кнопками стоят скрытые
    (#detail-progress-btn, #catalog-trailer-btn до находки трейлера), и соседний
    селектор давал бы отступ слева у первой видимой */
-#detail-view.catalog-detail-mode #catalog-detail-actions > button {
+#detail-view #catalog-detail-actions > button {
   gap: 0 !important;
   margin-right: 14px !important;
   border-radius: 6px !important;
   font-weight: 700 !important;
 }
 
-/* «Поиск торрентов» — главное действие экрана, белая кнопка как в Netflix */
-#detail-view.catalog-detail-mode #catalog-watch-btn {
+/* «Поиск торрентов» — главное действие экрана, белая кнопка как в Netflix
+   (в карточке раздачи то же у «Играть» — блок torrent-detail-mode выше) */
+#detail-view #catalog-watch-btn {
   background: #ffffff !important;
   color: #000000 !important;
   border: none !important;
@@ -7269,16 +7268,18 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   font-size: 19px !important;
 }
 
-#detail-view.catalog-detail-mode #catalog-watch-btn:hover,
-#detail-view.catalog-detail-mode #catalog-watch-btn.focused {
+#detail-view #catalog-watch-btn:hover,
+#detail-view #catalog-watch-btn.focused {
   background: #ffffff !important;
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
-/* «Подробнее» и «Трейлер» — серые вторичные */
-#detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
-#detail-view.catalog-detail-mode #catalog-favorite-btn,
-#detail-view.catalog-detail-mode #catalog-trailer-btn {
+/* Остальные — серые вторичные, одни и те же в карточке фильма и раздачи:
+   раньше в карточке раздачи «Подробнее» и «Открыть карточку» оставались
+   мелкими кнопками базового стиля рядом с крупной белой «Играть» */
+#detail-view #catalog-toggle-overview-btn,
+#detail-view #detail-open-card-btn,
+#detail-view #catalog-favorite-btn,
+#detail-view #catalog-trailer-btn {
   background: rgba(109, 109, 110, 0.7) !important;
   color: #ffffff !important;
   border: none !important;
@@ -7286,20 +7287,62 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   font-size: 19px !important;
 }
 
-#detail-view.catalog-detail-mode #catalog-toggle-overview-btn:hover,
-#detail-view.catalog-detail-mode #catalog-favorite-btn:hover,
-#detail-view.catalog-detail-mode #catalog-favorite-btn.focused,
-#detail-view.catalog-detail-mode #catalog-toggle-overview-btn.focused,
-#detail-view.catalog-detail-mode #catalog-trailer-btn:hover,
-#detail-view.catalog-detail-mode #catalog-trailer-btn.focused {
+/* Мышь — светлее серого; фокус пульта — ниже, общим правилом */
+#detail-view #catalog-toggle-overview-btn:hover,
+#detail-view #detail-open-card-btn:hover,
+#detail-view #catalog-favorite-btn:hover,
+#detail-view #catalog-trailer-btn:hover {
   background: rgba(109, 109, 110, 0.9) !important;
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
 /* Иконка ▶ внутри «Трейлера»: у кнопки gap обнулён, отступ даёт она сама */
-#detail-view.catalog-detail-mode #catalog-trailer-btn .trailer-btn-icon {
+#detail-view #catalog-trailer-btn .trailer-btn-icon {
   margin-right: 9px;
   font-size: 15px;
+}
+
+/* Иконки шрифта uicons перед подписью: поиск, «i», «открыть». У «Трейлера» и
+   «Избранного» значок уже в разметке. content с !important — против
+   content: none !important у .catalog-watch-btn::before выше по файлу */
+#detail-view #catalog-watch-btn::before,
+#detail-view #catalog-toggle-overview-btn::before,
+#detail-view #detail-open-card-btn::before {
+  margin-right: 0.5em;
+  font-family: "uicons-regular-rounded";
+  font-weight: normal;
+  line-height: 1;
+}
+
+#detail-view #catalog-watch-btn::before { content: "\f13a" !important; }
+#detail-view #catalog-toggle-overview-btn::before { content: "\eb10" !important; }
+#detail-view #detail-open-card-btn::before { content: "\e11d" !important; }
+
+#detail-view #catalog-favorite-btn .favorite-btn-icon {
+  margin-right: 9px;
+}
+
+/* Фокус пульта (вариант «Netflix»): любая кнопка ряда белеет, вокруг тонкая
+   рамка цветом фокуса и тень, кнопка чуть крупнее. Раньше серая кнопка в
+   фокусе оставалась серой под толстой оранжевой рамкой. Специфичность выше,
+   чем у правил «Играть» в torrent-detail-mode, — фокус там тот же */
+#detail-view #catalog-detail-actions > button {
+  transition: transform 0.15s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#detail-view.catalog-detail-mode #catalog-detail-actions > button.focused,
+#detail-view.torrent-detail-mode #catalog-detail-actions > button.focused,
+#detail-view #catalog-detail-actions > button.focused {
+  background: #ffffff !important;
+  color: #000000 !important;
+  box-shadow: 0 0 0 3px var(--focus-color, #ff8c00), 0 10px 26px rgba(0, 0, 0, 0.5) !important;
+  -webkit-transform: scale(1.06);
+  transform: scale(1.06);
+}
+
+/* Жёлтая звезда «в избранном» на белом не видна */
+#detail-view #catalog-favorite-btn.focused.is-favorite .favorite-btn-icon {
+  color: #d99a00;
+  text-shadow: none;
 }
 
 /* --- ЗАГОЛОВКИ РЯДОВ ---------------------------------------------------- */
@@ -7508,23 +7551,24 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     margin-bottom: 14px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-detail-actions > button {
+  #detail-view #catalog-detail-actions > button {
     margin-right: 10px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-watch-btn {
+  #detail-view #catalog-watch-btn {
     padding: 9px 22px !important;
     font-size: 15px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
-  #detail-view.catalog-detail-mode #catalog-favorite-btn,
-  #detail-view.catalog-detail-mode #catalog-trailer-btn {
+  #detail-view #catalog-toggle-overview-btn,
+  #detail-view #detail-open-card-btn,
+  #detail-view #catalog-favorite-btn,
+  #detail-view #catalog-trailer-btn {
     padding: 9px 18px !important;
     font-size: 15px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-trailer-btn .trailer-btn-icon {
+  #detail-view #catalog-trailer-btn .trailer-btn-icon {
     margin-right: 7px;
     font-size: 12px;
   }
@@ -7634,23 +7678,24 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     margin-bottom: 16px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-detail-actions > button {
+  #detail-view #catalog-detail-actions > button {
     margin-right: 12px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-watch-btn {
+  #detail-view #catalog-watch-btn {
     padding: 11px 28px !important;
     font-size: 17px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
-  #detail-view.catalog-detail-mode #catalog-favorite-btn,
-  #detail-view.catalog-detail-mode #catalog-trailer-btn {
+  #detail-view #catalog-toggle-overview-btn,
+  #detail-view #detail-open-card-btn,
+  #detail-view #catalog-favorite-btn,
+  #detail-view #catalog-trailer-btn {
     padding: 11px 24px !important;
     font-size: 17px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-trailer-btn .trailer-btn-icon {
+  #detail-view #catalog-trailer-btn .trailer-btn-icon {
     margin-right: 8px;
     font-size: 13px;
   }
@@ -7758,23 +7803,24 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     margin-bottom: 10px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-detail-actions > button {
+  #detail-view #catalog-detail-actions > button {
     margin-right: 8px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-watch-btn {
+  #detail-view #catalog-watch-btn {
     padding: 7px 18px !important;
     font-size: 13px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
-  #detail-view.catalog-detail-mode #catalog-favorite-btn,
-  #detail-view.catalog-detail-mode #catalog-trailer-btn {
+  #detail-view #catalog-toggle-overview-btn,
+  #detail-view #detail-open-card-btn,
+  #detail-view #catalog-favorite-btn,
+  #detail-view #catalog-trailer-btn {
     padding: 7px 14px !important;
     font-size: 13px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-trailer-btn .trailer-btn-icon {
+  #detail-view #catalog-trailer-btn .trailer-btn-icon {
     margin-right: 6px;
     font-size: 11px;
   }
@@ -10227,6 +10273,7 @@ html.android-app {
   /* !important — против content: none !important для ТВ-стиля кнопки */
   #detail-view.catalog-detail-mode #catalog-detail-actions > #catalog-watch-btn::before {
     content: "\ec79" !important;
+    margin-right: 0;
     font-family: "uicons-regular-rounded";
     font-size: 20px;
     font-weight: normal;
@@ -10234,6 +10281,7 @@ html.android-app {
   }
 
   #detail-view.catalog-detail-mode #catalog-favorite-btn .favorite-btn-icon {
+    margin-right: 0;
     font-size: 21px !important;
     line-height: 1;
   }
