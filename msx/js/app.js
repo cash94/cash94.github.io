@@ -2193,6 +2193,7 @@ function setupCheckboxes() {
       t._tsToggledAt = now;
     }, true);
   }
+  setupAppleRemoteGuard();
 
   // 3. Добавление в базу
   var addToDbCheckbox = getEl('add-to-db');
@@ -2534,6 +2535,100 @@ function renderDeviceInfo() {
   box.innerHTML = html;
 }
 window.renderDeviceInfo = renderDeviceInfo;
+
+/**
+ * Пульт Apple TV: одно нажатие ОК — одно действие.
+ *
+ * Браузеры для Apple TV на нажатие ОК присылают Enter (его разбирает
+ * control.js и жмёт элемент под нашим фокусом) и вдобавок свой клик — но не по
+ * нашему элементу, а туда, где у них самих фокус или курсор. Защита «второе
+ * переключение того же чекбокса за 400 мс» (выше) от этого не спасала: клик
+ * приходил в соседний элемент. Стоя на «Требуется аутентификация», человек
+ * включал переключатель Enter'ом, под ним появлялось поле логина, и клик
+ * браузера попадал в поле — выезжала клавиатура.
+ *
+ * Поэтому, как в Lampa (DeviceInput.canClick), «родные» клики и касания рядом
+ * с нажатием ОК отбрасываем целиком: действие за пультом делает только наш
+ * Enter. Глушим и mousedown — фокус в поле браузер ставит именно на нём.
+ * Клик мог прийти и раньше Enter, поэтому окно в обе стороны: фокус, попавший
+ * в поле ввода не нашим путём, снимаем и задним числом, на самом нажатии.
+ *
+ * Только для Apple: на webOS с аэромышью и на телефонах клик — основной ввод,
+ * а там, где мышь и пульт не смешиваются, отбрасывать нечего.
+ */
+var APPLE_REMOTE_CLICK_WINDOW_MS = 600;
+
+function setupAppleRemoteGuard() {
+  if (!AppState.applePlatform || document._tsAppleRemoteGuard) return;
+  document._tsAppleRemoteGuard = true;
+  var lastOkAt = 0;
+  var stray = null;   // { el, at } — поле, получившее фокус не через наш фокус
+
+  function isOk(e) {
+    var kc = e.keyCode || e.which;
+    return kc === 13 || (typeof isKeyPressed === 'function' && isKeyPressed('OK', kc));
+  }
+  function nearOk() { return Date.now() - lastOkAt < APPLE_REMOTE_CLICK_WINDOW_MS; }
+  function isTextField(el) {
+    return !!el && ((el.tagName === 'INPUT' && el.type !== 'checkbox' && el.type !== 'radio' && el.type !== 'button') ||
+      el.tagName === 'TEXTAREA' || el.isContentEditable);
+  }
+  function dropStray() {
+    if (!stray) return;
+    var el = stray.el, fresh = Date.now() - stray.at < APPLE_REMOTE_CLICK_WINDOW_MS;
+    stray = null;
+    if (fresh && document.activeElement === el && !el.classList.contains('focused')) {
+      try { el.blur(); } catch (err) { }
+    }
+  }
+
+  // На window в фазе захвата — раньше всех обработчиков клавиш приложения
+  function onKey(e) {
+    if (!isOk(e)) return;
+    lastOkAt = Date.now();
+    dropStray();
+  }
+  window.addEventListener('keydown', onKey, true);
+  window.addEventListener('keyup', onKey, true);
+
+  function swallow(e) {
+    // Свои click() из control.js — isTrusted: false, их пропускаем
+    if (!e.isTrusted || !nearOk()) return;
+    e.__tsSwallowed = true;   // для «Проверки пульта» (remote-test.js)
+    if (e.cancelable) e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+  ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(function (type) {
+    document.addEventListener(type, swallow, { capture: true, passive: false });
+  });
+
+  document.addEventListener('focusin', function (e) {
+    var el = e.target;
+    // Наше поле: на нём стоит фокус пульта (control.js сам зовёт focus() по ОК)
+    if (!e.isTrusted || !isTextField(el) || el.classList.contains('focused')) return;
+    stray = { el: el, at: Date.now() };
+    if (nearOk()) dropStray();
+  }, true);
+}
+
+/**
+ * «Об устройстве» → «Проверка пульта»: журнал того, что присылает пульт на
+ * нажатие ОК — клавиши, клики, фокус. Модуль грузится по нажатию, как и
+ * проверка масштабирования ниже.
+ */
+function openRemoteTest() {
+  if (window.RemoteTest) { window.RemoteTest.open(); return; }
+  var own = document.querySelector('script[src*="/js/app.js"]');
+  var el = document.createElement('script');
+  el.src = own ? own.src.replace('/js/app.js', '/js/remote-test.js') : '/js/remote-test.js';
+  el.onload = function () { if (window.RemoteTest) window.RemoteTest.open(); };
+  el.onerror = function () { showToast('Не удалось загрузить проверку пульта'); };
+  document.head.appendChild(el);
+}
+
+document.addEventListener('click', function (e) {
+  if (e.target && e.target.id === 'remote-test-btn') openRemoteTest();
+});
 
 /**
  * «Об устройстве» → «Проверка масштабирования видео». Модуль подгружается по
