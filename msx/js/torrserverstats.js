@@ -488,6 +488,7 @@ function finishPlaybackPreload(state, play) {
   activePlaybackPreload = null;
   if (state.timer) { clearTimeout(state.timer); state.timer = null; }
   if (play && preloadHoldsUntilPlaying()) holdPreloadScreen();
+  else if (play) holdPreloadUntilHidden();
   else releasePreloadScreen(true);
   if (!play) {
     if (state.controller) { try { state.controller.abort(); } catch (e) { } }
@@ -557,6 +558,34 @@ function holdPreloadScreen() {
   if (video) video.addEventListener('playing', onPlaying);
 }
 
+/**
+ * Внешний плеер (Android: встроенный или сторонний, Apple: по URL-схеме)
+ * открывается поверх страницы не сразу: между концом предзагрузки и его
+ * появлением на долю секунды было видно то, что под экраном, — карточку
+ * раздачи или выдачу поиска. Держим экран, пока страница не уйдёт на задний
+ * план (visibilitychange → hidden, pagehide), и снимаем мгновенно — вернувшись
+ * из плеера, его уже не увидеть. Плеер так и не открылся (закрыли окно выбора
+ * плеера) — экран уходит сам через PRELOAD_EXTERNAL_HOLD_MS.
+ */
+var PRELOAD_EXTERNAL_HOLD_MS = 5000;
+
+function holdPreloadUntilHidden() {
+  var els = getPreloadPanel();
+  els.fill.style.width = '100%';
+  els.percent.textContent = '100%';
+  els.root.classList.add('preload-holding');
+  if (preloadHold) releasePreloadScreen(true);
+  var onHide = function (e) {
+    if (e.type === 'pagehide' || document.hidden) releasePreloadScreen(true);
+  };
+  preloadHold = {
+    onHide: onHide,
+    timer: setTimeout(function () { releasePreloadScreen(false); }, PRELOAD_EXTERNAL_HOLD_MS)
+  };
+  document.addEventListener('visibilitychange', onHide);
+  window.addEventListener('pagehide', onHide);
+}
+
 /** Видна ли чёрная прослойка плеера: «Воспроизведение…» или «Подготовка потока…» */
 function playerOverlaysBusy() {
   var po = document.getElementById('playback-overlay');
@@ -567,7 +596,8 @@ function playerOverlaysBusy() {
 /**
  * Убрать экран. immediate — без затухания: отмена, ошибка (баннер не должен
  * оказаться под экраном), новый запуск. Зовут: playing, showErrorBanner
- * (app.js), «Назад» во время запуска (control.js), уход с плеера (watch выше).
+ * (app.js), «Назад» во время запуска (control.js), уход с плеера (watch выше),
+ * уход страницы на задний план под внешним плеером (holdPreloadUntilHidden).
  */
 function releasePreloadScreen(immediate) {
   var els = preloadPanelEls;
@@ -575,6 +605,10 @@ function releasePreloadScreen(immediate) {
     clearTimeout(preloadHold.timer);
     clearInterval(preloadHold.watch);
     if (preloadHold.video) preloadHold.video.removeEventListener('playing', preloadHold.onPlaying);
+    if (preloadHold.onHide) {
+      document.removeEventListener('visibilitychange', preloadHold.onHide);
+      window.removeEventListener('pagehide', preloadHold.onHide);
+    }
     preloadHold = null;
   }
   if (!els || activePlaybackPreload) return;
