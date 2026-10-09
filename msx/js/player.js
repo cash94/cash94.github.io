@@ -2222,37 +2222,12 @@ function updateDirectTrackDiag(videoPlayer) {
   directPlaybackDiag.kinds = kinds.join(', ');
 }
 
-/**
- * Имя файла для адреса потока. Обычно оно уже есть (getFileNameByHash по
- * списку торрентов), но раздачи может не быть в этом списке — тогда
- * спрашиваем сам TorrServer. Не ответил за 3 с — без имени.
- */
-async function directFileName(known) {
-  if (known) return known;
-  var hash = currentTimecodeData.hash, id = currentTimecodeData.fileId;
-  try {
-    var r = await Promise.race([
-      torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'get', hash: hash }) }),
-      new Promise(function (res) { setTimeout(function () { res(null); }, 3000); })
-    ]);
-    if (!r || !r.ok) return null;
-    var t = await r.json();
-    var files = (t && t.file_stats) || [];
-    for (var i = 0; i < files.length; i++) {
-      if (String(files[i].id) === String(id)) return String(files[i].path || '').split('/').pop() || null;
-    }
-  } catch (e) { }
-  return null;
-}
-
 async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
-  // Адрес как у Lampa (Torserver.stream): с именем файла в пути. Медиаконвейер
-  // телевизора выбирает разбор файла по расширению в адресе: с «.mkv» Vidaa
-  // открывает MKV своим конвейером и отдаёт встроенные субтитры списком
-  // textTracks, а без имени (/stream?link=…) файл разбирал общий движок
-  // Chromium — без дорожек субтитров, и в плеере было «Нет субтитров»
-  var fileName = await directFileName(knownFileName);
-  if (signal.aborted) return;
+  // Адрес как у Lampa (Torserver.stream): с именем файла в пути, если оно уже
+  // известно (getFileNameByHash по списку торрентов). Отдельно у TorrServer его
+  // не спрашиваем: Vidaa отдаёт встроенные субтитры и по адресу без имени
+  // (проверено), а лишний запрос задерживал запуск
+  var fileName = knownFileName || null;
   var playURL = AppState.currentTorrserverUrl + '/stream' + (fileName ? '/' + encodeURIComponent(fileName) : '') +
     '?link=' + currentTimecodeData.hash + '&index=' + currentTimecodeData.fileId + '&play';
   directPlaybackDiag.file = fileName || 'без имени';
