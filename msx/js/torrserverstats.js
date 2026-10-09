@@ -287,25 +287,29 @@ function getPreloadPanel() {
   if (preloadPanelEls) return preloadPanelEls;
   var root = document.createElement('div');
   root.id = 'preload-panel';
+  root.setAttribute('role', 'dialog');
+  root.setAttribute('aria-live', 'polite');
+  // Как экран загрузки Lampa (src/interaction/media_loading.js): кадр фильма,
+  // логотип двумя слоями (бледный и цветной поверх — его ширина = процент) и
+  // плашка внизу. Подписи «Отменить» / «Смотреть сейчас» — для мыши и тача,
+  // с пульта то же делают «Назад» и ОК
   root.innerHTML =
-    '<div class="preload-card" role="dialog" aria-live="polite">' +
-    '<div class="preload-eyebrow">TorrServer</div>' +
-    '<div class="preload-title">Предзагрузка</div>' +
-    '<div class="preload-name"></div>' +
-    '<div class="preload-bar"><div class="preload-bar-fill"></div></div>' +
-    '<div class="preload-amount"><span class="preload-bytes"></span><span class="preload-status"></span></div>' +
-    '<div class="preload-stats">' +
-    '<div class="preload-stat"><div class="preload-stat-label">Скорость</div><div class="preload-stat-value" data-stat="speed">—</div></div>' +
-    '<div class="preload-stat"><div class="preload-stat-label">Пиры</div><div class="preload-stat-value" data-stat="peers">—</div></div>' +
-    '<div class="preload-stat"><div class="preload-stat-label">Сиды</div><div class="preload-stat-value" data-stat="seeds">—</div></div>' +
+    '<img class="preload-backdrop hidden" alt="">' +
+    '<div class="preload-shade"></div>' +
+    '<div class="preload-mark"><div class="preload-mark-bg"></div><div class="preload-mark-fill"></div></div>' +
+    '<div class="preload-status">' +
+    '<span class="preload-peers hidden"><svg class="preload-peers-icon" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M12 3v12m0 0 5-5m-5 5-5-5M5 19h14"></path></svg><span class="preload-peers-value"></span></span>' +
+    '<span class="preload-sep preload-sep-peers hidden"></span>' +
+    '<span class="preload-speed hidden"></span>' +
+    '<span class="preload-sep preload-sep-speed hidden"></span>' +
+    '<span class="preload-percent">0%</span>' +
     '</div>' +
-    '<div class="preload-actions">' +
+    '<div class="preload-hint">' +
     '<button type="button" class="preload-btn" data-action="cancel"><span class="preload-key">←</span>Отменить</button>' +
-    '<button type="button" class="preload-btn preload-btn-primary" data-action="play"><span class="preload-key">ОК</span>Смотреть сейчас</button>' +
-    '</div>' +
+    '<button type="button" class="preload-btn" data-action="play"><span class="preload-key">ОК</span>Смотреть сейчас</button>' +
     '</div>';
   document.body.appendChild(root);
-  // Кнопки — для мыши и тача; с пульта то же делают «Назад» и ОК
   root.addEventListener('click', function (e) {
     var btn = e.target.closest ? e.target.closest('.preload-btn') : null;
     if (!btn || !activePlaybackPreload) return;
@@ -313,13 +317,15 @@ function getPreloadPanel() {
   });
   preloadPanelEls = {
     root: root,
-    name: root.querySelector('.preload-name'),
-    fill: root.querySelector('.preload-bar-fill'),
-    bytes: root.querySelector('.preload-bytes'),
-    status: root.querySelector('.preload-status'),
-    speed: root.querySelector('[data-stat="speed"]'),
-    peers: root.querySelector('[data-stat="peers"]'),
-    seeds: root.querySelector('[data-stat="seeds"]')
+    backdrop: root.querySelector('.preload-backdrop'),
+    markBg: root.querySelector('.preload-mark-bg'),
+    fill: root.querySelector('.preload-mark-fill'),
+    peers: root.querySelector('.preload-peers'),
+    peersValue: root.querySelector('.preload-peers-value'),
+    sepPeers: root.querySelector('.preload-sep-peers'),
+    speed: root.querySelector('.preload-speed'),
+    sepSpeed: root.querySelector('.preload-sep-speed'),
+    percent: root.querySelector('.preload-percent')
   };
   return preloadPanelEls;
 }
@@ -328,16 +334,128 @@ function formatPreloadMb(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1);
 }
 
+/** Слой логотипа: картинка или, если её нет, название текстом */
+function preloadMarkContent(logoUrl, title) {
+  var box = document.createElement('div');
+  box.className = 'preload-mark-content';
+  if (logoUrl) {
+    var img = document.createElement('img');
+    img.className = 'preload-logo';
+    img.alt = '';
+    img.src = logoUrl;
+    box.appendChild(img);
+  } else {
+    var text = document.createElement('div');
+    text.className = 'preload-title-text';
+    text.textContent = title || '';
+    box.appendChild(text);
+  }
+  return box;
+}
+
+function setPreloadMark(logoUrl, title) {
+  var els = getPreloadPanel();
+  els.markBg.innerHTML = '';
+  els.fill.innerHTML = '';
+  els.markBg.appendChild(preloadMarkContent(logoUrl, title));
+  els.fill.appendChild(preloadMarkContent(logoUrl, title));
+}
+
+/**
+ * Какой фильм запускают: {id, type, item} или null. Так же, как карточка
+ * раздачи (torrents.js): у раздачи id фильма — tmdbId / knownTmdbId, а чаще
+ * всего — в названии «[603] Матрица», и в объект раздачи карточка его не
+ * записывает. У карточки каталога id — её собственный (у раздачи вместо
+ * него hash). Нет ни того, ни другого — карточка фильма, с которой ушли в
+ * «Поиск торрентов» (pendingDetail*).
+ */
+function preloadTmdbRef() {
+  var item = AppState.currentDetailItem || null;
+  var id = null, type = null;
+  if (item) {
+    id = item.tmdbId || item.knownTmdbId || null;
+    if (!id) {
+      var m = String(item.title || item.name || '').match(/\[(\d+)\]/);
+      if (m) id = m[1];
+    }
+    if (!id && !item.hash) id = item.id || null;
+    type = item.media_type || item.mediaType || item.knownMediaType || null;
+  }
+  if (!id && AppState.pendingDetailTmdbId) {
+    id = AppState.pendingDetailTmdbId;
+    type = AppState.pendingDetailMediaType || type;
+    item = AppState.pendingDetailItem || item;
+  }
+  if (!id) return null;
+  return { id: id, type: type === 'tv' ? 'tv' : 'movie', item: item };
+}
+
+/**
+ * Кадр и логотип фильма — из деталей TMDB (getTmdbDetailsWithCache): в них
+ * сервер кладёт и backdrop_path, и logo, а карточка, с которой запускают,
+ * их уже загрузила — значит, отдаст кэш. Пока не пришли — название текстом и
+ * тёмный фон. Картинки показываем, только когда они загрузились: логотип,
+ * сменивший текст на пустое место, хуже текста.
+ */
+/**
+ * Номер показа экрана: ответ деталей и загрузка картинок применяются, только
+ * если экран с тех пор не открывали заново. Не «идёт ли ещё предзагрузка»:
+ * прогретая раздача набирает буфер раньше, чем приходят детали, а экран после
+ * этого ещё стоит до первого кадра (holdPreloadScreen) — и оставался пустым.
+ */
+var preloadMediaGen = 0;
+
+function setPreloadMedia(state, title) {
+  var els = getPreloadPanel();
+  var gen = ++preloadMediaGen;
+  var current = function () { return gen === preloadMediaGen && els.root.classList.contains('active'); };
+  els.backdrop.classList.add('hidden');
+  els.backdrop.removeAttribute('src');
+  setPreloadMark(null, title);
+
+  var ref = preloadTmdbRef();
+  if (!ref || typeof getTmdbDetailsWithCache !== 'function') return;
+  var item = ref.item || {};
+  var tmdbId = ref.id, mediaType = ref.type;
+  var image = function (path, size) {
+    return typeof getTmdbImageUrl === 'function' ? getTmdbImageUrl(path, size) : path;
+  };
+
+  Promise.resolve(getTmdbDetailsWithCache(tmdbId, mediaType)).then(function (details) {
+    if (!current() || !details) return;
+    var name = title || details.title || details.name || '';
+    if (!title && name) setPreloadMark(null, name);
+    var backdropPath = details.backdrop_path || item.backdrop_path;
+    if (backdropPath) {
+      els.backdrop.onload = function () { if (current()) els.backdrop.classList.remove('hidden'); };
+      els.backdrop.onerror = function () { els.backdrop.classList.add('hidden'); };
+      els.backdrop.src = image(backdropPath, 'w1280');
+    }
+    var logoPath = details.logo && details.logo.file_path;
+    if (logoPath) {
+      var probe = new Image();
+      probe.onload = function () { if (current()) setPreloadMark(probe.src, name); };
+      probe.src = image(logoPath, 'w500');
+    }
+  })['catch'](function () { });
+}
+
 function renderPlaybackPreload(state) {
   var els = getPreloadPanel();
   var stats = state.stats;
   var loaded = Math.min(state.loaded, PRELOAD_TARGET_BYTES);
-  els.fill.style.width = (loaded * 100 / PRELOAD_TARGET_BYTES).toFixed(1) + '%';
-  els.bytes.textContent = formatPreloadMb(loaded) + ' / ' + formatPreloadMb(PRELOAD_TARGET_BYTES) + ' МБ';
-  els.status.textContent = state.error || (stats ? '' : 'Подключение к раздаче…');
-  els.speed.textContent = stats ? formatSpeed(stats.download_speed) : '—';
-  els.peers.textContent = stats ? stats.active_peers + ' / ' + stats.total_peers : '—';
-  els.seeds.textContent = stats ? String(stats.connected_seeders) : '—';
+  var progress = loaded * 100 / PRELOAD_TARGET_BYTES;
+  els.fill.style.width = progress.toFixed(1) + '%';
+  els.percent.textContent = Math.round(progress) + '%';
+  var showPeers = !!stats;
+  els.peers.classList.toggle('hidden', !showPeers);
+  els.sepPeers.classList.toggle('hidden', !showPeers);
+  els.peersValue.textContent = showPeers ? (stats.active_peers || 0) + ' / ' + (stats.total_peers || 0) : '';
+  // На месте скорости — ошибка, если TorrServer не ответил
+  var speed = state.error || (stats ? formatSpeed(stats.download_speed) : '');
+  els.speed.textContent = speed;
+  els.speed.classList.toggle('hidden', !speed);
+  els.sepSpeed.classList.toggle('hidden', !speed);
 }
 
 function schedulePlaybackPreloadTick(state, delay) {
@@ -369,7 +487,8 @@ function finishPlaybackPreload(state, play) {
   if (activePlaybackPreload !== state) return;
   activePlaybackPreload = null;
   if (state.timer) { clearTimeout(state.timer); state.timer = null; }
-  getPreloadPanel().root.classList.remove('active');
+  if (play && preloadHoldsUntilPlaying()) holdPreloadScreen();
+  else releasePreloadScreen(true);
   if (!play) {
     if (state.controller) { try { state.controller.abort(); } catch (e) { } }
     // Отметка «уже прогревали» из player.js: без неё повторный запуск того же
@@ -384,6 +503,93 @@ function finishPlaybackPreload(state, play) {
   }
   state.resolve(play);
 }
+
+/**
+ * Экран остаётся до первого кадра, как у Lampa: между концом предзагрузки и
+ * стартом видео плеер показывал чёрный экран с «Подготовка потока…» /
+ * «Воспроизведение…» (пока сервер готовит поток). Теперь поверх этой
+ * прослойки стоит тот же кадр с уже цветным логотипом, а гаснет он, когда
+ * видео пошло (playing). Только для встроенного плеера: Android и внешние
+ * плееры Apple открываются поверх, им ждать нечего.
+ */
+var PRELOAD_HOLD_MAX_MS = 45000;
+var PRELOAD_FADE_MS = 300;
+var preloadHold = null;
+
+function preloadHoldsUntilPlaying() {
+  if (window.AndroidJS) return false;
+  var apple = (typeof getApplePlayer === 'function') ? getApplePlayer() : null;
+  return !(apple && apple.template);
+}
+
+function holdPreloadScreen() {
+  var els = getPreloadPanel();
+  els.fill.style.width = '100%';
+  els.percent.textContent = '100%';
+  els.root.classList.add('preload-holding');
+  var video = document.getElementById('video-player');
+  // Видео пошло — гасим, но не раньше, чем уберут чёрные прослойки плеера:
+  // «Воспроизведение…» снимает уже тот, кто звал startHLSPlayback, после
+  // его возврата, и в режиме через сервер это бывает позже первого кадра
+  var onPlaying = function () {
+    if (!preloadHold) return;
+    preloadHold.played = true;
+    if (!playerOverlaysBusy()) releasePreloadScreen(false);
+  };
+  if (preloadHold) releasePreloadScreen(true);
+  preloadHold = {
+    video: video,
+    onPlaying: onPlaying,
+    // Видео так и не пошло, а баннера ошибки не было — не держим экран вечно
+    timer: setTimeout(function () { releasePreloadScreen(false); }, PRELOAD_HOLD_MAX_MS),
+    // Плеер открылся, а потом с него ушли («Назад», выход) — экран больше не
+    // нужен. Не через cancelCurrentPlayback: её зовёт и сам запуск, в начале
+    // (resetPlaybackState), — экран снимался бы сразу
+    seenPlayer: false,
+    played: false,
+    watch: setInterval(function () {
+      if (!preloadHold) return;
+      if (AppState.currentScreen === 'player') preloadHold.seenPlayer = true;
+      else if (preloadHold.seenPlayer) { releasePreloadScreen(true); return; }
+      if (preloadHold.played && !playerOverlaysBusy()) releasePreloadScreen(false);
+    }, 300)
+  };
+  if (video) video.addEventListener('playing', onPlaying);
+}
+
+/** Видна ли чёрная прослойка плеера: «Воспроизведение…» или «Подготовка потока…» */
+function playerOverlaysBusy() {
+  var po = document.getElementById('playback-overlay');
+  var lo = document.getElementById('loading-player-overlay');
+  return !!((po && po.classList.contains('active')) || (lo && lo.classList.contains('active')));
+}
+
+/**
+ * Убрать экран. immediate — без затухания: отмена, ошибка (баннер не должен
+ * оказаться под экраном), новый запуск. Зовут: playing, showErrorBanner
+ * (app.js), «Назад» во время запуска (control.js), уход с плеера (watch выше).
+ */
+function releasePreloadScreen(immediate) {
+  var els = preloadPanelEls;
+  if (preloadHold) {
+    clearTimeout(preloadHold.timer);
+    clearInterval(preloadHold.watch);
+    if (preloadHold.video) preloadHold.video.removeEventListener('playing', preloadHold.onPlaying);
+    preloadHold = null;
+  }
+  if (!els || activePlaybackPreload) return;
+  clearTimeout(els.fadeTimer);
+  els.root.classList.remove('preload-holding');
+  if (immediate || !els.root.classList.contains('active')) {
+    els.root.classList.remove('active', 'preload-leaving');
+    return;
+  }
+  els.root.classList.add('preload-leaving');
+  els.fadeTimer = setTimeout(function () {
+    els.root.classList.remove('active', 'preload-leaving');
+  }, PRELOAD_FADE_MS);
+}
+window.releasePreloadScreen = releasePreloadScreen;
 
 function onPlaybackPreloadKeyDown(e) {
   if (!activePlaybackPreload) return;
@@ -431,8 +637,9 @@ function runPlaybackPreload(hash, fileId, title) {
     activePlaybackPreload = state;
 
     var els = getPreloadPanel();
-    els.name.textContent = title || '';
-    // Полоска с нуля без анимации отката от прошлого запуска
+    releasePreloadScreen(true);
+    setPreloadMedia(state, title);
+    // Заливка логотипа с нуля без анимации отката от прошлого запуска
     els.fill.style.transition = 'none';
     renderPlaybackPreload(state);
     void els.fill.offsetWidth;

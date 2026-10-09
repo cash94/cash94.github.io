@@ -379,6 +379,8 @@ var errorBannerTimer = null;
 
 function showErrorBanner(message, detail) {
   if (!message) return;
+  // Экран предзагрузки, оставленный до первого кадра, закрыл бы баннер
+  if (typeof window.releasePreloadScreen === 'function') window.releasePreloadScreen(true);
 
   var host = (typeof window.getOverlayHost === 'function') ? window.getOverlayHost() : document.body;
   if (!host) return;

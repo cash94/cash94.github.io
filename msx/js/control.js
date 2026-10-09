@@ -4201,7 +4201,7 @@ function setupFocusRescue() {
             // фокус — и следующий повтор того же Backspace уже уводил с экрана.
             if (ed) { blurEditor(); if (s === 'search') ScreenStrategies.search.ensureFocus(true, true); else if (s === 'catalog') ScreenStrategies.catalog.ensureFocus(true); else if (s === 'config') ScreenStrategies.config.ensureFocus(true); else if (s === 'detail') ScreenStrategies.detail.ensureFocus(true); else ScreenStrategies.torrents.ensureFocus(true); return; }
             var po = getEl('playback-overlay'), ip = po && po.classList.contains('active');
-            if (ip) { cancelCurrentPlayback(); return; }
+            if (ip) { cancelCurrentPlayback(); if (typeof window.releasePreloadScreen === 'function') window.releasePreloadScreen(true); return; }
             if (isCustomFilterMenuOpen()) { closeCustomFilterMenu(); return; }
             if (s === 'catalog' && window.catalogState && window.catalogState.currentCatalog) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); }
             onBack();
