@@ -2210,7 +2210,7 @@ async function initGstPlayback(metadata, initialSeek, signal) {
  * Сведения о последнем запуске прямого файла — для «Об устройстве»: на
  * телевизоре без отладчика иначе не понять, отдал ли он дорожки вовсе
  */
-var directPlaybackDiag = { file: '', audio: null, text: null, kinds: '', probe: '' };
+var directPlaybackDiag = { file: '', audio: null, text: null, kinds: '', probe: '', subs: '' };
 window.directPlaybackDiag = directPlaybackDiag;
 
 function updateDirectTrackDiag(videoPlayer) {
@@ -2256,7 +2256,7 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   var playURL = AppState.currentTorrserverUrl + '/stream' + (fileName ? '/' + encodeURIComponent(fileName) : '') +
     '?link=' + currentTimecodeData.hash + '&index=' + currentTimecodeData.fileId + '&play';
   directPlaybackDiag.file = fileName || 'без имени';
-  directPlaybackDiag.audio = null; directPlaybackDiag.text = null; directPlaybackDiag.kinds = ''; directPlaybackDiag.probe = '';
+  directPlaybackDiag.audio = null; directPlaybackDiag.text = null; directPlaybackDiag.kinds = ''; directPlaybackDiag.probe = ''; directPlaybackDiag.subs = '';
   var videoPlayer = getEl('video-player');
   destroyHls();   // заодно снимает слушатели прошлого прямого файла
 
@@ -3183,7 +3183,10 @@ var LANG_NAMES = {
   rus: 'Русский', ru: 'Русский', eng: 'English', en: 'English', ukr: 'Українська', uk: 'Українська',
   bel: 'Беларуская', kaz: 'Қазақша', jpn: '日本語', ja: '日本語', kor: '한국어', chi: '中文', zho: '中文',
   ger: 'Deutsch', deu: 'Deutsch', fre: 'Français', fra: 'Français', spa: 'Español', ita: 'Italiano',
-  por: 'Português', pol: 'Polski', tur: 'Türkçe', ara: 'العربية', heb: 'עברית', hin: 'हिन्दी'
+  por: 'Português', pol: 'Polski', tur: 'Türkçe', ara: 'العربية', heb: 'עברית', hin: 'हिन्दी',
+  // Двухбуквенные коды — так язык textTracks называет часть телевизоров
+  zh: '中文', ko: '한국어', de: 'Deutsch', fr: 'Français', es: 'Español', it: 'Italiano', pt: 'Português',
+  pl: 'Polski', tr: 'Türkçe', ar: 'العربية', he: 'עברית', iw: 'עברית', hi: 'हिन्दी', be: 'Беларуская', kk: 'Қазақша'
 };
 var TEXT_SUB_CODECS = { subrip: 1, srt: 1, ass: 1, ssa: 1, webvtt: 1, mov_text: 1, text: 1 };
 // DTS и TrueHD телевизоры LG с 2020 года не играют и в списке звука не показывают
@@ -3205,9 +3208,13 @@ function langKey(l) {
  */
 function alignProbeStreams(tracks, streams, hidden) {
   if (!tracks.length || !streams.length) return null;
-  if (streams.length === tracks.length) return streams;
+  if (streams.length === tracks.length && langsAgree(tracks, streams)) return streams;
   var visible = streams.filter(function (s) { return !hidden(s); });
-  if (visible.length === tracks.length) return visible;
+  if (visible.length === tracks.length && langsAgree(tracks, visible)) return visible;
+  // Порядок у плеера свой (Vidaa отдаёт textTracks не в порядке файла), но
+  // язык дорожки он знает — подбираем поток того же языка
+  var byLang = matchProbeByLanguage(tracks, streams, hidden, false);
+  if (byLang) return byLang;
   var sources = [visible, streams];
   for (var n = 0; n < sources.length; n++) {
     var src = sources[n], out = [], j = 0;
@@ -3221,6 +3228,42 @@ function alignProbeStreams(tracks, streams, hidden) {
     if (out.length === tracks.length) return out;
   }
   return null;
+}
+
+/** Нет ни одной дорожки, у которой язык плеера и язык потока ffprobe различаются */
+function langsAgree(tracks, streams) {
+  for (var i = 0; i < tracks.length; i++) {
+    var a = langKey(tracks[i].language), b = langKey(probeLang(streams[i]));
+    if (a && b && a !== b) return false;
+  }
+  return true;
+}
+
+/**
+ * Поток ffprobe каждой дорожке плеера по языку: дорожке с языком — первый
+ * ещё не занятый поток того же языка (сначала из видимых, потом из скрытых
+ * кодеков), без языка — первый свободный видимый по порядку. Внутри одного
+ * языка порядок файла сохраняется. partial: false — не нашлось хоть для
+ * одной дорожки → null; true — на её месте null.
+ */
+function matchProbeByLanguage(tracks, streams, hidden, partial) {
+  var used = [], out = [];
+  var take = function (want, allowHidden) {
+    for (var j = 0; j < streams.length; j++) {
+      if (used[j] || (!allowHidden && hidden(streams[j]))) continue;
+      if (want && langKey(probeLang(streams[j])) !== want) continue;
+      used[j] = true;
+      return streams[j];
+    }
+    return null;
+  };
+  for (var i = 0; i < tracks.length; i++) {
+    var want = langKey(tracks[i].language);
+    var pick = take(want, false) || (want ? take(want, true) : null);
+    if (!pick && !partial) return null;
+    out.push(pick);
+  }
+  return out;
 }
 
 function probeLang(s) {
@@ -3304,7 +3347,10 @@ function directProbeStart() {
     directProbe.count = 'потоков: ' + streams.length + ' (' + via + ')';
     webosSubsDiag.probe = directProbe.count;
     directPlaybackDiag.probe = directProbe.count;
-    applyDirectProbe();
+    // Прямой файл не на webOS — список субтитров может собраться из ffprobe
+    if (AppState.transcodingFullOnOff && nativeSubState.mode !== 'webos' && AppState.platform !== 'webos' &&
+      AppState.currentScreen === 'player') refreshNativeSubtitles(getEl('video-player'));
+    else applyDirectProbe();
   };
   if (!hash || fileId === undefined || fileId === null) return;
   if (AppState.platform !== 'webos' && AppState.platform !== 'vidaa') return;
@@ -3447,7 +3493,7 @@ function webosSubsReset() {
 // конвейер телевизора реплики в режиме 'hidden' может и не присылать — тогда
 // дорожка выбрана, а на экране пусто. Размер текста — браузерный: растёт
 // с высотой видео. Названия дорожкам подписывает applyDirectProbe (выше).
-var nativeSubState = { tracks: [], savedPref: -1, listening: false, mode: 'tracks' };
+var nativeSubState = { tracks: [], savedPref: -1, listening: false, mode: 'tracks', waitTimer: null, snapTimer: null, fromProbe: false, tvIndex: -1 };
 
 function collectNativeTextTracks(videoPlayer) {
   var list = videoPlayer && videoPlayer.textTracks, out = [];
@@ -3476,15 +3522,60 @@ function watchCuesRaise(videoPlayer) {
   sync();
 }
 
+/**
+ * Включить дорожку по номеру — как плагин Lampa «tracks»: дорожку <video>
+ * ищем в момент выбора, а не по списку, собранному при запуске. Список
+ * субтитров может быть из ffprobe (refreshNativeSubtitles), а телевизор
+ * отдаёт textTracks с опозданием и не всегда шлёт addtrack. true — дорожка с
+ * таким номером у <video> есть и включена.
+ */
 function applyNativeSubtitle(index) {
-  var tracks = nativeSubState.tracks;
+  var tracks = collectNativeTextTracks(getEl('video-player'));
+  nativeSubState.tracks = tracks;
+  var tv = nativeTrackForItem(index, tracks);
   for (var i = 0; i < tracks.length; i++) {
-    try { tracks[i].mode = (i === index) ? 'showing' : 'disabled'; } catch (e) { }
+    try { tracks[i].mode = (i === tv) ? 'showing' : 'disabled'; } catch (e) { }
   }
-  currentSubtitleTrack = (index >= 0 && index < tracks.length) ? index : -1;
+  var total = Math.max(tracks.length, currentSubTracks ? currentSubTracks.length : 0);
+  currentSubtitleTrack = (index >= 0 && index < total) ? index : -1;
+  nativeSubState.tvIndex = tv;
+  return tv >= 0;
 }
 
-/** Список дорожек у <video> сменился (новый файл, дорожка дописалась) */
+/** Картинки (PGS, VobSub) часть телевизоров в textTracks не отдаёт */
+function isImageSubStream(s) { return !TEXT_SUB_CODECS[s.codec_name]; }
+
+/**
+ * Номер дорожки <video> для пункта списка. Список из дорожек <video> — тот же
+ * номер. Список из ffprobe — дорожку ищем по языку (matchProbeByLanguage):
+ * порядок у телевизора бывает не как в файле, и по одному номеру пункт
+ * «English» включал русскую дорожку. -1 — такой дорожки у <video> (пока) нет.
+ */
+function nativeTrackForItem(index, tracks) {
+  if (index < 0) return -1;
+  if (!nativeSubState.fromProbe) return index < tracks.length ? index : -1;
+  var probeSubs = directProbeSubs();
+  var map = matchProbeByLanguage(tracks, probeSubs, isImageSubStream, true);
+  for (var i = 0; i < map.length; i++) if (map[i] && map[i] === probeSubs[index]) return i;
+  return -1;
+}
+
+/** Субтитры файла по ответу ffprobe (directProbeStart); нет ответа — [] */
+function directProbeSubs() {
+  var streams = directProbe.streams || [], out = [];
+  for (var i = 0; i < streams.length; i++) if (streams[i].codec_type === 'subtitle') out.push(streams[i]);
+  return out;
+}
+
+/**
+ * Список дорожек у <video> сменился (новый файл, дорожка дописалась) или
+ * пришёл ответ ffprobe.
+ *
+ * Субтитров в файле по ffprobe больше, чем отдал <video>, — список берём из
+ * ffprobe, как плагин Lampa: номер пункта = номер дорожки субтитров в файле, а
+ * включает её applyNativeSubtitle по тому же номеру, когда телевизор её
+ * отдаст. Не на webOS: там список ведёт медиасервис, а textTracks пустые.
+ */
 function refreshNativeSubtitles(videoPlayer) {
   if (!AppState.transcodingFullOnOff) return;
   // На webOS список даёт медиасервис (webosSubsStart), textTracks там пустые
@@ -3492,14 +3583,25 @@ function refreshNativeSubtitles(videoPlayer) {
   updateDirectTrackDiag(videoPlayer);
   var tracks = collectNativeTextTracks(videoPlayer);
   nativeSubState.tracks = tracks;
-  currentSubTracks = tracks.map(function (t, i) {
-    return { title: t.label || ('Субтитры ' + (i + 1)), language: t.language || 'und', format: '' };
-  });
+  var probeSubs = AppState.platform !== 'webos' ? directProbeSubs() : [];
+  nativeSubState.fromProbe = probeSubs.length > tracks.length;
+  if (nativeSubState.fromProbe) {
+    currentSubTracks = probeSubs.map(function (st, k) {
+      var d = st.disposition || {};
+      return { title: probeTitle(st, 'subtitle', k), language: probeLang(st) || 'und', format: (st.codec_name || '').toUpperCase(), default: !!d.default, forced: !!d.forced, probed: true };
+    });
+  } else {
+    currentSubTracks = tracks.map(function (t, i) {
+      return { title: t.label || ('Субтитры ' + (i + 1)), language: t.language || 'und', format: '' };
+    });
+  }
   // Уже выбранная в этом сеансе (соседняя серия) или сохранённая для файла
   var want = currentSubtitleTrack >= 0 ? currentSubtitleTrack : nativeSubState.savedPref;
-  applyNativeSubtitle(want >= 0 && want < tracks.length ? want : -1);
+  want = want >= 0 && want < currentSubTracks.length ? want : -1;
+  // Сохранённой дорожки у <video> пока нет (список из ffprobe) — дождёмся её
+  if (!applyNativeSubtitle(want) && want >= 0) waitNativeSubtitle(want);
   renderSubtitleTracks();
-  // Ответ ffprobe мог прийти раньше дорожек — подписываем новый список им
+  // Подписи из ffprobe списку от <video> и дорожкам звука
   applyDirectProbe();
 }
 
@@ -3516,9 +3618,52 @@ function listenNativeTextTracks(videoPlayer) {
   videoPlayer.textTracks.addEventListener('removetrack', onChange);
 }
 
+/**
+ * Выбрали пункт, а у <video> такой дорожки ещё нет: addtrack приходит не
+ * везде, поэтому полминуты раз в секунду проверяем сами и включаем, как
+ * только появится
+ */
+var NATIVE_SUB_WAIT_MS = 30000;
+function waitNativeSubtitle(index) {
+  clearInterval(nativeSubState.waitTimer);
+  var started = Date.now();
+  nativeSubState.waitTimer = setInterval(function () {
+    var gone = AppState.currentScreen !== 'player' || currentSubtitleTrack !== index;
+    if (gone || Date.now() - started > NATIVE_SUB_WAIT_MS) { clearInterval(nativeSubState.waitTimer); return; }
+    if (applyNativeSubtitle(index)) {
+      clearInterval(nativeSubState.waitTimer);
+      updateDirectTrackDiag(getEl('video-player'));
+    }
+  }, 1000);
+}
+
+/**
+ * Что с дорожками через 3 с после выбора — в «Об устройстве»: какой пункт
+ * выбран, какую дорожку <video> он включил, и по каждой дорожке язык, режим,
+ * число реплик и текущий текст. По снимку видно, совпадает ли язык выбранного
+ * пункта с тем, что телевизор показывает на самом деле.
+ */
+function snapshotNativeSubs() {
+  var tracks = collectNativeTextTracks(getEl('video-player'));
+  var item = currentSubTracks && currentSubTracks[currentSubtitleTrack];
+  var parts = [];
+  for (var i = 0; i < tracks.length; i++) {
+    var t = tracks[i], cues = null, active = null;
+    try { cues = t.cues ? t.cues.length : null; active = t.activeCues; } catch (e) { }
+    var txt = active && active.length ? String(active[0].text || '').replace(/\s+/g, ' ').slice(0, 24) : '';
+    parts.push((i + 1) + ' ' + (t.language || '?') + (t.label ? ' «' + t.label + '»' : '') + ' ' + t.mode +
+      (cues !== null ? ' реплик ' + cues : '') + (txt ? ' «' + txt + '»' : ''));
+  }
+  directPlaybackDiag.subs = 'пункт ' + (currentSubtitleTrack + 1) + (item ? ' «' + item.title + '»' : '') +
+    ' → дорожка ' + (nativeSubState.tvIndex >= 0 ? nativeSubState.tvIndex + 1 : 'нет') +
+    (nativeSubState.fromProbe ? ' (список из ffprobe)' : '') + ' | ' + parts.join(' | ');
+}
+
 /** Новый файл или выход из плеера: снять подписку и спрятать текст */
 function resetNativeSubtitles() {
   webosSubsReset();
+  clearInterval(nativeSubState.waitTimer);
+  clearTimeout(nativeSubState.snapTimer);
   applyNativeSubtitle(-1);
   nativeSubState.tracks = [];
 }
@@ -3528,7 +3673,9 @@ function switchNativeSubtitleTrack(index) {
     webosSetSubtitle(index);
     currentSubtitleTrack = index >= 0 ? index : -1;
   } else {
-    applyNativeSubtitle(index);
+    if (!applyNativeSubtitle(index) && index >= 0) waitNativeSubtitle(index);
+    clearTimeout(nativeSubState.snapTimer);
+    nativeSubState.snapTimer = setTimeout(snapshotNativeSubs, 3000);
   }
   if (currentTimecodeData.hash && currentTimecodeData.fileId) {
     saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, currentSubtitleTrack);

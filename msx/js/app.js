@@ -2535,6 +2535,7 @@ function renderDeviceInfo() {
       ' · звук: ' + (dp.audio === null ? '—' : dp.audio) +
       ' · субтитры: ' + (dp.text === null ? '—' : dp.text) + (dp.kinds ? ' (' + dp.kinds + ')' : '') +
       (dp.probe ? ' · названия: ' + dp.probe : '')]);
+    if (dp.subs) rows.push(['Выбор субтитров', dp.subs]);
   }
   var html = '';
   for (var i = 0; i < rows.length; i++) {
