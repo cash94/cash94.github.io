@@ -5789,10 +5789,11 @@ function buildSearchResultMarkup(result, index) {
     // Дорожки из ffprobe точнее info.voices: там язык и название каждой,
     // а не общий список переводов. Есть они — второй список лишний
     var hasAudioTracks = !!(result.media && result.media.audio && result.media.audio.length);
+    var pickedAt = SearchPicks.pickedAt(hash);
 
-    return '<div class="search-result-item" data-index="' + index + '">' +
+    return '<div class="search-result-item' + (pickedAt ? ' search-result-picked' : '') + '" data-index="' + index + '">' +
         '<div class="search-result-info">' +
-        '<div class="search-result-title">' + escapeHtml(result.title || 'Без названия') + '</div>' +
+        '<div class="search-result-title">' + (pickedAt ? buildPickedBadge(pickedAt) : '') + escapeHtml(result.title || 'Без названия') + '</div>' +
         buildMediaRow(result) +
         '<div class="search-result-meta">' +
         '<div class="search-result-meta-item">' + escapeHtml(trackerDisplay) + '</div>' +
@@ -5895,6 +5896,152 @@ function revealSearchResultItem(el) {
 }
 window.revealSearchResultItem = revealSearchResultItem;
 
+// ==================== ВЫБРАННЫЕ РАЗДАЧИ ====================
+
+/**
+ * Раздачи, которые запускали из выдачи поиска, — метка «Выбирали» и место в
+ * начале списка при следующем поиске, что бы ни стояло в фильтрах и
+ * сортировке. Ищут обычно тот же фильм заново (вернулись досмотреть, следующая
+ * серия), и листать сотню раздач в поисках той самой незачем.
+ *
+ * Ключ — хэш раздачи: он одинаков у неё на любом трекере и в любой выдаче, а
+ * к фильму его привязывать не нужно — чужому фильму этот хэш не попадётся.
+ * Запись живёт 30 дней от последнего выбора; старше — удаляется при открытии
+ * базы. Хэши держим ещё и в памяти: выдача сортируется синхронно, ждать
+ * IndexedDB там нечего.
+ */
+var SearchPicks = (function () {
+    var DB_NAME = 'SearchPicksDB';
+    var STORE_NAME = 'picks';
+    var TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+    var picks = {};          // hash -> время выбора
+    var loaded = false;
+    var dbPromise = null;
+
+    function openDB() {
+        if (dbPromise) return dbPromise;
+        dbPromise = new Promise(function (resolve, reject) {
+            if (!window.indexedDB) { reject(new Error('IndexedDB недоступна')); return; }
+            var req = indexedDB.open(DB_NAME, 1);
+            req.onupgradeneeded = function (e) {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: 'hash' }).createIndex('pickedAt', 'pickedAt', { unique: false });
+                }
+            };
+            req.onsuccess = function (e) { resolve(e.target.result); };
+            req.onerror = function () { dbPromise = null; reject(req.error); };
+        });
+        return dbPromise;
+    }
+
+    /** Чтение всех записей с уборкой просроченных — одной транзакцией, курсором */
+    function load() {
+        return openDB().then(function (db) {
+            return new Promise(function (resolve) {
+                var border = Date.now() - TTL_MS;
+                var tx = db.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).openCursor().onsuccess = function (e) {
+                    var cursor = e.target.result;
+                    if (!cursor) return;
+                    var rec = cursor.value;
+                    if (!rec || !(rec.pickedAt > border)) cursor['delete']();
+                    else picks[rec.hash] = rec.pickedAt;
+                    cursor['continue']();
+                };
+                tx.oncomplete = tx.onerror = tx.onabort = function () { resolve(); };
+            });
+        })['catch'](function (e) {
+            console.warn('⚠️ SearchPicksDB: выбранные раздачи не загружены:', e);
+        }).then(function () { loaded = true; });
+    }
+
+    function pickedAt(hash) {
+        if (!hash) return 0;
+        var t = picks[String(hash).toLowerCase()];
+        return t && t > Date.now() - TTL_MS ? t : 0;
+    }
+
+    function add(hash, result) {
+        if (!hash) return;
+        var h = String(hash).toLowerCase();
+        var now = Date.now();
+        picks[h] = now;
+        var ctx = AppState.pendingDetailItem;
+        var rec = {
+            hash: h,
+            pickedAt: now,
+            title: (result && result.title) || '',
+            tracker: (result && result.tracker) || '',
+            // Из карточки фильма — для чего выбирали; на будущее, метке не нужно
+            tmdbId: ctx && ctx.id ? String(ctx.id) : null,
+            mediaType: ctx && ctx.media_type ? ctx.media_type : null
+        };
+        openDB().then(function (db) {
+            db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(rec);
+        })['catch'](function (e) { console.warn('⚠️ SearchPicksDB: запись не сохранена:', e); });
+    }
+
+    return {
+        ready: load(),
+        isLoaded: function () { return loaded; },
+        pickedAt: pickedAt,
+        add: add
+    };
+})();
+window.SearchPicks = SearchPicks;
+
+function searchResultHash(result) {
+    if (!result) return null;
+    if (result._hash === undefined) result._hash = extractHashFromMagnet(result.magnet) || null;
+    return result._hash;
+}
+
+/**
+ * Выбранные раздачи — в начало filteredResults, свежий выбор первым. Берутся
+ * из всей выдачи (searchResults), а не из отфильтрованной: фильтр «4K» не
+ * должен прятать раздачу, которую уже смотрели в 1080p. Порядок остальных не
+ * трогаем — его задала сортировка.
+ */
+function pinPickedSearchResults() {
+    if (!searchResults.length) return;
+    var pinned = [];
+    for (var i = 0; i < searchResults.length; i++) {
+        var t = SearchPicks.pickedAt(searchResultHash(searchResults[i]));
+        if (t) pinned.push({ r: searchResults[i], t: t });
+    }
+    if (!pinned.length) return;
+    pinned.sort(function (a, b) { return b.t - a.t; });
+    // Сравниваем по хэшу, а не по ссылке: выдача из воркера
+    // (torrents-worker-patch.js) — копии объектов searchResults
+    var head = [], seen = {};
+    for (var j = 0; j < pinned.length; j++) {
+        var h = searchResultHash(pinned[j].r);
+        if (seen[h]) continue;   // одна раздача с двух трекеров — один раз
+        seen[h] = true;
+        head.push(pinned[j].r);
+    }
+    var rest = filteredResults.filter(function (r) { return !seen[searchResultHash(r)]; });
+    filteredResults = head.concat(rest);
+}
+
+/** Метка «Выбирали …» с датой: по ней видно, давно ли это было */
+function buildPickedBadge(t) {
+    var d = new Date(t);
+    var label = d.getDate() + ' ' + ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'][d.getMonth()];
+    return '<span class="search-result-picked-badge"><i class="fi fi-rr-check"></i>Выбирали ' + label + '</span>';
+}
+
+// Выдача успела прийти раньше, чем прочиталась база (первый поиск сразу после
+// запуска) — пересортировываем, если в ней есть выбранные
+SearchPicks.ready.then(function () {
+    if (!searchResults.length || AppState.currentScreen !== 'search') return;
+    for (var i = 0; i < searchResults.length; i++) {
+        if (SearchPicks.pickedAt(searchResultHash(searchResults[i]))) { applyFiltersAndSort(); return; }
+    }
+});
+
 // Render result cards in frames. Large tracker responses no longer monopolise the UI thread.
 function renderSearchResults() {
     var searchResultsDiv = getEl('search-results');
@@ -5906,6 +6053,9 @@ function renderSearchResults() {
     // В том числе сетка глобального поиска, если выдачу Jacred открыли поверх
     // неё: её постеры иначе остались бы висеть под наблюдателем
     releaseGlobalPosters();
+    // Здесь, а не в applyFiltersAndSort: у той две версии (воркер и запасная
+    // в главном потоке), а рисуют обе через эту функцию
+    pinPickedSearchResults();
 
     if (filteredResults.length === 0) {
         searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>' + searchResults.length + '</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"' : 'Введите запрос для поиска') + '</div>';
@@ -5934,6 +6084,15 @@ function renderSearchResults() {
                 // а не на «Мои торренты» (app.js: restoreFocusAfterNavigation)
                 AppState.playFromHash = true;
                 AppState.lastSearchResultHash = hash;
+                // Метку ставим сразу, но список не пересортировываем: вернувшись
+                // из плеера, человек продолжает с того же места (focusLastSearchResult)
+                SearchPicks.add(hash, sourceResult);
+                var pickedItem = playBtn.closest('.search-result-item');
+                if (pickedItem && !pickedItem.classList.contains('search-result-picked')) {
+                    pickedItem.classList.add('search-result-picked');
+                    var titleEl = pickedItem.querySelector('.search-result-title');
+                    if (titleEl) titleEl.insertAdjacentHTML('afterbegin', buildPickedBadge(Date.now()));
+                }
                 playFromHash(hash, playBtn.dataset.magnet, searchResult);
             }
             return;
