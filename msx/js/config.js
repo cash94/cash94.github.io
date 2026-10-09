@@ -242,8 +242,11 @@ function formatTime(seconds) {
 function getAuthHeaders() {
   var headers = {};
   if (AppState.authEnabled) {
-    var login = getEl('auth-login').value.trim();
-    var password = getEl('auth-password').value.trim();
+    var loginEl = getEl('auth-login');
+    var passEl = getEl('auth-password');
+    
+    var login = loginEl ? loginEl.value.trim() : '';
+    var password = passEl ? passEl.value.trim() : '';
 
     AppState.userlogin = login;
     AppState.userpassword = password;
