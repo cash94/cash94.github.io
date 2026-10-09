@@ -2527,6 +2527,15 @@ function renderDeviceInfo() {
     }
     rows.push(['Субтитры webOS', subs]);
   }
+  // Прямой файл (без перекодирования): что отдал <video> при последнем запуске
+  // и ответил ли сервис названий дорожек (player.js: initTranscodingOffPlayback)
+  var dp = window.directPlaybackDiag;
+  if (dp && dp.file) {
+    rows.push(['Прямой файл', dp.file +
+      ' · звук: ' + (dp.audio === null ? '—' : dp.audio) +
+      ' · субтитры: ' + (dp.text === null ? '—' : dp.text) + (dp.kinds ? ' (' + dp.kinds + ')' : '') +
+      (dp.probe ? ' · названия: ' + dp.probe : '')]);
+  }
   var html = '';
   for (var i = 0; i < rows.length; i++) {
     html += '<div class="device-info-row"><span class="device-info-label">' + escapeHtml(rows[i][0]) +

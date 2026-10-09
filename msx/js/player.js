@@ -2206,8 +2206,57 @@ async function initGstPlayback(metadata, initialSeek, signal) {
   } else throw new Error('Устройство не поддерживает HLS');
 }
 
-async function initTranscodingOffPlayback(initialSeek, signal) {
-  var playURL = AppState.currentTorrserverUrl + '/stream?link=' + currentTimecodeData.hash + '&index=' + currentTimecodeData.fileId + '&play=play';
+/**
+ * Сведения о последнем запуске прямого файла — для «Об устройстве»: на
+ * телевизоре без отладчика иначе не понять, отдал ли он дорожки вовсе
+ */
+var directPlaybackDiag = { file: '', audio: null, text: null, kinds: '', probe: '' };
+window.directPlaybackDiag = directPlaybackDiag;
+
+function updateDirectTrackDiag(videoPlayer) {
+  var a = videoPlayer && videoPlayer.audioTracks, t = videoPlayer && videoPlayer.textTracks;
+  directPlaybackDiag.audio = a ? a.length : 'нет audioTracks';
+  directPlaybackDiag.text = t ? t.length : 'нет textTracks';
+  var kinds = [];
+  if (t) for (var i = 0; i < t.length; i++) kinds.push((t[i].kind || '?') + (t[i].language ? '/' + t[i].language : ''));
+  directPlaybackDiag.kinds = kinds.join(', ');
+}
+
+/**
+ * Имя файла для адреса потока. Обычно оно уже есть (getFileNameByHash по
+ * списку торрентов), но раздачи может не быть в этом списке — тогда
+ * спрашиваем сам TorrServer. Не ответил за 3 с — без имени.
+ */
+async function directFileName(known) {
+  if (known) return known;
+  var hash = currentTimecodeData.hash, id = currentTimecodeData.fileId;
+  try {
+    var r = await Promise.race([
+      torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'get', hash: hash }) }),
+      new Promise(function (res) { setTimeout(function () { res(null); }, 3000); })
+    ]);
+    if (!r || !r.ok) return null;
+    var t = await r.json();
+    var files = (t && t.file_stats) || [];
+    for (var i = 0; i < files.length; i++) {
+      if (String(files[i].id) === String(id)) return String(files[i].path || '').split('/').pop() || null;
+    }
+  } catch (e) { }
+  return null;
+}
+
+async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
+  // Адрес как у Lampa (Torserver.stream): с именем файла в пути. Медиаконвейер
+  // телевизора выбирает разбор файла по расширению в адресе: с «.mkv» Vidaa
+  // открывает MKV своим конвейером и отдаёт встроенные субтитры списком
+  // textTracks, а без имени (/stream?link=…) файл разбирал общий движок
+  // Chromium — без дорожек субтитров, и в плеере было «Нет субтитров»
+  var fileName = await directFileName(knownFileName);
+  if (signal.aborted) return;
+  var playURL = AppState.currentTorrserverUrl + '/stream' + (fileName ? '/' + encodeURIComponent(fileName) : '') +
+    '?link=' + currentTimecodeData.hash + '&index=' + currentTimecodeData.fileId + '&play';
+  directPlaybackDiag.file = fileName || 'без имени';
+  directPlaybackDiag.audio = null; directPlaybackDiag.text = null; directPlaybackDiag.kinds = ''; directPlaybackDiag.probe = '';
   var videoPlayer = getEl('video-player');
   destroyHls();   // заодно снимает слушатели прошлого прямого файла
 
@@ -2594,7 +2643,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     } else if (AppState.transcodingFullOnOff) {
       nativeSubState.savedPref = (metadata && metadata.savedSubTrack !== null && metadata.savedSubTrack !== undefined)
         ? metadata.savedSubTrack : -1;
-      await initTranscodingOffPlayback(initialSeek, signal);
+      await initTranscodingOffPlayback(initialSeek, signal, metadata && metadata.fileName);
     } else {
       await initServerProxyPlayback(metadata, initialSeek, signal);
     }
@@ -3254,6 +3303,7 @@ function directProbeStart() {
     directProbe.streams = streams;
     directProbe.count = 'потоков: ' + streams.length + ' (' + via + ')';
     webosSubsDiag.probe = directProbe.count;
+    directPlaybackDiag.probe = directProbe.count;
     applyDirectProbe();
   };
   if (!hash || fileId === undefined || fileId === null) return;
@@ -3266,17 +3316,25 @@ function directProbeStart() {
       try { if (socket) socket.close(); } catch (e) { }
       socket = null;
     };
+    directPlaybackDiag.probe = 'сервис: запрос…';
     try {
       socket = new WebSocket(DIRECT_PROBE_WS + '?' + hash + '&index=' + fileId);
       socket.onmessage = function (event) {
         var json = null;
         try { json = JSON.parse(event.data); } catch (e) { }
         finish();
+        if (!(json && json.streams && json.streams.length) && !directProbe.streams) directPlaybackDiag.probe = 'сервис: пустой ответ';
         done(json && json.streams, 'сервис');
       };
-      socket.onerror = finish;
-      timer = setTimeout(finish, DIRECT_PROBE_TIMEOUT_MS);
-    } catch (e) { finish(); }
+      socket.onerror = function () {
+        finish();
+        if (!directProbe.streams) directPlaybackDiag.probe = 'сервис: ошибка соединения' + (location.protocol === 'https:' ? ' (страница по https)' : '');
+      };
+      timer = setTimeout(function () {
+        finish();
+        if (!directProbe.streams) directPlaybackDiag.probe = 'сервис: нет ответа за ' + (DIRECT_PROBE_TIMEOUT_MS / 1000) + ' с';
+      }, DIRECT_PROBE_TIMEOUT_MS);
+    } catch (e) { finish(); directPlaybackDiag.probe = 'сервис: ' + e.message; }
   }
 
   if (AppState.platform !== 'webos' || !lunaAvailable()) return;
@@ -3431,6 +3489,7 @@ function refreshNativeSubtitles(videoPlayer) {
   if (!AppState.transcodingFullOnOff) return;
   // На webOS список даёт медиасервис (webosSubsStart), textTracks там пустые
   if (nativeSubState.mode === 'webos') return;
+  updateDirectTrackDiag(videoPlayer);
   var tracks = collectNativeTextTracks(videoPlayer);
   nativeSubState.tracks = tracks;
   currentSubTracks = tracks.map(function (t, i) {
