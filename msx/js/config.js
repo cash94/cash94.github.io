@@ -247,7 +247,7 @@ function getAuthHeaders() {
 
     AppState.userlogin = login;
     AppState.userpassword = password;
-    if (AppState.userlogin && AppState.userpassword) {
+    if (AppState.userlogin) {
       headers['Authorization'] = 'Basic ' + btoa(AppState.userlogin + ':' + AppState.userpassword);
     } else if (login && password) {
       headers['Authorization'] = 'Basic ' + btoa(login + ':' + password);
