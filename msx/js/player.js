@@ -2272,7 +2272,7 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
       renderAudioTracks();
     }
     refreshNativeSubtitles(videoPlayer);
-    if (AppState.platform === 'webos') applyWebosProbe();
+    applyDirectProbe();
   };
 
   var onCanPlay = function () {
@@ -2309,7 +2309,7 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
   videoPlayer.load();
   // webOS: mediaId и подписку ловим сразу, как Lampa (см. webosSubsStart)
   webosSubsStart(videoPlayer, staleMediaId);
-  webosProbeStart(playURL);
+  directProbeStart();
   AppState.nativeVideoPlayer = videoPlayer;
   hidePlayerLoading();
 }
@@ -2928,7 +2928,7 @@ function collectNativeAudioTracks(videoPlayer) {
   var tracks = [];
   for (var i = 0; i < list.length; i++) {
     tracks.push({
-      title: list[i].label || ('Дорожка ' + (i + 1)),
+      title: list[i].label || ('Аудиодорожка ' + (i + 1)),
       language: list[i].language || 'und',
       channels: null,   // audioTracks не отдаёт ни каналы, ни кодек
       codec: null
@@ -3000,7 +3000,7 @@ function switchNativeAudioTrack(videoPlayer, index) {
 //   1. ждём video.mediaId — его выдаёт конвейер, когда файл открыт;
 //   2. subscribe по mediaId → sourceInfo.programInfo[0].subtitleTrackInfo;
 //   3. включение — setSubtitleEnable + selectTrack {type: 'text', index},
-//      текст рисует сам телевизор (наш блок #native-subtitles не нужен);
+//      текст рисует сам телевизор;
 //   4. после перемотки конвейер субтитры гасит — включаем заново (seeked).
 // В отличие от Lampa подписку не закрываем вызовом unload (тот выгружает
 // медиа, и Lampa потом пересоздаёт <video>), а просто отменяем.
@@ -3010,7 +3010,7 @@ var webosSubs = { mediaId: null, timer: null, bridge: null, list: null, enabled:
 var webosSubsDiag = { bridge: '', mediaId: '', waitedMs: 0, responses: 0, keys: '', sourceInfo: false, tracks: null, audio: null, probe: '', error: '' };
 // Звук на webOS, как в Lampa: список — у конвейера (audioTrackInfo), он главнее
 // video.audioTracks (там ни подписей, ни кодека, ни каналов); переключение —
-// selectTrack type 'audio'. Подписи потом добавляет ffprobe (applyWebosProbe)
+// selectTrack type 'audio'. Подписи потом добавляет ffprobe (applyDirectProbe)
 var webosAudio = { mode: false, list: [] };
 window.webosSubsDiag = webosSubsDiag;
 
@@ -3091,7 +3091,7 @@ function webosSubsApply(info) {
     webosAudio.list = audio;
     currentAudioTracks = audio.map(function (a, i) {
       var lang = a.language && a.language !== '(null)' ? a.language : '';
-      return { title: lang ? (LANG_NAMES[lang] || lang.toUpperCase()) : 'Дорожка ' + (i + 1), language: lang || 'und', channels: a.channels || null, codec: a.codec || null };
+      return { title: lang ? (LANG_NAMES[lang] || lang.toUpperCase()) : 'Аудиодорожка ' + (i + 1), language: lang || 'und', channels: a.channels || null, codec: a.codec || null };
     });
     // Какая играет: по audioTracks, если списки совпали, иначе прежний выбор
     var vp = getEl('video-player'), at = vp && vp.audioTracks, playing = -1;
@@ -3105,7 +3105,7 @@ function webosSubsApply(info) {
   var subs = (info && info.subtitleTrackInfo) || [];
   webosSubs.list = subs;
   webosSubsDiag.tracks = subs.length;
-  if (!subs.length) { applyWebosProbe(); return; }
+  if (!subs.length) { applyDirectProbe(); return; }
   nativeSubState.mode = 'webos';
   currentSubTracks = subs.map(function (s, i) {
     var lang = s.language && s.language !== '(null)' ? s.language : '';
@@ -3115,19 +3115,21 @@ function webosSubsApply(info) {
   currentSubtitleTrack = (want >= 0 && want < subs.length) ? want : -1;
   if (currentSubtitleTrack >= 0) webosSetSubtitle(currentSubtitleTrack);
   renderSubtitleTracks();
-  applyWebosProbe();
+  applyDirectProbe();
 }
 
-// ==================== WEBOS: НАЗВАНИЯ ДОРОЖЕК ЧЕРЕЗ FFPROBE ====================
+// ==================== НАЗВАНИЯ ДОРОЖЕК ПРЯМОГО ФАЙЛА ЧЕРЕЗ FFPROBE ====================
 //
-// Конвейер webOS отдаёт дорожки почти без подписей: у субтитров код языка, у
-// звука и того меньше. Приложение TorrStream-webOS несёт свою службу
+// Телевизор (конвейер webOS, textTracks/audioTracks на Vidaa) отдаёт дорожки
+// почти без подписей: у субтитров код языка, у звука и того меньше. Как плагин
+// Lampa «tracks», берём их у ffprobe (directProbeStart ниже). На webOS ещё и
+// так: приложение TorrStream-webOS несёт свою службу
 // com.torrstream.app.service с методом ffprobe (статический ffprobe внутри
 // ipk, как в Lampa) — она читает заголовок файла с TorrServer и возвращает
 // потоки: язык, название, кодек, каналы, «по умолчанию»/«принудительные».
 // Сопоставляем по порядку (alignProbeStreams): webOS показывает не все потоки
 // файла, но порядок сохраняет.
-var webosProbe = { gen: 0, streams: null, count: '' };
+var directProbe = { gen: 0, streams: null, count: '' };
 var LANG_NAMES = {
   rus: 'Русский', ru: 'Русский', eng: 'English', en: 'English', ukr: 'Українська', uk: 'Українська',
   bel: 'Беларуская', kaz: 'Қазақша', jpn: '日本語', ja: '日本語', kor: '한국어', chi: '中文', zho: '中文',
@@ -3183,7 +3185,7 @@ function probeTitle(s, kind, i) {
   var lang = probeLang(s);
   var name = LANG_NAMES[lang] || (lang ? lang.toUpperCase() : '');
   if (t && name && t.toLowerCase().indexOf(name.toLowerCase()) === -1) return t + ' · ' + name;
-  return t || name || ((kind === 'audio' ? 'Дорожка ' : 'Субтитры ') + (i + 1));
+  return t || name || ((kind === 'audio' ? 'Аудиодорожка ' : 'Субтитры ') + (i + 1));
 }
 
 /**
@@ -3191,8 +3193,8 @@ function probeTitle(s, kind, i) {
  * <video> отдал дорожки, конвейер прислал sourceInfo); уже подписанный список
  * (probed) не трогаем, новый список дорожек приходит без этой метки.
  */
-function applyWebosProbe() {
-  var streams = webosProbe.streams;
+function applyDirectProbe() {
+  var streams = directProbe.streams;
   if (!streams) return;
   var audio = [], subs = [];
   for (var i = 0; i < streams.length; i++) {
@@ -3223,14 +3225,62 @@ function applyWebosProbe() {
     diag.push('субтитры ' + currentSubTracks.length + '/' + subs.length + (s ? ' ✓' : ' ✗'));
   }
   // В «Об устройстве»: сколько дорожек у плеера / в файле и сошлось ли
-  if (diag.length) webosSubsDiag.probe = webosProbe.count + ' · ' + diag.join(', ');
+  if (diag.length) webosSubsDiag.probe = directProbe.count + ' · ' + diag.join(', ');
 }
 
-/** Спросить службу ffprobe о файле, который сейчас назначен <video> */
-function webosProbeStart(playURL) {
-  webosProbe.streams = null;
-  var gen = ++webosProbe.gen;
+/**
+ * Спросить ffprobe о файле, который сейчас назначен <video>. Первый ответ
+ * побеждает; не ответил никто — подписи остаются «Аудиодорожка N» и
+ * «Субтитры N».
+ *  - webOS и Vidaa: сторонний сервис ffprobe, тот же, что у плагина Lampa
+ *    «tracks» (cub.red/plugin/tracks): WebSocket, в адресе хэш раздачи и
+ *    номер файла, в ответ один JSON с streams. Файл он берёт из раздачи сам,
+ *    поэтому TorrServer может быть любым, хоть локальным. Со страницы по
+ *    https ws:// заблокирован — тогда просто нет подписей;
+ *  - webOS: ещё служба ffprobe приложения (ниже). Доменное имя ей не
+ *    разрешить, но с локальным TorrServer или TorrServer по IP она отвечает
+ *    и без стороннего сервиса.
+ */
+var DIRECT_PROBE_WS = 'ws://185.204.0.61:8080/';
+var DIRECT_PROBE_TIMEOUT_MS = 15000;
+
+function directProbeStart() {
+  directProbe.streams = null;
+  directProbe.count = '';
+  var gen = ++directProbe.gen;
+  var hash = currentTimecodeData.hash, fileId = currentTimecodeData.fileId;
+  var done = function (streams, via) {
+    if (gen !== directProbe.gen || directProbe.streams || !streams || !streams.length) return;
+    directProbe.streams = streams;
+    directProbe.count = 'потоков: ' + streams.length + ' (' + via + ')';
+    webosSubsDiag.probe = directProbe.count;
+    applyDirectProbe();
+  };
+  if (!hash || fileId === undefined || fileId === null) return;
+  if (AppState.platform !== 'webos' && AppState.platform !== 'vidaa') return;
+
+  if (typeof WebSocket === 'function') {
+    var socket = null, timer = null;
+    var finish = function () {
+      clearTimeout(timer);
+      try { if (socket) socket.close(); } catch (e) { }
+      socket = null;
+    };
+    try {
+      socket = new WebSocket(DIRECT_PROBE_WS + '?' + hash + '&index=' + fileId);
+      socket.onmessage = function (event) {
+        var json = null;
+        try { json = JSON.parse(event.data); } catch (e) { }
+        finish();
+        done(json && json.streams, 'сервис');
+      };
+      socket.onerror = finish;
+      timer = setTimeout(finish, DIRECT_PROBE_TIMEOUT_MS);
+    } catch (e) { finish(); }
+  }
+
   if (AppState.platform !== 'webos' || !lunaAvailable()) return;
+  var playURL = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&play=play';
   // localhost — 127.0.0.1: статическому ffprobe имена не разрешить даже
   // localhost («Failed to resolve hostname localhost» на webOS 25 со
   // встроенным TorrServer)
@@ -3241,17 +3291,14 @@ function webosProbeStart(playURL) {
   }
   webosSubsDiag.probe = 'запрос…';
   lunaRequest('luna://com.torrstream.app.service', 'ffprobe', { uri: uri }, function (r) {
-    if (gen !== webosProbe.gen) return;
+    if (gen !== directProbe.gen) return;
     var parsed = null;
     try { parsed = JSON.parse(r.data || '{}'); } catch (e) { }
-    if (!parsed || !parsed.streams) { webosSubsDiag.probe = 'пустой ответ'; return; }
-    webosProbe.streams = parsed.streams;
-    webosProbe.count = 'потоков: ' + parsed.streams.length;
-    webosSubsDiag.probe = webosProbe.count;
-    applyWebosProbe();
+    if (!parsed || !parsed.streams) { if (!directProbe.streams) webosSubsDiag.probe = 'служба: пустой ответ'; return; }
+    done(parsed.streams, 'служба');
   }, function (r) {
-    if (gen !== webosProbe.gen) return;
-    webosSubsDiag.probe = 'ошибка: ' + ((r && (r.errorText || r.errorCode)) || '?');
+    if (gen !== directProbe.gen || directProbe.streams) return;
+    webosSubsDiag.probe = 'служба: ошибка ' + ((r && (r.errorText || r.errorCode)) || '?');
   }, true);
 }
 
@@ -3329,13 +3376,20 @@ function webosSubsReset() {
 // ==================== СУБТИТРЫ ПРЯМОГО ФАЙЛА ====================
 //
 // В режиме «Полностью отключить транскодирование» (и всегда на webOS) файл
-// играет сам <video>, и субтитры из MKV сервер не вшивает — их некому. Но
-// браузеры ТВ (Vidaa) отдают встроенные дорожки файла так же, как отдают
-// audioTracks: списком video.textTracks. Выбранную дорожку ставим в режим
-// 'hidden' — браузер грузит её текст и шлёт cuechange, но сам не рисует, —
-// а текст выводим своим блоком #native-subtitles: на ТВ встроенная отрисовка
-// бывает мелкой или её нет вовсе. Остальные дорожки — 'disabled'.
-var nativeSubState = { tracks: [], active: null, onCue: null, savedPref: -1, listening: false, mode: 'tracks' };
+// играет сам <video>, и субтитры из MKV сервер не вшивает — их некому, а
+// вытащить их отдельно нельзя: реплики разбросаны по всему файлу, пришлось бы
+// скачать раздачу целиком. Но медиаконвейер телевизора (Vidaa и др.) сам
+// разбирает контейнер и отдаёт встроенные дорожки списком video.textTracks —
+// так же, как звук списком audioTracks. Chrome и Edge на ПК встроенные
+// субтитры MKV так не отдают: там список пуст, «Нет субтитров» — честно.
+//
+// Как в Lampa (src/interaction/player/video.js, loaded): выбранной дорожке
+// mode = 'showing', остальным 'disabled', текст рисует сам браузер.
+// Раньше ставили 'hidden' и рисовали текст своим блоком по cuechange, но
+// конвейер телевизора реплики в режиме 'hidden' может и не присылать — тогда
+// дорожка выбрана, а на экране пусто. Размер текста — браузерный: растёт
+// с высотой видео. Названия дорожкам подписывает applyDirectProbe (выше).
+var nativeSubState = { tracks: [], savedPref: -1, listening: false, mode: 'tracks' };
 
 function collectNativeTextTracks(videoPlayer) {
   var list = videoPlayer && videoPlayer.textTracks, out = [];
@@ -3348,71 +3402,28 @@ function collectNativeTextTracks(videoPlayer) {
   return out;
 }
 
-function nativeSubtitleBox() {
-  var box = getEl('native-subtitles');
-  if (!box) {
-    box = document.createElement('div');
-    box.id = 'native-subtitles';
-    box.className = 'native-subtitles';
-    var ps = getEl('player-screen');
-    (ps || document.body).appendChild(box);
-    // Панель управления открыта — поднимаем текст над ней, иначе он ложится на
-    // перемотку. Следим за её классом idle-hidden: панель показывают и прячут
-    // и player.js, и control.js, и таймер бездействия
-    var controls = getEl('controls-container');
-    var sync = function () {
-      var shown = !!controls && !controls.classList.contains('idle-hidden');
-      box.classList.toggle('native-subtitles-raised', shown);
-    };
-    if (controls && typeof MutationObserver === 'function') {
-      new MutationObserver(sync).observe(controls, { attributes: true, attributeFilter: ['class'] });
-    }
-    sync();
-  }
-  return box;
-}
-
-// Текст реплики без разметки: теги WebVTT/SRT (<i>, <font>) и команды ASS ({\an8})
-function nativeCueText(cue) {
-  return String((cue && cue.text) || '')
-    .replace(/\{\\[^}]*\}/g, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\\N/g, '\n')
-    .replace(/^\s+|\s+$/g, '');
-}
-
-function showNativeCues(track) {
-  var box = nativeSubtitleBox();
-  var lines = [];
-  var cues = track && track.activeCues;
-  if (cues) {
-    for (var i = 0; i < cues.length; i++) {
-      var t = nativeCueText(cues[i]);
-      if (t) lines.push(t);
-    }
-  }
-  box.textContent = lines.join('\n');
-  box.style.display = lines.length ? 'block' : 'none';
+/**
+ * Встроенная отрисовка кладёт текст к нижнему краю кадра — под открытой
+ * панелью управления он ложится на перемотку и тонет в её затемнении. Пока
+ * панель видна, у <video> класс cues-raised, и styles.css поднимает контейнер
+ * реплик над ней. Видимость панели — её класс idle-hidden: панель показывают и
+ * прячут и player.js, и control.js, и таймер бездействия.
+ */
+function watchCuesRaise(videoPlayer) {
+  var controls = getEl('controls-container');
+  if (!videoPlayer || !controls || videoPlayer._cuesRaiseWatched || typeof MutationObserver !== 'function') return;
+  videoPlayer._cuesRaiseWatched = true;
+  var sync = function () { videoPlayer.classList.toggle('cues-raised', !controls.classList.contains('idle-hidden')); };
+  new MutationObserver(sync).observe(controls, { attributes: true, attributeFilter: ['class'] });
+  sync();
 }
 
 function applyNativeSubtitle(index) {
-  if (nativeSubState.active && nativeSubState.onCue) {
-    nativeSubState.active.removeEventListener('cuechange', nativeSubState.onCue);
-  }
-  nativeSubState.active = null;
-  nativeSubState.onCue = null;
   var tracks = nativeSubState.tracks;
   for (var i = 0; i < tracks.length; i++) {
-    try { tracks[i].mode = (i === index) ? 'hidden' : 'disabled'; } catch (e) { }
+    try { tracks[i].mode = (i === index) ? 'showing' : 'disabled'; } catch (e) { }
   }
-  var track = (index >= 0 && index < tracks.length) ? tracks[index] : null;
-  if (track) {
-    nativeSubState.active = track;
-    nativeSubState.onCue = function () { showNativeCues(track); };
-    track.addEventListener('cuechange', nativeSubState.onCue);
-  }
-  showNativeCues(track);
-  currentSubtitleTrack = track ? index : -1;
+  currentSubtitleTrack = (index >= 0 && index < tracks.length) ? index : -1;
 }
 
 /** Список дорожек у <video> сменился (новый файл, дорожка дописалась) */
@@ -3429,10 +3440,13 @@ function refreshNativeSubtitles(videoPlayer) {
   var want = currentSubtitleTrack >= 0 ? currentSubtitleTrack : nativeSubState.savedPref;
   applyNativeSubtitle(want >= 0 && want < tracks.length ? want : -1);
   renderSubtitleTracks();
+  // Ответ ffprobe мог прийти раньше дорожек — подписываем новый список им
+  applyDirectProbe();
 }
 
 /** Слушаем появление дорожек: часть браузеров отдаёт их позже loadedmetadata */
 function listenNativeTextTracks(videoPlayer) {
+  watchCuesRaise(videoPlayer);
   if (nativeSubState.listening || !videoPlayer || !videoPlayer.textTracks ||
     typeof videoPlayer.textTracks.addEventListener !== 'function') return;
   nativeSubState.listening = true;
@@ -3448,8 +3462,6 @@ function resetNativeSubtitles() {
   webosSubsReset();
   applyNativeSubtitle(-1);
   nativeSubState.tracks = [];
-  var box = getEl('native-subtitles');
-  if (box) { box.textContent = ''; box.style.display = 'none'; }
 }
 
 function switchNativeSubtitleTrack(index) {

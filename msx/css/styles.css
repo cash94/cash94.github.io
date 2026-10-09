@@ -3689,26 +3689,16 @@ article {
   overflow-wrap: break-word;
 }
 
-.native-subtitles {
-  display: none;
-  position: absolute;
-  left: 6%;
-  right: 6%;
-  bottom: 9%;
-  z-index: 5;
-  text-align: center;
-  white-space: pre-line;
-  color: #fff;
-  font-size: 2.6vw;
-  font-weight: 600;
-  line-height: 1.3;
-  text-shadow: 0 0 4px #000, 0 0 4px #000, 2px 2px 3px #000;
-  pointer-events: none;
+/* Субтитры прямого файла рисует сам браузер (player.js: applyNativeSubtitle).
+   Пока открыта панель управления — над ней (watchCuesRaise), а не на
+   перемотке. Свойство движка Chrome — на Vidaa и webOS он же */
+#video-player::-webkit-media-text-track-container {
+  transition: transform 0.2s ease;
 }
 
-/* Над открытой панелью управления (перемотка, кнопки, строка буфера) */
-.native-subtitles.native-subtitles-raised {
-  bottom: 26%;
+#video-player.cues-raised::-webkit-media-text-track-container {
+  -webkit-transform: translateY(-17vh);
+  transform: translateY(-17vh);
 }
 
 .video-object-fit-contain {
