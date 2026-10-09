@@ -347,6 +347,24 @@ function detectPlatform() {
   return 'desktop';
 }
 
+/**
+ * Устройство Apple — для выбора внешнего плеера (player.js: APPLE_PLAYERS), по
+ * тем же признакам, что у Lampa (src/core/platform.js):
+ * - apple_tv — клиент для tvOS называет себя iPad и открывает окно ровно 1920×1080;
+ * - apple — iPhone, iPad (iPadOS в режиме ПК пишет «Macintosh», но с сенсором);
+ * - macos — Mac.
+ * null — не Apple. AppState.platform для всех них остаётся 'ios' / 'desktop':
+ * на него опирается остальной код.
+ */
+function detectApplePlatform() {
+  var ua = navigator.userAgent.toLowerCase();
+  var touch = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
+  if (ua.indexOf('ipad') !== -1 && window.innerWidth === 1920 && window.innerHeight === 1080) return 'apple_tv';
+  if (ua.indexOf('iphone') !== -1 || ua.indexOf('ipad') !== -1 || ua.indexOf('ipod') !== -1) return 'apple';
+  if (ua.indexOf('macintosh') !== -1 || ua.indexOf('mac os x') !== -1) return touch ? 'apple' : 'macos';
+  return null;
+}
+
 // Карта клавиш для Vidaa OS и других платформ.
 //
 // Строится один раз. isKeyPressed() зовут по нескольку десятков раз на КАЖДОЕ
@@ -428,7 +446,11 @@ function isKeyPressed(keyName, keyCode) {
 
 // Определяем платформу при загрузке
 AppState.platform = detectPlatform();
-console.log('📱 Платформа: ' + AppState.platform);
+AppState.applePlatform = detectApplePlatform();
+// Android-приложение (мост AndroidJS есть ещё до загрузки страницы) — для CSS:
+// боковой вырез там не отодвигает шапку и баннер (styles.css: html.android-app)
+if (window.AndroidJS) document.documentElement.classList.add('android-app');
+console.log('📱 Платформа: ' + AppState.platform + (AppState.applePlatform ? ' (' + AppState.applePlatform + ')' : ''));
 window.getEl = getEl;
 window.clearFocused = clearFocused;
 

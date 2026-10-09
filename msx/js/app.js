@@ -2334,6 +2334,9 @@ function setupCheckboxes() {
   }
   setupCheckboxWithStorage('auto-switch-episodes', 'autoSwitchEpisodes', 'autoSwitchEpisodes');
 
+  // Устройства Apple — выбор внешнего плеера (Infuse, VLC, плееры tvOS…)
+  setupApplePlayerChoice();
+
   if (window.AndroidJS) {
     // 7. Плеер по умолчанию — только в Android-приложении,
     // т.к. воспроизведение там всегда идёт через внешний плеер (AndroidJS.openPlayer).
@@ -2357,6 +2360,47 @@ function setupCheckboxes() {
       console.log('ℹ️ initDolbyVisionCheck не найдена, пропускаем');
     }
   }
+}
+
+/**
+ * Настройки → Плеер → «Плеер для видео» на устройствах Apple: ряд кнопок, выбранная
+ * подсвечена. Список и запуск — player.js (APPLE_PLAYERS, openAppleExternalPlayer).
+ * В Android-приложении выбор свой (AndroidJS.choosePlayer), там раздел не нужен.
+ */
+function setupApplePlayerChoice() {
+  var section = getEl('apple-player-section');
+  var row = getEl('apple-player-choices');
+  var list = (!window.AndroidJS && typeof getApplePlayers === 'function') ? getApplePlayers() : null;
+  if (!section || !row || !list) return;
+  section.hidden = false;
+  // Apple TV: в «Плеере» только выбор плеера и автопереключение серий — остальное
+  // про веб-плеер (styles.css: #player-tab-content.apple-tv-player)
+  if (AppState.applePlatform === 'apple_tv') {
+    var tab = getEl('player-tab-content');
+    if (tab) tab.classList.add('apple-tv-player');
+  }
+  row.innerHTML = '';
+  function mark() {
+    var current = getApplePlayer();
+    var btns = row.querySelectorAll('.btn');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle('btn-primary', !!current && btns[i].getAttribute('data-player') === current.id);
+    }
+  }
+  list.forEach(function (p) {
+    var b = document.createElement('button');
+    b.className = 'btn';
+    b.setAttribute('data-player', p.id);
+    b.textContent = p.name;
+    b.addEventListener('click', function () {
+      setApplePlayer(p.id);
+      mark();
+      showToast('Плеер: ' + p.name);
+    });
+    row.appendChild(b);
+  });
+  mark();
+  if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
 }
 
 function setupExternalPlayerCheckbox() {
@@ -2405,6 +2449,8 @@ var PLATFORM_NAMES = {
   desktop: 'Компьютер'
 };
 
+var APPLE_PLATFORM_NAMES = { apple_tv: 'Apple TV', apple: 'iPhone / iPad', macos: 'Mac' };
+
 function deviceAppName() {
   if (window.AndroidJS) return 'Android-приложение TorrStream';
   if (AppState.platform === 'webos') return 'Приложение TorrStream для webOS';
@@ -2413,6 +2459,8 @@ function deviceAppName() {
 
 function devicePlayerName() {
   if (window.AndroidJS) return 'Внешний плеер Android';
+  var apple = (typeof getApplePlayer === 'function') ? getApplePlayer() : null;
+  if (apple && apple.template) return 'Внешний: ' + apple.name;
   if (AppState.transcodingFullOnOff) return 'Встроенный, файл напрямую с TorrServer';
   if (AppState.transcodingOnOff) return 'Встроенный, транскодирование TorrServer (HLS)';
   return 'Встроенный, поток через сервер TorrStream (HLS)';
@@ -2452,7 +2500,7 @@ function renderDeviceInfo() {
   var dpr = window.devicePixelRatio || 1;
   var rows = [
     ['Приложение', deviceAppName()],
-    ['Платформа', PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'],
+    ['Платформа', APPLE_PLATFORM_NAMES[AppState.applePlatform] || PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'],
     ['Плеер', devicePlayerName()],
     ['Версия', AppState.currentVersion || '—'],
     ['Браузер', browserVersionName()],

@@ -1848,6 +1848,134 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
   return false;
 }
 
+// ==================== ВНЕШНИЕ ПЛЕЕРЫ НА УСТРОЙСТВАХ APPLE ====================
+// Выбор — Настройки → Плеер (app.js: setupApplePlayerChoice), список и URL-схемы —
+// как у Lampa (src/interaction/player.js, settings/params.js). Плееру уходит прямая
+// ссылка на файл в TorrServer, как и встроенному плееру Android. В шаблонах
+// ${url} — ссылка в encodeURIComponent, ${furl} — как есть, ${_url} — encodeURI,
+// ${playlist} — серии JSON-ом в encodeURIComponent.
+// tvOS Pro / Universal / Online и «Внешний» — плееры самого клиента для Apple TV
+// (схема lampa://, в нём TorrStream и открыт), остальные — отдельные приложения.
+var APPLE_PLAYERS = {
+  apple_tv: [
+    ['inner', 'Встроенный TorrStream'],
+    ['tvospro', 'tvOS Pro', 'lampa://video?player=tvospro&src=${url}&playlist=${playlist}'],
+    ['tvos', 'tvOS Universal', 'lampa://video?player=tvos&src=${url}&playlist=${playlist}'],
+    ['tvosl', 'tvOS Online', 'lampa://video?player=tvosav&src=${url}&playlist=${playlist}'],
+    ['tvosSelect', 'Внешний — выбор при запуске', 'lampa://video?player=lists&src=${url}&playlist=${playlist}'],
+    ['vlc', 'VLC', 'vlc-x-callback://x-callback-url/stream?url=${url}'],
+    ['infuse', 'Infuse', 'infuse://x-callback-url/play?x-success=lampa://infuseDidFinish&x-error=lampa://infuseDidFail&url=${url}&playlist=${playlist}'],
+    ['senplayer', 'SenPlayer', 'SenPlayer://x-callback-url/play?url=${url}'],
+    ['vidhub', 'Vidhub', 'open-vidhub://x-callback-url/open?url=${url}'],
+    ['svplayer', 'SVPlayer', 'svplayer://x-callback-url/stream?url=${url}']
+  ],
+  apple: [
+    ['inner', 'Встроенный TorrStream'],
+    ['vlc', 'VLC', 'vlc://${furl}'],
+    ['nplayer', 'nPlayer', 'nplayer-${furl}'],
+    ['infuse', 'Infuse', 'infuse://x-callback-url/play?url=${url}'],
+    ['senplayer', 'SenPlayer', 'senplayer://x-callback-url/play?url=${url}'],
+    ['vidhub', 'Vidhub', 'open-vidhub://x-callback-url/open?&url=${url}'],
+    ['svplayer', 'SVPlayer', 'svplayer://x-callback-url/stream?url=${url}'],
+    ['tracyplayer', 'TracyPlayer', 'tracy://open?url=${url}']
+  ],
+  macos: [
+    ['inner', 'Встроенный TorrStream'],
+    ['mpv', 'mpv', 'mpv://${_url}'],
+    ['iina', 'IINA', 'iina://weblink?url=${url}'],
+    ['nplayer', 'nPlayer', 'nplayer-${_url}'],
+    ['infuse', 'Infuse', 'infuse://x-callback-url/play?url=${url}'],
+    ['senplayer', 'SenPlayer', 'senplayer://x-callback-url/play?url=${url}']
+  ]
+};
+var APPLE_PLAYER_KEY = 'applePlayer';
+
+/** Плееры этого устройства Apple: [{id, name, template}] или null — не Apple */
+function getApplePlayers() {
+  var list = AppState.applePlatform && APPLE_PLAYERS[AppState.applePlatform];
+  if (!list) return null;
+  return list.map(function (p) { return { id: p[0], name: p[1], template: p[2] || null }; });
+}
+window.getApplePlayers = getApplePlayers;
+
+/** Выбранный плеер (объект из getApplePlayers) или null — играет встроенный */
+function getApplePlayer() {
+  var list = getApplePlayers();
+  if (!list) return null;
+  var id = null;
+  try { id = localStorage.getItem(APPLE_PLAYER_KEY); } catch (e) { }
+  for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+  return list[0];
+}
+window.getApplePlayer = getApplePlayer;
+
+function setApplePlayer(id) {
+  try { localStorage.setItem(APPLE_PLAYER_KEY, id); } catch (e) { }
+}
+window.setApplePlayer = setApplePlayer;
+
+/**
+ * Прямая ссылка на файл в TorrServer. Логин и пароль TorrServer — в самой ссылке:
+ * заголовков чужому плееру не передать (так же уходит ссылка в ffprobe на webOS)
+ */
+function appleStreamUrl(hash, fileId) {
+  var u = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&play=play';
+  if (AppState.authEnabled && AppState.authLogin) {
+    u = u.replace(/^(https?:\/\/)/, '$1' + encodeURIComponent(AppState.authLogin) + ':' + encodeURIComponent(AppState.authPassword || '') + '@');
+  }
+  return u;
+}
+
+/**
+ * Ссылка для внешнего плеера Apple: URL-схема выбранного плеера с прямой ссылкой
+ * на файл и, для сериала, списком серий. null — выбран встроенный или ссылка не
+ * разобралась.
+ */
+function buildAppleExternalUrl(originalUrl, seekTime) {
+  var player = getApplePlayer();
+  if (!player || !player.template || !AppState.currentTorrserverUrl) return null;
+  var ref = parseStreamRef(originalUrl);
+  if (!ref) return null;
+  var furl = appleStreamUrl(ref.hash, ref.fileId);
+  var playlist = '';
+  if (AppState.autoSwitchEpisodes) {
+    var episodes = buildEpisodesPlaylist(currentEpisodeIndex, seekTime || 0);
+    if (episodes) {
+      episodes.forEach(function (e) {
+        var m = /[?&]index=(\d+)/.exec(e.url);
+        if (m) e.url = appleStreamUrl(ref.hash, m[1]);
+      });
+      playlist = encodeURIComponent(JSON.stringify(episodes));
+    }
+  }
+  return {
+    player: player,
+    ref: ref,
+    url: player.template
+      .replace('${url}', encodeURIComponent(furl))
+      .replace('${_url}', encodeURI(furl))
+      .replace('${furl}', furl)
+      .replace('${playlist}', playlist)
+  };
+}
+window.buildAppleExternalUrl = buildAppleExternalUrl;
+
+/**
+ * Открыть файл во внешнем плеере Apple по URL-схеме. false — выбран встроенный
+ * (или ссылка не разобралась): тогда играет веб-плеер, как раньше.
+ * Позицию просмотра чужой плеер обратно не сообщает — как и у Lampa.
+ */
+function openAppleExternalPlayer(originalUrl, title, seekTime) {
+  var built = buildAppleExternalUrl(originalUrl, seekTime);
+  if (!built) return false;
+  if (lastExternalOpen.url === built.url && Date.now() - lastExternalOpen.time < EXTERNAL_OPEN_DEDUP_MS) return true;
+  lastExternalOpen.url = built.url; lastExternalOpen.time = Date.now();
+  currentTimecodeData.hash = built.ref.hash; currentTimecodeData.fileId = built.ref.fileId; currentTimecodeData.timecode = seekTime || 0;
+  console.log('🍎 Внешний плеер ' + built.player.name + ': ' + (title || ''));
+  window.location.assign(built.url);
+  return true;
+}
+
 function startGstPlayback(m3u8Url) {
   var videoPlayer = getEl('video-player');
   if (!videoPlayer) return false;
@@ -2363,6 +2491,27 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       if (!(await runPlaybackPreload(preloadRef.hash, preloadRef.fileId, preloadTitle))) return false;
     }
   }
+  // Устройство Apple с выбранным внешним плеером (Infuse, VLC, плееры tvOS…):
+  // как у Android — серии и сохранённая позиция до запуска, дальше URL-схема
+  var applePlayer = (typeof getApplePlayer === 'function') ? getApplePlayer() : null;
+  if (applePlayer && applePlayer.template) {
+    var appleRef = parseStreamRef(originalUrl);
+    if (AppState.autoSwitchEpisodes && AppState.currentDetailItem && AppState.currentDetailItem.hash) {
+      try { await loadEpisodesInfo(AppState.currentDetailItem.hash, appleRef ? appleRef.fileId : null); } catch (e) { /* без серий — один файл */ }
+      if (typeof getTorrentProgressBatch === 'function') {
+        try { await getTorrentProgressBatch(AppState.currentDetailItem.hash, currentEpisodeFiles); } catch (e) { /* без прогресса — нули */ }
+      }
+    }
+    var appleSeek = initialSeek;
+    if (appleSeek === null && appleRef) {
+      try {
+        var appleSaved = await loadTimecodeFromServer(appleRef.hash, appleRef.fileId);
+        if (appleSaved > 0) appleSeek = appleSaved;
+      } catch (e) { /* нет таймкода — с начала */ }
+    }
+    if (openAppleExternalPlayer(originalUrl, buildExternalPlayerTitle(), appleSeek)) return;
+  }
+
   if (window.AndroidJS) {
     var androidRef = parseStreamRef(originalUrl);
 

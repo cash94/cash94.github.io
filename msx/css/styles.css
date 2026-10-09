@@ -8469,6 +8469,43 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   margin-left: var(--safe-left, env(safe-area-inset-left, 0px));
 }
 
+/* Android-приложение: вырез под камеру шапку, заголовки рядов и текст баннера не
+   отодвигает. Окно теперь идёт под вырез (MainActivity.coverDisplayCutout), и
+   отступ на всю высоту/ширину выреза выглядел просто как опущенная шапка (портрет)
+   или сдвиг вправо (горизонтально), а сама камера — маленькое отверстие у края,
+   где у шапки пусто */
+html.android-app #home-topbar,
+html.android-app .search-header,
+html.android-app .detail-header {
+  padding-top: 10px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+html.android-app .home-row-header,
+html.android-app .section-title-header {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+html.android-app #home-hero-body {
+  margin-left: 0;
+}
+
+/* Телефон в альбомной ориентации (Android-приложение): заголовок ряда и карточки
+   главной — по одной линии с текстом баннера (left: 26px в медиазапросе 720–960),
+   а не на 10px правее. Ряду 10px слева — минимум: меньше — и рамку фокуса первой
+   карточки обрежет вьюпорт. ТВ (высота 540px и больше) не задевает */
+@media (orientation: landscape) and (max-height: 500px) {
+  html.android-app #home-rows .catalog-row-header {
+    padding-left: 10px;
+  }
+
+  html.android-app #home-rows .catalog-row-track {
+    padding-left: 10px;
+  }
+}
+
 /* Chrome 68 и старше (webOS 5): env() появился только в Chrome 69. Без него
    правило с var(--safe-*, env(...)) целиком недействительно, и у шапки
    пропадали поля — пункты прижимались к краям экрана. Заданная переменная до
@@ -8983,6 +9020,15 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 #config-screen .text-input:disabled,
 #config-screen .checkbox-container input:disabled + span {
   opacity: 0.5;
+}
+
+/* Apple TV: в «Плеере» только автопереключение серий и выбор плеера (app.js:
+   setupApplePlayerChoice) — настройки веб-плеера там не нужны. !important:
+   часть этих строк показывает и прячет скрипт (Dolby Vision, многоканальный звук) */
+#player-tab-content.apple-tv-player .checkbox-container:not(#auto-switch-episodes-container),
+#player-tab-content.apple-tv-player #choose-player-container,
+#player-tab-content.apple-tv-player #dv-support-section {
+  display: none !important;
 }
 
 /* ---- Кнопки — как на карточке фильма ---- */

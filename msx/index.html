@@ -428,6 +428,13 @@
               <div class="action-row" id="choose-player-container" hidden>
                 <button class="btn btn-primary" id="choose-player-btn">Выбрать плеер по умолчанию</button>
               </div>
+              <!-- Устройства Apple: внешний плеер по URL-схеме (player.js: APPLE_PLAYERS,
+                   app.js: setupApplePlayerChoice). Кнопки строит скрипт под устройство -->
+              <div class="settings-group" id="apple-player-section" hidden>
+                <h2 class="settings-group-title">Плеер для видео</h2>
+                <p class="settings-lead settings-group-description">Чем открывать фильмы и сериалы. Внешний плеер должен быть установлен; позицию просмотра он обратно не сообщает.</p>
+                <div class="action-row" id="apple-player-choices"></div>
+              </div>
             </div>
 
             <!-- Проверка поддержки Dolby Vision. В Android-приложении прячется
