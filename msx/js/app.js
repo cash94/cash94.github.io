@@ -2173,6 +2173,27 @@ function setupCheckboxes() {
     });
   }
 
+  // Переключатели настроек: одно нажатие — одно переключение. Браузеры для
+  // Apple TV (WebKit, «Safari 17.1» в User-Agent) на нажатие пульта шлют и Enter
+  // (control.js переключает его click()), и свой клик в точку курсора — второе
+  // событие тут же возвращало переключатель назад, и казалось, что он не
+  // работает. Повторное переключение того же чекбокса за 400 мс отменяем, от
+  // какого бы события оно ни пришло; в фазе захвата — раньше change.
+  if (!document._tsToggleGuard) {
+    document._tsToggleGuard = true;
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      if (!t || t.type !== 'checkbox' || !t.closest || !t.closest('#config-screen')) return;
+      var now = Date.now();
+      if (t._tsToggledAt && now - t._tsToggledAt < 400) {
+        e.preventDefault();          // браузер вернёт checked как было, change не придёт
+        e.stopImmediatePropagation();
+        return;
+      }
+      t._tsToggledAt = now;
+    }, true);
+  }
+
   // 3. Добавление в базу
   var addToDbCheckbox = getEl('add-to-db');
   if (addToDbCheckbox) {

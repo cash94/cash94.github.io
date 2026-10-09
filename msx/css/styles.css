@@ -8463,6 +8463,12 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   padding-right: calc(var(--safe-right, env(safe-area-inset-right, 0px)));
 }
 
+/* Текст баннера главной: его left задают медиазапросы выше, поэтому вырез —
+   отступом поверх, margin'ом. Картинка баннера под вырез уходит, как и задумано */
+#home-hero-body {
+  margin-left: var(--safe-left, env(safe-area-inset-left, 0px));
+}
+
 /* Chrome 68 и старше (webOS 5): env() появился только в Chrome 69. Без него
    правило с var(--safe-*, env(...)) целиком недействительно, и у шапки
    пропадали поля — пункты прижимались к краям экрана. Заданная переменная до
