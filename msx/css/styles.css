@@ -8469,33 +8469,32 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   margin-left: var(--safe-left, env(safe-area-inset-left, 0px));
 }
 
-/* Android-приложение: вырез под камеру шапку, заголовки рядов и текст баннера не
-   отодвигает. Окно теперь идёт под вырез (MainActivity.coverDisplayCutout), и
-   отступ на всю высоту/ширину выреза выглядел просто как опущенная шапка (портрет)
-   или сдвиг вправо (горизонтально), а сама камера — маленькое отверстие у края,
-   где у шапки пусто */
-html.android-app #home-topbar,
-html.android-app .search-header,
-html.android-app .detail-header {
-  padding-top: 10px;
-  padding-left: 12px;
-  padding-right: 12px;
+/* Android-приложение: вырез под камеру ничего не отодвигает. Окно теперь идёт
+   под вырез (MainActivity.coverDisplayCutout), и отступ на всю высоту/ширину
+   выреза выглядел просто опущенной шапкой и тёмной полосой до прежней линии
+   выреза (портрет) или сдвигом вправо (горизонтально), а сама камера — маленькое
+   отверстие у края, где у шапки пусто. Переменные обнуляются целиком: их читают
+   и шапка, и кнопка меню карточки, и выезжающие меню, и заголовок настроек.
+   !important перебивает значения, которые приложение ставит инлайном (publishSafeArea) */
+html.android-app {
+  --safe-top: 0px !important;
+  --safe-right: 0px !important;
+  --safe-bottom: 0px !important;
+  --safe-left: 0px !important;
 }
 
-html.android-app .home-row-header,
-html.android-app .section-title-header {
-  padding-left: 0;
-  padding-right: 0;
+/* Низкий альбомный экран (телефон): баннер ниже (home.js: HERO_MIN_SHARE), и
+   четыре строки описания с логотипом доставали бы до шапки — оставляем две */
+@media (orientation: landscape) and (max-height: 500px) {
+  #home-hero-overview {
+    -webkit-line-clamp: 2;
+  }
+
+  #home-hero-logo img {
+    max-height: 56px;
+  }
 }
 
-html.android-app #home-hero-body {
-  margin-left: 0;
-}
-
-/* Телефон в альбомной ориентации (Android-приложение): заголовок ряда и карточки
-   главной — по одной линии с текстом баннера (left: 26px в медиазапросе 720–960),
-   а не на 10px правее. Ряду 10px слева — минимум: меньше — и рамку фокуса первой
-   карточки обрежет вьюпорт. ТВ (высота 540px и больше) не задевает */
 @media (orientation: landscape) and (max-height: 500px) {
   html.android-app #home-rows .catalog-row-header {
     padding-left: 10px;

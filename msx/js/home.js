@@ -58,6 +58,11 @@
         // Доля свободной высоты под ряд; остальное достаётся баннеру
         ROW_SHARE: 0.48,
         HERO_MIN_H: 190,
+        // На низком экране (телефон в альбомной ориентации, ~410px) минимум баннера —
+        // эта доля свободной высоты: с жёсткими 190px ряд с карточкой минимальной
+        // ширины не помещался, и низ карточек уходил за экран. На ТВ доля больше
+        // 190px, и там всё как было
+        HERO_MIN_SHARE: 0.45,
         // Нижний отступ #torrserver-section: на него ряд не должен наезжать
         BOTTOM_PAD_PX: 16,
         // Заголовок ряда + вертикальные padding'и трека, если замерить не вышло
@@ -1446,8 +1451,9 @@
         // ===== ФАЗА ВЫЧИСЛЕНИЙ: чистая арифметика, DOM не трогаем =====
         var free = Math.max(200, avail - heroTop - HOME.BOTTOM_PAD_PX);
 
+        var heroMin = Math.min(HOME.HERO_MIN_H, Math.round(free * HOME.HERO_MIN_SHARE));
         var rowBlock = Math.round(free * HOME.ROW_SHARE);
-        var maxRow = free - HOME.HERO_MIN_H;
+        var maxRow = free - heroMin;
         if (rowBlock > maxRow) rowBlock = maxRow;
 
         var w = Math.round((rowBlock - chrome) / HOME.CARD_ASPECT);
@@ -1457,7 +1463,7 @@
         var posterH = Math.round(w * HOME.CARD_ASPECT);
         // Остаток высоты — баннеру. Отрицательный margin заводит его под шапку:
         // та лежит выше по z-index и рисует поверх свой градиент.
-        var heroH = Math.max(HOME.HERO_MIN_H, free - (posterH + chrome));
+        var heroH = Math.max(heroMin, free - (posterH + chrome));
 
         // ===== ФАЗА ЗАПИСИ: копится до конца кадра, пересчёта не вызывает =====
         if (needScrollReset) mc.scrollTop = 0;
