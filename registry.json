@@ -1,0 +1,32 @@
+{
+  "modules": {
+    "rutube-proxy": {
+      "name": "rutube-proxy",
+      "version": "1.6.0",
+      "description": "Прокси для RuTube API с cookie",
+      "url": "https://cash94.github.io/torrstream-modules/rutube-proxy/module.js",
+      "sha256": "562368b20a64be95651bb8246b7420f7fce55538dff999aefaa78662a14d0d39"
+    },
+    "rus-catalog": {
+      "name": "rus-catalog",
+      "version": "1.1.0",
+      "description": "Подборка русских фильмов и сериалов.",
+      "url": "https://cash94.github.io/torrstream-modules/rus-catalog/rus-catalog.js",
+      "sha256": "7fbd210ebec11f65a97190ef900795c4b8da3805af3f5a1b8d1d272556b292ca"
+    },
+    "kinopoisk-collections": {
+      "name": "kinopoisk-collections",
+      "version": "3.3.0",
+      "description": "Подборки Кинопоиска рядами на главной (зомби, вампиры, катастрофы, мультфильмы) с маппингом в TMDB через зеркала сервера (запасной путь — свои из apiproxy.json) и логотипами названий.",
+      "url": "https://cash94.github.io/torrstream-modules/kinopoisk-collections/module.js",
+      "sha256": "6d26216726e266ff1daf5b180ec76344713a16633229e36606dc12acd465032c"
+    },
+    "skip-intro": {
+      "name": "skip-intro",
+      "version": "1.0.1",
+      "description": "Заставки и титры: tsskip + запасной источник api.introdb.app",
+      "url": "https://cash94.github.io/torrstream-modules/skip-intro/module.js",
+      "sha256": "d51e6ec94058554a84558a5b402ee6ef5fdf5455e35c902feda61cda8752943a"
+    }
+  }
+}

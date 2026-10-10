@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>TorrStream — что нового</title>
+    <meta name="description" content="Список изменений TorrStream по версиям: сервер и интерфейс.">
+    <meta name="theme-color" content="#080b14">
+    <meta property="og:title" content="TorrStream — что нового">
+    <meta property="og:description" content="Что исправлено и добавлено в каждой версии TorrStream.">
+    <meta property="og:image" content="https://cash94.github.io/msx/guide/01-home.webp">
+    <meta property="og:type" content="website">
+    <style>
+        :root {
+            --bg: #080b14;
+            --panel: #111827;
+            --line: #1e2740;
+            --text: #eef2ff;
+            --muted: #8b9ac0;
+            --dim: #67759b;
+            --accent: #ff8c00;
+            --accent-soft: rgba(255, 140, 0, .14);
+            --blue: #4a9eff;
+            --blue-soft: rgba(74, 158, 255, .12);
+            --radius: 18px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            line-height: 1.55;
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: -20%;
+            left: -20%;
+            right: -20%;
+            height: 70vh;
+            background:
+                radial-gradient(60% 60% at 25% 0%, rgba(255, 140, 0, .13), transparent 70%),
+                radial-gradient(50% 60% at 80% 10%, rgba(74, 158, 255, .13), transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .wrap {
+            position: relative;
+            z-index: 1;
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 40px 16px 64px;
+        }
+
+        .logo {
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: .3px;
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .logo span {
+            color: var(--accent);
+        }
+
+        h1 {
+            margin: 18px 0 10px;
+            font-size: clamp(28px, 6vw, 40px);
+            line-height: 1.15;
+        }
+
+        .intro {
+            color: var(--muted);
+            font-size: 15px;
+            max-width: 620px;
+        }
+
+        .links {
+            margin-top: 14px;
+            font-size: 14px;
+        }
+
+        .links a {
+            color: var(--blue);
+            text-decoration: none;
+            margin-right: 16px;
+        }
+
+        .links a:hover {
+            text-decoration: underline;
+        }
+
+        .version {
+            margin-top: 22px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 20px 22px 18px;
+        }
+
+        .version:first-of-type {
+            border-color: rgba(255, 140, 0, .45);
+            box-shadow: 0 0 0 1px rgba(255, 140, 0, .12), 0 18px 50px rgba(0, 0, 0, .45);
+        }
+
+        .version h2 {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            font-size: 22px;
+            line-height: 1.3;
+        }
+
+        .version h2 .num {
+            margin-right: 12px;
+        }
+
+        .version h2 .date {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--dim);
+        }
+
+        .version h2 .badge {
+            margin-left: 10px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--accent);
+            background: var(--accent-soft);
+            border-radius: 999px;
+            padding: 2px 10px;
+        }
+
+        .version h3 {
+            margin: 16px 0 6px;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            color: var(--muted);
+        }
+
+        .version h3.server {
+            color: var(--blue);
+        }
+
+        .version h3.ui {
+            color: var(--accent);
+        }
+
+        ul {
+            list-style: none;
+        }
+
+        li {
+            position: relative;
+            padding-left: 18px;
+            margin: 6px 0;
+            font-size: 15px;
+        }
+
+        li::before {
+            content: '';
+            position: absolute;
+            left: 3px;
+            top: .7em;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--dim);
+        }
+
+        code {
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+            font-size: .9em;
+            background: var(--blue-soft);
+            color: #cfe3ff;
+            border-radius: 6px;
+            padding: 1px 6px;
+        }
+
+        a {
+            color: var(--blue);
+        }
+
+        .status {
+            margin-top: 28px;
+            color: var(--muted);
+        }
+
+        @media (max-width: 480px) {
+            .wrap {
+                padding-top: 28px;
+            }
+
+            .version {
+                padding: 16px 16px 14px;
+            }
+
+            .version h2 {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <a class="logo" href="https://cash94.github.io/msx/guide/guide.html">Torr<span>Stream</span></a>
+        <h1>Что нового</h1>
+        <p class="intro" id="intro"></p>
+        <div class="links">
+            <a href="https://github.com/cash94/cash94.github.io/blob/main/CHANGELOG.md">CHANGELOG.md на GitHub</a>
+            <a href="https://cash94.github.io/msx/guide/guide.html">Описание и инструкция</a>
+        </div>
+        <div id="log">
+            <p class="status">Загружаю список изменений…</p>
+        </div>
+    </div>
+
+    <script>
+        // Список — CHANGELOG.md в корне репозитория: новая версия дописывается
+        // только туда. Разметка простая (## версия — дата, ### раздел, - пункт),
+        // поэтому хватает своего разбора без библиотек.
+        (function () {
+            var log = document.getElementById('log');
+            var intro = document.getElementById('intro');
+
+            function esc(s) {
+                return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
+            function inline(s) {
+                return esc(s)
+                    .replace(/`([^`]+)`/g, '<code>$1</code>')
+                    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+                    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>');
+            }
+
+            function render(md) {
+                var html = '', introText = [], inVersion = false, inList = false, first = true;
+                function closeList() { if (inList) { html += '</ul>'; inList = false; } }
+                function closeVersion() { closeList(); if (inVersion) { html += '</section>'; inVersion = false; } }
+
+                md.replace(/\r/g, '').split('\n').forEach(function (line) {
+                    var m;
+                    if (/^# /.test(line)) return;
+                    if ((m = /^## (.+)$/.exec(line))) {
+                        closeVersion();
+                        var parts = m[1].split(/\s+—\s+/);
+                        var num = parts[0].trim();
+                        html += '<section class="version" id="v' + esc(num) + '"><h2>' +
+                            '<span class="num">' + inline(num) + '</span>' +
+                            (parts[1] ? '<span class="date">' + inline(parts[1]) + '</span>' : '') +
+                            (first ? '<span class="badge">последняя</span>' : '') + '</h2>';
+                        inVersion = true;
+                        first = false;
+                        return;
+                    }
+                    if ((m = /^### (.+)$/.exec(line))) {
+                        closeList();
+                        var cls = /сервер/i.test(m[1]) ? 'server' : (/интерфейс/i.test(m[1]) ? 'ui' : '');
+                        html += '<h3 class="' + cls + '">' + inline(m[1]) + '</h3>';
+                        return;
+                    }
+                    if ((m = /^\s*[-*] (.+)$/.exec(line))) {
+                        if (!inList) { html += '<ul>'; inList = true; }
+                        html += '<li>' + inline(m[1]) + '</li>';
+                        return;
+                    }
+                    if (!line.trim()) { closeList(); return; }
+                    // Текст до первой версии — вступление под заголовком страницы
+                    if (!inVersion) introText.push(line.trim());
+                    else { closeList(); html += '<p>' + inline(line.trim()) + '</p>'; }
+                });
+                closeVersion();
+                intro.innerHTML = inline(introText.join(' '));
+                log.innerHTML = html || '<p class="status">Список пуст.</p>';
+                // Ссылка вида …/changelog/#v1.0.50 — сразу к версии
+                if (location.hash) {
+                    var target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+                    if (target) target.scrollIntoView();
+                }
+            }
+
+            fetch('../CHANGELOG.md', { cache: 'no-cache' })
+                .then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.text();
+                })
+                .then(render)
+                .catch(function () {
+                    log.innerHTML = '<p class="status">Не удалось загрузить список. Он есть и ' +
+                        '<a href="https://github.com/cash94/cash94.github.io/blob/main/CHANGELOG.md">на GitHub</a>.</p>';
+                });
+        })();
+    </script>
+</body>
+
+</html>

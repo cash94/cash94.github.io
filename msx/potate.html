@@ -1,0 +1,1930 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TorrStream Админка</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1419;
+            color: #e1e8ed;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            padding: 20px 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: #fff;
+        }
+
+        .server-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .server-controls input {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #3a4a5c;
+            background: #1a2332;
+            color: #fff;
+            min-width: 250px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            background: #2d5a87;
+            color: #fff;
+        }
+
+        .btn:hover {
+            background: #3a7ab8;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: #c0392b;
+        }
+
+        .btn-danger:hover {
+            background: #e74c3c;
+        }
+
+        .btn-success {
+            background: #27ae60;
+        }
+
+        .btn-success:hover {
+            background: #2ecc71;
+        }
+
+        .btn-secondary {
+            background: #5a6c7d;
+        }
+
+        .btn-secondary:hover {
+            background: #6b7d8e;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #e74c3c;
+        }
+
+        .status-dot.connected {
+            background: #2ecc71;
+            box-shadow: 0 0 8px #2ecc71;
+        }
+
+        .tabs {
+            display: flex;
+            background: #1a2332;
+            padding: 0 20px;
+            border-bottom: 1px solid #2a3a4c;
+            overflow-x: auto;
+            scrollbar-width: thin;
+        }
+
+        .tab-btn {
+            padding: 14px 20px;
+            background: none;
+            border: none;
+            color: #8899a6;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .tab-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-btn.active {
+            color: #1da1f2;
+            border-bottom-color: #1da1f2;
+        }
+
+        .content {
+            padding: 25px 30px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .section {
+            background: #1a2332;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #2a3a4c;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #2a3a4c;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .section-header h2 {
+            font-size: 18px;
+            color: #fff;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th,
+        td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #2a3a4c;
+        }
+
+        th {
+            background: #0f1419;
+            color: #8899a6;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+        }
+
+        tbody tr:hover {
+            background: rgba(29, 161, 242, 0.05);
+        }
+
+        tbody tr {
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .mono {
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 12px;
+            color: #8899a6;
+            word-break: break-all;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-info {
+            background: #1da1f2;
+            color: #fff;
+        }
+
+        .badge-success {
+            background: #27ae60;
+            color: #fff;
+        }
+
+        .badge-warning {
+            background: #f39c12;
+            color: #fff;
+        }
+
+        .badge-danger {
+            background: #c0392b;
+            color: #fff;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #2a3a4c 0%, #1a2332 100%);
+            padding: 18px;
+            border-radius: 10px;
+            border: 1px solid #3a4a5c;
+        }
+
+        .stat-card .label {
+            font-size: 12px;
+            color: #8899a6;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1da1f2;
+        }
+
+        .stat-card .value.green {
+            color: #2ecc71;
+        }
+
+        .stat-card .value.orange {
+            color: #f39c12;
+        }
+
+        .stat-card .value.red {
+            color: #e74c3c;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 30px;
+            color: #8899a6;
+            font-size: 14px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #5a6c7d;
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #1a2332;
+            border-radius: 12px;
+            padding: 25px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border: 1px solid #3a4a5c;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #2a3a4c;
+        }
+
+        .modal-header h3 {
+            color: #fff;
+            font-size: 18px;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: #8899a6;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            line-height: 1;
+        }
+
+        .close-btn:hover {
+            color: #fff;
+        }
+
+        select {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #3a4a5c;
+            background: #1a2332;
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .info-row {
+            display: flex;
+            padding: 10px 0;
+            border-bottom: 1px solid #2a3a4c;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: #8899a6;
+            font-size: 13px;
+            width: 140px;
+            flex-shrink: 0;
+            font-weight: 600;
+        }
+
+        .info-value {
+            color: #fff;
+            font-size: 13px;
+            word-break: break-all;
+            flex: 1;
+        }
+
+        .client-id-full {
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 12px;
+            color: #1da1f2;
+            background: rgba(29, 161, 242, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+            word-break: break-all;
+            cursor: pointer;
+        }
+
+        .client-id-full:hover {
+            background: rgba(29, 161, 242, 0.2);
+        }
+
+        .config-block {
+            background: #0f1419;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 1px solid #2a3a4c;
+        }
+
+        .config-block h4 {
+            color: #fff;
+            margin-bottom: 10px;
+            font-size: 15px;
+        }
+
+        .btn-copy {
+            background: #3a4a5c;
+            color: #fff;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 6px;
+        }
+
+        .btn-copy:hover {
+            background: #4a5a6c;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #27ae60;
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 2000;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.error {
+            background: #c0392b;
+        }
+
+        .history-list {
+            margin-top: 15px;
+        }
+
+        .history-entry {
+            background: #0f1419;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            border: 1px solid #2a3a4c;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-entry-info {
+            flex: 1;
+        }
+
+        .history-entry-title {
+            color: #fff;
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .history-entry-meta {
+            color: #8899a6;
+            font-size: 12px;
+        }
+
+        .history-entry-date {
+            color: #8899a6;
+            font-size: 12px;
+            text-align: right;
+        }
+
+        /* === НОВЫЕ СТИЛИ ДЛЯ ТРАФИКА === */
+        .traffic-top-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .traffic-podium-card {
+            background: linear-gradient(135deg, #2a3a4c 0%, #1a2332 100%);
+            padding: 25px;
+            border-radius: 12px;
+            border: 2px solid #3a4a5c;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .traffic-podium-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+        }
+
+        .traffic-podium-card.gold {
+            border-color: #f39c12;
+            background: linear-gradient(135deg, #3d3520 0%, #1a2332 100%);
+        }
+
+        .traffic-podium-card.silver {
+            border-color: #95a5a6;
+            background: linear-gradient(135deg, #2c3e50 0%, #1a2332 100%);
+        }
+
+        .traffic-podium-card.bronze {
+            border-color: #cd6133;
+            background: linear-gradient(135deg, #3d2817 0%, #1a2332 100%);
+        }
+
+        .traffic-podium-rank {
+            font-size: 48px;
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            opacity: 0.3;
+        }
+
+        .traffic-podium-medal {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .traffic-podium-bytes {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1da1f2;
+            margin: 10px 0;
+        }
+
+        .traffic-podium-card.gold .traffic-podium-bytes {
+            color: #f39c12;
+        }
+
+        .traffic-podium-card.silver .traffic-podium-bytes {
+            color: #bdc3c7;
+        }
+
+        .traffic-podium-card.bronze .traffic-podium-bytes {
+            color: #cd6133;
+        }
+
+        .traffic-podium-id {
+            font-family: 'SF Mono', Consolas, monospace;
+            font-size: 11px;
+            color: #8899a6;
+            margin-top: 8px;
+            word-break: break-all;
+            cursor: pointer;
+            padding: 4px 8px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .traffic-podium-id:hover {
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        .traffic-podium-ip {
+            color: #8899a6;
+            font-size: 12px;
+            margin-top: 6px;
+        }
+
+        .traffic-summary-card {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid #3a7ab8;
+            grid-column: 1 / -1;
+        }
+
+        .traffic-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }
+
+        .traffic-summary-item {
+            text-align: center;
+        }
+
+        .traffic-summary-item .label {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.7);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .traffic-summary-item .value {
+            font-size: 22px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        /* === Стили для блока трафика в модалке клиента === */
+        .client-traffic-block {
+            background: linear-gradient(135deg, #2a3a4c 0%, #1a2332 100%);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #3a4a5c;
+            margin-bottom: 15px;
+        }
+
+        .client-traffic-block h4 {
+            color: #fff;
+            margin-bottom: 15px;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .client-traffic-total {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: rgba(29, 161, 242, 0.1);
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 1px solid rgba(29, 161, 242, 0.3);
+        }
+
+        .client-traffic-total .label {
+            color: #8899a6;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .client-traffic-total .value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1da1f2;
+        }
+
+        .client-traffic-history-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .client-traffic-month {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            border-bottom: 1px solid #2a3a4c;
+        }
+
+        .client-traffic-month:last-child {
+            border-bottom: none;
+        }
+
+        .client-traffic-month .month {
+            color: #fff;
+            font-weight: 500;
+            font-size: 13px;
+        }
+
+        .client-traffic-month .bytes {
+            color: #1da1f2;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                padding: 15px;
+            }
+
+            .content {
+                padding: 15px;
+            }
+
+            .tab-btn {
+                padding: 12px 14px;
+                font-size: 13px;
+            }
+
+            th,
+            td {
+                padding: 8px 6px;
+                font-size: 12px;
+            }
+
+            .info-label {
+                width: 110px;
+                font-size: 12px;
+            }
+
+            .history-entry {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .history-entry-date {
+                text-align: left;
+            }
+
+            .traffic-podium-rank {
+                font-size: 36px;
+            }
+
+            .traffic-podium-bytes {
+                font-size: 22px;
+            }
+        }
+
+        /* ---- Вход в админку и вкладка «Доступ» ---- */
+        .auth-screen {
+            position: fixed; inset: 0; top: 0; left: 0; right: 0; bottom: 0;
+            background: #0f1419; z-index: 2000;
+            display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .auth-screen[hidden] { display: none; }
+        .auth-card {
+            width: 100%; max-width: 420px; background: #1a2332; border: 1px solid #3a4a5c;
+            border-radius: 12px; padding: 28px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+        .auth-card h2 { margin-bottom: 6px; font-size: 22px; }
+        .auth-card p { color: #8899a6; font-size: 14px; margin-bottom: 18px; line-height: 1.45; }
+        .auth-card label { display: block; font-size: 13px; color: #8899a6; margin: 12px 0 6px; }
+        .auth-card input, .access-form input, .access-form select {
+            width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid #3a4a5c;
+            background: #0f1419; color: #fff; font-size: 15px;
+        }
+        .auth-card .btn { width: 100%; margin-top: 18px; padding: 11px; font-size: 15px; }
+        .auth-error { color: #ff6b6b; font-size: 14px; margin-top: 12px; min-height: 18px; }
+        .auth-server { color: #5a6c7d; font-size: 12px; margin-top: 16px; word-break: break-all; }
+        .admin-user { font-size: 13px; color: #cfe3f5; }
+        .toggle-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 16px;
+            padding: 14px 0; border-bottom: 1px solid #2a3a4c;
+        }
+        .toggle-row:last-child { border-bottom: 0; }
+        .toggle-row .info-label { color: #e1e8ed; font-size: 15px; }
+        .toggle-row small { display: block; color: #8899a6; font-size: 12px; margin-top: 4px; max-width: 620px; line-height: 1.4; }
+        .switch { position: relative; width: 46px; height: 26px; flex: none; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .switch span {
+            position: absolute; inset: 0; top: 0; left: 0; right: 0; bottom: 0; cursor: pointer;
+            background: #3a4a5c; border-radius: 13px; transition: background 0.2s;
+        }
+        .switch span::after {
+            content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+            background: #fff; border-radius: 50%; transition: left 0.2s;
+        }
+        .switch input:checked + span { background: #27ae60; }
+        .switch input:checked + span::after { left: 23px; }
+        .access-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-top: 12px; }
+        .access-form > div { flex: 1 1 160px; }
+        .access-form label { display: block; font-size: 12px; color: #8899a6; margin-bottom: 5px; }
+        .access-note { background: #0f1419; border: 1px solid #2a3a4c; border-radius: 8px; padding: 12px 14px;
+            color: #cfe3f5; font-size: 13px; margin-top: 12px; line-height: 1.5; }
+        .access-note code { background: #1a2332; padding: 2px 6px; border-radius: 4px; }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>🎬 TorrStream Админка</h1>
+        <div class="server-controls">
+            <span>🌐 Адрес сервера</span>
+            <input type="text" id="serverUrl" placeholder="http://localhost:3000">
+            <button class="btn btn-success" onclick="connectToServer()">🔌 Подключиться</button>
+            <button class="btn" onclick="refreshCurrentTab()">🔄 Обновить</button>
+            <div class="connection-status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Не подключено</span>
+            </div>
+            <span class="admin-user" id="adminUser"></span>
+            <button class="btn btn-secondary" id="adminLogoutBtn" onclick="adminLogout()" hidden>Выйти</button>
+        </div>
+    </div>
+
+
+    <!-- Вход в админку: первый администратор или вход (routes/admin.js) -->
+    <div class="auth-screen" id="authScreen" hidden>
+        <div class="auth-card">
+            <div id="authSetup" hidden>
+                <h2>👑 Создайте администратора</h2>
+                <p>На сервере ещё нет администратора. Эта учётная запись получит доступ к админке и управлению пользователями. Логин — латиница и цифры, пароль — от 6 символов.</p>
+                <label for="setupLogin">Логин</label>
+                <input id="setupLogin" autocomplete="username">
+                <label for="setupPassword">Пароль</label>
+                <input id="setupPassword" type="password" autocomplete="new-password">
+                <div id="setupCodeWrap" hidden>
+                    <label for="setupCode">Код из журнала сервера</label>
+                    <input id="setupCode" autocomplete="off" placeholder="Например: 1A2B3C4D">
+                    <p style="margin:8px 0 0">Вход не с самого сервера: код напечатан в журнале (консоли) сервера при запуске — так администратора не займёт посторонний.</p>
+                </div>
+                <button class="btn btn-success" onclick="doSetup()">Создать и войти</button>
+            </div>
+            <div id="authLogin" hidden>
+                <h2>🔐 Вход в админку</h2>
+                <p>Войдите учётной записью администратора.</p>
+                <label for="adminLogin">Логин</label>
+                <input id="adminLogin" autocomplete="username">
+                <label for="adminPassword">Пароль</label>
+                <input id="adminPassword" type="password" autocomplete="current-password">
+                <button class="btn btn-success" onclick="doAdminLogin()">Войти</button>
+            </div>
+            <div class="auth-error" id="authError"></div>
+            <div class="auth-server" id="authServer"></div>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('streams', event)">🎬 Активные потоки</button>
+        <button class="tab-btn" onclick="switchTab('clients', event)">👥 Клиенты</button>
+        <button class="tab-btn" onclick="switchTab('catalogs', event)">📀 Каталоги</button>
+        <button class="tab-btn" onclick="switchTab('traffic', event)">📊 Трафик</button>
+        <button class="tab-btn" onclick="switchTab('monitoring', event)">📊 Мониторинг</button>
+        <button class="tab-btn" onclick="switchTab('system', event)">⚙️ Система</button>
+        <button class="tab-btn" onclick="switchTab('access', event)">🔐 Доступ</button>
+    </div>
+
+    <div class="content">
+
+        <!-- Активные потоки -->
+        <div class="tab-content active" id="tab-streams">
+            <div class="section">
+                <div class="section-header">
+                    <h2>🎬 Активные HLS потоки (FFmpeg)</h2>
+                </div>
+                <div id="streamsList" class="table-wrap">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Клиенты -->
+        <div class="tab-content" id="tab-clients">
+            <div class="section">
+                <div class="section-header">
+                    <h2>👥 Все клиенты (устройства)</h2>
+                    <div style="color:#8899a6; font-size:12px;">💡 Кликните на строку для просмотра настроек, трафика и
+                        истории</div>
+                </div>
+                <div id="clientsList" class="table-wrap">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Каталоги -->
+        <div class="tab-content" id="tab-catalogs">
+            <div class="section">
+                <div class="section-header">
+                    <h2>📀 Загруженные медиа-каталоги</h2>
+                    <button class="btn" onclick="updateAllCatalogs()">🔄 Обновить все</button>
+                </div>
+                <div id="catalogsList" class="table-wrap">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- === ТРАФИК (ТОП-3 + ОБЩАЯ СТАТИСТИКА) === -->
+        <div class="tab-content" id="tab-traffic">
+            <div class="section">
+                <div class="section-header">
+                    <h2>📊 Топ-3 потребителей трафика</h2>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <label style="color:#8899a6; font-size:13px;">Месяц:</label>
+                        <select id="trafficMonthSelect" onchange="loadTrafficTop3()">
+                            <option value="">Загрузка...</option>
+                        </select>
+                        <button class="btn" onclick="loadTrafficMonths()">🔄</button>
+                    </div>
+                </div>
+
+                <!-- Общая статистика -->
+                <div class="traffic-summary-card" id="trafficSummary">
+                    <h3 style="color:#fff; margin-bottom:5px;">📊 Общая статистика за месяц</h3>
+                    <div class="traffic-summary-grid">
+                        <div class="traffic-summary-item">
+                            <div class="label">Всего трафика</div>
+                            <div class="value" id="trafficTotal">—</div>
+                        </div>
+                        <div class="traffic-summary-item">
+                            <div class="label">Клиентов</div>
+                            <div class="value" id="trafficClientsCount">0</div>
+                        </div>
+                        <div class="traffic-summary-item">
+                            <div class="label">Топ-3 потребление</div>
+                            <div class="value" id="trafficTop3Total">—</div>
+                        </div>
+                        <div class="traffic-summary-item">
+                            <div class="label">Доля топ-3</div>
+                            <div class="value" id="trafficTop3Percent">—</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Топ-3 подиум -->
+                <div class="traffic-top-grid" id="trafficPodium" style="margin-top:20px;">
+                    <div class="loading" style="grid-column:1/-1;">Выберите месяц для просмотра</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Мониторинг -->
+        <div class="tab-content" id="tab-monitoring">
+            <div class="section">
+                <div class="section-header">
+                    <h2>📊 Мониторинг ресурсов сервера</h2>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <label style="color:#8899a6; font-size:13px;">Автообновление:</label>
+                        <select id="monitoringInterval" onchange="setMonitoringInterval()">
+                            <option value="0">Выкл</option>
+                            <option value="5000">5 сек</option>
+                            <option value="10000">10 сек</option>
+                            <option value="30000" selected>30 сек</option>
+                            <option value="60000">1 мин</option>
+                        </select>
+                        <button class="btn" onclick="loadMonitoring()">🔄 Обновить</button>
+                    </div>
+                </div>
+                <div id="monitoringData">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Доступ: вход по паролю, пользователи, очистка -->
+        <div class="tab-content" id="tab-access">
+            <div class="section">
+                <div class="section-header">
+                    <h2>🔐 Доступ к TorrStream</h2>
+                </div>
+                <div class="toggle-row">
+                    <div>
+                        <div class="info-label">Вход по логину и паролю</div>
+                        <small>Включено — приложение, видео и все запросы к данным только после входа. Без пароля — запросы с самого сервера и (ниже) из домашней сети. Регистрироваться самим нельзя: учётные записи создаёт администратор. MSX при включённом входе не работает.</small>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="accessAuthEnabled" onchange="saveAccessSettings({ authEnabled: this.checked })"><span></span></label>
+                </div>
+                <div class="toggle-row">
+                    <div>
+                        <div class="info-label">Без пароля из домашней сети</div>
+                        <small>Устройства с адресами 192.168.x.x, 10.x.x.x и т. п. входят без пароля. Через обратный прокси (nginx) адрес клиента берётся из X-Forwarded-For.</small>
+                    </div>
+                    <label class="switch"><input type="checkbox" id="accessAllowLan" onchange="saveAccessSettings({ allowLan: this.checked })"><span></span></label>
+                </div>
+                <div class="access-note" id="accessYou"></div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>👤 Пользователи</h2>
+                </div>
+                <div id="usersList" class="table-wrap"><div class="loading">Загрузка...</div></div>
+                <div class="access-form">
+                    <div><label for="newUserLogin">Логин</label><input id="newUserLogin" autocomplete="off"></div>
+                    <div><label for="newUserPassword">Пароль</label><input id="newUserPassword" type="text" autocomplete="off"></div>
+                    <div style="flex:0 1 150px"><label for="newUserRole">Роль</label>
+                        <select id="newUserRole"><option value="user">Пользователь</option><option value="admin">Администратор</option></select></div>
+                    <div style="flex:0 0 auto"><button class="btn btn-success" onclick="createUser()">➕ Создать</button></div>
+                </div>
+                <div class="access-note" id="newUserResult" hidden></div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>🧹 Очистка данных</h2>
+                    <button class="btn" onclick="runCleanup()">Очистить сейчас</button>
+                </div>
+                <div style="color:#8899a6; font-size:13px; line-height:1.5">Раз в сутки удаляются таймкоды, запомненные аудиодорожки и субтитры старше 30 дней и клиенты, у которых всё старше 30 дней (вместе с их историей). Учётные записи и база сведений о файлах (fileInfo) не очищаются.</div>
+                <div class="access-note" id="cleanupInfo">—</div>
+            </div>
+        </div>
+
+        <!-- Система -->
+        <div class="tab-content" id="tab-system">
+            <div class="section">
+                <div class="section-header">
+                    <h2>⚙️ Информация о сервере</h2>
+                </div>
+                <div id="systemInfo">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Модальное окно клиента (конфигурация + трафик + история) -->
+    <div class="modal" id="clientConfigModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>👤 Информация о клиенте</h3>
+                <button class="close-btn" onclick="closeClientConfigModal()">×</button>
+            </div>
+            <div id="clientConfigContent">
+                <div class="loading">Загрузка...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast уведомления -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // Админка открыта с самого сервера (/potate) — по умолчанию он и есть
+        // нужный; иначе последний сохранённый адрес
+        let SERVER_URL = localStorage.getItem('torrstream_server') ||
+            (/^https?:$/.test(location.protocol) ? location.origin : 'http://localhost:3000');
+        let connected = false;
+        let monitoringTimer = null;
+        // Токен сессии администратора (services/access.js) — по серверу: адрес
+        // в шапке можно поменять. Прежний общий x-admin-token больше не принимается
+        const TOKENS_KEY = 'torrstream_admin_tokens';
+        function adminTokens() { try { return JSON.parse(localStorage.getItem(TOKENS_KEY) || '{}'); } catch (e) { return {}; } }
+        function adminToken() { return adminTokens()[SERVER_URL] || ''; }
+        function setAdminToken(t) {
+            const all = adminTokens();
+            if (t) all[SERVER_URL] = t; else delete all[SERVER_URL];
+            localStorage.setItem(TOKENS_KEY, JSON.stringify(all));
+        }
+
+        document.getElementById('serverUrl').value = SERVER_URL;
+
+        function showToast(msg, isError = false) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = 'toast show' + (isError ? ' error' : '');
+            setTimeout(() => { t.className = 'toast'; }, 3000);
+        }
+
+        function setConnected(state) {
+            connected = state;
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            if (state) {
+                dot.classList.add('connected');
+                text.textContent = 'Подключено';
+            } else {
+                dot.classList.remove('connected');
+                text.textContent = 'Не подключено';
+            }
+        }
+
+        function connectToServer() {
+            SERVER_URL = document.getElementById('serverUrl').value.replace(/\/$/, '');
+            localStorage.setItem('torrstream_server', SERVER_URL);
+
+            fetch(SERVER_URL + '/api/version')
+                .then(r => r.json())
+                .then(data => {
+                    setConnected(true);
+                    console.log('✅ Подключено к серверу версии:', data.version);
+                    checkAdminAccess();
+                })
+                .catch(e => {
+                    setConnected(false);
+                    alert('❌ Не удалось подключиться: ' + e.message);
+                });
+        }
+
+        function switchTab(tab, evt) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            if (evt && evt.target) evt.target.classList.add('active');
+            document.getElementById('tab-' + tab).classList.add('active');
+            refreshCurrentTab();
+        }
+
+        function refreshCurrentTab() {
+            const activeTab = document.querySelector('.tab-content.active');
+            if (!activeTab) return;
+            const id = activeTab.id.replace('tab-', '');
+            if (id === 'streams') loadStreams();
+            else if (id === 'clients') loadClients();
+            else if (id === 'catalogs') loadCatalogs();
+            else if (id === 'traffic') loadTrafficMonths();
+            else if (id === 'monitoring') loadMonitoring();
+            else if (id === 'system') loadSystemInfo();
+            else if (id === 'access') loadAccess();
+        }
+
+        async function apiFetch(path, options = {}) {
+            if (!connected) {
+                alert('Сначала подключитесь к серверу');
+                throw new Error('Not connected');
+            }
+            const headers = options.headers || {};
+            const token = adminToken();
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+            if (options.body && typeof options.body === 'string') {
+                headers['Content-Type'] = 'application/json';
+            }
+            const res = await fetch(SERVER_URL + path, { ...options, headers });
+            if (res.status === 401) { showAuth('login', 'Сессия закончилась — войдите снова'); throw new Error('Нужен вход'); }
+            if (!res.ok) {
+                let msg = `HTTP ${res.status}`;
+                try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (e) { }
+                throw new Error(msg);
+            }
+            return res.json();
+        }
+
+        // ====== ВХОД В АДМИНКУ ======
+        let adminState = null;
+
+        function authError(text) { document.getElementById('authError').textContent = text || ''; }
+
+        /** Экран входа: 'setup' — первый администратор, 'login' — вход, null — скрыть */
+        function showAuth(mode, error) {
+            const screen = document.getElementById('authScreen');
+            screen.hidden = !mode;
+            document.getElementById('authSetup').hidden = mode !== 'setup';
+            document.getElementById('authLogin').hidden = mode !== 'login';
+            document.getElementById('authServer').textContent = mode ? 'Сервер: ' + SERVER_URL : '';
+            authError(error);
+            if (mode === 'setup') {
+                document.getElementById('setupCodeWrap').hidden = !(adminState && adminState.setupCodeRequired);
+                setTimeout(() => document.getElementById('setupLogin').focus(), 50);
+            } else if (mode === 'login') {
+                setTimeout(() => document.getElementById('adminLogin').focus(), 50);
+            }
+        }
+
+        function setAdminUser(user) {
+            document.getElementById('adminUser').textContent = user ? '👑 ' + user.login : '';
+            document.getElementById('adminLogoutBtn').hidden = !user;
+        }
+
+        async function authRequest(path, body) {
+            const headers = { 'Content-Type': 'application/json' };
+            const token = adminToken();
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+            const res = await fetch(SERVER_URL + path, { method: body ? 'POST' : 'GET', headers, body: body ? JSON.stringify(body) : undefined });
+            let data = {};
+            try { data = await res.json(); } catch (e) { }
+            data._status = res.status;
+            return data;
+        }
+
+        /** После подключения: есть ли администратор и вошли ли мы им */
+        async function checkAdminAccess() {
+            try {
+                adminState = await authRequest('/api/admin/state');
+            } catch (e) {
+                showToast('Не удалось узнать состояние входа: ' + e.message, true);
+                return;
+            }
+            if (adminState._status === 404) {
+                // Старый сервер без входа в админку
+                showToast('Сервер старой версии: вход в админку не поддерживается', true);
+                return;
+            }
+            if (!adminState.hasAdmin) { setAdminUser(null); showAuth('setup'); return; }
+            if (!adminState.user || adminState.user.role !== 'admin') {
+                setAdminUser(null);
+                showAuth('login', adminState.user ? 'Учётная запись ' + adminState.user.login + ' — не администратор' : '');
+                return;
+            }
+            setAdminUser(adminState.user);
+            showAuth(null);
+            refreshCurrentTab();
+        }
+
+        async function doSetup() {
+            const login = document.getElementById('setupLogin').value.trim();
+            const password = document.getElementById('setupPassword').value;
+            const code = document.getElementById('setupCode').value.trim();
+            if (!login || !password) { authError('Введите логин и пароль'); return; }
+            const d = await authRequest('/api/admin/setup', { login, password, code });
+            if (!d.success) { authError(d.error || 'Не удалось создать администратора'); return; }
+            setAdminToken(d.token);
+            showToast('Администратор создан. Код восстановления пароля: ' + d.recoveryCode);
+            alert('Администратор ' + d.login + ' создан.\n\nКод восстановления пароля (сохраните его — больше он не покажется):\n' + d.recoveryCode);
+            checkAdminAccess();
+        }
+
+        async function doAdminLogin() {
+            const login = document.getElementById('adminLogin').value.trim();
+            const password = document.getElementById('adminPassword').value;
+            if (!login || !password) { authError('Введите логин и пароль'); return; }
+            setAdminToken('');
+            const d = await authRequest('/api/account/login', { login, password });
+            if (!d.success) { authError(d.error || 'Не удалось войти'); return; }
+            if (d.role !== 'admin') { authError('Учётная запись ' + d.login + ' — не администратор'); return; }
+            setAdminToken(d.token);
+            document.getElementById('adminPassword').value = '';
+            checkAdminAccess();
+        }
+
+        async function adminLogout() {
+            try { await authRequest('/api/account/logout', {}); } catch (e) { }
+            setAdminToken('');
+            setAdminUser(null);
+            checkAdminAccess();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' || document.getElementById('authScreen').hidden) return;
+            if (!document.getElementById('authSetup').hidden) doSetup();
+            else if (!document.getElementById('authLogin').hidden) doAdminLogin();
+        });
+
+        // ====== ДОСТУП: настройки, пользователи, очистка ======
+        const ROLE_NAMES = { admin: 'Администратор', user: 'Пользователь' };
+
+        function escapeHtml(t) {
+            return String(t == null ? '' : t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        async function loadAccess() {
+            try {
+                adminState = await authRequest('/api/admin/state');
+                document.getElementById('accessAuthEnabled').checked = !!adminState.authEnabled;
+                document.getElementById('accessAllowLan').checked = !!adminState.allowLan;
+                // local считает сервер: сам сервер или домашняя сеть (если разрешена)
+                document.getElementById('accessYou').innerHTML = adminState.local
+                    ? '🏠 Это устройство сервер считает своим (сам сервер или домашняя сеть) — оно пускается без пароля.'
+                    : '🌐 Это устройство — снаружи: при включённом входе оно пускается только с паролем (в админку вы уже вошли).';
+            } catch (e) {
+                showToast('Ошибка: ' + e.message, true);
+            }
+            loadUsers();
+            loadCleanup();
+        }
+
+        async function saveAccessSettings(patch) {
+            if (patch.authEnabled === true && !confirm('Включить вход по логину и паролю?\n\nПосле этого приложение и видео будут доступны только вошедшим пользователям (кроме самого сервера' + (adminState && adminState.allowLan ? ' и домашней сети' : '') + '). Убедитесь, что учётные записи для всех, кто смотрит, созданы.')) {
+                document.getElementById('accessAuthEnabled').checked = false;
+                return;
+            }
+            try {
+                const d = await apiFetch('/api/admin/settings', { method: 'POST', body: JSON.stringify(patch) });
+                showToast('Сохранено: вход ' + (d.authEnabled ? 'включён' : 'выключен') + ', домашняя сеть ' + (d.allowLan ? 'без пароля' : 'с паролем'));
+            } catch (e) {
+                showToast('Не сохранилось: ' + e.message, true);
+            }
+            loadAccess();
+        }
+
+        async function loadUsers() {
+            const el = document.getElementById('usersList');
+            try {
+                const d = await apiFetch('/api/admin/users');
+                const me = adminState && adminState.user ? adminState.user.login : '';
+                if (!d.users || !d.users.length) { el.innerHTML = '<div class="empty-state">Нет пользователей</div>'; return; }
+                let html = '<table><thead><tr><th>Логин</th><th>Роль</th><th>Создан</th><th>Последний вход</th><th></th></tr></thead><tbody>';
+                d.users.forEach((u) => {
+                    const isMe = u.login === me;
+                    html += `<tr>
+                        <td><b>${escapeHtml(u.login)}</b>${isMe ? ' <span class="badge badge-info">это вы</span>' : ''}</td>
+                        <td><select onchange="setUserRole(${u.userId}, this.value)">
+                            <option value="user"${u.role === 'user' ? ' selected' : ''}>${ROLE_NAMES.user}</option>
+                            <option value="admin"${u.role === 'admin' ? ' selected' : ''}>${ROLE_NAMES.admin}</option>
+                        </select></td>
+                        <td>${formatDate(u.createdAt)}</td>
+                        <td>${u.lastLogin ? timeAgo(u.lastLogin) : '—'}</td>
+                        <td style="white-space:nowrap">
+                            <button class="btn btn-secondary" onclick="resetUserPassword(${u.userId}, '${escapeHtml(u.login)}')">🔑 Пароль</button>
+                            ${isMe ? '' : `<button class="btn btn-danger" onclick="deleteUser(${u.userId}, '${escapeHtml(u.login)}')">🗑️</button>`}
+                        </td></tr>`;
+                });
+                el.innerHTML = html + '</tbody></table>';
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        async function createUser() {
+            const login = document.getElementById('newUserLogin').value.trim();
+            const password = document.getElementById('newUserPassword').value;
+            const role = document.getElementById('newUserRole').value;
+            const out = document.getElementById('newUserResult');
+            try {
+                const d = await apiFetch('/api/admin/users', { method: 'POST', body: JSON.stringify({ login, password, role }) });
+                out.hidden = false;
+                out.innerHTML = `✅ Создан <b>${escapeHtml(d.login)}</b> (${ROLE_NAMES[d.role]}). Код восстановления пароля: <code>${escapeHtml(d.recoveryCode)}</code> — передайте его вместе с паролем, больше он не покажется.`;
+                document.getElementById('newUserLogin').value = '';
+                document.getElementById('newUserPassword').value = '';
+                loadUsers();
+            } catch (e) {
+                showToast('Не создан: ' + e.message, true);
+            }
+        }
+
+        async function setUserRole(userId, role) {
+            try {
+                await apiFetch('/api/admin/users/' + userId, { method: 'POST', body: JSON.stringify({ role }) });
+                showToast('Роль изменена');
+            } catch (e) {
+                showToast('Не изменилось: ' + e.message, true);
+            }
+            loadUsers();
+        }
+
+        async function resetUserPassword(userId, login) {
+            const password = prompt('Новый пароль для ' + login + ' (от 6 символов). Все его входы на устройствах будут закрыты:');
+            if (!password) return;
+            try {
+                await apiFetch('/api/admin/users/' + userId, { method: 'POST', body: JSON.stringify({ password }) });
+                showToast('Пароль ' + login + ' изменён');
+            } catch (e) {
+                showToast('Не изменился: ' + e.message, true);
+            }
+        }
+
+        async function deleteUser(userId, login) {
+            if (!confirm('Удалить пользователя ' + login + '? Его входы на устройствах закроются. История и таймкоды останутся в базе, пока их не уберёт очистка.')) return;
+            try {
+                await apiFetch('/api/admin/users/' + userId, { method: 'DELETE' });
+                showToast('Удалён ' + login);
+            } catch (e) {
+                showToast('Не удалён: ' + e.message, true);
+            }
+            loadUsers();
+        }
+
+        function renderCleanup(d) {
+            const el = document.getElementById('cleanupInfo');
+            const l = d && d.last;
+            if (!l) { el.textContent = 'Очистка ещё не запускалась (первый запуск — через минуту после старта сервера).'; return; }
+            el.innerHTML = l.ok
+                ? `Последняя очистка: ${formatDate(l.at)} — удалено таймкодов <b>${l.timecodes}</b>, дорожек <b>${l.prefs}</b>, клиентов <b>${l.clients}</b>.`
+                : `Последняя очистка ${formatDate(l.at)} не удалась: ${escapeHtml(l.error)}`;
+        }
+
+        async function loadCleanup() {
+            try { renderCleanup(await apiFetch('/api/admin/cleanup')); } catch (e) { }
+        }
+
+        async function runCleanup() {
+            if (!confirm('Удалить таймкоды, запомненные дорожки и неактивных клиентов старше 30 дней сейчас?')) return;
+            try {
+                const d = await apiFetch('/api/admin/cleanup', { method: 'POST' });
+                renderCleanup(d);
+                showToast('Очистка выполнена');
+            } catch (e) {
+                showToast('Ошибка очистки: ' + e.message, true);
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (!bytes || bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function formatMonth(monthKey) {
+            if (!monthKey) return '';
+            const [y, m] = monthKey.split('-');
+            const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+            return months[parseInt(m, 10) - 1] + ' ' + y;
+        }
+
+        function formatDate(ts) {
+            if (!ts) return '—';
+            const d = new Date(ts);
+            return d.toLocaleString('ru-RU');
+        }
+
+        function timeAgo(ts) {
+            if (!ts) return '—';
+            const diff = Date.now() - ts;
+            const sec = Math.floor(diff / 1000);
+            if (sec < 60) return sec + ' сек назад';
+            const min = Math.floor(sec / 60);
+            if (min < 60) return min + ' мин назад';
+            const h = Math.floor(min / 60);
+            if (h < 24) return h + ' ч назад';
+            const d = Math.floor(h / 24);
+            return d + ' дн назад';
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('📋 Скопировано: ' + text.substring(0, 20) + (text.length > 20 ? '...' : ''));
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast('📋 Скопировано');
+            });
+        }
+
+        // ====== ПОТОКИ ======
+        async function loadStreams() {
+            const el = document.getElementById('streamsList');
+            el.innerHTML = '<div class="loading">Загрузка...</div>';
+            try {
+                const data = await apiFetch('/status');
+                if (!data.streams || data.streams.length === 0) {
+                    el.innerHTML = '<div class="empty-state"><div class="icon">🎬</div>Нет активных потоков</div>';
+                    return;
+                }
+                let html = `<table><thead><tr>
+      <th>Stream ID</th><th>Клиент</th><th>URL</th><th>Uptime</th><th>Длит.</th>
+    </tr></thead><tbody>`;
+                data.streams.forEach(s => {
+                    html += `<tr>
+        <td class="mono">${s.id}</td>
+        <td class="mono">${s.clientId || '—'}</td>
+        <td class="mono" style="max-width:300px; overflow:hidden; text-overflow:ellipsis;">${s.url || '—'}</td>
+        <td>${Math.floor(s.uptime / 1000)}с</td>
+        <td>${s.duration ? Math.floor(s.duration) + 'с' : '—'}</td>
+      </tr>`;
+                });
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
+
+        // ====== КЛИЕНТЫ ======
+        async function loadClients() {
+            const el = document.getElementById('clientsList');
+            el.innerHTML = '<div class="loading">Загрузка...</div>';
+            try {
+                const data = await apiFetch('/api/clients');
+                if (!data.clients || data.clients.length === 0) {
+                    el.innerHTML = '<div class="empty-state"><div class="icon">👥</div>Нет клиентов</div>';
+                    return;
+                }
+                let html = `<table><thead><tr>
+      <th>Client ID</th><th>IP</th><th>User-Agent</th><th>Первый визит</th><th>Последний визит</th><th>Конфиг</th>
+    </tr></thead><tbody>`;
+                data.clients.forEach(c => {
+                    html += `<tr onclick="showClientConfig('${c.id}')">
+        <td class="mono"><span class="client-id-full" title="Нажмите для копирования" onclick="event.stopPropagation(); copyToClipboard('${c.id}')">${c.id}</span></td>
+        <td>${c.ip}</td>
+        <td class="mono" style="max-width:250px; overflow:hidden; text-overflow:ellipsis;" title="${(c.userAgent || '').replace(/"/g, '&quot;')}">${c.userAgent || '—'}</td>
+        <td>${formatDate(c.firstSeen)}</td>
+        <td>${timeAgo(c.lastSeen)}</td>
+        <td>${c.hasConfig ? '<span class="badge badge-success">✓ TorrServer</span>' : '<span class="badge badge-warning">✗ нет</span>'}</td>
+      </tr>`;
+                });
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
+
+        // ====== МОДАЛКА КЛИЕНТА (Конфиг + Трафик + История) ======
+        async function showClientConfig(clientId) {
+            document.getElementById('clientConfigModal').classList.add('active');
+            const content = document.getElementById('clientConfigContent');
+            content.innerHTML = '<div class="loading">Загрузка...</div>';
+
+            try {
+                // Параллельно загружаем: конфиг, историю просмотров и трафик
+                const [configRes, historyRes, trafficRes] = await Promise.all([
+                    fetch(SERVER_URL + '/api/client/config?clientId=' + encodeURIComponent(clientId)).then(r => r.json()),
+                    apiFetch('/api/admin/history/' + clientId),
+                    apiFetch('/api/traffic/client/' + clientId).catch(() => ({ totalBytes: 0, totalFormatted: '0 B', history: [] }))
+                ]);
+
+                const c = configRes.config || {};
+
+                let html = `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
+      <div class="info-row">
+        <div class="info-label">Client ID:</div>
+        <div class="info-value mono" style="color:#1da1f2;">
+          ${clientId}
+          <button class="btn-copy" onclick="copyToClipboard('${clientId}')">📋</button>
+        </div>
+      </div>
+    </div>`;
+
+                // === БЛОК 1: КОНФИГУРАЦИЯ TORRSERVER ===
+                html += `<div class="config-block">
+      <h4>🌐 Конфигурация TorrServer</h4>`;
+
+                if (configRes.hasSavedConfig) {
+                    html += `
+        <div class="info-row">
+          <div class="info-label">URL:</div>
+          <div class="info-value mono">
+            ${c.url || '—'}
+            ${c.url ? `<button class="btn-copy" onclick="copyToClipboard('${(c.url || '').replace(/'/g, "\\'")}')">📋</button>` : ''}
+          </div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">Авторизация:</div>
+          <div class="info-value">
+            ${c.authEnabled ? '<span class="badge badge-success">Включена</span>' : '<span class="badge badge-warning">Выключена</span>'}
+          </div>
+        </div>`;
+
+                    if (c.authEnabled && c.login) {
+                        html += `
+          <div class="info-row">
+            <div class="info-label">Логин:</div>
+            <div class="info-value mono">
+              ${c.login}
+              <button class="btn-copy" onclick="copyToClipboard('${(c.login || '').replace(/'/g, "\\'")}')">📋</button>
+            </div>
+          </div>
+          <div class="info-row">
+            <div class="info-label">Пароль:</div>
+            <div class="info-value mono">
+              ${c.hasPassword ? '••••••••' : '—'}
+              ${c.hasPassword ? `<span style="color:#27ae60; margin-left:8px;">✓ установлен</span>` : ''}
+            </div>
+          </div>`;
+                    }
+                } else {
+                    html += `<div style="color:#5a6c7d; padding:10px; text-align:center;">
+        ❌ Конфигурация TorrServer не настроена<br>
+        <small>Клиент ещё не задал адрес своего TorrServer</small>
+      </div>`;
+                }
+                html += `</div>`;
+
+                // === БЛОК 2: ТРАФИК КЛИЕНТА (НОВЫЙ) ===
+                html += `<div class="client-traffic-block">
+      <h4>📊 Потребление трафика</h4>
+      <div class="client-traffic-total">
+        <div class="label">Всего за всё время</div>
+        <div class="value">${trafficRes.totalFormatted || '0 B'}</div>
+      </div>`;
+
+                if (trafficRes.history && trafficRes.history.length > 0) {
+                    html += '<div class="client-traffic-history-list">';
+                    trafficRes.history.forEach(h => {
+                        html += `<div class="client-traffic-month">
+          <span class="month">📆 ${formatMonth(h.month)}</span>
+          <span class="bytes">${h.formatted}</span>
+        </div>`;
+                    });
+                    html += '</div>';
+                } else {
+                    html += '<div style="color:#5a6c7d; text-align:center; padding:10px;">Нет данных о трафике</div>';
+                }
+                html += `</div>`;
+
+                // === БЛОК 3: ИСТОРИЯ ПРОСМОТРОВ ===
+                html += `<div class="config-block">
+      <h4>📜 История просмотров (${historyRes.total || 0} записей)</h4>`;
+
+                if (historyRes.history && historyRes.history.length > 0) {
+                    html += '<div class="history-list">';
+                    historyRes.history.forEach(entry => {
+                        const mediaTypeLabel = entry.mediaType === 'movie' ? '🎬 Фильм' : entry.mediaType === 'tv' ? '📺 Сериал' : '🎞️ ' + entry.mediaType;
+                        html += `<div class="history-entry">
+          <div class="history-entry-info">
+            <div class="history-entry-title">${entry.title}</div>
+            <div class="history-entry-meta">
+              <span class="badge badge-info">${mediaTypeLabel}</span>
+              ${entry.tmdbId ? `<span class="mono" style="margin-left:8px;">ID: ${entry.tmdbId}</span>` : ''}
+            </div>
+          </div>
+          <div class="history-entry-date">
+            ${entry.watchedAt ? formatDate(new Date(entry.watchedAt).getTime()) : '—'}
+          </div>
+        </div>`;
+                    });
+                    html += '</div>';
+                } else {
+                    html += `<div style="color:#5a6c7d; padding:20px; text-align:center;">
+        <div class="icon">📜</div>
+        История просмотров пуста
+      </div>`;
+                }
+                html += `</div>`;
+
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
+
+        function closeClientConfigModal() {
+            document.getElementById('clientConfigModal').classList.remove('active');
+        }
+
+        document.getElementById('clientConfigModal').addEventListener('click', (e) => {
+            if (e.target.id === 'clientConfigModal') closeClientConfigModal();
+        });
+
+        // ====== КАТАЛОГИ ======
+        async function loadCatalogs() {
+            const el = document.getElementById('catalogsList');
+            el.innerHTML = '<div class="loading">Загрузка...</div>';
+            try {
+                const data = await apiFetch('/api/catalogs/status');
+                let html = `<table><thead><tr>
+      <th>Каталог</th><th>Размер</th><th>Элементов</th><th>Обновлён</th><th>Действие</th>
+    </tr></thead><tbody>`;
+
+                if (data.loaded && data.loaded.length > 0) {
+                    data.loaded.forEach(c => {
+                        html += `<tr>
+          <td><strong>${c.displayName}</strong></td>
+          <td><span class="badge badge-info">${c.sizeFormatted}</span></td>
+          <td>${c.itemCount || '—'}</td>
+          <td>${formatDate(c.lastModified)}</td>
+          <td><button class="btn" onclick="updateCatalog('${c.name}')">🔄 Обновить</button></td>
+        </tr>`;
+                    });
+                }
+
+                if (data.missing && data.missing.length > 0) {
+                    data.missing.forEach(c => {
+                        html += `<tr style="opacity:0.7">
+          <td><strong>${c.displayName}</strong></td>
+          <td colspan="3" style="color:#e74c3c;">
+            <span class="badge badge-warning">⚠️ Отсутствует</span>
+          </td>
+          <td>
+            <button class="btn btn-success" onclick="updateCatalog('${c.name}')">
+              📥 Загрузить
+            </button>
+          </td>
+        </tr>`;
+                    });
+                }
+
+                if ((!data.loaded || data.loaded.length === 0) && (!data.missing || data.missing.length === 0)) {
+                    html += `<tr><td colspan="5" style="text-align:center; color:#5a6c7d; padding:20px;">Нет данных</td></tr>`;
+                }
+
+                html += '</tbody></table>';
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
+
+        async function updateCatalog(name) {
+            if (!confirm(`Обновить/загрузить каталог "${name}"?`)) return;
+            showToast('⏳ Загрузка каталога ' + name + '...');
+            try {
+                await apiFetch('/api/catalog/' + name + '/update', { method: 'POST' });
+                showToast('✅ Каталог ' + name + ' успешно загружен');
+                setTimeout(loadCatalogs, 500);
+            } catch (e) {
+                showToast('❌ Ошибка: ' + e.message, true);
+            }
+        }
+
+        async function updateAllCatalogs() {
+            if (!confirm('Обновить ВСЕ каталоги? Это может занять несколько минут.')) return;
+            showToast('⏳ Обновление всех каталогов...');
+            try {
+                await apiFetch('/api/catalogs/update-all', { method: 'POST' });
+                showToast('✅ Все каталоги обновлены');
+                setTimeout(loadCatalogs, 500);
+            } catch (e) {
+                showToast('❌ Ошибка: ' + e.message, true);
+            }
+        }
+
+        // ====== ТРАФИК (ТОП-3) ======
+        async function loadTrafficMonths() {
+            const select = document.getElementById('trafficMonthSelect');
+            try {
+                const data = await apiFetch('/api/traffic/months');
+                const months = data.months || [];
+                if (months.length === 0) {
+                    select.innerHTML = '<option value="">Нет данных</option>';
+                    document.getElementById('trafficPodium').innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="icon">📊</div>Данных о трафике пока нет</div>';
+                    resetTrafficSummary();
+                    return;
+                }
+                const prevValue = select.value;
+                select.innerHTML = months.map(m =>
+                    `<option value="${m}">${formatMonth(m)}</option>`
+                ).join('');
+                if (prevValue && months.includes(prevValue)) {
+                    select.value = prevValue;
+                }
+                loadTrafficTop3();
+            } catch (e) {
+                select.innerHTML = '<option value="">Ошибка</option>';
+            }
+        }
+
+        function resetTrafficSummary() {
+            document.getElementById('trafficTotal').textContent = '—';
+            document.getElementById('trafficClientsCount').textContent = '0';
+            document.getElementById('trafficTop3Total').textContent = '—';
+            document.getElementById('trafficTop3Percent').textContent = '—';
+        }
+
+        async function loadTrafficTop3() {
+            const month = document.getElementById('trafficMonthSelect').value;
+            const podium = document.getElementById('trafficPodium');
+
+            if (!month) {
+                podium.innerHTML = '<div class="loading" style="grid-column:1/-1;">Выберите месяц</div>';
+                resetTrafficSummary();
+                return;
+            }
+
+            podium.innerHTML = '<div class="loading" style="grid-column:1/-1;">Загрузка статистики...</div>';
+
+            try {
+                const data = await apiFetch('/api/traffic/clients?month=' + month);
+                const clients = data.clients || [];
+                const top3 = clients.slice(0, 3);
+
+                // Обновляем общую статистику
+                document.getElementById('trafficTotal').textContent = data.totalFormatted || '0 B';
+                document.getElementById('trafficClientsCount').textContent = clients.length;
+
+                const top3Bytes = top3.reduce((sum, c) => sum + c.bytes, 0);
+                document.getElementById('trafficTop3Total').textContent = formatBytes(top3Bytes);
+
+                const top3Percent = data.totalBytes > 0 ? ((top3Bytes / data.totalBytes) * 100).toFixed(1) : 0;
+                document.getElementById('trafficTop3Percent').textContent = top3Percent + '%';
+
+                if (top3.length === 0) {
+                    podium.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="icon">📊</div>За этот месяц нет данных о трафике</div>';
+                    return;
+                }
+
+                // Рендерим подиум (топ-3)
+                const medals = [
+                    { medal: '🥇', rank: '1', class: 'gold', title: 'Лидер' },
+                    { medal: '🥈', rank: '2', class: 'silver', title: 'Второе место' },
+                    { medal: '🥉', rank: '3', class: 'bronze', title: 'Третье место' }
+                ];
+
+                let html = '';
+
+                // Общая статистика (сводка)
+                // Топ-3 карточки
+                top3.forEach((c, idx) => {
+                    const m = medals[idx];
+                    const percent = data.totalBytes > 0 ? ((c.bytes / data.totalBytes) * 100).toFixed(1) : 0;
+
+                    html += `<div class="traffic-podium-card ${m.class}" onclick="showClientConfig('${c.clientId}')" style="cursor:pointer;">
+        <div class="traffic-podium-rank">#${m.rank}</div>
+        <div class="traffic-podium-medal">${m.medal}</div>
+        <div style="color:#8899a6; font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">${m.title}</div>
+        <div class="traffic-podium-bytes">${c.formatted}</div>
+        <div style="color:#8899a6; font-size:12px;">${percent}% от общего</div>
+        <div class="traffic-podium-ip">🌐 ${c.ip}</div>
+        <div class="traffic-podium-id" onclick="event.stopPropagation(); copyToClipboard('${c.clientId}')" title="Нажмите для копирования">
+          ${c.clientId.substring(0, 24)}...
+        </div>
+        <div style="color:#5a6c7d; font-size:11px; margin-top:8px;">
+          ${timeAgo(c.lastSeen)}
+        </div>
+      </div>`;
+                });
+
+                // Если меньше 3 клиентов, добавляем пустые карточки
+                for (let i = top3.length; i < 3; i++) {
+                    const m = medals[i];
+                    html += `<div class="traffic-podium-card ${m.class}" style="opacity:0.4;">
+        <div class="traffic-podium-rank">#${m.rank}</div>
+        <div class="traffic-podium-medal">${m.medal}</div>
+        <div style="color:#8899a6; font-size:11px; text-transform:uppercase; letter-spacing:0.5px;">${m.title}</div>
+        <div class="traffic-podium-bytes" style="color:#5a6c7d;">—</div>
+        <div style="color:#5a6c7d; font-size:12px; margin-top:10px;">Нет данных</div>
+      </div>`;
+                }
+
+                podium.innerHTML = html;
+            } catch (e) {
+                podium.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
+
+        // ====== МОНИТОРИНГ ======
+        async function loadMonitoring() {
+            const el = document.getElementById('monitoringData');
+            try {
+                const data = await apiFetch('/api/status/quick');
+                let html = `<div class="stat-grid">
+      <div class="stat-card">
+        <div class="label">CPU (процесс)</div>
+        <div class="value ${data.cpu.percent > 80 ? 'red' : data.cpu.percent > 50 ? 'orange' : 'green'}">${data.cpu.percent}%</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">RAM (процесс)</div>
+        <div class="value orange">${data.memory.process.used}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">RAM (система)</div>
+        <div class="value ${data.memory.system.percent > 80 ? 'red' : 'green'}">${data.memory.system.percent}%</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Uptime</div>
+        <div class="value" style="font-size:18px;">${data.uptime}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Активных потоков</div>
+        <div class="value green">${data.streams}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Всего клиентов</div>
+        <div class="value">${data.clients}</div>
+      </div>
+    </div>`;
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
+
+        function setMonitoringInterval() {
+            if (monitoringTimer) clearInterval(monitoringTimer);
+            const ms = parseInt(document.getElementById('monitoringInterval').value);
+            if (ms > 0) {
+                monitoringTimer = setInterval(loadMonitoring, ms);
+            }
+        }
+
+        // ====== СИСТЕМА ======
+        async function loadSystemInfo() {
+            const el = document.getElementById('systemInfo');
+            try {
+                const [ver, load] = await Promise.all([
+                    apiFetch('/api/version'),
+                    apiFetch('/api/status/load')
+                ]);
+                let html = `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
+      <div class="info-row"><div class="info-label">Версия:</div><div class="info-value"><span class="badge badge-info">${ver.version}</span></div></div>
+      <div class="info-row"><div class="info-label">Платформа:</div><div class="info-value">${load.system.platform} (${load.system.arch})</div></div>
+      <div class="info-row"><div class="info-label">Node.js:</div><div class="info-value mono">${load.system.nodeVersion}</div></div>
+      <div class="info-row"><div class="info-label">Хост:</div><div class="info-value mono">${load.system.hostname}</div></div>
+      <div class="info-row"><div class="info-label">CPU:</div><div class="info-value">${load.system.cpus.count}× ${load.system.cpus.model}</div></div>
+      <div class="info-row"><div class="info-label">RAM:</div><div class="info-value">${load.system.memory.usedFormatted} / ${load.system.memory.totalFormatted} (${load.system.memory.usagePercent}%)</div></div>
+    </div>`;
+
+                html += '<h4 style="color:#fff; margin:15px 0 10px;">💾 Использование диска</h4>';
+                html += '<table><thead><tr><th>Директория</th><th>Размер</th><th>Файлов</th></tr></thead><tbody>';
+                const storage = load.storage || {};
+                ['catalog', 'hls', 'cache', 'fileInfoCache', 'clients', 'timecodes', 'audioPrefs', 'history', 'sync', 'traffic'].forEach(k => {
+                    if (storage[k]) {
+                        html += `<tr><td>${storage[k].path || k}</td><td>${storage[k].sizeFormatted}</td><td>${storage[k].fileCount || '—'}</td></tr>`;
+                    }
+                });
+                if (storage.total) {
+                    html += `<tr style="background:#0f1419; font-weight:700;"><td>ИТОГО</td><td>${storage.total.sizeFormatted}</td><td>—</td></tr>`;
+                }
+                html += '</tbody></table>';
+
+                el.innerHTML = html;
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+        }
+
+        window.addEventListener('load', () => {
+            if (SERVER_URL) {
+                setTimeout(connectToServer, 500);
+            }
+        });
+    </script>
+
+</body>
+
+</html>

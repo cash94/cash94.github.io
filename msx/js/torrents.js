@@ -1,0 +1,6478 @@
+// Работа с TorrServer и торрентами
+
+// Переменные для поиска
+var searchResults = [];
+var filteredResults = [];
+var currentSearchQuery = '';
+var currentSearchMode = 'globalsearch';
+var globalSearchResults = [];
+var tmdbSearchController = null;
+var tmdbSearchSequence = 0;
+
+// Настройки фильтрации и сортировки
+// Сортировка, качество и тип видео стартуют со значений по умолчанию из
+// настроек («Прочее» → «Фильтры поиска»): см. applySearchFilterDefaults ниже.
+// Качество — список через запятую («2160,1080») или 'all': выбрать можно
+// несколько значений сразу.
+var currentSort = 'date-desc';
+var currentQualityFilter = 'all';
+var currentTrackerFilter = 'all';
+var currentYearFilter = '';
+var currentSeasonFilter = 'all';
+var currentVoiceFilter = 'all';
+var currentvideotypeFilter = 'all';
+
+var availableTrackers = [];
+var lastAddedTorrentHash = null;
+var lastPlaybackFromSearch = false;
+
+// Таймеры для long press удаления
+var TORRENT_DELETE_HOLD_MS = 900;
+var suppressTorrentClickUntil = 0;
+
+// ==================== LRU CACHE ====================
+function LruCache(max, ttl) {
+    this.max = max > 0 ? max : 100;
+    this.ttl = ttl > 0 ? ttl : 0;
+    this.map = new Map();
+}
+
+LruCache.prototype._isExpired = function (entry) {
+    return this.ttl > 0 && entry.expires > 0 && Date.now() > entry.expires;
+};
+
+LruCache.prototype.get = function (key) {
+    var entry = this.map.get(key);
+
+    if (!entry) return undefined;
+
+    if (this._isExpired(entry)) {
+        this.map.delete(key);
+        return undefined;
+    }
+
+    // LRU: поднимаем запись в конец
+    this.map.delete(key);
+    this.map.set(key, entry);
+
+    return entry.value;
+};
+
+LruCache.prototype.has = function (key) {
+    var entry = this.map.get(key);
+
+    if (!entry) return false;
+
+    if (this._isExpired(entry)) {
+        this.map.delete(key);
+        return false;
+    }
+
+    return true;
+};
+
+LruCache.prototype.set = function (key, value, ttl) {
+    if (this.map.has(key)) {
+        this.map.delete(key);
+    } else if (this.map.size >= this.max) {
+        var oldestKey = this.map.keys().next().value;
+        if (oldestKey !== undefined) {
+            this.map.delete(oldestKey);
+        }
+    }
+
+    var ttlMs = ttl === undefined ? this.ttl : ttl;
+    var expires = ttlMs > 0 ? Date.now() + ttlMs : 0;
+
+    this.map.set(key, {
+        value: value,
+        expires: expires
+    });
+};
+
+LruCache.prototype.delete = function (key) {
+    return this.map.delete(key);
+};
+
+LruCache.prototype.clear = function () {
+    this.map.clear();
+};
+// ==================== /LRU CACHE ====================
+
+// Кэш
+var torrentFilesCache = new LruCache(80, 60 * 60 * 1000);
+var torrentFilesInFlight = {};
+var torrentProgressCache = new LruCache(150, 60 * 1000);
+var torrentProgressInFlight = {};
+var torrentCardMetaCache = new LruCache(300, 0);
+
+var knownTorrentMeta = new LruCache(200, 24 * 60 * 60 * 1000);
+
+window.getKnownTorrentMeta = function (hash) {
+    return knownTorrentMeta.get(String(hash || '').toLowerCase());
+};
+
+function buildTmdbPosterUrl(path, size) {
+    if (!path) return null;
+    path = String(path);
+
+    // catalog.js подключает общий выбор зеркала. Все постеры, включая file-item,
+    // используют тот же список mirrors.
+    if (window.getTmdbImageUrl) return window.getTmdbImageUrl(path, size || 'w342');
+
+    // Если это уже полный URL, заменяем домен на прокси
+    if (path.indexOf('http') === 0) {
+        return replaceTmdbWithProxy(path);
+    }
+
+    size = size || 'w342';
+
+    // Основное зеркало картинок из apiproxy.json (config.js)
+    return getPrimaryImageBase() + size +
+        (path.charAt(0) === '/' ? path : '/' + path);
+}
+
+function getCatalogSearchContext(searchResult) {
+    var item = AppState.pendingDetailItem ||
+        window.pendingCatalogItem ||
+        AppState.androidBackCatalog ||
+        null;
+
+    var id = null;
+
+    if (item) {
+        id = item.id || item.tmdbId || null;
+    }
+
+    if (!id && searchResult) {
+        id = searchResult.tmdbId || null;
+    }
+
+    if (!id && typeof catalogState !== 'undefined' && catalogState.lastSelectedId) {
+        id = catalogState.lastSelectedId;
+    }
+
+    var mediaType = null;
+
+    if (item && item.media_type) mediaType = item.media_type;
+    if (!mediaType && AppState.pendingDetailMediaType) mediaType = AppState.pendingDetailMediaType;
+    if (!mediaType && AppState.mediaType) mediaType = AppState.mediaType;
+
+    if (!mediaType && searchResult && Array.isArray(searchResult.types)) {
+        if (searchResult.types.indexOf('tv') !== -1 || searchResult.types.indexOf('serial') !== -1) {
+            mediaType = 'tv';
+        } else if (searchResult.types.indexOf('movie') !== -1) {
+            mediaType = 'movie';
+        }
+    }
+
+    if (!mediaType && searchResult && Array.isArray(searchResult.seasons) && searchResult.seasons.length > 0) {
+        mediaType = 'tv';
+    }
+
+    if (!mediaType) mediaType = 'movie';
+
+    var poster = AppState.pendingDetailPoster || window.pendingCatalogPoster || null;
+
+    if (!poster && searchResult && searchResult.poster) {
+        poster = searchResult.poster;
+    }
+
+    if (!poster && item && typeof catalogState !== 'undefined' && catalogState.posterCache) {
+        poster = catalogState.posterCache.get((id || item.id || '') + '_' + (item.media_type || mediaType));
+    }
+
+    if (!poster && item && item.poster_path) {
+        poster = buildTmdbPosterUrl(item.poster_path, 'w342');
+    }
+
+    if (!poster && searchResult && searchResult.poster_path) {
+        poster = buildTmdbPosterUrl(searchResult.poster_path, 'w342');
+    }
+
+    return {
+        id: id,
+        mediaType: mediaType,
+        poster: poster,
+        item: item
+    };
+}
+
+var SORT_OPTIONS = [
+    { value: 'date-desc', label: 'Сначала новые' },
+    { value: 'date-asc', label: 'Сначала старые' },
+    { value: 'size-desc', label: 'Размер ↓' },
+    { value: 'size-asc', label: 'Размер ↑' },
+    { value: 'sid-desc', label: 'Сиды ↓' },
+    { value: 'sid-asc', label: 'Сиды ↑' },
+    { value: 'pir-desc', label: 'Пиры ↓' },
+    { value: 'pir-asc', label: 'Пиры ↑' }
+];
+
+var QUALITY_OPTIONS = [
+    { value: 'all', label: 'Все' },
+    { value: '2160', label: '4K (2160p)', short: '4K' },
+    { value: '1080', label: 'Full HD (1080p)', short: '1080p' },
+    { value: '720', label: 'HD (720p)', short: '720p' },
+    { value: '480', label: 'SD (480p)', short: '480p' },
+    { value: '360', label: '360p', short: '360p' }
+];
+
+// Тип видео у раздач Jacred — только эти два. Список самого фильтра строится
+// из выдачи, а этот нужен настройке значения по умолчанию: выдачи там ещё нет.
+var VIDEOTYPE_OPTIONS = [
+    { value: 'all', label: 'Все' },
+    { value: 'sdr', label: 'SDR' },
+    { value: 'hdr', label: 'HDR' }
+];
+
+// ==================== КАЧЕСТВО: НЕСКОЛЬКО ЗНАЧЕНИЙ ====================
+// Строка фильтра → массив значений в порядке QUALITY_OPTIONS. Пустой — «Все».
+// Чужие значения отбрасываем: фильтр по качеству, которого нет в списке,
+// скрыл бы всю выдачу без возможности это увидеть в панели.
+function parseQualityFilter(value) {
+    if (!value || value === 'all') return [];
+    var parts = String(value).split(',');
+    var out = [];
+    for (var i = 1; i < QUALITY_OPTIONS.length; i++) {
+        var v = QUALITY_OPTIONS[i].value;
+        for (var j = 0; j < parts.length; j++) {
+            if (parts[j].trim() === v) { out.push(v); break; }
+        }
+    }
+    return out;
+}
+
+function qualityFilterFromList(list) {
+    var clean = parseQualityFilter((list || []).join(','));
+    return clean.length ? clean.join(',') : 'all';
+}
+
+// Выбраны все варианты — то же, что «Все»: так фильтр не подсвечивается как
+// сужающий выдачу, хотя по сути ничего не отсекает
+function toggleQualityFilterValue(filter, value) {
+    if (value === 'all') return 'all';
+    var list = parseQualityFilter(filter);
+    var idx = list.indexOf(String(value));
+    if (idx === -1) list.push(String(value)); else list.splice(idx, 1);
+    var result = qualityFilterFromList(list);
+    return parseQualityFilter(result).length === QUALITY_OPTIONS.length - 1 ? 'all' : result;
+}
+
+function qualityFilterMatches(filter, quality) {
+    var list = parseQualityFilter(filter);
+    if (!list.length) return true;
+    return list.indexOf(String(quality || 0)) !== -1;
+}
+
+// Подпись для панели фильтров: «4K, 1080p, 720p»
+function qualityFilterLabel(filter) {
+    var list = parseQualityFilter(filter);
+    if (!list.length) return 'Все';
+    var labels = [];
+    for (var i = 1; i < QUALITY_OPTIONS.length; i++) {
+        if (list.indexOf(QUALITY_OPTIONS[i].value) !== -1) labels.push(QUALITY_OPTIONS[i].short);
+    }
+    return labels.join(', ');
+}
+
+// ==================== ФИЛЬТРЫ ПО УМОЛЧАНИЮ ====================
+// Хранятся на устройстве, как и прочие настройки интерфейса. Меняются в
+// «Настройки → Прочее»; применяются при старте, кнопкой «Сбросить» и, для
+// типа видео, в начале каждого нового поиска (clearSearchResults).
+var SEARCH_FILTER_DEFAULTS_KEY = 'searchFilterDefaults';
+
+function hasFilterOption(options, value) {
+    for (var i = 0; i < options.length; i++) if (options[i].value === value) return true;
+    return false;
+}
+
+function getSearchFilterDefaults() {
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem(SEARCH_FILTER_DEFAULTS_KEY) || '{}') || {}; } catch (e) { saved = {}; }
+    return {
+        sort: hasFilterOption(SORT_OPTIONS, saved.sort) ? saved.sort : 'date-desc',
+        quality: qualityFilterFromList(parseQualityFilter(saved.quality)),
+        videotype: hasFilterOption(VIDEOTYPE_OPTIONS, saved.videotype) ? saved.videotype : 'all'
+    };
+}
+
+function saveSearchFilterDefaults(defaults) {
+    try { localStorage.setItem(SEARCH_FILTER_DEFAULTS_KEY, JSON.stringify(defaults)); } catch (e) { }
+}
+
+/** Выставить текущим фильтрам значения по умолчанию — все или один: 'sort' | 'quality' | 'videotype' */
+function applySearchFilterDefaults(only) {
+    var d = getSearchFilterDefaults();
+    if (!only || only === 'sort') currentSort = d.sort;
+    if (!only || only === 'quality') currentQualityFilter = d.quality;
+    if (!only || only === 'videotype') currentvideotypeFilter = d.videotype;
+}
+
+window.QUALITY_OPTIONS = QUALITY_OPTIONS;
+window.SORT_OPTIONS = SORT_OPTIONS;
+window.VIDEOTYPE_OPTIONS = VIDEOTYPE_OPTIONS;
+window.parseQualityFilter = parseQualityFilter;
+window.toggleQualityFilterValue = toggleQualityFilterValue;
+window.qualityFilterLabel = qualityFilterLabel;
+window.getSearchFilterDefaults = getSearchFilterDefaults;
+window.saveSearchFilterDefaults = saveSearchFilterDefaults;
+window.applySearchFilterDefaults = applySearchFilterDefaults;
+
+applySearchFilterDefaults();
+
+// === УНИВЕРСАЛЬНЫЙ FETCH ДЛЯ TORRSERVER ===
+async function torrServerFetch(endpoint, options = {}) {
+    if (!AppState.currentTorrserverUrl) throw new Error('Сервер не подключен');
+    var headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+    return fetch(AppState.currentTorrserverUrl + endpoint, {
+        ...options,
+        headers: { ...headers, ...(options.headers || {}) }
+    });
+}
+
+function getTrackerFilterOptions() {
+    var options = [{ value: 'all', label: 'Все' }];
+    for (var i = 0; i < availableTrackers.length; i++) {
+        var tracker = availableTrackers[i];
+        options.push({ value: tracker, label: tracker.charAt(0).toUpperCase() + tracker.slice(1) });
+    }
+    return options;
+}
+
+function fillSelectOptions(select, options, selectedValue) {
+    if (!select) return;
+    var normalizedSelected = String(selectedValue !== null && selectedValue !== undefined ? selectedValue : '');
+    var optionsHtml = '';
+    for (var i = 0; i < options.length; i++) {
+        var option = options[i];
+        var selected = String(option.value) === normalizedSelected ? ' selected' : '';
+        optionsHtml += `<option value="${option.value}"${selected}>${option.label}</option>`;
+    }
+    select.innerHTML = optionsHtml;
+    select.value = normalizedSelected;
+}
+
+function syncSearchFilterButtons() {
+    fillSelectOptions(getEl('sort-by'), SORT_OPTIONS, currentSort);
+    fillSelectOptions(getEl('filter-quality'), QUALITY_OPTIONS, currentQualityFilter);
+    fillSelectOptions(getEl('filter-tracker'), getTrackerFilterOptions(), currentTrackerFilter);
+
+    var yearFilter = getEl('filter-year');
+    if (yearFilter) yearFilter.value = (currentYearFilter && currentYearFilter !== 'all') ? currentYearFilter : 'all';
+
+    var seasonFilter = getEl('filter-season');
+    if (seasonFilter) seasonFilter.value = (currentSeasonFilter && currentSeasonFilter !== 'all') ? currentSeasonFilter : 'all';
+
+    var voiceFilter = getEl('filter-voice');
+    if (voiceFilter) voiceFilter.value = (currentVoiceFilter && currentVoiceFilter !== 'all') ? currentVoiceFilter : 'all';
+
+    var videotypeFilter = getEl('filter-videotype');
+    if (videotypeFilter) videotypeFilter.value = (currentvideotypeFilter && currentvideotypeFilter !== 'all') ? currentvideotypeFilter : 'all';
+
+    if (typeof window.updateFilterValueDisplays === 'function') window.updateFilterValueDisplays();
+}
+
+function toggleSearchFiltersPanel(forceOpen) {
+    var panel = getEl('search-filters-panel');
+    var toggleBtn = getEl('filter-toggle');
+    var overlay = getEl('filter-overlay');
+
+    if (!panel) return false;
+
+    var shouldOpen = (forceOpen === undefined) ? !panel.classList.contains('active') : !!forceOpen;
+
+    if (shouldOpen) {
+        if (typeof window.updateFilterValueDisplays === 'function') window.updateFilterValueDisplays();
+        panel.classList.add('active');
+        if (overlay) overlay.classList.add('active');
+        if (toggleBtn) toggleBtn.classList.add('active');
+    } else {
+        panel.classList.remove('active');
+        if (overlay) overlay.classList.remove('active');
+        if (toggleBtn) toggleBtn.classList.remove('active');
+    }
+
+    return shouldOpen;
+}
+window.toggleSearchFiltersPanel = toggleSearchFiltersPanel;
+
+function getTorrentFiles(torrent) {
+    if (!torrent) return [];
+    if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) return torrent.file_stats;
+    if (torrent.data) {
+        try {
+            var data = JSON.parse(torrent.data);
+            if (data.TorrServer && Array.isArray(data.TorrServer.Files)) return data.TorrServer.Files;
+        } catch (e) { console.warn('Ошибка парсинга torrent.data:', e); }
+    }
+    return [];
+}
+
+function getVideoFilesFromTorrent(torrent) {
+    var files = getTorrentFiles(torrent);
+    return files.filter(f => {
+        var name = (f.path || '').toLowerCase();
+        return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => name.includes(ext));
+    });
+}
+
+function inferSearchResultIsSeries(searchResult, torrent) {
+    if (searchResult && searchResult.types && Array.isArray(searchResult.types) && searchResult.types.includes('tv')) return true;
+    if (torrent && getVideoFilesFromTorrent(torrent).length > 1) return true;
+    var title = ((searchResult && (searchResult.title || searchResult.name)) || (torrent && torrent.title) || '').toLowerCase();
+    return (title.includes('s') && title.includes('e')) || title.includes('season') || title.includes('сезон') || title.includes('серия') || title.includes('эпизод');
+}
+
+function getPreferredPlaybackFile(torrent, searchResult = null) {
+    var videoFiles = getVideoFilesFromTorrent(torrent);
+    if (videoFiles.length === 0) return { fileId: 1, episodeIndex: null, isSeries: inferSearchResultIsSeries(searchResult, torrent) };
+    var isSeries = inferSearchResultIsSeries(searchResult, torrent) || videoFiles.length > 1;
+    return { fileId: videoFiles[0].id || 1, episodeIndex: isSeries ? 0 : null, isSeries: isSeries };
+}
+
+window.setTorrentClickSuppressed = function (ms = 1200) { suppressTorrentClickUntil = Date.now() + ms; };
+
+// ==================== ДЕЛЕГИРОВАНИЕ LONG-PRESS УДАЛЕНИЯ ====================
+var torrentHoldState = {
+    timer: null,
+    card: null,
+    hash: null,
+    pointerId: null,
+    startX: 0,
+    startY: 0
+};
+
+function clearTorrentHoldState() {
+    if (torrentHoldState.timer) {
+        clearTimeout(torrentHoldState.timer);
+    }
+
+    torrentHoldState.timer = null;
+    torrentHoldState.card = null;
+    torrentHoldState.hash = null;
+    torrentHoldState.pointerId = null;
+    torrentHoldState.startX = 0;
+    torrentHoldState.startY = 0;
+}
+
+function setupTorrentLongPressDelegation(grid) {
+    if (!grid || grid._longPressBound) return;
+
+    grid._longPressBound = true;
+
+    // Подавление клика после long-press / contextmenu
+    grid.addEventListener('click', function (e) {
+        var card = e.target && e.target.closest ? e.target.closest('.torrent-card') : null;
+        if (!card) return;
+
+        var shouldSuppress = card.dataset.suppressClick === '1' || Date.now() < suppressTorrentClickUntil;
+
+        if (shouldSuppress) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            e.stopPropagation();
+            delete card.dataset.suppressClick;
+            return false;
+        }
+    }, true);
+
+    // Contextmenu: правый клик / долгое нажатие на некоторых устройствах
+    grid.addEventListener('contextmenu', function (e) {
+        var card = e.target && e.target.closest ? e.target.closest('.torrent-card') : null;
+        if (!card || !card.dataset.hash) return;
+
+        e.preventDefault();
+
+        clearTorrentHoldState();
+
+        suppressTorrentClickUntil = Date.now() + 1200;
+        card.dataset.suppressClick = '1';
+
+        removeTorrentByHash(card.dataset.hash, { skipConfirm: true }).finally(function () {
+            setTimeout(function () {
+                if (card) delete card.dataset.suppressClick;
+            }, 1200);
+        });
+    });
+
+    // Pointer down: старт удержания
+    grid.addEventListener('pointerdown', function (e) {
+        if (!e.isPrimary) return;
+
+        // Правая кнопка мыши обрабатывается через contextmenu
+        if (e.button !== undefined && e.button !== 0) return;
+
+        var target = e.target;
+        if (!target || !target.closest) return;
+
+        // Не запускаем long-press на интерактивных элементах
+        if (target.closest('button, input, select, textarea, a')) return;
+
+        var card = target.closest('.torrent-card');
+        if (!card || !card.dataset.hash) return;
+
+        clearTorrentHoldState();
+
+        torrentHoldState.card = card;
+        torrentHoldState.hash = card.dataset.hash;
+        torrentHoldState.pointerId = e.pointerId;
+        torrentHoldState.startX = e.clientX;
+        torrentHoldState.startY = e.clientY;
+
+        torrentHoldState.timer = setTimeout(function () {
+            var holdCard = torrentHoldState.card;
+            var holdHash = torrentHoldState.hash;
+
+            clearTorrentHoldState();
+
+            if (!holdHash) return;
+
+            suppressTorrentClickUntil = Date.now() + 1200;
+
+            if (holdCard) {
+                holdCard.dataset.suppressClick = '1';
+                holdCard.classList.remove('touch-active');
+            }
+
+            removeTorrentByHash(holdHash, { skipConfirm: true }).finally(function () {
+                setTimeout(function () {
+                    if (holdCard) delete holdCard.dataset.suppressClick;
+                }, 1200);
+            });
+        }, TORRENT_DELETE_HOLD_MS);
+    }, { passive: true });
+
+    // Общие обработчики на document, чтобы корректно отменять удержание
+    if (!window._torrentLongPressDocumentBound) {
+        window._torrentLongPressDocumentBound = true;
+
+        document.addEventListener('pointerup', function (e) {
+            if (!torrentHoldState.timer) return;
+            if (e.pointerId !== torrentHoldState.pointerId) return;
+            clearTorrentHoldState();
+        }, { passive: true });
+
+        document.addEventListener('pointercancel', function (e) {
+            if (!torrentHoldState.timer) return;
+            if (e.pointerId !== torrentHoldState.pointerId) return;
+            clearTorrentHoldState();
+        }, { passive: true });
+
+        document.addEventListener('pointermove', function (e) {
+            if (!torrentHoldState.timer) return;
+            if (e.pointerId !== torrentHoldState.pointerId) return;
+
+            var dx = e.clientX - torrentHoldState.startX;
+            var dy = e.clientY - torrentHoldState.startY;
+
+            // Если палец/курсор сдвинулся больше чем на ~12px — отменяем long-press
+            if ((dx * dx + dy * dy) > 144) {
+                clearTorrentHoldState();
+            }
+        }, { passive: true });
+    }
+}
+// ==================== /ДЕЛЕГИРОВАНИЕ LONG-PRESS УДАЛЕНИЯ ====================
+
+async function removeTorrentByHash(hash, options = {}) {
+    if (!hash || !AppState.currentTorrserverUrl) return false;
+    var torrent = AppState.torrents.find(t => (t.hash || '').toLowerCase() === String(hash).toLowerCase());
+    var title = (torrent && torrent.title) || 'эту раздачу';
+    if (!options.skipConfirm && !window.confirm('Удалить ' + title + '?')) return false;
+
+    showLoading('Удаление торрента...');
+    try {
+        var response = await torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'rem', hash: hash }) });
+        if (!response.ok) throw new Error('Ошибка удаления: HTTP ' + response.status);
+        try { await response.json(); } catch (e) { }
+
+        clearTorrentFilesCache(hash);
+        if (AppState.currentDetailItem && (AppState.currentDetailItem.hash || '').toLowerCase() === String(hash).toLowerCase()) {
+            // Раздачи больше нет — закрываем карточку тем же плавным затуханием,
+            // что и по кнопке «назад»
+            if (typeof Animations !== 'undefined' && typeof Animations.animateDetailHide === 'function') {
+                Animations.animateDetailHide();
+            } else {
+                getEl('detail-view').style.display = 'none';
+            }
+            AppState.currentDetailItem = null;
+            AppState.currentScreen = 'torrents';
+            var mainContainer = getEl('main-container');
+            if (mainContainer) mainContainer.style.pointerEvents = 'auto';
+            getEl('torrserver-section').style.display = 'block';
+        }
+        await refreshTorrentsList();
+        return true;
+    } catch (error) {
+        console.error('Ошибка удаления торрента:', error);
+        alert('Ошибка удаления: ' + error.message);
+        return false;
+    } finally { hideLoading(); }
+}
+window.removeTorrentByHash = removeTorrentByHash;
+
+function attachTorrentDeleteLongPress(card, torrent) {
+    // Deprecated: long-press удаление теперь делегировано на torrents-grid.
+    // Функция оставлена только для совместимости, если где-то ещё вызывается.
+}
+
+// ==================== СВОЙ TORRSERVER НА УСТРОЙСТВЕ ====================
+//
+// Настройки TorrServer сервер хранит по clientId, а под аккаунтом (и после
+// «Синхронизации» по коду) clientId у устройств общий — значит, и TorrServer
+// один на всех: поменял адрес на одном телевизоре, и он поменялся на другом.
+// У кого серверов несколько, включают «Свой TorrServer на этом устройстве»:
+// адрес, логин и пароль тогда живут в localStorage и с сервером не ходят ни
+// туда, ни обратно. Сервер и его API при этом не меняются.
+var TS_LOCAL_FLAG = 'tsLocalOnly';
+var TS_LOCAL_CONFIG = 'tsLocalConfig';
+
+function isLocalTorrServer() {
+    try { return localStorage.getItem(TS_LOCAL_FLAG) === '1'; } catch (e) { return false; }
+}
+
+function readLocalTorrServerConfig() {
+    try { return JSON.parse(localStorage.getItem(TS_LOCAL_CONFIG) || 'null'); } catch (e) { return null; }
+}
+
+// ==================== АДРЕС TORRSERVER: ПРОТОКОЛ ====================
+//
+// Адрес можно вводить без протокола («192.168.1.10:8090»): http:// или https://
+// подставляет переключатель «Сервер работает по HTTPS». Своего значения у него
+// нет — он всегда показывает протокол сохранённого адреса, а включение или
+// выключение меняет протокол в самом адресе.
+
+/** Полный адрес: с протоколом и без «/» в конце */
+function normalizeTorrServerUrl(raw) {
+    var v = String(raw || '').trim();
+    if (!v) return '';
+    if (!/^https?:\/\//i.test(v)) {
+        var https = getEl('ts-https');
+        v = (https && https.checked ? 'https://' : 'http://') + v.replace(/^\/+/, '');
+    }
+    return v.replace(/\/+$/, '');
+}
+
+/** Адрес из поля в полном виде — его читают проверка, сохранение и замер скорости */
+function torrServerUrlFromField() {
+    var el = getEl('torrserver-url');
+    return el ? normalizeTorrServerUrl(el.value) : '';
+}
+window.torrServerUrlFromField = torrServerUrlFromField;
+
+/** Переключатель HTTPS — по протоколу в поле (если он там указан) */
+function syncHttpsToggle() {
+    var cb = getEl('ts-https');
+    var el = getEl('torrserver-url');
+    if (!cb || !el) return;
+    var v = el.value.trim();
+    if (/^https?:\/\//i.test(v)) cb.checked = /^https:/i.test(v);
+}
+
+function setupTorrServerUrlProtocol() {
+    var cb = getEl('ts-https');
+    var el = getEl('torrserver-url');
+    if (!cb || !el) return;
+    syncHttpsToggle();
+    // Ушли из поля — показываем адрес полностью, с протоколом
+    el.addEventListener('change', function () {
+        if (el.value.trim()) el.value = normalizeTorrServerUrl(el.value);
+        syncHttpsToggle();
+    });
+    cb.addEventListener('change', function () {
+        var v = el.value.trim();
+        if (!v) return;
+        el.value = (cb.checked ? 'https://' : 'http://') + v.replace(/^https?:\/\//i, '');
+        checkServer(true);
+    });
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupTorrServerUrlProtocol);
+else setupTorrServerUrlProtocol();
+
+/** Текущие значения полей раздела TorrServer. */
+function torrServerFieldsConfig() {
+    return {
+        url: torrServerUrlFromField(),
+        authEnabled: getEl('auth-checkbox').checked,
+        login: getEl('auth-login').value.trim(),
+        password: getEl('auth-password').value
+    };
+}
+
+/** Раскладывает настройки по полям — и серверные, и локальные. */
+function applyTorrServerConfig(cfg) {
+    if (!cfg) return;
+    var urlInput = getEl('torrserver-url');
+    var authCheckbox = getEl('auth-checkbox');
+    var authLogin = getEl('auth-login');
+    var authPassword = getEl('auth-password');
+    var authFields = getEl('auth-fields');
+    if (cfg.url) urlInput.value = cfg.url;
+    syncHttpsToggle();
+    authCheckbox.checked = !!cfg.authEnabled;
+    AppState.authEnabled = !!cfg.authEnabled;
+    if (authFields) authFields.classList.toggle('visible', !!cfg.authEnabled);
+    authLogin.value = cfg.login || '';
+    authPassword.value = cfg.password || '';
+}
+
+function setupLocalTorrServerToggle() {
+    var box = getEl('ts-local-only');
+    if (!box) return;
+    box.checked = isLocalTorrServer();
+    box.addEventListener('change', function () {
+        if (box.checked) {
+            // Устройство остаётся на том сервере, что сейчас в полях, — просто
+            // дальше он хранится здесь, а не в общих настройках
+            try {
+                localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig()));
+                localStorage.setItem(TS_LOCAL_FLAG, '1');
+            } catch (e) { }
+            return;
+        }
+        // Обратно на общие: берём настройки аккаунта с сервера и проверяем их
+        try { localStorage.removeItem(TS_LOCAL_FLAG); localStorage.removeItem(TS_LOCAL_CONFIG); } catch (e) { }
+        loadClientConfig().then(function () {
+            if (typeof checkServer === 'function') checkServer(true);
+        });
+    });
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupLocalTorrServerToggle);
+else setupLocalTorrServerToggle();
+
+// ==================== TORRSERVER, УСТАНОВЛЕННЫЙ НА САМОМ УСТРОЙСТВЕ ====================
+//
+// Только в Android-приложении: TorrServer стоит на том же телевизоре или
+// приставке, адрес — http://localhost:8090. Такой адрес верен лишь для этого
+// устройства, поэтому заодно включается «Свой TorrServer на этом устройстве»:
+// иначе localhost ушёл бы в общие настройки аккаунта и сломал TorrServer на
+// остальных его устройствах. Выключили — возвращаем всё, как было до включения.
+var TS_DEVICE_FLAG = 'tsDeviceServer';
+var TS_DEVICE_BACKUP = 'tsDeviceBackup';
+var TS_DEVICE_URL = 'http://localhost:8090';
+
+/**
+ * Адрес TorrServer на этом устройстве. На webOS встроенный поднимается на
+ * 18090, если 8090 занят (WebOSTorrServer: run.sh), — адрес даёт мост.
+ */
+function deviceTorrServerUrl() {
+    var b = deviceTorrServerBridge();
+    if (b && typeof b.url === 'function') {
+        try { return b.url() || TS_DEVICE_URL; } catch (e) { }
+    }
+    return TS_DEVICE_URL;
+}
+
+function isDeviceTorrServer() {
+    try { return localStorage.getItem(TS_DEVICE_FLAG) === '1'; } catch (e) { return false; }
+}
+
+/**
+ * webOS с Chrome 94+: встроенный TorrServer на localhost доступен только с
+ * https-страницы (Private Network Access), а удалённый http TorrServer —
+ * только с http. Включили встроенный — переезжаем на https этого же сервера,
+ * выключили — обратно на http. См. ранний скрипт в index.html: он принимает
+ * переданный localStorage и помнит, где основной экземпляр (webosScheme).
+ */
+function webosNeedsSchemeSwitch() {
+    if (!(window.PalmSystem || window.webOSSystem)) return false;
+    var m = /Chrome\/(\d+)/.exec(navigator.userAgent || '');
+    return !!m && parseInt(m[1], 10) >= 94;
+}
+
+/** Переехать на http(s) этого же сервера вместе с localStorage */
+function webosSchemeSwitch(target) {
+    if (!webosNeedsSchemeSwitch()) return;
+    var cur = location.protocol === 'https:' ? 'https' : 'http';
+    if (cur === target) return;
+    var go = function () {
+        var data = {};
+        try {
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                data[k] = localStorage.getItem(k);
+            }
+        } catch (e) { }
+        data.webosScheme = target;
+        try { localStorage.setItem('webosScheme', target); } catch (e) { }
+        location.replace(target + '://' + location.host + location.pathname + location.search +
+            '#lsxfer=' + encodeURIComponent(JSON.stringify(data)));
+    };
+    // На http — сразу; на https — только если он отвечает (иначе остаёмся,
+    // а не уводим на страницу ошибки)
+    if (target === 'http') { go(); return; }
+    var x = new XMLHttpRequest();
+    try {
+        x.open('GET', target + '://' + location.host + '/api/version?_=' + Date.now(), true);
+        x.timeout = 5000;
+        x.onload = function () { if (x.status === 200) go(); };
+        x.send();
+    } catch (e) { }
+}
+
+/** Схема под переключатель: встроенный включён — https, выключен — http */
+function webosSyncScheme() {
+    if (!webosNeedsSchemeSwitch()) return;
+    webosSchemeSwitch(isDeviceTorrServer() ? 'https' : 'http');
+}
+
+/** Поле адреса и «Свой TorrServer» под включённым переключателем не меняются */
+function lockDeviceTorrServerFields(on) {
+    var urlInput = getEl('torrserver-url');
+    var localBox = getEl('ts-local-only');
+    var httpsBox = getEl('ts-https');
+    if (urlInput) urlInput.disabled = on;
+    if (localBox) localBox.disabled = on;
+    if (httpsBox) httpsBox.disabled = on;
+    syncHttpsToggle();
+}
+
+
+/**
+ * Встроенный TorrServer на webOS (LG) — то же, что TorrServerManager в
+ * Android-приложении, но средствами телевизора.
+ *
+ * В приложении TorrStream-webOS (с 1.0.2 — в основной сборке; до неё была
+ * отдельная com.torrstream.app.ts с меткой ?tsdevice=1). Ставить и запускать
+ * свой TorrServer можно только с root через Homebrew Channel: команды выполняет
+ * его служба luna://org.webosbrew.hbchannel.service/exec (как и в
+ * torrserv.matrix.app). Без root — только уже работающий TorrServer на 8090.
+ *
+ * Бинарник — официальная сборка YouROK/TorrServer под linux-arm7 (пользовательское
+ * пространство webOS 32-битное). Всё лежит в DIR: сам TorrServer, его база,
+ * version, pid и журнал. Загрузка и сервер идут в фоне (nohup … &) — exec ждёт
+ * закрытия вывода команды, поэтому вывод фоновых процессов уходит в файлы.
+ * Автозапуск при включении ТВ — скрипт в /var/lib/webosbrew/init.d (его
+ * запускает Homebrew Channel); он, как и кнопка «Запустить», не поднимает
+ * свою копию, если на 8090 уже кто-то отвечает.
+ */
+var WebOSTorrServer = (function () {
+    var DIR = '/media/developer/torrstream-torrserver';
+    var INIT = '/var/lib/webosbrew/init.d/60-torrstream-torrserver';
+    var ASSET = 'TorrServer-linux-arm7';
+    var RELEASE_API = 'https://api.github.com/repos/YouROK/TorrServer/releases/latest';
+    var HB = 'luna://org.webosbrew.hbchannel.service';
+    // Сторонний ipk TorrServer (torrserv.matrix.app, @aabytt): бинарник
+    // torrserver (строчными — у нас TorrServer), автозапуск — ссылка в init.d и
+    // флаг в downloads. Сами его не трогаем: работающий — используем, пока
+    // человек не нажмёт «Остановить его и запустить встроенный»; из автозапуска
+    // убираем, только если он ответит «Убрать» (иначе при включении ТВ он может
+    // занять порт 8090 раньше встроенного)
+    var MATRIX_DIR = '/media/developer/apps/usr/palm/applications/torrserv.matrix.app';
+    var MATRIX_INIT = '/var/lib/webosbrew/init.d/60-torrservmatrixapp';
+    var MATRIX_FLAG = '/media/internal/downloads/ts_autostart_flag';
+
+    var st = {
+        supported: true, installed: false, version: '', running: false, own: false,
+        runningVersion: '', downloading: false, progress: 0, error: '', latest: '',
+        unsupportedText: '', note: '', matrix: false, matrixAutostart: false,
+        canReplace: false,   // работает чужой TorrServer, а root есть — можно заменить встроенным
+        ask: '',             // вопрос «убрать ли matrix из автозапуска», ждём ответа
+        starting: false,     // нажали «Запустить» — ждём, отзовётся ли он на 8090
+        port: '8090'         // на каком порту поднялся встроенный (run.sh пишет в port)
+    };
+    var pendingYes = null;   // что сделать после ответа на вопрос (st.ask)
+    var pendingNo = null;
+    var asked = false;       // про автозапуск matrix в этом сеансе уже спрашивали
+    // «Нет, использовать его» на вопрос о чужом TorrServer — помним между
+    // запусками, чтобы не спрашивать каждый раз; кнопка «Остановить его и
+    // запустить встроенный» в панели остаётся
+    var KEEP_FOREIGN_KEY = 'tsDeviceKeepForeign';
+    var release = null;        // {tag, url, size} последнего релиза
+    var refreshing = false;
+    var afterInstall = '';     // 'start' — запустить, когда скачается
+    var probedAt = 0;
+    var execPending = [];
+    var rooted = null;         // null — ещё не спрашивали Homebrew Channel
+    var rootError = '';
+
+    function enabled() {
+        return AppState.platform === 'webos';
+    }
+
+    /**
+     * Вызов службы Homebrew Channel; cb(r) — её ответ или {returnValue:false,
+     * errorText} (нет моста, нет Homebrew Channel, нет ответа за timeoutMs).
+     */
+    function hb(method, params, cb, timeoutMs) {
+        var done = false;
+        var finish = function (r) { if (!done) { done = true; cb(r); } };
+        try {
+            if (typeof window.PalmServiceBridge === 'undefined') { finish({ returnValue: false, errorText: 'нет PalmServiceBridge' }); return; }
+            var bridge = new window.PalmServiceBridge();
+            // Ссылку держим до ответа: без неё объект может собрать сборщик
+            // мусора, и ответ не придёт (вызовы идут параллельно — список)
+            execPending.push(bridge);
+            var release = function () {
+                var i = execPending.indexOf(bridge);
+                if (i !== -1) execPending.splice(i, 1);
+            };
+            bridge.onservicecallback = function (msg) {
+                release();
+                var r = {};
+                try { r = JSON.parse(msg); } catch (e) { }
+                finish(r);
+            };
+            // Homebrew Channel не установлен — ответа может и не быть вовсе
+            setTimeout(function () { release(); finish({ returnValue: false, errorText: 'Homebrew Channel не отвечает' }); }, timeoutMs || 5000);
+            bridge.call(HB + '/' + method, JSON.stringify(params || {}));
+        } catch (e) { finish({ returnValue: false, errorText: e.message }); }
+    }
+
+    /** Команда от root через Homebrew Channel; cb(err, stdout) */
+    function exec(command, cb) {
+        if (rooted !== true) { cb(rootError || 'нет root'); return; }
+        hb('exec', { command: command }, function (r) {
+            if (r.returnValue === false) cb(r.errorText || r.stderrString || 'ошибка', r.stdoutString || '');
+            else cb(null, r.stdoutString || '');
+        }, 120000);
+    }
+
+    /**
+     * Есть ли root: служба Homebrew Channel отвечает checkRoot. Без root (или без
+     * самого Homebrew Channel) встроенный TorrServer не ставим — приложение при
+     * этом работает как обычно, а уже запущенным TorrServer пользоваться можно.
+     */
+    function checkRoot(done) {
+        if (rooted !== null) { done(); return; }
+        hb('checkRoot', {}, function (r) {
+            rooted = r.returnValue === true;
+            if (!rooted) {
+                rootError = /не отвечает|PalmServiceBridge/.test(r.errorText || '')
+                    ? 'Встроенный TorrServer ставится только на телевизор с Homebrew Channel и root'
+                    : 'Нужен root: Homebrew Channel работает без него';
+            }
+            done();
+        });
+    }
+
+    /** Версия TorrServer на порту port (по умолчанию 8090) или '' */
+    function echo(done, port) {
+        var x = new XMLHttpRequest(), fin = false;
+        var finish = function (v) { if (!fin) { fin = true; done(v); } };
+        try {
+            x.open('GET', 'http://127.0.0.1:' + (port || '8090') + '/echo?_=' + Date.now(), true);
+            x.timeout = 1500;
+            x.onload = function () { finish(x.status === 200 ? String(x.responseText || '').trim().slice(0, 40) : ''); };
+            x.onerror = x.ontimeout = function () { finish(''); };
+            x.send();
+        } catch (e) { finish(''); }
+    }
+
+    function fetchRelease(done) {
+        var x = new XMLHttpRequest();
+        try {
+            x.open('GET', RELEASE_API, true);
+            x.timeout = 15000;
+            x.onload = function () {
+                var rel = null;
+                try {
+                    var d = JSON.parse(x.responseText);
+                    for (var i = 0; i < (d.assets || []).length; i++) {
+                        if (d.assets[i].name === ASSET) {
+                            rel = { tag: d.tag_name, url: d.assets[i].browser_download_url, size: d.assets[i].size };
+                        }
+                    }
+                } catch (e) { }
+                if (rel) { release = rel; st.latest = rel.tag; }
+                done(rel);
+            };
+            x.onerror = x.ontimeout = function () { done(null); };
+            x.send();
+        } catch (e) { done(null); }
+    }
+
+    /** Состояние: что установлено, что качается, жив ли наш процесс, кто на 8090 */
+    function refresh() {
+        if (refreshing) return;
+        refreshing = true;
+        checkRoot(function () {
+            if (rooted) { refreshRooted(); return; }
+            // Без root: ставить нечего, но чужой TorrServer на 8090 использовать можно
+            echo(function (ver) {
+                refreshing = false;
+                st.running = !!ver;
+                st.runningVersion = ver;
+                st.own = false; st.installed = false; st.downloading = false;
+                st.canReplace = false;
+                st.supported = !!ver;
+                st.unsupportedText = rootError;
+            });
+        });
+    }
+
+    function refreshRooted() {
+        // matrix проверяем первым: нашей папки до первой установки нет, и
+        // строка с cd ниже на этом заканчивает команду
+        var cmd = '[ -d ' + MATRIX_DIR + ' ] && echo M; ' +
+            '[ -e ' + MATRIX_INIT + ' ] && echo MA; ' +
+            'cd ' + DIR + ' 2>/dev/null || { echo NODIR; exit 0; }; ' +
+            '[ -x TorrServer ] && echo I; ' +
+            '[ -f version ] && sed "s/^/V:/" version | head -1; ' +
+            '[ -f pid ] && kill -0 $(cat pid) 2>/dev/null && echo R; ' +
+            '[ -f dl ] && echo D; ' +
+            '[ -f TorrServer.part ] && echo P:$(wc -c < TorrServer.part); ' +
+            '[ -f err ] && sed "s/^/E:/" err | head -1; ' +
+            '[ -f port ] && sed "s/^/PORT:/" port | head -1; true';
+        exec(cmd, function (err, out) {
+            if (err) {
+                refreshing = false;
+                st.supported = false;
+                st.unsupportedText = 'Нужен Homebrew Channel с root (' + err + ')';
+                return;
+            }
+            st.supported = true;
+            var lines = String(out).split('\n');
+            var has = function (k) { return lines.indexOf(k) !== -1; };
+            var val = function (p) {
+                for (var i = 0; i < lines.length; i++) if (lines[i].indexOf(p) === 0) return lines[i].slice(p.length).trim();
+                return '';
+            };
+            var wasDownloading = st.downloading;
+            st.installed = has('I');
+            st.version = val('V:');
+            st.own = has('R');
+            st.downloading = has('D');
+            var part = parseInt(val('P:'), 10) || 0;
+            st.progress = st.downloading && release && release.size ? Math.min(99, Math.round(part * 100 / release.size)) : 0;
+            st.error = val('E:');
+            st.matrix = has('M');
+            st.matrixAutostart = has('MA');
+            st.port = val('PORT:') || '8090';
+            // Свой жив — спрашиваем его порт; иначе — 8090, где бывает чужой
+            echo(function (ver) {
+                refreshing = false;
+                st.running = !!ver;
+                st.runningVersion = ver;
+                st.canReplace = !!ver && !st.own;
+                // Поднялся позже, чем ждал verifyStart, — его ошибка уже неправда
+                if (ver && st.own && st.error) { st.error = ''; exec('rm -f ' + DIR + '/err', function () { }); }
+                // Скачалось — запускаем (при обновлении старый процесс уже остановлен)
+                if (wasDownloading && !st.downloading && afterInstall && st.installed && !st.error) {
+                    afterInstall = '';
+                    start();
+                }
+            }, st.own ? st.port : '8090');
+        });
+    }
+
+    function status() {
+        // Панель спрашивает раз в 1,5 с — отдаём последнее известное и обновляем
+        if (Date.now() - probedAt > 1000) { probedAt = Date.now(); refresh(); }
+        return st;
+    }
+
+    function install() {
+        st.error = '';
+        var go = function (rel) {
+            if (!rel) { st.error = 'не удалось получить релиз TorrServer с GitHub'; return; }
+            st.downloading = true; st.progress = 0;
+            afterInstall = 'start';
+            // Обновление поверх работающего: наш процесс останавливаем, файл
+            // заменяем целиком (mv), после загрузки refresh запустит заново
+            var cmd = 'mkdir -p ' + DIR + ' && cd ' + DIR + ' && rm -f err && touch dl && ' +
+                '( [ -f pid ] && kill -0 $(cat pid) 2>/dev/null && echo "[TorrStream] $(date "+%F %T") остановлен для обновления" >> ts.log; ' +
+                '[ -f pid ] && kill $(cat pid) 2>/dev/null; ' +
+                '( curl -fsSL -o TorrServer.part "' + rel.url + '" || wget -q -O TorrServer.part "' + rel.url + '" ) ' +
+                '&& chmod +x TorrServer.part && mv -f TorrServer.part TorrServer && echo "' + rel.tag + '" > version ' +
+                '|| { echo "не удалось скачать TorrServer" > err; rm -f TorrServer.part; }; rm -f dl ) ' +
+                '> /dev/null 2>&1 < /dev/null &';
+            exec(cmd, function (err) { if (err) { st.error = String(err); st.downloading = false; } refresh(); });
+        };
+        if (release) go(release); else fetchRelease(go);
+    }
+
+    /** Выключить автозапуск torrserv.matrix.app */
+    function disableMatrixAutostart(done) {
+        // Как его собственная ветка «выключить» (run_torrserver): ссылка в init.d,
+        // флаг и файлы status/action — само приложение тоже покажет «выключено»
+        var cmd = 'rm -f ' + MATRIX_INIT + ' ' + MATRIX_FLAG + '; ' +
+            '[ -d ' + MATRIX_DIR + ' ] && { echo disabled > ' + MATRIX_DIR + '/status; echo enable > ' + MATRIX_DIR + '/action; }; true';
+        exec(cmd, function () { st.matrixAutostart = false; done(); });
+    }
+
+    function keepForeign() {
+        try { return localStorage.getItem(KEEP_FOREIGN_KEY) === '1'; } catch (e) { return false; }
+    }
+
+    function setKeepForeign(on) {
+        try { if (on) localStorage.setItem(KEEP_FOREIGN_KEY, '1'); else localStorage.removeItem(KEEP_FOREIGN_KEY); } catch (e) { }
+    }
+
+    /** Вопрос в панели: текст, подписи двух кнопок и что делать по каждой */
+    function ask(text, yesLabel, noLabel, onYes, onNo) {
+        st.ask = text;
+        st.askYes = yesLabel;
+        st.askNo = noLabel;
+        pendingYes = onYes;
+        pendingNo = onNo;
+    }
+
+    function answer(yes) {
+        st.ask = '';
+        var f = yes ? pendingYes : pendingNo;
+        pendingYes = pendingNo = null;
+        if (f) f();
+    }
+
+    /**
+     * Перед запуском встроенного: matrix в автозапуске — спрашиваем, убрать ли
+     * его оттуда. true — вопрос задан, продолжит answer().
+     */
+    function askAutostart(next) {
+        if (asked || !st.matrix || !st.matrixAutostart) return false;
+        asked = true;
+        ask('TorrServer из приложения torrserv.matrix.app запускается при включении телевизора. ' +
+            'Убрать его из автозапуска? Если оставить, он может занять порт раньше встроенного',
+            'Убрать из автозапуска', 'Оставить в автозапуске',
+            function () { disableMatrixAutostart(next); }, next);
+        return true;
+    }
+
+    /**
+     * Кто отвечает на 8090: cb(null) — никто, cb({ver, own}) — own, если это
+     * наш процесс (его pid). Своё st.own для этого не годится: при запуске
+     * приложения refresh ещё мог не успеть его выставить.
+     */
+    function whoRuns(cb) {
+        exec('[ -f ' + DIR + '/pid ] && kill -0 $(cat ' + DIR + '/pid) 2>/dev/null && echo R; true', function (err, out) {
+            if (!err && String(out).indexOf('R') !== -1) { cb({ ver: st.version, own: true }); return; }
+            echo(function (ver) {
+                cb(ver ? { ver: ver, own: false, noRoot: !!err } : null);
+            });
+        });
+    }
+
+    /** Остановить работающий на 8090 чужой TorrServer (matrix или любой другой) */
+    function stopForeign(done) {
+        // matrix — по имени процесса; любой другой — по процессу на порту 8090
+        var cmd = 'pidof torrserver > /dev/null 2>&1 && { killall torrserver 2>/dev/null || kill $(pidof torrserver); }; ' +
+            'P=$(netstat -tlnp 2>/dev/null | grep ":8090 " | sed -n "s#.* \\([0-9][0-9]*\\)/.*#\\1#p" | head -1); ' +
+            '[ -n "$P" ] && [ "$P" != "$(cat ' + DIR + '/pid 2>/dev/null)" ] && { echo "[TorrStream] $(date "+%F %T") остановлен чужой TorrServer на 8090 (pid $P)" >> ' + DIR + '/ts.log; kill $P; }; true';
+        exec(cmd, function () { setTimeout(done, 1500); });   // порт освобождается не сразу
+    }
+
+    /** «Остановить его и запустить встроенный» */
+    function replace() {
+        setKeepForeign(false);
+        var go = function () {
+            stopForeign(function () { if (st.installed) startNow(); else install(); });
+        };
+        if (!askAutostart(go)) go();
+    }
+
+    /**
+     * «Запустить» — и сам запуск при включении переключателя и старте
+     * приложения. Сначала смотрим, кто уже на 8090: чужой TorrServer (например
+     * torrserv.matrix.app) — спрашиваем, заменить ли его встроенным; «нет» —
+     * пользуемся им. Раньше встроенный запускался сразу, не глядя на чужой.
+     */
+    function start() {
+        whoRuns(function (r) {
+            if (r && r.own) { refresh(); return; }
+            if (r) {
+                // Без root заменить нечем — пользуемся тем, что работает
+                if (r.noRoot || keepForeign() || st.ask) { refresh(); return; }
+                ask('На устройстве уже работает TorrServer ' + r.ver +
+                    (st.matrix ? ' из приложения torrserv.matrix.app' : '') +
+                    '. Остановить его и запустить встроенный?',
+                    'Остановить и запустить встроенный', 'Нет, использовать его',
+                    replace,
+                    function () { setKeepForeign(true); refresh(); });
+                return;
+            }
+            if (askAutostart(startNow)) return;
+            startNow();
+        });
+    }
+
+    function startNow() {
+        // На 8090 уже кто-то есть (свой или чужой TorrServer) — вторую копию не поднимаем
+        echo(function (ver) {
+            if (ver) { refresh(); return; }
+            // run.sh — сам запуск. Первым делом уходит в корневую cgroup: на
+            // webOS с systemd (webOS 22+) команда Homebrew Channel выполняется
+            // внутри его службы, и когда служба засыпает, systemd гасит ВСЮ её
+            // группу процессов — TorrServer получал SIGTERM («Server stopped
+            // gracefully») сразу после запуска, вместе с обёрткой. Дети
+            // наследуют группу, поэтому переносим саму обёртку до запуска.
+            // pid — самого TorrServer (его гасит «Остановить»); когда он
+            // выходит, в журнал дописывается код (137 — убила система).
+            var run = [
+                '#!/bin/sh',
+                '# TorrStream: запуск TorrServer вне группы процессов службы',
+                'DIR=' + DIR,
+                // Журнал — в режиме дозаписи: остановки из приложения дописывают
+                // в него свою отметку, а открытый с начала файл её затирал бы
+                ': > $DIR/ts.log; exec >> $DIR/ts.log 2>&1 < /dev/null',
+                'CG=/sys/fs/cgroup',
+                'if [ -f $CG/cgroup.controllers ]; then echo $$ > $CG/cgroup.procs; else for f in $CG/*/cgroup.procs; do echo $$ > $f; done; fi 2>/dev/null',
+                // Первой строкой журнала — как запущен и в какой группе оказался:
+                // по ней видно, ушёл ли он из группы службы Homebrew Channel
+                'echo "[TorrStream] $(date "+%F %T") запуск: ${TS_LAUNCH:-nohup}; cgroup: $(head -n 1 /proc/$$/cgroup 2>/dev/null)"',
+                'cd $DIR || exit 0',
+                'export GODEBUG=madvdontneed=1',
+                // 8090 бывает занят не TorrServer (на /echo не отвечает) —
+                // тогда 18090; приложение узнаёт порт из файла port
+                'run() { echo $1 > $DIR/port; ./TorrServer -p $1 -d $DIR & echo $! > $DIR/pid; wait $!; }',
+                'PORT=8090',
+                'netstat -tln 2>/dev/null | grep -q ":8090 " && { echo "[TorrStream] порт 8090 занят — запускаю на 18090"; PORT=18090; }',
+                'run $PORT; CODE=$?',
+                'if [ $PORT = 8090 ] && grep -q "8090: bind" $DIR/ts.log; then echo "[TorrStream] порт 8090 занят — пробую 18090"; run 18090; CODE=$?; fi',
+                'echo "[TorrStream] $(date "+%F %T") TorrServer завершился, код $CODE"'
+            ];
+            // systemd-run (webOS с systemd) запускает run.sh отдельной службой
+            // самого systemd — её не гасят вместе со службой Homebrew Channel,
+            // так же «снаружи» работает нативное приложение torrserv.matrix.app.
+            // Нет systemd-run или он не сработал — по-старому, setsid + nohup
+            var script = [
+                '#!/bin/sh',
+                '# TorrStream: встроенный TorrServer (автозапуск Homebrew Channel)',
+                'DIR=' + DIR,
+                '[ -f $DIR/pid ] && kill -0 $(cat $DIR/pid) 2>/dev/null && exit 0',
+                'curl -sf -m 3 http://127.0.0.1:8090/echo > /dev/null 2>&1 && exit 0',
+                'cd $DIR || exit 0',
+                'if command -v systemd-run > /dev/null 2>&1; then systemctl reset-failed torrstream-torrserver > /dev/null 2>&1; systemd-run --unit=torrstream-torrserver --setenv=TS_LAUNCH=systemd-run /bin/sh $DIR/run.sh > $DIR/launch.log 2>&1 && exit 0; fi',
+                '$(command -v setsid) nohup sh $DIR/run.sh > /dev/null 2>&1 < /dev/null &'
+            ];
+            var lines = function (list) { return list.map(function (l) { return "'" + l + "'"; }).join(' '); };
+            var cmd = 'cd ' + DIR + ' && rm -f err && ' +
+                'printf "%s\\n" ' + lines(run) + ' > run.sh && chmod +x run.sh && ' +
+                'printf "%s\\n" ' + lines(script) + ' > autostart.sh && chmod +x autostart.sh && ' +
+                'mkdir -p /var/lib/webosbrew/init.d && ' +
+                'ln -sf ' + DIR + '/autostart.sh ' + INIT + ' && sh ' + DIR + '/autostart.sh';
+            st.error = '';
+            st.starting = true;
+            exec(cmd, function (err) {
+                if (err) { st.starting = false; st.error = String(err); setTimeout(refresh, 300); return; }
+                verifyStart(0);
+            });
+        });
+    }
+
+    /**
+     * После «Запустить»: ждём ответа на 8090 (до ~15 с — первый запуск создаёт
+     * базу). Не отозвался — выясняем почему и пишем причину в err: её
+     * показывает панель («Ошибка: …»). Раньше кнопка молча ничего не делала.
+     */
+    var START_CHECKS = 10, START_CHECK_MS = 1500;
+
+    function verifyStart(n) {
+        exec('cat ' + DIR + '/port 2>/dev/null; true', function (err, out) {
+            var port = String(out || '').trim() || '8090';
+            echo(function (ver) {
+                if (ver) { st.starting = false; st.port = port; refresh(); return; }
+                // Процесс уже умер (refresh не видит его pid) — ждать дальше нечего
+                var dead = n >= 2 && !st.own;
+                if (n < START_CHECKS && !dead) { setTimeout(function () { verifyStart(n + 1); }, START_CHECK_MS); return; }
+                diagnoseStart();
+            }, port);
+        });
+    }
+
+    function diagnoseStart() {
+        // Сначала то, что мешает запуститься вовсе, потом — что осталось в
+        // журнале самого TorrServer (ошибка exec у nohup тоже попадает туда)
+        var cmd = 'cd ' + DIR + ' 2>/dev/null || exit 0; R=""; ' +
+            '[ -f TorrServer ] || R="нет файла TorrServer — скачайте его заново"; ' +
+            '[ -z "$R" ] && [ ! -x TorrServer ] && R="у файла TorrServer нет права на запуск"; ' +
+            '[ -z "$R" ] && grep " /media/developer " /proc/mounts | grep -q noexec && R="раздел /media/developer подключён без права запуска (noexec)"; ' +
+            'if [ -f pid ] && kill -0 $(cat pid) 2>/dev/null; then S="процесс работает, но не отвечает на порту $(cat port 2>/dev/null || echo 8090)"; ' +
+            'else S="процесс сразу завершился"; fi; ' +
+            'K=""; grep -q "код 137" ts.log 2>/dev/null && K=" (его убила система — нехватка памяти или ограничения службы)"; ' +
+            'grep -q "код 0$" ts.log 2>/dev/null && K=" (его штатно остановили — сигнал завершения)"; ' +
+            'L=$(grep -v "^[[:space:]]*$" ts.log 2>/dev/null | tail -n 3 | cut -c1-160 | tr "\\n" "|" | sed "s/|$//; s/|/ | /g"); ' +
+            'F=$(grep -m 1 "TorrStream. запуск" ts.log 2>/dev/null | cut -c1-160); ' +
+            'echo "TorrServer не запустился: ${R:-$S}$K${L:+. Журнал: $L}${F:+. $F} (процессор $(uname -m))" > err';
+        exec(cmd, function () { st.starting = false; refresh(); });
+    }
+
+    function stop() {
+        // Как на Android: остановка снимает и автозапуск
+        exec('[ -f ' + DIR + '/pid ] && kill -0 $(cat ' + DIR + '/pid) 2>/dev/null && echo "[TorrStream] $(date "+%F %T") остановлен из приложения (кнопка «Остановить» или выключен переключатель)" >> ' + DIR + '/ts.log; ' +
+            '[ -f ' + DIR + '/pid ] && kill $(cat ' + DIR + '/pid) 2>/dev/null; rm -f ' + DIR + '/pid ' + INIT + '; true',
+            function () { setTimeout(refresh, 800); });
+    }
+
+    function checkUpdate() { fetchRelease(function () { }); }
+
+    return {
+        enabled: enabled, status: status, install: install, start: start, stop: stop,
+        checkUpdate: checkUpdate, refresh: refresh, replace: replace,
+        // Адрес: свой работает — на его порту; иначе 8090 (там и чужой)
+        url: function () { return 'http://localhost:' + (st.own ? st.port : '8090'); },
+        answerRemove: function () { answer(true); }, answerKeep: function () { answer(false); },
+        // Ответ на вопрос в панели (st.ask): «да» — левая кнопка, «нет» — правая
+        answerYes: function () { answer(true); }, answerNo: function () { answer(false); }
+    };
+})();
+window.WebOSTorrServer = WebOSTorrServer;
+
+/**
+ * Встроенный TorrServer — общий интерфейс для панели: Android-приложение
+ * (AndroidJS.tsLocal*) или сборка webOS с TorrServer (WebOSTorrServer).
+ */
+function deviceTorrServerBridge() {
+    if (window.AndroidJS && typeof AndroidJS.tsLocalStatus === 'function') {
+        return {
+            status: function () { try { return JSON.parse(AndroidJS.tsLocalStatus()); } catch (e) { return null; } },
+            install: function () { AndroidJS.tsLocalInstall(); },
+            start: function () { AndroidJS.tsLocalStart(); },
+            stop: function () { AndroidJS.tsLocalStop(); },
+            checkUpdate: function () { AndroidJS.tsLocalCheckUpdate(); }
+        };
+    }
+    if (WebOSTorrServer.enabled()) return WebOSTorrServer;
+    return null;
+}
+
+function setupDeviceTorrServerToggle() {
+    var row = getEl('ts-device-row');
+    var box = getEl('ts-device-server');
+    if (!row || !box || !deviceTorrServerBridge()) return;
+    row.hidden = false;
+    var localBox = getEl('ts-local-only');
+
+    box.checked = isDeviceTorrServer();
+    lockDeviceTorrServerFields(box.checked);
+    webosSyncScheme();
+    // Адрес в полях мог прийти старый (настройки до обновления) — поправим
+    if (box.checked && getEl('torrserver-url').value.trim() !== deviceTorrServerUrl()) {
+        getEl('torrserver-url').value = deviceTorrServerUrl();
+    }
+
+    box.addEventListener('change', function () {
+        // webOS: включили — на https, выключили — на http (после того, как
+        // обработчик ниже сохранит настройки)
+        setTimeout(webosSyncScheme, 300);
+        var urlInput = getEl('torrserver-url');
+        if (box.checked) {
+            try {
+                localStorage.setItem(TS_DEVICE_BACKUP, JSON.stringify({
+                    cfg: torrServerFieldsConfig(),
+                    wasLocal: isLocalTorrServer()
+                }));
+                localStorage.setItem(TS_DEVICE_FLAG, '1');
+                localStorage.setItem(TS_LOCAL_FLAG, '1');
+            } catch (e) { }
+            if (localBox) localBox.checked = true;
+            urlInput.value = deviceTorrServerUrl();
+            syncHttpsToggle();
+            lockDeviceTorrServerFields(true);
+            try { localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig())); } catch (e) { }
+            checkServer(true);
+            deviceTorrServerPanel.onToggle(true);
+            return;
+        }
+        deviceTorrServerPanel.onToggle(false);
+
+        var backup = null;
+        try { backup = JSON.parse(localStorage.getItem(TS_DEVICE_BACKUP) || 'null'); } catch (e) { }
+        try { localStorage.removeItem(TS_DEVICE_FLAG); localStorage.removeItem(TS_DEVICE_BACKUP); } catch (e) { }
+        lockDeviceTorrServerFields(false);
+        if (backup && backup.wasLocal) {
+            // До включения сервер и так был свой — возвращаем его адрес
+            applyTorrServerConfig(backup.cfg);
+            if (backup.cfg && !backup.cfg.url) urlInput.value = '';
+            try { localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig())); } catch (e) { }
+            checkServer(true);
+            return;
+        }
+        // Был общий сервер аккаунта — снова берём его с сервера
+        if (localBox) localBox.checked = false;
+        try { localStorage.removeItem(TS_LOCAL_FLAG); localStorage.removeItem(TS_LOCAL_CONFIG); } catch (e) { }
+        loadClientConfig().then(function () { checkServer(true); });
+    });
+}
+
+/**
+ * Встроенный TorrServer приложения: скачать, запустить, остановить, обновить.
+ *
+ * Всё делает приложение (AndroidJS.tsLocal*, TorrServerManager): здесь только
+ * кнопки и статус. Методы мгновенные, работа идёт в фоне — поэтому статус
+ * опрашиваем, пока панель на экране. Если на localhost:8090 уже работает чужой
+ * TorrServer (TorrServe), приложение свою копию не запускает — им и пользуемся.
+ */
+var deviceTorrServerPanel = (function () {
+    var POLL_MS = 1500;
+    var timer = null;
+    var wasRunning = null;
+    var lastStatus = null;
+
+    function bridge() {
+        return !!deviceTorrServerBridge();
+    }
+
+    function readStatus() {
+        var b = deviceTorrServerBridge();
+        return b ? b.status() : null;
+    }
+
+    function show(id, on) {
+        var el = getEl(id);
+        if (el) el.hidden = !on;
+    }
+
+    /**
+     * Встроенный поднялся на другом порту (на webOS — 18090, если 8090 занят)
+     * — адрес в поле и в настройках этого устройства за ним
+     */
+    function syncDeviceUrl() {
+        if (!isDeviceTorrServer()) return;
+        var urlInput = getEl('torrserver-url');
+        var url = deviceTorrServerUrl();
+        if (!urlInput || urlInput.value.trim() === url) return;
+        urlInput.value = url;
+        try { localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig())); } catch (e) { }
+        checkServer(true);
+    }
+
+    function render(st) {
+        syncDeviceUrl();
+        var text;
+        if (st.ask) text = st.ask;
+        else if (!st.supported) text = st.unsupportedText || 'Процессор этого устройства TorrServer не поддерживает';
+        else if (st.downloading) text = 'Скачиваю TorrServer… ' + (st.progress || 0) + '%';
+        else if (st.starting && !st.running) text = 'Запускаю TorrServer…';
+        else if (st.running && st.own) text = 'Работает встроенный TorrServer ' + (st.version || '');
+        else if (st.running) text = 'На устройстве уже работает TorrServer ' + (st.runningVersion || '') + ' — используется он';
+        else if (st.installed) text = 'TorrServer ' + (st.version || '') + ' установлен, но не запущен';
+        else text = 'TorrServer на устройстве не найден. Можно скачать официальную сборку (около 65 МБ)';
+        if (st.note && !st.downloading) text += '. ' + st.note;
+        if (st.error && !st.downloading && !st.starting) text += '. Ошибка: ' + st.error;
+        var status = getEl('ts-device-status');
+        if (status) status.textContent = text;
+
+        // Пока ждём ответа «убрать ли из автозапуска» — только его кнопки
+        var busy = st.downloading || !!st.ask || !!st.starting;
+        var external = st.running && !st.own;
+        show('ts-device-install', st.supported && !st.installed && !external && !busy);
+        show('ts-device-start', st.installed && !st.running && !busy);
+        show('ts-device-stop', st.own && !busy);
+        show('ts-device-update', st.installed && !external && !busy && st.latest && st.latest !== st.version);
+        show('ts-device-replace', external && !!st.canReplace && !busy);
+        show('ts-device-autostart-off', !!st.ask);
+        show('ts-device-autostart-keep', !!st.ask);
+        // Две кнопки вопроса общие: про автозапуск matrix и про замену чужого
+        // TorrServer встроенным — подписи берём у самого вопроса
+        if (st.ask) {
+            var yesBtn = getEl('ts-device-autostart-off'), noBtn = getEl('ts-device-autostart-keep');
+            if (yesBtn && st.askYes && yesBtn.textContent !== st.askYes) yesBtn.textContent = st.askYes;
+            if (noBtn && st.askNo && noBtn.textContent !== st.askNo) noBtn.textContent = st.askNo;
+        }
+        var upd = getEl('ts-device-update');
+        if (upd && st.latest) upd.textContent = 'Обновить до ' + st.latest;
+
+        // Сервер поднялся — сразу проверяем адрес, не дожидаясь, пока это сделает человек
+        if (st.running && wasRunning === false) checkServer(true);
+        wasRunning = !!st.running;
+
+        // Кнопка под фокусом пропала (нажали «Скачать» — началась загрузка):
+        // фокус на сам переключатель, иначе он остался бы на скрытом элементе
+        var f = document.querySelector('#ts-device-panel .focused');
+        if (f && f.hidden) focusEl(getEl('ts-device-server'));
+    }
+
+    function tick() {
+        var panel = getEl('ts-device-panel');
+        if (!panel || panel.hidden) { stop(); return; }
+        // Настройки закрыты — не опрашиваем: статус дёргает ещё и проверку порта
+        if (panel.offsetParent === null) return;
+        var st = readStatus();
+        if (!st) return;
+        lastStatus = st;
+        render(st);
+    }
+
+    function start() {
+        if (timer) return;
+        tick();
+        timer = setInterval(tick, POLL_MS);
+    }
+
+    function stop() {
+        if (timer) { clearInterval(timer); timer = null; }
+    }
+
+    function act(method) {
+        try { deviceTorrServerBridge()[method](); } catch (e) { console.warn('TorrServer: ' + method, e); }
+        setTimeout(tick, 300);
+    }
+
+    function setup() {
+        if (!bridge()) return;
+        var bind = function (id, method) {
+            var b = getEl(id);
+            if (b) b.addEventListener('click', function () { act(method); });
+        };
+        bind('ts-device-install', 'install');
+        bind('ts-device-start', 'start');
+        bind('ts-device-stop', 'stop');
+        bind('ts-device-update', 'install');
+        // Только webOS: заменить чужой TorrServer встроенным и ответ про автозапуск
+        bind('ts-device-replace', 'replace');
+        bind('ts-device-autostart-off', 'answerRemove');
+        bind('ts-device-autostart-keep', 'answerKeep');
+        if (isDeviceTorrServer()) onToggle(true, true);
+    }
+
+    /** Переключатель включили (или он уже включён при запуске) / выключили */
+    function onToggle(on, atStartup) {
+        var panel = getEl('ts-device-panel');
+        if (!panel || !bridge()) return;
+        panel.hidden = !on;
+        if (!on) {
+            stop();
+            // Свой TorrServer больше не нужен — освобождаем память устройства.
+            // Зовём всегда, даже если сейчас работает чужой: остановка заодно
+            // снимает автозапуск, иначе следующий запуск приложения поднял бы
+            // встроенный сервер при выключенном переключателе
+            act('stop');
+            return;
+        }
+        try { deviceTorrServerBridge().checkUpdate(); } catch (e) { }
+        wasRunning = null;
+        // Установлен, но не работает — запускаем сами; при старте приложения это
+        // уже сделал автозапуск (TorrServerManager.autostartIfNeeded)
+        if (WebOSTorrServer.enabled()) {
+            // webOS: и при включении, и при старте приложения (автозапуска, как
+            // у Android, нет — TorrServer поднимает init.d при включении ТВ)
+            // зовём start() всегда, когда статус придёт: он сам смотрит, кто на
+            // 8090 — свой (ничего), чужой, например torrserv.matrix.app
+            // (вопрос, заменить ли встроенным), никто (запуск). Раньше по
+            // «установлен и не работает» встроенный запускался, не спросив
+            setTimeout(function () {
+                var s = readStatus();
+                if (s && s.supported && s.installed && !s.downloading && !s.ask) act('start');
+            }, atStartup ? 2500 : 1500);
+        } else {
+            var st0 = readStatus();
+            if (!atStartup && st0 && st0.installed && !st0.running) act('start');
+        }
+        start();
+    }
+
+    return { setup: setup, onToggle: onToggle, status: function () { return lastStatus; } };
+})();
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupDeviceTorrServerToggle);
+else setupDeviceTorrServerToggle();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', deviceTorrServerPanel.setup);
+else deviceTorrServerPanel.setup();
+
+// ==================== ПОИСК TORRSERVER В СЕТИ (mDNS) ====================
+//
+// TorrServer объявляет себя в локальной сети сервисом _torrserver._tcp (mDNS,
+// по умолчанию включено). Искать умеет только Android-приложение
+// (TorrServerDiscovery): у браузера доступа к mDNS нет — на остальных
+// платформах кнопки не видно. Выбор сервера подставляет его адрес в поле и
+// проверяет, как ручной ввод.
+function setupTorrServerDiscovery() {
+    var box = getEl('ts-discover');
+    var btn = getEl('ts-discover-btn');
+    var status = getEl('ts-discover-status');
+    var list = getEl('ts-discover-list');
+    if (!box || !btn || !window.AndroidJS || typeof AndroidJS.tsDiscoverStart !== 'function') return;
+    var timer = null;
+
+    // Под «TorrServer на этом устройстве» адрес фиксирован — искать нечего
+    function syncVisibility() {
+        box.hidden = isDeviceTorrServer();
+    }
+    syncVisibility();
+    var deviceBox = getEl('ts-device-server');
+    if (deviceBox) deviceBox.addEventListener('change', syncVisibility);
+
+    function setStatus(text) {
+        status.textContent = text;
+        status.hidden = !text;
+    }
+
+    function render(st) {
+        var servers = st.servers || [];
+        list.innerHTML = '';
+        for (var i = 0; i < servers.length; i++) {
+            var s = servers[i];
+            var item = document.createElement('button');
+            item.className = 'btn';
+            item.dataset.url = s.url;
+            var meta = s.url.replace(/^http:\/\//, '') + (s.version ? ' · ' + s.version : '') + (s.self ? ' · это устройство' : '');
+            item.innerHTML = escapeHtml(s.name || 'TorrServer') + '<span class="ts-discover-meta">' + escapeHtml(meta) + '</span>';
+            list.appendChild(item);
+        }
+        if (st.error) setStatus(st.error);
+        else if (st.discovering) setStatus(servers.length ? 'Ищу… найдено: ' + servers.length : 'Ищу TorrServer в сети…');
+        else setStatus(servers.length ? 'Найдено: ' + servers.length + '. Выберите сервер' :
+            'TorrServer в сети не найден. Он должен быть в той же сети, с включённым Bonjour (mDNS) в его настройках');
+        btn.textContent = st.discovering ? 'Поиск…' : 'Найти TorrServer в сети';
+    }
+
+    function poll() {
+        var st;
+        try { st = JSON.parse(AndroidJS.tsDiscoverStatus()); } catch (e) { return; }
+        render(st);
+        if (!st.discovering && timer) { clearInterval(timer); timer = null; }
+    }
+
+    btn.addEventListener('click', function () {
+        if (timer) return;
+        try { AndroidJS.tsDiscoverStart(); } catch (e) { setStatus('Поиск недоступен'); return; }
+        list.innerHTML = '';
+        setStatus('Ищу TorrServer в сети…');
+        btn.textContent = 'Поиск…';
+        // Первый опрос — после того как приложение начнёт поиск: иначе прочли
+        // бы прошлое «поиск закончен» и сразу остановились
+        setTimeout(function () { poll(); timer = setInterval(poll, 700); }, 400);
+    });
+
+    list.addEventListener('click', function (e) {
+        var item = e.target.closest ? e.target.closest('button[data-url]') : null;
+        if (!item) return;
+        var urlInput = getEl('torrserver-url');
+        if (!urlInput || urlInput.disabled) return;
+        urlInput.value = item.dataset.url;
+        syncHttpsToggle();
+        setStatus('Выбран ' + item.dataset.url);
+        checkServer(true);
+    });
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupTorrServerDiscovery);
+else setupTorrServerDiscovery();
+
+window.isLocalTorrServer = isLocalTorrServer;
+
+async function loadClientConfig() {
+    try {
+        var savedClientId = localStorage.getItem('clientId');
+        var url = SERVER_URL + '/api/client/config' + (savedClientId ? '?clientId=' + encodeURIComponent(savedClientId) : '');
+        var response = await fetch(url);
+        if (response.ok) {
+            var data = await response.json();
+            AppState.clientId = data.clientId;
+            // Берём clientId сервера, только если за время запроса его никто не
+            // поменял: сервер выдаёт новый, когда своего у устройства нет. Иначе
+            // ответ на запрос, ушедший ещё со старым clientId, перетирал бы
+            // смену аккаунта (account.js), сделанную в эту же секунду.
+            var currentClientId = localStorage.getItem('clientId');
+            if (currentClientId === savedClientId && currentClientId !== data.clientId) localStorage.setItem('clientId', data.clientId);
+            // Свой TorrServer на устройстве — серверные настройки не трогают поля
+            if (isLocalTorrServer()) {
+                applyTorrServerConfig(readLocalTorrServerConfig());
+            } else if (data.config) {
+                applyTorrServerConfig({
+                    url: data.config.url,
+                    authEnabled: data.config.authEnabled,
+                    login: data.config.login,
+                    password: data.config.hasPassword ? data.config.password : ''
+                });
+            }
+            return data;
+        }
+    } catch (error) { console.error('Ошибка загрузки конфигурации:', error); }
+    return null;
+}
+
+async function saveClientConfig() {
+    // Свой TorrServer — только на устройстве, общие настройки не трогаем
+    if (isLocalTorrServer()) {
+        try { localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig())); } catch (e) { }
+        return true;
+    }
+    var config = {
+        url: torrServerUrlFromField(),
+        authEnabled: getEl('auth-checkbox').checked,
+        login: getEl('auth-login').value.trim(),
+        clientId: localStorage.getItem('clientId')
+    };
+    var password = getEl('auth-password').value.trim();
+    if (password) config.password = password;
+    try {
+        var response = await fetch(SERVER_URL + '/api/client/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+        if (response.ok) return true;
+    } catch (error) { console.error('Ошибка сохранения конфигурации:', error); }
+    return false;
+}
+
+/**
+ * Прогрев раздачи под пробу файла.
+ *
+ * Первое обращение ffprobe к /play/<hash>/<fileId> приходится на холодную
+ * раздачу: TorrServer ещё ищет пиров и тянет голову файла, поэтому проба на
+ * сервере упирается в таймаут (services/probe.js из-за этого делает повтор).
+ * На экране деталей человек всё равно несколько секунд читает описание — за
+ * это время TorrServer успевает поднять куски, и к нажатию «Играть» проба
+ * проходит сразу.
+ *
+ * Греем ровно тот файл, который запустит кнопка: непросмотренная раздача —
+ * первый, с таймкодом — серию из «Продолжить». Отсюда и место вызова: после
+ * addProgressToDetail, когда таймкоды уже загружены и dataset кнопки проставлен.
+ *
+ * Повторы отсекает сам preloadTorrents (player.js), общий для всех вызовов.
+ */
+function preloadDetailFile(hash, fileId) {
+    if (!hash || !fileId) return;
+    // Android отдаёт ссылку своему плееру, webOS играет файл напрямую с
+    // TorrServer — пробы ffprobe нет у обоих, и прогрев под неё только держал
+    // бы раздачу работающей и тратил память TorrServer
+    if (window.AndroidJS || AppState.platform === 'webos') return;
+    // torrents.js грузится раньше player.js, где объявлен preloadTorrents
+    if (typeof preloadTorrents !== 'function') return;
+    // Таймкоды грузятся асинхронно, и за это время человек мог уйти на другую
+    // карточку: греть раздачу, которой уже нет на экране, незачем.
+    if (AppState.currentScreen !== 'detail') return;
+    var openItem = AppState.currentDetailItem;
+    if (!openItem || String(openItem.hash || '').toLowerCase() !== String(hash).toLowerCase()) return;
+    preloadTorrents(hash, fileId);
+}
+
+/**
+ * Какая раздача сейчас открыта в карточке (hash в нижнем регистре).
+ *
+ * Карточка торрента одна на все раздачи, а её данные — прогресс просмотра,
+ * детали TMDB — приходят асинхронно. Открыл одну раздачу, сразу другую — и
+ * ответ по первой, пришедший позже, ложился на вторую: «Продолжить» запускал
+ * старую раздачу, «Открыть карточку» вёл в чужой фильм. Каждый, кто пишет в
+ * карточку после await, сверяется с этой меткой (isOpenTorrentDetail).
+ */
+var openTorrentDetailHash = '';
+
+function isOpenTorrentDetail(torrent) {
+    return !!(torrent && torrent.hash) &&
+        String(torrent.hash).toLowerCase() === openTorrentDetailHash;
+}
+window.isOpenTorrentDetail = isOpenTorrentDetail;
+
+async function addProgressToDetail(torrent, preloadedFiles) {
+    if (!torrent || !torrent.hash) return null;
+    var btn = getEl('detail-progress-btn');
+    if (!btn) return null;
+    var oldProgressBlocks = document.querySelectorAll('#detail-progress');
+    for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
+    if (!btn.dataset.bound) {
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', async function (e) {
+            e.stopPropagation();
+            var hash = btn.dataset.hash || '';
+            var fileId = parseInt(btn.dataset.fileId || '1', 10) || 1;
+            var timecode = parseInt(btn.dataset.timecode || '0', 10) || 0;
+            var episodeIndex = parseInt(btn.dataset.episodeIndex || '0', 10) || 0;
+            // Раньше здесь был немой return: с выключенным TorrServer нажатие
+            // «Играть» просто ничего не делало, и понять почему было нельзя.
+            // ensureTorrserverOnline сам объясняет причину баннером.
+            if (!hash) {
+                if (typeof window.showErrorBanner === 'function') window.showErrorBanner('Не удалось начать воспроизведение', 'У раздачи нет hash');
+                return;
+            }
+            if (!(await ensureTorrserverOnline())) return;
+            var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
+            getEl('playback-overlay').classList.add('active');
+            var detailView = getEl('detail-view');
+            if (detailView) detailView.style.pointerEvents = 'none';
+            startHLSPlayback(playUrl, timecode, false, episodeIndex).finally(function () {
+                getEl('playback-overlay').classList.remove('active');
+                if (detailView) detailView.style.pointerEvents = 'auto';
+            });
+        });
+    }
+    // Кнопку показываем только готовой — с подписью и данными этой раздачи.
+    // Раньше она появлялась сразу, со всем, что осталось от прошлой карточки
+    // («Продолжить» чужой серии), и быстрое нажатие запускало старую раздачу.
+    var showButton = function () {
+        btn.classList.remove('hidden');
+        btn.style.removeProperty('display');
+        var extra = getEl('catalog-detail-extra');
+        if (extra) {
+            extra.classList.remove('hidden');
+            extra.style.removeProperty('display');
+        }
+    };
+
+    // === Передаём файлы, чтобы loadProgressForTorrent не запрашивал повторно ===
+    var progress = await loadProgressForTorrent(torrent, preloadedFiles);
+    // Пока ждали, открыли другую раздачу — её кнопку не трогаем
+    if (!isOpenTorrentDetail(torrent)) return null;
+    btn.dataset.hash = torrent.hash;
+    btn.dataset.fileId = '1';
+    btn.dataset.timecode = '0';
+    btn.dataset.episodeIndex = '0';
+    btn.classList.remove('has-progress');
+    if (!progress || !(progress.timecode > 0)) {
+        btn.innerHTML = '<span class="btn-label">▶ Играть</span>';
+        showButton();
+        return null;
+    }
+    var fileId = parseInt(progress.fileId, 10) || 1;
+    var timecode = progress.timecode;
+    var episodeIndex = progress.episodeIndex || 0;
+    var percent = progress.duration > 0 ? (timecode / progress.duration) * 100 : 0;
+    var remaining = 100 - percent;
+    var isNextFile = false;
+    if (remaining <= 5) {
+        var videoFiles = getVideoFilesFromTorrent(torrent);
+        var nextFile = videoFiles.length ? videoFiles[episodeIndex + 1] : null;
+        if (nextFile) {
+            fileId = nextFile.id || (fileId + 1);
+            timecode = 0;
+            episodeIndex = episodeIndex + 1;
+            isNextFile = true;
+        } else if (progress.isSeries && episodeIndex + 1 < (progress.totalEpisodes || 0)) {
+            fileId = fileId + 1;
+            timecode = 0;
+            episodeIndex = episodeIndex + 1;
+            isNextFile = true;
+        } else {
+            timecode = 0;
+        }
+    }
+    btn.dataset.fileId = String(fileId);
+    btn.dataset.timecode = String(timecode);
+    btn.dataset.episodeIndex = String(episodeIndex);
+    btn.classList.add('has-progress');
+    var timeStr = formatTime(progress.timecode);
+    var totalStr = progress.duration ? formatTime(progress.duration) : '??:??';
+    var hint = '';
+    if (isNextFile) {
+        hint = 'Серия ' + (episodeIndex + 1);
+    } else {
+        hint = timeStr + ' / ' + totalStr;
+        if (progress.isSeries) hint = 'Серия ' + (episodeIndex + 1) + ' · ' + hint;
+    }
+    btn.innerHTML =
+        '<span class="btn-label">▶ Продолжить</span>' +
+        '<span class="btn-hint">' + hint + '</span>';
+    showButton();
+    return fileId;
+}
+
+/**
+ * Сколько ждём /echo, прежде чем считать TorrServer лежащим.
+ *
+ * Проба уходит по локальной сети и у живого сервера отвечает мгновенно, а у
+ * мёртвого адреса fetch без ограничения висит до системного таймаута TCP.
+ * Это не абстрактная проблема: на checkServer завязан ensureTorrserverOnline,
+ * то есть каждое нажатие «играть» при выключенном сервере зависало вместе с ним.
+ */
+var TORRSERVER_PROBE_TIMEOUT_MS = 8000;
+
+async function checkServer(shouldLoadTorrents = true) {
+    var urlInput = getEl('torrserver-url');
+    var statusIndicator = getEl('status-indicator');
+    var statusText = getEl('status-text');
+    var authCheckbox = getEl('auth-checkbox');
+    var authLogin = getEl('auth-login');
+    var authPassword = getEl('auth-password');
+    // Без протокола — подставляем; в поле пишем только когда его не редактируют,
+    // иначе протокол появлялся бы посреди набора адреса
+    var url = normalizeTorrServerUrl(urlInput.value);
+    if (url && document.activeElement !== urlInput && urlInput.value.trim() !== url) {
+        urlInput.value = url;
+        syncHttpsToggle();
+    }
+    if (!url) { statusIndicator.className = 'status-indicator status-offline'; statusText.textContent = 'Введите адрес сервера'; return false; }
+    statusIndicator.className = 'status-indicator status-checking'; statusText.textContent = 'Проверка...';
+    try {
+        var testUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+        var headers = getAuthHeaders();
+        if (authCheckbox && authCheckbox.checked) {
+            var login = authLogin ? authLogin.value.trim() : '';
+            var password = authPassword ? authPassword.value : '';
+            if (login && password) headers['Authorization'] = 'Basic ' + btoa(login + ':' + password);
+        }
+        var probe = new AbortController();
+        var probeTimer = setTimeout(function () { probe.abort(); }, TORRSERVER_PROBE_TIMEOUT_MS);
+        var response;
+        try {
+            response = await fetch(testUrl + '/echo', { method: 'GET', headers: headers, signal: probe.signal });
+        } finally {
+            clearTimeout(probeTimer);
+        }
+        if (response.ok) {
+            //var text = await response.text();
+            //if (text.includes('MatriX.')) {
+                statusIndicator.className = 'status-indicator status-online'; statusText.textContent = 'Сервер доступен ✓';
+                AppState.currentTorrserverUrl = testUrl; AppState.serverOnline = true;
+                if (authCheckbox && authCheckbox.checked) { AppState.authEnabled = true; AppState.authLogin = authLogin ? authLogin.value.trim() : ''; AppState.authPassword = authPassword ? authPassword.value : ''; }
+                else AppState.authEnabled = false;
+                await saveClientConfig();
+                if (shouldLoadTorrents) await loadTorrents(true);
+                return true;
+            //}
+        }
+        throw new Error('Сервер не отвечает');
+    } catch (error) {
+        console.error('Ошибка проверки сервера:', error);
+        statusIndicator.className = 'status-indicator status-offline'; statusText.textContent = 'Сервер недоступен ✗'; AppState.serverOnline = false; return false;
+    }
+}
+
+async function loadTorrents(silent = false) {
+    if (AppState.torrentsLoading) {
+        return false;
+    }
+
+    AppState.torrentsLoading = true;
+
+    var torrentsGrid = getEl('torrents-grid');
+
+    try {
+        if (!AppState.serverOnline) {
+            var checked = await checkServer(false);
+
+            if (!checked) {
+                if (!silent) {
+                    alert('Сначала подключитесь к серверу');
+                    getEl('config-screen').style.display = 'flex';
+                    getEl('torrserver-section').style.display = 'none';
+                    // Настройки открыты не пользователем, а из-за недоступного
+                    // сервера — «назад» вернёт туда, откуда их вызвали (стек, nav.js)
+                    if (window.Nav) Nav.push('config', { key: 'config' });
+                    AppState.currentScreen = 'config';
+                }
+
+                return false;
+            }
+        }
+
+        if (!silent) {
+            showLoading('Загрузка торрентов...');
+
+            if (torrentsGrid) {
+                torrentsGrid.innerHTML =
+                    '<div style="grid-column: 1 / -1; text-align: center; padding: 40px;">Загрузка...</div>';
+            }
+        }
+
+        var response = await torrServerFetch('/torrents', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'list' })
+        });
+
+        if (!response.ok) {
+            throw new Error('Ошибка загрузки: HTTP ' + response.status);
+        }
+
+        var data = await response.json();
+
+        AppState.torrents = Array.isArray(data) ? data : [];
+
+        // Список был успешно загружен
+        AppState.torrentsLoaded = true;
+
+        // Главная (home.js) открывается раньше, чем приходит ответ TorrServer.
+        // Список торрентов прогреваем в скрытом #content-torrents, но экран и
+        // фокус у главной не отбираем — иначе витрина мигала бы на торренты.
+        var homeActive = !!(window.HomeScreen && window.HomeScreen.isActive());
+
+        // То же самое для открытых настроек — и по куда более частому поводу.
+        // checkServer() зовётся из app.js на КАЖДЫЙ ввод символа в поле адреса
+        // (debouncedCheck) и на смену логина/пароля, а отсюда каждый удачный
+        // ответ уводил на «Мои торренты». То есть выкидывало ровно в тот момент,
+        // когда человек правит настройки. Список прогреваем, экран не трогаем.
+        var configScreen = getEl('config-screen');
+        var configOpen = !!(configScreen &&
+            configScreen.style.display !== 'none' &&
+            !configScreen.classList.contains('hidden'));
+
+        var keepScreen = homeActive || configOpen;
+
+        // Подменять видимые экраны можно только когда мы никому не мешаем
+        if (!keepScreen) {
+            if (configScreen) configScreen.style.display = 'none';
+            getEl('torrserver-section').style.display = 'block';
+            AppState.currentScreen = 'torrents';
+            AppState.inSearch = 'torrents';
+        }
+
+        renderTorrents();
+
+        // ВАЖНО:
+        // Не пытаемся фокусировать карточку торрента, если список пустой
+        if (
+            !keepScreen &&
+            AppState.currentScreen === 'torrents' &&
+            AppState.torrents.length > 0 &&
+            !document.querySelector('.torrent-card.focused')
+        ) {
+            setTimeout(function () {
+                if (typeof window.focusFirstTorrentCard === 'function') {
+                    window.focusFirstTorrentCard();
+                }
+            }, 80);
+        }
+
+        return true;
+    } catch (error) {
+        console.error('Ошибка загрузки торрентов:', error);
+
+        // Чтобы focus-логика не долбила запросы при ошибке,
+        // считаем попытку загрузки завершённой
+        AppState.torrentsLoaded = true;
+
+        if (!silent && torrentsGrid) {
+            torrentsGrid.innerHTML =
+                '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">' +
+                '<div style="font-size: 16px; color: #ff6a6a;">Ошибка: ' + error.message + '</div>' +
+                '<button class="btn" style="margin-top: 20px;" onclick="loadTorrents()">Попробовать снова</button>' +
+                '</div>';
+        }
+
+        return false;
+    } finally {
+        AppState.torrentsLoading = false;
+
+        if (!silent) {
+            hideLoading();
+        }
+    }
+}
+
+var lastTorrentsRefreshAt = 0;
+
+async function refreshTorrents(showLoadingFlag = true) {
+    var now = Date.now();
+
+    // Защита от спама одинаковыми refreshTorrents()
+    if (now - lastTorrentsRefreshAt < 700) {
+        return false;
+    }
+
+    lastTorrentsRefreshAt = now;
+
+    if (typeof torrentProgressCache !== 'undefined') torrentProgressCache.clear();
+
+    return await loadTorrents(!showLoadingFlag);
+}
+
+window.refreshTorrents = refreshTorrents;
+
+/**
+ * Тихая сверка списка с TorrServer — по кнопке «Мои торренты».
+ *
+ * Список грузится один раз за сессию, а торрент мог добавиться в обход этого
+ * экрана: стрелкой в поиске, из карточки, с другого устройства. Перерисовываем
+ * только если состав действительно поменялся — иначе каждое нажатие вкладки
+ * заново тянуло бы постеры и сбрасывало прокрутку. Фокус после перерисовки
+ * ставит сам renderTorrents — на первую карточку.
+ */
+function torrentsSignature(list) {
+    var parts = [];
+    for (var i = 0; i < list.length; i++) {
+        parts.push((list[i].hash || '') + '|' + (list[i].title || ''));
+    }
+    return parts.join(',');
+}
+
+async function syncTorrentsList() {
+    if (AppState.torrentsLoading || !AppState.torrentsLoaded) return false;
+    try {
+        var response = await torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'list' }) });
+        if (!response.ok) return false;
+        var data = await response.json();
+        var list = Array.isArray(data) ? data : [];
+        if (torrentsSignature(list) === torrentsSignature(AppState.torrents || [])) return false;
+
+        AppState.torrents = list;
+        renderTorrents();
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+
+        return true;
+    } catch (e) {
+        console.warn('⚠️ Сверка списка торрентов не удалась:', e);
+        return false;
+    }
+}
+
+window.syncTorrentsList = syncTorrentsList;
+
+// ==================== ВСПОМОГАТЕЛЬНАЯ: экранирование для атрибутов ====================
+function escapeAttr(value) {
+    if (!value) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+// ==================== RENDER TORRENTS (оптимизированная версия) ====================
+function renderTorrents() {
+    var torrentsGrid = getEl('torrents-grid');
+    if (!torrentsGrid) return;
+
+    // 1. Полная очистка перед рендером
+    torrentsGrid.innerHTML = '';
+    // Прогресс просмотра приходит одним батчем и лежит в torrentProgressCache.
+    // Раньше здесь чистился progressCache — кэш старого, поштучного пути, куда
+    // после его удаления вообще никто не писал, а настоящий оставался
+    // нетронутым: карточка после выхода из плеера показывала таймкод
+    // минутной давности.
+    torrentProgressCache.clear();
+
+    // 2. Пустой список
+    if (AppState.torrents.length === 0) {
+        torrentsGrid.innerHTML =
+            '<div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px;">' +
+            '<div style="font-size: 18px; color: #aaa; margin-bottom: 10px;">Нет торрентов</div>' +
+            '<div style="font-size: 14px; color: #666;">Используйте поиск выше, чтобы найти и добавить торренты</div>' +
+            '</div>';
+        return;
+    }
+
+    // 3. Защита от гонки: запоминаем, какой экран рендерим
+    var currentScreenSnapshot = AppState.currentScreen;
+
+    // 4. Чанкирование: 8 карточек за один кадр (60 FPS)
+    var CHUNK_SIZE = 8;
+    var index = 0;
+
+    function renderChunk() {
+        // Если пользователь ушёл с экрана торрентов — прерываем рендер
+        if (AppState.currentScreen !== currentScreenSnapshot) return;
+
+        var fragment = document.createDocumentFragment();
+        var end = Math.min(index + CHUNK_SIZE, AppState.torrents.length);
+
+        for (; index < end; index++) {
+            var torrent = AppState.torrents[index];
+            var card = createTorrentCard(torrent);
+            if (card) fragment.appendChild(card);
+        }
+
+        torrentsGrid.appendChild(fragment);
+
+        if (index < AppState.torrents.length) {
+            // Отдаём управление браузеру для отрисовки кадра
+            requestAnimationFrame(renderChunk);
+        } else {
+            // Все карточки отрендерены — восстанавливаем фокус
+            if (AppState.currentScreen === 'torrents' &&
+                !document.querySelector('.torrent-card.focused')) {
+                setTimeout(function () {
+                    if (typeof window.focusFirstTorrentCard === 'function') {
+                        window.focusFirstTorrentCard();
+                    }
+                }, 80);
+            }
+        }
+    }
+
+    requestAnimationFrame(renderChunk);
+}
+
+// ==================== МЕТА ТОРРЕНТА ИЗ torrent.data ====================
+// Разбор torrent.data кэшируем по хешу: JSON.parse на каждую карточку заметен на ТВ.
+// Кэш сбрасывается сам, когда сервер прислал новый data (source !== torrent.data).
+// Бросает исключение на битом JSON — вызывающий оборачивает в try/catch.
+function getTorrentCardMeta(torrent) {
+    var cacheKey = String(torrent.hash || '');
+    var cachedMeta = cacheKey ? torrentCardMetaCache.get(cacheKey) : null;
+
+    if (!cachedMeta || cachedMeta.source !== torrent.data) {
+        var data = JSON.parse(torrent.data);
+        cachedMeta = {
+            source: torrent.data,
+            isTv: !!(data.TorrServer && data.TorrServer.Files && data.TorrServer.Files.length > 1),
+            poster: data.movie ? (data.movie.img || (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : '')) : ''
+        };
+        if (cacheKey) torrentCardMetaCache.set(cacheKey, cachedMeta);
+    }
+
+    return cachedMeta;
+}
+
+/**
+ * Тип торрента: 'tv' или 'movie'. Это ровно то, что карточка показывает в бейдже
+ * («Сериал» / «Фильм»).
+ *
+ * Одна и та же функция используется и для бейджа, и для выбора movie/tv в запросах
+ * к TMDB (loadAllTmdbDataForTorrent). Раньше detail определял тип заново и мог
+ * разойтись с карточкой: на карточке «Сериал», а данные грузились как о фильме —
+ * например когда у торрента category = movie, а файлов в раздаче несколько.
+ *
+ * Признаки, по порядку:
+ *   1. больше одного файла в раздаче (file_stats, иначе TorrServer.Files) — сериал;
+ *   2. category самого торрента (tv / сериал / serial / series).
+ */
+function getTorrentMediaTypeFromCard(torrent) {
+    if (!torrent) return 'movie';
+
+    var isTv = false;
+
+    try {
+        if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) {
+            isTv = torrent.file_stats.length > 1;
+        } else if (torrent.data) {
+            isTv = getTorrentCardMeta(torrent).isTv;
+        }
+    } catch (e) { }
+
+    if (isTv) return 'tv';
+
+    var category = String(torrent.category || '').toLowerCase();
+    if (category.indexOf('tv') !== -1 ||
+        category.indexOf('сериал') !== -1 ||
+        category.indexOf('serial') !== -1 ||
+        category.indexOf('series') !== -1) {
+        return 'tv';
+    }
+
+    return 'movie';
+}
+
+window.getTorrentMediaTypeFromCard = getTorrentMediaTypeFromCard;
+
+// ==================== СОЗДАНИЕ ОДНОЙ КАРТОЧКИ ====================
+function createTorrentCard(torrent) {
+    var poster = '';
+    var title = torrent.title || 'Без названия';
+
+    // Постер из torrent.data — только когда file_stats нет (как было раньше),
+    // иначе берём уже готовый torrent.poster
+    try {
+        var hasFileStats = torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0;
+        if (!hasFileStats && torrent.data) poster = getTorrentCardMeta(torrent).poster;
+    } catch (e) { }
+
+    if (!poster && torrent.poster) poster = torrent.poster;
+
+    // Тип — общей функцией с detail, чтобы бейдж и запросы TMDB не расходились
+    var cardMediaType = getTorrentMediaTypeFromCard(torrent);
+
+    // Статус: идёт просмотр или размер раздачи. Размер живёт в полосе внизу
+    // постера — на месте оценки у карточек каталога; «Идет просмотр» заменяет
+    // его целиком, чтобы полоса оставалась в одну строку.
+    var isPlaying = torrent.stat_string === 'Torrent working';
+    var statusHtml = isPlaying
+        ? '<span class="torrent-playing">Идет просмотр</span>'
+        : '<span class="torrent-size">' + escapeHtml(formatBytes(torrent.torrent_size)) + '</span>';
+
+    // Безопасный постер: экранируем URL для атрибута src
+    var posterHtml;
+    if (poster) {
+        var safePoster = escapeAttr(poster);
+        posterHtml = '<img src="' + safePoster + '" loading="lazy" decoding="async" ' +
+            'onerror="this.parentElement.innerHTML=\'<div class=no-poster>Нет постера</div>\'">';
+    } else {
+        posterHtml = '<div class="no-poster">Нет постера</div>';
+    }
+
+    // Создаём карточку через createElement (безопаснее innerHTML для структуры)
+    var card = document.createElement('div');
+    card.className = 'torrent-card card-modern';
+    card.dataset.hash = torrent.hash;
+    // Тот же тип, что в бейдже — чтобы его было видно в DOM и можно было брать снаружи
+    card.dataset.mediaType = cardMediaType;
+
+    // Long-press удаление
+    //attachTorrentDeleteLongPress(card, torrent);
+
+    card.innerHTML =
+        '<div class="torrent-poster">' + posterHtml +
+        '<div class="poster-bar">' + statusHtml +
+        '<span class="torrent-badge">' + (cardMediaType === 'tv' ? 'Сериал' : 'Фильм') + '</span></div>' +
+        '</div>' +
+        '<div class="torrent-info">' +
+        '<div class="torrent-title marquee-text"><span>' + escapeHtml(title) + '</span></div>' +
+        '</div>';
+
+    return card;
+}
+
+// ==================== ДЕЛЕГИРОВАНИЕ СОБЫТИЙ (один раз при инициализации) ====================
+function setupTorrentGridDelegation() {
+    var torrentsGrid = getEl('torrents-grid');
+    if (!torrentsGrid || torrentsGrid._delegationBound) return;
+
+    torrentsGrid._delegationBound = true;
+
+    // Новое делегирование long-press удаления
+    setupTorrentLongPressDelegation(torrentsGrid);
+
+    torrentsGrid.addEventListener('click', function (e) {
+        var card = e.target.closest('.torrent-card');
+        if (card && card.dataset.hash) {
+            var torrent = AppState.torrents.find(function (t) {
+                return t.hash === card.dataset.hash;
+            });
+            if (torrent) showDetail(torrent);
+        }
+    });
+}
+
+window.setupTorrentGridDelegation = setupTorrentGridDelegation;
+
+function showDetailByHash(hash) {
+    if (!hash) return false;
+    var hashLower = hash.toLowerCase();
+    var torrent = AppState.torrents.find(t => t.hash && t.hash.toLowerCase() === hashLower);
+    if (torrent) { showDetail(torrent); return true; }
+    return false;
+}
+
+function hideCatalogDetailExtra() {
+    var ids = [
+        'catalog-detail-extra', 'detail-subtitle', 'catalog-detail-backdrop',
+        'catalog-detail-meta', 'catalog-detail-overview',
+        'catalog-detail-trailers-wrap', 'catalog-detail-trailers',
+        'catalog-detail-screenshots-wrap', 'catalog-detail-screenshots'
+    ];
+
+    ids.forEach(function (id) {
+        var el = getEl(id);
+        if (el) {
+            if (id === 'catalog-detail-backdrop') {
+                el.style.backgroundImage = '';
+            } else if (id === 'catalog-detail-meta' || id === 'catalog-detail-trailers' || id === 'catalog-detail-screenshots') {
+                el.innerHTML = '';
+            } else if (id === 'detail-subtitle' || id === 'catalog-detail-overview') {
+                el.textContent = '';
+                el.style.display = 'none';
+            }
+            // Гарантированно скрываем
+            el.classList.add('hidden');
+        }
+    });
+}
+window.hideCatalogDetailExtra = hideCatalogDetailExtra;
+
+async function getTmdbDetailsWithCache(tmdbId, mediaType) {
+    if (!tmdbId) return null;
+    if (!mediaType) mediaType = 'movie';
+    if (window.getFromTmdbCache && window.saveToTmdbCache) {
+        var cacheParams = { id: tmdbId, type: mediaType };
+        var cachedData = window.getFromTmdbCache('details', cacheParams);
+        if (cachedData) return cachedData;
+        try {
+            var response = await fetch('/api/tmdb/details?id=' + tmdbId + '&type=' + mediaType);
+            if (response.ok) { var data = await response.json(); window.saveToTmdbCache('details', cacheParams, data); return data; }
+        } catch (error) { console.error('Ошибка загрузки TMDB данных:', error); }
+    } else {
+        if (!window.tmdbDetailsCache) window.tmdbDetailsCache = new LruCache(200, 24 * 60 * 60 * 1000);
+        var cacheKey = tmdbId + '_' + mediaType;
+        if (window.tmdbDetailsCache.has(cacheKey)) {
+            var cached = window.tmdbDetailsCache.get(cacheKey);
+            if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) return cached.data;
+        }
+        try {
+            var response = await fetch('/api/tmdb/details?id=' + tmdbId + '&type=' + mediaType);
+            if (response.ok) { var data = await response.json(); window.tmdbDetailsCache.set(cacheKey, { data: data, timestamp: Date.now() }); return data; }
+        } catch (error) { console.error('Ошибка загрузки TMDB данных:', error); }
+    }
+    return null;
+}
+
+function resetDetailBackground() {
+    var detailView = getEl('detail-view');
+    if (!detailView) return;
+    detailView.dataset.torrentHash = '';   // собранной карточки раздачи больше нет
+    detailView.style.backgroundImage = ''; detailView.style.backgroundColor = '#000000';
+    detailView.style.removeProperty('--torrent-backdrop');
+    var existingOverlay = getEl('detail-backdrop-overlay'); if (existingOverlay) existingOverlay.remove();
+    var detailSubtitle = getEl('detail-subtitle'); if (detailSubtitle) { detailSubtitle.textContent = ''; detailSubtitle.style.display = 'none'; }
+    var metaContainer = getEl('catalog-detail-meta'); if (metaContainer) { metaContainer.innerHTML = ''; metaContainer.classList.add('hidden'); }
+    // Плитки файлов не сносим: они переиспользуются между открытиями
+    // (см. пул ниже), поэтому просто гасим их и служебное сообщение
+    var filesList = getEl('files-list');
+    if (filesList) { clearFilesList(); filesList.style.display = ''; filesList.style.flexDirection = ''; }
+    var detailPoster = getEl('detail-poster'); if (detailPoster) detailPoster.innerHTML = '';
+    var detailTitleText = getEl('detail-title-text'); if (detailTitleText) detailTitleText.textContent = '';
+    var oldProgressBlocks = document.querySelectorAll('#detail-progress');
+    for (var i = 0; i < oldProgressBlocks.length; i++) {
+        oldProgressBlocks[i].remove();
+    }
+    // Netflix-блоки торрентного режима: чистим содержимое и снимаем режим,
+    // чтобы каталожный detail получил свою раскладку без остатков торрентной
+    clearDetailNetflixBlocks();
+    detailView.classList.remove('torrent-detail-mode');
+}
+window.resetDetailBackground = resetDetailBackground;
+
+function extractSeasonsFromTitle(title) {
+    if (!title) return [];
+
+    var seasons = [];
+
+    var rangePatterns = [
+        /\[сезон\s*(\d+)\s*[-–]\s*(\d+)\]/i,
+        /\[season\s*(\d+)\s*[-–]\s*(\d+)\]/i,
+        /сезон\s*(\d+)\s*[-–]\s*(\d+)/i,
+        /season\s*(\d+)\s*[-–]\s*(\d+)/i,
+        /\bS(\d+)\s*[-–]\s*S?(\d+)\b/i
+    ];
+
+    for (var p = 0; p < rangePatterns.length; p++) {
+        var m = title.match(rangePatterns[p]);
+        if (m && m[1] && m[2]) {
+            for (var s = parseInt(m[1], 10); s <= parseInt(m[2], 10); s++) {
+                if (seasons.indexOf(s) === -1) seasons.push(s);
+            }
+            return seasons.sort(function (a, b) { return a - b; });
+        }
+    }
+
+    var listPatterns = [
+        /\[сезон\s*([\d,\s]+)\]/i,
+        /\[season\s*([\d,\s]+)\]/i,
+        /сезон\s*([\d,\s]+)/i,
+        /season\s*([\d,\s]+)/i,
+        /\bS([\d,\s]+)/i
+    ];
+
+    for (var p2 = 0; p2 < listPatterns.length; p2++) {
+        var m2 = title.match(listPatterns[p2]);
+        if (m2 && m2[1]) {
+            m2[1].split(/[,\s]+/).forEach(function (part) {
+                var n = parseInt(part, 10);
+                if (!isNaN(n) && seasons.indexOf(n) === -1) seasons.push(n);
+            });
+            if (seasons.length > 0) break;
+        }
+    }
+
+    if (seasons.length === 0) {
+        var singlePatterns = [
+            /\[сезон\s*(\d+)\]/i,
+            /\[season\s*(\d+)\]/i,
+            /сезон\s*(\d+)/i,
+            /season\s*(\d+)/i,
+            /\bS(\d+)\b/i
+        ];
+
+        for (var p3 = 0; p3 < singlePatterns.length; p3++) {
+            var m3 = title.match(singlePatterns[p3]);
+            if (m3 && m3[1]) {
+                var n2 = parseInt(m3[1], 10);
+                if (!isNaN(n2)) seasons.push(n2);
+                break;
+            }
+        }
+    }
+
+    return seasons.sort(function (a, b) { return a - b; });
+}
+
+function cleanTitleFromSeasons(title, seasons) {
+    if (!title) return title;
+
+    return title
+        .replace(/\[сезон[^\]]*\]/gi, '')
+        .replace(/\[season[^\]]*\]/gi, '')
+        .replace(/сезон\s*[\d\s,–-]+/gi, '')
+        .replace(/season\s*[\d\s,–-]+/gi, '')
+        .replace(/\bS\d+\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+var seasonCache = new LruCache(200, 24 * 60 * 60 * 1000);
+async function loadSeasonStills(tmdbId, seasonNumber) {
+    var cacheKey = tmdbId + 'season' + seasonNumber;
+    if (seasonCache.has(cacheKey)) { var cached = seasonCache.get(cacheKey); if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) return cached.data; }
+    try {
+        var response = await fetch('/api/tmdb/season?id=' + tmdbId + '&seasonNumber=' + seasonNumber);
+        if (response.ok) { var seasonData = await response.json(); var episodes = seasonData.episodes || []; seasonCache.set(cacheKey, { data: episodes, timestamp: Date.now() }); return episodes; }
+    } catch (error) { console.error('Ошибка загрузки кадров сезона:', error); }
+    return [];
+}
+
+async function loadMovieStill(tmdbId) {
+    var cacheKey = tmdbId + '_movie_still';
+    if (seasonCache.has(cacheKey)) { var cached = seasonCache.get(cacheKey); if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) return cached.data; }
+    try {
+        var response = await fetch('/api/tmdb/details?id=' + tmdbId + '&type=movie');
+        if (response.ok) {
+            var data = await response.json();
+            if (data.poster_path) { var stillUrl = buildTmdbPosterUrl(data.poster_path, 'w300'); seasonCache.set(cacheKey, { data: stillUrl, timestamp: Date.now() }); return stillUrl; }
+        }
+    } catch (error) { console.error('Ошибка загрузки постера фильма:', error); }
+    return null;
+}
+
+function clearTorrentFilesCache(hash) { if (hash && torrentFilesCache.has(hash)) torrentFilesCache.delete(hash); }
+function clearAllTorrentFilesCache() { torrentFilesCache.clear(); }
+
+// Share one TorrServer stat request between the detail view and TMDB enrichment.
+async function getTorrentFilesWithCache(torrent, forceRefresh = false) {
+    var hash = torrent && torrent.hash;
+    if (!hash) return [];
+
+    if (!forceRefresh && torrentFilesCache.has(hash)) {
+        var cached = torrentFilesCache.get(hash);
+        if (cached && Date.now() - cached.timestamp < 60 * 60 * 1000) return cached.files;
+        torrentFilesCache.delete(hash);
+    }
+    if (!forceRefresh && torrentFilesInFlight[hash]) return torrentFilesInFlight[hash];
+
+    var request = (async function () {
+        var files = [];
+        if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length) {
+            files = torrent.file_stats;
+        }
+        if (!files.length && AppState.currentTorrserverUrl) {
+            try {
+                var response = await torrServerFetch('/stream?link=' + hash + '&index=1&stat=stat', {
+                    method: 'GET', headers: { accept: 'application/octet-stream' }
+                });
+                if (response.ok) {
+                    var apiData = await response.json();
+                    if (Array.isArray(apiData.file_stats)) files = apiData.file_stats;
+                    else if (apiData.data) {
+                        try {
+                            var parsedData = JSON.parse(apiData.data);
+                            if (parsedData.TorrServer && Array.isArray(parsedData.TorrServer.Files)) {
+                                files = parsedData.TorrServer.Files;
+                            }
+                        } catch (e) { }
+                    }
+                }
+            } catch (error) {
+                console.error('Torrent files request failed:', error);
+            }
+        }
+        torrent.file_stats = files;
+        torrentFilesCache.set(hash, { files: files, timestamp: Date.now() });
+        return files;
+    })();
+
+    torrentFilesInFlight[hash] = request;
+    try {
+        return await request;
+    } finally {
+        delete torrentFilesInFlight[hash];
+    }
+}
+
+// ==================== ТОРРЕНТНЫЙ DETAIL: META-СТРОКА, АКТЁРЫ, ЗАГОЛОВОК РЯДА ====================
+// index.html этих блоков не содержит: строим их на ходу, как это делает
+// setupDetailLayout в catalog.js. Ряд актёров переиспользует каталожные
+// контейнеры (#catalog-detail-actors-wrap / #catalog-detail-actors) — под них
+// уже написаны и стили, и навигация пультом.
+
+var detailMetaState = { details: null, isTvSeries: false, filesCount: 0, filesBytes: 0, torrentTitle: '' };
+
+function isTorrentDetailMode() {
+    var dv = getEl('detail-view');
+    return !!(dv && dv.classList.contains('torrent-detail-mode'));
+}
+
+function pluralRu(n, one, few, many) {
+    var abs = Math.abs(n) % 100;
+    var last = abs % 10;
+    if (abs > 10 && abs < 20) return many;
+    if (last === 1) return one;
+    if (last > 1 && last < 5) return few;
+    return many;
+}
+
+function formatRuntimeMinutes(minutes) {
+    var m = parseInt(minutes, 10);
+    if (!m || m <= 0) return '';
+    var h = Math.floor(m / 60);
+    var rest = m % 60;
+    if (h > 0) return rest > 0 ? h + ' ч ' + rest + ' мин' : h + ' ч';
+    return rest + ' мин';
+}
+
+// Качество раздачи в названии торрента — то, чего в TMDB нет, а зрителю важно.
+function extractQualityBadges(title) {
+    var t = String(title || '');
+    var badges = [];
+    if (/2160p|\b4k\b|\buhd\b/i.test(t)) badges.push('4K');
+    else if (/1080[pi]/i.test(t)) badges.push('1080p');
+    else if (/720p/i.test(t)) badges.push('720p');
+    if (/\bhdr10?\+?\b|dolby\s*vision|\bdovi\b/i.test(t)) badges.push('HDR');
+    if (/atmos/i.test(t)) badges.push('ATMOS');
+    else if (/\b(5\.1|7\.1)\b/.test(t)) badges.push('5.1');
+    return badges;
+}
+
+function ensureDetailMetaRow() {
+    var row = getEl('detail-meta-row');
+    if (row) return row;
+    var titleBlock = document.querySelector('#detail-view .detail-title');
+    if (!titleBlock) return null;
+    row = document.createElement('div');
+    row.id = 'detail-meta-row';
+    row.className = 'detail-meta-row hidden';
+    var subtitle = getEl('detail-subtitle');
+    // Порядок как в Netflix: заголовок → метаданные → описание
+    if (subtitle && subtitle.parentElement === titleBlock) titleBlock.insertBefore(row, subtitle);
+    else titleBlock.appendChild(row);
+    return row;
+}
+
+function ensureFilesListTitle() {
+    var title = getEl('files-list-title');
+    if (title) return title;
+    var filesList = getEl('files-list');
+    if (!filesList || !filesList.parentElement) return null;
+    title = document.createElement('div');
+    title.id = 'files-list-title';
+    title.className = 'catalog-detail-section-title hidden';
+    title.textContent = 'Серии';
+    filesList.parentElement.insertBefore(title, filesList);
+    return title;
+}
+
+// Тот же id и та же точка вставки, что в setupDetailLayout (catalog.js): какой бы
+// режим ни открылся первым, второй найдёт готовый контейнер и не создаст дубль.
+function ensureDetailActorsWrap() {
+    var wrap = getEl('catalog-detail-actors-wrap');
+    if (wrap) return wrap;
+    var panel = document.querySelector('#detail-view .catalog-detail-panel');
+    if (!panel || !panel.parentElement) return null;
+    wrap = document.createElement('div');
+    wrap.id = 'catalog-detail-actors-wrap';
+    wrap.className = 'catalog-detail-actors-wrap hidden';
+    wrap.innerHTML = '<div class="catalog-detail-section-title">В главных ролях</div>' +
+        '<div id="catalog-detail-actors" class="catalog-detail-actors-grid"></div>';
+    panel.parentElement.insertBefore(wrap, panel.nextSibling);
+    return wrap;
+}
+
+function clearDetailNetflixBlocks() {
+    var row = getEl('detail-meta-row');
+    if (row) { row.innerHTML = ''; row.classList.add('hidden'); }
+    var actors = getEl('catalog-detail-actors');
+    // Гасим карточки, а не сносим: ряд актёров — общий пул с каталожной
+    // карточкой (renderDetailActorCards в js/catalog.js)
+    if (actors) {
+        if (typeof window.clearDetailActorCards === 'function') window.clearDetailActorCards(actors);
+        else actors.innerHTML = '';
+    }
+    var wrap = getEl('catalog-detail-actors-wrap');
+    if (wrap) wrap.classList.add('hidden');
+    var filesTitle = getEl('files-list-title');
+    if (filesTitle) filesTitle.classList.add('hidden');
+}
+
+// Строка вида «2019 · 8.4 · 3 сезона · 48 мин · Драма · США · 24 серии · 96 ГБ · [4K]».
+// Данные приходят из двух источников (TMDB и список файлов) в непредсказуемом
+// порядке, поэтому обе стороны только пишут в detailMetaState и перерисовывают.
+function renderDetailMetaRow() {
+    if (!isTorrentDetailMode()) return;
+    var row = ensureDetailMetaRow();
+    if (!row) return;
+
+    var d = detailMetaState.details;
+    var parts = [];
+
+    if (d) {
+        var date = d.release_date || d.first_air_date || '';
+        if (date) parts.push(escapeHtml(String(date).substring(0, 4)));
+
+        if (d.vote_average > 0) {
+            parts.push('<span class="detail-meta-rating">' + (Math.round(d.vote_average * 10) / 10) + '</span>');
+        }
+
+        var seasons = parseInt(d.number_of_seasons, 10);
+        if (seasons > 0) parts.push(seasons + ' ' + pluralRu(seasons, 'сезон', 'сезона', 'сезонов'));
+        else parts.push(detailMetaState.isTvSeries ? 'Сериал' : 'Фильм');
+
+        var runtime = formatRuntimeMinutes(d.runtime ||
+            (Array.isArray(d.episode_run_time) ? d.episode_run_time[0] : 0));
+        if (runtime) parts.push(runtime);
+
+        if (d.genres && d.genres.length) {
+            var names = [];
+            for (var g = 0; g < d.genres.length && names.length < 2; g++) {
+                if (d.genres[g] && d.genres[g].name) names.push(d.genres[g].name);
+            }
+            if (names.length) parts.push(escapeHtml(names.join(', ')));
+        }
+
+        var countries = typeof window.getCatalogCountries === 'function' ? window.getCatalogCountries(d, 2) : [];
+        if (countries.length) parts.push(escapeHtml(countries.join(', ')));
+    }
+
+    var count = detailMetaState.filesCount;
+    if (count > 1) {
+        parts.push(count + ' ' + (detailMetaState.isTvSeries
+            ? pluralRu(count, 'серия', 'серии', 'серий')
+            : pluralRu(count, 'файл', 'файла', 'файлов')));
+    }
+    if (detailMetaState.filesBytes > 0 && typeof formatBytes === 'function') {
+        parts.push(escapeHtml(formatBytes(detailMetaState.filesBytes)));
+    }
+
+    var badges = extractQualityBadges(detailMetaState.torrentTitle);
+
+    if (!parts.length && !badges.length) {
+        row.innerHTML = '';
+        row.classList.add('hidden');
+        return;
+    }
+
+    var html = '';
+    for (var p = 0; p < parts.length; p++) html += '<span class="detail-meta-item">' + parts[p] + '</span>';
+    for (var b = 0; b < badges.length; b++) html += '<span class="detail-meta-badge">' + escapeHtml(badges[b]) + '</span>';
+    row.innerHTML = html;
+    row.classList.remove('hidden');
+}
+
+// Актёры берутся из того же ответа /api/tmdb/details, который detail уже ждёт
+// ради описания и бэкдропа (поле cast), — дополнительных запросов нет.
+function renderDetailActorsFromDetails(details) {
+    if (!isTorrentDetailMode()) return;
+    var wrap = ensureDetailActorsWrap();
+    if (!wrap) return;
+    var grid = getEl('catalog-detail-actors');
+    if (!grid) return;
+
+    var cast = details && details.cast;
+    if (!cast || !cast.length) {
+        if (typeof window.clearDetailActorCards === 'function') window.clearDetailActorCards(grid);
+        wrap.classList.add('hidden');
+        return;
+    }
+
+    var max = 12;
+    try {
+        if (typeof CATALOG_CONSTANTS !== 'undefined' && CATALOG_CONSTANTS.MAX_ACTORS) max = CATALOG_CONSTANTS.MAX_ACTORS;
+    } catch (e) { }
+
+    // Приводим cast из /api/tmdb/details к тому виду, что отдаёт
+    // fetchCatalogActors, и отрисовываем общим пулом карточек (js/catalog.js):
+    // контейнер один на оба режима, и собственный innerHTML здесь уничтожил бы
+    // пул каталожной карточки. Заглушка «нет фото» у режимов разная, поэтому
+    // символ передаём параметром.
+    var actors = [];
+    for (var i = 0; i < cast.length && actors.length < max; i++) {
+        var a = cast[i];
+        if (!a || !a.name) continue;
+        actors.push({
+            id: a.id || a.personId || '',
+            name: a.name,
+            character: a.character || '',
+            profilePath: a.profile_path || a.profilePath || ''
+        });
+    }
+
+    var shown = (typeof window.renderDetailActorCards === 'function')
+        ? window.renderDetailActorCards(grid, actors, '👤')
+        : 0;
+
+    if (!shown) {
+        wrap.classList.add('hidden');
+        return;
+    }
+
+    wrap.classList.remove('hidden');
+    // Ряд общий с каталожной карточкой и не пересоздаётся — без сброса он
+    // открывался там, где его долистали в прошлой карточке. Сбрасывать можно
+    // только после показа: у скрытого ряда запись scrollLeft отбрасывается
+    // (подробнее у resetDetailRowScroll в catalog.js, он грузится позже, но
+    // к открытию карточки уже есть).
+    if (typeof resetDetailRowScroll === 'function') resetDetailRowScroll(grid);
+    else grid.scrollLeft = 0;
+
+    // Нажатие по актёру. В карточке КАТАЛОГА это делает делегированный
+    // обработчик на #detail-view (setupDetailDelegation в catalog.js), но
+    // торрентный detail через него не проходит — вешаем свой, на сам ряд.
+    // Обработчик один на всю жизнь элемента: карточки в ряду переиспользуются,
+    // а сам grid остаётся, поэтому дубля слушателей не будет.
+    if (!grid._actorClickHandler) {
+        grid._actorClickHandler = function (e) {
+            // Ряд #catalog-detail-actors общий с карточкой каталога, а там клик
+            // уже ловит делегирование на #detail-view. Без этой проверки после
+            // первой же торрентной карточки клик по актёру в каталожной открывал
+            // фильмографию дважды — в путь возвратов ложились два шага, и
+            // «назад» проходило «актёр → карточка» по второму кругу.
+            if (typeof isTorrentDetailMode === 'function' && !isTorrentDetailMode()) return;
+            var card = e.target.closest ? e.target.closest('.catalog-actor-card') : null;
+            if (!card || !card.dataset.personId) return;
+            if (typeof window.openPersonCatalog !== 'function') return;
+            window.openPersonCatalog(card.dataset.personId, card.dataset.personName);
+        };
+        grid.addEventListener('click', grid._actorClickHandler);
+    }
+
+    // Карточки актёров попадают в фокусируемые только после появления в DOM.
+    // Сброс кэша обязателен: у detail он живёт 100 мс по времени и по поколению
+    // DOM, поэтому без invalidateFocusCache() новый ряд мог не попасть в список.
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    if (typeof updateFocusableElements === 'function') updateFocusableElements();
+}
+// ==================== /ТОРРЕНТНЫЙ DETAIL ====================
+
+
+/**
+ * Кнопки «Подробнее» и «Открыть карточку» в карточке ТОРРЕНТА.
+ *
+ * В карточке каталога такие кнопки уже есть (catalog.js), здесь их не было:
+ * описание от TMDB загружалось и молча пряталось, а перейти в полноценную
+ * карточку с актёрами, похожими и трейлером было неоткуда.
+ *
+ * Показываем по факту данных, а не заранее: «Подробнее» — только когда пришёл
+ * overview (иначе разворачивало бы пустой блок), «Открыть карточку» — только
+ * когда у раздачи есть tmdbId (иначе showCatalogDetail пошёл бы в TMDB с
+ * пустым id и нарисовал бы пустую карточку).
+ *
+ * @param {object} torrent раздача, чью карточку показываем
+ * @param {object} details ответ TMDB (может быть null)
+ */
+function revealTorrentDetailExtras(torrent, details) {
+    // Детали пришли по раздаче, которую уже закрыли, — «Открыть карточку»
+    // повела бы в её фильм
+    if (!isOpenTorrentDetail(torrent)) return;
+    // --- «Подробнее» ---
+    var overviewText = (details && details.overview) || '';
+    var ov = getEl('catalog-detail-overview');
+    var togBtn = getEl('catalog-toggle-overview-btn');
+
+    if (overviewText && togBtn) {
+        // Описание остаётся в подзаголовке — там оно и было. Отдельный блок
+        // #catalog-detail-overview в этом режиме не показываем: два одинаковых
+        // описания на экране. Кнопка «Подробнее» снимает обрезку подзаголовка
+        // (см. initCatalogDetailButtons в catalog.js — она смотрит на режим).
+        if (ov) {
+            ov.classList.add('hidden');
+            ov.classList.remove('expanded');
+            ov.style.display = 'none';
+        }
+        var sub = getEl('detail-subtitle');
+        if (sub) sub.classList.remove('expanded');
+
+        togBtn.textContent = 'Подробнее';
+        togBtn.classList.remove('hidden');
+        togBtn.style.removeProperty('display');
+
+        // Обработчик тот же, что у карточки каталога — ставит
+        // initCatalogDetailButtons() один раз на всё приложение
+        if (typeof window.initCatalogDetailButtons === 'function') window.initCatalogDetailButtons();
+    }
+
+    // --- «Открыть карточку» ---
+    var openBtn = getEl('detail-open-card-btn');
+    if (!openBtn) return;
+
+    var tmdbId = torrent && (torrent.tmdbId || torrent.id) || (details && details.id) || null;
+    if (!tmdbId) {
+        openBtn.classList.add('hidden');
+        return;
+    }
+
+    var mediaType = (torrent && torrent.media_type) ||
+        (details && details.media_type) ||
+        ((detailMetaState && detailMetaState.isTvSeries) ? 'tv' : 'movie');
+
+    var cardTitle = (details && (details.title || details.name)) ||
+        (torrent && torrent.title) || '';
+
+    openBtn.classList.remove('hidden');
+    openBtn.style.removeProperty('display');
+
+    // onclick, а не addEventListener: пересобираем на каждую карточку, и
+    // накопления обработчиков от прошлых раздач быть не должно
+    openBtn.onclick = function () {
+        if (typeof window.showCatalogDetail !== 'function') return;
+        var item = {
+            id: tmdbId,
+            tmdbId: tmdbId,
+            media_type: mediaType,
+            title: cardTitle,
+            name: cardTitle,
+            poster_path: (torrent && torrent.poster) || (details && details.poster_path) || null
+        };
+        // Возврат из карточки уводит в каталог, а пришли мы из списка торрентов —
+        // поправляем, иначе «назад» высадит не туда
+        AppState.androidBackCatalog = item;
+        if (window.Nav) Nav.push('detail', Nav.detailData(item));
+        window.showCatalogDetail(item, AppState.catalogIndex || 0, item.poster_path);
+    };
+}
+window.revealTorrentDetailExtras = revealTorrentDetailExtras;
+
+function visibleItemsforDetail(change) {
+    var detailView = getEl('detail-view');
+
+    if (change === 'showDetail') {
+        // Ряд актёров остаётся скрытым до прихода cast: пустая секция с
+        // заголовком на пол-экрана выглядит хуже, чем её отсутствие.
+        // «Подробнее» и «Открыть карточку» показываются не здесь, а по факту
+        // наличия данных: описание — когда придёт overview от TMDB, карточка —
+        // когда у раздачи есть tmdbId (см. revealTorrentDetailExtras ниже).
+        // Иначе «Подробнее» разворачивало бы пустоту, а «Открыть карточку»
+        // вело бы в никуда.
+        var massHidden = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
+            'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'detail-poster', 'files-list-title',
+            'detail-open-card-btn', 'catalog-favorite-btn'
+        ];
+        massHidden.forEach(function (id) {
+            var el = getEl(id);
+            if (el) el.classList.add('hidden');
+        });
+        var progressBtn = getEl('detail-progress-btn');
+        if (progressBtn) {
+            progressBtn.classList.add('hidden');
+            progressBtn.dataset.hash = '';
+        }
+
+        // «Играть/Продолжить» здесь не показываем: её покажет addProgressToDetail,
+        // когда будет знать, что именно запускать (см. там же)
+        var massVisible = ['catalog-detail-extra'];
+        massVisible.forEach(function (id) {
+            var el = getEl(id);
+            if (el) {
+                el.classList.remove('hidden');
+                el.style.removeProperty('display');
+            }
+        });
+
+        if (detailView) {
+            detailView.classList.add('torrent-detail-mode');
+            detailView.classList.remove('catalog-detail-mode');
+        }
+    } else if (change === 'showCatalogDetail') {
+        var massVisible2 = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview',
+            'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'catalog-detail-extra'
+        ];
+        massVisible2.forEach(function (id) {
+            var el = getEl(id);
+            if (el) {
+                el.classList.remove('hidden');
+                el.style.removeProperty('display');
+            }
+        });
+        // 'detail-open-card-btn' — мы уже в карточке каталога, вести в неё некуда
+        var massHidden2 = ['detail-progress-btn', 'detail-meta-row', 'files-list-title', 'detail-open-card-btn'];
+        massHidden2.forEach(function (id) {
+            var el = getEl(id);
+            if (el) el.classList.add('hidden');
+        });
+
+        if (detailView) {
+            detailView.classList.remove('torrent-detail-mode');
+            detailView.classList.add('catalog-detail-mode');
+        }
+    }
+}
+
+window.visibleItemsforDetail = visibleItemsforDetail;
+
+// ==================== ЦВЕТ РАМКИ ФОКУСА ИЗ UI CUSTOMIZER ====================
+// Новый torrent-detail рисует рамки своего размера (5px вокруг плитки файла,
+// круг вокруг аватара актёра), поэтому его правила в styles.css специфичнее тех,
+// которыми UI Customizer перекрывает общий фокус (`.focused{…!important}`) —
+// снаружи он их не достаёт. Цвет эти правила берут переменной
+// var(--focus-color, #ff8c00), а переменную выставляет сам кастомайзер. Но если
+// на устройстве раздаётся его старая сборка (index.html тянет ui-customizer.js с
+// msx/js, тогда как styles.css и torrents.js — уже с public/js), строки с :root
+// там нет: var() уходит в дефолт, и рамка остаётся оранжевой при любом выбранном
+// цвете. Поэтому выставляем переменные и здесь — цвет берём из публичного API
+// кастомайзера, а если и его нет, читаем прямо из его хранилища.
+var UI_CUSTOMIZER_STORAGE_KEY = 'uiCustomizer';
+
+function readUiFocusColor() {
+    try {
+        if (window.UICustomizer && typeof UICustomizer.getFocusColor === 'function') {
+            var fromApi = UICustomizer.getFocusColor();
+            if (fromApi) return fromApi;
+        }
+    } catch (e) { }
+    try {
+        var raw = localStorage.getItem(UI_CUSTOMIZER_STORAGE_KEY);
+        if (raw) {
+            var saved = JSON.parse(raw);
+            if (saved && saved.focusColor) return saved.focusColor;
+        }
+    } catch (e) { }
+    return null;
+}
+
+// #rgb / #rrggbb → rgba(): для мягкого внешнего свечения (--focus-color-soft)
+function focusColorToRgba(color, alpha) {
+    var s = String(color || '').trim();
+    if (s.charAt(0) !== '#') return null;
+    s = s.slice(1);
+    if (s.length === 3) {
+        s = s.charAt(0) + s.charAt(0) + s.charAt(1) + s.charAt(1) + s.charAt(2) + s.charAt(2);
+    }
+    if (!/^[0-9a-f]{6}$/i.test(s)) return null;
+    var n = parseInt(s, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255) + ', ' + alpha + ')';
+}
+
+function applyFocusColorVars() {
+    var color = readUiFocusColor();
+    if (!color || !focusColorToRgba(color, 1)) return;
+    var root = document.documentElement;
+    if (!root || !root.style || !root.style.setProperty) return;
+    // Инлайн на <html> перебивает :root из <style> кастомайзера, но значение то же
+    // самое (берём из его же настроек), а хук ниже держит их синхронными.
+    root.style.setProperty('--focus-color', color);
+    var soft = focusColorToRgba(color, 0.35);
+    if (soft) root.style.setProperty('--focus-color-soft', soft);
+}
+window.applyFocusColorVars = applyFocusColorVars;
+
+// Один раз оборачиваем apply() кастомайзера, чтобы цвет применялся сразу при
+// выборе в панели, а не только при следующем открытии detail.
+function hookUiCustomizerFocusColor() {
+    if (!window.UICustomizer || typeof UICustomizer.apply !== 'function') return false;
+    if (!UICustomizer.__focusVarsHooked) {
+        var origApply = UICustomizer.apply;
+        UICustomizer.apply = function () {
+            var result = origApply.apply(this, arguments);
+            applyFocusColorVars();
+            return result;
+        };
+        UICustomizer.__focusVarsHooked = true;
+    }
+    applyFocusColorVars();
+    return true;
+}
+
+// Сразу — цвет из хранилища: ui-customizer.js подключается последним из всех
+// скриптов, поэтому на момент загрузки torrents.js window.UICustomizer ещё нет.
+// Дальше дожидаемся его, чтобы повесить хук на apply().
+applyFocusColorVars();
+(function waitForUiCustomizer(triesLeft) {
+    if (hookUiCustomizerFocusColor() || triesLeft <= 0) return;
+    setTimeout(function () { waitForUiCustomizer(triesLeft - 1); }, 300);
+})(20);
+
+/**
+ * Карточка этой раздачи уже собрана в разметке и сейчас скрыта: закрыли её
+ * «назад» и открываем снова. Тогда разбирать и собирать заново незачем — на
+ * медленном ТВ это и было «морганием»: в видимую карточку по очереди
+ * впрыгивали плитки серий без кадров, пустые кружки актёров, их фото.
+ *
+ * Метку ставит полная сборка (detailView.dataset.torrentHash), снимает
+ * resetDetailBackground. Карточка каталога переключает режим
+ * (visibleItemsforDetail → catalog-detail-mode) — тогда проверка не пройдёт.
+ */
+function isTorrentDetailReusable(torrent) {
+    var dv = getEl('detail-view');
+    var hash = torrent && torrent.hash ? String(torrent.hash) : '';
+    if (!dv || !hash || dv.dataset.torrentHash !== hash) return false;
+    if (!dv.classList.contains('torrent-detail-mode') || dv.style.display !== 'none') return false;
+    var title = getEl('detail-title-text');
+    if (!title || !String(title.textContent || '').trim()) return false;
+    var item = document.querySelector('#files-list .file-item:not(.hidden)');
+    return !!(item && item.dataset.hash === hash);
+}
+
+/** Фокус на «Играть/Продолжить», иначе на первую плитку (после открытия карточки) */
+function focusTorrentDetailStart() {
+    if (typeof updateFocusableElements !== 'function' || typeof setFocus !== 'function') return;
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    updateFocusableElements();
+    // Фокус ставим на «Играть/Продолжить», а не на первую плитку. Строка
+    // метаданных и ряд актёров приходят из TMDB позже и сдвигают ряд файлов
+    // вниз — вместе со сфокусированной плиткой, и она уезжала за экран.
+    // Кнопка стоит в шапке, выше всего, что подгружается, и не двигается.
+    detailAutoFocusEl = null;
+    var progressBtn = getEl('detail-progress-btn');
+    if (progressBtn && progressBtn.offsetParent !== null) {
+        for (var i = 0; i < focusableElements.length; i++) {
+            if (focusableElements[i] === progressBtn) { setFocus(i); return; }
+        }
+    }
+    if (document.querySelectorAll('#files-list .file-item:not(.hidden)').length > 0) {
+        for (var j = 0; j < focusableElements.length; j++) {
+            if (focusableElements[j].classList && focusableElements[j].classList.contains('file-item')) {
+                setFocus(j);
+                // Кнопка «Играть» ещё не готова — запоминаем, куда встали вместо
+                // неё: придёт кнопка, а человек отсюда не уходил — фокус переедет
+                detailAutoFocusEl = focusableElements[j];
+                return;
+            }
+        }
+    }
+    setFocus(0);
+}
+
+/** Плитка, на которую focusTorrentDetailStart поставил фокус вместо кнопки «Играть» */
+var detailAutoFocusEl = null;
+
+async function showDetail(torrent) {
+    if (torrent && torrent.hash) window.lastSelectedTorrentHash = torrent.hash;
+    openTorrentDetailHash = torrent && torrent.hash ? String(torrent.hash).toLowerCase() : '';
+    var reuse = isTorrentDetailReusable(torrent);
+    if (window.Nav && torrent) Nav.push('torrent-detail', { key: 't:' + String(torrent.hash || '').toLowerCase(), label: torrent.title || torrent.hash, torrent: torrent });
+    if (typeof currentFocusIndex !== 'undefined') window.lastSelectedTorrentIndex = currentFocusIndex;
+    // Рамки фокуса нового detail читают var(--focus-color) — убеждаемся, что
+    // переменная выставлена до первой отрисовки (см. applyFocusColorVars выше)
+    applyFocusColorVars();
+    // Открыта другая карточка (переход из каталожной в торрентную, смена
+    // раздачи) — уводим её ДО resetDetailBackground: тот чистит фон, заголовок
+    // и ряды, и на видимой карточке это выглядит как развал с последующим
+    // морганием. Открытие с нуля промис отдаёт выполненным сразу.
+    if (!reuse && typeof Animations !== 'undefined' && typeof Animations.beginDetailSwap === 'function') {
+        await Animations.beginDetailSwap();
+    }
+    if (!reuse) resetDetailBackground();
+    var known = knownTorrentMeta.get(String(torrent.hash || '').toLowerCase());
+
+    if (known) {
+        if (!torrent.poster && known.poster) torrent.poster = known.poster;
+        if (!torrent.tmdbId && known.id) torrent.tmdbId = known.id;
+        if (!torrent.media_type && known.mediaType) torrent.media_type = known.mediaType;
+    }
+
+    if (torrent.poster && torrent.poster.indexOf('http') !== 0) {
+        torrent.poster = buildTmdbPosterUrl(torrent.poster, 'w342');
+    }
+    var mainContainer = getEl('main-container');
+    if (mainContainer) mainContainer.style.pointerEvents = 'none';
+    // Позицию списка сохраняем сами: 'detail' — не контентный экран, showContentScreen
+    // здесь не вызывается и обновить contentScroll.torrents не может. Без этого на
+    // возврате (app.js: showContentScreen('torrents')) подставится устаревшее
+    // значение или ноль, и карточка с фокусом уедет за экран.
+    // Как в setupDetailLayout (catalog.js) — ноль тоже валидная позиция.
+    if (mainContainer && AppState.currentScreen === 'torrents') {
+        AppState.contentScroll = AppState.contentScroll || {};
+        AppState.contentScroll.torrents = mainContainer.scrollTop;
+    }
+    AppState.currentScreen = 'detail';
+    if (!window.AndroidJS || !AppState.transcodingFullOnOff) {
+        AppState.currentDetailItem = torrent;
+    } else {
+        AppState.currentDetailItem = AppState.playFromHash ? AppState.androidBackCatalog : torrent;
+    }
+
+    if (reuse) {
+        // Та же раздача, карточка собрана — показываем сразу как есть. Свежим
+        // может быть только прогресс просмотра (вернулись из плеера): его и
+        // обновляем, списком файлов из кэша.
+        var dvReuse = getEl('detail-view');
+        if (typeof Animations !== 'undefined') Animations.animateDetailShow();
+        getTorrentFilesWithCache(torrent, false).then(function (files) {
+            var items = [].slice.call(document.querySelectorAll('#files-list .file-item:not(.hidden)'));
+            if (items.length) loadProgressForFileItems(items, torrent.hash);
+            return addProgressToDetail(torrent, files);
+        }).then(function (lastField) {
+            if (lastField > 0 && typeof updateFocusableElements === 'function') updateFocusableElements();
+            var playBtn = getEl('detail-progress-btn');
+            if (playBtn && playBtn.dataset.hash) preloadDetailFile(playBtn.dataset.hash, playBtn.dataset.fileId);
+        }).catch(function () { });
+        setTimeout(function () {
+            focusTorrentDetailStart();
+            if (typeof Animations !== 'undefined' && typeof Animations.detailContentReady === 'function') {
+                Animations.detailContentReady();
+            }
+        }, 0);
+        AppState.mediaType = '';
+        return;
+    }
+
+    hideCatalogDetailExtra();
+    visibleItemsforDetail('showDetail');
+
+    // Netflix-раскладка: строка метаданных, ряд актёров и заголовок ряда файлов
+    detailMetaState = {
+        details: null,
+        isTvSeries: false,
+        filesCount: 0,
+        filesBytes: 0,
+        torrentTitle: torrent.title || ''
+    };
+    ensureDetailMetaRow();
+    ensureDetailActorsWrap();
+    ensureFilesListTitle();
+    clearDetailNetflixBlocks();
+
+    var posterImg = getEl('detail-poster');
+    var titleEl = getEl('detail-title-text');
+    var filesList = getEl('files-list');
+    setupFilePlayButtonDelegation();
+    var detailSubtitle = getEl('detail-subtitle');
+    var detailViewDiv = getEl('detail-view');
+    var dh = document.querySelector('.detail-header');
+    if (dh) dh.style.background = 'rgba(0, 0, 0, 0.3)';
+    if (filesList) { filesList.style.display = 'flex'; filesList.style.flexDirection = 'row'; }
+    showFilesListMessage('<div class="spinner"></div><div>Загрузка файлов...</div>');
+    if (typeof Animations !== 'undefined') Animations.animateDetailShow();
+    titleEl.textContent = (torrent.title || 'Без названия')
+        .replace(/\[\d+\]/g, '')
+        .replace(/\[сезон[^\]]*\]/gi, '')
+        .trim();
+    var oldProgressBlocks = document.querySelectorAll('#detail-progress');
+    for (var i = 0; i < oldProgressBlocks.length; i++) oldProgressBlocks[i].remove();
+
+    // === ПАРАЛЛЕЛЬНЫЙ ЗАПУСК: файлы + TMDB ===
+    var filesPromise = getTorrentFilesWithCache(torrent, false);
+    var tmdbPromise = loadAllTmdbDataForTorrent(torrent, { titleEl: titleEl, detailViewDiv: detailViewDiv, detailSubtitle: detailSubtitle });
+
+    // Актёры и метаданные не зависят от списка файлов — рисуем отдельной ветвью,
+    // иначе при пустом/ошибочном списке файлов ряд актёров вообще не появится.
+    tmdbPromise.then(function (tmdbData) {
+        if (!tmdbData || !isOpenTorrentDetail(torrent)) return;
+        detailMetaState.isTvSeries = !!tmdbData.isTvSeries;
+        renderDetailMetaRow();
+        renderDetailActorsFromDetails(tmdbData.details);
+    }).catch(function () { });
+
+    try {
+        var files = await filesPromise;
+        // Пока грузился список файлов, открыли другую раздачу — её карточку
+        // (файлы, фокус) рисует уже свой вызов showDetail
+        if (!isOpenTorrentDetail(torrent)) return;
+        var poster = torrent.poster || '';
+        if (!poster && torrent.data) {
+            try {
+                var data = JSON.parse(torrent.data);
+                if (data.movie) poster = data.movie.img || (data.movie.poster_path ? 'https://image.tmdb.org/t/p/w342' + data.movie.poster_path : '');
+            } catch (e) { }
+        }
+        posterImg.innerHTML = poster ? '<img src="' + poster + '" alt="poster">' : '<div class="no-poster">Нет постера</div>';
+
+        if (files.length === 0) {
+            showFilesListMessage('📁 Нет файлов', 'files-list-msg-compact');
+        } else {
+            // === РЕНДЕР ФАЙЛОВ СРАЗУ (не ждём прогресс) ===
+            var videoFiles = files.filter(f => {
+                var n = f.path.split('/').pop().toLowerCase();
+                return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext));
+            });
+            var addedItems = renderFileItems(videoFiles, torrent.hash, torrent.title);
+            // Карточка этой раздачи собрана — повторный вход её переиспользует
+            // (isTorrentDetailReusable)
+            if (detailViewDiv) detailViewDiv.dataset.torrentHash = String(torrent.hash || '');
+            // Ряд серий — тоже пул плиток в одном и том же #files-list, и
+            // прокрутка прошлой раздачи переходила к новой: долистал сериал до
+            // 24-й серии, открыл другой — а он уже в конце.
+            if (filesList) {
+                if (typeof resetDetailRowScroll === 'function') resetDetailRowScroll(filesList);
+                else filesList.scrollLeft = 0;
+            }
+
+            // Количество и общий вес — в строку метаданных под заголовком
+            var totalBytes = 0;
+            for (var fb = 0; fb < videoFiles.length; fb++) totalBytes += (videoFiles[fb].length || 0);
+            detailMetaState.filesCount = videoFiles.length;
+            detailMetaState.filesBytes = totalBytes;
+            renderDetailMetaRow();
+
+            // Заголовок ряда нужен только когда файлов несколько: над единственной
+            // плиткой с полным названием он лишний
+            var filesTitle = ensureFilesListTitle();
+            if (filesTitle) {
+                if (videoFiles.length > 1) {
+                    filesTitle.textContent = 'Серии';
+                    filesTitle.classList.remove('hidden');
+                } else {
+                    filesTitle.classList.add('hidden');
+                }
+            }
+
+            // Один батч-запрос на все файлы вместо N отдельных
+            if (addedItems.length > 0) {
+                loadProgressForFileItems(addedItems, torrent.hash);
+            }
+
+            // === ПРОГРЕСС АСИНХРОННО (передаём файлы, чтобы не запрашивать повторно) ===
+            addProgressToDetail(torrent, files).then(function (lastField) {
+                if (!isOpenTorrentDetail(torrent)) return;
+                if (typeof updateFocusableElements === 'function') updateFocusableElements();
+                // Кнопка появилась позже первой плитки: если фокус всё ещё там,
+                // куда его поставили при открытии, — переводим на неё
+                if (detailAutoFocusEl && document.querySelector('.focused') === detailAutoFocusEl) {
+                    focusTorrentDetailStart();
+                }
+                // Кнопка уже знает, что запустит: fileId лежит в dataset и для
+                // «Играть» (первый файл), и для «Продолжить N серию».
+                var playBtn = getEl('detail-progress-btn');
+                if (playBtn && playBtn.dataset.hash) {
+                    preloadDetailFile(playBtn.dataset.hash, playBtn.dataset.fileId);
+                }
+            });
+
+            // === TMDB-данные применяем когда готовы ===
+            tmdbPromise.then(function (tmdbData) {
+                if (!tmdbData || !isOpenTorrentDetail(torrent)) return;
+                if (tmdbData.cleanTitle && tmdbData.cleanTitle !== 'Без названия') titleEl.textContent = tmdbData.cleanTitle;
+                if (tmdbData.seasonNumbers && tmdbData.seasonNumbers.length > 1) {
+                    var seasonsText = titleEl.textContent;
+                    if (!seasonsText.includes('сезон')) titleEl.textContent = seasonsText + ' [сезон ' + tmdbData.seasonNumbers.join(', ') + ']';
+                }
+                loadStillsAndUpdateFiles(tmdbData.seasonNumbers || [], tmdbData.allSeasonEpisodes || {}, tmdbData.movieStill, videoFiles.length);
+            }).catch(function (error) { console.error('Ошибка загрузки TMDB данных:', error); });
+        }
+    } catch (e) {
+        console.error('Ошибка:', e);
+        showFilesListMessage('❌ Ошибка загрузки файлов: ' + escapeHtml(e.message), 'files-list-msg-compact files-list-msg-error');
+    }
+    setTimeout(function () {
+        focusTorrentDetailStart();
+        // Всё отрисовано и фокус на месте — снимаем индикатор «Загрузка…»
+        if (typeof Animations !== 'undefined' && typeof Animations.detailContentReady === 'function') {
+            Animations.detailContentReady();
+        }
+    }, 200);
+    AppState.mediaType = '';
+}
+
+async function loadAllTmdbDataForTorrent(torrent, elements) {
+    elements = elements || {};
+
+    var protocolBase = 'https:';
+    try {
+        protocolBase = String((window.AppState && AppState.protocol) || 'https:').replace(/:+$/, '');
+        if (protocolBase.indexOf(':') === -1) protocolBase += ':';
+    } catch (e) { }
+
+    function normalizePosterUrl(path, size) {
+        if (!path) return null;
+        path = String(path);
+
+        if (path.indexOf('http') === 0) return path;
+
+        size = size || 'w342';
+
+        return protocolBase + '//' + getPrimaryImageHost() + '/t/p/' + size +
+            (path.charAt(0) === '/' ? path : '/' + path);
+    }
+
+    function extractSeasonsFromTitleLocal(title) {
+        var seasons = [];
+
+        if (!title) return seasons;
+
+        function addSeason(num) {
+            var n = parseInt(num, 10);
+            if (!isNaN(n) && n > 0 && n < 1000 && seasons.indexOf(n) === -1) {
+                seasons.push(n);
+            }
+        }
+
+        var rangePatterns = [
+            /\[сезон\s*(\d+)\s*[-–]\s*(\d+)\]/i,
+            /\[season\s*(\d+)\s*[-–]\s*(\d+)\]/i,
+            /сезон\s*(\d+)\s*[-–]\s*(\d+)/i,
+            /season\s*(\d+)\s*[-–]\s*(\d+)/i,
+            /\bS(\d+)\s*[-–]\s*S?(\d+)\b/i
+        ];
+
+        for (var r = 0; r < rangePatterns.length; r++) {
+            var rm = title.match(rangePatterns[r]);
+            if (rm && rm[1] && rm[2]) {
+                var from = parseInt(rm[1], 10);
+                var to = parseInt(rm[2], 10);
+
+                if (!isNaN(from) && !isNaN(to)) {
+                    if (from > to) {
+                        var tmp = from;
+                        from = to;
+                        to = tmp;
+                    }
+
+                    for (var s = from; s <= to; s++) {
+                        addSeason(s);
+                    }
+
+                    return seasons.sort(function (a, b) { return a - b; });
+                }
+            }
+        }
+
+        var listPatterns = [
+            /\[сезон\s*([\d,\s]+)\]/i,
+            /\[season\s*([\d,\s]+)\]/i,
+            /сезон\s*([\d,\s]+)/i,
+            /season\s*([\d,\s]+)/i,
+            /\bS([\d,\s]+)/i
+        ];
+
+        for (var l = 0; l < listPatterns.length; l++) {
+            var lm = title.match(listPatterns[l]);
+            if (lm && lm[1]) {
+                var parts = String(lm[1]).split(/[,\s]+/);
+                for (var p = 0; p < parts.length; p++) {
+                    addSeason(parts[p]);
+                }
+
+                if (seasons.length > 0) break;
+            }
+        }
+
+        if (seasons.length === 0) {
+            var singlePatterns = [
+                /\[сезон\s*(\d+)\]/i,
+                /\[season\s*(\d+)\]/i,
+                /сезон\s*(\d+)/i,
+                /season\s*(\d+)/i,
+                /\bS(\d+)\b/i
+            ];
+
+            for (var sng = 0; sng < singlePatterns.length; sng++) {
+                var sm = title.match(singlePatterns[sng]);
+                if (sm && sm[1]) {
+                    addSeason(sm[1]);
+                    break;
+                }
+            }
+        }
+
+        return seasons.sort(function (a, b) { return a - b; });
+    }
+
+    function cleanTitleFromSeasonsLocal(title) {
+        if (!title) return title;
+
+        return String(title)
+            .replace(/\[сезон[^\]]*\]/gi, '')
+            .replace(/\[season[^\]]*\]/gi, '')
+            .replace(/сезон\s*[\d\s,–-]+/gi, '')
+            .replace(/season\s*[\d\s,–-]+/gi, '')
+            .replace(/\bS\d+\b/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function extractSeasonsFromFilesLocal() {
+        var seasons = [];
+
+        var files = [];
+        try {
+            if (typeof getTorrentFiles === 'function') {
+                files = getTorrentFiles(torrent) || [];
+            }
+        } catch (e) { }
+
+        if (!files.length) return seasons;
+
+        function addSeason(num) {
+            var n = parseInt(num, 10);
+            if (!isNaN(n) && n > 0 && n < 1000 && seasons.indexOf(n) === -1) {
+                seasons.push(n);
+            }
+        }
+
+        var patterns = [
+            /S(\d{1,2})/i,
+            /(\d{1,2})x\d{2}/i,
+            /Season\s*(\d{1,2})/i,
+            /сезон\s*(\d{1,2})/i
+        ];
+
+        for (var i = 0; i < files.length; i++) {
+            var path = String(files[i].path || '');
+
+            for (var p = 0; p < patterns.length; p++) {
+                var m = path.match(patterns[p]);
+                if (m && m[1]) {
+                    addSeason(m[1]);
+                    break;
+                }
+            }
+        }
+
+        return seasons.sort(function (a, b) { return a - b; });
+    }
+
+    var initialTitle = (torrent && torrent.title) ? String(torrent.title) : 'Без названия';
+
+    var result = {
+        tmdbId: null,
+        cleanTitle: initialTitle,
+        seasonNumbers: [],
+        isTvSeries: false,
+        mediaType: 'movie',
+        videoFilesCount: 0,
+        allSeasonEpisodes: {},
+        movieStill: null,
+        details: null
+    };
+
+    if (!torrent) return result;
+
+    var hashLower = torrent.hash ? String(torrent.hash).toLowerCase() : '';
+    var known = null;
+
+    try {
+        if (hashLower) {
+            if (typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta && knownTorrentMeta.get) {
+                known = knownTorrentMeta.get(hashLower) || null;
+            }
+
+            if (!known && typeof window.getKnownTorrentMeta === 'function') {
+                known = window.getKnownTorrentMeta(hashLower) || null;
+            }
+
+            if (!known &&
+                typeof lastAddedTorrentHash !== 'undefined' &&
+                lastAddedTorrentHash &&
+                hashLower === String(lastAddedTorrentHash).toLowerCase()) {
+
+                var pendingItem =
+                    (window.AppState && AppState.pendingDetailItem) ||
+                    window.pendingCatalogItem ||
+                    null;
+
+                known = {
+                    id: (window.AppState && AppState.pendingDetailTmdbId) ||
+                        (pendingItem && (pendingItem.id || pendingItem.tmdbId)) ||
+                        null,
+                    mediaType: (window.AppState && AppState.pendingDetailMediaType) ||
+                        (pendingItem && pendingItem.media_type) ||
+                        null,
+                    poster: (window.AppState && AppState.pendingDetailPoster) ||
+                        window.pendingCatalogPoster ||
+                        null
+                };
+            }
+        }
+    } catch (e) { }
+
+    if (known) {
+        if (!torrent.tmdbId && known.id) torrent.tmdbId = known.id;
+        if (!torrent.media_type && known.mediaType) torrent.media_type = known.mediaType;
+        if (!torrent.poster && known.poster) torrent.poster = normalizePosterUrl(known.poster, 'w342');
+    }
+
+    if (torrent.poster) {
+        torrent.poster = normalizePosterUrl(torrent.poster, 'w342');
+    }
+
+    var cleanTitle = initialTitle;
+
+    var tmdbId = torrent.tmdbId || torrent.knownTmdbId || null;
+
+    if (!tmdbId) {
+        var bracketMatch = cleanTitle.match(/\[(\d+)\]/);
+        if (bracketMatch && bracketMatch[1]) {
+            tmdbId = bracketMatch[1];
+        }
+    }
+
+    cleanTitle = cleanTitle
+        .replace(/\[\d+\]/g, '')
+        .replace(/\[(tv|movie|сериал|фильм)\]/gi, '')
+        .replace(/\[сезон[^\]]*\]/gi, '')
+        .trim();
+
+    var seasonNumbers = extractSeasonsFromTitleLocal(cleanTitle);
+
+    if (seasonNumbers.length > 0) {
+        cleanTitle = cleanTitleFromSeasonsLocal(cleanTitle);
+    }
+
+    if (seasonNumbers.length === 0) {
+        seasonNumbers = extractSeasonsFromFilesLocal();
+    }
+
+    // Тип с карточки торрента (её бейдж «Сериал»/«Фильм»). Считается по самому
+    // торренту — число файлов в раздаче плюс его category, — поэтому это самый
+    // надёжный локальный признак, и «Сериал» здесь главнее всего остального.
+    var cardMediaType = getTorrentMediaTypeFromCard(torrent);
+
+    var forcedTv = false;
+
+    if (cardMediaType === 'tv') forcedTv = true;
+    if (torrent.media_type === 'tv') forcedTv = true;
+    if (known && known.mediaType === 'tv') forcedTv = true;
+    // AppState.mediaType здесь не читаем: это тип предыдущего экрана, а не этого
+    // торрента (см. комментарий у knownMediaType ниже).
+
+    // Если мы точно знаем, что это сериал, но сезон не смогли определить,
+    // берём сезон 1 как fallback, иначе кадры сезонов не загрузятся.
+    if (seasonNumbers.length === 0 && forcedTv) {
+        seasonNumbers = [1];
+    }
+
+    result.tmdbId = tmdbId;
+    result.cleanTitle = cleanTitle;
+    result.seasonNumbers = seasonNumbers;
+
+    if (elements.titleEl) {
+        elements.titleEl.textContent = cleanTitle;
+    }
+
+    // Бейдж «Сериал» перебивает всё: раньше сюда попадал movie из torrent.category
+    // (у сериала category бывает movie) и из уже записанного torrent.media_type
+    // (мог быть испорчен предыдущим неверным определением — строка с details.media_type
+    // ниже). Из-за этого о сериале грузились данные как о фильме (запрос к /movie).
+    var knownMediaType = (cardMediaType === 'tv') ? 'tv' : (
+        torrent.media_type ||
+        torrent.knownMediaType ||
+        (known && known.mediaType) ||
+        null
+    );
+
+    // «Сезон/серия/эпизод/S01» в названии — признак сериала. Считаем один раз:
+    // раньше эта проверка была только в самой последней ветке ниже.
+    var titleLooksLikeSeries = /(^|[^a-z0-9а-яё])(сезон|season|серия|эпизод|s\d+)([^a-z0-9а-яё]|$)/i
+        .test(String(torrent.title || '').toLowerCase());
+
+    // «Фильм» с карточки — сигнал о конкретном торренте. Принимаем его только когда
+    // других признаков сериала нет: бейдж считается по числу файлов, а сериал бывает
+    // и одним файлом (один сезон / одна серия) — тогда важнее сезон из названия или
+    // из имён файлов.
+    if (!knownMediaType && cardMediaType === 'movie' &&
+        seasonNumbers.length === 0 && !titleLooksLikeSeries) {
+        knownMediaType = 'movie';
+    }
+
+    // Глобальный AppState.mediaType сюда больше не подмешивается. Это тип текущего
+    // экрана (каталог выставляет его по категории), а не этого торрента, и он
+    // оставался от предыдущего открытия: после сериала фильм запрашивался как
+    // /api/tmdb/details?type=tv, а после фильма сериал — как ?type=movie.
+    // Тип из каталога доходит сюда по-другому — через torrent.media_type и
+    // knownTorrentMeta по hash (их заполняют playFromHash и addTorrentToServer),
+    // а также через category раздачи, которую читает getTorrentMediaTypeFromCard.
+
+    if (!knownMediaType && torrent.category) {
+        var categoryLower = String(torrent.category).toLowerCase();
+
+        if (categoryLower.indexOf('tv') !== -1 || categoryLower.indexOf('сериал') !== -1) {
+            knownMediaType = 'tv';
+        } else if (categoryLower.indexOf('movie') !== -1 || categoryLower.indexOf('фильм') !== -1) {
+            knownMediaType = 'movie';
+        }
+    }
+
+    var isTvSeries = false;
+
+    if (knownMediaType === 'tv') {
+        isTvSeries = true;
+    } else if (knownMediaType === 'movie') {
+        isTvSeries = false;
+    } else if (seasonNumbers.length > 0) {
+        isTvSeries = true;
+    } else {
+        try {
+            if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 1) {
+                isTvSeries = true;
+            } else if (torrent.data) {
+                var parsedData = JSON.parse(torrent.data);
+                if (
+                    parsedData &&
+                    parsedData.TorrServer &&
+                    parsedData.TorrServer.Files &&
+                    parsedData.TorrServer.Files.length > 1
+                ) {
+                    isTvSeries = true;
+                }
+            }
+        } catch (e) { }
+
+        if (!isTvSeries) {
+            isTvSeries = titleLooksLikeSeries;
+        }
+    }
+
+    var mediaType = isTvSeries ? 'tv' : 'movie';
+
+    // Решение записываем обратно в торрент. Раньше сюда попадал только
+    // details.media_type (ниже, если поля ещё не было), и одно неверное определение
+    // прилипало к объекту на всю сессию: при следующем заходе в detail запрос опять
+    // уходил не туда. Теперь тип всегда согласован с бейджем карточки.
+    torrent.media_type = mediaType;
+
+    var videoFilesCount = 0;
+    try {
+        if (typeof getVideoFilesFromTorrent === 'function') {
+            videoFilesCount = getVideoFilesFromTorrent(torrent).length;
+        }
+    } catch (e) { }
+
+    var details = null;
+
+    if (tmdbId && typeof getTmdbDetailsWithCache === 'function') {
+        try {
+            details = await getTmdbDetailsWithCache(tmdbId, mediaType);
+        } catch (e) {
+            console.warn('Ошибка загрузки TMDB details:', e);
+        }
+    }
+
+    // Пока ждали TMDB, открыли другую раздачу — фон и описание этой не рисуем
+    if (details && elements.detailViewDiv && !isOpenTorrentDetail(torrent)) details = null;
+
+    if (details) {
+        if (details.backdrop_path && elements.detailViewDiv) {
+            var backdropUrl = normalizePosterUrl(details.backdrop_path, 'w1280');
+
+            elements.detailViewDiv.style.backgroundImage =
+                'linear-gradient(to top, rgba(0, 0, 0, 0.97) 0%, rgba(0, 0, 0, 0.82) 32%, rgba(0, 0, 0, 0.38) 64%, rgba(0, 0, 0, 0.25) 100%), ' +
+                'linear-gradient(to right, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.5) 45%, rgba(0, 0, 0, 0.1) 100%), ' +
+                'url("' + backdropUrl + '")';
+            elements.detailViewDiv.style.backgroundSize = 'cover';
+            elements.detailViewDiv.style.backgroundPosition = 'center';
+            elements.detailViewDiv.style.backgroundRepeat = 'no-repeat';
+            // Тот же кадр без затемнения — для телефона в книжной ориентации:
+            // там он рисуется яркой полосой в .catalog-detail-backdrop, как в
+            // карточке каталога, а фон выше гасится (styles.css)
+            elements.detailViewDiv.style.setProperty('--torrent-backdrop', 'url("' + backdropUrl + '")');
+        }
+
+        if (details.overview) {
+            if (elements.detailSubtitle) {
+                elements.detailSubtitle.textContent = details.overview;
+                elements.detailSubtitle.style.display = 'block';
+                elements.detailSubtitle.classList.remove('hidden');
+            }
+        }
+
+        // Описание и переход в карточку каталога — теперь доступны и здесь
+        revealTorrentDetailExtras(torrent, details);
+
+        if (typeof updateDetailMetaInfo === 'function') {
+            try {
+                updateDetailMetaInfo(details);
+            } catch (e) { }
+        }
+
+        if (!torrent.poster && details.poster_path) {
+            torrent.poster = normalizePosterUrl(details.poster_path, 'w342');
+        }
+
+        var posterEl = elements.posterImg || (typeof getEl === 'function' ? getEl('detail-poster') : null);
+
+        if (posterEl && torrent.poster && !posterEl.querySelector('img')) {
+            posterEl.innerHTML = '<img src="' + torrent.poster + '" alt="poster">';
+        }
+
+        if (details.media_type && !torrent.media_type) {
+            torrent.media_type = details.media_type;
+        }
+    }
+
+    var allSeasonEpisodes = {};
+
+    if (tmdbId && isTvSeries && seasonNumbers.length > 0 && typeof loadSeasonStills === 'function') {
+        var seasonPromises = seasonNumbers.map(function (seasonNumber) {
+            return loadSeasonStills(tmdbId, seasonNumber)
+                .then(function (episodes) {
+                    return {
+                        season: seasonNumber,
+                        episodes: episodes || []
+                    };
+                })
+                .catch(function () {
+                    return {
+                        season: seasonNumber,
+                        episodes: []
+                    };
+                });
+        });
+
+        try {
+            var seasonResults = await Promise.all(seasonPromises);
+
+            for (var i = 0; i < seasonResults.length; i++) {
+                var seasonResult = seasonResults[i];
+
+                if (seasonResult && seasonResult.episodes && seasonResult.episodes.length > 0) {
+                    allSeasonEpisodes[seasonResult.season] = seasonResult.episodes;
+                }
+            }
+        } catch (e) {
+            console.warn('Ошибка загрузки кадров сезонов:', e);
+        }
+    }
+
+    var movieStill = null;
+
+    if (tmdbId && !isTvSeries && seasonNumbers.length === 0 && typeof loadMovieStill === 'function') {
+        try {
+            movieStill = await loadMovieStill(tmdbId);
+        } catch (e) {
+            console.warn('Ошибка загрузки постера/кадра фильма:', e);
+        }
+    }
+
+    if (window.AppState) {
+        AppState.isSerials = isTvSeries;
+
+        if (isTvSeries && seasonNumbers.length === 1) {
+            AppState.currentTMDB = tmdbId;
+            AppState.currentSeason = seasonNumbers[0];
+        }
+    }
+
+    if (
+        hashLower &&
+        tmdbId &&
+        typeof knownTorrentMeta !== 'undefined' &&
+        knownTorrentMeta &&
+        knownTorrentMeta.set
+    ) {
+        try {
+            knownTorrentMeta.set(hashLower, {
+                id: tmdbId,
+                mediaType: mediaType,
+                poster: torrent.poster || null
+            });
+        } catch (e) { }
+    }
+
+    result.isTvSeries = isTvSeries;
+    result.mediaType = mediaType;
+    result.videoFilesCount = videoFilesCount;
+    result.allSeasonEpisodes = allSeasonEpisodes;
+    result.movieStill = movieStill;
+    result.details = details;
+
+    return result;
+}
+
+// Кадр серии. Контейнер и затемнение теперь всегда есть в плитке (buildFileItem)
+// и просто гасятся классом — разбирать здесь строку разметки больше не нужно.
+function updateFileItemStill(fileItem, stillImage) {
+    if (!fileItem || !stillImage) return;
+    if (fileItem._still) {
+        fileItem._still.src = stillImage;
+        fileItem._stillBox.classList.remove('hidden');
+        fileItem._overlay.classList.remove('hidden');
+        return;
+    }
+    // Плитка не из пула (чужой код мог собрать свою) — прежний путь
+    var existingContainer = fileItem.querySelector('.file-still-container');
+    if (existingContainer) { var img = existingContainer.querySelector('img'); if (img) img.src = stillImage; }
+}
+
+function updateDetailMetaInfo(tmdbData) {
+    var metaContainer = getEl('catalog-detail-meta');
+    if (!metaContainer) return;
+
+    metaContainer.innerHTML = '';
+
+    // Год
+    if (tmdbData.release_date || tmdbData.first_air_date) {
+        var year = (tmdbData.release_date || tmdbData.first_air_date).substring(0, 4);
+        var yearChip = document.createElement('div');
+        yearChip.className = 'catalog-meta-chip';
+        yearChip.textContent = year;
+        metaContainer.appendChild(yearChip);
+    }
+    // Рейтинг
+    if (tmdbData.vote_average) {
+        var ratingChip = document.createElement('div');
+        ratingChip.className = 'catalog-meta-chip';
+        ratingChip.textContent = '⭐ ' + tmdbData.vote_average.toFixed(1);
+        metaContainer.appendChild(ratingChip);
+    }
+    // Тип контента
+    var typeChip = document.createElement('div');
+    typeChip.className = 'catalog-meta-chip';
+    typeChip.textContent = (tmdbData.media_type === 'tv' || tmdbData.number_of_seasons !== undefined) ? 'Сериал' : 'Фильм';
+    metaContainer.appendChild(typeChip);
+    // Жанры
+    if (tmdbData.genres && Array.isArray(tmdbData.genres)) {
+        var genresLen = Math.min(tmdbData.genres.length, 3);
+        for (var i = 0; i < genresLen; i++) {
+            var genreChip = document.createElement('div');
+            genreChip.className = 'catalog-meta-chip';
+            genreChip.textContent = tmdbData.genres[i].name;
+            metaContainer.appendChild(genreChip);
+        }
+    }
+
+    // Если мы добавили хотя бы один чип, показываем контейнер
+    if (metaContainer.children.length > 0) {
+        metaContainer.classList.add('hidden');
+        metaContainer.style.display = 'none';
+    }
+
+    // Те же данные, но одной строкой под заголовком (торрентный detail).
+    // Вызывается из обоих путей загрузки TMDB — и воркерного, и запасного.
+    detailMetaState.details = tmdbData;
+    if (tmdbData) {
+        // /api/tmdb/details отдаёт тип в поле type, media_type там не бывает
+        detailMetaState.isTvSeries = detailMetaState.isTvSeries ||
+            tmdbData.type === 'tv' || tmdbData.media_type === 'tv' ||
+            tmdbData.number_of_seasons !== undefined;
+    }
+    renderDetailMetaRow();
+}
+
+// ==================== ДЕЛЕГИРОВАНИЕ PLAY-КНОПОК В ФАЙЛАХ ====================
+function setupFilePlayButtonDelegation() {
+    var filesList = getEl('files-list');
+    if (!filesList || filesList._playDelegationBound) return;
+
+    filesList._playDelegationBound = true;
+
+    filesList.addEventListener('click', async function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('.play-btn') : null;
+        if (!btn) return;
+
+        e.stopPropagation();
+
+        var item = btn.closest('.file-item');
+
+        var hash = btn.dataset.hash || (item && item.dataset.hash) || '';
+
+        var fileId = parseInt(btn.dataset.fileId || (item && item.dataset.fileId) || '1', 10);
+        if (!fileId) fileId = 1;
+
+        var episodeIndex = null;
+        var rawEpisode = btn.dataset.episodeIndex;
+
+        if ((!rawEpisode || rawEpisode === 'null') && item && item.dataset.episodeIndex !== undefined) {
+            rawEpisode = item.dataset.episodeIndex;
+        }
+
+        if (rawEpisode !== undefined && rawEpisode !== '' && rawEpisode !== 'null') {
+            var parsedEpisode = parseInt(rawEpisode, 10);
+            if (!isNaN(parsedEpisode)) episodeIndex = parsedEpisode;
+        }
+
+        // Немой return здесь означал: нажал «играть» на серии — ничего не
+        // произошло, причина неизвестна. ensureTorrserverOnline объясняет её
+        // баннером и проверяет не только «адрес задан», но и «сервер отвечает».
+        if (!hash) {
+            if (typeof window.showErrorBanner === 'function') window.showErrorBanner('Не удалось начать воспроизведение', 'У файла нет hash раздачи');
+            return;
+        }
+        if (!(await ensureTorrserverOnline())) return;
+
+        var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
+
+        var overlay = getEl('playback-overlay');
+        if (overlay) overlay.classList.add('active');
+
+        var detailView = getEl('detail-view');
+        if (detailView) detailView.style.pointerEvents = 'none';
+
+        startHLSPlayback(playUrl, 0, false, episodeIndex).finally(function () {
+            if (overlay) overlay.classList.remove('active');
+            if (detailView) detailView.style.pointerEvents = 'auto';
+        });
+    });
+}
+// ==================== /ДЕЛЕГИРОВАНИЕ PLAY-КНОПОК ====================
+
+// ==================== ПУЛ ПЛИТОК ФАЙЛОВ ====================
+/**
+ * У сериала в раздаче бывает и сорок файлов, и шестьдесят, и каждая плитка
+ * собиралась шаблонной строкой с инлайновыми стилями — заново на каждое
+ * открытие карточки. Теперь плитки живут в #files-list постоянно: пул дорастает
+ * до самой длинной раздачи за сеанс, лишние гасятся классом .hidden. Фокус их
+ * не увидит: updateFocusableElements отбирает элементы по offsetParent !== null
+ * (control.js).
+ *
+ * Инлайновые стили полосы прогресса ушли в CSS: правила
+ * .file-progress-container и .file-progress-fill в styles.css уже были и
+ * повторяли их почти один в один.
+ *
+ * Служебные сообщения («Загрузка файлов…», «Нет файлов», ошибка) переехали в
+ * отдельный узел: раньше каждое из них переписывало #files-list целиком и
+ * теперь уничтожило бы пул.
+ */
+
+/** Контейнер списка с узлом под сообщения. Пересобирается, только если список кто-то очистил */
+function ensureFilesListShell() {
+    var list = getEl('files-list');
+    if (!list) return null;
+    if (!list._msg || list._msg.parentNode !== list) {
+        list.innerHTML = '';
+        var msg = document.createElement('div');
+        msg.className = 'files-list-msg hidden';
+        list.appendChild(msg);
+        list._msg = msg;
+        list._pool = [];
+    }
+    return list;
+}
+
+function buildFileItem() {
+    var item = document.createElement('div');
+    item.className = 'file-item hidden';
+
+    var stillBox = document.createElement('div');
+    stillBox.className = 'file-still-container hidden';
+    var still = document.createElement('img');
+    still.decoding = 'async';
+    still.alt = '';
+    stillBox.appendChild(still);
+
+    var overlay = document.createElement('div');
+    overlay.className = 'file-overlay hidden';
+
+    // Кадр не отдался — прячем и его контейнер, и затемнение над ним,
+    // иначе поверх плитки остаётся тёмный прямоугольник ни от чего
+    still.onerror = function () {
+        stillBox.classList.add('hidden');
+        overlay.classList.add('hidden');
+    };
+
+    var content = document.createElement('div');
+    content.className = 'file-content';
+    var play = document.createElement('button');
+    play.className = 'play-btn';
+    play.textContent = '▶';
+    content.appendChild(play);
+
+    var info = document.createElement('div');
+    info.className = 'file-info';
+    var name = document.createElement('div');
+    name.className = 'file-name';
+    var size = document.createElement('div');
+    size.className = 'file-size';
+    info.appendChild(name);
+    info.appendChild(size);
+
+    var progressBox = document.createElement('div');
+    progressBox.className = 'file-progress-container';
+    var fill = document.createElement('div');
+    fill.className = 'file-progress-fill';
+    progressBox.appendChild(fill);
+
+    item.appendChild(stillBox);
+    item.appendChild(overlay);
+    item.appendChild(content);
+    item.appendChild(info);
+    item.appendChild(progressBox);
+
+    item._stillBox = stillBox;
+    item._still = still;
+    item._overlay = overlay;
+    item._play = play;
+    item._name = name;
+    item._size = size;
+    item._fill = fill;
+    return item;
+}
+
+/**
+ * Вернуть плитку в исходное состояние и погасить.
+ *
+ * data-атрибуты чистим обязательно: по ним ищут плитку и updateCurrentFileProgress
+ * (js/player.js), и loadProgressForFileItems — погашенная плитка с хэшем прошлой
+ * раздачи отвечала бы на этот поиск вместо нужной.
+ */
+function resetFileItem(item) {
+    if (!item) return;
+    item.classList.add('hidden');
+    item.classList.remove('has-progress');
+    item.classList.remove('focused');
+    item._stillBox.classList.add('hidden');
+    item._overlay.classList.add('hidden');
+    if (item._still.getAttribute('src')) item._still.removeAttribute('src');
+    item._fill.style.width = '';
+    item._fill.style.opacity = '';
+    delete item.dataset.hash;
+    delete item.dataset.fileId;
+    delete item.dataset.fileName;
+    delete item.dataset.episodeIndex;
+    delete item.dataset.progressTimecode;
+    delete item.dataset.progressDuration;
+}
+
+function clearFilesList() {
+    var list = ensureFilesListShell();
+    if (!list) return;
+    for (var i = 0; i < list._pool.length; i++) resetFileItem(list._pool[i]);
+    hideFilesListMessage(list);
+}
+
+function showFilesListMessage(html, modifier) {
+    var list = ensureFilesListShell();
+    if (!list) return;
+    for (var i = 0; i < list._pool.length; i++) resetFileItem(list._pool[i]);
+    list._msg.className = 'files-list-msg' + (modifier ? ' ' + modifier : '');
+    list._msg.innerHTML = html;
+}
+
+function hideFilesListMessage(list) {
+    list = list || ensureFilesListShell();
+    if (!list || !list._msg) return;
+    if (list._msg.innerHTML) list._msg.innerHTML = '';
+    list._msg.className = 'files-list-msg hidden';
+}
+
+function acquireFileItem(list, index) {
+    while (list._pool.length <= index) {
+        var el = buildFileItem();
+        list.appendChild(el);
+        list._pool.push(el);
+    }
+    return list._pool[index];
+}
+
+function fillFileItem(item, file, hash, name, episodeIndex) {
+    var fileName = String(file.path || '').split('/').pop() || ('Файл ' + file.id);
+    resetFileItem(item);
+    item.dataset.hash = hash;
+    item.dataset.fileId = file.id;
+    item.dataset.fileName = fileName;
+    var hasEpisode = episodeIndex !== undefined && episodeIndex !== null;
+    if (hasEpisode) item.dataset.episodeIndex = episodeIndex;
+    item._play.dataset.hash = hash;
+    item._play.dataset.fileId = file.id;
+    item._play.dataset.episodeIndex = hasEpisode ? episodeIndex : '';
+    item._name.textContent = name;
+    item._name.title = name;
+    item._size.textContent = formatBytes(file.length);
+    item.classList.remove('hidden');
+    return item;
+}
+
+var FILE_ITEM_EXTENSIONS = ['mkv', 'mp4', 'avi', 'mov', 'webm', 'm4v'];
+
+/**
+ * Разложить файлы раздачи по плиткам пула и погасить остаток.
+ * @returns {Array} показанные плитки — в том же порядке, что и раньше
+ */
+function renderFileItems(videoFiles, hash, singleTitle) {
+    var list = ensureFilesListShell();
+    if (!list) return [];
+    hideFilesListMessage(list);
+
+    var single = videoFiles.length === 1;
+    var used = [];
+    for (var i = 0; i < videoFiles.length; i++) {
+        var file = videoFiles[i];
+        var ext = String(file.path || '').split('.').pop().toLowerCase();
+        if (FILE_ITEM_EXTENSIONS.indexOf(ext) === -1) continue;
+        var item = acquireFileItem(list, used.length);
+        fillFileItem(item, file, hash, single ? singleTitle : 'Серия ' + (i + 1), single ? null : i);
+        used.push(item);
+    }
+    for (var j = used.length; j < list._pool.length; j++) resetFileItem(list._pool[j]);
+    return used;
+}
+
+/** Совместимость: одиночная плитка через пул. Клик по .play-btn ловит делегирование
+ *  в setupFilePlayButtonDelegation(). */
+function addFileItem(file, hash, name, episodeIndex) {
+    var ext = String(file.path || '').split('.').pop().toLowerCase();
+    if (FILE_ITEM_EXTENSIONS.indexOf(ext) === -1) return null;
+    var list = ensureFilesListShell();
+    if (!list) return null;
+    var used = 0;
+    while (used < list._pool.length && !list._pool[used].classList.contains('hidden')) used++;
+    return fillFileItem(acquireFileItem(list, used), file, hash, name, episodeIndex);
+}
+
+async function loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieStill, totalVideoFiles) {
+    if (seasonNumbers.length > 0 && Object.keys(allSeasonEpisodes).length > 0) {
+        var sortedSeasons = seasonNumbers.slice().sort((a, b) => a - b);
+        var allStillsInOrder = [];
+        sortedSeasons.forEach(seasonNum => {
+            var episodes = (allSeasonEpisodes[seasonNum] || []).slice().sort((a, b) => (a.episodeNumber || 0) - (b.episodeNumber || 0));
+            episodes.forEach(ep => { if (ep.stillPath) allStillsInOrder.push({ season: seasonNum, episode: ep.episodeNumber, stillPath: ep.stillPath }); });
+        });
+        var fileItems = document.querySelectorAll('#files-list .file-item:not(.hidden)');
+        for (var i = 0; i < Math.min(fileItems.length, allStillsInOrder.length); i++) {
+            (function (item, url, index) { setTimeout(function () { updateFileItemStill(item, buildTmdbPosterUrl(url, 'w300')); }, index * 30); })(fileItems[i], allStillsInOrder[i].stillPath, i);
+        }
+    } else if (totalVideoFiles === 1 && movieStill) {
+        var fileItem = document.querySelector('#files-list .file-item:not(.hidden)'); if (fileItem) setTimeout(function () { updateFileItemStill(fileItem, movieStill); }, 100);
+    }
+}
+
+// Вспомогательная функция применения прогресса к элементу
+function applyProgressToItem(item, timecode, duration) {
+    var progressPercent = Math.min((timecode / duration) * 100, 98);
+    var progressFill = item.querySelector('.file-progress-fill');
+    if (progressFill) {
+        progressFill.style.width = progressPercent + '%';
+        if (progressPercent > 5) {
+            progressFill.style.opacity = '1';
+            item.classList.add('has-progress');
+        }
+    }
+    item.dataset.progressTimecode = timecode;
+    item.dataset.progressDuration = duration;
+}
+
+function getVideoFilesForProgress(files) {
+    var videoFiles = [];
+    for (var i = 0; i < (files || []).length; i++) {
+        var file = files[i];
+        var name = String(file.path || file.name || '').toLowerCase();
+        if (['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(function (ext) {
+            return name.indexOf(ext) !== -1;
+        })) {
+            file._progressIndex = i;
+            videoFiles.push(file);
+        }
+    }
+    return videoFiles;
+}
+
+/**
+ * Какая из двух отметок просмотра свежее.
+ *
+ * Раньше «последней серией» считалась та, что дальше по списку файлов
+ * (максимальный index). Переключился в плеере с 1-й серии на 2-ю и вышел — всё
+ * совпадало случайно; а стоило вернуться к более ранней серии, и карточка
+ * продолжала предлагать самую дальнюю из просмотренных.
+ *
+ * Время правки отдаёт сам сервер: /api/timecode/batch кладёт в ответ поле
+ * timestamp (это updated_at из таблицы timecodes). Если сервер старый и поля
+ * нет, сравнение откатывается на прежний порядок по индексу.
+ */
+function isNewerWatchEntry(entry, current) {
+    if (entry.timestamp && current.timestamp && entry.timestamp !== current.timestamp) {
+        return entry.timestamp > current.timestamp;
+    }
+    return entry.index > current.index;
+}
+
+function getTorrentProgressBatch(hash, files) {
+    if (!hash) return Promise.resolve({ byFileId: {}, lastWatched: null });
+    var cached = torrentProgressCache.get(hash);
+    if (cached) return Promise.resolve(cached);
+    if (torrentProgressInFlight[hash]) return torrentProgressInFlight[hash];
+
+    var request = (async function () {
+        var videoFiles = getVideoFilesForProgress(files);
+        var result = { byFileId: {}, lastWatched: null };
+        if (!videoFiles.length) return result;
+
+        try {
+            var response = await fetch(SERVER_URL + '/api/timecode/batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    hash: hash,
+                    fileIds: videoFiles.map(function (file) { return parseInt(file.id, 10); }),
+                    clientId: localStorage.getItem('clientId')
+                })
+            });
+            if (!response.ok) return result;
+            var data = await response.json();
+            if (!data.success || !data.timecodes) return result;
+
+            for (var i = 0; i < videoFiles.length; i++) {
+                var file = videoFiles[i];
+                var timecode = data.timecodes[file.id];
+                if (!timecode || !(timecode.timecode > 0)) continue;
+                var entry = {
+                    hash: hash,
+                    fileId: file.id,
+                    timecode: timecode.timecode,
+                    duration: timecode.duration || 0,
+                    index: file._progressIndex,
+                    timestamp: timecode.timestamp || 0,
+                    fileName: String(file.path || file.name || '').split('/').pop()
+                };
+                result.byFileId[String(file.id)] = entry;
+                if (!result.lastWatched || isNewerWatchEntry(entry, result.lastWatched)) {
+                    result.lastWatched = entry;
+                }
+            }
+        } catch (error) {
+            console.error('Progress batch request failed:', error);
+        }
+        return result;
+    })();
+
+    torrentProgressInFlight[hash] = request;
+    return request.then(function (result) {
+        delete torrentProgressInFlight[hash];
+        torrentProgressCache.set(hash, result);
+        return result;
+    }, function (error) {
+        delete torrentProgressInFlight[hash];
+        throw error;
+    });
+}
+
+async function loadProgressForTorrent(torrent, preloadedFiles) {
+    if (!torrent || !torrent.hash) return null;
+    var files = Array.isArray(preloadedFiles) && preloadedFiles.length
+        ? preloadedFiles
+        : await getTorrentFilesWithCache(torrent, false);
+    var progress = await getTorrentProgressBatch(torrent.hash, files);
+    if (!progress.lastWatched) return null;
+
+    var last = progress.lastWatched;
+    return {
+        hash: torrent.hash,
+        fileId: last.fileId,
+        timecode: last.timecode,
+        duration: last.duration,
+        episodeIndex: last.index,
+        totalEpisodes: getVideoFilesForProgress(files).length,
+        episodeName: last.fileName,
+        isSeries: getVideoFilesForProgress(files).length > 1
+    };
+}
+
+async function loadProgressForFileItems(items, hash) {
+    if (!items || !items.length || !hash) return;
+    var files = [];
+    for (var i = 0; i < items.length; i++) {
+        files.push({
+            id: items[i].dataset.fileId,
+            path: items[i].dataset.fileName || String(items[i].dataset.fileId) + '.mkv'
+        });
+    }
+    var progress = await getTorrentProgressBatch(hash, files);
+    for (var j = 0; j < items.length; j++) {
+        var itemProgress = progress.byFileId[String(items[j].dataset.fileId)];
+        if (itemProgress && itemProgress.duration > 0) {
+            applyProgressToItem(items[j], itemProgress.timecode, itemProgress.duration);
+        }
+    }
+}
+
+/* ==================== РАЗБОР ffprobe ====================
+ *
+ * Рядом с каждой раздачей Jacred отдаёт ffprobe — реальные потоки файла:
+ * разрешение, кодеки, битрейт, звуковые дорожки с языками и названиями,
+ * субтитры. Отсюда берётся и качество, и та сводка, что показана в списке.
+ *
+ * Качество берём отсюда, а не из info.quality, потому что info.quality Jacred
+ * выводит из НАЗВАНИЯ и на рипах регулярно ошибается. Замер по выдаче «Дюны»
+ * (169 раздач, 137 с ffprobe): разошёлся с файлом в 25 случаях, и в 24 из них
+ * занизил до 480 — это и есть «в названии 1080p, а в фильтре SD». Ошибается
+ * предсказуемо: нет явного «1080p» в названии (BDRip, WEBRip, WEB-DLRip) —
+ * ставится 480; а когда «(1080p)» есть, но перед ним лишние блоки в скобках
+ * («3D (HSBS) / BDRip (1080p)», «Blu-Ray Remux (1080p)»), разбор до
+ * разрешения не доходит.
+ *
+ * У этих функций есть близнец в torrents-worker.js (нормализацией выдачи
+ * занимается воркер, общего кода с ним нет). Править обе копии.
+ */
+
+/* Обложку раздачи часто вшивают в контейнер ОТДЕЛЬНЫМ видеопотоком, и она
+ * бывает крупнее самого фильма: внутри рипа 1150x480 попадался mjpeg
+ * 3840x2160. Без этого списка такой рип определялся бы как 4K. */
+var FFPROBE_COVER_CODECS = ['mjpeg', 'png', 'bmp', 'gif', 'jpeg', 'webp'];
+
+var FFPROBE_VIDEO_NAMES = {
+    h264: 'H.264', hevc: 'HEVC', av1: 'AV1', vp9: 'VP9',
+    mpeg4: 'MPEG-4', mpeg2video: 'MPEG-2', vc1: 'VC-1', xvid: 'XviD'
+};
+
+/** Сколько дорожек и языков субтитров показываем, прежде чем свернуть в «+N» */
+var FFPROBE_MAX_AUDIO = 4;
+var FFPROBE_MAX_SUBS = 5;
+var FFPROBE_TRACK_TITLE_MAX = 26;
+
+/** Главный видеопоток: самый крупный из тех, что не обложка */
+function pickFfprobeVideoStream(ffprobe) {
+    if (!ffprobe || !ffprobe.length) return null;
+
+    var best = null;
+    for (var i = 0; i < ffprobe.length; i++) {
+        var s = ffprobe[i];
+        if (!s || s.codec_type !== 'video') continue;
+        if (FFPROBE_COVER_CODECS.indexOf(String(s.codec_name || '').toLowerCase()) !== -1) continue;
+
+        var w = s.width || 0, h = s.height || 0;
+        if (!w || !h) continue;
+        if (!best || w * h > best.width * best.height) best = s;
+    }
+    return best;
+}
+
+/**
+ * Качество по размеру кадра.
+ *
+ * Ни ширины, ни высоты поодиночке не хватает. У кино чёрные поля обрезаны
+ * прямо в файле (1920x800, 3840x1608) — по высоте это уехало бы на ступень
+ * вниз. А у кадров 4:3 и обрезанных по бокам (1080x720, 960x720) наоборот
+ * мала ширина. Поэтому берём большее из двух прочтений: собственной высоты и
+ * высоты, восстановленной из ширины по 16:9.
+ *
+ * Отдельно — 3D: там два кадра сложены в один файл, сверху-вниз (1920x2160)
+ * или бок о бок. Такой кадр не бывает почти квадратным или втрое шире
+ * широкоэкранного, так что по форме их и узнаём, возвращая к одному кадру.
+ *
+ * Проверено на 212 раздачах из четырёх выдач, где разрешение названо и в
+ * заголовке: совпало 210. Оба расхождения — там, где врёт заголовок
+ * (1024x576 с подписью «720p | iPad», 960x720 с подписью «1080»).
+ *
+ * Границы подобраны так, чтобы на выходе были только значения из
+ * QUALITY_OPTIONS: качество, которого нет в списке фильтра, сделало бы
+ * раздачу недостижимой ни одним его вариантом.
+ */
+function qualityFromFrame(width, height) {
+    var w = width || 0, h = height || 0;
+    if (!w || !h) return 0;
+
+    if (h > w * 0.9) h = h / 2;        // 3D, кадры сложены сверху-вниз
+    if (w > h * 3) w = w / 2;          // 3D, кадры сложены бок о бок
+
+    var eff = Math.max(h, w * 9 / 16);
+
+    if (eff >= 1700) return 2160;
+    if (eff >= 900) return 1080;
+    if (eff >= 650) return 720;
+    if (eff >= 380) return 480;
+    return 360;
+}
+
+/**
+ * Запасной разбор — по названию, когда ffprobe нет (около пятой части выдачи).
+ *
+ * Берём НАИБОЛЬШЕЕ из встреченных «1080p», «2160p»: в «UHD BDRip 1080p»
+ * первым стоит слово UHD, но настоящее разрешение названо цифрой. Латинская p
+ * и кириллическая р равноправны — на трекерах встречаются обе.
+ */
+function qualityFromTitle(title) {
+    var t = String(title || '');
+    var re = /(\d{3,4})\s*[pi\u0440](?![\da-z\u0430-\u044f])/gi;
+    var best = 0, m;
+
+    while ((m = re.exec(t)) !== null) {
+        var v = parseInt(m[1], 10);
+        if (v > best) best = v;
+    }
+
+    if (best >= 2000) return 2160;
+    if (best >= 1000) return 1080;
+    if (best >= 700) return 720;
+    if (best >= 400) return 480;
+    if (best >= 300) return 360;
+
+    // Цифр нет вовсе — остаётся словесная пометка
+    if (/4\s*[k\u043a]|\buhd\b/i.test(t)) return 2160;
+    return 0;
+}
+
+/* Признаки HDR в названии. Хвост «(?![буквы])» обязателен: без него под HDR
+ * попадала бы студия HDRezka, а она стоит в названии почти каждой второй
+ * раздачи. */
+var HDR_TITLE_RE = /HDR(?![a-z\u0430-\u044f])|HDR10|Dolby\s*Vision|\bDV\s*[\d.]|\bHLG\b|PQ10/i;
+
+/**
+ * SDR или HDR.
+ *
+ * info.videotype Jacred тоже выводит из названия и тоже иногда не дочитывает:
+ * на четырёх раздачах из 449 в заголовке стоит «4K, HEVC, Dolby Vision» или
+ * «4K, HEVC, HDR», а videotype всё равно sdr.
+ *
+ * Поправка односторонняя — только sdr → hdr. Обратный случай тоже встречается
+ * (пять раздач помечены hdr, хотя в названии лишь «10-bit» или AV1, а 10 бит
+ * сами по себе не HDR), но там нечем проверить: цветовых полей ffprobe не
+ * отдаёт. Пропустить значок — ошибка меньшая, чем нарисовать несуществующий.
+ */
+function resolveVideotype(item, info) {
+    var vt = String((info && info.videotype) || (item && item.videotype) || '').toLowerCase();
+    if (vt === 'hdr') return vt;
+
+    var title = String((item && (item.Title || item.title)) || '');
+    if (HDR_TITLE_RE.test(title)) return 'hdr';
+
+    return vt;
+}
+
+/**
+ * Качество раздачи: измеренное важнее заявленного.
+ *
+ * ffprobe (реальный файл) → название (что обещает раздающий) → info.quality
+ * (догадка Jacred). Последняя ступень оставлена, чтобы при пустом ffprobe и
+ * безымянном разрешении поведение было прежним, а не «N/A».
+ */
+function resolveTorrentQuality(item, info) {
+    var v = pickFfprobeVideoStream(item && item.ffprobe);
+    if (v) {
+        var byFrame = qualityFromFrame(v.width, v.height);
+        if (byFrame) return byFrame;
+    }
+
+    var byTitle = qualityFromTitle(item && (item.Title || item.title));
+    if (byTitle) return byTitle;
+
+    return (info && info.quality) || (item && item.quality) || 0;
+}
+
+/** Раскладка звука в привычном виде: «5.1(side)» → «5.1», «stereo» → «2.0» */
+function normalizeChannelLayout(stream) {
+    var layout = String((stream && stream.channel_layout) || '').toLowerCase();
+
+    if (layout) {
+        if (layout.indexOf('mono') !== -1) return '1.0';
+        if (layout.indexOf('stereo') !== -1) return '2.0';
+        // «5.1(side)», «7.1(wide)» — уточнение в скобках лишнее
+        var m = layout.match(/^(\d+\.\d+)/);
+        if (m) return m[1];
+    }
+
+    // Раскладку заполняют не всегда, но число каналов есть почти везде
+    var ch = stream && stream.channels;
+    if (ch === 1) return '1.0';
+    if (ch === 2) return '2.0';
+    if (ch === 6) return '5.1';
+    if (ch === 8) return '7.1';
+    return '';
+}
+
+/** Битрейт одного потока: BPS (тег Matroska) и bit_rate (поле контейнера)
+ *  дополняют друг друга — у одних раздач заполнено одно, у других другое */
+function streamBitrate(stream) {
+    if (!stream) return 0;
+    var bps = parseInt((stream.tags && stream.tags.BPS) || 0, 10) || 0;
+    if (!bps) bps = parseInt(stream.bit_rate || 0, 10) || 0;
+    return bps > 0 ? bps : 0;
+}
+
+/**
+ * Битрейт раздачи — сумма битрейтов потоков, но только если известен битрейт
+ * ВИДЕО. Иначе ноль: пусть лучше числа не будет совсем.
+ *
+ * Оба ограничения вынужденные, каждое проверено на данных.
+ *
+ * Считать из размера и длительности нельзя, хотя соблазн есть: у сборников
+ * Size — это ВЕСЬ сезон, а DURATION — одна серия, и деление завышало
+ * результат до трёх тысяч раз («Во все тяжкие», 1-5 сезоны). Сумма потоков
+ * относится к одному файлу и на фильмах совпадает с делением до сотых.
+ *
+ * А без битрейта видео сумма вырождается в звук: у 179 раздач из 449 битрейт
+ * заполнен только у части звуковых дорожек, и «сумма» давала 0,58 Мбит/с для
+ * раздачи 720p на 3,4 ГБ. Битрейт — это ровно то число, по которому сравнивают
+ * раздачи одного разрешения, поэтому неверное здесь хуже отсутствующего.
+ */
+function ffprobeBitrate(ffprobe, videoStream) {
+    var videoBps = streamBitrate(videoStream);
+    if (!videoBps) return 0;
+
+    var total = videoBps;
+    for (var i = 0; i < ffprobe.length; i++) {
+        var s = ffprobe[i];
+        if (!s || s === videoStream) continue;
+        if (s.codec_type !== 'audio' && s.codec_type !== 'subtitle') continue;
+        total += streamBitrate(s);
+    }
+
+    return total;
+}
+
+/**
+ * Название дорожки коротко.
+ *
+ * Выбирают дорожку по студии, а она на трекерах стоит в скобках:
+ * «Двухголосый закадровый [Кубик в Кубе]». Обрезание с конца съело бы именно
+ * её и оставило четыре неразличимых «Двухголосый закадровый…», поэтому из
+ * длинного названия берём скобки, а обрезаем только если и без них длинно.
+ */
+function shortTrackTitle(title) {
+    var t = String(title || '').replace(/\s+/g, ' ').trim();
+    if (t.length <= FFPROBE_TRACK_TITLE_MAX) return t;
+
+    var bracket = t.match(/[\[(]([^\])]+)[\])]/);
+    if (bracket && bracket[1].length <= FFPROBE_TRACK_TITLE_MAX) return bracket[1].trim();
+
+    return t.slice(0, FFPROBE_TRACK_TITLE_MAX - 1) + '…';
+}
+
+/**
+ * Короткая сводка по файлу для показа в списке — то, что решает, стоит ли
+ * брать именно эту раздачу и пойдёт ли она на конкретном телевизоре:
+ * разрешение, видеокодек (HEVC и AV1 старые приставки не тянут), битрейт,
+ * раскладка звука, языки и названия дорожек, языки субтитров.
+ *
+ * Полный ffprobe не храним: в выдаче бывают сотни раздач, у иной по два
+ * десятка субтитров, и весь этот массив ещё и передаётся из воркера.
+ * Поэтому списки здесь же подрезаются, а остаток считается в more*.
+ */
+function summarizeFfprobe(ffprobe) {
+    if (!ffprobe || !ffprobe.length) return null;
+
+    var v = pickFfprobeVideoStream(ffprobe);
+    var audio = [], subs = [], layout = '', bestChannels = 0;
+    var audioSeen = {}, audioTotal = 0, subsTotal = 0;
+
+    for (var i = 0; i < ffprobe.length; i++) {
+        var s = ffprobe[i];
+        if (!s) continue;
+        var tags = s.tags || {};
+        var lang = String(tags.language || '').toLowerCase();
+
+        if (s.codec_type === 'audio') {
+            audioTotal++;
+
+            // Лучшую раскладку показываем одну на раздачу: человеку важно, есть
+            // ли вообще многоканальный звук, а не какой он у каждой дорожки
+            if ((s.channels || 0) > bestChannels) {
+                bestChannels = s.channels || 0;
+                layout = normalizeChannelLayout(s);
+            }
+
+            var title = shortTrackTitle(tags.title);
+            // Безымянная дорожка без языка чипом не станет — рисовать в ней
+            // нечего. Считать её «дорожкой» тоже нельзя: по наличию дорожек
+            // ниже скрывается список озвучек из info.voices, и такая пустышка
+            // прятала бы единственное, что о раздаче вообще известно
+            if (lang || title) {
+                var key = lang + '\u0000' + title;
+                if (!audioSeen[key]) {
+                    audioSeen[key] = 1;
+                    if (audio.length < FFPROBE_MAX_AUDIO) audio.push({ lang: lang, title: title });
+                }
+            }
+        } else if (s.codec_type === 'subtitle') {
+            subsTotal++;
+            if (lang && subs.indexOf(lang) === -1 && subs.length < FFPROBE_MAX_SUBS) subs.push(lang);
+        }
+    }
+
+    if (!v && !audioTotal && !subsTotal) return null;
+
+    return {
+        w: v ? v.width : 0,
+        h: v ? v.height : 0,
+        vcodec: v ? String(v.codec_name || '').toLowerCase() : '',
+        bitrate: ffprobeBitrate(ffprobe, v),
+        layout: layout,
+        audio: audio,
+        subs: subs,
+        // Сколько РАЗНЫХ дорожек не поместилось. audioTotal считает все, включая
+        // дубли по языку и названию, поэтому вычитаем именно показанные
+        moreAudio: Math.max(0, Object.keys(audioSeen).length - audio.length),
+        moreSubs: 0
+    };
+}
+
+function normalizeSearchResult(item) {
+
+    var info = item.info || {};
+
+    var rawTracker = item.Tracker || item.tracker || '';
+    var tracker = String(rawTracker).trim();
+
+    var title = item.Title || item.title || info.name || info.originalname || item.name || 'Без названия';
+
+    // Сохраняем "чистое" название отдельно для внутреннего использования (добавление в TorrServer)
+    var cleanName = info.name || item.name || title;
+
+    // Определяем released/year из разных возможных источников
+    var releasedRaw = info.relased || info.released || item.PublishDate || null;
+    var releasedYear = null;
+    if (typeof releasedRaw === 'number') {
+        releasedYear = releasedRaw;
+    } else if (typeof releasedRaw === 'string') {
+        var match = releasedRaw.match(/(19|20)\d{2}/);
+        releasedYear = match ? parseInt(match[0], 10) : null;
+    }
+
+    // Определяем types (movie/tv)
+    var types = Array.isArray(info.types) ? info.types.slice() : [];
+    var categoryDesc = (item.CategoryDesc || '').toLowerCase();
+    if (categoryDesc.includes('tv') || categoryDesc.includes('сериал') || categoryDesc.includes('series')) {
+        if (types.indexOf('tv') === -1) types.push('tv');
+    }
+    if (categoryDesc.includes('movie') || categoryDesc.includes('фильм') || categoryDesc.includes('film')) {
+        if (types.indexOf('movie') === -1) types.push('movie');
+    }
+
+    // Нормализуем magnet
+    var magnet = item.MagnetUri || item.magnet || null;
+
+    // Вычисляем sizeName если не указан
+    var size = item.Size || item.size || 0;
+    var sizeName = info.sizeName || item.sizeName;
+    if (!sizeName && size > 0) {
+        sizeName = formatBytes(size);
+    }
+
+    // Вычисляем createTime (timestamp для сортировки по дате)
+    var createTime = item.createTime || 0;
+    if (!createTime && item.PublishDate) {
+        try {
+            createTime = new Date(item.PublishDate).getTime() || 0;
+        } catch (e) {
+            createTime = 0;
+        }
+    }
+
+    var normalized = {
+        title: title,
+        name: cleanName,
+        originalname: info.originalname || '',
+        magnet: magnet,
+        size: size,
+        sizeName: sizeName || '0 B',
+        tracker: tracker,
+        sid: item.Seeders !== undefined ? parseInt(item.Seeders, 10) : (item.sid || 0),
+        pir: item.Peers !== undefined ? parseInt(item.Peers, 10) : (item.pir || 0),
+        quality: resolveTorrentQuality(item, info),
+        media: summarizeFfprobe(item.ffprobe),
+        videotype: resolveVideotype(item, info),
+        voices: Array.isArray(info.voices) ? info.voices : (Array.isArray(item.voices) ? item.voices : []),
+        types: types,
+        released: releasedYear,
+        relased: releasedYear,
+        year: releasedYear,
+        languages: Array.isArray(info.languages) ? info.languages : (Array.isArray(item.languages) ? item.languages : []),
+        createTime: createTime,
+        details: item.Details || item.details || null,
+        seasons: Array.isArray(info.seasons) ? info.seasons : (Array.isArray(item.seasons) ? item.seasons : [])  // ★ ДОБАВЛЕНО
+    };
+
+    return normalized;
+}
+
+/**
+ * Jacred не ответил: сеть, DNS, неверный хост или не-200. Отдельный тип нужен,
+ * чтобы отличить «трекер-агрегатор лежит» от «искали, но ничего не нашли» —
+ * пользователю это разные сообщения.
+ */
+function JacredUnavailableError(host, reason, timedOut) {
+    this.name = 'JacredUnavailableError';
+    this.jacredHost = host;
+    this.jacredTimeout = !!timedOut;
+    this.message = 'Jacred (' + host + ') недоступен: ' + reason;
+}
+JacredUnavailableError.prototype = Object.create(Error.prototype);
+JacredUnavailableError.prototype.constructor = JacredUnavailableError;
+
+/**
+ * Сколько ждём ответа Jacred, прежде чем считать его лежащим.
+ *
+ * Без ограничения fetch к мёртвому хосту висит столько, сколько отмерит
+ * системный стек TCP — на телевизоре это минуты. Всё это время открытая
+ * карточка фильма стоит под оверлеем поиска с крутилкой «Поиск…», кнопка
+ * «Торренты» не отвечает, и выйти можно только «назад». Пятнадцати секунд
+ * живому jac.red хватает с запасом даже на медленном канале.
+ *
+ * Значение общее для обеих реализаций поиска: базовой (ниже) и той, что
+ * подменяет её в torrents-worker-patch.js.
+ */
+var JACRED_TIMEOUT_MS = 15000;
+window.JACRED_TIMEOUT_MS = JACRED_TIMEOUT_MS;
+
+/**
+ * Чем закончился последний поиск торрентов: null — нашли или честно не нашли,
+ * объект — Jacred не ответил.
+ *
+ * Нужен вызывающей стороне. Кнопка «Торренты» в карточке каталога видит только
+ * число найденного, и ноль у неё означал «ничего не нашли» — поверх баннера
+ * «Jacred недоступен» она рисовала свой «Торренты не найдены», подменяя
+ * причину. Теперь по этому признаку она свой баннер не показывает.
+ */
+function setJacredSearchFailure(error) {
+    AppState.lastSearchFailure = (error && error.jacredHost)
+        ? { host: error.jacredHost, timedOut: !!error.jacredTimeout }
+        : null;
+}
+window.setJacredSearchFailure = setJacredSearchFailure;
+
+/**
+ * Текст баннера «Jacred недоступен» — один на обе реализации поиска.
+ *
+ * Секунды берём из window: ждёт ответа torrents-worker-patch.js, и он же
+ * читает значение оттуда. Если с зеркала приедут разные сборки двух файлов,
+ * в баннере всё равно окажется то число, по которому реально ждали.
+ */
+function showJacredUnavailableBanner(error) {
+    if (typeof window.showErrorBanner !== 'function') return false;
+    if (!error || !error.jacredHost) return false;
+    var seconds = Math.round((window.JACRED_TIMEOUT_MS || JACRED_TIMEOUT_MS) / 1000);
+    window.showErrorBanner('Jacred недоступен', error.jacredTimeout
+        ? 'Не отвечает ' + error.jacredHost + ': нет ответа за ' + seconds +
+          ' секунд. Адрес меняется в настройках.'
+        : 'Не отвечает ' + error.jacredHost + '. Адрес меняется в настройках.');
+    return true;
+}
+window.showJacredUnavailableBanner = showJacredUnavailableBanner;
+
+async function searchTorrents(query) {
+    if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
+
+    /* Свободный поиск, открытый из карточки через шапку, возвращает в карточку —
+     * но только пока ничего не искали. Отправленный запрос эту связь рвёт: после
+     * чужих результатов падать обратно в фильм, который уже ни при чём, странно,
+     * поэтому дальше выход из поиска ведёт туда, откуда открывали карточку:
+     * на главную, в категорию, в фильмографию (Nav.dropDetailsUnderTop).
+     *
+     * После проверки на пустой запрос, а не до: нажатие «Искать» с пустой
+     * строкой ничего не ищет и точку возврата менять не должно.
+     *
+     * Поиск «Торренты» из самой карточки под это не подпадает: там запрос задан
+     * карточкой и заперт (setSearchLocked), и возврат в неё как раз обязателен. */
+    var navTop = window.Nav ? Nav.top() : null;
+    var navUnder = window.Nav ? Nav.prev() : null;
+    var overCard = !!(navTop && navTop.screen === 'search' && navUnder &&
+        (navUnder.screen === 'detail' || navUnder.screen === 'torrent-detail'));
+    if (overCard && !AppState.searchLocked) {
+        // Карточку закрываем сразу, а не «когда-нибудь потом»: она лежит под
+        // оверлеем поиска с z-index 100 против 1 у #main-container, и на главной
+        // осталась бы висеть поверх экрана.
+        if (typeof window.dropDetailUnderOverlay === 'function') window.dropDetailUnderOverlay();
+        Nav.dropDetailsUnderTop('свой запрос из поиска над карточкой');
+    }
+
+    if (getCurrentSearchMode() === 'globalsearch') return await searchTMDB(query);
+    return await searchTorrentsLegacy(query);
+}
+
+/**
+ * Что из открытой карточки разрешено подсказать Jacred.
+ *
+ * Подсказки действуют только вместе с замком строки поиска, а замок ставится
+ * ровно тогда, когда ищется название карточки, а не свой запрос (setSearchLocked).
+ * Свободному поиску год и тип пришлись бы от чужого фильма и резали бы выдачу.
+ */
+function getJacredSearchHints() {
+    if (!AppState.searchLocked) return null;
+    return AppState.jacredSearchHints || null;
+}
+window.getJacredSearchHints = getJacredSearchHints;
+
+/**
+ * Собрать URL поиска к Jacred (Jackett JSON API v2.0).
+ *
+ * Кроме самого запроса Jacred принимает year и is_serial (1 — фильм,
+ * 2 — сериал). Оба фильтруют жёстко, поэтому добавляются только тогда,
+ * когда ответ точно известен — из карточки TMDB.
+ *
+ * Строка собирается здесь один раз на весь проект: второй поиск живёт в
+ * torrents-worker-patch.js, и две копии URL разъехались бы при первой же правке.
+ *
+ * @returns {{url: string, host: string}} host отдаётся отдельно для текста ошибки
+ *          «Не отвечает ...».
+ */
+function buildJacredSearchUrl(query, hints) {
+    var jacred = getEl('jacred-url');
+    var host = (jacred && jacred.value !== "") ? jacred.value : "jac.red";
+
+    // Новый API Jackett v2.0
+    var url = AppState.protocol + '//' + host + '/api/v2.0/indexers/all/results' +
+        '?Query=' + encodeURIComponent(query.trim()) + '&exact=true';
+
+    if (hints === undefined) hints = getJacredSearchHints();
+    if (hints) {
+        if (hints.isSerial) url += '&is_serial=' + hints.isSerial;
+        if (hints.year) url += '&year=' + hints.year;
+    }
+
+    return { url: url, host: host };
+}
+window.buildJacredSearchUrl = buildJacredSearchUrl;
+
+async function searchTorrentsLegacy(query) {
+    if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
+    var target = buildJacredSearchUrl(query);
+    var searchUrl = target.url, jacDefault = target.host;
+
+    showLoading('Поиск...');
+    setJacredSearchFailure(null);
+    // Ожидание ответа ограничено: мёртвый хост иначе держит поиск минутами
+    var timeoutController = new AbortController();
+    var timedOut = false;
+    var timeoutId = setTimeout(function () { timedOut = true; timeoutController.abort(); }, JACRED_TIMEOUT_MS);
+    try {
+        // Отдельно от остальных ошибок ловим «Jacred не отвечает»: сеть, DNS,
+        // выключенный или неверно указанный хост, молчание дольше таймаута.
+        // Именно это чаще всего и происходит, а alert с текстом «Failed to
+        // fetch» на телевизоре не показывался вовсе — поиск просто молча
+        // ничего не находил.
+        var response;
+        try {
+            response = await fetch(searchUrl, { signal: timeoutController.signal });
+        } catch (netError) {
+            if (timedOut) throw new JacredUnavailableError(jacDefault, 'нет ответа за ' + JACRED_TIMEOUT_MS + ' мс', true);
+            throw new JacredUnavailableError(jacDefault, netError.message);
+        }
+        if (!response.ok) throw new JacredUnavailableError(jacDefault, 'HTTP ' + response.status);
+        var data = await response.json();
+
+        // Новый формат: {Results: [...]}, старый формат был просто массивом
+        var rawResults = [];
+        if (data && Array.isArray(data.Results)) {
+            rawResults = data.Results;
+        } else if (Array.isArray(data)) {
+            // Обратная совместимость со старым API
+            rawResults = data;
+        }
+
+        searchResults = rawResults.map(normalizeSearchResult);
+        currentSearchQuery = query;
+
+        var searchInput = getEl('search-query');
+        if (searchInput && !AppState.searchLocked) searchInput.value = '';
+
+        updateAvailableTrackers();
+        updateAvailableYears();
+        applyFiltersAndSort();
+        showSearchResults();
+
+        // Число найденного нужно вызывающей стороне: showCatalogSearch прячет
+        // карточку фильма только если искать было что (catalog.js)
+        return searchResults.length;
+    } catch (error) {
+        // Таймаут мог сработать и на чтении тела ответа, уже после заголовков —
+        // тогда наружу летит голый AbortError. Для человека это тот же самый
+        // «Jacred не ответил», и назвать причину надо так же.
+        if (timedOut && error && error.name === 'AbortError') {
+            error = new JacredUnavailableError(jacDefault, 'нет ответа за ' + JACRED_TIMEOUT_MS + ' мс', true);
+        }
+        console.error('Ошибка поиска:', error);
+        setJacredSearchFailure(error);
+        if (!showJacredUnavailableBanner(error)) {
+            if (typeof window.showErrorBanner === 'function') {
+                window.showErrorBanner('Ошибка поиска', error.message);
+            } else alert('Ошибка при поиске: ' + error.message);
+        }
+        return 0;
+    } finally {
+        clearTimeout(timeoutId);
+        hideLoading();
+    }
+}
+
+function updateAvailableYears() {
+    var yearSet = {}; var yearFilter = getEl('filter-year');
+    searchResults.forEach(r => { if (r.released && !isNaN(r.released)) yearSet[r.released] = true; });
+    var availableYears = Object.keys(yearSet).map(Number).sort((a, b) => b - a);
+    if (yearFilter) {
+        var currentYear = yearFilter.value;
+        yearFilter.innerHTML = '<option value="all">Все</option>' + availableYears.map(y => `<option value="${y}" ${currentYear !== 'all' && String(y) === currentYear ? 'selected' : ''}>${y}</option>`).join('');
+        if (currentYear !== 'all' && !yearSet[currentYear]) { yearFilter.value = 'all'; currentYearFilter = ''; }
+    }
+}
+
+function initSearchModeToggle() {
+    var modeSelect = getEl('search-mode');
+    if (modeSelect) {
+        modeSelect.addEventListener('change', function (e) {
+            currentSearchMode = e.target.value;
+            var trackerFilter = getEl('filter-tracker'); var qualityFilter = getEl('filter-quality'); var contentTypeFilter = getEl('filter-content-type');
+            if (currentSearchMode === 'globalsearch') {
+                if (trackerFilter) trackerFilter.disabled = true; if (qualityFilter) qualityFilter.disabled = true; if (!contentTypeFilter) showContentTypeFilter();
+            } else {
+                if (trackerFilter) trackerFilter.disabled = false; if (qualityFilter) qualityFilter.disabled = false; if (contentTypeFilter && contentTypeFilter.remove) contentTypeFilter.remove();
+            }
+            if (currentSearchQuery) searchTorrents(currentSearchQuery);
+        });
+    }
+}
+
+function updateAvailableTrackers() {
+    var trackerSet = {};
+
+    searchResults.forEach(function (r) {
+        if (r.tracker) {
+            var trackers = String(r.tracker).split(',');
+            for (var i = 0; i < trackers.length; i++) {
+                var t = trackers[i].trim().toLowerCase();
+                if (t) trackerSet[t] = true;
+            }
+        }
+    });
+
+    availableTrackers = Object.keys(trackerSet).sort();
+    if (!availableTrackers.includes(currentTrackerFilter)) currentTrackerFilter = 'all';
+    syncSearchFilterButtons();
+    updateAvailableSeasons();
+    updateAvailableVoices();
+    updateAvailableVideotype();
+}
+
+function applyFiltersAndSort() {
+    filteredResults = searchResults.filter(item => {
+        if (!qualityFilterMatches(currentQualityFilter, item.quality)) return false;
+        if (currentTrackerFilter !== 'all') {
+            var trackerField = (item.tracker || '').toLowerCase();
+            if (trackerField.indexOf(currentTrackerFilter.toLowerCase()) === -1) return false;
+        }
+        if (currentYearFilter && currentYearFilter !== 'all' && item.released !== parseInt(currentYearFilter, 10)) return false;
+        if (currentSeasonFilter && currentSeasonFilter !== 'all' && (!item.seasons || !item.seasons.includes(parseInt(currentSeasonFilter, 10)))) return false;
+        if (currentVoiceFilter && currentVoiceFilter !== 'all' && (!item.voices || !item.voices.includes(currentVoiceFilter))) return false;
+        if (currentvideotypeFilter && currentvideotypeFilter !== 'all' && item.videotype != currentvideotypeFilter) return false;
+        return true;
+    });
+    filteredResults.sort((a, b) => {
+        switch (currentSort) {
+            case 'date-desc': return new Date(b.createTime || 0) - new Date(a.createTime || 0);
+            case 'date-asc': return new Date(a.createTime || 0) - new Date(b.createTime || 0);
+            case 'size-desc': return (b.size || 0) - (a.size || 0);
+            case 'size-asc': return (a.size || 0) - (b.size || 0);
+            case 'sid-desc': return (b.sid || 0) - (a.sid || 0);
+            case 'sid-asc': return (a.sid || 0) - (b.sid || 0);
+            case 'pir-desc': return (b.pir || 0) - (a.pir || 0);
+            case 'pir-asc': return (a.pir || 0) - (b.pir || 0);
+            default: return 0;
+        }
+    });
+    renderSearchResults();
+}
+
+function updateAvailableSeasons() {
+    var seasonSet = {}; var seasonFilter = getEl('filter-season'); if (!seasonFilter) return;
+    searchResults.forEach(r => { if (r.seasons && Array.isArray(r.seasons)) r.seasons.forEach(s => seasonSet[s] = true); });
+    var availableSeasons = Object.keys(seasonSet).map(Number).sort((a, b) => a - b);
+    var currentSeason = seasonFilter.value;
+    seasonFilter.innerHTML = '<option value="all">Все</option>' + availableSeasons.map(s => `<option value="${s}" ${currentSeason !== 'all' && String(s) === currentSeason ? 'selected' : ''}>${s} сезон</option>`).join('');
+    if (currentSeason !== 'all' && !seasonSet[parseInt(currentSeason)]) { seasonFilter.value = 'all'; currentSeasonFilter = 'all'; }
+}
+
+function updateAvailableVoices() {
+    var voiceSet = {}; var voiceFilter = getEl('filter-voice'); if (!voiceFilter) return;
+    searchResults.forEach(r => { if (r.voices && Array.isArray(r.voices)) r.voices.forEach(v => { if (v && v.trim()) voiceSet[v.trim()] = true; }); });
+    var availableVoices = Object.keys(voiceSet).sort();
+    var currentVoice = voiceFilter.value;
+    voiceFilter.innerHTML = '<option value="all">Все</option>' + availableVoices.map(v => `<option value="${escapeHtml(v)}" ${currentVoice !== 'all' && v === currentVoice ? 'selected' : ''}>${escapeHtml(v)}</option>`).join('');
+    if (currentVoice !== 'all' && !voiceSet[currentVoice]) { voiceFilter.value = 'all'; currentVoiceFilter = 'all'; }
+}
+
+function updateAvailableVideotype() {
+    var videotypeSet = {}; var videotypeFilter = getEl('filter-videotype'); if (!videotypeFilter) return;
+    searchResults.forEach(r => { if (r.videotype && r.videotype.trim()) videotypeSet[r.videotype.trim()] = true; });
+    var availablevideotype = Object.keys(videotypeSet).sort();
+    // Переменная, а не videotypeFilter.value: до первой выдачи варианта «hdr»
+    // в select нет, value у него пустое, и значение по умолчанию из настроек
+    // сбрасывалось бы в «Все», не дождавшись списка
+    var currentvideotype = currentvideotypeFilter || 'all';
+    videotypeFilter.innerHTML = '<option value="all">Все</option>' + availablevideotype.map(v => `<option value="${escapeHtml(v)}" ${currentvideotype !== 'all' && v === currentvideotype ? 'selected' : ''}>${escapeHtml(v.toUpperCase())}</option>`).join('');
+    if (currentvideotype !== 'all' && !videotypeSet[currentvideotype]) { videotypeFilter.value = 'all'; currentvideotypeFilter = 'all'; }
+}
+
+/**
+ * Замок поисковой строки.
+ *
+ * Из карточки каталога (кнопка «Поиск торрентов») поиск идёт вместе с
+ * контекстом TMDB: AppState.pendingDetailItem, pendingDetailTmdbId,
+ * pendingDetailPoster и pendingDetailMediaType. Он же прикрепляется к тому,
+ * что пользователь добавит на сервер.
+ *
+ * Пока строку можно было править, получалось так: зашли в карточку сериала A,
+ * стёрли запрос, нашли сериал B, добавили — а на сервер и в историю ушли
+ * постер, id и тип от A. Данные расходились молча, и заметить это можно было
+ * только постфактум.
+ *
+ * Поэтому в этом режиме строка только для чтения и показывает, что именно
+ * ищется. Свободный поиск живёт на своей вкладке и замка не знает.
+ */
+function setSearchLocked(locked, query) {
+    AppState.searchLocked = !!locked;
+
+    // Режим «Глобальный / Торренты» карточка тоже задаёт сама (ищутся раздачи
+    // её фильма): переключение на глобальный поиск увело бы выдачу от карточки
+    var modeItem = document.querySelector('.filter-item[data-filter="torrent-movie"]');
+    if (modeItem) modeItem.classList.toggle('hidden', !!locked);
+
+    var input = getEl('search-query');
+    if (!input) return;
+
+    if (locked) {
+        input.readOnly = true;
+        input.classList.add('search-input-locked');
+        // Показываем запрос, а не пустое поле: иначе непонятно, что ищется
+        if (query) input.value = query;
+        input.setAttribute('title', 'Запрос задан карточкой фильма и не редактируется');
+    } else {
+        input.readOnly = false;
+        input.classList.remove('search-input-locked');
+        input.removeAttribute('title');
+    }
+
+    // Состав фокусируемого меняется: заблокированные поле и кнопку
+    // навигация пропускает (control.js)
+    if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+}
+window.setSearchLocked = setSearchLocked;
+
+/**
+ * Забыть, из какой карточки каталога пришли в поиск.
+ *
+ * Один замок дыру не закрывает: сняв его где угодно, мы оставили бы
+ * pendingDetail* от прежней карточки, и следующая добавленная раздача снова
+ * получила бы чужие id, постер и тип. Поэтому контекст сбрасывается там, где
+ * начинается СВОБОДНЫЙ поиск — вкладка «Поиск», кнопка «Поиск», вход с главной.
+ *
+ * В hideSearchResults этого делать нельзя: он читает pendingDetailItem, чтобы
+ * восстановить выпотрошенную карточку на выходе из поиска (restoreItem ниже).
+ */
+function clearCatalogSearchContext() {
+    // Год и тип были взяты из той же карточки — без неё они бы сузили
+    // чужой запрос до её года и её типа (buildJacredSearchUrl)
+    AppState.jacredSearchHints = null;
+    AppState.pendingDetailItem = null;
+    AppState.pendingDetailTmdbId = null;
+    AppState.pendingDetailPoster = null;
+    AppState.pendingDetailMediaType = null;
+    window.pendingCatalogItem = null;
+    window.pendingCatalogPoster = null;
+}
+window.clearCatalogSearchContext = clearCatalogSearchContext;
+
+/**
+ * Фокус на карточку выдачи, из которой открывали фильм.
+ *
+ * Раньше «назад» из карточки фильма возвращал в поиск и ставил фокус в
+ * поисковую строку: приходилось заново листать выдачу до того же места.
+ * Карточку ищем по tmdbId + типу, а не по номеру: выдачу за это время могли
+ * перерисовать (фильтр «Фильмы / Сериалы»), и номер указал бы на чужую.
+ * Нет такой карточки — false, и фокус уходит в строку, как прежде.
+ */
+function focusLastSearchCard() {
+    var key = AppState.lastSearchCardKey;
+    if (!key || typeof focusEl !== 'function') return false;
+    var cards = document.querySelectorAll('#search-results .global-search-card');
+    for (var i = 0; i < cards.length; i++) {
+        if (cards[i].dataset.tmdbId + ':' + cards[i].dataset.mediaType === key) {
+            if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+            focusEl(cards[i]);
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Фокус на раздачу, которую открывали из выдачи «Поиска торрентов» (детали
+ * раздачи или плеер) — вернувшись, человек продолжает с того же места списка.
+ * Хэш кладёт обработчик кнопки воспроизведения. Нет такой — первая раздача.
+ */
+function focusLastSearchResult() {
+    if (typeof focusEl !== 'function') return false;
+    var items = document.querySelectorAll('#search-results .search-result-item');
+    if (!items.length) return false;
+    var hash = String(AppState.lastSearchResultHash || '').toLowerCase();
+    var target = items[0];
+    if (hash) {
+        for (var i = 0; i < items.length; i++) {
+            var btn = items[i].querySelector('.search-result-play');
+            if (btn && String(btn.dataset.hash || '').toLowerCase() === hash) { target = items[i]; break; }
+        }
+    }
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    focusEl(target);
+    return true;
+}
+window.focusLastSearchResult = focusLastSearchResult;
+
+function showSearchResults(options = {}) {
+    if (window.Nav) Nav.push('search', { key: 'search' });
+    var searchOverlay = getEl('search-overlay'); var searchTab = getEl('tab-search'); var torrentsTab = getEl('tab-torrents'); var catalogTab = getEl('tab-catalog'); var searchInput = getEl('search-query');
+    if (!searchOverlay || !searchTab || !torrentsTab) return;
+    if (searchInput && document.activeElement === searchInput) searchInput.blur();
+    var torrserverSection = getEl('torrserver-section');
+    searchTab.classList.add('active'); torrentsTab.classList.remove('active'); if (catalogTab) catalogTab.classList.remove('active');
+    var favoritesTab = getEl('tab-favorites'); if (favoritesTab) favoritesTab.classList.remove('active');
+    AppState.currentScreen = 'search'; syncSearchFilterButtons(); toggleSearchFiltersPanel(false);
+    if (typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
+        // Контент под оверлеем прячем только после проявления: иначе на 0.2 с
+        // вместо перехода видно пустую страницу
+        Animations.fadeIn(searchOverlay, {
+            duration: Animations.UI_FADE.overlay,
+            display: 'flex',
+            onDone: function () {
+                if (torrserverSection && AppState.currentScreen === 'search') torrserverSection.style.display = 'none';
+                // Выдача полностью закрыла экран — то, что под ней, можно убирать
+                // (возврат из карточки прячет карточку только теперь)
+                if (typeof options.onShown === 'function') options.onShown();
+            }
+        });
+    } else {
+        if (torrserverSection) torrserverSection.style.display = 'none';
+        searchOverlay.classList.remove('hidden'); searchOverlay.style.display = 'flex';
+        if (typeof options.onShown === 'function') options.onShown();
+    }
+    if (options.runSearch && searchInput && searchInput.value.trim()) setTimeout(function () { searchTorrents(searchInput.value.trim()); }, 0);
+    setTimeout(function () {
+        // Вернулись из карточки фильма — фокус на ту же карточку выдачи
+        if (options.restoreCard && focusLastSearchCard()) return;
+        // Выдача раздач (вернулись из деталей раздачи) — на ту, что открывали
+        if (options.restoreCard && focusLastSearchResult()) return;
+        if (typeof window.focusSearchHome === 'function') { window.focusSearchHome(options.focusQuery !== false); return; }
+        if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+            updateFocusableElements();
+            var searchInputIndex = -1, searchBtnIndex = -1, filterToggleIndex = -1, firstFilterIndex = -1;
+            for (var i = 0; i < focusableElements.length; i++) {
+                var el = focusableElements[i];
+                if (el.id === 'search-query') searchInputIndex = i; if (el.id === 'search-btn') searchBtnIndex = i; if (el.id === 'filter-toggle') filterToggleIndex = i;
+                if (['sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'reset-filters', 'close-search'].indexOf(el.id) !== -1 && firstFilterIndex === -1) firstFilterIndex = i;
+            }
+            var targetIndex = options.focusQuery !== false ? (searchInputIndex !== -1 ? searchInputIndex : (searchBtnIndex !== -1 ? searchBtnIndex : filterToggleIndex)) : (firstFilterIndex !== -1 ? firstFilterIndex : (filterToggleIndex !== -1 ? filterToggleIndex : 0));
+            setFocus(targetIndex !== -1 ? targetIndex : 0);
+        }
+    }, 80);
+}
+
+/**
+ * Закрыть поиск и вернуться туда, откуда его открыли.
+ *
+ * Место возврата — запись стека переходов под поиском (nav.js). opts.returnTo —
+ * для тех, кто закрывает поиск не «назад», а уходя дальше: фильмография актёра,
+ * открытая из выдачи, — там наверху стека уже не поиск.
+ */
+function hideSearchResults(opts) {
+    opts = opts || {};
+    // Уходим из поиска — контекст карточки больше не действует
+    setSearchLocked(false);
+    // Ушли из выдачи раньше, чем она проявилась после возврата из карточки:
+    // карточка всё ещё под ней и без этого осталась бы висеть поверх экрана
+    if (AppState.detailUnderSearch) {
+        AppState.detailUnderSearch = false;
+        if (typeof window.hideDetailView === 'function') window.hideDetailView();
+    }
+    var searchOverlay = getEl('search-overlay'); var searchTab = getEl('tab-search'); var torrentsTab = getEl('tab-torrents'); var catalogTab = getEl('tab-catalog'); var searchInput = getEl('search-query'); var modeSelect = getEl('torrent-movie');
+    if (modeSelect) modeSelect.value = 'globalsearch';
+    if (!searchOverlay || !searchTab || !torrentsTab) return;
+    var navEntry = window.Nav ? Nav.pop('search') : null;
+    var navBack = window.Nav ? Nav.returnTarget(navEntry) : null;
+    var returnTo = opts.returnTo || navBack || AppState.inSearch;
+    var torrserverSection = getEl('torrserver-section');
+    // Контент показываем сразу — он проявляется из-под уходящего оверлея
+    if (torrserverSection) torrserverSection.style.display = 'block';
+    searchTab.classList.remove('active'); toggleSearchFiltersPanel(false);
+    if (typeof Animations !== 'undefined' && typeof Animations.fadeOut === 'function') {
+        // Прятать оверлей по-настоящему и чистить результаты можно только в конце
+        // затухания: display:none обрывает CSS-переход мгновенно
+        Animations.fadeOut(searchOverlay, {
+            duration: Animations.UI_FADE.overlay,
+            display: 'none',
+            addHidden: true,
+            onDone: function () { resetSearchVisibilityWindow(); releaseGlobalPosters(); var sr = getEl('search-results'); if (sr) sr.innerHTML = ''; }
+        });
+    } else {
+        searchOverlay.classList.add('hidden'); searchOverlay.style.display = 'none';
+        resetSearchVisibilityWindow();
+        releaseGlobalPosters();
+        var searchResultsEl = getEl('search-results'); if (searchResultsEl) searchResultsEl.innerHTML = '';
+    }
+    if (returnTo === 'detail') {
+        AppState.currentScreen = 'detail'; var mainContainer = getEl('main-container'); if (mainContainer && AppState.backupScroll > 0) mainContainer.scrollTop = AppState.backupScroll;
+        if (catalogTab) catalogTab.classList.remove('active'); torrentsTab.classList.remove('active');
+        var detailView = getEl('detail-view');
+        if (typeof Animations !== 'undefined' && typeof Animations.ensureDetailVisible === 'function') {
+            // Возвращаем уже отрисованный detail без затухания, но со снятием
+            // недоигранного закрытия — иначе экран останется прозрачным
+            Animations.ensureDetailVisible();
+        } else if (detailView && detailView.style.display !== 'block') { detailView.style.display = 'block'; detailView.style.zIndex = '100'; detailView.style.pointerEvents = 'auto'; }
+        // Страховка: карточку могли выпотрошить, пока она стояла под оверлеем
+        // поиска. Цепочка «карточка каталога → поиск торрентов → детали торрента
+        // → назад»: на выходе из деталей торрента app.js заново рисует карточку
+        // каталога и сразу прячет её, а затухание в конце зовёт
+        // resetDetailBackground — тот чистит заголовок, подзаголовок, постер и ряд
+        // актёров. Показывать половину карточки нельзя — рисуем её заново.
+        //
+        // Карточку под поиском знает стек переходов: запись 'detail' под ним.
+        // Её же надо нарисовать заново, если на её месте сейчас другое — детали
+        // раздачи, открытые из выдачи (они занимают тот же #detail-view).
+        var detailTitleEl = getEl('detail-title-text');
+        var navItem = navEntry && navEntry.screen === 'detail' && navEntry.data && navEntry.data.item;
+        var underTorrent = navEntry && navEntry.screen === 'torrent-detail';
+        var restoreItem = navItem || AppState.pendingDetailItem || AppState.androidBackCatalog || AppState.currentDetailItem;
+        var shownItem = AppState.currentDetailItem;
+        var detailGutted = !!(!underTorrent && restoreItem && restoreItem.id &&
+            typeof window.showCatalogDetail === 'function' && (
+                isTorrentDetailMode() ||
+                (detailTitleEl && !String(detailTitleEl.textContent || '').trim()) ||
+                (navItem && (!shownItem || String(shownItem.id) !== String(navItem.id)))));
+        // Фокус — на «Поиск торрентов» карточки: вернулись из него же
+        var focusDetailWatch = function () {
+            if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+                updateFocusableElements(); var watchBtn = getEl('catalog-watch-btn'); if (watchBtn) { for (var i = 0; i < focusableElements.length; i++) { if (focusableElements[i].id === 'catalog-watch-btn') { setFocus(i); return; } } }
+            }
+            if (typeof window.ensureCatalogDetailFocus === 'function') window.ensureCatalogDetailFocus(true);
+        };
+        if (detailGutted) {
+            // Карточку рисуем заново и ставим фокус, когда она готова: сама она
+            // не перебивает фокус, оставшийся на строке уходящего поиска
+            var redraw = navItem
+                ? window.showCatalogDetail(navItem, navEntry.data.index || 0, null)
+                : window.showCatalogDetail(restoreItem, AppState.catalogIndex || 0, AppState.catalogPu || null);
+            Promise.resolve(redraw).then(function () {
+                if (AppState.currentScreen === 'detail') setTimeout(focusDetailWatch, 100);
+            });
+        } else {
+            setTimeout(focusDetailWatch, 100);
+        }
+    } else if (returnTo === 'catalog') {
+        // Под поиском «Избранное», открытое кнопкой шапки, — подсвечиваем её, а не «Каталог»
+        var favTab = getEl('tab-favorites');
+        var favFromTopbar = !!(favTab && typeof catalogState !== 'undefined' && catalogState.favoritesFromTopbar);
+        if (favFromTopbar) favTab.classList.add('active');
+        else if (catalogTab) catalogTab.classList.add('active');
+        torrentsTab.classList.remove('active'); AppState.currentScreen = 'catalog';
+        setTimeout(function () {
+            // focusCatalogCardByIndex работает только по сетке категории и
+            // возвращает false, если карточек нет (открыты ряды-карусели) —
+            // тогда фокус ставит стратегия экрана
+            var done = false;
+            if (typeof window.focusCatalogCardByIndex === 'function') {
+                var savedIndex = localStorage.getItem('lastCatalogCardIndex');
+                done = window.focusCatalogCardByIndex(parseInt(savedIndex || 0, 10));
+            }
+            if (!done && typeof window.focusFirstCatalogCard === 'function') window.focusFirstCatalogCard();
+        }, 80);
+    } else if (returnTo === 'home' && window.HomeScreen) {
+        // Пришли в поиск с главной — туда и возвращаемся. Ни одна вкладка не
+        // активна: на главной навигация своя, а обработчики вкладок проверяют
+        // .active и иначе не сработали бы с первого нажатия.
+        if (catalogTab) catalogTab.classList.remove('active'); torrentsTab.classList.remove('active');
+        window.HomeScreen.show({ restoreFocus: true });
+    } else {
+        torrentsTab.classList.add('active'); if (catalogTab) catalogTab.classList.remove('active'); AppState.currentScreen = 'torrents';
+        setTimeout(function () {
+            if (typeof window.focusFirstTorrentCard === 'function' && window.focusFirstTorrentCard()) return;
+            if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+                updateFocusableElements(); for (var i = 0; i < focusableElements.length; i++) { if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) { setFocus(i); return; } } setFocus(0);
+            }
+        }, 80);
+    }
+    if (searchInput && document.activeElement === searchInput) searchInput.blur();
+}
+
+/**
+ * Поиск торрентов из карточки фильма: фильтры — снова по умолчанию, если
+ * фильм другой. Иначе качество, трекер или озвучка, выбранные под прошлый
+ * фильм, молча резали выдачу следующего. Тот же фильм (вернулись из плеера и
+ * ищут заново) фильтры сохраняет. Как «Сбросить», но без applyFiltersAndSort:
+ * на экране ещё прошлые результаты, их вот-вот заменит новый поиск.
+ */
+var lastCardSearchKey = null;
+function resetFiltersForCardSearch(key) {
+    if (key && key === lastCardSearchKey) return;
+    lastCardSearchKey = key || null;
+    currentTrackerFilter = 'all'; currentYearFilter = ''; currentSeasonFilter = 'all'; currentVoiceFilter = 'all';
+    applySearchFilterDefaults();
+    syncSearchFilterButtons();
+    ['filter-year', 'filter-season', 'filter-voice'].forEach(function (id) { var el = getEl(id); if (el) el.value = 'all'; });
+}
+window.resetFiltersForCardSearch = resetFiltersForCardSearch;
+
+// «Сбросить» возвращает к значениям по умолчанию из настроек, а не к «Все»
+function resetFilters() {
+    currentTrackerFilter = 'all'; currentYearFilter = ''; currentSeasonFilter = 'all'; currentVoiceFilter = 'all';
+    applySearchFilterDefaults();
+    syncSearchFilterButtons();
+    ['filter-year', 'filter-season', 'filter-voice'].forEach(id => { var el = getEl(id); if (el) el.value = 'all'; });
+    applyFiltersAndSort();
+}
+
+async function dropTorrentToServer(hash) {
+    if (!(await ensureTorrserverOnline())) return null;
+    try {
+        var response = await torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'drop', hash: hash }) });
+        if (!response.ok) throw new Error('Ошибка остановки: ' + response.status);
+        return true;
+    } catch (error) { console.error('Ошибка остановки торрента:', error); throw error; }
+}
+window.dropTorrentToServer = dropTorrentToServer;
+
+/**
+ * Уходим из карточки раздачи — drop на TorrServer, как при выходе из плеера.
+ *
+ * Открытая карточка поднимает раздачу в TorrServer (список файлов, прогрев
+ * preloadDetailFile), и без drop она так и оставалась работать: в списке висела
+ * «Идет просмотр», а несколько открытых по очереди карточек грели каждая свою
+ * раздачу и расходовали память устройства с TorrServer.
+ *
+ * Зовут: «назад» из карточки (app.js) и переход в раздел из шапки поверх неё
+ * (home.js). Запуск воспроизведения сюда не попадает — раздачу, которую сейчас
+ * будут смотреть, останавливать нельзя; её остановит выход из плеера.
+ */
+function dropOpenTorrentDetail() {
+    var it = AppState.currentDetailItem;
+    var dv = getEl('detail-view');
+    // Каталожная карточка (TMDB) раздачи не держит
+    if (!it || !it.hash || (dv && dv.classList.contains('catalog-detail-mode'))) return;
+    var hash = it.hash;
+    if (typeof abortPendingPreload === 'function') abortPendingPreload();
+    // Мимо dropTorrentToServer: тот при недоступном TorrServer показывает
+    // баннер ошибки, а на выходе из карточки он ни к чему
+    torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'drop', hash: hash }) })
+        .then(function (r) { if (r && r.ok) markTorrentStopped(hash); })['catch'](function () { });
+}
+window.dropOpenTorrentDetail = dropOpenTorrentDetail;
+
+/**
+ * Плашку «Идет просмотр» снимаем на месте. Перерисовка списка сбивала бы
+ * фокус, а сверка syncTorrentsList статус не сравнивает вовсе.
+ */
+function markTorrentStopped(hash) {
+    var h = String(hash).toLowerCase();
+    var list = AppState.torrents || [];
+    var torrent = null;
+    for (var i = 0; i < list.length; i++) {
+        if (String(list[i].hash || '').toLowerCase() === h) { torrent = list[i]; break; }
+    }
+    if (!torrent) return;
+    torrent.stat_string = 'Torrent in db';
+    var cards = document.querySelectorAll('.torrent-card[data-hash]');
+    for (var j = 0; j < cards.length; j++) {
+        if (String(cards[j].dataset.hash).toLowerCase() !== h) continue;
+        var playing = cards[j].querySelector('.torrent-playing');
+        if (!playing) continue;
+        var size = document.createElement('span');
+        size.className = 'torrent-size';
+        size.textContent = formatBytes(torrent.torrent_size);
+        playing.parentNode.replaceChild(size, playing);
+    }
+}
+
+async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
+    var refreshList = options.refreshList !== false;
+    if (!(await ensureTorrserverOnline())) return null;
+    var ctx = getCatalogSearchContext(searchResult);
+    var poster = options.poster || ctx.poster || null;
+    var tmdbId = options.tmdbId || ctx.id || null;
+    var mediaType = options.mediaType || ctx.mediaType || AppState.mediaType || 'movie';
+    var seasons = [];
+
+    if (searchResult && Array.isArray(searchResult.seasons)) {
+        seasons = searchResult.seasons.slice();
+    }
+    if (!seasons.length && searchResult && searchResult.title) {
+        seasons = extractSeasonsFromTitle(searchResult.title);
+    }
+    if (!seasons.length && ctx.item && (ctx.item.title || ctx.item.name)) {
+        seasons = extractSeasonsFromTitle(ctx.item.title || ctx.item.name);
+    }
+
+    var baseName =
+        (ctx.item && (ctx.item.title || ctx.item.name)) ||
+        (searchResult && (searchResult.name || searchResult.title)) ||
+        'Без названия';
+    AppState.mediaType = mediaType;
+    var torrname = (tmdbId ? '[' + tmdbId + '] ' : '') + baseName;
+
+    if (mediaType === 'tv' && seasons.length > 0) {
+        torrname += ' [сезон ' +
+            (seasons.length > 1 ? seasons[0] + '-' + seasons[seasons.length - 1] : seasons[0]) +
+            ']';
+    }
+
+    var requestBody = {
+        action: 'add',
+        link: magnet,
+        title: torrname,
+        category: mediaType,
+        // Настройка «Добавлять в базу» решает за запуск просмотра; явное
+        // «добавить» (стрелка вправо в поиске) сохраняет всегда — иначе
+        // TorrServer держит торрент только до перезапуска
+        save_to_db: options.saveToDb === true ? true : AppState.addToDbEnabled
+    };
+
+    if (poster) {
+        // ★★★ ВАЖНО: заменяем image.tmdb.org на прокси перед отправкой ★★★
+        requestBody.poster = replaceTmdbWithProxy(poster);
+    }
+
+    try {
+        var response = await torrServerFetch('/torrents', {
+            method: 'POST',
+            body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+            throw new Error('Ошибка добавления: ' + response.status);
+        }
+
+        var hashLower = hash ? String(hash).toLowerCase() : null;
+        if (hashLower) {
+            knownTorrentMeta.set(hashLower, {
+                id: tmdbId,
+                mediaType: mediaType,
+                poster: requestBody.poster, // Используем уже заменённый URL
+                title: torrname
+            });
+        }
+
+        if (
+            (window.AndroidJS && !AppState.isCatalogSerials) ||
+            (AppState.transcodingFullOnOff && !AppState.isCatalogSerials)
+        ) {
+            return true;
+        }
+
+        await response.json();
+        window.pendingCatalogPoster = null;
+        window.pendingCatalogItem = null;
+        lastAddedTorrentHash = hashLower;
+
+        if (refreshList) {
+            await refreshTorrentsList();
+            var found = AppState.torrents.find(function (t) {
+                return t.hash && t.hash.toLowerCase() === hashLower;
+            });
+            if (found) {
+                found.poster = found.poster || requestBody.poster;
+                found.tmdbId = found.tmdbId || tmdbId;
+                found.media_type = found.media_type || mediaType;
+                knownTorrentMeta.set(found.hash.toLowerCase(), {
+                    id: tmdbId,
+                    mediaType: mediaType,
+                    poster: requestBody.poster,
+                    title: found.title
+                });
+            }
+            return found || true;
+        }
+        return true;
+    } catch (error) {
+        console.error('❌ Ошибка добавления торрента:', error);
+        alert('Ошибка при добавлении торрента: ' + error.message);
+        window.pendingCatalogPoster = null;
+        window.pendingCatalogItem = null;
+        return null;
+    }
+}
+
+window.addTorrentSearchToServer = function (magnet, hash, searchResult) { return addTorrentToServer(magnet, hash, searchResult, { refreshList: false, saveToDb: true }); };
+
+async function refreshTorrentsList() {
+    var focusedCard = document.querySelector('.torrent-card.focused');
+    var preserveHash = (focusedCard && focusedCard.dataset.hash) || window.lastSelectedTorrentHash || null;
+    var preserveIndex = typeof window.lastSelectedTorrentIndex === 'number' ? window.lastSelectedTorrentIndex : 0;
+    try {
+        var response = await torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'list' }) });
+        if (response.ok) {
+            var data = await response.json();
+            AppState.torrents = Array.isArray(data) ? data : [];
+            if (!window.AndroidJS || !AppState.transcodingFullOnOff || !AppState.isCatalogSearch || AppState.isCatalogSerials) renderTorrents();
+            if (!window.AndroidJS && !AppState.transcodingFullOnOff && !AppState.playFromHash && AppState.currentScreen === 'torrents') {
+                setTimeout(function () {
+                    if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
+                        updateFocusableElements();
+                        var targetIndex = -1;
+                        for (var i = 0; i < focusableElements.length; i++) { if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card') && preserveHash && focusableElements[i].dataset.hash === preserveHash) { targetIndex = i; break; } }
+                        if (targetIndex === -1) { var cards = focusableElements.filter(el => el.classList && el.classList.contains('torrent-card')); if (cards[preserveIndex]) targetIndex = focusableElements.indexOf(cards[preserveIndex]); }
+                        if (targetIndex === -1) { for (var l = 0; l < focusableElements.length; l++) { if (focusableElements[l].classList && focusableElements[l].classList.contains('torrent-card')) { targetIndex = l; break; } } }
+                        if (targetIndex !== -1) setFocus(targetIndex);
+                    }
+                }, 80);
+            }
+            return true;
+        }
+    } catch (error) { console.error('Ошибка обновления списка:', error); }
+    return false;
+}
+window.refreshTorrentsList = refreshTorrentsList;
+
+
+/**
+ * TorrServer точно доступен? Иначе показать баннер и не начинать.
+ *
+ * Проверка «!AppState.currentTorrserverUrl» ловила только «адрес не задан».
+ * Если сервер был настроен, но лежит (выключили, сменился IP, порт занят),
+ * воспроизведение падало уже внутри — в alert('Ошибка воспроизведения: …'),
+ * а alert на телевизоре не показывается вовсе. Человек нажимал «смотреть»
+ * и не понимал, почему ничего не происходит.
+ *
+ * Быстрый путь — по флагу AppState.serverOnline, его держит checkServer().
+ * Реальный запрос уходит только когда флаг снят: лишняя секунда перед стартом
+ * лучше, чем немой отказ.
+ */
+async function ensureTorrserverOnline() {
+    var banner = (typeof window.showErrorBanner === 'function') ? window.showErrorBanner : null;
+
+    if (!AppState.currentTorrserverUrl) {
+        if (banner) banner('TorrServer не подключён', 'Укажите адрес сервера в настройках');
+        else alert('Сначала подключитесь к TorrServer');
+        return false;
+    }
+
+    if (AppState.serverOnline) return true;
+
+    var ok = false;
+    try { ok = await checkServer(false); } catch (e) { ok = false; }
+
+    if (!ok) {
+        if (banner) banner('TorrServer недоступен',
+            'Не отвечает ' + AppState.currentTorrserverUrl + '. Проверьте, запущен ли сервер.');
+        else alert('TorrServer недоступен');
+        return false;
+    }
+    return true;
+}
+window.ensureTorrserverOnline = ensureTorrserverOnline;
+
+async function playFromHash(hash, magnet, searchResult = null) {
+    if (!hash) {
+        if (typeof window.showErrorBanner === 'function') window.showErrorBanner('Не удалось открыть раздачу', 'В результате поиска нет hash');
+        else alert('Ошибка: hash не найден');
+        return;
+    }
+    if (!(await ensureTorrserverOnline())) return;
+    AppState.androidBackCatalog = AppState.currentDetailItem;
+    if (window.addToWatchHistory && AppState.pendingDetailItem && AppState.pendingDetailItem.id) {
+        await window.addToWatchHistory(String(AppState.pendingDetailItem.id), currentSearchQuery, AppState.pendingDetailItem.media_type, AppState.pendingDetailPoster || null);
+    }
+    getEl('playback-overlay').classList.add('active'); document.querySelector('.playback-text').textContent = 'Поиск постера и добавление...';
+    try {
+        var ctx = getCatalogSearchContext(searchResult);
+
+        AppState.pendingDetailPoster = ctx.poster;
+        window.pendingCatalogPoster = ctx.poster;
+        AppState.pendingDetailTmdbId = ctx.id;
+        AppState.pendingDetailMediaType = ctx.mediaType;
+
+        var isSerial =
+            ctx.mediaType === 'tv' ||
+            AppState.mediaType === 'tv' ||
+            (searchResult && searchResult.types && Array.isArray(searchResult.types) &&
+                (searchResult.types.indexOf('tv') !== -1 || searchResult.types.indexOf('serial') !== -1)) ||
+            (searchResult && Array.isArray(searchResult.seasons) && searchResult.seasons.length > 0);
+
+        if (isSerial) AppState.isCatalogSerials = true;
+        AppState.isCatalogSearch = true;
+
+        var addedTorrent = await addTorrentToServer(magnet, hash, searchResult, {
+            poster: ctx.poster,
+            tmdbId: ctx.id,
+            mediaType: ctx.mediaType
+        });
+
+        if (!addedTorrent || addedTorrent === true) {
+            await refreshTorrentsList();
+            addedTorrent = AppState.torrents.find(function (t) {
+                return (t.hash || '').toLowerCase() === hash.toLowerCase();
+            });
+        }
+
+        if (addedTorrent && typeof addedTorrent === 'object') {
+            addedTorrent.poster = addedTorrent.poster || ctx.poster;
+            addedTorrent.tmdbId = addedTorrent.tmdbId || ctx.id;
+            addedTorrent.media_type = addedTorrent.media_type || ctx.mediaType;
+
+            knownTorrentMeta.set(hash.toLowerCase(), {
+                id: ctx.id,
+                mediaType: ctx.mediaType,
+                poster: ctx.poster,
+                title: addedTorrent.title
+            });
+        }
+        if (!window.AndroidJS || !AppState.transcodingFullOnOff) { AppState.currentDetailItem = addedTorrent; }
+        if (!isSerial) {
+            var fileId = 1;
+            // Плеер не поднялся или предзагрузку отменили «Назад» — результаты
+            // поиска уже спрятаны, и без возврата экран остался бы пустым
+            var restoreSearchAfterFailedStart = function (searchOverlay) {
+                if (AppState.currentScreen === 'player') return;
+                AppState.playFromHash = false;
+                AppState.currentScreen = 'search';
+                if (searchOverlay) searchOverlay.classList.remove('hidden');
+                setTimeout(function () { if (typeof window.focusSearchHome === 'function') window.focusSearchHome(); }, 80);
+            };
+            if (window.AndroidJS) {
+                getEl('playback-overlay').classList.remove('active');
+                // Нативный плеер открывается мимо startHLSPlayback, поэтому окно
+                // предзагрузки (настройка «Предзагрузка») — здесь. Отменили —
+                // остаёмся в результатах поиска, они и не прятались
+                if (AppState.preloadBeforePlay && typeof runPlaybackPreload === 'function' &&
+                    !(await runPlaybackPreload(hash, fileId, addedTorrent.title))) return false;
+                var playURL = AppState.currentTorrserverUrl + "/stream?link=" + hash + "&index=" + fileId + "&play=play";
+                // Через openAndroidPlayer, а не напрямую: там дедуп повторного
+                // запуска и запись currentTimecodeData, от которой зависит
+                // сохранение таймкода при выходе из плеера.
+                window.openAndroidPlayer(playURL, {
+                    url: playURL, title: addedTorrent.title || 'Видео', iptv: false, timecode: 0,
+                    timeline: { hash: hash + '_' + fileId, time: 0, duration: 0, percent: 0 },
+                    poster: addedTorrent.poster || null,
+                    id: addedTorrent.tmdbId || null,
+                    type: addedTorrent.media_type || (isSerial ? 'tv' : 'movie')
+                });
+                return true;
+            }
+            if (AppState.transcodingFullOnOff) {
+                getEl('playback-overlay').classList.remove('active');
+                var playURL = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
+                var searchOverlay = getEl('search-overlay');
+                if (searchOverlay) searchOverlay.classList.add('hidden');
+                if (!(await startHLSPlayback(playURL, null, true, fileId))) restoreSearchAfterFailedStart(searchOverlay);
+                return true;
+            }
+            var playbackTarget = getPreferredPlaybackFile(addedTorrent, searchResult);
+            fileId = playbackTarget.fileId || 1;
+            document.querySelector('.playback-text').textContent = 'Воспроизведение...';
+            var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
+            // Результаты поиска не уничтожаем — только прячем оверлей, как в ветке
+            // transcodingFullOnOff выше: из плеера вернёмся прямо в них — под
+            // записью плеера в стеке переходов лежит поиск (showDetailView).
+            // Раньше здесь был hideSearchResults() + inSearch = 'torrents', и выход
+            // из плеера уводил в detail торрента, а оттуда — на «Мои торренты».
+            var searchOverlay = getEl('search-overlay');
+            if (searchOverlay) searchOverlay.classList.add('hidden');
+            var started = await startHLSPlayback(playUrl, null, true, playbackTarget.episodeIndex);
+            // Раньше на этом месте hideSearchResults() уводил на «Мои торренты»
+            if (!started) restoreSearchAfterFailedStart(searchOverlay);
+        } else {
+            AppState.currentDetailItem = addedTorrent; AppState.isCatalogSerials = true;
+            // Результаты поиска не уничтожаем — только прячем оверлей. «Назад» из
+            // деталей раздачи вернёт в них: под записью раздачи в стеке
+            // переходов лежит поиск (back-from-detail). Раньше здесь звали
+            // hideSearchResults() и ставили inSearch = 'torrents', и «назад» из
+            // деталей сериала уходило на «Мои торренты», минуя поиск и карточку.
+            var searchOverlay = getEl('search-overlay');
+            if (searchOverlay) searchOverlay.classList.add('hidden');
+            // Дальше из поиска уходим туда, откуда его открыли: 'catalog' — только
+            // если под поиском действительно карточка каталога (поиск запущен из неё).
+            // Со вкладки «Поиск» карточки нет, и уводить в каталог некуда.
+            if (AppState.androidBackCatalog && AppState.androidBackCatalog.id) AppState.inSearch = "catalog";
+            showDetail(addedTorrent);
+        }
+    } catch (error) {
+        console.error('❌ Ошибка воспроизведения:', error);
+        // Сюда попадаем и когда сервер отвалился уже посреди добавления раздачи
+        if (typeof window.showErrorBanner === 'function') {
+            window.showErrorBanner('Не удалось начать воспроизведение', error.message);
+        } else alert('Ошибка воспроизведения: ' + error.message);
+    }
+    finally { getEl('playback-overlay').classList.remove('active'); document.querySelector('.playback-text').textContent = 'Воспроизведение...'; }
+}
+window.playFromHash = playFromHash;
+
+function clearSearchResults() {
+    searchResults = []; filteredResults = []; currentSearchQuery = ''; availableTrackers = [];
+    currentTrackerFilter = 'all'; currentSeasonFilter = 'all'; currentVoiceFilter = 'all';
+    // Тип видео подстраивается под выдачу (нет HDR-раздач — «Все»), поэтому
+    // каждый новый поиск начинает с него заново, со значения по умолчанию
+    applySearchFilterDefaults('videotype');
+    syncSearchFilterButtons();
+}
+window.clearSearchResults = clearSearchResults;
+
+var QUALITY_LABELS = [
+    { min: 2160, label: '4K' },
+    { min: 1080, label: 'FHD' },
+    { min: 720, label: 'HD' },
+    { min: 0, label: 'SD' }
+];
+
+/** «4K», «FHD», «HD», «SD» — крупная метка, как на постере раздачи */
+function qualityLabel(quality) {
+    for (var i = 0; i < QUALITY_LABELS.length; i++) {
+        if (quality >= QUALITY_LABELS[i].min) return QUALITY_LABELS[i].label;
+    }
+    return '';
+}
+
+function formatBitrate(bps) {
+    if (!bps || bps <= 0) return '';
+    return (bps / 1000000).toFixed(2).replace('.', ',') + ' Мбит/с';
+}
+
+function mediaChip(text, extraClass) {
+    return '<div class="search-result-media' + (extraClass ? ' ' + extraClass : '') + '">' +
+        escapeHtml(text) + '</div>';
+}
+
+/**
+ * Строка характеристик файла над серой строкой с трекером и размером.
+ *
+ * Порядок от «решает сразу» к «решает потом»: метка качества и HDR видно
+ * издалека, дальше точное разрешение и кодек, битрейт (при равном
+ * разрешении именно он отличает хорошую раздачу от сжатой), звук, дорожки,
+ * субтитры.
+ *
+ * Отдельным рядом, а не в существующей строке мета-данных: цвета тех чипов
+ * заданы через nth-child, и любая вставка перекрасила бы весь ряд.
+ */
+function buildMediaRow(result) {
+    var media = result.media;
+    var chips = '';
+
+    var label = qualityLabel(result.quality || 0);
+    if (label) chips += mediaChip(label, 'search-result-media-tag');
+    if (result.videotype === 'hdr') chips += mediaChip('HDR', 'search-result-media-tag');
+
+    if (media) {
+        if (media.w && media.h) chips += mediaChip(media.w + '×' + media.h);
+        if (media.vcodec) chips += mediaChip(FFPROBE_VIDEO_NAMES[media.vcodec] || media.vcodec.toUpperCase());
+
+        var bitrate = formatBitrate(media.bitrate);
+        if (bitrate) chips += mediaChip(bitrate);
+        if (media.layout) chips += mediaChip(media.layout);
+
+        for (var i = 0; i < media.audio.length; i++) {
+            var track = media.audio[i];
+            var name = (track.lang ? track.lang.toUpperCase() : '');
+            if (track.title) name += (name ? ' · ' : '') + track.title;
+            if (name) chips += mediaChip('♪ ' + name);
+        }
+        if (media.moreAudio > 0) chips += mediaChip('♪ +' + media.moreAudio);
+
+        if (media.subs.length) {
+            chips += mediaChip('СТ ' + media.subs.join(', ').toUpperCase());
+        }
+    }
+
+    if (!chips) return '';
+    return '<div class="search-result-media-row">' + chips + '</div>';
+}
+
+function buildSearchResultMarkup(result, index) {
+    var voices = Array.isArray(result.voices) ? result.voices : [];
+    var hash = extractHashFromMagnet(result.magnet);
+    var trackerDisplay = result.tracker || 'Unknown';
+    // Дорожки из ffprobe точнее info.voices: там язык и название каждой,
+    // а не общий список переводов. Есть они — второй список лишний
+    var hasAudioTracks = !!(result.media && result.media.audio && result.media.audio.length);
+    var pickedAt = SearchPicks.pickedAt(hash);
+
+    return '<div class="search-result-item' + (pickedAt ? ' search-result-picked' : '') + '" data-index="' + index + '">' +
+        '<div class="search-result-info">' +
+        '<div class="search-result-title">' + (pickedAt ? buildPickedBadge(pickedAt) : '') + escapeHtml(result.title || 'Без названия') + '</div>' +
+        buildMediaRow(result) +
+        '<div class="search-result-meta">' +
+        '<div class="search-result-meta-item">' + escapeHtml(trackerDisplay) + '</div>' +
+        '<div class="search-result-meta-item">' + escapeHtml(result.sizeName || formatBytes(result.size)) + '</div>' +
+        '<div class="search-result-meta-item">' + (result.released || 'N/A') + ' (' + (result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A') + ')</div>' +
+        '<div class="search-result-meta-item">' + ((result.types && result.types.indexOf('tv') !== -1) ? 'Сериал' : 'Фильм') + ' / ' + (result.quality || 'N/A') + 'p</div>' +
+        '<div class="search-result-meta-item">сиды: ' + (result.sid !== undefined ? result.sid : 0) + '</div>' +
+        '<div class="search-result-meta-item">пиры: ' + (result.pir !== undefined ? result.pir : 0) + '</div>' +
+        '</div>' +
+        (voices.length > 0 && !hasAudioTracks ? '<div class="search-result-voices">' + voices.map(function (voice) { return '<span class="search-result-voice">' + escapeHtml(voice) + '</span>'; }).join('') + '</div>' : '') +
+        '</div>' +
+        '<button class="search-result-play" data-hash="' + hash + '" data-magnet="' + escapeAttr(result.magnet) + '" data-index="' + index + '" ' + (!hash ? 'disabled' : '') + '>' + (hash ? '▶' : '❌ Нет hash') + '</button>' +
+        '</div>';
+}
+
+// ==================== ОКОННАЯ ВИДИМОСТЬ СПИСКА РЕЗУЛЬТАТОВ ====================
+
+/**
+ * Элементы списка результатов, которые дальше SEARCH_VISIBILITY_WINDOW_ROWS
+ * высот карточки от вьюпорта, получают класс search-offscreen
+ * (visibility: hidden в styles.css) и перестают отрисовываться. По мере
+ * приближения класс снимается, с уходящей стороны — ставится, поэтому
+ * «живыми» всегда остаются только видимые карточки плюс запас.
+ *
+ * Тот же приём, что у рядов каталога (OFFSCREEN_CLASS в catalog.js), и по тем
+ * же причинам: visibility, а не display: none — бокс остаётся на месте,
+ * значит высота списка и позиция скролла не меняются, IntersectionObserver
+ * продолжает видеть элемент (у display:none прямоугольник нулевой, и класс
+ * уже никогда бы не сняли), а offsetParent не null — то есть VISIBLE()
+ * в control.js по-прежнему пускает на скрытую карточку фокус.
+ *
+ * Ошибка в безопасную сторону: карточки создаются видимыми, гасит их только
+ * колбэк наблюдателя. Нет IntersectionObserver (или он молчит) — потеряем
+ * оптимизацию, но не покажем пустой список.
+ */
+var SEARCH_OFFSCREEN_CLASS = 'search-offscreen';
+var SEARCH_VISIBILITY_WINDOW_ROWS = 5;
+var SEARCH_VISIBILITY_FALLBACK_MARGIN_PX = 700;
+var searchVisibilityObserver = null;
+
+function createSearchVisibilityObserver(container, marginPx) {
+    return new IntersectionObserver(function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+            // Нулевая высота — оверлей поиска скрыт (display:none) или список
+            // очищен. Наблюдатель честно рапортует «не пересекается», но гасить
+            // по такому сообщению нельзя: вернёмся к результатам и увидим
+            // пустой экран до следующего пересчёта.
+            if (!entries[i].boundingClientRect.height) continue;
+            if (entries[i].isIntersecting) entries[i].target.classList.remove(SEARCH_OFFSCREEN_CLASS);
+            else entries[i].target.classList.add(SEARCH_OFFSCREEN_CLASS);
+        }
+    }, {
+        root: container,
+        rootMargin: marginPx + 'px 0px',   // запас только по вертикали
+        threshold: 0
+    });
+}
+
+/** Берёт под наблюдение карточки, которых наблюдатель ещё не видел */
+function observeSearchResultItems(container) {
+    if (!container || !('IntersectionObserver' in window)) return;
+    var items = container.querySelectorAll('.search-result-item');
+    if (!items.length) return;
+
+    if (!searchVisibilityObserver) {
+        // rootMargin у наблюдателя потом не поменять, поэтому запас считаем
+        // один раз — по уже лежащей в DOM карточке
+        var h = items[0].offsetHeight;
+        var margin = h ? Math.round(h * SEARCH_VISIBILITY_WINDOW_ROWS)
+            : SEARCH_VISIBILITY_FALLBACK_MARGIN_PX;
+        searchVisibilityObserver = createSearchVisibilityObserver(container, margin);
+    }
+
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].dataset.visObserved === '1') continue;
+        items[i].dataset.visObserved = '1';
+        searchVisibilityObserver.observe(items[i]);
+    }
+}
+
+/**
+ * Список пересобирается или очищается: старые карточки отсоединяются от DOM,
+ * а наблюдатель держал бы их ссылками. Новый создаст observeSearchResultItems.
+ */
+function resetSearchVisibilityWindow() {
+    if (!searchVisibilityObserver) return;
+    searchVisibilityObserver.disconnect();
+    searchVisibilityObserver = null;
+}
+
+/**
+ * Снимает погашение немедленно. Нужно потому, что колбэк наблюдателя приходит
+ * через кадр-два после сдвига скролла, а карточка под фокусом обязана быть
+ * видимой сразу. Зовёт focusEl() из control.js. Рассинхрон самоисправляется:
+ * наблюдатель всё равно пришлёт своё состояние.
+ */
+function revealSearchResultItem(el) {
+    if (!el || !el.classList) return;
+    el.classList.remove(SEARCH_OFFSCREEN_CLASS);
+}
+window.revealSearchResultItem = revealSearchResultItem;
+
+// ==================== ВЫБРАННЫЕ РАЗДАЧИ ====================
+
+/**
+ * Раздачи, которые запускали из выдачи поиска, — метка «Выбирали» и место в
+ * начале списка при следующем поиске, что бы ни стояло в фильтрах и
+ * сортировке. Ищут обычно тот же фильм заново (вернулись досмотреть, следующая
+ * серия), и листать сотню раздач в поисках той самой незачем.
+ *
+ * Ключ — хэш раздачи: он одинаков у неё на любом трекере и в любой выдаче, а
+ * к фильму его привязывать не нужно — чужому фильму этот хэш не попадётся.
+ * Запись живёт 30 дней от последнего выбора; старше — удаляется при открытии
+ * базы. Хэши держим ещё и в памяти: выдача сортируется синхронно, ждать
+ * IndexedDB там нечего.
+ */
+var SearchPicks = (function () {
+    var DB_NAME = 'SearchPicksDB';
+    var STORE_NAME = 'picks';
+    var TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+    var picks = {};          // hash -> время выбора
+    var loaded = false;
+    var dbPromise = null;
+
+    function openDB() {
+        if (dbPromise) return dbPromise;
+        dbPromise = new Promise(function (resolve, reject) {
+            if (!window.indexedDB) { reject(new Error('IndexedDB недоступна')); return; }
+            var req = indexedDB.open(DB_NAME, 1);
+            req.onupgradeneeded = function (e) {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: 'hash' }).createIndex('pickedAt', 'pickedAt', { unique: false });
+                }
+            };
+            req.onsuccess = function (e) { resolve(e.target.result); };
+            req.onerror = function () { dbPromise = null; reject(req.error); };
+        });
+        return dbPromise;
+    }
+
+    /** Чтение всех записей с уборкой просроченных — одной транзакцией, курсором */
+    function load() {
+        return openDB().then(function (db) {
+            return new Promise(function (resolve) {
+                var border = Date.now() - TTL_MS;
+                var tx = db.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).openCursor().onsuccess = function (e) {
+                    var cursor = e.target.result;
+                    if (!cursor) return;
+                    var rec = cursor.value;
+                    if (!rec || !(rec.pickedAt > border)) cursor['delete']();
+                    else picks[rec.hash] = rec.pickedAt;
+                    cursor['continue']();
+                };
+                tx.oncomplete = tx.onerror = tx.onabort = function () { resolve(); };
+            });
+        })['catch'](function (e) {
+            console.warn('⚠️ SearchPicksDB: выбранные раздачи не загружены:', e);
+        }).then(function () { loaded = true; });
+    }
+
+    function pickedAt(hash) {
+        if (!hash) return 0;
+        var t = picks[String(hash).toLowerCase()];
+        return t && t > Date.now() - TTL_MS ? t : 0;
+    }
+
+    function add(hash, result) {
+        if (!hash) return;
+        var h = String(hash).toLowerCase();
+        var now = Date.now();
+        picks[h] = now;
+        var ctx = AppState.pendingDetailItem;
+        var rec = {
+            hash: h,
+            pickedAt: now,
+            title: (result && result.title) || '',
+            tracker: (result && result.tracker) || '',
+            // Из карточки фильма — для чего выбирали; на будущее, метке не нужно
+            tmdbId: ctx && ctx.id ? String(ctx.id) : null,
+            mediaType: ctx && ctx.media_type ? ctx.media_type : null
+        };
+        openDB().then(function (db) {
+            db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(rec);
+        })['catch'](function (e) { console.warn('⚠️ SearchPicksDB: запись не сохранена:', e); });
+    }
+
+    return {
+        ready: load(),
+        isLoaded: function () { return loaded; },
+        pickedAt: pickedAt,
+        add: add
+    };
+})();
+window.SearchPicks = SearchPicks;
+
+function searchResultHash(result) {
+    if (!result) return null;
+    if (result._hash === undefined) result._hash = extractHashFromMagnet(result.magnet) || null;
+    return result._hash;
+}
+
+/**
+ * Выбранные раздачи — в начало filteredResults, свежий выбор первым. Берутся
+ * из всей выдачи (searchResults), а не из отфильтрованной: фильтр «4K» не
+ * должен прятать раздачу, которую уже смотрели в 1080p. Порядок остальных не
+ * трогаем — его задала сортировка.
+ */
+function pinPickedSearchResults() {
+    if (!searchResults.length) return;
+    var pinned = [];
+    for (var i = 0; i < searchResults.length; i++) {
+        var t = SearchPicks.pickedAt(searchResultHash(searchResults[i]));
+        if (t) pinned.push({ r: searchResults[i], t: t });
+    }
+    if (!pinned.length) return;
+    pinned.sort(function (a, b) { return b.t - a.t; });
+    // Сравниваем по хэшу, а не по ссылке: выдача из воркера
+    // (torrents-worker-patch.js) — копии объектов searchResults
+    var head = [], seen = {};
+    for (var j = 0; j < pinned.length; j++) {
+        var h = searchResultHash(pinned[j].r);
+        if (seen[h]) continue;   // одна раздача с двух трекеров — один раз
+        seen[h] = true;
+        head.push(pinned[j].r);
+    }
+    var rest = filteredResults.filter(function (r) { return !seen[searchResultHash(r)]; });
+    filteredResults = head.concat(rest);
+}
+
+/** Метка «Выбирали …» с датой: по ней видно, давно ли это было */
+function buildPickedBadge(t) {
+    var d = new Date(t);
+    var label = d.getDate() + ' ' + ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'][d.getMonth()];
+    return '<span class="search-result-picked-badge"><i class="fi fi-rr-check"></i>Выбирали ' + label + '</span>';
+}
+
+// Выдача успела прийти раньше, чем прочиталась база (первый поиск сразу после
+// запуска) — пересортировываем, если в ней есть выбранные
+SearchPicks.ready.then(function () {
+    if (!searchResults.length || AppState.currentScreen !== 'search') return;
+    for (var i = 0; i < searchResults.length; i++) {
+        if (SearchPicks.pickedAt(searchResultHash(searchResults[i]))) { applyFiltersAndSort(); return; }
+    }
+});
+
+// Render result cards in frames. Large tracker responses no longer monopolise the UI thread.
+function renderSearchResults() {
+    var searchResultsDiv = getEl('search-results');
+    if (!searchResultsDiv) return;
+    var renderId = (searchResultsDiv._renderId || 0) + 1;
+    searchResultsDiv._renderId = renderId;
+    // Прежние карточки сейчас уедут из DOM вместе с innerHTML
+    resetSearchVisibilityWindow();
+    // В том числе сетка глобального поиска, если выдачу Jacred открыли поверх
+    // неё: её постеры иначе остались бы висеть под наблюдателем
+    releaseGlobalPosters();
+    // Здесь, а не в applyFiltersAndSort: у той две версии (воркер и запасная
+    // в главном потоке), а рисуют обе через эту функцию
+    pinPickedSearchResults();
+
+    if (filteredResults.length === 0) {
+        searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>' + searchResults.length + '</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"' : 'Введите запрос для поиска') + '</div>';
+        return;
+    }
+
+    searchResultsDiv.innerHTML = '<div class="filter-stats">Показано: <span>' + filteredResults.length + '</span> из <span>' + searchResults.length + '</span></div>';
+    searchResultsDiv.onclick = function (event) {
+        var playBtn = event.target.closest('.search-result-play');
+        if (playBtn && !playBtn.disabled) {
+            event.stopPropagation();
+            var hash = playBtn.dataset.hash;
+            var index = parseInt(playBtn.dataset.index, 10);
+            var sourceResult = !isNaN(index) ? filteredResults[index] : null;
+            var searchResult = sourceResult;
+            if (sourceResult && window.pendingCatalogPoster) {
+                searchResult = {};
+                for (var key in sourceResult) {
+                    if (sourceResult.hasOwnProperty(key)) searchResult[key] = sourceResult[key];
+                }
+                searchResult.poster = window.pendingCatalogPoster;
+            }
+            if (hash) {
+                // Запуск из результатов поиска — во всех режимах одинаково:
+                // по этому флагу «назад» из деталей и плеера возвращает в поиск,
+                // а не на «Мои торренты» (app.js: restoreFocusAfterNavigation)
+                AppState.playFromHash = true;
+                AppState.lastSearchResultHash = hash;
+                // Метку ставим сразу, но список не пересортировываем: вернувшись
+                // из плеера, человек продолжает с того же места (focusLastSearchResult)
+                SearchPicks.add(hash, sourceResult);
+                var pickedItem = playBtn.closest('.search-result-item');
+                if (pickedItem && !pickedItem.classList.contains('search-result-picked')) {
+                    pickedItem.classList.add('search-result-picked');
+                    var titleEl = pickedItem.querySelector('.search-result-title');
+                    if (titleEl) titleEl.insertAdjacentHTML('afterbegin', buildPickedBadge(Date.now()));
+                }
+                playFromHash(hash, playBtn.dataset.magnet, searchResult);
+            }
+            return;
+        }
+        var item = event.target.closest('.search-result-item');
+        if (item) {
+            var button = item.querySelector('.search-result-play');
+            if (button && !button.disabled) button.click();
+        }
+    };
+
+    var index = 0;
+    // Первая порция — сразу, в ближайший кадр: 15 раздач с запасом покрывают
+    // экран (на 1080p их видно около девяти). Хвост — такими же порциями, но
+    // в простой (requestIdleCallback). Раньше весь список шёл по 30 на кадр
+    // подряд: на полутора сотнях раздач это пять-шесть задач по 175–270 мс в
+    // первые две секунды (Chrome 66, замер при CPU x4) — ровно тогда, когда
+    // человек начинает листать выдачу, и нажатия ждали за ними в очереди.
+    // Порция в 15 вдвое короче, а простой браузер находит между нажатиями.
+    var FIRST_CHUNK_SIZE = 15;
+    var CHUNK_SIZE = 15;
+
+    function scheduleNextChunk() {
+        if (typeof window.requestIdleCallback === 'function') {
+            // timeout — чтобы хвост дорисовался и при непрерывной анимации
+            window.requestIdleCallback(function () { renderChunk(); }, { timeout: 400 });
+        } else {
+            setTimeout(renderChunk, 16);
+        }
+    }
+
+    function renderChunk() {
+        if (searchResultsDiv._renderId !== renderId) return;
+
+        /* Человек ведёт фокус — хвост списка не дорисовываем.
+         *
+         * Тот же приём, что у обрезки чанков каталога (trimGridChunks в
+         * catalog.js): пока идёт серия нажатий, кадр должен принадлежать
+         * навигации, а не вставке карточек, которых на экране всё равно ещё
+         * нет. На WebView 66 вставка тридцати карточек с пересчётом раскладки
+         * растущего списка занимает кадр целиком, и нажатия копятся в очереди —
+         * отсюда и ощущение, что до конца отрисовки навигации нет. На короткой
+         * выдаче кадров мало и заметить нечего, на полусотне и больше — видно.
+         *
+         * Совсем мелко не дробим: раскладка пересчитывается на каждую вставку,
+         * и 250 карточек по 4 штуки за кадр обошлись вдвое дороже, чем по 30
+         * (проверено моделью). 15 в простой — компромисс, см. CHUNK_SIZE.
+         * Главный размен здесь — уступать кадры вводу. */
+        if (window.navHold) { setTimeout(renderChunk, 120); return; }
+
+        var html = '';
+        var end = Math.min(index + (index === 0 ? FIRST_CHUNK_SIZE : CHUNK_SIZE), filteredResults.length);
+        for (; index < end; index++) html += buildSearchResultMarkup(filteredResults[index], index);
+        searchResultsDiv.insertAdjacentHTML('beforeend', html);
+        // Карточки приходят пачками, значит и наблюдателю их отдаём пачками
+        observeSearchResultItems(searchResultsDiv);
+        // Навигация держится на поколении DOM: и список фокусируемых, и выдача
+        // для стрелок (getSearchResults в control.js). Без этого свежая пачка
+        // не попала бы в навигацию.
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        if (index < filteredResults.length) scheduleNextChunk();
+    }
+    requestAnimationFrame(renderChunk);
+}
+
+function extractHashFromMagnet(magnet) {
+    if (!magnet) return null;
+    var match = magnet.match(/xt=urn:btih:([a-fA-F0-9]{40})/i);
+    if (match && match[1]) return match[1].toLowerCase();
+    var altMatch = magnet.match(/[a-fA-F0-9]{40}/);
+    if (altMatch) return altMatch[0].toLowerCase();
+    return null;
+}
+
+function getCurrentSearchMode() {
+    var modeSelect = getEl('torrent-movie'); if (modeSelect) currentSearchMode = modeSelect.value; return currentSearchMode;
+}
+
+async function searchTMDB(query) {
+    if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
+    if (tmdbSearchController) tmdbSearchController.abort();
+    tmdbSearchController = new AbortController();
+    var controller = tmdbSearchController;
+    var searchSequence = ++tmdbSearchSequence;
+    showLoading('Поиск в TMDB...');
+    try {
+        var encodedQuery = encodeURIComponent(query.trim());
+        // Фильмы и сериалы — одним запросом: оба похода в TMDB и склейку
+        // делает сервер (/api/tmdb/search/all). Он же и сортирует.
+        var allResults = null;
+        var combined = await fetch('/api/tmdb/search/all?query=' + encodedQuery, { signal: controller.signal });
+        if (searchSequence !== tmdbSearchSequence) return;
+        if (combined.ok) {
+            var combinedData = await combined.json();
+            if (combinedData && Array.isArray(combinedData.results)) allResults = combinedData.results;
+        }
+        // Маршрута нет (404) — старый серверный бинарник, а js пришёл с
+        // зеркала свежий: делаем как раньше, двумя запросами
+        if (allResults === null && combined.status === 404) {
+            allResults = await searchTMDBLegacy(encodedQuery, controller.signal);
+            if (searchSequence !== tmdbSearchSequence) return;
+        }
+        if (allResults === null) throw new Error('TMDB: HTTP ' + combined.status);
+        for (var ri = 0; ri < allResults.length; ri++) allResults[ri].searchQuery = query;
+        globalSearchResults = allResults; currentSearchQuery = query;
+        // Запись поиска в стеке переходов помнит, что это выдача TMDB и по
+        // какому запросу, — чтобы вернуть её, если её подменят раздачами
+        if (window.Nav) { var navSearch = Nav.top(); if (navSearch && navSearch.screen === 'search') { navSearch.data.tmdb = true; navSearch.data.query = query; navSearch.data.label = query; } }
+        if (currentSearchMode === 'globalsearch') showContentTypeFilter();
+        showGlobalSearchResults();
+    } catch (error) {
+        if (!error || error.name !== 'AbortError') {
+            console.error('Ошибка поиска в TMDB:', error);
+            alert('Ошибка при поиске: ' + error.message);
+        }
+    } finally {
+        if (searchSequence === tmdbSearchSequence) hideLoading();
+    }
+}
+
+/**
+ * Прежний путь глобального поиска — для старого сервера без
+ * /api/tmdb/search/all: два запроса и склейка на клиенте.
+ */
+async function searchTMDBLegacy(encodedQuery, signal) {
+    var responses = await Promise.all([
+        fetch('/api/tmdb/search?query=' + encodedQuery + '&type=movie&year=', { signal: signal }),
+        fetch('/api/tmdb/search?query=' + encodedQuery + '&type=tv&year=', { signal: signal })
+    ]);
+    var all = [];
+    if (responses[0] && responses[0].ok) {
+        var moviesData = await responses[0].json();
+        if (moviesData.results) moviesData.results.forEach(function (item) { all.push({ id: item.id, media_type: 'movie', title: item.title, name: item.title, release_date: item.release_date, vote_average: item.vote_average, vote_count: item.vote_count, overview: item.overview, poster_path: item.poster_path, backdrop_path: item.backdrop_path }); });
+    }
+    if (responses[1] && responses[1].ok) {
+        var tvData = await responses[1].json();
+        if (tvData.results) tvData.results.forEach(function (item) { all.push({ id: item.id, media_type: 'tv', title: item.name, name: item.name, first_air_date: item.first_air_date, vote_average: item.vote_average, vote_count: item.vote_count, overview: item.overview, poster_path: item.poster_path, backdrop_path: item.backdrop_path }); });
+    }
+    all.sort(function (a, b) { return (b.vote_average || 0) - (a.vote_average || 0) || (b.vote_count || 0) - (a.vote_count || 0); });
+    return all;
+}
+
+function getRatingColor(rating) { if (rating >= 8) return '#4caf50'; if (rating >= 6) return '#ffc107'; if (rating >= 4) return '#ff9800'; return '#f44336'; }
+
+function showGlobalSearchResults() { renderFilteredGlobalResults(globalSearchResults); }
+
+/**
+ * Вернуть выдачу TMDB, если её подменили.
+ *
+ * «Поиск торрентов» из карточки открывает тот же оверлей и кладёт в него
+ * раздачи, а при закрытии и вовсе чистит список. Сами результаты TMDB при этом
+ * целы (globalSearchResults), поэтому «назад» к ним перерисовывает их из
+ * памяти — без повторного запроса. entry — запись 'search' стека (nav.js).
+ */
+function restoreSearchEntry(entry) {
+    var d = entry && entry.data;
+    if (!d || !d.tmdb || !globalSearchResults.length) return false;
+    if (document.querySelector('#search-results .global-search-card')) return false;
+    setSearchLocked(false);
+    if (typeof window.clearCatalogSearchContext === 'function') window.clearCatalogSearchContext();
+    var modeSelect = getEl('torrent-movie'); if (modeSelect) modeSelect.value = 'globalsearch';
+    currentSearchMode = 'globalsearch';
+    var searchInput = getEl('search-query'); if (searchInput && d.query) searchInput.value = d.query;
+    if (d.query) currentSearchQuery = d.query;
+    showGlobalSearchResults();
+    return true;
+}
+window.restoreSearchEntry = restoreSearchEntry;
+
+/* Наблюдатель ленивых постеров глобального поиска.
+ *
+ * Держим ссылку, потому что его надо ОТКЛЮЧАТЬ. Раньше он был локальной
+ * переменной: каждая перерисовка выдачи (смена запроса, переключение фильтра
+ * «Фильмы/Сериалы») заводила новый, а старый оставался жив и продолжал
+ * наблюдать за сорока уже выброшенными из DOM картинками. Отпустить их сборщик
+ * не мог, а это до сорока декодированных постеров 342×513 — десятки мегабайт,
+ * которые на телевизоре никуда не девались и давили на память ровно тогда,
+ * когда следом открывался тяжёлый список выдачи Jacred.
+ */
+var globalPosterObserver = null;
+
+function releaseGlobalPosters() {
+    if (!globalPosterObserver) return;
+    try { globalPosterObserver.disconnect(); } catch (e) { }
+    globalPosterObserver = null;
+}
+window.releaseGlobalPosters = releaseGlobalPosters;
+
+function renderFilteredGlobalResults(results) {
+    var searchResultsDiv = getEl('search-results');
+    var searchOverlay = getEl('search-overlay');
+    if (!searchResultsDiv) return;
+    if (searchOverlay) searchOverlay.classList.remove('hidden');
+    // Прежняя сетка сейчас уедет из DOM — снимаем с неё наблюдателя
+    releaseGlobalPosters();
+
+    if (results.length === 0) {
+        searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>0</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Ничего не найдено для "' + escapeHtml(currentSearchQuery) + '" в TMDB' : 'Введите запрос для поиска') + '</div>';
+        return;
+    }
+
+    // Ограничиваем рендер, чтобы не вешать DOM на слабых ТВ
+    var limit = Math.min(results.length, 40);
+    resetSearchVisibilityWindow();   // тут своя сетка карточек, списка больше нет
+    searchResultsDiv.innerHTML = ''; // Очищаем безопасно
+
+    var statsDiv = document.createElement('div');
+    statsDiv.className = 'filter-stats';
+    statsDiv.innerHTML = 'Найдено в TMDB: <span>' + results.length + '</span>' + (results.length > limit ? ' (показано ' + limit + ')' : '');
+    searchResultsDiv.appendChild(statsDiv);
+
+    /* Сетка и карточки — те же, что у сетки каталога.
+     *
+     * Раньше выдача собиралась своими карточками на инлайн-стилях (синяя
+     * рамка, свой бейдж оценки, подпись «Фильм · год» под постером) в сетке,
+     * зашитой на 5 колонок. От каталога она отличалась и видом, и тем, что
+     * настройки «Внешнего вида» её не касались: размер карточек, число
+     * колонок, рейтинги и год. А стрелки вверх-вниз при этом считали колонки
+     * по каталогу (getColumns в control.js) — выбрали 6 колонок, и навигация
+     * по поиску шагала мимо.
+     *
+     * Теперь карточку собирает общий createCardElement (catalog.js), у сетки
+     * те же правила, что у #catalog-grid (styles.css и ui-customizer.js), а
+     * постер ставит updatePosterDOM: размер — из настроек, проявление — через
+     * общую очередь, при ошибке — следующее зеркало.
+     *
+     * Класс global-search-card оставлен: по нему выдачу находит навигация
+     * пульта (control.js). */
+    var grid = document.createElement('div');
+    grid.className = 'global-search-grid';
+
+    var fragment = document.createDocumentFragment();
+
+    for (var idx = 0; idx < limit; idx++) {
+        var result = results[idx];
+        var title = result.title || result.name || 'Без названия';
+        var date = String(result.release_date || result.first_air_date || '');
+        var year = /^\d{4}/.test(date) ? date.substring(0, 4) : '';
+        var mt = result.media_type === 'tv' ? 'tv' : 'movie';
+        // Как у карточки каталога: одна цифра после запятой, целые — без неё
+        var rating = result.vote_average ? Math.round(result.vote_average * 10) / 10 : null;
+
+        var card = createCardElement({
+            className: 'global-search-card',
+            dataset: {
+                tmdbId: result.id,
+                mediaType: mt,
+                title: title,
+                rating: rating || '',
+                posterPath: result.poster_path || ''
+            },
+            title: title.substring(0, 60) + (title.length > 60 ? '...' : ''),
+            ratingText: rating || '',
+            ratingColor: rating ? getRatingColor(rating) : '',
+            metaType: mt === 'tv' ? 'Сериал' : 'Фильм',
+            metaBadge: year
+        });
+
+        if (!result.poster_path) {
+            // Скелет-загрузка без постера так и мигал бы вечно — меняем на
+            // заглушку. Не через updatePosterDOM: тот переписывает весь блок
+            // постера, и вместе с ним пропали бы плашка года и полоса оценки.
+            var ph = card.querySelector('.no-poster');
+            if (ph) {
+                ph.classList.remove('catalog-poster-loading');
+                ph.textContent = 'Нет постера';
+            }
+        }
+        fragment.appendChild(card);
+    }
+
+    grid.appendChild(fragment);
+    searchResultsDiv.appendChild(grid);
+
+    // Навигация пультом держится на поколении DOM: без этого свежая сетка
+    // карточек не попала бы ни в список фокусируемых, ни в getSearchResults
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    // Колонки теперь задаёт тот же CSS, что у каталога, — пусть навигация
+    // перечитает их с экрана, а не держит прежнее число
+    if (typeof invalidateColumnsCache === 'function') invalidateColumnsCache();
+
+    // Постеры — лениво, как и раньше: за 300 px до появления в кадре
+    var loadPoster = function (card) {
+        var path = card.dataset.posterPath;
+        if (!path || card.dataset.posterRequested === '1') return;
+        card.dataset.posterRequested = '1';
+        updatePosterDOM(card.querySelector('.torrent-poster'), null, path);
+    };
+    var postered = grid.querySelectorAll('.global-search-card[data-poster-path]:not([data-poster-path=""])');
+    if ('IntersectionObserver' in window) {
+        var imageObserver = new IntersectionObserver(function (entries, observer) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                loadPoster(entry.target);
+                observer.unobserve(entry.target);
+            });
+        }, {
+            rootMargin: '300px 0px'
+        });
+        for (var pi = 0; pi < postered.length; pi++) imageObserver.observe(postered[pi]);
+        globalPosterObserver = imageObserver;
+    } else {
+        // Фоллбэк для совсем старых браузеров
+        for (var pj = 0; pj < postered.length; pj++) loadPoster(postered[pj]);
+    }
+
+    // Делегирование клика (вешается на grid, а не на каждую карточку)
+    grid.onclick = function (e) {
+        var card = e.target.closest('.global-search-card');
+        if (card) {
+            var tmdbId = card.dataset.tmdbId;
+            var result = results.find(function (r) { return String(r.id) === tmdbId; });
+            if (result) showGlobalSearchDetail(result);
+        }
+    };
+}
+
+async function showGlobalSearchDetail(item) {
+    var catalogItem = { id: item.id, media_type: item.media_type, title: item.title || item.name, name: item.name || item.title, overview: item.overview, poster_path: item.poster_path, backdrop_path: item.backdrop_path, vote_average: item.vote_average, release_date: item.release_date, first_air_date: item.first_air_date, torrent: [{ name: item.title || item.name }] };
+    AppState.mediaType = item.media_type;
+    var posterUrl = item.poster_path ? buildTmdbPosterUrl(item.poster_path, 'w342') : null;
+    if (typeof window.showCatalogDetail === 'function') {
+        // Точку выхода из самого поиска (главная, каталог, торренты) и возврат
+        // карточка → поиск помнит стек переходов (nav.js)
+        AppState.currentScreen = 'detail';
+        // Прежняя карточка ещё могла стоять под проявляющейся выдачей — теперь её
+        // место занимает новая, прятать её по окончании проявления уже нельзя
+        AppState.detailUnderSearch = false;
+        // Какую карточку выдачи открыли — чтобы «назад» вернул фокус на неё,
+        // а не в поисковую строку (focusLastSearchCard)
+        AppState.lastSearchCardKey = item.id + ':' + (item.media_type === 'tv' ? 'tv' : 'movie');
+        // Оверлей поиска снимаем СРАЗУ, а не после await: он лежит выше
+        // #detail-view и индикатора «Загрузка…», и пока showCatalogDetail ждал
+        // /details и актёров, на экране висела выдача, будто нажатие не
+        // сработало. Теперь как в каталоге: нажал → загрузка → карточка.
+        // Чёрная подложка закрывает экран под поиском на время проявления
+        // карточки; снимает её animateDetailShow в конце перехода.
+        var hasShade = typeof Animations !== 'undefined' && typeof Animations.raiseDetailShade === 'function';
+        if (hasShade) Animations.raiseDetailShade();
+        if (window.Nav) Nav.push('detail', Nav.detailData(catalogItem));
+        var detailPromise = window.showCatalogDetail(catalogItem, 0, posterUrl);
+        var searchOverlay = getEl('search-overlay'); if (searchOverlay) searchOverlay.classList.add('hidden');
+        try {
+            await detailPromise;
+        } catch (e) {
+            if (hasShade && typeof Animations.dropDetailShade === 'function') Animations.dropDetailShade();
+            throw e;
+        }
+    }
+}
+
+function showContentTypeFilter() {
+    var filterGroup = document.querySelector('.filter-group'); if (!filterGroup) return;
+    var contentTypeFilter = getEl('filter-content-type');
+    if (!contentTypeFilter) {
+        var newFilter = document.createElement('div'); newFilter.className = 'filter-group';
+        newFilter.innerHTML = `<label class="filter-label" for="filter-content-type">Тип контента</label><select id="filter-content-type" class="filter-select"><option value="all">Все</option><option value="movie">Фильмы</option><option value="tv">Сериалы</option></select>`;
+        var qualityFilter = getEl('filter-quality');
+        if (qualityFilter && qualityFilter.parentNode) qualityFilter.parentNode.parentNode.insertBefore(newFilter, qualityFilter.parentNode.nextSibling);
+        else filterGroup.parentNode.appendChild(newFilter);
+        getEl('filter-content-type').addEventListener('change', function (e) { filterGlobalSearchByType(e.target.value); });
+    }
+}
+
+function filterGlobalSearchByType(type) {
+    if (!globalSearchResults.length) return;
+    var filtered = type === 'all' ? globalSearchResults : globalSearchResults.filter(r => r.media_type === type);
+    renderFilteredGlobalResults(filtered);
+}
+
+function clearSearchResultsContainer() { resetSearchVisibilityWindow(); var searchResultsDiv = getEl('search-results'); if (searchResultsDiv) searchResultsDiv.innerHTML = ''; }
+window.clearSearchResultsContainer = clearSearchResultsContainer;
+
+function initTorrentDelegations() {
+    setupTorrentGridDelegation();
+    setupFilePlayButtonDelegation();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTorrentDelegations);
+} else {
+    initTorrentDelegations();
+}

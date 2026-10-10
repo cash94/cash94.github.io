@@ -1,0 +1,4983 @@
+// control.js - Модуль управления навигацией, фокусом и обработкой клавиш
+// ==================== КОНСТАНТЫ ====================
+var KEY_CODES = {
+    OK: 13,
+    ESC: 27,
+    BACK: [4, 8, 27, 461, 111, 10009],
+    ARROWS: { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40 },
+    SPACE: 32
+};
+
+var OK_HOLD_DELETE_MS = 900;
+var SEEK_ACCELERATION_STEPS = [
+    { time: 0, step: 5 },
+    { time: 500, step: 10 },
+    { time: 1000, step: 20 },
+    { time: 1500, step: 30 },
+    { time: 2000, step: 45 },
+    { time: 2500, step: 60 },
+    { time: 3000, step: 90 },
+    { time: 4000, step: 120 }
+];
+
+/**
+ * Прокрутка едет с ОДНОЙ скоростью — всегда и везде.
+ *
+ * Длительность твина считается из расстояния (dist / speed), кривая линейная.
+ * Раньше было наоборот: фиксированная длительность и power3.out на одиночное
+ * нажатие, а второе нажатие в течение 250мс переключало шаг на линейный длиной
+ * ровно в интервал автоповтора. Один и тот же жест ехал то за 0.45с, то за
+ * 0.1с — это и читалось как рывок-ускорение посреди движения.
+ *
+ * Плата за постоянную скорость — шаги нельзя отрабатывать быстрее, чем едет
+ * прокрутка, иначе фокус уходит за край экрана и прокрутке приходится его
+ * догонять (то самое ускорение). Поэтому темп шага единый и не зависит от того,
+ * как быстро жмут и держат ли кнопку, — см. acceptNavStep и NAV_STEP_BASE_MS.
+ *
+ * speedX / speedY — px/с. Ориентиры: карточка ряда с зазором ≈ 278px, высота
+ * ряда каталога ≈ 490px, то есть сам по себе шаг занял бы 0.31с и 0.33с. Ровно
+ * на эту разницу с NAV_STEP_BASE_MS (350мс) и работает navStepScrollDuration:
+ * прокрутка шага укладывается в общий срок, а эти скорости остаются за всем
+ * остальным — прокруткой мышью, восстановлением позиции и порогом maxDuration.
+ */
+var SCROLL_SMOOTH = {
+    force: true,
+    speedX: 900,
+    speedY: 1500,
+    // Совсем короткие доводки (несколько px) не должны схлопываться в скачок
+    minDuration: 0.12,
+    // А слишком длинные не должны ехать вовсе: при постоянной скорости переезд
+    // через весь ряд занял бы секунды, и это ровно то ожидание, которое ловится
+    // при переходе на ряд, прокрученный в другое место, или при возврате из
+    // сетки категории обратно к рядам. Всё, что не укладывается в этот предел,
+    // — не поездка, а смена места: ставим позицию сразу. Порог примерно в
+    // полтора шага, так что обычная навигация целиком остаётся плавной.
+    maxDuration: 0.5,
+    // Прокрутка без известного расстояния — Animations.scrollToIfNotVisible,
+    // единственный путь, где цель считает не этот файл
+    fallbackDuration: 0.35,
+    ease: 'none'
+};
+
+/* Прокрутка без анимации на время одной операции.
+ *
+ * Нужна там, где позицию восстанавливают под невидимым содержимым: возврат из
+ * сетки категории к рядам каталога сначала ставит фокус на тот ряд, откуда
+ * ушли, и только потом проявляет ряды. Ехать туда плавно бессмысленно —
+ * зритель этого всё равно не видит, зато к моменту показа лента обязана уже
+ * стоять на месте, иначе ряды появятся сверху и дёрнутся на нужную строку.
+ *
+ * Счётчик, а не флаг: вложенные вызовы не должны гасить друг друга.
+ */
+var _instantScrollDepth = 0;
+
+function withInstantScroll(fn) {
+    _instantScrollDepth++;
+    try { return fn(); }
+    finally { _instantScrollDepth--; }
+}
+window.withInstantScroll = withInstantScroll;
+
+// ==================== СОСТОЯНИЕ ====================
+var focusableElements = [];
+var currentFocusIndex = 0;
+var lastSelectedTorrentHash = null;
+var lastSelectedTorrentIndex = 0;
+var lastPlayerBackPressAt = 0;
+// Окно второго нажатия Назад для выхода из плеера; столько же висит и
+// предупреждение «нажмите ещё раз» (player.js: showPlayerHint)
+var PLAYER_BACK_EXIT_MS = 2000;
+
+/**
+ * «Назад» в плеере — с пульта и правой кнопкой мыши (setupMouseControls):
+ * открытая панель (серии, дорожки) только закрывается; иначе первое нажатие
+ * прячет HUD и предупреждает, второе за PLAYER_BACK_EXIT_MS — выход из плеера.
+ *
+ * Второе нажатие выходит, даже если HUD к этому времени снова на экране: на
+ * webOS аэромышь пульта показывает HUD от малейшего движения руки, и когда
+ * «Назад» лишь прятал HUD и сбрасывал счётчик, выйти было нельзя — HUD
+ * появлялся, «Назад» его прятал, и так по кругу. Заодно на время ожидания
+ * второго нажатия движение мыши HUD не показывает (mutePlayerMouse).
+ *
+ * @param {boolean} [fromMouse] правая кнопка: HUD к этому моменту всегда
+ *        виден — его показало само движение и нажатие мыши, — поэтому его
+ *        не прячем, только закрываем панель
+ */
+function playerBackPress(fromMouse) {
+    if (hidePlayerPanelsOnly()) {
+        if (!fromMouse) hidePlayerUi();
+        lastPlayerBackPressAt = 0;
+        return;
+    }
+    var now = Date.now();
+    if (now - lastPlayerBackPressAt < PLAYER_BACK_EXIT_MS) {
+        lastPlayerBackPressAt = 0;
+        if (typeof window.showDetailView === 'function') window.showDetailView();
+    } else {
+        if (!fromMouse) {
+            hidePlayerUi();
+            if (typeof window.mutePlayerMouse === 'function') window.mutePlayerMouse(PLAYER_BACK_EXIT_MS);
+        }
+        lastPlayerBackPressAt = now;
+        if (typeof window.showPlayerHint === 'function') window.showPlayerHint('Нажмите «Назад» ещё раз, чтобы выйти из плеера', PLAYER_BACK_EXIT_MS);
+    }
+}
+var seekHoldInterval = null;
+var seekHoldStep = 5;
+var seekHoldDelay = 150;
+var isSeekHoldActive = false;
+var accelerationTimer = null;
+var okHoldTimer = null;
+var okHoldHandled = false;
+var okHoldFocused = null;
+// OK ещё не отпустили. Android WebView (Chrome 66) шлёт удержание пульта серией
+// обычных keydown с e.repeat = false — по одному e.repeat каждое из них
+// выглядело новым нажатием, таймер долгого OK перезапускался и не срабатывал
+// никогда (в браузере на ПК повторы помечены, там работало). Отметка времени —
+// страховка от потерянного keyup: дольше OK_HELD_STALE_MS тишины = отпустили.
+var okKeyHeld = false;
+var okKeyLastDown = 0;
+var OK_HELD_STALE_MS = 1500;
+// Кнопку навигации ДЕРЖАТ. На скорость прокрутки не влияет — она единая; флаг
+// нужен каталогу (window.navHold), чтобы не вставлять постеры и не трогать DOM,
+// пока идёт перемещение по строкам.
+var navHold = false;
+var navHoldTimer = null;
+// Автоповтор от браузера: ставится в обработчиках keydown, читается setNavHold.
+// Признак того, что кнопку именно ДЕРЖАТ.
+var navKeyRepeat = false;
+var navStreak = 0;
+var navStreakAt = 0;
+var navStreakDir = null;
+// До этого момента (Date.now()) следующий шаг навигации не принимается: либо
+// ещё едет твин прокрутки, либо не вышел пол NAV_STEP_BASE_MS. Так скорость
+// движения остаётся одной и той же — см. SCROLL_SMOOTH и acceptNavStep.
+var navStepUntil = 0;
+// Предохранитель на случай неожиданно длинного твина (доводка через полэкрана):
+// притормаживать автоповтор дольше этого нельзя, иначе пульт «залипнет».
+var NAV_STEP_MAX_WAIT_MS = 420;
+// Длительность одного шага навигации — единственное число, задающее темп
+// движения. Столько шаг занимает и когда прокрутки при нём не было вовсе, и
+// когда была: прокрутка шага подгоняется под этот срок (navStepScrollDuration).
+//
+// Без этого темп гулял в разы: пока фокус идёт по уже видимой части ряда или
+// строки, прокрутка не заводится, притормаживать нечем — и лента летит со
+// скоростью автоповтора пульта; на краю начинается прокрутка, и движение
+// падает до её скорости. То же самое с быстрыми одиночными нажатиями: они не
+// притормаживались вообще.
+var NAV_STEP_BASE_MS = 200;
+// Насколько прокрутка шага вправе оказаться быстрее постоянной скорости
+// (SCROLL_SMOOTH.speedX/speedY) ради этого срока. При нынешних 350мс поправка
+// обычный шаг наоборот слегка ЗАМЕДЛЯЕТ (карточка ряда сама по себе едет 0.31с,
+// строка сетки — 0.33с), и ограничение работает только на редких длинных шагах
+// — переход на ряд, прокрученный в другое место: без него такой переезд
+// ужимался бы в срок шага и читался бы рывком.
+var NAV_STEP_MAX_SPEEDUP = 1.5;
+// Прокрутка считается частью шага, если началась не позже этого срока после
+// него. По времени, а не по navStepArmed: один шаг умеет двигать сразу две оси
+// (переход на другой ряд — и лента вниз, и карусель вбок), и подогнать надо обе,
+// иначе одна докрутится, а вторая продолжит ехать. Два кадра — это всё ещё та
+// же задача обработчика нажатия, фоновые прокрутки сюда не попадают.
+var NAV_STEP_SCROLL_WINDOW_MS = 32;
+var navStepAt = 0;
+// Экраны с анимированной лентой — только на них шаг притормаживается. Настройки
+// и донат не в списке: там нет прокрутки под фокусом, и единый темп читался бы
+// просто как тормоза.
+var NAV_PACED_SCREENS = ['home', 'catalog', 'torrents', 'search', 'detail'];
+// Шаг, пришедший раньше времени: ждёт конца текущего твина — см. queueNavStep
+var navQueuedDirection = null;
+var navQueuedRun = null;
+var navQueuedScreen = null;
+var navQueueTimer = null;
+// Взводится в navigate() и гаснет на первой же заведённой прокрутке. Нужен,
+// чтобы притормаживание считалось по твину ИМЕННО этого шага: applyScroll зовут
+// и фоновые пути (сборка рядов, восстановление позиции при возврате), и без
+// флага любой из них отодвигал бы следующий шаг пульта на свою длительность.
+var navStepArmed = false;
+var lastPopStateTime = 0;
+var isProcessingBack = false;
+var lastNavDirection = 'right';
+
+var configState = {
+    activeTabId: 'torrserver-tab',
+    isOnMenu: true,
+    previousFocusElement: null,
+    initialized: false
+};
+
+var customFilterMenuState = null;
+
+// Кэш для updateFocusableElements
+var _focusCache = {
+    timestamp: 0,
+    screen: null,
+    elements: [],
+    gen: -1,
+    ttl: 100 // мс
+};
+
+// Класс скрытого ряда главной (home.js: CONFIG.HIDDEN_ROW_CLASS). Держим копию
+// здесь: control.js грузится раньше home.js и читать оттуда на горячем пути
+// нечего — значение не меняется за сессию.
+var HOME_HIDDEN_ROW_CLASS = 'home-row-hidden';
+
+// Поколение DOM: инкрементируется в invalidateFocusCache() из всех точек, где
+// реально меняется состав фокусируемых элементов. Для экрана каталога кэш живёт
+// по поколению, а не по 100-мс TTL: там на каждое нажатие стрелки шёл полный
+// обход ~90 карточек с offsetParent, и на Android TV это заметно.
+var _focusGen = 0;
+
+// Кэш getCatalogRows() — та же схема, тот же счётчик поколений
+var _rowsCache = { gen: -1, rows: null };
+
+// Кэш getCatalogGridCards() — то же самое для режима сетки категории.
+// Раньше кэша тут не было вовсе: каждое нажатие стрелки строило список заново
+// (querySelectorAll по документу + offsetParent на каждой карточке). В рядах
+// это ~90 элементов, а в сетке с catalog-idb-patch.js подгрузка идёт порциями
+// по ITEMS_PER_PAGE до CATALOG_FULL_LIMIT — то есть до 1000 offsetParent на
+// нажатие, и чем глубже пользователь ушёл, тем сильнее фризит навигация.
+var _gridCardsCache = { gen: -1, cards: null };
+
+// Каталог держит кэш фокуса ТОЛЬКО по поколению, без TTL.
+//
+// Раньше здесь был предохранитель в 1500мс на случай мутации DOM, забывшей
+// позвать invalidateFocusCache(). Но при непрерывной навигации он срабатывал
+// всегда — раз в полторы секунды список из сотен карточек пересобирался
+// целиком (querySelectorAll + offsetParent на каждой), и это ощущалось как
+// периодический рывок. Все реальные изменения состава двигают _focusGen:
+// renderCatalogGrid, appendCatalogItems, showCatalogGridView/RowsView,
+// прогрессивная сборка рядов — каждая из них зовёт invalidateFocusCache().
+
+// ==================== ИНДИКАТОР ПЕРЕМОТКИ ====================
+/**
+ * Крупное время под курсором перемотки. Живёт в готовом #seek-speed-indicator
+ * внутри #player-screen — раньше control.js создавал свой div и вешал его в
+ * <body>, из-за чего в полноэкранном режиме индикатора не было видно вообще
+ * (браузер рисует только полноэкранный элемент и его потомков), а оформление
+ * было прибито инлайном мимо styles.css.
+ *
+ * Кроме времени показываем текущий шаг ускорения: при удержании кнопки он
+ * растёт с 5 до 120 секунд, и без подсказки непонятно, почему полоса вдруг
+ * поехала быстрее. Раньше шаг только писался в консоль.
+ */
+var seekIndicatorEl = null;
+var seekIndicatorTimeEl = null;
+var seekIndicatorDirEl = null;
+var seekIndicatorStepEl = null;
+var seekOverlayTimeout = null;
+
+function getSeekIndicator() {
+    if (seekIndicatorEl && seekIndicatorEl.parentNode) return seekIndicatorEl;
+    seekIndicatorEl = getEl('seek-speed-indicator');
+    if (!seekIndicatorEl) return null;
+    if (!seekIndicatorEl.firstChild) {
+        seekIndicatorEl.innerHTML =
+            '<div class="seek-indicator-time" id="seek-time">00:00</div>' +
+            '<div class="seek-indicator-step">' +
+            '<span class="seek-indicator-dir" id="seek-direction"></span>' +
+            '<span class="seek-indicator-speed" id="seek-step"></span>' +
+            '</div>';
+    }
+    seekIndicatorTimeEl = seekIndicatorEl.querySelector('#seek-time');
+    seekIndicatorDirEl = seekIndicatorEl.querySelector('#seek-direction');
+    seekIndicatorStepEl = seekIndicatorEl.querySelector('#seek-step');
+    return seekIndicatorEl;
+}
+
+/**
+ * @param {number} time  абсолютное время, к которому едем
+ * @param {number} direction  +1 вперёд, -1 назад
+ * @param {number} [step]  шаг ускорения в секундах (только удержание кнопки)
+ */
+function showSeekOverlay(time, direction, step) {
+    var el = getSeekIndicator();
+    if (!el) return;
+
+    if (seekIndicatorTimeEl) seekIndicatorTimeEl.textContent = formatTime(time);
+    if (seekIndicatorDirEl) seekIndicatorDirEl.textContent = direction > 0 ? '\u25b6\u25b6' : '\u25c0\u25c0';
+    if (seekIndicatorStepEl) seekIndicatorStepEl.textContent = step ? (step + ' сек') : '';
+
+    el.classList.remove('hidden');
+    el.classList.add('visible');
+    if (seekOverlayTimeout) { clearTimeout(seekOverlayTimeout); seekOverlayTimeout = null; }
+}
+
+function hideSeekOverlay() {
+    if (seekIndicatorEl) seekIndicatorEl.classList.remove('visible');
+    if (seekOverlayTimeout) { clearTimeout(seekOverlayTimeout); seekOverlayTimeout = null; }
+}
+
+// Скрываем индикатор с задержкой после окончания перемотки
+function scheduleHideSeekOverlay() {
+    if (seekOverlayTimeout) clearTimeout(seekOverlayTimeout);
+    seekOverlayTimeout = setTimeout(function () {
+        hideSeekOverlay();
+    }, 800); // через 800мс после последнего обновления
+}
+
+// В window их кладёт initControl() в конце файла — оттуда их берут app.js
+// (перетаскивание ползунка мышью) и player.js (выход из плеера)
+
+// ==================== УТИЛИТЫ ====================
+/**
+ * Удержание кнопки навигации.
+ *
+ * Нужно каталогу: пока кнопку держат, не вставлять постеры и не сворачивать
+ * чанки — эта работа посреди перехода и есть источник фризов. На темп движения
+ * флаг больше не влияет: шаг притормаживается одинаково и при удержании, и при
+ * быстрых одиночных нажатиях (acceptNavStep).
+ *
+ * Основной признак удержания — e.repeat от браузера. Он есть не везде (старые
+ * WebView на ТВ, часть пультов присылает независимые keydown), поэтому есть и
+ * запасной: два шага подряд в одну сторону с интервалом не больше
+ * NAV_HOLD_GAP_MS.
+ */
+var NAV_HOLD_GAP_MS = 250;
+var NAV_HOLD_MIN_STREAK = 2;
+var NAV_HOLD_IDLE_MS = 260;
+
+function setNavHold(direction) {
+    var now = Date.now();
+    var gap = now - navStreakAt;
+    navStreakAt = now;
+    if (gap <= NAV_HOLD_GAP_MS && direction === navStreakDir) {
+        navStreak++;
+    } else {
+        navStreak = 1;
+    }
+    navStreakDir = direction;
+
+    navHold = navKeyRepeat || navStreak >= NAV_HOLD_MIN_STREAK;
+    if (navHoldTimer) clearTimeout(navHoldTimer);
+    navHoldTimer = setTimeout(endNavHold, NAV_HOLD_IDLE_MS);
+}
+
+/**
+ * Серия кончилась: с последнего шага прошло NAV_HOLD_IDLE_MS.
+ *
+ * Именно по тишине, а не по keyup. Часть ТВ-пультов шлёт пару keydown/keyup на
+ * каждый тик автоповтора, и по отпусканию флаг гас бы между шагами — каталог
+ * успевал бы вставить постер ровно посреди перехода.
+ */
+function endNavHold() {
+    if (navHoldTimer) { clearTimeout(navHoldTimer); navHoldTimer = null; }
+    navHold = false;
+    navStreak = 0;
+    navStreakDir = null;
+    navKeyRepeat = false;
+    navStepUntil = 0;
+}
+
+function VISIBLE(el) { return !!(el && el.offsetParent !== null && !el.disabled); }
+
+function blurEditor() {
+    var a = document.activeElement;
+    if (a && a !== document.body && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA')) {
+        try { a.blur(); } catch (e) { }
+    }
+}
+
+/**
+ * Элементы, которым мы сами поставили класс focused.
+ *
+ * Раньше clearFocused() искал их через document.querySelectorAll('.focused') —
+ * то есть обходил ВЕСЬ документ на каждое перемещение фокуса. В сетке каталога
+ * это прогулка по тысяче с лишним узлов на каждое нажатие стрелки, притом что
+ * подсвеченный элемент почти всегда ровно один и мы сами его только что
+ * подсветили.
+ *
+ * Инвариант: всё, что ставит класс focused, обязано зарегистрироваться здесь.
+ * Точек всего две — focusEl() ниже и sync.js (поле ввода кода), обе зовут
+ * trackFocusedElement(). Если появится третья, а регистрации не будет, на
+ * экране останется лишняя подсветка.
+ */
+var _focusedEls = [];
+
+function trackFocusedElement(el) {
+    if (el && _focusedEls.indexOf(el) === -1) _focusedEls.push(el);
+}
+window.trackFocusedElement = trackFocusedElement;
+
+/**
+ * Где стоял фокус на каждом экране: { screen -> element }.
+ *
+ * Нужно для возврата из настроек: они гасят #torrserver-section целиком, а
+ * содержимое экрана под ними остаётся в DOM нетронутым — вернуть надо не просто
+ * экран, а место на нём.
+ *
+ * Кнопки общей шапки (#home-topbar .home-nav-btn) не запоминаем: она одна на все
+ * экраны раздела, и уходят в настройки как раз через неё — запись затёрла бы
+ * реальное место в контенте ровно в момент ухода.
+ */
+var _lastFocusedByScreen = {};
+
+function rememberScreenFocus(el) {
+    if (!el || !el.classList || el.classList.contains('home-nav-btn')) return;
+    var screen = window.AppState && AppState.currentScreen;
+    if (!screen || screen === 'config') return;
+    _lastFocusedByScreen[screen] = el;
+}
+
+/**
+ * Вернуть фокус туда, где он стоял на экране screen. Если запомненного элемента
+ * нет или он больше не на экране (список перерисовали, каталог сменили) —
+ * отдаём решение стратегии экрана.
+ */
+function restoreScreenFocus(screen) {
+    // Состав фокусируемого только что изменился: #torrserver-section вернули из
+    // display:none, и всё, что в нём лежит, снова имеет offsetParent
+    invalidateFocusCache();
+
+    var el = _lastFocusedByScreen[screen];
+    if (el) {
+        if (el.isConnected !== false && VISIBLE(el)) {
+            updateFocusableElements();
+            var idx = focusableElements.indexOf(el);
+            if (idx !== -1) setFocus(idx);
+            else focusEl(el);
+            return true;
+        }
+        // Элемент больше не на экране (сетку перерисовали, каталог сменили) —
+        // не держим ссылку на оторванный узел до следующего фокуса
+        delete _lastFocusedByScreen[screen];
+    }
+
+    var strategy = ScreenStrategies[screen];
+    return !!(strategy && strategy.ensureFocus && strategy.ensureFocus(true));
+}
+
+/**
+ * Бегущая строка для длинного названия карточки.
+ *
+ * Включается только у элемента под фокусом: их на экране сотни, и держать
+ * анимацию на всех — десятки одновременных анимаций там, где читают одну.
+ * Сама анимация живёт в CSS (.focused .marquee-text.marquee) и двигает
+ * transform, то есть композитингом.
+ *
+ * Замер ОТЛОЖЕН и не делается в кадре нажатия. Причина: scrollWidth сразу
+ * после смены класса .focused — это принудительный пересчёт раскладки всего
+ * документа. На сетке из 75 карточек он стоит 0,6 мс в настольном Chrome, то
+ * есть половину всей стоимости focusEl, а на телевизоре в 10–20 раз больше —
+ * ровно тот подтормаживающий отклик, который видно при листании. Спешить
+ * незачем: строка всё равно трогается не раньше, чем через секунду.
+ */
+var MARQUEE_MEASURE_DELAY_MS = 350;
+var _marqueeTimer = null;
+var _marqueeTarget = null;
+
+function applyTitleMarquee(el) {
+    if (_marqueeTimer) { clearTimeout(_marqueeTimer); _marqueeTimer = null; }
+    _marqueeTarget = el || null;
+    if (!el || !el.querySelector) return;
+
+    _marqueeTimer = setTimeout(function () {
+        _marqueeTimer = null;
+        // Кнопку держат — фокус вот-вот уедет дальше, мерить нечего
+        if (window.navHold) return;
+        if (_marqueeTarget !== el || !el.isConnected) return;
+        if (!el.classList || !el.classList.contains('focused')) return;
+        startTitleMarquee(el);
+    }, MARQUEE_MEASURE_DELAY_MS);
+}
+
+/** Собственно замер и запуск — уже вне кадра нажатия */
+function startTitleMarquee(el) {
+    var box = el.querySelector('.marquee-text');
+    if (!box) return;
+    var span = box.firstElementChild;
+    if (!span) return;                      // старая разметка без span
+    var overflow = span.scrollWidth - box.clientWidth;
+    if (overflow <= 4) return;              // помещается целиком
+    box.style.setProperty('--mq-shift', -(overflow + 4) + 'px');
+    box.style.setProperty('--mq-dur', Math.min(20, Math.max(6, (overflow + 4) / 30 * 2 + 3)).toFixed(1) + 's');
+    box.classList.add('marquee');
+}
+
+function clearTitleMarquee(el) {
+    if (_marqueeTimer) { clearTimeout(_marqueeTimer); _marqueeTimer = null; }
+    _marqueeTarget = null;
+    if (!el || !el.querySelector) return;
+    var box = el.querySelector('.marquee-text.marquee');
+    if (box) box.classList.remove('marquee');
+}
+
+function clearFocused() {
+    if (!_focusedEls.length) return;
+    var list = _focusedEls;
+    _focusedEls = [];
+    for (var i = 0; i < list.length; i++) {
+        // gsap.killTweensOf отсюда убран: анимаций фокуса на gsap больше нет,
+        // подсветку целиком ведёт CSS
+        // Присваивание пустой строки свойству, которого и так нет, — лишняя
+        // пометка дерева стилей грязным. Инлайновые значения ставит только
+        // анимация фокуса, то есть почти никогда.
+        if (list[i].style.boxShadow) list[i].style.boxShadow = '';
+        if (list[i].style.transform) list[i].style.transform = '';
+        clearTitleMarquee(list[i]);
+        list[i].classList.remove('focused');
+    }
+}
+
+function clickEl(el) {
+    try { if (el && el.click) el.click(); } catch (e) { }
+}
+
+function isPlayerControlsVisible() {
+    var c = getEl('controls-container');
+    return !!c && !c.classList.contains('idle-hidden');
+}
+
+// Число колонок сетки. Раньше было жёстко зашито 5, из-за чего навигация
+// вверх/вниз ломалась, когда UI Customizer менял grid-template-columns.
+// Теперь читаем реальное значение, с кэшем (сброс — invalidateColumnsCache()).
+var _cachedColumns = 0;
+
+function _readGridColumns(gridId) {
+    var grid = getEl(gridId);
+    if (!grid) return 0;
+    try {
+        var tpl = window.getComputedStyle(grid).gridTemplateColumns || '';
+        if (!tpl || tpl === 'none') return 0;
+        // Скрытый грид (display:none) не резолвится — остаётся 'repeat(5, 1fr)'
+        var m = /repeat\(\s*(\d+)/.exec(tpl);
+        if (m) return parseInt(m[1], 10) || 0;
+        // Видимый грид: '250px 250px 250px 250px 250px'
+        var parts = tpl.split(' ').filter(function (b) { return b; });
+        return parts.length;
+    } catch (e) { }
+    return 0;
+}
+
+function invalidateColumnsCache() { _cachedColumns = 0; }
+window.invalidateColumnsCache = invalidateColumnsCache;
+window.addEventListener('resize', invalidateColumnsCache);
+
+function getColumns() {
+    if (_cachedColumns > 0) return _cachedColumns;
+
+    // 1. Явная настройка из UI Customizer — самый надёжный источник
+    try {
+        if (window.UICustomizer && typeof window.UICustomizer.getColumns === 'function') {
+            var n = window.UICustomizer.getColumns();
+            if (n > 0) { _cachedColumns = n; return n; }
+        }
+    } catch (e) { }
+
+    // 2. Реально применённый CSS того грида, который сейчас на экране
+    var cols = _readGridColumns('catalog-grid') || _readGridColumns('torrents-grid');
+    _cachedColumns = cols > 0 ? cols : 5;
+    return _cachedColumns;
+}
+
+function getTorrentGridColumns() {
+    return _readGridColumns('torrents-grid') || getColumns();
+}
+
+/**
+ * Колонки сетки глобального поиска — по ней самой, а не по каталогу.
+ * Правила колонок у них сейчас общие (styles.css, ui-customizer.js), но
+ * стрелки должны идти по тому, что реально нарисовано: раньше сетка поиска
+ * была зашита на 5 колонок, а навигация считала по каталогу — и промахивалась.
+ */
+function getSearchGridColumns() {
+    var grid = document.querySelector('#search-results .global-search-grid');
+    if (grid) {
+        try {
+            var tpl = window.getComputedStyle(grid).gridTemplateColumns || '';
+            var m = /repeat\(\s*(\d+)/.exec(tpl);
+            if (m) return parseInt(m[1], 10) || getColumns();
+            var parts = tpl.split(' ').filter(function (b) { return b && b !== 'none'; });
+            if (parts.length) return parts.length;
+        } catch (e) { }
+    }
+    return getColumns();
+}
+
+// Функция для инвалидации кэша фокуса
+function invalidateFocusCache() {
+    _focusCache.timestamp = 0;
+    _focusCache.elements = [];
+    _focusGen++;
+    _rowsCache.gen = -1;
+    _rowsCache.rows = null;
+    _gridCardsCache.gen = -1;
+    _gridCardsCache.cards = null;
+    _searchResultsCache.gen = -1;
+    _searchResultsCache.items = null;
+}
+window.invalidateFocusCache = invalidateFocusCache;
+
+// ==================== ХЕЛПЕРЫ ДЛЯ СТРАТЕГИЙ ====================
+function _isScreenVisible(el) {
+    if (!el) return false;
+
+    if (el.hidden) return false;
+
+    if (el.classList && el.classList.contains('hidden')) return false;
+
+    if (el.style.display === 'none') return false;
+
+    // Экран, который прямо сейчас плавно закрывается (animations.js: animateDetailHide),
+    // для навигации уже не существует: display:none ему поставят в конце затухания,
+    // но реагировать на кнопки пульта он больше не должен.
+    if (el.dataset && el.dataset.hiding === '1') return false;
+
+    // Если inline display задан — верим ему
+    if (el.style.display !== '') return true;
+
+    // Если inline не задан, один раз проверяем computed style
+    try {
+        return getComputedStyle(el).display !== 'none';
+    } catch (e) {
+        return true;
+    }
+}
+
+function currentScreen() {
+    try {
+        var ss = window.AppState && AppState.currentScreen ? AppState.currentScreen : null;
+
+        if (ss === 'player') return 'player';
+
+        if (_isScreenVisible(getEl('player-screen'))) return 'player';
+        if (_isScreenVisible(getEl('sync-overlay'))) return 'sync';
+        if (_isScreenVisible(getEl('config-screen'))) return 'config';
+        /* Поиск проверяется РАНЬШЕ карточки, и это принципиально.
+         *
+         * Поиск торрентов из карточки намеренно оставляет #detail-view
+         * показанным под оверлеем: если ничего не нашлось, человека возвращают
+         * в неё, а прятать и показывать её заново — это мигание (см. кнопку
+         * «Торренты» в showCatalogDetail). Но оверлей лежит ВЫШЕ: z-index 1000
+         * против 100.
+         *
+         * Порядок проверок был обратный, и всё время, пока идёт поиск, пульт
+         * принадлежал невидимой карточке под оверлеем. Снаружи это выглядело
+         * так: фокуса на результатах нет, стрелки «не работают» (на самом деле
+         * они ходят по кнопкам и рядам скрытой карточки), а «начинает
+         * работать» ровно в тот момент, когда карточку наконец прячут.
+         *
+         * Кто нарисован выше — тому и пульт. */
+        if (_isScreenVisible(getEl('search-overlay'))) return 'search';
+        if (_isScreenVisible(getEl('detail-view'))) return 'detail';
+        if (_isScreenVisible(getEl('donate-overlay'))) return 'donate';
+
+        // Главная (home.js). Проба идёт после всех оверлеев: _isScreenVisible
+        // смотрит только на сам элемент, поэтому #content-home «виден» и когда
+        // над ним открыты настройки или поиск. Единственный признак того, что
+        // главная активна — снятый с неё атрибут hidden.
+        if (_isScreenVisible(getEl('content-home'))) return 'home';
+
+        if (ss === 'catalog' || (window.AppState && AppState.inSearch === 'catalog')) return 'catalog';
+
+        var cg = getEl('catalog-grid') || getEl('catalog-rows');
+        if (cg && cg.classList.contains('hidden')) {
+            var hc = cg.querySelector('.catalog-card,.catalog-folder-card') !== null;
+            if (hc) return 'catalog';
+        }
+
+        return ss || 'torrents';
+    } catch (e) {
+        return 'torrents';
+    }
+}
+
+function belongsToScreen(el, screen) {
+    if (!el) return false;
+
+    if (screen === 'home') {
+        return !!(el.closest('#content-home') || el.classList.contains('home-nav-btn'));
+    }
+    // .home-nav-btn — кнопки общей шапки #home-topbar: она одна на все экраны
+    // раздела, поэтому её кнопки принадлежат и торрентам, и каталогу.
+    if (screen === 'torrents') {
+        return el.closest('.torrent-card') || el.classList.contains('file-item') ||
+            el.classList.contains('home-nav-btn') ||
+            ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-donate', 'tab-favorites', 'back-from-detail', 'tab-catalog'].indexOf(el.id) !== -1;
+    }
+    if (screen === 'catalog') {
+        return el.closest('.torrent-card.catalog-card') || el.closest('.torrent-card.catalog-folder-card') ||
+            el.closest('#catalog-grid') || el.closest('#catalog-rows') ||
+            el.id === 'back-from-catalog' || el.classList.contains('file-item') || el.classList.contains('back-btn') ||
+            el.classList.contains('home-nav-btn') ||
+            ['search-query', 'search-btn', 'settings-btn', 'tab-torrents', 'tab-search', 'tab-catalog', 'tab-donate', 'tab-favorites'].indexOf(el.id) !== -1;
+    }
+    if (screen === 'search') {
+        // ★ Проверяем панель фильтров
+        var filterPanel = getEl('search-filters-panel');
+        if (filterPanel && filterPanel.classList.contains('active')) {
+            if (filterPanel.contains(el)) return true;
+        }
+
+        return el.closest('.search-result-item') || el.closest('.global-search-card') ||
+            ['search-query', 'filter-toggle', 'search-btn', 'close-search',
+                'filter-back-btn', 'filter-close-btn', 'reset-filters'].indexOf(el.id) !== -1 ||
+            el.classList.contains('filter-item') || el.classList.contains('filter-value-item');
+    }
+    if (screen === 'detail') {
+        return !!(el.closest('#detail-view') || el.closest('.file-item') || el.closest('back-from-detail') ||
+            el.classList.contains('detail-progress-btn') || el.classList.contains('back-btn'));
+    }
+    if (screen === 'config') {
+        return !!(el.closest('#config-screen') ||
+            ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio', 'torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'other-tab', 'device-tab', 'jacred-url'].indexOf(el.id) !== -1 ||
+            el.classList.contains('settings-btn') || el.classList.contains('menu-item'));
+    }
+    return false;
+}
+
+function getTorrentCards() {
+    var c = document.querySelectorAll('#torrents-grid .torrent-card'), v = [];
+    for (var i = 0; i < c.length; i++) if (VISIBLE(c[i])) v.push(c[i]);
+    return v;
+}
+
+// Селектор карточек каталога — один на все точки, где раньше он был выписан
+// заново (getItems, ensureFocus, handleNavigation, догрузка по «вниз»).
+var CATALOG_CARDS_SELECTOR =
+    '#catalog-grid .torrent-card.catalog-card, #catalog-grid .torrent-card.catalog-folder-card, ' +
+    '#catalog-rows .torrent-card.catalog-card, #catalog-rows .torrent-card.catalog-folder-card';
+
+/**
+ * Видимые карточки каталога, с кэшем по поколению DOM — та же схема, что у
+ * getCatalogRows(). Обход стоит querySelectorAll по документу плюс offsetParent
+ * на каждой карточке; в сетке категории их до CATALOG_FULL_LIMIT (1000), а
+ * звалось это на КАЖДОЕ нажатие стрелки, и не по одному разу.
+ *
+ * isConnected на первом элементе — страховка от пропущенной инвалидации, как
+ * в getCatalogRows: если сетку переписали мимо invalidateFocusCache(), кэш
+ * отбрасываем. Пустой результат не кэшируется по той же причине, что и там:
+ * карточки могли ещё не появиться, и залипший пустой список означал бы экран
+ * без фокуса до следующей инвалидации.
+ */
+/**
+ * Показанный сейчас контейнер каталога: сетка категории или ряды.
+ *
+ * Читаем инлайновый style.display, а НЕ offsetParent. Разница принципиальная:
+ * style.display — это чтение атрибута, оно ничего не стоит, а offsetParent
+ * заставляет браузер пересчитать раскладку. На сетке из сотен карточек с
+ * content-visibility такой пересчёт — самая дорогая операция на нажатие
+ * (зонд намерил 527мс на 101 вызов updateFocusableElements).
+ *
+ * Инвариант держат showCatalogGridView / showCatalogRowsView (catalog.js):
+ * показан ровно один из двух, второму ставится display: none. Сетка вдобавок
+ * очищается при уходе из категории, так что пустой она быть не может.
+ */
+function visibleCatalogScope() {
+    var grid = getEl('catalog-grid');
+    if (grid && grid.style.display !== 'none') return grid;
+    var rows = getEl('catalog-rows');
+    if (rows && rows.style.display !== 'none') return rows;
+    return null;
+}
+
+function getCatalogGridCards() {
+    if (_gridCardsCache.gen === _focusGen && _gridCardsCache.cards &&
+        _gridCardsCache.cards.length > 0 &&
+        _gridCardsCache.cards[0].isConnected !== false) {
+        return _gridCardsCache.cards;
+    }
+
+    // Раньше здесь был обход всех карточек обоих контейнеров с проверкой
+    // VISIBLE() на каждой. Она отсеивала карточки скрытого контейнера — но
+    // ценой принудительной раскладки, и ровно то же самое даёт выбор
+    // контейнера. Погашенные оконной видимостью карточки как проходили
+    // проверку (visibility: hidden оставляет offsetParent), так и проходят.
+    var scope = visibleCatalogScope();
+    var c = [];
+    if (scope) {
+        var ac = scope.querySelectorAll(
+            '.torrent-card.catalog-card, .torrent-card.catalog-folder-card');
+        for (var i = 0; i < ac.length; i++) c.push(ac[i]);
+    }
+
+    _gridCardsCache.gen = _focusGen;
+    _gridCardsCache.cards = c;
+
+    return c;
+}
+
+// Отдельной шапки с «Настройками» больше нет: кнопка стоит в одной строке с
+// остальной навигацией и приходит из getTorrentTabs(). Функция оставлена
+// пустой — все ветки «вверх из табов» тогда просто держат фокус на месте.
+function getTorrentHeader() {
+    return [];
+}
+
+// Кнопки общей шапки #home-topbar в порядке DOM — он же порядок на экране,
+// поэтому ←/→ идут ровно по строке. Раньше тут был жёсткий список id вкладок.
+function getTorrentTabs() {
+    // Видимость шапки целиком определяет её секция: отдельные кнопки никто не
+    // прячет, а #torrserver-section переключается инлайновым display. Читаем
+    // его, а не offsetParent кнопок: даже одно чтение геометрии заставляет
+    // браузер пересчитать раскладку всей сетки каталога, а эта функция стоит
+    // в горячем пути updateFocusableElements.
+    var sec = getEl('torrserver-section');
+    if (sec && sec.style.display === 'none') return [];
+    var bar = getEl('home-topbar');
+    if (!bar) return [];
+    var b = bar.querySelectorAll('.home-nav-btn'), v = [];
+    for (var i = 0; i < b.length; i++) v.push(b[i]);
+    return v;
+}
+
+function getSearchTop() {
+    var ids = ['search-query', 'filter-toggle', 'search-btn', 'close-search'], v = [];
+    for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (VISIBLE(e)) v.push(e); }
+    return v;
+}
+
+function getSearchFilters() {
+    // Новая структура: элементы внутри панели фильтров
+    var panel = getEl('search-filters-panel');
+    if (!panel || !panel.classList.contains('active')) {
+        // Панель закрыта - возвращаем только кнопку toggle
+        var toggle = getEl('filter-toggle');
+        return toggle && VISIBLE(toggle) ? [toggle] : [];
+    }
+
+    // Панель открыта - собираем элементы
+    var elements = [];
+    if (window.AppState && AppState.searchLocked) {
+        var filterItems = panel.querySelectorAll('.filter-item:not([data-filter="torrent-movie"])');
+    } else {
+        var filterItems = panel.querySelectorAll('.filter-item');
+    }
+    var filterValueItems = panel.querySelectorAll('.filter-value-item');
+    var backBtn = getEl('filter-back-btn');
+    var closeBtn = getEl('filter-close-btn');
+    var resetBtn = getEl('reset-filters');
+
+    // Кнопки навигации
+    if (backBtn && VISIBLE(backBtn)) elements.push(backBtn);
+    if (closeBtn && VISIBLE(closeBtn)) elements.push(closeBtn);
+
+    // Элементы фильтров (главный экран)
+    for (var i = 0; i < filterItems.length; i++) {
+        if (VISIBLE(filterItems[i])) elements.push(filterItems[i]);
+    }
+
+    // Элементы значений (экран значений)
+    for (var j = 0; j < filterValueItems.length; j++) {
+        if (VISIBLE(filterValueItems[j])) elements.push(filterValueItems[j]);
+    }
+
+    // Кнопка сброса
+    if (resetBtn && VISIBLE(resetBtn)) elements.push(resetBtn);
+
+    return elements;
+}
+
+var _searchResultsCache = { gen: -1, mode: null, items: null };
+
+/**
+ * Карточки выдачи для навигации пультом.
+ *
+ * Кэш по поколению DOM — как у getCatalogGridCards, и по той же причине:
+ * handleNavigation зовёт эту функцию на КАЖДОЕ нажатие стрелки, а раньше она
+ * обходила весь документ и спрашивала offsetParent у каждой карточки. На
+ * выдаче Jacred это 250 обходов цепочки содержащих блоков за одно нажатие,
+ * поверх такого же прохода в updateFocusableElements.
+ *
+ * Видимость спрашиваем у контейнера, а не у карточек: оконная видимость гасит
+ * их классом .search-offscreen, то есть visibility: hidden, при котором
+ * offsetParent остаётся — проверка на каждой не отсеивала ровно ничего.
+ * Скрывается выдача только целиком, вместе с оверлеем.
+ *
+ * Поколение двигает invalidateFocusCache(); renderSearchResults зовёт его на
+ * каждую вставленную пачку карточек.
+ */
+function getSearchResults() {
+    var cm = typeof window.getCurrentSearchMode === 'function' ? window.getCurrentSearchMode() : 'torrentsearch';
+    if (cm !== 'torrentsearch' && cm !== 'globalsearch') return [];
+
+    if (_searchResultsCache.gen === _focusGen && _searchResultsCache.mode === cm &&
+        _searchResultsCache.items &&
+        (!_searchResultsCache.items.length || _searchResultsCache.items[0].isConnected !== false)) {
+        return _searchResultsCache.items;
+    }
+
+    var host = getEl('search-results');
+    var v = [];
+    if (host && host.offsetParent !== null) {
+        var sel = cm === 'torrentsearch' ? '.search-result-item' : '.global-search-card';
+        var found = host.querySelectorAll(sel);
+        for (var j = 0; j < found.length; j++) v.push(found[j]);
+    }
+
+    _searchResultsCache.gen = _focusGen;
+    _searchResultsCache.mode = cm;
+    _searchResultsCache.items = v;
+    return v;
+}
+
+/**
+ * Видимые кнопки строки действий карточки, в порядке разметки.
+ *
+ * Состав зависит от режима: в карточке каталога это «Торренты», «Подробнее»,
+ * «Трейлер»; в карточке торрента — «Играть», «Подробнее», «Открыть карточку».
+ * Порядок берём из DOM, а не списком имён: добавили кнопку в index.html —
+ * навигация подхватила её сама.
+ */
+function getDetailActionButtons() {
+    var row = getEl('catalog-detail-actions');
+    if (!row) return [];
+    var all = row.querySelectorAll('button, .catalog-watch-btn, .detail-progress-btn');
+    var out = [];
+    for (var i = 0; i < all.length; i++) {
+        if (VISIBLE(all[i]) && out.indexOf(all[i]) === -1) out.push(all[i]);
+    }
+    return out;
+}
+
+function getDetailItems() {
+    // '#detail-open-card-btn' — кнопка «Открыть карточку» в карточке торрента.
+    // Без неё handleNavigation не находил элемент в этом списке (idx === -1) и
+    // уходил в ensureFocus, отбрасывая фокус на первую кнопку строки: «влево»
+    // с неё прыгало через «Подробнее» сразу на «Играть».
+    // '#detail-view .home-nav-btn' — кнопки шапки разделов, поднятой поверх
+    // карточки (js/home.js: DetailTopbar). Селектор намеренно привязан к
+    // #detail-view: пока шапка на своём месте, он не совпадает ни с чем.
+    var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
+    // Сборный селектор → порядок обхода совпадает с порядком в DOM, а не с
+    // порядком селекторов. Важно для торрентного detail: там ряд актёров идёт
+    // ПЕРЕД файлами, и «вверх» от плитки должно попадать в него.
+    // Побочный плюс: элемент, подходящий сразу двум селекторам, не дублируется.
+    var it = document.querySelectorAll(s.join(','));
+    var a = [];
+    for (var i = 0; i < it.length; i++) if (VISIBLE(it[i])) a.push(it[i]);
+    return a;
+}
+
+/**
+ * Быстрый путь для «влево/вправо» внутри ленты карточки: файлы, актёры,
+ * похожие. Соседа ищем среди братьев в разметке, а не в полном списке
+ * getDetailItems().
+ *
+ * Тот собирает 14 селекторов по всему документу и у каждой находки
+ * спрашивает offsetParent — а сразу после прошлого шага (смена .focused,
+ * прокрутка ленты) раскладка грязная, и первое же чтение пересчитывает её
+ * синхронно. В ряду из 76 файлов сериала это стоило 20–45 мс на нажатие даже
+ * на ПК (Chrome 66), а шагу нужен лишь соседний элемент той же ленты.
+ *
+ * Поведение то же, что у веток isF / isA / isR в handleNavigation: у края
+ * ленты файлы стоят на месте, а актёры и похожие перефокусируют ту же
+ * карточку. Скрытые элементы ленты (заглушки с .hidden) пропускаются.
+ * Вверх/вниз и всё прочее — через общий путь.
+ *
+ * @returns {boolean} true — шаг сделан здесь
+ */
+var DETAIL_LANE_CLASSES = ['file-item', 'catalog-actor-card', 'catalog-recommendation-card'];
+
+function detailLaneStep(dir) {
+    if (dir !== 'left' && dir !== 'right') return false;
+    var f = document.querySelector('.focused');
+    if (!f || !f.classList || !belongsToScreen(f, 'detail')) return false;
+    var lane = null;
+    for (var i = 0; i < DETAIL_LANE_CLASSES.length; i++) {
+        if (f.classList.contains(DETAIL_LANE_CLASSES[i])) { lane = DETAIL_LANE_CLASSES[i]; break; }
+    }
+    if (!lane) return false;
+    // Скрытость — по классу и атрибуту, а не VISIBLE(): offsetParent после
+    // прошлого шага снова заставил бы пересчитать раскладку. Заглушки в лентах
+    // прячутся именно классом .hidden.
+    var sib = f;
+    do {
+        sib = dir === 'left' ? sib.previousElementSibling : sib.nextElementSibling;
+    } while (sib && !(sib.classList && sib.classList.contains(lane) &&
+        !sib.hidden && !sib.classList.contains('hidden') && sib.style.display !== 'none'));
+    if (sib) focusEl(sib, { direction: dir });
+    else if (lane !== 'file-item') focusEl(f, { direction: dir });
+    return true;
+}
+
+function getConfigMenuItems() {
+    var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'other-tab', 'device-tab'];
+    var visibleItems = [];
+    for (var i = 0; i < ids.length; i++) {
+        var element = getEl(ids[i]);
+        if (VISIBLE(element)) visibleItems.push(element);
+    }
+    return visibleItems;
+}
+
+function getConfigItems() {
+    var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'jacred-url', '.settings-btn', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio'];
+    var visibleItems = [];
+    for (var i = 0; i < ids.length; i++) {
+        var element = getEl(ids[i]);
+        if (VISIBLE(element)) visibleItems.push(element);
+    }
+    var settingsButtons = document.querySelectorAll('.settings-btn');
+    for (var j = 0; j < settingsButtons.length; j++) {
+        if (VISIBLE(settingsButtons[j])) visibleItems.push(settingsButtons[j]);
+    }
+    return visibleItems;
+}
+
+function getConfigContentItems(tabId) {
+    var tabContentId = tabId + '-content';
+    var tabContent = getEl(tabContentId);
+    if (!tabContent) return [];
+    // Один запрос — порядок документа, то есть тот, в котором элементы видны на
+    // экране. Раньше шли сначала все поля, потом все кнопки: кнопка внутри списка
+    // переключателей (встроенный TorrServer) оказывалась в самом конце, и «вниз»
+    // её перепрыгивало
+    var visibleItems = [];
+    var elements = tabContent.querySelectorAll('input:not([type="hidden"]), button, select, textarea');
+    for (var j = 0; j < elements.length; j++) {
+        if (VISIBLE(elements[j])) visibleItems.push(elements[j]);
+    }
+    return visibleItems;
+}
+
+// ==================== СТРАТЕГИИ ЭКРАНОВ ====================
+/* ============ ШАПКА РАЗДЕЛОВ ПОВЕРХ КАРТОЧКИ ============
+ *
+ * Показывается по «вверх» из верхней строки карточки, прячется по «вниз» и по
+ * «назад». В обычном состоянии карточка выглядит ровно как раньше — полоса
+ * лежит вне потока (styles.css: #home-topbar.detail-topbar) и ничего не двигает.
+ *
+ * Сюда же запоминаем, откуда пришли: вернуть фокус на ту же кнопку — это
+ * разница между «шапка мелькнула» и «шапка сбила меня с места».
+ */
+var detailTopbarReturn = null;
+
+function detailTopbarAvailable() {
+    return !!(window.DetailTopbar && typeof DetailTopbar.show === 'function');
+}
+
+/**
+ * Фокус внутри карточки — тем же способом, что и в шапке: пересобрать список
+ * и уйти через setFocus, а не focusEl. Иначе currentFocusIndex остаётся от
+ * кнопки шапки, и первое же нажатие после её закрытия прыгает не туда.
+ */
+function focusDetailEl(target) {
+    if (!target) return false;
+    updateFocusableElements();
+    var idx = (focusableElements && focusableElements.indexOf) ? focusableElements.indexOf(target) : -1;
+    if (idx !== -1) { setFocus(idx); return true; }
+    return focusEl(target);
+}
+
+function revealDetailTopbar(from) {
+    if (!detailTopbarAvailable()) return false;
+    if (!DetailTopbar.show()) return false;
+
+    // Куда встать, решает сама шапка — там же, где это решает главная
+    var target = DetailTopbar.preferred();
+    if (!target) { DetailTopbar.hide(); return false; }
+
+    detailTopbarReturn = from || null;
+    invalidateFocusCache();
+    DetailTopbar.focus(target);
+    return true;
+}
+
+function hideDetailTopbar(restoreFocus) {
+    if (!detailTopbarAvailable() || !DetailTopbar.isShown()) return false;
+    DetailTopbar.hide();
+    invalidateFocusCache();
+
+    if (restoreFocus) {
+        var back = detailTopbarReturn;
+        if (back && back.isConnected && back.offsetParent !== null) focusDetailEl(back);
+        else if (ScreenStrategies.detail) ScreenStrategies.detail.ensureFocus(true);
+    }
+    detailTopbarReturn = null;
+    return true;
+}
+
+var ScreenStrategies = {
+    torrents: {
+        getItems: getTorrentCards,
+        ensureFocus: function (force) {
+            if (force === undefined) force = false;
+            if (currentScreen() !== 'torrents') return false;
+            if (window.AppState && AppState.restoringFocus) return false;
+            var f = document.querySelector('.focused');
+            if (!force && belongsToScreen(f, 'torrents')) return true;
+            var c = getTorrentCards(), t = getTorrentTabs(), h = getTorrentHeader();
+            if (!c.length) {
+                // Если список торрентов уже загружался и он пустой,
+                // не нужно бесконечно вызывать refreshTorrents()
+                if (
+                    window.AppState &&
+                    AppState.torrentsLoaded &&
+                    (!AppState.torrents || AppState.torrents.length === 0)
+                ) {
+                    return focusEl(t[0] || h[0]);
+                }
+
+                // Если список торрентов уже загружается, не запускаем новую загрузку
+                if (window.AppState && AppState.torrentsLoading) {
+                    return false;
+                }
+                return window.refreshTorrents().then(function () {
+                    c = getTorrentCards();
+                    var tc = null;
+                    var sh = (window.AppState && window.AppState.currentDetailItem && window.AppState.currentDetailItem.hash)
+                        ? window.AppState.currentDetailItem.hash.toLowerCase()
+                        : null;
+
+                    if (sh) {
+                        for (var i = 0; i < c.length; i++) {
+                            if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === sh) {
+                                tc = c[i];
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!tc && typeof window.lastSelectedTorrentHash !== 'undefined' && window.lastSelectedTorrentHash) {
+                        for (var i = 0; i < c.length; i++) {
+                            if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === window.lastSelectedTorrentHash.toLowerCase()) {
+                                tc = c[i];
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!tc && typeof window.lastSelectedTorrentIndex === 'number' && window.lastSelectedTorrentIndex >= 0) {
+                        var si = window.lastSelectedTorrentIndex;
+                        if (si < c.length) tc = c[si];
+                    }
+
+                    if (!tc) tc = c[0];
+
+                    if (window.AppState && window.AppState.currentDetailItem) window.AppState.currentDetailItem = null;
+                    if (window.lastSelectedTorrentHash) window.lastSelectedTorrentHash = null;
+                    if (typeof window.lastSelectedTorrentIndex !== 'undefined') window.lastSelectedTorrentIndex = 0;
+
+                    return focusEl(tc || t[0] || h[0]);
+                });
+            } else {
+                var tc = null;
+                var sh = (window.AppState && window.AppState.currentDetailItem && window.AppState.currentDetailItem.hash) ? window.AppState.currentDetailItem.hash.toLowerCase() : null;
+                if (sh) for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === sh) { tc = c[i]; break; }
+                if (!tc && typeof window.lastSelectedTorrentHash !== 'undefined' && window.lastSelectedTorrentHash)
+                    for (var i = 0; i < c.length; i++) if (c[i].dataset.hash && c[i].dataset.hash.toLowerCase() === window.lastSelectedTorrentHash.toLowerCase()) { tc = c[i]; break; }
+                if (!tc && typeof window.lastSelectedTorrentIndex === 'number' && window.lastSelectedTorrentIndex >= 0) {
+                    var si = window.lastSelectedTorrentIndex; if (si < c.length) tc = c[si];
+                }
+                if (!tc) tc = c[0];
+                if (window.AppState && window.AppState.currentDetailItem) window.AppState.currentDetailItem = null;
+                if (window.lastSelectedTorrentHash) window.lastSelectedTorrentHash = null;
+                if (typeof window.lastSelectedTorrentIndex !== 'undefined') window.lastSelectedTorrentIndex = 0;
+                return focusEl(tc);
+            }
+            return focusEl(t[0] || h[0]);
+        },
+        handleNavigation: function (dir) {
+            var f = (belongsToScreen(document.querySelector('.focused'), 'torrents') ? document.querySelector('.focused') : null);
+            var c = getTorrentCards(), h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns();
+            if (!f) return this.ensureFocus(true);
+            var ci = -1, hi = -1, ti = -1;
+            for (var i = 0; i < c.length; i++) if (f === c[i]) { ci = i; break; }
+            for (var i = 0; i < h.length; i++) if (f === h[i]) { hi = i; break; }
+            for (var i = 0; i < t.length; i++) if (f === t[i]) { ti = i; break; }
+            if (ci !== -1) {
+                var row = Math.floor(ci / cols);
+                if (dir === 'left') return focusEl(c[Math.max(0, ci - 1)] || f);
+                if (dir === 'right') return focusEl(c[Math.min(c.length - 1, ci + 1)] || f);
+                if (dir === 'up') { if (row === 0) return focusEl(t[0] || h[0] || f); return focusEl(c[Math.max(0, ci - cols)] || f); }
+                if (dir === 'down') return focusEl(c[Math.min(c.length - 1, ci + cols)] || f);
+                return true;
+            }
+            if (ti !== -1) {
+                if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f);
+                if (dir === 'right') return focusEl(t[Math.min(t.length - 1, ti + 1)] || f);
+                if (dir === 'down') return focusEl(c[0] || f);
+                if (dir === 'up') return focusEl(h[Math.min(ti, h.length - 1)] || h[0] || f);
+                return true;
+            }
+            if (hi !== -1) {
+                if (dir === 'left') return focusEl(h[Math.max(0, hi - 1)] || f);
+                if (dir === 'right') return focusEl(h[Math.min(h.length - 1, hi + 1)] || f);
+                if (dir === 'down') return focusEl((f.id === 'settings-btn' ? t[0] : t[1]) || t[0] || c[0] || f);
+                return true;
+            }
+            return false;
+        },
+        onOk: function (f) {
+            if (!belongsToScreen(f, 'torrents')) return this.ensureFocus(true);
+            if (f.id === 'search-query' || f.id === 'search-btn' || f.id === 'tab-search') return openSearchScreen(true);
+            if (f.id === 'tab-catalog') { clickEl(f); return true; }
+            clickEl(f);
+            return true;
+        }
+    },
+
+    catalog: {
+        getItems: function () {
+            return getCatalogGridCards();
+        },
+        ensureFocus: function (force) {
+            if (force === undefined) force = false;
+            if (currentScreen() !== 'catalog') return false;
+
+            // ★ Новый вид: ряды-карусели
+            if (isCatalogRowsMode()) {
+                var fr = document.querySelector('.focused');
+                if (!force && fr && belongsToScreen(fr, 'catalog')) return true;
+                var rows = getCatalogRows();
+                if (!rows.length) return false;
+                return focusRowCard(0, 0, rows);
+            }
+
+            // Старый вид: сетка (без изменений)
+            var f = document.querySelector('.focused');
+            if (!force && f && belongsToScreen(f, 'catalog')) return true;
+            var c = getCatalogGridCards();
+            if (!c.length) return false;
+            var si = localStorage.getItem('lastCatalogCardIndex'), tc = null;
+            if (si !== null) {
+                var sn = parseInt(si, 10);
+                if (Number.isFinite(sn)) {
+                    for (var j = 0; j < c.length; j++) {
+                        var cn = parseInt(c[j].dataset.numIndex || '-1', 10);
+                        if (Number.isFinite(cn) && cn === sn) { tc = c[j]; break; }
+                    }
+                    if (!tc && sn >= 0 && sn < c.length) tc = c[sn];
+                }
+            }
+            if (!tc) tc = c[0];
+            return focusEl(tc);
+        },
+        handleNavigation: function (dir) {
+            // ★ Новый вид: ряды-карусели
+            if (isCatalogRowsMode()) {
+                return handleRowsNavigation(dir);
+            }
+
+            // Старый вид: сетка. Списки берём из кэша по поколению DOM
+            // (getCatalogGridCards), а .focused ищем один раз, а не дважды
+            // подряд, как было: оба запроса шли по всему документу на каждое
+            // нажатие стрелки.
+            var focused = document.querySelector('.focused');
+            var f = belongsToScreen(focused, 'catalog') ? focused : null;
+            var c = getCatalogGridCards();
+            var h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns();
+            if (!f) return this.ensureFocus(true);
+            var ci = -1, hi = -1, ti = -1;
+            for (var i = 0; i < c.length; i++) if (f === c[i]) { ci = i; break; }
+            for (var i = 0; i < h.length; i++) if (f === h[i]) { hi = i; break; }
+            for (var i = 0; i < t.length; i++) if (f === t[i]) { ti = i; break; }
+            if (ci !== -1) {
+                var row = Math.floor(ci / cols);
+                // Влево/вправо идут по списку СКВОЗЬ границы строк: с последней
+                // карточки ряда «вправо» переводит на первую карточку следующего,
+                // с первой «влево» — на последнюю предыдущего. Раньше проверка
+                // ci % cols держала фокус внутри строки, и на краю нажатие
+                // просто пропадало.
+                if (dir === 'left') { if (ci > 0) return focusEl(c[ci - 1] || f); return true; }
+                if (dir === 'right') {
+                    if (ci < c.length - 1) {
+                        var nextCard = c[ci + 1] || f;
+                        var movedRight = focusEl(nextCard);
+                        if (typeof window.prefetchCatalogIfNearEnd === 'function') {
+                            window.prefetchCatalogIfNearEnd(nextCard, cols);
+                        }
+                        if (typeof window.prefetchChunkAhead === 'function') {
+                            window.prefetchChunkAhead(nextCard, cols);
+                        }
+                        return movedRight;
+                    }
+                    // Уперлись в конец загруженного — догружаем, как по «вниз»
+                    if (c.length < catalogState.totalItems && !catalogState.isLoadingMore) {
+                        window.loadMoreCatalogItems().then(function () {
+                            setTimeout(function () {
+                                var nc = getCatalogGridCards();
+                                if (nc.length > ci + 1) focusEl(nc[ci + 1]);
+                            }, 50);
+                        });
+                    }
+                    return true;
+                }
+                if (dir === 'up') {
+                    if (row === 0) return focusEl(t[0] || h[0] || f);
+                    var upCard = c[Math.max(0, ci - cols)] || f;
+                    var movedUp = focusEl(upCard);
+                    // Соседний чанк достраиваем заранее, в паузе между нажатиями:
+                    // иначе фокус приходит в недостроенный, и его остаток
+                    // вставляется разом прямо в кадре нажатия
+                    if (typeof window.prefetchChunkAhead === 'function') {
+                        window.prefetchChunkAhead(upCard, cols);
+                    }
+                    return movedUp;
+                }
+                if (dir === 'down') {
+                    if (ci + cols < c.length) {
+                        var downCard = c[Math.min(c.length - 1, ci + cols)] || f;
+                        var moved = focusEl(downCard);
+                        // Догрузку запускаем ЗАРАНЕЕ — как только до конца
+                        // загруженного осталось два ряда. Прежде она начиналась
+                        // только на последнем ряду: нажатие «вниз» упиралось,
+                        // ждало ответа сервера, и лишь потом появлялись карточки,
+                        // а постеры — ещё позже.
+                        if (typeof window.prefetchCatalogIfNearEnd === 'function') {
+                            window.prefetchCatalogIfNearEnd(downCard, cols);
+                        }
+                        if (typeof window.prefetchChunkAhead === 'function') {
+                            window.prefetchChunkAhead(downCard, cols);
+                        }
+                        return moved;
+                    }
+                    else if (c.length < catalogState.totalItems && !catalogState.isLoadingMore) {
+                        window.loadMoreCatalogItems().then(function () {
+                            setTimeout(function () {
+                                // appendCatalogItems уже позвал invalidateFocusCache(),
+                                // поэтому кэш здесь гарантированно пересобран
+                                var nc = getCatalogGridCards();
+                                var tix = Math.min(ci + cols, nc.length - 1);
+                                if (tix >= 0 && tix < nc.length && nc[tix]) focusEl(nc[tix]);
+                            }, 50);
+                        });
+                        return true;
+                    }
+                    return true;
+                }
+                return true;
+            }
+            if (ti !== -1) {
+                if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f);
+                if (dir === 'right') return focusEl(t[Math.min(t.length - 1, ti + 1)] || f);
+                if (dir === 'down') return focusEl(c[0] || f);
+                if (dir === 'up') return focusEl(h[Math.min(ti, h.length - 1)] || h[0] || f);
+                return true;
+            }
+            if (hi !== -1) {
+                if (dir === 'left') return focusEl(h[Math.max(0, hi - 1)] || f);
+                if (dir === 'right') return focusEl(h[Math.min(h.length - 1, hi + 1)] || f);
+                if (dir === 'down') return focusEl((f.id === 'settings-btn' ? t[0] : t[1]) || t[0] || c[0] || f);
+                return true;
+            }
+            return false;
+        },
+        onOk: function (f) {
+            if (!belongsToScreen(f, 'catalog')) return this.ensureFocus(true);
+            clickEl(f);
+            return true;
+        }
+    },
+
+    search: {
+        getItems: function () {
+            var t = getSearchTop(), fl = getSearchFilters(), r = getSearchResults();
+            return t.concat(fl).concat(r);
+        },
+        ensureFocus: function (force, preferInput) {
+            if (force === undefined) force = false;
+            if (preferInput === undefined) preferInput = true;
+            if (currentScreen() !== 'search') return false;
+            var f = document.querySelector('.focused');
+            if (!force && belongsToScreen(f, 'search')) return true;
+            var t = getSearchTop(), fl = getSearchFilters(), r = getSearchResults(), q = getEl('search-query');
+            var panel = getEl('search-filters-panel');
+            if (panel && panel.classList.contains('active')) {
+                var firstItem = panel.querySelector('.filter-item:not(.hidden), .filter-value-item');
+                if (firstItem) return focusEl(firstItem);
+            }
+            return focusEl((preferInput && q) ? q : (t[0] || fl[0] || r[0] || q));
+        },
+        handleNavigation: function (dir) {
+            var cm = typeof window.getCurrentSearchMode === 'function' ? window.getCurrentSearchMode() : 'torrentsearch';
+            var f = belongsToScreen(document.querySelector('.focused'), 'search') ? document.querySelector('.focused') : null;
+            var q = getEl('search-query'), t = getSearchTop(), fl = getSearchFilters(), r = getSearchResults();
+            var panel = getEl('search-filters-panel');
+            var isInFilterPanel = panel && panel.classList.contains('active');
+            if (isInFilterPanel) {
+                return handleFilterPanelNavigation(dir, f);
+            }
+            var tWQ = []; for (var i = 0; i < t.length; i++) if (t[i] && t[i].id !== 'search-query') tWQ.push(t[i]);
+            var te = tWQ[0] || fl[0] || r[0] || q;
+            if (!f) return this.ensureFocus(true, false);
+            if (document.activeElement === q && ['left', 'right', 'up', 'down'].indexOf(dir) !== -1) {
+                blurEditor();
+                return focusEl(te);
+            }
+            var ti = -1, fi = -1, ri = -1;
+            for (var i = 0; i < t.length; i++) if (f === t[i]) { ti = i; break; }
+            for (var i = 0; i < fl.length; i++) if (f === fl[i]) { fi = i; break; }
+            for (var i = 0; i < r.length; i++) if (f === r[i]) { ri = i; break; }
+            if (cm === 'torrentsearch') {
+                if (ti !== -1) {
+                    if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f);
+                    if (dir === 'right') return focusEl(t[Math.min(t.length - 1, ti + 1)] || f);
+                    if (dir === 'down') return focusEl(r[Math.min(r.length - 1, ri + 1)] || f, { direction: 'down' });
+                    if (dir === 'up') return true;
+                    return true;
+                }
+                if (fi !== -1) {
+                    if (dir === 'left') return focusEl(fl[Math.max(0, fi - 1)] || f);
+                    if (dir === 'right') {
+                        if (f && f.id === 'filter-toggle') { openFilterPanelAndFocus(); return true; }
+                        return focusEl(fl[Math.min(fl.length - 1, fi + 1)] || f);
+                    }
+                    if (dir === 'up') { return focusEl(q); }
+                    if (dir === 'down') { if (r.length > 0) { return focusEl(r[0], { direction: 'down' }); } return true; }
+                    return true;
+                }
+                if (ri !== -1) {
+                    if (dir === 'up') {
+                        if (ri === 0) { return focusEl(q); }
+                        return focusEl(r[Math.max(0, ri - 1)] || f, { direction: 'up' });
+                    }
+                    if (dir === 'down') {
+                        return focusEl(r[Math.min(r.length - 1, ri + 1)] || f, { direction: 'down' });
+                    }
+                    if (dir === 'left') { openFilterPanelAndFocus(); return true; }
+                    if (dir === 'right') {
+                        if (f && (f.classList.contains('search-result-item') || f.classList.contains('global-search-card'))) {
+                            var pb = f.querySelector('.search-result-play');
+                            var m = pb ? pb.dataset.magnet : null;
+                            var h = pb ? pb.dataset.hash : null;
+                            // Берём результат напрямую из filteredResults по индексу,
+                            // вместо парсинга data-result, которого нет в DOM
+                            var idx = pb ? parseInt(pb.dataset.index, 10) : -1;
+                            var sr = (!isNaN(idx) && idx >= 0 && idx < filteredResults.length) ? filteredResults[idx] : null;
+                            if (m && typeof window.addTorrentSearchToServer === 'function') window.addTorrentSearchToServer(m, h, sr).then(function (ok) {
+                                // null — сервер недоступен или отказал (сообщение уже показано)
+                                if (!ok) return;
+                                var oh = pb.innerHTML; pb.style.display = 'block'; pb.innerHTML = '✓';
+                                setTimeout(function () { pb.style.display = 'none'; pb.innerHTML = oh; }, 2000);
+                            }).catch(function (e) { console.error('Ошибка добавления торрента:', e); });
+                        }
+                        return true;
+                    }
+                    return true;
+                }
+                return false;
+            }
+            else if (cm === 'globalsearch') {
+                if (ti !== -1) {
+                    if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f);
+                    if (dir === 'right') return focusEl(t[Math.min(t.length - 1, ti + 1)] || f);
+                    if (dir === 'down') { if (r.length > 0) return focusEl(r[0]); return true; }
+                    if (dir === 'up') return true;
+                    return true;
+                }
+                if (fi !== -1) {
+                    if (dir === 'left') return focusEl(fl[Math.max(0, fi - 1)] || f);
+                    if (dir === 'right') {
+                        if (f && f.id === 'filter-toggle') { openFilterPanelAndFocus(); return true; }
+                        return focusEl(fl[Math.min(fl.length - 1, fi + 1)] || f);
+                    }
+                    if (dir === 'up') { return focusEl(q); }
+                    if (dir === 'down') { if (r.length > 0) return focusEl(r[0]); return true; }
+                    return true;
+                }
+                if (ri !== -1) {
+                    var cols = getSearchGridColumns(), row = Math.floor(ri / cols);
+                    if (dir === 'left') return focusEl(r[Math.max(0, ri - 1)] || f);
+                    if (dir === 'right') return focusEl(r[Math.min(r.length - 1, ri + 1)] || f);
+                    if (dir === 'up') { if (row === 0) return focusEl(q); return focusEl(r[Math.max(0, ri - cols)] || f); }
+                    if (dir === 'down') return focusEl(r[Math.min(r.length - 1, ri + cols)] || f);
+                    return true;
+                }
+                return false;
+            }
+            return false;
+        },
+        // ✅ onOk НА ВЕРХНЕМ УРОВНЕ стратегии search
+        onOk: function (f) {
+            if (!belongsToScreen(f, 'search')) return this.ensureFocus(true, true);
+            var panel = getEl('search-filters-panel');
+            if (panel && panel.classList.contains('active')) {
+                if (f.classList.contains('filter-item')) {
+                    var clickedFilterId = f.dataset.filter; // запоминаем какой фильтр открыли
+                    f.click();
+                    // ★ После click() DOM меняется — ждём и фокусируемся на текущем значении
+                    setTimeout(function () {
+                        invalidateFocusCache();
+                        updateFocusableElements();
+                        var valuesScreen = panel.querySelector('.filter-values-screen');
+                        if (valuesScreen && valuesScreen.style.display !== 'none') {
+                            var valuesList = panel.querySelector('#filter-values-list');
+                            var selectedItem = valuesList ? valuesList.querySelector('.filter-value-item.selected') : null;
+                            if (selectedItem && VISIBLE(selectedItem)) {
+                                focusEl(selectedItem);
+                            } else if (valuesList) {
+                                var firstItem = valuesList.querySelector('.filter-value-item');
+                                if (firstItem) focusEl(firstItem);
+                            }
+                        }
+                    }, 50);
+                    return true;
+                }
+                if (f.classList.contains('filter-value-item')) {
+                    f.click();
+                    // setTimeout(function () {
+                    //     invalidateFocusCache();
+                    //     updateFocusableElements();
+                    //     var mainScreen = panel.querySelector('.filter-main-screen');
+                    //     if (mainScreen && mainScreen.style.display !== 'none') {
+                    //         var items = panel.querySelectorAll('.filter-item');
+                    //         for (var i = 0; i < items.length; i++) {
+                    //             if (VISIBLE(items[i])) { focusEl(items[i]); break; }
+                    //         }
+                    //     }
+                    // }, 50);
+                    return true;
+                }
+                if (f.id === 'filter-back-btn') {
+                    f.click();
+                    setTimeout(function () {
+                        invalidateFocusCache();
+                        updateFocusableElements();
+                        var firstItem = panel.querySelector('.filter-item:not(.hidden)');
+                        if (firstItem) focusEl(firstItem);
+                    }, 50);
+                    return true;
+                }
+                if (f.id === 'filter-close-btn') {
+                    closeFilterPanel();
+                    return true;
+                }
+                if (f.id === 'reset-filters') {
+                    f.click();
+                    setTimeout(function () {
+                        invalidateFocusCache();
+                        updateFocusableElements();
+                        var firstItem = panel.querySelector('.filter-item:not(.hidden)');
+                        if (firstItem) focusEl(firstItem);
+                    }, 50);
+                    return true;
+                }
+            }
+            if (f.id === 'search-query') { focusEl(f, { nativeFocus: true }); try { f.click(); } catch (e) { } try { f.focus(); } catch (e) { } try { if (f.select) f.select(); } catch (e) { } return true; }
+            if (f.id === 'filter-toggle') {
+                var p = getEl('search-filters-panel');
+                if (p && !p.classList.contains('active')) { openFilterPanelAndFocus(); return true; }
+                else { closeFilterPanel(); return true; }
+            }
+            if (f.tagName === 'SELECT' || f.id === 'filter-year') return openNativeSearchControl(f);
+            clickEl(f);
+            return true;
+        }
+    },
+    detail: {
+        getItems: getDetailItems,
+        ensureFocus: function (force) {
+            if (force === undefined) force = false;
+            if (currentScreen() !== 'detail') return false;
+            var f = document.querySelector('.focused');
+            if (!force && belongsToScreen(f, 'detail')) return true;
+
+            // ИСПРАВЛЕНО: используем прямой вызов getDetailItems() вместо this.getItems()
+            var items = getDetailItems();
+            return focusEl(items[0]); // || getEl('back-from-detail'));
+        },
+        handleNavigation: function (dir) {
+            if (detailLaneStep(dir)) return true;
+            var items = getDetailItems(), f = (belongsToScreen(document.querySelector('.focused'), 'detail') ? document.querySelector('.focused') : null);
+            if (!f) return this.ensureFocus(true);
+
+            // Шапка разделов поверх карточки: своя строка, свои правила.
+            // Разбираем её до общего поиска по items — она в них есть, но
+            // ходить по ней надо как по строке, а не как по списку карточки.
+            if (f.classList.contains('home-nav-btn')) {
+                if (!detailTopbarAvailable()) return this.ensureFocus(true);
+                var nav = DetailTopbar.buttons();
+                var ni = nav.indexOf(f);
+                if (ni === -1) return this.ensureFocus(true);
+                // Упор в край не оставляет фокус висеть: перефокусируем ту же
+                // кнопку, как это делает главная (handleHomeNavigation)
+                window.lastNavDirection = dir;
+                if (dir === 'left') { DetailTopbar.focus(nav[Math.max(0, ni - 1)]); return true; }
+                if (dir === 'right') { DetailTopbar.focus(nav[Math.min(nav.length - 1, ni + 1)]); return true; }
+                if (dir === 'down') { hideDetailTopbar(true); return true; }
+                return true;   // «вверх» из шапки идти некуда
+            }
+            var idx = -1; for (var i = 0; i < items.length; i++) if (f === items[i]) { idx = i; break; }
+            if (idx === -1) return this.ensureFocus(true);
+            var tl = [], ac = [], rc = [], fi = [];
+            for (var i = 0; i < items.length; i++) {
+                var e = items[i];
+                if (e.classList.contains('catalog-trailer-play') || e.classList.contains('catalog-trailer-link') || e.classList.contains('catalog-trailer-card-item')) tl.push(e);
+                if (e.classList.contains('catalog-actor-card')) ac.push(e);
+                if (e.classList.contains('catalog-recommendation-card')) rc.push(e);
+                if (e.classList && e.classList.contains('file-item')) fi.push(e);
+            }
+            var wb = getEl('catalog-watch-btn'), bb = getEl('back-from-detail'); var ovw = getEl('catalog-toggle-overview-btn'); var rut = getEl('catalog-trailer-btn');
+            var isT = f.classList.contains('catalog-trailer-play') || f.classList.contains('catalog-trailer-link') || f.classList.contains('catalog-trailer-card-item');
+            var isA = f.classList.contains('catalog-actor-card'), isR = f.classList.contains('catalog-recommendation-card');
+            var isW = f.id === 'catalog-watch-btn', isOv = f.id === 'catalog-toggle-overview-btn', isB = f.id === 'back-from-detail', isF = f.classList && f.classList.contains('file-item');
+            var isRut = f.id === 'catalog-trailer-btn';
+            var ti = -1, ai = -1, ri = -1, fii = -1;
+            for (var i = 0; i < tl.length; i++) if (f === tl[i]) { ti = i; break; }
+            for (var i = 0; i < ac.length; i++) if (f === ac[i]) { ai = i; break; }
+            for (var i = 0; i < rc.length; i++) if (f === rc[i]) { ri = i; break; }
+            for (var i = 0; i < fi.length; i++) if (f === fi[i]) { fii = i; break; }
+
+            if (isF && fii !== -1) {
+                if (dir === 'left') { if (fii > 0) { focusEl(fi[fii - 1], { direction: 'left' }); } return true; }
+                if (dir === 'right') { if (fii < fi.length - 1) { focusEl(fi[fii + 1], { direction: 'right' }); } return true; }
+                if (dir === 'up') { if (ac.length > 0) { focusEl(ac[Math.min(fii, ac.length - 1)], { direction: 'up' }); return true; } var prevItems = []; for (var k = idx - 1; k >= 0; k--) { if (!items[k].classList || !items[k].classList.contains('file-item')) { prevItems.push(items[k]); } } if (prevItems.length > 0) focusEl(prevItems[0], { direction: 'up' }); return true; }
+                if (dir === 'down') return true;
+                return true;
+            }
+            if (isT && ti !== -1) {
+                if (dir === 'left') return focusEl(tl[Math.max(0, ti - 1)] || f, { direction: 'left' });
+                if (dir === 'right') return focusEl(tl[Math.min(tl.length - 1, ti + 1)] || f, { direction: 'right' });
+                if (dir === 'up') { if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
+                if (dir === 'down') { if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
+                return true;
+            }
+            if (isA && ai !== -1) {
+                if (dir === 'left') return focusEl(ac[Math.max(0, ai - 1)] || f, { direction: 'left' });
+                if (dir === 'right') return focusEl(ac[Math.min(ac.length - 1, ai + 1)] || f, { direction: 'right' });
+                if (dir === 'up') { if (tl.length > 0) { focusEl(tl[tl.length - 1], { direction: 'up' }); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } var pgb = getEl('detail-progress-btn'); if (pgb && pgb.offsetParent !== null) { focusEl(pgb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
+                if (dir === 'down') { if (rc.length > 0) { var t = ai < rc.length ? ai : rc.length - 1; focusEl(rc[t], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
+                return true;
+            }
+            if (isR && ri !== -1) {
+                if (dir === 'left') return focusEl(rc[Math.max(0, ri - 1)] || f, { direction: 'left' });
+                if (dir === 'right') return focusEl(rc[Math.min(rc.length - 1, ri + 1)] || f, { direction: 'right' });
+                if (dir === 'up') { if (ac.length > 0) { var t = ri < ac.length ? ri : ac.length - 1; focusEl(ac[t], { direction: 'up' }); return true; } else if (tl.length > 0) { var t = ri < tl.length ? ri : tl.length - 1; focusEl(tl[t], { direction: 'up' }); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
+                if (dir === 'down') { if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
+                return true;
+            }
+            // --- Строка действий карточки: «Торренты» / «Играть» / «Подробнее» /
+            // «Открыть карточку» / «Трейлер» ---
+            //
+            // Раньше на каждую кнопку была своя ветка, а соседи в ней прописаны
+            // поимённо: isW → вправо всегда ovw, isOv → вправо всегда rut. Из-за
+            // этого «Играть» (detail-progress-btn) не обрабатывался вовсе и
+            // проваливался в общий хвост, где «вниз» уходило к следующему
+            // элементу в порядке DOM — то есть внутрь той же строки кнопок,
+            // а «вправо» не делало ничего. Новая кнопка «Открыть карточку» в
+            // цепочку тоже не попадала.
+            //
+            // Теперь строка обходится как строка: влево/вправо — по видимым
+            // соседям в порядке разметки, вниз — вон из строки, к ближайшей
+            // секции ниже. Ветки для каждой кнопки больше не нужны, состав
+            // строки в разных режимах (торрент / каталог) разбирается сам.
+            var actionRow = getDetailActionButtons();
+            var actIdx = actionRow.indexOf(f);
+            if (actIdx !== -1) {
+                if (dir === 'left') {
+                    if (actIdx > 0) return focusEl(actionRow[actIdx - 1], { direction: 'left' });
+                    return true;
+                }
+                if (dir === 'right') {
+                    if (actIdx < actionRow.length - 1) return focusEl(actionRow[actIdx + 1], { direction: 'right' });
+                    return true;
+                }
+                if (dir === 'down') {
+                    if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; }
+                    if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; }
+                    if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; }
+                    if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; }
+                    return true;
+                }
+                // Выше строки действий в карточке ничего нет — там и поднимаем
+                // шапку разделов. Раньше «вверх» отсюда просто не делало ничего.
+                if (dir === 'up') { revealDetailTopbar(f); return true; }
+                return true;
+            }
+            if (isB) {
+                if (dir === 'down') { if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'down' }); return true; } return focusEl(items[Math.min(items.length - 1, idx + 1)] || f, { direction: 'down' }); }
+                if (dir === 'up') { revealDetailTopbar(f); return true; }
+                if (dir === 'left' || dir === 'right') return true;
+                return true;
+            }
+            if (dir === 'up') { var t = items[Math.max(0, idx - 1)] || f; focusEl(t, { direction: 'up' }); return true; }
+            if (dir === 'down') { var t = items[Math.min(items.length - 1, idx + 1)] || f; focusEl(t, { direction: 'down' }); return true; }
+            return true;
+        },
+        onOk: function (f) {
+            if (!belongsToScreen(f, 'detail')) return this.ensureFocus(true);
+            if (f.classList.contains('file-item')) { clickEl(f.querySelector('.play-btn') || f); return true; }
+            if (f.classList.contains('detail-progress-btn')) { clickEl(f); return true; }
+            clickEl(f);
+            return true;
+        }
+    },
+
+    config: {
+        getItems: getConfigItems,
+        ensureFocus: function (force) {
+            if (force === undefined) force = false;
+            if (currentScreen() !== 'config') return false;
+            if (!configState.initialized) {
+                configState.initialized = true;
+                configState.activeTabId = 'torrserver-tab';
+                configState.isOnMenu = true;
+                switchConfigTab('torrserver-tab');
+                setConfigMenuActive('torrserver-tab');
+            }
+            var focusedElement = document.querySelector('.focused');
+            if (!force && belongsToScreen(focusedElement, 'config')) return true;
+            var menuItems = getConfigMenuItems();
+            if (configState.isOnMenu) {
+                var targetMenuItem = getEl(configState.activeTabId);
+                if (targetMenuItem && VISIBLE(targetMenuItem)) return focusEl(targetMenuItem);
+                return focusEl(menuItems[0]);
+            } else {
+                var contentItems = getConfigContentItems(configState.activeTabId);
+                if (contentItems.length > 0) return focusEl(contentItems[0]);
+                configState.isOnMenu = true;
+                return focusEl(getEl(configState.activeTabId));
+            }
+        },
+        handleNavigation: function (dir) {
+            return handleConfigNavigation(dir);
+        },
+        onOk: function (f) {
+            if (!belongsToScreen(f, 'config')) return this.ensureFocus(true);
+            return handleConfigNavigation('enter');
+        }
+    }
+};
+
+// ==================== НАВИГАЦИЯ В ПАНЕЛИ ФИЛЬТРОВ ====================
+function handleFilterPanelNavigation(dir, currentElement) {
+    var panel = getEl('search-filters-panel');
+    if (!panel) return false;
+
+    // ★ Обязательно инвалидируем кэш!
+    invalidateFocusCache();
+    updateFocusableElements();
+
+    if (window.AppState && AppState.searchLocked) {
+        var filterItems = Array.from(panel.querySelectorAll('.filter-item:not([data-filter="torrent-movie"])'));
+    } else {
+        var filterItems = Array.from(panel.querySelectorAll('.filter-item'));
+    }
+    var filterValueItems = Array.from(panel.querySelectorAll('.filter-value-item'));
+    var backBtn = getEl('filter-back-btn');
+    var closeBtn = getEl('filter-close-btn');
+    var resetBtn = getEl('reset-filters');
+
+    // Определяем текущий экран
+    var mainScreen = panel.querySelector('.filter-main-screen');
+    var valuesScreen = panel.querySelector('.filter-values-screen');
+    var isMainScreen = mainScreen && mainScreen.style.display !== 'none';
+    var isValuesScreen = valuesScreen && valuesScreen.style.display !== 'none';
+
+    if (isMainScreen) {
+        // === Навигация на главном экране ===
+        var allItems = [];
+        if (closeBtn && VISIBLE(closeBtn)) allItems.push(closeBtn);
+        for (var i = 0; i < filterItems.length; i++) allItems.push(filterItems[i]);
+        if (resetBtn && VISIBLE(resetBtn)) allItems.push(resetBtn);
+
+        var idx = allItems.indexOf(currentElement);
+
+        if (dir === 'up') {
+            if (idx > 0) return focusEl(allItems[idx - 1], { direction: 'up' });
+            return true;
+        }
+        if (dir === 'down') {
+            if (idx < allItems.length - 1) return focusEl(allItems[idx + 1], { direction: 'down' });
+            return true;
+        }
+        if (dir === 'left') {
+            // Закрыть панель
+            closeFilterPanel();
+            return true;
+        }
+        if (dir === 'right') return true;
+    }
+
+    if (isValuesScreen) {
+        // === Навигация на экране значений ===
+        var allItems = [];
+        if (backBtn && VISIBLE(backBtn)) allItems.push(backBtn);
+        for (var i = 0; i < filterValueItems.length; i++) allItems.push(filterValueItems[i]);
+
+        var idx = allItems.indexOf(currentElement);
+
+        if (dir === 'up') {
+            if (idx > 0) return focusEl(allItems[idx - 1], { direction: 'up' });
+            return true;
+        }
+        if (dir === 'down') {
+            // ★ Если стоим на кнопке "Назад" — прыгаем сразу на selected элемент
+            if (currentElement === backBtn) {
+                var selectedInList = panel.querySelector('.filter-value-item.selected');
+                if (selectedInList && VISIBLE(selectedInList)) {
+                    return focusEl(selectedInList, { direction: 'down' });
+                }
+            }
+            if (idx < allItems.length - 1) return focusEl(allItems[idx + 1], { direction: 'down' });
+            return true; // конец списка — стоим
+        }
+        if (dir === 'left') {
+            // Кнопка "назад" — вернуться на главный экран
+            if (backBtn && VISIBLE(backBtn)) {
+                backBtn.click();
+                return true;
+            }
+        }
+        if (dir === 'right') return true;
+    }
+
+    return true;
+}
+
+// ==================== УПРАВЛЕНИЕ ФОКУСОМ ====================
+// updateFocusableElements с кэшированием
+function updateFocusableElements() {
+    var now = Date.now();
+    var screen = AppState.currentScreen;
+
+    // Проверяем кэш
+    if (_focusCache.screen === screen &&
+        _focusCache.elements.length > 0 &&
+        _focusCache.gen === _focusGen &&
+        (screen === 'catalog' || now - _focusCache.timestamp < _focusCache.ttl) &&
+        _focusCache.elements[0].isConnected !== false) {
+        focusableElements = _focusCache.elements;
+        return;
+    }
+
+    var episodesPanel = getEl('episodes-panel');
+    var audioPanel = getEl('audio-panel');
+    var subtitlesPanel = getEl('subtitles-panel');
+    var isEpisodesOpen = episodesPanel && !episodesPanel.classList.contains('hidden');
+    var isAudioOpen = audioPanel && !audioPanel.classList.contains('hidden');
+    var isSubtitlesOpen = subtitlesPanel && !subtitlesPanel.classList.contains('hidden');
+    var list = [];
+
+    if (isEpisodesOpen) {
+        var items = episodesPanel.querySelectorAll('.episode-item, .close-panel-btn');
+        for (var i = 0; i < items.length; i++) if (items[i] && items[i].offsetParent !== null) list.push(items[i]);
+        focusableElements = list;
+        _focusCache.timestamp = now;
+        _focusCache.screen = screen;
+        _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
+        return;
+    }
+    if (isAudioOpen) {
+        var items = audioPanel.querySelectorAll('.audio-item, .close-panel-btn');
+        for (var i = 0; i < items.length; i++) if (items[i] && items[i].offsetParent !== null) list.push(items[i]);
+        focusableElements = list;
+        _focusCache.timestamp = now;
+        _focusCache.screen = screen;
+        _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
+        return;
+    }
+    if (isSubtitlesOpen) {
+        var items = subtitlesPanel.querySelectorAll('.subtitle-item, .close-panel-btn');
+        for (var i = 0; i < items.length; i++) if (items[i] && items[i].offsetParent !== null) list.push(items[i]);
+        focusableElements = list;
+        _focusCache.timestamp = now;
+        _focusCache.screen = screen;
+        _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
+        return;
+    }
+    if (screen === 'sync') {
+        var btn = getEl('sync-close-btn'); if (btn && btn.offsetParent !== null) list.push(btn);
+        var inp = getEl('sync-code-input'); if (inp && inp.offsetParent !== null) list.push(inp);
+        focusableElements = list;
+        _focusCache.timestamp = now;
+        _focusCache.screen = screen;
+        _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
+        return;
+    }
+    if (screen === 'player') {
+        var c = getEl('controls-container');
+        if (c && !c.classList.contains('idle-hidden')) {
+            var seek = getEl('seek-slider');
+            var skipBtn = getEl('skip-button');
+            var btns = document.querySelectorAll('#prev-episode-btn, #play-pause-btn, #next-episode-btn, #audio-btn, #subtitles-btn, #episodes-btn, #mute-btn, #zoom-mode-btn, #toggle-buffer-btn');
+            for (var i = 0; i < btns.length; i++) if (btns[i] && btns[i].offsetParent !== null) list.push(btns[i]);
+            if (seek && seek.offsetParent !== null) list.unshift(seek);
+            if (skipBtn && !skipBtn.classList.contains('hidden') && skipBtn.offsetParent !== null) list.push(skipBtn);
+        }
+        focusableElements = list.filter(function (e) { return e && e.offsetParent !== null; });
+        _focusCache.timestamp = now;
+        _focusCache.screen = screen;
+        _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
+        return;
+    }
+    if (screen === 'detail') {
+        // Карточки актёров/рекомендаций — тоже фокусируемые: без них «вверх» из
+        // ряда файлов торрентного detail упирается в кнопки шапки
+        var sel = '#detail-view .home-nav-btn, .detail-progress-btn, .file-item, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn, .catalog-actor-card, .catalog-recommendation-card';
+        var els = document.querySelectorAll(sel);
+        for (var i = 0; i < els.length; i++) if (els[i] && els[i].offsetParent !== null) list.push(els[i]);
+        focusableElements = list;
+        _focusCache.timestamp = now;
+        _focusCache.screen = screen;
+        _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
+        return;
+    }
+    if (screen === 'home') {
+        // Шапка → кнопка «Смотреть» на баннере → карточки ряда, в порядке DOM.
+        //
+        // Ни одного offsetParent, и это главное. Раньше проверка стояла на
+        // каждой кнопке и каждой карточке; первое же такое чтение заставляет
+        // браузер пересчитать раскладку всего документа, а функция стоит на
+        // каждом нажатии пульта. Зонд с микросекундными часами намерил здесь
+        // 0,19мс против 0,031мс в ветке каталога — при пустых рядах, то есть
+        // разница вся приходилась на принудительную раскладку, а не на обход.
+        //
+        // Та же замена, что раньше сделали для сетки (visibleCatalogScope) и
+        // для шапки торрентов (getTorrentTabs): скрывают здесь не отдельные
+        // элементы, а контейнеры, поэтому и спрашивать надо контейнер.
+        var bar = getEl('home-topbar');
+        // Шапку временно уносят в карточку (DetailTopbar в home.js). Экран при
+        // этом 'detail', но если порядок когда-нибудь разъедется, кнопки из
+        // чужого контейнера в список главной попасть не должны
+        var barHere = bar && !(bar.parentNode && bar.parentNode.id === 'detail-view');
+        if (barHere && bar.style.display !== 'none' && !bar.classList.contains('hidden')) {
+            var navBtns = bar.querySelectorAll('.home-nav-btn');
+            for (var i = 0; i < navBtns.length; i++) list.push(navBtns[i]);
+        }
+
+        var homePlay = getEl('home-play-btn');
+        if (homePlay && !homePlay.hidden && homePlay.style.display !== 'none') list.push(homePlay);
+
+        // Ряд вне экрана скрыт целиком (home-row-hidden, display: none) — на
+        // экране всегда ровно один, стрелки вверх/вниз меняют именно его
+        // (home.js). Значит спрашиваем ряд, а не каждую его карточку.
+        var homeRows = document.querySelectorAll('#home-rows .catalog-row');
+        for (var hr = 0; hr < homeRows.length; hr++) {
+            if (homeRows[hr].classList.contains(HOME_HIDDEN_ROW_CLASS)) continue;
+            var rowCards = homeRows[hr].querySelectorAll('.torrent-card.catalog-card');
+            for (var rc = 0; rc < rowCards.length; rc++) list.push(rowCards[rc]);
+        }
+        focusableElements = list;
+        _focusCache.timestamp = now;
+        _focusCache.screen = screen;
+        _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
+        return;
+    }
+    if (screen === 'torrents') {
+        var searchInput = getEl('search-query'), searchBtn = getEl('search-btn'), settingsBtn = getEl('settings-btn');
+        var tabTorrents = getEl('tab-torrents'), tabSearch = getEl('tab-search'), tabCatalog = getEl('tab-catalog');
+        // Видимость спрашиваем у самой сетки: renderTorrents кладёт в неё ровно
+        // по карточке на торрент, ни пула скрытых, ни оконной видимости здесь
+        // нет — проверка на каждой ловила только «скрыта вся сетка целиком»
+        var torrentsGrid = getEl('torrents-grid');
+        var cards = [];
+        if (torrentsGrid && torrentsGrid.offsetParent !== null) {
+            var allCards = torrentsGrid.querySelectorAll('.torrent-card');
+            for (var i = 0; i < allCards.length; i++) cards.push(allCards[i]);
+        }
+        var cols = getTorrentGridColumns();
+        var rows = []; for (var j = 0; j < cards.length; j += cols) rows.push(cards.slice(j, j + cols));
+        window.torrentRows = { row1: [searchInput, searchBtn, settingsBtn].filter(Boolean), row2: [tabTorrents, tabSearch, tabCatalog].filter(Boolean), cardRows: rows, allCards: cards };
+        var focusList = cards.slice();
+        if (searchInput && searchInput.offsetParent !== null) focusList.push(searchInput);
+        if (searchBtn && searchBtn.offsetParent !== null) focusList.push(searchBtn);
+        // Кнопки общей шапки одним списком в порядке DOM: там же лежат «Главная»
+        // и «Настройки», поэтому перечислять вкладки поимённо больше не нужно.
+        var navBtns = getTorrentTabs();
+        for (var n = 0; n < navBtns.length; n++) if (focusList.indexOf(navBtns[n]) === -1) focusList.push(navBtns[n]);
+        // Повторной фильтрации по offsetParent нет: карточки отобраны выше,
+        // кнопки поиска проверены поимённо, а getTorrentTabs и так отдаёт
+        // только видимые. Она читала offsetParent ВТОРОЙ раз у каждой плитки.
+        focusableElements = focusList;
+        _focusCache.timestamp = now;
+        _focusCache.screen = screen;
+        _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
+        return;
+    }
+    if (screen === 'catalog') {
+        // Тот же кэш по поколению, что и у навигации: обход карточек с
+        // offsetParent делается один раз на изменение DOM, а не здесь заново.
+        var cards = getCatalogGridCards();
+        for (var i = 0; i < cards.length; i++) list.push(cards[i]);
+        // Заголовки берём из того же показанного контейнера — по той же причине,
+        // что и карточки: offsetParent здесь стоил бы полной раскладки сетки,
+        // хотя заголовков всего десяток. Одного чтения геометрии достаточно,
+        // чтобы браузер пересчитал всё.
+        var scope = visibleCatalogScope();
+        if (scope) {
+            var rowHeaders = scope.querySelectorAll('.catalog-row-header');
+            for (var rh = 0; rh < rowHeaders.length; rh++) list.push(rowHeaders[rh]);
+        }
+        // window.catalogCards заполняем ДО кнопок шапки: legacy-навигация по
+        // сетке считает по нему индексы карточек, шапке там места нет.
+        window.catalogCards = list.slice();
+        var catNav = getTorrentTabs();
+        for (var cn = 0; cn < catNav.length; cn++) if (list.indexOf(catNav[cn]) === -1) list.push(catNav[cn]);
+        // Кэш и focusableElements — один и тот же массив: список нигде не
+        // мутируют на месте, только переприсваивают целиком, поэтому вторая
+        // копия сотен элементов на каждую пересборку была лишней.
+        focusableElements = list;
+        _focusCache.timestamp = now;
+        _focusCache.screen = screen;
+        _focusCache.elements = list;
+        _focusCache.gen = _focusGen;
+        return;
+    }
+    if (screen === 'search') {
+        var q = getEl('search-query'), ft = getEl('filter-toggle'), sb = getEl('search-btn'), cs = getEl('close-search');
+        // Поиск из карточки каталога: строка только для чтения, и вести в неё
+        // фокус незачем — как и в «Поиск», который перезапустил бы тот же
+        // запрос. Замок ставит setSearchLocked (torrents.js).
+        if (window.AppState && AppState.searchLocked) { q = null; sb = null; }
+        // Карточки результатов спрашиваем через контейнер, а не каждую по
+        // отдельности: .search-offscreen — это visibility: hidden, offsetParent
+        // при нём остаётся, то есть проверка на каждой не отсеивала ничего, а
+        // стоила обхода цепочки содержащих блоков для всей выдачи
+        var resultsHost = getEl('search-results');
+        var res = [];
+        if (resultsHost && resultsHost.offsetParent !== null) {
+            var ris = resultsHost.querySelectorAll('.search-result-item, .global-search-card');
+            for (var i = 0; i < ris.length; i++) res.push(ris[i]);
+        }
+
+        var fl = [q, ft, sb, cs];
+
+        // ★ НОВАЯ ПАНЕЛЬ ФИЛЬТРОВ — добавляем её элементы
+        var filterPanel = getEl('search-filters-panel');
+        if (filterPanel && filterPanel.classList.contains('active')) {
+            var backBtn = getEl('filter-back-btn');
+            var closeBtn = getEl('filter-close-btn');
+            var resetBtn = getEl('reset-filters');
+
+            // Порядок важен: сначала кнопки навигации, потом элементы
+            if (backBtn && VISIBLE(backBtn)) fl.push(backBtn);
+            if (closeBtn && VISIBLE(closeBtn)) fl.push(closeBtn);
+
+            // Главный экран: .filter-item
+            var filterItems = filterPanel.querySelectorAll('.filter-item');
+            for (var fi = 0; fi < filterItems.length; fi++) {
+                if (filterItems[fi] && filterItems[fi].offsetParent !== null) fl.push(filterItems[fi]);
+            }
+
+            // Экран значений: .filter-value-item
+            var valueItems = filterPanel.querySelectorAll('.filter-value-item');
+            for (var vi = 0; vi < valueItems.length; vi++) {
+                if (valueItems[vi] && valueItems[vi].offsetParent !== null) fl.push(valueItems[vi]);
+            }
+
+            // Кнопка сброса
+            if (resetBtn && VISIBLE(resetBtn)) fl.push(resetBtn);
+        }
+
+        // Результаты поиска (после фильтров)
+        for (var i = 0; i < res.length; i++) fl.push(res[i]);
+
+        focusableElements = fl.filter(Boolean);
+        _focusCache.timestamp = now;
+        _focusCache.screen = screen;
+        _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
+        return;
+    }
+    if (screen === 'config') {
+        var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'other-tab', 'device-tab'];
+        var cfg = document.querySelectorAll('.settings-btn');
+        for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e && e.offsetParent !== null) list.push(e); }
+        for (var i = 0; i < cfg.length; i++) if (cfg[i] && cfg[i].offsetParent !== null) list.push(cfg[i]);
+        focusableElements = list;
+        _focusCache.timestamp = now;
+        _focusCache.screen = screen;
+        _focusCache.elements = focusableElements.slice();
+        _focusCache.gen = _focusGen;
+        return;
+    }
+    focusableElements = [];
+    _focusCache.timestamp = now;
+    _focusCache.screen = screen;
+    _focusCache.elements = focusableElements.slice();
+    _focusCache.gen = _focusGen;
+}
+
+// setFocus с requestAnimationFrame для плавности
+function setFocus(index) {
+    if (focusableElements.length === 0) { updateFocusableElements(); if (focusableElements.length === 0) return; }
+    if (index < 0) index = focusableElements.length - 1;
+    if (index >= focusableElements.length) index = 0;
+    currentFocusIndex = index;
+    var element = focusableElements[currentFocusIndex];
+    if (!element) return;
+
+    // Передаём направление навигации в focusEl
+    focusEl(element, { direction: lastNavDirection });
+
+    if (AppState.currentScreen === 'config') {
+        switchConfigTab(element.id);
+    }
+    if (AppState.currentScreen === 'torrents' && element.classList.contains('torrent-card')) {
+        var row1Len = (window.torrentRows && window.torrentRows.row1 ? window.torrentRows.row1.length : 0);
+        var row2Len = (window.torrentRows && window.torrentRows.row2 ? window.torrentRows.row2.length : 0);
+        var torrentIndex = currentFocusIndex - (row1Len + row2Len);
+        var t = AppState.torrents[torrentIndex];
+        if (t && t.hash) { lastSelectedTorrentHash = t.hash; lastSelectedTorrentIndex = torrentIndex; }
+        else if (element.dataset.hash) { lastSelectedTorrentHash = element.dataset.hash; lastSelectedTorrentIndex = torrentIndex >= 0 ? torrentIndex : 0; }
+        window.lastSelectedTorrentHash = lastSelectedTorrentHash;
+        window.lastSelectedTorrentIndex = lastSelectedTorrentIndex;
+    }
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') {
+        var allowed = ['search-query', 'torrserver-url', 'auth-login', 'auth-password', 'jacred-url'];
+        if (allowed.indexOf(element.id) === -1) document.activeElement.blur();
+    }
+}
+
+function focusFirstTorrentCard(retries, delay) {
+    if (retries === undefined) retries = 6; if (delay === undefined) delay = 120;
+    if (AppState.currentScreen !== 'torrents') return false;
+    updateFocusableElements();
+    for (var i = 0; i < focusableElements.length; i++) {
+        if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) { setFocus(i); return true; }
+    }
+    if (retries > 0) setTimeout(function () { focusFirstTorrentCard(retries - 1, delay); }, delay);
+    return false;
+}
+
+function focusSearchHome(preferQuery) {
+    if (preferQuery === undefined) preferQuery = true;
+    updateFocusableElements();
+    var qi = -1, si = -1, fi = -1;
+    for (var i = 0; i < focusableElements.length; i++) {
+        var e = focusableElements[i];
+        if (e.id === 'search-query') qi = i;
+        if (e.id === 'search-btn') si = i;
+        if (fi === -1 && ['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(e.id) !== -1) fi = i;
+    }
+    var target = preferQuery && qi !== -1 ? qi : (si !== -1 ? si : (fi !== -1 ? fi : 0));
+    setFocus(target);
+}
+
+// ==================== НАВИГАЦИЯ ====================
+function navigate(direction) {
+    if (typeof setNavHold === 'function') setNavHold(direction);
+
+    // Темп шага — общий для всех путей навигации, см. acceptNavStep. Шаг,
+    // пришедший раньше срока, откладывается, а не отбрасывается: быстрое
+    // «тук-тук» — это намерение пройти ровно две карточки, и оно не должно
+    // пропадать, оно просто едет с той же скоростью, что и всё остальное.
+    if (!acceptNavStep(direction)) return;
+
+    lastNavDirection = direction;
+    var active = document.activeElement;
+    if (active && active.id === 'search-query') {
+        active.blur(); updateFocusableElements();
+        if (AppState.currentScreen === 'search') {
+            var ff = -1, fr = -1;
+            for (var i = 0; i < focusableElements.length; i++) { var e = focusableElements[i]; if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(e.id) !== -1 && ff === -1) ff = i; if (e.classList && e.classList.contains('search-result-item') && fr === -1) fr = i; }
+            setFocus(direction === 'down' && fr !== -1 ? fr : (ff !== -1 ? ff : (fr !== -1 ? fr : 0))); return;
+        }
+        var fc = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) { fc = i; break; }
+        setFocus(fc !== -1 ? fc : 0); return;
+    }
+    if (focusableElements.length === 0) {
+        updateFocusableElements(); if (focusableElements.length === 0) return;
+        if (AppState.currentScreen === 'torrents') { var fc = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].classList && focusableElements[i].classList.contains('torrent-card')) { fc = i; break; } setFocus(fc !== -1 ? fc : 0); }
+        else if (AppState.currentScreen === 'search') { var ff = -1; for (var i = 0; i < focusableElements.length; i++) if (['filter-toggle', 'torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(focusableElements[i].id) !== -1) { ff = i; break; } setFocus(ff !== -1 ? ff : 0); }
+        return;
+    }
+    var cur = focusableElements[currentFocusIndex];
+
+    // TORRENTS NAV
+    if (AppState.currentScreen === 'torrents') {
+        var sBtn = getEl('settings-btn'), tT = getEl('tab-torrents'), tS = getEl('tab-search'), tC = getEl('tab-catalog');
+        var cards = window.torrentRows && window.torrentRows.allCards ? window.torrentRows.allCards : [];
+        if (!cur) { if (cards.length > 0) setFocus(focusableElements.indexOf(cards[0])); else { var f = -1; for (var i = 0; i < focusableElements.length; i++) if (focusableElements[i].id === 'tab-torrents') { f = i; break; } setFocus(f !== -1 ? f : 0); } return; }
+        var isSet = cur === sBtn, isTT = cur === tT, isTS = cur === tS, isTC = cur === tC, isC = false, cIdx = -1;
+        for (var i = 0; i < cards.length; i++) if (cur === cards[i]) { isC = true; cIdx = i; break; }
+        var cols = getTorrentGridColumns();
+        switch (direction) {
+            case 'up': if (isC) { if (cIdx < cols) setFocus(focusableElements.indexOf(tT)); else setFocus(focusableElements.indexOf(cards[cIdx - cols])); } else if (isTT || isTS || isTC) { if (cards.length > 0) setFocus(focusableElements.indexOf(cards[0])); } break;
+            case 'down': if (isSet) setFocus(focusableElements.indexOf(tT)); else if (isTT || isTS || isTC) { if (cards.length > 0) setFocus(focusableElements.indexOf(cards[0])); } else if (isC) { if (cIdx + cols < cards.length) setFocus(focusableElements.indexOf(cards[cIdx + cols])); } break;
+            case 'left': if (isSet) setFocus(focusableElements.indexOf(tC)); else if (isTC) setFocus(focusableElements.indexOf(tS)); else if (isTS) setFocus(focusableElements.indexOf(tT)); else if (isC && cIdx > 0 && cIdx % cols !== 0) setFocus(focusableElements.indexOf(cards[cIdx - 1])); break;
+            case 'right': if (isTT) setFocus(focusableElements.indexOf(tS)); else if (isTS) setFocus(focusableElements.indexOf(tC)); else if (isC && cIdx < cards.length - 1 && (cIdx + 1) % cols !== 0) setFocus(focusableElements.indexOf(cards[cIdx + 1])); break;
+        }
+        return;
+    }
+
+    // CATALOG NAV
+    if (AppState.currentScreen === 'catalog') {
+        var cards = window.catalogCards || []; if (!cards.length) return;
+        var cIdx = -1; for (var i = 0; i < cards.length; i++) if (cur === cards[i]) { cIdx = i; break; }
+        var cols = getTorrentGridColumns();
+        switch (direction) {
+            case 'left': if (cIdx > 0 && cIdx % cols !== 0) setFocus(focusableElements.indexOf(cards[cIdx - 1])); break;
+            case 'right': if (cIdx < cards.length - 1 && (cIdx + 1) % cols !== 0) setFocus(focusableElements.indexOf(cards[cIdx + 1])); break;
+            case 'up': if (cIdx >= cols) setFocus(focusableElements.indexOf(cards[cIdx - cols])); break;
+            case 'down': if (cIdx + cols < cards.length) { setFocus(focusableElements.indexOf(cards[cIdx + cols])); if (typeof window.checkAndLoadMoreOnNavigation === 'function') window.checkAndLoadMoreOnNavigation(); } else if (cIdx === cards.length - 1 && typeof window.checkAndLoadMoreOnNavigation === 'function') window.checkAndLoadMoreOnNavigation(); break;
+        }
+        return;
+    }
+
+    // PLAYER NAV
+    if (AppState.currentScreen === 'player') {
+        var cc = getEl('controls-container'); if (!cc || cc.classList.contains('idle-hidden')) return;
+        var ep = getEl('episodes-panel'), ap = getEl('audio-panel'), sp = getEl('subtitles-panel');
+        var isOpen = (ep && !ep.classList.contains('hidden')) || (ap && !ap.classList.contains('hidden')) || (sp && !sp.classList.contains('hidden'));
+
+        if (isOpen) {
+            // Инвалидируем кэш для получения актуального списка элементов панели
+            if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+            updateFocusableElements();
+
+            var panelLen = focusableElements.length;
+            if (panelLen === 0) return;
+
+            // Синхронизируем currentFocusIndex с реально сфокусированным элементом
+            var actualFocused = document.querySelector('.focused');
+            if (actualFocused) {
+                var actualIndex = focusableElements.indexOf(actualFocused);
+                if (actualIndex !== -1) {
+                    currentFocusIndex = actualIndex;
+                }
+            }
+
+            // принудительно загоняем индекс в допустимые границы
+            if (currentFocusIndex < 0) currentFocusIndex = 0;
+            if (currentFocusIndex >= panelLen) currentFocusIndex = panelLen - 1;
+
+            // Навигация с защитой от выхода за пределы
+            if (direction === 'up') {
+                if (currentFocusIndex > 0) {
+                    setFocus(currentFocusIndex - 1);
+                }
+                // Если currentFocusIndex === 0 — ничего не делаем, стоим на первом элементе
+            } else if (direction === 'down') {
+                if (currentFocusIndex < panelLen - 1) {
+                    setFocus(currentFocusIndex + 1);
+                }
+                // Если currentFocusIndex === panelLen - 1 — ничего не делаем, стоим на последнем
+            }
+            return;
+        }
+
+        if (cur && cur.id === 'seek-slider') { if (direction === 'down' && focusableElements.length > 1) setFocus(1); return; }
+        if (direction === 'up') setFocus(0); else if (direction === 'left' && currentFocusIndex > 1) setFocus(currentFocusIndex - 1); else if (direction === 'right' && currentFocusIndex < focusableElements.length - 1) setFocus(currentFocusIndex + 1);
+        return;
+    }
+    // SEARCH NAV
+    if (AppState.currentScreen === 'search') {
+        var q = getEl('search-query'), fl = [], res = [];
+        for (var i = 0; i < focusableElements.length; i++) { var e = focusableElements[i]; if (['torrent-movie', 'sort-by', 'filter-quality', 'filter-content-type', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype', 'reset-filters', 'close-search'].indexOf(e.id) !== -1) fl.push(e); if (e.classList && (e.classList.contains('search-result-item') || e.classList.contains('global-search-card'))) res.push(e); }
+        var fIdx = -1, rIdx = -1; for (var i = 0; i < fl.length; i++) if (cur === fl[i]) { fIdx = i; break; } for (var i = 0; i < res.length; i++) if (cur === res[i]) { rIdx = i; break; }
+        if (!cur) { if (q && focusableElements.indexOf(q) !== -1) setFocus(focusableElements.indexOf(q)); else if (fl.length > 0) setFocus(focusableElements.indexOf(fl[0])); else if (res.length > 0) setFocus(focusableElements.indexOf(res[0])); return; }
+        if (cur === q) { if (['left', 'right', 'down', 'up'].indexOf(direction) !== -1) setFocus(fl.length > 0 ? focusableElements.indexOf(fl[0]) : (res.length > 0 ? focusableElements.indexOf(res[0]) : 0)); return; }
+        if (fIdx !== -1) { if (direction === 'left') setFocus(focusableElements.indexOf(fl[Math.max(0, fIdx - 1)])); else if (direction === 'right') setFocus(focusableElements.indexOf(fl[Math.min(fl.length - 1, fIdx + 1)])); else if (direction === 'down') setFocus(res.length > 0 ? focusableElements.indexOf(res[0]) : focusableElements.indexOf(fl[Math.min(fl.length - 1, fIdx + 1)])); else if (direction === 'up') setFocus(q && focusableElements.indexOf(q) !== -1 ? focusableElements.indexOf(q) : focusableElements.indexOf(fl[Math.max(0, fIdx - 1)])); return; }
+        if (rIdx !== -1) { if (direction === 'up') setFocus(rIdx === 0 && fl.length > 0 ? focusableElements.indexOf(fl[0]) : focusableElements.indexOf(res[Math.max(0, rIdx - 1)])); else if (direction === 'down') setFocus(focusableElements.indexOf(res[Math.min(res.length - 1, rIdx + 1)])); return; }
+    }
+
+    // DEFAULT
+    switch (direction) { case 'up': setFocus(currentFocusIndex - 1); break; case 'down': setFocus(currentFocusIndex + 1); break; case 'left': setFocus(currentFocusIndex - 1); break; case 'right': setFocus(currentFocusIndex + 1); break; }
+}
+
+// Тот же ответ, что и у arrowDir() ниже по файлу — две одинаковые функции
+// жили рядом. Оставлено имя, которым пользуется ветка плеера.
+function keyToDirection(keyCode) { return arrowDir(keyCode); }
+function stopSeeking() { if (seekHoldInterval) { clearInterval(seekHoldInterval); seekHoldInterval = null; } }
+
+// ==================== ОБРАБОТЧИКИ КЛАВИШ ====================
+function onOk() {
+    var s = currentScreen();
+    var f = document.querySelector('.focused');
+    var strategy = ScreenStrategies[s];
+
+    if (!strategy) return false;
+    if (!f) return strategy.ensureFocus ? strategy.ensureFocus(true) : false;
+
+    return strategy.onOk(f);
+}
+
+// Главная (home.js) как «подложка» под настройками и поиском. currentScreen()
+// для этого не годится: настройки гасят #torrserver-section целиком, поэтому
+// смотрим только на атрибут hidden самого экрана главной.
+function isHomeUnderneath() {
+    var h = getEl('content-home');
+    return !!(h && !h.hidden);
+}
+
+function onBack() {
+    var s = getEl('search-overlay'), d = getEl('detail-view'), c = getEl('config-screen');
+    var cat = currentScreen() === 'catalog', dn = currentScreen() === 'donate';
+    var hm = currentScreen() === 'home';
+
+    var configScreen = getEl('config-screen');
+    // Проверяем, открыта ли панель фильтров
+    var filterPanel = getEl('search-filters-panel');
+    if (filterPanel && filterPanel.classList.contains('active')) {
+        // Проверяем, на каком экране панели находимся
+        var valuesScreen = filterPanel.querySelector('.filter-values-screen');
+        if (valuesScreen && valuesScreen.style.display !== 'none') {
+            // На экране значений - вернуться на главный экран
+            var backBtn = getEl('filter-back-btn');
+            if (backBtn) backBtn.click();
+            return true;
+        } else {
+            // На главном экране - закрыть панель
+            closeFilterPanel();
+            return true;
+        }
+    }
+    // Настройщик внешнего вида (ui-customizer.js) лежит поверх любого экрана и
+    // гасит клавиши сам. Но если его код кнопки «назад» не совпал с нашим, мы
+    // окажемся здесь при ОТКРЫТОЙ панели и уведём фокус за неё — на экране
+    // ничего не изменится, и выйти будет нельзя. Проверяем до всех экранов:
+    // пока панель открыта, «назад» закрывает её и ничего больше.
+    if (window.UICustomizer && typeof UICustomizer.isOpen === 'function' &&
+        UICustomizer.isOpen() && typeof UICustomizer.close === 'function') {
+        UICustomizer.close();
+        return true;
+    }
+
+    /* Донат — до карточки, а не после.
+     *
+     * Ниже «назад» разбирает экраны в порядке веток, и ветка карточки идёт
+     * раньше донатной. Пока донат нельзя было открыть поверх карточки, это ни
+     * на что не влияло; теперь можно — и «назад» закрывал карточку из-под
+     * оверлея, оставляя сам оверлей висеть.
+     *
+     * Проверяем сам элемент, а не currentScreen(): та функция перебирает экраны
+     * своим порядком и на видимую карточку отвечает 'detail' раньше, чем дойдёт
+     * до доната. Порядок здесь задаёт то, что реально лежит выше: у доната
+     * z-index 1000 против 100 у #detail-view. Настройки следующей веткой — по
+     * той же причине.
+     */
+    var donateScreen = getEl('donate-overlay');
+    if (donateScreen && _isScreenVisible(donateScreen)) {
+        if (typeof window.closeDonateOverlay === 'function') window.closeDonateOverlay();
+        return true;
+    }
+
+    if (configScreen && _isScreenVisible(configScreen)) {
+        var focusedElement = document.querySelector('.focused');
+        var menuItems = getConfigMenuItems();
+        var isOnMenu = false;
+        for (var i = 0; i < menuItems.length; i++) {
+            if (focusedElement === menuItems[i]) { isOnMenu = true; break; }
+        }
+        if (!isOnMenu) { handleConfigNavigation('back'); return true; }
+        else {
+            for (var i = 0; i < menuItems.length; i++) menuItems[i].classList.remove('active');
+            configState.activeTabId = null;
+            configState.isOnMenu = true;
+            configState.initialized = false;
+            configScreen.style.display = 'none';
+            var torrserverSection = getEl('torrserver-section');
+            // Экран, в который возвращаемся, проявляется так же, как при входе
+            // в настройки (app.js, #settings-btn), — иначе туда плавно, обратно рывком
+            if (torrserverSection) {
+                if (typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
+                    Animations.fadeIn(torrserverSection, { display: 'block', duration: Animations.UI_FADE.screen });
+                } else {
+                    torrserverSection.style.display = 'block';
+                }
+            }
+            // Из настроек возвращаемся туда, откуда пришли: это запись стека
+            // переходов под настройками (nav.js). Запасной вариант — если
+            // настройки открыли в обход стека: главная, когда она под ними,
+            // иначе торренты.
+            var returnTo = window.Nav ? Nav.returnTarget(Nav.pop('config')) : null;
+            if (!returnTo) returnTo = isHomeUnderneath() ? 'home' : 'torrents';
+
+            // Настройки открывали поверх карточки — она всё это время стояла
+            // под ними и ждёт возврата
+            if (returnTo === 'detail' && typeof window.restoreDetailAfterOverlay === 'function' &&
+                window.restoreDetailAfterOverlay()) {
+                return true;
+            }
+
+            if (returnTo === 'home' && window.HomeScreen) {
+                window.HomeScreen.show({ restoreFocus: true });
+                return true;
+            }
+
+            try { window.AppState.currentScreen = returnTo; } catch (e) { }
+            setTimeout(function () {
+                // Экран мог перестать быть доступным, пока мы сидели в
+                // настройках (сервер отвалился, каталог пересобрали) —
+                // тогда уходим к торрентам, как было раньше
+                if (restoreScreenFocus(returnTo)) return;
+                if (returnTo === 'torrents') return;
+                try { window.AppState.currentScreen = 'torrents'; } catch (e) { }
+                ScreenStrategies.torrents.ensureFocus(true);
+            }, 180);
+            return true;
+        }
+    }
+
+    if (AppState.syncCodeScreen == true) { toggleSyncOverlay(); return true; }
+    if (typeof window.closeCatalogTrailerOverlay === 'function' && window.closeCatalogTrailerOverlay()) {
+        setTimeout(function () { ScreenStrategies.detail.ensureFocus(true); }, 80);
+        return true;
+    }
+    // ★ Панель фильтров — проверяем ПЕРЕД search-overlay
+    var filterPanel = getEl('search-filters-panel');
+    if (filterPanel && filterPanel.classList.contains('active')) {
+        var valuesScreen = filterPanel.querySelector('.filter-values-screen');
+        if (valuesScreen && valuesScreen.style.display !== 'none') {
+            // На экране значений — вернуться на главный
+            var backBtn = getEl('filter-back-btn');
+            if (backBtn) backBtn.click();
+        } else {
+            // На главном экране — закрыть панель
+            closeFilterPanel();
+        }
+        return true;
+    }
+    if (s && !s.classList.contains('hidden') && _isScreenVisible(s)) {
+        if (typeof window.hideSearchResults === 'function') {
+            window.hideSearchResults();
+            // hideSearchResults сам возвращает фокус на главную (ветка
+            // returnTo === 'home'), кнопку поиска в этом случае не трогаем.
+            // Ищем её по id: порядок кнопок в шапке теперь задаёт вёрстка.
+            // В карточку под поиском фокус ставит сама карточка
+            if (!isHomeUnderneath() && AppState.currentScreen !== 'detail') focusEl(getEl('tab-search'));
+        }
+        else leaveSearchToTorrents();
+        return true;
+    }
+    if (d && _isScreenVisible(d)) {
+        // Шапка поверх карточки — «назад» убирает сперва её. Иначе выход из
+        // карточки происходил бы мимо неё, а фокус оставался бы в никуда.
+        if (hideDetailTopbar(true)) return true;
+        if (AppState.trailerPlay) {
+            ovh = getEl('catalog-toggle-overview-btn');
+            stopTrailerBackground();
+            focusEl(ovh);
+            return true;
+        }
+        clickEl(getEl('back-from-detail') || document.querySelector('.back-btn'));
+        return true;
+    }
+    if (dn) { if (typeof window.closeDonateOverlay === 'function') window.closeDonateOverlay(); return true; }
+    if (hm) {
+        // Главная — точка входа: наружу уходить некуда. «Назад» из рядов
+        // поднимает фокус в шапку, из шапки не делает ничего.
+        if (window.HomeScreen && typeof window.HomeScreen.handleBack === 'function') {
+            return window.HomeScreen.handleBack();
+        }
+        return true;
+    }
+    if (cat) {
+        // Из рядов уходить некуда: «назад» здесь ничего не делает. Раньше признаком
+        // рядов было наличие .catalog-folder-card в #catalog-grid — теперь карточки
+        // «Показать все» лежат в #catalog-rows, поэтому спрашиваем режим напрямую.
+        if (isCatalogRowsMode()) return true;
+        if (window.catalogState) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); }
+        if (typeof window.backToCatalogList === 'function') { AppState.currentScreen = 'catalog'; window.backToCatalogList(); }
+        else clickEl(getEl('back-from-catalog'));
+        setTimeout(function () { ScreenStrategies.catalog.ensureFocus(true); }, 180);
+        return true;
+    }
+    if (c && _isScreenVisible(c)) {
+        var m = getEl('torrserver-section');
+        c.style.display = 'none';
+        if (m) m.style.display = 'block';
+        if (isHomeUnderneath() && window.HomeScreen) {
+            window.HomeScreen.show({ restoreFocus: true });
+            return true;
+        }
+        try { window.AppState.currentScreen = 'torrents'; } catch (e) { }
+        setTimeout(function () { ScreenStrategies.torrents.ensureFocus(true); }, 180);
+        return true;
+    }
+    return false;
+}
+
+function isArrowKey(kc) { return KEY_CODES.ARROWS.LEFT === kc || KEY_CODES.ARROWS.UP === kc || KEY_CODES.ARROWS.RIGHT === kc || KEY_CODES.ARROWS.DOWN === kc || (typeof isKeyPressed === 'function' && (isKeyPressed('UP', kc) || isKeyPressed('DOWN', kc) || isKeyPressed('LEFT', kc) || isKeyPressed('RIGHT', kc))); }
+function arrowDir(kc) { if ([37, 38, 39, 40].indexOf(kc) !== -1) return ({ 37: 'left', 38: 'up', 39: 'right', 40: 'down' })[kc]; if (typeof isKeyPressed === 'function') { if (isKeyPressed('UP', kc)) return 'up'; if (isKeyPressed('DOWN', kc)) return 'down'; if (isKeyPressed('LEFT', kc)) return 'left'; if (isKeyPressed('RIGHT', kc)) return 'right'; } return null; }
+function isOkKey(kc) { return kc === 13 || (typeof isKeyPressed === 'function' && isKeyPressed('OK', kc)); }
+function isBackKey(kc) { return KEY_CODES.BACK.indexOf(kc) !== -1 || (typeof isKeyPressed === 'function' && (isKeyPressed('BACK', kc) || isKeyPressed('EXIT', kc))); }
+
+function focusActivePanelItem(panelType) {
+    setTimeout(function () {
+        var sel;
+        if (panelType === 'episodes') sel = '.episode-item.active';
+        else if (panelType === 'subtitles') sel = '.subtitle-item.active';
+        else sel = '.audio-item.active';
+
+        // Обязательно инвалидируем кэш, чтобы получить свежий список элементов панели
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        updateFocusableElements();
+
+        var active = document.querySelector(sel);
+
+        // Если активного элемента нет — берём первый элемент списка
+        if (!active) {
+            var fallbackSel = panelType === 'episodes' ? '.episode-item'
+                : panelType === 'subtitles' ? '.subtitle-item'
+                    : '.audio-item';
+            active = document.querySelector(fallbackSel);
+        }
+
+        if (!active) {
+            // Совсем ничего нет — фокусируемся на close-panel-btn или первом элементе
+            if (focusableElements.length > 0) setFocus(0);
+            return;
+        }
+
+        // Ищем индекс активного элемента в focusableElements
+        var targetIndex = -1;
+        for (var i = 0; i < focusableElements.length; i++) {
+            if (focusableElements[i] === active) {
+                targetIndex = i;
+                break;
+            }
+        }
+
+        if (targetIndex !== -1) {
+            setFocus(targetIndex);
+        } else if (focusableElements.length > 0) {
+            // Fallback: первый элемент
+            setFocus(0);
+        }
+    }, 100);
+}
+
+/**
+ * Клавиатура и пульт разведены по двум обработчикам keydown на document, и это
+ * не дубль:
+ *
+ *   • setupFocusRescue() слушает в фазе ПЕРЕХВАТА и забирает стрелки, OK и
+ *     «назад» на всех обычных экранах (главная, торренты, каталог, поиск,
+ *     карточка, настройки, донат), передавая их в ScreenStrategies. Он гасит
+ *     событие через stopImmediatePropagation, поэтому до обработчика ниже эти
+ *     клавиши на этих экранах просто не доходят;
+ *   • setupKeyboardHandlers() (здесь) слушает в фазе всплытия и обслуживает
+ *     плеер — там перехватчик уходит первой же строкой — плюс остаётся
+ *     запасным путём для экранов, которых перехватчик не знает.
+ *
+ * Порядок регистрации значения не имеет: перехват всегда раньше всплытия.
+ * Не сливайте их в один обработчик, не переписав маршрутизацию целиком.
+ */
+function setupKeyboardHandlers() {
+    // Один keyup на оба дела: отпускание перемотки и отпускание OK на карточке
+    // торрента (долгое нажатие = удаление). Раньше это были два отдельных
+    // слушателя на document в разных функциях и фазах.
+    document.addEventListener('keyup', function (e) {
+        var k = e.keyCode;
+        if (isOkKey(k)) okKeyHeld = false;
+
+        // Долгое OK на карточке торрента: отпустили — либо обычный клик,
+        // либо ничего, если удаление уже отработало по таймеру
+        if (isOkKey(k) && !isCustomFilterMenuOpen() && currentScreen() === 'torrents') {
+            var focused = document.querySelector('.focused');
+            var sameCard = focused && okHoldFocused && focused === okHoldFocused;
+            clearOkHold();
+            if (!okHoldHandled && sameCard && focused.classList.contains('torrent-card')) focused.click();
+            okHoldHandled = false;
+            okHoldFocused = null;
+            return;
+        }
+
+        // То же для карточки истории (главная, каталог): отпустили до срока —
+        // обычное OK, после удаления по таймеру — ничего
+        if (isOkKey(k) && okHoldFocused && !isCustomFilterMenuOpen() &&
+            (currentScreen() === 'home' || currentScreen() === 'catalog')) {
+            var hSame = document.querySelector('.focused') === okHoldFocused;
+            var hDone = okHoldHandled;
+            clearOkHold();
+            okHoldHandled = false;
+            okHoldFocused = null;
+            if (!hDone && hSame) onOk();
+            return;
+        }
+
+        if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) {
+            if (seekHoldInterval) {
+                clearInterval(seekHoldInterval);
+                seekHoldInterval = null;
+
+                if (accelerationTimer) {
+                    clearInterval(accelerationTimer);
+                    accelerationTimer = null;
+                }
+
+                var s = getEl('seek-slider');
+                if (s) {
+                    var ev = document.createEvent('Event');
+                    ev.initEvent('change', true, true);
+                    s.dispatchEvent(ev);
+                }
+
+                setTimeout(function () {
+                    isSeekHoldActive = false;
+                }, 500);
+
+                // СКРЫВАЕМ ОВЕРЛЕЙ С ЗАДЕРЖКОЙ
+                scheduleHideSeekOverlay();
+            }
+            stopSeeking();
+        }
+    });
+
+    document.addEventListener('keydown', function (e) {
+        var k = e.keyCode;
+        navKeyRepeat = !!e.repeat;       // держат кнопку или короткое нажатие
+        var po = getEl('playback-overlay'); var isPA = po && po.classList.contains('active'); if (isPA) return;
+        var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
+        var skipBtn = getEl('skip-button'); if (k == 13 && skipBtn && !skipBtn.classList.contains('hidden') && skipBtn.classList.contains('focused')) { if (typeof window.executeSkip === 'function') { window.executeSkip(); return true; } }
+
+        // Нативный фокус в поле — клавиши его. Раньше пустое поле пускало
+        // клавиши в навигацию, и Backspace (он же «Назад» на Vidaa) после
+        // стирания последней буквы уводил с экрана. Backspace в поле теперь
+        // вообще не доходит до обработчиков (config.js).
+        if (ed) return;
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+        // Дальше — плеер и запасной путь. Экраны поиска, торрентов, каталога,
+        // карточки и настроек сюда не доходят: их стрелки, OK и «назад»
+        // забирает перехватчик в setupFocusRescue и гасит событие. Здесь для
+        // них раньше лежали свои ветки навигации — мёртвый дубль той же логики.
+        updateFocusableElements();
+
+        if (AppState.currentScreen === 'player') {
+            var vp = getEl('video-player'), cc = getEl('controls-container'), cv = !cc.classList.contains('idle-hidden');
+            if (isKeyPressed('UP', k) && !cv) { e.preventDefault(); showPlayerControls('play-pause-btn'); return; }
+            if (isKeyPressed('OK', k)) {
+                e.preventDefault(); var f = document.querySelector('.focused'); if (!cv) { showPlayerControls('play-pause-btn'); return; } if (f) {
+                    var done = false;
+                    if (f.id === 'play-pause-btn') { vp.paused ? vp.play() : vp.pause(); if (typeof window.updatePlayPauseButton === 'function') window.updatePlayPauseButton(); done = true; }
+                    else if (f.id === 'mute-btn') { vp.muted = !vp.muted; if (typeof window.updateMuteButton === 'function') window.updateMuteButton(); done = true; }
+                    else if (f.id === 'prev-episode-btn') { if (typeof window.prevEpisode === 'function') window.prevEpisode(); done = true; }
+                    else if (f.id === 'next-episode-btn') { if (typeof window.nextEpisode === 'function') window.nextEpisode(); done = true; }
+                    else if (f.id === 'episodes-btn') { var eb = getEl('episodes-btn'); if (eb) eb.click(); updateFocusableElements(); focusActivePanelItem('episodes'); }
+                    else if (f.id === 'audio-btn') { var ab = getEl('audio-btn'); if (ab) ab.click(); updateFocusableElements(); focusActivePanelItem('audio'); }
+                    else if (f.id === 'subtitles-btn') { var sb = getEl('subtitles-btn'); if (sb) sb.click(); updateFocusableElements(); focusActivePanelItem('subtitles'); }
+                    else if (f.id === 'exit-player-btn') { if (typeof window.showDetailView === 'function') window.showDetailView(); return; }
+                    else if (f.id === 'toggle-buffer-btn') { var tb = getEl('toggle-buffer-btn'); if (tb) tb.click(); done = true; }
+                    else if (f.id === 'seek-slider') { var t = parseFloat(f.value); if (typeof window.showPlayerLoading === 'function') window.showPlayerLoading('⏱️ ' + formatTime(t)); setTimeout(function () { if (typeof window.hidePlayerLoading === 'function') window.hidePlayerLoading(); }, 1000); done = true; }
+                    else { f.click(); done = true; }
+                    // Панель не прячем сразу после нажатия: пауза, масштаб, звук — человек
+                    // хочет увидеть результат и нажать ещё. Гасит её таймер бездействия
+                    // (IDLE_TIMEOUT в player.js), он перезапускается на каждом нажатии
+                    if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+                    return;
+                }
+            }
+            if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) {
+                e.preventDefault();
+                // cv посчитан в начале ветки, панель с тех пор никто не трогал
+                if (!cv) return;
+                if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+
+                var fe = focusableElements[currentFocusIndex];
+                if (fe && fe.id === 'seek-slider') {
+                    var s = getEl('seek-slider');
+                    var loadingOverlay = getEl('loading-player-overlay');
+                    var loadingTimeEl = getEl('loading-time');
+                    var currentTimeEl = getEl('current-time');
+                    var dir = isKeyPressed('LEFT', k) ? -1 : 1;
+                    var cs = seekHoldStep;
+                    var lu = Date.now();
+
+                    // Шаг ускорения — из общей таблицы SEEK_ACCELERATION_STEPS
+                    // наверху файла. Раньше рядом лежала её вторая, дословная
+                    // копия, и таблица-константа не использовалась вообще.
+                    var us = function () {
+                        var elapsed = Date.now() - lu;
+                        var ns = seekHoldStep;
+                        for (var i = SEEK_ACCELERATION_STEPS.length - 1; i >= 0; i--) {
+                            if (elapsed >= SEEK_ACCELERATION_STEPS[i].time) {
+                                ns = SEEK_ACCELERATION_STEPS[i].step;
+                                break;
+                            }
+                        }
+                        cs = ns;
+                    };
+
+                    // Шаг перемотки: двигаем ползунок и показываем индикатор.
+                    // Реальный seek уходит один раз на keyup — событием change.
+                    var ps = function () {
+                        var nv = parseFloat(s.value) + cs * dir;
+                        var mx = parseFloat(s.max);
+
+                        if (nv < 0) nv = 0;
+                        if (nv > mx) nv = mx;
+
+                        s.value = nv;
+
+                        if (typeof AppState !== 'undefined') AppState.previewTime = nv;
+                        if (currentTimeEl) currentTimeEl.textContent = formatTime(nv);
+                        if (loadingTimeEl && (AppState.isSeeking ||
+                            (loadingOverlay && loadingOverlay.classList.contains('active')))) {
+                            loadingTimeEl.textContent = formatTime(nv);
+                        }
+
+                        showSeekOverlay(nv, dir, cs);
+                    };
+
+                    if (!seekHoldInterval) {
+                        isSeekHoldActive = true;
+                        cs = seekHoldStep;
+                        lu = Date.now();
+
+                        ps();
+                        seekHoldInterval = setInterval(ps, seekHoldDelay);
+
+                        // accelerationTimer — модульная переменная: keyup гасит
+                        // именно её. Раньше таймер держала локальная at, и на
+                        // отпускании кнопки он крутился ещё до своего же тика.
+                        if (accelerationTimer) clearInterval(accelerationTimer);
+                        accelerationTimer = setInterval(function () {
+                            if (seekHoldInterval) us();
+                            else { clearInterval(accelerationTimer); accelerationTimer = null; }
+                        }, 200);
+                    }
+                    return;
+                } else {
+                    navigate(keyToDirection(k));
+                    return;
+                }
+            }
+            if (cv) { updateFocusableElements(); if (isKeyPressed('UP', k)) { e.preventDefault(); navigate('up'); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; } if (isKeyPressed('DOWN', k)) { e.preventDefault(); navigate('down'); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; } }
+            if (isKeyPressed('PLAY', k) || isKeyPressed('PAUSE', k) || isKeyPressed('PLAY_PAUSE', k)) { e.preventDefault(); vp.paused ? vp.play() : vp.pause(); if (typeof window.updatePlayPauseButton === 'function') window.updatePlayPauseButton(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('VOL_UP', k)) { e.preventDefault(); vp.volume = Math.min(1, vp.volume + 0.1); var vs = getEl('volume-slider'); if (vs) vs.value = vp.volume; if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('VOL_DOWN', k)) { e.preventDefault(); vp.volume = Math.max(0, vp.volume - 0.1); var vs = getEl('volume-slider'); if (vs) vs.value = vp.volume; if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('MUTE', k)) { e.preventDefault(); vp.muted = !vp.muted; if (typeof window.updateMuteButton === 'function') window.updateMuteButton(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('RED', k)) { e.preventDefault(); var ab = getEl('audio-btn'); if (ab) ab.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('GREEN', k)) { e.preventDefault(); var eb = getEl('episodes-btn'); if (eb) eb.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('YELLOW', k)) { e.preventDefault(); var tb = getEl('toggle-buffer-btn'); if (tb) tb.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('BLUE', k)) { e.preventDefault(); var eb = getEl('exit-player-btn'); if (eb) eb.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('BACK', k) || isKeyPressed('EXIT', k)) { e.preventDefault(); playerBackPress(); return; }
+            if (isKeyPressed('FF', k)) { e.preventDefault(); vp.currentTime = Math.min(vp.duration, vp.currentTime + 30); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('REW', k)) { e.preventDefault(); vp.currentTime = Math.max(0, vp.currentTime - 30); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (!cv) return;
+        }
+
+        if (isKeyPressed('UP', k)) { e.preventDefault(); navigate('up'); } else if (isKeyPressed('DOWN', k)) { e.preventDefault(); navigate('down'); } else if (isKeyPressed('LEFT', k)) { e.preventDefault(); navigate('left'); } else if (isKeyPressed('RIGHT', k)) { e.preventDefault(); navigate('right'); } else if (isKeyPressed('OK', k)) { e.preventDefault(); var f = document.querySelector('.focused'); if (f) { if (f.classList.contains('file-item')) { var pb = f.querySelector('.play-btn'); if (pb) pb.click(); else f.click(); } else f.click(); } else if (focusableElements.length > 0) focusableElements[0].click(); } else if (isKeyPressed('INFO', k)) { e.preventDefault(); console.log('ℹ️ Информация:', { screen: AppState.currentScreen, platform: AppState.platform, focusIndex: currentFocusIndex, focusableCount: focusableElements.length }); }
+    });
+}
+
+// ==================== LONG PRESS & FOCUS RESCUE ====================
+function clearOkHold() { if (okHoldTimer) { clearTimeout(okHoldTimer); okHoldTimer = null; } }
+
+function isElementFullyVisible(el, container) {
+    if (!el || !container) return true;
+
+    var r = el.getBoundingClientRect();
+    var cr = container.getBoundingClientRect();
+
+    // Определяем тип контейнта
+    var isRowVp = !!(container.classList && container.classList.contains('catalog-row-viewport'));
+    var isH = isRowVp ||
+        container.id === 'files-list' ||
+        container.id === 'catalog-detail-actors-wrap' ||
+        container.id === 'catalog-detail-recommendations-wrap' ||
+        container.id === 'catalog-detail-trailers-wrap';
+
+    if (isH) {
+        // Для горизонтальных списков проверяем горизонтальную И вертикальную видимость
+        var hp = 45;  // горизонтальный отступ от краёв контейнера
+        var vp = 65;  // вертикальный отступ от краёв экрана
+
+        // По позиции ПОКОЯ, а не по текущей: см. pendingScrollDelta
+        var dx = pendingScrollDeltaX(container);
+        var dy = pendingScrollDelta(isRowVp ? getEl('main-container') : getEl('detail-view'));
+
+        var isHorizVisible = (r.left - dx) >= cr.left + hp && (r.right - dx) <= cr.right - hp;
+        var isVertVisible = (r.top - dy) >= vp && (r.bottom - dy) <= (window.innerHeight - vp);
+
+        return isHorizVisible && isVertVisible;
+    }
+
+    // Для вертикальных списков проверяем вертикальную видимость
+    var dv = pendingScrollDelta(container);
+    return (r.top - dv) >= cr.top + 35 && (r.bottom - dv) <= cr.bottom - 35 &&
+        r.left >= cr.left + 25 && r.right <= cr.right - 25;
+}
+
+// ==================== ГОРИЗОНТАЛЬНАЯ ПРОКРУТКА ====================
+
+/**
+ * Пока твин прокрутки в полёте, getBoundingClientRect отдаёт позицию «на
+ * полпути» — и проверки видимости врут. Именно из-за этого при быстрых коротких
+ * нажатиях анимация пропадала через шаг: очередное нажатие видело карточку уже
+ * «видимой» (её дотягивал предыдущий твин), прокрутку не запускало, страница
+ * замирала там, где её застали, а следующий шаг снова уезжал с анимацией.
+ *
+ * Поэтому запускаемые твины помечают свою цель, а решения принимаются по
+ * позиции ПОКОЯ: текущая минус то, что осталось дотянуть. Пометка живёт ровно
+ * длительность твина (+ небольшой запас на кадр).
+ */
+function markPendingScroll(el, key, value, duration) {
+    if (!el) return;
+    el[key] = value;
+    el[key + 'Until'] = Date.now() + Math.round(duration * 1000) + 50;
+}
+
+function clearPendingScroll(el, key) {
+    if (!el) return;
+    el[key] = null;
+    el[key + 'Until'] = 0;
+}
+
+/** Сколько ещё дотянет вертикальный твин (px, + вниз) */
+function pendingScrollDelta(el) {
+    if (!el || typeof el._navPendTop !== 'number') return 0;
+    if (Date.now() > el._navPendTopUntil) return 0;
+    return el._navPendTop - el.scrollTop;
+}
+
+/** То же по горизонтали, в координатах scrollLeft */
+function pendingScrollDeltaX(container) {
+    if (!container || typeof container._navPendX !== 'number') return 0;
+    if (Date.now() > container._navPendXUntil) return 0;
+    return container._navPendX - getScrollX(container);
+}
+
+/**
+ * Длительность шага из расстояния — единственный источник длительности для всей
+ * навигационной прокрутки. Скорость постоянна, значит шаг подлиннее занимает
+ * пропорционально больше времени, а не проезжает то же расстояние рывком.
+ * Дальше maxDuration это перестаёт быть движением и становится ожиданием —
+ * такие переезды делаем мгновенно (см. maxDuration).
+ *
+ * @param {number} distance сколько px предстоит проехать (знак не важен)
+ * @param {number} speed    px/с; 0 — «мгновенно», режим none из ui-customizer
+ * @returns {number} секунды; 0 — поставить позицию сразу, без анимации
+ */
+function speedDuration(distance, speed) {
+    if (!(speed > 0)) return 0;
+    var d = Math.abs(distance || 0) / speed;
+    if (d > SCROLL_SMOOTH.maxDuration) return 0;    // не поездка, а смена места
+    return Math.max(SCROLL_SMOOTH.minDuration, d);
+}
+
+/**
+ * Шаг с прокруткой длиннее пола отодвигает следующий на свою длительность:
+ * принимать его раньше, чем доедет твин, нельзя — фокус уйдёт вперёд быстрее,
+ * чем едет лента, разрыв будет копиться, и прокрутке придётся его нагонять, а
+ * нагон и есть ускорение.
+ *
+ * Пол на шаг ставит acceptNavStep, здесь срок только продлевается. Ничего не
+ * теряется: шаг, пришедший раньше срока, откладывается, а не отбрасывается.
+ */
+function markNavStep(duration) {
+    if (!navStepArmed || !(duration > 0)) return;
+    navStepArmed = false;
+    // Только ОТОДВИГАЕМ: пол уже поставлен acceptNavStep, и прокрутка короче
+    // пола (доводка на несколько px) не должна разрешать следующий шаг раньше.
+    var until = Date.now() + Math.min(NAV_STEP_MAX_WAIT_MS, Math.round(duration * 1000));
+    if (until > navStepUntil) navStepUntil = until;
+}
+
+/**
+ * Единый пропускник шагов навигации — через него проходят оба пути: и стрелки
+ * пульта (setupFocusRescue → ScreenStrategies), и запасной navigate().
+ *
+ * Раньше притормаживание жило внутри navigate() и на телевизоре не работало
+ * вовсе: перехватчик забирает стрелки в фазе захвата и до navigate() они не
+ * доходят. Отсюда и разный темп — движение шло со скоростью автоповтора, а
+ * скорость прокрутки была ни при чём.
+ *
+ * Шаг, пришедший раньше срока, не отбрасывается, а откладывается до него
+ * (queueNavStep), поэтому осознанное «тук-тук» не теряется — оно просто едет
+ * с той же скоростью, что и всё остальное.
+ *
+ * @param {string} direction  'up' | 'down' | 'left' | 'right'
+ * @param {Function} [run]    чем повторить отложенный шаг; по умолчанию navigate
+ * @returns {boolean} true — шаг можно делать прямо сейчас
+ */
+function acceptNavStep(direction, run) {
+    if (NAV_PACED_SCREENS.indexOf(currentScreen()) === -1) return true;
+    var now = Date.now();
+    if (now < navStepUntil) { queueNavStep(direction, run); return false; }
+    navStepUntil = now + NAV_STEP_BASE_MS;
+    navStepAt = now;
+    navStepArmed = true;
+    return true;
+}
+
+/** Прокрутка, начатая этим шагом навигации (а не фоном) — см. navStepAt */
+function isNavStepScroll() {
+    return navStepAt > 0 && (Date.now() - navStepAt) <= NAV_STEP_SCROLL_WINDOW_MS;
+}
+
+/**
+ * Длительность прокрутки шага: ровно NAV_STEP_BASE_MS, сколько бы px ни
+ * пришлось проехать. Без этой поправки шаг с прокруткой и шаг без неё шли
+ * вразнобой — при speedY 1500 строка в 490px едет 0.33с, карточка ряда при
+ * speedX 900 — 0.31с, а шагу, которому прокручивать нечего, доставался ровно
+ * срок NAV_STEP_BASE_MS. Теперь под этот срок подогнано и то, и другое.
+ *
+ * Поправка касается ТОЛЬКО шагов навигации: всё прочее (краевая прокрутка мышью,
+ * восстановление позиции при возврате, сборка рядов) едет с постоянной
+ * скоростью, как и ехало.
+ *
+ * Мгновенный переезд остаётся мгновенным: 0 приходит либо от режима «none» в
+ * ui-customizer, либо от maxDuration — «это не поездка, а смена места».
+ *
+ * @param {number} natural  длительность по постоянной скорости, сек (0 — сразу)
+ * @param {number} target   срок шага с поправкой на режим прокрутки, сек
+ */
+function navStepScrollDuration(natural, target) {
+    if (!(natural > 0) || !(target > 0)) return natural;
+    if (!isNavStepScroll()) return natural;
+    // Ускорять сильнее, чем в NAV_STEP_MAX_SPEEDUP раз, не даём — см. константу
+    return Math.max(target, natural / NAV_STEP_MAX_SPEEDUP);
+}
+
+/**
+ * Шаг навигации через стратегию экрана — основной путь стрелок пульта
+ * (setupFocusRescue). Пропускник внутри, как и в navigate(): тогда отложенный
+ * шаг, повторённый из очереди, проходит ровно ту же проверку и так же взводит
+ * пол для следующего.
+ */
+function runScreenNavigation(direction) {
+    if (!acceptNavStep(direction, runScreenNavigation)) return;
+    var strategy = ScreenStrategies[currentScreen()];
+    if (strategy && strategy.handleNavigation) strategy.handleNavigation(direction);
+}
+
+/**
+ * Шаг, пришедший раньше времени, ждёт своей очереди.
+ *
+ * Направление хранится одно, последнее: при зажатой кнопке автоповтор успевает
+ * прислать несколько тиков за время одного твина, и все они схлопываются в один
+ * шаг — это и есть притормаживание. Ничего не теряется из того, что человек
+ * успел бы заметить: лента всё равно едет не быстрее своей скорости.
+ */
+function queueNavStep(direction, run) {
+    navQueuedDirection = direction;
+    navQueuedRun = run || null;
+    navQueuedScreen = currentScreen();
+    if (navQueueTimer) return;
+    navQueueTimer = setTimeout(function () {
+        navQueueTimer = null;
+        var d = navQueuedDirection, r = navQueuedRun, sc = navQueuedScreen;
+        navQueuedDirection = null;
+        navQueuedRun = null;
+        navQueuedScreen = null;
+        if (!d) return;
+        // Экран сменился, пока шаг ждал (нажали OK, ушли назад) — отложенное
+        // движение относилось к прежнему списку, повторять его незачем.
+        if (sc && sc !== currentScreen()) return;
+        if (r) r(d); else navigate(d);
+    }, Math.max(0, navStepUntil - Date.now()) + 1);
+}
+
+/**
+ * Режим анимации горизонтальной прокрутки из ui-customizer: none | fast | smooth.
+ * На самых слабых устройствах плавную прокрутку хочется укоротить или убрать
+ * вовсе, поэтому выбор оставлен пользователю. Отличать устройства из кода
+ * нельзя, а поведение по умолчанию не меняется.
+ *
+ * Без кэша: это чтение строки пару раз на нажатие. getColumns кэшируется только
+ * потому, что читает вычисленные стили — здесь инвалидация не нужна.
+ *
+ * @returns {string} 'none' | 'fast' | 'smooth'
+ */
+function getScrollAnimMode() {
+    try {
+        if (window.UICustomizer && typeof window.UICustomizer.getScrollAnim === 'function') {
+            var mode = window.UICustomizer.getScrollAnim();
+            if (mode === 'none' || mode === 'fast' || mode === 'smooth') return mode;
+        }
+    } catch (e) { }
+    return 'smooth';
+}
+
+/** Скорость горизонтали с поправкой на режим: none — мгновенно, fast — вдвое быстрее */
+function scrollAnimSpeedX(speed) {
+    var mode = getScrollAnimMode();
+    if (mode === 'none') return 0;
+    if (mode === 'fast') return speed * 2;
+    return speed;
+}
+
+/** То же для явно заданной длительности (краевая прокрутка мышью в home.js) */
+function scrollAnimDurationX(duration) {
+    var mode = getScrollAnimMode();
+    if (mode === 'none') return 0;
+    if (mode === 'fast' && typeof duration === 'number') return duration * 0.5;
+    return duration;
+}
+
+/**
+ * Горизонталь работает ровно тем же механизмом, что и вертикаль: scrollLeft
+ * нативного скроллера тянет applyScroll → Animations.tweenScroll.
+ *
+ * Раньше карусели рядов были исключением — вьюпорт с overflow: hidden, а
+ * позиция жила в transform внутреннего трека (.catalog-row-track), в расчёте на
+ * то, что кадр обойдётся композитору дешевле твина scrollLeft. На Android TV
+ * вышло наоборот: трек — это весь ряд целиком (два десятка карточек, ~5000×490),
+ * и анимация трансформации на время твина поднимала его в отдельный слой, а по
+ * окончании отпускала. То есть на КАЖДОЕ нажатие стрелки телевизор растрирует
+ * многомегапиксельную текстуру, а потом перерисовывает ряд обратно — отсюда
+ * рывки и задержки, которых у вертикальной прокрутки нет. Нативный скроллер
+ * рисует только окно вьюпорта и умеет сдвигать уже нарисованное.
+ *
+ * @param {Element} container контейнер прокрутки
+ */
+function getScrollX(container) {
+    return container ? container.scrollLeft : 0;
+}
+
+function getMaxScrollX(container) {
+    if (!container) return 0;
+    return Math.max(0, container.scrollWidth - container.clientWidth);
+}
+
+/** Смещение без анимации (колесо мыши, драг пальцем) */
+function setScrollXImmediate(container, left) {
+    if (!container) return;
+    clearPendingScroll(container, '_navPendX');
+    // Жест перебивает твин навигации, иначе тот продолжит тянуть к своей цели
+    if (typeof Animations !== 'undefined' && Animations.stopScrollTween) {
+        Animations.stopScrollTween(container);
+    }
+    container.scrollLeft = left;
+}
+
+/**
+ * Прокрутка контейнера к позиции left, с обрезкой по краям: цель считают по
+ * геометрии карточек, и на последнем экране она уезжает за предел содержимого.
+ *
+ * @param {number} [duration] явная длительность в секундах. Навигация её НЕ
+ *        передаёт — там длительность считается из расстояния, чтобы скорость
+ *        была одна (SCROLL_SMOOTH). Явно её задаёт только краевая прокрутка
+ *        мышью в home.js, у которой свой темп.
+ */
+function setScrollX(container, left, smooth, duration) {
+    if (!container) return;
+    left = Math.max(0, Math.min(getMaxScrollX(container), left));
+
+    // Считаем от позиции ПОКОЯ: посреди твина текущий scrollLeft — это середина
+    // пути, и расстояние (а с ним и длительность) вышло бы заниженным
+    var rest = container.scrollLeft + pendingScrollDeltaX(container);
+
+    // Срок шага прогоняем через тот же режим прокрутки, что и саму скорость:
+    // при 'fast' он вдвое короче, при 'none' обнуляется, и поправка отключается
+    // сама собой — там и постоянной скорости нет, позиция ставится сразу.
+    duration = (typeof duration === 'number')
+        ? scrollAnimDurationX(duration)
+        : navStepScrollDuration(
+            speedDuration(left - rest, scrollAnimSpeedX(SCROLL_SMOOTH.speedX)),
+            scrollAnimDurationX(NAV_STEP_BASE_MS / 1000));
+
+    var animated = smooth && !_instantScrollDepth && duration > 0;
+
+    // Уже на месте (с учётом идущего твина) — холостой твин не заводим: он
+    // ничего не двигает, но держит признак «идёт прокрутка», а на нём висит откладывание
+    // постеров (isRowScrollAnimating в catalog.js). Симметрично ветке в
+    // applyScroll для scrollTop.
+    if (animated && Math.abs(rest - left) < 2) return;
+
+    if (animated) {
+        markPendingScroll(container, '_navPendX', left, duration);
+        markNavStep(duration);
+    } else {
+        clearPendingScroll(container, '_navPendX');
+    }
+    applyScroll(container, { scrollLeft: left }, smooth, duration, SCROLL_SMOOTH.ease);
+}
+
+/**
+ * Единая точка прокрутки для навигации фокусом.
+ *
+ * Раньше здесь было три ветки: gsap + ScrollToPlugin, нативный
+ * scrollTo({behavior:'smooth'}) и мгновенное присваивание. Плагин убран из
+ * index.html (тормозил прокрутку), а нативный плавный скролл на телевизоре не
+ * работает — и не дал бы ни задать длительность, ни узнать окончание. Всё идёт
+ * через Animations.tweenScroll: маленький твин на requestAnimationFrame,
+ * который тянет scrollTop/scrollLeft линейно.
+ *
+ * Горизонталь идёт сюда же, но через setScrollX — он обрезает цель по краям
+ * содержимого и учитывает режим анимации из ui-customizer.
+ *
+ * @param {Element} container контейнер с прокруткой
+ * @param {Object}  vars      scrollTop и/или scrollLeft
+ * @param {boolean} smooth    false — прыжком
+ * @param {number}  [duration] длительность в секундах. Не передавать — тогда
+ *                             считается из расстояния по SCROLL_SMOOTH.speedY,
+ *                             то есть с той же скоростью, что и всё остальное
+ * @param {string}  [ease]    уже посчитанная кривая
+ */
+function applyScroll(container, vars, smooth, duration, ease) {
+    if (!container || !vars) return;
+
+    // Вертикаль: длительность из расстояния до позиции покоя — единая скорость,
+    // а шаг навигации сверх того подгоняется под единый срок (см. NAV_STEP_BASE_MS)
+    if (typeof duration !== 'number' && typeof vars.scrollTop === 'number') {
+        duration = navStepScrollDuration(
+            speedDuration(
+                vars.scrollTop - (container.scrollTop + pendingScrollDelta(container)),
+                SCROLL_SMOOTH.speedY),
+            NAV_STEP_BASE_MS / 1000);
+    }
+
+    var animated = smooth && !_instantScrollDepth && typeof duration === 'number' && duration > 0;
+
+    // Уже на месте — твина не заводим.
+    //
+    // Ветки isTopAnchoredTarget и 'detail-view' в scrollToElementIfNeeded зовут
+    // applyScroll с {scrollTop: 0} безусловно, не глядя на текущую позицию. Для
+    // первой строки сетки это означало полсекунды твина из нуля в ноль: ничего
+    // не двигалось, но признак прокрутки #main-container всё это время отвечал
+    // «идёт». А на этом ответе висит откладывание постеров
+    // (deferPosterUntilScrollEnds в catalog.js) — весь первый экран сетки стоял
+    // пустым ровно на длину холостого твина, перепланируя себя каждый кадр.
+    // Заметнее всего это было на входе в фильмографию актёра: сетку собрали,
+    // фокус встал на первую карточку, и постеры ждали «прокрутку», которой нет.
+    //
+    // Позицию покоя считаем с учётом идущего твина (pendingScrollDelta) — тем
+    // же способом и с тем же порогом, что scrollCatalogGridCardIntoView.
+    // scrollLeft не трогаем: у него своя ветка и свои координаты.
+    if (animated && typeof vars.scrollTop === 'number' && vars.scrollLeft === undefined &&
+        Math.abs(container.scrollTop + pendingScrollDelta(container) - vars.scrollTop) < 2) {
+        return;
+    }
+
+    if (typeof vars.scrollTop === 'number') {
+        if (animated) {
+            markPendingScroll(container, '_navPendTop', vars.scrollTop, duration);
+            markNavStep(duration);
+        } else {
+            clearPendingScroll(container, '_navPendTop');
+        }
+    }
+
+    if (typeof Animations !== 'undefined' && typeof Animations.tweenScroll === 'function') {
+        Animations.tweenScroll(container, vars, {
+            duration: animated ? duration : 0,
+            ease: ease || SCROLL_SMOOTH.ease
+        });
+        return;
+    }
+
+    // Animations ещё не загружен — ставим позицию сразу, без анимации
+    if (typeof vars.scrollTop === 'number') container.scrollTop = vars.scrollTop;
+    if (typeof vars.scrollLeft === 'number') container.scrollLeft = vars.scrollLeft;
+}
+
+/**
+ * Ряд-карусель — самый верхний в своём контейнере (#home-rows / #catalog-rows).
+ * Нужно, чтобы фокус на первом ряду поднимал страницу ровно к нулю.
+ */
+function isFirstRowViewport(viewport) {
+    var row = (viewport && viewport.closest) ? viewport.closest('.catalog-row') : null;
+    if (!row || !row.parentElement) return false;
+    var kids = row.parentElement.children;
+    for (var i = 0; i < kids.length; i++) {
+        if (!kids[i].classList || !kids[i].classList.contains('catalog-row')) continue;
+        return kids[i] === row;   // первый .catalog-row в контейнере
+    }
+    return false;
+}
+
+/**
+ * Карточка ряда-карусели каталога (#catalog-rows).
+ *
+ * Карточки главной тоже .catalog-row-card, но у них свой ключ (data-home-key)
+ * и класс .home-card, а раскладкой рядов на главной заведует home.js — её
+ * прокрутку трогать нельзя.
+ */
+function isCatalogRowCard(el) {
+    if (!el || !el.classList || !el.classList.contains('catalog-row-card')) return false;
+    if (el.classList.contains('home-card')) return false;
+    return !!(el.dataset && el.dataset.catalogKey);
+}
+
+/** Карточка сетки категории каталога (#catalog-grid), а не ряда-карусели */
+function isCatalogGridCard(el) {
+    if (!el || !el.classList) return false;
+    if (el.classList.contains('catalog-row-card')) return false;
+    if (!el.classList.contains('torrent-card')) return false;
+    var grid = getEl('catalog-grid');
+    return !!(grid && grid.contains(el));
+}
+
+/** Карточка из самой верхней строки сетки (#torrents-grid / #catalog-grid) */
+function isFirstRowGridCard(target) {
+    if (!target || !target.closest) return false;
+    var grid = target.closest('#torrents-grid, #catalog-grid');
+    if (!grid) return false;
+    var cols = grid.id === 'torrents-grid' ? getTorrentGridColumns() : getColumns();
+    if (!cols || cols < 1) return false;
+
+    // Каталог: смотрим на НОМЕР ЭЛЕМЕНТА, а не на позицию в DOM.
+    //
+    // Позиция не годится с тех пор, как сетка виртуализуется чанками
+    // (catalog.js): при прокрутке вглубь первые чанки сворачиваются в распорки,
+    // и первой в DOM оказывается карточка из середины каталога. По позиции она
+    // считалась бы «верхним рядом», и фокус на ней уводил бы страницу в самое
+    // начало. Номер элемента от сворачивания не зависит.
+    //
+    // Заодно это дешевле прежнего обхода grid.querySelectorAll('.torrent-card')
+    // с offsetParent до совпадения — а звалось оно дважды на каждое нажатие
+    // (проверка в focusEl плюс ветка в scrollToElementIfNeeded).
+    if (grid.id === 'catalog-grid') {
+        var n = parseInt(target.dataset.catalogIndex, 10);
+        return !isNaN(n) && n < cols;
+    }
+
+    var all = grid.querySelectorAll('.torrent-card'), seen = 0;
+    for (var i = 0; i < all.length; i++) {
+        if (all[i] === target) return seen < cols;
+        if (all[i].offsetParent !== null) seen++;
+    }
+    return false;
+}
+
+// Зазор под сфокусированной строкой сетки категории. 10px — ровно столько же
+// оставляла прежняя прокрутка «вниз» (Animations.scrollToIfNotVisible с
+// offset: 10), чтобы движение вниз на ощупь не изменилось.
+var CATALOG_GRID_BOTTOM_PAD = 10;
+
+/**
+ * Сетка категории: строка под фокусом всегда прижата к НИЖНЕЙ границе.
+ *
+ * Раньше вниз и вверх работали по-разному, и вверх фокус «плясал»:
+ *   • focusEl вообще не звал прокрутку, если элемент уже целиком виден. Идя
+ *     вверх, фокус поэтому просто шагал по видимым строкам от нижней к верхней,
+ *     не двигая страницу;
+ *   • дойдя до верхней видимой строки, он упирался в невидимую, и только тогда
+ *     запускалась прокрутка — с direction 'up', то есть прижимала строку к
+ *     ВЕРХНЕЙ границе. Дальше фокус так и оставался наверху;
+ *   • вдобавок при быстрых нажатиях (твин ещё в полёте) отрабатывала другая
+ *     ветка — она просто доводила элемент до ближайшего края, без учёта
+ *     направления. Один и тот же шаг давал разный результат.
+ *
+ * Теперь цель одна и считается всегда: нижний край карточки встаёт на
+ * CATALOG_GRID_BOTTOM_PAD выше низа контейнера. У краёв списка цель упирается в
+ * ограничители (0 и максимум прокрутки) — у первых строк это верх страницы, у
+ * последних низ, иначе прижать к низу нечем.
+ *
+ * Считаем от позиции ПОКОЯ (pendingScrollDelta), а не от живого rect: посреди
+ * твина живой прямоугольник показывает «полпути», и серия быстрых нажатий
+ * получалась рваной — та же причина, что и в соседних ветках.
+ */
+/** Куда должна встать прокрутка, чтобы строка прижалась к низу, и где она
+ *  окажется сама по себе (позиция покоя). Порог сравнения — CATALOG_GRID_PIN_EPS. */
+function catalogGridPinTarget(el, scrollContainer) {
+    var dy = pendingScrollDelta(scrollContainer);
+    var restTop = scrollContainer.scrollTop + dy;          // куда встанет прокрутка
+    var viewTop = scrollContainer.getBoundingClientRect().top;
+    var viewBottom = viewTop + scrollContainer.clientHeight;
+    var restBottom = el.getBoundingClientRect().bottom - dy;
+
+    var target = restTop + (restBottom - (viewBottom - CATALOG_GRID_BOTTOM_PAD));
+    var maxTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+
+    return { rest: restTop, target: Math.max(0, Math.min(maxTop, target)) };
+}
+
+function scrollCatalogGridCardIntoView(el, scrollContainer, smooth) {
+    if (!el || !scrollContainer) return;
+
+    var t = catalogGridPinTarget(el, scrollContainer);
+
+    // Уже там (движение влево/вправо внутри строки, упор в край списка) —
+    // не пересоздаём твин, иначе прокрутка каждый раз начинала разгон заново
+    if (Math.abs(t.rest - t.target) < CATALOG_GRID_PIN_EPS) return;
+
+    applyScroll(scrollContainer, { scrollTop: t.target }, smooth);
+    scheduleCatalogGridPinCheck(scrollContainer);
+}
+
+/* ============ ДОВОДКА ПРИЖАТИЯ ПОСЛЕ ОСТАНОВКИ ============
+ *
+ * Цель выше считается ОДИН раз, в момент нажатия, и дальше твин едет к
+ * запомненному абсолютному числу. Расчёт опирается на предсказание: «к концу
+ * твина карточка поднимется ровно на dy». Это верно, пока единственное, что
+ * движет содержимое, — сама прокрутка.
+ *
+ * При быстрых нажатиях и при удержании кнопки это перестаёт быть верно.
+ * Одновременно с твином идёт порционный разворот чанка (hydrationStep в
+ * catalog.js): строки вставляются по одной за кадр, распорка на столько же
+ * ужимается. Компенсация точна лишь настолько, насколько точна линейка строки
+ * — а она берётся из offsetHeight, то есть округлена до целого пикселя. При
+ * дробной реальной высоте (узкие раскладки вроде 960x540 — там колонка
+ * считается из calc(), и дробь почти неизбежна) каждая вставленная строка
+ * сдвигает содержимое на доли пикселя. За серию шагов набегает больше порога,
+ * и строка замирает чуть ниже нижнего края.
+ *
+ * Само чинится нажатием влево-вправо: там цель считается заново, уже от
+ * устоявшейся геометрии. Ровно это и делаем сами, когда движение кончилось.
+ *
+ * Почему доводкой, а не «посчитать точнее»: причин сдвига несколько
+ * (округление линейки, догрузка страницы, прерванный твин), и проверка по
+ * факту закрывает их все разом, ничего не зная о причине. Стоит она одного
+ * сравнения в момент, когда пульт уже отпущен.
+ */
+var CATALOG_GRID_PIN_EPS = 2;          // px: ближе этого прижатие считаем точным
+var CATALOG_GRID_PIN_CHECK_MS = 120;   // как часто переспрашивать «движение кончилось?»
+var CATALOG_GRID_PIN_MAX_WAIT = 8;     // и сколько раз, чтобы не ждать вечно
+var gridPinTimer = 0;
+
+function scheduleCatalogGridPinCheck(scrollContainer, attempt) {
+    if (!scrollContainer) return;
+    if (gridPinTimer) clearTimeout(gridPinTimer);
+    attempt = attempt || 0;
+
+    gridPinTimer = setTimeout(function () {
+        gridPinTimer = 0;
+
+        // Пока кнопку держат или твин ещё едет, мерить нечего: следующий шаг
+        // всё равно пересчитает цель сам
+        var moving = navHold ||
+            (typeof Animations !== 'undefined' &&
+                typeof Animations.isScrollTweening === 'function' &&
+                Animations.isScrollTweening(scrollContainer));
+        if (moving) {
+            if (attempt < CATALOG_GRID_PIN_MAX_WAIT) {
+                scheduleCatalogGridPinCheck(scrollContainer, attempt + 1);
+            }
+            return;
+        }
+
+        // Берём ТЕКУЩИЙ фокус, а не запомненный: за время ожидания он мог уйти
+        // на другую карточку, и прижимать надо её
+        var el = document.querySelector('#catalog-grid .torrent-card.catalog-card.focused');
+        if (!el || !el.isConnected || !scrollContainer.isConnected) return;
+        if (AppState.currentScreen !== 'catalog') return;
+
+        var t = catalogGridPinTarget(el, scrollContainer);
+        if (Math.abs(t.rest - t.target) < CATALOG_GRID_PIN_EPS) return;
+
+        // Длительность applyScroll считает из расстояния: доводка в несколько
+        // пикселей занимает minDuration и читается как оседание, а не рывок
+        applyScroll(scrollContainer, { scrollTop: t.target }, true);
+    }, CATALOG_GRID_PIN_CHECK_MS);
+}
+
+// Зазор под сфокусированным рядом. 50px — столько же оставляла прежняя ветка
+// «ряд не влез снизу», чтобы движение вниз на ощупь не изменилось.
+var CATALOG_ROW_BOTTOM_PAD = 50;
+
+/**
+ * Ряды-карусели каталога: ряд под фокусом всегда прижат к НИЖНЕЙ границе —
+ * ровно как строка в сетке категории (scrollCatalogGridCardIntoView).
+ *
+ * Прежняя логика была той же несимметричной парой, что и в сетке:
+ *   • ряд ушёл под липкую шапку — подтянуть его ВЕРХ под неё;
+ *   • ряд не влез снизу — подтянуть его НИЗ к краю экрана;
+ *   • а если ряд целиком виден, focusEl прокрутку вообще не звал.
+ * Поэтому вниз ряд честно стоял у нижнего края, а вверх фокус сперва шагал по
+ * видимым рядам, никуда не прокручивая, потом одним рывком прыгал под шапку.
+ *
+ * Целимся в .catalog-row, а не во вьюпорт карусели: вместе с карточками в кадр
+ * должен попадать заголовок ряда. Горизонталь остаётся выше на setScrollX.
+ *
+ * @param {number} dy остаток текущего твина (pendingScrollDelta): считаем от
+ *                    позиции ПОКОЯ, иначе серия быстрых нажатий рвётся
+ */
+function scrollCatalogRowIntoView(viewport, vertEl, dy, smooth) {
+    var rowEl = (viewport.closest && viewport.closest('.catalog-row')) || viewport;
+
+    // Липкая шапка перекрывает верх контейнера, и ряд под ней формально «виден»,
+    // но не читается. Ниже она задаёт предел, дальше которого ряд не уводим.
+    var topPad = 0;
+    var topbar = getEl('home-topbar');
+    if (topbar && topbar.offsetParent !== null) topPad = topbar.offsetHeight + 10;
+
+    var restTop = vertEl.scrollTop + dy;
+    var vertTop = vertEl.getBoundingClientRect().top;
+    var rowRect = rowEl.getBoundingClientRect();
+
+    // Границы ряда в координатах прокручиваемого содержимого, от позиции покоя
+    var rowTop = restTop + (rowRect.top - dy) - vertTop;
+    var rowBottom = restTop + (rowRect.bottom - dy) - vertTop;
+
+    var target = rowBottom - vertEl.clientHeight + CATALOG_ROW_BOTTOM_PAD;
+
+    // Но не настолько, чтобы заголовок ряда уехал под липкую шапку. Сработает
+    // только на ряде выше видимой области или на ряде, который сам по себе
+    // выше свободной высоты экрана.
+    target = Math.min(target, rowTop - topPad);
+
+    var maxTop = Math.max(0, vertEl.scrollHeight - vertEl.clientHeight);
+    target = Math.max(0, Math.min(maxTop, target));
+
+    // Уже там (движение влево/вправо внутри ряда, упор в край списка) —
+    // не пересоздаём твин, иначе прокрутка каждый раз начинает разгон заново
+    if (Math.abs(restTop - target) < 2) return;
+
+    applyScroll(vertEl, { scrollTop: target }, smooth);
+}
+
+/**
+ * Элементы, при фокусе на которых страница обязана стоять в самом верху:
+ * кнопки липкой шапки #home-topbar и всё, что лежит в первой строке контента.
+ * Иначе шапка наполовину перекрыта предыдущим рядом, а под ней виден обрезок.
+ */
+function isTopAnchoredTarget(target) {
+    if (!target || !target.classList) return false;
+    if (target.classList.contains('home-nav-btn')) return true;
+    // Настройки: левое меню и первый пункт открытого раздела — экран в самый
+    // верх, иначе после прокрутки вниз и обратно заголовки раздела оставались
+    // срезанными сверху (пункт-то виден, прокручивать «незачем»). Проверка —
+    // только на экране настроек: сама она не дешёвая.
+    if (AppState.currentScreen === 'config') {
+        if (target.classList.contains('menu-item')) return true;
+        if (typeof configState !== 'undefined' && configState.activeTabId) {
+            var cItems = getConfigContentItems(configState.activeTabId);
+            if (cItems.length && cItems[0] === target) return true;
+        }
+    }
+    if (target.classList.contains('catalog-row-card')) {
+        return isFirstRowViewport(target.closest ? target.closest('.catalog-row-viewport') : null);
+    }
+    return isFirstRowGridCard(target);
+}
+
+function scrollToElementIfNeeded(el, container, smooth, direction) {
+    if (smooth === undefined) smooth = true;
+    if (SCROLL_SMOOTH.force) smooth = true;
+    if (!el || !container) return;
+    // Геометрия читается НЕ здесь, а в ветке isH ниже — единственной, где она
+    // нужна. Наверху эти два getBoundingClientRect считались на каждое
+    // перемещение фокуса, а для сетки категории (контейнер #main-container,
+    // isH = false) ответ никто не спрашивал: ниже управление уходит в
+    // scrollCatalogGridCardIntoView, и та меряет сама. Хвост функции тоже
+    // читает заново, в переменную er.
+    var isWindow = container === window || container === document.body;
+    var scrollContainer = isWindow ? (window.scrollingElement || document.documentElement) : container;
+
+    // ★ ряд-карусель
+    var isRowViewport = !!(container.classList && container.classList.contains('catalog-row-viewport'));
+
+    var isH = isRowViewport ||
+        container.id === 'catalog-detail-actors-wrap' ||
+        container.id === 'catalog-detail-recommendations-wrap' ||
+        container.id === 'catalog-detail-trailers-wrap' ||
+        container.id === 'files-list';
+
+    if (isH) {
+        var r = el.getBoundingClientRect();
+        var cr = container.getBoundingClientRect();
+        var con = "";
+        if (container.id === 'catalog-detail-actors-wrap' ||
+            container.id === 'catalog-detail-recommendations-wrap' ||
+            container.id === 'catalog-detail-trailers-wrap') {
+            con = container.id.replace('-wrap', '');
+            con = getEl(con);
+        } else {
+            con = container;
+        }
+
+        var hp = 30;
+
+        // Позиция покоя: пока лента едет, живой rect показывал бы «уже видно»
+        var dx = pendingScrollDeltaX(con);
+        var isHorizVisible = (r.left - dx) >= cr.left + hp && (r.right - dx) <= cr.right - hp;
+
+        if (!isHorizVisible) {
+            var curLeft = getScrollX(con);
+            var targetLeft;
+            if (direction === 'left') {
+                targetLeft = curLeft + (r.left - cr.left) - hp;
+            } else if (direction === 'right') {
+                targetLeft = curLeft + (r.left - cr.left) - (cr.width - r.width - hp);
+            } else {
+                targetLeft = curLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
+            }
+            targetLeft = Math.max(0, Math.min(getMaxScrollX(con), targetLeft));
+            // Сравниваем с целью уже запущенного твина, а не с текущим
+            // положением: иначе тот же самый доводчик пересоздавал бы твин
+            // и прокрутка каждый раз начинала разгон заново
+            var fromLeft = dx ? curLeft + dx : curLeft;
+            var needsHScroll = Math.abs(fromLeft - targetLeft) > 10;
+            if (needsHScroll) {
+                setScrollX(con, targetLeft, smooth);
+            }
+        }
+
+        // Вертикальный скролл (для рядов — main-container)
+        var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
+        var dy = pendingScrollDelta(vertEl);        // сколько ещё дотянет твин
+        // Первый ряд экрана — всегда самый верх страницы, а не «подтянуть на 50px»:
+        // иначе под липкой шапкой остаётся полоска предыдущего скролла.
+        if (vertEl && isRowViewport && isFirstRowViewport(container)) {
+            // Проверяем цель, а не текущую позицию: твин к нулю уже может идти,
+            // и повторный такой же твин только сбивал бы разгон
+            if (vertEl.scrollTop + dy > 1) {
+                applyScroll(vertEl, { scrollTop: 0 }, smooth);
+            }
+            return;
+        }
+        // Ряды-карусели: вертикаль ведём сами (см. ниже), целясь в .catalog-row,
+        // а не в вьюпорт карусели, чтобы вместе с карточками в кадр попадал
+        // заголовок ряда.
+        if (vertEl && isRowViewport) {
+            // Одна цель на оба направления: ряд у нижней границы
+            // (см. scrollCatalogRowIntoView)
+            scrollCatalogRowIntoView(container, vertEl, dy, smooth);
+            return;
+        }
+        if (vertEl) {
+            var containerRect = container.getBoundingClientRect();
+            var vertRect = vertEl.getBoundingClientRect();
+            var containerTopRelative = containerRect.top - vertRect.top + vertEl.scrollTop;
+            var containerBottomRelative = containerTopRelative + containerRect.height;
+            var vertViewportTop = vertEl.scrollTop + dy;    // куда встанет прокрутка
+            var vertViewportBottom = vertViewportTop + vertRect.height;
+            var needsVertScroll = false;
+            var targetScrollTop = vertViewportTop;
+
+            if (containerTopRelative < vertViewportTop + 50) {
+                targetScrollTop = (direction === 'up')
+                    ? Math.max(0, containerTopRelative - 30)
+                    : Math.max(0, containerTopRelative - 50);
+                needsVertScroll = true;
+            } else if (containerBottomRelative > vertViewportBottom - 50) {
+                targetScrollTop = (direction === 'down')
+                    ? Math.max(0, containerBottomRelative - vertRect.height + 30)
+                    : Math.max(0, containerBottomRelative - vertRect.height + 50);
+                needsVertScroll = true;
+            }
+
+            if (needsVertScroll) {
+                targetScrollTop = Math.max(0, Math.min(targetScrollTop, vertEl.scrollHeight - vertRect.height));
+
+                // Сравниваем с позицией покоя — тот же приём, что у горизонтали
+                // выше (needsHScroll), которого здесь не было.
+                //
+                // Смещения 30px для direction 'up'/'down' лежат ВНУТРИ порога в
+                // 50px, который эту ветку и запускает: докрутив контейнер до
+                // цели, условие остаётся истинным, и следующее нажатие снова
+                // заводит твин к той же самой точке. Прокрутка при этом никуда
+                // не едет, но каждый раз идёт killTweensOf + новый твин — и
+                // вниз это заметнее, чем вверх, потому что вниз фокус идёт по
+                // рядам актёров и похожих (они сюда и попадают), а вверх
+                // выходит к кнопкам панели, у которых путь другой и который
+                // при видимом элементе не запускает прокрутку вовсе.
+                //
+                // Из твина убран backgroundColor: 'rgb(0, 0, 0)'. Чёрный фон
+                // #detail-view и так выставляют при открытии — animateDetailShow
+                // (animations.js) и ветка торрентной карточки (torrents.js);
+                // ничто во всём проекте не красит его в другой цвет, так что
+                // это была анимация из чёрного в чёрный на каждую прокрутку.
+                // Полноэкранный элемент в списке анимируемых свойств не нужен.
+                if (Math.abs(vertViewportTop - targetScrollTop) > 4) {
+                    applyScroll(vertEl, { scrollTop: targetScrollTop }, smooth);
+                }
+            }
+        }
+        return;
+    } else if (container.id === 'detail-view') {
+        if (el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'detail-progress-btn') {
+            applyScroll(container, { scrollTop: 0 }, smooth);
+            return;
+        }
+    } else if (isTopAnchoredTarget(el)) {
+        // Кнопки шапки и первая строка сетки (#torrents-grid / #catalog-grid)
+        applyScroll(container, { scrollTop: 0 }, smooth);
+        return;
+    } else if (isCatalogGridCard(el)) {
+        // Сетка категории: строка под фокусом всегда у нижней границы,
+        // одинаково вниз и вверх (см. scrollCatalogGridCardIntoView)
+        scrollCatalogGridCardIntoView(el, scrollContainer, smooth);
+        return;
+    } else if (container.id == 'episodes-panel' || container.id == 'audio-panel' || container.id == 'subtitles-panel') {
+        if (typeof Animations !== 'undefined') Animations.scrollToIfNotVisible(el, container);
+    }
+    if (!scrollContainer) return;
+    var dyTail = pendingScrollDelta(scrollContainer);
+    if (dyTail) {
+        // Тот же расчёт, что в Animations.scrollToIfNotVisible, но от позиции
+        // покоя: живой rect посреди твина ответил бы «элемент уже виден», шаг
+        // проходил бы без прокрутки, и серия быстрых нажатий получалась рваной.
+        var er = el.getBoundingClientRect();
+        var viewTop = isWindow ? 0 : scrollContainer.getBoundingClientRect().top;
+        var viewBot = isWindow ? window.innerHeight : viewTop + scrollContainer.clientHeight;
+        var over = 0;
+        if (er.top - dyTail < viewTop + 10) over = (er.top - dyTail) - (viewTop + 10);
+        else if (er.bottom - dyTail > viewBot - 10) over = (er.bottom - dyTail) - (viewBot - 10);
+        if (over) {
+            var maxTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+            applyScroll(scrollContainer,
+                { scrollTop: Math.max(0, Math.min(maxTop, scrollContainer.scrollTop + dyTail + over)) },
+                smooth);
+        }
+        return;
+    }
+    Animations.scrollToIfNotVisible(el, container, {
+        direction: direction,
+        // Единственный путь, где расстояние считает не этот файл, поэтому и
+        // длительность здесь задана заранее. Шагу навигации отдаём его общий
+        // срок — иначе ровно эта прокрутка выбивалась бы из темпа.
+        duration: isNavStepScroll() ? NAV_STEP_BASE_MS / 1000 : SCROLL_SMOOTH.fallbackDuration,
+        ease: SCROLL_SMOOTH.ease,
+        offset: 10,
+        overwrite: true
+    });
+}
+
+/**
+ * Контейнер прокрутки экрана настроек. Обычно — правая колонка
+ * (.settings-main): левая с разделами стоит на месте. На телефоне в книжной
+ * ориентации колонок нет, и прокручивается весь #config-screen (styles.css).
+ * Различаем по вычисленному overflow — раскладку решает CSS.
+ */
+function getConfigScroller() {
+    var main = document.querySelector('#config-screen .settings-main');
+    if (main) {
+        var oy = getComputedStyle(main).overflowY;
+        if (oy === 'auto' || oy === 'scroll') return main;
+    }
+    return getEl('config-screen');
+}
+window.getConfigScroller = getConfigScroller;
+
+/**
+ * Доводка прокрутки настроек: в кадр встаёт вся настройка — подпись и все
+ * строки её значений, а не одна кнопка под фокусом. Общая доводка
+ * (scrollToElementIfNeeded) при одиночном шаге показывала только саму кнопку,
+ * и у ряда, перенесённого на несколько строк («Прочее → Тип видео» на
+ * 960×540), нижние строки оставались под экраном; при удержании стрелки
+ * работала другая её ветка, и там было видно всё.
+ *
+ * Экран настроек под zoom (ui-customizer): в новых Chrome прямоугольники
+ * крупнее единиц scrollTop во столько же раз, в Chrome 66 — нет. Коэффициент
+ * меряем на месте, как scrollFocusIntoView в ui-customizer.js.
+ */
+function scrollConfigIntoView(el, scroller) {
+    // Пункты меню слева в прокрутку не входят (кроме книжной ориентации)
+    if (!el || !scroller || !scroller.clientHeight || !scroller.contains(el)) return;
+    var sRect = scroller.getBoundingClientRect();
+    var scale = sRect.height / scroller.clientHeight;
+    if (!(scale > 0)) scale = 1;
+    var pad = 24;                                       // в единицах scrollTop
+    var view = scroller.clientHeight;
+    var block = (el.closest && el.closest('.settings-field, .checkbox-container, .action-row')) || el;
+    var bRect = block.getBoundingClientRect();
+    // Настройка выше экрана целиком не влезет — тогда хотя бы сама кнопка
+    if (bRect.height / scale > view - 2 * pad) { block = el; bRect = el.getBoundingClientRect(); }
+    // Позиция покоя: идущий твин ещё дотянет на pendingScrollDelta
+    var cur = scroller.scrollTop;
+    var rest = cur + pendingScrollDelta(scroller);
+    var top = (bRect.top - sRect.top) / scale + cur;    // в координатах содержимого
+    var bottom = top + bRect.height / scale;
+    var target;
+    if (top < rest + pad) target = top - pad;
+    else if (bottom > rest + view - pad) target = bottom - view + pad;
+    else return;
+    target = Math.max(0, Math.min(scroller.scrollHeight - view, target));
+    if (Math.abs(target - rest) > 2) applyScroll(scroller, { scrollTop: target }, true);
+}
+
+function byId(id) { return getEl(id); };
+
+function focusEl(el, opts) {
+    if (opts === undefined) opts = {};
+    if (el === undefined) return;
+    // Элемент уже не в документе — не трогаем текущий фокус.
+    //
+    // Иначе clearFocused() снимет подсветку с живой карточки, класс уйдёт на
+    // оторванный узел, и document.querySelector('.focused') вернёт null: на
+    // телевизоре это означает мёртвый пульт до срабатывания setupFocusRescue.
+    // Приходит такое из кэшированных списков (getCatalogGridCards), когда сетку
+    // между сборкой кэша и нажатием подрезала чанковая виртуализация. Пропустить
+    // одно нажатие несравнимо лучше, чем потерять фокус совсем.
+    if (el.isConnected === false) return false;
+
+    // Подсветку переставляем В КОНЦЕ, после всех чтений геометрии.
+    //
+    // Раньше было наоборот: сначала снимали класс со старой карточки и вешали
+    // на новую, а потом читали getBoundingClientRect, чтобы решить, куда
+    // прокручивать. Любая запись стиля помечает дерево грязным, и первое же
+    // чтение геометрии после неё заставляет браузер пересчитать раскладку
+    // синхронно, посреди обработчика нажатия. На сетке в сотни карточек с
+    // content-visibility это самая дорогая операция на нажатие — зонд намерил
+    // 1003мс на 159 нажатий, и focusEl был первым в списке «перед рывками».
+    //
+    // Порядок чтения не меняет ничего: всё происходит в одной задаче, кадр
+    // рисуется один раз в конце, поэтому визуально подсветка появляется в тот
+    // же момент. Проверено, что до конца функции никто не спрашивает
+    // document.querySelector('.focused'): ensureChunksAroundFocus работает по
+    // переданному элементу, а anchorChunkIndex и isRowScrollAnimating зовутся
+    // с задержкой, когда класс уже на месте.
+    if (opts.nativeFocus) try { el.focus(); } catch (e) { } else blurEditor();
+
+    var container = null;
+    var s = AppState.currentScreen;
+    var isFI = el.classList && el.classList.contains('file-item');
+    var isAC = el.classList && el.classList.contains('catalog-actor-card');
+    var isRC = el.classList && el.classList.contains('catalog-recommendation-card');
+    var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
+    var isRowCard = el.classList && el.classList.contains('catalog-row-card');
+
+    // Оконная видимость каталога (catalog.js): элемент под фокусом обязан быть
+    // видимым сразу, а колбэк IntersectionObserver придёт только через кадр-два
+    // после сдвига скролла. Рассинхрон самоисправляется — наблюдатель пришлёт
+    // своё состояние, когда элемент пересечёт границу окна.
+    if ((isRowCard || (el.classList && el.classList.contains('catalog-card'))) &&
+        typeof revealCatalogElement === 'function') {
+        revealCatalogElement(el);
+    }
+
+    // То же самое для списка результатов поиска (оконная видимость в
+    // torrents.js): карточка под фокусом обязана быть видимой сразу, не дожидаясь
+    // колбэка IntersectionObserver.
+    if (s === 'search' && el.classList && el.classList.contains('search-result-item') &&
+        typeof window.revealSearchResultItem === 'function') {
+        window.revealSearchResultItem(el);
+    }
+
+    // Панель фильтров есть только на экране поиска, а closest() — подъём по DOM
+    // до самого корня на каждое перемещение фокуса. В рядах (10 × 20 карточек)
+    // эти два прохода ничего не находят и стоят кадров, поэтому спрашиваем
+    // только там, где ответ может быть непустым.
+    var filterMainScreen = null, filterValuesScreen = null, isInFilterPanel = false;
+    if (s === 'search' && el.closest) {
+        filterMainScreen = el.closest('.filter-main-screen');
+        filterValuesScreen = el.closest('.filter-values-screen');
+        isInFilterPanel = !!(filterMainScreen || filterValuesScreen) ||
+            el.id === 'filter-back-btn' || el.id === 'filter-close-btn' ||
+            el.id === 'reset-filters';
+    }
+
+    // 'home' здесь обязателен из-за карточек ряда: контейнером для них должен
+    // стать .catalog-row-viewport (горизонтальная доводка каруселью). Сама
+    // главная по вертикали не прокручивается — баннер и ряд считаны ровно на
+    // высоту экрана, поэтому #main-container для её кнопок остаётся no-op.
+    if (s === 'config') {
+        // Настройки лежат не в #main-container, а в своём #config-screen.
+        // Раньше доводка шла по #main-container — впустую, и пункты ниже
+        // экрана были недостижимы. Что именно прокручивается — см.
+        // getConfigScroller.
+        container = getConfigScroller();
+    } else if (s === 'catalog' || s === 'torrents' || s === 'home') {
+        var rowVp = (isRowCard && el.closest) ? el.closest('.catalog-row-viewport') : null;
+        container = rowVp || getEl('main-container');
+    } else if (s === 'search') {
+        // ★ Если элемент внутри панели фильтров — используем контейнер панели
+        if (isInFilterPanel) {
+            if (filterValuesScreen) {
+                container = filterValuesScreen;
+            } else if (filterMainScreen) {
+                container = filterMainScreen;
+            } else {
+                // Кнопки шапки панели (back, close, reset) — используем саму панель
+                var panel = getEl('search-filters-panel');
+                container = panel || getEl('search-results');
+            }
+        } else {
+            container = getEl('search-results');
+        }
+    } else if (s === 'detail') {
+        if (isFI) {
+            container = getEl('files-list');
+        } else if (isAC) {
+            container = getEl('catalog-detail-actors-wrap');
+            if (!container && el.closest) container = el.closest('.catalog-detail-actors-wrap');
+        } else if (isRC) {
+            container = getEl('catalog-detail-recommendations-wrap');
+            if (!container && el.closest) container = el.closest('.catalog-detail-recommendations-wrap');
+        } else if (isTC) {
+            container = getEl('catalog-detail-trailers-wrap');
+            if (!container && el.closest) container = el.closest('.catalog-detail-trailers-wrap');
+        } else {
+            container = getEl('detail-view');
+        }
+    } else if (s === 'player') {
+        var parent = el.parentElement;
+        if (parent) container = getEl(parent.id);
+    }
+
+    // Передаём direction в scrollToElementIfNeeded
+    var scrollDirection = opts.direction || lastNavDirection;
+    // isTopAnchoredTarget — фокус в шапке или в первой строке экрана: страницу
+    // надо вернуть в ноль даже если элемент уже целиком виден.
+    //
+    // isCatalogGridCard / isCatalogRowCard — там позиция строки задана жёстко
+    // (у нижней границы), поэтому проверка видимости не годится: пока фокус
+    // идёт вверх по уже видимым строкам, она возвращала «прокрутка не нужна»,
+    // страница стояла на месте, и строка уезжала от нижнего края к верхнему.
+    // Решение принимают сами scrollCatalogGridCardIntoView /
+    // scrollCatalogRowIntoView — если двигаться некуда, они выходят.
+    // Сначала дешёвые признаки, проверка видимости — последней, и порядок
+    // здесь не косметика.
+    //
+    // Все пять условий сложены через ИЛИ, то есть результат от порядка не
+    // зависит. Но isElementFullyVisible читает getBoundingClientRect у
+    // элемента и у контейнера, а стояла она первой — и для карточки сетки обе
+    // геометрии считались впустую: isCatalogGridCard ниже всё равно давал
+    // true. Каждое нажатие по сетке платило за два чтения, чей ответ тут же
+    // выбрасывался. Остальные признаки — классы, dataset и кэшированное число
+    // колонок, геометрию не трогают.
+    var needScroll = false;
+    if (s === 'config') {
+        // Пункт меню и первый элемент раздела — в самый верх (isTopAnchoredTarget),
+        // остальное — вся настройка целиком в кадре
+        if (isTopAnchoredTarget(el)) {
+            if (container && container.scrollTop + pendingScrollDelta(container) > 1) applyScroll(container, { scrollTop: 0 }, true);
+        } else {
+            scrollConfigIntoView(el, container);
+        }
+    } else {
+        needScroll = el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' ||
+            isTopAnchoredTarget(el) || isCatalogGridCard(el) || isCatalogRowCard(el);
+        if (!needScroll && container) needScroll = !isElementFullyVisible(el, container);
+    }
+
+    if (needScroll) {
+        scrollToElementIfNeeded(
+            el,
+            container,
+            true,               // прокрутка всегда с анимацией и единой скоростью
+            scrollDirection
+        );
+    }
+
+    // Записи стиля — последними, см. комментарий в начале функции
+    clearFocused();
+    el.classList.add('focused');
+    applyTitleMarquee(el);
+    trackFocusedElement(el);
+    rememberScreenFocus(el);
+    return true;
+}
+
+function showPlayerControls(preferredFocusId) {
+    if (preferredFocusId === undefined) preferredFocusId = 'play-pause-btn';
+    var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn', 'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn', 'audio-btn', 'subtitles-btn', 'player-title'];
+    for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e) e.classList.remove('idle-hidden'); }
+    if (typeof window.setPlayerCursorHidden === 'function') window.setPlayerCursorHidden(false);
+    if (typeof window.syncPlayerTitleVisibility === 'function') window.syncPlayerTitleVisibility(true);
+    var pt = getEl('player-title'); if (pt) pt.classList.remove('hidden');
+    if (typeof Animations !== 'undefined') Animations.animateControlsShow();
+    if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+
+    setTimeout(function () {
+        var ep = getEl('episodes-panel');
+        var ap = getEl('audio-panel');
+        var sp = getEl('subtitles-panel');
+        var isPanelOpen = (ep && !ep.classList.contains('hidden')) ||
+            (ap && !ap.classList.contains('hidden')) ||
+            (sp && !sp.classList.contains('hidden'));
+
+        // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: есть ли элемент с классом focused внутри открытой панели
+        var hasPanelFocus = false;
+        if (isPanelOpen) {
+            var panelFocused = (ep && ep.querySelector('.focused')) ||
+                (ap && ap.querySelector('.focused')) ||
+                (sp && sp.querySelector('.focused'));
+            hasPanelFocus = !!panelFocused;
+        }
+
+        // Если панель открыта И в ней есть элемент с фокусом - не трогаем
+        if (isPanelOpen && hasPanelFocus) {
+            return;
+        }
+
+        // Если панель открыта, но фокуса в ней нет - всё равно не трогаем
+        // (возможно, focusActivePanelItem еще не успел установить фокус)
+        if (isPanelOpen) {
+            return;
+        }
+
+        updateFocusableElements();
+        var ti = -1;
+        for (var j = 0; j < focusableElements.length; j++) {
+            if (focusableElements[j].id === preferredFocusId) {
+                ti = j;
+                break;
+            }
+        }
+        setFocus(ti !== -1 ? ti : 0);
+    }, 150); // Увеличиваем задержку до 150мс
+}
+
+function hidePlayerControls() {
+    if (typeof Animations !== 'undefined') Animations.animateControlsHide();
+    var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn', 'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn', 'audio-btn', 'subtitles-btn', 'player-title'];
+    for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e) e.classList.add('idle-hidden'); }
+    if (typeof window.setPlayerCursorHidden === 'function') window.setPlayerCursorHidden(true);
+    if (typeof window.syncPlayerTitleVisibility === 'function') window.syncPlayerTitleVisibility(false);
+    var pt = getEl('player-title'); if (pt) pt.classList.add('hidden');
+    var focused = document.querySelectorAll('.focused');
+    for (var j = 0; j < focused.length; j++) focused[j].classList.remove('focused');
+    currentFocusIndex = 0;
+    if (window.mouseIdleTimer) { clearTimeout(window.mouseIdleTimer); window.mouseIdleTimer = null; }
+}
+
+function hidePlayerPanelsOnly() {
+    var hidden = false;
+    var ep = getEl('episodes-panel'); if (ep && !ep.classList.contains('hidden')) { ep.classList.add('hidden'); var b = getEl('episodes-btn'); if (b) b.classList.remove('active'); hidden = true; }
+    var ap = getEl('audio-panel'); if (ap && !ap.classList.contains('hidden')) { ap.classList.add('hidden'); var b = getEl('audio-btn'); if (b) b.classList.remove('active'); hidden = true; }
+    var sp = getEl('subtitles-panel'); if (sp && !sp.classList.contains('hidden')) { sp.classList.add('hidden'); var b = getEl('subtitles-btn'); if (b) b.classList.remove('active'); hidden = true; }
+    return hidden;
+}
+
+function hidePlayerUi() { var p = hidePlayerPanelsOnly(); var c = isPlayerControlsVisible(); if (c) hidePlayerControls(); var pt = getEl('player-title'); if ((p || c) && pt) pt.classList.add('hidden'); return p || c; }
+
+function openSearchScreen(fi) {
+    if (fi === undefined) fi = true;
+    clickEl(getEl('tab-search') || getEl('search-btn'));
+    setTimeout(function () {
+        ScreenStrategies.search.ensureFocus(true, fi);
+        if (fi) {
+            var q = getEl('search-query');
+            focusEl(q, { nativeFocus: true });
+            try { if (q && q.click) q.click(); } catch (e) { }
+            try { if (q && q.select) q.select(); } catch (e) { }
+        }
+    }, 120);
+}
+
+function leaveSearchToTorrents() {
+    if (typeof window.hideSearchResults === 'function') window.hideSearchResults();
+    else { clickEl(getEl('close-search') || getEl('tab-torrents')); setTimeout(function () { var rt = (window.AppState && AppState.inSearch === 'catalog') ? 'catalog' : 'torrents'; if (rt === 'catalog') ScreenStrategies.catalog.ensureFocus(true); else ScreenStrategies.torrents.ensureFocus(true); }, 150); }
+}
+
+function closeFilterPanel() {
+    var panel = getEl('search-filters-panel');
+    var toggleBtn = getEl('filter-toggle');
+    var overlay = getEl('filter-overlay');
+    if (panel) {
+        panel.classList.remove('active');
+        if (toggleBtn) toggleBtn.classList.remove('active');
+        if (overlay) overlay.classList.remove('active');
+        invalidateFocusCache();
+        setTimeout(function () {
+            updateFocusableElements();
+            if (toggleBtn && toggleBtn.offsetParent !== null) {
+                focusEl(toggleBtn);
+            } else {
+                var q = getEl('search-query');
+                if (q) focusEl(q);
+            }
+        }, 200);
+    }
+}
+
+function openFilterPanelAndFocus() {
+    var panel = getEl('search-filters-panel');
+    var toggleBtn = getEl('filter-toggle');
+    var overlay = getEl('filter-overlay');
+
+    if (panel) {
+        panel.classList.add('active');
+        if (toggleBtn) toggleBtn.classList.add('active');
+        if (overlay) overlay.classList.add('active');
+
+        // ★ Инвалидируем кэш и фокусируемся
+        invalidateFocusCache();
+        setTimeout(function () {
+            updateFocusableElements();
+            var closeBtn = getEl('filter-close-btn');
+            if (closeBtn && VISIBLE(closeBtn)) {
+                focusEl(closeBtn);
+            } else {
+                var firstItem = panel.querySelector('.filter-item:not(.hidden)');
+                if (firstItem) focusEl(firstItem);
+            }
+        }, 150);
+    }
+}
+
+function scrollToActiveConfigItem() { var ai = document.querySelector('#config-screen .focused'), cs = document.querySelector('#config-screen'), it = getConfigItems(); if (!ai || !cs) return; var sc = cs; while (sc && sc.scrollHeight <= sc.clientHeight) { sc = sc.parentElement; if (!sc || sc === document.body) { sc = window; break; } } var iw = (sc === window), cur = iw ? window.scrollY : sc.scrollTop, ci = -1; for (var i = 0; i < it.length; i++) if (ai === it[i]) { ci = i; break; } var ar = ai.getBoundingClientRect(), ct = iw ? 0 : sc.getBoundingClientRect().top, ot = ar.top - ct; if (ci === it.length - 2) { if (iw) window.scrollTo(0, document.body.scrollHeight - window.innerHeight); else sc.scrollTop = sc.scrollHeight - sc.clientHeight; return; } if (ci === 1) { if (iw) window.scrollTo(0, 0); else sc.scrollTop = 0; return; } var ch = iw ? window.innerHeight : sc.clientHeight; if (ot < 0) { var ns = cur + ot - 10; if (iw) window.scrollTo(0, ns); else sc.scrollTop = ns; } else if (ot + ar.height > ch) { var ns = cur + (ot + ar.height - ch) + 10; if (iw) window.scrollTo(0, ns); else sc.scrollTop = ns; } }
+
+function handleConfigNavigation(dir) {
+    if (currentScreen() !== 'config') return false;
+    var menuItems = getConfigMenuItems();
+    var currentFocused = document.querySelector('.focused');
+    if (!currentFocused) { ScreenStrategies.config.ensureFocus(true); return true; }
+    var isOnMenu = false;
+    var currentMenuIndex = -1;
+    for (var i = 0; i < menuItems.length; i++) {
+        if (currentFocused === menuItems[i]) { isOnMenu = true; currentMenuIndex = i; break; }
+    }
+    if (isOnMenu) {
+        if (dir === 'up') {
+            if (currentMenuIndex > 0) {
+                var targetIndex = currentMenuIndex - 1;
+                var targetMenuItem = menuItems[targetIndex];
+                var targetTabId = targetMenuItem.id;
+                configState.activeTabId = targetTabId;
+                switchConfigTab(targetTabId);
+                setConfigMenuActive(targetTabId);
+                return focusEl(targetMenuItem);
+            }
+            return true;
+        }
+        if (dir === 'down') {
+            if (currentMenuIndex < menuItems.length - 1) {
+                var targetIndex = currentMenuIndex + 1;
+                var targetMenuItem = menuItems[targetIndex];
+                var targetTabId = targetMenuItem.id;
+                configState.activeTabId = targetTabId;
+                switchConfigTab(targetTabId);
+                setConfigMenuActive(targetTabId);
+                return focusEl(targetMenuItem);
+            }
+            return true;
+        }
+        if (dir === 'left') return true;
+        // Вправо с пункта меню — то же, что OK: раздел справа, туда и идём
+        if (dir === 'right' || dir === 'enter') {
+            var selectedTabId = currentFocused.id;
+            // «Внешний вид»: в разделе стоит панель ui-customizer.js со своей
+            // навигацией — отдаём пульт ей (выход из неё — «назад», фокус
+            // вернётся на этот пункт меню)
+            if (selectedTabId === 'appearance-tab' && window.UICustomizer &&
+                typeof UICustomizer.enterEmbedded === 'function') {
+                configState.activeTabId = selectedTabId;
+                setConfigMenuActive(selectedTabId);
+                switchConfigTab(selectedTabId);
+                if (UICustomizer.enterEmbedded()) return true;
+            }
+            configState.activeTabId = selectedTabId;
+            configState.isOnMenu = false;
+            setConfigMenuActive(selectedTabId);
+            switchConfigTab(selectedTabId);
+            var contentItems = getConfigContentItems(selectedTabId);
+            if (contentItems.length > 0) return focusEl(contentItems[0]);
+            return true;
+        }
+        if (dir === 'back') return true;
+    } else {
+        var contentItems = getConfigContentItems(configState.activeTabId);
+        var currentContentIndex = -1;
+        for (var i = 0; i < contentItems.length; i++) {
+            if (currentFocused === contentItems[i]) { currentContentIndex = i; break; }
+        }
+        // Ряды: варианты (.settings-chips, «Прочее → Фильтры поиска»), действия
+        // (.action-row, «Войти / Регистрация» в «Аккаунте») и поля в строку
+        // (.settings-field-row, логин и пароль TorrServer): влево/вправо —
+        // внутри ряда, вверх/вниз — через весь ряд целиком, иначе до следующей
+        // настройки пришлось бы прощёлкать все его элементы. Поля в строку
+        // рядом считаются, только пока стоят рядом: на телефоне они друг под
+        // другом, и там это обычные пункты для вверх/вниз.
+        var rowOf = function (el) {
+            if (!el || !el.parentNode || !el.classList) return null;
+            if (el.classList.contains('settings-chip')) return el.parentNode;
+            var p = el.parentNode;
+            if (p.classList && p.classList.contains('action-row')) return p;
+            var fr = el.closest ? el.closest('.settings-field-row') : null;
+            if (fr && getComputedStyle(fr).flexDirection !== 'column') return fr;
+            return null;
+        };
+        var chipRow = rowOf(currentFocused);
+        if (chipRow && (dir === 'left' || dir === 'right')) {
+            var inRow = [];
+            for (var r = 0; r < contentItems.length; r++) {
+                if (chipRow.contains(contentItems[r])) inRow.push(contentItems[r]);
+            }
+            var sib = inRow[inRow.indexOf(currentFocused) + (dir === 'left' ? -1 : 1)];
+            if (sib) return focusEl(sib);
+            return true;
+        }
+        // Ряд вариантов, перенесённый на несколько строк: вверх/вниз сначала
+        // ходят по его строкам — на ближайшую по горизонтали кнопку соседней
+        // строки, — и только с крайней строки уходят на соседнюю настройку
+        if (chipRow && currentFocused.classList.contains('settings-chip') && (dir === 'up' || dir === 'down')) {
+            var lineTarget = chipInNextLine(chipRow, currentFocused, dir);
+            if (lineTarget) return focusEl(lineTarget);
+        }
+        if (dir === 'up' || dir === 'down') {
+            if (currentContentIndex === -1) return true;
+            var step = dir === 'up' ? -1 : 1;
+            var j = currentContentIndex + step;
+            while (chipRow && j >= 0 && j < contentItems.length && chipRow.contains(contentItems[j])) j += step;
+            if (j < 0 || j >= contentItems.length) return true;
+            var target = contentItems[j];
+            // В ряд вариантов входим на выбранное значение, в ряд действий —
+            // на первую кнопку, а не на крайнюю со стороны входа
+            if (target.classList.contains('settings-chip')) {
+                target = target.parentNode.querySelector('.settings-chip.active') ||
+                    target.parentNode.querySelector('.settings-chip') || target;
+            } else {
+                var targetRow = rowOf(target);
+                if (targetRow) {
+                    for (var k = 0; k < contentItems.length; k++) {
+                        if (targetRow.contains(contentItems[k])) { target = contentItems[k]; break; }
+                    }
+                }
+            }
+            return focusEl(target);
+        }
+        if (dir === 'left' || dir === 'right') return true;
+        if (dir === 'enter') {
+            if (currentFocused) {
+                var isTextInput = (currentFocused.tagName === 'INPUT' && currentFocused.type !== 'checkbox') || currentFocused.tagName === 'TEXTAREA' || currentFocused.isContentEditable;
+                if (isTextInput) { if (document.activeElement === currentFocused) currentFocused.blur(); else currentFocused.focus(); }
+                else { if (typeof currentFocused.click === 'function') currentFocused.click(); }
+            }
+            return true;
+        }
+        if (dir === 'back') { configState.isOnMenu = true; return focusEl(getEl(configState.activeTabId)); }
+    }
+    return false;
+}
+
+/**
+ * Кнопка ряда на соседней строке (dir — 'up' | 'down'), ближайшая по
+ * горизонтали к from; null — from уже на крайней строке ряда.
+ */
+function chipInNextLine(row, from, dir) {
+    var fr = from.getBoundingClientRect();
+    var fx = fr.left + fr.width / 2;
+    var lineTop = null, best = null, bestDx = Infinity;
+    var kids = row.children;
+    // Ближайшая строка в нужную сторону: её верх
+    for (var i = 0; i < kids.length; i++) {
+        if (kids[i] === from || !VISIBLE(kids[i])) continue;
+        var r = kids[i].getBoundingClientRect();
+        var beyond = dir === 'down' ? r.top >= fr.bottom - 1 : r.bottom <= fr.top + 1;
+        if (!beyond) continue;
+        if (lineTop === null || (dir === 'down' ? r.top < lineTop : r.top > lineTop)) lineTop = r.top;
+    }
+    if (lineTop === null) return null;
+    for (var j = 0; j < kids.length; j++) {
+        if (kids[j] === from || !VISIBLE(kids[j])) continue;
+        var rr = kids[j].getBoundingClientRect();
+        if (Math.abs(rr.top - lineTop) > 2) continue;
+        var dx = Math.abs(rr.left + rr.width / 2 - fx);
+        if (dx < bestDx) { bestDx = dx; best = kids[j]; }
+    }
+    return best;
+}
+
+function switchConfigTab(tabId) {
+    var tabContents = document.querySelectorAll('.tab-content');
+    for (var i = 0; i < tabContents.length; i++) tabContents[i].style.display = 'none';
+    var selectedTab = getEl(tabId + '-content');
+    if (selectedTab) selectedTab.style.display = 'block';
+    // «Об устройстве» — свежие сведения при каждом открытии: режим плеера
+    // меняется переключателями на вкладке «Плеер»
+    if (tabId === 'device-tab' && typeof window.renderDeviceInfo === 'function') window.renderDeviceInfo();
+}
+
+function setConfigMenuActive(menuItemId) {
+    var menuItems = getConfigMenuItems();
+    for (var i = 0; i < menuItems.length; i++) {
+        if (menuItems[i].id === menuItemId) menuItems[i].classList.add('active');
+        else menuItems[i].classList.remove('active');
+    }
+}
+
+// ==================== CUSTOM FILTER MENU ====================
+function ensureCustomFilterMenu() { var m = getEl('custom-filter-menu'); if (m) return m; m = document.createElement('div'); m.id = 'custom-filter-menu'; m.className = 'custom-filter-menu hidden'; m.innerHTML = '<div class="custom-filter-menu-backdrop"></div><div class="custom-filter-menu-panel"><div class="custom-filter-menu-title" id="custom-filter-menu-title">Выбор</div><div class="custom-filter-menu-options" id="custom-filter-menu-options"></div></div>'; document.body.appendChild(m); var bd = m.querySelector('.custom-filter-menu-backdrop'); if (bd) bd.addEventListener('click', closeCustomFilterMenu); return m; }
+function renderCustomFilterMenu() {
+    var m = ensureCustomFilterMenu(), te = getEl('custom-filter-menu-title'), oe = getEl('custom-filter-menu-options');
+    if (!customFilterMenuState || !te || !oe) return;
+    te.textContent = customFilterMenuState.title || 'Выбор';
+    var html = [], opts = customFilterMenuState.options;
+    for (var i = 0; i < opts.length; i++) {
+        var o = opts[i], cls = (i === customFilterMenuState.index) ? 'custom-filter-option active' : 'custom-filter-option', sel = (String(o.value) === String(customFilterMenuState.value)) ? ' ✓' : '';
+        html.push('<div class="' + cls + '" data-index="' + i + '">' + o.label + sel + '</div>');
+    }
+    oe.innerHTML = html.join('');
+    setTimeout(scrollToActiveFilterOption, 10);
+}
+function closeCustomFilterMenu() { var m = getEl('custom-filter-menu'); if (m) m.classList.add('hidden'); customFilterMenuState = null; return true; }
+function scrollToActiveFilterOption() { var ao = document.querySelector('.custom-filter-option.active'), oc = getEl('custom-filter-menu-options'); if (!ao || !oc) return; var cr = oc.getBoundingClientRect(), or = ao.getBoundingClientRect(), st = oc.scrollTop, ot = or.top - cr.top; if (ot < 0) oc.scrollTop = st + ot - 10; else if (ot + or.height > cr.height) oc.scrollTop = st + (ot + or.height - cr.height) + 10; }
+function moveCustomFilterMenu(d) { if (!customFilterMenuState || !customFilterMenuState.options.length) return true; var l = customFilterMenuState.options.length, n = customFilterMenuState.index + d; if (n < 0 || n >= l) return true; customFilterMenuState.index = n; renderCustomFilterMenu(); setTimeout(scrollToActiveFilterOption, 10); return true; }
+function applyCustomFilterMenuSelection() { if (!customFilterMenuState || !customFilterMenuState.selectEl) return false; var s = customFilterMenuState.selectEl, o = customFilterMenuState.options, i = customFilterMenuState.index, c = o[i]; if (!c) return false; s.value = String(c.value); try { var e = document.createEvent('Event'); e.initEvent('change', true, true); s.dispatchEvent(e); } catch (e) { } if (typeof window.getCurrentSearchMode === 'function') window.getCurrentSearchMode(); closeCustomFilterMenu(); try { focusEl(s); } catch (e) { } return true; }
+function isCustomFilterMenuOpen() { var m = getEl('custom-filter-menu'); return !!(m && !m.classList.contains('hidden') && customFilterMenuState); }
+function openNativeSearchControl(el) {
+    if (!VISIBLE(el)) return false;
+    if (el.tagName === 'SELECT') {
+        var fg = el.closest('.filter-group'), tl = fg ? fg.querySelector('.filter-label') : null, t = (tl && tl.textContent ? tl.textContent.trim() : 'Выбор'), o = [];
+        for (var i = 0; i < el.options.length; i++) o.push({ value: el.options[i].value, label: el.options[i].textContent || el.options[i].label || el.options[i].value });
+        var idx = 0; for (var j = 0; j < o.length; j++) if (String(o[j].value) === String(el.value)) { idx = j; break; } if (idx < 0) idx = 0;
+        customFilterMenuState = { selectEl: el, title: t, options: o, index: idx, value: el.value }; var m = ensureCustomFilterMenu(); m.classList.remove('hidden'); renderCustomFilterMenu(); return true;
+    }
+    focusEl(el, { nativeFocus: true }); try { el.focus(); } catch (e) { } try { el.click(); } catch (e) { } return true;
+}
+
+// ==================== FOCUS RESCUE ====================
+function setupFocusRescue() {
+    window.focusFirstTorrentCard = function () { return ScreenStrategies.torrents.ensureFocus(true); };
+    window.focusFirstCatalogCard = function () { return ScreenStrategies.catalog.ensureFocus(true); };
+    window.focusSearchHome = function (p) { if (p === undefined) p = true; return ScreenStrategies.search.ensureFocus(true, p); };
+    window.ensureCatalogFocus = ScreenStrategies.catalog.ensureFocus;
+    window.ensureDetailFocus = ScreenStrategies.detail.ensureFocus;
+    window.ensureTorrentFocus = ScreenStrategies.torrents.ensureFocus;
+    window.ensureSearchFocus = ScreenStrategies.search.ensureFocus;
+    window.ensureConfigFocus = ScreenStrategies.config.ensureFocus;
+
+    document.addEventListener('keydown', function (e) {
+        var s = currentScreen();
+        if (s === 'player') return;
+        if (['home', 'torrents', 'catalog', 'search', 'detail', 'config', 'donate'].indexOf(s) === -1) return;
+        var a = document.activeElement, ed = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT');
+        if (isBackKey(e.keyCode)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            // В поле ввода «Назад» только выводит из поля, с экрана не уходит.
+            // Backspace сюда из поля не попадает вовсе — он там стирает
+            // (config.js), — так что это настоящий «Назад»: Esc, пульт.
+            // Раньше в непустом поле он не делал ничего, а в пустом снимал
+            // фокус — и следующий повтор того же Backspace уже уводил с экрана.
+            if (ed) { blurEditor(); if (s === 'search') ScreenStrategies.search.ensureFocus(true, true); else if (s === 'catalog') ScreenStrategies.catalog.ensureFocus(true); else if (s === 'config') ScreenStrategies.config.ensureFocus(true); else if (s === 'detail') ScreenStrategies.detail.ensureFocus(true); else ScreenStrategies.torrents.ensureFocus(true); return; }
+            var po = getEl('playback-overlay'), ip = po && po.classList.contains('active');
+            if (ip) { cancelCurrentPlayback(); if (typeof window.releasePreloadScreen === 'function') window.releasePreloadScreen(true); return; }
+            if (isCustomFilterMenuOpen()) { closeCustomFilterMenu(); return; }
+            if (s === 'catalog' && window.catalogState && window.catalogState.currentCatalog) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); }
+            onBack();
+            return;
+        }
+        if (isArrowKey(e.keyCode)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            var d = arrowDir(e.keyCode);
+            if (isCustomFilterMenuOpen()) { if (d === 'up') moveCustomFilterMenu(-1); else if (d === 'down') moveCustomFilterMenu(1); return; }
+            // Ряды каталога и главной идут сюда, а не через navigate(), поэтому
+            // флаг удержания взводим здесь: на нём висит откладывание постеров
+            // в catalog.js (вставка карточки посреди твина = фриз).
+            navKeyRepeat = !!e.repeat;
+            setNavHold(d);
+            // Единый темп шага — внутри runScreenNavigation. Это основной путь
+            // стрелок на телевизоре, и до сих пор он был единственным, где
+            // притормаживания не было вовсе: оно жило в navigate(), куда стрелки
+            // отсюда не попадают.
+            runScreenNavigation(d);
+            return;
+        }
+        if (isOkKey(e.keyCode)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            var okNow = Date.now();
+            var okRepeat = e.repeat || (okKeyHeld && okNow - okKeyLastDown < OK_HELD_STALE_MS);
+            okKeyHeld = true;
+            okKeyLastDown = okNow;
+            if (isCustomFilterMenuOpen()) { applyCustomFilterMenuSelection(); return; }
+            if (s === 'torrents') {
+                var f = document.querySelector('.focused');
+                if (f && f.classList.contains('torrent-card')) {
+                    if (!okRepeat) {
+                        okHoldHandled = false;
+                        okHoldFocused = f;
+                        clearOkHold();
+                        okHoldTimer = setTimeout(async function () {
+                            okHoldHandled = true;
+                            var h = okHoldFocused && okHoldFocused.dataset ? okHoldFocused.dataset.hash : null;
+                            if (typeof window.setTorrentClickSuppressed === 'function') window.setTorrentClickSuppressed(1500);
+                            if (okHoldFocused) okHoldFocused.dataset.suppressClick = '1';
+                            if (h && typeof window.removeTorrentByHash === 'function') await window.removeTorrentByHash(h, { skipConfirm: true });
+                            setTimeout(function () { if (okHoldFocused) delete okHoldFocused.dataset.suppressClick; }, 1500);
+                        }, OK_HOLD_DELETE_MS);
+                    }
+                    return;
+                }
+            }
+            // Долгое OK на карточке истории — «Продолжить просмотр» на главной,
+            // «История» в каталоге — убирает запись (removeHistoryCard,
+            // catalog.js). Как у торрентов: обычное нажатие тогда срабатывает
+            // на отпускании (keyup в setupKeyboardHandlers)
+            if ((s === 'home' || s === 'catalog') && typeof window.getHistoryCardEntry === 'function') {
+                // OK всё ещё держат после удаления: фокус уже на соседней
+                // карточке (может, и не из истории), и автоповтор открыл бы её
+                if (okRepeat && okHoldFocused) return;
+                var hf = document.querySelector('.focused');
+                if (hf && window.getHistoryCardEntry(hf)) {
+                    if (!okRepeat) {
+                        okHoldHandled = false;
+                        okHoldFocused = hf;
+                        clearOkHold();
+                        okHoldTimer = setTimeout(function () {
+                            okHoldHandled = true;
+                            if (okHoldFocused && typeof window.removeHistoryCard === 'function') window.removeHistoryCard(okHoldFocused);
+                        }, OK_HOLD_DELETE_MS);
+                    }
+                    return;
+                }
+            }
+            onOk();
+            return;
+        }
+    }, true);
+
+    var prevShow = window.showDetail;
+    if (typeof prevShow === 'function') {
+        window.showDetail = function () {
+            var o = prevShow.apply(this, arguments);
+            setTimeout(function () { if (currentScreen() !== 'player') ScreenStrategies.detail.ensureFocus(true); }, 220);
+            return o;
+        };
+    }
+
+    var prevSR = window.showSearchResults;
+    if (typeof prevSR === 'function') {
+        window.showSearchResults = function (opts) {
+            var o = prevSR.apply(this, arguments);
+            setTimeout(function () {
+                // Возврат из карточки фильма: фокус уже поставлен на карточку
+                // выдачи (focusLastSearchCard, torrents.js) — строкой поиска его
+                // не перебиваем. Раньше этот таймер и уводил фокус из выдачи.
+                if (opts && opts.restoreCard) {
+                    var f = document.querySelector('.focused');
+                    if (f && f.classList.contains('global-search-card')) return;
+                }
+                ScreenStrategies.search.ensureFocus(true, true);
+            }, 120);
+            return o;
+        };
+    }
+
+    setTimeout(function () { ScreenStrategies.torrents.ensureFocus(true); }, 120);
+
+    window.handleConfigNavigation = handleConfigNavigation;
+    window.getConfigMenuItems = getConfigMenuItems;
+    window.getTorrentTabs = getTorrentTabs;
+    window.switchConfigTab = switchConfigTab;
+    window.setConfigMenuActive = setConfigMenuActive;
+}
+
+/* Навигация «назад» держится на одной лишней записи в history — «часовом».
+   Нажатие Назад съедает её, мы ловим popstate, превращаем его в Escape (на него
+   реагируют все экраны) и кладём «часового» обратно.
+
+   Ключевой момент: popstate УЖЕ израсходовал запись, независимо от того,
+   собираемся мы обрабатывать нажатие или нет. Поэтому возвращать её надо и на
+   тех ветках, где нажатие игнорируется (антидребезг, блокировка свайпом,
+   повторный вход). Раньше эти ветки просто делали return — «часовой» пропадал,
+   история пустела, WebView.canGoBack() навсегда становился false, и нативный
+   обработчик в MainActivity начинал глотать Назад вхолостую. Со стороны это
+   выглядело как намертво отказавшая кнопка — до перезагрузки страницы. */
+function rearmBackSentinel() {
+    window.history.pushState({ page: 'main' }, '');
+}
+
+window.addEventListener('popstate', function (e) {
+    if (window.swipeBlocked) { rearmBackSentinel(); return; }
+    var now = Date.now();
+    if (now - lastPopStateTime < 500) { rearmBackSentinel(); return; }
+    lastPopStateTime = now;
+    if (isProcessingBack) { rearmBackSentinel(); return; }
+    isProcessingBack = true;
+    e.preventDefault();
+    e.stopPropagation();
+    var be = new KeyboardEvent('keydown', {
+        keyCode: 27,
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true
+    });
+    document.dispatchEvent(be);
+    setTimeout(function () {
+        rearmBackSentinel();
+        setTimeout(function () {
+            isProcessingBack = false;
+        }, 300);
+    }, 150);
+});
+
+rearmBackSentinel();
+window.blockSwipe = function (ms) {
+    window.swipeBlocked = true;
+    setTimeout(function () {
+        window.swipeBlocked = false;
+    }, ms || 500);
+};
+
+// ==================== УПРАВЛЕНИЕ ГРОМКОСТЬЮ КОЛЕСОМ МЫШИ ====================
+function setupPlayerWheelControl() {
+    var STEP = 0.02; // Шаг 2%
+    var lastWheelTime = 0;
+    var WHEEL_THROTTLE = 50; // Минимальный интервал между обработками (мс)
+
+    document.addEventListener('wheel', function (e) {
+        // Работаем только на экране плеера
+        if (!AppState || AppState.currentScreen !== 'player') return;
+
+        // Throttling - не обрабатываем слишком частые события
+        var now = Date.now();
+        if (now - lastWheelTime < WHEEL_THROTTLE) return;
+        lastWheelTime = now;
+
+        // Предотвращаем скролл страницы
+        e.preventDefault();
+
+        var videoPlayer = getEl('video-player');
+        var volumeSlider = getEl('volume-slider');
+
+        if (!videoPlayer) return;
+
+        // Определяем направление: вверх = громче, вниз = тише
+        var delta = e.deltaY < 0 ? STEP : -STEP;
+
+        // Получаем текущую громкость
+        var currentVolume = videoPlayer.volume;
+        var newVolume = currentVolume + delta;
+
+        // Ограничиваем диапазон [0, 1]
+        newVolume = Math.max(0, Math.min(1, newVolume));
+
+        // Округляем до 2 знаков
+        newVolume = Math.round(newVolume * 100) / 100;
+
+        // Применяем новую громкость
+        videoPlayer.volume = newVolume;
+
+        // Обновляем ползунок
+        if (volumeSlider) {
+            volumeSlider.value = newVolume;
+        }
+
+        // Если громкость > 0 и видео было замьючено - размьючиваем
+        if (newVolume > 0 && videoPlayer.muted) {
+            videoPlayer.muted = false;
+            if (typeof window.updateMuteButton === 'function') {
+                window.updateMuteButton();
+            }
+        }
+
+        // Сбрасываем таймер скрытия UI
+        if (typeof window.resetMouseIdleTimer === 'function') {
+            window.resetMouseIdleTimer();
+        }
+
+        // Сохраняем в localStorage
+        try {
+            localStorage.setItem('playerVolume', newVolume);
+        } catch (err) { /* ignore */ }
+
+    }, { passive: false }); // passive: false необходим для preventDefault
+}
+
+// ==================== УПРАВЛЕНИЕ МЫШЬЮ ====================
+function setupMouseControls() {
+    document.addEventListener('contextmenu', function (e) {
+        // Не блокируем контекстное меню в полях ввода
+        var target = e.target;
+        if (target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.isContentEditable) {
+            return;
+        }
+
+        // Предотвращаем стандартное контекстное меню
+        e.preventDefault();
+        e.stopPropagation();
+
+        // «Назад»: в плеере — как с пульта (двойное нажатие для выхода),
+        // onBack плеер не разбирает — там правая кнопка ничего не делала
+        if (AppState.currentScreen === 'player') playerBackPress(true);
+        else onBack();
+
+        return false;
+    });
+}
+
+// ==================== НАВИГАЦИЯ ПО РЯДАМ-КАРУСЕЛЯМ (новый вид каталога) ====================
+
+// Режим рядов: открыт список каталогов (не конкретный каталог) и ряды видимы.
+// Проверять только наличие .catalog-row нельзя: после разделения экранов ряды
+// остаются в DOM и пока открыта категория (и пока идёт затухание при возврате).
+function isCatalogRowsMode() {
+    if (window.catalogState.currentCatalog) return false;
+    var row = document.querySelector('#catalog-rows .catalog-row');
+    return !!row && VISIBLE(row);
+}
+
+// Массив массивов видимых карточек: rows[ряд][колонка]
+function getCatalogRows() {
+    // Кэш по поколению DOM: handleRowsNavigation зовёт эту функцию на каждое
+    // нажатие стрелки, а обход — querySelectorAll по рядам плюс offsetParent
+    // на каждой из ~90 карточек. isConnected — страховка от пропущенной
+    // инвалидации: если контейнер рядов переписали, кэш отбрасываем.
+    if (_rowsCache.gen === _focusGen && _rowsCache.rows &&
+        _rowsCache.rows.length > 0 && _rowsCache.rows[0][0] &&
+        _rowsCache.rows[0][0].isConnected !== false) {
+        return _rowsCache.rows;
+    }
+
+    var rows = [];
+    var rowEls = document.querySelectorAll('#catalog-rows .catalog-row');
+    for (var i = 0; i < rowEls.length; i++) {
+        var cards = rowEls[i].querySelectorAll('.catalog-row-card');
+        if (!cards.length) cards = rowEls[i].querySelectorAll('.torrent-card'); // фолбэк
+        var visible = [];
+        for (var j = 0; j < cards.length; j++) if (VISIBLE(cards[j])) visible.push(cards[j]);
+        if (visible.length > 0) rows.push(visible);
+    }
+
+    _rowsCache.gen = _focusGen;
+    _rowsCache.rows = rows;
+
+    return rows;
+}
+
+function getCatalogRowHeaders() {
+    var headers = document.querySelectorAll('#catalog-rows .catalog-row-header');
+    var visible = [];
+    for (var i = 0; i < headers.length; i++) if (VISIBLE(headers[i])) visible.push(headers[i]);
+    return visible;
+}
+
+function focusRowHeader(ri) {
+    var headers = getCatalogRowHeaders();
+    if (!headers[ri]) return true;
+    var header = headers[ri];
+    // invalidateFocusCache() здесь не нужен: перемещение фокуса DOM не меняет,
+    // а вызов гарантированно сбрасывал кэш прямо перед updateFocusableElements().
+    updateFocusableElements();
+    var idx = focusableElements.indexOf(header);
+    if (idx !== -1) setFocus(idx);
+    else focusEl(header);
+    return true;
+}
+
+// Позиция карточки в рядах
+function findRowPosition(el, rows) {
+    for (var i = 0; i < rows.length; i++) {
+        for (var j = 0; j < rows[i].length; j++) {
+            if (rows[i][j] === el) return { row: i, col: j };
+        }
+    }
+    return null;
+}
+
+// Горизонтальный скролл карусели к карточке
+function scrollRowToCard(card) {
+    var viewport = card.closest ? card.closest('.catalog-row-viewport') : null;
+    if (!viewport) return;
+    var cr = card.getBoundingClientRect();
+    var vr = viewport.getBoundingClientRect();
+    var pad = 50;
+    var cur = getScrollX(viewport);
+    var target = null;
+    if (cr.left < vr.left + pad) target = cur + (cr.left - vr.left - pad);
+    else if (cr.right > vr.right - pad) target = cur + (cr.right - vr.right + pad);
+    if (target === null) return;
+    // Через setScrollX, а не scrollBy({behavior:'smooth'}): нативный плавный
+    // скролл на телевизоре не работает, а ScrollToPlugin убран из index.html.
+    setScrollX(viewport, target, true);
+}
+
+// Запас от края вьюпорта, при котором карточка считается видимой целиком, — как
+// hp в scrollToElementIfNeeded: иначе карточку, которую мы сочли видимой,
+// доводка всё равно прокрутила бы
+var ROW_CARD_VISIBLE_PAD = 30;
+
+/**
+ * Индекс карточки соседнего ряда, которая на экране ближе всего по горизонтали к
+ * from, — то есть под ней (над ней).
+ *
+ * Раньше бралась карточка с тем же номером: ряды прокручены каждый по-своему, и
+ * с 10-й карточки одного ряда фокус уходил на 10-ю другого, хотя под ним была
+ * 5-я, — карусель уезжала к ней через полряда.
+ *
+ * Из карточек, видимых целиком, — ближайшая; обрезанная краем — только если
+ * видимых нет: карусели выровнены по-разному, и ближайшей по центру бывает
+ * карточка на краю, а её доводка прокрутила бы, сдвинув ряд без нужды.
+ *
+ * Координаты — от позиции покоя: посреди твина прокрутки (стрелку только что
+ * нажали) экранная позиция — середина пути; pendingScrollDeltaX — его остаток.
+ */
+function nearestRowCardIndex(from, targetRow) {
+    if (!targetRow || !targetRow.length) return 0;
+    // closest — по разу на ряд, не на карточку: подъём по DOM в горячем пути
+    var fromVp = from.closest ? from.closest('.catalog-row-viewport') : null;
+    var toVp = targetRow[0].closest ? targetRow[0].closest('.catalog-row-viewport') : null;
+    var fr = from.getBoundingClientRect();
+    var x = (fr.left + fr.right) / 2 - (fromVp ? pendingScrollDeltaX(fromVp) : 0);
+    var dx = toVp ? pendingScrollDeltaX(toVp) : 0;
+    var vr = toVp ? toVp.getBoundingClientRect() : null;
+    var best = 0, bestD = Infinity, bestVis = -1, bestVisD = Infinity;
+    for (var i = 0; i < targetRow.length; i++) {
+        var r = targetRow[i].getBoundingClientRect();
+        var left = r.left - dx, right = r.right - dx;
+        var d = Math.abs((left + right) / 2 - x);
+        if (d < bestD) { bestD = d; best = i; }
+        if (vr && left >= vr.left + ROW_CARD_VISIBLE_PAD && right <= vr.right - ROW_CARD_VISIBLE_PAD && d < bestVisD) {
+            bestVisD = d;
+            bestVis = i;
+        }
+    }
+    return bestVis !== -1 ? bestVis : best;
+}
+
+// Фокус карточки в ряду + скролл карусели
+function focusRowCard(ri, ci, rows) {
+    if (!rows || !rows[ri] || !rows[ri][ci]) return true;
+    var card = rows[ri][ci];
+    // invalidateFocusCache() здесь не нужен — см. focusRowHeader
+    updateFocusableElements();
+    var idx = focusableElements.indexOf(card);
+    if (idx !== -1) setFocus(idx);
+    else focusEl(card);
+    return true;
+}
+
+// Навигация по рядам (←/→ внутри ряда, ↑/↓ между рядами)
+function handleRowsNavigation(dir) {
+    lastNavDirection = dir;
+    var rows = getCatalogRows();
+    if (!rows.length) return false;
+    var f = (belongsToScreen(document.querySelector('.focused'), 'catalog') ? document.querySelector('.focused') : null);
+    var h = getTorrentHeader(), t = getTorrentTabs();
+    if (!f) return focusRowCard(0, 0, rows);
+
+    // Фокус на карточке ряда
+    var pos = findRowPosition(f, rows);
+    if (pos) {
+        if (dir === 'left') {
+            if (pos.col > 0) return focusRowCard(pos.row, pos.col - 1, rows);
+            return true; // левый край — стоим
+        }
+        if (dir === 'right') {
+            if (pos.col < rows[pos.row].length - 1) return focusRowCard(pos.row, pos.col + 1, rows);
+            return true; // правый край («Показать все») — стоим
+        }
+        if (dir === 'up') {
+            if (pos.row > 0) return focusRowCard(pos.row - 1, nearestRowCardIndex(f, rows[pos.row - 1]), rows);
+            return focusEl(t[0] || h[0] || f); // верхний ряд → на табы
+        }
+        if (dir === 'down') {
+            if (pos.row < rows.length - 1) return focusRowCard(pos.row + 1, nearestRowCardIndex(f, rows[pos.row + 1]), rows);
+            return true; // последний ряд — стоим
+        }
+        return true;
+    }
+
+    // Фокус на табах
+    var ti = -1;
+    for (var i = 0; i < t.length; i++) if (f === t[i]) { ti = i; break; }
+    if (ti !== -1) {
+        if (dir === 'left') return focusEl(t[Math.max(0, ti - 1)] || f);
+        if (dir === 'right') return focusEl(t[Math.min(t.length - 1, ti + 1)] || f);
+        if (dir === 'down') return focusRowCard(0, 0, rows);
+        if (dir === 'up') return focusEl(h[Math.min(ti, h.length - 1)] || h[0] || f);
+        return true;
+    }
+
+    // Фокус на шапке (настройки)
+    var hi = -1;
+    for (var i = 0; i < h.length; i++) if (f === h[i]) { hi = i; break; }
+    if (hi !== -1) {
+        if (dir === 'left') return focusEl(h[Math.max(0, hi - 1)] || f);
+        if (dir === 'right') return focusEl(h[Math.min(h.length - 1, hi + 1)] || f);
+        if (dir === 'down') return focusRowCard(0, 0, rows);
+        return true;
+    }
+
+    // Фокус вне рядов — на первую карточку
+    return focusRowCard(0, 0, rows);
+}
+
+// ==================== ИНИЦИАЛИЗАЦИЯ ====================
+function initControl() {
+    setupKeyboardHandlers();
+    setupFocusRescue();
+    setupPlayerWheelControl();
+    setupMouseControls();
+    window.updateFocusableElements = updateFocusableElements;
+    window.setFocus = setFocus;
+    window.navigate = navigate;
+    window.showPlayerControls = showPlayerControls;
+    window.hidePlayerControls = hidePlayerControls;
+    window.hidePlayerPanelsOnly = hidePlayerPanelsOnly;
+    window.hidePlayerUi = hidePlayerUi;
+    window.focusFirstTorrentCard = focusFirstTorrentCard;
+    window.focusSearchHome = focusSearchHome;
+    window.focusEl = focusEl;
+    window.invalidateFocusCache = invalidateFocusCache;
+    window.showSeekOverlay = showSeekOverlay;
+    window.hideSeekOverlay = hideSeekOverlay;
+    window.scheduleHideSeekOverlay = scheduleHideSeekOverlay;
+    window.openNativeSearchControl = window.openNativeSearchControl || function (el) { if (el && (el.tagName === 'SELECT' || el.id === 'filter-year')) { el.focus(); try { el.click(); } catch (e) { } } };
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControl); else initControl();
+
+/**
+ * Горизонтальная прокрутка списков колесом мыши и пальцем.
+ *
+ * Слушатели делегированы на document. Раньше wheel вешался на каждый
+ * найденный контейнер один раз на DOMContentLoaded — то есть до того, как
+ * появились ряды главной и каталога (они строятся асинхронно и пересобираются
+ * при обновлении подборок), поэтому в рядах колесо не работало вовсе.
+ *
+ * Драг пальцем свой, не нативный: у рядов touch-action: pan-y — вертикальный
+ * жест обязан доставаться странице (#main-container), иначе главная перестаёт
+ * листаться, а браузер не умеет отдать одну ось странице, оставив вторую
+ * контейнеру, если по горизонтали нужен ещё и fling с нашей инерцией.
+ */
+(function () {
+    var H_SCROLL_SELECTOR = '.files-list, ' +
+        '.catalog-detail-actors-grid, ' +
+        '.catalog-detail-recommendations-grid, ' +
+        '.catalog-row-viewport, ' +
+        '.catalog-row';
+
+    // Столько же, сколько APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX в app.js: до
+    // этого порога касание там ещё считается тапом и открывает карточку,
+    // так что раньше начинать драг нельзя — уедет ряд и откроется фильм
+    var TOUCH_AXIS_THRESHOLD = 10;
+    var FLING_MS = 140;      // насколько ряд пролетает по инерции после свайпа
+    var FLING_IDLE_MS = 80;  // палец постоял перед отрывом — инерции нет
+
+    /** Состояние догона кадрами держим на самом элементе: слушатель один на всех */
+    function state(cnt) {
+        if (!cnt._hScroll) cnt._hScroll = { target: getScrollX(cnt), rafId: null };
+        return cnt._hScroll;
+    }
+
+    function clampX(cnt, value) {
+        return Math.max(0, Math.min(getMaxScrollX(cnt), value));
+    }
+
+    function stopGlide(cnt) {
+        var st = state(cnt);
+        if (st.rafId) { cancelAnimationFrame(st.rafId); st.rafId = null; }
+    }
+
+    function step(cnt) {
+        var st = state(cnt);
+        var current = getScrollX(cnt);
+        var diff = st.target - current;
+
+        if (Math.abs(diff) < 0.6) {
+            setScrollXImmediate(cnt, st.target);
+            st.rafId = null;
+            return;
+        }
+
+        // Чем меньше коэффициент, тем мягче.
+        // 0.10 - очень мягко
+        // 0.16 - оптимально
+        // 0.22 - быстрее
+        // 0.30 - режим «Быстрая» в ui-customizer (меньше кадров догона)
+        var factor = getScrollAnimMode() === 'fast' ? 0.3 : 0.16;
+        setScrollXImmediate(cnt, current + diff * factor);
+
+        st.rafId = requestAnimationFrame(function () { step(cnt); });
+    }
+
+    /** Плавно доехать до позиции left (в координатах scrollLeft) */
+    function glideTo(cnt, left) {
+        var st = state(cnt);
+        st.target = clampX(cnt, left);
+
+        // «Без анимации» — ставим позицию сразу, догон кадрами не запускаем
+        if (getScrollAnimMode() === 'none') {
+            stopGlide(cnt);
+            setScrollXImmediate(cnt, st.target);
+            return;
+        }
+        if (!st.rafId) st.rafId = requestAnimationFrame(function () { step(cnt); });
+    }
+
+    /**
+     * Контейнер под курсором/пальцем, который реально можно двигать.
+     * Заголовок ряда лежит вне вьюпорта — там closest даёт .catalog-row,
+     * у которого getMaxScrollX === 0, и жест уходит странице.
+     */
+    function findContainer(target) {
+        if (!target || !target.closest) return null;
+        var cnt = target.closest(H_SCROLL_SELECTOR);
+        if (!cnt || getMaxScrollX(cnt) <= 0) return null;
+        return cnt;
+    }
+
+    document.addEventListener('wheel', function (e) {
+        var cnt = findContainer(e.target);
+        if (!cnt) return;
+
+        var dy =
+            e.deltaY ||
+            e.wheelDeltaY ||
+            (e.wheelDelta ? -e.wheelDelta / 40 : 0) ||
+            e.detail ||
+            0;
+
+        var dx = e.deltaX || e.wheelDeltaX || 0;
+        var delta;
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+            // Горизонтальный жест (тачпад, shift+колесо) браузер отработает сам:
+            // все эти контейнеры прокручиваются нативно
+            return;
+        } else {
+            // Вертикальное колесо ряды вбок не катает — нигде: оно листает
+            // страницу (каталог, карточку фильма) или подборки (главная, home.js).
+            // Ряды мышью двигает курсор у края (краевая прокрутка ниже). Событие
+            // отдаём как есть, default не отменяем. Shift + колесо остаётся
+            // горизонтальным жестом для ряда.
+            if (!e.shiftKey) return;
+            delta = dy;
+        }
+        if (!delta) return;
+
+        var st = state(cnt);
+        // Догон не идёт — считаем от фактической позиции, а не от старой цели
+        // (её мог перебить setScrollX при навигации пультом)
+        if (!st.rafId) st.target = getScrollX(cnt);
+
+        // Ряд упёрся в край — колесо отдаём странице (default не отменяем).
+        // Иначе на главной, где ряды занимают весь экран, вертикальной
+        // прокрутки мышью не было бы вообще.
+        var max = getMaxScrollX(cnt);
+        if ((delta < 0 && st.target <= 0.5) || (delta > 0 && st.target >= max - 0.5)) return;
+
+        e.preventDefault();
+        glideTo(cnt, st.target + delta * 0.9);
+    }, { passive: false });
+
+    // ---------- Драг пальцем ----------
+    var drag = null;
+
+    document.addEventListener('touchstart', function (e) {
+        drag = null;
+        if (!e.touches || e.touches.length !== 1) return;
+        var cnt = findContainer(e.target);
+        if (!cnt) return;
+
+        stopGlide(cnt);
+        var t = e.touches[0];
+        drag = {
+            cnt: cnt,
+            startX: t.clientX,
+            startY: t.clientY,
+            startScroll: getScrollX(cnt),
+            axis: null,
+            lastX: t.clientX,
+            lastT: Date.now(),
+            velocity: 0
+        };
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function (e) {
+        if (!drag || !e.touches || e.touches.length !== 1) return;
+
+        var t = e.touches[0];
+        var dx = drag.startX - t.clientX;
+        var dy = drag.startY - t.clientY;
+
+        if (!drag.axis) {
+            if (Math.abs(dx) < TOUCH_AXIS_THRESHOLD && Math.abs(dy) < TOUCH_AXIS_THRESHOLD) return;
+            // Жест по вертикали отдаём странице: #main-container скроллится
+            // нативно, перехватим — и главная перестанет листаться пальцем
+            if (Math.abs(dy) >= Math.abs(dx)) { drag = null; return; }
+            drag.axis = 'x';
+        }
+
+        e.preventDefault();
+
+        var now = Date.now();
+        var dt = now - drag.lastT;
+        // px/мс, знак как у scrollX: палец влево — ряд уезжает вперёд
+        if (dt > 0) drag.velocity = (drag.lastX - t.clientX) / dt;
+        drag.lastX = t.clientX;
+        drag.lastT = now;
+
+        setScrollXImmediate(drag.cnt, clampX(drag.cnt, drag.startScroll + dx));
+    }, { passive: false });
+
+    function endDrag() {
+        if (!drag) return;
+        var d = drag;
+        drag = null;
+        if (d.axis !== 'x') return;
+
+        var velocity = (Date.now() - d.lastT > FLING_IDLE_MS) ? 0 : d.velocity;
+        glideTo(d.cnt, getScrollX(d.cnt) + velocity * FLING_MS);
+    }
+
+    document.addEventListener('touchend', endDrag, { passive: true });
+    document.addEventListener('touchcancel', endDrag, { passive: true });
+
+    // Слушатели делегированы, обходить контейнеры больше не нужно —
+    // функция оставлена, чтобы не падали внешние вызовы
+    window.initSmoothHorizontalScroll = function () { };
+})();
+
+/**
+ * Мышь у края ряда — ряд едет в эту сторону. Каталог (ряды-карусели) и
+ * карточка фильма (актёры, похожие, серии) — так же, как на главной
+ * (home.js: startHoverScroll, у неё своя версия, связанная с её фокусом).
+ *
+ * Колесо ряды вбок не катает (обработчик выше), а горизонтального жеста у
+ * обычной мыши нет — без этого до дальних карточек указателем не добраться.
+ * Курсор у правого или левого края ряда — ряд едет шагами по карточке, пока
+ * не упрётся; ряд у упора зону освобождает.
+ */
+(function () {
+    var EDGE_SELECTOR = '#catalog-rows .catalog-row-viewport, ' +
+        '#detail-view .files-list, ' +
+        '#detail-view .catalog-detail-actors-grid, ' +
+        '#detail-view .catalog-detail-recommendations-grid';
+    var STEP_MS = 320;       // как HOME.HOVER_SCROLL_MS
+    var STEP_SEC = 0.3;      // как HOME.HOVER_SCROLL_SEC
+
+    var hover = { el: null, dir: 0, timer: null };
+    var metrics = { el: null, at: 0, box: null, step: 0 };
+    var lastMoveAt = 0, lastX = -1, lastY = -1, touchedAt = 0;
+
+    /** Шаг — расстояние между соседними карточками (ряд каталога — через трек) */
+    function cardStep(el) {
+        var all = el.children;
+        if (all.length === 1 && all[0].children.length > 1) all = all[0].children;
+        // Только видимые: в рядах карточки фильма первым лежит скрытая заглушка
+        // «Загрузка…» (.catalog-detail-row-msg), и шаг по ней выходил в 48px
+        var items = [];
+        for (var i = 0; i < all.length && items.length < 2; i++) {
+            if (all[i].offsetWidth > 0) items.push(all[i]);
+        }
+        if (items.length > 1) {
+            var s = items[1].offsetLeft - items[0].offsetLeft;
+            if (s > 10) return s;
+        }
+        if (items.length === 1) return items[0].offsetWidth;
+        return Math.max(120, (el.clientWidth || 600) * 0.25);
+    }
+
+    // getBoundingClientRect посреди твина — пересчёт стилей; mousemove частый,
+    // а раскладка меняется только на resize: полсекунды кэша хватает
+    function rowMetrics(el) {
+        var now = Date.now();
+        if (metrics.el !== el || now - metrics.at > 500) {
+            metrics.el = el;
+            metrics.at = now;
+            metrics.box = el.getBoundingClientRect();
+            metrics.step = cardStep(el);
+        }
+        return metrics;
+    }
+
+    function stop() {
+        if (hover.timer) { clearInterval(hover.timer); hover.timer = null; }
+        hover.el = null;
+        hover.dir = 0;
+    }
+
+    function stepOnce() {
+        var el = hover.el;
+        if (!el || !el.isConnected || !hover.dir || el.offsetParent === null) { stop(); return; }
+        var screen = window.AppState && AppState.currentScreen;
+        if (screen !== 'catalog' && screen !== 'detail') { stop(); return; }
+        var cur = getScrollX(el), max = getMaxScrollX(el);
+        if ((hover.dir < 0 && cur <= 0.5) || (hover.dir > 0 && cur >= max - 0.5)) { stop(); return; }
+        setScrollX(el, cur + hover.dir * rowMetrics(el).step, true, STEP_SEC);
+    }
+
+    /** @returns {boolean} true — ряд поехал, false — уже у края */
+    function start(el, dir) {
+        if (hover.el === el && hover.dir === dir && hover.timer) return true;
+        stop();
+        hover.el = el;
+        hover.dir = dir;
+        stepOnce();
+        if (!hover.dir) return false;
+        hover.timer = setInterval(stepOnce, STEP_MS);
+        return true;
+    }
+
+    document.addEventListener('touchstart', function () { touchedAt = Date.now(); stop(); }, { passive: true });
+
+    document.addEventListener('mousemove', function (e) {
+        var now = Date.now();
+        // Тап рисует ещё и mousemove — курсора там нет
+        if (now - touchedAt < 800) return;
+        if (now - lastMoveAt < 50) return;
+        // Ряд поехал под неподвижным курсором — это не жест мышью
+        if (e.clientX === lastX && e.clientY === lastY) return;
+        lastMoveAt = now; lastX = e.clientX; lastY = e.clientY;
+
+        var el = (e.target && e.target.closest) ? e.target.closest(EDGE_SELECTOR) : null;
+        if (!el || getMaxScrollX(el) <= 0) { stop(); return; }
+        var m = rowMetrics(el);
+        var w = m.box.width || el.clientWidth || 0;
+        // Зона примерно в карточку, но не уже 60px и не больше трети ряда
+        var zone = Math.max(60, Math.min(m.step, w * 0.3));
+        if (e.clientX >= m.box.right - zone) { if (start(el, 1)) return; }
+        else if (e.clientX <= m.box.left + zone) { if (start(el, -1)) return; }
+        stop();
+    }, { passive: true });
+
+    // Курсор ушёл за окно — mousemove больше не придёт
+    document.addEventListener('mouseout', function (e) { if (!e.relatedTarget) stop(); }, { passive: true });
+    window.addEventListener('blur', stop);
+})();
