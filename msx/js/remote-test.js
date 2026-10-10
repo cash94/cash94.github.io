@@ -10,12 +10,22 @@
  *
  * «отброшено» в журнале — событие погасила защита пульта Apple
  * (app.js: setupAppleRemoteGuard); «переключено кодом» — движок не переключил
- * чекбокс по click(), это сделал app.js: setupAppleCheckboxClick. Модуль грузится по нажатию кнопки
- * (app.js: openRemoteTest). ES5 — открывают его и на Chrome 66.
+ * чекбокс по click(), это сделал app.js: setupAppleCheckboxClick.
+ *
+ * Внешний плеер Apple. Приложения-оболочки для Apple TV по-разному открывают
+ * плееры: одни перехватывают переход на lampa://, infuse:// и т. п., другие
+ * показывают «unsupported URL». Пункты «Плеер: …» открывают тестовое видео
+ * разными способами (переход, ссылка, iframe) и пишут в журнал, что отправили;
+ * blur, visibilitychange и pagehide после этого значат, что поверх страницы
+ * что-то открылось. В шапке — что оболочка сообщает странице о себе.
+ *
+ * Модуль грузится по нажатию кнопки (app.js: openRemoteTest). ES5 — открывают
+ * его и на Chrome 66.
  */
 (function () {
   var LOG_TYPES = ['keydown', 'keyup', 'keypress', 'mousedown', 'mouseup', 'click',
-    'pointerdown', 'pointerup', 'touchstart', 'touchend', 'focusin', 'focusout', 'change'];
+    'pointerdown', 'pointerup', 'touchstart', 'touchend', 'focusin', 'focusout', 'change',
+    'blur', 'focus', 'visibilitychange', 'pagehide', 'pageshow'];
   var LOG_MAX = 60;
   var BURST_GAP_MS = 1500;
 
@@ -33,13 +43,28 @@
     return s;
   }
 
-  function onAny(e) {
+  function stamp() {
     var now = Date.now();
     if (!lastAt || now - lastAt > BURST_GAP_MS) {
       burstStart = now;
       entries.unshift({ sep: true });
     }
     lastAt = now;
+    return now;
+  }
+
+  /** Строка журнала от самой проверки: что и каким способом открыли */
+  function note(text) {
+    var now = stamp();
+    entries.unshift({ t: now - burstStart, note: text });
+    if (entries.length > LOG_MAX) entries.length = LOG_MAX;
+    render();
+  }
+
+  function onAny(e) {
+    // blur/focus элементов не нужны — только окна (ушли в плеер и вернулись)
+    if ((e.type === 'blur' || e.type === 'focus') && e.target !== window) return;
+    var now = stamp();
     var entry = {
       t: now - burstStart,
       type: e.type,
@@ -71,6 +96,10 @@
     for (var j = 0; j < entries.length; j++) {
       var en = entries[j];
       if (en.sep) { html += '<div class="rt-sep"></div>'; continue; }
+      if (en.note) {
+        html += '<div class="rt-line"><span class="rt-t">+' + en.t + '</span><span class="rt-note">' + esc(en.note) + '</span></div>';
+        continue;
+      }
       if (en.event) { en.swallowed = !!en.event.__tsSwallowed; en.event = null; }
       html += '<div class="rt-line' + (en.swallowed ? ' rt-swallowed' : '') + '">' +
         '<span class="rt-t">+' + en.t + '</span>' +
@@ -95,6 +124,92 @@
     render();
   }
 
+  // ---------- Внешний плеер Apple ----------
+
+  /** Что оболочка сообщает странице о себе: мосты в натив, свой клиент Lampa */
+  function shellInfo() {
+    var out = [];
+    var client = null;
+    try { client = localStorage.getItem('apple_tv_client'); } catch (e) { }
+    out.push('apple_tv_client: ' + (client === null ? 'нет' : client));
+    var mh = window.webkit && window.webkit.messageHandlers;
+    if (mh) {
+      var names = [];
+      try { for (var k in mh) names.push(k); } catch (e) { }
+      out.push('webkit.messageHandlers: ' + (names.length ? names.join(', ') : 'есть'));
+    } else out.push('webkit.messageHandlers: нет');
+    var globals = ['Lampa', 'AndroidJS', 'prisma', 'Prisma', 'PrismaTV', 'tvOS', 'native', 'NativeBridge', 'bridge'];
+    for (var i = 0; i < globals.length; i++) if (typeof window[globals[i]] !== 'undefined') out.push('window.' + globals[i]);
+    return out.join(' · ');
+  }
+
+  /** Тестовое видео рядом с app.js (зеркало, GitHub Pages или public при ?local=1) */
+  function testVideoUrl() {
+    var own = document.querySelector('script[src*="/js/app.js"]');
+    var base = own ? own.src.replace(/\/js\/app\.js.*$/, '') : location.origin;
+    return base + '/videotest/1920x800.mp4';
+  }
+
+  function playerTemplate(id) {
+    var list = (typeof APPLE_PLAYERS !== 'undefined' && APPLE_PLAYERS.apple_tv) || [];
+    for (var i = 0; i < list.length; i++) if (list[i][0] === id) return list[i][2];
+    return null;
+  }
+
+  function playerUrl(id) {
+    var tpl = playerTemplate(id);
+    if (!tpl) return null;
+    var v = testVideoUrl();
+    return tpl.replace('${url}', encodeURIComponent(v)).replace('${furl}', v)
+      .replace('${_url}', encodeURI(v)).replace('${playlist}', '');
+  }
+
+  var LAUNCH = {
+    assign: function (url) { window.location.assign(url); },
+    link: function (url) {
+      var a = document.createElement('a');
+      a.href = url;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { if (a.parentNode) a.parentNode.removeChild(a); }, 0);
+    },
+    iframe: function (url) {
+      var f = document.createElement('iframe');
+      f.style.display = 'none';
+      f.src = url;
+      document.body.appendChild(f);
+      setTimeout(function () { if (f.parentNode) f.parentNode.removeChild(f); }, 3000);
+    },
+    open: function (url) { window.open(url, '_blank'); }
+  };
+  var LAUNCH_NAMES = { assign: 'переход', link: 'ссылка', iframe: 'iframe', open: 'window.open' };
+
+  function launch(id, how) {
+    var url = playerUrl(id);
+    if (!url) { note('нет шаблона для ' + id); return; }
+    note('→ ' + LAUNCH_NAMES[how] + ': ' + url);
+    try { LAUNCH[how](url); } catch (e) { note('ошибка: ' + (e && e.message || e)); }
+  }
+
+  function addPlayerTests(side, addItem) {
+    var head = document.createElement('div');
+    head.className = 'rt-head';
+    head.textContent = 'Внешний плеер — тестовое видео';
+    side.appendChild(head);
+    var tests = [
+      ['tvos', 'assign', 'tvOS Universal (lampa://) — переход'],
+      ['tvos', 'link', 'tvOS Universal (lampa://) — ссылка'],
+      ['tvos', 'iframe', 'tvOS Universal (lampa://) — iframe'],
+      ['infuse', 'assign', 'Infuse — переход'],
+      ['vlc', 'assign', 'VLC — переход'],
+      ['tvosSelect', 'open', 'Внешний (lampa://) — window.open']
+    ];
+    tests.forEach(function (t) {
+      addItem('<span>' + t[2] + '</span>', { cls: 'rt-small', action: function () { launch(t[0], t[1]); } });
+    });
+  }
+
   function build() {
     overlay = document.createElement('div');
     overlay.id = 'rt-overlay';
@@ -104,7 +219,7 @@
       '.rt-side{width:38%;padding:2vw;box-sizing:border-box;overflow:hidden;}' +
       '.rt-side h2{margin:0 0 .4vw;font-size:1.9vw;}' +
       '.rt-env{color:#8b9ac0;font-size:1vw;line-height:1.4;margin-bottom:1.2vw;word-break:break-all;}' +
-      '.rt-item{display:flex;align-items:center;margin-bottom:.7vw;padding:.8vw 1vw;border:2px solid transparent;border-radius:.7vw;background:rgba(255,255,255,.07);font-size:1.4vw;cursor:pointer;}' +
+      '.rt-item{display:flex;align-items:center;margin-bottom:.5vw;padding:.65vw 1vw;border:2px solid transparent;border-radius:.7vw;background:rgba(255,255,255,.07);font-size:1.4vw;cursor:pointer;}' +
       '.rt-item.focused{border-color:var(--focus-color,#ff8c00);background:rgba(255,255,255,.12);}' +
       '.rt-item input[type=checkbox]{width:1.6vw;height:1.6vw;margin:0 1vw 0 0;flex-shrink:0;}' +
       '.rt-item input[type=text]{flex:1;min-width:0;padding:.4vw .6vw;font-size:1.3vw;border-radius:.4vw;border:1px solid #444;background:#15151f;color:#fff;font-family:inherit;}' +
@@ -121,6 +236,9 @@
       '.rt-swallowed{opacity:.6;}' +
       '.rt-sep{height:1px;margin:.5vw 0;background:rgba(255,255,255,.15);}' +
       '.rt-empty{color:#8b9ac0;}' +
+      '.rt-note{color:#b6f0a0;white-space:normal;word-break:break-all;}' +
+      '.rt-item.rt-small{padding:.45vw 1vw;margin-bottom:.45vw;font-size:1.1vw;}' +
+      '.rt-head{margin:1vw 0 .4vw;color:#8b9ac0;font-size:1vw;}' +
       '</style>';
 
     var side = document.createElement('div');
@@ -128,7 +246,7 @@
     side.innerHTML = '<h2>Проверка пульта</h2><div class="rt-env"></div>';
     side.querySelector('.rt-env').textContent =
       (AppState.applePlatform ? 'Apple: ' + AppState.applePlatform + ' · защита пульта включена · ' : '') +
-      window.innerWidth + '×' + window.innerHeight + ' · ' + navigator.userAgent;
+      window.innerWidth + '×' + window.innerHeight + ' · ' + navigator.userAgent + ' · ' + shellInfo();
 
     function addItem(html, extra) {
       var el = document.createElement('div');
@@ -152,6 +270,7 @@
     addItem('<span class="rt-label">Логин</span><input type="text" id="rt-input" placeholder="поле под переключателем">', { cls: 'rt-field-row' });
     addItem('<input type="checkbox" id="rt-cb-2"><span>Переключатель 2</span>');
     addItem('<input type="checkbox" id="rt-cb-3"><span>Переключатель 3</span>');
+    addPlayerTests(side, addItem);
     addItem('<span>Очистить журнал</span>', { action: function () { entries = []; lastAt = 0; } });
     addItem('<span>Закрыть</span>', { action: close });
     overlay.appendChild(side);
