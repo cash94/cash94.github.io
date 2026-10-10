@@ -1972,18 +1972,25 @@ function openAppleExternalPlayer(originalUrl, title, seekTime) {
   lastExternalOpen.url = built.url; lastExternalOpen.time = Date.now();
   currentTimecodeData.hash = built.ref.hash; currentTimecodeData.fileId = built.ref.fileId; currentTimecodeData.timecode = seekTime || 0;
   console.log('🍎 Внешний плеер ' + built.player.name + ': ' + (title || ''));
+  if (AppState.applePlatform !== 'apple_tv' && navigator.userActivation && !navigator.userActivation.isActive) {
+    // Нажатие уже «остыло» — переход заведомо пропустят, сразу кнопка
+    showAppleLaunchDialog(built.player.name, built.url);
+    return true;
+  }
   window.location.assign(built.url);
   if (AppState.applePlatform !== 'apple_tv') watchAppleLaunch(built.player.name, built.url);
   return true;
 }
 
 /**
- * Safari (iPhone, iPad, Mac) открывает чужое приложение по URL-схеме только
- * в ответ на нажатие. Запуск же идёт после предзагрузки, серий и позиции
- * просмотра — через секунды после нажатия, и Safari такой переход молча
- * пропускает: плеер не открывается. Поэтому, если за APPLE_LAUNCH_CHECK_MS
- * страница не ушла на задний план (плеер не открылся поверх), показываем
- * кнопку-ссылку «Открыть в …»: переход по ней — уже по нажатию.
+ * Safari и оболочки на WebKit (iPhone, iPad, Mac; проверено в Prisma TV на
+ * iPhone) открывают чужое приложение по URL-схеме только в ответ на нажатие.
+ * Запуск же идёт после предзагрузки, серий и позиции просмотра — через
+ * секунды после нажатия, и такой переход молча пропускают: плеер не
+ * открывается. Поэтому показываем кнопку-ссылку «Открыть в …» — переход по
+ * ней уже по нажатию: сразу, если браузер сообщает, что нажатие истекло
+ * (navigator.userActivation), иначе — если за APPLE_LAUNCH_CHECK_MS
+ * страница не ушла на задний план (плеер не открылся поверх).
  * На Apple TV оболочка открывает плееры сама, там кнопка не нужна.
  */
 var APPLE_LAUNCH_CHECK_MS = 2000;
@@ -2013,7 +2020,7 @@ function showAppleLaunchDialog(name, url) {
   root.innerHTML =
     '<div class="apple-launch-box">' +
     '<div class="apple-launch-title"></div>' +
-    '<div class="apple-launch-text">Safari не дал открыть плеер сам. Нажмите кнопку — если плеер установлен, он откроется.</div>' +
+    '<div class="apple-launch-text">Плеер не открылся сам. Нажмите кнопку — если он установлен, откроется.</div>' +
     '<div class="apple-launch-actions">' +
     '<a class="apple-launch-btn apple-launch-open"></a>' +
     '<button type="button" class="apple-launch-btn apple-launch-cancel">Отмена</button>' +
