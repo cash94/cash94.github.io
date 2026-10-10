@@ -10573,3 +10573,70 @@ html.android-app {
     margin-bottom: 28px;
   }
 }
+
+/* Внешний плеер Apple не открылся сам (Safari пускает в приложение только
+   по нажатию) — кнопка-ссылка «Открыть в …» (player.js: showAppleLaunchDialog) */
+#apple-launch-dialog {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 100001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.apple-launch-box {
+  width: 100%;
+  max-width: 420px;
+  padding: 24px;
+  box-sizing: border-box;
+  border-radius: 18px;
+  background: #1c1c24;
+  color: #fff;
+  text-align: center;
+}
+
+.apple-launch-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.apple-launch-text {
+  margin: 10px 0 20px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.apple-launch-actions {
+  display: flex;
+  flex-direction: column;
+}
+
+.apple-launch-btn + .apple-launch-btn {
+  margin-top: 10px;
+}
+
+.apple-launch-btn {
+  display: block;
+  padding: 14px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.apple-launch-open {
+  background: #fff;
+  color: #000;
+  font-weight: 700;
+}

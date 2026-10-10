@@ -1973,7 +1973,60 @@ function openAppleExternalPlayer(originalUrl, title, seekTime) {
   currentTimecodeData.hash = built.ref.hash; currentTimecodeData.fileId = built.ref.fileId; currentTimecodeData.timecode = seekTime || 0;
   console.log('🍎 Внешний плеер ' + built.player.name + ': ' + (title || ''));
   window.location.assign(built.url);
+  if (AppState.applePlatform !== 'apple_tv') watchAppleLaunch(built.player.name, built.url);
   return true;
+}
+
+/**
+ * Safari (iPhone, iPad, Mac) открывает чужое приложение по URL-схеме только
+ * в ответ на нажатие. Запуск же идёт после предзагрузки, серий и позиции
+ * просмотра — через секунды после нажатия, и Safari такой переход молча
+ * пропускает: плеер не открывается. Поэтому, если за APPLE_LAUNCH_CHECK_MS
+ * страница не ушла на задний план (плеер не открылся поверх), показываем
+ * кнопку-ссылку «Открыть в …»: переход по ней — уже по нажатию.
+ * На Apple TV оболочка открывает плееры сама, там кнопка не нужна.
+ */
+var APPLE_LAUNCH_CHECK_MS = 2000;
+
+function watchAppleLaunch(name, url) {
+  var left = false;
+  var onHide = function (e) { if (e.type === 'pagehide' || document.hidden) left = true; };
+  document.addEventListener('visibilitychange', onHide);
+  window.addEventListener('pagehide', onHide);
+  setTimeout(function () {
+    document.removeEventListener('visibilitychange', onHide);
+    window.removeEventListener('pagehide', onHide);
+    if (!left && !document.hidden) showAppleLaunchDialog(name, url);
+  }, APPLE_LAUNCH_CHECK_MS);
+}
+
+function closeAppleLaunchDialog() {
+  var el = document.getElementById('apple-launch-dialog');
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+
+function showAppleLaunchDialog(name, url) {
+  closeAppleLaunchDialog();
+  if (typeof releasePreloadScreen === 'function') releasePreloadScreen(true);
+  var root = document.createElement('div');
+  root.id = 'apple-launch-dialog';
+  root.innerHTML =
+    '<div class="apple-launch-box">' +
+    '<div class="apple-launch-title"></div>' +
+    '<div class="apple-launch-text">Safari не дал открыть плеер сам. Нажмите кнопку — если плеер установлен, он откроется.</div>' +
+    '<div class="apple-launch-actions">' +
+    '<a class="apple-launch-btn apple-launch-open"></a>' +
+    '<button type="button" class="apple-launch-btn apple-launch-cancel">Отмена</button>' +
+    '</div></div>';
+  root.querySelector('.apple-launch-title').textContent = name;
+  var open = root.querySelector('.apple-launch-open');
+  open.textContent = 'Открыть в ' + name;
+  open.href = url;
+  open.addEventListener('click', function () { setTimeout(closeAppleLaunchDialog, 300); });
+  root.querySelector('.apple-launch-cancel').addEventListener('click', closeAppleLaunchDialog);
+  root.addEventListener('click', function (e) { if (e.target === root) closeAppleLaunchDialog(); });
+  document.body.appendChild(root);
+  try { open.focus(); } catch (e) { }
 }
 
 function startGstPlayback(m3u8Url) {
