@@ -9,7 +9,8 @@
  * аутентификация»). Кто проверяет, нажимает ОК и присылает снимок экрана.
  *
  * «отброшено» в журнале — событие погасила защита пульта Apple
- * (app.js: setupAppleRemoteGuard). Модуль грузится по нажатию кнопки
+ * (app.js: setupAppleRemoteGuard); «переключено кодом» — движок не переключил
+ * чекбокс по click(), это сделал app.js: setupAppleCheckboxClick. Модуль грузится по нажатию кнопки
  * (app.js: openRemoteTest). ES5 — открывают его и на Chrome 66.
  */
 (function () {
@@ -45,8 +46,11 @@
       key: e.type.indexOf('key') === 0 ? (e.key || '?') + ' (' + (e.keyCode || e.which || 0) + ')' : '',
       target: describe(e.target),
       trusted: e.isTrusted,
+      // change от запасного переключения (app.js: setupAppleCheckboxClick)
+      manual: e.type === 'change' && !!(e.target && e.target.__tsManualToggle),
       event: e
     };
+    if (entry.manual) e.target.__tsManualToggle = false;
     entries.unshift(entry);
     if (entries.length > LOG_MAX) entries.length = LOG_MAX;
     // Отбросила ли событие защита, станет известно после её обработчика
@@ -75,6 +79,7 @@
         '<span class="rt-target">' + esc(en.target) + '</span>' +
         (en.trusted ? '' : '<span class="rt-tag">код</span>') +
         (en.swallowed ? '<span class="rt-tag rt-tag-drop">отброшено</span>' : '') +
+        (en.manual ? '<span class="rt-tag">переключено кодом</span>' : '') +
         '</div>';
     }
     logEl.innerHTML = html || '<div class="rt-empty">Нажмите ОК на любом пункте слева</div>';

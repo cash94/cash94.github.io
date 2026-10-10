@@ -2196,6 +2196,7 @@ function setupCheckboxes() {
     }, true);
   }
   setupAppleRemoteGuard();
+  setupAppleCheckboxClick();
 
   // 3. Добавление в базу
   var addToDbCheckbox = getEl('add-to-db');
@@ -2621,6 +2622,48 @@ function setupAppleRemoteGuard() {
     stray = { el: el, at: Date.now() };
     if (nearOk()) dropStray();
   }, true);
+}
+
+/**
+ * Пульт Apple TV: ОК переключает чекбокс.
+ *
+ * control.js (и «Проверка пульта») переключает чекбокс по ОК через click().
+ * В браузере для Apple TV такой click() доходит до чекбокса, его никто не
+ * отменяет, но переключения нет: checked прежний, change не приходит
+ * («Проверка пульта»: keydown Enter → click по input#rt-cb-auth, и всё).
+ *
+ * Поэтому на Apple click() чекбокса шлёт клик сам и смотрит на итог: клик не
+ * отменён, а checked не изменился — движок переключать не стал, переключаем
+ * сами и шлём input и change, как браузер. Отменённый клик (защита «второе
+ * переключение за 400 мс») так и остаётся без переключения, а где движок
+ * переключил сам, второй раз не трогаем.
+ */
+function setupAppleCheckboxClick() {
+  if (!AppState.applePlatform || HTMLInputElement.prototype._tsCheckboxClick) return;
+  var nativeClick = HTMLInputElement.prototype.click;
+  HTMLInputElement.prototype._tsCheckboxClick = true;
+
+  function fire(el, type) {
+    var ev;
+    try { ev = new Event(type, { bubbles: true }); } catch (e) { ev = document.createEvent('Event'); ev.initEvent(type, true, false); }
+    el.dispatchEvent(ev);
+  }
+
+  HTMLInputElement.prototype.click = function () {
+    if (this.type !== 'checkbox' || this.disabled) return nativeClick.apply(this, arguments);
+    var before = this.checked, ev;
+    try {
+      ev = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+    } catch (e) {
+      ev = document.createEvent('MouseEvents');
+      ev.initMouseEvent('click', true, true, window, 1, 0, 0, 0, 0, false, false, false, false, 0, null);
+    }
+    if (!this.dispatchEvent(ev) || this.checked !== before) return;
+    this.checked = !before;
+    this.__tsManualToggle = true;   // для «Проверки пульта» (remote-test.js)
+    fire(this, 'input');
+    fire(this, 'change');
+  };
 }
 
 /**
