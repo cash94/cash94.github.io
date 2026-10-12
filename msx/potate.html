@@ -880,7 +880,7 @@
         <button class="tab-btn" onclick="switchTab('modules', event)">🧩 Модули</button>
         <button class="tab-btn" onclick="switchTab('traffic', event)">📊 Трафик</button>
         <button class="tab-btn" onclick="switchTab('monitoring', event)">📊 Мониторинг</button>
-        <button class="tab-btn" onclick="switchTab('system', event)">⚙️ Система</button>
+        <button class="tab-btn" id="systemTabBtn" onclick="switchTab('system', event)">⚙️ Система<span id="updateBadge" class="badge badge-success" style="display:none; margin-left:6px;">новая версия</span></button>
         <button class="tab-btn" onclick="switchTab('access', event)">🔐 Доступ</button>
     </div>
 
@@ -1059,6 +1059,15 @@
         <div class="tab-content" id="tab-system">
             <div class="section">
                 <div class="section-header">
+                    <h2>🔄 Обновление сервера</h2>
+                    <button class="btn btn-secondary" onclick="checkServerUpdate()">🔍 Проверить</button>
+                </div>
+                <div id="serverUpdateInfo">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-header">
                     <h2>⚙️ Информация о сервере</h2>
                 </div>
                 <div id="systemInfo">
@@ -1154,7 +1163,8 @@
         function switchTab(tab, evt) {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            if (evt && evt.target) evt.target.classList.add('active');
+            const btn = evt && evt.target && evt.target.closest('.tab-btn');
+            if (btn) btn.classList.add('active');
             document.getElementById('tab-' + tab).classList.add('active');
             refreshCurrentTab();
         }
@@ -1218,6 +1228,9 @@
         function setAdminUser(user) {
             document.getElementById('adminUser').textContent = user ? '👑 ' + user.login : '';
             document.getElementById('adminLogoutBtn').hidden = !user;
+            // Вошли — сразу видно, есть ли новая версия сервера
+            if (user) setTimeout(refreshUpdateBadge, 0);
+            else document.getElementById('updateBadge').style.display = 'none';
         }
 
         async function authRequest(path, body) {
@@ -2046,6 +2059,146 @@
                 el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
             }
             loadHlsCache();
+            loadServerUpdate();
+        }
+
+        // ====== ОБНОВЛЕНИЕ СЕРВЕРА (services/updater.js) ======
+        let updatePollTimer = null;
+
+        // Отметка на вкладке «Система» — сразу после входа, не открывая её
+        async function refreshUpdateBadge() {
+            try {
+                const d = await apiFetch('/api/admin/update');
+                document.getElementById('updateBadge').style.display = d.available ? '' : 'none';
+                return d;
+            } catch (e) { return null; }
+        }
+
+        async function loadServerUpdate() {
+            const el = document.getElementById('serverUpdateInfo');
+            if (!el) return;
+            const d = await refreshUpdateBadge();
+            if (!d) {
+                el.innerHTML = '<div class="empty-state">Сервер не умеет обновляться из админки — обновите его вручную до 1.0.52</div>';
+                return;
+            }
+            renderServerUpdate(d);
+            if (d.busy) pollServerUpdate();
+        }
+
+        function renderServerUpdate(d) {
+            const el = document.getElementById('serverUpdateInfo');
+            const ago = d.checkedAt ? timeAgo(d.checkedAt) : 'ещё не проверялось';
+            let status;
+            if (d.busy) status = `<span class="badge badge-warning">⏳ ${escapeHtml(d.step || 'Обновление')}${d.progress >= 0 ? ' · ' + d.progress + '%' : ''}</span>`;
+            else if (d.available) status = `<span class="badge badge-success">Доступна ${escapeHtml(d.latest)}</span>`;
+            else if (d.latest) status = '<span class="badge badge-info">Установлена последняя версия</span>';
+            else status = '<span class="badge badge-info">—</span>';
+            let html = `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
+      <div class="info-row"><div class="info-label">Установлена:</div><div class="info-value"><span class="badge badge-info">${escapeHtml(d.current)}</span></div></div>
+      <div class="info-row"><div class="info-label">Состояние:</div><div class="info-value">${status}</div></div>
+      <div class="info-row"><div class="info-label">Проверено:</div><div class="info-value">${ago} · проверка каждые полчаса</div></div>
+    </div>`;
+            if (d.error) html += `<p style="color:#ff6b6b; margin:0 0 12px;">❌ ${escapeHtml(d.error)}</p>`;
+            if (d.available && d.notes && d.notes.length) {
+                html += '<h4 style="color:#fff; margin:0 0 8px;">Что нового в ' + escapeHtml(d.latest) + '</h4><ul style="margin:0 0 15px 18px; color:#c8d3dd; line-height:1.5;">' +
+                    d.notes.map((n) => '<li>' + escapeHtml(n) + '</li>').join('') + '</ul>';
+            }
+            if (d.mode === 'android') {
+                html += '<p style="color:#5a6c7d;">Сервер работает на Android: обновляется в приложении TorrStream Server — кнопка «Обновить сервер» или галочка автоматической установки.</p>';
+            } else if (d.mode === 'source') {
+                html += '<p style="color:#5a6c7d;">Сервер запущен из исходников (node server.js) — обновляется вручную.</p>';
+            } else if (!d.canSelfUpdate) {
+                html += '<p style="color:#f0ad4e;">Нет прав на запись в папку сервера — обновите вручную скриптом обновления.</p>';
+            } else {
+                html += '<div style="display:flex; flex-wrap:wrap; align-items:center;">';
+                if (d.available && !d.busy) html += `<button class="btn btn-success" style="margin:0 10px 10px 0;" onclick="installServerUpdate()">⬆️ Обновить до ${escapeHtml(d.latest)}</button>`;
+                if (d.rollback && !d.busy) html += `<button class="btn btn-secondary" style="margin:0 10px 10px 0;" onclick="rollbackServerUpdate()">↩️ Вернуть прежнюю версию${d.rollback.version ? ' (' + escapeHtml(d.rollback.version) + ')' : ''}</button>`;
+                html += '</div>';
+                html += `<label style="display:flex; align-items:center; color:#c8d3dd; cursor:pointer; margin-top:4px;">
+      <input type="checkbox" ${d.auto ? 'checked' : ''} onchange="setServerAutoUpdate(this.checked)" style="width:18px; height:18px; margin:0 10px 0 0;">
+      Устанавливать обновления автоматически — ночью (${d.autoHours[0]}:00–${d.autoHours[d.autoHours.length - 1] + 1}:00), когда никто не смотрит
+    </label>`;
+            }
+            el.innerHTML = html;
+        }
+
+        function pollServerUpdate() {
+            clearTimeout(updatePollTimer);
+            updatePollTimer = setTimeout(async () => {
+                try {
+                    const d = await apiFetch('/api/admin/update');
+                    renderServerUpdate(d);
+                    if (d.busy) pollServerUpdate();
+                } catch (e) { /* сервер перезапускается */ }
+            }, 1000);
+        }
+
+        async function checkServerUpdate() {
+            try {
+                const d = await apiFetch('/api/admin/update/check', { method: 'POST' });
+                renderServerUpdate(d);
+                document.getElementById('updateBadge').style.display = d.available ? '' : 'none';
+                showToast(d.error ? '❌ ' + d.error : (d.available ? '✅ Доступна ' + d.latest : '✅ Установлена последняя версия'), !!d.error);
+            } catch (e) { showToast('❌ ' + e.message, true); }
+        }
+
+        // После перезапуска ждём, пока сервер ответит новой версией
+        async function waitServerRestart(fromVersion) {
+            const el = document.getElementById('serverUpdateInfo');
+            el.innerHTML = '<div class="loading">⏳ Сервер перезапускается...</div>';
+            const started = Date.now();
+            while (Date.now() - started < 120000) {
+                await new Promise((r) => setTimeout(r, 2000));
+                try {
+                    const r = await fetch(SERVER_URL + '/api/version', { cache: 'no-store' });
+                    const v = (await r.json()).version;
+                    if (v && v !== fromVersion) {
+                        showToast('✅ Сервер перезапущен: ' + v);
+                        loadSystemInfo();
+                        return;
+                    }
+                } catch (e) { /* ещё не поднялся */ }
+            }
+            el.innerHTML = '<div class="empty-state">⚠️ Сервер не ответил за 2 минуты — проверьте, что он запущен</div>';
+        }
+
+        async function installServerUpdate() {
+            const st = await apiFetch('/api/admin/update').catch(() => null);
+            const streams = st ? st.activeStreams : 0;
+            if (!confirm(`Обновить сервер до ${st && st.latest}? Сервер перезапустится (около 10 секунд)` +
+                (streams ? `, ${streams} просмотр(ов) прервётся.` : '.'))) return;
+            const from = st && st.current;
+            pollServerUpdate();
+            try {
+                await apiFetch('/api/admin/update/install', { method: 'POST' });
+                clearTimeout(updatePollTimer);
+                waitServerRestart(from);
+            } catch (e) {
+                clearTimeout(updatePollTimer);
+                showToast('❌ ' + e.message, true);
+                loadServerUpdate();
+            }
+        }
+
+        async function rollbackServerUpdate() {
+            if (!confirm('Вернуть прежнюю версию сервера? Сервер перезапустится.')) return;
+            try {
+                const st = await apiFetch('/api/admin/update/rollback', { method: 'POST' });
+                waitServerRestart(st.current);
+            } catch (e) {
+                showToast('❌ ' + e.message, true);
+                loadServerUpdate();
+            }
+        }
+
+        async function setServerAutoUpdate(on) {
+            try {
+                renderServerUpdate(await apiFetch('/api/admin/update/settings', {
+                    method: 'POST', body: JSON.stringify({ auto: on })
+                }));
+                showToast(on ? '✅ Обновления будут ставиться ночью сами' : 'Автоустановка выключена');
+            } catch (e) { showToast('❌ ' + e.message, true); }
         }
 
         // Кэш HLS в памяти (lib/hls-store.js): занято, лимит, смена размера
