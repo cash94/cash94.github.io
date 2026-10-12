@@ -2462,20 +2462,16 @@
 
     var wheelAccum = 0;         // сумма deltaY одного «маха» колеса
     var wheelAccumAt = 0;
-    var wheelScrollable = false;
     var gestureLockUntil = 0;   // до этого времени новый шаг не делаем
     var swipe = null;
 
-    /**
-     * Обычно на главной прокручивать нечего, и жест мы забираем целиком
-     * (preventDefault). Но на совсем низком окне раскладка может не сойтись —
-     * тогда default не отменяем, иначе до вылезшего за экран содержимого будет
-     * не добраться. Смену подборки это не отменяет.
-     */
-    function pageScrollable() {
-        var mc = el('main-container');
-        return !!(mc && mc.scrollHeight - mc.clientHeight > 2);
-    }
+    // Страница главной неподвижна: вертикальный жест забираем всегда
+    // (preventDefault), а прокрутку контейнера держим на нуле (lockHomeScroll).
+    // Раньше жест отдавали браузеру, если раскладка вылезала за экран, — а она
+    // вылезает на 2–20 px пустых нижних отступов (1920×1080, телефон в
+    // альбомной), и на телефоне ещё на высоту адресной строки (#main-container
+    // — 100vh). Страница ехала под пальцем и тут же откатывалась к ряду —
+    // свайп выглядел дёргано. Карточки при этом помещаются целиком.
 
     /**
      * Жест адресован главной? Смотрим на цель касания, а не на
@@ -2531,15 +2527,10 @@
         var now = Date.now();
         // Пауза или разворот — счёт с нуля: иначе докрутка в обратную сторону
         // складывалась бы с прежним направлением
-        if (now - wheelAccumAt > 400 || (wheelAccum > 0) !== (dy > 0)) {
-            wheelAccum = 0;
-            // Раз на мах: чтение scrollHeight — принудительный layout, а тачпад
-            // присылает событий десятками
-            wheelScrollable = pageScrollable();
-        }
+        if (now - wheelAccumAt > 400 || (wheelAccum > 0) !== (dy > 0)) wheelAccum = 0;
         wheelAccumAt = now;
         wheelAccum += dy;
-        if (!wheelScrollable) e.preventDefault();
+        e.preventDefault();
 
         if (Math.abs(wheelAccum) < HOME.WHEEL_STEP_PX) return;
         if (now < gestureLockUntil) return;
@@ -2555,7 +2546,7 @@
         if (!e.touches || e.touches.length !== 1) return;
         if (!homeGestureTarget(e.target)) return;
         var t = e.touches[0];
-        swipe = { x: t.clientX, y: t.clientY, anchor: t.clientY, vertical: false, scrollable: false };
+        swipe = { x: t.clientX, y: t.clientY, anchor: t.clientY, vertical: false };
     }
 
     function onHomeTouchMove(e) {
@@ -2571,10 +2562,9 @@
             if (Math.abs(dx) > Math.abs(dy)) { swipe = null; return; }
             swipe.vertical = true;
             swipe.anchor = t.clientY;      // порог не считаем за пройденный путь
-            swipe.scrollable = pageScrollable();   // раз на касание, а не на кадр
         }
 
-        if (!swipe.scrollable) e.preventDefault();
+        e.preventDefault();
 
         var now = Date.now();
         if (now < gestureLockUntil) return;
@@ -2749,7 +2739,22 @@
         hoverFocus(hoverFocusableFrom(e.target));
     }
 
+    /**
+     * Прокрутку контейнера, пока активна главная, сразу возвращаем в ноль: её
+     * может сдвинуть не только палец, но и доводка фокуса (focusEl) к карточке
+     * у нижнего края. Только для активной главной — карточка фильма и другие
+     * экраны прокручивают тот же #main-container.
+     */
+    function lockHomeScroll() {
+        var mc = el('main-container');
+        if (!mc) return;
+        mc.addEventListener('scroll', function () {
+            if (mc.scrollTop && isHomeFocusable()) mc.scrollTop = 0;
+        }, { passive: true });
+    }
+
     function initGestures() {
+        lockHomeScroll();
         // На document и после control.js (home.js грузится последним): его
         // обработчик успевает пометить событие своим preventDefault
         document.addEventListener('wheel', onHomeWheel, { passive: false });

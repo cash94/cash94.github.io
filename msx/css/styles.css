@@ -8540,6 +8540,14 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   margin-left: var(--safe-left, env(safe-area-inset-left, 0px));
 }
 
+/* Главная неподвижна (home.js: жесты и lockHomeScroll): вертикальный свайп
+   листает подборки, горизонтальный двигает ряд — оба ведёт наш код. Без
+   touch-action браузер успевал начать прокрутку страницы на первых пикселях
+   жеста, раньше preventDefault, и страница дёргалась под пальцем */
+#content-home {
+  touch-action: none;
+}
+
 /* Android-приложение: вырез под камеру ничего не отодвигает. Окно теперь идёт
    под вырез (MainActivity.coverDisplayCutout), и отступ на всю высоту/ширину
    выреза выглядел просто опущенной шапкой и тёмной полосой до прежней линии
