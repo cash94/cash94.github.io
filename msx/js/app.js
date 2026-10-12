@@ -209,9 +209,9 @@ function setupVideoPlayerControls() {
   // Режим масштаба задаётся прямоугольником самого <video>, а не object-fit. На
   // части ТВ (Hisense Vidaa) видео выводит аппаратный слой: он берёт у элемента
   // только положение и размер в пикселях, а object-fit не видит — кнопка там
-  // переключала режимы вхолостую. Проверка на Vidaa (Об устройстве → «Проверка
-  // масштабирования видео», js/video-scale-test.js) показала: object-fit не
-  // работает ни в одном режиме, а рамка нужного размера — во всех четырёх. Так
+  // переключала режимы вхолостую. Проверка на Vidaa тестовым видео показала:
+  // object-fit не работает ни в одном режиме, а рамка нужного размера — во всех
+  // четырёх. Так
   // что каждый режим — своя рамка (applyVideoBox), а object-fit: fill только
   // вписывает кадр в неё; в обычном браузере результат тот же.
   var zoomMode = 'contain';
@@ -2553,45 +2553,6 @@ function renderDeviceInfo() {
   box.innerHTML = html;
 }
 window.renderDeviceInfo = renderDeviceInfo;
-
-/**
- * «Об устройстве» → «Проверка пульта»: журнал того, что присылает пульт на
- * нажатие ОК — клавиши, клики, фокус. Модуль грузится по нажатию, как и
- * проверка масштабирования ниже.
- */
-function openRemoteTest() {
-  if (window.RemoteTest) { window.RemoteTest.open(); return; }
-  var own = document.querySelector('script[src*="/js/app.js"]');
-  var el = document.createElement('script');
-  el.src = own ? own.src.replace('/js/app.js', '/js/remote-test.js') : '/js/remote-test.js';
-  el.onload = function () { if (window.RemoteTest) window.RemoteTest.open(); };
-  el.onerror = function () { showToast('Не удалось загрузить проверку пульта'); };
-  document.head.appendChild(el);
-}
-
-document.addEventListener('click', function (e) {
-  if (e.target && e.target.id === 'remote-test-btn') openRemoteTest();
-});
-
-/**
- * «Об устройстве» → «Проверка масштабирования видео». Модуль подгружается по
- * первому нажатию с того же адреса, что и app.js (зеркало или public при
- * ?local=1): в общей загрузке он не нужен.
- */
-function openVideoScaleTest() {
-  if (window.VideoScaleTest) { window.VideoScaleTest.open(); return; }
-  var own = document.querySelector('script[src*="/js/app.js"]');
-  var el = document.createElement('script');
-  el.src = own ? own.src.replace('/js/app.js', '/js/video-scale-test.js') : '/js/video-scale-test.js';
-  el.onload = function () { if (window.VideoScaleTest) window.VideoScaleTest.open(); };
-  el.onerror = function () { showToast('Не удалось загрузить проверку масштабирования'); };
-  document.head.appendChild(el);
-}
-
-// Делегирование: кнопка в разметке настроек, OK пульта приходит к ней кликом
-document.addEventListener('click', function (e) {
-  if (e.target && e.target.id === 'video-scale-test-btn') openVideoScaleTest();
-});
 
 // ==================== МЕНЮ КОНФИГУРАЦИИ ====================
 function setupConfigMenu() {
