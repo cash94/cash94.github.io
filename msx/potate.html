@@ -877,6 +877,7 @@
         <button class="tab-btn active" onclick="switchTab('streams', event)">🎬 Активные потоки</button>
         <button class="tab-btn" onclick="switchTab('clients', event)">👥 Клиенты</button>
         <button class="tab-btn" onclick="switchTab('catalogs', event)">📀 Каталоги</button>
+        <button class="tab-btn" onclick="switchTab('modules', event)">🧩 Модули</button>
         <button class="tab-btn" onclick="switchTab('traffic', event)">📊 Трафик</button>
         <button class="tab-btn" onclick="switchTab('monitoring', event)">📊 Мониторинг</button>
         <button class="tab-btn" onclick="switchTab('system', event)">⚙️ Система</button>
@@ -919,6 +920,20 @@
                     <button class="btn" onclick="updateAllCatalogs()">🔄 Обновить все</button>
                 </div>
                 <div id="catalogsList" class="table-wrap">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- === МОДУЛИ: включить / выключить (module-loader.js) === -->
+        <div class="tab-content" id="tab-modules">
+            <div class="section">
+                <div class="section-header">
+                    <h2>🧩 Модули сервера</h2>
+                    <button class="btn" onclick="checkModuleUpdates()">🔄 Проверить обновления</button>
+                </div>
+                <p style="color:#5a6c7d; margin:0 0 12px;">Выключенный модуль остаётся установленным и обновляется, но не работает — до включения, в том числе после перезапуска сервера.</p>
+                <div id="modulesList" class="table-wrap">
                     <div class="loading">Загрузка...</div>
                 </div>
             </div>
@@ -1050,6 +1065,15 @@
                     <div class="loading">Загрузка...</div>
                 </div>
             </div>
+            <div class="section">
+                <div class="section-header">
+                    <h2>⚡ Кэш HLS в памяти</h2>
+                </div>
+                <p style="color:#5a6c7d; margin:0 0 12px;">Сегменты видео при перекодировании сервер держит в оперативной памяти — RAM-диск (ImDisk, диск R:) больше не нужен. Что не поместилось в лимит, пишется на диск.</p>
+                <div id="hlsCacheInfo">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
         </div>
 
     </div>
@@ -1142,6 +1166,7 @@
             if (id === 'streams') loadStreams();
             else if (id === 'clients') loadClients();
             else if (id === 'catalogs') loadCatalogs();
+            else if (id === 'modules') loadModules();
             else if (id === 'traffic') loadTrafficMonths();
             else if (id === 'monitoring') loadMonitoring();
             else if (id === 'system') loadSystemInfo();
@@ -1485,6 +1510,25 @@
         }
 
         // ====== КЛИЕНТЫ ======
+        // Строка клиента: id (копируется), IP, браузер, визиты, TorrServer
+        function clientRowHtml(c, label) {
+            return `<tr onclick="showClientConfig('${c.id}')">
+        <td class="mono">${label ? '<span class="badge badge-info">' + label + '</span> ' : ''}<span class="client-id-full" title="Нажмите для копирования" onclick="event.stopPropagation(); copyToClipboard('${c.id}')">${c.id}</span></td>
+        <td>${c.ip || '—'}</td>
+        <td class="mono" style="max-width:250px; overflow:hidden; text-overflow:ellipsis;" title="${(c.userAgent || '').replace(/"/g, '&quot;')}">${c.userAgent || '—'}</td>
+        <td>${formatDate(c.firstSeen)}</td>
+        <td>${timeAgo(c.lastSeen)}</td>
+        <td>${c.hasConfig ? '<span class="badge badge-success">✓ TorrServer</span>' : '<span class="badge badge-warning">✗ нет</span>'}</td>
+      </tr>`;
+        }
+
+        function clientGroupHeader(html) {
+            return `<tr class="client-group"><td colspan="6" style="background:rgba(74,158,255,0.10); font-weight:600; padding:10px 12px;">${html}</td></tr>`;
+        }
+
+        // Группы по пользователю: строка учётки (под ней работают все её
+        // устройства) и сами устройства из сессий; в конце — клиенты без учётки.
+        // Везде свежие сверху: внизу те, кто давно не заходил
         async function loadClients() {
             const el = document.getElementById('clientsList');
             el.innerHTML = '<div class="loading">Загрузка...</div>';
@@ -1494,27 +1538,53 @@
                     el.innerHTML = '<div class="empty-state"><div class="icon">👥</div>Нет клиентов</div>';
                     return;
                 }
+                const byRecent = (a, b) => (b.lastSeen || 0) - (a.lastSeen || 0);
+                const clients = data.clients.slice().sort(byRecent);
                 let html = `<table><thead><tr>
       <th>Client ID</th><th>IP</th><th>User-Agent</th><th>Первый визит</th><th>Последний визит</th><th>Конфиг</th>
     </tr></thead><tbody>`;
-                data.clients.forEach(c => {
-                    html += `<tr onclick="showClientConfig('${c.id}')">
-        <td class="mono"><span class="client-id-full" title="Нажмите для копирования" onclick="event.stopPropagation(); copyToClipboard('${c.id}')">${c.id}</span></td>
-        <td>${c.ip}</td>
-        <td class="mono" style="max-width:250px; overflow:hidden; text-overflow:ellipsis;" title="${(c.userAgent || '').replace(/"/g, '&quot;')}">${c.userAgent || '—'}</td>
-        <td>${formatDate(c.firstSeen)}</td>
-        <td>${timeAgo(c.lastSeen)}</td>
-        <td>${c.hasConfig ? '<span class="badge badge-success">✓ TorrServer</span>' : '<span class="badge badge-warning">✗ нет</span>'}</td>
+
+                // Старый сервер учёток не отдаёт — просто список по свежести
+                if (!Array.isArray(data.accounts)) {
+                    clients.forEach((c) => { html += clientRowHtml(c); });
+                    el.innerHTML = html + '</tbody></table>';
+                    return;
+                }
+
+                const groups = data.accounts.map((u) => {
+                    const own = clients.filter((c) => c.userId === u.userId);
+                    const devices = (u.devices || []).slice().sort(byRecent);
+                    const last = Math.max(0, ...own.map((c) => c.lastSeen || 0), ...devices.map((d) => d.lastSeen || 0));
+                    return { u, own, devices, last };
+                }).filter((g) => g.own.length || g.devices.length).sort((a, b) => b.last - a.last);
+
+                groups.forEach((g) => {
+                    html += clientGroupHeader(`👤 ${escapeHtml(g.u.login)}${g.u.role === 'admin' ? ' <span class="badge badge-info">админ</span>' : ''}
+                        <span style="color:#5a6c7d; font-weight:400;"> · устройств: ${g.devices.length} · последний визит ${g.last ? timeAgo(g.last) : '—'}</span>`);
+                    g.own.forEach((c) => { html += clientRowHtml(c, 'учётка'); });
+                    g.devices.forEach((d) => {
+                        html += `<tr style="opacity:0.85">
+        <td style="padding-left:28px; color:#5a6c7d;">📱 устройство</td>
+        <td>—</td>
+        <td class="mono" style="max-width:250px; overflow:hidden; text-overflow:ellipsis;" title="${(d.userAgent || '').replace(/"/g, '&quot;')}">${escapeHtml(d.userAgent || '—')}</td>
+        <td>${formatDate(d.createdAt)}</td>
+        <td>${timeAgo(d.lastSeen)}</td>
+        <td></td>
       </tr>`;
+                    });
                 });
-                html += '</tbody></table>';
-                el.innerHTML = html;
+
+                const loose = clients.filter((c) => !c.userId);
+                if (loose.length) {
+                    html += clientGroupHeader(`👥 Без учётной записи <span style="color:#5a6c7d; font-weight:400;"> · ${loose.length}</span>`);
+                    loose.forEach((c) => { html += clientRowHtml(c); });
+                }
+                el.innerHTML = html + '</tbody></table>';
             } catch (e) {
                 el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
             }
         }
 
-        // ====== МОДАЛКА КЛИЕНТА (Конфиг + Трафик + История) ======
         async function showClientConfig(clientId) {
             document.getElementById('clientConfigModal').classList.add('active');
             const content = document.getElementById('clientConfigContent');
@@ -1700,11 +1770,70 @@
             }
         }
 
+        // Что делает модуль — коротко для админки (в реестре описаний нет)
+        const MODULE_INFO = {
+            'rutube-proxy': ['Трейлеры RuTube', 'поиск трейлеров и их показ на баннере главной и в карточке'],
+            'rus-catalog': ['Русские фильмы и сериалы', 'каталог «Русские»'],
+            'kinopoisk-collections': ['Подборки Кинопоиска', 'ряды подборок на главной'],
+            'skip-intro': ['Пропуск заставок и титров', 'кнопка «Пропустить» в плеере']
+        };
+
+        async function loadModules() {
+            const el = document.getElementById('modulesList');
+            try {
+                const d = await apiFetch('/api/modules');
+                if (!d.modules || !d.modules.length) { el.innerHTML = '<div class="empty-state">Модули не установлены</div>'; return; }
+                let html = '<table><thead><tr><th>Модуль</th><th>Версия</th><th>Состояние</th><th>Действие</th></tr></thead><tbody>';
+                d.modules.forEach((m) => {
+                    const info = MODULE_INFO[m.name];
+                    const on = m.enabled !== false;   // старый сервер поля не отдаёт — все модули у него включены
+                    const state = !on
+                        ? '<span class="badge badge-warning">Выключен</span>'
+                        : (m.loaded !== false ? '<span class="badge badge-success">Работает</span>' : '<span class="badge badge-danger">Не загрузился</span>');
+                    html += `<tr${on ? '' : ' style="opacity:0.7"'}>
+                        <td><b>${escapeHtml(info ? info[0] : m.name)}</b><div style="color:#5a6c7d; font-size:12px;">${escapeHtml(info ? info[1] + ' · ' + m.name : m.name)}</div></td>
+                        <td><span class="badge badge-info">${escapeHtml(m.version)}</span></td>
+                        <td>${state}</td>
+                        <td>${on
+                            ? `<button class="btn btn-secondary" onclick="setModuleEnabled('${escapeHtml(m.name)}', false)">⏸️ Выключить</button>`
+                            : `<button class="btn btn-success" onclick="setModuleEnabled('${escapeHtml(m.name)}', true)">▶️ Включить</button>`}</td>
+                    </tr>`;
+                });
+                el.innerHTML = html + '</tbody></table>';
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + escapeHtml(e.message) + '</div>';
+            }
+        }
+
+        async function setModuleEnabled(name, enabled) {
+            const title = (MODULE_INFO[name] || [name])[0];
+            if (!enabled && !confirm(`Выключить модуль «${title}»? Его функции перестанут работать у всех устройств.`)) return;
+            try {
+                await apiFetch('/api/modules/' + encodeURIComponent(name) + (enabled ? '/enable' : '/disable'), { method: 'POST' });
+                showToast((enabled ? '▶️ Включён: ' : '⏸️ Выключен: ') + title);
+            } catch (e) {
+                showToast('❌ Ошибка: ' + e.message, true);
+            }
+            loadModules();
+        }
+
+        async function checkModuleUpdates() {
+            showToast('⏳ Проверка обновлений модулей...');
+            try {
+                await apiFetch('/api/modules/check-updates', { method: 'POST' });
+                showToast('✅ Модули проверены');
+            } catch (e) {
+                showToast('❌ Ошибка: ' + e.message, true);
+            }
+            loadModules();
+        }
+
         async function updateCatalog(name) {
             if (!confirm(`Обновить/загрузить каталог "${name}"?`)) return;
             showToast('⏳ Загрузка каталога ' + name + '...');
             try {
-                await apiFetch('/api/catalog/' + name + '/update', { method: 'POST' });
+                // force=1 — без 15-минутной паузы (действует только для администратора)
+                await apiFetch('/api/catalog/' + name + '/update?force=1', { method: 'POST' });
                 showToast('✅ Каталог ' + name + ' успешно загружен');
                 setTimeout(loadCatalogs, 500);
             } catch (e) {
@@ -1902,7 +2031,7 @@
                 html += '<h4 style="color:#fff; margin:15px 0 10px;">💾 Использование диска</h4>';
                 html += '<table><thead><tr><th>Директория</th><th>Размер</th><th>Файлов</th></tr></thead><tbody>';
                 const storage = load.storage || {};
-                ['catalog', 'hls', 'cache', 'fileInfoCache', 'clients', 'timecodes', 'audioPrefs', 'history', 'sync', 'traffic'].forEach(k => {
+                ['catalog', 'hlsRam', 'hls', 'cache', 'fileInfoCache', 'clients', 'timecodes', 'audioPrefs', 'history', 'sync', 'traffic'].forEach(k => {
                     if (storage[k]) {
                         html += `<tr><td>${storage[k].path || k}</td><td>${storage[k].sizeFormatted}</td><td>${storage[k].fileCount || '—'}</td></tr>`;
                     }
@@ -1915,6 +2044,56 @@
                 el.innerHTML = html;
             } catch (e) {
                 el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
+            }
+            loadHlsCache();
+        }
+
+        // Кэш HLS в памяти (lib/hls-store.js): занято, лимит, смена размера
+        async function loadHlsCache() {
+            const el = document.getElementById('hlsCacheInfo');
+            if (!el) return;
+            try {
+                renderHlsCache(await apiFetch('/api/admin/hls-cache'));
+            } catch (e) {
+                // Старый сервер такого не знает
+                el.innerHTML = '<div class="empty-state">Сервер не поддерживает кэш в памяти — обновите TorrStream</div>';
+            }
+        }
+
+        function renderHlsCache(d) {
+            const el = document.getElementById('hlsCacheInfo');
+            const mb = (b) => (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + ' МБ';
+            const auto = d.setting === 'auto';
+            const state = !d.ingest
+                ? '<span class="badge badge-danger">Приёмник не запустился — всё на диске</span>'
+                : (d.limitMb > 0 ? '<span class="badge badge-success">Включён</span>' : '<span class="badge badge-warning">Выключен</span>');
+            el.innerHTML = `<div style="background:#0f1419; padding:15px; border-radius:8px; margin-bottom:15px;">
+      <div class="info-row"><div class="info-label">Состояние:</div><div class="info-value">${state}</div></div>
+      <div class="info-row"><div class="info-label">Занято:</div><div class="info-value">${mb(d.usedBytes)} из ${d.limitMb} МБ · файлов: ${d.files}</div></div>
+      <div class="info-row"><div class="info-label">Лимит:</div><div class="info-value">${auto ? 'авто — ' + d.autoMb + ' МБ (четверть ОЗУ, не больше 2 ГБ)' : d.limitMb + ' МБ'} · ОЗУ: ${d.totalMemMb} МБ</div></div>
+      <div class="info-row"><div class="info-label">Сверх лимита:</div><div class="info-value mono">${escapeHtml(d.diskDir || '')}</div></div>
+    </div>
+    ${d.envOverride ? '<p style="color:#f0ad4e;">Размер задан переменной окружения HLS_RAM_MB — настройка ниже не действует.</p>' : ''}
+    <div style="display:flex; flex-wrap:wrap; align-items:center;">
+      <input id="hlsCacheMb" type="number" min="0" step="256" placeholder="${d.autoMb}" value="${auto ? '' : d.limitMb}" style="width:140px; margin:0 10px 10px 0; padding:8px; background:#0f1419; color:#fff; border:1px solid #2a3a4a; border-radius:6px;">
+      <span style="color:#5a6c7d; margin:0 10px 10px 0;">МБ (0 — выключить)</span>
+      <button class="btn btn-success" style="margin:0 10px 10px 0;" onclick="saveHlsCache(false)">💾 Сохранить</button>
+      <button class="btn btn-secondary" style="margin:0 10px 10px 0;" onclick="saveHlsCache(true)">↺ Авто</button>
+    </div>`;
+        }
+
+        async function saveHlsCache(toAuto) {
+            const raw = document.getElementById('hlsCacheMb').value.trim();
+            const mbValue = toAuto || raw === '' ? 'auto' : Number(raw);
+            try {
+                const d = await apiFetch('/api/admin/hls-cache', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mb: mbValue })
+                });
+                renderHlsCache(d);
+                showToast('✅ Кэш в памяти: ' + (d.limitMb > 0 ? d.limitMb + ' МБ' : 'выключен'));
+            } catch (e) {
+                showToast('❌ ' + e.message, true);
             }
         }
 

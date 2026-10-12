@@ -16,14 +16,14 @@ if %errorLevel% neq 0 (
 )
 
 :: Создание папок
-echo [1/5] Создание папок...
+echo [1/4] Создание папок...
 if not exist "C:\Vidaa" mkdir "C:\Vidaa"
 if not exist "C:\Vidaa\ffmpeg" mkdir "C:\Vidaa\ffmpeg"
 echo [OK] Папки созданы
 echo.
 
 :: Скачивание ffmpeg
-echo [2/5] Скачивание ffmpeg...
+echo [2/4] Скачивание ffmpeg...
 powershell -Command "Invoke-WebRequest -Uri 'https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_win64-clang-gpl.zip' -OutFile '%TEMP%\ffmpeg.zip'"
 if %errorLevel% neq 0 (
     echo [ОШИБКА] Не удалось скачать ffmpeg
@@ -40,14 +40,8 @@ rmdir /S /Q "%TEMP%\ffmpeg" >nul
 echo [OK] ffmpeg установлен
 echo.
 
-:: Скачивание yt-dlp
-echo [3/5] Скачивание yt-dlp...
-powershell -Command "Invoke-WebRequest -Uri 'https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp.exe' -OutFile 'C:\Vidaa\ffmpeg\yt-dlp.exe'"
-echo [OK] yt-dlp установлен
-echo.
-
 :: Установка TorrServer (опционально)
-echo [4/5] Установка TorrServer...
+echo [3/4] Установка TorrServer...
 set /p "installTorrServer=Хотите установить последнюю версию TorrServer для автоматического запуска с TorrStream? (Y/N): "
 if /i "!installTorrServer!"=="Y" (
     echo Скачивание TorrServer...
@@ -62,76 +56,8 @@ if /i "!installTorrServer!"=="Y" (
 )
 echo.
 
-:: ==========================================
-:: ПРОСТОЙ ВОПРОС ПРО RAM-ДИСК
-:: ==========================================
-set "installRamDisk=N"
-set /p "installRamDisk=Хотите установить RAM-диск для кэша HLS? (Y/N): "
-
-if /i "!installRamDisk!"=="Y" (
-    echo.
-    echo [RAM-ДИСК] Скачивание установщика ImDisk Toolkit...
-    powershell -Command "Invoke-WebRequest -Uri 'https://github.com/cash94/cash94.github.io/releases/download/%%23vidaa/RamCache.zip' -OutFile '%TEMP%\RamCache.zip'"
-    
-    if errorlevel 1 (
-        echo [ОШИБКА] Не удалось скачать RamCache.zip
-        echo [ПРЕДУПРЕЖДЕНИЕ] Продолжаем установку без RAM-диска
-    ) else (
-        echo [RAM-ДИСК] Распаковка архива...
-        powershell -Command "Expand-Archive -Path '%TEMP%\RamCache.zip' -DestinationPath '%TEMP%\RamCache' -Force"
-        
-        if exist "%TEMP%\RamCache\install.bat" (
-            echo [RAM-ДИСК] Запуск установщика ImDisk Toolkit...
-            echo.
-            echo ========================================
-            echo   ВАЖНО: Сейчас откроется окно установщика
-            echo   ImDisk Toolkit. Следуйте инструкциям.
-            echo ========================================
-            echo.
-            
-            call "%TEMP%\RamCache\install.bat"
-            
-            echo.
-            echo [OK] ImDisk Toolkit установлен
-            echo.
-            echo ========================================
-            echo   ИНСТРУКЦИЯ ПО НАСТРОЙКЕ RAM-ДИСКА:
-            echo ========================================
-            echo.
-            echo 1. Найдите на Рабочем столе ярлык
-            echo    "Настройка RAM-диска"
-            echo.
-            echo 2. Настройте параметры:
-            echo    - Размер:        2048 MB
-            echo    - Буква диска:   R
-            echo    - ФС:            NTFS
-            echo.
-            echo 3. Поставьте галочку:
-            echo    "Load ImDisk Driver at startup"
-            echo.
-            echo 4. Нажмите "OK"
-            echo.
-            echo TorrStream автоматически обнаружит
-            echo диск R: и будет использовать его!
-            echo.
-            echo ========================================
-            echo.
-            pause
-            
-            :: Очистка временных файлов RamCache
-            rmdir /S /Q "%TEMP%\RamCache" >nul 2>&1
-            del /Q "%TEMP%\RamCache.zip" >nul 2>&1
-        ) else (
-            echo [ОШИБКА] install.bat не найден в архиве
-        )
-    )
-) else (
-    echo [ПРОПУЩЕНО] Установка RAM-диска пропущена
-)
-echo.
-
 :: Скачивание TorrStream
-echo [5/5] Скачивание TorrStream...
+echo [4/4] Скачивание TorrStream...
 powershell -Command "Invoke-WebRequest -Uri 'https://github.com/cash94/cash94.github.io/releases/download/%%23vidaa/TorrStream-windows.zip' -OutFile '%TEMP%\TorrStream.zip'"
 if errorlevel 1 (
     echo [ОШИБКА] Не удалось скачать TorrStream
@@ -167,15 +93,9 @@ echo ========================================
 echo.
 echo Установленные компоненты:
 echo - ffmpeg: C:\Vidaa\ffmpeg\
-echo - yt-dlp: C:\Vidaa\ffmpeg\
 if /i "!installTorrServer!"=="Y" echo - TorrServer: C:\Vidaa\TorrServer-windows-amd64.exe
 if exist "C:\Vidaa\ffmpeg\pssuspend.exe" echo - pssuspend: C:\Vidaa\ffmpeg\
-if /i "!installRamDisk!"=="Y" (
-    echo - ImDisk Toolkit: установлен
-    echo.
-    echo ВНИМАНИЕ: Не забудьте настроить RAM-диск!
-    echo Буква диска должна быть: R
-)
+echo - Кэш HLS: в памяти TorrStream, RAM-диск не нужен
 echo.
 echo TorrStream распакован в: !extractPath!
 echo.

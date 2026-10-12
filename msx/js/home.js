@@ -1089,7 +1089,11 @@
         var orig = src.original_title || src.original_name || '';
         var date = src.release_date || src.first_air_date ||
             (item.release_date || item.first_air_date || '');
-        Promise.resolve(window.fetchRutubeTrailer(title, orig, date)).then(function (res) {
+        // С кэшем на сервере (catalog.js: fetchRutubeTrailerCached) — по id фильма
+        var find = window.fetchRutubeTrailerCached
+            ? window.fetchRutubeTrailerCached({ id: item.id, type: item.media_type }, title, orig, date)
+            : window.fetchRutubeTrailer(title, orig, date);
+        Promise.resolve(find).then(function (res) {
             if (gen !== homeState.hero.gen) return;
             if (res && res.url) {
                 if (shared) shared[cacheKey] = { url: res.url, title: res.title || title };

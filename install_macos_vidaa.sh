@@ -24,7 +24,6 @@ PF_CONF="/etc/pf.conf"
 APP_ZIP_URL="https://github.com/cash94/cash94.github.io/releases/download/%23vidaa/TorrStream-macos.zip"
 FFMPEG_TAG="v7.1.3-3"
 FFMPEG_VER="7.1.3-3"
-YTDLP_TAG="2026.03.17"
 
 # --------------------------------------------------------------------------
 # Вывод
@@ -185,136 +184,11 @@ fix_binary() {
 }
 
 # --------------------------------------------------------------------------
-# Память и RAM-диск
+# Старый RAM-диск (/Volumes/VidaaRAMDisk)
 # --------------------------------------------------------------------------
-vm_stat_field() {
-    # $1 — ключ вместе с двоеточием, например "Pages free:"
-    vm_stat 2>/dev/null | awk -v key="$1" '
-        index($0, key) == 1 { v = $NF; gsub(/[^0-9]/, "", v); print v; exit }'
-}
-
-get_page_size() {
-    local ps
-    # размер страницы берём из шапки vm_stat (4096 на Intel, 16384 на Apple Silicon)
-    ps="$(vm_stat 2>/dev/null | awk -F'page size of ' 'NR==1 && NF>1 { split($2, a, " "); print a[1]; exit }')"
-    ps="$(digits_only "$ps")"
-    [ -n "$ps" ] || ps="$(digits_only "$(sysctl -n hw.pagesize 2>/dev/null)")"
-    [ -n "$ps" ] || ps=4096
-    printf '%s' "$ps"
-}
-
-check_available_memory() {
-    local page_size free_p inactive_p purge_p spec_p total avail_bytes
-    page_size="$(get_page_size)"
-    free_p="$(vm_stat_field 'Pages free:')"
-    inactive_p="$(vm_stat_field 'Pages inactive:')"
-    purge_p="$(vm_stat_field 'Pages purgeable:')"
-    spec_p="$(vm_stat_field 'Pages speculative:')"
-    free_p=${free_p:-0}; inactive_p=${inactive_p:-0}
-    purge_p=${purge_p:-0}; spec_p=${spec_p:-0}
-
-    total=$(( free_p + inactive_p + purge_p + spec_p ))
-    avail_bytes=$(( total * page_size ))
-    printf '%s' $(( avail_bytes / 1073741824 ))
-}
-
-total_memory_gb() {
-    local m
-    m="$(digits_only "$(sysctl -n hw.memsize 2>/dev/null)")"
-    [ -n "$m" ] || m=0
-    printf '%s' $(( m / 1073741824 ))
-}
-
-# Результат кладём в глобальную переменную: вывод функции нельзя смешивать
-# с интерактивными вопросами (иначе $(...) проглатывает весь диалог).
-RAMDISK_SIZE_GB=""
-setup_ramdisk() {
-    RAMDISK_SIZE_GB=""
-    local available_gb total_gb max_gb user_size
-    available_gb="$(check_available_memory)"
-    total_gb="$(total_memory_gb)"
-
-    plain ""
-    plain "=========================================="
-    plain "  Настройка RAM-диска"
-    plain "=========================================="
-    info "Всего памяти: ${total_gb} GB, доступно (приблизительно): ${available_gb} GB"
-
-    if [ "$available_gb" -lt 2 ]; then
-        warn "Свободно менее 2 GB памяти. RAM-диск не будет создан."
-        plain ""
-        return 0
-    fi
-
-    max_gb=$(( available_gb - 1 ))
-    # не отдаём под RAM-диск больше половины физической памяти
-    if [ "$total_gb" -gt 0 ] && [ "$max_gb" -gt $(( total_gb / 2 )) ]; then
-        max_gb=$(( total_gb / 2 ))
-    fi
-    [ "$max_gb" -ge 1 ] || max_gb=1
-
-    warn "Вы можете указать размер RAM-диска от 1 до ${max_gb} GB."
-    warn "(остальная память останется системе)"
-    plain ""
-    ask "Введите размер RAM-диска в GB (1-${max_gb}) или нажмите Enter чтобы пропустить: " user_size
-
-    if [ -z "$user_size" ]; then
-        warn "RAM-диск не будет создан"
-        plain ""
-        return 0
-    fi
-    case "$user_size" in
-        ''|*[!0-9]*) err "Некорректный ввод. RAM-диск не будет создан."; plain ""; return 0 ;;
-    esac
-    if [ "$user_size" -lt 1 ] || [ "$user_size" -gt "$max_gb" ]; then
-        err "Размер должен быть от 1 до ${max_gb} GB. RAM-диск не будет создан."
-        plain ""
-        return 0
-    fi
-
-    RAMDISK_SIZE_GB="$user_size"
-    ok "RAM-диск будет создан размером: ${RAMDISK_SIZE_GB} GB"
-    plain ""
-    return 0
-}
-
-create_ramdisk() {
-    local size_gb="$1" blocks device fmt created=0
-    [ -n "$size_gb" ] || return 1
-
-    if [ -d "$RAMDISK_PATH" ]; then
-        warn "RAM-диск $RAMDISK_PATH уже существует"
-        return 0
-    fi
-
-    blocks=$(( size_gb * 1024 * 1024 * 1024 / 512 ))
-    info "Создание RAM-диска размером ${size_gb} GB..."
-
-    device="$(hdiutil attach -nomount ram://$blocks 2>/dev/null | head -n 1 | tr -d '[:space:]')"
-    if [ -z "$device" ]; then
-        err "Ошибка создания RAM-диска"
-        return 1
-    fi
-
-    # HFS+ работает везде; APFS — запасной вариант для новых систем
-    for fmt in "HFS+" "JHFS+" "APFS"; do
-        if diskutil erasevolume "$fmt" "$RAMDISK_NAME" "$device" >/dev/null 2>&1; then
-            created=1
-            break
-        fi
-    done
-
-    if [ "$created" -eq 1 ] && [ -d "$RAMDISK_PATH" ]; then
-        chmod 1777 "$RAMDISK_PATH" 2>/dev/null
-        ok "RAM-диск успешно создан: $RAMDISK_PATH"
-        return 0
-    fi
-
-    err "Ошибка форматирования RAM-диска"
-    hdiutil detach "$device" -force >/dev/null 2>&1
-    return 1
-}
-
+# Кэш HLS сервер теперь держит в своей памяти (размер — в админке). RAM-диск
+# от прежних версий установщика занимал бы память второй раз, поэтому при
+# обновлении и удалении его убираем вместе со службой пересоздания.
 remove_ramdisk() {
     local device
     [ -d "$RAMDISK_PATH" ] || return 0
@@ -327,33 +201,12 @@ remove_ramdisk() {
     ok "RAM-диск удален"
 }
 
-create_ramdisk_script() {
-    local size_gb="$1" blocks
-    blocks=$(( size_gb * 1024 * 1024 * 1024 / 512 ))
-
-    cat > "$RAMDISK_SH" << EOF
-#!/bin/bash
-# Скрипт создания RAM-диска для Vidaa (создаётся установщиком)
-RAMDISK_NAME="$RAMDISK_NAME"
-RAMDISK_PATH="$RAMDISK_PATH"
-BLOCKS=$blocks
-
-[ -d "\$RAMDISK_PATH" ] && exit 0
-
-DEVICE=\$(hdiutil attach -nomount ram://\$BLOCKS 2>/dev/null | head -n 1 | tr -d '[:space:]')
-[ -n "\$DEVICE" ] || exit 1
-
-for FMT in "HFS+" "JHFS+" "APFS"; do
-    if diskutil erasevolume "\$FMT" "\$RAMDISK_NAME" "\$DEVICE" >/dev/null 2>&1; then
-        chmod 1777 "\$RAMDISK_PATH" 2>/dev/null
-        exit 0
-    fi
-done
-
-hdiutil detach "\$DEVICE" -force >/dev/null 2>&1
-exit 1
-EOF
-    chmod 755 "$RAMDISK_SH"
+remove_legacy_ramdisk() {
+    [ -f "$RAMDISK_PLIST" ] || [ -f "$RAMDISK_SH" ] || [ -d "$RAMDISK_PATH" ] || return 0
+    warn "RAM-диск больше не нужен: кэш HLS теперь в памяти TorrStream"
+    svc_stop "$RAMDISK_LABEL" "$RAMDISK_PLIST"
+    rm -f "$RAMDISK_PLIST" "$RAMDISK_SH"
+    remove_ramdisk
 }
 
 # --------------------------------------------------------------------------
@@ -505,7 +358,6 @@ create_start_script() {
     cat > "$START_SH" << EOF
 #!/bin/bash
 # Обёртка запуска Vidaa (создаётся установщиком)
-[ -x "$RAMDISK_SH" ] && "$RAMDISK_SH" >/dev/null 2>&1
 exec "$BIN_PATH"
 EOF
     chmod 755 "$START_SH"
@@ -556,29 +408,6 @@ EOF
     svc_start "$SERVER_LABEL" "$SERVER_PLIST"
 }
 
-create_ramdisk_service() {
-    cat > "$RAMDISK_PLIST" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>$RAMDISK_LABEL</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>$RAMDISK_SH</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <false/>
-</dict>
-</plist>
-EOF
-    svc_stop "$RAMDISK_LABEL" "$RAMDISK_PLIST"
-    svc_start "$RAMDISK_LABEL" "$RAMDISK_PLIST"
-}
-
 # Удаление LaunchAgent'ов от предыдущих версий установщика
 remove_legacy_agents() {
     local d p
@@ -604,7 +433,6 @@ read_installed_port() {
 save_conf() {
     cat > "$CONF_FILE" << EOF
 VIDAA_PORT=$1
-VIDAA_RAMDISK_GB=$2
 VIDAA_ARCH=$ARCH
 VIDAA_OS=$OS_VER
 EOF
@@ -612,7 +440,7 @@ EOF
 }
 
 # --------------------------------------------------------------------------
-# Компоненты: приложение, ffmpeg, yt-dlp
+# Компоненты: приложение, ffmpeg
 # --------------------------------------------------------------------------
 install_app_binary() {
     local app_file tmpdir
@@ -719,34 +547,6 @@ install_ffmpeg() {
     return 0
 }
 
-install_ytdlp() {
-    local name url dest
-    mkdir -p "$INSTALL_DIR/ffmpeg"
-    dest="$INSTALL_DIR/ffmpeg/yt-dlp"
-
-    # сборка yt-dlp_macos требует macOS 10.15+, для старых систем есть legacy
-    if os_at_least 1015; then
-        name="yt-dlp_macos"
-    else
-        name="yt-dlp_macos_legacy"
-    fi
-
-    plain "Скачивание yt-dlp ($name)..."
-    url="https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_TAG}/${name}"
-    if ! download_file "$url" "$dest"; then
-        warn "Не удалось скачать закреплённую версию, пробую latest..."
-        url="https://github.com/yt-dlp/yt-dlp/releases/latest/download/${name}"
-        if ! download_file "$url" "$dest"; then
-            err "Ошибка при скачивании yt-dlp"
-            return 1
-        fi
-    fi
-
-    fix_binary "$dest"
-    ok "yt-dlp установлен"
-    return 0
-}
-
 print_service_hints() {
     plain ""
     warn "Управление сервисом:"
@@ -776,18 +576,8 @@ install_vidaa() {
 
     install_app_binary || exit 1
     install_ffmpeg     || exit 1
-    install_ytdlp      || exit 1
-
-    # RAM-диск (до выбора порта)
-    setup_ramdisk
-    if [ -n "$RAMDISK_SIZE_GB" ]; then
-        if create_ramdisk "$RAMDISK_SIZE_GB"; then
-            create_ramdisk_script "$RAMDISK_SIZE_GB"
-            create_ramdisk_service
-        else
-            RAMDISK_SIZE_GB=""
-        fi
-    fi
+    # Переустановка поверх версии с RAM-диском
+    remove_legacy_ramdisk
 
     # Порт
     selected_port=""
@@ -823,7 +613,7 @@ install_vidaa() {
         err "Подробности: launchctl print system/$SERVER_LABEL"
         exit 1
     fi
-    save_conf "$selected_port" "$RAMDISK_SIZE_GB"
+    save_conf "$selected_port"
 
     ask "${YELLOW}Открыть порт $selected_port в firewall для доступа из сети? (y/n): ${NC}" answer
     if is_yes "$answer"; then
@@ -840,11 +630,9 @@ install_vidaa() {
     ok "Vidaa сервер доступен:"
     info "  Локально: http://localhost:$selected_port"
     info "  В сети:   http://$ip_addr:$selected_port"
-    if [ -n "$RAMDISK_SIZE_GB" ]; then
-        ok "RAM-диск (${RAMDISK_SIZE_GB} GB) создан и будет пересоздаваться при загрузке"
-    fi
+    ok "Кэш HLS — в памяти TorrStream, размер меняется в админке (вкладка «Система»)"
     ok "========================================"
-    if ! svc_running "$SERVER_LABEL"; then
+    if ! svc_running"$SERVER_LABEL"; then
         warn "Сервис пока не отображается как запущенный — проверьте /var/log/vidaa.log"
     fi
     print_service_hints
@@ -854,7 +642,7 @@ install_vidaa() {
 # Обновление
 # --------------------------------------------------------------------------
 update_vidaa() {
-    local answer port ip_addr ramdisk_info
+    local port ip_addr
 
     ok "Начинаем обновление Vidaa..."
     if [ ! -d "$INSTALL_DIR" ]; then
@@ -865,43 +653,17 @@ update_vidaa() {
     detect_architecture || exit 1
     ok "Обнаружена архитектура: $ARCH"
 
-    plain ""
-    plain "=========================================="
-    plain "  Проверка RAM-диска"
-    plain "=========================================="
-    RAMDISK_SIZE_GB=""
-    if [ -d "$RAMDISK_PATH" ]; then
-        ok "RAM-диск $RAMDISK_PATH уже существует"
-        ramdisk_info="$(diskutil info "$RAMDISK_PATH" 2>/dev/null | awk -F': *' '/Total Space|Volume Total Space/ {print $2; exit}')"
-        [ -n "$ramdisk_info" ] && info "Размер: $ramdisk_info"
-    else
-        warn "RAM-диск $RAMDISK_PATH не обнаружен"
-        warn "RAM-диск ускоряет работу с HLS-сегментами и снижает износ SSD."
-        ask "Создать RAM-диск? (y/n): " answer
-        if is_yes "$answer"; then
-            setup_ramdisk
-            if [ -n "$RAMDISK_SIZE_GB" ]; then
-                if create_ramdisk "$RAMDISK_SIZE_GB"; then
-                    create_ramdisk_script "$RAMDISK_SIZE_GB"
-                    create_ramdisk_service
-                else
-                    RAMDISK_SIZE_GB=""
-                fi
-            fi
-        else
-            warn "RAM-диск не будет создан"
-        fi
-    fi
-    plain ""
-
     cd "$INSTALL_DIR" || exit 1
 
     plain "Остановка сервиса..."
     svc_stop "$SERVER_LABEL" "$SERVER_PLIST"
+    # Сервер остановлен — RAM-диск от прежней версии можно размонтировать
+    remove_legacy_ramdisk
 
     rm -rf "$INSTALL_DIR/public"
     install_app_binary || exit 1
-    install_ytdlp      || exit 1
+    # yt-dlp больше не нужен (YouTube в сервере убран)
+    rm -f "$INSTALL_DIR/ffmpeg/yt-dlp"
 
     # ffmpeg переустанавливаем только если его нет или он не запускается
     if [ ! -x "$INSTALL_DIR/ffmpeg/ffmpeg" ] || ! "$INSTALL_DIR/ffmpeg/ffmpeg" -version >/dev/null 2>&1; then
@@ -924,20 +686,14 @@ update_vidaa() {
         exit 1
     fi
 
-    local saved_ramdisk="$RAMDISK_SIZE_GB"
-    if [ -z "$saved_ramdisk" ] && [ -f "$CONF_FILE" ]; then
-        saved_ramdisk="$(awk -F= '/^VIDAA_RAMDISK_GB=/ {print $2; exit}' "$CONF_FILE" | tr -cd '0-9')"
-    fi
-    save_conf "$port" "$saved_ramdisk"
+    save_conf "$port"
 
     ip_addr="$(get_lan_ip)"
     ok "========================================"
     ok "Обновление завершено успешно!"
     info "  Локально: http://localhost:$port"
     info "  В сети:   http://$ip_addr:$port"
-    if [ -d "$RAMDISK_PATH" ]; then
-        ok "RAM-диск активен"
-    fi
+    ok "Кэш HLS — в памяти TorrStream, размер меняется в админке (вкладка «Система»)"
     ok "========================================"
     print_service_hints
 }
@@ -991,7 +747,7 @@ uninstall_vidaa() {
 # Проверка обязательных утилит
 # --------------------------------------------------------------------------
 MISSING=""
-for cmd in curl tar lsof hdiutil diskutil launchctl sw_vers vm_stat sysctl awk sed; do
+for cmd in curl tar lsof hdiutil diskutil launchctl sw_vers sysctl awk sed; do
     command -v "$cmd" >/dev/null 2>&1 || MISSING="$MISSING $cmd"
 done
 if [ -n "$MISSING" ]; then

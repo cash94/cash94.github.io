@@ -636,6 +636,68 @@ async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
     }
 }
 
+// ==================== КЭШ ТРЕЙЛЕРОВ НА СЕРВЕРЕ ====================
+//
+// Поиск трейлера — запрос к поиску RuTube и до трёх play/options на сравнение
+// качества. Найденный ролик сервер запоминает (routes/trailers.js) по id
+// фильма TMDB, и в следующий раз — на любом устройстве — нужен один
+// play/options по готовому id. Ссылку на плейлист не храним: в ней токен,
+// она со временем перестаёт открываться; плейлист берём из свежего ответа.
+// Сервер старше кэша отвечает 404 — тогда всё как раньше, только поиск.
+
+var TRAILER_CACHE_URL = '/api/trailer/cache';
+
+/** id ролика из ссылки балансировщика: bl.rutube.ru/route/<id>.m3u8 */
+function rutubeVideoIdFromUrl(url) {
+    var m = /\/route\/([0-9a-f]{32})\b/.exec(String(url || ''));
+    return m ? m[1] : null;
+}
+
+/** Трейлер по готовому id ролика — один play/options. null — ролика нет */
+async function rutubeTrailerById(videoId, title) {
+    var playApiUrl = 'https://rutube.ru/api/play/options/' + videoId;
+    var playData = await safeFetch('/api/rutube/proxy?url=' + encodeURIComponent(playApiUrl), { timeout: 10000 });
+    var balancerUrl = extractBalancerUrl(playData);
+    if (!balancerUrl) return null;
+    return { url: balancerUrl, quality: parseMaxQualityFromM3u8Url(balancerUrl), title: (playData && playData.title) || title };
+}
+
+/**
+ * Трейлер с кэшем на сервере. ref — {id, type} фильма TMDB; без него — просто
+ * поиск. Ответ тот же, что у fetchRutubeTrailer: {url, quality, title} | null.
+ */
+async function fetchRutubeTrailerCached(ref, title, originalTitle, releaseDate) {
+    var search = window.fetchRutubeTrailer || fetchRutubeTrailer;   // воркер или главный поток
+    var id = ref && ref.id !== undefined && ref.id !== null ? String(ref.id) : '';
+    if (!/^\d+$/.test(id)) return search(title, originalTitle, releaseDate);
+    var type = ref.type === 'tv' ? 'tv' : 'movie';
+    var query = '?id=' + id + '&type=' + type;
+
+    var cached = await safeFetch(TRAILER_CACHE_URL + query, { timeout: 4000 });
+    if (cached && cached.cached) {
+        if (!cached.videoId) return null;           // недавно искали — не нашли
+        var hit = await rutubeTrailerById(cached.videoId, cached.title || title);
+        if (hit) return hit;
+        // Ролик удалили или скрыли — забываем и ищем заново
+        fetch(TRAILER_CACHE_URL + query, { method: 'DELETE' })['catch'](function () { });
+    }
+
+    var found = await search(title, originalTitle, releaseDate);
+    // Кэш на сервере есть (ответ пришёл) — записываем и находку, и «не нашли»
+    if (cached) {
+        var videoId = found && found.url ? rutubeVideoIdFromUrl(found.url) : null;
+        if (!found || videoId) {
+            fetch(TRAILER_CACHE_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, type: type, videoId: videoId, title: found ? (found.title || title) : null })
+            })['catch'](function () { });
+        }
+    }
+    return found;
+}
+window.fetchRutubeTrailerCached = fetchRutubeTrailerCached;
+
 function wrapRutubeHls(url) {
     if (!url) return url;
     // Уже обёрнут — не оборачиваем повторно
@@ -5041,7 +5103,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     } else {
         rutubeTrailerState.currentUrl = null;
         rutubeTrailerState.currentTitle = null;
-        fetchRutubeTrailer(trailerTitle, trailerOriginal, trailerDate).then(function (result) {
+        fetchRutubeTrailerCached({ id: item.id, type: mt }, trailerTitle, trailerOriginal, trailerDate).then(function (result) {
             if (!result || !result.url) return;
             rutubeTrailerCache[trailerCacheKey] = {
                 url: result.url,
