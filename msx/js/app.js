@@ -2175,28 +2175,6 @@ function setupCheckboxes() {
     });
   }
 
-  // Переключатели настроек: одно нажатие — одно переключение. Браузеры для
-  // Apple TV (WebKit, «Safari 17.1» в User-Agent) на нажатие пульта шлют и Enter
-  // (control.js переключает его click()), и свой клик в точку курсора — второе
-  // событие тут же возвращало переключатель назад, и казалось, что он не
-  // работает. Повторное переключение того же чекбокса за 400 мс отменяем, от
-  // какого бы события оно ни пришло; в фазе захвата — раньше change.
-  if (!document._tsToggleGuard) {
-    document._tsToggleGuard = true;
-    document.addEventListener('click', function (e) {
-      var t = e.target;
-      if (!t || t.type !== 'checkbox' || !t.closest || !t.closest('#config-screen')) return;
-      var now = Date.now();
-      if (t._tsToggledAt && now - t._tsToggledAt < 400) {
-        e.preventDefault();          // браузер вернёт checked как было, change не придёт
-        e.stopImmediatePropagation();
-        return;
-      }
-      t._tsToggledAt = now;
-    }, true);
-  }
-  setupAppleRemoteGuard();
-  setupAppleCheckboxClick();
 
   // 3. Добавление в базу
   var addToDbCheckbox = getEl('add-to-db');
@@ -2235,9 +2213,13 @@ function setupCheckboxes() {
   // кроме плеера: Android отдаёт поток внешнему плееру, webOS играет файл
   // <video> напрямую с TorrServer. Серверное транскодирование не нужно обоим,
   // и его настройки (здесь, многоканальный звук, полное отключение) скрыты
-  var tvApp = !!window.AndroidJS || AppState.platform === 'webos';
+  // Apple TV, iPhone, iPad — так же: файл напрямую с TorrServer во встроенном
+  // плеере или ссылка внешнему (Infuse, VLC…), поток через сервер не нужен
+  var appleDevice = AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple';
+  var directPlay = AppState.platform === 'webos' || appleDevice;
+  var tvApp = !!window.AndroidJS || directPlay;
   var transcodingCheckbox = getEl('transcoding-off');
-  if (AppState.platform === 'webos' && transcodingCheckbox) {
+  if (directPlay && transcodingCheckbox) {
     transcodingCheckbox.checked = false;
     AppState.transcodingOnOff = false;
   }
@@ -2245,7 +2227,7 @@ function setupCheckboxes() {
     container = transcodingCheckbox.closest('.checkbox-container');
     if (container) container.classList.add('hidden');
   }
-  if (transcodingCheckbox && AppState.platform !== 'webos') {
+  if (transcodingCheckbox && !directPlay) {
     var savedTranscoding = localStorage.getItem('transcodingOnOff') === 'true';
     transcodingOnOff = savedTranscoding;
     transcodingCheckbox.checked = savedTranscoding;
@@ -2305,9 +2287,10 @@ function setupCheckboxes() {
   }
   // webOS (LG): видео играет аппаратный плеер телевизора прямо с TorrServer —
   // <video> там сам открывает MKV, HEVC, многоканальный звук, без ffmpeg и
-  // серверного HLS. Прямой режим включаем всегда и в localStorage не пишем:
-  // переключатель скрыт выше, как в Android-приложении
-  if (transcodingCheckboxOnOff && AppState.platform === 'webos') {
+  // серверного HLS. Apple TV, iPhone, iPad — по просьбе пользователей так же,
+  // как Android: напрямую, минуя обработку потока на сервере. Прямой режим
+  // включаем всегда и в localStorage не пишем: переключатель скрыт выше
+  if (transcodingCheckboxOnOff && directPlay) {
     transcodingFullOnOff = true;
     AppState.transcodingFullOnOff = true;
     transcodingCheckboxOnOff.checked = true;
@@ -2367,43 +2350,65 @@ function setupCheckboxes() {
 }
 
 /**
- * Настройки → Плеер → «Плеер для видео» на устройствах Apple: ряд кнопок, выбранная
- * подсвечена. Список и запуск — player.js (APPLE_PLAYERS, openAppleExternalPlayer).
+ * Настройки → Плеер → «Плеер для видео» на устройствах Apple: одна кнопка с именем
+ * выбранного плеера, по ней — список плееров этого устройства. Список и запуск —
+ * player.js (APPLE_PLAYERS, openAppleExternalPlayer).
  * В Android-приложении выбор свой (AndroidJS.choosePlayer), там раздел не нужен.
  */
 function setupApplePlayerChoice() {
   var section = getEl('apple-player-section');
-  var row = getEl('apple-player-choices');
+  var btn = getEl('apple-player-btn');
   var list = (!window.AndroidJS && typeof getApplePlayers === 'function') ? getApplePlayers() : null;
-  if (!section || !row || !list) return;
+  if (!section || !btn || !list) return;
   section.hidden = false;
-  // Apple TV: в «Плеере» только выбор плеера и автопереключение серий — остальное
-  // про веб-плеер (styles.css: #player-tab-content.apple-tv-player)
-  if (AppState.applePlatform === 'apple_tv') {
+  // Apple TV, iPhone, iPad: в «Плеере» только выбор плеера и автопереключение
+  // серий — остальное про серверный поток (styles.css: .apple-device-player)
+  if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple') {
     var tab = getEl('player-tab-content');
-    if (tab) tab.classList.add('apple-tv-player');
+    if (tab) tab.classList.add('apple-device-player');
   }
-  row.innerHTML = '';
-  function mark() {
+
+  function label() {
     var current = getApplePlayer();
-    var btns = row.querySelectorAll('.btn');
-    for (var i = 0; i < btns.length; i++) {
-      btns[i].classList.toggle('btn-primary', !!current && btns[i].getAttribute('data-player') === current.id);
-    }
+    btn.textContent = 'Плеер: ' + (current ? current.name : '—');
   }
+
+  // Список — то же меню выбора, что у фильтров поиска (control.js:
+  // customFilterMenuState): стрелки, ОК, «Назад», мышь и палец. Меню пишет
+  // выбор в select и шлёт change — select отдельный, в разметку не вставлен
+  var select = document.createElement('select');
   list.forEach(function (p) {
-    var b = document.createElement('button');
-    b.className = 'btn';
-    b.setAttribute('data-player', p.id);
-    b.textContent = p.name;
-    b.addEventListener('click', function () {
-      setApplePlayer(p.id);
-      mark();
-      showToast('Плеер: ' + p.name);
-    });
-    row.appendChild(b);
+    var o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.name;
+    select.appendChild(o);
   });
-  mark();
+  select.addEventListener('change', function () {
+    var picked = null;
+    for (var i = 0; i < list.length; i++) if (list[i].id === select.value) picked = list[i];
+    if (!picked) return;
+    setApplePlayer(picked.id);
+    label();
+    showToast('Плеер: ' + picked.name);
+    // Меню после выбора ставит фокус на select — возвращаем его на кнопку
+    setTimeout(function () { if (typeof focusEl === 'function') focusEl(btn); }, 0);
+  });
+
+  btn.addEventListener('click', function () {
+    if (typeof ensureCustomFilterMenu !== 'function' || typeof renderCustomFilterMenu !== 'function') return;
+    var current = getApplePlayer();
+    var index = 0;
+    var options = list.map(function (p, i) {
+      if (current && p.id === current.id) index = i;
+      return { value: p.id, label: p.name };
+    });
+    select.value = current ? current.id : list[0].id;
+    customFilterMenuState = { selectEl: select, title: 'Плеер для видео', options: options, index: index, value: select.value };
+    ensureCustomFilterMenu().classList.remove('hidden');
+    renderCustomFilterMenu();
+  });
+
+  label();
   if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
 }
 
@@ -2548,123 +2553,6 @@ function renderDeviceInfo() {
   box.innerHTML = html;
 }
 window.renderDeviceInfo = renderDeviceInfo;
-
-/**
- * Пульт Apple TV: одно нажатие ОК — одно действие.
- *
- * Браузеры для Apple TV на нажатие ОК присылают Enter (его разбирает
- * control.js и жмёт элемент под нашим фокусом) и вдобавок свой клик — но не по
- * нашему элементу, а туда, где у них самих фокус или курсор. Защита «второе
- * переключение того же чекбокса за 400 мс» (выше) от этого не спасала: клик
- * приходил в соседний элемент. Стоя на «Требуется аутентификация», человек
- * включал переключатель Enter'ом, под ним появлялось поле логина, и клик
- * браузера попадал в поле — выезжала клавиатура.
- *
- * Поэтому, как в Lampa (DeviceInput.canClick), «родные» клики и касания рядом
- * с нажатием ОК отбрасываем целиком: действие за пультом делает только наш
- * Enter. Глушим и mousedown — фокус в поле браузер ставит именно на нём.
- * Клик мог прийти и раньше Enter, поэтому окно в обе стороны: фокус, попавший
- * в поле ввода не нашим путём, снимаем и задним числом, на самом нажатии.
- *
- * Только для Apple: на webOS с аэромышью и на телефонах клик — основной ввод,
- * а там, где мышь и пульт не смешиваются, отбрасывать нечего.
- */
-var APPLE_REMOTE_CLICK_WINDOW_MS = 600;
-
-function setupAppleRemoteGuard() {
-  if (!AppState.applePlatform || document._tsAppleRemoteGuard) return;
-  document._tsAppleRemoteGuard = true;
-  var lastOkAt = 0;
-  var stray = null;   // { el, at } — поле, получившее фокус не через наш фокус
-
-  function isOk(e) {
-    var kc = e.keyCode || e.which;
-    return kc === 13 || (typeof isKeyPressed === 'function' && isKeyPressed('OK', kc));
-  }
-  function nearOk() { return Date.now() - lastOkAt < APPLE_REMOTE_CLICK_WINDOW_MS; }
-  function isTextField(el) {
-    return !!el && ((el.tagName === 'INPUT' && el.type !== 'checkbox' && el.type !== 'radio' && el.type !== 'button') ||
-      el.tagName === 'TEXTAREA' || el.isContentEditable);
-  }
-  function dropStray() {
-    if (!stray) return;
-    var el = stray.el, fresh = Date.now() - stray.at < APPLE_REMOTE_CLICK_WINDOW_MS;
-    stray = null;
-    if (fresh && document.activeElement === el && !el.classList.contains('focused')) {
-      try { el.blur(); } catch (err) { }
-    }
-  }
-
-  // На window в фазе захвата — раньше всех обработчиков клавиш приложения
-  function onKey(e) {
-    if (!isOk(e)) return;
-    lastOkAt = Date.now();
-    dropStray();
-  }
-  window.addEventListener('keydown', onKey, true);
-  window.addEventListener('keyup', onKey, true);
-
-  function swallow(e) {
-    // Свои click() из control.js — isTrusted: false, их пропускаем
-    if (!e.isTrusted || !nearOk()) return;
-    e.__tsSwallowed = true;   // для «Проверки пульта» (remote-test.js)
-    if (e.cancelable) e.preventDefault();
-    e.stopImmediatePropagation();
-  }
-  ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach(function (type) {
-    document.addEventListener(type, swallow, { capture: true, passive: false });
-  });
-
-  document.addEventListener('focusin', function (e) {
-    var el = e.target;
-    // Наше поле: на нём стоит фокус пульта (control.js сам зовёт focus() по ОК)
-    if (!e.isTrusted || !isTextField(el) || el.classList.contains('focused')) return;
-    stray = { el: el, at: Date.now() };
-    if (nearOk()) dropStray();
-  }, true);
-}
-
-/**
- * Пульт Apple TV: ОК переключает чекбокс.
- *
- * control.js (и «Проверка пульта») переключает чекбокс по ОК через click().
- * В браузере для Apple TV такой click() доходит до чекбокса, его никто не
- * отменяет, но переключения нет: checked прежний, change не приходит
- * («Проверка пульта»: keydown Enter → click по input#rt-cb-auth, и всё).
- *
- * Поэтому на Apple click() чекбокса шлёт клик сам и смотрит на итог: клик не
- * отменён, а checked не изменился — движок переключать не стал, переключаем
- * сами и шлём input и change, как браузер. Отменённый клик (защита «второе
- * переключение за 400 мс») так и остаётся без переключения, а где движок
- * переключил сам, второй раз не трогаем.
- */
-function setupAppleCheckboxClick() {
-  if (!AppState.applePlatform || HTMLInputElement.prototype._tsCheckboxClick) return;
-  var nativeClick = HTMLInputElement.prototype.click;
-  HTMLInputElement.prototype._tsCheckboxClick = true;
-
-  function fire(el, type) {
-    var ev;
-    try { ev = new Event(type, { bubbles: true }); } catch (e) { ev = document.createEvent('Event'); ev.initEvent(type, true, false); }
-    el.dispatchEvent(ev);
-  }
-
-  HTMLInputElement.prototype.click = function () {
-    if (this.type !== 'checkbox' || this.disabled) return nativeClick.apply(this, arguments);
-    var before = this.checked, ev;
-    try {
-      ev = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-    } catch (e) {
-      ev = document.createEvent('MouseEvents');
-      ev.initMouseEvent('click', true, true, window, 1, 0, 0, 0, 0, false, false, false, false, 0, null);
-    }
-    if (!this.dispatchEvent(ev) || this.checked !== before) return;
-    this.checked = !before;
-    this.__tsManualToggle = true;   // для «Проверки пульта» (remote-test.js)
-    fire(this, 'input');
-    fire(this, 'change');
-  };
-}
 
 /**
  * «Об устройстве» → «Проверка пульта»: журнал того, что присылает пульт на

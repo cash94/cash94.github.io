@@ -429,11 +429,14 @@
                 <button class="btn btn-primary" id="choose-player-btn">Выбрать плеер по умолчанию</button>
               </div>
               <!-- Устройства Apple: внешний плеер по URL-схеме (player.js: APPLE_PLAYERS,
-                   app.js: setupApplePlayerChoice). Кнопки строит скрипт под устройство -->
+                   app.js: setupApplePlayerChoice). Кнопка открывает список плееров
+                   этого устройства -->
               <div class="settings-group" id="apple-player-section" hidden>
                 <h2 class="settings-group-title">Плеер для видео</h2>
                 <p class="settings-lead settings-group-description">Чем открывать фильмы и сериалы. Внешний плеер должен быть установлен; позицию просмотра он обратно не сообщает.</p>
-                <div class="action-row" id="apple-player-choices"></div>
+                <div class="action-row" id="apple-player-choices">
+                  <button class="btn btn-primary" id="apple-player-btn">Плеер</button>
+                </div>
               </div>
             </div>
 

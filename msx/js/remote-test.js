@@ -8,10 +8,6 @@
  * которое появляется под переключателем (как логин под «Требуется
  * аутентификация»). Кто проверяет, нажимает ОК и присылает снимок экрана.
  *
- * «отброшено» в журнале — событие погасила защита пульта Apple
- * (app.js: setupAppleRemoteGuard); «переключено кодом» — движок не переключил
- * чекбокс по click(), это сделал app.js: setupAppleCheckboxClick.
- *
  * Внешний плеер Apple. Приложения-оболочки для Apple TV по-разному открывают
  * плееры: одни перехватывают переход на lampa://, infuse:// и т. п., другие
  * показывают «unsupported URL». Пункты «Плеер: …» открывают тестовое видео
@@ -70,17 +66,11 @@
       type: e.type,
       key: e.type.indexOf('key') === 0 ? (e.key || '?') + ' (' + (e.keyCode || e.which || 0) + ')' : '',
       target: describe(e.target),
-      trusted: e.isTrusted,
-      // change от запасного переключения (app.js: setupAppleCheckboxClick)
-      manual: e.type === 'change' && !!(e.target && e.target.__tsManualToggle),
-      event: e
+      trusted: e.isTrusted
     };
-    if (entry.manual) e.target.__tsManualToggle = false;
     entries.unshift(entry);
     if (entries.length > LOG_MAX) entries.length = LOG_MAX;
-    // Отбросила ли событие защита, станет известно после её обработчика
-    // (он на document, этот — на window, раньше): смотрим в следующей задаче
-    setTimeout(render, 0);
+    render();
   }
 
   function esc(s) {
@@ -100,15 +90,12 @@
         html += '<div class="rt-line"><span class="rt-t">+' + en.t + '</span><span class="rt-note">' + esc(en.note) + '</span></div>';
         continue;
       }
-      if (en.event) { en.swallowed = !!en.event.__tsSwallowed; en.event = null; }
-      html += '<div class="rt-line' + (en.swallowed ? ' rt-swallowed' : '') + '">' +
+      html += '<div class="rt-line">' +
         '<span class="rt-t">+' + en.t + '</span>' +
         '<span class="rt-type">' + esc(en.type) + '</span>' +
         (en.key ? '<span class="rt-key">' + esc(en.key) + '</span>' : '') +
         '<span class="rt-target">' + esc(en.target) + '</span>' +
         (en.trusted ? '' : '<span class="rt-tag">код</span>') +
-        (en.swallowed ? '<span class="rt-tag rt-tag-drop">отброшено</span>' : '') +
-        (en.manual ? '<span class="rt-tag">переключено кодом</span>' : '') +
         '</div>';
     }
     logEl.innerHTML = html || '<div class="rt-empty">Нажмите ОК на любом пункте слева</div>';
@@ -232,8 +219,6 @@
       '.rt-key{color:#ffb459;}' +
       '.rt-target{color:#9fd0ff;}' +
       '.rt-tag{padding:0 .5vw;border-radius:.3vw;background:rgba(255,255,255,.12);font-size:.95vw;}' +
-      '.rt-tag-drop{background:rgba(255,90,90,.25);color:#ff9d9d;}' +
-      '.rt-swallowed{opacity:.6;}' +
       '.rt-sep{height:1px;margin:.5vw 0;background:rgba(255,255,255,.15);}' +
       '.rt-empty{color:#8b9ac0;}' +
       '.rt-note{color:#b6f0a0;white-space:normal;word-break:break-all;}' +
@@ -245,7 +230,7 @@
     side.className = 'rt-side';
     side.innerHTML = '<h2>Проверка пульта</h2><div class="rt-env"></div>';
     side.querySelector('.rt-env').textContent =
-      (AppState.applePlatform ? 'Apple: ' + AppState.applePlatform + ' · защита пульта включена · ' : '') +
+      (AppState.applePlatform ? 'Apple: ' + AppState.applePlatform + ' · ' : '') +
       window.innerWidth + '×' + window.innerHeight + ' · ' + navigator.userAgent + ' · ' + shellInfo();
 
     function addItem(html, extra) {

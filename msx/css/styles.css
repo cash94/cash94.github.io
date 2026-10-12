@@ -8546,8 +8546,11 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
    выреза (портрет) или сдвигом вправо (горизонтально), а сама камера — маленькое
    отверстие у края, где у шапки пусто. Переменные обнуляются целиком: их читают
    и шапка, и кнопка меню карточки, и выезжающие меню, и заголовок настроек.
-   !important перебивает значения, которые приложение ставит инлайном (publishSafeArea) */
-html.android-app {
+   !important перебивает значения, которые приложение ставит инлайном (publishSafeArea).
+   Apple TV, iPhone, iPad (config.js: apple-device) — то же: безопасную зону там
+   держит приложение-обёртка, свой отступ её удваивал */
+html.android-app,
+html.apple-device {
   --safe-top: 0px !important;
   --safe-right: 0px !important;
   --safe-bottom: 0px !important;
@@ -8567,11 +8570,13 @@ html.android-app {
 }
 
 @media (orientation: landscape) and (max-height: 500px) {
-  html.android-app #home-rows .catalog-row-header {
+  html.android-app #home-rows .catalog-row-header,
+  html.apple-device #home-rows .catalog-row-header {
     padding-left: 10px;
   }
 
-  html.android-app #home-rows .catalog-row-track {
+  html.android-app #home-rows .catalog-row-track,
+  html.apple-device #home-rows .catalog-row-track {
     padding-left: 10px;
   }
 }
@@ -9092,12 +9097,14 @@ html.android-app {
   opacity: 0.5;
 }
 
-/* Apple TV: в «Плеере» только автопереключение серий и выбор плеера (app.js:
-   setupApplePlayerChoice) — настройки веб-плеера там не нужны. !important:
-   часть этих строк показывает и прячет скрипт (Dolby Vision, многоканальный звук) */
-#player-tab-content.apple-tv-player .checkbox-container:not(#auto-switch-episodes-container),
-#player-tab-content.apple-tv-player #choose-player-container,
-#player-tab-content.apple-tv-player #dv-support-section {
+/* Apple TV, iPhone, iPad: в «Плеере» только автопереключение серий и выбор
+   плеера (app.js: setupApplePlayerChoice), как в Android-приложении: встроенный
+   плеер играет файл напрямую, настройки серверного потока там не нужны.
+   !important: часть этих строк показывает и прячет скрипт (Dolby Vision,
+   многоканальный звук) */
+#player-tab-content.apple-device-player .checkbox-container:not(#auto-switch-episodes-container),
+#player-tab-content.apple-device-player #choose-player-container,
+#player-tab-content.apple-device-player #dv-support-section {
   display: none !important;
 }
 

@@ -453,6 +453,14 @@ AppState.applePlatform = detectApplePlatform();
 // Android-приложение (мост AndroidJS есть ещё до загрузки страницы) — для CSS:
 // боковой вырез там не отодвигает шапку и баннер (styles.css: html.android-app)
 if (window.AndroidJS) document.documentElement.classList.add('android-app');
+// Apple TV, iPhone, iPad: TorrStream открыт внутри приложения-обёртки, и та сама
+// держит страницу в безопасной зоне. Свои отступы под вырез (iPhone) и под
+// безопасную зону телевизора (Apple TV) удваивали её: на iPhone приложение не
+// помещалось на экран, на Apple TV шапка и баннер уезжали вправо от рядов.
+// Mac — обычный браузер, его не трогаем (styles.css: html.apple-device)
+if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple') {
+  document.documentElement.classList.add('apple-device');
+}
 console.log('📱 Платформа: ' + AppState.platform + (AppState.applePlatform ? ' (' + AppState.applePlatform + ')' : ''));
 window.getEl = getEl;
 window.clearFocused = clearFocused;
