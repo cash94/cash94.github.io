@@ -644,8 +644,50 @@ function resetMouseIdleTimer() {
   mouseIdleTimer = setTimeout(function () {
     if (playerScreen.style.display !== 'block') return;
     if (playerOverlay) playerOverlay.classList.remove('touch-active');
+    closePlayerPanelsOnIdle();
     setPlayerControlsIdle(true);
   }, IDLE_TIMEOUT);
+}
+
+/**
+ * HUD гаснет по бездействию — боковая панель (серии, дорожки, настройки)
+ * закрывается вместе с ним. Раньше она оставалась висеть поверх видео без
+ * HUD, и убрать её можно было только «Назад».
+ *
+ * Фокус из панели снимаем: иначе он остался бы на скрытом пункте, и следующее
+ * нажатие пульта ходило бы по списку, которого на экране нет. Без фокуса
+ * первое же нажатие покажет HUD с фокусом на воспроизведении (control.js:
+ * showPlayerControls).
+ */
+function closePlayerPanelsOnIdle() {
+  var panel = getOpenPlayerPanel();
+  if (!panel) return;
+  var focused = panel.querySelectorAll('.focused');
+  for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
+  closePlayerPanels();
+  if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+}
+
+/**
+ * Прокрутка списка в панели — тоже действие пользователя: пульт и мышь
+ * таймер бездействия перезапускают сами, а прокрутка пальцем или колесом —
+ * нет, и длинный список серий закрывался бы прямо под пальцем.
+ */
+function setupPlayerPanelsActivity() {
+  if (setupPlayerPanelsActivity._bound) return;
+  setupPlayerPanelsActivity._bound = true;
+  var seen = {};
+  for (var name in PLAYER_PANELS) {
+    var id = PLAYER_PANELS[name].panel;
+    var panel = getEl(id);
+    if (!panel || seen[id]) continue;
+    seen[id] = true;
+    panel.addEventListener('touchstart', resetMouseIdleTimer, { passive: true });
+    panel.addEventListener('touchmove', resetMouseIdleTimer, { passive: true });
+    panel.addEventListener('wheel', resetMouseIdleTimer, { passive: true });
+    // scroll не всплывает — ловим на погружении, со списков внутри панели
+    panel.addEventListener('scroll', resetMouseIdleTimer, true);
+  }
 }
 
 function nextEpisode() {
@@ -1855,6 +1897,7 @@ function setupSeekButtons() {
  * своему на document.
  */
 function setupPlayerPanelsOutsideClick() {
+  setupPlayerPanelsActivity();
   if (setupPlayerPanelsOutsideClick._bound) return;
   setupPlayerPanelsOutsideClick._bound = true;
   document.addEventListener('click', function (e) {
