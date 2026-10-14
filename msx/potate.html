@@ -880,6 +880,7 @@
         <button class="tab-btn" onclick="switchTab('modules', event)">🧩 Модули</button>
         <button class="tab-btn" onclick="switchTab('traffic', event)">📊 Трафик</button>
         <button class="tab-btn" onclick="switchTab('monitoring', event)">📊 Мониторинг</button>
+        <button class="tab-btn" onclick="switchTab('settings', event)">🛠️ Настройки</button>
         <button class="tab-btn" id="systemTabBtn" onclick="switchTab('system', event)">⚙️ Система<span id="updateBadge" class="badge badge-success" style="display:none; margin-left:6px;">новая версия</span></button>
         <button class="tab-btn" onclick="switchTab('access', event)">🔐 Доступ</button>
     </div>
@@ -1074,6 +1075,19 @@
                     <div class="loading">Загрузка...</div>
                 </div>
             </div>
+        </div>
+
+        <!-- Настройки сервера -->
+        <div class="tab-content" id="tab-settings">
+            <div class="section">
+                <div class="section-header">
+                    <h2>🎧 Дорожки в потоке</h2>
+                </div>
+                <p style="color:#5a6c7d; margin:0 0 12px;">Сколько аудиодорожек и субтитров сервер при перекодировании сразу кладёт в поток. Берутся соседние с выбранной: при 4 из 8 и выбранной 5-й — 4, 5, 6 и 7. Дорожки из потока переключаются в плеере мгновенно, остальные — быстрым перезапуском потока с того же места. Каждая аудиодорожка в стерео (AAC) — немного нагрузки на процессор; со включённым «Многоканальным звуком» дорожки идут как есть.</p>
+                <div id="hlsTracksInfo">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
             <div class="section">
                 <div class="section-header">
                     <h2>⚡ Кэш HLS в памяти</h2>
@@ -1180,6 +1194,7 @@
             else if (id === 'traffic') loadTrafficMonths();
             else if (id === 'monitoring') loadMonitoring();
             else if (id === 'system') loadSystemInfo();
+            else if (id === 'settings') { loadHlsTracks(); loadHlsCache(); }
             else if (id === 'access') loadAccess();
         }
 
@@ -2058,7 +2073,6 @@
             } catch (e) {
                 el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + e.message + '</div>';
             }
-            loadHlsCache();
             loadServerUpdate();
         }
 
@@ -2198,6 +2212,41 @@
                     method: 'POST', body: JSON.stringify({ auto: on })
                 }));
                 showToast(on ? '✅ Обновления будут ставиться ночью сами' : 'Автоустановка выключена');
+            } catch (e) { showToast('❌ ' + e.message, true); }
+        }
+
+        // ====== ДОРОЖКИ В ПОТОКЕ (services/hls.js: hls_max_audio, hls_max_subs) ======
+        async function loadHlsTracks() {
+            const el = document.getElementById('hlsTracksInfo');
+            if (!el) return;
+            try {
+                renderHlsTracks(await apiFetch('/api/admin/hls-tracks'));
+            } catch (e) {
+                el.innerHTML = '<div class="empty-state">Сервер не поддерживает — обновите TorrStream</div>';
+            }
+        }
+
+        function renderHlsTracks(d) {
+            const select = (id, value, word) => {
+                let o = '';
+                for (let n = 1; n <= d.limit; n++) o += `<option value="${n}" ${n === value ? 'selected' : ''}>${n === 1 ? '1 — только выбранная' : 'до ' + n + ' ' + word}</option>`;
+                return `<select id="${id}" style="margin:0 10px 10px 0; padding:8px; background:#0f1419; color:#fff; border:1px solid #2a3a4a; border-radius:6px;">${o}</select>`;
+            };
+            document.getElementById('hlsTracksInfo').innerHTML = `
+    <div class="info-row" style="align-items:center;"><div class="info-label">Аудиодорожки:</div><div class="info-value">${select('hlsTracksAudio', d.audio, 'дорожек')}</div></div>
+    <div class="info-row" style="align-items:center;"><div class="info-label">Субтитры:</div><div class="info-value">${select('hlsTracksSubs', d.subs, 'дорожек')}</div></div>
+    <div style="display:flex; flex-wrap:wrap; align-items:center; margin-top:6px;">
+      <button class="btn btn-success" style="margin:0 10px 10px 0;" onclick="saveHlsTracks()">💾 Сохранить</button>
+      <span style="color:#5a6c7d; margin:0 0 10px;">действует для новых запусков видео и после перемотки</span>
+    </div>`;
+        }
+
+        async function saveHlsTracks() {
+            const audio = Number(document.getElementById('hlsTracksAudio').value);
+            const subs = Number(document.getElementById('hlsTracksSubs').value);
+            try {
+                renderHlsTracks(await apiFetch('/api/admin/hls-tracks', { method: 'POST', body: JSON.stringify({ audio, subs }) }));
+                showToast(`✅ Аудио: до ${audio}, субтитры: до ${subs}`);
             } catch (e) { showToast('❌ ' + e.message, true); }
         }
 

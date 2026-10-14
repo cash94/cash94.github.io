@@ -845,6 +845,8 @@ function forceUpdateDuration(duration, origDur, offset) {
 
 function destroyHls() {
   hidePlayerLoading();
+  ServerSubs.stop();
+  AppState.serverTracks = null;
   var videoPlayer = getEl('video-player');
   var seekSlider = getEl('seek-slider');
   if (seekSlider) seekSlider.value = 0;
@@ -895,6 +897,191 @@ function destroyHls() {
   AppState.nativeVideoPlayer = null;
   AppState.isPlaying = false;
 }
+
+// ==================== ДОРОЖКИ В СЕРВЕРНОМ ПОТОКЕ ====================
+//
+// Сервер 1.0.53+ по запросу с tracks=1 кладёт в поток сразу несколько
+// аудиодорожек (hls.js переключает их сам, без перезапуска ffmpeg) и текстовые
+// субтитры отдельными растущими файлами subs/sN.vtt — их показывает ServerSubs.
+// AppState.serverTracks = { audio: [индексы дорожек в порядке master],
+// selectedAudio, subs: [{ index, url }], backWindowSec } или null — старый сервер
+// (тогда смена дорожки, как раньше, перезапускает поток).
+// AppState.serverAvailableFrom — с какой секунды поколения сегменты ещё лежат на
+// сервере (позади держится окно, старше удаляется): перемотка в пределах
+// [serverAvailableFrom, конец плейлиста] — без перезапуска.
+
+/**
+ * Дорожки нет в окне потока — новое поколение с текущего места с центром окна
+ * на выбранной (сервер берёт audio/sub из запроса перемотки). Как перемотка:
+ * ~0,7 с вместо полного перезапуска потока. Место — точное: в режиме дорожек
+ * шкала исходная, её начало знает hls.js (streamTimeOrigin)
+ */
+function restartServerGeneration(what) {
+  var v = getEl('video-player');
+  if (!v || !AppState.currentStreamId) return false;
+  var origin = AppState.streamTimeOrigin;
+  var at = v.currentTime + (origin !== null && origin !== undefined ? origin : (AppState.seekOffset || 0));
+  AppState._forceServerSeek = true;
+  // Подпись на экране: это смена дорожки, а не перемотка
+  AppState._forceServerSeekWhat = what || 'дорожки';
+  seekStream(at, 'user');
+  return true;
+}
+
+function applyServerTracks(tracks) {
+  AppState.serverTracks = tracks || null;
+  AppState.serverAvailableFrom = 0;
+  // Метки потока — исходные (-copyts): реплика c показывается на c − начало
+  // поколения. Начало узнаём у hls.js с первым фрагментом (INIT_PTS_FOUND)
+  AppState.streamTimeOrigin = null;
+  // Субтитры включает applyServerTrackSelection после разбора master: hls.js,
+  // загружая новый плейлист, чистит реплики во всех текстовых дорожках <video>
+  ServerSubs.stop();
+}
+
+/** Выбранные дорожки — в только что загруженный поток (после MANIFEST_PARSED) */
+function applyServerTrackSelection() {
+  if (!AppState.serverTracks) return;
+  selectHlsAudio(currentAudioTrack);
+  if (currentSubtitleTrack >= 0 && ServerSubs.index !== currentSubtitleTrack) ServerSubs.select(currentSubtitleTrack);
+}
+
+/** Номер дорожки в master (порядок hls.audioTracks) для индекса дорожки файла, -1 — её нет в потоке */
+function serverAudioPos(trackIndex) {
+  var t = AppState.serverTracks;
+  return t && t.audio ? t.audio.indexOf(trackIndex) : -1;
+}
+
+/** Субтитры файла trackIndex — текстовые (их сервер умеет класть в поток) */
+function isTextSubtitle(trackIndex) {
+  var t = currentSubTracks && currentSubTracks[trackIndex];
+  var codec = String((t && (t.codec || t.format)) || '').toLowerCase();
+  return /^(subrip|srt|ass|ssa|mov_text|webvtt|text)$/.test(codec);
+}
+
+function serverSubEntry(trackIndex) {
+  var t = AppState.serverTracks;
+  if (!t || !t.subs) return null;
+  for (var i = 0; i < t.subs.length; i++) if (t.subs[i].index === trackIndex) return t.subs[i];
+  return null;
+}
+
+/** Включить в hls.js аудиодорожку файла trackIndex. false — её нет в потоке */
+function selectHlsAudio(trackIndex) {
+  var pos = serverAudioPos(trackIndex);
+  if (pos < 0 || !AppState.hls) return false;
+  if (AppState.hls.audioTrack !== pos) AppState.hls.audioTrack = pos;
+  return true;
+}
+
+/** Позиция (абсолютная) есть на сервере в текущем поколении — перемотка без перезапуска */
+function isPositionInServerRange(targetTime) {
+  if (!AppState.serverTracks || !AppState.hls || !AppState.hls.levels) return false;
+  var lvl = AppState.hls.levels[AppState.hls.currentLevel >= 0 ? AppState.hls.currentLevel : 0];
+  var details = lvl && lvl.details;
+  if (!details || !details.totalduration) return false;
+  var rel = targetTime - (AppState.seekOffset || 0);
+  return rel >= (AppState.serverAvailableFrom || 0) + 1 && rel <= details.totalduration - 1;
+}
+
+/**
+ * Субтитры серверного потока: растущий WebVTT выбранной дорожки раз в
+ * несколько секунд дочитывается, новые реплики добавляются в свою
+ * текстовую дорожку <video> — телевизор рисует их сам, как и раньше.
+ */
+var ServerSubs = {
+  track: null, trackVideo: null, url: null, index: -1, timer: null, gen: 0, keys: {}, polls: 0,
+  // Сразу после включения или перемотки файл только начинает наполняться —
+  // первые опросы чаще
+  POLL_MS: 4000, POLL_FAST_MS: 1000, POLL_FAST_COUNT: 6,
+
+  ensureTrack: function () {
+    var v = getEl('video-player');
+    if (!v || typeof v.addTextTrack !== 'function') return null;
+    // Удалить дорожку из <video> нельзя — заводим одну и переиспользуем
+    if (!this.track || this.trackVideo !== v) {
+      this.track = v.addTextTrack('subtitles', 'TorrStream', '');
+      this.trackVideo = v;
+      if (typeof watchCuesRaise === 'function') watchCuesRaise(v);
+    }
+    return this.track;
+  },
+
+  clear: function () {
+    var t = this.track;
+    try { if (t && t.cues) while (t.cues.length) t.removeCue(t.cues[0]); } catch (e) { }
+    this.keys = {};
+  },
+
+  stop: function () {
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    this.gen++;
+    this.clear();
+    if (this.track) this.track.mode = 'disabled';
+    this.index = -1; this.url = null;
+  },
+
+  /** Показать дорожку файла subIndex (-1 — выключить) */
+  select: function (subIndex) {
+    this.stop();
+    var entry = subIndex >= 0 ? serverSubEntry(subIndex) : null;
+    if (!entry) return false;
+    var t = this.ensureTrack();
+    if (!t) return false;
+    // Прочие текстовые дорожки (hls.js, прямой файл) — прячем, чтобы не было двух
+    var v = this.trackVideo;
+    for (var i = 0; i < v.textTracks.length; i++) if (v.textTracks[i] !== t) v.textTracks[i].mode = 'disabled';
+    t.mode = 'showing';
+    this.index = subIndex; this.url = entry.url; this.polls = 0;
+    this.poll(this.gen);
+    return true;
+  },
+
+  poll: function (gen) {
+    var self = this;
+    fetch(SERVER_URL + self.url, { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.text() : ''; })
+      .then(function (text) { if (gen === self.gen && text) self.addCues(text); })
+      ['catch'](function () { })
+      .then(function () {
+        if (gen !== self.gen) return;
+        self.polls++;
+        self.timer = setTimeout(function () { self.poll(gen); }, self.polls < self.POLL_FAST_COUNT ? self.POLL_FAST_MS : self.POLL_MS);
+      });
+  },
+
+  parseTime: function (t) {
+    var p = t.split(':');
+    var sec = parseFloat(p[p.length - 1]) || 0;
+    if (p.length > 1) sec += (parseInt(p[p.length - 2], 10) || 0) * 60;
+    if (p.length > 2) sec += (parseInt(p[p.length - 3], 10) || 0) * 3600;
+    return sec;
+  },
+
+  addCues: function (text) {
+    var t = this.track;
+    if (!t || typeof VTTCue !== 'function') return;
+    // Начала поколения ещё нет — реплики добавим следующим опросом
+    var origin = AppState.streamTimeOrigin;
+    if (origin === null || origin === undefined) return;
+    var blocks = text.replace(/\r/g, '').split(/\n\n+/);
+    // Последний блок может быть дописан не до конца — берём его в следующий раз
+    blocks.pop();
+    for (var i = 0; i < blocks.length; i++) {
+      var lines = blocks[i].split('\n');
+      for (var j = 0; j < lines.length; j++) {
+        var m = lines[j].match(/^\s*([\d:.]+)\s+-->\s+([\d:.]+)/);
+        if (!m) continue;
+        var body = lines.slice(j + 1).join('\n');
+        var key = m[1] + '|' + m[2] + '|' + body;
+        if (!body || this.keys[key]) break;
+        this.keys[key] = 1;
+        try { t.addCue(new VTTCue(this.parseTime(m[1]) - origin, this.parseTime(m[2]) - origin, body)); } catch (e) { }
+        break;
+      }
+    }
+  }
+};
 
 async function checkPlaylistExists(playlistUrl, maxAttempts) {
   if (maxAttempts === undefined) maxAttempts = 40;
@@ -1073,8 +1260,24 @@ async function seekStream(absoluteSeekTime, source) {
         if (episodesBtn) episodesBtn.classList.remove('active');
       }
       AppState.isSeeking = true; AppState.suppressTimeUpdate = true; AppState.previewTime = targetTime;
-      var positionInBuffer = isPositionInBuffer(targetTime);
-      if (positionInBuffer) {
+      // Смена дорожки вне окна потока — новое поколение с того же места,
+      // даже если позиция в буфере (restartServerGeneration)
+      var forceServer = !!AppState._forceServerSeek;
+      var switchWhat = forceServer ? AppState._forceServerSeekWhat : null;
+      AppState._forceServerSeek = false; AppState._forceServerSeekWhat = null;
+      var positionInBuffer = !forceServer && isPositionInBuffer(targetTime);
+      // Не в буфере плеера, но уже лежит на сервере (впереди до ~100 с, позади —
+      // окно) — тоже без перезапуска: hls.js сам подгрузит нужный сегмент
+      var inServerRange = !forceServer && !positionInBuffer && isPositionInServerRange(targetTime);
+      if (inServerRange) {
+        showPlayerLoading('Перемотка...', targetTime);
+        var onPlaying = function () { hidePlayerLoading(); videoPlayer.removeEventListener('playing', onPlaying); videoPlayer.removeEventListener('seeked', onSeeked); };
+        var onSeeked = function () { if (!wasPlaying) onPlaying(); };
+        videoPlayer.addEventListener('playing', onPlaying);
+        videoPlayer.addEventListener('seeked', onSeeked);
+        setTimeout(onPlaying, 8000);
+      }
+      if (positionInBuffer || inServerRange) {
         var relativeTime = targetTime - AppState.seekOffset;
         videoPlayer.currentTime = relativeTime;
         if (wasPlaying) videoPlayer.play()['catch'](function (err) { });
@@ -1088,7 +1291,7 @@ async function seekStream(absoluteSeekTime, source) {
       var playbackOverlay = getEl('playback-overlay');
       var playbackText = document.querySelector('.playback-text');
       playbackOverlay.classList.add('active');
-      playbackText.textContent = 'Перемотка на ' + formatTime(targetTime) + '...';
+      playbackText.textContent = switchWhat ? 'Переключение ' + switchWhat + '...' : 'Перемотка на ' + formatTime(targetTime) + '...';
       if (wasPlaying) videoPlayer.pause();
 
       var retrySeek = async function (retryCount, maxRetries) {
@@ -1100,7 +1303,8 @@ async function seekStream(absoluteSeekTime, source) {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               streamId: AppState.currentStreamId, seekTime: targetTime, multiChannel: AppState.multiChannelEnabled,
-              clientId: savedClientId, duration: AppState.originalDuration, sub: currentSubtitleTrack, dv: AppState.dvPreferred ? 'true' : 'false'
+              clientId: savedClientId, duration: AppState.originalDuration, sub: currentSubtitleTrack, dv: AppState.dvPreferred ? 'true' : 'false',
+              audio: currentAudioTrack, tracks: !!AppState.serverTracks
             })
           });
           if (!seekResponse.ok) throw new Error('HTTP ' + seekResponse.status);
@@ -1108,14 +1312,18 @@ async function seekStream(absoluteSeekTime, source) {
           if (!seekData.success) throw new Error(seekData.error || 'Ошибка перемотки');
           AppState.expectedDuration = seekData.duration; AppState.originalDuration = seekData.originalDuration;
           AppState.seekOffset = seekData.seekOffset; AppState.currentStreamId = seekData.streamId; AppState.lastSuccessfulSeek = targetTime;
+          applyServerTracks(seekData.tracks);
           if (videoPlayer) {
             videoPlayer.dataset.expectedDuration = AppState.expectedDuration;
             videoPlayer.dataset.originalDuration = AppState.originalDuration;
             videoPlayer.dataset.seekOffset = AppState.seekOffset;
           }
           playbackText.textContent = 'Загрузка потока...';
-          var playlistReady = await checkPlaylistExists(seekData.playlistUrl, 60);
-          if (!playlistReady) throw new Error('Таймаут ожидания плейлиста');
+          // Новый сервер отвечает, только когда плейлист готов, — лишний круг не нужен
+          if (!AppState.serverTracks) {
+            var playlistReady = await checkPlaylistExists(seekData.playlistUrl, 60);
+            if (!playlistReady) throw new Error('Таймаут ожидания плейлиста');
+          }
           playbackText.textContent = 'Загрузка видео...';
 
           if (AppState.hls) { AppState.hls.destroy(); AppState.hls = null; }
@@ -1168,7 +1376,7 @@ async function seekStream(absoluteSeekTime, source) {
           return true;
         } catch (error) {
           if (retryCount < maxRetries) {
-            playbackText.textContent = '⚠️ Ошибка перемотки. Попытка ' + (retryCount + 1) + '/' + (maxRetries + 1) + '...';
+            playbackText.textContent = '⚠️ Ошибка ' + (switchWhat ? 'переключения' : 'перемотки') + '. Попытка ' + (retryCount + 1) + '/' + (maxRetries + 1) + '...';
             await new Promise(function (resolve) { setTimeout(resolve, 1000); });
             return retrySeek(retryCount + 1, maxRetries);
           }
@@ -1178,7 +1386,7 @@ async function seekStream(absoluteSeekTime, source) {
       try {
         var success = await retrySeek(0, 2); resolve(success);
       } catch (error) {
-        playbackText.textContent = '❌ Ошибка перемотки!';
+        playbackText.textContent = switchWhat ? '❌ Ошибка переключения ' + switchWhat : '❌ Ошибка перемотки!';
         setTimeout(function () { playbackOverlay.classList.remove('active'); playbackText.textContent = 'Воспроизведение...'; }, 2000);
         if (wasPlaying) setTimeout(function () { videoPlayer.play()['catch'](function () { }); }, 1000);
         AppState.previewTime = null; AppState.suppressTimeUpdate = false; resolve(false);
@@ -2401,13 +2609,15 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
 async function initServerProxyPlayback(metadata, initialSeek, signal) {
   var seekParam = (initialSeek && initialSeek > 0) ? ('&start=' + initialSeek.toFixed(2)) : '';
   var durationParam = (metadata.fileInfo.duration && metadata.fileInfo.duration > 0) ? ('&duration=' + metadata.fileInfo.duration.toFixed(0)) : '';
-  var audioParam = metadata.audioTrack !== null ? ('&audio=' + metadata.audioTrack) : '';
+  // Не выбрана — без audio: сервер возьмёт дорожку с пометкой default
+  var audioParam = metadata.audioTrack !== null && metadata.audioChosen !== false ? ('&audio=' + metadata.audioTrack) : '';
   var subParam = currentSubtitleTrack >= 0 ? ('&sub=' + currentSubtitleTrack) : '';
   var multiChannelParam = (AppState.multiChannelEnabled === true) ? '&multiChannel=true' : '';
   var savedClientId = localStorage.getItem('clientId');
   var dvParam = '&dv=' + (AppState.dvPreferred ? 'true' : 'false');
   // fileInfo проверен в startHLSPlayback — сюда мы попадаем только с данными
-  var streamUrl = SERVER_URL + '/hls/stream?url=' + encodeURIComponent(AppState.videoUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam + subParam + dvParam;
+  // tracks=1 — дорожки сразу в потоке (сервер 1.0.53+; старый параметр не знает)
+  var streamUrl = SERVER_URL + '/hls/stream?url=' + encodeURIComponent(AppState.videoUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam + subParam + dvParam + '&tracks=1';
   var response;
   try {
     // С таймаутом: молчащий сервер иначе держит плеер открытым и пустым
@@ -2424,6 +2634,12 @@ async function initServerProxyPlayback(metadata, initialSeek, signal) {
   if (!data.success) throw new Error(data.error || 'Ошибка создания потока');
   AppState.currentStreamId = data.streamId; AppState.expectedDuration = data.duration; AppState.originalDuration = data.originalDuration || data.duration;
   AppState.seekOffset = data.seekOffset || initialSeek || 0; AppState.lastSuccessfulSeek = AppState.seekOffset;
+  applyServerTracks(data.tracks);
+  // Дорожку никто не выбирал — сервер взял с пометкой default (иначе первую)
+  if (data.tracks && (metadata.audioTrack === null || metadata.audioChosen === false) && typeof data.tracks.selectedAudio === 'number') {
+    currentAudioTrack = data.tracks.selectedAudio;
+    renderAudioTracks();
+  }
   var videoPlayer = getEl('video-player');
   if (Hls.isSupported()) {
     AppState.hls = createHlsInstance();
@@ -2436,6 +2652,7 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
   var isPlaybackCancelled = false;
   var manifestParsedHandler = function () {
     if (signal.aborted || isPlaybackCancelled) return;
+    applyServerTrackSelection();
     forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
     videoPlayer.currentTime = 0; videoPlayer.pause(); startTorrentStatsUpdates();
     if (thisisseek) {
@@ -2469,6 +2686,14 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
     }, 3000);
   };
   hls.off(Hls.Events.MANIFEST_PARSED, manifestParsedHandler); hls.on(Hls.Events.MANIFEST_PARSED, manifestParsedHandler);
+  // Список аудиодорожек hls.js получает и после MANIFEST_PARSED и тогда сам
+  // выбирает первую — возвращаем выбранную в плеере
+  hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, function () { if (!signal.aborted && AppState.serverTracks) selectHlsAudio(currentAudioTrack); });
+  // Начало шкалы поколения (первый PTS видео) — для субтитров ServerSubs
+  hls.on(Hls.Events.INIT_PTS_FOUND, function (e, d) {
+    if (signal.aborted || !AppState.serverTracks || !d || d.id !== 'main' || !d.timescale) return;
+    AppState.streamTimeOrigin = d.initPTS / d.timescale;
+  });
   var fragLoadingHandler = function (event, data) { if (signal.aborted) return; };
   hls.off(Hls.Events.FRAG_LOADING, fragLoadingHandler); hls.on(Hls.Events.FRAG_LOADING, fragLoadingHandler);
   var bufferAppendedHandler = function (event, data) { if (signal.aborted) return; };
@@ -2484,7 +2709,10 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
           var now = Date.now();
           if (!window._lastCleanupTime || (now - window._lastCleanupTime) > 2000) {
             window._lastCleanupTime = now;
-            fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keepFromSegment: segmentNumber }) }).catch(function () { });
+            fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keepFromSegment: segmentNumber }) })
+              .then(function (r) { return r.json(); })
+              .then(function (d) { if (d && typeof d.availableFrom === 'number') AppState.serverAvailableFrom = d.availableFrom; })
+              ['catch'](function () { });
           }
         }
       }
@@ -2563,6 +2791,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (initialSeek === undefined) initialSeek = null;
   if (fromSearch === undefined) fromSearch = false;
   if (episodeIndex === undefined) episodeIndex = null;
+  // Дорожку передали явно (смена дорожки, следующая серия с той же озвучкой)
+  // или она сохранена для файла — это выбор; иначе серверный поток с
+  // дорожками берёт ту, что помечена default (initServerProxyPlayback)
+  var audioExplicit = audioTrack !== undefined && audioTrack !== null;
   if (audioTrack === undefined) audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
   // Настройка «Предзагрузка»: до плеера — окно с буфером и статистикой раздачи
   // (torrserverstats.js). Только при запуске из интерфейса: смена серии,
@@ -2640,6 +2872,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   lastPlaybackFromSearch = fromSearch;
   //if (!AppState.transcodingFullOnOff) {
   var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
+  if (metadata) metadata.audioChosen = audioExplicit || metadata.savedAudioTrack !== null;
   if (!metadata || signal.aborted) return false;
   var { fileInfo, savedAudioTrack, fileName, savedSubTrack, savedTimecode, seekTime } = metadata;
   initialSeek = seekTime;
@@ -3029,6 +3262,18 @@ async function switchAudioTrack(trackIndex) {
     switchNativeAudioTrack(AppState.nativeVideoPlayer || getEl('video-player'), trackIndex);
     return;
   }
+  // Дорожка уже в потоке — переключает hls.js, ffmpeg не трогаем
+  if (AppState.serverTracks) {
+    // В окне потока — сразу; вне окна — новое поколение с центром на ней
+    var inStream = selectHlsAudio(trackIndex);
+    currentAudioTrack = trackIndex;
+    AppState.serverTracks.selectedAudio = trackIndex;
+    if (currentTimecodeData.hash && currentTimecodeData.fileId) saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
+    renderAudioTracks();
+    toggleAudioPanel();
+    if (!inStream) restartServerGeneration('аудиодорожки');
+    return;
+  }
   thisisseek = false; await saveTimecodeToServer();
   if (currentTimecodeData.hash && currentTimecodeData.fileId) await saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
   var audioPanel = getEl('audio-panel'); var audioBtn = getEl('audio-btn');
@@ -3356,10 +3601,12 @@ function applyDirectProbe() {
 }
 
 /**
- * Спросить ffprobe о файле, который сейчас назначен <video>. Первый ответ
- * побеждает; не ответил никто — подписи остаются «Аудиодорожка N» и
- * «Субтитры N».
- *  - webOS и Vidaa: сторонний сервис ffprobe, тот же, что у плагина Lampa
+ * Спросить ffprobe о файле, который сейчас назначен <video> («Полностью
+ * отключить транскодирование»). Не ответил никто — подписи остаются
+ * «Аудиодорожка N» и «Субтитры N». Подписи сервера — только когда поток идёт
+ * через сервер (там они из /api/file/info), здесь их нет.
+ *  - webOS: сначала своя служба ffprobe (ниже), CUB — если она не ответила;
+ *  - остальные платформы: сразу сторонний сервис ffprobe, тот же, что у плагина Lampa
  *    «tracks» (cub.red/plugin/tracks): WebSocket, в адресе хэш раздачи и
  *    номер файла, в ответ один JSON с streams. Файл он берёт из раздачи сам,
  *    поэтому TorrServer может быть любым, хоть локальным. Со страницы по
@@ -3370,6 +3617,8 @@ function applyDirectProbe() {
  */
 var DIRECT_PROBE_WS = 'ws://185.204.0.61:8080/';
 var DIRECT_PROBE_TIMEOUT_MS = 15000;
+// webOS: сколько ждать свою службу ffprobe, прежде чем спросить CUB
+var DIRECT_PROBE_LUNA_WAIT_MS = 8000;
 
 function directProbeStart() {
   directProbe.streams = null;
@@ -3388,9 +3637,12 @@ function directProbeStart() {
     else applyDirectProbe();
   };
   if (!hash || fileId === undefined || fileId === null) return;
-  if (AppState.platform !== 'webos' && AppState.platform !== 'vidaa') return;
 
-  if (typeof WebSocket === 'function') {
+  // Сервис CUB: на webOS — запасной (после своей службы), иначе — сразу
+  var cubStarted = false;
+  var startCub = function () {
+    if (cubStarted || gen !== directProbe.gen || directProbe.streams || typeof WebSocket !== 'function') return;
+    cubStarted = true;
     var socket = null, timer = null;
     var finish = function () {
       clearTimeout(timer);
@@ -3416,9 +3668,11 @@ function directProbeStart() {
         if (!directProbe.streams) directPlaybackDiag.probe = 'сервис: нет ответа за ' + (DIRECT_PROBE_TIMEOUT_MS / 1000) + ' с';
       }, DIRECT_PROBE_TIMEOUT_MS);
     } catch (e) { finish(); directPlaybackDiag.probe = 'сервис: ' + e.message; }
-  }
+  };
 
-  if (AppState.platform !== 'webos' || !lunaAvailable()) return;
+  if (AppState.platform !== 'webos' || !lunaAvailable()) { startCub(); return; }
+  // Своя служба молчит — не ждём бесконечно, идём в CUB
+  setTimeout(startCub, DIRECT_PROBE_LUNA_WAIT_MS);
   var playURL = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&play=play';
   // localhost — 127.0.0.1: статическому ffprobe имена не разрешить даже
   // localhost («Failed to resolve hostname localhost» на webOS 25 со
@@ -3433,11 +3687,16 @@ function directProbeStart() {
     if (gen !== directProbe.gen) return;
     var parsed = null;
     try { parsed = JSON.parse(r.data || '{}'); } catch (e) { }
-    if (!parsed || !parsed.streams) { if (!directProbe.streams) webosSubsDiag.probe = 'служба: пустой ответ'; return; }
+    if (!parsed || !parsed.streams || !parsed.streams.length) {
+      if (!directProbe.streams) webosSubsDiag.probe = 'служба: пустой ответ';
+      startCub();
+      return;
+    }
     done(parsed.streams, 'служба');
   }, function (r) {
     if (gen !== directProbe.gen || directProbe.streams) return;
     webosSubsDiag.probe = 'служба: ошибка ' + ((r && (r.errorText || r.errorCode)) || '?');
+    startCub();
   }, true);
 }
 
@@ -3871,6 +4130,18 @@ async function switchSubtitleTrack(trackIndex) {
   if (trackIndex === currentSubtitleTrack) { toggleSubtitlesPanel(); return; }
   // Прямой файл: дорожка уже в <video>, поток не перезапускаем
   if (AppState.transcodingFullOnOff) { switchNativeSubtitleTrack(trackIndex); return; }
+  // Текстовые субтитры уже лежат на сервере — показываем сами, поток не трогаем
+  if (AppState.serverTracks && (trackIndex === -1 || serverSubEntry(trackIndex) || isTextSubtitle(trackIndex))) {
+    var subInStream = trackIndex === -1 || !!serverSubEntry(trackIndex);
+    currentSubtitleTrack = trackIndex;
+    if (trackIndex === -1) ServerSubs.stop(); else if (subInStream) ServerSubs.select(trackIndex);
+    if (currentTimecodeData.hash && currentTimecodeData.fileId) saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
+    renderSubtitleTracks();
+    toggleSubtitlesPanel();
+    // Текстовых субтитров нет в окне — новое поколение с центром на них
+    if (!subInStream) restartServerGeneration('субтитров');
+    return;
+  }
   thisisseek = false; await saveTimecodeToServer();
   if (currentTimecodeData.hash && currentTimecodeData.fileId) await saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
   var subtitlesPanel = getEl('subtitles-panel'); var subtitlesBtn = getEl('subtitles-btn');
