@@ -478,6 +478,28 @@ function updateEpisodeButtons() {
   }
 }
 
+/**
+ * Браузер не дал запустить видео со звуком (политика автозапуска), и плеер
+ * включил его без звука. Кнопки звука на панели больше нет, поэтому звук
+ * возвращаем на первое же нажатие или клик в плеере: это жест пользователя, и
+ * после него браузер звук разрешает. Зовут только пути автозапуска — не
+ * кнопка MUTE пульта, иначе намеренно выключенный звук включался бы сам.
+ */
+var soundGestureArmed = false;
+function restoreSoundOnGesture() {
+  var video = getEl('video-player');
+  if (!video || !video.muted || soundGestureArmed) return;
+  soundGestureArmed = true;
+  var unmute = function () {
+    document.removeEventListener('keydown', unmute, true);
+    document.removeEventListener('click', unmute, true);
+    soundGestureArmed = false;
+    if (AppState.currentScreen === 'player') video.muted = false;
+  };
+  document.addEventListener('keydown', unmute, true);
+  document.addEventListener('click', unmute, true);
+}
+
 function updatePlayerTitle(title) {
   var titleElement = getEl('player-title');
   var controlsContainer = getEl('controls-container');
@@ -553,9 +575,9 @@ var idleControlEls = null;
 
 function getIdleControlEls() {
   if (idleControlEls) return idleControlEls;
-  var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn',
-    'exit-player-btn', 'episodes-btn', 'subtitles-btn', 'prev-episode-btn',
-    'next-episode-btn', 'player-title'];
+  // Кнопки панели здесь не нужны: они внутри #controls-container и гаснут с ним
+  var ids = ['controls-container', 'buffer-stats', 'player-hint',
+    'exit-player-btn', 'player-title'];
   var list = [];
   for (var i = 0; i < ids.length; i++) { var el = getEl(ids[i]); if (el) list.push(el); }
   if (list.length) idleControlEls = list;   // пусто — DOM ещё не готов, попробуем позже
@@ -686,19 +708,9 @@ function updatePlayPauseButton() {
   var btn = getEl('play-pause-btn');
   var videoPlayer = getEl('video-player');
   if (!btn || !videoPlayer) return;
-  btn.innerHTML = videoPlayer.paused ? '<i class="fi fi-rr-play"></i>' : '<i class="fi fi-rr-pause"></i>';
-}
-
-function updateMuteButton() {
-  var btn = getEl('mute-btn');
-  var videoPlayer = getEl('video-player');
-  if (!btn || !videoPlayer) return;
-  // Оба состояния — из regular-rounded. Раньше выключённый звук брался из
-  // uicons-thin-chubby: ради одного этого значка на старте грузился стиль,
-  // блокирующий скрипты, а при первом показе кнопки — шрифт на 430 КБ
-  // (подробности в index.html). Заодно ушла разница в толщине линий между
-  // двумя состояниями одной и той же кнопки.
-  btn.innerHTML = videoPlayer.muted ? '<i class="fi fi-rr-volume-slash"></i>' : '<i class="fi fi-rr-volume"></i>';
+  // В кнопке лежат обе иконки, видна одна — по классу (styles.css: .hud-play)
+  btn.classList.toggle('is-paused', !!videoPlayer.paused);
+  btn.title = videoPlayer.paused ? 'Воспроизвести' : 'Пауза';
 }
 
 /**
@@ -1354,9 +1366,9 @@ async function seekStream(absoluteSeekTime, source) {
           var onMetaData = function () {
             videoPlayer.currentTime = 0;
             if (wasPlaying) {
-              videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
+              videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); restoreSoundOnGesture(); });
             }
-            videoPlayer.muted = false; updateMuteButton();
+            videoPlayer.muted = false; restoreSoundOnGesture();
             forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
             var seekSlider = getEl('seek-slider');
             if (seekSlider) seekSlider.value = Math.min(targetTime, parseFloat(seekSlider.max) || targetTime);
@@ -1609,10 +1621,14 @@ async function switchToEpisode(index, fileId) {
  * ровно одна. Раньше у каждой был свой toggle, и «Серии» не закрывали аудио и
  * субтитры — на экране могли оказаться две панели сразу.
  */
+// Аудио и субтитры открываются из одного меню («Аудио и субтитры»), поэтому
+// у всех трёх одна кнопка — tracks-btn: она подсвечена, пока открыто любое из них
 var PLAYER_PANELS = {
   episodes: { panel: 'episodes-panel', btn: 'episodes-btn' },
-  audio: { panel: 'audio-panel', btn: 'audio-btn' },
-  subtitles: { panel: 'subtitles-panel', btn: 'subtitles-btn' }
+  tracks: { panel: 'tracks-panel', btn: 'tracks-btn' },
+  audio: { panel: 'audio-panel', btn: 'tracks-btn' },
+  subtitles: { panel: 'subtitles-panel', btn: 'tracks-btn' },
+  settings: { panel: 'player-settings-panel', btn: 'player-settings-btn' }
 };
 
 function setPlayerPanel(name, open) {
@@ -1632,11 +1648,24 @@ function isPlayerPanelOpen(name) {
 }
 
 function closePlayerPanels(except) {
+  // Кнопка у аудио и субтитров общая: панель, которая остаётся открытой,
+  // красит её последней, иначе закрытие соседки сняло бы подсветку
   for (var name in PLAYER_PANELS) {
     if (name !== except) setPlayerPanel(name, false);
   }
+  if (except && isPlayerPanelOpen(except)) setPlayerPanel(except, true);
+  if (!except) tracksMenuOrigin = null;
 }
 window.closePlayerPanels = closePlayerPanels;
+
+/** Открытая панель плеера (элемент) или null. Читает control.js. */
+function getOpenPlayerPanel() {
+  for (var name in PLAYER_PANELS) {
+    if (isPlayerPanelOpen(name)) return getEl(PLAYER_PANELS[name].panel);
+  }
+  return null;
+}
+window.getOpenPlayerPanel = getOpenPlayerPanel;
 
 function togglePlayerPanel(name) {
   var willOpen = !isPlayerPanelOpen(name);
@@ -1651,9 +1680,173 @@ function togglePlayerPanel(name) {
       else if (hash) loadEpisodesInfo(hash);
     } else if (name === 'audio') renderAudioTracks();
     else if (name === 'subtitles') renderSubtitleTracks();
+    else if (name === 'tracks') updateTracksMenu();
+    else if (name === 'settings') updatePlayerSettingsMenu();
   }
+  // Раздел открыли не из меню (красная кнопка пульта) — «Назад» из него
+  // закрывает панель. Из меню — openTracksSection поставит origin заново
+  tracksMenuOrigin = null;
   setPlayerPanel(name, willOpen);
   return willOpen;
+}
+window.togglePlayerPanel = togglePlayerPanel;
+
+// ==================== МЕНЮ «АУДИО И СУБТИТРЫ» ====================
+// Раздел, открытый из меню: «Назад» в нём возвращает в меню на тот же пункт
+var tracksMenuOrigin = null;
+
+/** Подписи под пунктами меню — выбранные сейчас дорожка звука и субтитры */
+function updateTracksMenu() {
+  var audioValue = getEl('tracks-audio-value');
+  var subsValue = getEl('tracks-subtitles-value');
+  if (audioValue) {
+    var a = currentAudioTracks && currentAudioTracks[currentAudioTrack];
+    audioValue.textContent = !currentAudioTracks || !currentAudioTracks.length ? 'Нет дорожек'
+      : a ? (a.title || ('Дорожка ' + (currentAudioTrack + 1))) +
+        (a.language && a.language !== 'und' ? ' · ' + a.language.toUpperCase() : '')
+      : 'По умолчанию';
+  }
+  if (subsValue) {
+    var s = currentSubTracks && currentSubTracks[currentSubtitleTrack];
+    subsValue.textContent = !currentSubTracks || !currentSubTracks.length ? 'Нет субтитров'
+      : s ? (s.title || ('Субтитры ' + (currentSubtitleTrack + 1))) +
+        (s.language && s.language !== 'und' ? ' · ' + s.language.toUpperCase() : '')
+      : 'Выключены';
+  }
+}
+
+/** Пункт меню → список дорожек этого раздела */
+function openTracksSection(section) {
+  togglePlayerPanel(section);
+  tracksMenuOrigin = section;
+  if (typeof focusActivePanelItem === 'function') focusActivePanelItem(section);
+}
+
+/**
+ * «Назад» в плеере (control.js: playerBackPress). Из раздела, открытого через
+ * меню, — обратно в меню на тот же пункт. true — нажатие обработано.
+ */
+function playerPanelBack() {
+  var section = tracksMenuOrigin;
+  if (!section || !isPlayerPanelOpen(section)) return false;
+  togglePlayerPanel('tracks');
+  var row = getEl(section === 'audio' ? 'tracks-audio-item' : 'tracks-subtitles-item');
+  if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+  if (row && typeof focusEl === 'function') setTimeout(function () { focusEl(row); }, 0);
+  return true;
+}
+window.playerPanelBack = playerPanelBack;
+
+function setupTracksButton() {
+  var tracksBtn = getEl('tracks-btn');
+  var panel = getEl('tracks-panel');
+  if (!tracksBtn || !panel) return;
+
+  tracksBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    // Открыт раздел (аудио или субтитры) — кнопка его закрывает, а не
+    // открывает меню поверх
+    if (isPlayerPanelOpen('audio') || isPlayerPanelOpen('subtitles')) closePlayerPanels();
+    else togglePlayerPanel('tracks');
+    resetMouseIdleTimer();
+  });
+  panel.addEventListener('click', function (e) {
+    // Дальше не пускаем: общий «клик мимо панели» (setupPlayerPanelsOutsideClick)
+    // увидел бы клик вне только что открытого раздела и тут же его закрыл
+    e.stopPropagation();
+    var item = e.target && e.target.closest ? e.target.closest('.player-menu-item') : null;
+    if (item && item.dataset.section) openTracksSection(item.dataset.section);
+    resetMouseIdleTimer();
+  });
+  var closeBtn = getEl('close-tracks');
+  if (closeBtn) closeBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setPlayerPanel('tracks', false);
+    resetMouseIdleTimer();
+  });
+  setupPlayerPanelsOutsideClick();
+}
+
+// ==================== НАСТРОЙКИ ПЛЕЕРА (шестерёнка) ====================
+/** Переключатели в панели — по текущему состоянию часов и строки буфера */
+function updatePlayerSettingsMenu() {
+  var clock = getEl('psetting-clock'), buffer = getEl('psetting-buffer');
+  var clockShown = typeof hideClockEnabled === 'undefined' || !hideClockEnabled;
+  if (clock) clock.classList.toggle('is-on', clockShown);
+  if (buffer) buffer.classList.toggle('is-on', !AppState.bufferHidden);
+}
+window.updatePlayerSettingsMenu = updatePlayerSettingsMenu;
+
+function setupPlayerSettingsButton() {
+  var btn = getEl('player-settings-btn');
+  var panel = getEl('player-settings-panel');
+  if (!btn || !panel) return;
+
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    togglePlayerPanel('settings');
+    resetMouseIdleTimer();
+  });
+  panel.addEventListener('click', function (e) {
+    var item = e.target && e.target.closest ? e.target.closest('.player-menu-item') : null;
+    if (item && item.id === 'psetting-clock' && typeof setClockHidden === 'function') {
+      setClockHidden(item.classList.contains('is-on'));
+    } else if (item && item.id === 'psetting-buffer' && typeof toggleBufferVisibility === 'function') {
+      toggleBufferVisibility();
+    }
+    updatePlayerSettingsMenu();
+    resetMouseIdleTimer();
+  });
+  var closeBtn = getEl('close-player-settings');
+  if (closeBtn) closeBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setPlayerPanel('settings', false);
+    resetMouseIdleTimer();
+  });
+  setupPlayerPanelsOutsideClick();
+}
+
+/**
+ * Перемотка кнопками ±10 с. Время абсолютное (currentTime + seekOffset), как у
+ * ползунка; без hls.js (прямой файл, транскодирование) серверной перемотки
+ * нет — двигаем <video> сам, как это делает ползунок (app.js: change).
+ */
+var HUD_SEEK_STEP_SEC = 10;
+function seekRelative(delta) {
+  var video = getEl('video-player');
+  if (!video) return;
+  // Идёт перемотка: последнюю цель держит очередь seekStream, считаем от неё
+  var base = AppState.isSeeking && typeof AppState.previewTime === 'number' ? AppState.previewTime
+    : video.currentTime + (AppState.seekOffset || 0);
+  var total = AppState.originalDuration || AppState.expectedDuration || video.duration;
+  var target = base + delta;
+  if (target < 0) target = 0;
+  if (total && isFinite(total) && target > total - 1) target = Math.max(0, total - 1);
+
+  var slider = getEl('seek-slider');
+  if (slider) slider.value = target;
+  var currentTimeEl = getEl('current-time');
+  if (currentTimeEl) currentTimeEl.textContent = formatTime(target);
+  if (typeof window.showSeekOverlay === 'function') {
+    window.showSeekOverlay(target, delta < 0 ? -1 : 1, Math.abs(delta));
+    if (typeof window.scheduleHideSeekOverlay === 'function') window.scheduleHideSeekOverlay();
+  }
+
+  if (!AppState.hls) {
+    video.currentTime = target - (AppState.seekOffset || 0);
+    if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
+  } else {
+    AppState.previewTime = target;
+    AppState.suppressTimeUpdate = true;
+    seekStream(target, 'button');
+  }
+}
+window.seekRelative = seekRelative;
+
+function setupSeekButtons() {
+  var rew = getEl('rewind-btn'), fwd = getEl('forward-btn');
+  if (rew) rew.addEventListener('click', function (e) { e.stopPropagation(); seekRelative(-HUD_SEEK_STEP_SEC); resetMouseIdleTimer(); });
+  if (fwd) fwd.addEventListener('click', function (e) { e.stopPropagation(); seekRelative(HUD_SEEK_STEP_SEC); resetMouseIdleTimer(); });
 }
 
 /**
@@ -2443,7 +2636,7 @@ async function initGstPlayback(metadata, initialSeek, signal) {
     AppState.hls = createHlsInstance({ maxBufferLength: 20, maxMaxBufferLength: 40, startFragPrefetch: false, fragLoadingTimeOut: 20000, manifestLoadingTimeOut: 20000, enableWorker: false, cache: true });
     AppState.hls.loadSource(playURL); AppState.hls.attachMedia(videoPlayer);
     var manifestHandler = function () {
-      videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
+      videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); restoreSoundOnGesture(); });
       startTimecodeSaving(); resetMouseIdleTimer(); startNearEndCheck(); startHeartbeat(); startTorrentStatsUpdates();
       AppState.hls.off(Hls.Events.MANIFEST_PARSED, manifestHandler);
     };
@@ -2528,9 +2721,9 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
     videoPlayer.play()['catch'](function () {
       videoPlayer.muted = true;
       videoPlayer.play()['catch'](function () { });
-      updateMuteButton();
+      restoreSoundOnGesture();
     });
-    videoPlayer.muted = false; updateMuteButton();
+    videoPlayer.muted = false; restoreSoundOnGesture();
     startTimecodeSaving(); resetMouseIdleTimer(); startNearEndCheck(); startHeartbeat(); startTorrentStatsUpdates();
   };
 
@@ -2657,8 +2850,8 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
     videoPlayer.currentTime = 0; videoPlayer.pause(); startTorrentStatsUpdates();
     if (thisisseek) {
       hidePlayerLoading();
-      if (!signal.aborted && !isPlaybackCancelled) videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
-      videoPlayer.muted = false; updateMuteButton(); startTimecodeSaving(); resetMouseIdleTimer();
+      if (!signal.aborted && !isPlaybackCancelled) videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); restoreSoundOnGesture(); });
+      videoPlayer.muted = false; restoreSoundOnGesture(); startTimecodeSaving(); resetMouseIdleTimer();
       if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
       startNearEndCheck(); startHeartbeat(); return;
     }
@@ -2669,8 +2862,8 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
       // после старта видео само снималось с паузы
       if (AppState._loadingTimeout) { clearTimeout(AppState._loadingTimeout); AppState._loadingTimeout = null; }
       hidePlayerLoading();
-      if (!signal.aborted && !isPlaybackCancelled) videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
-      videoPlayer.muted = false; updateMuteButton(); startTimecodeSaving(); resetMouseIdleTimer();
+      if (!signal.aborted && !isPlaybackCancelled) videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); restoreSoundOnGesture(); });
+      videoPlayer.muted = false; restoreSoundOnGesture(); startTimecodeSaving(); resetMouseIdleTimer();
       if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
       startNearEndCheck(); startHeartbeat(); videoPlayer.removeEventListener('canplay', onCanPlay);
     };
@@ -2678,8 +2871,8 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
     AppState._loadingTimeout = setTimeout(function () {
       if (!signal.aborted && !isPlaybackCancelled) {
         videoPlayer.removeEventListener('canplay', onCanPlay); hidePlayerLoading();
-        videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
-        videoPlayer.muted = false; updateMuteButton(); startTimecodeSaving(); resetMouseIdleTimer();
+        videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); restoreSoundOnGesture(); });
+        videoPlayer.muted = false; restoreSoundOnGesture(); startTimecodeSaving(); resetMouseIdleTimer();
         if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
         startNearEndCheck(); startHeartbeat();
       }
@@ -3276,8 +3469,7 @@ async function switchAudioTrack(trackIndex) {
   }
   thisisseek = false; await saveTimecodeToServer();
   if (currentTimecodeData.hash && currentTimecodeData.fileId) await saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
-  var audioPanel = getEl('audio-panel'); var audioBtn = getEl('audio-btn');
-  if (audioPanel) { audioPanel.classList.add('hidden'); if (audioBtn) audioBtn.classList.remove('active'); }
+  setPlayerPanel('audio', false);
   var videoPlayer = getEl('video-player'); var currentTime = videoPlayer.currentTime + AppState.seekOffset;
   getEl('playback-overlay').classList.add('active'); document.querySelector('.playback-text').textContent = 'Переключение аудиодорожки...';
   try {
@@ -3981,20 +4173,15 @@ function switchNativeSubtitleTrack(index) {
 function toggleAudioPanel() { return togglePlayerPanel('audio'); }
 
 function setupAudioButton() {
-  var audioBtn = getEl('audio-btn');
+  // Своей кнопки на панели управления у аудио нет — открывается из меню
+  // «Аудио и субтитры» (setupTracksButton) или красной кнопкой пульта
   var closeAudioBtn = getEl('close-audio');
   var audioPanel = getEl('audio-panel');
 
-  if (!audioBtn || !closeAudioBtn || !audioPanel) return;
+  if (!closeAudioBtn || !audioPanel) return;
 
   // Делегирование кликов по списку аудиодорожек
   setupAudioListDelegation();
-
-  audioBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    toggleAudioPanel();
-    resetMouseIdleTimer();
-  });
 
   closeAudioBtn.addEventListener('click', function () {
     setPlayerPanel('audio', false);
@@ -4144,8 +4331,7 @@ async function switchSubtitleTrack(trackIndex) {
   }
   thisisseek = false; await saveTimecodeToServer();
   if (currentTimecodeData.hash && currentTimecodeData.fileId) await saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
-  var subtitlesPanel = getEl('subtitles-panel'); var subtitlesBtn = getEl('subtitles-btn');
-  if (subtitlesPanel) { subtitlesPanel.classList.add('hidden'); if (subtitlesBtn) subtitlesBtn.classList.remove('active'); }
+  setPlayerPanel('subtitles', false);
   var videoPlayer = getEl('video-player'); var currentTime = videoPlayer ? (videoPlayer.currentTime + AppState.seekOffset) : 0;
   getEl('playback-overlay').classList.add('active'); document.querySelector('.playback-text').textContent = 'Переключение субтитров...';
   try {
@@ -4162,20 +4348,14 @@ async function switchSubtitleTrack(trackIndex) {
 function toggleSubtitlesPanel() { return togglePlayerPanel('subtitles'); }
 
 function setupSubtitlesButton() {
-  var subtitlesBtn = getEl('subtitles-btn');
+  // Открываются из меню «Аудио и субтитры» (setupTracksButton)
   var closeSubtitlesBtn = getEl('close-subtitles');
   var subtitlesPanel = getEl('subtitles-panel');
 
-  if (!subtitlesBtn || !closeSubtitlesBtn || !subtitlesPanel) return;
+  if (!closeSubtitlesBtn || !subtitlesPanel) return;
 
   // Делегирование кликов по списку субтитров
   setupSubtitlesListDelegation();
-
-  subtitlesBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    toggleSubtitlesPanel();
-    resetMouseIdleTimer();
-  });
 
   closeSubtitlesBtn.addEventListener('click', function () {
     setPlayerPanel('subtitles', false);

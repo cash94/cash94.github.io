@@ -104,6 +104,11 @@ var PLAYER_BACK_EXIT_MS = 2000;
  *        не прячем, только закрываем панель
  */
 function playerBackPress(fromMouse) {
+    // Аудио или субтитры, открытые из меню «Аудио и субтитры», — назад в меню
+    if (typeof window.playerPanelBack === 'function' && window.playerPanelBack()) {
+        lastPlayerBackPressAt = 0;
+        return;
+    }
     if (hidePlayerPanelsOnly()) {
         if (!fromMouse) hidePlayerUi();
         lastPlayerBackPressAt = 0;
@@ -1832,36 +1837,13 @@ function updateFocusableElements() {
         return;
     }
 
-    var episodesPanel = getEl('episodes-panel');
-    var audioPanel = getEl('audio-panel');
-    var subtitlesPanel = getEl('subtitles-panel');
-    var isEpisodesOpen = episodesPanel && !episodesPanel.classList.contains('hidden');
-    var isAudioOpen = audioPanel && !audioPanel.classList.contains('hidden');
-    var isSubtitlesOpen = subtitlesPanel && !subtitlesPanel.classList.contains('hidden');
+    // Открытая панель плеера (серии, меню дорожек, аудио, субтитры, настройки)
+    // — фокус ходит только внутри неё. Список панелей ведёт player.js
+    var openPanel = typeof window.getOpenPlayerPanel === 'function' ? window.getOpenPlayerPanel() : null;
     var list = [];
 
-    if (isEpisodesOpen) {
-        var items = episodesPanel.querySelectorAll('.episode-item, .close-panel-btn');
-        for (var i = 0; i < items.length; i++) if (items[i] && items[i].offsetParent !== null) list.push(items[i]);
-        focusableElements = list;
-        _focusCache.timestamp = now;
-        _focusCache.screen = screen;
-        _focusCache.elements = focusableElements.slice();
-        _focusCache.gen = _focusGen;
-        return;
-    }
-    if (isAudioOpen) {
-        var items = audioPanel.querySelectorAll('.audio-item, .close-panel-btn');
-        for (var i = 0; i < items.length; i++) if (items[i] && items[i].offsetParent !== null) list.push(items[i]);
-        focusableElements = list;
-        _focusCache.timestamp = now;
-        _focusCache.screen = screen;
-        _focusCache.elements = focusableElements.slice();
-        _focusCache.gen = _focusGen;
-        return;
-    }
-    if (isSubtitlesOpen) {
-        var items = subtitlesPanel.querySelectorAll('.subtitle-item, .close-panel-btn');
+    if (openPanel) {
+        var items = openPanel.querySelectorAll('.episode-item, .audio-item, .subtitle-item, .player-menu-item, .close-panel-btn');
         for (var i = 0; i < items.length; i++) if (items[i] && items[i].offsetParent !== null) list.push(items[i]);
         focusableElements = list;
         _focusCache.timestamp = now;
@@ -1885,7 +1867,9 @@ function updateFocusableElements() {
         if (c && !c.classList.contains('idle-hidden')) {
             var seek = getEl('seek-slider');
             var skipBtn = getEl('skip-button');
-            var btns = document.querySelectorAll('#prev-episode-btn, #play-pause-btn, #next-episode-btn, #audio-btn, #subtitles-btn, #episodes-btn, #mute-btn, #zoom-mode-btn, #toggle-buffer-btn');
+            // Порядок DOM = порядок обхода влево/вправо: серии и ±10 с вокруг
+            // воспроизведения, справа — серии, дорожки, шестерёнка, масштаб
+            var btns = getEl('controls-container').querySelectorAll('.button-row .control-btn');
             for (var i = 0; i < btns.length; i++) if (btns[i] && btns[i].offsetParent !== null) list.push(btns[i]);
             if (seek && seek.offsetParent !== null) list.unshift(seek);
             if (skipBtn && !skipBtn.classList.contains('hidden') && skipBtn.offsetParent !== null) list.push(skipBtn);
@@ -2208,8 +2192,7 @@ function navigate(direction) {
     // PLAYER NAV
     if (AppState.currentScreen === 'player') {
         var cc = getEl('controls-container'); if (!cc || cc.classList.contains('idle-hidden')) return;
-        var ep = getEl('episodes-panel'), ap = getEl('audio-panel'), sp = getEl('subtitles-panel');
-        var isOpen = (ep && !ep.classList.contains('hidden')) || (ap && !ap.classList.contains('hidden')) || (sp && !sp.classList.contains('hidden'));
+        var isOpen = typeof window.getOpenPlayerPanel === 'function' && !!window.getOpenPlayerPanel();
 
         if (isOpen) {
             // Инвалидируем кэш для получения актуального списка элементов панели
@@ -2247,7 +2230,14 @@ function navigate(direction) {
             return;
         }
 
-        if (cur && cur.id === 'seek-slider') { if (direction === 'down' && focusableElements.length > 1) setFocus(1); return; }
+        if (cur && cur.id === 'seek-slider') {
+            // Вниз с ползунка — на воспроизведение посередине, а не на первую кнопку слева
+            if (direction === 'down' && focusableElements.length > 1) {
+                var pp = focusableElements.indexOf(getEl('play-pause-btn'));
+                setFocus(pp > 0 ? pp : 1);
+            }
+            return;
+        }
         if (direction === 'up') setFocus(0); else if (direction === 'left' && currentFocusIndex > 1) setFocus(currentFocusIndex - 1); else if (direction === 'right' && currentFocusIndex < focusableElements.length - 1) setFocus(currentFocusIndex + 1);
         return;
     }
@@ -2489,6 +2479,8 @@ function focusActivePanelItem(panelType) {
         var sel;
         if (panelType === 'episodes') sel = '.episode-item.active';
         else if (panelType === 'subtitles') sel = '.subtitle-item.active';
+        else if (panelType === 'tracks') sel = '#tracks-panel .player-menu-item';
+        else if (panelType === 'settings') sel = '#player-settings-panel .player-menu-item';
         else sel = '.audio-item.active';
 
         // Обязательно инвалидируем кэш, чтобы получить свежий список элементов панели
@@ -2633,14 +2625,12 @@ function setupKeyboardHandlers() {
                 e.preventDefault(); var f = document.querySelector('.focused'); if (!cv) { showPlayerControls('play-pause-btn'); return; } if (f) {
                     var done = false;
                     if (f.id === 'play-pause-btn') { vp.paused ? vp.play() : vp.pause(); if (typeof window.updatePlayPauseButton === 'function') window.updatePlayPauseButton(); done = true; }
-                    else if (f.id === 'mute-btn') { vp.muted = !vp.muted; if (typeof window.updateMuteButton === 'function') window.updateMuteButton(); done = true; }
                     else if (f.id === 'prev-episode-btn') { if (typeof window.prevEpisode === 'function') window.prevEpisode(); done = true; }
                     else if (f.id === 'next-episode-btn') { if (typeof window.nextEpisode === 'function') window.nextEpisode(); done = true; }
                     else if (f.id === 'episodes-btn') { var eb = getEl('episodes-btn'); if (eb) eb.click(); updateFocusableElements(); focusActivePanelItem('episodes'); }
-                    else if (f.id === 'audio-btn') { var ab = getEl('audio-btn'); if (ab) ab.click(); updateFocusableElements(); focusActivePanelItem('audio'); }
-                    else if (f.id === 'subtitles-btn') { var sb = getEl('subtitles-btn'); if (sb) sb.click(); updateFocusableElements(); focusActivePanelItem('subtitles'); }
+                    else if (f.id === 'tracks-btn') { f.click(); updateFocusableElements(); focusActivePanelItem('tracks'); }
+                    else if (f.id === 'player-settings-btn') { f.click(); updateFocusableElements(); focusActivePanelItem('settings'); }
                     else if (f.id === 'exit-player-btn') { if (typeof window.showDetailView === 'function') window.showDetailView(); return; }
-                    else if (f.id === 'toggle-buffer-btn') { var tb = getEl('toggle-buffer-btn'); if (tb) tb.click(); done = true; }
                     else if (f.id === 'seek-slider') { var t = parseFloat(f.value); if (typeof window.showPlayerLoading === 'function') window.showPlayerLoading('⏱️ ' + formatTime(t)); setTimeout(function () { if (typeof window.hidePlayerLoading === 'function') window.hidePlayerLoading(); }, 1000); done = true; }
                     else { f.click(); done = true; }
                     // Панель не прячем сразу после нажатия: пауза, масштаб, звук — человек
@@ -2729,10 +2719,10 @@ function setupKeyboardHandlers() {
             if (isKeyPressed('PLAY', k) || isKeyPressed('PAUSE', k) || isKeyPressed('PLAY_PAUSE', k)) { e.preventDefault(); vp.paused ? vp.play() : vp.pause(); if (typeof window.updatePlayPauseButton === 'function') window.updatePlayPauseButton(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
             if (isKeyPressed('VOL_UP', k)) { e.preventDefault(); vp.volume = Math.min(1, vp.volume + 0.1); var vs = getEl('volume-slider'); if (vs) vs.value = vp.volume; if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
             if (isKeyPressed('VOL_DOWN', k)) { e.preventDefault(); vp.volume = Math.max(0, vp.volume - 0.1); var vs = getEl('volume-slider'); if (vs) vs.value = vp.volume; if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
-            if (isKeyPressed('MUTE', k)) { e.preventDefault(); vp.muted = !vp.muted; if (typeof window.updateMuteButton === 'function') window.updateMuteButton(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
-            if (isKeyPressed('RED', k)) { e.preventDefault(); var ab = getEl('audio-btn'); if (ab) ab.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('MUTE', k)) { e.preventDefault(); vp.muted = !vp.muted; if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('RED', k)) { e.preventDefault(); if (typeof window.togglePlayerPanel === 'function' && window.togglePlayerPanel('audio')) focusActivePanelItem('audio'); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
             if (isKeyPressed('GREEN', k)) { e.preventDefault(); var eb = getEl('episodes-btn'); if (eb) eb.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
-            if (isKeyPressed('YELLOW', k)) { e.preventDefault(); var tb = getEl('toggle-buffer-btn'); if (tb) tb.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
+            if (isKeyPressed('YELLOW', k)) { e.preventDefault(); if (typeof window.toggleBufferVisibility === 'function') window.toggleBufferVisibility(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
             if (isKeyPressed('BLUE', k)) { e.preventDefault(); var eb = getEl('exit-player-btn'); if (eb) eb.click(); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
             if (isKeyPressed('BACK', k) || isKeyPressed('EXIT', k)) { e.preventDefault(); playerBackPress(); return; }
             if (isKeyPressed('FF', k)) { e.preventDefault(); vp.currentTime = Math.min(vp.duration, vp.currentTime + 30); if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer(); return; }
@@ -3565,7 +3555,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         // одинаково вниз и вверх (см. scrollCatalogGridCardIntoView)
         scrollCatalogGridCardIntoView(el, scrollContainer, smooth);
         return;
-    } else if (container.id == 'episodes-panel' || container.id == 'audio-panel' || container.id == 'subtitles-panel') {
+    } else if (container.id == 'episodes-panel' || container.id == 'audio-panel' || container.id == 'subtitles-panel' || container.id == 'tracks-panel' || container.id == 'player-settings-panel') {
         if (typeof Animations !== 'undefined') Animations.scrollToIfNotVisible(el, container);
     }
     if (!scrollContainer) return;
@@ -3828,7 +3818,7 @@ function focusEl(el, opts) {
 
 function showPlayerControls(preferredFocusId) {
     if (preferredFocusId === undefined) preferredFocusId = 'play-pause-btn';
-    var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn', 'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn', 'audio-btn', 'subtitles-btn', 'player-title'];
+    var ids = ['controls-container', 'buffer-stats', 'player-hint', 'exit-player-btn', 'player-title'];
     for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e) e.classList.remove('idle-hidden'); }
     if (typeof window.setPlayerCursorHidden === 'function') window.setPlayerCursorHidden(false);
     if (typeof window.syncPlayerTitleVisibility === 'function') window.syncPlayerTitleVisibility(true);
@@ -3837,32 +3827,9 @@ function showPlayerControls(preferredFocusId) {
     if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
 
     setTimeout(function () {
-        var ep = getEl('episodes-panel');
-        var ap = getEl('audio-panel');
-        var sp = getEl('subtitles-panel');
-        var isPanelOpen = (ep && !ep.classList.contains('hidden')) ||
-            (ap && !ap.classList.contains('hidden')) ||
-            (sp && !sp.classList.contains('hidden'));
-
-        // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: есть ли элемент с классом focused внутри открытой панели
-        var hasPanelFocus = false;
-        if (isPanelOpen) {
-            var panelFocused = (ep && ep.querySelector('.focused')) ||
-                (ap && ap.querySelector('.focused')) ||
-                (sp && sp.querySelector('.focused'));
-            hasPanelFocus = !!panelFocused;
-        }
-
-        // Если панель открыта И в ней есть элемент с фокусом - не трогаем
-        if (isPanelOpen && hasPanelFocus) {
-            return;
-        }
-
-        // Если панель открыта, но фокуса в ней нет - всё равно не трогаем
-        // (возможно, focusActivePanelItem еще не успел установить фокус)
-        if (isPanelOpen) {
-            return;
-        }
+        // Открыта панель — фокус в ней не трогаем, даже если его там ещё нет:
+        // возможно, focusActivePanelItem ещё не успел его поставить
+        if (typeof window.getOpenPlayerPanel === 'function' && window.getOpenPlayerPanel()) return;
 
         updateFocusableElements();
         var ti = -1;
@@ -3878,7 +3845,7 @@ function showPlayerControls(preferredFocusId) {
 
 function hidePlayerControls() {
     if (typeof Animations !== 'undefined') Animations.animateControlsHide();
-    var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn', 'exit-player-btn', 'episodes-btn', 'prev-episode-btn', 'next-episode-btn', 'audio-btn', 'subtitles-btn', 'player-title'];
+    var ids = ['controls-container', 'buffer-stats', 'player-hint', 'exit-player-btn', 'player-title'];
     for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (e) e.classList.add('idle-hidden'); }
     if (typeof window.setPlayerCursorHidden === 'function') window.setPlayerCursorHidden(true);
     if (typeof window.syncPlayerTitleVisibility === 'function') window.syncPlayerTitleVisibility(false);
@@ -3890,10 +3857,8 @@ function hidePlayerControls() {
 }
 
 function hidePlayerPanelsOnly() {
-    var hidden = false;
-    var ep = getEl('episodes-panel'); if (ep && !ep.classList.contains('hidden')) { ep.classList.add('hidden'); var b = getEl('episodes-btn'); if (b) b.classList.remove('active'); hidden = true; }
-    var ap = getEl('audio-panel'); if (ap && !ap.classList.contains('hidden')) { ap.classList.add('hidden'); var b = getEl('audio-btn'); if (b) b.classList.remove('active'); hidden = true; }
-    var sp = getEl('subtitles-panel'); if (sp && !sp.classList.contains('hidden')) { sp.classList.add('hidden'); var b = getEl('subtitles-btn'); if (b) b.classList.remove('active'); hidden = true; }
+    var hidden = typeof window.getOpenPlayerPanel === 'function' && !!window.getOpenPlayerPanel();
+    if (hidden && typeof window.closePlayerPanels === 'function') window.closePlayerPanels();
     return hidden;
 }
 
@@ -4408,9 +4373,6 @@ function setupPlayerWheelControl() {
         // Если громкость > 0 и видео было замьючено - размьючиваем
         if (newVolume > 0 && videoPlayer.muted) {
             videoPlayer.muted = false;
-            if (typeof window.updateMuteButton === 'function') {
-                window.updateMuteButton();
-            }
         }
 
         // Сбрасываем таймер скрытия UI

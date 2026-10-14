@@ -18,9 +18,9 @@ var APP_CONSTANTS = {
 var CLICKABLE_SELECTORS = [
   'button', '.control-btn', '.play-btn', '.torrent-card', '.file-item',
   '.search-result-item', '.back-btn', '.settings-btn', '.view-tab',
-  '#play-pause-btn', '#mute-btn', '#prev-episode-btn', '#next-episode-btn',
-  '#episodes-btn', '#audio-btn', '#subtitles-btn', '#exit-player-btn', '#toggle-buffer-btn',
-  '.episode-item', '.audio-item', '.subtitle-item', '.close-panel-btn', '.filter-select',
+  '#play-pause-btn', '#prev-episode-btn', '#next-episode-btn', '#rewind-btn', '#forward-btn',
+  '#episodes-btn', '#tracks-btn', '#player-settings-btn', '#exit-player-btn',
+  '.episode-item', '.audio-item', '.subtitle-item', '.player-menu-item', '.close-panel-btn', '.filter-select',
   '.filter-reset-btn', '.progress-continue-btn', '.detail-progress-btn',
   '#close-search', '#filter-toggle', '#search-btn',
   '#torrserver-tab-content', '#torrents-tab-content', '#player-tab-content', '#account-tab-content', '#sync-tab-content', '#other-tab-content', '#device-tab-content',
@@ -194,8 +194,8 @@ async function init() {
 
 function setupVideoPlayerControls() {
   var requiredElements = [
-    'seek-slider', 'volume-slider', 'play-pause-btn', 'mute-btn',
-    'toggle-buffer-btn', 'exit-player-btn', 'player-overlay', 'video-player'
+    'seek-slider', 'volume-slider', 'play-pause-btn',
+    'exit-player-btn', 'player-overlay', 'video-player'
   ];
   var modes = ['contain', 'fill', 'cover', 'zoom', 'none'];
   var modeIndex = 0;
@@ -314,8 +314,6 @@ function setupVideoPlayerControls() {
   var seekSlider = getEl('seek-slider');
   var volumeSlider = getEl('volume-slider');
   var playPauseBtn = getEl('play-pause-btn');
-  var muteBtn = getEl('mute-btn');
-  var toggleBufferBtn = getEl('toggle-buffer-btn');
   var exitPlayerBtn = getEl('exit-player-btn');
   var overlay = getEl('player-overlay');
 
@@ -326,17 +324,20 @@ function setupVideoPlayerControls() {
   }
   if (volumeSlider) volumeSlider.value = 1;
   if (playPauseBtn && video) setupPlayPauseButton(playPauseBtn, video);
-  if (muteBtn && video && volumeSlider) setupMuteButton(muteBtn, video, volumeSlider);
   if (volumeSlider && video) setupVolumeSlider(volumeSlider, video);
   if (exitPlayerBtn) setupExitButton(exitPlayerBtn);
 
   if (typeof setupEpisodesButton === 'function') setupEpisodesButton();
   if (typeof setupAudioButton === 'function') setupAudioButton();
   if (typeof setupSubtitlesButton === 'function') setupSubtitlesButton();
+  if (typeof setupTracksButton === 'function') setupTracksButton();
+  if (typeof setupPlayerSettingsButton === 'function') setupPlayerSettingsButton();
+  if (typeof setupSeekButtons === 'function') setupSeekButtons();
 
   setupEpisodeNavigation();
   if (video) setupVideoEvents(video, volumeSlider, seekSlider);
-  if (toggleBufferBtn) setupToggleBufferButton(toggleBufferBtn);
+  // Строка буфера включается в шестерёнке плеера и помнится между запусками
+  try { AppState.bufferHidden = localStorage.getItem('playerBufferHidden') === 'true'; } catch (e) { }
   if (overlay) setupOverlayControls(overlay);
 
   var savedVolume = localStorage.getItem('playerVolume');
@@ -599,16 +600,6 @@ function setupPlayPauseButton(playPauseBtn, videoPlayer) {
   });
 }
 
-function setupMuteButton(muteBtn, videoPlayer, volumeSlider) {
-  muteBtn.addEventListener('click', function () {
-    var loadingOverlay = getEl('loading-player-overlay');
-    if (AppState && (AppState.isSeeking || (loadingOverlay && loadingOverlay.classList.contains('active')))) return;
-    videoPlayer.muted = !videoPlayer.muted;
-    if (typeof updateMuteButton === 'function') updateMuteButton();
-    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
-  });
-}
-
 function setupVolumeSlider(volumeSlider, videoPlayer) {
   volumeSlider.addEventListener('input', function (e) {
     var loadingOverlay = getEl('loading-player-overlay');
@@ -617,7 +608,6 @@ function setupVolumeSlider(volumeSlider, videoPlayer) {
     videoPlayer.volume = vol;
     if (vol > 0 && videoPlayer.muted) {
       videoPlayer.muted = false;
-      if (typeof updateMuteButton === 'function') updateMuteButton();
     }
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
     localStorage.setItem('playerVolume', vol);
@@ -657,7 +647,6 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
   var handlers = {
     volumechange: function () {
       if (volumeSlider) volumeSlider.value = videoPlayer.volume;
-      if (typeof updateMuteButton === 'function') updateMuteButton();
       if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
       localStorage.setItem('playerVolume', videoPlayer.volume);
     },
@@ -685,6 +674,14 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
     ended: function () {
       console.log('🏁 Видео закончилось');
       if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    },
+    // Иконка воспроизведения/паузы — по самому <video>: его ставит на паузу и
+    // запускает не только кнопка (автозапуск, смена серии, перемотка)
+    play: function () {
+      if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
+    },
+    pause: function () {
+      if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
     }
   };
 
@@ -727,24 +724,28 @@ function startBufferUpdates() {
 }
 window.startBufferUpdates = startBufferUpdates;
 
-function setupToggleBufferButton(toggleBufferBtn) {
-  toggleBufferBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    if (typeof AppState !== 'undefined') AppState.bufferHidden = !AppState.bufferHidden;
-    toggleBufferBtn.style.opacity = AppState && AppState.bufferHidden ? '0.6' : '1';
-    toggleBufferBtn.title = AppState && AppState.bufferHidden ? 'показать буфер' : 'скрыть буфер';
-    if (AppState && !AppState.bufferHidden && typeof updateBufferDisplay === 'function') {
-      updateBufferDisplay();
-    } else {
-      var bufferStats = getEl('buffer-stats');
-      if (bufferStats) bufferStats.classList.add('hidden');
-    }
-    // Строка статистики TorrServer появилась или пропала — опрос /cache
-    // переходит на секундный или десятисекундный шаг (torrserverstats.js)
-    if (typeof refreshTorrentStatsCadence === 'function') refreshTorrentStatsCadence();
-    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
-  });
+/**
+ * Показать/скрыть строку буфера и статистику TorrServer. Зовут шестерёнка
+ * плеера (player.js: setupPlayerSettingsButton) и жёлтая кнопка пульта.
+ */
+function toggleBufferVisibility() {
+  AppState.bufferHidden = !AppState.bufferHidden;
+  try { localStorage.setItem('playerBufferHidden', AppState.bufferHidden ? 'true' : 'false'); } catch (e) { }
+  if (!AppState.bufferHidden && typeof updateBufferDisplay === 'function') {
+    updateBufferDisplay();
+  } else {
+    var bufferStats = getEl('buffer-stats');
+    if (bufferStats) bufferStats.classList.add('hidden');
+    var subtitleElement = getEl('player-subtitle');
+    if (subtitleElement) subtitleElement.classList.add('hidden');
+  }
+  // Строка статистики TorrServer появилась или пропала — опрос /cache
+  // переходит на секундный или десятисекундный шаг (torrserverstats.js)
+  if (typeof refreshTorrentStatsCadence === 'function') refreshTorrentStatsCadence();
+  if (typeof window.updatePlayerSettingsMenu === 'function') window.updatePlayerSettingsMenu();
+  if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
 }
+window.toggleBufferVisibility = toggleBufferVisibility;
 
 function setupOverlayControls(overlay) {
   function showControls() {
@@ -2436,6 +2437,20 @@ function setupExternalPlayerCheckbox() {
   });
 }
 
+/**
+ * Скрыть/показать часы в плеере. Одна настройка на два места: галочка «Скрыть
+ * часы» в настройках (раздел «Плеер») и переключатель в шестерёнке плеера —
+ * поэтому синхронизируем и галочку.
+ */
+function setClockHidden(hidden) {
+  hideClockEnabled = !!hidden;
+  try { localStorage.setItem('hideClockEnabled', hideClockEnabled); } catch (e) { }
+  var cb = getEl('hide-clock');
+  if (cb) cb.checked = hideClockEnabled;
+  setupClockVisibility();
+}
+window.setClockHidden = setClockHidden;
+
 function setupClockVisibility() {
   var clockDisplay = getEl('clock-display');
   if (clockDisplay) {
@@ -2952,7 +2967,6 @@ window.setupSpeedTest = setupSpeedTest;
 window.showPlayerHint = showPlayerHint;
 window.updateTimeDisplay = updateTimeDisplay;
 window.updatePlayPauseButton = updatePlayPauseButton;
-window.updateMuteButton = updateMuteButton;
 window.updateBufferDisplay = updateBufferDisplay;
 window.forceUpdateDuration = forceUpdateDuration;
 window.destroyHls = destroyHls;
