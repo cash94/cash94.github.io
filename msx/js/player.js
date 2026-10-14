@@ -2238,6 +2238,11 @@ function openAndroidPlayer(playURL, playerData) {
   }
   if (lastExternalOpen.url === playURL && Date.now() - lastExternalOpen.time < EXTERNAL_OPEN_DEDUP_MS) return false;
   lastExternalOpen.url = playURL; lastExternalOpen.time = Date.now();
+  // Цвет фокуса «Внешнего вида»: встроенный плеер Android красит им фокус своих
+  // кнопок, чтобы он был того же цвета, что и в интерфейсе
+  if (playerData && !playerData.focus_color && window.UICustomizer && UICustomizer.getFocusColor) {
+    playerData.focus_color = UICustomizer.getFocusColor();
+  }
   AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
   return true;
 }
