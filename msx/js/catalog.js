@@ -705,6 +705,19 @@ function wrapRutubeHls(url) {
     return '/api/rutube/hls/proxy?u=' + encodeURIComponent(url);
 }
 
+/**
+ * Трейлер через hls.js (MSE) или встроенным HLS браузера. webOS 4 (Chrome 53,
+ * LEGACY_JS в index.html) поток из MSE не показывает: в эмуляторе — ошибка
+ * декодирования, на ТВ — звук без картинки. Тот же m3u8 в video.src играет
+ * медиаконвейер webOS — с картинкой. Новые webOS и прочие — как раньше.
+ */
+function trailerUsesHlsJs() {
+    if (!(window.Hls && Hls.isSupported())) return false;
+    if (window.LEGACY_JS && (window.PalmSystem || window.webOSSystem)) return false;
+    return true;
+}
+window.trailerUsesHlsJs = trailerUsesHlsJs;
+
 // ==================== TMDB КЭШ ====================
 
 var TMDB_CACHE_CONFIG = {
@@ -4107,7 +4120,7 @@ function startTrailerBackground(url) {
     }
 
     // Запуск HLS или прямого URL
-    if (window.Hls && Hls.isSupported()) {
+    if (trailerUsesHlsJs()) {
         var hls = new Hls({
             maxBufferSize: 30 * 1024 * 1024,
             maxBufferLength: 10,
@@ -4236,7 +4249,7 @@ async function openRutubeTrailerInPlayer(m3u8Url, title) {
 
             var vp = getEl('video-player');
 
-            if (window.Hls && Hls.isSupported()) {
+            if (trailerUsesHlsJs()) {
                 AppState.hls = new Hls({
                     maxBufferSize: 80 * 1024 * 1024,
                     maxBufferLength: 30,

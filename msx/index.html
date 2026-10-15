@@ -93,7 +93,9 @@
     // js-legacy/ (tools/legacy-build: Babel + заглушки legacy-polyfills.js) и
     // css/legacy.css под классом legacy-browser. Остальным всё как раньше.
     var LEGACY_JS = (function () {
-      try { new Function('async function f() {}'); return false; } catch (e) { return true; }
+      // Проверяем spread в объектах (Chrome 60), а не async: в webOS 4
+      // (Chrome 53.0.2785.34) async-функции есть, а {...x} — нет.
+      try { new Function('var a = { ...{} }; async function f() {}'); return false; } catch (e) { return true; }
     })();
     if (LEGACY_JS) {
       document.documentElement.className += ' legacy-browser';

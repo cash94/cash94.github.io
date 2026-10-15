@@ -597,6 +597,12 @@ function wrapRutubeHls(url) {
   if (url.indexOf('/api/rutube/hls/proxy') === 0) return url;
   return '/api/rutube/hls/proxy?u=' + encodeURIComponent(url);
 }
+function trailerUsesHlsJs() {
+  if (!(window.Hls && Hls.isSupported())) return false;
+  if (window.LEGACY_JS && (window.PalmSystem || window.webOSSystem)) return false;
+  return true;
+}
+window.trailerUsesHlsJs = trailerUsesHlsJs;
 var TMDB_CACHE_CONFIG = {
   ttl: CATALOG_CONSTANTS.CACHE_TTL_MS,
   maxSize: CATALOG_CONSTANTS.TMDB_MAX_CACHE_SIZE,
@@ -3201,7 +3207,7 @@ function startTrailerBackground(url) {
       }
     }, 1000);
   }
-  if (window.Hls && Hls.isSupported()) {
+  if (trailerUsesHlsJs()) {
     var hls = new Hls({
       maxBufferSize: 30 * 1024 * 1024,
       maxBufferLength: 10,
@@ -3327,7 +3333,7 @@ function _openRutubeTrailerInPlayer() {
           youtubeUrl: m3u8Url
         };
         var vp = getEl('video-player');
-        if (window.Hls && Hls.isSupported()) {
+        if (trailerUsesHlsJs()) {
           AppState.hls = new Hls({
             maxBufferSize: 80 * 1024 * 1024,
             maxBufferLength: 30,

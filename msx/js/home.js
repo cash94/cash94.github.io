@@ -1208,7 +1208,7 @@
             startVolumeFade();
         });
 
-        if (window.Hls && Hls.isSupported()) {
+        if (window.trailerUsesHlsJs ? window.trailerUsesHlsJs() : (window.Hls && Hls.isSupported())) {
             var hls = new Hls({
                 maxBufferSize: 30 * 1024 * 1024,
                 maxBufferLength: 10,
