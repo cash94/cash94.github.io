@@ -76,20 +76,10 @@ html.no-flex-gap .progress-content > * + * {
   margin-top:4px;
 }
 
-/* styles.css:3908 */
+/* styles.css:3405, 3908 */
+html.no-flex-gap .detail-header > * + *,
 html.no-flex-gap .catalog-row-track > * + * {
   margin-left:18px;
-}
-
-/* styles.css:3405. Отступ справа, а не слева у «следующего»: в карточке
-   каталога «Назад» и постер перед заголовком скрыты (display: none), и
-   * + * всё равно сдвигал заголовок на ширину gap. У скрытого узла поле
-   справа не учитывается, у последнего (заголовка) его нет. */
-html.no-flex-gap .detail-header > * {
-  margin-right:18px;
-}
-html.no-flex-gap .detail-header > :last-child {
-  margin-right:0;
 }
 
 /* styles.css:763 */
@@ -274,21 +264,15 @@ html.no-flex-gap .catalog-show-all .show-all-inner > * + * {
 
 @media screen and (max-width: 1024px) {
   /* styles.css:3729 */
-  html.no-flex-gap .detail-header > * {
-    margin-right:14px;
-  }
-  html.no-flex-gap .detail-header > :last-child {
-    margin-right:0;
+  html.no-flex-gap .detail-header > * + * {
+    margin-left:14px;
   }
 }
 
 @media screen and (max-width: 600px) {
   /* styles.css:3767 */
-  html.no-flex-gap .detail-header > * {
-    margin-right:10px;
-  }
-  html.no-flex-gap .detail-header > :last-child {
-    margin-right:0;
+  html.no-flex-gap .detail-header > * + * {
+    margin-left:10px;
   }
 }
 
@@ -325,11 +309,8 @@ html.no-flex-gap .catalog-show-all .show-all-inner > * + * {
   }
 
   /* styles.css: .detail-header */
-  html.no-flex-gap .detail-header > * {
-    margin-right:12px;
-  }
-  html.no-flex-gap .detail-header > :last-child {
-    margin-right:0;
+  html.no-flex-gap .detail-header > * + * {
+    margin-left:12px;
   }
 
   /* styles.css: .catalog-detail-meta */
