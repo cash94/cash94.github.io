@@ -339,8 +339,6 @@
         return avail;
     }
 
-    // Фактическая ширина колонки: сетка растягивает карточку до 1fr, поэтому она
-    // не равна заданной cardWidth() — обычно чуть больше.
     /**
      * Колонки и отступ сеток для браузеров без CSS Grid — переписывает
      * значения по умолчанию из css/legacy.css (5 колонок, 10px)
@@ -360,6 +358,8 @@
             '{width:calc(100% - ' + gap + ')!important;}';
     }
 
+    // Фактическая ширина колонки: сетка растягивает карточку до 1fr, поэтому она
+    // не равна заданной cardWidth() — обычно чуть больше.
     function gridColumnWidth() {
         var cols = getColumns();
         return Math.floor((gridAvailWidth() - (cols - 1) * densityGap()) / cols);
