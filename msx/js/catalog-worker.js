@@ -4,17 +4,6 @@
 
 'use strict';
 
-// Старые браузеры (webOS 4 — Chrome 53): нет AbortController, Promise.finally,
-// Object.entries — подтягиваем те же заглушки, что index.html даёт странице.
-// На остальных условие ложно, и ничего не грузится.
-if (typeof AbortController === 'undefined') {
-  try {
-    importScripts(self.location.search.indexOf('local=1') !== -1
-      ? '/js-legacy/legacy-polyfills.js'
-      : 'https://cash94.github.io/msx/js-legacy/legacy-polyfills.js');
-  } catch (e) { }
-}
-
 // ==================== КОНСТАНТЫ ====================
 var WORKER_CONSTANTS = {
   CACHE_TTL_MS: 3600000,
