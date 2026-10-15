@@ -461,6 +461,15 @@ function setupTorrentLongPressDelegation(grid) {
 
     grid._longPressBound = true;
 
+    // Pointer Events — с Chrome 55. На webOS 4 (Chrome 53) их нет, курсор
+    // Magic Remote шлёт только mouse-события — удержание слушаем по ним.
+    // У mouse-событий нет pointerId и isPrimary: pointerId у начала и конца
+    // одинаково undefined, isPrimary проверяем только на явный false
+    var hasPointer = typeof window.PointerEvent === 'function';
+    var EV_DOWN = hasPointer ? 'pointerdown' : 'mousedown';
+    var EV_UP = hasPointer ? 'pointerup' : 'mouseup';
+    var EV_MOVE = hasPointer ? 'pointermove' : 'mousemove';
+
     // Подавление клика после long-press / contextmenu
     grid.addEventListener('click', function (e) {
         var card = e.target && e.target.closest ? e.target.closest('.torrent-card') : null;
@@ -497,8 +506,8 @@ function setupTorrentLongPressDelegation(grid) {
     });
 
     // Pointer down: старт удержания
-    grid.addEventListener('pointerdown', function (e) {
-        if (!e.isPrimary) return;
+    grid.addEventListener(EV_DOWN, function (e) {
+        if (e.isPrimary === false) return;
 
         // Правая кнопка мыши обрабатывается через contextmenu
         if (e.button !== undefined && e.button !== 0) return;
@@ -547,7 +556,7 @@ function setupTorrentLongPressDelegation(grid) {
     if (!window._torrentLongPressDocumentBound) {
         window._torrentLongPressDocumentBound = true;
 
-        document.addEventListener('pointerup', function (e) {
+        document.addEventListener(EV_UP, function (e) {
             if (!torrentHoldState.timer) return;
             if (e.pointerId !== torrentHoldState.pointerId) return;
             clearTorrentHoldState();
@@ -559,7 +568,7 @@ function setupTorrentLongPressDelegation(grid) {
             clearTorrentHoldState();
         }, { passive: true });
 
-        document.addEventListener('pointermove', function (e) {
+        document.addEventListener(EV_MOVE, function (e) {
             if (!torrentHoldState.timer) return;
             if (e.pointerId !== torrentHoldState.pointerId) return;
 
