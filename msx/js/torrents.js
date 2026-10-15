@@ -4808,9 +4808,11 @@ window.getJacredSearchHints = getJacredSearchHints;
 /**
  * Собрать URL поиска к Jacred (Jackett JSON API v2.0).
  *
- * Кроме самого запроса Jacred принимает year и is_serial (1 — фильм,
- * 2 — сериал). Оба фильтруют жёстко, поэтому добавляются только тогда,
- * когда ответ точно известен — из карточки TMDB.
+ * Свободный поиск — одна строка Query. Из карточки TMDB запрос собирается
+ * как у Lampa: title + title_original (поиск по названиям раздачи вместо
+ * строки), year, is_serial (1 — фильм, 2 — сериал) и Category[] (2000 —
+ * фильмы, 5000 — сериалы; Jacred её не смотрит, а настоящий Jackett по ней
+ * отбирает). Что и почему кладётся в подсказки — buildJacredSearchHints.
  *
  * Строка собирается здесь один раз на весь проект: второй поиск живёт в
  * torrents-worker-patch.js, и две копии URL разъехались бы при первой же правке.
@@ -4824,12 +4826,21 @@ function buildJacredSearchUrl(query, hints) {
 
     // Новый API Jackett v2.0
     var url = AppState.protocol + '//' + host + '/api/v2.0/indexers/all/results' +
-        '?Query=' + encodeURIComponent(query.trim()) + '&exact=true';
+        '?Query=' + encodeURIComponent(query.trim());
 
     if (hints === undefined) hints = getJacredSearchHints();
+    if (hints && hints.title) {
+        url += '&title=' + encodeURIComponent(hints.title);
+        if (hints.titleOriginal) url += '&title_original=' + encodeURIComponent(hints.titleOriginal);
+    } else {
+        url += '&exact=true';
+    }
     if (hints) {
-        if (hints.isSerial) url += '&is_serial=' + hints.isSerial;
         if (hints.year) url += '&year=' + hints.year;
+        if (hints.isSerial) {
+            url += '&is_serial=' + hints.isSerial;
+            url += '&Category[]=' + (hints.isSerial === 2 ? 5000 : 2000);
+        }
     }
 
     return { url: url, host: host };

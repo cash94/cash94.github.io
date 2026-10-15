@@ -5398,28 +5398,42 @@ function onCatalogItemClick(item, index) {
 /**
  * Что из карточки TMDB можно подсказать Jacred при поиске торрентов.
  *
- * is_serial (1 — фильм, 2 — сериал) отдаём всегда: тип взят из media_type
- * карточки, где он достоверен, а выгода большая — без него в выдачу
- * попадают одноимённые чужие раздачи другого типа.
+ * Набор тот же, что шлёт Lampa: title и title_original вместе, year, is_serial
+ * (1 — фильм, 2 — сериал). Пара названий переключает Jacred из поиска по
+ * строке Query в поиск по названиям раздачи, и это главное. Замеры по
+ * jac.red и nmjc.duckdns.org: «Бегущий по лезвию 2049» строкой отдаёт 11
+ * раздач, из них 9 — фильм 1982 года, а по названиям — 141, все свои;
+ * «Пацаны» 322 → 367, «Во все тяжкие» 172 → 189. Меньше, чем строкой, по
+ * названиям не выходило ни разу.
  *
- * year передаём ТОЛЬКО фильмам, и это не осторожность, а замеры по живому
- * jac.red. Фильму год нужен: «Дюна» без него отдаёт 256 раздач вперемешку
- * (2021, экранизация 1984 и мини-сериал 2000), с year=2021 — ровно 169 своих.
- * А у сериала это год первого сезона, тогда как раздачи поздних сезонов
- * подписаны своими годами, и фильтр их срезает: у «Во все тяжкие» year=2008
- * убирает 21 раздачу — весь 2–5 сезон. То же самое у «Тьмы», «Игры престолов»
- * и «Пацанов».
+ * Поэтому title_original идёт только вместе с title: в одиночку он режет
+ * грубо и выбрасывает раздачи с чисто русским именем.
  *
- * title_original не передаём: он режет гораздо грубее года (на проверках до
- * десятка раз) и выбрасывает раздачи с чисто русским именем.
+ * year сериалу отдаём лишь при названиях. В поиске по строке это год первого
+ * сезона, и он срезает поздние сезоны (у «Во все тяжкие» year=2008 убирал весь
+ * 2–5 сезон), а в поиске по названиям сезоны с ним остаются (189 и с годом, и
+ * без). Фильму год нужен в обоих режимах: «Дюна» без него — 234 раздачи
+ * вперемешку с экранизацией 1984, с year=2021 — 173.
+ *
+ * details — ответ /api/tmdb/details (fetchTmdbDetails). Оригинальное название
+ * и год берутся в первую очередь оттуда: в избранном, истории и плитках
+ * «похожего» элемент урезан и original_title в нём нет, а у истории в
+ * release_date вообще лежит дата просмотра (catalog-worker-patch.js).
  */
-function buildJacredSearchHints(item) {
+function buildJacredSearchHints(item, details) {
     if (!item) return null;
+    var d = details || {};
     var mt = (item.media_type || AppState.mediaType || 'movie');
     var serial = mt === 'tv';
+    var title = String(item.title || item.name || d.title || d.name || '').trim();
+    var original = String(d.original_title || d.original_name ||
+        item.original_title || item.original_name || '').trim();
+    var year = getCatalogItemYear(d) || (item.isHistoryItem ? null : getCatalogItemYear(item));
     return {
         isSerial: serial ? 2 : 1,
-        year: serial ? null : getCatalogItemYear(item)
+        year: (serial && !title) ? null : year,
+        title: title || null,
+        titleOriginal: (title && original) ? original : null
     };
 }
 
@@ -5472,7 +5486,14 @@ function showCatalogSearch(q, pu, item) {
 
         // Год и тип для Jacred. Ставится после AppState.mediaType выше: он
         // служит запасным источником типа, когда у самого item его нет
-        AppState.jacredSearchHints = buildJacredSearchHints(item);
+        var cardHints = buildJacredSearchHints(item);
+        AppState.jacredSearchHints = cardHints;
+        // Оригинальное название и настоящий год — из деталей TMDB. Карточка
+        // запросила их при открытии, так что обычно они уже в кэше или в пути;
+        // ждать дольше таймаута safeFetch не придётся
+        var detailsReady = (item && item.id)
+            ? Promise.resolve(fetchTmdbDetails(item)).catch(function () { return null; })
+            : Promise.resolve(null);
 
         // Другой фильм — фильтры поиска снова по умолчанию (torrents.js)
         if (typeof window.resetFiltersForCardSearch === 'function') {
@@ -5487,7 +5508,15 @@ function showCatalogSearch(q, pu, item) {
         if (typeof window.searchTorrentsLegacy === 'function') {
             var tm = getEl('torrent-movie');
             if (tm) tm.value = 'torrentsearch';
-            searching = Promise.resolve(window.searchTorrentsLegacy(q))
+            searching = detailsReady
+                .then(function (details) {
+                    // Пока ждали, из поиска могли уйти и сбросить подсказки
+                    // (clearCatalogSearchContext) — тогда чужие не возвращаем
+                    if (details && AppState.jacredSearchHints === cardHints) {
+                        AppState.jacredSearchHints = buildJacredSearchHints(item, details);
+                    }
+                    return window.searchTorrentsLegacy(q);
+                })
                 .then(function (n) { return typeof n === 'number' ? n : 0; })
                 .catch(function () { return 0; });
         }
