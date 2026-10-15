@@ -97,9 +97,52 @@
     })();
     if (LEGACY_JS) {
       document.documentElement.className += ' legacy-browser';
+      // Диагностика для старых ТВ: ошибки загрузки скриптов и стилей и
+      // необработанные исключения копятся с самого начала. Если через 12 с
+      // после загрузки есть ошибки или приложение так и не поднялось (нет
+      // HomeScreen), поверх показывается их список — без консоли на
+      // телевизоре иначе не узнать, что пошло не так. Любая кнопка закрывает.
+      (function () {
+        var errs = [];
+        window.__legacyErrors = errs;
+        window.addEventListener('error', function (e) {
+          var t = e.target;
+          if (t && t !== window && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+            errs.push('Не загрузился: ' + (t.src || t.href));
+          } else {
+            var line = (e.message || 'Ошибка') + ' @ ' + String(e.filename || '').replace(/\?v=\d+/, '') + ':' + (e.lineno || '') + ':' + (e.colno || '');
+            if (errs[errs.length - 1] !== line) errs.push(line);
+          }
+        }, true);
+        function show() {
+          var started = typeof window.HomeScreen !== 'undefined' && typeof window.AppState !== 'undefined';
+          if (!errs.length && started) return;
+          var box = document.createElement('div');
+          box.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;background:rgba(0,0,0,0.92);color:#fff;font:20px/1.4 Arial,sans-serif;padding:40px 60px;overflow:auto;white-space:pre-wrap;word-break:break-all;';
+          box.textContent = 'TorrStream: диагностика старого браузера\n\n' +
+            navigator.userAgent + '\n' +
+            'Приложение запустилось: ' + (started ? 'да' : 'НЕТ') + '\n\n' +
+            (errs.length ? errs.slice(0, 20).join('\n') : 'Ошибок не перехвачено') +
+            '\n\nЛюбая кнопка — закрыть';
+          document.body.appendChild(box);
+          var close = function (e) {
+            if (box.parentNode) box.parentNode.removeChild(box);
+            window.removeEventListener('keydown', close, true);
+            if (e && e.stopPropagation) { e.stopPropagation(); e.preventDefault(); }
+          };
+          window.addEventListener('keydown', close, true);
+          box.addEventListener('click', close);
+        }
+        window.addEventListener('load', function () { setTimeout(show, 12000); });
+      })();
       var _legacyDocWrite = document.write;
       document.write = function (html) {
-        return _legacyDocWrite.call(document, String(html).replace(/\/msx\/js\/([\w.-]+\.js)/g, '/msx/js-legacy/$1'));
+        // crossorigin — чтобы диагностика выше видела текст ошибок из этих
+        // скриптов (с другого домена без него только «Script error.»).
+        // GitHub Pages отдаёт Access-Control-Allow-Origin: *
+        return _legacyDocWrite.call(document, String(html)
+          .replace(/\/msx\/js\/([\w.-]+\.js)/g, '/msx/js-legacy/$1')
+          .replace(/<script src="(https:\/\/cash94\.github\.io\/)/g, '<script crossorigin="anonymous" src="$1'));
       };
       document.write('<script src="https://cash94.github.io/msx/js-legacy/legacy-polyfills.js?v=' + VERSION + '"><\/script>');
     }
