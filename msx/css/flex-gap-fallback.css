@@ -114,8 +114,9 @@ html.no-flex-gap .catalog-trailer-meta > * + * {
 }
 
 /* styles.css:1475, 1483, 3868 */
-html.no-flex-gap .button-row > * + *,
-html.no-flex-gap .left-buttons > * + *,
+/* .button-row плеера здесь нет: кнопки в ней разнесены margin'ами в
+   styles.css («Кнопки: воспроизведение по центру»), а отступ между колонками
+   сдвинул бы центральную группу с середины экрана */
 html.no-flex-gap .catalog-row-title > * + * {
   margin-left:10px;
 }

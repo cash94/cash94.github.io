@@ -6,8 +6,6 @@ echo     Обновление TorrStream
 echo ========================================
 echo.
 
-set "installRamDisk=N"
-
 :: Обновление TorrServer (опционально)
 set /p "updateTorrServer=Хотите обновить TorrServer до последней версии? (Y/N): "
 if /i "!updateTorrServer!"=="Y" (
@@ -21,72 +19,6 @@ if /i "!updateTorrServer!"=="Y" (
     )
 ) else (
     echo [ПРОПУЩЕНО] Обновление TorrServer пропущено
-)
-echo.
-
-:: ==========================================
-:: ПРОСТОЙ ВОПРОС ПРО RAM-ДИСК
-:: ==========================================
-set /p "installRamDisk=Хотите установить RAM-диск для кэша HLS? (Y/N): "
-
-if /i "!installRamDisk!"=="Y" (
-    echo.
-    echo [RAM-ДИСК] Скачивание установщика ImDisk Toolkit...
-    powershell -Command "Invoke-WebRequest -Uri 'https://github.com/cash94/cash94.github.io/releases/download/%%23vidaa/RamCache.zip' -OutFile '%TEMP%\RamCache.zip'"
-    
-    if errorlevel 1 (
-        echo [ОШИБКА] Не удалось скачать RamCache.zip
-    ) else (
-        echo [RAM-ДИСК] Распаковка архива...
-        powershell -Command "Expand-Archive -Path '%TEMP%\RamCache.zip' -DestinationPath '%TEMP%\RamCache' -Force"
-        
-        if exist "%TEMP%\RamCache\install.bat" (
-            echo [RAM-ДИСК] Запуск установщика ImDisk Toolkit...
-            echo.
-            echo ========================================
-            echo   ВАЖНО: Сейчас откроется окно установщика
-            echo   ImDisk Toolkit. Следуйте инструкциям.
-            echo ========================================
-            echo.
-            
-            call "%TEMP%\RamCache\install.bat"
-            
-            echo.
-            echo [OK] ImDisk Toolkit установлен
-            echo.
-            echo ========================================
-            echo   ИНСТРУКЦИЯ ПО НАСТРОЙКЕ RAM-ДИСКА:
-            echo ========================================
-            echo.
-            echo 1. Найдите на Рабочем столе ярлык
-            echo    "Настройка RAM-диска"
-            echo.
-            echo 2. Настройте параметры:
-            echo    - Размер:        2048 MB
-            echo    - Буква диска:   R
-            echo    - ФС:            NTFS
-            echo.
-            echo 3. Поставьте галочку:
-            echo    "Load ImDisk Driver at startup"
-            echo.
-            echo 4. Нажмите "OK"
-            echo.
-            echo TorrStream автоматически обнаружит
-            echo диск R: и будет использовать его!
-            echo.
-            echo ========================================
-            echo.
-            pause
-        ) else (
-            echo [ОШИБКА] install.bat не найден в архиве
-        )
-        
-        REM Очистка временных файлов RamCache
-        rmdir /S /Q "%TEMP%\RamCache" >nul 2>&1
-        del /Q "%TEMP%\RamCache.zip" >nul 2>&1
-    )
-) else (
-    echo [ПРОПУЩЕНО] Установка RAM-диска пропущена
 )
 echo.
 
@@ -127,12 +59,8 @@ echo.
 if /i "!updateTorrServer!"=="Y" (
     echo [OK] TorrServer обновлен до последней версии
 )
-if /i "!installRamDisk!"=="Y" (
-    echo [OK] ImDisk Toolkit: установлен
-    echo.
-    echo ВНИМАНИЕ: Не забудьте настроить RAM-диск!
-    echo Буква диска должна быть: R
-)
+echo [OK] Кэш HLS теперь в памяти TorrStream: RAM-диск R: больше не нужен,
+echo      ImDisk Toolkit можно удалить. Размер кэша - в админке, вкладка "Система".
 echo [OK] TorrStream обновлен в: !extractPath!
 echo.
 echo Запустите: !extractPath!\TorrStream-windows-x64.exe

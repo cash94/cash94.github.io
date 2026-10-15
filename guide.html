@@ -500,6 +500,7 @@
     }
 
     .btn.ghost { background: var(--surface-2); color: var(--text); }
+    a.btn { text-decoration: none; }
     .btn:active { transform: scale(.98); }
 
     /* Списки серверов */
@@ -686,6 +687,11 @@
         <button class="card-btn small" data-go="otherSupport">
           <span class="ico">🤝</span>
           <span><b>Поддержать источники, прокси и Jackett</b></span>
+          <span class="go">›</span>
+        </button>
+        <button class="card-btn small" data-go="torrstream">
+          <span class="ico">📺</span>
+          <span><b>Попробуй приложение TorrStream</b></span>
           <span class="go">›</span>
         </button>
       </div>
@@ -963,6 +969,59 @@
         <div class="list" data-list="otherSupport"><p class="loading">Загружаем…</p></div>
       </div>
       <p style="text-align:center;font-weight:600">Спасибо за вашу поддержку! 🌟</p>
+    </section>
+
+    <!-- ================= ПРИЛОЖЕНИЕ TORRSTREAM ================= -->
+    <section id="torrstream" class="view" hidden>
+      <div class="topbar"><button class="back" data-back>‹ Назад</button></div>
+      <div class="page-head">
+        <div class="ico">📺</div>
+        <h2>Попробуй приложение TorrStream</h2>
+        <p>Ещё одно приложение для просмотра фильмов и сериалов через TorrServer.</p>
+      </div>
+
+      <div class="note info">
+        <span class="ni">ℹ️</span>
+        <div>
+          <p>Автор инструкции не призывает переходить на новое приложение. Этот блок добавлен для ознакомления — пробовать или нет, решаете только вы.</p>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="ni">💬</span>
+        <div>
+          <p>Все вопросы по TorrStream задавайте <b>только</b> в группе в Telegram: <a href="https://t.me/torrstream" target="_blank" rel="noopener">t.me/torrstream</a>. В чате NUM по TorrStream не помогут.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <p style="margin-top:0">Что умеет TorrStream и на каких устройствах работает — в отдельном руководстве:</p>
+        <a class="btn" href="https://cash94.github.io/msx/guide/guide.html" target="_blank" rel="noopener">Возможности TorrStream ›</a>
+      </div>
+
+      <div class="section-title">Установка на Android</div>
+
+      <div class="panel">
+        <ol class="steps">
+          <li>
+            <p>Скачайте приложение</p>
+            <ul>
+              <li><b>Телевизор или приставка</b> (Android TV, Fire TV): установите из магазина приложение <span class="set">Downloader</span>, откройте его и введите код <span class="set">2252342</span>.</li>
+              <li><b>Телефон</b>: откройте в браузере <a href="https://cash94.github.io/apk/" target="_blank" rel="noopener">cash94.github.io/apk</a>.</li>
+            </ul>
+            <p>Откроется страница установки — нажмите кнопку с пометкой «Рекомендуется». Если установка не прошла, попробуйте вторую кнопку.</p>
+          </li>
+          <li>
+            <p>Разрешите установку</p>
+            <p>Если Android спросит, разрешите установку неизвестных приложений для Downloader или браузера:</p>
+            <div class="path"><span>⚙️ Настройки</span><i>›</i><span>Приложения</span><i>›</i><span>Установка неизвестных приложений</span></div>
+          </li>
+          <li>
+            <p>Откройте TorrStream</p>
+            <p>Для просмотра нужен TorrServer — его можно скачать и запустить прямо в настройках приложения. Новые версии приложение предлагает установить само.</p>
+          </li>
+        </ol>
+      </div>
     </section>
 
   </div>

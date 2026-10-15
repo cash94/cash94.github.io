@@ -7,9 +7,6 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Глобальная переменная для RAM disk
-RAMDISK_SIZE=""
-
 # Функция для определения архитектуры
 detect_architecture() {
     local arch=$(uname -m)
@@ -20,11 +17,71 @@ detect_architecture() {
         aarch64|arm64)
             echo "arm64"
             ;;
+        armv7l|armv7*|armv8l|armhf)
+            # armv8l — 32-битная система на 64-битном процессоре
+            echo "armv7"
+            ;;
         *)
             echo -e "${RED}Неподдерживаемая архитектура: $arch${NC}"
             exit 1
             ;;
     esac
+}
+
+# Имя бинарника TorrStream в архиве для архитектуры
+app_file_for_arch() {
+    case $1 in
+        amd64) echo "TorrStream-linux-amd64" ;;
+        arm64) echo "TorrStream-linux-arm64" ;;
+        armv7) echo "TorrStream-linux-armv7" ;;
+    esac
+}
+
+# Скачать ffmpeg и ffprobe в /opt/Vidaa/ffmpeg. Jellyfin собирает только
+# amd64 и arm64, для armv7 — статическая сборка johnvansickle.com
+install_ffmpeg() {
+    local arch=$1
+    local ffmpeg_url=""
+    case $arch in
+        amd64) ffmpeg_url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_linux64-gpl.tar.xz" ;;
+        arm64) ffmpeg_url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_linuxarm64-gpl.tar.xz" ;;
+        armv7) ffmpeg_url="https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-armhf-static.tar.xz" ;;
+    esac
+
+    mkdir -p /opt/Vidaa/ffmpeg
+    # Во временной папке: в /opt/Vidaa/ffmpeg уже может лежать прежний ffmpeg
+    local tmp_dir=$(mktemp -d)
+
+    echo "Скачивание ffmpeg..."
+    wget -q --show-progress "$ffmpeg_url" -O "$tmp_dir/ffmpeg.tar.xz"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ошибка при скачивании ffmpeg${NC}"
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
+
+    echo "Распаковка ffmpeg..."
+    tar -xf "$tmp_dir/ffmpeg.tar.xz" -C "$tmp_dir"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Ошибка при распаковке ffmpeg${NC}"
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
+
+    # Раскладка у сборок разная (ffmpeg в корне архива, в папке или в bin/)
+    local ff=$(find "$tmp_dir" -type f -name ffmpeg | head -n 1)
+    local fp=$(find "$tmp_dir" -type f -name ffprobe | head -n 1)
+    if [ -z "$ff" ] || [ -z "$fp" ]; then
+        echo -e "${RED}Не удалось найти ffmpeg и ffprobe в архиве${NC}"
+        tar -tf "$tmp_dir/ffmpeg.tar.xz" | head -20
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
+    cp "$ff" /opt/Vidaa/ffmpeg/ffmpeg
+    cp "$fp" /opt/Vidaa/ffmpeg/ffprobe
+    chmod 775 /opt/Vidaa/ffmpeg/ffmpeg /opt/Vidaa/ffmpeg/ffprobe
+    rm -rf "$tmp_dir"
+    echo -e "${GREEN}ffmpeg установлен в /opt/Vidaa/ffmpeg${NC}"
 }
 
 # Функция для проверки и установки unzip
@@ -55,76 +112,6 @@ check_and_install_unzip() {
     else
         echo -e "${GREEN}unzip уже установлен${NC}"
     fi
-}
-
-# Функция для проверки доступной памяти (RAM + Swap) через free -m
-check_available_memory() {
-    local avail_mem=$(free -m | grep "Mem:" | awk '{print $7}')
-    local swap_free=$(free -m | grep "Swap:" | awk '{print $4}')
-    
-    avail_mem=${avail_mem:-0}
-    swap_free=${swap_free:-0}
-    
-    local total_available_mb=$((avail_mem + swap_free))
-    local available_gb=$((total_available_mb / 1024))
-    
-    echo "$available_gb"
-}
-
-# Функция для настройки RAM disk (использует глобальную переменную)
-setup_ramdisk() {
-    local available_gb=$(check_available_memory)
-    RAMDISK_SIZE=""
-    
-    echo ""
-    echo "=========================================="
-    echo "  Настройка RAM-диска"
-    echo "=========================================="
-    echo -e "${YELLOW}Доступно памяти (RAM + Swap): ${available_gb} GB${NC}"
-    
-    local available_int=$(echo "$available_gb" | cut -d. -f1)
-    
-    # Если свободно меньше 2 GB - RAM-диск создавать нельзя
-    if [ "$available_int" -lt 2 ]; then
-        echo -e "${YELLOW}Свободно менее 2 GB памяти. RAM-диск не будет создан.${NC}"
-        echo ""
-        return
-    fi
-    
-    # Вычисляем максимальный размер (свободно - 1 GB)
-    local max_gb=$((available_int - 1))
-    
-    echo -e "${YELLOW}Вы можете указать размер RAM-диска от 1 до ${max_gb} GB.${NC}"
-    echo -e "${YELLOW}(1 GB будет зарезервирован для системы)${NC}"
-    echo ""
-    echo -n "Введите размер RAM-диска в GB (1-${max_gb}) или нажмите Enter чтобы пропустить: "
-    read -r user_size
-    
-    # Если пользователь нажал Enter - пропускаем
-    if [ -z "$user_size" ]; then
-        echo -e "${YELLOW}RAM-диск не будет создан${NC}"
-        echo ""
-        return
-    fi
-    
-    # Проверяем, что введено число
-    if ! [[ "$user_size" =~ ^[0-9]+$ ]]; then
-        echo -e "${RED}Некорректный ввод. RAM-диск не будет создан.${NC}"
-        echo ""
-        return
-    fi
-    
-    # Проверяем диапазон
-    if [ "$user_size" -lt 1 ] || [ "$user_size" -gt "$max_gb" ]; then
-        echo -e "${RED}Размер должен быть от 1 до ${max_gb} GB. RAM-диск не будет создан.${NC}"
-        echo ""
-        return
-    fi
-    
-    # Всё ок, устанавливаем размер
-    RAMDISK_SIZE="${user_size}G"
-    echo -e "${GREEN}RAM-диск будет создан размером: ${RAMDISK_SIZE}${NC}"
-    echo ""
 }
 
 # Функция для проверки доступности порта
@@ -159,13 +146,8 @@ install_vidaa() {
     local arch=$(detect_architecture)
     echo -e "${GREEN}Обнаружена архитектура: $arch${NC}"
     
-    local app_file=""
-    if [ "$arch" = "amd64" ]; then
-        app_file="TorrStream-linux-amd64"
-    else
-        app_file="TorrStream-linux-arm64"
-    fi
-    
+    local app_file=$(app_file_for_arch "$arch")
+
     mkdir -p /opt/Vidaa/
     cd /opt/Vidaa/ || exit 1
     
@@ -190,105 +172,16 @@ install_vidaa() {
     
     if [ -f "/opt/Vidaa/$app_file" ]; then
         mv "/opt/Vidaa/$app_file" "/opt/Vidaa/myapp-linux-x64"
+        # Сборки для других архитектур из архива не нужны
+        rm -f /opt/Vidaa/TorrStream-linux-*
     else
         echo -e "${RED}Бинарник $app_file не найден в архиве${NC}"
         exit 1
     fi
-    
-    mkdir -p /opt/Vidaa/ffmpeg
-    cd /opt/Vidaa/ffmpeg || exit 1
-    
-    local ffmpeg_url=""
-    if [ "$arch" = "amd64" ]; then
-        ffmpeg_url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_linux64-gpl.tar.xz"
-    else
-        ffmpeg_url="https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v7.1.3-3/jellyfin-ffmpeg_7.1.3-3_portable_linuxarm64-gpl.tar.xz"
-    fi
-    
-    echo "Скачивание ffmpeg..."
-    wget -q --show-progress "$ffmpeg_url"
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при скачивании ffmpeg${NC}"
-        exit 1
-    fi
-    
-    # Распаковываем tar.xz
-    echo "Распаковка ffmpeg..."
-    tar -xf jellyfin-ffmpeg_*.tar.xz
 
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при распаковке ffmpeg${NC}"
-        exit 1
-    fi
-
-    # Ищем распакованную папку (она может называться по-разному)
-    FFMPEG_DIR=$(find . -maxdepth 1 -type d -name "jellyfin-ffmpeg*" | head -n 1)
-
-    if [ -z "$FFMPEG_DIR" ]; then
-        # Если папка не найдена, возможно файлы распаковались в текущую директорию
-        FFMPEG_DIR="."
-    fi
-
-    echo "Найдена папка ffmpeg: $FFMPEG_DIR"
-
-    # Копируем бинарники (проверяем разные возможные имена)
-    COPIED=0
-
-    # Ищем ffmpeg
-    if [ -f "$FFMPEG_DIR/ffmpeg" ]; then
-        cp "$FFMPEG_DIR/ffmpeg" /opt/Vidaa/ffmpeg/
-        COPIED=$((COPIED + 1))
-        echo "Скопирован: $FFMPEG_DIR/ffmpeg"
-    elif [ -f "$FFMPEG_DIR/bin/ffmpeg" ]; then
-        cp "$FFMPEG_DIR/bin/ffmpeg" /opt/Vidaa/ffmpeg/
-        COPIED=$((COPIED + 1))
-        echo "Скопирован: $FFMPEG_DIR/bin/ffmpeg"
-    else
-        echo -e "${YELLOW}ffmpeg не найден в $FFMPEG_DIR${NC}"
-        ls -la "$FFMPEG_DIR"
-    fi
-
-    # Ищем ffprobe
-    if [ -f "$FFMPEG_DIR/ffprobe" ]; then
-        cp "$FFMPEG_DIR/ffprobe" /opt/Vidaa/ffmpeg/
-        COPIED=$((COPIED + 1))
-        echo "Скопирован: $FFMPEG_DIR/ffprobe"
-    elif [ -f "$FFMPEG_DIR/bin/ffprobe" ]; then
-        cp "$FFMPEG_DIR/bin/ffprobe" /opt/Vidaa/ffmpeg/
-        COPIED=$((COPIED + 1))
-        echo "Скопирован: $FFMPEG_DIR/bin/ffprobe"
-    else
-        echo -e "${YELLOW}ffprobe не найден в $FFMPEG_DIR${NC}"
-    fi
-
-    if [ $COPIED -eq 0 ]; then
-        echo -e "${RED}Не удалось найти бинарники ffmpeg${NC}"
-        echo "Содержимое архива:"
-        tar -tf jellyfin-ffmpeg_*.tar.xz | head -20
-        exit 1
-    fi
-
-    # Удаляем распакованную папку и архив
-    rm -rf jellyfin-ffmpeg_* && rm -f jellyfin-ffmpeg_*.tar.xz
-    
-    echo "Скачивание yt-dlp..."
-    wget -q --show-progress "https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux" -O yt-dlp
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка при скачивании yt-dlp${NC}"
-        exit 1
-    fi
-    
+    install_ffmpeg "$arch"
     chmod 775 /opt/Vidaa/myapp-linux-x64
-    chmod 775 /opt/Vidaa/ffmpeg/ffmpeg
-    chmod 775 /opt/Vidaa/ffmpeg/ffprobe
-    chmod 775 /opt/Vidaa/ffmpeg/yt-dlp
-    
-    # ИСПРАВЛЕНИЕ 3: Вызываем setup_ramdisk (он устанавливает глобальную переменную RAMDISK_SIZE)
-    setup_ramdisk
-    local ramdisk_size="$RAMDISK_SIZE"
-    
+
     # ==========================================
     # ВЫБОР ПОРТА
     # ==========================================
@@ -341,39 +234,6 @@ LimitNOFILE=65536
 [Install]
 WantedBy=multi-user.target"
     
-    # ИСПРАВЛЕНИЕ 4: Правильная проверка ramdisk_size
-    if [ -n "$ramdisk_size" ] && [ "$ramdisk_size" != "" ]; then
-        mkdir -p /mnt/hls-ram
-        
-        service_content="[Unit]
-Description=VidaaVideo HLS Server
-After=network.target
-Wants=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/Vidaa/
-Environment=NODE_ENV=production
-Environment=PORT=$selected_port
-Environment=HOST=0.0.0.0
-ExecStartPre=/bin/mkdir -p /mnt/hls-ram
-ExecStartPre=/bin/mount -t tmpfs -o size=$ramdisk_size,uid=root,gid=root tmpfs /mnt/hls-ram
-ExecStart=/opt/Vidaa/myapp-linux-x64
-ExecStopPost=/bin/umount /mnt/hls-ram
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=Vidaa
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target"
-        
-        echo -e "${GREEN}RAM disk будет создан размером: $ramdisk_size${NC}"
-    fi
-    
     echo "$service_content" > /etc/systemd/system/vidaa.service
     
     if [ $? -ne 0 ]; then
@@ -392,10 +252,8 @@ WantedBy=multi-user.target"
         echo -e "${GREEN}========================================${NC}"
         echo -e "${GREEN}Установка завершена успешно!${NC}"
         echo -e "${GREEN}Vidaa сервер доступен по адресу: http://$ip_addr:$selected_port${NC}"
-        if [ -n "$ramdisk_size" ]; then
-            echo -e "${GREEN}RAM disk ($ramdisk_size) успешно примонтирован${NC}"
-        fi
-        echo -e "${GREEN}========================================${NC}"
+        echo -e "${GREEN}Кэш HLS — в памяти TorrStream, размер меняется в админке (вкладка «Система»)${NC}"
+echo -e "${GREEN}========================================${NC}"
     else
         echo -e "${RED}Ошибка при запуске сервиса${NC}"
         echo -e "${YELLOW}Проверьте логи: journalctl -xeu vidaa.service${NC}"
@@ -403,7 +261,6 @@ WantedBy=multi-user.target"
     fi
 }
 
-# Функция для обновления
 # Функция для обновления
 update_vidaa() {
     echo -e "${GREEN}Начинаем обновление Vidaa...${NC}"
@@ -418,75 +275,9 @@ update_vidaa() {
     local arch=$(detect_architecture)
     echo -e "${GREEN}Обнаружена архитектура: $arch${NC}"
     
-    local app_file=""
-    if [ "$arch" = "amd64" ]; then
-        app_file="TorrStream-linux-amd64"
-    else
-        app_file="TorrStream-linux-arm64"
-    fi
-    
+    local app_file=$(app_file_for_arch "$arch")
+
     cd /opt/Vidaa/ || exit 1
-    
-    # ==========================================
-    # ПРОВЕРКА RAM-ДИСКА
-    # ==========================================
-    echo ""
-    echo "=========================================="
-    echo "  Проверка RAM-диска"
-    echo "=========================================="
-    
-    local create_ramdisk="N"
-    local ramdisk_size=""
-    
-    # Проверяем, существует ли RAM-диск
-    if mountpoint -q /mnt/hls-ram 2>/dev/null; then
-        echo -e "${GREEN}RAM-диск /mnt/hls-ram уже существует и примонтирован${NC}"
-        ramdisk_size=$(df -h /mnt/hls-ram | tail -n 1 | awk '{print $2}')
-        echo -e "${BLUE}Размер: ${ramdisk_size}${NC}"
-    else
-        echo -e "${YELLOW}RAM-диск /mnt/hls-ram не обнаружен${NC}"
-        echo ""
-        
-        # Проверяем, есть ли служба с RAM-диском
-        local service_has_ramdisk="N"
-        if [ -f "/etc/systemd/system/vidaa.service" ]; then
-            if grep -q "ExecStartPre=/bin/mount.*tmpfs.*/mnt/hls-ram" "/etc/systemd/system/vidaa.service" 2>/dev/null; then
-                service_has_ramdisk="Y"
-                echo -e "${YELLOW}Служба настроена на создание RAM-диска, но он не примонтирован${NC}"
-            fi
-        fi
-        
-        if [ "$service_has_ramdisk" = "N" ]; then
-            echo -e "${YELLOW}Хотите создать RAM-диск для HLS сегментов?${NC}"
-            echo -e "${YELLOW}Это ускорит работу сервера и снизит износ диска.${NC}"
-            echo -n "Создать RAM-диск? (y/n): "
-            read -r create_ramdisk
-            
-            if [[ "$create_ramdisk" =~ ^[YyДд]$ ]]; then
-                setup_ramdisk
-                ramdisk_size="$RAMDISK_SIZE"
-            else
-                echo -e "${YELLOW}RAM-диск не будет создан${NC}"
-            fi
-        else
-            echo -e "${YELLOW}Служба уже настроена на создание RAM-диска при запуске${NC}"
-            echo -e "${YELLOW}Попробуем примонтировать его вручную...${NC}"
-            
-            # Пытаемся примонтировать существующую конфигурацию
-            local size_from_service=$(grep "ExecStartPre=/bin/mount" /etc/systemd/system/vidaa.service | grep -oP 'size=\K[^,]+')
-            if [ -n "$size_from_service" ]; then
-                mkdir -p /mnt/hls-ram
-                mount -t tmpfs -o size=$size_from_service,uid=root,gid=root tmpfs /mnt/hls-ram
-                if [ $? -eq 0 ]; then
-                    echo -e "${GREEN}RAM-диск успешно примонтирован${NC}"
-                    ramdisk_size="$size_from_service"
-                else
-                    echo -e "${RED}Не удалось примонтировать RAM-диск${NC}"
-                fi
-            fi
-        fi
-    fi
-    echo ""
     
     # ==========================================
     # ОБНОВЛЕНИЕ ПРИЛОЖЕНИЯ
@@ -512,68 +303,35 @@ update_vidaa() {
     
     if [ -f "/opt/Vidaa/$app_file" ]; then
         mv "/opt/Vidaa/$app_file" "/opt/Vidaa/myapp-linux-x64"
+        rm -f /opt/Vidaa/TorrStream-linux-*
     else
         echo -e "${RED}Бинарник $app_file не найден в архиве${NC}"
         exit 1
     fi
-    
+
     chmod 775 /opt/Vidaa/myapp-linux-x64
-    chmod 775 /opt/Vidaa/ffmpeg/ffmpeg
-    chmod 775 /opt/Vidaa/ffmpeg/ffprobe
-    chmod 775 /opt/Vidaa/ffmpeg/yt-dlp
-    
-    # ==========================================
-    # ОБНОВЛЕНИЕ СИСТЕМНОЙ СЛУЖБЫ (ЕСЛИ НУЖНО)
-    # ==========================================
-    if [[ "$create_ramdisk" =~ ^[YyДд]$ ]] && [ -n "$ramdisk_size" ]; then
-        echo ""
-        echo "=========================================="
-        echo "  Обновление системной службы"
-        echo "=========================================="
-        echo -e "${BLUE}Добавление поддержки RAM-диска в службу...${NC}"
-        
-        # Получаем текущий порт из службы
-        local current_port=$(grep "Environment=PORT=" /etc/systemd/system/vidaa.service | cut -d= -f3)
-        if [ -z "$current_port" ] || ! [[ "$current_port" =~ ^[0-9]+$ ]]; then
-            current_port="3000"
-            echo -e "${YELLOW}Не удалось определить порт, используется значение по умолчанию: $current_port${NC}"
-        fi
-        
-        # Создаем директорию для RAM-диска
-        mkdir -p /mnt/hls-ram
-        
-        # Создаем новую версию службы с RAM-диском
-        cat > /etc/systemd/system/vidaa.service << EOF
-[Unit]
-Description=VidaaVideo HLS Server
-After=network.target
-Wants=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/Vidaa/
-Environment=NODE_ENV=production
-Environment=PORT=$current_port
-Environment=HOST=0.0.0.0
-ExecStartPre=/bin/mkdir -p /mnt/hls-ram
-ExecStartPre=/bin/mount -t tmpfs -o size=$ramdisk_size,uid=root,gid=root tmpfs /mnt/hls-ram
-ExecStart=/opt/Vidaa/myapp-linux-x64
-ExecStopPost=/bin/umount /mnt/hls-ram
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=Vidaa
-LimitNOFILE=65536
-
-[Install]
-WantedBy=multi-user.target
-EOF
-        
-        echo -e "${GREEN}Служба обновлена с поддержкой RAM-диска${NC}"
+    # ffmpeg мог не встать при прошлой установке — докачиваем
+    if [ ! -x /opt/Vidaa/ffmpeg/ffmpeg ] || [ ! -x /opt/Vidaa/ffmpeg/ffprobe ]; then
+        install_ffmpeg "$arch"
     fi
-    
+    # yt-dlp больше не нужен (YouTube в сервере убран)
+    rm -f /opt/Vidaa/ffmpeg/yt-dlp
+
+    # ==========================================
+    # СТАРЫЙ RAM-ДИСК (tmpfs /mnt/hls-ram) БОЛЬШЕ НЕ НУЖЕН
+    # ==========================================
+    # Кэш HLS сервер держит в своей памяти; tmpfs поверх него занимал бы
+    # память второй раз. Убираем его из службы и размонтируем
+    if grep -q "hls-ram" /etc/systemd/system/vidaa.service 2>/dev/null; then
+        echo "Отключение RAM-диска /mnt/hls-ram: кэш HLS теперь в памяти TorrStream..."
+        systemctl stop vidaa
+        sed -i '/hls-ram/d' /etc/systemd/system/vidaa.service
+        if mountpoint -q /mnt/hls-ram 2>/dev/null; then
+            umount /mnt/hls-ram 2>/dev/null
+        fi
+        rmdir /mnt/hls-ram 2>/dev/null
+    fi
+
     # ==========================================
     # ПЕРЕЗАПУСК СЛУЖБЫ
     # ==========================================
@@ -589,12 +347,8 @@ EOF
         echo -e "${GREEN}========================================${NC}"
         echo -e "${GREEN}Обновление завершено успешно!${NC}"
         echo -e "${GREEN}Vidaa сервер доступен по адресу: http://$ip_addr:$port${NC}"
-        
-        if mountpoint -q /mnt/hls-ram 2>/dev/null; then
-            local ramdisk_info=$(df -h /mnt/hls-ram | tail -n 1 | awk '{print $2}')
-            echo -e "${GREEN}RAM-диск активен: $ramdisk_info${NC}"
-        fi
-        
+        echo -e "${GREEN}Кэш HLS — в памяти TorrStream, размер меняется в админке (вкладка «Система»)${NC}"
+
         echo -e "${GREEN}========================================${NC}"
     else
         echo -e "${RED}Ошибка при перезапуске сервиса${NC}"
@@ -671,7 +425,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Проверка наличия необходимых утилит
-for cmd in wget systemctl tar free; do
+for cmd in wget systemctl tar; do
     if ! command -v $cmd &> /dev/null; then
         echo -e "${RED}Утилита $cmd не найдена. Пожалуйста, установите её.${NC}"
         exit 1

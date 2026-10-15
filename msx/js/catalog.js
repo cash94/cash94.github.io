@@ -636,6 +636,68 @@ async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
     }
 }
 
+// ==================== КЭШ ТРЕЙЛЕРОВ НА СЕРВЕРЕ ====================
+//
+// Поиск трейлера — запрос к поиску RuTube и до трёх play/options на сравнение
+// качества. Найденный ролик сервер запоминает (routes/trailers.js) по id
+// фильма TMDB, и в следующий раз — на любом устройстве — нужен один
+// play/options по готовому id. Ссылку на плейлист не храним: в ней токен,
+// она со временем перестаёт открываться; плейлист берём из свежего ответа.
+// Сервер старше кэша отвечает 404 — тогда всё как раньше, только поиск.
+
+var TRAILER_CACHE_URL = '/api/trailer/cache';
+
+/** id ролика из ссылки балансировщика: bl.rutube.ru/route/<id>.m3u8 */
+function rutubeVideoIdFromUrl(url) {
+    var m = /\/route\/([0-9a-f]{32})\b/.exec(String(url || ''));
+    return m ? m[1] : null;
+}
+
+/** Трейлер по готовому id ролика — один play/options. null — ролика нет */
+async function rutubeTrailerById(videoId, title) {
+    var playApiUrl = 'https://rutube.ru/api/play/options/' + videoId;
+    var playData = await safeFetch('/api/rutube/proxy?url=' + encodeURIComponent(playApiUrl), { timeout: 10000 });
+    var balancerUrl = extractBalancerUrl(playData);
+    if (!balancerUrl) return null;
+    return { url: balancerUrl, quality: parseMaxQualityFromM3u8Url(balancerUrl), title: (playData && playData.title) || title };
+}
+
+/**
+ * Трейлер с кэшем на сервере. ref — {id, type} фильма TMDB; без него — просто
+ * поиск. Ответ тот же, что у fetchRutubeTrailer: {url, quality, title} | null.
+ */
+async function fetchRutubeTrailerCached(ref, title, originalTitle, releaseDate) {
+    var search = window.fetchRutubeTrailer || fetchRutubeTrailer;   // воркер или главный поток
+    var id = ref && ref.id !== undefined && ref.id !== null ? String(ref.id) : '';
+    if (!/^\d+$/.test(id)) return search(title, originalTitle, releaseDate);
+    var type = ref.type === 'tv' ? 'tv' : 'movie';
+    var query = '?id=' + id + '&type=' + type;
+
+    var cached = await safeFetch(TRAILER_CACHE_URL + query, { timeout: 4000 });
+    if (cached && cached.cached) {
+        if (!cached.videoId) return null;           // недавно искали — не нашли
+        var hit = await rutubeTrailerById(cached.videoId, cached.title || title);
+        if (hit) return hit;
+        // Ролик удалили или скрыли — забываем и ищем заново
+        fetch(TRAILER_CACHE_URL + query, { method: 'DELETE' })['catch'](function () { });
+    }
+
+    var found = await search(title, originalTitle, releaseDate);
+    // Кэш на сервере есть (ответ пришёл) — записываем и находку, и «не нашли»
+    if (cached) {
+        var videoId = found && found.url ? rutubeVideoIdFromUrl(found.url) : null;
+        if (!found || videoId) {
+            fetch(TRAILER_CACHE_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, type: type, videoId: videoId, title: found ? (found.title || title) : null })
+            })['catch'](function () { });
+        }
+    }
+    return found;
+}
+window.fetchRutubeTrailerCached = fetchRutubeTrailerCached;
+
 function wrapRutubeHls(url) {
     if (!url) return url;
     // Уже обёрнут — не оборачиваем повторно
@@ -2288,14 +2350,6 @@ function readGridRowGap() {
     if (!grid || !window.getComputedStyle) return 0;
     var cs = window.getComputedStyle(grid);
     var gap = parseFloat(cs.rowGap || cs.gridRowGap || cs.gap || '');
-    // Без CSS Grid (webOS 4 — Chrome 53, css/legacy.css) сетка на flex, и
-    // зазор между строками — нижнее поле карточки. Свойств gap там нет, и
-    // без этого распорка выходила ниже чанка на (строк - 1) × зазор: при
-    // свёртке содержимое уезжало вверх
-    if (isNaN(gap) && document.documentElement.className.indexOf('legacy-browser') !== -1) {
-        var card = grid.querySelector('.torrent-card');
-        if (card) gap = parseFloat(window.getComputedStyle(card).marginBottom);
-    }
     return (!isNaN(gap) && gap >= 0) ? gap : 0;
 }
 
@@ -3079,14 +3133,7 @@ function createCatalogCard(item, index) {
             if (ph && ph.parentNode) ph.parentNode.removeChild(ph);
         };
         if (readyImg.complete && readyImg.naturalWidth > 0) dropSkeleton();
-        // Не затираем onload сборщика карточки: без img.decode() (Chrome < 64,
-        // webOS 4) именно он проявляет постер — иначе картинка так и
-        // оставалась прозрачной
-        var revealOnload = readyImg.onload;
-        readyImg.onload = function (e) {
-            if (revealOnload) revealOnload.call(this, e);
-            dropSkeleton();
-        };
+        readyImg.onload = dropSkeleton;
         readyImg.onerror = function () {
             if (readyImg.parentNode) readyImg.parentNode.removeChild(readyImg);
             card.dataset.posterRequested = '0';
@@ -4453,10 +4500,6 @@ var detailPosterObserver = null;
 function getDetailPosterObserver() {
     if (detailPosterObserver) return detailPosterObserver;
     if (!('IntersectionObserver' in window)) return null;
-    // webOS 4 (Chrome 53): наблюдатель за карточками рядов детального
-    // просмотра там не срабатывает — фото актёров и постеры похожих так и
-    // оставались пустыми. Карточек всего по 12 в ряду, грузим их сразу
-    if (document.documentElement.className.indexOf('legacy-browser') !== -1) return null;
     detailPosterObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
             if (!entries[i].isIntersecting) continue;
@@ -5060,7 +5103,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     } else {
         rutubeTrailerState.currentUrl = null;
         rutubeTrailerState.currentTitle = null;
-        fetchRutubeTrailer(trailerTitle, trailerOriginal, trailerDate).then(function (result) {
+        fetchRutubeTrailerCached({ id: item.id, type: mt }, trailerTitle, trailerOriginal, trailerDate).then(function (result) {
             if (!result || !result.url) return;
             rutubeTrailerCache[trailerCacheKey] = {
                 url: result.url,
@@ -5355,28 +5398,42 @@ function onCatalogItemClick(item, index) {
 /**
  * Что из карточки TMDB можно подсказать Jacred при поиске торрентов.
  *
- * is_serial (1 — фильм, 2 — сериал) отдаём всегда: тип взят из media_type
- * карточки, где он достоверен, а выгода большая — без него в выдачу
- * попадают одноимённые чужие раздачи другого типа.
+ * Набор тот же, что шлёт Lampa: title и title_original вместе, year, is_serial
+ * (1 — фильм, 2 — сериал). Пара названий переключает Jacred из поиска по
+ * строке Query в поиск по названиям раздачи, и это главное. Замеры по
+ * jac.red и nmjc.duckdns.org: «Бегущий по лезвию 2049» строкой отдаёт 11
+ * раздач, из них 9 — фильм 1982 года, а по названиям — 141, все свои;
+ * «Пацаны» 322 → 367, «Во все тяжкие» 172 → 189. Меньше, чем строкой, по
+ * названиям не выходило ни разу.
  *
- * year передаём ТОЛЬКО фильмам, и это не осторожность, а замеры по живому
- * jac.red. Фильму год нужен: «Дюна» без него отдаёт 256 раздач вперемешку
- * (2021, экранизация 1984 и мини-сериал 2000), с year=2021 — ровно 169 своих.
- * А у сериала это год первого сезона, тогда как раздачи поздних сезонов
- * подписаны своими годами, и фильтр их срезает: у «Во все тяжкие» year=2008
- * убирает 21 раздачу — весь 2–5 сезон. То же самое у «Тьмы», «Игры престолов»
- * и «Пацанов».
+ * Поэтому title_original идёт только вместе с title: в одиночку он режет
+ * грубо и выбрасывает раздачи с чисто русским именем.
  *
- * title_original не передаём: он режет гораздо грубее года (на проверках до
- * десятка раз) и выбрасывает раздачи с чисто русским именем.
+ * year сериалу отдаём лишь при названиях. В поиске по строке это год первого
+ * сезона, и он срезает поздние сезоны (у «Во все тяжкие» year=2008 убирал весь
+ * 2–5 сезон), а в поиске по названиям сезоны с ним остаются (189 и с годом, и
+ * без). Фильму год нужен в обоих режимах: «Дюна» без него — 234 раздачи
+ * вперемешку с экранизацией 1984, с year=2021 — 173.
+ *
+ * details — ответ /api/tmdb/details (fetchTmdbDetails). Оригинальное название
+ * и год берутся в первую очередь оттуда: в избранном, истории и плитках
+ * «похожего» элемент урезан и original_title в нём нет, а у истории в
+ * release_date вообще лежит дата просмотра (catalog-worker-patch.js).
  */
-function buildJacredSearchHints(item) {
+function buildJacredSearchHints(item, details) {
     if (!item) return null;
+    var d = details || {};
     var mt = (item.media_type || AppState.mediaType || 'movie');
     var serial = mt === 'tv';
+    var title = String(item.title || item.name || d.title || d.name || '').trim();
+    var original = String(d.original_title || d.original_name ||
+        item.original_title || item.original_name || '').trim();
+    var year = getCatalogItemYear(d) || (item.isHistoryItem ? null : getCatalogItemYear(item));
     return {
         isSerial: serial ? 2 : 1,
-        year: serial ? null : getCatalogItemYear(item)
+        year: (serial && !title) ? null : year,
+        title: title || null,
+        titleOriginal: (title && original) ? original : null
     };
 }
 
@@ -5429,7 +5486,14 @@ function showCatalogSearch(q, pu, item) {
 
         // Год и тип для Jacred. Ставится после AppState.mediaType выше: он
         // служит запасным источником типа, когда у самого item его нет
-        AppState.jacredSearchHints = buildJacredSearchHints(item);
+        var cardHints = buildJacredSearchHints(item);
+        AppState.jacredSearchHints = cardHints;
+        // Оригинальное название и настоящий год — из деталей TMDB. Карточка
+        // запросила их при открытии, так что обычно они уже в кэше или в пути;
+        // ждать дольше таймаута safeFetch не придётся
+        var detailsReady = (item && item.id)
+            ? Promise.resolve(fetchTmdbDetails(item)).catch(function () { return null; })
+            : Promise.resolve(null);
 
         // Другой фильм — фильтры поиска снова по умолчанию (torrents.js)
         if (typeof window.resetFiltersForCardSearch === 'function') {
@@ -5444,7 +5508,15 @@ function showCatalogSearch(q, pu, item) {
         if (typeof window.searchTorrentsLegacy === 'function') {
             var tm = getEl('torrent-movie');
             if (tm) tm.value = 'torrentsearch';
-            searching = Promise.resolve(window.searchTorrentsLegacy(q))
+            searching = detailsReady
+                .then(function (details) {
+                    // Пока ждали, из поиска могли уйти и сбросить подсказки
+                    // (clearCatalogSearchContext) — тогда чужие не возвращаем
+                    if (details && AppState.jacredSearchHints === cardHints) {
+                        AppState.jacredSearchHints = buildJacredSearchHints(item, details);
+                    }
+                    return window.searchTorrentsLegacy(q);
+                })
                 .then(function (n) { return typeof n === 'number' ? n : 0; })
                 .catch(function () { return 0; });
         }
@@ -6359,9 +6431,7 @@ function measureCatalogCardHeight() {
     if (!grid) return;
 
     // Число колонок задаёт ui-customizer, поэтому берём его из вычисленных стилей
-    // Без CSS Grid (Chrome 53) вычисленного шаблона нет — тогда берём число
-    // колонок у навигации (control.js: getColumns, настройка ui-customizer)
-    var cols = (typeof getColumns === 'function' && getColumns()) || 5;
+    var cols = 5;
     var tpl = window.getComputedStyle(grid).gridTemplateColumns;
     if (tpl && tpl !== 'none') cols = tpl.split(/\s+/).length;
 

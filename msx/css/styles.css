@@ -625,6 +625,41 @@ textarea {
   background: rgba(255, 255, 255, 0.07);
 }
 
+/* Раздача, которую уже выбирали из поиска (SearchPicks в torrents.js): зелёный
+   корешок и метка перед названием. Цвет не фокусный — фокус и так рисуется
+   корешком, а метка должна читаться и на сфокусированной карточке. */
+.search-result-item.search-result-picked {
+  border-left-color: #3ccf7f;
+}
+
+.search-result-item.search-result-picked:hover,
+.search-result-item.search-result-picked.focused {
+  border-left-color: var(--focus-color, #ff8c00);
+}
+
+.search-result-picked-badge {
+  display: inline-block;
+  vertical-align: 1px;
+  margin-right: 0.5em;
+  padding: 0.15em 0.55em;
+  border-radius: 6px;
+  /* От размера названия: на ТВ оно крупнее, и метка растёт вместе с ним */
+  font-size: 0.72em;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: #7dedb0;
+  background: rgba(60, 220, 130, 0.16);
+}
+
+.search-result-picked-badge .fi {
+  display: inline-block;
+  margin-right: 0.4em;
+  font-size: 0.85em;
+  line-height: 1;
+  vertical-align: 0;
+}
+
 /* Метка качества и HDR — то, что считывается первым взглядом */
 .search-result-media-tag {
   color: #f2f5fa;
@@ -1933,12 +1968,6 @@ body.detail-open {
   margin-top: 8px;
 }
 
-.left-buttons {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
 .control-btn {
   background: transparent;
   border: none;
@@ -2094,7 +2123,8 @@ body.detail-open {
 
 .audio-icon,
 .subtitle-icon,
-.episode-number {
+.episode-number,
+.player-menu-icon {
   width: 34px;
   height: 34px;
   flex-shrink: 0;
@@ -2118,7 +2148,8 @@ body.detail-open {
 
 .audio-title,
 .subtitle-title,
-.episode-title {
+.episode-title,
+.player-menu-title {
   color: #fff;
   font-size: 15px;
   font-weight: 500;
@@ -3220,13 +3251,40 @@ body.detail-open {
 /* Скрытие элементов плеера при idle-hidden */
 #buffer-stats.idle-hidden,
 #player-hint.idle-hidden,
-#exit-player-btn.idle-hidden,
-#episodes-btn.idle-hidden,
-#prev-episode-btn.idle-hidden,
-#next-episode-btn.idle-hidden {
+#exit-player-btn.idle-hidden {
   opacity: 0 !important;
   pointer-events: none !important;
   transition: opacity 0.2s ease;
+}
+
+/* Предупреждение «Нажмите Назад ещё раз» (control.js → showPlayerHint с
+   текстом) видно и при скрытом HUD: первое нажатие Назад приходит именно
+   тогда, а под idle-hidden подсказка прозрачна — предупреждения не было. */
+#player-hint.player-hint-alert.idle-hidden {
+  opacity: 1 !important;
+}
+
+/* Само предупреждение — плашкой посередине у нижнего края, крупно: обычная
+   подсказка там мелкая и серая, с дивана её не прочесть. vw — как у
+   подсказки и остального ХУДа (на 1280 это ~19px). */
+#player-hint.player-hint-alert {
+  bottom: 6vw;
+  padding: 0.7vw 1.6vw;
+  font-size: 1.5vw;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 1.6vw;
+  white-space: nowrap;
+}
+
+/* Кнопка «Выход» в углу, громкость и «Полный экран» в плеере не показываем:
+   выход — двойным Назад, полный экран — двойным кликом или касанием по
+   видео (app.js: setupOverlayControls). Узлы остаются в DOM: синяя кнопка
+   пульта и обработчики дергают их .click(). */
+#exit-player-btn,
+#player-screen .volume-container {
+  display: none !important;
 }
 
 /* Адаптивная сетка */
@@ -3300,7 +3358,9 @@ body.detail-open {
   font-size: 20px;
   font-weight: bold;
   font-family: monospace;
-  z-index: 10000;
+  /* Под боковыми панелями плеера (240): выше них часы закрывали кнопку
+     закрытия в заголовке панели. Над панелью управления (225) — как раньше */
+  z-index: 230;
   pointer-events: none;
   text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
 }
@@ -3624,26 +3684,16 @@ article {
   overflow-wrap: break-word;
 }
 
-.native-subtitles {
-  display: none;
-  position: absolute;
-  left: 6%;
-  right: 6%;
-  bottom: 9%;
-  z-index: 5;
-  text-align: center;
-  white-space: pre-line;
-  color: #fff;
-  font-size: 2.6vw;
-  font-weight: 600;
-  line-height: 1.3;
-  text-shadow: 0 0 4px #000, 0 0 4px #000, 2px 2px 3px #000;
-  pointer-events: none;
+/* Субтитры прямого файла рисует сам браузер (player.js: applyNativeSubtitle).
+   Пока открыта панель управления — над ней (watchCuesRaise), а не на
+   перемотке. Свойство движка Chrome — на Vidaa и webOS он же */
+#video-player::-webkit-media-text-track-container {
+  transition: transform 0.2s ease;
 }
 
-/* Над открытой панелью управления (перемотка, кнопки, строка буфера) */
-.native-subtitles.native-subtitles-raised {
-  bottom: 26%;
+#video-player.cues-raised::-webkit-media-text-track-container {
+  -webkit-transform: translateY(-17vh);
+  transform: translateY(-17vh);
 }
 
 .video-object-fit-contain {
@@ -3728,7 +3778,8 @@ article {
    плитки. Фон чуть прозрачный: за панелью продолжает идти видео. */
 .audio-panel,
 .episodes-panel,
-.subtitles-panel {
+.subtitles-panel,
+.player-menu-panel {
   position: fixed;
   top: 0;
   right: 0;
@@ -3750,7 +3801,8 @@ article {
 /* Когда панель скрыта - уезжает за правый край */
 .audio-panel.hidden,
 .episodes-panel.hidden,
-.subtitles-panel.hidden {
+.subtitles-panel.hidden,
+.player-menu-panel.hidden {
   display: flex !important;
   transform: translateX(100%);
   pointer-events: none;
@@ -3768,7 +3820,8 @@ article {
 /* Заголовки панелей */
 .audio-panel-header,
 .episodes-panel-header,
-.subtitles-panel-header {
+.subtitles-panel-header,
+.player-menu-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -3780,7 +3833,8 @@ article {
 
 .audio-panel-header h3,
 .episodes-panel-header h3,
-.subtitles-panel-header h3 {
+.subtitles-panel-header h3,
+.player-menu-header h3 {
   color: #fff;
   font-size: 18px;
   font-weight: 600;
@@ -3806,7 +3860,8 @@ article {
 /* Списки внутри панелей - растягиваются на всё место */
 .audio-list,
 .episodes-list,
-.subtitles-list {
+.subtitles-list,
+.player-menu-list {
   flex: 1;
   overflow-y: auto;
   padding: 10px 12px 16px 12px;
@@ -3836,7 +3891,8 @@ article {
 /* Элементы списков */
 .audio-item,
 .episode-item,
-.subtitle-item {
+.subtitle-item,
+.player-menu-item {
   display: flex;
   align-items: center;
   padding: 12px 14px;
@@ -3853,7 +3909,8 @@ article {
 
 .audio-item:hover,
 .episode-item:hover,
-.subtitle-item:hover {
+.subtitle-item:hover,
+.player-menu-item:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -3865,7 +3922,8 @@ article {
   border-color: rgba(60, 220, 130, 0.28);
 }
 
-.subtitle-details {
+.subtitle-details,
+.player-menu-value {
   color: #98a1b0;
   font-size: 12.5px;
   display: flex;
@@ -3905,7 +3963,8 @@ article {
 
   .audio-panel,
   .episodes-panel,
-  .subtitles-panel {
+  .subtitles-panel,
+  .player-menu-panel {
     width: 85vw;
   }
 }
@@ -3914,7 +3973,8 @@ article {
 
   .audio-panel,
   .episodes-panel,
-  .subtitles-panel {
+  .subtitles-panel,
+  .player-menu-panel {
     width: 100%;
   }
 }
@@ -5401,10 +5461,8 @@ article {
   font-weight: 700 !important;
 }
 
-#detail-view.torrent-detail-mode #detail-progress-btn:hover,
-#detail-view.torrent-detail-mode #detail-progress-btn.focused {
+#detail-view.torrent-detail-mode #detail-progress-btn:hover {
   background: #ffffff !important;
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
 #detail-view.torrent-detail-mode #detail-progress-btn .btn-label {
@@ -7190,7 +7248,7 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 
 /* --- КНОПКИ ------------------------------------------------------------- */
 /* gap обнуляем везде: в Chrome 66 у flex он не работает, разбег дают margin */
-#detail-view.catalog-detail-mode #catalog-detail-actions {
+#detail-view #catalog-detail-actions {
   gap: 0 !important;
   margin-bottom: 0;
 }
@@ -7198,15 +7256,16 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 /* margin-right, а не «+ button»: между видимыми кнопками стоят скрытые
    (#detail-progress-btn, #catalog-trailer-btn до находки трейлера), и соседний
    селектор давал бы отступ слева у первой видимой */
-#detail-view.catalog-detail-mode #catalog-detail-actions > button {
+#detail-view #catalog-detail-actions > button {
   gap: 0 !important;
   margin-right: 14px !important;
   border-radius: 6px !important;
   font-weight: 700 !important;
 }
 
-/* «Поиск торрентов» — главное действие экрана, белая кнопка как в Netflix */
-#detail-view.catalog-detail-mode #catalog-watch-btn {
+/* «Поиск торрентов» — главное действие экрана, белая кнопка как в Netflix
+   (в карточке раздачи то же у «Играть» — блок torrent-detail-mode выше) */
+#detail-view #catalog-watch-btn {
   background: #ffffff !important;
   color: #000000 !important;
   border: none !important;
@@ -7214,16 +7273,18 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   font-size: 19px !important;
 }
 
-#detail-view.catalog-detail-mode #catalog-watch-btn:hover,
-#detail-view.catalog-detail-mode #catalog-watch-btn.focused {
+#detail-view #catalog-watch-btn:hover,
+#detail-view #catalog-watch-btn.focused {
   background: #ffffff !important;
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
-/* «Подробнее» и «Трейлер» — серые вторичные */
-#detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
-#detail-view.catalog-detail-mode #catalog-favorite-btn,
-#detail-view.catalog-detail-mode #catalog-trailer-btn {
+/* Остальные — серые вторичные, одни и те же в карточке фильма и раздачи:
+   раньше в карточке раздачи «Подробнее» и «Открыть карточку» оставались
+   мелкими кнопками базового стиля рядом с крупной белой «Играть» */
+#detail-view #catalog-toggle-overview-btn,
+#detail-view #detail-open-card-btn,
+#detail-view #catalog-favorite-btn,
+#detail-view #catalog-trailer-btn {
   background: rgba(109, 109, 110, 0.7) !important;
   color: #ffffff !important;
   border: none !important;
@@ -7231,20 +7292,62 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   font-size: 19px !important;
 }
 
-#detail-view.catalog-detail-mode #catalog-toggle-overview-btn:hover,
-#detail-view.catalog-detail-mode #catalog-favorite-btn:hover,
-#detail-view.catalog-detail-mode #catalog-favorite-btn.focused,
-#detail-view.catalog-detail-mode #catalog-toggle-overview-btn.focused,
-#detail-view.catalog-detail-mode #catalog-trailer-btn:hover,
-#detail-view.catalog-detail-mode #catalog-trailer-btn.focused {
+/* Мышь — светлее серого; фокус пульта — ниже, общим правилом */
+#detail-view #catalog-toggle-overview-btn:hover,
+#detail-view #detail-open-card-btn:hover,
+#detail-view #catalog-favorite-btn:hover,
+#detail-view #catalog-trailer-btn:hover {
   background: rgba(109, 109, 110, 0.9) !important;
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
 }
 
 /* Иконка ▶ внутри «Трейлера»: у кнопки gap обнулён, отступ даёт она сама */
-#detail-view.catalog-detail-mode #catalog-trailer-btn .trailer-btn-icon {
+#detail-view #catalog-trailer-btn .trailer-btn-icon {
   margin-right: 9px;
   font-size: 15px;
+}
+
+/* Иконки шрифта uicons перед подписью: поиск, «i», «открыть». У «Трейлера» и
+   «Избранного» значок уже в разметке. content с !important — против
+   content: none !important у .catalog-watch-btn::before выше по файлу */
+#detail-view #catalog-watch-btn::before,
+#detail-view #catalog-toggle-overview-btn::before,
+#detail-view #detail-open-card-btn::before {
+  margin-right: 0.5em;
+  font-family: "uicons-regular-rounded";
+  font-weight: normal;
+  line-height: 1;
+}
+
+#detail-view #catalog-watch-btn::before { content: "\f13a" !important; }
+#detail-view #catalog-toggle-overview-btn::before { content: "\eb10" !important; }
+#detail-view #detail-open-card-btn::before { content: "\e11d" !important; }
+
+#detail-view #catalog-favorite-btn .favorite-btn-icon {
+  margin-right: 9px;
+}
+
+/* Фокус пульта (вариант «Netflix»): любая кнопка ряда белеет, вокруг тонкая
+   рамка цветом фокуса и тень, кнопка чуть крупнее. Раньше серая кнопка в
+   фокусе оставалась серой под толстой оранжевой рамкой. Специфичность выше,
+   чем у правил «Играть» в torrent-detail-mode, — фокус там тот же */
+#detail-view #catalog-detail-actions > button {
+  transition: transform 0.15s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#detail-view.catalog-detail-mode #catalog-detail-actions > button.focused,
+#detail-view.torrent-detail-mode #catalog-detail-actions > button.focused,
+#detail-view #catalog-detail-actions > button.focused {
+  background: #ffffff !important;
+  color: #000000 !important;
+  box-shadow: 0 0 0 3px var(--focus-color, #ff8c00), 0 10px 26px rgba(0, 0, 0, 0.5) !important;
+  -webkit-transform: scale(1.06);
+  transform: scale(1.06);
+}
+
+/* Жёлтая звезда «в избранном» на белом не видна */
+#detail-view #catalog-favorite-btn.focused.is-favorite .favorite-btn-icon {
+  color: #d99a00;
+  text-shadow: none;
 }
 
 /* --- ЗАГОЛОВКИ РЯДОВ ---------------------------------------------------- */
@@ -7453,23 +7556,24 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     margin-bottom: 14px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-detail-actions > button {
+  #detail-view #catalog-detail-actions > button {
     margin-right: 10px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-watch-btn {
+  #detail-view #catalog-watch-btn {
     padding: 9px 22px !important;
     font-size: 15px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
-  #detail-view.catalog-detail-mode #catalog-favorite-btn,
-  #detail-view.catalog-detail-mode #catalog-trailer-btn {
+  #detail-view #catalog-toggle-overview-btn,
+  #detail-view #detail-open-card-btn,
+  #detail-view #catalog-favorite-btn,
+  #detail-view #catalog-trailer-btn {
     padding: 9px 18px !important;
     font-size: 15px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-trailer-btn .trailer-btn-icon {
+  #detail-view #catalog-trailer-btn .trailer-btn-icon {
     margin-right: 7px;
     font-size: 12px;
   }
@@ -7579,23 +7683,24 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     margin-bottom: 16px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-detail-actions > button {
+  #detail-view #catalog-detail-actions > button {
     margin-right: 12px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-watch-btn {
+  #detail-view #catalog-watch-btn {
     padding: 11px 28px !important;
     font-size: 17px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
-  #detail-view.catalog-detail-mode #catalog-favorite-btn,
-  #detail-view.catalog-detail-mode #catalog-trailer-btn {
+  #detail-view #catalog-toggle-overview-btn,
+  #detail-view #detail-open-card-btn,
+  #detail-view #catalog-favorite-btn,
+  #detail-view #catalog-trailer-btn {
     padding: 11px 24px !important;
     font-size: 17px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-trailer-btn .trailer-btn-icon {
+  #detail-view #catalog-trailer-btn .trailer-btn-icon {
     margin-right: 8px;
     font-size: 13px;
   }
@@ -7703,23 +7808,24 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     margin-bottom: 10px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-detail-actions > button {
+  #detail-view #catalog-detail-actions > button {
     margin-right: 8px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-watch-btn {
+  #detail-view #catalog-watch-btn {
     padding: 7px 18px !important;
     font-size: 13px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-toggle-overview-btn,
-  #detail-view.catalog-detail-mode #catalog-favorite-btn,
-  #detail-view.catalog-detail-mode #catalog-trailer-btn {
+  #detail-view #catalog-toggle-overview-btn,
+  #detail-view #detail-open-card-btn,
+  #detail-view #catalog-favorite-btn,
+  #detail-view #catalog-trailer-btn {
     padding: 7px 14px !important;
     font-size: 13px !important;
   }
 
-  #detail-view.catalog-detail-mode #catalog-trailer-btn .trailer-btn-icon {
+  #detail-view #catalog-trailer-btn .trailer-btn-icon {
     margin-right: 6px;
     font-size: 11px;
   }
@@ -8136,19 +8242,22 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 @media screen and (min-width: 960px) and (max-width: 1399px) {
   .audio-panel,
   .episodes-panel,
-  .subtitles-panel {
+  .subtitles-panel,
+  .player-menu-panel {
     width: 420px;
   }
 
   .audio-panel-header,
   .episodes-panel-header,
-  .subtitles-panel-header {
+  .subtitles-panel-header,
+  .player-menu-header {
     padding: 18px 20px;
   }
 
   .audio-panel-header h3,
   .episodes-panel-header h3,
-  .subtitles-panel-header h3 {
+  .subtitles-panel-header h3,
+  .player-menu-header h3 {
     font-size: 19px;
   }
 
@@ -8159,13 +8268,15 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 
   .audio-item,
   .episode-item,
-  .subtitle-item {
+  .subtitle-item,
+  .player-menu-item {
     padding: 13px 16px;
   }
 
   .audio-title,
   .subtitle-title,
-  .episode-title {
+  .episode-title,
+  .player-menu-title {
     font-size: 16px;
   }
 
@@ -8181,19 +8292,22 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 @media screen and (min-width: 1400px) {
   .audio-panel,
   .episodes-panel,
-  .subtitles-panel {
+  .subtitles-panel,
+  .player-menu-panel {
     width: 460px;
   }
 
   .audio-panel-header,
   .episodes-panel-header,
-  .subtitles-panel-header {
+  .subtitles-panel-header,
+  .player-menu-header {
     padding: 20px 24px;
   }
 
   .audio-panel-header h3,
   .episodes-panel-header h3,
-  .subtitles-panel-header h3 {
+  .subtitles-panel-header h3,
+  .player-menu-header h3 {
     font-size: 21px;
   }
 
@@ -8205,20 +8319,23 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 
   .audio-list,
   .episodes-list,
-  .subtitles-list {
+  .subtitles-list,
+  .player-menu-list {
     padding: 12px 14px 20px 14px;
   }
 
   .audio-item,
   .episode-item,
-  .subtitle-item {
+  .subtitle-item,
+  .player-menu-item {
     padding: 15px 18px;
     margin-bottom: 7px;
   }
 
   .audio-icon,
   .subtitle-icon,
-  .episode-number {
+  .episode-number,
+  .player-menu-icon {
     width: 38px;
     height: 38px;
     font-size: 16px;
@@ -8226,13 +8343,15 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 
   .audio-title,
   .subtitle-title,
-  .episode-title {
+  .episode-title,
+  .player-menu-title {
     font-size: 17.5px;
   }
 
   .audio-details,
   .episode-duration,
-  .subtitle-details {
+  .subtitle-details,
+  .player-menu-value {
     font-size: 14px;
   }
 
@@ -8254,19 +8373,22 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 @media screen and (min-width: 720px) and (max-width: 1024px) and (max-height: 620px) {
   .audio-panel,
   .episodes-panel,
-  .subtitles-panel {
+  .subtitles-panel,
+  .player-menu-panel {
     width: 300px;
   }
 
   .audio-panel-header,
   .episodes-panel-header,
-  .subtitles-panel-header {
+  .subtitles-panel-header,
+  .player-menu-header {
     padding: 10px 12px;
   }
 
   .audio-panel-header h3,
   .episodes-panel-header h3,
-  .subtitles-panel-header h3 {
+  .subtitles-panel-header h3,
+  .player-menu-header h3 {
     font-size: 15px;
   }
 
@@ -8289,13 +8411,15 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 
   .audio-list,
   .episodes-list,
-  .subtitles-list {
+  .subtitles-list,
+  .player-menu-list {
     padding: 8px 10px 12px 10px;
   }
 
   .audio-item,
   .episode-item,
-  .subtitle-item {
+  .subtitle-item,
+  .player-menu-item {
     padding: 8px 12px;
     margin-bottom: 5px;
     border-radius: 10px;
@@ -8303,7 +8427,8 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 
   .audio-icon,
   .subtitle-icon,
-  .episode-number {
+  .episode-number,
+  .player-menu-icon {
     width: 26px;
     height: 26px;
     margin-right: 8px;
@@ -8313,14 +8438,16 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 
   .audio-title,
   .subtitle-title,
-  .episode-title {
+  .episode-title,
+  .player-menu-title {
     font-size: 13px;
     margin-bottom: 2px;
   }
 
   .audio-details,
   .episode-duration,
-  .subtitle-details {
+  .subtitle-details,
+  .player-menu-value {
     font-size: 11.5px;
   }
 
@@ -8350,19 +8477,22 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 @media screen and (min-width: 1025px) and (max-height: 820px) {
   .audio-panel,
   .episodes-panel,
-  .subtitles-panel {
+  .subtitles-panel,
+  .player-menu-panel {
     width: 380px;
   }
 
   .audio-panel-header,
   .episodes-panel-header,
-  .subtitles-panel-header {
+  .subtitles-panel-header,
+  .player-menu-header {
     padding: 13px 16px;
   }
 
   .audio-panel-header h3,
   .episodes-panel-header h3,
-  .subtitles-panel-header h3 {
+  .subtitles-panel-header h3,
+  .player-menu-header h3 {
     font-size: 17px;
   }
 
@@ -8374,13 +8504,15 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 
   .audio-item,
   .episode-item,
-  .subtitle-item {
+  .subtitle-item,
+  .player-menu-item {
     padding: 10px 14px;
   }
 
   .audio-icon,
   .subtitle-icon,
-  .episode-number {
+  .episode-number,
+  .player-menu-icon {
     width: 32px;
     height: 32px;
     font-size: 13px;
@@ -8388,13 +8520,15 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 
   .audio-title,
   .subtitle-title,
-  .episode-title {
+  .episode-title,
+  .player-menu-title {
     font-size: 14.5px;
   }
 
   .audio-details,
   .episode-duration,
-  .subtitle-details {
+  .subtitle-details,
+  .player-menu-value {
     font-size: 12px;
   }
 
@@ -8431,6 +8565,74 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 .section-title-header {
   padding-left: calc(var(--safe-left, env(safe-area-inset-left, 0px)));
   padding-right: calc(var(--safe-right, env(safe-area-inset-right, 0px)));
+}
+
+/* Текст баннера главной: его left задают медиазапросы выше, поэтому вырез —
+   отступом поверх, margin'ом. Картинка баннера под вырез уходит, как и задумано */
+#home-hero-body {
+  margin-left: var(--safe-left, env(safe-area-inset-left, 0px));
+}
+
+/* Главная неподвижна (home.js: жесты и lockHomeScroll): вертикальный свайп
+   листает подборки, горизонтальный двигает ряд — оба ведёт наш код. Без
+   touch-action браузер успевал начать прокрутку страницы на первых пикселях
+   жеста, раньше preventDefault, и страница дёргалась под пальцем */
+#content-home {
+  touch-action: none;
+}
+
+/* Android-приложение: вырез под камеру ничего не отодвигает. Окно теперь идёт
+   под вырез (MainActivity.coverDisplayCutout), и отступ на всю высоту/ширину
+   выреза выглядел просто опущенной шапкой и тёмной полосой до прежней линии
+   выреза (портрет) или сдвигом вправо (горизонтально), а сама камера — маленькое
+   отверстие у края, где у шапки пусто. Переменные обнуляются целиком: их читают
+   и шапка, и кнопка меню карточки, и выезжающие меню, и заголовок настроек.
+   !important перебивает значения, которые приложение ставит инлайном (publishSafeArea).
+   Apple TV, iPhone, iPad (config.js: apple-device) — то же: безопасную зону там
+   держит приложение-обёртка, свой отступ её удваивал */
+html.android-app,
+html.apple-device {
+  --safe-top: 0px !important;
+  --safe-right: 0px !important;
+  --safe-bottom: 0px !important;
+  --safe-left: 0px !important;
+}
+
+/* Низкий альбомный экран (телефон): баннер ниже (home.js: HERO_MIN_SHARE), и
+   четыре строки описания с логотипом доставали бы до шапки — оставляем две */
+@media (orientation: landscape) and (max-height: 500px) {
+  #home-hero-overview {
+    -webkit-line-clamp: 2;
+  }
+
+  #home-hero-logo img {
+    max-height: 56px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  html.android-app #home-rows .catalog-row-header,
+  html.apple-device #home-rows .catalog-row-header {
+    padding-left: 10px;
+  }
+
+  html.android-app #home-rows .catalog-row-track,
+  html.apple-device #home-rows .catalog-row-track {
+    padding-left: 10px;
+  }
+}
+
+/* Chrome 68 и старше (webOS 5): env() появился только в Chrome 69. Без него
+   правило с var(--safe-*, env(...)) целиком недействительно, и у шапки
+   пропадали поля — пункты прижимались к краям экрана. Заданная переменная до
+   env() не доходит. Где env() есть, правило не срабатывает, и вырез экрана
+   учитывается как раньше; Android-обёртка ставит свои --safe-* инлайном. */
+@supports not (padding-top: env(safe-area-inset-top)) {
+  :root {
+    --safe-top: 0px;
+    --safe-left: 0px;
+    --safe-right: 0px;
+  }
 }
 
 /* ==================== ЭКРАН НАСТРОЕК ====================
@@ -8936,6 +9138,17 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   opacity: 0.5;
 }
 
+/* Apple TV, iPhone, iPad: в «Плеере» только автопереключение серий и выбор
+   плеера (app.js: setupApplePlayerChoice), как в Android-приложении: встроенный
+   плеер играет файл напрямую, настройки серверного потока там не нужны.
+   !important: часть этих строк показывает и прячет скрипт (Dolby Vision,
+   многоканальный звук) */
+#player-tab-content.apple-device-player .checkbox-container:not(#auto-switch-episodes-container),
+#player-tab-content.apple-device-player #choose-player-container,
+#player-tab-content.apple-device-player #dv-support-section {
+  display: none !important;
+}
+
 /* ---- Кнопки — как на карточке фильма ---- */
 #config-screen .action-row {
   display: flex;
@@ -9358,7 +9571,7 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 
 .player-title-container {
   top: 1.6vw;
-  left: 6.2vw;                 /* правее кнопки выхода */
+  left: 3.5vw;                 /* по краю панели внизу: кнопки выхода в углу больше нет */
   right: 11vw;                 /* левее часов */
   transform: none;
   max-width: none;
@@ -9481,7 +9694,7 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
    поверх текста */
 #buffer-stats {
   left: 3.5vw;
-  bottom: 10vw;                 /* над панелью: её высота ~9,2vw */
+  bottom: 11.5vw;               /* над панелью: её высота ~10,5vw */
   transform: none;
   padding: 0;
   background: none;
@@ -9532,6 +9745,201 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 .hud-stat-value.hud-mid { color: #ffd166; }
 .hud-stat-value.hud-ok { color: #7ee2a8; }
 
+/* --- Кнопки: воспроизведение по центру, остальное справа ---
+   Три колонки: пустая .hud-left и .hud-right делят остаток строки поровну,
+   поэтому .hud-center стоит ровно посередине экрана, сколько бы кнопок ни
+   было справа. Отступы между кнопками — margin (flex-gap в Chrome 66 нет),
+   gap у строки снят, чтобы на новых браузерах не прибавлялся к ним. */
+.button-row {
+  gap: 0;
+  margin-top: 1.1vw;
+}
+
+.hud-side {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.hud-right {
+  justify-content: flex-end;
+}
+
+.hud-center {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.hud-center > .control-btn + .control-btn,
+.hud-right > .control-btn + .control-btn {
+  margin-left: 1.1vw;
+}
+
+#controls-container .control-btn {
+  width: 3.6vw;
+  height: 3.6vw;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* Иконки — встроенный SVG в сетке 24×24: линия 2px со скруглёнными концами.
+   .hud-icon-solid — залитые (воспроизведение, серии): заливка плюс та же
+   обводка, она и скругляет углы треугольников */
+.hud-icon {
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+}
+
+.hud-icon-solid {
+  fill: currentColor;
+}
+
+/* «10» внутри стрелок перемотки */
+.hud-icon-text {
+  fill: currentColor;
+  stroke: none;
+  font-size: 8px;
+  font-weight: 700;
+  font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+
+#controls-container .control-btn .hud-icon {
+  width: 1.75vw;
+  height: 1.75vw;
+  min-width: 20px;
+  min-height: 20px;
+}
+
+/* Воспроизведение/пауза — крупнее и на подложке. В кнопке обе иконки, видна
+   одна (player.js: updatePlayPauseButton ставит is-paused) */
+#controls-container .control-btn.hud-play {
+  width: 5vw;
+  height: 5vw;
+  min-width: 54px;
+  min-height: 54px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.hud-center > .control-btn.hud-play,
+.hud-center > .hud-play + .control-btn {
+  margin-left: 1.8vw;
+}
+
+#controls-container .control-btn.hud-play .hud-icon {
+  width: 2.3vw;
+  height: 2.3vw;
+  min-width: 24px;
+  min-height: 24px;
+}
+
+.hud-play .icon-play,
+.hud-play.is-paused .icon-pause {
+  display: none;
+}
+
+.hud-play.is-paused .icon-play {
+  display: block;
+}
+
+/* Фокус — белый круг с тёмной иконкой; кольцо цвета фокуса остаётся от
+   общего .focused (и от «Внешнего вида»). Радиус круглый: общий .focused
+   ставит 12px, и кнопка превращалась в квадрат со скруглением */
+#controls-container .control-btn.focused {
+  border-radius: 50%;
+  background: #fff !important;
+  color: #111;
+}
+
+#controls-container .control-btn.hud-play:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* Открыта панель этой кнопки (серии, дорожки, настройки) */
+#controls-container .control-btn.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* --- Меню «Аудио и субтитры» и «Настройки плеера» ---
+   Сама панель, заголовок и плитки — общие с панелями серий и дорожек (их
+   правила выше перечисляют .player-menu-*); здесь только своё: подпись со
+   значением, стрелка раздела и переключатель */
+.player-menu-item {
+  cursor: pointer;
+}
+
+.player-menu-icon .hud-icon {
+  width: 58%;
+  height: 58%;
+}
+
+.player-menu-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.player-menu-value {
+  display: block;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-menu-chevron {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  margin-left: 10px;
+  color: #98a1b0;
+}
+
+.player-menu-chevron .hud-icon {
+  width: 100%;
+  height: 100%;
+}
+
+.player-menu-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  margin-left: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.16);
+  transition: background 0.2s ease;
+}
+
+.player-menu-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s ease;
+}
+
+.player-menu-item.is-on .player-menu-switch {
+  background: #3ddc84;
+}
+
+.player-menu-item.is-on .player-menu-switch::after {
+  transform: translateX(20px);
+}
+
 /* --- Фокус: появляется плавно, гаснет сразу (без шлейфа) ---
    Переходы с самих элементов сняты выше; общее .focused { transition: none
    !important } делало мгновенным и появление — возвращаем его для фокуса,
@@ -9540,6 +9948,7 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 .audio-item.focused,
 .episode-item.focused,
 .subtitle-item.focused,
+.player-menu-item.focused,
 #exit-player-btn.focused,
 .close-panel-btn.focused {
   transition: background 0.15s ease, box-shadow 0.15s ease !important;
@@ -9548,7 +9957,7 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
 /* --- Узкие экраны (телефон): нижняя граница размеров в пикселях --- */
 @media (max-width: 900px) {
   #exit-player-btn { top: 12px; left: 12px; width: 36px; height: 36px; font-size: 18px; }
-  .player-title-container { top: 12px; left: 60px; right: 80px; }
+  .player-title-container { top: 12px; left: 14px; right: 80px; }
   .player-title { font-size: 16px; }
   .player-title::before { height: 110px; }
   .player-subtitle { margin-top: 4px; font-size: 12px; }
@@ -9559,20 +9968,40 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   #time-display #seek-slider { margin: 0 10px; }
   .button-row { margin-top: 8px; }
   .control-btn { width: 40px; height: 40px; font-size: 20px; }
+  .hud-center > .control-btn + .control-btn,
+  .hud-right > .control-btn + .control-btn { margin-left: 6px; }
+  .hud-center > .control-btn.hud-play,
+  .hud-center > .hud-play + .control-btn { margin-left: 12px; }
   .volume-container { max-width: 110px; }
   #buffer-stats { left: 14px; bottom: 98px; font-size: 12px; }    /* панель ~90px */
   #player-hint { bottom: 2px; font-size: 11px; }
 }
 
+/* Телефон в портрете: девять кнопок в строку не влезают — центральная группа
+   отдельной строкой, правая под ней */
+@media (max-width: 600px) {
+  .button-row { flex-wrap: wrap; justify-content: center; }
+  .hud-left { display: none; }
+  .hud-center,
+  .hud-right { flex: 0 0 100%; justify-content: center; }
+  .hud-right { margin-top: 6px; }
+  #buffer-stats { bottom: 150px; }
+}
+
 /* ==================== ПРЕДЗАГРУЗКА ====================
-   Окно «Предзагрузка» перед стартом плеера (настройка TorrServer →
+   Экран «Предзагрузка» перед стартом плеера (настройка TorrServer →
    «Предзагрузка»). Разметку строит и наполняет js/torrserverstats.js
-   (runPlaybackPreload). Лежит поверх #playback-overlay: тот уже затемняет
-   экран, пока идёт запуск.
-   Вид — как у экрана настроек (блок «ЭКРАН НАСТРОЕК» выше): панель #141419
-   с тонкой рамкой, серые подписи, заголовки групп капсом, кнопки .btn /
-   .btn-primary. Цветная только полоска буфера — цветом фокуса из «Внешнего
-   вида» (--focus-color, js/ui-customizer.js). */
+   (runPlaybackPreload).
+   Вид — как у Lampa (src/sass/components/media_loading.scss): кадр фильма на
+   весь экран, приглушённый и с затемнением книзу; в центре логотип названия
+   двумя слоями — бледный (opacity 0.2) и цветной поверх, который
+   открывается слева направо по мере набора буфера (ширина .preload-mark-fill
+   = процент); внизу плашка: пиры · скорость · процент. Нет логотипа —
+   название текстом, так же двумя слоями.
+   Размер логотипа в vw с потолком в px: на ТВ 1920 — как у Lampa, на
+   телефоне — во всю ширину. Слоям-содержимому нужен тот же размер, что и
+   рамке, а не 100%: ширина .preload-mark-fill меняется, и картинка внутри
+   иначе сжималась бы вместе с ней. */
 #preload-panel {
   position: fixed;
   top: 0;
@@ -9583,168 +10012,247 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 16px;
-  box-sizing: border-box;
-  background: rgba(0, 0, 0, 0.8);
-  color: #e0e0e0;
+  overflow: hidden;
+  background: #050508;
+  color: #fff;
 }
 
 #preload-panel.active {
   display: flex;
 }
 
-.preload-card {
-  width: 480px;
-  max-width: 100%;
-  padding: 26px 28px 24px;
-  box-sizing: border-box;
-  background: #141419;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
+/* Затухание, когда видео пошло (torrserverstats.js: releasePreloadScreen) */
+#preload-panel {
+  transition: opacity 0.3s ease;
 }
 
-.preload-eyebrow {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #6b6b76;
+#preload-panel.preload-leaving {
+  opacity: 0;
+  pointer-events: none;
 }
 
-.preload-title {
-  margin-top: 4px;
-  font-size: 28px;
-  font-weight: 800;
-  line-height: 1.15;
-  color: #fff;
+/* Буфер набран, ждём первый кадр: отменять и торопить уже нечего */
+#preload-panel.preload-holding .preload-hint {
+  visibility: hidden;
 }
 
-.preload-name {
-  margin-top: 6px;
-  font-size: 15px;
-  color: #9a9aa6;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.preload-name:empty {
-  display: none;
-}
-
-.preload-bar {
-  position: relative;
-  height: 6px;
-  margin-top: 24px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-}
-
-.preload-bar-fill {
+.preload-backdrop {
   position: absolute;
   top: 0;
   left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.58;
+}
+
+.preload-backdrop.hidden {
+  display: none;
+}
+
+.preload-shade {
+  position: absolute;
+  top: 0;
+  right: 0;
   bottom: 0;
+  left: 0;
+  background: linear-gradient(180deg, rgba(4, 4, 8, 0.3) 0%, rgba(4, 4, 8, 0.58) 60%, rgba(4, 4, 8, 0.82) 100%);
+}
+
+.preload-mark,
+.preload-mark-content {
+  width: 42vw;
+  height: 12vw;
+  max-width: 880px;
+  max-height: 250px;
+}
+
+.preload-mark {
+  position: relative;
+  z-index: 1;
+  -webkit-animation: preloadPulse 2s ease-in-out infinite;
+  animation: preloadPulse 2s ease-in-out infinite;
+}
+
+.preload-mark-bg,
+.preload-mark-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+}
+
+.preload-mark-bg {
+  right: 0;
+  opacity: 0.2;
+}
+
+.preload-mark-fill {
   width: 0;
-  border-radius: 3px;
-  background: var(--focus-color, #ff8c00);
-  /* Тик раз в секунду — полоска доезжает до нового значения к следующему */
-  transition: width 0.9s linear;
+  transition: width 0.18s ease-out;
 }
 
-.preload-amount {
+.preload-mark-content {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: flex;
-  justify-content: space-between;
-  margin-top: 10px;
-  font-size: 15px;
-  font-weight: 600;
-  color: #fff;
-  font-variant-numeric: tabular-nums;
+  align-items: center;
+  justify-content: center;
 }
 
+.preload-logo {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.preload-title-text {
+  width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  color: #fff;
+  font-size: 3.4vw;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  text-align: center;
+  text-shadow: 0 0.08em 0.3em rgba(0, 0, 0, 0.65);
+}
+
+/* Плашка: пиры · скорость · процент (или сообщение об ошибке) */
 .preload-status {
-  font-weight: 400;
-  color: #9a9aa6;
-}
-
-/* Скорость / пиры / сиды — три ячейки в ряд, разделены как строки
-   .settings-list: тонкой линией */
-.preload-stats {
+  position: absolute;
+  left: 50%;
+  bottom: 9vh;
+  z-index: 1;
   display: flex;
-  margin-top: 22px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.preload-stat {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 16px 0 0 16px;
-  border-left: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.preload-stat:first-child {
-  padding-left: 0;
-  border-left: 0;
-}
-
-.preload-stat-label {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #8a8a96;
-}
-
-.preload-stat-value {
-  margin-top: 6px;
+  align-items: center;
+  max-width: 88%;
+  padding: 0.7em 1.35em;
+  border-radius: 2em;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0.35em 1.2em rgba(0, 0, 0, 0.28);
+  color: rgba(255, 255, 255, 0.72);
   font-size: 20px;
-  font-weight: 700;
-  color: #fff;
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
 }
 
-/* Кнопки — как #config-screen .btn / .btn-primary */
-.preload-actions {
+.preload-status .hidden {
+  display: none;
+}
+
+.preload-peers {
   display: flex;
-  justify-content: flex-end;
-  margin-top: 26px;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.preload-peers-icon {
+  width: 1.15em;
+  height: 1.15em;
+  margin-right: 0.45em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.82;
+}
+
+.preload-sep {
+  flex: none;
+  width: 0.22em;
+  height: 0.22em;
+  margin: 0 0.8em;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.preload-percent {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Чем отменить и как не ждать: с пульта — «Назад» и ОК, мышью и пальцем —
+   по этим же надписям */
+.preload-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 3.5vh;
+  z-index: 1;
+  display: flex;
+  white-space: nowrap;
+  font-size: 15px;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
 }
 
 .preload-btn {
-  margin-left: 10px;
-  padding: 11px 20px;
+  margin: 0 10px;
+  padding: 4px 6px;
   border: 0;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: none;
+  color: rgba(255, 255, 255, 0.5);
   font: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.3;
-  white-space: nowrap;
   cursor: pointer;
-  transition: background 0.15s ease;
 }
 
 .preload-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
 }
 
-.preload-btn-primary {
-  background: #fff;
-  color: #000;
-}
-
-.preload-btn-primary:hover {
-  background: rgba(255, 255, 255, 0.85);
-}
-
-/* Подсказка клавиши пульта: «←» / «ОК» */
 .preload-btn .preload-key {
-  margin-right: 8px;
-  opacity: 0.5;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+@-webkit-keyframes preloadPulse {
+  0%, 100% { -webkit-transform: scale(1); transform: scale(1); }
+  50% { -webkit-transform: scale(1.035); transform: scale(1.035); }
+}
+
+@keyframes preloadPulse {
+  0%, 100% { -webkit-transform: scale(1); transform: scale(1); }
+  50% { -webkit-transform: scale(1.035); transform: scale(1.035); }
+}
+
+/* Телефон в книжной ориентации: логотип во всю ширину, плашка мельче */
+@media screen and (max-width: 600px) and (orientation: portrait) {
+  .preload-mark,
+  .preload-mark-content {
+    width: 82vw;
+    height: 26vw;
+  }
+
+  .preload-title-text {
+    font-size: 7vw;
+  }
+
+  .preload-status {
+    bottom: 10vh;
+    padding: 0.6em 1em;
+    font-size: 15px;
+  }
+
+  .preload-sep {
+    margin: 0 0.55em;
+  }
+
+  .preload-hint {
+    font-size: 13px;
+  }
 }
 
 
@@ -10024,6 +10532,7 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   /* !important — против content: none !important для ТВ-стиля кнопки */
   #detail-view.catalog-detail-mode #catalog-detail-actions > #catalog-watch-btn::before {
     content: "\ec79" !important;
+    margin-right: 0;
     font-family: "uicons-regular-rounded";
     font-size: 20px;
     font-weight: normal;
@@ -10031,6 +10540,7 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   }
 
   #detail-view.catalog-detail-mode #catalog-favorite-btn .favorite-btn-icon {
+    margin-right: 0;
     font-size: 21px !important;
     line-height: 1;
   }
@@ -10321,4 +10831,71 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   #config-screen .settings-section {
     margin-bottom: 28px;
   }
+}
+
+/* Внешний плеер Apple не открылся сам (Safari пускает в приложение только
+   по нажатию) — кнопка-ссылка «Открыть в …» (player.js: showAppleLaunchDialog) */
+#apple-launch-dialog {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 100001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.apple-launch-box {
+  width: 100%;
+  max-width: 420px;
+  padding: 24px;
+  box-sizing: border-box;
+  border-radius: 18px;
+  background: #1c1c24;
+  color: #fff;
+  text-align: center;
+}
+
+.apple-launch-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.apple-launch-text {
+  margin: 10px 0 20px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.apple-launch-actions {
+  display: flex;
+  flex-direction: column;
+}
+
+.apple-launch-btn + .apple-launch-btn {
+  margin-top: 10px;
+}
+
+.apple-launch-btn {
+  display: block;
+  padding: 14px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.apple-launch-open {
+  background: #fff;
+  color: #000;
+  font-weight: 700;
 }

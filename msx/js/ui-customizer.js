@@ -341,25 +341,6 @@
 
     // Фактическая ширина колонки: сетка растягивает карточку до 1fr, поэтому она
     // не равна заданной cardWidth() — обычно чуть больше.
-    /**
-     * Колонки и отступ сеток для браузеров без CSS Grid — переписывает
-     * значения по умолчанию из css/legacy.css (5 колонок, 10px)
-     */
-    function legacyGridCss(cols, gap) {
-        var grids = ['#catalog-grid', '#torrents-grid', '.global-search-grid'];
-        var sel = function (suffix) {
-            return grids.map(function (g) { return 'html.legacy-browser ' + g + suffix; }).join(',');
-        };
-        return sel('') + '{margin-right:-' + gap + '!important;}' +
-            sel('>*') + '{width:calc(100% / ' + cols + ' - ' + gap + ' - 0.05px)!important;' +
-            'margin:0 ' + gap + ' ' + gap + ' 0!important;}' +
-            sel('>[style*="grid-column"]') + ',' +
-            ['.catalog-chunk-spacer', '.catalog-header', '.load-more-trigger'].map(function (c) {
-                return 'html.legacy-browser #catalog-grid>' + c;
-            }).join(',') +
-            '{width:calc(100% - ' + gap + ')!important;}';
-    }
-
     function gridColumnWidth() {
         var cols = getColumns();
         return Math.floor((gridAvailWidth() - (cols - 1) * densityGap()) / cols);
@@ -521,11 +502,6 @@
             'grid-template-columns:repeat(' + cols + ',1fr)!important;' +
             'grid-gap:' + density.gap + '!important;' +
             'gap:' + density.gap + '!important;}');
-        // Старые браузеры без CSS Grid (webOS 4 — Chrome 53): та же сетка на
-        // flex с переносом, см. css/legacy.css. Остальным не нужно
-        if (document.documentElement.className.indexOf('legacy-browser') !== -1) {
-            css.push(legacyGridCss(cols, density.gap));
-        }
 
         // Подсказка для content-visibility, чтобы скролл не «прыгал».
         // Резерв под неотрисованной карточкой должен совпадать с реальной высотой
@@ -1081,15 +1057,59 @@
         }
     }
 
-    function setSliderValue(el, value) {
+    /**
+     * @param {boolean} [deferred] с пульта: сам ползунок двигается сразу, а
+     *        применение (applySettings) и сохранение — через scheduleSliderApply
+     */
+    function setSliderValue(el, value, deferred) {
         var cfg = sliderConfig(el);
         if (!cfg) return;
         var v = clampStep(value, cfg);
         if (currentSettings[el.dataset.setting] === v) return;
         currentSettings[el.dataset.setting] = v;
         updateSliders();
+        if (deferred) { scheduleSliderApply(); return; }
         applySettings();   // живой предпросмотр
         autoSave();
+    }
+
+    // Стрелку на ползунке держат. applySettings тяжёлый (пересборка CSS, замер
+    // карточек, перекладка главной и нарезки каталога): на телевизоре он дольше
+    // интервала повторов пульта, и когда он шёл на каждое нажатие, нажатия
+    // копились в очереди — пока держишь, ползунок стоял, а после отпускания
+    // ещё долго ехал сам. Теперь стрелка двигает только ползунок, а применяем не
+    // чаще SLIDER_APPLY_MS и сразу по отпусканию (keyup → flushSliderApply).
+    var SLIDER_APPLY_MS = 250;
+    // Нажатие, пролежавшее в очереди дольше этого, пока стрелку держат, —
+    // устаревший повтор: пульт уже отпустили или он ушёл дальше
+    var SLIDER_STALE_KEY_MS = 150;
+    var sliderApplyPending = false;
+    var sliderApplyTimer = null;
+    var sliderAppliedAt = 0;
+    var sliderNudgedAt = 0;
+
+    function scheduleSliderApply() {
+        sliderApplyPending = true;
+        if (sliderApplyTimer) return;
+        var wait = Math.max(0, SLIDER_APPLY_MS - (Date.now() - sliderAppliedAt));
+        sliderApplyTimer = setTimeout(flushSliderApply, wait);
+    }
+
+    function flushSliderApply() {
+        if (sliderApplyTimer) { clearTimeout(sliderApplyTimer); sliderApplyTimer = null; }
+        if (!sliderApplyPending) return;
+        sliderApplyPending = false;
+        applySettings();
+        autoSave();
+        // Отсчёт — от конца применения: на медленном ТВ оно само длится долго
+        sliderAppliedAt = Date.now();
+    }
+
+    function isStaleKey(e) {
+        if (!e || !e.timeStamp || typeof performance === 'undefined' || !performance.now) return false;
+        // Старые WebView ставят timeStamp от эпохи — тогда разница отрицательна
+        // и нажатие не считается устаревшим
+        return performance.now() - e.timeStamp > SLIDER_STALE_KEY_MS;
     }
 
     /**
@@ -1101,10 +1121,17 @@
         if (!isOpen()) saveSettings();
     }
 
-    function nudgeSlider(el, direction) {
+    /** Шаг ползунка с пульта; e — keydown, по нему отбрасываются устаревшие повторы */
+    function nudgeSlider(el, direction, e) {
         var cfg = sliderConfig(el);
         if (!cfg) return;
-        setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * cfg.step);
+        var now = Date.now();
+        // Только посреди удержания: одиночное нажатие, пришедшее с задержкой
+        // (страница была занята), не теряем
+        var held = now - sliderNudgedAt < 500;
+        sliderNudgedAt = now;
+        if (held && isStaleKey(e)) return;
+        setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * cfg.step, true);
     }
 
     function valueFromPointer(el, clientX) {
@@ -1314,6 +1341,7 @@
 
     /** Обратно в меню настроек, на пункт «Внешний вид» */
     function exitEmbedded() {
+        flushSliderApply();
         embeddedEngaged = false;
         if (focusedEl) focusedEl.classList.remove('ui-focused');
         focusedEl = null;
@@ -1358,6 +1386,7 @@
     }
 
     function closeCustomizer() {
+        flushSliderApply();
         var overlay = document.getElementById('ui-customizer-overlay');
         if (overlay) overlay.classList.add('hidden');
         document.body.style.overflow = previousBodyOverflow;
@@ -1726,6 +1755,7 @@
             }
             if (isOkKeyCode(kc)) {
                 e.preventDefault(); e.stopImmediatePropagation();
+                flushSliderApply();
                 activateFocused();
                 return;
             }
@@ -1734,8 +1764,9 @@
                 e.preventDefault(); e.stopImmediatePropagation();
                 // На ползунке влево/вправо меняет значение, вверх/вниз уходит с него
                 if (focusedEl && focusedEl.classList.contains('ui-slider') && (dir === 'left' || dir === 'right')) {
-                    nudgeSlider(focusedEl, dir === 'right' ? 1 : -1);
+                    nudgeSlider(focusedEl, dir === 'right' ? 1 : -1, e);
                 } else {
+                    flushSliderApply();
                     moveFocus(dir);
                 }
                 return;
@@ -1752,6 +1783,7 @@
             }
             if (isOkKeyCode(kc)) {
                 e.preventDefault(); e.stopImmediatePropagation();
+                flushSliderApply();
                 activateFocused();
                 return;
             }
@@ -1759,8 +1791,9 @@
             if (edir) {
                 e.preventDefault(); e.stopImmediatePropagation();
                 if (focusedEl && focusedEl.classList.contains('ui-slider') && (edir === 'left' || edir === 'right')) {
-                    nudgeSlider(focusedEl, edir === 'right' ? 1 : -1);
+                    nudgeSlider(focusedEl, edir === 'right' ? 1 : -1, e);
                 } else {
+                    flushSliderApply();
                     // Из панели в меню настроек — только «Назад», не влево: кто
                     // держит стрелку, листая значения, не должен вылетать в меню
                     moveFocus(edir);
@@ -1778,6 +1811,11 @@
                 openCustomizer();
             }
         }
+    }, true);
+
+    // Стрелку на ползунке отпустили — применяем сразу, не дожидаясь таймера
+    window.addEventListener('keyup', function () {
+        if (sliderApplyPending) flushSliderApply();
     }, true);
 
     // ==================== ИНИЦИАЛИЗАЦИЯ ====================

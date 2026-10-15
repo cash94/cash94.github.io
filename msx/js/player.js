@@ -478,6 +478,28 @@ function updateEpisodeButtons() {
   }
 }
 
+/**
+ * Браузер не дал запустить видео со звуком (политика автозапуска), и плеер
+ * включил его без звука. Кнопки звука на панели больше нет, поэтому звук
+ * возвращаем на первое же нажатие или клик в плеере: это жест пользователя, и
+ * после него браузер звук разрешает. Зовут только пути автозапуска — не
+ * кнопка MUTE пульта, иначе намеренно выключенный звук включался бы сам.
+ */
+var soundGestureArmed = false;
+function restoreSoundOnGesture() {
+  var video = getEl('video-player');
+  if (!video || !video.muted || soundGestureArmed) return;
+  soundGestureArmed = true;
+  var unmute = function () {
+    document.removeEventListener('keydown', unmute, true);
+    document.removeEventListener('click', unmute, true);
+    soundGestureArmed = false;
+    if (AppState.currentScreen === 'player') video.muted = false;
+  };
+  document.addEventListener('keydown', unmute, true);
+  document.addEventListener('click', unmute, true);
+}
+
 function updatePlayerTitle(title) {
   var titleElement = getEl('player-title');
   var controlsContainer = getEl('controls-container');
@@ -553,9 +575,9 @@ var idleControlEls = null;
 
 function getIdleControlEls() {
   if (idleControlEls) return idleControlEls;
-  var ids = ['controls-container', 'buffer-stats', 'player-hint', 'toggle-buffer-btn',
-    'exit-player-btn', 'episodes-btn', 'subtitles-btn', 'prev-episode-btn',
-    'next-episode-btn', 'player-title'];
+  // Кнопки панели здесь не нужны: они внутри #controls-container и гаснут с ним
+  var ids = ['controls-container', 'buffer-stats', 'player-hint',
+    'exit-player-btn', 'player-title'];
   var list = [];
   for (var i = 0; i < ids.length; i++) { var el = getEl(ids[i]); if (el) list.push(el); }
   if (list.length) idleControlEls = list;   // пусто — DOM ещё не готов, попробуем позже
@@ -593,6 +615,18 @@ function setPlayerCursorHidden(hidden) {
 }
 window.setPlayerCursorHidden = setPlayerCursorHidden;
 
+// Движение мыши не показывает HUD до этого момента. На webOS аэромышь пульта
+// двигает курсор от малейшего движения руки, и HUD, который «Назад» только что
+// спрятал, тут же возвращался (control.js: playerBackPress). Глушим только
+// движение — клики и нажатия пульта работают как обычно.
+var playerMouseMuteUntil = 0;
+function mutePlayerMouse(ms) { playerMouseMuteUntil = Date.now() + ms; }
+function isPlayerMouseMuted() { return Date.now() < playerMouseMuteUntil; }
+/** Движение мыши над плеером: показать HUD, если движение сейчас не заглушено. */
+function onPlayerMouseMove() {
+  if (!isPlayerMouseMuted()) resetMouseIdleTimer();
+}
+
 function resetMouseIdleTimer() {
   var playerScreen = getEl('player-screen');
   if (!playerScreen || playerScreen.style.display !== 'block') return;
@@ -610,8 +644,50 @@ function resetMouseIdleTimer() {
   mouseIdleTimer = setTimeout(function () {
     if (playerScreen.style.display !== 'block') return;
     if (playerOverlay) playerOverlay.classList.remove('touch-active');
+    closePlayerPanelsOnIdle();
     setPlayerControlsIdle(true);
   }, IDLE_TIMEOUT);
+}
+
+/**
+ * HUD гаснет по бездействию — боковая панель (серии, дорожки, настройки)
+ * закрывается вместе с ним. Раньше она оставалась висеть поверх видео без
+ * HUD, и убрать её можно было только «Назад».
+ *
+ * Фокус из панели снимаем: иначе он остался бы на скрытом пункте, и следующее
+ * нажатие пульта ходило бы по списку, которого на экране нет. Без фокуса
+ * первое же нажатие покажет HUD с фокусом на воспроизведении (control.js:
+ * showPlayerControls).
+ */
+function closePlayerPanelsOnIdle() {
+  var panel = getOpenPlayerPanel();
+  if (!panel) return;
+  var focused = panel.querySelectorAll('.focused');
+  for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
+  closePlayerPanels();
+  if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+}
+
+/**
+ * Прокрутка списка в панели — тоже действие пользователя: пульт и мышь
+ * таймер бездействия перезапускают сами, а прокрутка пальцем или колесом —
+ * нет, и длинный список серий закрывался бы прямо под пальцем.
+ */
+function setupPlayerPanelsActivity() {
+  if (setupPlayerPanelsActivity._bound) return;
+  setupPlayerPanelsActivity._bound = true;
+  var seen = {};
+  for (var name in PLAYER_PANELS) {
+    var id = PLAYER_PANELS[name].panel;
+    var panel = getEl(id);
+    if (!panel || seen[id]) continue;
+    seen[id] = true;
+    panel.addEventListener('touchstart', resetMouseIdleTimer, { passive: true });
+    panel.addEventListener('touchmove', resetMouseIdleTimer, { passive: true });
+    panel.addEventListener('wheel', resetMouseIdleTimer, { passive: true });
+    // scroll не всплывает — ловим на погружении, со списков внутри панели
+    panel.addEventListener('scroll', resetMouseIdleTimer, true);
+  }
 }
 
 function nextEpisode() {
@@ -674,19 +750,9 @@ function updatePlayPauseButton() {
   var btn = getEl('play-pause-btn');
   var videoPlayer = getEl('video-player');
   if (!btn || !videoPlayer) return;
-  btn.innerHTML = videoPlayer.paused ? '<i class="fi fi-rr-play"></i>' : '<i class="fi fi-rr-pause"></i>';
-}
-
-function updateMuteButton() {
-  var btn = getEl('mute-btn');
-  var videoPlayer = getEl('video-player');
-  if (!btn || !videoPlayer) return;
-  // Оба состояния — из regular-rounded. Раньше выключённый звук брался из
-  // uicons-thin-chubby: ради одного этого значка на старте грузился стиль,
-  // блокирующий скрипты, а при первом показе кнопки — шрифт на 430 КБ
-  // (подробности в index.html). Заодно ушла разница в толщине линий между
-  // двумя состояниями одной и той же кнопки.
-  btn.innerHTML = videoPlayer.muted ? '<i class="fi fi-rr-volume-slash"></i>' : '<i class="fi fi-rr-volume"></i>';
+  // В кнопке лежат обе иконки, видна одна — по классу (styles.css: .hud-play)
+  btn.classList.toggle('is-paused', !!videoPlayer.paused);
+  btn.title = videoPlayer.paused ? 'Воспроизвести' : 'Пауза';
 }
 
 /**
@@ -833,6 +899,8 @@ function forceUpdateDuration(duration, origDur, offset) {
 
 function destroyHls() {
   hidePlayerLoading();
+  ServerSubs.stop();
+  AppState.serverTracks = null;
   var videoPlayer = getEl('video-player');
   var seekSlider = getEl('seek-slider');
   if (seekSlider) seekSlider.value = 0;
@@ -883,6 +951,191 @@ function destroyHls() {
   AppState.nativeVideoPlayer = null;
   AppState.isPlaying = false;
 }
+
+// ==================== ДОРОЖКИ В СЕРВЕРНОМ ПОТОКЕ ====================
+//
+// Сервер 1.0.53+ по запросу с tracks=1 кладёт в поток сразу несколько
+// аудиодорожек (hls.js переключает их сам, без перезапуска ffmpeg) и текстовые
+// субтитры отдельными растущими файлами subs/sN.vtt — их показывает ServerSubs.
+// AppState.serverTracks = { audio: [индексы дорожек в порядке master],
+// selectedAudio, subs: [{ index, url }], backWindowSec } или null — старый сервер
+// (тогда смена дорожки, как раньше, перезапускает поток).
+// AppState.serverAvailableFrom — с какой секунды поколения сегменты ещё лежат на
+// сервере (позади держится окно, старше удаляется): перемотка в пределах
+// [serverAvailableFrom, конец плейлиста] — без перезапуска.
+
+/**
+ * Дорожки нет в окне потока — новое поколение с текущего места с центром окна
+ * на выбранной (сервер берёт audio/sub из запроса перемотки). Как перемотка:
+ * ~0,7 с вместо полного перезапуска потока. Место — точное: в режиме дорожек
+ * шкала исходная, её начало знает hls.js (streamTimeOrigin)
+ */
+function restartServerGeneration(what) {
+  var v = getEl('video-player');
+  if (!v || !AppState.currentStreamId) return false;
+  var origin = AppState.streamTimeOrigin;
+  var at = v.currentTime + (origin !== null && origin !== undefined ? origin : (AppState.seekOffset || 0));
+  AppState._forceServerSeek = true;
+  // Подпись на экране: это смена дорожки, а не перемотка
+  AppState._forceServerSeekWhat = what || 'дорожки';
+  seekStream(at, 'user');
+  return true;
+}
+
+function applyServerTracks(tracks) {
+  AppState.serverTracks = tracks || null;
+  AppState.serverAvailableFrom = 0;
+  // Метки потока — исходные (-copyts): реплика c показывается на c − начало
+  // поколения. Начало узнаём у hls.js с первым фрагментом (INIT_PTS_FOUND)
+  AppState.streamTimeOrigin = null;
+  // Субтитры включает applyServerTrackSelection после разбора master: hls.js,
+  // загружая новый плейлист, чистит реплики во всех текстовых дорожках <video>
+  ServerSubs.stop();
+}
+
+/** Выбранные дорожки — в только что загруженный поток (после MANIFEST_PARSED) */
+function applyServerTrackSelection() {
+  if (!AppState.serverTracks) return;
+  selectHlsAudio(currentAudioTrack);
+  if (currentSubtitleTrack >= 0 && ServerSubs.index !== currentSubtitleTrack) ServerSubs.select(currentSubtitleTrack);
+}
+
+/** Номер дорожки в master (порядок hls.audioTracks) для индекса дорожки файла, -1 — её нет в потоке */
+function serverAudioPos(trackIndex) {
+  var t = AppState.serverTracks;
+  return t && t.audio ? t.audio.indexOf(trackIndex) : -1;
+}
+
+/** Субтитры файла trackIndex — текстовые (их сервер умеет класть в поток) */
+function isTextSubtitle(trackIndex) {
+  var t = currentSubTracks && currentSubTracks[trackIndex];
+  var codec = String((t && (t.codec || t.format)) || '').toLowerCase();
+  return /^(subrip|srt|ass|ssa|mov_text|webvtt|text)$/.test(codec);
+}
+
+function serverSubEntry(trackIndex) {
+  var t = AppState.serverTracks;
+  if (!t || !t.subs) return null;
+  for (var i = 0; i < t.subs.length; i++) if (t.subs[i].index === trackIndex) return t.subs[i];
+  return null;
+}
+
+/** Включить в hls.js аудиодорожку файла trackIndex. false — её нет в потоке */
+function selectHlsAudio(trackIndex) {
+  var pos = serverAudioPos(trackIndex);
+  if (pos < 0 || !AppState.hls) return false;
+  if (AppState.hls.audioTrack !== pos) AppState.hls.audioTrack = pos;
+  return true;
+}
+
+/** Позиция (абсолютная) есть на сервере в текущем поколении — перемотка без перезапуска */
+function isPositionInServerRange(targetTime) {
+  if (!AppState.serverTracks || !AppState.hls || !AppState.hls.levels) return false;
+  var lvl = AppState.hls.levels[AppState.hls.currentLevel >= 0 ? AppState.hls.currentLevel : 0];
+  var details = lvl && lvl.details;
+  if (!details || !details.totalduration) return false;
+  var rel = targetTime - (AppState.seekOffset || 0);
+  return rel >= (AppState.serverAvailableFrom || 0) + 1 && rel <= details.totalduration - 1;
+}
+
+/**
+ * Субтитры серверного потока: растущий WebVTT выбранной дорожки раз в
+ * несколько секунд дочитывается, новые реплики добавляются в свою
+ * текстовую дорожку <video> — телевизор рисует их сам, как и раньше.
+ */
+var ServerSubs = {
+  track: null, trackVideo: null, url: null, index: -1, timer: null, gen: 0, keys: {}, polls: 0,
+  // Сразу после включения или перемотки файл только начинает наполняться —
+  // первые опросы чаще
+  POLL_MS: 4000, POLL_FAST_MS: 1000, POLL_FAST_COUNT: 6,
+
+  ensureTrack: function () {
+    var v = getEl('video-player');
+    if (!v || typeof v.addTextTrack !== 'function') return null;
+    // Удалить дорожку из <video> нельзя — заводим одну и переиспользуем
+    if (!this.track || this.trackVideo !== v) {
+      this.track = v.addTextTrack('subtitles', 'TorrStream', '');
+      this.trackVideo = v;
+      if (typeof watchCuesRaise === 'function') watchCuesRaise(v);
+    }
+    return this.track;
+  },
+
+  clear: function () {
+    var t = this.track;
+    try { if (t && t.cues) while (t.cues.length) t.removeCue(t.cues[0]); } catch (e) { }
+    this.keys = {};
+  },
+
+  stop: function () {
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    this.gen++;
+    this.clear();
+    if (this.track) this.track.mode = 'disabled';
+    this.index = -1; this.url = null;
+  },
+
+  /** Показать дорожку файла subIndex (-1 — выключить) */
+  select: function (subIndex) {
+    this.stop();
+    var entry = subIndex >= 0 ? serverSubEntry(subIndex) : null;
+    if (!entry) return false;
+    var t = this.ensureTrack();
+    if (!t) return false;
+    // Прочие текстовые дорожки (hls.js, прямой файл) — прячем, чтобы не было двух
+    var v = this.trackVideo;
+    for (var i = 0; i < v.textTracks.length; i++) if (v.textTracks[i] !== t) v.textTracks[i].mode = 'disabled';
+    t.mode = 'showing';
+    this.index = subIndex; this.url = entry.url; this.polls = 0;
+    this.poll(this.gen);
+    return true;
+  },
+
+  poll: function (gen) {
+    var self = this;
+    fetch(SERVER_URL + self.url, { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.text() : ''; })
+      .then(function (text) { if (gen === self.gen && text) self.addCues(text); })
+      ['catch'](function () { })
+      .then(function () {
+        if (gen !== self.gen) return;
+        self.polls++;
+        self.timer = setTimeout(function () { self.poll(gen); }, self.polls < self.POLL_FAST_COUNT ? self.POLL_FAST_MS : self.POLL_MS);
+      });
+  },
+
+  parseTime: function (t) {
+    var p = t.split(':');
+    var sec = parseFloat(p[p.length - 1]) || 0;
+    if (p.length > 1) sec += (parseInt(p[p.length - 2], 10) || 0) * 60;
+    if (p.length > 2) sec += (parseInt(p[p.length - 3], 10) || 0) * 3600;
+    return sec;
+  },
+
+  addCues: function (text) {
+    var t = this.track;
+    if (!t || typeof VTTCue !== 'function') return;
+    // Начала поколения ещё нет — реплики добавим следующим опросом
+    var origin = AppState.streamTimeOrigin;
+    if (origin === null || origin === undefined) return;
+    var blocks = text.replace(/\r/g, '').split(/\n\n+/);
+    // Последний блок может быть дописан не до конца — берём его в следующий раз
+    blocks.pop();
+    for (var i = 0; i < blocks.length; i++) {
+      var lines = blocks[i].split('\n');
+      for (var j = 0; j < lines.length; j++) {
+        var m = lines[j].match(/^\s*([\d:.]+)\s+-->\s+([\d:.]+)/);
+        if (!m) continue;
+        var body = lines.slice(j + 1).join('\n');
+        var key = m[1] + '|' + m[2] + '|' + body;
+        if (!body || this.keys[key]) break;
+        this.keys[key] = 1;
+        try { t.addCue(new VTTCue(this.parseTime(m[1]) - origin, this.parseTime(m[2]) - origin, body)); } catch (e) { }
+        break;
+      }
+    }
+  }
+};
 
 async function checkPlaylistExists(playlistUrl, maxAttempts) {
   if (maxAttempts === undefined) maxAttempts = 40;
@@ -1061,8 +1314,24 @@ async function seekStream(absoluteSeekTime, source) {
         if (episodesBtn) episodesBtn.classList.remove('active');
       }
       AppState.isSeeking = true; AppState.suppressTimeUpdate = true; AppState.previewTime = targetTime;
-      var positionInBuffer = isPositionInBuffer(targetTime);
-      if (positionInBuffer) {
+      // Смена дорожки вне окна потока — новое поколение с того же места,
+      // даже если позиция в буфере (restartServerGeneration)
+      var forceServer = !!AppState._forceServerSeek;
+      var switchWhat = forceServer ? AppState._forceServerSeekWhat : null;
+      AppState._forceServerSeek = false; AppState._forceServerSeekWhat = null;
+      var positionInBuffer = !forceServer && isPositionInBuffer(targetTime);
+      // Не в буфере плеера, но уже лежит на сервере (впереди до ~100 с, позади —
+      // окно) — тоже без перезапуска: hls.js сам подгрузит нужный сегмент
+      var inServerRange = !forceServer && !positionInBuffer && isPositionInServerRange(targetTime);
+      if (inServerRange) {
+        showPlayerLoading('Перемотка...', targetTime);
+        var onPlaying = function () { hidePlayerLoading(); videoPlayer.removeEventListener('playing', onPlaying); videoPlayer.removeEventListener('seeked', onSeeked); };
+        var onSeeked = function () { if (!wasPlaying) onPlaying(); };
+        videoPlayer.addEventListener('playing', onPlaying);
+        videoPlayer.addEventListener('seeked', onSeeked);
+        setTimeout(onPlaying, 8000);
+      }
+      if (positionInBuffer || inServerRange) {
         var relativeTime = targetTime - AppState.seekOffset;
         videoPlayer.currentTime = relativeTime;
         if (wasPlaying) videoPlayer.play()['catch'](function (err) { });
@@ -1076,7 +1345,7 @@ async function seekStream(absoluteSeekTime, source) {
       var playbackOverlay = getEl('playback-overlay');
       var playbackText = document.querySelector('.playback-text');
       playbackOverlay.classList.add('active');
-      playbackText.textContent = 'Перемотка на ' + formatTime(targetTime) + '...';
+      playbackText.textContent = switchWhat ? 'Переключение ' + switchWhat + '...' : 'Перемотка на ' + formatTime(targetTime) + '...';
       if (wasPlaying) videoPlayer.pause();
 
       var retrySeek = async function (retryCount, maxRetries) {
@@ -1088,7 +1357,8 @@ async function seekStream(absoluteSeekTime, source) {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               streamId: AppState.currentStreamId, seekTime: targetTime, multiChannel: AppState.multiChannelEnabled,
-              clientId: savedClientId, duration: AppState.originalDuration, sub: currentSubtitleTrack, dv: AppState.dvPreferred ? 'true' : 'false'
+              clientId: savedClientId, duration: AppState.originalDuration, sub: currentSubtitleTrack, dv: AppState.dvPreferred ? 'true' : 'false',
+              audio: currentAudioTrack, tracks: !!AppState.serverTracks
             })
           });
           if (!seekResponse.ok) throw new Error('HTTP ' + seekResponse.status);
@@ -1096,14 +1366,18 @@ async function seekStream(absoluteSeekTime, source) {
           if (!seekData.success) throw new Error(seekData.error || 'Ошибка перемотки');
           AppState.expectedDuration = seekData.duration; AppState.originalDuration = seekData.originalDuration;
           AppState.seekOffset = seekData.seekOffset; AppState.currentStreamId = seekData.streamId; AppState.lastSuccessfulSeek = targetTime;
+          applyServerTracks(seekData.tracks);
           if (videoPlayer) {
             videoPlayer.dataset.expectedDuration = AppState.expectedDuration;
             videoPlayer.dataset.originalDuration = AppState.originalDuration;
             videoPlayer.dataset.seekOffset = AppState.seekOffset;
           }
           playbackText.textContent = 'Загрузка потока...';
-          var playlistReady = await checkPlaylistExists(seekData.playlistUrl, 60);
-          if (!playlistReady) throw new Error('Таймаут ожидания плейлиста');
+          // Новый сервер отвечает, только когда плейлист готов, — лишний круг не нужен
+          if (!AppState.serverTracks) {
+            var playlistReady = await checkPlaylistExists(seekData.playlistUrl, 60);
+            if (!playlistReady) throw new Error('Таймаут ожидания плейлиста');
+          }
           playbackText.textContent = 'Загрузка видео...';
 
           if (AppState.hls) { AppState.hls.destroy(); AppState.hls = null; }
@@ -1134,9 +1408,9 @@ async function seekStream(absoluteSeekTime, source) {
           var onMetaData = function () {
             videoPlayer.currentTime = 0;
             if (wasPlaying) {
-              videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
+              videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); restoreSoundOnGesture(); });
             }
-            videoPlayer.muted = false; updateMuteButton();
+            videoPlayer.muted = false; restoreSoundOnGesture();
             forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
             var seekSlider = getEl('seek-slider');
             if (seekSlider) seekSlider.value = Math.min(targetTime, parseFloat(seekSlider.max) || targetTime);
@@ -1156,7 +1430,7 @@ async function seekStream(absoluteSeekTime, source) {
           return true;
         } catch (error) {
           if (retryCount < maxRetries) {
-            playbackText.textContent = '⚠️ Ошибка перемотки. Попытка ' + (retryCount + 1) + '/' + (maxRetries + 1) + '...';
+            playbackText.textContent = '⚠️ Ошибка ' + (switchWhat ? 'переключения' : 'перемотки') + '. Попытка ' + (retryCount + 1) + '/' + (maxRetries + 1) + '...';
             await new Promise(function (resolve) { setTimeout(resolve, 1000); });
             return retrySeek(retryCount + 1, maxRetries);
           }
@@ -1166,7 +1440,7 @@ async function seekStream(absoluteSeekTime, source) {
       try {
         var success = await retrySeek(0, 2); resolve(success);
       } catch (error) {
-        playbackText.textContent = '❌ Ошибка перемотки!';
+        playbackText.textContent = switchWhat ? '❌ Ошибка переключения ' + switchWhat : '❌ Ошибка перемотки!';
         setTimeout(function () { playbackOverlay.classList.remove('active'); playbackText.textContent = 'Воспроизведение...'; }, 2000);
         if (wasPlaying) setTimeout(function () { videoPlayer.play()['catch'](function () { }); }, 1000);
         AppState.previewTime = null; AppState.suppressTimeUpdate = false; resolve(false);
@@ -1389,10 +1663,14 @@ async function switchToEpisode(index, fileId) {
  * ровно одна. Раньше у каждой был свой toggle, и «Серии» не закрывали аудио и
  * субтитры — на экране могли оказаться две панели сразу.
  */
+// Аудио и субтитры открываются из одного меню («Аудио и субтитры»), поэтому
+// у всех трёх одна кнопка — tracks-btn: она подсвечена, пока открыто любое из них
 var PLAYER_PANELS = {
   episodes: { panel: 'episodes-panel', btn: 'episodes-btn' },
-  audio: { panel: 'audio-panel', btn: 'audio-btn' },
-  subtitles: { panel: 'subtitles-panel', btn: 'subtitles-btn' }
+  tracks: { panel: 'tracks-panel', btn: 'tracks-btn' },
+  audio: { panel: 'audio-panel', btn: 'tracks-btn' },
+  subtitles: { panel: 'subtitles-panel', btn: 'tracks-btn' },
+  settings: { panel: 'player-settings-panel', btn: 'player-settings-btn' }
 };
 
 function setPlayerPanel(name, open) {
@@ -1412,11 +1690,24 @@ function isPlayerPanelOpen(name) {
 }
 
 function closePlayerPanels(except) {
+  // Кнопка у аудио и субтитров общая: панель, которая остаётся открытой,
+  // красит её последней, иначе закрытие соседки сняло бы подсветку
   for (var name in PLAYER_PANELS) {
     if (name !== except) setPlayerPanel(name, false);
   }
+  if (except && isPlayerPanelOpen(except)) setPlayerPanel(except, true);
+  if (!except) tracksMenuOrigin = null;
 }
 window.closePlayerPanels = closePlayerPanels;
+
+/** Открытая панель плеера (элемент) или null. Читает control.js. */
+function getOpenPlayerPanel() {
+  for (var name in PLAYER_PANELS) {
+    if (isPlayerPanelOpen(name)) return getEl(PLAYER_PANELS[name].panel);
+  }
+  return null;
+}
+window.getOpenPlayerPanel = getOpenPlayerPanel;
 
 function togglePlayerPanel(name) {
   var willOpen = !isPlayerPanelOpen(name);
@@ -1431,9 +1722,173 @@ function togglePlayerPanel(name) {
       else if (hash) loadEpisodesInfo(hash);
     } else if (name === 'audio') renderAudioTracks();
     else if (name === 'subtitles') renderSubtitleTracks();
+    else if (name === 'tracks') updateTracksMenu();
+    else if (name === 'settings') updatePlayerSettingsMenu();
   }
+  // Раздел открыли не из меню (красная кнопка пульта) — «Назад» из него
+  // закрывает панель. Из меню — openTracksSection поставит origin заново
+  tracksMenuOrigin = null;
   setPlayerPanel(name, willOpen);
   return willOpen;
+}
+window.togglePlayerPanel = togglePlayerPanel;
+
+// ==================== МЕНЮ «АУДИО И СУБТИТРЫ» ====================
+// Раздел, открытый из меню: «Назад» в нём возвращает в меню на тот же пункт
+var tracksMenuOrigin = null;
+
+/** Подписи под пунктами меню — выбранные сейчас дорожка звука и субтитры */
+function updateTracksMenu() {
+  var audioValue = getEl('tracks-audio-value');
+  var subsValue = getEl('tracks-subtitles-value');
+  if (audioValue) {
+    var a = currentAudioTracks && currentAudioTracks[currentAudioTrack];
+    audioValue.textContent = !currentAudioTracks || !currentAudioTracks.length ? 'Нет дорожек'
+      : a ? (a.title || ('Дорожка ' + (currentAudioTrack + 1))) +
+        (a.language && a.language !== 'und' ? ' · ' + a.language.toUpperCase() : '')
+      : 'По умолчанию';
+  }
+  if (subsValue) {
+    var s = currentSubTracks && currentSubTracks[currentSubtitleTrack];
+    subsValue.textContent = !currentSubTracks || !currentSubTracks.length ? 'Нет субтитров'
+      : s ? (s.title || ('Субтитры ' + (currentSubtitleTrack + 1))) +
+        (s.language && s.language !== 'und' ? ' · ' + s.language.toUpperCase() : '')
+      : 'Выключены';
+  }
+}
+
+/** Пункт меню → список дорожек этого раздела */
+function openTracksSection(section) {
+  togglePlayerPanel(section);
+  tracksMenuOrigin = section;
+  if (typeof focusActivePanelItem === 'function') focusActivePanelItem(section);
+}
+
+/**
+ * «Назад» в плеере (control.js: playerBackPress). Из раздела, открытого через
+ * меню, — обратно в меню на тот же пункт. true — нажатие обработано.
+ */
+function playerPanelBack() {
+  var section = tracksMenuOrigin;
+  if (!section || !isPlayerPanelOpen(section)) return false;
+  togglePlayerPanel('tracks');
+  var row = getEl(section === 'audio' ? 'tracks-audio-item' : 'tracks-subtitles-item');
+  if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+  if (row && typeof focusEl === 'function') setTimeout(function () { focusEl(row); }, 0);
+  return true;
+}
+window.playerPanelBack = playerPanelBack;
+
+function setupTracksButton() {
+  var tracksBtn = getEl('tracks-btn');
+  var panel = getEl('tracks-panel');
+  if (!tracksBtn || !panel) return;
+
+  tracksBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    // Открыт раздел (аудио или субтитры) — кнопка его закрывает, а не
+    // открывает меню поверх
+    if (isPlayerPanelOpen('audio') || isPlayerPanelOpen('subtitles')) closePlayerPanels();
+    else togglePlayerPanel('tracks');
+    resetMouseIdleTimer();
+  });
+  panel.addEventListener('click', function (e) {
+    // Дальше не пускаем: общий «клик мимо панели» (setupPlayerPanelsOutsideClick)
+    // увидел бы клик вне только что открытого раздела и тут же его закрыл
+    e.stopPropagation();
+    var item = e.target && e.target.closest ? e.target.closest('.player-menu-item') : null;
+    if (item && item.dataset.section) openTracksSection(item.dataset.section);
+    resetMouseIdleTimer();
+  });
+  var closeBtn = getEl('close-tracks');
+  if (closeBtn) closeBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setPlayerPanel('tracks', false);
+    resetMouseIdleTimer();
+  });
+  setupPlayerPanelsOutsideClick();
+}
+
+// ==================== НАСТРОЙКИ ПЛЕЕРА (шестерёнка) ====================
+/** Переключатели в панели — по текущему состоянию часов и строки буфера */
+function updatePlayerSettingsMenu() {
+  var clock = getEl('psetting-clock'), buffer = getEl('psetting-buffer');
+  var clockShown = typeof hideClockEnabled === 'undefined' || !hideClockEnabled;
+  if (clock) clock.classList.toggle('is-on', clockShown);
+  if (buffer) buffer.classList.toggle('is-on', !AppState.bufferHidden);
+}
+window.updatePlayerSettingsMenu = updatePlayerSettingsMenu;
+
+function setupPlayerSettingsButton() {
+  var btn = getEl('player-settings-btn');
+  var panel = getEl('player-settings-panel');
+  if (!btn || !panel) return;
+
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    togglePlayerPanel('settings');
+    resetMouseIdleTimer();
+  });
+  panel.addEventListener('click', function (e) {
+    var item = e.target && e.target.closest ? e.target.closest('.player-menu-item') : null;
+    if (item && item.id === 'psetting-clock' && typeof setClockHidden === 'function') {
+      setClockHidden(item.classList.contains('is-on'));
+    } else if (item && item.id === 'psetting-buffer' && typeof toggleBufferVisibility === 'function') {
+      toggleBufferVisibility();
+    }
+    updatePlayerSettingsMenu();
+    resetMouseIdleTimer();
+  });
+  var closeBtn = getEl('close-player-settings');
+  if (closeBtn) closeBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setPlayerPanel('settings', false);
+    resetMouseIdleTimer();
+  });
+  setupPlayerPanelsOutsideClick();
+}
+
+/**
+ * Перемотка кнопками ±10 с. Время абсолютное (currentTime + seekOffset), как у
+ * ползунка; без hls.js (прямой файл, транскодирование) серверной перемотки
+ * нет — двигаем <video> сам, как это делает ползунок (app.js: change).
+ */
+var HUD_SEEK_STEP_SEC = 10;
+function seekRelative(delta) {
+  var video = getEl('video-player');
+  if (!video) return;
+  // Идёт перемотка: последнюю цель держит очередь seekStream, считаем от неё
+  var base = AppState.isSeeking && typeof AppState.previewTime === 'number' ? AppState.previewTime
+    : video.currentTime + (AppState.seekOffset || 0);
+  var total = AppState.originalDuration || AppState.expectedDuration || video.duration;
+  var target = base + delta;
+  if (target < 0) target = 0;
+  if (total && isFinite(total) && target > total - 1) target = Math.max(0, total - 1);
+
+  var slider = getEl('seek-slider');
+  if (slider) slider.value = target;
+  var currentTimeEl = getEl('current-time');
+  if (currentTimeEl) currentTimeEl.textContent = formatTime(target);
+  if (typeof window.showSeekOverlay === 'function') {
+    window.showSeekOverlay(target, delta < 0 ? -1 : 1, Math.abs(delta));
+    if (typeof window.scheduleHideSeekOverlay === 'function') window.scheduleHideSeekOverlay();
+  }
+
+  if (!AppState.hls) {
+    video.currentTime = target - (AppState.seekOffset || 0);
+    if (typeof updateTimeDisplay === 'function') updateTimeDisplay();
+  } else {
+    AppState.previewTime = target;
+    AppState.suppressTimeUpdate = true;
+    seekStream(target, 'button');
+  }
+}
+window.seekRelative = seekRelative;
+
+function setupSeekButtons() {
+  var rew = getEl('rewind-btn'), fwd = getEl('forward-btn');
+  if (rew) rew.addEventListener('click', function (e) { e.stopPropagation(); seekRelative(-HUD_SEEK_STEP_SEC); resetMouseIdleTimer(); });
+  if (fwd) fwd.addEventListener('click', function (e) { e.stopPropagation(); seekRelative(HUD_SEEK_STEP_SEC); resetMouseIdleTimer(); });
 }
 
 /**
@@ -1442,6 +1897,7 @@ function togglePlayerPanel(name) {
  * своему на document.
  */
 function setupPlayerPanelsOutsideClick() {
+  setupPlayerPanelsActivity();
   if (setupPlayerPanelsOutsideClick._bound) return;
   setupPlayerPanelsOutsideClick._bound = true;
   document.addEventListener('click', function (e) {
@@ -1782,6 +2238,11 @@ function openAndroidPlayer(playURL, playerData) {
   }
   if (lastExternalOpen.url === playURL && Date.now() - lastExternalOpen.time < EXTERNAL_OPEN_DEDUP_MS) return false;
   lastExternalOpen.url = playURL; lastExternalOpen.time = Date.now();
+  // Цвет фокуса «Внешнего вида»: встроенный плеер Android красит им фокус своих
+  // кнопок, чтобы он был того же цвета, что и в интерфейсе
+  if (playerData && !playerData.focus_color && window.UICustomizer && UICustomizer.getFocusColor) {
+    playerData.focus_color = UICustomizer.getFocusColor();
+  }
   AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
   return true;
 }
@@ -1834,6 +2295,194 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
     return true;
   }
   return false;
+}
+
+// ==================== ВНЕШНИЕ ПЛЕЕРЫ НА УСТРОЙСТВАХ APPLE ====================
+// Выбор — Настройки → Плеер (app.js: setupApplePlayerChoice), список и URL-схемы —
+// как у Lampa (src/interaction/player.js, settings/params.js). Плееру уходит прямая
+// ссылка на файл в TorrServer, как и встроенному плееру Android. В шаблонах
+// ${url} — ссылка в encodeURIComponent, ${furl} — как есть, ${_url} — encodeURI,
+// ${playlist} — серии JSON-ом в encodeURIComponent.
+// tvOS Pro / Universal / Online и «Внешний» — плееры самого клиента для Apple TV
+// (схема lampa://, в нём TorrStream и открыт), остальные — отдельные приложения.
+var APPLE_PLAYERS = {
+  apple_tv: [
+    ['inner', 'Встроенный TorrStream'],
+    ['tvospro', 'tvOS Pro', 'lampa://video?player=tvospro&src=${url}&playlist=${playlist}'],
+    ['tvos', 'tvOS Universal', 'lampa://video?player=tvos&src=${url}&playlist=${playlist}'],
+    ['tvosl', 'tvOS Online', 'lampa://video?player=tvosav&src=${url}&playlist=${playlist}'],
+    ['tvosSelect', 'Внешний — выбор при запуске', 'lampa://video?player=lists&src=${url}&playlist=${playlist}'],
+    ['vlc', 'VLC', 'vlc-x-callback://x-callback-url/stream?url=${url}'],
+    ['infuse', 'Infuse', 'infuse://x-callback-url/play?x-success=lampa://infuseDidFinish&x-error=lampa://infuseDidFail&url=${url}&playlist=${playlist}'],
+    ['senplayer', 'SenPlayer', 'SenPlayer://x-callback-url/play?url=${url}'],
+    ['vidhub', 'Vidhub', 'open-vidhub://x-callback-url/open?url=${url}'],
+    ['svplayer', 'SVPlayer', 'svplayer://x-callback-url/stream?url=${url}']
+  ],
+  apple: [
+    ['inner', 'Встроенный TorrStream'],
+    ['vlc', 'VLC', 'vlc://${furl}'],
+    ['nplayer', 'nPlayer', 'nplayer-${furl}'],
+    ['infuse', 'Infuse', 'infuse://x-callback-url/play?url=${url}'],
+    ['senplayer', 'SenPlayer', 'senplayer://x-callback-url/play?url=${url}'],
+    ['vidhub', 'Vidhub', 'open-vidhub://x-callback-url/open?&url=${url}'],
+    ['svplayer', 'SVPlayer', 'svplayer://x-callback-url/stream?url=${url}'],
+    ['tracyplayer', 'TracyPlayer', 'tracy://open?url=${url}']
+  ],
+  macos: [
+    ['inner', 'Встроенный TorrStream'],
+    ['mpv', 'mpv', 'mpv://${_url}'],
+    ['iina', 'IINA', 'iina://weblink?url=${url}'],
+    ['nplayer', 'nPlayer', 'nplayer-${_url}'],
+    ['infuse', 'Infuse', 'infuse://x-callback-url/play?url=${url}'],
+    ['senplayer', 'SenPlayer', 'senplayer://x-callback-url/play?url=${url}']
+  ]
+};
+var APPLE_PLAYER_KEY = 'applePlayer';
+
+/** Плееры этого устройства Apple: [{id, name, template}] или null — не Apple */
+function getApplePlayers() {
+  var list = AppState.applePlatform && APPLE_PLAYERS[AppState.applePlatform];
+  if (!list) return null;
+  return list.map(function (p) { return { id: p[0], name: p[1], template: p[2] || null }; });
+}
+window.getApplePlayers = getApplePlayers;
+
+/** Выбранный плеер (объект из getApplePlayers) или null — играет встроенный */
+function getApplePlayer() {
+  var list = getApplePlayers();
+  if (!list) return null;
+  var id = null;
+  try { id = localStorage.getItem(APPLE_PLAYER_KEY); } catch (e) { }
+  for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+  return list[0];
+}
+window.getApplePlayer = getApplePlayer;
+
+function setApplePlayer(id) {
+  try { localStorage.setItem(APPLE_PLAYER_KEY, id); } catch (e) { }
+}
+window.setApplePlayer = setApplePlayer;
+
+/**
+ * Прямая ссылка на файл в TorrServer. Логин и пароль TorrServer — в самой ссылке:
+ * заголовков чужому плееру не передать (так же уходит ссылка в ffprobe на webOS)
+ */
+function appleStreamUrl(hash, fileId) {
+  var u = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&play=play';
+  if (AppState.authEnabled && AppState.authLogin) {
+    u = u.replace(/^(https?:\/\/)/, '$1' + encodeURIComponent(AppState.authLogin) + ':' + encodeURIComponent(AppState.authPassword || '') + '@');
+  }
+  return u;
+}
+
+/**
+ * Ссылка для внешнего плеера Apple: URL-схема выбранного плеера с прямой ссылкой
+ * на файл и, для сериала, списком серий. null — выбран встроенный или ссылка не
+ * разобралась.
+ */
+function buildAppleExternalUrl(originalUrl, seekTime) {
+  var player = getApplePlayer();
+  if (!player || !player.template || !AppState.currentTorrserverUrl) return null;
+  var ref = parseStreamRef(originalUrl);
+  if (!ref) return null;
+  var furl = appleStreamUrl(ref.hash, ref.fileId);
+  var playlist = '';
+  if (AppState.autoSwitchEpisodes) {
+    var episodes = buildEpisodesPlaylist(currentEpisodeIndex, seekTime || 0);
+    if (episodes) {
+      episodes.forEach(function (e) {
+        var m = /[?&]index=(\d+)/.exec(e.url);
+        if (m) e.url = appleStreamUrl(ref.hash, m[1]);
+      });
+      playlist = encodeURIComponent(JSON.stringify(episodes));
+    }
+  }
+  return {
+    player: player,
+    ref: ref,
+    url: player.template
+      .replace('${url}', encodeURIComponent(furl))
+      .replace('${_url}', encodeURI(furl))
+      .replace('${furl}', furl)
+      .replace('${playlist}', playlist)
+  };
+}
+window.buildAppleExternalUrl = buildAppleExternalUrl;
+
+/**
+ * Открыть файл во внешнем плеере Apple по URL-схеме. false — выбран встроенный
+ * (или ссылка не разобралась): тогда играет веб-плеер, как раньше.
+ * Позицию просмотра чужой плеер обратно не сообщает — как и у Lampa.
+ */
+function openAppleExternalPlayer(originalUrl, title, seekTime) {
+  var built = buildAppleExternalUrl(originalUrl, seekTime);
+  if (!built) return false;
+  if (lastExternalOpen.url === built.url && Date.now() - lastExternalOpen.time < EXTERNAL_OPEN_DEDUP_MS) return true;
+  lastExternalOpen.url = built.url; lastExternalOpen.time = Date.now();
+  currentTimecodeData.hash = built.ref.hash; currentTimecodeData.fileId = built.ref.fileId; currentTimecodeData.timecode = seekTime || 0;
+  console.log('🍎 Внешний плеер ' + built.player.name + ': ' + (title || ''));
+  if (AppState.applePlatform !== 'apple_tv' && navigator.userActivation && !navigator.userActivation.isActive) {
+    // Нажатие уже «остыло» — переход заведомо пропустят, сразу кнопка
+    showAppleLaunchDialog(built.player.name, built.url);
+    return true;
+  }
+  window.location.assign(built.url);
+  if (AppState.applePlatform !== 'apple_tv') watchAppleLaunch(built.player.name, built.url);
+  return true;
+}
+
+/**
+ * Safari и оболочки на WebKit (iPhone, iPad, Mac; проверено в Prisma TV на
+ * iPhone) открывают чужое приложение по URL-схеме только в ответ на нажатие.
+ * Запуск же идёт после предзагрузки, серий и позиции просмотра — через
+ * секунды после нажатия, и такой переход молча пропускают: плеер не
+ * открывается. Поэтому показываем кнопку-ссылку «Открыть в …» — переход по
+ * ней уже по нажатию: сразу, если браузер сообщает, что нажатие истекло
+ * (navigator.userActivation), иначе — если за APPLE_LAUNCH_CHECK_MS
+ * страница не ушла на задний план (плеер не открылся поверх).
+ * На Apple TV оболочка открывает плееры сама, там кнопка не нужна.
+ */
+var APPLE_LAUNCH_CHECK_MS = 2000;
+
+function watchAppleLaunch(name, url) {
+  var left = false;
+  var onHide = function (e) { if (e.type === 'pagehide' || document.hidden) left = true; };
+  document.addEventListener('visibilitychange', onHide);
+  window.addEventListener('pagehide', onHide);
+  setTimeout(function () {
+    document.removeEventListener('visibilitychange', onHide);
+    window.removeEventListener('pagehide', onHide);
+    if (!left && !document.hidden) showAppleLaunchDialog(name, url);
+  }, APPLE_LAUNCH_CHECK_MS);
+}
+
+function closeAppleLaunchDialog() {
+  var el = document.getElementById('apple-launch-dialog');
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+
+function showAppleLaunchDialog(name, url) {
+  closeAppleLaunchDialog();
+  if (typeof releasePreloadScreen === 'function') releasePreloadScreen(true);
+  var root = document.createElement('div');
+  root.id = 'apple-launch-dialog';
+  root.innerHTML =
+    '<div class="apple-launch-box">' +
+    '<div class="apple-launch-title"></div>' +
+    '<div class="apple-launch-text">Плеер не открылся сам. Нажмите кнопку — если он установлен, откроется.</div>' +
+    '<div class="apple-launch-actions">' +
+    '<a class="apple-launch-btn apple-launch-open"></a>' +
+    '<button type="button" class="apple-launch-btn apple-launch-cancel">Отмена</button>' +
+    '</div></div>';
+  root.querySelector('.apple-launch-title').textContent = name;
+  var open = root.querySelector('.apple-launch-open');
+  open.textContent = 'Открыть в ' + name;
+  open.href = url;
+  open.addEventListener('click', function () { setTimeout(closeAppleLaunchDialog, 300); });
+  root.querySelector('.apple-launch-cancel').addEventListener('click', closeAppleLaunchDialog);
+  root.addEventListener('click', function (e) { if (e.target === root) closeAppleLaunchDialog(); });
+  document.body.appendChild(root);
+  try { open.focus(); } catch (e) { }
 }
 
 function startGstPlayback(m3u8Url) {
@@ -1939,16 +2588,20 @@ var DEFAULT_PLAYER_HINT = '← Назад для выхода';
  * показывает «Нажмите Back ещё раз для выхода». Раньше текст игнорировался,
  * и вместо предупреждения всплывала обычная подсказка.
  */
-function showPlayerHint(message) {
+function showPlayerHint(message, durationMs) {
   var playerHint = getEl('player-hint');
   if (!playerHint) return;
   playerHint.textContent = message || DEFAULT_PLAYER_HINT;
   playerHint.style.opacity = '1';
+  // Предупреждение показываем и при скрытом HUD (styles.css:
+  // .player-hint-alert): «Нажмите Назад ещё раз» приходит именно тогда
+  playerHint.classList.toggle('player-hint-alert', !!message);
   if (AppState.hintTimeout) clearTimeout(AppState.hintTimeout);
   AppState.hintTimeout = setTimeout(function () {
     playerHint.style.opacity = '0';
+    playerHint.classList.remove('player-hint-alert');
     playerHint.textContent = DEFAULT_PLAYER_HINT;
-  }, 4000);
+  }, durationMs || 4000);
 }
 
 async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal) {
@@ -2031,7 +2684,7 @@ async function initGstPlayback(metadata, initialSeek, signal) {
     AppState.hls = createHlsInstance({ maxBufferLength: 20, maxMaxBufferLength: 40, startFragPrefetch: false, fragLoadingTimeOut: 20000, manifestLoadingTimeOut: 20000, enableWorker: false, cache: true });
     AppState.hls.loadSource(playURL); AppState.hls.attachMedia(videoPlayer);
     var manifestHandler = function () {
-      videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
+      videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); restoreSoundOnGesture(); });
       startTimecodeSaving(); resetMouseIdleTimer(); startNearEndCheck(); startHeartbeat(); startTorrentStatsUpdates();
       AppState.hls.off(Hls.Events.MANIFEST_PARSED, manifestHandler);
     };
@@ -2062,8 +2715,32 @@ async function initGstPlayback(metadata, initialSeek, signal) {
   } else throw new Error('Устройство не поддерживает HLS');
 }
 
-async function initTranscodingOffPlayback(initialSeek, signal) {
-  var playURL = AppState.currentTorrserverUrl + '/stream?link=' + currentTimecodeData.hash + '&index=' + currentTimecodeData.fileId + '&play=play';
+/**
+ * Сведения о последнем запуске прямого файла — для «Об устройстве»: на
+ * телевизоре без отладчика иначе не понять, отдал ли он дорожки вовсе
+ */
+var directPlaybackDiag = { file: '', audio: null, text: null, kinds: '', probe: '', subs: '' };
+window.directPlaybackDiag = directPlaybackDiag;
+
+function updateDirectTrackDiag(videoPlayer) {
+  var a = videoPlayer && videoPlayer.audioTracks, t = videoPlayer && videoPlayer.textTracks;
+  directPlaybackDiag.audio = a ? a.length : 'нет audioTracks';
+  directPlaybackDiag.text = t ? t.length : 'нет textTracks';
+  var kinds = [];
+  if (t) for (var i = 0; i < t.length; i++) kinds.push((t[i].kind || '?') + (t[i].language ? '/' + t[i].language : ''));
+  directPlaybackDiag.kinds = kinds.join(', ');
+}
+
+async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
+  // Адрес как у Lampa (Torserver.stream): с именем файла в пути, если оно уже
+  // известно (getFileNameByHash по списку торрентов). Отдельно у TorrServer его
+  // не спрашиваем: Vidaa отдаёт встроенные субтитры и по адресу без имени
+  // (проверено), а лишний запрос задерживал запуск
+  var fileName = knownFileName || null;
+  var playURL = AppState.currentTorrserverUrl + '/stream' + (fileName ? '/' + encodeURIComponent(fileName) : '') +
+    '?link=' + currentTimecodeData.hash + '&index=' + currentTimecodeData.fileId + '&play';
+  directPlaybackDiag.file = fileName || 'без имени';
+  directPlaybackDiag.audio = null; directPlaybackDiag.text = null; directPlaybackDiag.kinds = ''; directPlaybackDiag.probe = ''; directPlaybackDiag.subs = '';
   var videoPlayer = getEl('video-player');
   destroyHls();   // заодно снимает слушатели прошлого прямого файла
 
@@ -2092,9 +2769,9 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
     videoPlayer.play()['catch'](function () {
       videoPlayer.muted = true;
       videoPlayer.play()['catch'](function () { });
-      updateMuteButton();
+      restoreSoundOnGesture();
     });
-    videoPlayer.muted = false; updateMuteButton();
+    videoPlayer.muted = false; restoreSoundOnGesture();
     startTimecodeSaving(); resetMouseIdleTimer(); startNearEndCheck(); startHeartbeat(); startTorrentStatsUpdates();
   };
 
@@ -2128,7 +2805,7 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
       renderAudioTracks();
     }
     refreshNativeSubtitles(videoPlayer);
-    if (AppState.platform === 'webos') applyWebosProbe();
+    applyDirectProbe();
   };
 
   var onCanPlay = function () {
@@ -2165,7 +2842,7 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
   videoPlayer.load();
   // webOS: mediaId и подписку ловим сразу, как Lampa (см. webosSubsStart)
   webosSubsStart(videoPlayer, staleMediaId);
-  webosProbeStart(playURL);
+  directProbeStart();
   AppState.nativeVideoPlayer = videoPlayer;
   hidePlayerLoading();
 }
@@ -2173,13 +2850,15 @@ async function initTranscodingOffPlayback(initialSeek, signal) {
 async function initServerProxyPlayback(metadata, initialSeek, signal) {
   var seekParam = (initialSeek && initialSeek > 0) ? ('&start=' + initialSeek.toFixed(2)) : '';
   var durationParam = (metadata.fileInfo.duration && metadata.fileInfo.duration > 0) ? ('&duration=' + metadata.fileInfo.duration.toFixed(0)) : '';
-  var audioParam = metadata.audioTrack !== null ? ('&audio=' + metadata.audioTrack) : '';
+  // Не выбрана — без audio: сервер возьмёт дорожку с пометкой default
+  var audioParam = metadata.audioTrack !== null && metadata.audioChosen !== false ? ('&audio=' + metadata.audioTrack) : '';
   var subParam = currentSubtitleTrack >= 0 ? ('&sub=' + currentSubtitleTrack) : '';
   var multiChannelParam = (AppState.multiChannelEnabled === true) ? '&multiChannel=true' : '';
   var savedClientId = localStorage.getItem('clientId');
   var dvParam = '&dv=' + (AppState.dvPreferred ? 'true' : 'false');
   // fileInfo проверен в startHLSPlayback — сюда мы попадаем только с данными
-  var streamUrl = SERVER_URL + '/hls/stream?url=' + encodeURIComponent(AppState.videoUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam + subParam + dvParam;
+  // tracks=1 — дорожки сразу в потоке (сервер 1.0.53+; старый параметр не знает)
+  var streamUrl = SERVER_URL + '/hls/stream?url=' + encodeURIComponent(AppState.videoUrl) + seekParam + audioParam + multiChannelParam + '&clientId=' + encodeURIComponent(savedClientId) + durationParam + subParam + dvParam + '&tracks=1';
   var response;
   try {
     // С таймаутом: молчащий сервер иначе держит плеер открытым и пустым
@@ -2196,6 +2875,12 @@ async function initServerProxyPlayback(metadata, initialSeek, signal) {
   if (!data.success) throw new Error(data.error || 'Ошибка создания потока');
   AppState.currentStreamId = data.streamId; AppState.expectedDuration = data.duration; AppState.originalDuration = data.originalDuration || data.duration;
   AppState.seekOffset = data.seekOffset || initialSeek || 0; AppState.lastSuccessfulSeek = AppState.seekOffset;
+  applyServerTracks(data.tracks);
+  // Дорожку никто не выбирал — сервер взял с пометкой default (иначе первую)
+  if (data.tracks && (metadata.audioTrack === null || metadata.audioChosen === false) && typeof data.tracks.selectedAudio === 'number') {
+    currentAudioTrack = data.tracks.selectedAudio;
+    renderAudioTracks();
+  }
   var videoPlayer = getEl('video-player');
   if (Hls.isSupported()) {
     AppState.hls = createHlsInstance();
@@ -2208,12 +2893,13 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
   var isPlaybackCancelled = false;
   var manifestParsedHandler = function () {
     if (signal.aborted || isPlaybackCancelled) return;
+    applyServerTrackSelection();
     forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
     videoPlayer.currentTime = 0; videoPlayer.pause(); startTorrentStatsUpdates();
     if (thisisseek) {
       hidePlayerLoading();
-      if (!signal.aborted && !isPlaybackCancelled) videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
-      videoPlayer.muted = false; updateMuteButton(); startTimecodeSaving(); resetMouseIdleTimer();
+      if (!signal.aborted && !isPlaybackCancelled) videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); restoreSoundOnGesture(); });
+      videoPlayer.muted = false; restoreSoundOnGesture(); startTimecodeSaving(); resetMouseIdleTimer();
       if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
       startNearEndCheck(); startHeartbeat(); return;
     }
@@ -2224,8 +2910,8 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
       // после старта видео само снималось с паузы
       if (AppState._loadingTimeout) { clearTimeout(AppState._loadingTimeout); AppState._loadingTimeout = null; }
       hidePlayerLoading();
-      if (!signal.aborted && !isPlaybackCancelled) videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
-      videoPlayer.muted = false; updateMuteButton(); startTimecodeSaving(); resetMouseIdleTimer();
+      if (!signal.aborted && !isPlaybackCancelled) videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); restoreSoundOnGesture(); });
+      videoPlayer.muted = false; restoreSoundOnGesture(); startTimecodeSaving(); resetMouseIdleTimer();
       if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
       startNearEndCheck(); startHeartbeat(); videoPlayer.removeEventListener('canplay', onCanPlay);
     };
@@ -2233,14 +2919,22 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
     AppState._loadingTimeout = setTimeout(function () {
       if (!signal.aborted && !isPlaybackCancelled) {
         videoPlayer.removeEventListener('canplay', onCanPlay); hidePlayerLoading();
-        videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); updateMuteButton(); });
-        videoPlayer.muted = false; updateMuteButton(); startTimecodeSaving(); resetMouseIdleTimer();
+        videoPlayer.play()['catch'](function (err) { videoPlayer.muted = true; videoPlayer.play()['catch'](function () { }); restoreSoundOnGesture(); });
+        videoPlayer.muted = false; restoreSoundOnGesture(); startTimecodeSaving(); resetMouseIdleTimer();
         if (nearEndCheckInterval) clearInterval(nearEndCheckInterval);
         startNearEndCheck(); startHeartbeat();
       }
     }, 3000);
   };
   hls.off(Hls.Events.MANIFEST_PARSED, manifestParsedHandler); hls.on(Hls.Events.MANIFEST_PARSED, manifestParsedHandler);
+  // Список аудиодорожек hls.js получает и после MANIFEST_PARSED и тогда сам
+  // выбирает первую — возвращаем выбранную в плеере
+  hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, function () { if (!signal.aborted && AppState.serverTracks) selectHlsAudio(currentAudioTrack); });
+  // Начало шкалы поколения (первый PTS видео) — для субтитров ServerSubs
+  hls.on(Hls.Events.INIT_PTS_FOUND, function (e, d) {
+    if (signal.aborted || !AppState.serverTracks || !d || d.id !== 'main' || !d.timescale) return;
+    AppState.streamTimeOrigin = d.initPTS / d.timescale;
+  });
   var fragLoadingHandler = function (event, data) { if (signal.aborted) return; };
   hls.off(Hls.Events.FRAG_LOADING, fragLoadingHandler); hls.on(Hls.Events.FRAG_LOADING, fragLoadingHandler);
   var bufferAppendedHandler = function (event, data) { if (signal.aborted) return; };
@@ -2256,7 +2950,10 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
           var now = Date.now();
           if (!window._lastCleanupTime || (now - window._lastCleanupTime) > 2000) {
             window._lastCleanupTime = now;
-            fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keepFromSegment: segmentNumber }) }).catch(function () { });
+            fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keepFromSegment: segmentNumber }) })
+              .then(function (r) { return r.json(); })
+              .then(function (d) { if (d && typeof d.availableFrom === 'number') AppState.serverAvailableFrom = d.availableFrom; })
+              ['catch'](function () { });
           }
         }
       }
@@ -2335,6 +3032,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   if (initialSeek === undefined) initialSeek = null;
   if (fromSearch === undefined) fromSearch = false;
   if (episodeIndex === undefined) episodeIndex = null;
+  // Дорожку передали явно (смена дорожки, следующая серия с той же озвучкой)
+  // или она сохранена для файла — это выбор; иначе серверный поток с
+  // дорожками берёт ту, что помечена default (initServerProxyPlayback)
+  var audioExplicit = audioTrack !== undefined && audioTrack !== null;
   if (audioTrack === undefined) audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
   // Настройка «Предзагрузка»: до плеера — окно с буфером и статистикой раздачи
   // (torrserverstats.js). Только при запуске из интерфейса: смена серии,
@@ -2347,6 +3048,27 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       if (!(await runPlaybackPreload(preloadRef.hash, preloadRef.fileId, preloadTitle))) return false;
     }
   }
+  // Устройство Apple с выбранным внешним плеером (Infuse, VLC, плееры tvOS…):
+  // как у Android — серии и сохранённая позиция до запуска, дальше URL-схема
+  var applePlayer = (typeof getApplePlayer === 'function') ? getApplePlayer() : null;
+  if (applePlayer && applePlayer.template) {
+    var appleRef = parseStreamRef(originalUrl);
+    if (AppState.autoSwitchEpisodes && AppState.currentDetailItem && AppState.currentDetailItem.hash) {
+      try { await loadEpisodesInfo(AppState.currentDetailItem.hash, appleRef ? appleRef.fileId : null); } catch (e) { /* без серий — один файл */ }
+      if (typeof getTorrentProgressBatch === 'function') {
+        try { await getTorrentProgressBatch(AppState.currentDetailItem.hash, currentEpisodeFiles); } catch (e) { /* без прогресса — нули */ }
+      }
+    }
+    var appleSeek = initialSeek;
+    if (appleSeek === null && appleRef) {
+      try {
+        var appleSaved = await loadTimecodeFromServer(appleRef.hash, appleRef.fileId);
+        if (appleSaved > 0) appleSeek = appleSaved;
+      } catch (e) { /* нет таймкода — с начала */ }
+    }
+    if (openAppleExternalPlayer(originalUrl, buildExternalPlayerTitle(), appleSeek)) return;
+  }
+
   if (window.AndroidJS) {
     var androidRef = parseStreamRef(originalUrl);
 
@@ -2391,6 +3113,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   lastPlaybackFromSearch = fromSearch;
   //if (!AppState.transcodingFullOnOff) {
   var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
+  if (metadata) metadata.audioChosen = audioExplicit || metadata.savedAudioTrack !== null;
   if (!metadata || signal.aborted) return false;
   var { fileInfo, savedAudioTrack, fileName, savedSubTrack, savedTimecode, seekTime } = metadata;
   initialSeek = seekTime;
@@ -2429,7 +3152,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     } else if (AppState.transcodingFullOnOff) {
       nativeSubState.savedPref = (metadata && metadata.savedSubTrack !== null && metadata.savedSubTrack !== undefined)
         ? metadata.savedSubTrack : -1;
-      await initTranscodingOffPlayback(initialSeek, signal);
+      await initTranscodingOffPlayback(initialSeek, signal, metadata && metadata.fileName);
     } else {
       await initServerProxyPlayback(metadata, initialSeek, signal);
     }
@@ -2763,7 +3486,7 @@ function collectNativeAudioTracks(videoPlayer) {
   var tracks = [];
   for (var i = 0; i < list.length; i++) {
     tracks.push({
-      title: list[i].label || ('Дорожка ' + (i + 1)),
+      title: list[i].label || ('Аудиодорожка ' + (i + 1)),
       language: list[i].language || 'und',
       channels: null,   // audioTracks не отдаёт ни каналы, ни кодек
       codec: null
@@ -2780,10 +3503,21 @@ async function switchAudioTrack(trackIndex) {
     switchNativeAudioTrack(AppState.nativeVideoPlayer || getEl('video-player'), trackIndex);
     return;
   }
+  // Дорожка уже в потоке — переключает hls.js, ffmpeg не трогаем
+  if (AppState.serverTracks) {
+    // В окне потока — сразу; вне окна — новое поколение с центром на ней
+    var inStream = selectHlsAudio(trackIndex);
+    currentAudioTrack = trackIndex;
+    AppState.serverTracks.selectedAudio = trackIndex;
+    if (currentTimecodeData.hash && currentTimecodeData.fileId) saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
+    renderAudioTracks();
+    toggleAudioPanel();
+    if (!inStream) restartServerGeneration('аудиодорожки');
+    return;
+  }
   thisisseek = false; await saveTimecodeToServer();
   if (currentTimecodeData.hash && currentTimecodeData.fileId) await saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
-  var audioPanel = getEl('audio-panel'); var audioBtn = getEl('audio-btn');
-  if (audioPanel) { audioPanel.classList.add('hidden'); if (audioBtn) audioBtn.classList.remove('active'); }
+  setPlayerPanel('audio', false);
   var videoPlayer = getEl('video-player'); var currentTime = videoPlayer.currentTime + AppState.seekOffset;
   getEl('playback-overlay').classList.add('active'); document.querySelector('.playback-text').textContent = 'Переключение аудиодорожки...';
   try {
@@ -2835,7 +3569,7 @@ function switchNativeAudioTrack(videoPlayer, index) {
 //   1. ждём video.mediaId — его выдаёт конвейер, когда файл открыт;
 //   2. subscribe по mediaId → sourceInfo.programInfo[0].subtitleTrackInfo;
 //   3. включение — setSubtitleEnable + selectTrack {type: 'text', index},
-//      текст рисует сам телевизор (наш блок #native-subtitles не нужен);
+//      текст рисует сам телевизор;
 //   4. после перемотки конвейер субтитры гасит — включаем заново (seeked).
 // В отличие от Lampa подписку не закрываем вызовом unload (тот выгружает
 // медиа, и Lampa потом пересоздаёт <video>), а просто отменяем.
@@ -2845,7 +3579,7 @@ var webosSubs = { mediaId: null, timer: null, bridge: null, list: null, enabled:
 var webosSubsDiag = { bridge: '', mediaId: '', waitedMs: 0, responses: 0, keys: '', sourceInfo: false, tracks: null, audio: null, probe: '', error: '' };
 // Звук на webOS, как в Lampa: список — у конвейера (audioTrackInfo), он главнее
 // video.audioTracks (там ни подписей, ни кодека, ни каналов); переключение —
-// selectTrack type 'audio'. Подписи потом добавляет ffprobe (applyWebosProbe)
+// selectTrack type 'audio'. Подписи потом добавляет ffprobe (applyDirectProbe)
 var webosAudio = { mode: false, list: [] };
 window.webosSubsDiag = webosSubsDiag;
 
@@ -2926,7 +3660,7 @@ function webosSubsApply(info) {
     webosAudio.list = audio;
     currentAudioTracks = audio.map(function (a, i) {
       var lang = a.language && a.language !== '(null)' ? a.language : '';
-      return { title: lang ? (LANG_NAMES[lang] || lang.toUpperCase()) : 'Дорожка ' + (i + 1), language: lang || 'und', channels: a.channels || null, codec: a.codec || null };
+      return { title: lang ? (LANG_NAMES[lang] || lang.toUpperCase()) : 'Аудиодорожка ' + (i + 1), language: lang || 'und', channels: a.channels || null, codec: a.codec || null };
     });
     // Какая играет: по audioTracks, если списки совпали, иначе прежний выбор
     var vp = getEl('video-player'), at = vp && vp.audioTracks, playing = -1;
@@ -2940,7 +3674,7 @@ function webosSubsApply(info) {
   var subs = (info && info.subtitleTrackInfo) || [];
   webosSubs.list = subs;
   webosSubsDiag.tracks = subs.length;
-  if (!subs.length) { applyWebosProbe(); return; }
+  if (!subs.length) { applyDirectProbe(); return; }
   nativeSubState.mode = 'webos';
   currentSubTracks = subs.map(function (s, i) {
     var lang = s.language && s.language !== '(null)' ? s.language : '';
@@ -2950,24 +3684,29 @@ function webosSubsApply(info) {
   currentSubtitleTrack = (want >= 0 && want < subs.length) ? want : -1;
   if (currentSubtitleTrack >= 0) webosSetSubtitle(currentSubtitleTrack);
   renderSubtitleTracks();
-  applyWebosProbe();
+  applyDirectProbe();
 }
 
-// ==================== WEBOS: НАЗВАНИЯ ДОРОЖЕК ЧЕРЕЗ FFPROBE ====================
+// ==================== НАЗВАНИЯ ДОРОЖЕК ПРЯМОГО ФАЙЛА ЧЕРЕЗ FFPROBE ====================
 //
-// Конвейер webOS отдаёт дорожки почти без подписей: у субтитров код языка, у
-// звука и того меньше. Приложение TorrStream-webOS несёт свою службу
+// Телевизор (конвейер webOS, textTracks/audioTracks на Vidaa) отдаёт дорожки
+// почти без подписей: у субтитров код языка, у звука и того меньше. Как плагин
+// Lampa «tracks», берём их у ffprobe (directProbeStart ниже). На webOS ещё и
+// так: приложение TorrStream-webOS несёт свою службу
 // com.torrstream.app.service с методом ffprobe (статический ffprobe внутри
 // ipk, как в Lampa) — она читает заголовок файла с TorrServer и возвращает
 // потоки: язык, название, кодек, каналы, «по умолчанию»/«принудительные».
 // Сопоставляем по порядку (alignProbeStreams): webOS показывает не все потоки
 // файла, но порядок сохраняет.
-var webosProbe = { gen: 0, streams: null, count: '' };
+var directProbe = { gen: 0, streams: null, count: '' };
 var LANG_NAMES = {
   rus: 'Русский', ru: 'Русский', eng: 'English', en: 'English', ukr: 'Українська', uk: 'Українська',
   bel: 'Беларуская', kaz: 'Қазақша', jpn: '日本語', ja: '日本語', kor: '한국어', chi: '中文', zho: '中文',
   ger: 'Deutsch', deu: 'Deutsch', fre: 'Français', fra: 'Français', spa: 'Español', ita: 'Italiano',
-  por: 'Português', pol: 'Polski', tur: 'Türkçe', ara: 'العربية', heb: 'עברית', hin: 'हिन्दी'
+  por: 'Português', pol: 'Polski', tur: 'Türkçe', ara: 'العربية', heb: 'עברית', hin: 'हिन्दी',
+  // Двухбуквенные коды — так язык textTracks называет часть телевизоров
+  zh: '中文', ko: '한국어', de: 'Deutsch', fr: 'Français', es: 'Español', it: 'Italiano', pt: 'Português',
+  pl: 'Polski', tr: 'Türkçe', ar: 'العربية', he: 'עברית', iw: 'עברית', hi: 'हिन्दी', be: 'Беларуская', kk: 'Қазақша'
 };
 var TEXT_SUB_CODECS = { subrip: 1, srt: 1, ass: 1, ssa: 1, webvtt: 1, mov_text: 1, text: 1 };
 // DTS и TrueHD телевизоры LG с 2020 года не играют и в списке звука не показывают
@@ -2989,9 +3728,13 @@ function langKey(l) {
  */
 function alignProbeStreams(tracks, streams, hidden) {
   if (!tracks.length || !streams.length) return null;
-  if (streams.length === tracks.length) return streams;
+  if (streams.length === tracks.length && langsAgree(tracks, streams)) return streams;
   var visible = streams.filter(function (s) { return !hidden(s); });
-  if (visible.length === tracks.length) return visible;
+  if (visible.length === tracks.length && langsAgree(tracks, visible)) return visible;
+  // Порядок у плеера свой (Vidaa отдаёт textTracks не в порядке файла), но
+  // язык дорожки он знает — подбираем поток того же языка
+  var byLang = matchProbeByLanguage(tracks, streams, hidden, false);
+  if (byLang) return byLang;
   var sources = [visible, streams];
   for (var n = 0; n < sources.length; n++) {
     var src = sources[n], out = [], j = 0;
@@ -3007,6 +3750,42 @@ function alignProbeStreams(tracks, streams, hidden) {
   return null;
 }
 
+/** Нет ни одной дорожки, у которой язык плеера и язык потока ffprobe различаются */
+function langsAgree(tracks, streams) {
+  for (var i = 0; i < tracks.length; i++) {
+    var a = langKey(tracks[i].language), b = langKey(probeLang(streams[i]));
+    if (a && b && a !== b) return false;
+  }
+  return true;
+}
+
+/**
+ * Поток ffprobe каждой дорожке плеера по языку: дорожке с языком — первый
+ * ещё не занятый поток того же языка (сначала из видимых, потом из скрытых
+ * кодеков), без языка — первый свободный видимый по порядку. Внутри одного
+ * языка порядок файла сохраняется. partial: false — не нашлось хоть для
+ * одной дорожки → null; true — на её месте null.
+ */
+function matchProbeByLanguage(tracks, streams, hidden, partial) {
+  var used = [], out = [];
+  var take = function (want, allowHidden) {
+    for (var j = 0; j < streams.length; j++) {
+      if (used[j] || (!allowHidden && hidden(streams[j]))) continue;
+      if (want && langKey(probeLang(streams[j])) !== want) continue;
+      used[j] = true;
+      return streams[j];
+    }
+    return null;
+  };
+  for (var i = 0; i < tracks.length; i++) {
+    var want = langKey(tracks[i].language);
+    var pick = take(want, false) || (want ? take(want, true) : null);
+    if (!pick && !partial) return null;
+    out.push(pick);
+  }
+  return out;
+}
+
 function probeLang(s) {
   var l = (s && s.tags && s.tags.language) || '';
   return l && l !== 'und' ? l : '';
@@ -3018,7 +3797,7 @@ function probeTitle(s, kind, i) {
   var lang = probeLang(s);
   var name = LANG_NAMES[lang] || (lang ? lang.toUpperCase() : '');
   if (t && name && t.toLowerCase().indexOf(name.toLowerCase()) === -1) return t + ' · ' + name;
-  return t || name || ((kind === 'audio' ? 'Дорожка ' : 'Субтитры ') + (i + 1));
+  return t || name || ((kind === 'audio' ? 'Аудиодорожка ' : 'Субтитры ') + (i + 1));
 }
 
 /**
@@ -3026,8 +3805,8 @@ function probeTitle(s, kind, i) {
  * <video> отдал дорожки, конвейер прислал sourceInfo); уже подписанный список
  * (probed) не трогаем, новый список дорожек приходит без этой метки.
  */
-function applyWebosProbe() {
-  var streams = webosProbe.streams;
+function applyDirectProbe() {
+  var streams = directProbe.streams;
   if (!streams) return;
   var audio = [], subs = [];
   for (var i = 0; i < streams.length; i++) {
@@ -3058,32 +3837,106 @@ function applyWebosProbe() {
     diag.push('субтитры ' + currentSubTracks.length + '/' + subs.length + (s ? ' ✓' : ' ✗'));
   }
   // В «Об устройстве»: сколько дорожек у плеера / в файле и сошлось ли
-  if (diag.length) webosSubsDiag.probe = webosProbe.count + ' · ' + diag.join(', ');
+  if (diag.length) webosSubsDiag.probe = directProbe.count + ' · ' + diag.join(', ');
 }
 
-/** Спросить службу ffprobe о файле, который сейчас назначен <video> */
-function webosProbeStart(playURL) {
-  webosProbe.streams = null;
-  var gen = ++webosProbe.gen;
-  if (AppState.platform !== 'webos' || !lunaAvailable()) return;
-  var uri = playURL;
+/**
+ * Спросить ffprobe о файле, который сейчас назначен <video> («Полностью
+ * отключить транскодирование»). Не ответил никто — подписи остаются
+ * «Аудиодорожка N» и «Субтитры N». Подписи сервера — только когда поток идёт
+ * через сервер (там они из /api/file/info), здесь их нет.
+ *  - webOS: сначала своя служба ffprobe (ниже), CUB — если она не ответила;
+ *  - остальные платформы: сразу сторонний сервис ffprobe, тот же, что у плагина Lampa
+ *    «tracks» (cub.red/plugin/tracks): WebSocket, в адресе хэш раздачи и
+ *    номер файла, в ответ один JSON с streams. Файл он берёт из раздачи сам,
+ *    поэтому TorrServer может быть любым, хоть локальным. Со страницы по
+ *    https ws:// заблокирован — тогда просто нет подписей;
+ *  - webOS: ещё служба ffprobe приложения (ниже). Доменное имя ей не
+ *    разрешить, но с локальным TorrServer или TorrServer по IP она отвечает
+ *    и без стороннего сервиса.
+ */
+var DIRECT_PROBE_WS = 'ws://185.204.0.61:8080/';
+var DIRECT_PROBE_TIMEOUT_MS = 15000;
+// webOS: сколько ждать свою службу ffprobe, прежде чем спросить CUB
+var DIRECT_PROBE_LUNA_WAIT_MS = 8000;
+
+function directProbeStart() {
+  directProbe.streams = null;
+  directProbe.count = '';
+  var gen = ++directProbe.gen;
+  var hash = currentTimecodeData.hash, fileId = currentTimecodeData.fileId;
+  var done = function (streams, via) {
+    if (gen !== directProbe.gen || directProbe.streams || !streams || !streams.length) return;
+    directProbe.streams = streams;
+    directProbe.count = 'потоков: ' + streams.length + ' (' + via + ')';
+    webosSubsDiag.probe = directProbe.count;
+    directPlaybackDiag.probe = directProbe.count;
+    // Прямой файл не на webOS — список субтитров может собраться из ffprobe
+    if (AppState.transcodingFullOnOff && nativeSubState.mode !== 'webos' && AppState.platform !== 'webos' &&
+      AppState.currentScreen === 'player') refreshNativeSubtitles(getEl('video-player'));
+    else applyDirectProbe();
+  };
+  if (!hash || fileId === undefined || fileId === null) return;
+
+  // Сервис CUB: на webOS — запасной (после своей службы), иначе — сразу
+  var cubStarted = false;
+  var startCub = function () {
+    if (cubStarted || gen !== directProbe.gen || directProbe.streams || typeof WebSocket !== 'function') return;
+    cubStarted = true;
+    var socket = null, timer = null;
+    var finish = function () {
+      clearTimeout(timer);
+      try { if (socket) socket.close(); } catch (e) { }
+      socket = null;
+    };
+    directPlaybackDiag.probe = 'сервис: запрос…';
+    try {
+      socket = new WebSocket(DIRECT_PROBE_WS + '?' + hash + '&index=' + fileId);
+      socket.onmessage = function (event) {
+        var json = null;
+        try { json = JSON.parse(event.data); } catch (e) { }
+        finish();
+        if (!(json && json.streams && json.streams.length) && !directProbe.streams) directPlaybackDiag.probe = 'сервис: пустой ответ';
+        done(json && json.streams, 'сервис');
+      };
+      socket.onerror = function () {
+        finish();
+        if (!directProbe.streams) directPlaybackDiag.probe = 'сервис: ошибка соединения' + (location.protocol === 'https:' ? ' (страница по https)' : '');
+      };
+      timer = setTimeout(function () {
+        finish();
+        if (!directProbe.streams) directPlaybackDiag.probe = 'сервис: нет ответа за ' + (DIRECT_PROBE_TIMEOUT_MS / 1000) + ' с';
+      }, DIRECT_PROBE_TIMEOUT_MS);
+    } catch (e) { finish(); directPlaybackDiag.probe = 'сервис: ' + e.message; }
+  };
+
+  if (AppState.platform !== 'webos' || !lunaAvailable()) { startCub(); return; }
+  // Своя служба молчит — не ждём бесконечно, идём в CUB
+  setTimeout(startCub, DIRECT_PROBE_LUNA_WAIT_MS);
+  var playURL = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&play=play';
+  // localhost — 127.0.0.1: статическому ffprobe имена не разрешить даже
+  // localhost («Failed to resolve hostname localhost» на webOS 25 со
+  // встроенным TorrServer)
+  var uri = playURL.replace(/^(https?:\/\/)localhost(?=[:\/]|$)/i, '$1127.0.0.1');
   // Basic-авторизация TorrServer — в адрес: службе заголовки не передать
   if (AppState.authEnabled && AppState.authLogin) {
     uri = uri.replace(/^(https?:\/\/)/, '$1' + encodeURIComponent(AppState.authLogin) + ':' + encodeURIComponent(AppState.authPassword || '') + '@');
   }
   webosSubsDiag.probe = 'запрос…';
   lunaRequest('luna://com.torrstream.app.service', 'ffprobe', { uri: uri }, function (r) {
-    if (gen !== webosProbe.gen) return;
+    if (gen !== directProbe.gen) return;
     var parsed = null;
     try { parsed = JSON.parse(r.data || '{}'); } catch (e) { }
-    if (!parsed || !parsed.streams) { webosSubsDiag.probe = 'пустой ответ'; return; }
-    webosProbe.streams = parsed.streams;
-    webosProbe.count = 'потоков: ' + parsed.streams.length;
-    webosSubsDiag.probe = webosProbe.count;
-    applyWebosProbe();
+    if (!parsed || !parsed.streams || !parsed.streams.length) {
+      if (!directProbe.streams) webosSubsDiag.probe = 'служба: пустой ответ';
+      startCub();
+      return;
+    }
+    done(parsed.streams, 'служба');
   }, function (r) {
-    if (gen !== webosProbe.gen) return;
-    webosSubsDiag.probe = 'ошибка: ' + ((r && (r.errorText || r.errorCode)) || '?');
+    if (gen !== directProbe.gen || directProbe.streams) return;
+    webosSubsDiag.probe = 'служба: ошибка ' + ((r && (r.errorText || r.errorCode)) || '?');
+    startCub();
   }, true);
 }
 
@@ -3109,6 +3962,10 @@ function webosSubsStart(videoPlayer, staleId) {
     webosSubsDiag.waitedMs = waited;
     if (gen !== webosSubs.gen || AppState.currentScreen !== 'player' || waited > 30000) { webosSubsCancel(); return; }
     var id = videoPlayer.mediaId;
+    // webOS 25 до появления настоящего отдаёт строку-заглушку
+    // «<invalid mediaId>» — с ней subscribe отвечает ошибкой; ждём дальше,
+    // а в диагностике показываем, что видели
+    if (id && /^<|invalid/i.test(String(id))) { webosSubsDiag.mediaId = String(id) + ' (ждём)'; return; }
     // Прошлый mediaId принимаем, только если нового за 3 с так и не появилось:
     // конвейер может и переиспользовать его
     if (!id || (id === staleId && waited < 3000)) return;
@@ -3157,13 +4014,20 @@ function webosSubsReset() {
 // ==================== СУБТИТРЫ ПРЯМОГО ФАЙЛА ====================
 //
 // В режиме «Полностью отключить транскодирование» (и всегда на webOS) файл
-// играет сам <video>, и субтитры из MKV сервер не вшивает — их некому. Но
-// браузеры ТВ (Vidaa) отдают встроенные дорожки файла так же, как отдают
-// audioTracks: списком video.textTracks. Выбранную дорожку ставим в режим
-// 'hidden' — браузер грузит её текст и шлёт cuechange, но сам не рисует, —
-// а текст выводим своим блоком #native-subtitles: на ТВ встроенная отрисовка
-// бывает мелкой или её нет вовсе. Остальные дорожки — 'disabled'.
-var nativeSubState = { tracks: [], active: null, onCue: null, savedPref: -1, listening: false, mode: 'tracks' };
+// играет сам <video>, и субтитры из MKV сервер не вшивает — их некому, а
+// вытащить их отдельно нельзя: реплики разбросаны по всему файлу, пришлось бы
+// скачать раздачу целиком. Но медиаконвейер телевизора (Vidaa и др.) сам
+// разбирает контейнер и отдаёт встроенные дорожки списком video.textTracks —
+// так же, как звук списком audioTracks. Chrome и Edge на ПК встроенные
+// субтитры MKV так не отдают: там список пуст, «Нет субтитров» — честно.
+//
+// Как в Lampa (src/interaction/player/video.js, loaded): выбранной дорожке
+// mode = 'showing', остальным 'disabled', текст рисует сам браузер.
+// Раньше ставили 'hidden' и рисовали текст своим блоком по cuechange, но
+// конвейер телевизора реплики в режиме 'hidden' может и не присылать — тогда
+// дорожка выбрана, а на экране пусто. Размер текста — браузерный: растёт
+// с высотой видео. Названия дорожкам подписывает applyDirectProbe (выше).
+var nativeSubState = { tracks: [], savedPref: -1, listening: false, mode: 'tracks', waitTimer: null, snapTimer: null, fromProbe: false, tvIndex: -1 };
 
 function collectNativeTextTracks(videoPlayer) {
   var list = videoPlayer && videoPlayer.textTracks, out = [];
@@ -3176,91 +4040,108 @@ function collectNativeTextTracks(videoPlayer) {
   return out;
 }
 
-function nativeSubtitleBox() {
-  var box = getEl('native-subtitles');
-  if (!box) {
-    box = document.createElement('div');
-    box.id = 'native-subtitles';
-    box.className = 'native-subtitles';
-    var ps = getEl('player-screen');
-    (ps || document.body).appendChild(box);
-    // Панель управления открыта — поднимаем текст над ней, иначе он ложится на
-    // перемотку. Следим за её классом idle-hidden: панель показывают и прячут
-    // и player.js, и control.js, и таймер бездействия
-    var controls = getEl('controls-container');
-    var sync = function () {
-      var shown = !!controls && !controls.classList.contains('idle-hidden');
-      box.classList.toggle('native-subtitles-raised', shown);
-    };
-    if (controls && typeof MutationObserver === 'function') {
-      new MutationObserver(sync).observe(controls, { attributes: true, attributeFilter: ['class'] });
-    }
-    sync();
-  }
-  return box;
+/**
+ * Встроенная отрисовка кладёт текст к нижнему краю кадра — под открытой
+ * панелью управления он ложится на перемотку и тонет в её затемнении. Пока
+ * панель видна, у <video> класс cues-raised, и styles.css поднимает контейнер
+ * реплик над ней. Видимость панели — её класс idle-hidden: панель показывают и
+ * прячут и player.js, и control.js, и таймер бездействия.
+ */
+function watchCuesRaise(videoPlayer) {
+  var controls = getEl('controls-container');
+  if (!videoPlayer || !controls || videoPlayer._cuesRaiseWatched || typeof MutationObserver !== 'function') return;
+  videoPlayer._cuesRaiseWatched = true;
+  var sync = function () { videoPlayer.classList.toggle('cues-raised', !controls.classList.contains('idle-hidden')); };
+  new MutationObserver(sync).observe(controls, { attributes: true, attributeFilter: ['class'] });
+  sync();
 }
 
-// Текст реплики без разметки: теги WebVTT/SRT (<i>, <font>) и команды ASS ({\an8})
-function nativeCueText(cue) {
-  return String((cue && cue.text) || '')
-    .replace(/\{\\[^}]*\}/g, '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\\N/g, '\n')
-    .replace(/^\s+|\s+$/g, '');
-}
-
-function showNativeCues(track) {
-  var box = nativeSubtitleBox();
-  var lines = [];
-  var cues = track && track.activeCues;
-  if (cues) {
-    for (var i = 0; i < cues.length; i++) {
-      var t = nativeCueText(cues[i]);
-      if (t) lines.push(t);
-    }
-  }
-  box.textContent = lines.join('\n');
-  box.style.display = lines.length ? 'block' : 'none';
-}
-
+/**
+ * Включить дорожку по номеру — как плагин Lampa «tracks»: дорожку <video>
+ * ищем в момент выбора, а не по списку, собранному при запуске. Список
+ * субтитров может быть из ffprobe (refreshNativeSubtitles), а телевизор
+ * отдаёт textTracks с опозданием и не всегда шлёт addtrack. true — дорожка с
+ * таким номером у <video> есть и включена.
+ */
 function applyNativeSubtitle(index) {
-  if (nativeSubState.active && nativeSubState.onCue) {
-    nativeSubState.active.removeEventListener('cuechange', nativeSubState.onCue);
-  }
-  nativeSubState.active = null;
-  nativeSubState.onCue = null;
-  var tracks = nativeSubState.tracks;
+  var tracks = collectNativeTextTracks(getEl('video-player'));
+  nativeSubState.tracks = tracks;
+  var tv = nativeTrackForItem(index, tracks);
   for (var i = 0; i < tracks.length; i++) {
-    try { tracks[i].mode = (i === index) ? 'hidden' : 'disabled'; } catch (e) { }
+    try { tracks[i].mode = (i === tv) ? 'showing' : 'disabled'; } catch (e) { }
   }
-  var track = (index >= 0 && index < tracks.length) ? tracks[index] : null;
-  if (track) {
-    nativeSubState.active = track;
-    nativeSubState.onCue = function () { showNativeCues(track); };
-    track.addEventListener('cuechange', nativeSubState.onCue);
-  }
-  showNativeCues(track);
-  currentSubtitleTrack = track ? index : -1;
+  var total = Math.max(tracks.length, currentSubTracks ? currentSubTracks.length : 0);
+  currentSubtitleTrack = (index >= 0 && index < total) ? index : -1;
+  nativeSubState.tvIndex = tv;
+  return tv >= 0;
 }
 
-/** Список дорожек у <video> сменился (новый файл, дорожка дописалась) */
+/** Картинки (PGS, VobSub) часть телевизоров в textTracks не отдаёт */
+function isImageSubStream(s) { return !TEXT_SUB_CODECS[s.codec_name]; }
+
+/**
+ * Номер дорожки <video> для пункта списка. Список из дорожек <video> — тот же
+ * номер. Список из ffprobe — дорожку ищем по языку (matchProbeByLanguage):
+ * порядок у телевизора бывает не как в файле, и по одному номеру пункт
+ * «English» включал русскую дорожку. -1 — такой дорожки у <video> (пока) нет.
+ */
+function nativeTrackForItem(index, tracks) {
+  if (index < 0) return -1;
+  if (!nativeSubState.fromProbe) return index < tracks.length ? index : -1;
+  var probeSubs = directProbeSubs();
+  var map = matchProbeByLanguage(tracks, probeSubs, isImageSubStream, true);
+  for (var i = 0; i < map.length; i++) if (map[i] && map[i] === probeSubs[index]) return i;
+  return -1;
+}
+
+/** Субтитры файла по ответу ffprobe (directProbeStart); нет ответа — [] */
+function directProbeSubs() {
+  var streams = directProbe.streams || [], out = [];
+  for (var i = 0; i < streams.length; i++) if (streams[i].codec_type === 'subtitle') out.push(streams[i]);
+  return out;
+}
+
+/**
+ * Список дорожек у <video> сменился (новый файл, дорожка дописалась) или
+ * пришёл ответ ffprobe.
+ *
+ * Субтитров в файле по ffprobe больше, чем отдал <video>, — список берём из
+ * ffprobe, как плагин Lampa: номер пункта = номер дорожки субтитров в файле, а
+ * включает её applyNativeSubtitle по тому же номеру, когда телевизор её
+ * отдаст. Не на webOS: там список ведёт медиасервис, а textTracks пустые.
+ */
 function refreshNativeSubtitles(videoPlayer) {
   if (!AppState.transcodingFullOnOff) return;
   // На webOS список даёт медиасервис (webosSubsStart), textTracks там пустые
   if (nativeSubState.mode === 'webos') return;
+  updateDirectTrackDiag(videoPlayer);
   var tracks = collectNativeTextTracks(videoPlayer);
   nativeSubState.tracks = tracks;
-  currentSubTracks = tracks.map(function (t, i) {
-    return { title: t.label || ('Субтитры ' + (i + 1)), language: t.language || 'und', format: '' };
-  });
+  var probeSubs = AppState.platform !== 'webos' ? directProbeSubs() : [];
+  nativeSubState.fromProbe = probeSubs.length > tracks.length;
+  if (nativeSubState.fromProbe) {
+    currentSubTracks = probeSubs.map(function (st, k) {
+      var d = st.disposition || {};
+      return { title: probeTitle(st, 'subtitle', k), language: probeLang(st) || 'und', format: (st.codec_name || '').toUpperCase(), default: !!d.default, forced: !!d.forced, probed: true };
+    });
+  } else {
+    currentSubTracks = tracks.map(function (t, i) {
+      return { title: t.label || ('Субтитры ' + (i + 1)), language: t.language || 'und', format: '' };
+    });
+  }
   // Уже выбранная в этом сеансе (соседняя серия) или сохранённая для файла
   var want = currentSubtitleTrack >= 0 ? currentSubtitleTrack : nativeSubState.savedPref;
-  applyNativeSubtitle(want >= 0 && want < tracks.length ? want : -1);
+  want = want >= 0 && want < currentSubTracks.length ? want : -1;
+  // Сохранённой дорожки у <video> пока нет (список из ffprobe) — дождёмся её
+  if (!applyNativeSubtitle(want) && want >= 0) waitNativeSubtitle(want);
   renderSubtitleTracks();
+  // Подписи из ffprobe списку от <video> и дорожкам звука
+  applyDirectProbe();
 }
 
 /** Слушаем появление дорожек: часть браузеров отдаёт их позже loadedmetadata */
 function listenNativeTextTracks(videoPlayer) {
+  watchCuesRaise(videoPlayer);
   if (nativeSubState.listening || !videoPlayer || !videoPlayer.textTracks ||
     typeof videoPlayer.textTracks.addEventListener !== 'function') return;
   nativeSubState.listening = true;
@@ -3271,13 +4152,54 @@ function listenNativeTextTracks(videoPlayer) {
   videoPlayer.textTracks.addEventListener('removetrack', onChange);
 }
 
+/**
+ * Выбрали пункт, а у <video> такой дорожки ещё нет: addtrack приходит не
+ * везде, поэтому полминуты раз в секунду проверяем сами и включаем, как
+ * только появится
+ */
+var NATIVE_SUB_WAIT_MS = 30000;
+function waitNativeSubtitle(index) {
+  clearInterval(nativeSubState.waitTimer);
+  var started = Date.now();
+  nativeSubState.waitTimer = setInterval(function () {
+    var gone = AppState.currentScreen !== 'player' || currentSubtitleTrack !== index;
+    if (gone || Date.now() - started > NATIVE_SUB_WAIT_MS) { clearInterval(nativeSubState.waitTimer); return; }
+    if (applyNativeSubtitle(index)) {
+      clearInterval(nativeSubState.waitTimer);
+      updateDirectTrackDiag(getEl('video-player'));
+    }
+  }, 1000);
+}
+
+/**
+ * Что с дорожками через 3 с после выбора — в «Об устройстве»: какой пункт
+ * выбран, какую дорожку <video> он включил, и по каждой дорожке язык, режим,
+ * число реплик и текущий текст. По снимку видно, совпадает ли язык выбранного
+ * пункта с тем, что телевизор показывает на самом деле.
+ */
+function snapshotNativeSubs() {
+  var tracks = collectNativeTextTracks(getEl('video-player'));
+  var item = currentSubTracks && currentSubTracks[currentSubtitleTrack];
+  var parts = [];
+  for (var i = 0; i < tracks.length; i++) {
+    var t = tracks[i], cues = null, active = null;
+    try { cues = t.cues ? t.cues.length : null; active = t.activeCues; } catch (e) { }
+    var txt = active && active.length ? String(active[0].text || '').replace(/\s+/g, ' ').slice(0, 24) : '';
+    parts.push((i + 1) + ' ' + (t.language || '?') + (t.label ? ' «' + t.label + '»' : '') + ' ' + t.mode +
+      (cues !== null ? ' реплик ' + cues : '') + (txt ? ' «' + txt + '»' : ''));
+  }
+  directPlaybackDiag.subs = 'пункт ' + (currentSubtitleTrack + 1) + (item ? ' «' + item.title + '»' : '') +
+    ' → дорожка ' + (nativeSubState.tvIndex >= 0 ? nativeSubState.tvIndex + 1 : 'нет') +
+    (nativeSubState.fromProbe ? ' (список из ffprobe)' : '') + ' | ' + parts.join(' | ');
+}
+
 /** Новый файл или выход из плеера: снять подписку и спрятать текст */
 function resetNativeSubtitles() {
   webosSubsReset();
+  clearInterval(nativeSubState.waitTimer);
+  clearTimeout(nativeSubState.snapTimer);
   applyNativeSubtitle(-1);
   nativeSubState.tracks = [];
-  var box = getEl('native-subtitles');
-  if (box) { box.textContent = ''; box.style.display = 'none'; }
 }
 
 function switchNativeSubtitleTrack(index) {
@@ -3285,7 +4207,9 @@ function switchNativeSubtitleTrack(index) {
     webosSetSubtitle(index);
     currentSubtitleTrack = index >= 0 ? index : -1;
   } else {
-    applyNativeSubtitle(index);
+    if (!applyNativeSubtitle(index) && index >= 0) waitNativeSubtitle(index);
+    clearTimeout(nativeSubState.snapTimer);
+    nativeSubState.snapTimer = setTimeout(snapshotNativeSubs, 3000);
   }
   if (currentTimecodeData.hash && currentTimecodeData.fileId) {
     saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, currentSubtitleTrack);
@@ -3297,20 +4221,15 @@ function switchNativeSubtitleTrack(index) {
 function toggleAudioPanel() { return togglePlayerPanel('audio'); }
 
 function setupAudioButton() {
-  var audioBtn = getEl('audio-btn');
+  // Своей кнопки на панели управления у аудио нет — открывается из меню
+  // «Аудио и субтитры» (setupTracksButton) или красной кнопкой пульта
   var closeAudioBtn = getEl('close-audio');
   var audioPanel = getEl('audio-panel');
 
-  if (!audioBtn || !closeAudioBtn || !audioPanel) return;
+  if (!closeAudioBtn || !audioPanel) return;
 
   // Делегирование кликов по списку аудиодорожек
   setupAudioListDelegation();
-
-  audioBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    toggleAudioPanel();
-    resetMouseIdleTimer();
-  });
 
   closeAudioBtn.addEventListener('click', function () {
     setPlayerPanel('audio', false);
@@ -3446,10 +4365,21 @@ async function switchSubtitleTrack(trackIndex) {
   if (trackIndex === currentSubtitleTrack) { toggleSubtitlesPanel(); return; }
   // Прямой файл: дорожка уже в <video>, поток не перезапускаем
   if (AppState.transcodingFullOnOff) { switchNativeSubtitleTrack(trackIndex); return; }
+  // Текстовые субтитры уже лежат на сервере — показываем сами, поток не трогаем
+  if (AppState.serverTracks && (trackIndex === -1 || serverSubEntry(trackIndex) || isTextSubtitle(trackIndex))) {
+    var subInStream = trackIndex === -1 || !!serverSubEntry(trackIndex);
+    currentSubtitleTrack = trackIndex;
+    if (trackIndex === -1) ServerSubs.stop(); else if (subInStream) ServerSubs.select(trackIndex);
+    if (currentTimecodeData.hash && currentTimecodeData.fileId) saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
+    renderSubtitleTracks();
+    toggleSubtitlesPanel();
+    // Текстовых субтитров нет в окне — новое поколение с центром на них
+    if (!subInStream) restartServerGeneration('субтитров');
+    return;
+  }
   thisisseek = false; await saveTimecodeToServer();
   if (currentTimecodeData.hash && currentTimecodeData.fileId) await saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
-  var subtitlesPanel = getEl('subtitles-panel'); var subtitlesBtn = getEl('subtitles-btn');
-  if (subtitlesPanel) { subtitlesPanel.classList.add('hidden'); if (subtitlesBtn) subtitlesBtn.classList.remove('active'); }
+  setPlayerPanel('subtitles', false);
   var videoPlayer = getEl('video-player'); var currentTime = videoPlayer ? (videoPlayer.currentTime + AppState.seekOffset) : 0;
   getEl('playback-overlay').classList.add('active'); document.querySelector('.playback-text').textContent = 'Переключение субтитров...';
   try {
@@ -3466,20 +4396,14 @@ async function switchSubtitleTrack(trackIndex) {
 function toggleSubtitlesPanel() { return togglePlayerPanel('subtitles'); }
 
 function setupSubtitlesButton() {
-  var subtitlesBtn = getEl('subtitles-btn');
+  // Открываются из меню «Аудио и субтитры» (setupTracksButton)
   var closeSubtitlesBtn = getEl('close-subtitles');
   var subtitlesPanel = getEl('subtitles-panel');
 
-  if (!subtitlesBtn || !closeSubtitlesBtn || !subtitlesPanel) return;
+  if (!closeSubtitlesBtn || !subtitlesPanel) return;
 
   // Делегирование кликов по списку субтитров
   setupSubtitlesListDelegation();
-
-  subtitlesBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    toggleSubtitlesPanel();
-    resetMouseIdleTimer();
-  });
 
   closeSubtitlesBtn.addEventListener('click', function () {
     setPlayerPanel('subtitles', false);

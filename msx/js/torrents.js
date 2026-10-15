@@ -754,8 +754,69 @@ var TS_DEVICE_FLAG = 'tsDeviceServer';
 var TS_DEVICE_BACKUP = 'tsDeviceBackup';
 var TS_DEVICE_URL = 'http://localhost:8090';
 
+/**
+ * Адрес TorrServer на этом устройстве. На webOS встроенный поднимается на
+ * 18090, если 8090 занят (WebOSTorrServer: run.sh), — адрес даёт мост.
+ */
+function deviceTorrServerUrl() {
+    var b = deviceTorrServerBridge();
+    if (b && typeof b.url === 'function') {
+        try { return b.url() || TS_DEVICE_URL; } catch (e) { }
+    }
+    return TS_DEVICE_URL;
+}
+
 function isDeviceTorrServer() {
     try { return localStorage.getItem(TS_DEVICE_FLAG) === '1'; } catch (e) { return false; }
+}
+
+/**
+ * webOS с Chrome 94+: встроенный TorrServer на localhost доступен только с
+ * https-страницы (Private Network Access), а удалённый http TorrServer —
+ * только с http. Включили встроенный — переезжаем на https этого же сервера,
+ * выключили — обратно на http. См. ранний скрипт в index.html: он принимает
+ * переданный localStorage и помнит, где основной экземпляр (webosScheme).
+ */
+function webosNeedsSchemeSwitch() {
+    if (!(window.PalmSystem || window.webOSSystem)) return false;
+    var m = /Chrome\/(\d+)/.exec(navigator.userAgent || '');
+    return !!m && parseInt(m[1], 10) >= 94;
+}
+
+/** Переехать на http(s) этого же сервера вместе с localStorage */
+function webosSchemeSwitch(target) {
+    if (!webosNeedsSchemeSwitch()) return;
+    var cur = location.protocol === 'https:' ? 'https' : 'http';
+    if (cur === target) return;
+    var go = function () {
+        var data = {};
+        try {
+            for (var i = 0; i < localStorage.length; i++) {
+                var k = localStorage.key(i);
+                data[k] = localStorage.getItem(k);
+            }
+        } catch (e) { }
+        data.webosScheme = target;
+        try { localStorage.setItem('webosScheme', target); } catch (e) { }
+        location.replace(target + '://' + location.host + location.pathname + location.search +
+            '#lsxfer=' + encodeURIComponent(JSON.stringify(data)));
+    };
+    // На http — сразу; на https — только если он отвечает (иначе остаёмся,
+    // а не уводим на страницу ошибки)
+    if (target === 'http') { go(); return; }
+    var x = new XMLHttpRequest();
+    try {
+        x.open('GET', target + '://' + location.host + '/api/version?_=' + Date.now(), true);
+        x.timeout = 5000;
+        x.onload = function () { if (x.status === 200) go(); };
+        x.send();
+    } catch (e) { }
+}
+
+/** Схема под переключатель: встроенный включён — https, выключен — http */
+function webosSyncScheme() {
+    if (!webosNeedsSchemeSwitch()) return;
+    webosSchemeSwitch(isDeviceTorrServer() ? 'https' : 'http');
 }
 
 /** Поле адреса и «Свой TorrServer» под включённым переключателем не меняются */
@@ -809,10 +870,17 @@ var WebOSTorrServer = (function () {
         runningVersion: '', downloading: false, progress: 0, error: '', latest: '',
         unsupportedText: '', note: '', matrix: false, matrixAutostart: false,
         canReplace: false,   // работает чужой TorrServer, а root есть — можно заменить встроенным
-        ask: ''              // вопрос «убрать ли matrix из автозапуска», ждём ответа
+        ask: '',             // вопрос «убрать ли matrix из автозапуска», ждём ответа
+        starting: false,     // нажали «Запустить» — ждём, отзовётся ли он на 8090
+        port: '8090'         // на каком порту поднялся встроенный (run.sh пишет в port)
     };
-    var pending = null;      // что сделать после ответа на вопрос
-    var asked = false;       // в этом сеансе уже спрашивали
+    var pendingYes = null;   // что сделать после ответа на вопрос (st.ask)
+    var pendingNo = null;
+    var asked = false;       // про автозапуск matrix в этом сеансе уже спрашивали
+    // «Нет, использовать его» на вопрос о чужом TorrServer — помним между
+    // запусками, чтобы не спрашивать каждый раз; кнопка «Остановить его и
+    // запустить встроенный» в панели остаётся
+    var KEEP_FOREIGN_KEY = 'tsDeviceKeepForeign';
     var release = null;        // {tag, url, size} последнего релиза
     var refreshing = false;
     var afterInstall = '';     // 'start' — запустить, когда скачается
@@ -881,11 +949,12 @@ var WebOSTorrServer = (function () {
         });
     }
 
-    function echo(done) {
+    /** Версия TorrServer на порту port (по умолчанию 8090) или '' */
+    function echo(done, port) {
         var x = new XMLHttpRequest(), fin = false;
         var finish = function (v) { if (!fin) { fin = true; done(v); } };
         try {
-            x.open('GET', 'http://127.0.0.1:8090/echo?_=' + Date.now(), true);
+            x.open('GET', 'http://127.0.0.1:' + (port || '8090') + '/echo?_=' + Date.now(), true);
             x.timeout = 1500;
             x.onload = function () { finish(x.status === 200 ? String(x.responseText || '').trim().slice(0, 40) : ''); };
             x.onerror = x.ontimeout = function () { finish(''); };
@@ -946,7 +1015,8 @@ var WebOSTorrServer = (function () {
             '[ -f pid ] && kill -0 $(cat pid) 2>/dev/null && echo R; ' +
             '[ -f dl ] && echo D; ' +
             '[ -f TorrServer.part ] && echo P:$(wc -c < TorrServer.part); ' +
-            '[ -f err ] && sed "s/^/E:/" err | head -1; true';
+            '[ -f err ] && sed "s/^/E:/" err | head -1; ' +
+            '[ -f port ] && sed "s/^/PORT:/" port | head -1; true';
         exec(cmd, function (err, out) {
             if (err) {
                 refreshing = false;
@@ -971,17 +1041,21 @@ var WebOSTorrServer = (function () {
             st.error = val('E:');
             st.matrix = has('M');
             st.matrixAutostart = has('MA');
+            st.port = val('PORT:') || '8090';
+            // Свой жив — спрашиваем его порт; иначе — 8090, где бывает чужой
             echo(function (ver) {
                 refreshing = false;
                 st.running = !!ver;
                 st.runningVersion = ver;
                 st.canReplace = !!ver && !st.own;
+                // Поднялся позже, чем ждал verifyStart, — его ошибка уже неправда
+                if (ver && st.own && st.error) { st.error = ''; exec('rm -f ' + DIR + '/err', function () { }); }
                 // Скачалось — запускаем (при обновлении старый процесс уже остановлен)
                 if (wasDownloading && !st.downloading && afterInstall && st.installed && !st.error) {
                     afterInstall = '';
                     start();
                 }
-            });
+            }, st.own ? st.port : '8090');
         });
     }
 
@@ -1000,7 +1074,8 @@ var WebOSTorrServer = (function () {
             // Обновление поверх работающего: наш процесс останавливаем, файл
             // заменяем целиком (mv), после загрузки refresh запустит заново
             var cmd = 'mkdir -p ' + DIR + ' && cd ' + DIR + ' && rm -f err && touch dl && ' +
-                '( [ -f pid ] && kill $(cat pid) 2>/dev/null; ' +
+                '( [ -f pid ] && kill -0 $(cat pid) 2>/dev/null && echo "[TorrStream] $(date "+%F %T") остановлен для обновления" >> ts.log; ' +
+                '[ -f pid ] && kill $(cat pid) 2>/dev/null; ' +
                 '( curl -fsSL -o TorrServer.part "' + rel.url + '" || wget -q -O TorrServer.part "' + rel.url + '" ) ' +
                 '&& chmod +x TorrServer.part && mv -f TorrServer.part TorrServer && echo "' + rel.tag + '" > version ' +
                 '|| { echo "не удалось скачать TorrServer" > err; rm -f TorrServer.part; }; rm -f dl ) ' +
@@ -1019,25 +1094,56 @@ var WebOSTorrServer = (function () {
         exec(cmd, function () { st.matrixAutostart = false; done(); });
     }
 
+    function keepForeign() {
+        try { return localStorage.getItem(KEEP_FOREIGN_KEY) === '1'; } catch (e) { return false; }
+    }
+
+    function setKeepForeign(on) {
+        try { if (on) localStorage.setItem(KEEP_FOREIGN_KEY, '1'); else localStorage.removeItem(KEEP_FOREIGN_KEY); } catch (e) { }
+    }
+
+    /** Вопрос в панели: текст, подписи двух кнопок и что делать по каждой */
+    function ask(text, yesLabel, noLabel, onYes, onNo) {
+        st.ask = text;
+        st.askYes = yesLabel;
+        st.askNo = noLabel;
+        pendingYes = onYes;
+        pendingNo = onNo;
+    }
+
+    function answer(yes) {
+        st.ask = '';
+        var f = yes ? pendingYes : pendingNo;
+        pendingYes = pendingNo = null;
+        if (f) f();
+    }
+
     /**
      * Перед запуском встроенного: matrix в автозапуске — спрашиваем, убрать ли
      * его оттуда. true — вопрос задан, продолжит answer().
      */
     function askAutostart(next) {
         if (asked || !st.matrix || !st.matrixAutostart) return false;
-        st.ask = 'TorrServer из приложения torrserv.matrix.app запускается при включении телевизора. ' +
-            'Убрать его из автозапуска? Если оставить, он может занять порт раньше встроенного';
-        pending = next;
+        asked = true;
+        ask('TorrServer из приложения torrserv.matrix.app запускается при включении телевизора. ' +
+            'Убрать его из автозапуска? Если оставить, он может занять порт раньше встроенного',
+            'Убрать из автозапуска', 'Оставить в автозапуске',
+            function () { disableMatrixAutostart(next); }, next);
         return true;
     }
 
-    function answer(remove) {
-        asked = true;
-        st.ask = '';
-        var next = pending;
-        pending = null;
-        if (!next) return;
-        if (remove) disableMatrixAutostart(next); else next();
+    /**
+     * Кто отвечает на 8090: cb(null) — никто, cb({ver, own}) — own, если это
+     * наш процесс (его pid). Своё st.own для этого не годится: при запуске
+     * приложения refresh ещё мог не успеть его выставить.
+     */
+    function whoRuns(cb) {
+        exec('[ -f ' + DIR + '/pid ] && kill -0 $(cat ' + DIR + '/pid) 2>/dev/null && echo R; true', function (err, out) {
+            if (!err && String(out).indexOf('R') !== -1) { cb({ ver: st.version, own: true }); return; }
+            echo(function (ver) {
+                cb(ver ? { ver: ver, own: false, noRoot: !!err } : null);
+            });
+        });
     }
 
     /** Остановить работающий на 8090 чужой TorrServer (matrix или любой другой) */
@@ -1045,46 +1151,149 @@ var WebOSTorrServer = (function () {
         // matrix — по имени процесса; любой другой — по процессу на порту 8090
         var cmd = 'pidof torrserver > /dev/null 2>&1 && { killall torrserver 2>/dev/null || kill $(pidof torrserver); }; ' +
             'P=$(netstat -tlnp 2>/dev/null | grep ":8090 " | sed -n "s#.* \\([0-9][0-9]*\\)/.*#\\1#p" | head -1); ' +
-            '[ -n "$P" ] && [ "$P" != "$(cat ' + DIR + '/pid 2>/dev/null)" ] && kill $P; true';
+            '[ -n "$P" ] && [ "$P" != "$(cat ' + DIR + '/pid 2>/dev/null)" ] && { echo "[TorrStream] $(date "+%F %T") остановлен чужой TorrServer на 8090 (pid $P)" >> ' + DIR + '/ts.log; kill $P; }; true';
         exec(cmd, function () { setTimeout(done, 1500); });   // порт освобождается не сразу
     }
 
     /** «Остановить его и запустить встроенный» */
     function replace() {
+        setKeepForeign(false);
         var go = function () {
             stopForeign(function () { if (st.installed) startNow(); else install(); });
         };
         if (!askAutostart(go)) go();
     }
 
+    /**
+     * «Запустить» — и сам запуск при включении переключателя и старте
+     * приложения. Сначала смотрим, кто уже на 8090: чужой TorrServer (например
+     * torrserv.matrix.app) — спрашиваем, заменить ли его встроенным; «нет» —
+     * пользуемся им. Раньше встроенный запускался сразу, не глядя на чужой.
+     */
     function start() {
-        if (askAutostart(startNow)) return;
-        startNow();
+        whoRuns(function (r) {
+            if (r && r.own) { refresh(); return; }
+            if (r) {
+                // Без root заменить нечем — пользуемся тем, что работает
+                if (r.noRoot || keepForeign() || st.ask) { refresh(); return; }
+                ask('На устройстве уже работает TorrServer ' + r.ver +
+                    (st.matrix ? ' из приложения torrserv.matrix.app' : '') +
+                    '. Остановить его и запустить встроенный?',
+                    'Остановить и запустить встроенный', 'Нет, использовать его',
+                    replace,
+                    function () { setKeepForeign(true); refresh(); });
+                return;
+            }
+            if (askAutostart(startNow)) return;
+            startNow();
+        });
     }
 
     function startNow() {
         // На 8090 уже кто-то есть (свой или чужой TorrServer) — вторую копию не поднимаем
         echo(function (ver) {
             if (ver) { refresh(); return; }
+            // run.sh — сам запуск. Первым делом уходит в корневую cgroup: на
+            // webOS с systemd (webOS 22+) команда Homebrew Channel выполняется
+            // внутри его службы, и когда служба засыпает, systemd гасит ВСЮ её
+            // группу процессов — TorrServer получал SIGTERM («Server stopped
+            // gracefully») сразу после запуска, вместе с обёрткой. Дети
+            // наследуют группу, поэтому переносим саму обёртку до запуска.
+            // pid — самого TorrServer (его гасит «Остановить»); когда он
+            // выходит, в журнал дописывается код (137 — убила система).
+            var run = [
+                '#!/bin/sh',
+                '# TorrStream: запуск TorrServer вне группы процессов службы',
+                'DIR=' + DIR,
+                // Журнал — в режиме дозаписи: остановки из приложения дописывают
+                // в него свою отметку, а открытый с начала файл её затирал бы
+                ': > $DIR/ts.log; exec >> $DIR/ts.log 2>&1 < /dev/null',
+                'CG=/sys/fs/cgroup',
+                'if [ -f $CG/cgroup.controllers ]; then echo $$ > $CG/cgroup.procs; else for f in $CG/*/cgroup.procs; do echo $$ > $f; done; fi 2>/dev/null',
+                // Первой строкой журнала — как запущен и в какой группе оказался:
+                // по ней видно, ушёл ли он из группы службы Homebrew Channel
+                'echo "[TorrStream] $(date "+%F %T") запуск: ${TS_LAUNCH:-nohup}; cgroup: $(head -n 1 /proc/$$/cgroup 2>/dev/null)"',
+                'cd $DIR || exit 0',
+                'export GODEBUG=madvdontneed=1',
+                // 8090 бывает занят не TorrServer (на /echo не отвечает) —
+                // тогда 18090; приложение узнаёт порт из файла port
+                'run() { echo $1 > $DIR/port; ./TorrServer -p $1 -d $DIR & echo $! > $DIR/pid; wait $!; }',
+                'PORT=8090',
+                'netstat -tln 2>/dev/null | grep -q ":8090 " && { echo "[TorrStream] порт 8090 занят — запускаю на 18090"; PORT=18090; }',
+                'run $PORT; CODE=$?',
+                'if [ $PORT = 8090 ] && grep -q "8090: bind" $DIR/ts.log; then echo "[TorrStream] порт 8090 занят — пробую 18090"; run 18090; CODE=$?; fi',
+                'echo "[TorrStream] $(date "+%F %T") TorrServer завершился, код $CODE"'
+            ];
+            // systemd-run (webOS с systemd) запускает run.sh отдельной службой
+            // самого systemd — её не гасят вместе со службой Homebrew Channel,
+            // так же «снаружи» работает нативное приложение torrserv.matrix.app.
+            // Нет systemd-run или он не сработал — по-старому, setsid + nohup
             var script = [
                 '#!/bin/sh',
                 '# TorrStream: встроенный TorrServer (автозапуск Homebrew Channel)',
                 'DIR=' + DIR,
-                'curl -s -m 3 http://127.0.0.1:8090/echo > /dev/null 2>&1 && exit 0',
+                '[ -f $DIR/pid ] && kill -0 $(cat $DIR/pid) 2>/dev/null && exit 0',
+                'curl -sf -m 3 http://127.0.0.1:8090/echo > /dev/null 2>&1 && exit 0',
                 'cd $DIR || exit 0',
-                'GODEBUG=madvdontneed=1 nohup ./TorrServer -p 8090 -d $DIR > $DIR/ts.log 2>&1 < /dev/null &',
-                'echo $! > $DIR/pid'
+                'if command -v systemd-run > /dev/null 2>&1; then systemctl reset-failed torrstream-torrserver > /dev/null 2>&1; systemd-run --unit=torrstream-torrserver --setenv=TS_LAUNCH=systemd-run /bin/sh $DIR/run.sh > $DIR/launch.log 2>&1 && exit 0; fi',
+                '$(command -v setsid) nohup sh $DIR/run.sh > /dev/null 2>&1 < /dev/null &'
             ];
-            var cmd = 'cd ' + DIR + ' && printf "%s\\n" ' + script.map(function (l) { return "'" + l + "'"; }).join(' ') +
-                ' > autostart.sh && chmod +x autostart.sh && mkdir -p /var/lib/webosbrew/init.d && ' +
+            var lines = function (list) { return list.map(function (l) { return "'" + l + "'"; }).join(' '); };
+            var cmd = 'cd ' + DIR + ' && rm -f err && ' +
+                'printf "%s\\n" ' + lines(run) + ' > run.sh && chmod +x run.sh && ' +
+                'printf "%s\\n" ' + lines(script) + ' > autostart.sh && chmod +x autostart.sh && ' +
+                'mkdir -p /var/lib/webosbrew/init.d && ' +
                 'ln -sf ' + DIR + '/autostart.sh ' + INIT + ' && sh ' + DIR + '/autostart.sh';
-            exec(cmd, function (err) { if (err) st.error = String(err); setTimeout(refresh, 1500); });
+            st.error = '';
+            st.starting = true;
+            exec(cmd, function (err) {
+                if (err) { st.starting = false; st.error = String(err); setTimeout(refresh, 300); return; }
+                verifyStart(0);
+            });
         });
+    }
+
+    /**
+     * После «Запустить»: ждём ответа на 8090 (до ~15 с — первый запуск создаёт
+     * базу). Не отозвался — выясняем почему и пишем причину в err: её
+     * показывает панель («Ошибка: …»). Раньше кнопка молча ничего не делала.
+     */
+    var START_CHECKS = 10, START_CHECK_MS = 1500;
+
+    function verifyStart(n) {
+        exec('cat ' + DIR + '/port 2>/dev/null; true', function (err, out) {
+            var port = String(out || '').trim() || '8090';
+            echo(function (ver) {
+                if (ver) { st.starting = false; st.port = port; refresh(); return; }
+                // Процесс уже умер (refresh не видит его pid) — ждать дальше нечего
+                var dead = n >= 2 && !st.own;
+                if (n < START_CHECKS && !dead) { setTimeout(function () { verifyStart(n + 1); }, START_CHECK_MS); return; }
+                diagnoseStart();
+            }, port);
+        });
+    }
+
+    function diagnoseStart() {
+        // Сначала то, что мешает запуститься вовсе, потом — что осталось в
+        // журнале самого TorrServer (ошибка exec у nohup тоже попадает туда)
+        var cmd = 'cd ' + DIR + ' 2>/dev/null || exit 0; R=""; ' +
+            '[ -f TorrServer ] || R="нет файла TorrServer — скачайте его заново"; ' +
+            '[ -z "$R" ] && [ ! -x TorrServer ] && R="у файла TorrServer нет права на запуск"; ' +
+            '[ -z "$R" ] && grep " /media/developer " /proc/mounts | grep -q noexec && R="раздел /media/developer подключён без права запуска (noexec)"; ' +
+            'if [ -f pid ] && kill -0 $(cat pid) 2>/dev/null; then S="процесс работает, но не отвечает на порту $(cat port 2>/dev/null || echo 8090)"; ' +
+            'else S="процесс сразу завершился"; fi; ' +
+            'K=""; grep -q "код 137" ts.log 2>/dev/null && K=" (его убила система — нехватка памяти или ограничения службы)"; ' +
+            'grep -q "код 0$" ts.log 2>/dev/null && K=" (его штатно остановили — сигнал завершения)"; ' +
+            'L=$(grep -v "^[[:space:]]*$" ts.log 2>/dev/null | tail -n 3 | cut -c1-160 | tr "\\n" "|" | sed "s/|$//; s/|/ | /g"); ' +
+            'F=$(grep -m 1 "TorrStream. запуск" ts.log 2>/dev/null | cut -c1-160); ' +
+            'echo "TorrServer не запустился: ${R:-$S}$K${L:+. Журнал: $L}${F:+. $F} (процессор $(uname -m))" > err';
+        exec(cmd, function () { st.starting = false; refresh(); });
     }
 
     function stop() {
         // Как на Android: остановка снимает и автозапуск
-        exec('[ -f ' + DIR + '/pid ] && kill $(cat ' + DIR + '/pid) 2>/dev/null; rm -f ' + DIR + '/pid ' + INIT + '; true',
+        exec('[ -f ' + DIR + '/pid ] && kill -0 $(cat ' + DIR + '/pid) 2>/dev/null && echo "[TorrStream] $(date "+%F %T") остановлен из приложения (кнопка «Остановить» или выключен переключатель)" >> ' + DIR + '/ts.log; ' +
+            '[ -f ' + DIR + '/pid ] && kill $(cat ' + DIR + '/pid) 2>/dev/null; rm -f ' + DIR + '/pid ' + INIT + '; true',
             function () { setTimeout(refresh, 800); });
     }
 
@@ -1093,7 +1302,11 @@ var WebOSTorrServer = (function () {
     return {
         enabled: enabled, status: status, install: install, start: start, stop: stop,
         checkUpdate: checkUpdate, refresh: refresh, replace: replace,
-        answerRemove: function () { answer(true); }, answerKeep: function () { answer(false); }
+        // Адрес: свой работает — на его порту; иначе 8090 (там и чужой)
+        url: function () { return 'http://localhost:' + (st.own ? st.port : '8090'); },
+        answerRemove: function () { answer(true); }, answerKeep: function () { answer(false); },
+        // Ответ на вопрос в панели (st.ask): «да» — левая кнопка, «нет» — правая
+        answerYes: function () { answer(true); }, answerNo: function () { answer(false); }
     };
 })();
 window.WebOSTorrServer = WebOSTorrServer;
@@ -1125,12 +1338,16 @@ function setupDeviceTorrServerToggle() {
 
     box.checked = isDeviceTorrServer();
     lockDeviceTorrServerFields(box.checked);
+    webosSyncScheme();
     // Адрес в полях мог прийти старый (настройки до обновления) — поправим
-    if (box.checked && getEl('torrserver-url').value.trim() !== TS_DEVICE_URL) {
-        getEl('torrserver-url').value = TS_DEVICE_URL;
+    if (box.checked && getEl('torrserver-url').value.trim() !== deviceTorrServerUrl()) {
+        getEl('torrserver-url').value = deviceTorrServerUrl();
     }
 
     box.addEventListener('change', function () {
+        // webOS: включили — на https, выключили — на http (после того, как
+        // обработчик ниже сохранит настройки)
+        setTimeout(webosSyncScheme, 300);
         var urlInput = getEl('torrserver-url');
         if (box.checked) {
             try {
@@ -1142,7 +1359,7 @@ function setupDeviceTorrServerToggle() {
                 localStorage.setItem(TS_LOCAL_FLAG, '1');
             } catch (e) { }
             if (localBox) localBox.checked = true;
-            urlInput.value = TS_DEVICE_URL;
+            urlInput.value = deviceTorrServerUrl();
             syncHttpsToggle();
             lockDeviceTorrServerFields(true);
             try { localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig())); } catch (e) { }
@@ -1199,22 +1416,38 @@ var deviceTorrServerPanel = (function () {
         if (el) el.hidden = !on;
     }
 
+    /**
+     * Встроенный поднялся на другом порту (на webOS — 18090, если 8090 занят)
+     * — адрес в поле и в настройках этого устройства за ним
+     */
+    function syncDeviceUrl() {
+        if (!isDeviceTorrServer()) return;
+        var urlInput = getEl('torrserver-url');
+        var url = deviceTorrServerUrl();
+        if (!urlInput || urlInput.value.trim() === url) return;
+        urlInput.value = url;
+        try { localStorage.setItem(TS_LOCAL_CONFIG, JSON.stringify(torrServerFieldsConfig())); } catch (e) { }
+        checkServer(true);
+    }
+
     function render(st) {
+        syncDeviceUrl();
         var text;
         if (st.ask) text = st.ask;
         else if (!st.supported) text = st.unsupportedText || 'Процессор этого устройства TorrServer не поддерживает';
         else if (st.downloading) text = 'Скачиваю TorrServer… ' + (st.progress || 0) + '%';
+        else if (st.starting && !st.running) text = 'Запускаю TorrServer…';
         else if (st.running && st.own) text = 'Работает встроенный TorrServer ' + (st.version || '');
         else if (st.running) text = 'На устройстве уже работает TorrServer ' + (st.runningVersion || '') + ' — используется он';
         else if (st.installed) text = 'TorrServer ' + (st.version || '') + ' установлен, но не запущен';
         else text = 'TorrServer на устройстве не найден. Можно скачать официальную сборку (около 65 МБ)';
         if (st.note && !st.downloading) text += '. ' + st.note;
-        if (st.error && !st.downloading) text += '. Ошибка: ' + st.error;
+        if (st.error && !st.downloading && !st.starting) text += '. Ошибка: ' + st.error;
         var status = getEl('ts-device-status');
         if (status) status.textContent = text;
 
         // Пока ждём ответа «убрать ли из автозапуска» — только его кнопки
-        var busy = st.downloading || !!st.ask;
+        var busy = st.downloading || !!st.ask || !!st.starting;
         var external = st.running && !st.own;
         show('ts-device-install', st.supported && !st.installed && !external && !busy);
         show('ts-device-start', st.installed && !st.running && !busy);
@@ -1223,6 +1456,13 @@ var deviceTorrServerPanel = (function () {
         show('ts-device-replace', external && !!st.canReplace && !busy);
         show('ts-device-autostart-off', !!st.ask);
         show('ts-device-autostart-keep', !!st.ask);
+        // Две кнопки вопроса общие: про автозапуск matrix и про замену чужого
+        // TorrServer встроенным — подписи берём у самого вопроса
+        if (st.ask) {
+            var yesBtn = getEl('ts-device-autostart-off'), noBtn = getEl('ts-device-autostart-keep');
+            if (yesBtn && st.askYes && yesBtn.textContent !== st.askYes) yesBtn.textContent = st.askYes;
+            if (noBtn && st.askNo && noBtn.textContent !== st.askNo) noBtn.textContent = st.askNo;
+        }
         var upd = getEl('ts-device-update');
         if (upd && st.latest) upd.textContent = 'Обновить до ' + st.latest;
 
@@ -1297,16 +1537,20 @@ var deviceTorrServerPanel = (function () {
         wasRunning = null;
         // Установлен, но не работает — запускаем сами; при старте приложения это
         // уже сделал автозапуск (TorrServerManager.autostartIfNeeded)
-        var st0 = readStatus();
-        if (!atStartup && st0 && st0.installed && !st0.running) act('start');
-        // webOS: автозапуска при старте приложения, как у Android
-        // (TorrServerManager), нет — TorrServer поднимает init.d при включении
-        // ТВ. Если его за это время остановили, поднимаем, когда статус придёт
-        if (atStartup && WebOSTorrServer.enabled()) {
+        if (WebOSTorrServer.enabled()) {
+            // webOS: и при включении, и при старте приложения (автозапуска, как
+            // у Android, нет — TorrServer поднимает init.d при включении ТВ)
+            // зовём start() всегда, когда статус придёт: он сам смотрит, кто на
+            // 8090 — свой (ничего), чужой, например torrserv.matrix.app
+            // (вопрос, заменить ли встроенным), никто (запуск). Раньше по
+            // «установлен и не работает» встроенный запускался, не спросив
             setTimeout(function () {
                 var s = readStatus();
-                if (s && s.supported && s.installed && !s.running && !s.downloading) act('start');
-            }, 2500);
+                if (s && s.supported && s.installed && !s.downloading && !s.ask) act('start');
+            }, atStartup ? 2500 : 1500);
+        } else {
+            var st0 = readStatus();
+            if (!atStartup && st0 && st0.installed && !st0.running) act('start');
         }
         start();
     }
@@ -4564,9 +4808,11 @@ window.getJacredSearchHints = getJacredSearchHints;
 /**
  * Собрать URL поиска к Jacred (Jackett JSON API v2.0).
  *
- * Кроме самого запроса Jacred принимает year и is_serial (1 — фильм,
- * 2 — сериал). Оба фильтруют жёстко, поэтому добавляются только тогда,
- * когда ответ точно известен — из карточки TMDB.
+ * Свободный поиск — одна строка Query. Из карточки TMDB запрос собирается
+ * как у Lampa: title + title_original (поиск по названиям раздачи вместо
+ * строки), year, is_serial (1 — фильм, 2 — сериал) и Category[] (2000 —
+ * фильмы, 5000 — сериалы; Jacred её не смотрит, а настоящий Jackett по ней
+ * отбирает). Что и почему кладётся в подсказки — buildJacredSearchHints.
  *
  * Строка собирается здесь один раз на весь проект: второй поиск живёт в
  * torrents-worker-patch.js, и две копии URL разъехались бы при первой же правке.
@@ -4580,12 +4826,21 @@ function buildJacredSearchUrl(query, hints) {
 
     // Новый API Jackett v2.0
     var url = AppState.protocol + '//' + host + '/api/v2.0/indexers/all/results' +
-        '?Query=' + encodeURIComponent(query.trim()) + '&exact=true';
+        '?Query=' + encodeURIComponent(query.trim());
 
     if (hints === undefined) hints = getJacredSearchHints();
+    if (hints && hints.title) {
+        url += '&title=' + encodeURIComponent(hints.title);
+        if (hints.titleOriginal) url += '&title_original=' + encodeURIComponent(hints.titleOriginal);
+    } else {
+        url += '&exact=true';
+    }
     if (hints) {
-        if (hints.isSerial) url += '&is_serial=' + hints.isSerial;
         if (hints.year) url += '&year=' + hints.year;
+        if (hints.isSerial) {
+            url += '&is_serial=' + hints.isSerial;
+            url += '&Category[]=' + (hints.isSerial === 2 ? 5000 : 2000);
+        }
     }
 
     return { url: url, host: host };
@@ -5545,10 +5800,11 @@ function buildSearchResultMarkup(result, index) {
     // Дорожки из ffprobe точнее info.voices: там язык и название каждой,
     // а не общий список переводов. Есть они — второй список лишний
     var hasAudioTracks = !!(result.media && result.media.audio && result.media.audio.length);
+    var pickedAt = SearchPicks.pickedAt(hash);
 
-    return '<div class="search-result-item" data-index="' + index + '">' +
+    return '<div class="search-result-item' + (pickedAt ? ' search-result-picked' : '') + '" data-index="' + index + '">' +
         '<div class="search-result-info">' +
-        '<div class="search-result-title">' + escapeHtml(result.title || 'Без названия') + '</div>' +
+        '<div class="search-result-title">' + (pickedAt ? buildPickedBadge(pickedAt) : '') + escapeHtml(result.title || 'Без названия') + '</div>' +
         buildMediaRow(result) +
         '<div class="search-result-meta">' +
         '<div class="search-result-meta-item">' + escapeHtml(trackerDisplay) + '</div>' +
@@ -5651,6 +5907,152 @@ function revealSearchResultItem(el) {
 }
 window.revealSearchResultItem = revealSearchResultItem;
 
+// ==================== ВЫБРАННЫЕ РАЗДАЧИ ====================
+
+/**
+ * Раздачи, которые запускали из выдачи поиска, — метка «Выбирали» и место в
+ * начале списка при следующем поиске, что бы ни стояло в фильтрах и
+ * сортировке. Ищут обычно тот же фильм заново (вернулись досмотреть, следующая
+ * серия), и листать сотню раздач в поисках той самой незачем.
+ *
+ * Ключ — хэш раздачи: он одинаков у неё на любом трекере и в любой выдаче, а
+ * к фильму его привязывать не нужно — чужому фильму этот хэш не попадётся.
+ * Запись живёт 30 дней от последнего выбора; старше — удаляется при открытии
+ * базы. Хэши держим ещё и в памяти: выдача сортируется синхронно, ждать
+ * IndexedDB там нечего.
+ */
+var SearchPicks = (function () {
+    var DB_NAME = 'SearchPicksDB';
+    var STORE_NAME = 'picks';
+    var TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+    var picks = {};          // hash -> время выбора
+    var loaded = false;
+    var dbPromise = null;
+
+    function openDB() {
+        if (dbPromise) return dbPromise;
+        dbPromise = new Promise(function (resolve, reject) {
+            if (!window.indexedDB) { reject(new Error('IndexedDB недоступна')); return; }
+            var req = indexedDB.open(DB_NAME, 1);
+            req.onupgradeneeded = function (e) {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME, { keyPath: 'hash' }).createIndex('pickedAt', 'pickedAt', { unique: false });
+                }
+            };
+            req.onsuccess = function (e) { resolve(e.target.result); };
+            req.onerror = function () { dbPromise = null; reject(req.error); };
+        });
+        return dbPromise;
+    }
+
+    /** Чтение всех записей с уборкой просроченных — одной транзакцией, курсором */
+    function load() {
+        return openDB().then(function (db) {
+            return new Promise(function (resolve) {
+                var border = Date.now() - TTL_MS;
+                var tx = db.transaction(STORE_NAME, 'readwrite');
+                tx.objectStore(STORE_NAME).openCursor().onsuccess = function (e) {
+                    var cursor = e.target.result;
+                    if (!cursor) return;
+                    var rec = cursor.value;
+                    if (!rec || !(rec.pickedAt > border)) cursor['delete']();
+                    else picks[rec.hash] = rec.pickedAt;
+                    cursor['continue']();
+                };
+                tx.oncomplete = tx.onerror = tx.onabort = function () { resolve(); };
+            });
+        })['catch'](function (e) {
+            console.warn('⚠️ SearchPicksDB: выбранные раздачи не загружены:', e);
+        }).then(function () { loaded = true; });
+    }
+
+    function pickedAt(hash) {
+        if (!hash) return 0;
+        var t = picks[String(hash).toLowerCase()];
+        return t && t > Date.now() - TTL_MS ? t : 0;
+    }
+
+    function add(hash, result) {
+        if (!hash) return;
+        var h = String(hash).toLowerCase();
+        var now = Date.now();
+        picks[h] = now;
+        var ctx = AppState.pendingDetailItem;
+        var rec = {
+            hash: h,
+            pickedAt: now,
+            title: (result && result.title) || '',
+            tracker: (result && result.tracker) || '',
+            // Из карточки фильма — для чего выбирали; на будущее, метке не нужно
+            tmdbId: ctx && ctx.id ? String(ctx.id) : null,
+            mediaType: ctx && ctx.media_type ? ctx.media_type : null
+        };
+        openDB().then(function (db) {
+            db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(rec);
+        })['catch'](function (e) { console.warn('⚠️ SearchPicksDB: запись не сохранена:', e); });
+    }
+
+    return {
+        ready: load(),
+        isLoaded: function () { return loaded; },
+        pickedAt: pickedAt,
+        add: add
+    };
+})();
+window.SearchPicks = SearchPicks;
+
+function searchResultHash(result) {
+    if (!result) return null;
+    if (result._hash === undefined) result._hash = extractHashFromMagnet(result.magnet) || null;
+    return result._hash;
+}
+
+/**
+ * Выбранные раздачи — в начало filteredResults, свежий выбор первым. Берутся
+ * из всей выдачи (searchResults), а не из отфильтрованной: фильтр «4K» не
+ * должен прятать раздачу, которую уже смотрели в 1080p. Порядок остальных не
+ * трогаем — его задала сортировка.
+ */
+function pinPickedSearchResults() {
+    if (!searchResults.length) return;
+    var pinned = [];
+    for (var i = 0; i < searchResults.length; i++) {
+        var t = SearchPicks.pickedAt(searchResultHash(searchResults[i]));
+        if (t) pinned.push({ r: searchResults[i], t: t });
+    }
+    if (!pinned.length) return;
+    pinned.sort(function (a, b) { return b.t - a.t; });
+    // Сравниваем по хэшу, а не по ссылке: выдача из воркера
+    // (torrents-worker-patch.js) — копии объектов searchResults
+    var head = [], seen = {};
+    for (var j = 0; j < pinned.length; j++) {
+        var h = searchResultHash(pinned[j].r);
+        if (seen[h]) continue;   // одна раздача с двух трекеров — один раз
+        seen[h] = true;
+        head.push(pinned[j].r);
+    }
+    var rest = filteredResults.filter(function (r) { return !seen[searchResultHash(r)]; });
+    filteredResults = head.concat(rest);
+}
+
+/** Метка «Выбирали …» с датой: по ней видно, давно ли это было */
+function buildPickedBadge(t) {
+    var d = new Date(t);
+    var label = d.getDate() + ' ' + ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'][d.getMonth()];
+    return '<span class="search-result-picked-badge"><i class="fi fi-rr-check"></i>Выбирали ' + label + '</span>';
+}
+
+// Выдача успела прийти раньше, чем прочиталась база (первый поиск сразу после
+// запуска) — пересортировываем, если в ней есть выбранные
+SearchPicks.ready.then(function () {
+    if (!searchResults.length || AppState.currentScreen !== 'search') return;
+    for (var i = 0; i < searchResults.length; i++) {
+        if (SearchPicks.pickedAt(searchResultHash(searchResults[i]))) { applyFiltersAndSort(); return; }
+    }
+});
+
 // Render result cards in frames. Large tracker responses no longer monopolise the UI thread.
 function renderSearchResults() {
     var searchResultsDiv = getEl('search-results');
@@ -5662,6 +6064,9 @@ function renderSearchResults() {
     // В том числе сетка глобального поиска, если выдачу Jacred открыли поверх
     // неё: её постеры иначе остались бы висеть под наблюдателем
     releaseGlobalPosters();
+    // Здесь, а не в applyFiltersAndSort: у той две версии (воркер и запасная
+    // в главном потоке), а рисуют обе через эту функцию
+    pinPickedSearchResults();
 
     if (filteredResults.length === 0) {
         searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>' + searchResults.length + '</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"' : 'Введите запрос для поиска') + '</div>';
@@ -5690,6 +6095,15 @@ function renderSearchResults() {
                 // а не на «Мои торренты» (app.js: restoreFocusAfterNavigation)
                 AppState.playFromHash = true;
                 AppState.lastSearchResultHash = hash;
+                // Метку ставим сразу, но список не пересортировываем: вернувшись
+                // из плеера, человек продолжает с того же места (focusLastSearchResult)
+                SearchPicks.add(hash, sourceResult);
+                var pickedItem = playBtn.closest('.search-result-item');
+                if (pickedItem && !pickedItem.classList.contains('search-result-picked')) {
+                    pickedItem.classList.add('search-result-picked');
+                    var titleEl = pickedItem.querySelector('.search-result-title');
+                    if (titleEl) titleEl.insertAdjacentHTML('afterbegin', buildPickedBadge(Date.now()));
+                }
                 playFromHash(hash, playBtn.dataset.magnet, searchResult);
             }
             return;

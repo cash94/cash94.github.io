@@ -6,7 +6,7 @@ var AppState = {
   // Настройки сервера
   protocol: window.location.protocol,
   currentTorrserverUrl: '',
-  currentVersion: 'TorrStream.1.0.49',
+  currentVersion: 'TorrStream.1.0.53',
   authEnabled: false,
   serverOnline: false,
   clientId: null,
@@ -242,14 +242,17 @@ function formatTime(seconds) {
 function getAuthHeaders() {
   var headers = {};
   if (AppState.authEnabled) {
-    var login = getEl('auth-login').value.trim();
-    var password = getEl('auth-password').value.trim();
+    var loginEl = getEl('auth-login');
+    var passEl = getEl('auth-password');
+    
+    var login = loginEl ? loginEl.value.trim() : '';
+    var password = passEl ? passEl.value.trim() : '';
 
     AppState.userlogin = login;
     AppState.userpassword = password;
-    if (AppState.userlogin && AppState.userpassword) {
+    if (AppState.userlogin) {
       headers['Authorization'] = 'Basic ' + btoa(AppState.userlogin + ':' + AppState.userpassword);
-    } else if (login && password) {
+    } else if (login) {
       headers['Authorization'] = 'Basic ' + btoa(login + ':' + password);
     }
   }
@@ -347,6 +350,24 @@ function detectPlatform() {
   return 'desktop';
 }
 
+/**
+ * Устройство Apple — для выбора внешнего плеера (player.js: APPLE_PLAYERS), по
+ * тем же признакам, что у Lampa (src/core/platform.js):
+ * - apple_tv — клиент для tvOS называет себя iPad и открывает окно ровно 1920×1080;
+ * - apple — iPhone, iPad (iPadOS в режиме ПК пишет «Macintosh», но с сенсором);
+ * - macos — Mac.
+ * null — не Apple. AppState.platform для всех них остаётся 'ios' / 'desktop':
+ * на него опирается остальной код.
+ */
+function detectApplePlatform() {
+  var ua = navigator.userAgent.toLowerCase();
+  var touch = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
+  if (ua.indexOf('ipad') !== -1 && window.innerWidth === 1920 && window.innerHeight === 1080) return 'apple_tv';
+  if (ua.indexOf('iphone') !== -1 || ua.indexOf('ipad') !== -1 || ua.indexOf('ipod') !== -1) return 'apple';
+  if (ua.indexOf('macintosh') !== -1 || ua.indexOf('mac os x') !== -1) return touch ? 'apple' : 'macos';
+  return null;
+}
+
 // Карта клавиш для Vidaa OS и других платформ.
 //
 // Строится один раз. isKeyPressed() зовут по нескольку десятков раз на КАЖДОЕ
@@ -428,7 +449,19 @@ function isKeyPressed(keyName, keyCode) {
 
 // Определяем платформу при загрузке
 AppState.platform = detectPlatform();
-console.log('📱 Платформа: ' + AppState.platform);
+AppState.applePlatform = detectApplePlatform();
+// Android-приложение (мост AndroidJS есть ещё до загрузки страницы) — для CSS:
+// боковой вырез там не отодвигает шапку и баннер (styles.css: html.android-app)
+if (window.AndroidJS) document.documentElement.classList.add('android-app');
+// Apple TV, iPhone, iPad: TorrStream открыт внутри приложения-обёртки, и та сама
+// держит страницу в безопасной зоне. Свои отступы под вырез (iPhone) и под
+// безопасную зону телевизора (Apple TV) удваивали её: на iPhone приложение не
+// помещалось на экран, на Apple TV шапка и баннер уезжали вправо от рядов.
+// Mac — обычный браузер, его не трогаем (styles.css: html.apple-device)
+if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple') {
+  document.documentElement.classList.add('apple-device');
+}
+console.log('📱 Платформа: ' + AppState.platform + (AppState.applePlatform ? ' (' + AppState.applePlatform + ')' : ''));
 window.getEl = getEl;
 window.clearFocused = clearFocused;
 

@@ -12,16 +12,15 @@ var APP_CONSTANTS = {
   DETAIL_HIDE_DELAY_MS: 250,
   FILTER_PANEL_DELAY_MS: 60,
   ZOOM_TOAST_DURATION_MS: 1500,
-  HINT_DISPLAY_DURATION_MS: 2000,
   JACRED_SAVE_DELAY_MS: 500
 };
 
 var CLICKABLE_SELECTORS = [
   'button', '.control-btn', '.play-btn', '.torrent-card', '.file-item',
   '.search-result-item', '.back-btn', '.settings-btn', '.view-tab',
-  '#play-pause-btn', '#mute-btn', '#prev-episode-btn', '#next-episode-btn',
-  '#episodes-btn', '#audio-btn', '#subtitles-btn', '#exit-player-btn', '#toggle-buffer-btn',
-  '.episode-item', '.audio-item', '.subtitle-item', '.close-panel-btn', '.filter-select',
+  '#play-pause-btn', '#prev-episode-btn', '#next-episode-btn', '#rewind-btn', '#forward-btn',
+  '#episodes-btn', '#tracks-btn', '#player-settings-btn', '#exit-player-btn',
+  '.episode-item', '.audio-item', '.subtitle-item', '.player-menu-item', '.close-panel-btn', '.filter-select',
   '.filter-reset-btn', '.progress-continue-btn', '.detail-progress-btn',
   '#close-search', '#filter-toggle', '#search-btn',
   '#torrserver-tab-content', '#torrents-tab-content', '#player-tab-content', '#account-tab-content', '#sync-tab-content', '#other-tab-content', '#device-tab-content',
@@ -195,10 +194,10 @@ async function init() {
 
 function setupVideoPlayerControls() {
   var requiredElements = [
-    'seek-slider', 'volume-slider', 'play-pause-btn', 'mute-btn',
-    'toggle-buffer-btn', 'exit-player-btn', 'player-overlay', 'video-player'
+    'seek-slider', 'volume-slider', 'play-pause-btn',
+    'exit-player-btn', 'player-overlay', 'video-player'
   ];
-  var modes = ['contain', 'fill', 'cover', 'none'];
+  var modes = ['contain', 'fill', 'cover', 'zoom', 'none'];
   var modeIndex = 0;
   var video = getEl('video-player');
 
@@ -207,15 +206,20 @@ function setupVideoPlayerControls() {
     return;
   }
 
-  // Режим масштаба задаётся не только object-fit, но и самим прямоугольником
-  // <video>. На части ТВ (жалобы с Vidaa) видео выводится аппаратным слоем,
-  // который берёт у элемента лишь положение и размер, а object-fit не видит:
-  // кнопка там переключала режимы вхолостую. Поэтому для «С полосами»,
-  // «Обрезка» и «Оригинал» считаем прямоугольник кадра сами (applyVideoBox),
-  // а object-fit оставляем — в обычном браузере он даёт то же самое.
-  // «Растянуть» — весь экран; если слой сам держит пропорции, там он выглядит
-  // как «С полосами», иначе его не сделать.
+  // Режим масштаба задаётся прямоугольником самого <video>, а не object-fit. На
+  // части ТВ (Hisense Vidaa) видео выводит аппаратный слой: он берёт у элемента
+  // только положение и размер в пикселях, а object-fit не видит — кнопка там
+  // переключала режимы вхолостую. Проверка на Vidaa тестовым видео показала:
+  // object-fit не работает ни в одном режиме, а рамка нужного размера — во всех
+  // четырёх. Так
+  // что каждый режим — своя рамка (applyVideoBox), а object-fit: fill только
+  // вписывает кадр в неё; в обычном браузере результат тот же.
   var zoomMode = 'contain';
+  // «Увеличить»: кадр больше «С полосами» во столько раз, чтобы фильм 2,40:1 с
+  // впечатанными в кадр 16:9 чёрными полосами заполнил экран по высоте. Где
+  // кончается изображение, плеер не знает (пикселей видео на ТВ страница не
+  // видит), поэтому коэффициент фиксированный: 2,40 / (16/9) = 1,35
+  var ZOOM_FACTOR = 2.4 / (16 / 9);
   var FIT_CLASSES = ['video-object-fit-contain', 'video-object-fit-fill',
     'video-object-fit-cover', 'video-object-fit-none'];
 
@@ -224,29 +228,44 @@ function setupVideoPlayerControls() {
     video.classList.add('video-object-fit-' + fit);
   }
 
+  // На весь экран развёрнут сам <video> (часть ТВ-браузеров, мобильный Chrome):
+  // размер и место ему тогда задаёт браузер (стили :fullscreen с !important),
+  // наша рамка не действует, и режим держится только на object-fit
+  function videoItselfFullscreen() {
+    return (document.fullscreenElement || document.webkitFullscreenElement) === video;
+  }
+
   function applyVideoBox() {
     var st = video.style;
     var ps = getEl('player-screen');
     var cw = (ps && ps.clientWidth) || window.innerWidth;
     var ch = (ps && ps.clientHeight) || window.innerHeight;
     var vw = video.videoWidth, vh = video.videoHeight;
-    if (zoomMode === 'fill' || !vw || !vh || !cw || !ch) {
+    if (!vw || !vh || !cw || !ch || videoItselfFullscreen()) {
       st.position = st.left = st.top = st.width = st.height = st.maxWidth = st.maxHeight = '';
-      // Прямоугольник не посчитан (размер кадра ещё неизвестен) — режим целиком
-      // на object-fit, в том числе none для «Оригинала»
-      setFitClass(zoomMode);
+      // Прямоугольник не посчитан (размер кадра ещё неизвестен) или не действует
+      // (полноэкранный <video>) — режим целиком на object-fit, в том числе none
+      // для «Оригинала»; у «Увеличить» своего object-fit нет — ближе всего cover
+      setFitClass(zoomMode === 'zoom' ? 'cover' : zoomMode);
       return;
     }
-    // «Оригинал»: прямоугольник ниже уже ровно 1:1 с кадром, и object-fit: none
-    // ничего к нему не добавляет. А старые WebView (Chrome 66 на ТВ) видео с
-    // object-fit: none рисуют мимо обычного масштабирования — картинка сыпалась
-    // на пиксели, хотя у 1080p-кадра на экране 1920 рамка та же, что у
-    // «С полосами». При точной рамке contain даёт тот же результат обычным путём
-    setFitClass(zoomMode === 'none' ? 'contain' : zoomMode);
-    var r = zoomMode === 'cover' ? Math.max(cw / vw, ch / vh)
-      : zoomMode === 'none' ? 1
-      : Math.min(cw / vw, ch / vh);
-    var w = Math.round(vw * r), h = Math.round(vh * r);
+    // Рамка уже нужного размера — кадр просто вписывается в неё. Для «С полосами»,
+    // «Обрезки» и «Оригинала» у рамки пропорции кадра, и fill ничего не искажает;
+    // для «Растянуть» рамка — весь экран. Заодно старые WebView (Chrome 66 на ТВ)
+    // не видят object-fit: none, с которым картинка «Оригинала» сыпалась на пиксели
+    setFitClass('fill');
+    var w, h;
+    if (zoomMode === 'fill') {
+      w = cw;
+      h = ch;
+    } else {
+      var r = zoomMode === 'cover' ? Math.max(cw / vw, ch / vh)
+        : zoomMode === 'none' ? 1
+        : zoomMode === 'zoom' ? Math.min(cw / vw, ch / vh) * ZOOM_FACTOR
+        : Math.min(cw / vw, ch / vh);
+      w = Math.round(vw * r);
+      h = Math.round(vh * r);
+    }
     st.position = 'absolute';
     st.maxWidth = 'none';
     st.maxHeight = 'none';
@@ -280,6 +299,7 @@ function setupVideoPlayerControls() {
         'contain': 'С полосами',
         'fill': 'Растянуть',
         'cover': 'Обрезка',
+        'zoom': 'Увеличить',
         'none': 'Оригинал'
       };
       showToast(modeNames[modes[modeIndex]]);
@@ -294,8 +314,6 @@ function setupVideoPlayerControls() {
   var seekSlider = getEl('seek-slider');
   var volumeSlider = getEl('volume-slider');
   var playPauseBtn = getEl('play-pause-btn');
-  var muteBtn = getEl('mute-btn');
-  var toggleBufferBtn = getEl('toggle-buffer-btn');
   var exitPlayerBtn = getEl('exit-player-btn');
   var overlay = getEl('player-overlay');
 
@@ -306,17 +324,20 @@ function setupVideoPlayerControls() {
   }
   if (volumeSlider) volumeSlider.value = 1;
   if (playPauseBtn && video) setupPlayPauseButton(playPauseBtn, video);
-  if (muteBtn && video && volumeSlider) setupMuteButton(muteBtn, video, volumeSlider);
   if (volumeSlider && video) setupVolumeSlider(volumeSlider, video);
   if (exitPlayerBtn) setupExitButton(exitPlayerBtn);
 
   if (typeof setupEpisodesButton === 'function') setupEpisodesButton();
   if (typeof setupAudioButton === 'function') setupAudioButton();
   if (typeof setupSubtitlesButton === 'function') setupSubtitlesButton();
+  if (typeof setupTracksButton === 'function') setupTracksButton();
+  if (typeof setupPlayerSettingsButton === 'function') setupPlayerSettingsButton();
+  if (typeof setupSeekButtons === 'function') setupSeekButtons();
 
   setupEpisodeNavigation();
   if (video) setupVideoEvents(video, volumeSlider, seekSlider);
-  if (toggleBufferBtn) setupToggleBufferButton(toggleBufferBtn);
+  // Строка буфера включается в шестерёнке плеера и помнится между запусками
+  try { AppState.bufferHidden = localStorage.getItem('playerBufferHidden') === 'true'; } catch (e) { }
   if (overlay) setupOverlayControls(overlay);
 
   var savedVolume = localStorage.getItem('playerVolume');
@@ -359,6 +380,8 @@ var errorBannerTimer = null;
 
 function showErrorBanner(message, detail) {
   if (!message) return;
+  // Экран предзагрузки, оставленный до первого кадра, закрыл бы баннер
+  if (typeof window.releasePreloadScreen === 'function') window.releasePreloadScreen(true);
 
   var host = (typeof window.getOverlayHost === 'function') ? window.getOverlayHost() : document.body;
   if (!host) return;
@@ -577,16 +600,6 @@ function setupPlayPauseButton(playPauseBtn, videoPlayer) {
   });
 }
 
-function setupMuteButton(muteBtn, videoPlayer, volumeSlider) {
-  muteBtn.addEventListener('click', function () {
-    var loadingOverlay = getEl('loading-player-overlay');
-    if (AppState && (AppState.isSeeking || (loadingOverlay && loadingOverlay.classList.contains('active')))) return;
-    videoPlayer.muted = !videoPlayer.muted;
-    if (typeof updateMuteButton === 'function') updateMuteButton();
-    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
-  });
-}
-
 function setupVolumeSlider(volumeSlider, videoPlayer) {
   volumeSlider.addEventListener('input', function (e) {
     var loadingOverlay = getEl('loading-player-overlay');
@@ -595,7 +608,6 @@ function setupVolumeSlider(volumeSlider, videoPlayer) {
     videoPlayer.volume = vol;
     if (vol > 0 && videoPlayer.muted) {
       videoPlayer.muted = false;
-      if (typeof updateMuteButton === 'function') updateMuteButton();
     }
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
     localStorage.setItem('playerVolume', vol);
@@ -635,7 +647,6 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
   var handlers = {
     volumechange: function () {
       if (volumeSlider) volumeSlider.value = videoPlayer.volume;
-      if (typeof updateMuteButton === 'function') updateMuteButton();
       if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
       localStorage.setItem('playerVolume', videoPlayer.volume);
     },
@@ -663,6 +674,14 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
     ended: function () {
       console.log('🏁 Видео закончилось');
       if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    },
+    // Иконка воспроизведения/паузы — по самому <video>: его ставит на паузу и
+    // запускает не только кнопка (автозапуск, смена серии, перемотка)
+    play: function () {
+      if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
+    },
+    pause: function () {
+      if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
     }
   };
 
@@ -705,24 +724,28 @@ function startBufferUpdates() {
 }
 window.startBufferUpdates = startBufferUpdates;
 
-function setupToggleBufferButton(toggleBufferBtn) {
-  toggleBufferBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    if (typeof AppState !== 'undefined') AppState.bufferHidden = !AppState.bufferHidden;
-    toggleBufferBtn.style.opacity = AppState && AppState.bufferHidden ? '0.6' : '1';
-    toggleBufferBtn.title = AppState && AppState.bufferHidden ? 'показать буфер' : 'скрыть буфер';
-    if (AppState && !AppState.bufferHidden && typeof updateBufferDisplay === 'function') {
-      updateBufferDisplay();
-    } else {
-      var bufferStats = getEl('buffer-stats');
-      if (bufferStats) bufferStats.classList.add('hidden');
-    }
-    // Строка статистики TorrServer появилась или пропала — опрос /cache
-    // переходит на секундный или десятисекундный шаг (torrserverstats.js)
-    if (typeof refreshTorrentStatsCadence === 'function') refreshTorrentStatsCadence();
-    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
-  });
+/**
+ * Показать/скрыть строку буфера и статистику TorrServer. Зовут шестерёнка
+ * плеера (player.js: setupPlayerSettingsButton) и жёлтая кнопка пульта.
+ */
+function toggleBufferVisibility() {
+  AppState.bufferHidden = !AppState.bufferHidden;
+  try { localStorage.setItem('playerBufferHidden', AppState.bufferHidden ? 'true' : 'false'); } catch (e) { }
+  if (!AppState.bufferHidden && typeof updateBufferDisplay === 'function') {
+    updateBufferDisplay();
+  } else {
+    var bufferStats = getEl('buffer-stats');
+    if (bufferStats) bufferStats.classList.add('hidden');
+    var subtitleElement = getEl('player-subtitle');
+    if (subtitleElement) subtitleElement.classList.add('hidden');
+  }
+  // Строка статистики TorrServer появилась или пропала — опрос /cache
+  // переходит на секундный или десятисекундный шаг (torrserverstats.js)
+  if (typeof refreshTorrentStatsCadence === 'function') refreshTorrentStatsCadence();
+  if (typeof window.updatePlayerSettingsMenu === 'function') window.updatePlayerSettingsMenu();
+  if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
 }
+window.toggleBufferVisibility = toggleBufferVisibility;
 
 function setupOverlayControls(overlay) {
   function showControls() {
@@ -734,25 +757,82 @@ function setupOverlayControls(overlay) {
   }
 
   overlay.addEventListener('mousemove', function () {
+    // Сразу после «Назад» движение HUD не показывает (player.js: mutePlayerMouse)
+    if (typeof isPlayerMouseMuted === 'function' && isPlayerMouseMuted()) return;
     showControls();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 
+  // Клик или касание по самому видео (не по кнопкам): одно — пауза и снятие
+  // с паузы, два подряд — полный экран и выход из него (кнопки «Полный
+  // экран» в панели больше нет). Одиночное ждёт VIDEO_DOUBLE_TAP_MS: иначе
+  // двойной клик успевал бы поставить паузу и тут же снять её.
+  var VIDEO_DOUBLE_TAP_MS = 300;
+  var tapTimer = null;
+  var tapStartX = 0, tapStartY = 0, lastTouchAt = 0;
+
+  function anyPlayerPanelOpen() {
+    if (typeof PLAYER_PANELS === 'undefined' || typeof isPlayerPanelOpen !== 'function') return false;
+    for (var name in PLAYER_PANELS) if (isPlayerPanelOpen(name)) return true;
+    return false;
+  }
+
+  function toggleVideoPause() {
+    var vp = getEl('video-player');
+    if (!vp) return;
+    if (vp.paused) {
+      var p = vp.play();
+      if (p && typeof p.catch === 'function') p.catch(function () { });
+    } else {
+      vp.pause();
+    }
+    if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
+  }
+
+  function videoTap() {
+    // Открыта панель серий/звука/субтитров — нажатие мимо неё только
+    // закрывает панель (клик закроет и обработчик на document)
+    if (anyPlayerPanelOpen()) {
+      if (typeof closePlayerPanels === 'function') closePlayerPanels();
+      return;
+    }
+    if (tapTimer) {
+      clearTimeout(tapTimer);
+      tapTimer = null;
+      if (typeof window.togglePlayerFullscreen === 'function') window.togglePlayerFullscreen();
+      return;
+    }
+    tapTimer = setTimeout(function () {
+      tapTimer = null;
+      toggleVideoPause();
+    }, VIDEO_DOUBLE_TAP_MS);
+  }
+
   overlay.addEventListener('touchstart', function (e) {
     showControls();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
-    if (e.touches.length === 1) e.preventDefault();
+    if (e.touches.length === 1) {
+      e.preventDefault();
+      tapStartX = e.touches[0].clientX;
+      tapStartY = e.touches[0].clientY;
+    }
   }, { passive: false });
 
-  var lastTap = 0;
   overlay.addEventListener('touchend', function (e) {
-    var currentTime = Date.now();
-    if (currentTime - lastTap < 300) {
-      if (overlay.classList.contains('touch-active')) overlay.classList.remove('touch-active');
-      else showControls();
-    } else showControls();
-    lastTap = currentTime;
+    lastTouchAt = Date.now();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    // По кнопкам и ползункам — их обрабатывает делегирование касаний
+    if (e.target !== overlay) return;
+    var t = e.changedTouches && e.changedTouches[0];
+    if (t && (Math.abs(t.clientX - tapStartX) > 20 || Math.abs(t.clientY - tapStartY) > 20)) return;
+    videoTap();
+  });
+
+  overlay.addEventListener('click', function (e) {
+    if (e.target !== overlay) return;
+    // Следом за касанием браузер может прислать и click — его не считаем
+    if (Date.now() - lastTouchAt < 800) return;
+    videoTap();
   });
 }
 
@@ -1696,9 +1776,12 @@ function setupPlayerAutoHide() {
   // каждую кнопку управления (около двух десятков лишних подписок): все они
   // лежат внутри #player-screen, и любое движение мыши над ними всё равно
   // приходит сюда через mousemove.
-  playerScreen.addEventListener('mousemove', resetMouseIdleTimer);
+  // Движение — через onPlayerMouseMove: сразу после «Назад» оно HUD не
+  // показывает (дрожание аэромыши webOS), нажатие кнопки мыши — всегда
+  var onMove = typeof onPlayerMouseMove === 'function' ? onPlayerMouseMove : resetMouseIdleTimer;
+  playerScreen.addEventListener('mousemove', onMove);
   playerScreen.addEventListener('mousedown', resetMouseIdleTimer);
-  playerScreen.addEventListener('mouseenter', resetMouseIdleTimer);
+  playerScreen.addEventListener('mouseenter', onMove);
 }
 
 // ==================== СЕНСОРНОЕ УПРАВЛЕНИЕ ====================
@@ -1901,6 +1984,10 @@ function setupFullscreen() {
     if (typeof window.syncFullscreenOverlays === 'function') window.syncFullscreenOverlays();
   }
 
+  // Двойной клик/касание по видео (setupOverlayControls) — кнопку
+  // «Полный экран» из панели убрали, переключаем отсюда же
+  window.togglePlayerFullscreen = toggleFullscreen;
+
   fullscreenBtn.addEventListener('click', function (e) {
     e.stopPropagation();
     toggleFullscreen();
@@ -2089,6 +2176,7 @@ function setupCheckboxes() {
     });
   }
 
+
   // 3. Добавление в базу
   var addToDbCheckbox = getEl('add-to-db');
   if (addToDbCheckbox) {
@@ -2126,9 +2214,13 @@ function setupCheckboxes() {
   // кроме плеера: Android отдаёт поток внешнему плееру, webOS играет файл
   // <video> напрямую с TorrServer. Серверное транскодирование не нужно обоим,
   // и его настройки (здесь, многоканальный звук, полное отключение) скрыты
-  var tvApp = !!window.AndroidJS || AppState.platform === 'webos';
+  // Apple TV, iPhone, iPad — так же: файл напрямую с TorrServer во встроенном
+  // плеере или ссылка внешнему (Infuse, VLC…), поток через сервер не нужен
+  var appleDevice = AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple';
+  var directPlay = AppState.platform === 'webos' || appleDevice;
+  var tvApp = !!window.AndroidJS || directPlay;
   var transcodingCheckbox = getEl('transcoding-off');
-  if (AppState.platform === 'webos' && transcodingCheckbox) {
+  if (directPlay && transcodingCheckbox) {
     transcodingCheckbox.checked = false;
     AppState.transcodingOnOff = false;
   }
@@ -2136,7 +2228,7 @@ function setupCheckboxes() {
     container = transcodingCheckbox.closest('.checkbox-container');
     if (container) container.classList.add('hidden');
   }
-  if (transcodingCheckbox && AppState.platform !== 'webos') {
+  if (transcodingCheckbox && !directPlay) {
     var savedTranscoding = localStorage.getItem('transcodingOnOff') === 'true';
     transcodingOnOff = savedTranscoding;
     transcodingCheckbox.checked = savedTranscoding;
@@ -2196,9 +2288,10 @@ function setupCheckboxes() {
   }
   // webOS (LG): видео играет аппаратный плеер телевизора прямо с TorrServer —
   // <video> там сам открывает MKV, HEVC, многоканальный звук, без ffmpeg и
-  // серверного HLS. Прямой режим включаем всегда и в localStorage не пишем:
-  // переключатель скрыт выше, как в Android-приложении
-  if (transcodingCheckboxOnOff && AppState.platform === 'webos') {
+  // серверного HLS. Apple TV, iPhone, iPad — по просьбе пользователей так же,
+  // как Android: напрямую, минуя обработку потока на сервере. Прямой режим
+  // включаем всегда и в localStorage не пишем: переключатель скрыт выше
+  if (transcodingCheckboxOnOff && directPlay) {
     transcodingFullOnOff = true;
     AppState.transcodingFullOnOff = true;
     transcodingCheckboxOnOff.checked = true;
@@ -2229,6 +2322,9 @@ function setupCheckboxes() {
   }
   setupCheckboxWithStorage('auto-switch-episodes', 'autoSwitchEpisodes', 'autoSwitchEpisodes');
 
+  // Устройства Apple — выбор внешнего плеера (Infuse, VLC, плееры tvOS…)
+  setupApplePlayerChoice();
+
   if (window.AndroidJS) {
     // 7. Плеер по умолчанию — только в Android-приложении,
     // т.к. воспроизведение там всегда идёт через внешний плеер (AndroidJS.openPlayer).
@@ -2252,6 +2348,69 @@ function setupCheckboxes() {
       console.log('ℹ️ initDolbyVisionCheck не найдена, пропускаем');
     }
   }
+}
+
+/**
+ * Настройки → Плеер → «Плеер для видео» на устройствах Apple: одна кнопка с именем
+ * выбранного плеера, по ней — список плееров этого устройства. Список и запуск —
+ * player.js (APPLE_PLAYERS, openAppleExternalPlayer).
+ * В Android-приложении выбор свой (AndroidJS.choosePlayer), там раздел не нужен.
+ */
+function setupApplePlayerChoice() {
+  var section = getEl('apple-player-section');
+  var btn = getEl('apple-player-btn');
+  var list = (!window.AndroidJS && typeof getApplePlayers === 'function') ? getApplePlayers() : null;
+  if (!section || !btn || !list) return;
+  section.hidden = false;
+  // Apple TV, iPhone, iPad: в «Плеере» только выбор плеера и автопереключение
+  // серий — остальное про серверный поток (styles.css: .apple-device-player)
+  if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple') {
+    var tab = getEl('player-tab-content');
+    if (tab) tab.classList.add('apple-device-player');
+  }
+
+  function label() {
+    var current = getApplePlayer();
+    btn.textContent = 'Плеер: ' + (current ? current.name : '—');
+  }
+
+  // Список — то же меню выбора, что у фильтров поиска (control.js:
+  // customFilterMenuState): стрелки, ОК, «Назад», мышь и палец. Меню пишет
+  // выбор в select и шлёт change — select отдельный, в разметку не вставлен
+  var select = document.createElement('select');
+  list.forEach(function (p) {
+    var o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.name;
+    select.appendChild(o);
+  });
+  select.addEventListener('change', function () {
+    var picked = null;
+    for (var i = 0; i < list.length; i++) if (list[i].id === select.value) picked = list[i];
+    if (!picked) return;
+    setApplePlayer(picked.id);
+    label();
+    showToast('Плеер: ' + picked.name);
+    // Меню после выбора ставит фокус на select — возвращаем его на кнопку
+    setTimeout(function () { if (typeof focusEl === 'function') focusEl(btn); }, 0);
+  });
+
+  btn.addEventListener('click', function () {
+    if (typeof ensureCustomFilterMenu !== 'function' || typeof renderCustomFilterMenu !== 'function') return;
+    var current = getApplePlayer();
+    var index = 0;
+    var options = list.map(function (p, i) {
+      if (current && p.id === current.id) index = i;
+      return { value: p.id, label: p.name };
+    });
+    select.value = current ? current.id : list[0].id;
+    customFilterMenuState = { selectEl: select, title: 'Плеер для видео', options: options, index: index, value: select.value };
+    ensureCustomFilterMenu().classList.remove('hidden');
+    renderCustomFilterMenu();
+  });
+
+  label();
+  if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
 }
 
 function setupExternalPlayerCheckbox() {
@@ -2278,6 +2437,20 @@ function setupExternalPlayerCheckbox() {
   });
 }
 
+/**
+ * Скрыть/показать часы в плеере. Одна настройка на два места: галочка «Скрыть
+ * часы» в настройках (раздел «Плеер») и переключатель в шестерёнке плеера —
+ * поэтому синхронизируем и галочку.
+ */
+function setClockHidden(hidden) {
+  hideClockEnabled = !!hidden;
+  try { localStorage.setItem('hideClockEnabled', hideClockEnabled); } catch (e) { }
+  var cb = getEl('hide-clock');
+  if (cb) cb.checked = hideClockEnabled;
+  setupClockVisibility();
+}
+window.setClockHidden = setClockHidden;
+
 function setupClockVisibility() {
   var clockDisplay = getEl('clock-display');
   if (clockDisplay) {
@@ -2300,6 +2473,8 @@ var PLATFORM_NAMES = {
   desktop: 'Компьютер'
 };
 
+var APPLE_PLATFORM_NAMES = { apple_tv: 'Apple TV', apple: 'iPhone / iPad', macos: 'Mac' };
+
 function deviceAppName() {
   if (window.AndroidJS) return 'Android-приложение TorrStream';
   if (AppState.platform === 'webos') return 'Приложение TorrStream для webOS';
@@ -2308,6 +2483,8 @@ function deviceAppName() {
 
 function devicePlayerName() {
   if (window.AndroidJS) return 'Внешний плеер Android';
+  var apple = (typeof getApplePlayer === 'function') ? getApplePlayer() : null;
+  if (apple && apple.template) return 'Внешний: ' + apple.name;
   if (AppState.transcodingFullOnOff) return 'Встроенный, файл напрямую с TorrServer';
   if (AppState.transcodingOnOff) return 'Встроенный, транскодирование TorrServer (HLS)';
   return 'Встроенный, поток через сервер TorrStream (HLS)';
@@ -2347,7 +2524,7 @@ function renderDeviceInfo() {
   var dpr = window.devicePixelRatio || 1;
   var rows = [
     ['Приложение', deviceAppName()],
-    ['Платформа', PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'],
+    ['Платформа', APPLE_PLATFORM_NAMES[AppState.applePlatform] || PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'],
     ['Плеер', devicePlayerName()],
     ['Версия', AppState.currentVersion || '—'],
     ['Браузер', browserVersionName()],
@@ -2372,6 +2549,16 @@ function renderDeviceInfo() {
         (d.error ? ' · ошибка: ' + d.error : '');
     }
     rows.push(['Субтитры webOS', subs]);
+  }
+  // Прямой файл (без перекодирования): что отдал <video> при последнем запуске
+  // и ответил ли сервис названий дорожек (player.js: initTranscodingOffPlayback)
+  var dp = window.directPlaybackDiag;
+  if (dp && dp.file) {
+    rows.push(['Прямой файл', dp.file +
+      ' · звук: ' + (dp.audio === null ? '—' : dp.audio) +
+      ' · субтитры: ' + (dp.text === null ? '—' : dp.text) + (dp.kinds ? ' (' + dp.kinds + ')' : '') +
+      (dp.probe ? ' · названия: ' + dp.probe : '')]);
+    if (dp.subs) rows.push(['Выбор субтитров', dp.subs]);
   }
   var html = '';
   for (var i = 0; i < rows.length; i++) {
@@ -2416,6 +2603,10 @@ function setupConfigMenu() {
         if (typeof setConfigMenuActive === 'function') setConfigMenuActive(this.id);
         if (this.focus) this.focus();
       }
+      // Рамка пульта (.focused) — туда же, куда нажали мышью или пальцем: иначе
+      // она оставалась на прежнем разделе (по умолчанию «TorrServer»), и пульт
+      // продолжал бы от него
+      if (typeof focusEl === 'function') focusEl(this);
     };
 
     menuItem._configClickHandler = clickHandler;
@@ -2436,16 +2627,9 @@ function showInitError() {
 }
 
 // ==================== МЫШЬ И ИНТЕРФЕЙС ====================
-function showPlayerHint(message) {
-  var hint = getEl('player-hint');
-  if (!hint) return;
-  hint.textContent = message;
-  hint.style.opacity = '1';
-  clearTimeout(window.hintTimeout);
-  window.hintTimeout = setTimeout(function () {
-    hint.style.opacity = '0';
-  }, APP_CONSTANTS.HINT_DISPLAY_DURATION_MS);
-}
+// showPlayerHint — в player.js. Здесь была вторая, упрощённая копия: app.js
+// грузится позже и перекрывала ту, поэтому «Нажмите Назад ещё раз» при
+// скрытом HUD не было видно.
 
 // ==================== ТЕСТ СКОРОСТИ ====================
 function setupSpeedTest() {
@@ -2783,7 +2967,6 @@ window.setupSpeedTest = setupSpeedTest;
 window.showPlayerHint = showPlayerHint;
 window.updateTimeDisplay = updateTimeDisplay;
 window.updatePlayPauseButton = updatePlayPauseButton;
-window.updateMuteButton = updateMuteButton;
 window.updateBufferDisplay = updateBufferDisplay;
 window.forceUpdateDuration = forceUpdateDuration;
 window.destroyHls = destroyHls;
