@@ -976,6 +976,19 @@ var WebOSTorrServer = (function () {
             function () { });
     }
 
+    /**
+     * Выход из приложения удержанием «Назад» (config.js: exitApp): при галке
+     * гасим свой TorrServer сразу, как «Остановить», — чужой не трогаем.
+     * cb — когда Homebrew Channel ответил (или сразу, если гасить нечего).
+     */
+    function stopForExit(cb) {
+        if (!stopOnExit()) { cb(); return; }
+        exec('[ -f ' + DIR + '/pid ] && kill -0 $(cat ' + DIR + '/pid) 2>/dev/null && { ' +
+            'echo "[TorrStream] $(date "+%F %T") остановлен при выходе из приложения (удержание «Назад»)" >> ' + DIR + '/ts.log; ' +
+            'kill $(cat ' + DIR + '/pid); rm -f ' + DIR + '/pid ' + INIT + '; }; true',
+            function () { cb(); });
+    }
+
     /** Галка «Выключать при выходе из приложения» */
     function setStopOnExit(on) {
         try { localStorage.setItem(STOP_ON_EXIT_KEY, on ? '1' : '0'); } catch (e) { }
@@ -1396,7 +1409,7 @@ var WebOSTorrServer = (function () {
     return {
         enabled: enabled, status: status, install: install, start: start, stop: stop,
         checkUpdate: checkUpdate, refresh: refresh, replace: replace,
-        stopOnExit: stopOnExit, setStopOnExit: setStopOnExit,
+        stopOnExit: stopOnExit, setStopOnExit: setStopOnExit, stopForExit: stopForExit,
         // Адрес: свой работает — на его порту; иначе 8090 (там и чужой)
         url: function () { return 'http://localhost:' + (st.own ? st.port : '8090'); },
         answerRemove: function () { answer(true); }, answerKeep: function () { answer(false); },

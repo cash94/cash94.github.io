@@ -801,6 +801,15 @@ var WebOSTorrServer = function () {
   function ensureWatch() {
     exec(stopOnExitCmd() + ' && ' + watchScriptCmd() + ' && cd ' + DIR + ' && ' + '{ [ -f watch.pid ] && kill -0 $(cat watch.pid) 2>/dev/null && exit 0; true; } && ' + 'if command -v systemd-run > /dev/null 2>&1; then systemctl reset-failed torrstream-watch > /dev/null 2>&1; ' + 'systemd-run --unit=torrstream-watch /bin/sh ' + DIR + '/watch.sh > /dev/null 2>&1 && exit 0; fi; ' + '$(command -v setsid) nohup sh ' + DIR + '/watch.sh > /dev/null 2>&1 < /dev/null &', function () {});
   }
+  function stopForExit(cb) {
+    if (!stopOnExit()) {
+      cb();
+      return;
+    }
+    exec('[ -f ' + DIR + '/pid ] && kill -0 $(cat ' + DIR + '/pid) 2>/dev/null && { ' + 'echo "[TorrStream] $(date "+%F %T") остановлен при выходе из приложения (удержание «Назад»)" >> ' + DIR + '/ts.log; ' + 'kill $(cat ' + DIR + '/pid); rm -f ' + DIR + '/pid ' + INIT + '; }; true', function () {
+      cb();
+    });
+  }
   function setStopOnExit(on) {
     try {
       localStorage.setItem(STOP_ON_EXIT_KEY, on ? '1' : '0');
@@ -1198,6 +1207,7 @@ var WebOSTorrServer = function () {
     replace: replace,
     stopOnExit: stopOnExit,
     setStopOnExit: setStopOnExit,
+    stopForExit: stopForExit,
     url: function () {
       return 'http://localhost:' + (st.own ? st.port : '8090');
     },

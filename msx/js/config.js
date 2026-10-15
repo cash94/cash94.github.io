@@ -527,6 +527,8 @@ window.addEventListener('keydown', function (e) {
     return;
   }
 
+  if (!e.repeat && isKeyPressed('BACK', kc)) startBackHoldExit(kc);
+
   if (e.repeat && isKeyPressed('BACK', kc)) {
     // Встроенная клавиатура: там удержание «⌫» стирает подряд — пусть
     if (window.OSK && typeof OSK.isOpen === 'function' && OSK.isOpen()) return;
@@ -534,6 +536,65 @@ window.addEventListener('keydown', function (e) {
     e.stopImmediatePropagation();
   }
 }, true);
+
+// ==================== ВЫХОД ИЗ ПРИЛОЖЕНИЯ: УДЕРЖАНИЕ «НАЗАД» (webOS) ====================
+//
+// Своего «выхода» у приложения на webOS не было: «Назад» (disableBackHistoryAPI
+// в appinfo.json) разбирает страница, и с главной оно никуда не ведёт, а Home
+// только сворачивает. Теперь «Назад», зажатый на секунду, закрывает приложение
+// (window.close() у веб-приложения webOS — выход). Первое нажатие при этом
+// отрабатывает как обычно, автоповтор и так гасится выше. Отпустили раньше —
+// ничего. Перед выходом встроенный TorrServer гасим сразу (галка «Выключать
+// TorrServer при выходе»), не дожидаясь сторожа watch.sh — тот ловит выход
+// только через 30–45 с.
+var BACK_HOLD_EXIT_MS = 1000;
+var backHoldTimer = null;
+var backHoldKey = 0;
+
+function cancelBackHoldExit() {
+  if (backHoldTimer) { clearTimeout(backHoldTimer); backHoldTimer = null; }
+}
+
+function startBackHoldExit(kc) {
+  if (AppState.platform !== 'webos' || backHoldTimer) return;
+  // Удержание «⌫» на встроенной клавиатуре и в поле ввода — это стирание
+  if (window.OSK && typeof OSK.isOpen === 'function' && OSK.isOpen()) return;
+  if (isTextEntryElement(document.activeElement)) return;
+  backHoldKey = kc;
+  backHoldTimer = setTimeout(function () {
+    backHoldTimer = null;
+    exitApp();
+  }, BACK_HOLD_EXIT_MS);
+}
+
+window.addEventListener('keyup', function (e) {
+  if ((e.keyCode || e.which) === backHoldKey) cancelBackHoldExit();
+}, true);
+// Окно потеряло фокус (системное меню, другое приложение) — отпускания не будет
+window.addEventListener('blur', cancelBackHoldExit);
+document.addEventListener('visibilitychange', function () { if (document.hidden) cancelBackHoldExit(); });
+
+var exitingApp = false;
+
+function exitApp() {
+  if (exitingApp) return;
+  exitingApp = true;
+  if (typeof window.showToast === 'function') window.showToast('Выход из TorrStream…');
+  var closed = false;
+  var close = function () {
+    if (closed) return;
+    closed = true;
+    try { window.close(); } catch (e) { }
+  };
+  // Ответа Homebrew Channel ждём не дольше 2,5 с — выход важнее
+  setTimeout(close, 2500);
+  try {
+    if (window.WebOSTorrServer && WebOSTorrServer.enabled()) { WebOSTorrServer.stopForExit(close); return; }
+  } catch (e) { }
+  close();
+}
+
+window.exitApp = exitApp;
 
 // ==================== ЗАКРЫЛИ КЛАВИАТУРУ — СНИМАЕМ ФОКУС С ПОЛЯ (ТЕЛЕФОН) ====================
 //
