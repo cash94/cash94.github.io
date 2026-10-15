@@ -1,6 +1,6 @@
 /* Сборка для старых браузеров (Chrome 53) из js/app.js — tools/legacy-build/build.js. Руками не править. */
-function asyncGeneratorStep(n, t, e, r, o, a, c) {try {var i = n[a](c),u = i.value;} catch (n) {return void e(n);}i.done ? t(u) : Promise.resolve(u).then(r, o);}function _asyncToGenerator(n) {return function () {var t = this,e = arguments;return new Promise(function (r, o) {var a = n.apply(t, e);function _next(n) {asyncGeneratorStep(a, r, o, _next, _throw, "next", n);}function _throw(n) {asyncGeneratorStep(a, r, o, _next, _throw, "throw", n);}_next(void 0);});};}
-
+function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
+function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
 var APP_CONSTANTS = {
   DEBOUNCE_DELAY_MS: 300,
   CHECK_SERVER_TIMEOUT_MS: 500,
@@ -13,34 +13,20 @@ var APP_CONSTANTS = {
   DETAIL_HIDE_DELAY_MS: 250,
   FILTER_PANEL_DELAY_MS: 60,
   ZOOM_TOAST_DURATION_MS: 1500,
-  HINT_DISPLAY_DURATION_MS: 2000,
   JACRED_SAVE_DELAY_MS: 500
 };
-
-var CLICKABLE_SELECTORS = [
-'button', '.control-btn', '.play-btn', '.torrent-card', '.file-item',
-'.search-result-item', '.back-btn', '.settings-btn', '.view-tab',
-'#play-pause-btn', '#mute-btn', '#prev-episode-btn', '#next-episode-btn',
-'#episodes-btn', '#audio-btn', '#subtitles-btn', '#exit-player-btn', '#toggle-buffer-btn',
-'.episode-item', '.audio-item', '.subtitle-item', '.close-panel-btn', '.filter-select',
-'.filter-reset-btn', '.progress-continue-btn', '.detail-progress-btn',
-'#close-search', '#filter-toggle', '#search-btn',
-'#torrserver-tab-content', '#torrents-tab-content', '#player-tab-content', '#account-tab-content', '#sync-tab-content', '#other-tab-content', '#device-tab-content',
-'.menu-item', '.skip-button'].
-join(', ');
-
-
+var CLICKABLE_SELECTORS = ['button', '.control-btn', '.play-btn', '.torrent-card', '.file-item', '.search-result-item', '.back-btn', '.settings-btn', '.view-tab', '#play-pause-btn', '#prev-episode-btn', '#next-episode-btn', '#rewind-btn', '#forward-btn', '#episodes-btn', '#tracks-btn', '#player-settings-btn', '#exit-player-btn', '.episode-item', '.audio-item', '.subtitle-item', '.player-menu-item', '.close-panel-btn', '.filter-select', '.filter-reset-btn', '.progress-continue-btn', '.detail-progress-btn', '#close-search', '#filter-toggle', '#search-btn', '#torrserver-tab-content', '#torrents-tab-content', '#player-tab-content', '#account-tab-content', '#sync-tab-content', '#other-tab-content', '#device-tab-content', '.menu-item', '.skip-button'].join(', ');
 function debounce(fn, delay) {
   var timeoutId;
   return function () {
-    var context = this,args = arguments;
+    var context = this,
+      args = arguments;
     clearTimeout(timeoutId);
     timeoutId = setTimeout(function () {
       fn.apply(context, args);
     }, delay);
   };
 }
-
 function safeExecute(fn, errorMessage) {
   try {
     return fn();
@@ -49,67 +35,44 @@ function safeExecute(fn, errorMessage) {
     return null;
   }
 }
-
-
-
 function showContentScreen(screen, restoreScrollTop) {
-
-
-
   if (window.DetailTopbar && typeof DetailTopbar.ensureHome === 'function') {
     DetailTopbar.ensureHome();
   }
-
   var torrentsScreen = getEl('content-torrents');
   var catalogScreen = getEl('content-catalog');
   var mainContainer = getEl('main-container');
   if (!torrentsScreen || !catalogScreen) return;
-
-  if (typeof AppState !== 'undefined' && mainContainer && (
-  AppState.currentScreen === 'torrents' || AppState.currentScreen === 'catalog')) {
+  if (typeof AppState !== 'undefined' && mainContainer && (AppState.currentScreen === 'torrents' || AppState.currentScreen === 'catalog')) {
     AppState.contentScroll = AppState.contentScroll || {};
     AppState.contentScroll[AppState.currentScreen] = mainContainer.scrollTop;
   }
-
-
-
-
-
   var hasScreenFade = typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function';
   var incoming = screen === 'torrents' ? torrentsScreen : screen === 'catalog' ? catalogScreen : null;
   var outgoing = incoming === torrentsScreen ? catalogScreen : torrentsScreen;
   var wasHidden = incoming ? incoming.hidden : false;
-
   if (hasScreenFade) Animations.resetFade(outgoing);
   outgoing.hidden = true;
-
   if (!incoming) {
-
     if (hasScreenFade) Animations.resetFade(torrentsScreen);
     torrentsScreen.hidden = true;
     catalogScreen.hidden = true;
   } else if (wasHidden && hasScreenFade) {
-
-    Animations.fadeIn(incoming, { duration: Animations.UI_FADE.screen });
+    Animations.fadeIn(incoming, {
+      duration: Animations.UI_FADE.screen
+    });
   } else {
     if (hasScreenFade) Animations.resetFade(incoming);
     incoming.hidden = false;
   }
-
-
-
   if (typeof window.ensureTopbarFit === 'function') window.ensureTopbarFit();
-
   if (typeof AppState !== 'undefined') {
     AppState.currentScreen = screen;
     AppState.contentScroll = AppState.contentScroll || {};
-
-
     if (typeof restoreScrollTop === 'number') {
       AppState.contentScroll[screen] = restoreScrollTop;
     }
   }
-
   requestAnimationFrame(function () {
     if (!mainContainer || typeof AppState === 'undefined' || !AppState.contentScroll) return;
     mainContainer.scrollTop = AppState.contentScroll[screen] || 0;
@@ -117,16 +80,12 @@ function showContentScreen(screen, restoreScrollTop) {
   });
 }
 window.showContentScreen = showContentScreen;
-
-
 var hideClockEnabled = false;
 var addToDbEnabled = false;
 var transcodingOnOff = false;
 var multiChannelEnabled = false;
 var dvPreferred = false;
 var detailView = getEl('detail-view');
-
-
 function initialServerCheck() {
   setTimeout(function () {
     var torrserverUrlInput = getEl('torrserver-url');
@@ -146,20 +105,20 @@ function initialServerCheck() {
       }, '❌ Ошибка при парсинге SERVER_URL');
     }
   }, APP_CONSTANTS.INITIAL_CHECK_DELAY_MS);
-}function
-
-init() {return _init.apply(this, arguments);}function _init() {_init = _asyncToGenerator(function* () {
+}
+function init() {
+  return _init.apply(this, arguments);
+}
+function _init() {
+  _init = _asyncToGenerator(function* () {
     try {
       console.log('🚀 Начало инициализации приложения');
-
       safeExecute(loadClientConfig, '❌ Ошибка загрузки конфигурации');
       checkAppVersion();
-
       if (!window.AndroidJS) {
         setupVideoPlayerControls();
         setupClockVisibility();
       }
-
       setupNavigation();
       setupSearch();
       setupFavoritesTab();
@@ -171,14 +130,11 @@ init() {return _init.apply(this, arguments);}function _init() {_init = _asyncToG
       setupFullscreen();
       setupAutoFullscreen();
       setupSpeedTest();
-
       if (typeof initSearchModeToggle === 'function') initSearchModeToggle();
-
       initialServerCheck();
       setupCheckboxes();
       initJacredUrlStorage();
       setupConfigMenu();
-
       if (typeof AppState !== 'undefined') {
         AppState.addToDbEnabled = addToDbEnabled;
         AppState.multiChannelEnabled = multiChannelEnabled;
@@ -186,68 +142,55 @@ init() {return _init.apply(this, arguments);}function _init() {_init = _asyncToG
         console.log('🎵 AppState.multiChannelEnabled =', AppState.multiChannelEnabled);
       }
       initDolbyVisionCheck();
-
       console.log('✅ Инициализация приложения завершена');
     } catch (error) {
       console.error('❌ Критическая ошибка при инициализации:', error);
       showInitError();
     }
-  });return _init.apply(this, arguments);}
-
+  });
+  return _init.apply(this, arguments);
+}
 function setupVideoPlayerControls() {
-  var requiredElements = [
-  'seek-slider', 'volume-slider', 'play-pause-btn', 'mute-btn',
-  'toggle-buffer-btn', 'exit-player-btn', 'player-overlay', 'video-player'];
-
-  var modes = ['contain', 'fill', 'cover', 'none'];
+  var requiredElements = ['seek-slider', 'volume-slider', 'play-pause-btn', 'exit-player-btn', 'player-overlay', 'video-player'];
+  var modes = ['contain', 'fill', 'cover', 'zoom', 'none'];
   var modeIndex = 0;
   var video = getEl('video-player');
-
   if (!video) {
     console.error('Video player element not found');
     return;
   }
-
-
-
-
-
-
-
-
-
   var zoomMode = 'contain';
-  var FIT_CLASSES = ['video-object-fit-contain', 'video-object-fit-fill',
-  'video-object-fit-cover', 'video-object-fit-none'];
-
+  var ZOOM_FACTOR = 2.4 / (16 / 9);
+  var FIT_CLASSES = ['video-object-fit-contain', 'video-object-fit-fill', 'video-object-fit-cover', 'video-object-fit-none'];
   function setFitClass(fit) {
     for (var i = 0; i < FIT_CLASSES.length; i++) video.classList.remove(FIT_CLASSES[i]);
     video.classList.add('video-object-fit-' + fit);
   }
-
+  function videoItselfFullscreen() {
+    return (document.fullscreenElement || document.webkitFullscreenElement) === video;
+  }
   function applyVideoBox() {
     var st = video.style;
     var ps = getEl('player-screen');
     var cw = ps && ps.clientWidth || window.innerWidth;
     var ch = ps && ps.clientHeight || window.innerHeight;
-    var vw = video.videoWidth,vh = video.videoHeight;
-    if (zoomMode === 'fill' || !vw || !vh || !cw || !ch) {
+    var vw = video.videoWidth,
+      vh = video.videoHeight;
+    if (!vw || !vh || !cw || !ch || videoItselfFullscreen()) {
       st.position = st.left = st.top = st.width = st.height = st.maxWidth = st.maxHeight = '';
-
-
-      setFitClass(zoomMode);
+      setFitClass(zoomMode === 'zoom' ? 'cover' : zoomMode);
       return;
     }
-
-
-
-
-
-    setFitClass(zoomMode === 'none' ? 'contain' : zoomMode);
-    var r = zoomMode === 'cover' ? Math.max(cw / vw, ch / vh) :
-    zoomMode === 'none' ? 1 :
-    Math.min(cw / vw, ch / vh);
-    var w = Math.round(vw * r),h = Math.round(vh * r);
+    setFitClass('fill');
+    var w, h;
+    if (zoomMode === 'fill') {
+      w = cw;
+      h = ch;
+    } else {
+      var r = zoomMode === 'cover' ? Math.max(cw / vw, ch / vh) : zoomMode === 'none' ? 1 : zoomMode === 'zoom' ? Math.min(cw / vw, ch / vh) * ZOOM_FACTOR : Math.min(cw / vw, ch / vh);
+      w = Math.round(vw * r);
+      h = Math.round(vh * r);
+    }
     st.position = 'absolute';
     st.maxWidth = 'none';
     st.maxHeight = 'none';
@@ -256,22 +199,16 @@ function setupVideoPlayerControls() {
     st.left = Math.round((cw - w) / 2) + 'px';
     st.top = Math.round((ch - h) / 2) + 'px';
   }
-
   function setVideoObjectFit(mode) {
     zoomMode = mode;
     applyVideoBox();
   }
-
-
-
   video.addEventListener('loadedmetadata', applyVideoBox);
   video.addEventListener('resize', applyVideoBox);
   window.addEventListener('resize', applyVideoBox);
   document.addEventListener('fullscreenchange', applyVideoBox);
   document.addEventListener('webkitfullscreenchange', applyVideoBox);
-
   setVideoObjectFit('contain');
-
   var zoomBtn = getEl('zoom-mode-btn');
   if (zoomBtn) {
     zoomBtn.onclick = function () {
@@ -281,25 +218,23 @@ function setupVideoPlayerControls() {
         'contain': 'С полосами',
         'fill': 'Растянуть',
         'cover': 'Обрезка',
+        'zoom': 'Увеличить',
         'none': 'Оригинал'
       };
       showToast(modeNames[modes[modeIndex]]);
     };
   }
-
-  var missingElements = requiredElements.filter(function (el) {return !getEl(el);});
+  var missingElements = requiredElements.filter(function (el) {
+    return !getEl(el);
+  });
   if (missingElements.length > 0) {
     console.warn('⚠️ Отсутствуют DOM элементы:', missingElements);
   }
-
   var seekSlider = getEl('seek-slider');
   var volumeSlider = getEl('volume-slider');
   var playPauseBtn = getEl('play-pause-btn');
-  var muteBtn = getEl('mute-btn');
-  var toggleBufferBtn = getEl('toggle-buffer-btn');
   var exitPlayerBtn = getEl('exit-player-btn');
   var overlay = getEl('player-overlay');
-
   if (seekSlider) {
     seekSlider.value = 0;
     seekSlider.max = 100;
@@ -307,64 +242,44 @@ function setupVideoPlayerControls() {
   }
   if (volumeSlider) volumeSlider.value = 1;
   if (playPauseBtn && video) setupPlayPauseButton(playPauseBtn, video);
-  if (muteBtn && video && volumeSlider) setupMuteButton(muteBtn, video, volumeSlider);
   if (volumeSlider && video) setupVolumeSlider(volumeSlider, video);
   if (exitPlayerBtn) setupExitButton(exitPlayerBtn);
-
   if (typeof setupEpisodesButton === 'function') setupEpisodesButton();
   if (typeof setupAudioButton === 'function') setupAudioButton();
   if (typeof setupSubtitlesButton === 'function') setupSubtitlesButton();
-
+  if (typeof setupTracksButton === 'function') setupTracksButton();
+  if (typeof setupPlayerSettingsButton === 'function') setupPlayerSettingsButton();
+  if (typeof setupSeekButtons === 'function') setupSeekButtons();
   setupEpisodeNavigation();
   if (video) setupVideoEvents(video, volumeSlider, seekSlider);
-  if (toggleBufferBtn) setupToggleBufferButton(toggleBufferBtn);
+  try {
+    AppState.bufferHidden = localStorage.getItem('playerBufferHidden') === 'true';
+  } catch (e) {}
   if (overlay) setupOverlayControls(overlay);
-
   var savedVolume = localStorage.getItem('playerVolume');
   if (savedVolume !== null && video) {
     video.volume = parseFloat(savedVolume);
     if (volumeSlider) volumeSlider.value = video.volume;
   }
 }
-
 function showToast(message) {
   var toast = document.createElement('div');
   toast.textContent = message;
   toast.style.cssText = 'position:fixed;bottom:20%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:8px 16px;border-radius:8px;z-index:9999;font-size:14px;pointer-events:none;';
-
   var host = typeof window.getOverlayHost === 'function' ? window.getOverlayHost() : document.body;
   host.appendChild(toast);
   setTimeout(function () {
-    if (toast && toast.remove) toast.remove();else
-    if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
+    if (toast && toast.remove) toast.remove();else if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
   }, APP_CONSTANTS.ZOOM_TOAST_DURATION_MS);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 var ERROR_BANNER_ID = 'app-error-banner';
 var ERROR_BANNER_MS = 6000;
 var errorBannerTimer = null;
-
 function showErrorBanner(message, detail) {
   if (!message) return;
-
+  if (typeof window.releasePreloadScreen === 'function') window.releasePreloadScreen(true);
   var host = typeof window.getOverlayHost === 'function' ? window.getOverlayHost() : document.body;
   if (!host) return;
-
-
   var banner = document.getElementById(ERROR_BANNER_ID);
   if (banner && banner.parentNode !== host) {
     if (banner.remove) banner.remove();else banner.parentNode.removeChild(banner);
@@ -373,21 +288,10 @@ function showErrorBanner(message, detail) {
   if (!banner) {
     banner = document.createElement('div');
     banner.id = ERROR_BANNER_ID;
-    banner.style.cssText =
-    'position:fixed;top:12%;left:50%;transform:translateX(-50%);' +
-    'max-width:80%;box-sizing:border-box;' +
-    'background:rgba(20,10,10,0.96);border:2px solid #ff5050;border-radius:16px;' +
-    'padding:20px 32px;text-align:center;z-index:10060;pointer-events:none;' +
-    'box-shadow:0 8px 40px rgba(0,0,0,0.6);';
+    banner.style.cssText = 'position:fixed;top:12%;left:50%;transform:translateX(-50%);' + 'max-width:80%;box-sizing:border-box;' + 'background:rgba(20,10,10,0.96);border:2px solid #ff5050;border-radius:16px;' + 'padding:20px 32px;text-align:center;z-index:10060;pointer-events:none;' + 'box-shadow:0 8px 40px rgba(0,0,0,0.6);';
     host.appendChild(banner);
   }
-
-  banner.innerHTML =
-  '<div style="font-size:22px;font-weight:600;color:#ff8a8a;line-height:1.3">' +
-  escapeBannerText(message) + '</div>' + (
-  detail ? '<div style="font-size:15px;color:#c8c8c8;margin-top:10px;line-height:1.35">' +
-  escapeBannerText(detail) + '</div>' : '');
-
+  banner.innerHTML = '<div style="font-size:22px;font-weight:600;color:#ff8a8a;line-height:1.3">' + escapeBannerText(message) + '</div>' + (detail ? '<div style="font-size:15px;color:#c8c8c8;margin-top:10px;line-height:1.35">' + escapeBannerText(detail) + '</div>' : '');
   if (errorBannerTimer) clearTimeout(errorBannerTimer);
   errorBannerTimer = setTimeout(function () {
     errorBannerTimer = null;
@@ -396,20 +300,20 @@ function showErrorBanner(message, detail) {
     if (b.remove) b.remove();else if (b.parentNode) b.parentNode.removeChild(b);
   }, ERROR_BANNER_MS);
 }
-
 function escapeBannerText(s) {
   return String(s == null ? '' : s).replace(/[&<>]/g, function (m) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m];
+    return {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;'
+    }[m];
   });
 }
-
 window.showErrorBanner = showErrorBanner;
-
-
 function checkAppVersion() {
-  fetch('/api/version').
-  then(function (response) {return response.json();}).
-  then(function (data) {
+  fetch('/api/version').then(function (response) {
+    return response.json();
+  }).then(function (data) {
     var serverVersion = data.version;
     var currentVersion = AppState.currentVersion;
     if (serverVersion !== currentVersion) {
@@ -423,39 +327,31 @@ function checkAppVersion() {
         sectionTitle.parentNode.insertBefore(warningBlock, sectionTitle.nextSibling);
       }
     }
-  }).
-  catch(function (error) {console.error('❌ Ошибка проверки версии:', error);});
+  }).catch(function (error) {
+    console.error('❌ Ошибка проверки версии:', error);
+  });
 }
-
-
 function setupSeekSliderEvents(seekSlider, videoPlayer) {
   var currentTimeEl = getEl('current-time');
   var loadingOverlay = getEl('loading-player-overlay');
   var loadingTimeEl = getEl('loading-time');
-
-
   var seekStartValue = 0;
-
   seekSlider.addEventListener('mousedown', function () {
     if (typeof AppState !== 'undefined') {
       AppState.isSliderDragging = true;
       AppState.suppressTimeUpdate = true;
     }
-
     seekStartValue = parseFloat(seekSlider.value) || 0;
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
-
   seekSlider.addEventListener('touchstart', function () {
     if (typeof AppState !== 'undefined') {
       AppState.isSliderDragging = true;
       AppState.suppressTimeUpdate = true;
     }
-
     seekStartValue = parseFloat(seekSlider.value) || 0;
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
-
   seekSlider.addEventListener('input', function (e) {
     var newPreviewTime = parseFloat(e.target.value);
     if (isFinite(newPreviewTime)) {
@@ -466,30 +362,24 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
       if (typeof AppState !== 'undefined' && (AppState.isSeeking || loadingOverlay && loadingOverlay.classList.contains('active'))) {
         if (loadingTimeEl) loadingTimeEl.textContent = formatTime(newPreviewTime);
       }
-
-
       if (typeof window.showSeekOverlay === 'function') {
-
         var direction = newPreviewTime >= seekStartValue ? 1 : -1;
         window.showSeekOverlay(newPreviewTime, direction);
       }
     }
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
-
-  seekSlider.addEventListener('change', function () {var _ref = _asyncToGenerator(function* (e) {
+  seekSlider.addEventListener('change', function () {
+    var _ref = _asyncToGenerator(function* (e) {
       var targetAbsoluteTime = parseFloat(e.target.value);
       if (typeof AppState !== 'undefined') {
         AppState.isSliderDragging = false;
         AppState.previewTime = targetAbsoluteTime;
         AppState.suppressTimeUpdate = true;
       }
-
-
       if (typeof window.scheduleHideSeekOverlay === 'function') {
         window.scheduleHideSeekOverlay();
       }
-
       if (!isFinite(targetAbsoluteTime) || targetAbsoluteTime < 0) {
         if (typeof AppState !== 'undefined') {
           AppState.previewTime = null;
@@ -498,7 +388,6 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
         return;
       }
       console.log('🎚️ Seek to: ' + formatTime(targetAbsoluteTime));
-
       if (!AppState || !AppState.hls) {
         if (videoPlayer) {
           videoPlayer.currentTime = targetAbsoluteTime - (AppState && AppState.seekOffset || 0);
@@ -511,19 +400,19 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
         if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
         return;
       }
-
       if (typeof seekStream === 'function') {
         yield seekStream(targetAbsoluteTime, 'slider');
       }
       if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
-    });return function (_x) {return _ref.apply(this, arguments);};}());
-
+    });
+    return function (_x) {
+      return _ref.apply(this, arguments);
+    };
+  }());
   seekSlider.addEventListener('mouseup', function () {
-
     if (typeof window.scheduleHideSeekOverlay === 'function') {
       window.scheduleHideSeekOverlay();
     }
-
     setTimeout(function () {
       if (!AppState || !AppState.isSliderDragging) return;
       if (typeof AppState !== 'undefined') {
@@ -537,13 +426,10 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
     }, 200);
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
-
   seekSlider.addEventListener('touchend', function () {
-
     if (typeof window.scheduleHideSeekOverlay === 'function') {
       window.scheduleHideSeekOverlay();
     }
-
     setTimeout(function () {
       if (!AppState || !AppState.isSliderDragging) return;
       if (typeof AppState !== 'undefined') {
@@ -558,7 +444,6 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 }
-
 function setupPlayPauseButton(playPauseBtn, videoPlayer) {
   playPauseBtn.addEventListener('click', function (e) {
     var loadingOverlay = getEl('loading-player-overlay');
@@ -577,17 +462,6 @@ function setupPlayPauseButton(playPauseBtn, videoPlayer) {
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
 }
-
-function setupMuteButton(muteBtn, videoPlayer, volumeSlider) {
-  muteBtn.addEventListener('click', function () {
-    var loadingOverlay = getEl('loading-player-overlay');
-    if (AppState && (AppState.isSeeking || loadingOverlay && loadingOverlay.classList.contains('active'))) return;
-    videoPlayer.muted = !videoPlayer.muted;
-    if (typeof updateMuteButton === 'function') updateMuteButton();
-    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
-  });
-}
-
 function setupVolumeSlider(volumeSlider, videoPlayer) {
   volumeSlider.addEventListener('input', function (e) {
     var loadingOverlay = getEl('loading-player-overlay');
@@ -596,13 +470,11 @@ function setupVolumeSlider(volumeSlider, videoPlayer) {
     videoPlayer.volume = vol;
     if (vol > 0 && videoPlayer.muted) {
       videoPlayer.muted = false;
-      if (typeof updateMuteButton === 'function') updateMuteButton();
     }
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
     localStorage.setItem('playerVolume', vol);
   });
 }
-
 function setupExitButton(exitPlayerBtn) {
   exitPlayerBtn.addEventListener('click', function (e) {
     e.stopPropagation();
@@ -611,11 +483,9 @@ function setupExitButton(exitPlayerBtn) {
     if (typeof window.exitPlayer === 'function') window.exitPlayer();
   });
 }
-
 function setupEpisodeNavigation() {
   var prevEpisodeBtn = getEl('prev-episode-btn');
   var nextEpisodeBtn = getEl('next-episode-btn');
-
   if (prevEpisodeBtn) {
     prevEpisodeBtn.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -631,12 +501,10 @@ function setupEpisodeNavigation() {
     });
   }
 }
-
 function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
   var handlers = {
     volumechange: function () {
       if (volumeSlider) volumeSlider.value = videoPlayer.volume;
-      if (typeof updateMuteButton === 'function') updateMuteButton();
       if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
       localStorage.setItem('playerVolume', videoPlayer.volume);
     },
@@ -664,34 +532,20 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
     ended: function () {
       console.log('🏁 Видео закончилось');
       if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    },
+    play: function () {
+      if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
+    },
+    pause: function () {
+      if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
     }
   };
-
   Object.keys(handlers).forEach(function (event) {
     videoPlayer.addEventListener(event, handlers[event]);
   });
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 var BUFFER_TICK_MS = 300;
 var bufferTickTimer = null;
-
 function bufferTick() {
   bufferTickTimer = null;
   if (typeof AppState === 'undefined' || !AppState) return;
@@ -699,32 +553,29 @@ function bufferTick() {
   if (!AppState.isSeeking && typeof updateBufferDisplay === 'function') updateBufferDisplay();
   bufferTickTimer = setTimeout(bufferTick, BUFFER_TICK_MS);
 }
-
 function startBufferUpdates() {
   if (bufferTickTimer) return;
   bufferTick();
 }
 window.startBufferUpdates = startBufferUpdates;
-
-function setupToggleBufferButton(toggleBufferBtn) {
-  toggleBufferBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    if (typeof AppState !== 'undefined') AppState.bufferHidden = !AppState.bufferHidden;
-    toggleBufferBtn.style.opacity = AppState && AppState.bufferHidden ? '0.6' : '1';
-    toggleBufferBtn.title = AppState && AppState.bufferHidden ? 'показать буфер' : 'скрыть буфер';
-    if (AppState && !AppState.bufferHidden && typeof updateBufferDisplay === 'function') {
-      updateBufferDisplay();
-    } else {
-      var bufferStats = getEl('buffer-stats');
-      if (bufferStats) bufferStats.classList.add('hidden');
-    }
-
-
-    if (typeof refreshTorrentStatsCadence === 'function') refreshTorrentStatsCadence();
-    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
-  });
+function toggleBufferVisibility() {
+  AppState.bufferHidden = !AppState.bufferHidden;
+  try {
+    localStorage.setItem('playerBufferHidden', AppState.bufferHidden ? 'true' : 'false');
+  } catch (e) {}
+  if (!AppState.bufferHidden && typeof updateBufferDisplay === 'function') {
+    updateBufferDisplay();
+  } else {
+    var bufferStats = getEl('buffer-stats');
+    if (bufferStats) bufferStats.classList.add('hidden');
+    var subtitleElement = getEl('player-subtitle');
+    if (subtitleElement) subtitleElement.classList.add('hidden');
+  }
+  if (typeof refreshTorrentStatsCadence === 'function') refreshTorrentStatsCadence();
+  if (typeof window.updatePlayerSettingsMenu === 'function') window.updatePlayerSettingsMenu();
+  if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
 }
-
+window.toggleBufferVisibility = toggleBufferVisibility;
 function setupOverlayControls(overlay) {
   function showControls() {
     overlay.classList.add('touch-active');
@@ -733,46 +584,89 @@ function setupOverlayControls(overlay) {
       if (!overlay.matches(':hover')) overlay.classList.remove('touch-active');
     }, APP_CONSTANTS.IDLE_TIMEOUT_MS);
   }
-
   overlay.addEventListener('mousemove', function () {
+    if (typeof isPlayerMouseMuted === 'function' && isPlayerMouseMuted()) return;
     showControls();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
-
+  var VIDEO_DOUBLE_TAP_MS = 300;
+  var tapTimer = null;
+  var tapStartX = 0,
+    tapStartY = 0,
+    lastTouchAt = 0;
+  function anyPlayerPanelOpen() {
+    if (typeof PLAYER_PANELS === 'undefined' || typeof isPlayerPanelOpen !== 'function') return false;
+    for (var name in PLAYER_PANELS) if (isPlayerPanelOpen(name)) return true;
+    return false;
+  }
+  function toggleVideoPause() {
+    var vp = getEl('video-player');
+    if (!vp) return;
+    if (vp.paused) {
+      var p = vp.play();
+      if (p && typeof p.catch === 'function') p.catch(function () {});
+    } else {
+      vp.pause();
+    }
+    if (typeof updatePlayPauseButton === 'function') updatePlayPauseButton();
+  }
+  function videoTap() {
+    if (anyPlayerPanelOpen()) {
+      if (typeof closePlayerPanels === 'function') closePlayerPanels();
+      return;
+    }
+    if (tapTimer) {
+      clearTimeout(tapTimer);
+      tapTimer = null;
+      if (typeof window.togglePlayerFullscreen === 'function') window.togglePlayerFullscreen();
+      return;
+    }
+    tapTimer = setTimeout(function () {
+      tapTimer = null;
+      toggleVideoPause();
+    }, VIDEO_DOUBLE_TAP_MS);
+  }
   overlay.addEventListener('touchstart', function (e) {
     showControls();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
-    if (e.touches.length === 1) e.preventDefault();
-  }, { passive: false });
-
-  var lastTap = 0;
+    if (e.touches.length === 1) {
+      e.preventDefault();
+      tapStartX = e.touches[0].clientX;
+      tapStartY = e.touches[0].clientY;
+    }
+  }, {
+    passive: false
+  });
   overlay.addEventListener('touchend', function (e) {
-    var currentTime = Date.now();
-    if (currentTime - lastTap < 300) {
-      if (overlay.classList.contains('touch-active')) overlay.classList.remove('touch-active');else
-      showControls();
-    } else showControls();
-    lastTap = currentTime;
+    lastTouchAt = Date.now();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
+    if (e.target !== overlay) return;
+    var t = e.changedTouches && e.changedTouches[0];
+    if (t && (Math.abs(t.clientX - tapStartX) > 20 || Math.abs(t.clientY - tapStartY) > 20)) return;
+    videoTap();
+  });
+  overlay.addEventListener('click', function (e) {
+    if (e.target !== overlay) return;
+    if (Date.now() - lastTouchAt < 800) return;
+    videoTap();
   });
 }
-
-
 function setupNavigation() {
   var settingsBtn = getEl('settings-btn');
   if (settingsBtn) {
     settingsBtn.addEventListener('click', function () {
       var torrserverSection = getEl('torrserver-section');
       var configScreen = getEl('config-screen');
-
-
-
-      if (window.Nav) Nav.push('config', { key: 'config' });
+      if (window.Nav) Nav.push('config', {
+        key: 'config'
+      });
       if (torrserverSection) torrserverSection.style.display = 'none';
       if (configScreen) {
-
         if (typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
-          Animations.fadeIn(configScreen, { display: 'flex', duration: Animations.UI_FADE.screen });
+          Animations.fadeIn(configScreen, {
+            display: 'flex',
+            duration: Animations.UI_FADE.screen
+          });
         } else {
           configScreen.style.display = 'flex';
         }
@@ -784,112 +678,61 @@ function setupNavigation() {
       }, APP_CONSTANTS.NAVIGATION_DELAY_MS);
     });
   }
-
   var backFromDetail = getEl('back-from-detail');
   if (backFromDetail) {
     backFromDetail.addEventListener('click', function () {
       console.log('🔙 Возврат из детального просмотра');
-
-
-
       var navLeft = window.Nav ? Nav.top() : null;
-      var navTo = navLeft && (navLeft.screen === 'detail' || navLeft.screen === 'torrent-detail') ?
-      Nav.pop(navLeft.screen) : null;
+      var navTo = navLeft && (navLeft.screen === 'detail' || navLeft.screen === 'torrent-detail') ? Nav.pop(navLeft.screen) : null;
       var mainContainer = getEl('main-container');
-
-
-
-
       var savedScroll = typeof AppState.backupScroll === 'number' ? AppState.backupScroll : 0;
-
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
       console.log('🔍 Hash для восстановления:', currentTorrentHash);
-
       if (typeof window.dropOpenTorrentDetail === 'function') window.dropOpenTorrentDetail();
-
-
-
-
-
       if (navLeft && navLeft.screen === 'torrent-detail' && navTo && navTo.screen === 'search') {
         AppState.playFromHash = false;
         AppState.isCatalogSerials = false;
       }
-
-
       var target = navTo ? navTo.screen : null;
       if (!target) target = AppState.inSearch === 'catalog' || AppState.inSearch === 'home' ? AppState.inSearch : 'torrents';
       console.log('📍 «назад» из карточки →', target);
-
-
-
-
-
       if (target === 'detail' || target === 'torrent-detail') {
         setTimeout(function () {
-          if (target === 'detail') window.showCatalogDetail(navTo.data.item, navTo.data.index || 0, null);else
-          if (typeof window.showDetail === 'function') window.showDetail(navTo.data.torrent);
+          if (target === 'detail') window.showCatalogDetail(navTo.data.item, navTo.data.index || 0, null);else if (typeof window.showDetail === 'function') window.showDetail(navTo.data.torrent);
         }, APP_CONSTANTS.DETAIL_HIDE_DELAY_MS);
         return;
       }
-
-
-
-
-
-
-
-
-
       var backToSearch = target === 'search';
       if (!backToSearch) hideDetailView();
       if (mainContainer) mainContainer.style.pointerEvents = 'auto';
-
       var torrserverSection = getEl('torrserver-section');
       if (torrserverSection && !backToSearch) torrserverSection.style.display = 'block';
-
       var returnTo = target === 'grid' ? 'catalog' : target;
-
       if (navTo && navTo.restore && typeof navTo.restore.scrollTop === 'number') savedScroll = navTo.restore.scrollTop;
-
-
       if (['home', 'catalog', 'torrents', 'search'].indexOf(returnTo) === -1) {
         returnTo = AppState.inSearch === 'catalog' || AppState.inSearch === 'home' ? AppState.inSearch : 'torrents';
       }
-      var restoreCtx = { currentTorrentHash: currentTorrentHash, savedScroll: savedScroll, navEntry: navTo };
-
-
-
+      var restoreCtx = {
+        currentTorrentHash: currentTorrentHash,
+        savedScroll: savedScroll,
+        navEntry: navTo
+      };
       if (backToSearch) {
         restoreFocusAfterNavigation('search', restoreCtx);
         return;
       }
-
       setTimeout(function () {
         if (typeof updateFocusableElements !== 'function' || typeof setFocus !== 'function') {
           console.error('❌ Функции навигации еще не загружены');
           return;
         }
-
         restoreFocusAfterNavigation(returnTo, restoreCtx);
-
-
-
         if (typeof Animations !== 'undefined') Animations.animateDetailHide();
       }, APP_CONSTANTS.DETAIL_HIDE_DELAY_MS);
     });
     AppState.isCatalogSearch = false;
   }
 }
-
-
-
-
-
-
-
-
-
 function hideDetailView(opts) {
   if (typeof Animations !== 'undefined' && typeof Animations.animateDetailHide === 'function') {
     Animations.animateDetailHide(null, opts);
@@ -897,73 +740,45 @@ function hideDetailView(opts) {
   }
   if (detailView) detailView.style.display = 'none';
 }
-
-
-
-
-
 if (window.Nav) {
   var navScrollSnapshot = {
     snapshot: function () {
       var mc = getEl('main-container');
-      return { scrollTop: mc ? mc.scrollTop : 0 };
+      return {
+        scrollTop: mc ? mc.scrollTop : 0
+      };
     }
   };
   Nav.register('catalog', navScrollSnapshot);
   Nav.register('torrents', navScrollSnapshot);
 }
-
 function restoreFocusAfterNavigation(returnTo, context) {
   if (returnTo === 'catalog') {
     showContentScreen('catalog', context.savedScroll);
-
-
-
-
     if (typeof window.rearmCatalogObservers === 'function') window.rearmCatalogObservers();
-
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
       hideDetailView();
-
-
-
-      if (typeof window.withInstantScroll === 'function') window.withInstantScroll(restoreRowFocus);else
-      restoreRowFocus();
+      if (typeof window.withInstantScroll === 'function') window.withInstantScroll(restoreRowFocus);else restoreRowFocus();
       return;
     }
-
-
-
-    if (catalogState.currentCatalog === 'favorites' && catalogState.favoritesGridStale &&
-    typeof window.reloadFavoritesGrid === 'function') {
+    if (catalogState.currentCatalog === 'favorites' && catalogState.favoritesGridStale && typeof window.reloadFavoritesGrid === 'function') {
       hideDetailView();
       window.reloadFavoritesGrid();
       return;
     }
-
-
     var catalogGrid = getEl('catalog-grid');
-    if (catalogState.currentCatalog === AppState.backCurrentCatalog &&
-    catalogState.items.length > 0 && catalogGrid && catalogGrid.children.length > 0) {
-
+    if (catalogState.currentCatalog === AppState.backCurrentCatalog && catalogState.items.length > 0 && catalogGrid && catalogGrid.children.length > 0) {
       hideDetailView();
-
-
       var mc = getEl('main-container');
       if (mc && typeof context.savedScroll === 'number') {
         mc.scrollTop = context.savedScroll;
       }
-
-
       if (typeof window.ensureCatalogFocus === 'function') {
         window.ensureCatalogFocus(true);
       }
       return;
     }
-
-
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
-
       var mc = getEl('main-container');
       if (mc && typeof context.savedScroll === 'number') {
         mc.scrollTop = context.savedScroll;
@@ -975,27 +790,16 @@ function restoreFocusAfterNavigation(returnTo, context) {
     });
     return;
   }
-
-
-
   if (returnTo === 'home' && window.HomeScreen && typeof window.HomeScreen.show === 'function') {
     hideDetailView();
-    window.HomeScreen.show({ restoreFocus: true });
+    window.HomeScreen.show({
+      restoreFocus: true
+    });
     return;
   }
-
   if (returnTo === 'search') {
     if (typeof window.showSearchResults === 'function') {
-
-
       if (typeof window.restoreSearchEntry === 'function') window.restoreSearchEntry(context && context.navEntry);
-
-
-
-
-
-
-
       AppState.detailUnderSearch = true;
       window.showSearchResults({
         restoreCard: true,
@@ -1011,35 +815,25 @@ function restoreFocusAfterNavigation(returnTo, context) {
     hideDetailView();
     return;
   }
-
   if (returnTo === 'torrents') {
     if (typeof window.clearSearchResultsContainer === 'function') window.clearSearchResultsContainer();
     showContentScreen('torrents');
-
-
-
-
-
     var mcTorrents = getEl('main-container');
     var savedTorrentsScroll = AppState.contentScroll ? AppState.contentScroll.torrents : null;
     if (mcTorrents && typeof savedTorrentsScroll === 'number') {
       mcTorrents.scrollTop = savedTorrentsScroll;
     }
-
     if (context.currentTorrentHash) {
       window.lastSelectedTorrentHash = context.currentTorrentHash;
       console.log('💾 Сохранен hash для восстановления:', context.currentTorrentHash);
     }
-
     updateFocusableElements();
-
     if (typeof window.ensureTorrentFocus === 'function') {
       hideDetailView();
       window.ensureTorrentFocus(true);
       console.log('🎯 Фокус восстановлен через ensureTorrentFocus');
       return;
     }
-
     var targetIndex = findTorrentCardIndex(context.currentTorrentHash);
     if (targetIndex === -1 && typeof lastSelectedTorrentIndex !== 'undefined') {
       targetIndex = findTorrentCardByIndex(lastSelectedTorrentIndex);
@@ -1047,12 +841,10 @@ function restoreFocusAfterNavigation(returnTo, context) {
     if (targetIndex === -1) {
       targetIndex = findFirstTorrentCardIndex();
     }
-
     setFocus(targetIndex !== -1 ? targetIndex : 0);
     hideDetailView();
   }
 }
-
 function findTorrentCardIndex(hash) {
   if (!hash) return -1;
   console.log('🔍 Поиск карточки с hash:', hash);
@@ -1069,7 +861,6 @@ function findTorrentCardIndex(hash) {
   }
   return -1;
 }
-
 function findTorrentCardByIndex(savedIndex) {
   console.log('🔍 Поиск по сохраненному индексу:', savedIndex);
   var cardIndices = [];
@@ -1086,7 +877,6 @@ function findTorrentCardByIndex(savedIndex) {
   }
   return -1;
 }
-
 function findFirstTorrentCardIndex() {
   var fLen = focusableElements.length;
   for (var k = 0; k < fLen; k++) {
@@ -1097,8 +887,6 @@ function findFirstTorrentCardIndex() {
   }
   return -1;
 }
-
-
 function setupSearch() {
   var searchInput = getEl('search-query');
   var searchBtn = getEl('search-btn');
@@ -1106,24 +894,15 @@ function setupSearch() {
   var tabTorrents = getEl('tab-torrents');
   var tabSearch = getEl('tab-search');
   var tabCatalog = getEl('tab-catalog');
-
   if (searchBtn && searchInput) {
     searchBtn.addEventListener('click', function () {
-
-
-
-
-
       if (window.AppState && AppState.searchLocked) return;
-
       var query = searchInput.value.trim();
-
       if (typeof window.clearCatalogSearchContext === 'function') window.clearCatalogSearchContext();
       if (typeof showSearchResults === 'function') showSearchResults();
       if (query && typeof searchTorrents === 'function') searchTorrents(query);
     });
   }
-
   if (searchInput) {
     searchInput.addEventListener('keypress', function (e) {
       if (e.key === 'Enter') {
@@ -1133,18 +912,13 @@ function setupSearch() {
       }
     });
   }
-
   if (closeSearchBtn && typeof hideSearchResults === 'function') {
     closeSearchBtn.addEventListener('click', function () {
-
       hideSearchResults();
     });
   }
-
   if (tabTorrents && typeof hideSearchResults === 'function' && typeof loadTorrents === 'function') {
     tabTorrents.addEventListener('click', function () {
-
-
       if (AppState.torrentsLoaded && typeof window.syncTorrentsList === 'function') {
         window.syncTorrentsList();
       }
@@ -1161,8 +935,6 @@ function setupSearch() {
         if (tabCatalog) tabCatalog.classList.remove('active');
         var tabFavoritesEl = getEl('tab-favorites');
         if (tabFavoritesEl) tabFavoritesEl.classList.remove('active');
-
-
         showContentScreen('torrents');
         var torrentsGrid = getEl('torrents-grid');
         if (!AppState.torrentsLoaded && !AppState.torrentsLoading) {
@@ -1179,11 +951,8 @@ function setupSearch() {
       }
     });
   }
-
   if (tabSearch && typeof showSearchResults === 'function') {
     tabSearch.addEventListener('click', function () {
-
-
       if (typeof window.setSearchLocked === 'function') window.setSearchLocked(false);
       if (typeof window.clearCatalogSearchContext === 'function') window.clearCatalogSearchContext();
       showSearchResults();
@@ -1192,15 +961,12 @@ function setupSearch() {
       }
     });
   }
-
   if (tabCatalog && typeof window.loadCatalogList === 'function') {
     tabCatalog.addEventListener('click', function () {
       if (typeof AppState !== 'undefined') AppState.inSearch = 'catalog';
       if (!tabCatalog.classList.contains('active')) {
         window.pendingCatalogPoster = null;
         window.pendingCatalogItem = null;
-
-
         if (typeof catalogState !== 'undefined') {
           catalogState.lastSelectedIndex = 0;
           catalogState.lastSelectedId = null;
@@ -1213,7 +979,6 @@ function setupSearch() {
         }
         localStorage.removeItem('lastCatalogCardIndex');
         if (typeof hideSearchResults === 'function') hideSearchResults();
-
         var tabTorrentsEl = getEl('tab-torrents');
         var tabSearchEl = getEl('tab-search');
         var tabFavoritesEl = getEl('tab-favorites');
@@ -1223,22 +988,15 @@ function setupSearch() {
         tabCatalog.classList.add('active');
         showContentScreen('catalog');
         if (window.Nav) Nav.reset('catalog');
-
-
         if (typeof catalogState !== 'undefined' && catalogState.favoritesFromTopbar) {
           catalogState.favoritesFromTopbar = false;
           window.loadCatalogList();
           return;
         }
-
-
-        var catalogView = typeof catalogState !== 'undefined' && catalogState.currentCatalog ?
-        getEl('catalog-grid') :
-        getEl('catalog-rows');
+        var catalogView = typeof catalogState !== 'undefined' && catalogState.currentCatalog ? getEl('catalog-grid') : getEl('catalog-rows');
         if (!catalogView || !catalogView.hasChildNodes()) {
           window.loadCatalogList();
         } else {
-
           setTimeout(function () {
             if (AppState.currentScreen === 'catalog' && typeof window.ensureCatalogFocus === 'function') {
               window.ensureCatalogFocus(true);
@@ -1249,18 +1007,10 @@ function setupSearch() {
     });
   }
 }
-
-
-
-
-
-
-
 function setupFavoritesTab() {
   var tabFavorites = getEl('tab-favorites');
   if (!tabFavorites || typeof window.loadFavoritesCatalog !== 'function') return;
   tabFavorites.addEventListener('click', function () {
-
     if (tabFavorites.classList.contains('active')) return;
     AppState.inSearch = 'catalog';
     window.pendingCatalogPoster = null;
@@ -1274,13 +1024,10 @@ function setupFavoritesTab() {
     showContentScreen('catalog');
     if (window.Nav) Nav.reset('catalog');
     if (typeof catalogState !== 'undefined') catalogState.favoritesFromTopbar = true;
-
     localStorage.removeItem('lastCatalogCardIndex');
     Promise.resolve(window.loadFavoritesCatalog()).then(function () {
       setTimeout(function () {
         if (AppState.currentScreen !== 'catalog' || !tabFavorites.classList.contains('active')) return;
-
-
         if (typeof window.ensureCatalogFocus === 'function' && window.ensureCatalogFocus(true)) return;
         if (typeof updateFocusableElements === 'function') updateFocusableElements();
         if (typeof focusEl === 'function') focusEl(tabFavorites);
@@ -1288,15 +1035,12 @@ function setupFavoritesTab() {
     });
   });
 }
-
-
 function createFilterHandler(setter) {
   return function (e) {
     setter(e.target.value);
     if (typeof applyFiltersAndSort === 'function') applyFiltersAndSort();
   };
 }
-
 function setupSearchFilters() {
   var filterToggleBtn = getEl('filter-toggle');
   var torrentmovie = getEl('torrent-movie');
@@ -1308,8 +1052,6 @@ function setupSearchFilters() {
   var filterSeason = getEl('filter-season');
   var filterVoice = getEl('filter-voice');
   var filtervideotype = getEl('filter-videotype');
-
-
   if (filterToggleBtn) {
     filterToggleBtn.addEventListener('click', function () {
       console.log('🔘 filter-toggle нажат');
@@ -1352,25 +1094,52 @@ function setupSearchFilters() {
       }
     });
   }
-
-
-  var filterConfigs = [
-  { el: torrentmovie, setter: function (v) {if (typeof currentSearchMode !== 'undefined') currentSearchMode = v;} },
-  { el: sortBy, setter: function (v) {if (typeof currentSort !== 'undefined') currentSort = v;} },
-  { el: filterQuality, setter: function (v) {if (typeof currentQualityFilter !== 'undefined') currentQualityFilter = v;} },
-  { el: filterTracker, setter: function (v) {if (typeof currentTrackerFilter !== 'undefined') currentTrackerFilter = v;} },
-  { el: filterYear, setter: function (v) {if (typeof currentYearFilter !== 'undefined') currentYearFilter = v === 'all' ? '' : v;} },
-  { el: filterSeason, setter: function (v) {if (typeof currentSeasonFilter !== 'undefined') currentSeasonFilter = v;} },
-  { el: filterVoice, setter: function (v) {if (typeof currentVoiceFilter !== 'undefined') currentVoiceFilter = v;} },
-  { el: filtervideotype, setter: function (v) {if (typeof currentvideotypeFilter !== 'undefined') currentvideotypeFilter = v;} }];
-
-
+  var filterConfigs = [{
+    el: torrentmovie,
+    setter: function (v) {
+      if (typeof currentSearchMode !== 'undefined') currentSearchMode = v;
+    }
+  }, {
+    el: sortBy,
+    setter: function (v) {
+      if (typeof currentSort !== 'undefined') currentSort = v;
+    }
+  }, {
+    el: filterQuality,
+    setter: function (v) {
+      if (typeof currentQualityFilter !== 'undefined') currentQualityFilter = v;
+    }
+  }, {
+    el: filterTracker,
+    setter: function (v) {
+      if (typeof currentTrackerFilter !== 'undefined') currentTrackerFilter = v;
+    }
+  }, {
+    el: filterYear,
+    setter: function (v) {
+      if (typeof currentYearFilter !== 'undefined') currentYearFilter = v === 'all' ? '' : v;
+    }
+  }, {
+    el: filterSeason,
+    setter: function (v) {
+      if (typeof currentSeasonFilter !== 'undefined') currentSeasonFilter = v;
+    }
+  }, {
+    el: filterVoice,
+    setter: function (v) {
+      if (typeof currentVoiceFilter !== 'undefined') currentVoiceFilter = v;
+    }
+  }, {
+    el: filtervideotype,
+    setter: function (v) {
+      if (typeof currentvideotypeFilter !== 'undefined') currentvideotypeFilter = v;
+    }
+  }];
   filterConfigs.forEach(function (config) {
     if (config.el) {
       config.el.addEventListener('change', createFilterHandler(config.setter));
     }
   });
-
   if (resetFiltersBtn && typeof resetFilters === 'function') {
     resetFiltersBtn.addEventListener('click', function () {
       resetFilters();
@@ -1381,8 +1150,6 @@ function setupSearchFilters() {
       }, 100);
     });
   }
-
-
   var filterPanel = getEl('search-filters-panel');
   if (filterPanel) {
     var filterMainScreen = filterPanel.querySelector('.filter-main-screen');
@@ -1391,8 +1158,6 @@ function setupSearchFilters() {
     var filterBackBtn = getEl('filter-back-btn');
     var filterCloseBtn = getEl('filter-close-btn');
     var currentFilterId = null;
-
-
     function showFilterMainScreen() {
       if (filterMainScreen) filterMainScreen.style.display = 'block';
       if (filterValuesScreen) filterValuesScreen.style.display = 'none';
@@ -1400,37 +1165,26 @@ function setupSearchFilters() {
       currentFilterId = null;
       updateFilterValueDisplays();
     }
-
-
     function showFilterValuesScreen(filterId) {
       var filterSelect = getEl(filterId);
       if (!filterSelect || !filterValuesList) return;
-
       currentFilterId = filterId;
       if (filterMainScreen) filterMainScreen.style.display = 'none';
       if (filterValuesScreen) filterValuesScreen.style.display = 'block';
       if (filterBackBtn) filterBackBtn.style.display = 'flex';
-
       filterValuesList.innerHTML = '';
       var currentValue = filterSelect.value;
       var options = filterSelect.querySelectorAll('option');
-
-
-
       var multi = filterId === 'filter-quality' && typeof window.parseQualityFilter === 'function';
       var multiSelected = multi ? window.parseQualityFilter(currentQualityFilter) : null;
-
       for (var i = 0; i < options.length; i++) {
         var option = options[i];
         var item = document.createElement('button');
         item.className = 'filter-value-item';
-        var isSelected = multi ?
-        option.value === 'all' ? !multiSelected.length : multiSelected.indexOf(option.value) !== -1 :
-        option.value === currentValue;
+        var isSelected = multi ? option.value === 'all' ? !multiSelected.length : multiSelected.indexOf(option.value) !== -1 : option.value === currentValue;
         if (isSelected) {
           item.classList.add('selected');
         }
-
         var label = document.createElement('span');
         label.className = 'filter-value-label';
         label.textContent = option.textContent;
@@ -1438,7 +1192,6 @@ function setupSearchFilters() {
         item.dataset.value = option.value;
         item.dataset.label = option.textContent;
         item.dataset.filterId = filterId;
-
         item.addEventListener('click', function (fid, val, lbl) {
           return function () {
             if (fid === 'filter-quality' && typeof window.toggleQualityFilterValue === 'function') {
@@ -1448,11 +1201,8 @@ function setupSearchFilters() {
             applyFilterValue(fid, val, lbl);
           };
         }(filterId, option.value, option.textContent));
-
         filterValuesList.appendChild(item);
       }
-
-
       setTimeout(function () {
         if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
         if (typeof updateFocusableElements === 'function') updateFocusableElements();
@@ -1465,9 +1215,6 @@ function setupSearchFilters() {
         }
       }, 50);
     }
-
-
-
     function toggleQualityValue(value) {
       currentQualityFilter = window.toggleQualityFilterValue(currentQualityFilter, value);
       var selected = window.parseQualityFilter(currentQualityFilter);
@@ -1480,14 +1227,10 @@ function setupSearchFilters() {
       if (typeof applyFiltersAndSort === 'function') applyFiltersAndSort();
       updateFilterValueDisplays();
     }
-
-
     function applyFilterValue(filterId, value, label) {
       var filterSelect = getEl(filterId);
       if (filterSelect) {
         filterSelect.value = value;
-
-
         switch (filterId) {
           case 'torrent-movie':
             if (typeof currentSearchMode !== 'undefined') {
@@ -1517,23 +1260,17 @@ function setupSearchFilters() {
             if (typeof currentvideotypeFilter !== 'undefined') currentvideotypeFilter = value;
             break;
         }
-
-
         try {
-          var event = new Event('change', { bubbles: true });
+          var event = new Event('change', {
+            bubbles: true
+          });
           filterSelect.dispatchEvent(event);
         } catch (e) {}
-
-
         if (typeof applyFiltersAndSort === 'function') {
           applyFiltersAndSort();
         }
       }
-
-
       showFilterMainScreen();
-
-
       setTimeout(function () {
         if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
         if (typeof updateFocusableElements === 'function') updateFocusableElements();
@@ -1543,49 +1280,30 @@ function setupSearchFilters() {
         }
       }, 50);
     }
-
-
     function updateFilterValueDisplays() {
-      var filterIds = [
-      'torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker',
-      'filter-year', 'filter-season', 'filter-voice', 'filter-videotype'];
-
+      var filterIds = ['torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype'];
       for (var i = 0; i < filterIds.length; i++) {
         var fid = filterIds[i];
         var sel = getEl(fid);
         var display = getEl('filter-value-' + fid);
         if (fid === 'filter-quality' && display && typeof window.qualityFilterLabel === 'function') {
-
           display.textContent = window.qualityFilterLabel(currentQualityFilter);
           if (display.parentNode && display.parentNode.classList) {
-            display.parentNode.classList.toggle('filter-item-set',
-            window.parseQualityFilter(currentQualityFilter).length > 0);
+            display.parentNode.classList.toggle('filter-item-set', window.parseQualityFilter(currentQualityFilter).length > 0);
           }
           continue;
         }
         if (sel && display) {
           var selectedOption = sel.options[sel.selectedIndex];
           display.textContent = selectedOption ? selectedOption.textContent : 'Все';
-
-
-
-
-
           var item = display.parentNode;
           if (item && item.classList) {
-            if (sel.selectedIndex > 0) item.classList.add('filter-item-set');else
-            item.classList.remove('filter-item-set');
+            if (sel.selectedIndex > 0) item.classList.add('filter-item-set');else item.classList.remove('filter-item-set');
           }
         }
       }
     }
-
-
-
-
     window.updateFilterValueDisplays = updateFilterValueDisplays;
-
-
     var filterItems = filterPanel.querySelectorAll('.filter-item');
     for (var fi = 0; fi < filterItems.length; fi++) {
       filterItems[fi].addEventListener('click', function (item) {
@@ -1597,32 +1315,23 @@ function setupSearchFilters() {
         };
       }(filterItems[fi]));
     }
-
-
     if (filterBackBtn) {
       filterBackBtn.addEventListener('click', function () {
-
-
         var fromId = currentFilterId;
         showFilterMainScreen();
         setTimeout(function () {
           if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
           if (typeof updateFocusableElements === 'function') updateFocusableElements();
-          var target = fromId && filterPanel.querySelector('.filter-item[data-filter="' + fromId + '"]') ||
-          filterPanel.querySelector('.filter-item:not(.hidden)');
+          var target = fromId && filterPanel.querySelector('.filter-item[data-filter="' + fromId + '"]') || filterPanel.querySelector('.filter-item:not(.hidden)');
           if (target) focusEl(target);
         }, 50);
       });
     }
-
-
     if (filterCloseBtn) {
       filterCloseBtn.addEventListener('click', function () {
         if (typeof closeFilterPanel === 'function') closeFilterPanel();
       });
     }
-
-
     var resetBtnNew = filterPanel.querySelector('.filter-reset-btn-new');
     if (resetBtnNew) {
       resetBtnNew.addEventListener('click', function () {
@@ -1636,13 +1345,8 @@ function setupSearchFilters() {
         }, 100);
       });
     }
-
-
     updateFilterValueDisplays();
-
-
-    var observeIds = ['torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker',
-    'filter-year', 'filter-season', 'filter-voice', 'filter-videotype'];
+    var observeIds = ['torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker', 'filter-year', 'filter-season', 'filter-voice', 'filter-videotype'];
     for (var oi = 0; oi < observeIds.length; oi++) {
       var obsSel = getEl(observeIds[oi]);
       if (obsSel) {
@@ -1651,8 +1355,6 @@ function setupSearchFilters() {
     }
   }
 }
-
-
 function setupServerCheck() {
   var torrserverUrl = getEl('torrserver-url');
   if (torrserverUrl) {
@@ -1662,78 +1364,55 @@ function setupServerCheck() {
     torrserverUrl.addEventListener('input', debouncedCheck);
   }
 }
-
-
 function setupAuth() {
   var authCheckbox = getEl('auth-checkbox');
   var authLogin = getEl('auth-login');
   var authPassword = getEl('auth-password');
-
   var debouncedCheckAuth = debounce(function () {
     if (typeof checkServer === 'function') checkServer(true);
   }, APP_CONSTANTS.DEBOUNCE_DELAY_MS);
-
   if (authCheckbox) {
     authCheckbox.addEventListener('change', function (e) {
       if (typeof AppState !== 'undefined') AppState.authEnabled = e.target.checked;
       var authFields = getEl('auth-fields');
       if (authFields) {
-        if (AppState && AppState.authEnabled) authFields.classList.add('visible');else
-        authFields.classList.remove('visible');
+        if (AppState && AppState.authEnabled) authFields.classList.add('visible');else authFields.classList.remove('visible');
       }
       setTimeout(debouncedCheckAuth, APP_CONSTANTS.CHECK_SERVER_TIMEOUT_MS);
     });
   }
-
   if (authLogin) authLogin.addEventListener('input', debouncedCheckAuth);
   if (authPassword) authPassword.addEventListener('input', debouncedCheckAuth);
 }
-
-
 function setupPlayerAutoHide() {
   var playerScreen = getEl('player-screen');
   if (!playerScreen || typeof resetMouseIdleTimer !== 'function') return;
-
-
-
-
-  playerScreen.addEventListener('mousemove', resetMouseIdleTimer);
+  var onMove = typeof onPlayerMouseMove === 'function' ? onPlayerMouseMove : resetMouseIdleTimer;
+  playerScreen.addEventListener('mousemove', onMove);
   playerScreen.addEventListener('mousedown', resetMouseIdleTimer);
-  playerScreen.addEventListener('mouseenter', resetMouseIdleTimer);
+  playerScreen.addEventListener('mouseenter', onMove);
 }
-
-
 function setupTouchControls(seekSlider, volumeSlider) {
   var touchTarget = null;
   var touchStartX = 0;
   var touchStartY = 0;
   var touchStartTime = 0;
   var touchMoved = false;
-
-
   function handleTouchStart(e) {
     var target = e.target;
-
-
     var isInSearchOverlay = target.closest && target.closest('#search-overlay');
     var isCloseBtn = target.id === 'close-search' || target.closest && target.closest('#close-search');
     var isFilterBtn = target.id === 'filter-toggle' || target.closest && target.closest('#filter-toggle');
     if ((isCloseBtn || isFilterBtn) && isInSearchOverlay) return;
-
     touchTarget = target;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
     touchStartTime = Date.now();
     touchMoved = false;
-
     if (touchTarget.closest('button') || touchTarget.closest('.control-btn')) {
       touchTarget.classList.add('touch-active');
     }
   }
-
-
-
-
   var syntheticClickTarget = null;
   var syntheticClickTime = 0;
   function suppressNextRealClick(el) {
@@ -1742,99 +1421,61 @@ function setupTouchControls(seekSlider, volumeSlider) {
   }
   document.addEventListener('click', function (e) {
     if (!syntheticClickTarget || !e.isTrusted) return;
-    if (Date.now() - syntheticClickTime > 1500) {syntheticClickTarget = null;return;}
+    if (Date.now() - syntheticClickTime > 1500) {
+      syntheticClickTarget = null;
+      return;
+    }
     if (e.target !== syntheticClickTarget && !syntheticClickTarget.contains(e.target)) return;
     syntheticClickTarget = null;
     e.stopImmediatePropagation();
     e.preventDefault();
   }, true);
-
   function handleTouchEnd(e) {
     if (!touchStartX) return;
-
     var deltaX = e.changedTouches[0].clientX - touchStartX;
     var deltaY = e.changedTouches[0].clientY - touchStartY;
     var deltaTime = Date.now() - touchStartTime;
-
     if (touchTarget) touchTarget.classList.remove('touch-active');
-
     var elementAtTouch = document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
     var clickableElement = null;
     if (elementAtTouch) {
       clickableElement = elementAtTouch.closest(CLICKABLE_SELECTORS);
     }
-
-
-    if (!touchMoved && deltaTime < APP_CONSTANTS.TOUCH_TAP_THRESHOLD_MS &&
-    Math.abs(deltaX) < APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX &&
-    Math.abs(deltaY) < APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX) {
-
-
-
-
-
-
-
-
-
+    if (!touchMoved && deltaTime < APP_CONSTANTS.TOUCH_TAP_THRESHOLD_MS && Math.abs(deltaX) < APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX && Math.abs(deltaY) < APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX) {
       var targetToClick = clickableElement || touchTarget;
-      if (targetToClick && (
-      targetToClick.closest('button') ||
-      targetToClick.closest('.control-btn') ||
-      targetToClick.closest('.play-btn') ||
-      targetToClick.closest('.torrent-card') ||
-      targetToClick.closest('.file-item') ||
-      targetToClick.closest('.search-result-item') ||
-      targetToClick.closest('.episode-item') ||
-      targetToClick.closest('.audio-item') ||
-      targetToClick.closest('.subtitle-item') ||
-      targetToClick.closest('.skip-button') ||
-      targetToClick.id === 'close-search' ||
-      targetToClick.id === 'filter-toggle' ||
-      targetToClick.id === 'search-btn'))
-      {
+      if (targetToClick && (targetToClick.closest('button') || targetToClick.closest('.control-btn') || targetToClick.closest('.play-btn') || targetToClick.closest('.torrent-card') || targetToClick.closest('.file-item') || targetToClick.closest('.search-result-item') || targetToClick.closest('.episode-item') || targetToClick.closest('.audio-item') || targetToClick.closest('.subtitle-item') || targetToClick.closest('.skip-button') || targetToClick.id === 'close-search' || targetToClick.id === 'filter-toggle' || targetToClick.id === 'search-btn')) {
         e.stopPropagation();
-
-
-
-
         if (e.cancelable) e.preventDefault();
         suppressNextRealClick(targetToClick);
         targetToClick.click();
       }
     }
-
     touchStartX = 0;
     touchStartY = 0;
   }
-
   function handleTouchCancel(e) {
     if (touchTarget) touchTarget.classList.remove('touch-active');
     touchStartX = 0;
     touchStartY = 0;
   }
-
-
-
-
   document.addEventListener('touchstart', function (e) {
     var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
     if (el) handleTouchStart.call(el, e);
-  }, { passive: true });
-
-
-
+  }, {
+    passive: true
+  });
   document.addEventListener('touchend', function (e) {
     var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
     if (el) handleTouchEnd.call(el, e);
-  }, { passive: false });
-
+  }, {
+    passive: false
+  });
   document.addEventListener('touchcancel', function (e) {
     var el = e.target.closest ? e.target.closest(CLICKABLE_SELECTORS) : null;
     if (el) handleTouchCancel.call(el, e);
-  }, { passive: true });
-
-
+  }, {
+    passive: true
+  });
   if (seekSlider) {
     seekSlider.addEventListener('touchstart', function (e) {
       e.stopPropagation();
@@ -1842,140 +1483,121 @@ function setupTouchControls(seekSlider, volumeSlider) {
         AppState.isSliderDragging = true;
         AppState.suppressTimeUpdate = true;
       }
-    }, { passive: true });
-    seekSlider.addEventListener('touchmove', function (e) {e.stopPropagation();}, { passive: true });
+    }, {
+      passive: true
+    });
+    seekSlider.addEventListener('touchmove', function (e) {
+      e.stopPropagation();
+    }, {
+      passive: true
+    });
     seekSlider.addEventListener('touchend', function (e) {
       e.stopPropagation();
       if (typeof AppState !== 'undefined') AppState.isSliderDragging = false;
       setTimeout(function () {
         if (typeof AppState !== 'undefined') AppState.suppressTimeUpdate = false;
       }, 100);
-    }, { passive: true });
+    }, {
+      passive: true
+    });
   }
-
   if (volumeSlider) {
-    volumeSlider.addEventListener('touchstart', function (e) {e.stopPropagation();}, { passive: true });
-    volumeSlider.addEventListener('touchmove', function (e) {e.stopPropagation();}, { passive: true });
-    volumeSlider.addEventListener('touchend', function (e) {e.stopPropagation();}, { passive: true });
+    volumeSlider.addEventListener('touchstart', function (e) {
+      e.stopPropagation();
+    }, {
+      passive: true
+    });
+    volumeSlider.addEventListener('touchmove', function (e) {
+      e.stopPropagation();
+    }, {
+      passive: true
+    });
+    volumeSlider.addEventListener('touchend', function (e) {
+      e.stopPropagation();
+    }, {
+      passive: true
+    });
   }
-
-
-
 }
-
-
 function setupFullscreen() {
   var fullscreenBtn = getEl('fullscreen-btn');
   if (!fullscreenBtn) return;
-
   function toggleFullscreen() {
     var isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
     if (!isFullscreen) {
-
-
-
-
-
       var element = document.documentElement;
-      if (element.requestFullscreen) element.requestFullscreen();else
-      if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();else
-      if (element.mozRequestFullScreen) element.mozRequestFullScreen();else
-      if (element.msRequestFullscreen) element.msRequestFullscreen();
+      if (element.requestFullscreen) element.requestFullscreen();else if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();else if (element.mozRequestFullScreen) element.mozRequestFullScreen();else if (element.msRequestFullscreen) element.msRequestFullscreen();
       fullscreenBtn.innerHTML = '<i class="fi fi-rr-compress"></i>';
       fullscreenBtn.title = 'Выйти из полноэкранного режима';
     } else {
-      if (document.exitFullscreen) document.exitFullscreen();else
-      if (document.webkitExitFullscreen) document.webkitExitFullscreen();else
-      if (document.mozCancelFullScreen) document.mozCancelFullScreen();else
-      if (document.msExitFullscreen) document.msExitFullscreen();
+      if (document.exitFullscreen) document.exitFullscreen();else if (document.webkitExitFullscreen) document.webkitExitFullscreen();else if (document.mozCancelFullScreen) document.mozCancelFullScreen();else if (document.msExitFullscreen) document.msExitFullscreen();
       fullscreenBtn.innerHTML = '<i class="fi fi-rr-expand"></i>';
       fullscreenBtn.title = 'Полный экран';
     }
   }
-
   function updateFullscreenIcon() {
     var isFullscreen = !!(document.fullscreenElement || document.webkitFullscreenElement);
     fullscreenBtn.innerHTML = isFullscreen ? '<i class="fi fi-rr-compress"></i>' : '<i class="fi fi-rr-expand"></i>';
     fullscreenBtn.title = isFullscreen ? 'Выйти из полноэкранного режима' : 'Полный экран';
-
-
     if (typeof window.syncFullscreenOverlays === 'function') window.syncFullscreenOverlays();
   }
-
+  window.togglePlayerFullscreen = toggleFullscreen;
   fullscreenBtn.addEventListener('click', function (e) {
     e.stopPropagation();
     toggleFullscreen();
     if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
   });
-
   document.addEventListener('fullscreenchange', updateFullscreenIcon);
   document.addEventListener('webkitfullscreenchange', updateFullscreenIcon);
 }
-
 function setupAutoFullscreen() {
   var autoFullscreenCheckbox = getEl('auto-fullscreen');
   if (!autoFullscreenCheckbox) return;
-
   var savedAutoFullscreen = localStorage.getItem('autoFullscreen') === 'true';
   autoFullscreenCheckbox.checked = savedAutoFullscreen;
-
   autoFullscreenCheckbox.addEventListener('change', function (e) {
     localStorage.setItem('autoFullscreen', e.target.checked);
     if (e.target.checked) {
       var element = document.documentElement;
-      if (element.requestFullscreen) element.requestFullscreen();else
-      if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();else
-      if (element.mozRequestFullScreen) element.mozRequestFullScreen();else
-      if (element.msRequestFullscreen) element.msRequestFullscreen();
+      if (element.requestFullscreen) element.requestFullscreen();else if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();else if (element.mozRequestFullScreen) element.mozRequestFullScreen();else if (element.msRequestFullscreen) element.msRequestFullscreen();
     }
   });
-
   function enterFullscreenIfEnabled() {
     var autoFullscreen = localStorage.getItem('autoFullscreen') === 'true';
     if (autoFullscreen) {
       setTimeout(function () {
         var element = document.documentElement;
-        if (element.requestFullscreen) element.requestFullscreen();else
-        if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();else
-        if (element.mozRequestFullScreen) element.mozRequestFullScreen();else
-        if (element.msRequestFullscreen) element.msRequestFullscreen();
+        if (element.requestFullscreen) element.requestFullscreen();else if (element.webkitRequestFullscreen) element.webkitRequestFullscreen();else if (element.mozRequestFullScreen) element.mozRequestFullScreen();else if (element.msRequestFullscreen) element.msRequestFullscreen();
       }, 500);
     }
   }
-
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', enterFullscreenIfEnabled);
   } else {
     enterFullscreenIfEnabled();
   }
 }
-
-
-
-
-
-
-
-
-
-
-
 function setupSearchFilterDefaults() {
   var box = getEl('search-filter-defaults');
   if (!box || typeof window.getSearchFilterDefaults !== 'function') return;
-
-  var groups = [
-  { key: 'sort', title: 'Сортировка', options: window.SORT_OPTIONS },
-  { key: 'quality', title: 'Качество', hint: 'можно выбрать несколько', options: window.QUALITY_OPTIONS },
-  { key: 'videotype', title: 'Тип видео', options: window.VIDEOTYPE_OPTIONS }];
-
-
+  var groups = [{
+    key: 'sort',
+    title: 'Сортировка',
+    options: window.SORT_OPTIONS
+  }, {
+    key: 'quality',
+    title: 'Качество',
+    hint: 'можно выбрать несколько',
+    options: window.QUALITY_OPTIONS
+  }, {
+    key: 'videotype',
+    title: 'Тип видео',
+    options: window.VIDEOTYPE_OPTIONS
+  }];
   var html = '';
   for (var g = 0; g < groups.length; g++) {
     var grp = groups[g];
-    html += '<div class="settings-field">' +
-    '<div class="field-label">' + grp.title + (grp.hint ? ' <span class="field-hint">— ' + grp.hint + '</span>' : '') + '</div>' +
-    '<div class="settings-chips" data-group="' + grp.key + '">';
+    html += '<div class="settings-field">' + '<div class="field-label">' + grp.title + (grp.hint ? ' <span class="field-hint">— ' + grp.hint + '</span>' : '') + '</div>' + '<div class="settings-chips" data-group="' + grp.key + '">';
     for (var i = 0; i < grp.options.length; i++) {
       var o = grp.options[i];
       html += '<button class="settings-chip" data-group="' + grp.key + '" data-value="' + o.value + '">' + o.label + '</button>';
@@ -1983,61 +1605,50 @@ function setupSearchFilterDefaults() {
     html += '</div></div>';
   }
   box.innerHTML = html;
-
   function render() {
     var d = window.getSearchFilterDefaults();
     var qualityList = window.parseQualityFilter(d.quality);
     var chips = box.querySelectorAll('.settings-chip');
     for (var i = 0; i < chips.length; i++) {
-      var c = chips[i],grp = c.dataset.group,val = c.dataset.value,on;
-      if (grp === 'quality') on = val === 'all' ? !qualityList.length : qualityList.indexOf(val) !== -1;else
-      on = d[grp] === val;
+      var c = chips[i],
+        grp = c.dataset.group,
+        val = c.dataset.value,
+        on;
+      if (grp === 'quality') on = val === 'all' ? !qualityList.length : qualityList.indexOf(val) !== -1;else on = d[grp] === val;
       c.classList.toggle('active', on);
     }
   }
-
   box.addEventListener('click', function (e) {
     var chip = e.target.closest ? e.target.closest('.settings-chip') : null;
     if (!chip) return;
-    var grp = chip.dataset.group,val = chip.dataset.value;
+    var grp = chip.dataset.group,
+      val = chip.dataset.value;
     var d = window.getSearchFilterDefaults();
-    if (grp === 'quality') d.quality = window.toggleQualityFilterValue(d.quality, val);else
-    d[grp] = val;
+    if (grp === 'quality') d.quality = window.toggleQualityFilterValue(d.quality, val);else d[grp] = val;
     window.saveSearchFilterDefaults(d);
     window.applySearchFilterDefaults(grp);
     if (typeof syncSearchFilterButtons === 'function') syncSearchFilterButtons();
     render();
   });
-
   render();
 }
-
-
 function setupCheckboxWithStorage(elementId, storageKey, stateKey, onChange) {
   var checkbox = getEl(elementId);
   if (!checkbox) return;
-
   var saved = localStorage.getItem(storageKey) === 'true';
   if (stateKey && typeof AppState !== 'undefined') AppState[stateKey] = saved;
   checkbox.checked = saved;
-
   checkbox.addEventListener('change', function (e) {
     var value = e.target.checked;
     localStorage.setItem(storageKey, value);
     if (stateKey && typeof AppState !== 'undefined') AppState[stateKey] = value;
     if (onChange) onChange(value);
   });
-
   return saved;
 }
-
 function setupCheckboxes() {
-
   setupExternalPlayerCheckbox();
   var container = '';
-
-
-
   var autoSkipCheckbox = getEl('auto-skip-intro');
   if (autoSkipCheckbox) {
     if (window.AndroidJS) {
@@ -2052,9 +1663,6 @@ function setupCheckboxes() {
       console.log('⏩ Автопропуск заставки:', AppState.autoSkipIntro ? 'включён' : 'выключен');
     });
   }
-
-
-
   var builtinKeyboardCheckbox = getEl('builtin-keyboard');
   if (builtinKeyboardCheckbox) {
     AppState.builtinKeyboard = localStorage.getItem('builtinKeyboard') === 'true';
@@ -2066,10 +1674,7 @@ function setupCheckboxes() {
       console.log('⌨️ Встроенная клавиатура:', AppState.builtinKeyboard ? 'включена' : 'выключена');
     });
   }
-
   setupSearchFilterDefaults();
-
-
   var hideClockCheckbox = getEl('hide-clock');
   if (window.AndroidJS) {
     container = hideClockCheckbox.closest('.checkbox-container');
@@ -2079,8 +1684,6 @@ function setupCheckboxes() {
     var savedHideClock = localStorage.getItem('hideClockEnabled') === 'true';
     hideClockEnabled = savedHideClock;
     hideClockCheckbox.checked = savedHideClock;
-
-
     setupClockVisibility();
     hideClockCheckbox.addEventListener('change', function (e) {
       hideClockEnabled = e.target.checked;
@@ -2089,8 +1692,6 @@ function setupCheckboxes() {
       console.log('🕐 Скрытие часов:', hideClockEnabled ? 'включено' : 'выключено');
     });
   }
-
-
   var addToDbCheckbox = getEl('add-to-db');
   if (addToDbCheckbox) {
     var savedAddToDb = localStorage.getItem('addToDbEnabled') === 'true';
@@ -2108,9 +1709,6 @@ function setupCheckboxes() {
       console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
     });
   }
-
-
-
   var preloadCheckbox = getEl('preload-before-play');
   if (preloadCheckbox) {
     AppState.preloadBeforePlay = localStorage.getItem('preloadBeforePlay') === 'true';
@@ -2121,15 +1719,11 @@ function setupCheckboxes() {
       console.log('⏳ Предзагрузка:', AppState.preloadBeforePlay ? 'включена' : 'выключена');
     });
   }
-
-
-
-
-
-
-  var tvApp = !!window.AndroidJS || AppState.platform === 'webos';
+  var appleDevice = AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple';
+  var directPlay = AppState.platform === 'webos' || appleDevice;
+  var tvApp = !!window.AndroidJS || directPlay;
   var transcodingCheckbox = getEl('transcoding-off');
-  if (AppState.platform === 'webos' && transcodingCheckbox) {
+  if (directPlay && transcodingCheckbox) {
     transcodingCheckbox.checked = false;
     AppState.transcodingOnOff = false;
   }
@@ -2137,7 +1731,7 @@ function setupCheckboxes() {
     container = transcodingCheckbox.closest('.checkbox-container');
     if (container) container.classList.add('hidden');
   }
-  if (transcodingCheckbox && AppState.platform !== 'webos') {
+  if (transcodingCheckbox && !directPlay) {
     var savedTranscoding = localStorage.getItem('transcodingOnOff') === 'true';
     transcodingOnOff = savedTranscoding;
     transcodingCheckbox.checked = savedTranscoding;
@@ -2153,8 +1747,6 @@ function setupCheckboxes() {
       console.log('🎬 Транскодирование:', transcodingOnOff ? 'включено' : 'выключено');
     });
   }
-
-
   var multiChannelCheckbox = getEl('multi-channel-audio');
   if (tvApp) {
     container = multiChannelCheckbox.closest('.checkbox-container');
@@ -2188,18 +1780,12 @@ function setupCheckboxes() {
       }
     });
   }
-
-
   var transcodingCheckboxOnOff = getEl('transcoding-on-off');
   if (tvApp) {
     container = transcodingCheckboxOnOff.closest('.checkbox-container');
     if (container) container.classList.add('hidden');
   }
-
-
-
-
-  if (transcodingCheckboxOnOff && AppState.platform === 'webos') {
+  if (transcodingCheckboxOnOff && directPlay) {
     transcodingFullOnOff = true;
     AppState.transcodingFullOnOff = true;
     transcodingCheckboxOnOff.checked = true;
@@ -2221,18 +1807,12 @@ function setupCheckboxes() {
       console.log('🎬 Транскодирование:', transcodingFullOnOff ? 'включено' : 'выключено');
     });
   }
-
-
-
-
   if (!window.AndroidJS && localStorage.getItem('autoSwitchEpisodes') === null) {
     localStorage.setItem('autoSwitchEpisodes', 'true');
   }
   setupCheckboxWithStorage('auto-switch-episodes', 'autoSwitchEpisodes', 'autoSwitchEpisodes');
-
+  setupApplePlayerChoice();
   if (window.AndroidJS) {
-
-
     var choosePlayerContainer = getEl('choose-player-container');
     if (choosePlayerContainer) choosePlayerContainer.hidden = false;
     var choosePlayerBtn = getEl('choose-player-btn');
@@ -2242,7 +1822,6 @@ function setupCheckboxes() {
       });
     }
   } else {
-
     if (typeof initDolbyVisionCheck === 'function') {
       try {
         initDolbyVisionCheck();
@@ -2254,18 +1833,71 @@ function setupCheckboxes() {
     }
   }
 }
-
+function setupApplePlayerChoice() {
+  var section = getEl('apple-player-section');
+  var btn = getEl('apple-player-btn');
+  var list = !window.AndroidJS && typeof getApplePlayers === 'function' ? getApplePlayers() : null;
+  if (!section || !btn || !list) return;
+  section.hidden = false;
+  if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple') {
+    var tab = getEl('player-tab-content');
+    if (tab) tab.classList.add('apple-device-player');
+  }
+  function label() {
+    var current = getApplePlayer();
+    btn.textContent = 'Плеер: ' + (current ? current.name : '—');
+  }
+  var select = document.createElement('select');
+  list.forEach(function (p) {
+    var o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.name;
+    select.appendChild(o);
+  });
+  select.addEventListener('change', function () {
+    var picked = null;
+    for (var i = 0; i < list.length; i++) if (list[i].id === select.value) picked = list[i];
+    if (!picked) return;
+    setApplePlayer(picked.id);
+    label();
+    showToast('Плеер: ' + picked.name);
+    setTimeout(function () {
+      if (typeof focusEl === 'function') focusEl(btn);
+    }, 0);
+  });
+  btn.addEventListener('click', function () {
+    if (typeof ensureCustomFilterMenu !== 'function' || typeof renderCustomFilterMenu !== 'function') return;
+    var current = getApplePlayer();
+    var index = 0;
+    var options = list.map(function (p, i) {
+      if (current && p.id === current.id) index = i;
+      return {
+        value: p.id,
+        label: p.name
+      };
+    });
+    select.value = current ? current.id : list[0].id;
+    customFilterMenuState = {
+      selectEl: select,
+      title: 'Плеер для видео',
+      options: options,
+      index: index,
+      value: select.value
+    };
+    ensureCustomFilterMenu().classList.remove('hidden');
+    renderCustomFilterMenu();
+  });
+  label();
+  if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+}
 function setupExternalPlayerCheckbox() {
   var externalPlayerCheckbox = getEl('out-player');
   if (!externalPlayerCheckbox) return;
-
   var savedExternalPlayer = localStorage.getItem('externalPlayerEnabled') === 'true';
   window.externalPlayerEnabled = savedExternalPlayer;
   externalPlayerCheckbox.checked = savedExternalPlayer;
-
   if (typeof AppState !== 'undefined') AppState.externalPlayerEnabled = window.externalPlayerEnabled;
   console.log('📱 Внешний плеер:', window.externalPlayerEnabled ? 'включен' : 'выключен');
-
   externalPlayerCheckbox.addEventListener('change', function (e) {
     window.externalPlayerEnabled = e.target.checked;
     localStorage.setItem('externalPlayerEnabled', window.externalPlayerEnabled);
@@ -2278,18 +1910,22 @@ function setupExternalPlayerCheckbox() {
     }
   });
 }
-
+function setClockHidden(hidden) {
+  hideClockEnabled = !!hidden;
+  try {
+    localStorage.setItem('hideClockEnabled', hideClockEnabled);
+  } catch (e) {}
+  var cb = getEl('hide-clock');
+  if (cb) cb.checked = hideClockEnabled;
+  setupClockVisibility();
+}
+window.setClockHidden = setClockHidden;
 function setupClockVisibility() {
   var clockDisplay = getEl('clock-display');
   if (clockDisplay) {
     clockDisplay.style.display = hideClockEnabled ? 'none' : 'block';
   }
 }
-
-
-
-
-
 var PLATFORM_NAMES = {
   vidaa: 'Hisense Vidaa',
   androidtv: 'Android TV',
@@ -2300,90 +1936,61 @@ var PLATFORM_NAMES = {
   android: 'Android',
   desktop: 'Компьютер'
 };
-
+var APPLE_PLATFORM_NAMES = {
+  apple_tv: 'Apple TV',
+  apple: 'iPhone / iPad',
+  macos: 'Mac'
+};
 function deviceAppName() {
   if (window.AndroidJS) return 'Android-приложение TorrStream';
   if (AppState.platform === 'webos') return 'Приложение TorrStream для webOS';
   return 'Браузер (web)';
 }
-
 function devicePlayerName() {
   if (window.AndroidJS) return 'Внешний плеер Android';
+  var apple = typeof getApplePlayer === 'function' ? getApplePlayer() : null;
+  if (apple && apple.template) return 'Внешний: ' + apple.name;
   if (AppState.transcodingFullOnOff) return 'Встроенный, файл напрямую с TorrServer';
   if (AppState.transcodingOnOff) return 'Встроенный, транскодирование TorrServer (HLS)';
   return 'Встроенный, поток через сервер TorrStream (HLS)';
 }
-
-
-
-
-
-
-
 function browserVersionName() {
   var ua = navigator.userAgent || '';
-  var known = [
-  ['Edge', /Edg(?:e|A|iOS)?\/([\d.]+)/],
-  ['Opera', /OPR\/([\d.]+)/],
-  ['Яндекс Браузер', /YaBrowser\/([\d.]+)/],
-  ['Samsung Internet', /SamsungBrowser\/([\d.]+)/],
-  ['Firefox', /Firefox\/([\d.]+)/],
-  ['Chrome', /(?:Chrome|CriOS)\/([\d.]+)/],
-  ['Safari', /Version\/([\d.]+).*Safari/]];
-
+  var known = [['Edge', /Edg(?:e|A|iOS)?\/([\d.]+)/], ['Opera', /OPR\/([\d.]+)/], ['Яндекс Браузер', /YaBrowser\/([\d.]+)/], ['Samsung Internet', /SamsungBrowser\/([\d.]+)/], ['Firefox', /Firefox\/([\d.]+)/], ['Chrome', /(?:Chrome|CriOS)\/([\d.]+)/], ['Safari', /Version\/([\d.]+).*Safari/]];
   for (var i = 0; i < known.length; i++) {
     var m = ua.match(known[i][1]);
     if (m) {
-
       var wv = known[i][0] === 'Chrome' && /; wv\)/.test(ua) ? 'WebView ' : '';
       return wv + known[i][0] + ' ' + m[1];
     }
   }
   return '—';
 }
-
 function renderDeviceInfo() {
   var box = getEl('device-info');
   if (!box) return;
   var dpr = window.devicePixelRatio || 1;
-  var rows = [
-  ['Приложение', deviceAppName()],
-  ['Платформа', PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'],
-  ['Плеер', devicePlayerName()],
-  ['Версия', AppState.currentVersion || '—'],
-  ['Браузер', browserVersionName()],
-  ['User-Agent', navigator.userAgent || '—'],
-  ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + Math.round(dpr * 100) / 100 + ')' : '')]];
-
-
-
+  var rows = [['Приложение', deviceAppName()], ['Платформа', APPLE_PLATFORM_NAMES[AppState.applePlatform] || PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'], ['Плеер', devicePlayerName()], ['Версия', AppState.currentVersion || '—'], ['Браузер', browserVersionName()], ['User-Agent', navigator.userAgent || '—'], ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + Math.round(dpr * 100) / 100 + ')' : '')]];
   if (AppState.platform === 'webos') {
     var d = window.webosSubsDiag;
     var subs;
-    if (!d || !d.bridge) subs = 'видео ещё не запускали';else
-    if (d.bridge === 'нет') subs = 'нет доступа к Luna (PalmServiceBridge)';else
-    {
-      subs = d.bridge + ' · mediaId: ' + (d.mediaId || 'нет за ' + Math.round(d.waitedMs / 1000) + ' с') +
-      ' · ответов: ' + d.responses +
-      ' · sourceInfo: ' + (d.sourceInfo ? 'да' : 'нет') + (
-      d.tracks !== null ? ' · дорожек: ' + d.tracks : '') + (
-      d.audio !== null && d.audio !== undefined ? ' · звук: ' + d.audio : '') + (
-      d.probe ? ' · ffprobe: ' + d.probe : '') + (
-      d.keys ? ' · поля: ' + d.keys : '') + (
-      d.error ? ' · ошибка: ' + d.error : '');
+    if (!d || !d.bridge) subs = 'видео ещё не запускали';else if (d.bridge === 'нет') subs = 'нет доступа к Luna (PalmServiceBridge)';else {
+      subs = d.bridge + ' · mediaId: ' + (d.mediaId || 'нет за ' + Math.round(d.waitedMs / 1000) + ' с') + ' · ответов: ' + d.responses + ' · sourceInfo: ' + (d.sourceInfo ? 'да' : 'нет') + (d.tracks !== null ? ' · дорожек: ' + d.tracks : '') + (d.audio !== null && d.audio !== undefined ? ' · звук: ' + d.audio : '') + (d.probe ? ' · ffprobe: ' + d.probe : '') + (d.keys ? ' · поля: ' + d.keys : '') + (d.error ? ' · ошибка: ' + d.error : '');
     }
     rows.push(['Субтитры webOS', subs]);
   }
+  var dp = window.directPlaybackDiag;
+  if (dp && dp.file) {
+    rows.push(['Прямой файл', dp.file + ' · звук: ' + (dp.audio === null ? '—' : dp.audio) + ' · субтитры: ' + (dp.text === null ? '—' : dp.text) + (dp.kinds ? ' (' + dp.kinds + ')' : '') + (dp.probe ? ' · названия: ' + dp.probe : '')]);
+    if (dp.subs) rows.push(['Выбор субтитров', dp.subs]);
+  }
   var html = '';
   for (var i = 0; i < rows.length; i++) {
-    html += '<div class="device-info-row"><span class="device-info-label">' + escapeHtml(rows[i][0]) +
-    '</span><span class="device-info-value">' + escapeHtml(String(rows[i][1])) + '</span></div>';
+    html += '<div class="device-info-row"><span class="device-info-label">' + escapeHtml(rows[i][0]) + '</span><span class="device-info-value">' + escapeHtml(String(rows[i][1])) + '</span></div>';
   }
   box.innerHTML = html;
 }
 window.renderDeviceInfo = renderDeviceInfo;
-
-
 function setupConfigMenu() {
   if (!Element.prototype.closest) {
     Element.prototype.closest = function (selector) {
@@ -2395,18 +2002,15 @@ function setupConfigMenu() {
       return null;
     };
   }
-
   var menuItems = document.querySelectorAll('.menu-item');
   for (var i = 0; i < menuItems.length; i++) {
     var menuItem = menuItems[i];
     menuItem.removeEventListener('click', menuItem._configClickHandler);
-
     var clickHandler = function (event) {
       if (event.stopPropagation) event.stopPropagation();
       var tabId = this.getAttribute('data-tab') || this.id;
       var isActive = this.classList.contains('active');
       console.log('🔘 Нажато меню:', tabId, 'Активно:', isActive);
-
       if (isActive) {
         var content = getEl(tabId + '-content');
         if (content) content.style.display = 'none';
@@ -2417,50 +2021,26 @@ function setupConfigMenu() {
         if (typeof setConfigMenuActive === 'function') setConfigMenuActive(this.id);
         if (this.focus) this.focus();
       }
+      if (typeof focusEl === 'function') focusEl(this);
     };
-
     menuItem._configClickHandler = clickHandler;
     menuItem.addEventListener('click', clickHandler);
   }
   console.log('✅ Настройки меню инициализированы, элементов:', menuItems.length);
 }
-
-
 function showInitError() {
   var errorDiv = document.createElement('div');
   errorDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: #ff6a6a; padding: 20px; border-radius: 12px; text-align: center; z-index: 10000; border: 1px solid #ff6a6a;';
-  errorDiv.innerHTML = '<div style="font-size: 48px; margin-bottom: 10px;">⚠️</div>' +
-  '<div style="margin-bottom: 10px;">Ошибка инициализации приложения</div>' +
-  '<div style="font-size: 12px; color: #aaa;">Попробуйте обновить страницу</div>' +
-  '<button onclick="location.reload()" style="margin-top: 15px; padding: 8px 20px; background: #4a9eff; border: none; border-radius: 6px; color: white; cursor: pointer;">Обновить</button>';
+  errorDiv.innerHTML = '<div style="font-size: 48px; margin-bottom: 10px;">⚠️</div>' + '<div style="margin-bottom: 10px;">Ошибка инициализации приложения</div>' + '<div style="font-size: 12px; color: #aaa;">Попробуйте обновить страницу</div>' + '<button onclick="location.reload()" style="margin-top: 15px; padding: 8px 20px; background: #4a9eff; border: none; border-radius: 6px; color: white; cursor: pointer;">Обновить</button>';
   document.body.appendChild(errorDiv);
 }
-
-
-function showPlayerHint(message) {
-  var hint = getEl('player-hint');
-  if (!hint) return;
-  hint.textContent = message;
-  hint.style.opacity = '1';
-  clearTimeout(window.hintTimeout);
-  window.hintTimeout = setTimeout(function () {
-    hint.style.opacity = '0';
-  }, APP_CONSTANTS.HINT_DISPLAY_DURATION_MS);
-}
-
-
 function setupSpeedTest() {
   var speedtestBtn = getEl('speedtest-btn');
   if (!speedtestBtn) return;
-
   speedtestBtn.addEventListener('click', _asyncToGenerator(function* () {
     console.log('📡 Запуск замера скорости...');
     var torrserverUrlInput = getEl('torrserver-url');
-
-    var torrServerUrl = typeof window.torrServerUrlFromField === 'function' ?
-    window.torrServerUrlFromField() :
-    torrserverUrlInput ? torrserverUrlInput.value.trim() : '';
-
+    var torrServerUrl = typeof window.torrServerUrlFromField === 'function' ? window.torrServerUrlFromField() : torrserverUrlInput ? torrserverUrlInput.value.trim() : '';
     if (!torrServerUrl) {
       var resultsDiv = getEl('speedtest-results');
       var torrEl = getEl('speedtest-torrserver');
@@ -2473,7 +2053,6 @@ function setupSpeedTest() {
       }, 3000);
       return;
     }
-
     if (typeof SpeedTest !== 'undefined' && SpeedTest.run) {
       yield SpeedTest.run(torrServerUrl);
     } else {
@@ -2486,34 +2065,25 @@ function setupSpeedTest() {
     }
   }));
 }
-
-
 function initJacredUrlStorage() {
   var jacredUrlInput = getEl('jacred-url');
   if (!jacredUrlInput) return;
-
   var savedUrl = localStorage.getItem('jacred-url');
   if (savedUrl) {
     jacredUrlInput.value = savedUrl;
     console.log('📦 Загружен jacred URL:', savedUrl);
   }
-
   var debouncedSave = debounce(function () {
     var value = jacredUrlInput.value.trim();
     localStorage.setItem('jacred-url', value);
     console.log('💾 Сохранён jacred URL:', value);
   }, APP_CONSTANTS.JACRED_SAVE_DELAY_MS);
-
   jacredUrlInput.addEventListener('input', debouncedSave);
   jacredUrlInput.addEventListener('blur', function () {
     var value = jacredUrlInput.value.trim();
     localStorage.setItem('jacred-url', value);
   });
 }
-
-
-
-
 function isCodecSupportedAnywhere(type) {
   try {
     if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported && MediaSource.isTypeSupported(type)) return true;
@@ -2527,45 +2097,66 @@ function isCodecSupportedAnywhere(type) {
   } catch (e) {}
   return false;
 }
-
 function checkDolbyVisionSupport() {
-  var tests = [
-  { name: 'HEVC Main 10', codec: 'video/mp4; codecs="hvc1.2.4.L150.B0"' },
-  { name: 'H.264 (AVC)', codec: 'video/mp4; codecs="avc1.640028"' },
-  { name: 'Dolby Vision Profile 8 (dvh1)', codec: 'video/mp4; codecs="dvh1.08.06"', dv: 'p8' },
-  { name: 'Dolby Vision Profile 8 (dvhe)', codec: 'video/mp4; codecs="dvhe.08.06"', dv: 'p8' },
-  { name: 'Dolby Vision Profile 5 (dvh1)', codec: 'video/mp4; codecs="dvh1.05.06"', dv: 'p5' },
-  { name: 'Dolby Vision Profile 5 (dvhe)', codec: 'video/mp4; codecs="dvhe.05.06"', dv: 'p5' },
-  { name: 'Dolby Vision AV1 (dav1)', codec: 'video/mp4; codecs="dav1.10.06"', dv: 'av1' },
-  { name: 'AV1 Main', codec: 'video/mp4; codecs="av01.0.08M.08"' }];
-
-
+  var tests = [{
+    name: 'HEVC Main 10',
+    codec: 'video/mp4; codecs="hvc1.2.4.L150.B0"'
+  }, {
+    name: 'H.264 (AVC)',
+    codec: 'video/mp4; codecs="avc1.640028"'
+  }, {
+    name: 'Dolby Vision Profile 8 (dvh1)',
+    codec: 'video/mp4; codecs="dvh1.08.06"',
+    dv: 'p8'
+  }, {
+    name: 'Dolby Vision Profile 8 (dvhe)',
+    codec: 'video/mp4; codecs="dvhe.08.06"',
+    dv: 'p8'
+  }, {
+    name: 'Dolby Vision Profile 5 (dvh1)',
+    codec: 'video/mp4; codecs="dvh1.05.06"',
+    dv: 'p5'
+  }, {
+    name: 'Dolby Vision Profile 5 (dvhe)',
+    codec: 'video/mp4; codecs="dvhe.05.06"',
+    dv: 'p5'
+  }, {
+    name: 'Dolby Vision AV1 (dav1)',
+    codec: 'video/mp4; codecs="dav1.10.06"',
+    dv: 'av1'
+  }, {
+    name: 'AV1 Main',
+    codec: 'video/mp4; codecs="av01.0.08M.08"'
+  }];
   var results = [];
-  var variants = { p8: false, p5: false, av1: false };
-
+  var variants = {
+    p8: false,
+    p5: false,
+    av1: false
+  };
   console.log('🔍 Проверка поддержки кодеков:');
   for (var i = 0; i < tests.length; i++) {
     var test = tests[i];
     var supported = isCodecSupportedAnywhere(test.codec);
-    results.push({ name: test.name, codec: test.codec, supported: supported });
+    results.push({
+      name: test.name,
+      codec: test.codec,
+      supported: supported
+    });
     console.log('   ' + (supported ? '✅' : '❌') + ' ' + test.name);
     if (supported && test.dv) variants[test.dv] = true;
   }
-
   return {
     supported: variants.p8 || variants.av1,
     variants: variants,
     codecs: results
   };
 }
-
 function updateDolbyVisionUI(result) {
   var statusIcon = getEl('dv-status-icon');
   var statusText = getEl('dv-status-text');
   var codecsList = getEl('dv-codecs-list');
-
   if (!statusIcon || !statusText) return;
-
   if (result.supported) {
     statusIcon.textContent = '✅';
     statusIcon.style.color = '#4caf50';
@@ -2577,7 +2168,6 @@ function updateDolbyVisionUI(result) {
     statusText.innerHTML = '<span style="color: #ff6a6a; font-weight: 600;">Dolby Vision НЕ поддерживается</span>';
     statusText.innerHTML += '<div style="font-size: 12px; color: #aaa; margin-top: 4px;">Будет использоваться стандартное HDR или SDR</div>';
   }
-
   if (codecsList && result.codecs && result.codecs.length > 0) {
     var html = '<div style="color: #888; margin-bottom: 8px;">Поддержка кодеков:</div>';
     for (var i = 0; i < result.codecs.length; i++) {
@@ -2591,40 +2181,25 @@ function updateDolbyVisionUI(result) {
     codecsList.innerHTML = html;
     codecsList.style.display = 'block';
   }
-
   if (typeof AppState !== 'undefined') {
     AppState.dolbyVisionSupported = result.supported;
     AppState.supportedCodecs = result.codecs;
   }
-
   try {
     localStorage.setItem('dolbyVisionSupported', result.supported ? 'true' : 'false');
     localStorage.setItem('supportedCodecs', JSON.stringify(result.codecs));
-
-
     localStorage.setItem('dolbyVisionCheckUA', navigator.userAgent);
   } catch (e) {
     console.warn('Не удалось сохранить результаты проверки DV:', e);
   }
 }
-
 function initDolbyVisionCheck() {
   var checkBtn = getEl('dv-check-btn');
-
-
-
-
-
-
-
   var dvSection = getEl('dv-support-section');
   if (dvSection) dvSection.hidden = true;
-
-
   var dvOnOffEl = getEl('dvOnOff');
   var dvCheckboxContainer = dvOnOffEl ? dvOnOffEl.closest('.checkbox-container') : null;
   var dvCheckbox = dvOnOffEl;
-
   var dvSupported = false;
   try {
     var savedSupported = localStorage.getItem('dolbyVisionSupported');
@@ -2641,7 +2216,6 @@ function initDolbyVisionCheck() {
   } catch (e) {
     console.warn('Не удалось загрузить сохранённые результаты DV:', e);
   }
-
   if (dvCheckboxContainer) {
     if (dvSupported) {
       dvCheckboxContainer.classList.remove('hidden');
@@ -2651,19 +2225,15 @@ function initDolbyVisionCheck() {
       console.log('❌ Dolby Vision не поддерживается - чекбокс предпочтения скрыт');
     }
   }
-
   if (dvCheckbox) {
-
     var rawDvPreferred = localStorage.getItem('dvPreferred');
     var savedDvPreferred = rawDvPreferred === null ? dvSupported : rawDvPreferred === 'true';
     dvPreferred = savedDvPreferred;
     dvCheckbox.checked = savedDvPreferred;
-
     if (typeof AppState !== 'undefined') {
       AppState.dvPreferred = dvPreferred;
     }
     console.log('🎬 Предпочтение Dolby Vision:', dvPreferred ? 'включено' : 'выключено');
-
     dvCheckbox.addEventListener('change', function (e) {
       dvPreferred = e.target.checked;
       try {
@@ -2671,32 +2241,24 @@ function initDolbyVisionCheck() {
       } catch (err) {
         console.warn('Не удалось сохранить предпочтение DV:', err);
       }
-
       if (typeof AppState !== 'undefined') {
         AppState.dvPreferred = dvPreferred;
       }
-
       console.log('🎬 Предпочтение Dolby Vision:', dvPreferred ? 'включено' : 'выключено');
-
       if (typeof showPlayerHint === 'function') {
-        var msg = dvPreferred ?
-        '🎬 Dolby Vision будет предпочитаться при наличии' :
-        '🎬 Стандартное HDR будет использоваться по умолчанию';
+        var msg = dvPreferred ? '🎬 Dolby Vision будет предпочитаться при наличии' : '🎬 Стандартное HDR будет использоваться по умолчанию';
         showPlayerHint(msg);
       }
     });
   }
-
   if (checkBtn) {
     checkBtn.addEventListener('click', function () {
       checkBtn.disabled = true;
       checkBtn.textContent = 'Проверка...';
-
       setTimeout(function () {
         try {
           var result = checkDolbyVisionSupport();
           updateDolbyVisionUI(result);
-
           if (dvCheckboxContainer) {
             if (result.supported) {
               dvCheckboxContainer.classList.remove('hidden');
@@ -2704,11 +2266,8 @@ function initDolbyVisionCheck() {
               dvCheckboxContainer.classList.add('hidden');
             }
           }
-
           if (typeof showPlayerHint === 'function') {
-            var msg = result.supported ?
-            '✅ Dolby Vision поддерживается на вашем устройстве' :
-            '❌ Dolby Vision не поддерживается, будет использоваться HDR/SDR';
+            var msg = result.supported ? '✅ Dolby Vision поддерживается на вашем устройстве' : '❌ Dolby Vision не поддерживается, будет использоваться HDR/SDR';
             showPlayerHint(msg);
           }
         } catch (e) {
@@ -2721,31 +2280,19 @@ function initDolbyVisionCheck() {
     });
   }
 }
-
-
 (function () {
   function runAutoCheck() {
     try {
-
-
-
-      if (localStorage.getItem('dolbyVisionSupported') === 'true' &&
-      localStorage.getItem('dolbyVisionCheckUA') === navigator.userAgent) {
+      if (localStorage.getItem('dolbyVisionSupported') === 'true' && localStorage.getItem('dolbyVisionCheckUA') === navigator.userAgent) {
         return;
       }
-    } catch (e) {
-
-    }
-
+    } catch (e) {}
     setTimeout(function () {
       try {
         var result = checkDolbyVisionSupport();
         updateDolbyVisionUI(result);
-
-
         var dvOnOffEl = getEl('dvOnOff');
         var dvCheckboxContainer = dvOnOffEl ? dvOnOffEl.closest('.checkbox-container') : null;
-
         if (dvCheckboxContainer) {
           if (result.supported) {
             dvCheckboxContainer.classList.remove('hidden');
@@ -2753,11 +2300,10 @@ function initDolbyVisionCheck() {
             dvCheckboxContainer.classList.add('hidden');
           }
         }
-
-
-
         var rawPref = null;
-        try {rawPref = localStorage.getItem('dvPreferred');} catch (e) {}
+        try {
+          rawPref = localStorage.getItem('dvPreferred');
+        } catch (e) {}
         if (rawPref === null) {
           dvPreferred = !!result.supported;
           if (typeof AppState !== 'undefined') AppState.dvPreferred = dvPreferred;
@@ -2768,23 +2314,17 @@ function initDolbyVisionCheck() {
       }
     }, 1000);
   }
-
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', runAutoCheck);
   } else {
     runAutoCheck();
   }
 })();
-
 window.checkDolbyVisionSupport = checkDolbyVisionSupport;
-
-
-
 window.setupSpeedTest = setupSpeedTest;
 window.showPlayerHint = showPlayerHint;
 window.updateTimeDisplay = updateTimeDisplay;
 window.updatePlayPauseButton = updatePlayPauseButton;
-window.updateMuteButton = updateMuteButton;
 window.updateBufferDisplay = updateBufferDisplay;
 window.forceUpdateDuration = forceUpdateDuration;
 window.destroyHls = destroyHls;
@@ -2813,22 +2353,13 @@ window.renderAudioTracks = renderAudioTracks;
 window.loadFileInfo = loadFileInfo;
 window.saveAudioPreference = saveAudioPreference;
 window.loadAudioPreference = loadAudioPreference;
-
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', function () {
     init();
   });
 } else {
-
   init();
 }
-
-
-
-
-
-
-
 if (location.search.indexOf('perf=1') !== -1 && !window.__perfProbe) {
   (function () {
     var s = document.createElement('script');

@@ -1,4 +1,4 @@
-/* Сборка для старых браузеров (Chrome 53) из js/../tools/legacy-build/polyfills.js — tools/legacy-build/build.js. Руками не править. */
+/* Сборка для старых браузеров (Chrome 53) из tools/legacy-build/polyfills.js — tools/legacy-build/build.js. Руками не править. */
 /*
  * Заглушки для старых браузеров (webOS 4 — Chrome 53).
  *
@@ -6,7 +6,7 @@
  * LEGACY_JS), первым из скриптов приложения. Каждая заглушка ставится, только
  * если своего у браузера нет. Синтаксис — ES5.
  *
- * Собирается в public/js-legacy/legacy-polyfills.js (tools/legacy-build/build.js).
+ * Собирается в msx/js-legacy/legacy-polyfills.js (tools/legacy-build/build.js).
  * Его же подтягивают воркеры (importScripts) — поэтому всё через G, а не
  * window, и DOM-части под проверками typeof.
  */
