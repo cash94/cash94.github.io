@@ -1,2 +1,5 @@
 # Папку releases/ публикует бот в ветку gh-pages, в main её не добавлять
 releases/
+
+# Зависимости сборки js-legacy (tools/legacy-build)
+node_modules/

@@ -2350,6 +2350,14 @@ function readGridRowGap() {
     if (!grid || !window.getComputedStyle) return 0;
     var cs = window.getComputedStyle(grid);
     var gap = parseFloat(cs.rowGap || cs.gridRowGap || cs.gap || '');
+    // Без CSS Grid (webOS 4 — Chrome 53, css/legacy.css) сетка на flex, и
+    // зазор между строками — нижнее поле карточки. Свойств gap там нет, и
+    // без этого распорка выходила ниже чанка на (строк - 1) × зазор: при
+    // свёртке содержимое уезжало вверх
+    if (isNaN(gap) && document.documentElement.className.indexOf('legacy-browser') !== -1) {
+        var card = grid.querySelector('.torrent-card');
+        if (card) gap = parseFloat(window.getComputedStyle(card).marginBottom);
+    }
     return (!isNaN(gap) && gap >= 0) ? gap : 0;
 }
 
@@ -3133,7 +3141,14 @@ function createCatalogCard(item, index) {
             if (ph && ph.parentNode) ph.parentNode.removeChild(ph);
         };
         if (readyImg.complete && readyImg.naturalWidth > 0) dropSkeleton();
-        readyImg.onload = dropSkeleton;
+        // Не затираем onload сборщика карточки: без img.decode() (Chrome < 64,
+        // webOS 4) именно он проявляет постер — иначе картинка так и
+        // оставалась прозрачной
+        var revealOnload = readyImg.onload;
+        readyImg.onload = function (e) {
+            if (revealOnload) revealOnload.call(this, e);
+            dropSkeleton();
+        };
         readyImg.onerror = function () {
             if (readyImg.parentNode) readyImg.parentNode.removeChild(readyImg);
             card.dataset.posterRequested = '0';
@@ -4500,6 +4515,10 @@ var detailPosterObserver = null;
 function getDetailPosterObserver() {
     if (detailPosterObserver) return detailPosterObserver;
     if (!('IntersectionObserver' in window)) return null;
+    // webOS 4 (Chrome 53): наблюдатель за карточками рядов детального
+    // просмотра там не срабатывает — фото актёров и постеры похожих так и
+    // оставались пустыми. Карточек всего по 12 в ряду, грузим их сразу
+    if (document.documentElement.className.indexOf('legacy-browser') !== -1) return null;
     detailPosterObserver = new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
             if (!entries[i].isIntersecting) continue;
@@ -6431,7 +6450,9 @@ function measureCatalogCardHeight() {
     if (!grid) return;
 
     // Число колонок задаёт ui-customizer, поэтому берём его из вычисленных стилей
-    var cols = 5;
+    // Без CSS Grid (Chrome 53) вычисленного шаблона нет — тогда берём число
+    // колонок у навигации (control.js: getColumns, настройка ui-customizer)
+    var cols = (typeof getColumns === 'function' && getColumns()) || 5;
     var tpl = window.getComputedStyle(grid).gridTemplateColumns;
     if (tpl && tpl !== 'none') cols = tpl.split(/\s+/).length;
 
