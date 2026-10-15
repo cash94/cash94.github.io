@@ -902,6 +902,87 @@ var WebOSTorrServer = (function () {
         return AppState.platform === 'webos';
     }
 
+    // ---- Выключение при выходе из приложения ----
+    // Пользователи просили: TorrServer работает, только пока открыто
+    // приложение. Гасить его из страницы ненадёжно: unload приходит и при
+    // переезде http↔https (webosSchemeSwitch), а когда приложение убивает
+    // система — не приходит вовсе, да и ответа luna при выгрузке не дождаться.
+    // Поэтому сторож живёт на телевизоре рядом с TorrServer (watch.sh): раз в
+    // 15 с спрашивает applicationManager, открыто ли приложение (свёрнутое
+    // кнопкой Home — тоже открыто), и после двух промахов подряд гасит
+    // TorrServer, как «Остановить», вместе с автозапуском. Следующий запуск
+    // приложения поднимает его снова (onToggle → start). Галка — флаг-файл
+    // stop_on_exit: сторож читает его на каждом круге, переключение действует сразу.
+    var STOP_ON_EXIT_KEY = 'tsDeviceStopOnExit';
+
+    function stopOnExit() {
+        try { return localStorage.getItem(STOP_ON_EXIT_KEY) !== '0'; } catch (e) { return true; }
+    }
+
+    function stopOnExitCmd() {
+        return (stopOnExit() ? 'touch ' : 'rm -f ') + DIR + '/stop_on_exit';
+    }
+
+    function appId() {
+        var id = '';
+        try { id = String(window.PalmSystem && PalmSystem.identifier || '').split(' ')[0]; } catch (e) { }
+        return id || 'com.torrstream.app';
+    }
+
+    /** Команда, которая пишет watch.sh (строки без одинарных кавычек — их оборачивает printf) */
+    function watchScriptCmd() {
+        var watch = [
+            '#!/bin/sh',
+            '# TorrStream: TorrServer работает, пока открыто приложение (флаг stop_on_exit)',
+            'DIR=' + DIR,
+            'APP=' + appId(),
+            'PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH',
+            '[ -f $DIR/watch.pid ] && kill -0 $(cat $DIR/watch.pid) 2>/dev/null && exit 0',
+            'echo $$ > $DIR/watch.pid',
+            'MISS=0',
+            'while sleep 15; do',
+            // Нечего сторожить — TorrServer остановлен или ещё не записал pid
+            '  P=$(cat $DIR/pid 2>/dev/null); [ -n "$P" ] && kill -0 $P 2>/dev/null || break',
+            '  [ -f $DIR/stop_on_exit ] || { MISS=0; continue; }',
+            // Имя службы на разных версиях webOS разное. Не ответила ни одна —
+            // ничего не делаем: гасить сервер вслепую хуже, чем оставить
+            '  R=""; for S in com.webos.applicationManager com.webos.service.applicationmanager; do',
+            '    R=$(luna-send -n 1 luna://$S/running {} 2>/dev/null | tr -d " \\t\\r\\n")',
+            '    case "$R" in *\\"returnValue\\":true*) break;; esac; R=""',
+            '  done',
+            '  [ -z "$R" ] && continue',
+            '  case "$R" in *\\"id\\":\\"$APP\\"*) MISS=0; continue;; esac',
+            '  MISS=$((MISS+1)); [ $MISS -lt 2 ] && continue',
+            '  echo "[TorrStream] $(date "+%F %T") приложение закрыто — TorrServer остановлен" >> $DIR/ts.log',
+            '  kill $P; rm -f $DIR/pid ' + INIT,
+            '  break',
+            'done',
+            'rm -f $DIR/watch.pid'
+        ];
+        return 'printf "%s\\n" ' + watch.map(function (l) { return "'" + l + "'"; }).join(' ') + ' > ' + DIR + '/watch.sh && chmod +x ' + DIR + '/watch.sh';
+    }
+
+    /**
+     * Свой TorrServer уже работает (запущен до этой версии или при включении
+     * ТВ) — сторожа при нём может не быть: ставим отдельно. Как и run.sh —
+     * через systemd-run, иначе его погасят вместе со службой Homebrew Channel.
+     */
+    function ensureWatch() {
+        exec(stopOnExitCmd() + ' && ' + watchScriptCmd() + ' && cd ' + DIR + ' && ' +
+            '{ [ -f watch.pid ] && kill -0 $(cat watch.pid) 2>/dev/null && exit 0; true; } && ' +
+            'if command -v systemd-run > /dev/null 2>&1; then systemctl reset-failed torrstream-watch > /dev/null 2>&1; ' +
+            'systemd-run --unit=torrstream-watch /bin/sh ' + DIR + '/watch.sh > /dev/null 2>&1 && exit 0; fi; ' +
+            '$(command -v setsid) nohup sh ' + DIR + '/watch.sh > /dev/null 2>&1 < /dev/null &',
+            function () { });
+    }
+
+    /** Галка «Выключать при выходе из приложения» */
+    function setStopOnExit(on) {
+        try { localStorage.setItem(STOP_ON_EXIT_KEY, on ? '1' : '0'); } catch (e) { }
+        exec(stopOnExitCmd() + '; true', function () { });
+        if (on && st.own) ensureWatch();
+    }
+
     /**
      * Вызов службы Homebrew Channel; cb(r) — её ответ или {returnValue:false,
      * errorText} (нет моста, нет Homebrew Channel, нет ответа за timeoutMs).
@@ -1181,7 +1262,7 @@ var WebOSTorrServer = (function () {
      */
     function start() {
         whoRuns(function (r) {
-            if (r && r.own) { refresh(); return; }
+            if (r && r.own) { ensureWatch(); refresh(); return; }
             if (r) {
                 // Без root заменить нечем — пользуемся тем, что работает
                 if (r.noRoot || keepForeign() || st.ask) { refresh(); return; }
@@ -1223,6 +1304,9 @@ var WebOSTorrServer = (function () {
                 // по ней видно, ушёл ли он из группы службы Homebrew Channel
                 'echo "[TorrStream] $(date "+%F %T") запуск: ${TS_LAUNCH:-nohup}; cgroup: $(head -n 1 /proc/$$/cgroup 2>/dev/null)"',
                 'cd $DIR || exit 0',
+                // Сторож «выключать при выходе из приложения» — в той же группе,
+                // что и TorrServer; без флага stop_on_exit он только ждёт
+                '[ -f $DIR/watch.sh ] && sh $DIR/watch.sh > /dev/null 2>&1 < /dev/null &',
                 'export GODEBUG=madvdontneed=1',
                 // 8090 бывает занят не TorrServer (на /echo не отвечает) —
                 // тогда 18090; приложение узнаёт порт из файла port
@@ -1249,6 +1333,7 @@ var WebOSTorrServer = (function () {
             ];
             var lines = function (list) { return list.map(function (l) { return "'" + l + "'"; }).join(' '); };
             var cmd = 'cd ' + DIR + ' && rm -f err && ' +
+                stopOnExitCmd() + ' && ' + watchScriptCmd() + ' && ' +
                 'printf "%s\\n" ' + lines(run) + ' > run.sh && chmod +x run.sh && ' +
                 'printf "%s\\n" ' + lines(script) + ' > autostart.sh && chmod +x autostart.sh && ' +
                 'mkdir -p /var/lib/webosbrew/init.d && ' +
@@ -1311,6 +1396,7 @@ var WebOSTorrServer = (function () {
     return {
         enabled: enabled, status: status, install: install, start: start, stop: stop,
         checkUpdate: checkUpdate, refresh: refresh, replace: replace,
+        stopOnExit: stopOnExit, setStopOnExit: setStopOnExit,
         // Адрес: свой работает — на его порту; иначе 8090 (там и чужой)
         url: function () { return 'http://localhost:' + (st.own ? st.port : '8090'); },
         answerRemove: function () { answer(true); }, answerKeep: function () { answer(false); },
@@ -1525,6 +1611,15 @@ var deviceTorrServerPanel = (function () {
         bind('ts-device-replace', 'replace');
         bind('ts-device-autostart-off', 'answerRemove');
         bind('ts-device-autostart-keep', 'answerKeep');
+        // Только webOS: выключать встроенный TorrServer, когда приложение закрыто
+        var exitBox = getEl('ts-device-stop-on-exit');
+        if (exitBox && WebOSTorrServer.enabled()) {
+            show('ts-device-exit-row', true);
+            exitBox.checked = WebOSTorrServer.stopOnExit();
+            exitBox.addEventListener('change', function () {
+                WebOSTorrServer.setStopOnExit(exitBox.checked);
+            });
+        }
         if (isDeviceTorrServer()) onToggle(true, true);
     }
 

@@ -774,6 +774,40 @@ var WebOSTorrServer = function () {
   function enabled() {
     return AppState.platform === 'webos';
   }
+  var STOP_ON_EXIT_KEY = 'tsDeviceStopOnExit';
+  function stopOnExit() {
+    try {
+      return localStorage.getItem(STOP_ON_EXIT_KEY) !== '0';
+    } catch (e) {
+      return true;
+    }
+  }
+  function stopOnExitCmd() {
+    return (stopOnExit() ? 'touch ' : 'rm -f ') + DIR + '/stop_on_exit';
+  }
+  function appId() {
+    var id = '';
+    try {
+      id = String(window.PalmSystem && PalmSystem.identifier || '').split(' ')[0];
+    } catch (e) {}
+    return id || 'com.torrstream.app';
+  }
+  function watchScriptCmd() {
+    var watch = ['#!/bin/sh', '# TorrStream: TorrServer работает, пока открыто приложение (флаг stop_on_exit)', 'DIR=' + DIR, 'APP=' + appId(), 'PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH', '[ -f $DIR/watch.pid ] && kill -0 $(cat $DIR/watch.pid) 2>/dev/null && exit 0', 'echo $$ > $DIR/watch.pid', 'MISS=0', 'while sleep 15; do', '  P=$(cat $DIR/pid 2>/dev/null); [ -n "$P" ] && kill -0 $P 2>/dev/null || break', '  [ -f $DIR/stop_on_exit ] || { MISS=0; continue; }', '  R=""; for S in com.webos.applicationManager com.webos.service.applicationmanager; do', '    R=$(luna-send -n 1 luna://$S/running {} 2>/dev/null | tr -d " \\t\\r\\n")', '    case "$R" in *\\"returnValue\\":true*) break;; esac; R=""', '  done', '  [ -z "$R" ] && continue', '  case "$R" in *\\"id\\":\\"$APP\\"*) MISS=0; continue;; esac', '  MISS=$((MISS+1)); [ $MISS -lt 2 ] && continue', '  echo "[TorrStream] $(date "+%F %T") приложение закрыто — TorrServer остановлен" >> $DIR/ts.log', '  kill $P; rm -f $DIR/pid ' + INIT, '  break', 'done', 'rm -f $DIR/watch.pid'];
+    return 'printf "%s\\n" ' + watch.map(function (l) {
+      return "'" + l + "'";
+    }).join(' ') + ' > ' + DIR + '/watch.sh && chmod +x ' + DIR + '/watch.sh';
+  }
+  function ensureWatch() {
+    exec(stopOnExitCmd() + ' && ' + watchScriptCmd() + ' && cd ' + DIR + ' && ' + '{ [ -f watch.pid ] && kill -0 $(cat watch.pid) 2>/dev/null && exit 0; true; } && ' + 'if command -v systemd-run > /dev/null 2>&1; then systemctl reset-failed torrstream-watch > /dev/null 2>&1; ' + 'systemd-run --unit=torrstream-watch /bin/sh ' + DIR + '/watch.sh > /dev/null 2>&1 && exit 0; fi; ' + '$(command -v setsid) nohup sh ' + DIR + '/watch.sh > /dev/null 2>&1 < /dev/null &', function () {});
+  }
+  function setStopOnExit(on) {
+    try {
+      localStorage.setItem(STOP_ON_EXIT_KEY, on ? '1' : '0');
+    } catch (e) {}
+    exec(stopOnExitCmd() + '; true', function () {});
+    if (on && st.own) ensureWatch();
+  }
   function hb(method, params, cb, timeoutMs) {
     var done = false;
     var finish = function (r) {
@@ -1069,6 +1103,7 @@ var WebOSTorrServer = function () {
   function start() {
     whoRuns(function (r) {
       if (r && r.own) {
+        ensureWatch();
         refresh();
         return;
       }
@@ -1093,14 +1128,14 @@ var WebOSTorrServer = function () {
         refresh();
         return;
       }
-      var run = ['#!/bin/sh', '# TorrStream: запуск TorrServer вне группы процессов службы', 'DIR=' + DIR, ': > $DIR/ts.log; exec >> $DIR/ts.log 2>&1 < /dev/null', 'CG=/sys/fs/cgroup', 'if [ -f $CG/cgroup.controllers ]; then echo $$ > $CG/cgroup.procs; else for f in $CG/*/cgroup.procs; do echo $$ > $f; done; fi 2>/dev/null', 'echo "[TorrStream] $(date "+%F %T") запуск: ${TS_LAUNCH:-nohup}; cgroup: $(head -n 1 /proc/$$/cgroup 2>/dev/null)"', 'cd $DIR || exit 0', 'export GODEBUG=madvdontneed=1', 'run() { echo $1 > $DIR/port; ./TorrServer -p $1 -d $DIR & echo $! > $DIR/pid; wait $!; }', 'PORT=8090', 'netstat -tln 2>/dev/null | grep -q ":8090 " && { echo "[TorrStream] порт 8090 занят — запускаю на 18090"; PORT=18090; }', 'run $PORT; CODE=$?', 'if [ $PORT = 8090 ] && grep -q "8090: bind" $DIR/ts.log; then echo "[TorrStream] порт 8090 занят — пробую 18090"; run 18090; CODE=$?; fi', 'echo "[TorrStream] $(date "+%F %T") TorrServer завершился, код $CODE"'];
+      var run = ['#!/bin/sh', '# TorrStream: запуск TorrServer вне группы процессов службы', 'DIR=' + DIR, ': > $DIR/ts.log; exec >> $DIR/ts.log 2>&1 < /dev/null', 'CG=/sys/fs/cgroup', 'if [ -f $CG/cgroup.controllers ]; then echo $$ > $CG/cgroup.procs; else for f in $CG/*/cgroup.procs; do echo $$ > $f; done; fi 2>/dev/null', 'echo "[TorrStream] $(date "+%F %T") запуск: ${TS_LAUNCH:-nohup}; cgroup: $(head -n 1 /proc/$$/cgroup 2>/dev/null)"', 'cd $DIR || exit 0', '[ -f $DIR/watch.sh ] && sh $DIR/watch.sh > /dev/null 2>&1 < /dev/null &', 'export GODEBUG=madvdontneed=1', 'run() { echo $1 > $DIR/port; ./TorrServer -p $1 -d $DIR & echo $! > $DIR/pid; wait $!; }', 'PORT=8090', 'netstat -tln 2>/dev/null | grep -q ":8090 " && { echo "[TorrStream] порт 8090 занят — запускаю на 18090"; PORT=18090; }', 'run $PORT; CODE=$?', 'if [ $PORT = 8090 ] && grep -q "8090: bind" $DIR/ts.log; then echo "[TorrStream] порт 8090 занят — пробую 18090"; run 18090; CODE=$?; fi', 'echo "[TorrStream] $(date "+%F %T") TorrServer завершился, код $CODE"'];
       var script = ['#!/bin/sh', '# TorrStream: встроенный TorrServer (автозапуск Homebrew Channel)', 'DIR=' + DIR, '[ -f $DIR/pid ] && kill -0 $(cat $DIR/pid) 2>/dev/null && exit 0', 'curl -sf -m 3 http://127.0.0.1:8090/echo > /dev/null 2>&1 && exit 0', 'cd $DIR || exit 0', 'if command -v systemd-run > /dev/null 2>&1; then systemctl reset-failed torrstream-torrserver > /dev/null 2>&1; systemd-run --unit=torrstream-torrserver --setenv=TS_LAUNCH=systemd-run /bin/sh $DIR/run.sh > $DIR/launch.log 2>&1 && exit 0; fi', '$(command -v setsid) nohup sh $DIR/run.sh > /dev/null 2>&1 < /dev/null &'];
       var lines = function (list) {
         return list.map(function (l) {
           return "'" + l + "'";
         }).join(' ');
       };
-      var cmd = 'cd ' + DIR + ' && rm -f err && ' + 'printf "%s\\n" ' + lines(run) + ' > run.sh && chmod +x run.sh && ' + 'printf "%s\\n" ' + lines(script) + ' > autostart.sh && chmod +x autostart.sh && ' + 'mkdir -p /var/lib/webosbrew/init.d && ' + 'ln -sf ' + DIR + '/autostart.sh ' + INIT + ' && sh ' + DIR + '/autostart.sh';
+      var cmd = 'cd ' + DIR + ' && rm -f err && ' + stopOnExitCmd() + ' && ' + watchScriptCmd() + ' && ' + 'printf "%s\\n" ' + lines(run) + ' > run.sh && chmod +x run.sh && ' + 'printf "%s\\n" ' + lines(script) + ' > autostart.sh && chmod +x autostart.sh && ' + 'mkdir -p /var/lib/webosbrew/init.d && ' + 'ln -sf ' + DIR + '/autostart.sh ' + INIT + ' && sh ' + DIR + '/autostart.sh';
       st.error = '';
       st.starting = true;
       exec(cmd, function (err) {
@@ -1161,6 +1196,8 @@ var WebOSTorrServer = function () {
     checkUpdate: checkUpdate,
     refresh: refresh,
     replace: replace,
+    stopOnExit: stopOnExit,
+    setStopOnExit: setStopOnExit,
     url: function () {
       return 'http://localhost:' + (st.own ? st.port : '8090');
     },
@@ -1373,6 +1410,14 @@ var deviceTorrServerPanel = function () {
     bind('ts-device-replace', 'replace');
     bind('ts-device-autostart-off', 'answerRemove');
     bind('ts-device-autostart-keep', 'answerKeep');
+    var exitBox = getEl('ts-device-stop-on-exit');
+    if (exitBox && WebOSTorrServer.enabled()) {
+      show('ts-device-exit-row', true);
+      exitBox.checked = WebOSTorrServer.stopOnExit();
+      exitBox.addEventListener('change', function () {
+        WebOSTorrServer.setStopOnExit(exitBox.checked);
+      });
+    }
     if (isDeviceTorrServer()) onToggle(true, true);
   }
   function onToggle(on, atStartup) {

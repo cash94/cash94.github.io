@@ -374,6 +374,11 @@
                     <button class="btn btn-primary" id="ts-device-autostart-off" hidden>Убрать из автозапуска</button>
                     <button class="btn" id="ts-device-autostart-keep" hidden>Оставить в автозапуске</button>
                   </div>
+                  <!-- Только webOS (torrents.js: WebOSTorrServer.setStopOnExit, сторож watch.sh) -->
+                  <div class="checkbox-container" id="ts-device-exit-row" hidden>
+                    <input type="checkbox" id="ts-device-stop-on-exit">
+                    <span>Выключать TorrServer при выходе из приложения<small class="setting-desc">Работает, только пока приложение открыто (свёрнутое кнопкой Home — тоже). При следующем запуске приложения включится сам</small></span>
+                  </div>
                 </div>
                 <!-- js/torrents.js: isLocalTorrServer / setupLocalTorrServerToggle -->
                 <div class="checkbox-container">
