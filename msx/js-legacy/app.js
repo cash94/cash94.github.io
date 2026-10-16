@@ -1006,6 +1006,71 @@ function setupSearch() {
       }
     });
   }
+  setupVoiceSearch(searchInput);
+}
+function setupVoiceSearch(searchInput) {
+  var btn = getEl('voice-search-btn');
+  if (!btn || !searchInput) return;
+  if (!window.AndroidJS || typeof AndroidJS.voiceSearchStart !== 'function') return;
+  var header = btn.parentNode;
+  if (header && header.classList) header.classList.add('voice-search-on');
+  var placeholder = searchInput.getAttribute('placeholder') || '';
+  var listening = false;
+  function setListening(on) {
+    listening = on;
+    btn.classList.toggle('listening', on);
+    searchInput.setAttribute('placeholder', on ? 'Говорите…' : placeholder);
+  }
+  btn.addEventListener('click', function () {
+    if (window.AppState && AppState.searchLocked) return;
+    if (listening) {
+      try {
+        AndroidJS.voiceSearchStop();
+      } catch (e) {
+        setListening(false);
+      }
+      return;
+    }
+    if (searchInput.value) searchInput.value = '';
+    if (document.activeElement === searchInput) searchInput.blur();
+    setListening(true);
+    try {
+      AndroidJS.voiceSearchStart();
+    } catch (e) {
+      setListening(false);
+    }
+  });
+  window.onAndroidVoiceSearch = function (event, text) {
+    text = text ? String(text) : '';
+    if (event === 'listening') {
+      setListening(true);
+      return;
+    }
+    if (event === 'partial') {
+      if (listening && text) searchInput.value = text;
+      return;
+    }
+    var wasListening = listening;
+    setListening(false);
+    if (event === 'error') {
+      if (text) showToast(text);
+      return;
+    }
+    if (!wasListening || event !== 'result') return;
+    searchInput.value = text;
+    if (!text) showToast('Не удалось разобрать речь');
+    if (text && btn.classList.contains('focused') && typeof focusEl === 'function') {
+      var searchBtn = getEl('search-btn');
+      if (searchBtn) focusEl(searchBtn);
+    }
+  };
+  window.stopVoiceSearch = function () {
+    if (!listening) return;
+    setListening(false);
+    try {
+      AndroidJS.voiceSearchStop();
+    } catch (e) {}
+  };
 }
 function setupFavoritesTab() {
   var tabFavorites = getEl('tab-favorites');

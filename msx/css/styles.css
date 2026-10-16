@@ -405,6 +405,61 @@ textarea {
   justify-content: center;
 }
 
+/* Микрофон слева от строки — той же формы, что «X». Распознаёт речь
+   Android-приложение, поэтому без него кнопки нет: класс voice-search-on
+   на шапке ставит setupVoiceSearch (js/app.js), когда нашёл
+   AndroidJS.voiceSearchStart. */
+.voice-search-btn {
+  display: none;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #98a1b0;
+  font-size: 18px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-overlay-header.voice-search-on .voice-search-btn {
+  display: flex;
+}
+
+/* Под замком (запрос задан карточкой фильма) диктовать нечего — класс
+   search-locked ставит setSearchLocked (js/torrents.js) */
+.search-overlay-header.voice-search-on.search-locked .voice-search-btn {
+  display: none;
+}
+
+/* …а строка тогда снова первая в шапке — без отступов «после соседа» */
+.search-overlay-header.voice-search-on.search-locked .search-input-screen {
+  margin-left: 0;
+  margin-top: 0;
+}
+
+/* Идёт запись — кнопка в цвете фокуса и мерцает, повторное нажатие её
+   останавливает */
+.voice-search-btn.listening {
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+  border-color: var(--focus-color-soft, rgba(255, 140, 0, 0.35));
+  color: var(--focus-color-text, #ffb459);
+  -webkit-animation: voice-search-pulse 1.2s ease-in-out infinite;
+  animation: voice-search-pulse 1.2s ease-in-out infinite;
+}
+
+@-webkit-keyframes voice-search-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes voice-search-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 .search-filters {
   display: flex;
   flex-wrap: wrap;
@@ -2394,6 +2449,12 @@ body.detail-open {
     margin-top: 10px;
   }
 
+  /* С микрофоном первая строка — он и поле рядом */
+  .search-overlay-header.voice-search-on:not(.search-locked) .search-input-screen {
+    flex: 1 0 calc(100% - 50px);
+    margin-top: 0;
+  }
+
   /* Первая кнопка второй строки — без отступа слева, иначе строка съезжает */
   .filter-toggle-btn {
     margin-left: 0;
@@ -2851,7 +2912,8 @@ body.detail-open {
     font-size: 15px;
   }
 
-  .close-search-btn {
+  .close-search-btn,
+  .voice-search-btn {
     width: 42px;
     height: 42px;
     font-size: 19px;
@@ -3160,7 +3222,8 @@ body.detail-open {
     font-size: 16px;
   }
 
-  .close-search-btn {
+  .close-search-btn,
+  .voice-search-btn {
     width: 46px;
     height: 46px;
     font-size: 21px;
@@ -8031,7 +8094,8 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     font-size: 13px;
   }
 
-  .close-search-btn {
+  .close-search-btn,
+  .voice-search-btn {
     width: 34px;
     height: 34px;
     font-size: 16px;
@@ -8170,7 +8234,8 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     font-size: 14px;
   }
 
-  .close-search-btn {
+  .close-search-btn,
+  .voice-search-btn {
     width: 38px;
     height: 38px;
     font-size: 17px;

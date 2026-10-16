@@ -1327,6 +1327,83 @@ function setupSearch() {
       }
     });
   }
+
+  setupVoiceSearch(searchInput);
+}
+
+/**
+ * Голосовой ввод в строку поиска — микрофон слева от неё.
+ *
+ * Только в Android-приложении: Web Speech API в WebView нет, речь распознаёт
+ * само приложение (AndroidJS.voiceSearchStart, MainActivity.startVoiceSearch)
+ * и шлёт события в window.onAndroidVoiceSearch(event, text):
+ *   listening — микрофон открыт;
+ *   partial   — промежуточный текст, пока человек говорит;
+ *   result    — итог (пустой, если ничего не разобрали);
+ *   cancel    — отменили или запись так и не началась;
+ *   error     — распознавание недоступно, text — что показать.
+ * Старое приложение без voiceSearchStart кнопку просто не показывает.
+ */
+function setupVoiceSearch(searchInput) {
+  var btn = getEl('voice-search-btn');
+  if (!btn || !searchInput) return;
+  if (!window.AndroidJS || typeof AndroidJS.voiceSearchStart !== 'function') return;
+
+  var header = btn.parentNode;
+  if (header && header.classList) header.classList.add('voice-search-on');
+  var placeholder = searchInput.getAttribute('placeholder') || '';
+  var listening = false;
+
+  function setListening(on) {
+    listening = on;
+    btn.classList.toggle('listening', on);
+    searchInput.setAttribute('placeholder', on ? 'Говорите…' : placeholder);
+  }
+
+  btn.addEventListener('click', function () {
+    if (window.AppState && AppState.searchLocked) return;
+    // Повторное нажатие — «хватит»: приложение отдаст то, что успело разобрать
+    if (listening) {
+      try { AndroidJS.voiceSearchStop(); } catch (e) { setListening(false); }
+      return;
+    }
+    // Новый запрос диктуется с чистого листа
+    if (searchInput.value) searchInput.value = '';
+    if (document.activeElement === searchInput) searchInput.blur();
+    setListening(true);
+    try { AndroidJS.voiceSearchStart(); } catch (e) { setListening(false); }
+  });
+
+  window.onAndroidVoiceSearch = function (event, text) {
+    text = text ? String(text) : '';
+    if (event === 'listening') { setListening(true); return; }
+    if (event === 'partial') {
+      if (listening && text) searchInput.value = text;
+      return;
+    }
+    var wasListening = listening;
+    setListening(false);
+    if (event === 'error') {
+      if (text) showToast(text);
+      return;
+    }
+    // Итог после ухода с экрана поиска (stopVoiceSearch) не нужен
+    if (!wasListening || event !== 'result') return;
+    searchInput.value = text;
+    if (!text) showToast('Не удалось разобрать речь');
+    // С пульта фокус переходит на «Поиск»: запрос уже в строке, одно ОК — и
+    // поиск. На касание это не влияет.
+    if (text && btn.classList.contains('focused') && typeof focusEl === 'function') {
+      var searchBtn = getEl('search-btn');
+      if (searchBtn) focusEl(searchBtn);
+    }
+  };
+
+  window.stopVoiceSearch = function () {
+    if (!listening) return;
+    setListening(false);
+    try { AndroidJS.voiceSearchStop(); } catch (e) { }
+  };
 }
 
 /**

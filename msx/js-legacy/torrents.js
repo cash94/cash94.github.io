@@ -4123,6 +4123,8 @@ function setSearchLocked(locked, query) {
   if (modeItem) modeItem.classList.toggle('hidden', !!locked);
   var input = getEl('search-query');
   if (!input) return;
+  if (input.parentNode && input.parentNode.classList) input.parentNode.classList.toggle('search-locked', !!locked);
+  if (locked && typeof window.stopVoiceSearch === 'function') window.stopVoiceSearch();
   if (locked) {
     input.readOnly = true;
     input.classList.add('search-input-locked');
@@ -4245,6 +4247,7 @@ function showSearchResults(options = {}) {
 function hideSearchResults(opts) {
   opts = opts || {};
   setSearchLocked(false);
+  if (typeof window.stopVoiceSearch === 'function') window.stopVoiceSearch();
   if (AppState.detailUnderSearch) {
     AppState.detailUnderSearch = false;
     if (typeof window.hideDetailView === 'function') window.hideDetailView();

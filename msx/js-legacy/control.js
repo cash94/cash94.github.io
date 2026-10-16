@@ -428,7 +428,7 @@ function belongsToScreen(el, screen) {
     if (filterPanel && filterPanel.classList.contains('active')) {
       if (filterPanel.contains(el)) return true;
     }
-    return el.closest('.search-result-item') || el.closest('.global-search-card') || ['search-query', 'filter-toggle', 'search-btn', 'close-search', 'filter-back-btn', 'filter-close-btn', 'reset-filters'].indexOf(el.id) !== -1 || el.classList.contains('filter-item') || el.classList.contains('filter-value-item');
+    return el.closest('.search-result-item') || el.closest('.global-search-card') || ['voice-search-btn', 'search-query', 'filter-toggle', 'search-btn', 'close-search', 'filter-back-btn', 'filter-close-btn', 'reset-filters'].indexOf(el.id) !== -1 || el.classList.contains('filter-item') || el.classList.contains('filter-value-item');
   }
   if (screen === 'detail') {
     return !!(el.closest('#detail-view') || el.closest('.file-item') || el.closest('back-from-detail') || el.classList.contains('detail-progress-btn') || el.classList.contains('back-btn'));
@@ -480,7 +480,7 @@ function getTorrentTabs() {
   return v;
 }
 function getSearchTop() {
-  var ids = ['search-query', 'filter-toggle', 'search-btn', 'close-search'],
+  var ids = ['voice-search-btn', 'search-query', 'filter-toggle', 'search-btn', 'close-search'],
     v = [];
   for (var i = 0; i < ids.length; i++) {
     var e = getEl(ids[i]);
@@ -962,13 +962,21 @@ var ScreenStrategies = {
       if (isInFilterPanel) {
         return handleFilterPanelNavigation(dir, f);
       }
-      var tWQ = [];
-      for (var i = 0; i < t.length; i++) if (t[i] && t[i].id !== 'search-query') tWQ.push(t[i]);
+      var tWQ = [],
+        vb = null;
+      for (var i = 0; i < t.length; i++) {
+        if (!t[i] || t[i].id === 'search-query') continue;
+        if (t[i].id === 'voice-search-btn') {
+          vb = t[i];
+          continue;
+        }
+        tWQ.push(t[i]);
+      }
       var te = tWQ[0] || fl[0] || r[0] || q;
       if (!f) return this.ensureFocus(true, false);
       if (document.activeElement === q && ['left', 'right', 'up', 'down'].indexOf(dir) !== -1) {
         blurEditor();
-        return focusEl(te);
+        return focusEl(dir === 'left' && vb ? vb : te);
       }
       var ti = -1,
         fi = -1,
@@ -1782,21 +1790,24 @@ function updateFocusableElements() {
     return;
   }
   if (screen === 'search') {
-    var q = getEl('search-query'),
+    var vb = getEl('voice-search-btn'),
+      q = getEl('search-query'),
       ft = getEl('filter-toggle'),
       sb = getEl('search-btn'),
       cs = getEl('close-search');
     if (window.AppState && AppState.searchLocked) {
+      vb = null;
       q = null;
       sb = null;
     }
+    if (vb && !VISIBLE(vb)) vb = null;
     var resultsHost = getEl('search-results');
     var res = [];
     if (resultsHost && resultsHost.offsetParent !== null) {
       var ris = resultsHost.querySelectorAll('.search-result-item, .global-search-card');
       for (var i = 0; i < ris.length; i++) res.push(ris[i]);
     }
-    var fl = [q, ft, sb, cs];
+    var fl = [vb, q, ft, sb, cs];
     var filterPanel = getEl('search-filters-panel');
     if (filterPanel && filterPanel.classList.contains('active')) {
       var backBtn = getEl('filter-back-btn');

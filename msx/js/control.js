@@ -714,7 +714,7 @@ function belongsToScreen(el, screen) {
         }
 
         return el.closest('.search-result-item') || el.closest('.global-search-card') ||
-            ['search-query', 'filter-toggle', 'search-btn', 'close-search',
+            ['voice-search-btn', 'search-query', 'filter-toggle', 'search-btn', 'close-search',
                 'filter-back-btn', 'filter-close-btn', 'reset-filters'].indexOf(el.id) !== -1 ||
             el.classList.contains('filter-item') || el.classList.contains('filter-value-item');
     }
@@ -826,7 +826,9 @@ function getTorrentTabs() {
 }
 
 function getSearchTop() {
-    var ids = ['search-query', 'filter-toggle', 'search-btn', 'close-search'], v = [];
+    // Микрофон — слева от строки; под замком (AppState.searchLocked) он
+    // скрыт стилями, и VISIBLE его отсеивает
+    var ids = ['voice-search-btn', 'search-query', 'filter-toggle', 'search-btn', 'close-search'], v = [];
     for (var i = 0; i < ids.length; i++) { var e = getEl(ids[i]); if (VISIBLE(e)) v.push(e); }
     return v;
 }
@@ -1393,12 +1395,18 @@ var ScreenStrategies = {
             if (isInFilterPanel) {
                 return handleFilterPanelNavigation(dir, f);
             }
-            var tWQ = []; for (var i = 0; i < t.length; i++) if (t[i] && t[i].id !== 'search-query') tWQ.push(t[i]);
+            var tWQ = [], vb = null;
+            for (var i = 0; i < t.length; i++) {
+                if (!t[i] || t[i].id === 'search-query') continue;
+                if (t[i].id === 'voice-search-btn') { vb = t[i]; continue; }
+                tWQ.push(t[i]);
+            }
             var te = tWQ[0] || fl[0] || r[0] || q;
             if (!f) return this.ensureFocus(true, false);
             if (document.activeElement === q && ['left', 'right', 'up', 'down'].indexOf(dir) !== -1) {
                 blurEditor();
-                return focusEl(te);
+                // Влево из строки — к микрофону, остальное — как раньше
+                return focusEl(dir === 'left' && vb ? vb : te);
             }
             var ti = -1, fi = -1, ri = -1;
             for (var i = 0; i < t.length; i++) if (f === t[i]) { ti = i; break; }
@@ -1998,11 +2006,13 @@ function updateFocusableElements() {
         return;
     }
     if (screen === 'search') {
-        var q = getEl('search-query'), ft = getEl('filter-toggle'), sb = getEl('search-btn'), cs = getEl('close-search');
+        var vb = getEl('voice-search-btn'), q = getEl('search-query'), ft = getEl('filter-toggle'), sb = getEl('search-btn'), cs = getEl('close-search');
         // Поиск из карточки каталога: строка только для чтения, и вести в неё
         // фокус незачем — как и в «Поиск», который перезапустил бы тот же
         // запрос. Замок ставит setSearchLocked (torrents.js).
-        if (window.AppState && AppState.searchLocked) { q = null; sb = null; }
+        if (window.AppState && AppState.searchLocked) { vb = null; q = null; sb = null; }
+        // Микрофон есть только в Android-приложении (app.js: setupVoiceSearch)
+        if (vb && !VISIBLE(vb)) vb = null;
         // Карточки результатов спрашиваем через контейнер, а не каждую по
         // отдельности: .search-offscreen — это visibility: hidden, offsetParent
         // при нём остаётся, то есть проверка на каждой не отсеивала ничего, а
@@ -2014,7 +2024,7 @@ function updateFocusableElements() {
             for (var i = 0; i < ris.length; i++) res.push(ris[i]);
         }
 
-        var fl = [q, ft, sb, cs];
+        var fl = [vb, q, ft, sb, cs];
 
         // ★ НОВАЯ ПАНЕЛЬ ФИЛЬТРОВ — добавляем её элементы
         var filterPanel = getEl('search-filters-panel');

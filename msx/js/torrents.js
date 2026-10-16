@@ -5169,6 +5169,10 @@ function setSearchLocked(locked, query) {
     var input = getEl('search-query');
     if (!input) return;
 
+    // Шапке — чтобы спрятать микрофон: диктовать в запертую строку нечего
+    if (input.parentNode && input.parentNode.classList) input.parentNode.classList.toggle('search-locked', !!locked);
+    if (locked && typeof window.stopVoiceSearch === 'function') window.stopVoiceSearch();
+
     if (locked) {
         input.readOnly = true;
         input.classList.add('search-input-locked');
@@ -5316,6 +5320,8 @@ function hideSearchResults(opts) {
     opts = opts || {};
     // Уходим из поиска — контекст карточки больше не действует
     setSearchLocked(false);
+    // И микрофон, если ещё слушал, больше не нужен
+    if (typeof window.stopVoiceSearch === 'function') window.stopVoiceSearch();
     // Ушли из выдачи раньше, чем она проявилась после возврата из карточки:
     // карточка всё ещё под ней и без этого осталась бы висеть поверх экрана
     if (AppState.detailUnderSearch) {
