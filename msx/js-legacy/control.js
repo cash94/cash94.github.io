@@ -3230,6 +3230,9 @@ function focusEl(el, opts) {
   applyTitleMarquee(el);
   trackFocusedElement(el);
   rememberScreenFocus(el);
+  if (s === 'detail' && typeof window.updateDetailOverviewForFocus === 'function') {
+    window.updateDetailOverviewForFocus(el);
+  }
   return true;
 }
 function showPlayerControls(preferredFocusId) {

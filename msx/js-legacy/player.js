@@ -1350,6 +1350,36 @@ function _resolveTorrentWithFiles() {
   });
   return _resolveTorrentWithFiles.apply(this, arguments);
 }
+function getEpisodeMetaForFile(file) {
+  if (!file || !currentTorrentHash || typeof window.getTorrentEpisodeMeta !== 'function') return null;
+  return window.getTorrentEpisodeMeta(currentTorrentHash, file.id);
+}
+function getEpisodeLabel(file, idx) {
+  var meta = getEpisodeMetaForFile(file);
+  if (typeof window.formatEpisodeLabel === 'function') return window.formatEpisodeLabel(meta, idx + 1);
+  return 'Серия ' + (idx + 1);
+}
+function getEpisodePlayerTitle(hash, fileId) {
+  if (!hash || !currentEpisodeFiles || currentEpisodeFiles.length < 2) return null;
+  if (typeof window.getTorrentEpisodeMeta !== 'function') return null;
+  var meta = window.getTorrentEpisodeMeta(hash, fileId);
+  if (!meta || !meta.name) return null;
+  var idx = 0;
+  for (var i = 0; i < currentEpisodeFiles.length; i++) {
+    if (String(currentEpisodeFiles[i].id) === String(fileId)) {
+      idx = i;
+      break;
+    }
+  }
+  return window.formatEpisodeLabel(meta, idx + 1);
+}
+function refreshEpisodePlayerTitle() {
+  if (AppState.currentScreen !== 'player') return;
+  var file = currentEpisodeFiles[currentEpisodeIndex];
+  if (!file) return;
+  var title = getEpisodePlayerTitle(currentTorrentHash, file.id);
+  if (title) updatePlayerTitle(title);
+}
 function loadEpisodesInfo(_x10, _x11) {
   return _loadEpisodesInfo.apply(this, arguments);
 }
@@ -1393,6 +1423,14 @@ function _loadEpisodesInfo() {
         }
         if (currentEpisodeIndex === -1 || currentEpisodeIndex === undefined) currentEpisodeIndex = 0;
         renderEpisodesList();
+        if (typeof window.ensureTorrentEpisodeMeta === 'function') {
+          window.ensureTorrentEpisodeMeta(torrent, videoFiles).then(function (changed) {
+            if (!changed || currentTorrentHash !== hash) return;
+            renderEpisodesList();
+            refreshEpisodePlayerTitle();
+          });
+        }
+        refreshEpisodePlayerTitle();
         if (AppState.isSerials) fetchSkipData(AppState.currentTMDB, AppState.currentSeason, currentFileId);
         var episodesBtn = getEl('episodes-btn');
         if (episodesBtn) episodesBtn.style.display = videoFiles.length > 1 ? 'flex' : 'none';
@@ -1460,8 +1498,10 @@ function renderEpisodesList() {
     var file = currentEpisodeFiles[idx];
     var isActive = idx === currentEpisodeIndex;
     var fileSize = formatBytes(file.length);
-    var episodeNumber = idx + 1;
-    html += '<div class="episode-item ' + (isActive ? 'active' : '') + '" data-index="' + idx + '" data-file-id="' + file.id + '">' + '<div class="episode-number">' + episodeNumber + '</div>' + '<div class="episode-info"><div class="episode-title">Серия ' + episodeNumber + '</div><div class="episode-duration">' + fileSize + '</div></div>' + '<button class="episode-play" title="Воспроизвести">▶</button></div>';
+    var meta = getEpisodeMetaForFile(file);
+    var episodeNumber = meta && meta.episode || idx + 1;
+    var episodeTitle = getEpisodeLabel(file, idx);
+    html += '<div class="episode-item ' + (isActive ? 'active' : '') + '" data-index="' + idx + '" data-file-id="' + file.id + '">' + '<div class="episode-number">' + episodeNumber + '</div>' + '<div class="episode-info"><div class="episode-title">' + escapeHtml(episodeTitle) + '</div><div class="episode-duration">' + fileSize + '</div></div>' + '<button class="episode-play" title="Воспроизвести">▶</button></div>';
   }
   episodesList.innerHTML = html;
   setupEpisodesListDelegation();
@@ -1513,8 +1553,11 @@ function _switchToEpisode() {
       destroyHls();
       if (currentTorrentHash && fileId) yield saveAudioPreference(currentTorrentHash, fileId, savedAudioTrack);
       yield startHLSPlayback(playUrl, 0, lastPlaybackFromSearch, index, savedAudioTrack);
-      var fileName = yield getFileNameByHash(currentTorrentHash, fileId);
-      if (fileName && AppState.currentDetailItem) updatePlayerTitle(AppState.currentDetailItem.title + ' - ' + fileName);
+      var episodeTitle = getEpisodePlayerTitle(currentTorrentHash, fileId);
+      if (episodeTitle) updatePlayerTitle(episodeTitle);else {
+        var fileName = yield getFileNameByHash(currentTorrentHash, fileId);
+        if (fileName && AppState.currentDetailItem) updatePlayerTitle(AppState.currentDetailItem.title + ' - ' + fileName);
+      }
       renderEpisodesList();
       updateEpisodeButtons();
     } catch (error) {
@@ -1930,7 +1973,7 @@ function buildExternalPlayerTitle() {
   if (!currentEpisodeFiles || currentEpisodeFiles.length < 2) return base || 'Видео';
   var idx = currentEpisodeIndex;
   if (typeof idx !== 'number' || idx < 0 || !currentEpisodeFiles[idx]) return base || 'Видео';
-  var part = 'Серия ' + (idx + 1);
+  var part = getEpisodeLabel(currentEpisodeFiles[idx], idx);
   if (AppState.currentSeason) part = 'Сезон ' + AppState.currentSeason + ', ' + part;
   if (!base) {
     var file = currentEpisodeFiles[idx];
@@ -2863,7 +2906,9 @@ function _startHLSPlayback() {
       showPlaybackUnavailableBanner('/api/file/info не отдал данные о ' + currentTimecodeData.hash + '/' + currentTimecodeData.fileId);
       return false;
     }
-    if (fileName) updatePlayerTitle(fileName);else if (AppState.currentDetailItem && AppState.currentDetailItem.title) updatePlayerTitle(AppState.currentDetailItem.title);
+    var startRef = parseStreamRef(originalUrl);
+    var startEpisodeTitle = startRef ? getEpisodePlayerTitle(startRef.hash, startRef.fileId) : null;
+    if (startEpisodeTitle) updatePlayerTitle(startEpisodeTitle);else if (fileName) updatePlayerTitle(fileName);else if (AppState.currentDetailItem && AppState.currentDetailItem.title) updatePlayerTitle(AppState.currentDetailItem.title);
     if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
       var currentFileId = episodeIndex !== null && currentEpisodeFiles[episodeIndex] ? currentEpisodeFiles[episodeIndex].id : metadata.match ? metadata.match[2] : null;
       setTimeout(function () {

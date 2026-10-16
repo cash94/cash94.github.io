@@ -1491,6 +1491,46 @@ async function resolveTorrentWithFiles(hash, maxAttempts, delayMs) {
   return torrent;
 }
 
+/** Сведения TMDB о серии файла текущей раздачи (torrents.js) или null */
+function getEpisodeMetaForFile(file) {
+  if (!file || !currentTorrentHash || typeof window.getTorrentEpisodeMeta !== 'function') return null;
+  return window.getTorrentEpisodeMeta(currentTorrentHash, file.id);
+}
+
+/** «Серия 5 - Название» / «Серия 5» — как на плитках detail-view */
+function getEpisodeLabel(file, idx) {
+  var meta = getEpisodeMetaForFile(file);
+  if (typeof window.formatEpisodeLabel === 'function') return window.formatEpisodeLabel(meta, idx + 1);
+  return 'Серия ' + (idx + 1);
+}
+
+/**
+ * Заголовок плеера для серии сериала: «Серия 5 - Название». Только когда
+ * серий несколько и название серии известно — иначе остаётся прежний
+ * заголовок (имя файла), он информативнее голого «Серия 5».
+ * @returns {string|null}
+ */
+function getEpisodePlayerTitle(hash, fileId) {
+  if (!hash || !currentEpisodeFiles || currentEpisodeFiles.length < 2) return null;
+  if (typeof window.getTorrentEpisodeMeta !== 'function') return null;
+  var meta = window.getTorrentEpisodeMeta(hash, fileId);
+  if (!meta || !meta.name) return null;
+  var idx = 0;
+  for (var i = 0; i < currentEpisodeFiles.length; i++) {
+    if (String(currentEpisodeFiles[i].id) === String(fileId)) { idx = i; break; }
+  }
+  return window.formatEpisodeLabel(meta, idx + 1);
+}
+
+/** Сведения о сериях пришли уже после старта — переписать заголовок */
+function refreshEpisodePlayerTitle() {
+  if (AppState.currentScreen !== 'player') return;
+  var file = currentEpisodeFiles[currentEpisodeIndex];
+  if (!file) return;
+  var title = getEpisodePlayerTitle(currentTorrentHash, file.id);
+  if (title) updatePlayerTitle(title);
+}
+
 async function loadEpisodesInfo(hash, currentFileId) {
   if (currentFileId === undefined) currentFileId = null;
   if (!hash || !AppState.currentTorrserverUrl) return;
@@ -1517,6 +1557,18 @@ async function loadEpisodesInfo(hash, currentFileId) {
       }
       if (currentEpisodeIndex === -1 || currentEpisodeIndex === undefined) currentEpisodeIndex = 0;
       renderEpisodesList();
+      // Названий серий ещё нет (detail этой раздачи не открывали) — догружаем
+      // и перерисовываем список и заголовок, если плеер всё ещё на ней
+      if (typeof window.ensureTorrentEpisodeMeta === 'function') {
+        window.ensureTorrentEpisodeMeta(torrent, videoFiles).then(function (changed) {
+          if (!changed || currentTorrentHash !== hash) return;
+          renderEpisodesList();
+          refreshEpisodePlayerTitle();
+        });
+      }
+      // Сведения уже были (detail открывали) — заголовок на старте ставился
+      // до появления списка серий и остался именем файла
+      refreshEpisodePlayerTitle();
       if (AppState.isSerials) fetchSkipData(AppState.currentTMDB, AppState.currentSeason, currentFileId);
       var episodesBtn = getEl('episodes-btn');
       if (episodesBtn) episodesBtn.style.display = videoFiles.length > 1 ? 'flex' : 'none';
@@ -1587,10 +1639,13 @@ function renderEpisodesList() {
     var file = currentEpisodeFiles[idx];
     var isActive = idx === currentEpisodeIndex;
     var fileSize = formatBytes(file.length);
-    var episodeNumber = idx + 1;
+    // Номер и название серии из TMDB (сведения собирает torrents.js), иначе порядковый
+    var meta = getEpisodeMetaForFile(file);
+    var episodeNumber = (meta && meta.episode) || (idx + 1);
+    var episodeTitle = getEpisodeLabel(file, idx);
     html += '<div class="episode-item ' + (isActive ? 'active' : '') + '" data-index="' + idx + '" data-file-id="' + file.id + '">' +
       '<div class="episode-number">' + episodeNumber + '</div>' +
-      '<div class="episode-info"><div class="episode-title">Серия ' + episodeNumber + '</div><div class="episode-duration">' + fileSize + '</div></div>' +
+      '<div class="episode-info"><div class="episode-title">' + escapeHtml(episodeTitle) + '</div><div class="episode-duration">' + fileSize + '</div></div>' +
       '<button class="episode-play" title="Воспроизвести">▶</button></div>';
   }
   episodesList.innerHTML = html;
@@ -1646,8 +1701,12 @@ async function switchToEpisode(index, fileId) {
     destroyHls();
     if (currentTorrentHash && fileId) await saveAudioPreference(currentTorrentHash, fileId, savedAudioTrack);
     await startHLSPlayback(playUrl, 0, lastPlaybackFromSearch, index, savedAudioTrack);
-    var fileName = await getFileNameByHash(currentTorrentHash, fileId);
-    if (fileName && AppState.currentDetailItem) updatePlayerTitle(AppState.currentDetailItem.title + ' - ' + fileName);
+    var episodeTitle = getEpisodePlayerTitle(currentTorrentHash, fileId);
+    if (episodeTitle) updatePlayerTitle(episodeTitle);
+    else {
+      var fileName = await getFileNameByHash(currentTorrentHash, fileId);
+      if (fileName && AppState.currentDetailItem) updatePlayerTitle(AppState.currentDetailItem.title + ' - ' + fileName);
+    }
     renderEpisodesList(); updateEpisodeButtons();
   } catch (error) { showSwitchFailedBanner('серию', error && error.message); }
   finally {
@@ -2203,7 +2262,7 @@ function buildExternalPlayerTitle() {
   var idx = currentEpisodeIndex;
   if (typeof idx !== 'number' || idx < 0 || !currentEpisodeFiles[idx]) return base || 'Видео';
 
-  var part = 'Серия ' + (idx + 1);
+  var part = getEpisodeLabel(currentEpisodeFiles[idx], idx);
   if (AppState.currentSeason) part = 'Сезон ' + AppState.currentSeason + ', ' + part;
 
   // Без названия сериала (из поиска торрентов такое бывает) — отдаём хотя бы
@@ -3136,7 +3195,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     return false;
   }
 
-  if (fileName) updatePlayerTitle(fileName);
+  var startRef = parseStreamRef(originalUrl);
+  var startEpisodeTitle = startRef ? getEpisodePlayerTitle(startRef.hash, startRef.fileId) : null;
+  if (startEpisodeTitle) updatePlayerTitle(startEpisodeTitle);
+  else if (fileName) updatePlayerTitle(fileName);
   else if (AppState.currentDetailItem && AppState.currentDetailItem.title) updatePlayerTitle(AppState.currentDetailItem.title);
   if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
     var currentFileId = (episodeIndex !== null && currentEpisodeFiles[episodeIndex]) ? currentEpisodeFiles[episodeIndex].id : (metadata.match ? metadata.match[2] : null);

@@ -2490,7 +2490,13 @@ function resetDetailBackground() {
     detailView.style.backgroundImage = ''; detailView.style.backgroundColor = '#000000';
     detailView.style.removeProperty('--torrent-backdrop');
     var existingOverlay = getEl('detail-backdrop-overlay'); if (existingOverlay) existingOverlay.remove();
-    var detailSubtitle = getEl('detail-subtitle'); if (detailSubtitle) { detailSubtitle.textContent = ''; detailSubtitle.style.display = 'none'; }
+    var detailSubtitle = getEl('detail-subtitle');
+    if (detailSubtitle) {
+        detailSubtitle.textContent = ''; detailSubtitle.style.display = 'none';
+        // Описание серии под фокусом (updateDetailOverviewForFocus) — от прошлой раздачи
+        detailSubtitle._overviewKey = '';
+        detailSubtitle.classList.remove('episode-switchable');
+    }
     var metaContainer = getEl('catalog-detail-meta'); if (metaContainer) { metaContainer.innerHTML = ''; metaContainer.classList.add('hidden'); }
     // Плитки файлов не сносим: они переиспользуются между открытиями
     // (см. пул ниже), поэтому просто гасим их и служебное сообщение
@@ -2596,6 +2602,209 @@ async function loadSeasonStills(tmdbId, seasonNumber) {
     } catch (error) { console.error('Ошибка загрузки кадров сезона:', error); }
     return [];
 }
+
+// ==================== СВЕДЕНИЯ О СЕРИЯХ (название, описание, кадр) ====================
+// /api/tmdb/season отдаёт у каждой серии не только кадр, но и название с
+// описанием. Раньше кадры раскладывались по плиткам просто по порядку, а
+// название и описание выбрасывались. Теперь файл раздачи сопоставляется со
+// своей серией, и результат живёт здесь по хэшу раздачи: его читают и плитки
+// detail-view, и плеер (список серий и заголовок).
+
+var torrentEpisodeMetaStore = new LruCache(60, 24 * 60 * 60 * 1000);
+var torrentEpisodeMetaInFlight = {};
+
+// «Эпизод 5» — так TMDB подписывает серию, у которой нет русского названия.
+// «Серия 5 - Эпизод 5» хуже, чем просто «Серия 5».
+var GENERIC_EPISODE_NAME_RE = /^(эпизод|episode|серия|ep\.?)\s*#?\d+$/i;
+
+function cleanEpisodeName(name) {
+    var s = String(name || '').trim();
+    if (!s || GENERIC_EPISODE_NAME_RE.test(s)) return '';
+    return s;
+}
+
+/**
+ * Сезон и номер серии из имени файла. Порядок важен: сначала полные формы
+ * (S01E05, 1x05), затем одиночный номер (E05, «серия 5») — сезон к нему
+ * подставит вызывающий, если сезон в раздаче один.
+ * 1920x1080 за «19x20» не принимается: перед сезоном не должно быть цифры.
+ */
+function parseEpisodeRef(fileName) {
+    var s = String(fileName || '').split('/').pop();
+    var m = s.match(/S(\d{1,2})[\s._-]*E(\d{1,3})/i);
+    if (m) return { season: parseInt(m[1], 10), episode: parseInt(m[2], 10) };
+    m = s.match(/(?:^|[^\d])(\d{1,2})x(\d{2,3})(?!\d)/i);
+    if (m) return { season: parseInt(m[1], 10), episode: parseInt(m[2], 10) };
+    m = s.match(/(?:^|[^a-zа-яё])(?:e|ep|episode|серия|эпизод)[\s._-]*(\d{1,3})(?!\d)/i);
+    if (m) return { season: null, episode: parseInt(m[1], 10) };
+    return null;
+}
+
+/**
+ * Сопоставить видеофайлы раздачи с сериями TMDB.
+ * Сначала по номеру из имени файла, иначе — по порядку: i-й файл = i-я серия
+ * по всем сезонам раздачи подряд (как раньше раскладывались кадры).
+ * @param {Array} files [{id, path}] в порядке плиток / списка серий
+ * @returns {object} { fileId: {season, episode, name, overview, stillPath} }
+ */
+function buildEpisodeMetaByFile(files, seasonNumbers, allSeasonEpisodes) {
+    var byFileId = {};
+    if (!files || !files.length || !allSeasonEpisodes) return byFileId;
+
+    var seasons = (seasonNumbers && seasonNumbers.length ? seasonNumbers.slice() : Object.keys(allSeasonEpisodes).map(Number))
+        .sort(function (a, b) { return a - b; });
+    var ordered = [];
+    var byKey = {};
+    for (var s = 0; s < seasons.length; s++) {
+        var eps = (allSeasonEpisodes[seasons[s]] || []).slice()
+            .sort(function (a, b) { return (a.episodeNumber || 0) - (b.episodeNumber || 0); });
+        for (var e = 0; e < eps.length; e++) {
+            var ep = {
+                season: seasons[s],
+                episode: eps[e].episodeNumber,
+                name: cleanEpisodeName(eps[e].name),
+                overview: String(eps[e].overview || '').trim(),
+                stillPath: eps[e].stillPath || null
+            };
+            ordered.push(ep);
+            byKey[ep.season + '_' + ep.episode] = ep;
+        }
+    }
+    if (!ordered.length) return byFileId;
+
+    // Способ один на всю раздачу. Смешивать нельзя: файл, сопоставленный по
+    // имени с 3-й серией, и третий по счёту файл без номера получили бы одну
+    // и ту же серию. Номера в именах есть у большинства файлов — верим им, у
+    // остальных подписи «Серия N» без названия; иначе — по порядку.
+    var singleSeason = seasons.length === 1 ? seasons[0] : null;
+    var byName = {}, matched = 0;
+    for (var i = 0; i < files.length; i++) {
+        var ref = parseEpisodeRef(files[i].path || files[i].name);
+        if (!ref) continue;
+        var season = ref.season !== null ? ref.season : singleSeason;
+        var found = season !== null ? byKey[season + '_' + ref.episode] : null;
+        if (found) { byName[String(files[i].id)] = found; matched++; }
+    }
+    if (matched * 2 >= files.length) return byName;
+
+    for (var j = 0; j < files.length; j++) {
+        if (ordered[j]) byFileId[String(files[j].id)] = ordered[j];
+    }
+    return byFileId;
+}
+
+function setTorrentEpisodeMeta(hash, byFileId) {
+    if (!hash || !byFileId) return;
+    torrentEpisodeMetaStore.set(String(hash).toLowerCase(), byFileId);
+}
+
+/** Сведения о серии файла или null (сериал не опознан, TMDB не ответил) */
+function getTorrentEpisodeMeta(hash, fileId) {
+    if (!hash || fileId === undefined || fileId === null) return null;
+    var byFileId = torrentEpisodeMetaStore.get(String(hash).toLowerCase());
+    return (byFileId && byFileId[String(fileId)]) || null;
+}
+window.getTorrentEpisodeMeta = getTorrentEpisodeMeta;
+
+/**
+ * Подпись серии: «Серия 5 - Название», без названия — «Серия 5».
+ * Номер — из TMDB, если файл с серией сопоставлен, иначе порядковый.
+ */
+function formatEpisodeLabel(meta, fallbackNumber) {
+    var num = (meta && meta.episode) || fallbackNumber;
+    var label = 'Серия ' + num;
+    if (meta && meta.name) label += ' - ' + meta.name;
+    return label;
+}
+window.formatEpisodeLabel = formatEpisodeLabel;
+
+/**
+ * Догрузить сведения о сериях, если detail-view этой раздачи не открывали
+ * (плеер запущен с главной, из «Продолжить», из каталога). Нужен tmdbId —
+ * без него сопоставлять не с чем, и плеер остаётся с «Серия N».
+ * @returns {Promise<boolean>} появились ли новые сведения
+ */
+function ensureTorrentEpisodeMeta(torrent, videoFiles) {
+    var hash = torrent && torrent.hash ? String(torrent.hash).toLowerCase() : '';
+    if (!hash || !videoFiles || videoFiles.length < 2) return Promise.resolve(false);
+    if (torrentEpisodeMetaStore.has(hash)) return Promise.resolve(false);
+    if (torrentEpisodeMetaInFlight[hash]) return torrentEpisodeMetaInFlight[hash];
+
+    var known = knownTorrentMeta.get(hash);
+    var tmdbId = torrent.tmdbId || (known && known.id) || null;
+    if (!tmdbId) {
+        var idMatch = String(torrent.title || '').match(/\[(\d+)\]/);
+        if (idMatch) tmdbId = idMatch[1];
+    }
+    var mediaType = torrent.media_type || (known && known.mediaType) || null;
+    if (!tmdbId || mediaType === 'movie') return Promise.resolve(false);
+
+    var seasons = extractSeasonsFromTitle(torrent.title || '');
+    if (!seasons.length) {
+        for (var i = 0; i < videoFiles.length; i++) {
+            var ref = parseEpisodeRef(videoFiles[i].path);
+            if (ref && ref.season && seasons.indexOf(ref.season) === -1) seasons.push(ref.season);
+        }
+        seasons.sort(function (a, b) { return a - b; });
+    }
+    if (!seasons.length) seasons = [1];
+
+    var request = Promise.all(seasons.map(function (sn) {
+        return loadSeasonStills(tmdbId, sn).then(function (eps) { return { s: sn, e: eps || [] }; });
+    })).then(function (arr) {
+        var all = {};
+        for (var k = 0; k < arr.length; k++) if (arr[k].e.length) all[arr[k].s] = arr[k].e;
+        if (!Object.keys(all).length) return false;
+        setTorrentEpisodeMeta(hash, buildEpisodeMetaByFile(videoFiles, seasons, all));
+        return true;
+    }).catch(function () { return false; });
+
+    torrentEpisodeMetaInFlight[hash] = request;
+    return request.then(function (changed) {
+        delete torrentEpisodeMetaInFlight[hash];
+        return changed;
+    });
+}
+window.ensureTorrentEpisodeMeta = ensureTorrentEpisodeMeta;
+
+/**
+ * Описание под заголовком detail-view следует за фокусом: на плитке серии —
+ * её описание с названием, на остальном (кнопка «Играть», актёры) — описание
+ * сериала. Зовёт focusEl в control.js на каждое перемещение фокуса в detail,
+ * поэтому повторная запись того же текста отсекается по ключу.
+ */
+function updateDetailOverviewForFocus(el) {
+    if (!isTorrentDetailMode()) return;
+    var sub = getEl('detail-subtitle');
+    if (!sub) return;
+
+    var meta = null, fileId = '';
+    if (el && el.classList && el.classList.contains('file-item') && el.dataset.hash) {
+        fileId = el.dataset.fileId;
+        meta = getTorrentEpisodeMeta(el.dataset.hash, fileId);
+        if (meta && !meta.overview && !meta.name) meta = null;
+    }
+    var key = meta ? 'ep:' + fileId : 'series';
+    // Первый показ описания сериала пишут загрузчики TMDB — сюда он не заходит
+    if (!sub._overviewKey && key === 'series') return;
+    if (sub._overviewKey === key) return;
+    sub._overviewKey = key;
+
+    if (meta) {
+        var index = parseInt(el.dataset.episodeIndex, 10);
+        var label = formatEpisodeLabel(meta, isNaN(index) ? 1 : index + 1);
+        sub.innerHTML = '<span class="detail-episode-heading">' + escapeHtml(label) + '.</span> ' +
+            escapeHtml(meta.overview || '');
+        sub.style.display = 'block';
+        sub.classList.remove('hidden');
+        return;
+    }
+
+    var seriesOverview = (detailMetaState.details && detailMetaState.details.overview) || '';
+    sub.textContent = seriesOverview;
+    if (!seriesOverview) sub.style.display = 'none';
+}
+window.updateDetailOverviewForFocus = updateDetailOverviewForFocus;
 
 async function loadMovieStill(tmdbId) {
     var cacheKey = tmdbId + '_movie_still';
@@ -2768,7 +2977,88 @@ function clearDetailNetflixBlocks() {
     if (filesTitle) filesTitle.classList.add('hidden');
 }
 
-// Строка вида «2019 · 8.4 · 3 сезона · 48 мин · Драма · США · 24 серии · 96 ГБ · [4K]».
+/**
+ * Сезоны, которые лежат в раздаче: из названия торрента («[сезон 1-8]»,
+ * S05), иначе из имён файлов (S05E01). Ничего не нашлось, а у сериала в TMDB
+ * всего один сезон — значит, он и есть.
+ */
+function getDetailTorrentSeasons() {
+    var seasons = detailMetaState.torrentSeasons || [];
+    if (seasons.length) return seasons;
+    var d = detailMetaState.details;
+    if (detailMetaState.isTvSeries && d && parseInt(d.number_of_seasons, 10) === 1) return [1];
+    return [];
+}
+
+/**
+ * Сколько серий в сезоне, 0 — неизвестно. Источников три, берём наибольшее:
+ * у идущего сезона TMDB знает только анонсированные серии, а детали сериала
+ * и список серий сезона кэшируются порознь и расходятся (2 против 6), трекер
+ * же часто пишет итог прямо в названии: «Серии: 1-3 из 22».
+ */
+function getSeasonEpisodeTotal(details, seasonNumber) {
+    var total = 0;
+    if (details && Array.isArray(details.seasons)) {
+        for (var i = 0; i < details.seasons.length; i++) {
+            var s = details.seasons[i];
+            if (s && s.season_number === seasonNumber && s.episode_count > total) total = s.episode_count;
+        }
+    }
+    var eps = detailMetaState.seasonEpisodes && detailMetaState.seasonEpisodes[seasonNumber];
+    if (eps && eps.length > total) total = eps.length;
+    var fromTitle = String(detailMetaState.torrentTitle || '').match(/сери[ийя]\s*:?\s*[\d\s,–-]*из\s*(\d+)/i);
+    if (fromTitle && parseInt(fromTitle[1], 10) > total) total = parseInt(fromTitle[1], 10);
+    return total;
+}
+
+var RU_MONTHS_GENITIVE = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля',
+    'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+
+/**
+ * «Следующая серия 23 октября» — только когда она из сезона этой раздачи:
+ * у раздачи 3-го сезона дата выхода серии 9-го ни к чему.
+ * Дату разбираем по частям, а не new Date('YYYY-MM-DD'): та читается как
+ * полночь UTC и западнее Гринвича превращается в предыдущий день.
+ */
+function formatNextEpisodeDate(details, torrentSeasons) {
+    var now = new Date();
+    var p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+    var todayIso = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate());
+
+    // Сначала — даты выхода из списка серий сезона (/api/tmdb/season). Детали
+    // сериала с их next_episode_to_air бывают на недели старее: одно из зеркал
+    // TMDB отдаёт свою давнюю копию, а детали ещё и кэшируются на сервере.
+    // Список серий сезона приходит отдельным запросом и обычно свежее.
+    var nextDate = '';
+    var eps = detailMetaState.seasonEpisodes || {};
+    for (var s = 0; s < torrentSeasons.length; s++) {
+        var list = eps[torrentSeasons[s]] || [];
+        for (var e = 0; e < list.length; e++) {
+            var ad = list[e] && list[e].airDate;
+            // Сегодняшняя тоже «следующая»: к вечеру её ещё нет на трекере
+            if (ad && ad >= todayIso && (!nextDate || ad < nextDate)) nextDate = ad;
+        }
+    }
+
+    if (!nextDate) {
+        var next = details && details.next_episode_to_air;
+        if (next && typeof next === 'object' && next.air_date &&
+            torrentSeasons.indexOf(next.season_number) !== -1 &&
+            String(next.air_date) >= todayIso) {
+            nextDate = String(next.air_date);
+        }
+    }
+
+    var m = nextDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return '';
+    var year = parseInt(m[1], 10), month = parseInt(m[2], 10) - 1, day = parseInt(m[3], 10);
+    var text = 'Следующая серия ' + day + ' ' + RU_MONTHS_GENITIVE[month];
+    if (year !== now.getFullYear()) text += ' ' + year;
+    return text;
+}
+
+// Строка вида «2019 · 8.4 · Сезон 5 · 48 мин · Драма · США · 5/10 серий ·
+// Следующая серия 23 октября · 96 ГБ · [4K]».
 // Данные приходят из двух источников (TMDB и список файлов) в непредсказуемом
 // порядке, поэтому обе стороны только пишут в detailMetaState и перерисовывают.
 function renderDetailMetaRow() {
@@ -2778,6 +3068,7 @@ function renderDetailMetaRow() {
 
     var d = detailMetaState.details;
     var parts = [];
+    var torrentSeasons = getDetailTorrentSeasons();
 
     if (d) {
         var date = d.release_date || d.first_air_date || '';
@@ -2787,9 +3078,15 @@ function renderDetailMetaRow() {
             parts.push('<span class="detail-meta-rating">' + (Math.round(d.vote_average * 10) / 10) + '</span>');
         }
 
-        var seasons = parseInt(d.number_of_seasons, 10);
-        if (seasons > 0) parts.push(seasons + ' ' + pluralRu(seasons, 'сезон', 'сезона', 'сезонов'));
-        else parts.push(detailMetaState.isTvSeries ? 'Сериал' : 'Фильм');
+        // Сезоны — те, что в РАЗДАЧЕ, а не сколько их у сериала в TMDB:
+        // «8 сезонов» на раздаче одного 5-го сезона сбивало с толку
+        if (torrentSeasons.length > 1) {
+            parts.push(torrentSeasons.length + ' ' + pluralRu(torrentSeasons.length, 'сезон', 'сезона', 'сезонов'));
+        } else if (torrentSeasons.length === 1) {
+            parts.push('Сезон ' + torrentSeasons[0]);
+        } else {
+            parts.push(detailMetaState.isTvSeries ? 'Сериал' : 'Фильм');
+        }
 
         var runtime = formatRuntimeMinutes(d.runtime ||
             (Array.isArray(d.episode_run_time) ? d.episode_run_time[0] : 0));
@@ -2808,11 +3105,19 @@ function renderDetailMetaRow() {
     }
 
     var count = detailMetaState.filesCount;
-    if (count > 1) {
+    // Один сезон и известно, сколько в нём серий, — раздача неполная
+    // (сезон ещё выходит или выложен не целиком): «5/10 серий»
+    var seasonTotal = torrentSeasons.length === 1 ? getSeasonEpisodeTotal(d, torrentSeasons[0]) : 0;
+    if (detailMetaState.isTvSeries && count > 0 && seasonTotal > count) {
+        parts.push(count + '/' + seasonTotal + ' ' + pluralRu(seasonTotal, 'серия', 'серии', 'серий'));
+    } else if (count > 1) {
         parts.push(count + ' ' + (detailMetaState.isTvSeries
             ? pluralRu(count, 'серия', 'серии', 'серий')
             : pluralRu(count, 'файл', 'файла', 'файлов')));
     }
+
+    var nextEpisode = formatNextEpisodeDate(d, torrentSeasons);
+    if (nextEpisode) parts.push('<span class="detail-meta-next">' + escapeHtml(nextEpisode) + '</span>');
     if (detailMetaState.filesBytes > 0 && typeof formatBytes === 'function') {
         parts.push(escapeHtml(formatBytes(detailMetaState.filesBytes)));
     }
@@ -3288,7 +3593,14 @@ async function showDetail(torrent) {
         isTvSeries: false,
         filesCount: 0,
         filesBytes: 0,
-        torrentTitle: torrent.title || ''
+        torrentTitle: torrent.title || '',
+        // Сезоны раздачи (название / имена файлов) и серии этих сезонов из TMDB
+        // «Сезон: 1-8», «Сезоны 1-8» (так пишет rutracker) шаблоны
+        // extractSeasonsFromTitle не узнают — приводим к «сезон 1-8»
+        torrentSeasons: extractSeasonsFromTitle(String(torrent.title || '')
+            .replace(/сезон[ыа]?\s*:?\s*/gi, 'сезон ')
+            .replace(/seasons?\s*:?\s*/gi, 'season ')),
+        seasonEpisodes: {}
     };
     ensureDetailMetaRow();
     ensureDetailActorsWrap();
@@ -3322,6 +3634,7 @@ async function showDetail(torrent) {
     tmdbPromise.then(function (tmdbData) {
         if (!tmdbData || !isOpenTorrentDetail(torrent)) return;
         detailMetaState.isTvSeries = !!tmdbData.isTvSeries;
+        detailMetaState.seasonEpisodes = tmdbData.allSeasonEpisodes || {};
         renderDetailMetaRow();
         renderDetailActorsFromDetails(tmdbData.details);
     }).catch(function () { });
@@ -3365,6 +3678,15 @@ async function showDetail(torrent) {
             for (var fb = 0; fb < videoFiles.length; fb++) totalBytes += (videoFiles[fb].length || 0);
             detailMetaState.filesCount = videoFiles.length;
             detailMetaState.filesBytes = totalBytes;
+            // В названии сезона нет — берём из имён файлов (S05E01, 5x01)
+            if (!detailMetaState.torrentSeasons.length) {
+                var fileSeasons = [];
+                for (var fs = 0; fs < videoFiles.length; fs++) {
+                    var fsRef = parseEpisodeRef(videoFiles[fs].path);
+                    if (fsRef && fsRef.season && fileSeasons.indexOf(fsRef.season) === -1) fileSeasons.push(fsRef.season);
+                }
+                detailMetaState.torrentSeasons = fileSeasons.sort(function (a, b) { return a - b; });
+            }
             renderDetailMetaRow();
 
             // Заголовок ряда нужен только когда файлов несколько: над единственной
@@ -3947,6 +4269,21 @@ function updateFileItemStill(fileItem, stillImage) {
 }
 
 function updateDetailMetaInfo(tmdbData) {
+    // Те же данные, но одной строкой под заголовком (торрентный detail).
+    // Вызывается из обоих путей загрузки TMDB — и воркерного, и запасного.
+    // Стоит ДО проверки #catalog-detail-meta: этот блок создаёт карточка
+    // каталога, и пока её в сеансе не открывали, функция выходила сразу —
+    // строка метаданных оставалась без года, рейтинга и жанров, а описание
+    // сериала не запоминалось (его возвращает updateDetailOverviewForFocus).
+    detailMetaState.details = tmdbData;
+    if (tmdbData) {
+        // /api/tmdb/details отдаёт тип в поле type, media_type там не бывает
+        detailMetaState.isTvSeries = detailMetaState.isTvSeries ||
+            tmdbData.type === 'tv' || tmdbData.media_type === 'tv' ||
+            tmdbData.number_of_seasons !== undefined;
+    }
+    renderDetailMetaRow();
+
     var metaContainer = getEl('catalog-detail-meta');
     if (!metaContainer) return;
 
@@ -3988,17 +4325,6 @@ function updateDetailMetaInfo(tmdbData) {
         metaContainer.classList.add('hidden');
         metaContainer.style.display = 'none';
     }
-
-    // Те же данные, но одной строкой под заголовком (торрентный detail).
-    // Вызывается из обоих путей загрузки TMDB — и воркерного, и запасного.
-    detailMetaState.details = tmdbData;
-    if (tmdbData) {
-        // /api/tmdb/details отдаёт тип в поле type, media_type там не бывает
-        detailMetaState.isTvSeries = detailMetaState.isTvSeries ||
-            tmdbData.type === 'tv' || tmdbData.media_type === 'tv' ||
-            tmdbData.number_of_seasons !== undefined;
-    }
-    renderDetailMetaRow();
 }
 
 // ==================== ДЕЛЕГИРОВАНИЕ PLAY-КНОПОК В ФАЙЛАХ ====================
@@ -4121,8 +4447,11 @@ function buildFileItem() {
 
     var info = document.createElement('div');
     info.className = 'file-info';
+    // marquee-text: «Серия 5 - Длинное название» в плитку не помещается,
+    // под фокусом подпись прокручивается (applyTitleMarquee в control.js)
     var name = document.createElement('div');
-    name.className = 'file-name';
+    name.className = 'file-name marquee-text';
+    name.appendChild(document.createElement('span'));
     var size = document.createElement('div');
     size.className = 'file-size';
     info.appendChild(name);
@@ -4217,11 +4546,20 @@ function fillFileItem(item, file, hash, name, episodeIndex) {
     item._play.dataset.hash = hash;
     item._play.dataset.fileId = file.id;
     item._play.dataset.episodeIndex = hasEpisode ? episodeIndex : '';
-    item._name.textContent = name;
-    item._name.title = name;
+    setFileItemName(item, name);
     item._size.textContent = formatBytes(file.length);
     item.classList.remove('hidden');
     return item;
+}
+
+function setFileItemName(item, name) {
+    var box = item._name || item.querySelector('.file-name');
+    if (!box) return;
+    var span = box.firstElementChild;
+    if (span) span.textContent = name; else box.textContent = name;
+    box.title = name;
+    // Прежняя подпись могла уже крутиться бегущей строкой со своим сдвигом
+    box.classList.remove('marquee');
 }
 
 var FILE_ITEM_EXTENSIONS = ['mkv', 'mp4', 'avi', 'mov', 'webm', 'm4v'];
@@ -4242,7 +4580,10 @@ function renderFileItems(videoFiles, hash, singleTitle) {
         var ext = String(file.path || '').split('.').pop().toLowerCase();
         if (FILE_ITEM_EXTENSIONS.indexOf(ext) === -1) continue;
         var item = acquireFileItem(list, used.length);
-        fillFileItem(item, file, hash, single ? singleTitle : 'Серия ' + (i + 1), single ? null : i);
+        // Сведения о сериях уже есть (раздачу открывали, плеер их догружал) —
+        // сразу с названием, без перерисовки после ответа TMDB
+        var label = single ? singleTitle : formatEpisodeLabel(getTorrentEpisodeMeta(hash, file.id), i + 1);
+        fillFileItem(item, file, hash, label, single ? null : i);
         used.push(item);
     }
     for (var j = used.length; j < list._pool.length; j++) resetFileItem(list._pool[j]);
@@ -4261,18 +4602,39 @@ function addFileItem(file, hash, name, episodeIndex) {
     return fillFileItem(acquireFileItem(list, used), file, hash, name, episodeIndex);
 }
 
+// Кадр, название и описание серии — по сопоставлению файла с серией
+// (buildEpisodeMetaByFile), а не по порядку плиток: раньше серии без кадра
+// в TMDB выпадали из списка, и все следующие кадры съезжали на плитку вперёд.
 async function loadStillsAndUpdateFiles(seasonNumbers, allSeasonEpisodes, movieStill, totalVideoFiles) {
     if (seasonNumbers.length > 0 && Object.keys(allSeasonEpisodes).length > 0) {
-        var sortedSeasons = seasonNumbers.slice().sort((a, b) => a - b);
-        var allStillsInOrder = [];
-        sortedSeasons.forEach(seasonNum => {
-            var episodes = (allSeasonEpisodes[seasonNum] || []).slice().sort((a, b) => (a.episodeNumber || 0) - (b.episodeNumber || 0));
-            episodes.forEach(ep => { if (ep.stillPath) allStillsInOrder.push({ season: seasonNum, episode: ep.episodeNumber, stillPath: ep.stillPath }); });
-        });
         var fileItems = document.querySelectorAll('#files-list .file-item:not(.hidden)');
-        for (var i = 0; i < Math.min(fileItems.length, allStillsInOrder.length); i++) {
-            (function (item, url, index) { setTimeout(function () { updateFileItemStill(item, buildTmdbPosterUrl(url, 'w300')); }, index * 30); })(fileItems[i], allStillsInOrder[i].stillPath, i);
+        if (!fileItems.length || !fileItems[0].dataset.hash) return;
+        var hash = fileItems[0].dataset.hash;
+        var files = [];
+        for (var f = 0; f < fileItems.length; f++) {
+            files.push({ id: fileItems[f].dataset.fileId, path: fileItems[f].dataset.fileName || '' });
         }
+        var byFileId = buildEpisodeMetaByFile(files, seasonNumbers, allSeasonEpisodes);
+        setTorrentEpisodeMeta(hash, byFileId);
+
+        var single = fileItems.length === 1;
+        for (var i = 0; i < fileItems.length; i++) {
+            var meta = byFileId[String(fileItems[i].dataset.fileId)];
+            if (!meta) continue;
+            // У одиночного файла на плитке полное название раздачи — оставляем
+            if (!single) setFileItemName(fileItems[i], formatEpisodeLabel(meta, i + 1));
+            if (meta.stillPath) {
+                (function (item, url, index) { setTimeout(function () { updateFileItemStill(item, buildTmdbPosterUrl(url, 'w300')); }, index * 30); })(fileItems[i], meta.stillPath, i);
+            }
+        }
+
+        // Описание теперь может зависеть от плитки под фокусом
+        var sub = getEl('detail-subtitle');
+        if (sub) {
+            sub.classList.add('episode-switchable');
+            sub._overviewKey = '';
+        }
+        updateDetailOverviewForFocus(document.querySelector('#files-list .file-item.focused'));
     } else if (totalVideoFiles === 1 && movieStill) {
         var fileItem = document.querySelector('#files-list .file-item:not(.hidden)'); if (fileItem) setTimeout(function () { updateFileItemStill(fileItem, movieStill); }, 100);
     }

@@ -3823,6 +3823,10 @@ function focusEl(el, opts) {
     applyTitleMarquee(el);
     trackFocusedElement(el);
     rememberScreenFocus(el);
+    // Карточка торрента: на плитке серии описание сменяется на описание серии
+    if (s === 'detail' && typeof window.updateDetailOverviewForFocus === 'function') {
+        window.updateDetailOverviewForFocus(el);
+    }
     return true;
 }
 

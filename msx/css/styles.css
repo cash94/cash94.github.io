@@ -5482,6 +5482,12 @@ article {
   font-weight: 700;
 }
 
+/* «Следующая серия 23 октября» — новость для зрителя, выделяем */
+#detail-view.torrent-detail-mode .detail-meta-next {
+  color: #fff;
+  font-weight: 600;
+}
+
 #detail-view.torrent-detail-mode .detail-meta-badge {
   margin-left: 12px;
   padding: 2px 9px;
@@ -5499,6 +5505,19 @@ article {
   -webkit-line-clamp: 2;
   max-width: 980px;
   color: rgba(255, 255, 255, 0.72) !important;
+}
+
+/* Описание следует за фокусом (сериал ↔ серия, updateDetailOverviewForFocus).
+   Высота двух строк зарезервирована: иначе на короткой аннотации блок
+   сжимался, и ряд плиток прыгал вверх-вниз прямо под пультом. 2.9em —
+   две строки при самом большом line-height этого блока (1.45). */
+#detail-view.torrent-detail-mode #detail-subtitle.episode-switchable {
+  min-height: 2.9em;
+}
+
+#detail-subtitle .detail-episode-heading {
+  color: #fff;
+  font-weight: 600;
 }
 
 /* --- ГЕРОЙ: кнопка «Играть / Продолжить» ------------------------------- */

@@ -2127,6 +2127,8 @@ function resetDetailBackground() {
   if (detailSubtitle) {
     detailSubtitle.textContent = '';
     detailSubtitle.style.display = 'none';
+    detailSubtitle._overviewKey = '';
+    detailSubtitle.classList.remove('episode-switchable');
   }
   var metaContainer = getEl('catalog-detail-meta');
   if (metaContainer) {
@@ -2225,6 +2227,169 @@ function _loadSeasonStills() {
   });
   return _loadSeasonStills.apply(this, arguments);
 }
+var torrentEpisodeMetaStore = new LruCache(60, 24 * 60 * 60 * 1000);
+var torrentEpisodeMetaInFlight = {};
+var GENERIC_EPISODE_NAME_RE = /^(эпизод|episode|серия|ep\.?)\s*#?\d+$/i;
+function cleanEpisodeName(name) {
+  var s = String(name || '').trim();
+  if (!s || GENERIC_EPISODE_NAME_RE.test(s)) return '';
+  return s;
+}
+function parseEpisodeRef(fileName) {
+  var s = String(fileName || '').split('/').pop();
+  var m = s.match(/S(\d{1,2})[\s._-]*E(\d{1,3})/i);
+  if (m) return {
+    season: parseInt(m[1], 10),
+    episode: parseInt(m[2], 10)
+  };
+  m = s.match(/(?:^|[^\d])(\d{1,2})x(\d{2,3})(?!\d)/i);
+  if (m) return {
+    season: parseInt(m[1], 10),
+    episode: parseInt(m[2], 10)
+  };
+  m = s.match(/(?:^|[^a-zа-яё])(?:e|ep|episode|серия|эпизод)[\s._-]*(\d{1,3})(?!\d)/i);
+  if (m) return {
+    season: null,
+    episode: parseInt(m[1], 10)
+  };
+  return null;
+}
+function buildEpisodeMetaByFile(files, seasonNumbers, allSeasonEpisodes) {
+  var byFileId = {};
+  if (!files || !files.length || !allSeasonEpisodes) return byFileId;
+  var seasons = (seasonNumbers && seasonNumbers.length ? seasonNumbers.slice() : Object.keys(allSeasonEpisodes).map(Number)).sort(function (a, b) {
+    return a - b;
+  });
+  var ordered = [];
+  var byKey = {};
+  for (var s = 0; s < seasons.length; s++) {
+    var eps = (allSeasonEpisodes[seasons[s]] || []).slice().sort(function (a, b) {
+      return (a.episodeNumber || 0) - (b.episodeNumber || 0);
+    });
+    for (var e = 0; e < eps.length; e++) {
+      var ep = {
+        season: seasons[s],
+        episode: eps[e].episodeNumber,
+        name: cleanEpisodeName(eps[e].name),
+        overview: String(eps[e].overview || '').trim(),
+        stillPath: eps[e].stillPath || null
+      };
+      ordered.push(ep);
+      byKey[ep.season + '_' + ep.episode] = ep;
+    }
+  }
+  if (!ordered.length) return byFileId;
+  var singleSeason = seasons.length === 1 ? seasons[0] : null;
+  var byName = {},
+    matched = 0;
+  for (var i = 0; i < files.length; i++) {
+    var ref = parseEpisodeRef(files[i].path || files[i].name);
+    if (!ref) continue;
+    var season = ref.season !== null ? ref.season : singleSeason;
+    var found = season !== null ? byKey[season + '_' + ref.episode] : null;
+    if (found) {
+      byName[String(files[i].id)] = found;
+      matched++;
+    }
+  }
+  if (matched * 2 >= files.length) return byName;
+  for (var j = 0; j < files.length; j++) {
+    if (ordered[j]) byFileId[String(files[j].id)] = ordered[j];
+  }
+  return byFileId;
+}
+function setTorrentEpisodeMeta(hash, byFileId) {
+  if (!hash || !byFileId) return;
+  torrentEpisodeMetaStore.set(String(hash).toLowerCase(), byFileId);
+}
+function getTorrentEpisodeMeta(hash, fileId) {
+  if (!hash || fileId === undefined || fileId === null) return null;
+  var byFileId = torrentEpisodeMetaStore.get(String(hash).toLowerCase());
+  return byFileId && byFileId[String(fileId)] || null;
+}
+window.getTorrentEpisodeMeta = getTorrentEpisodeMeta;
+function formatEpisodeLabel(meta, fallbackNumber) {
+  var num = meta && meta.episode || fallbackNumber;
+  var label = 'Серия ' + num;
+  if (meta && meta.name) label += ' - ' + meta.name;
+  return label;
+}
+window.formatEpisodeLabel = formatEpisodeLabel;
+function ensureTorrentEpisodeMeta(torrent, videoFiles) {
+  var hash = torrent && torrent.hash ? String(torrent.hash).toLowerCase() : '';
+  if (!hash || !videoFiles || videoFiles.length < 2) return Promise.resolve(false);
+  if (torrentEpisodeMetaStore.has(hash)) return Promise.resolve(false);
+  if (torrentEpisodeMetaInFlight[hash]) return torrentEpisodeMetaInFlight[hash];
+  var known = knownTorrentMeta.get(hash);
+  var tmdbId = torrent.tmdbId || known && known.id || null;
+  if (!tmdbId) {
+    var idMatch = String(torrent.title || '').match(/\[(\d+)\]/);
+    if (idMatch) tmdbId = idMatch[1];
+  }
+  var mediaType = torrent.media_type || known && known.mediaType || null;
+  if (!tmdbId || mediaType === 'movie') return Promise.resolve(false);
+  var seasons = extractSeasonsFromTitle(torrent.title || '');
+  if (!seasons.length) {
+    for (var i = 0; i < videoFiles.length; i++) {
+      var ref = parseEpisodeRef(videoFiles[i].path);
+      if (ref && ref.season && seasons.indexOf(ref.season) === -1) seasons.push(ref.season);
+    }
+    seasons.sort(function (a, b) {
+      return a - b;
+    });
+  }
+  if (!seasons.length) seasons = [1];
+  var request = Promise.all(seasons.map(function (sn) {
+    return loadSeasonStills(tmdbId, sn).then(function (eps) {
+      return {
+        s: sn,
+        e: eps || []
+      };
+    });
+  })).then(function (arr) {
+    var all = {};
+    for (var k = 0; k < arr.length; k++) if (arr[k].e.length) all[arr[k].s] = arr[k].e;
+    if (!Object.keys(all).length) return false;
+    setTorrentEpisodeMeta(hash, buildEpisodeMetaByFile(videoFiles, seasons, all));
+    return true;
+  }).catch(function () {
+    return false;
+  });
+  torrentEpisodeMetaInFlight[hash] = request;
+  return request.then(function (changed) {
+    delete torrentEpisodeMetaInFlight[hash];
+    return changed;
+  });
+}
+window.ensureTorrentEpisodeMeta = ensureTorrentEpisodeMeta;
+function updateDetailOverviewForFocus(el) {
+  if (!isTorrentDetailMode()) return;
+  var sub = getEl('detail-subtitle');
+  if (!sub) return;
+  var meta = null,
+    fileId = '';
+  if (el && el.classList && el.classList.contains('file-item') && el.dataset.hash) {
+    fileId = el.dataset.fileId;
+    meta = getTorrentEpisodeMeta(el.dataset.hash, fileId);
+    if (meta && !meta.overview && !meta.name) meta = null;
+  }
+  var key = meta ? 'ep:' + fileId : 'series';
+  if (!sub._overviewKey && key === 'series') return;
+  if (sub._overviewKey === key) return;
+  sub._overviewKey = key;
+  if (meta) {
+    var index = parseInt(el.dataset.episodeIndex, 10);
+    var label = formatEpisodeLabel(meta, isNaN(index) ? 1 : index + 1);
+    sub.innerHTML = '<span class="detail-episode-heading">' + escapeHtml(label) + '.</span> ' + escapeHtml(meta.overview || '');
+    sub.style.display = 'block';
+    sub.classList.remove('hidden');
+    return;
+  }
+  var seriesOverview = detailMetaState.details && detailMetaState.details.overview || '';
+  sub.textContent = seriesOverview;
+  if (!seriesOverview) sub.style.display = 'none';
+}
+window.updateDetailOverviewForFocus = updateDetailOverviewForFocus;
 function loadMovieStill(_x9) {
   return _loadMovieStill.apply(this, arguments);
 }
@@ -2404,20 +2569,78 @@ function clearDetailNetflixBlocks() {
   var filesTitle = getEl('files-list-title');
   if (filesTitle) filesTitle.classList.add('hidden');
 }
+function getDetailTorrentSeasons() {
+  var seasons = detailMetaState.torrentSeasons || [];
+  if (seasons.length) return seasons;
+  var d = detailMetaState.details;
+  if (detailMetaState.isTvSeries && d && parseInt(d.number_of_seasons, 10) === 1) return [1];
+  return [];
+}
+function getSeasonEpisodeTotal(details, seasonNumber) {
+  var total = 0;
+  if (details && Array.isArray(details.seasons)) {
+    for (var i = 0; i < details.seasons.length; i++) {
+      var s = details.seasons[i];
+      if (s && s.season_number === seasonNumber && s.episode_count > total) total = s.episode_count;
+    }
+  }
+  var eps = detailMetaState.seasonEpisodes && detailMetaState.seasonEpisodes[seasonNumber];
+  if (eps && eps.length > total) total = eps.length;
+  var fromTitle = String(detailMetaState.torrentTitle || '').match(/сери[ийя]\s*:?\s*[\d\s,–-]*из\s*(\d+)/i);
+  if (fromTitle && parseInt(fromTitle[1], 10) > total) total = parseInt(fromTitle[1], 10);
+  return total;
+}
+var RU_MONTHS_GENITIVE = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+function formatNextEpisodeDate(details, torrentSeasons) {
+  var now = new Date();
+  var p2 = function (n) {
+    return (n < 10 ? '0' : '') + n;
+  };
+  var todayIso = now.getFullYear() + '-' + p2(now.getMonth() + 1) + '-' + p2(now.getDate());
+  var nextDate = '';
+  var eps = detailMetaState.seasonEpisodes || {};
+  for (var s = 0; s < torrentSeasons.length; s++) {
+    var list = eps[torrentSeasons[s]] || [];
+    for (var e = 0; e < list.length; e++) {
+      var ad = list[e] && list[e].airDate;
+      if (ad && ad >= todayIso && (!nextDate || ad < nextDate)) nextDate = ad;
+    }
+  }
+  if (!nextDate) {
+    var next = details && details.next_episode_to_air;
+    if (next && typeof next === 'object' && next.air_date && torrentSeasons.indexOf(next.season_number) !== -1 && String(next.air_date) >= todayIso) {
+      nextDate = String(next.air_date);
+    }
+  }
+  var m = nextDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return '';
+  var year = parseInt(m[1], 10),
+    month = parseInt(m[2], 10) - 1,
+    day = parseInt(m[3], 10);
+  var text = 'Следующая серия ' + day + ' ' + RU_MONTHS_GENITIVE[month];
+  if (year !== now.getFullYear()) text += ' ' + year;
+  return text;
+}
 function renderDetailMetaRow() {
   if (!isTorrentDetailMode()) return;
   var row = ensureDetailMetaRow();
   if (!row) return;
   var d = detailMetaState.details;
   var parts = [];
+  var torrentSeasons = getDetailTorrentSeasons();
   if (d) {
     var date = d.release_date || d.first_air_date || '';
     if (date) parts.push(escapeHtml(String(date).substring(0, 4)));
     if (d.vote_average > 0) {
       parts.push('<span class="detail-meta-rating">' + Math.round(d.vote_average * 10) / 10 + '</span>');
     }
-    var seasons = parseInt(d.number_of_seasons, 10);
-    if (seasons > 0) parts.push(seasons + ' ' + pluralRu(seasons, 'сезон', 'сезона', 'сезонов'));else parts.push(detailMetaState.isTvSeries ? 'Сериал' : 'Фильм');
+    if (torrentSeasons.length > 1) {
+      parts.push(torrentSeasons.length + ' ' + pluralRu(torrentSeasons.length, 'сезон', 'сезона', 'сезонов'));
+    } else if (torrentSeasons.length === 1) {
+      parts.push('Сезон ' + torrentSeasons[0]);
+    } else {
+      parts.push(detailMetaState.isTvSeries ? 'Сериал' : 'Фильм');
+    }
     var runtime = formatRuntimeMinutes(d.runtime || (Array.isArray(d.episode_run_time) ? d.episode_run_time[0] : 0));
     if (runtime) parts.push(runtime);
     if (d.genres && d.genres.length) {
@@ -2431,9 +2654,14 @@ function renderDetailMetaRow() {
     if (countries.length) parts.push(escapeHtml(countries.join(', ')));
   }
   var count = detailMetaState.filesCount;
-  if (count > 1) {
+  var seasonTotal = torrentSeasons.length === 1 ? getSeasonEpisodeTotal(d, torrentSeasons[0]) : 0;
+  if (detailMetaState.isTvSeries && count > 0 && seasonTotal > count) {
+    parts.push(count + '/' + seasonTotal + ' ' + pluralRu(seasonTotal, 'серия', 'серии', 'серий'));
+  } else if (count > 1) {
     parts.push(count + ' ' + (detailMetaState.isTvSeries ? pluralRu(count, 'серия', 'серии', 'серий') : pluralRu(count, 'файл', 'файла', 'файлов')));
   }
+  var nextEpisode = formatNextEpisodeDate(d, torrentSeasons);
+  if (nextEpisode) parts.push('<span class="detail-meta-next">' + escapeHtml(nextEpisode) + '</span>');
   if (detailMetaState.filesBytes > 0 && typeof formatBytes === 'function') {
     parts.push(escapeHtml(formatBytes(detailMetaState.filesBytes)));
   }
@@ -2750,7 +2978,9 @@ function _showDetail() {
       isTvSeries: false,
       filesCount: 0,
       filesBytes: 0,
-      torrentTitle: torrent.title || ''
+      torrentTitle: torrent.title || '',
+      torrentSeasons: extractSeasonsFromTitle(String(torrent.title || '').replace(/сезон[ыа]?\s*:?\s*/gi, 'сезон ').replace(/seasons?\s*:?\s*/gi, 'season ')),
+      seasonEpisodes: {}
     };
     ensureDetailMetaRow();
     ensureDetailActorsWrap();
@@ -2782,6 +3012,7 @@ function _showDetail() {
     tmdbPromise.then(function (tmdbData) {
       if (!tmdbData || !isOpenTorrentDetail(torrent)) return;
       detailMetaState.isTvSeries = !!tmdbData.isTvSeries;
+      detailMetaState.seasonEpisodes = tmdbData.allSeasonEpisodes || {};
       renderDetailMetaRow();
       renderDetailActorsFromDetails(tmdbData.details);
     }).catch(function () {});
@@ -2812,6 +3043,16 @@ function _showDetail() {
         for (var fb = 0; fb < videoFiles.length; fb++) totalBytes += videoFiles[fb].length || 0;
         detailMetaState.filesCount = videoFiles.length;
         detailMetaState.filesBytes = totalBytes;
+        if (!detailMetaState.torrentSeasons.length) {
+          var fileSeasons = [];
+          for (var fs = 0; fs < videoFiles.length; fs++) {
+            var fsRef = parseEpisodeRef(videoFiles[fs].path);
+            if (fsRef && fsRef.season && fileSeasons.indexOf(fsRef.season) === -1) fileSeasons.push(fsRef.season);
+          }
+          detailMetaState.torrentSeasons = fileSeasons.sort(function (a, b) {
+            return a - b;
+          });
+        }
         renderDetailMetaRow();
         var filesTitle = ensureFilesListTitle();
         if (filesTitle) {
@@ -3201,6 +3442,11 @@ function updateFileItemStill(fileItem, stillImage) {
   }
 }
 function updateDetailMetaInfo(tmdbData) {
+  detailMetaState.details = tmdbData;
+  if (tmdbData) {
+    detailMetaState.isTvSeries = detailMetaState.isTvSeries || tmdbData.type === 'tv' || tmdbData.media_type === 'tv' || tmdbData.number_of_seasons !== undefined;
+  }
+  renderDetailMetaRow();
   var metaContainer = getEl('catalog-detail-meta');
   if (!metaContainer) return;
   metaContainer.innerHTML = '';
@@ -3234,11 +3480,6 @@ function updateDetailMetaInfo(tmdbData) {
     metaContainer.classList.add('hidden');
     metaContainer.style.display = 'none';
   }
-  detailMetaState.details = tmdbData;
-  if (tmdbData) {
-    detailMetaState.isTvSeries = detailMetaState.isTvSeries || tmdbData.type === 'tv' || tmdbData.media_type === 'tv' || tmdbData.number_of_seasons !== undefined;
-  }
-  renderDetailMetaRow();
 }
 function setupFilePlayButtonDelegation() {
   var filesList = getEl('files-list');
@@ -3319,7 +3560,8 @@ function buildFileItem() {
   var info = document.createElement('div');
   info.className = 'file-info';
   var name = document.createElement('div');
-  name.className = 'file-name';
+  name.className = 'file-name marquee-text';
+  name.appendChild(document.createElement('span'));
   var size = document.createElement('div');
   size.className = 'file-size';
   info.appendChild(name);
@@ -3398,11 +3640,18 @@ function fillFileItem(item, file, hash, name, episodeIndex) {
   item._play.dataset.hash = hash;
   item._play.dataset.fileId = file.id;
   item._play.dataset.episodeIndex = hasEpisode ? episodeIndex : '';
-  item._name.textContent = name;
-  item._name.title = name;
+  setFileItemName(item, name);
   item._size.textContent = formatBytes(file.length);
   item.classList.remove('hidden');
   return item;
+}
+function setFileItemName(item, name) {
+  var box = item._name || item.querySelector('.file-name');
+  if (!box) return;
+  var span = box.firstElementChild;
+  if (span) span.textContent = name;else box.textContent = name;
+  box.title = name;
+  box.classList.remove('marquee');
 }
 var FILE_ITEM_EXTENSIONS = ['mkv', 'mp4', 'avi', 'mov', 'webm', 'm4v'];
 function renderFileItems(videoFiles, hash, singleTitle) {
@@ -3416,7 +3665,8 @@ function renderFileItems(videoFiles, hash, singleTitle) {
     var ext = String(file.path || '').split('.').pop().toLowerCase();
     if (FILE_ITEM_EXTENSIONS.indexOf(ext) === -1) continue;
     var item = acquireFileItem(list, used.length);
-    fillFileItem(item, file, hash, single ? singleTitle : 'Серия ' + (i + 1), single ? null : i);
+    var label = single ? singleTitle : formatEpisodeLabel(getTorrentEpisodeMeta(hash, file.id), i + 1);
+    fillFileItem(item, file, hash, label, single ? null : i);
     used.push(item);
   }
   for (var j = used.length; j < list._pool.length; j++) resetFileItem(list._pool[j]);
@@ -3437,26 +3687,37 @@ function loadStillsAndUpdateFiles(_x13, _x14, _x15, _x16) {
 function _loadStillsAndUpdateFiles() {
   _loadStillsAndUpdateFiles = _asyncToGenerator(function* (seasonNumbers, allSeasonEpisodes, movieStill, totalVideoFiles) {
     if (seasonNumbers.length > 0 && Object.keys(allSeasonEpisodes).length > 0) {
-      var sortedSeasons = seasonNumbers.slice().sort((a, b) => a - b);
-      var allStillsInOrder = [];
-      sortedSeasons.forEach(seasonNum => {
-        var episodes = (allSeasonEpisodes[seasonNum] || []).slice().sort((a, b) => (a.episodeNumber || 0) - (b.episodeNumber || 0));
-        episodes.forEach(ep => {
-          if (ep.stillPath) allStillsInOrder.push({
-            season: seasonNum,
-            episode: ep.episodeNumber,
-            stillPath: ep.stillPath
-          });
-        });
-      });
       var fileItems = document.querySelectorAll('#files-list .file-item:not(.hidden)');
-      for (var i = 0; i < Math.min(fileItems.length, allStillsInOrder.length); i++) {
-        (function (item, url, index) {
-          setTimeout(function () {
-            updateFileItemStill(item, buildTmdbPosterUrl(url, 'w300'));
-          }, index * 30);
-        })(fileItems[i], allStillsInOrder[i].stillPath, i);
+      if (!fileItems.length || !fileItems[0].dataset.hash) return;
+      var hash = fileItems[0].dataset.hash;
+      var files = [];
+      for (var f = 0; f < fileItems.length; f++) {
+        files.push({
+          id: fileItems[f].dataset.fileId,
+          path: fileItems[f].dataset.fileName || ''
+        });
       }
+      var byFileId = buildEpisodeMetaByFile(files, seasonNumbers, allSeasonEpisodes);
+      setTorrentEpisodeMeta(hash, byFileId);
+      var single = fileItems.length === 1;
+      for (var i = 0; i < fileItems.length; i++) {
+        var meta = byFileId[String(fileItems[i].dataset.fileId)];
+        if (!meta) continue;
+        if (!single) setFileItemName(fileItems[i], formatEpisodeLabel(meta, i + 1));
+        if (meta.stillPath) {
+          (function (item, url, index) {
+            setTimeout(function () {
+              updateFileItemStill(item, buildTmdbPosterUrl(url, 'w300'));
+            }, index * 30);
+          })(fileItems[i], meta.stillPath, i);
+        }
+      }
+      var sub = getEl('detail-subtitle');
+      if (sub) {
+        sub.classList.add('episode-switchable');
+        sub._overviewKey = '';
+      }
+      updateDetailOverviewForFocus(document.querySelector('#files-list .file-item.focused'));
     } else if (totalVideoFiles === 1 && movieStill) {
       var fileItem = document.querySelector('#files-list .file-item:not(.hidden)');
       if (fileItem) setTimeout(function () {
