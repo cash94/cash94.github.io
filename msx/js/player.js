@@ -12,6 +12,8 @@ var BUFFER_TARGET_SEC = 10;
 var LOADING_TIMEOUT_MS = 15000;
 var EPISODES_LOAD_DELAY_MS = 1000;
 var EPISODES_LOAD_DELAY_SEARCH_MS = 1600;
+// Сколько ветка AndroidJS ждёт названий серий из TMDB перед запуском плеера
+var ANDROID_EPISODE_META_WAIT_MS = 2500;
 var MAX_PLAYBACK_RETRIES = 3;
 
 /**
@@ -2206,6 +2208,10 @@ function buildEpisodesPlaylist(fromIndex, startSeekTime) {
     playlist.push({
       url: itemUrl,
       title: file.name || file.path || ('Серия ' + (i + 1)),
+      // «Серия 1 - Название» для встроенного плеера приложения (с 1.1.12 он
+      // показывает её в списке серий и заголовке вместо «Эпизод N»). Отдельным
+      // полем: title по-прежнему уходит внешним плеерам и старым версиям
+      episode_title: getEpisodeLabel(file, i),
       timecode: itemTime,
       timeline: {
         hash: currentTorrentHash + '_' + file.id,
@@ -2248,14 +2254,29 @@ function buildEpisodesPlaylist(fromIndex, startSeekTime) {
  * не отслеживают, и номер им надо вшить в строку заранее.
  */
 function buildBasePlayerTitle() {
-  var base = (AppState.currentDetailItem && AppState.currentDetailItem.title) || '';
+  var base = cleanPlayerBaseTitle(AppState.currentDetailItem && AppState.currentDetailItem.title);
   if (!base) return '';
   if (AppState.currentSeason) return base + ' · Сезон ' + AppState.currentSeason;
   return base;
 }
 
+/**
+ * Название раздачи без служебных пометок: «[1622] Сверхъестественное
+ * [сезон 1-15]» → «Сверхъестественное». TMDB id в квадратных скобках —
+ * метка, по которой раздача связана с карточкой; сезон теперь виден в
+ * подписи серии («Сезон 1, Серия 1 - …»), а «[сезон 1-15]» рядом с ней
+ * только путает. Так же чистит название detail-view (torrents.js: showDetail).
+ */
+function cleanPlayerBaseTitle(title) {
+  return String(title || '')
+    .replace(/\[\d+\]/g, '')
+    .replace(/\[(сезон|season)[^\]]*\]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function buildExternalPlayerTitle() {
-  var base = (AppState.currentDetailItem && AppState.currentDetailItem.title) || '';
+  var base = cleanPlayerBaseTitle(AppState.currentDetailItem && AppState.currentDetailItem.title);
 
   if (!currentEpisodeFiles || currentEpisodeFiles.length < 2) return base || 'Видео';
 
@@ -3137,6 +3158,15 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     // ещё пуст (обычно он подгружается уже после старта воспроизведения, с задержкой).
     if (AppState.autoSwitchEpisodes && AppState.currentDetailItem && AppState.currentDetailItem.hash) {
       try { await loadEpisodesInfo(AppState.currentDetailItem.hash, androidRef ? androidRef.fileId : null); } catch (e) { /* ignore, fall back to single episode */ }
+      // Названия серий для плейлиста. Карточку раздачи не открывали (запуск с
+      // главной, из «Продолжить») — их ещё нет, loadEpisodesInfo только начал
+      // их грузить. Ждём недолго: без названий плеер покажет «Эпизод N».
+      if (typeof window.ensureTorrentEpisodeMeta === 'function' && currentEpisodeFiles.length > 1) {
+        await Promise.race([
+          window.ensureTorrentEpisodeMeta(AppState.currentDetailItem, currentEpisodeFiles),
+          new Promise(function (resolve) { setTimeout(resolve, ANDROID_EPISODE_META_WAIT_MS); })
+        ]);
+      }
       // Прогрев кэша прогресса: buildEpisodesPlaylist синхронный, а
       // таймкоды серий нужны ему, чтобы у каждого элемента плейлиста был
       // осмысленный timeline (и позиция, с которой серию продолжат).

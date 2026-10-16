@@ -11,6 +11,7 @@ var BUFFER_TARGET_SEC = 10;
 var LOADING_TIMEOUT_MS = 15000;
 var EPISODES_LOAD_DELAY_MS = 1000;
 var EPISODES_LOAD_DELAY_SEARCH_MS = 1600;
+var ANDROID_EPISODE_META_WAIT_MS = 2500;
 var MAX_PLAYBACK_RETRIES = 3;
 var PLAYER_FETCH_TIMEOUT_MS = 15000;
 var FILE_INFO_FETCH_TIMEOUT_MS = 60000;
@@ -1949,6 +1950,7 @@ function buildEpisodesPlaylist(fromIndex, startSeekTime) {
     playlist.push({
       url: itemUrl,
       title: file.name || file.path || 'Серия ' + (i + 1),
+      episode_title: getEpisodeLabel(file, i),
       timecode: itemTime,
       timeline: {
         hash: currentTorrentHash + '_' + file.id,
@@ -1963,13 +1965,16 @@ function buildEpisodesPlaylist(fromIndex, startSeekTime) {
   return playlist.length > 1 ? playlist : null;
 }
 function buildBasePlayerTitle() {
-  var base = AppState.currentDetailItem && AppState.currentDetailItem.title || '';
+  var base = cleanPlayerBaseTitle(AppState.currentDetailItem && AppState.currentDetailItem.title);
   if (!base) return '';
   if (AppState.currentSeason) return base + ' · Сезон ' + AppState.currentSeason;
   return base;
 }
+function cleanPlayerBaseTitle(title) {
+  return String(title || '').replace(/\[\d+\]/g, '').replace(/\[(сезон|season)[^\]]*\]/gi, '').replace(/\s+/g, ' ').trim();
+}
 function buildExternalPlayerTitle() {
-  var base = AppState.currentDetailItem && AppState.currentDetailItem.title || '';
+  var base = cleanPlayerBaseTitle(AppState.currentDetailItem && AppState.currentDetailItem.title);
   if (!currentEpisodeFiles || currentEpisodeFiles.length < 2) return base || 'Видео';
   var idx = currentEpisodeIndex;
   if (typeof idx !== 'number' || idx < 0 || !currentEpisodeFiles[idx]) return base || 'Видео';
@@ -2855,6 +2860,11 @@ function _startHLSPlayback() {
         try {
           yield loadEpisodesInfo(AppState.currentDetailItem.hash, androidRef ? androidRef.fileId : null);
         } catch (e) {}
+        if (typeof window.ensureTorrentEpisodeMeta === 'function' && currentEpisodeFiles.length > 1) {
+          yield Promise.race([window.ensureTorrentEpisodeMeta(AppState.currentDetailItem, currentEpisodeFiles), new Promise(function (resolve) {
+            setTimeout(resolve, ANDROID_EPISODE_META_WAIT_MS);
+          })]);
+        }
         if (typeof getTorrentProgressBatch === 'function') {
           try {
             yield getTorrentProgressBatch(AppState.currentDetailItem.hash, currentEpisodeFiles);

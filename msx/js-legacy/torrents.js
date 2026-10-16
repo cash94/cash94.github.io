@@ -2269,6 +2269,7 @@ function buildEpisodeMetaByFile(files, seasonNumbers, allSeasonEpisodes) {
     for (var e = 0; e < eps.length; e++) {
       var ep = {
         season: seasons[s],
+        multiSeason: seasons.length > 1,
         episode: eps[e].episodeNumber,
         name: cleanEpisodeName(eps[e].name),
         overview: String(eps[e].overview || '').trim(),
@@ -2311,6 +2312,7 @@ window.getTorrentEpisodeMeta = getTorrentEpisodeMeta;
 function formatEpisodeLabel(meta, fallbackNumber) {
   var num = meta && meta.episode || fallbackNumber;
   var label = 'Серия ' + num;
+  if (meta && meta.multiSeason && meta.season) label = 'Сезон ' + meta.season + ', ' + label;
   if (meta && meta.name) label += ' - ' + meta.name;
   return label;
 }

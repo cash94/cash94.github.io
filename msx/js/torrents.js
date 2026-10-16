@@ -2661,6 +2661,9 @@ function buildEpisodeMetaByFile(files, seasonNumbers, allSeasonEpisodes) {
         for (var e = 0; e < eps.length; e++) {
             var ep = {
                 season: seasons[s],
+                // Сезонов в раздаче несколько — номер серии без сезона ничего
+                // не говорит: «Серия 1» есть в каждом (formatEpisodeLabel)
+                multiSeason: seasons.length > 1,
                 episode: eps[e].episodeNumber,
                 name: cleanEpisodeName(eps[e].name),
                 overview: String(eps[e].overview || '').trim(),
@@ -2708,11 +2711,13 @@ window.getTorrentEpisodeMeta = getTorrentEpisodeMeta;
 
 /**
  * Подпись серии: «Серия 5 - Название», без названия — «Серия 5».
+ * В раздаче из нескольких сезонов — с сезоном: «Сезон 2, Серия 5 - Название».
  * Номер — из TMDB, если файл с серией сопоставлен, иначе порядковый.
  */
 function formatEpisodeLabel(meta, fallbackNumber) {
     var num = (meta && meta.episode) || fallbackNumber;
     var label = 'Серия ' + num;
+    if (meta && meta.multiSeason && meta.season) label = 'Сезон ' + meta.season + ', ' + label;
     if (meta && meta.name) label += ' - ' + meta.name;
     return label;
 }
