@@ -146,9 +146,15 @@
       if (items[cur] === btn) submit(); else focusItem(cur, true);
     }
   });
+  // Курсор пульта (webOS) — только подсветка. Пока в поле идёт ввод, его не
+  // трогаем: focusItem снял бы с поля фокус, и клавиатура пряталась, стоило
+  // курсору задеть «Войти» по пути к экранной клавиатуре. Клик работает как обычно
+  function isTyping() {
+    return document.activeElement === loginEl || document.activeElement === passEl;
+  }
   for (var i = 0; i < items.length; i++) {
     (function (idx) {
-      items[idx].addEventListener('mouseover', function () { focusItem(idx); });
+      items[idx].addEventListener('mouseover', function () { if (!isTyping()) focusItem(idx); });
       items[idx].addEventListener('focus', function () { if (cur !== idx) focusItem(idx); });
     })(i);
   }
