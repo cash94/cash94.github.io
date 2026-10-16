@@ -146,6 +146,26 @@
     };
   })();
 
+  // ---- fetch: credentials 'same-origin' по умолчанию (Chrome 72) ----
+  // Раньше по умолчанию было 'omit': cookie не уходят и не сохраняются. Вход
+  // на сервере TorrStream — cookie ts_auth, и без неё все /api/… (каталог,
+  // история, TMDB) получали 401. Ставим то же умолчание, что у новых браузеров:
+  // свой сервер — с cookie, чужие (TorrServer, TMDB) — как и раньше, без них.
+  (function () {
+    if (typeof G.fetch !== 'function' || typeof G.Request === 'undefined') return;
+    var omitByDefault = false;
+    try { omitByDefault = new G.Request('').credentials === 'omit'; } catch (e) { }
+    if (!omitByDefault) return;
+
+    var fetchOmit = G.fetch;
+    G.fetch = function (input, init) {
+      if (input instanceof G.Request || (init && init.credentials)) return fetchOmit.apply(this, arguments);
+      var withCookies = { credentials: 'same-origin' };
+      for (var k in init) withCookies[k] = init[k];
+      return fetchOmit.call(this, input, withCookies);
+    };
+  })();
+
   // ---- AbortController (Chrome 66) + fetch с signal ----
   // Свой fetch Chrome 53 запрос не прерывает, но промис отклоняем сразу с
   // AbortError — код ждёт именно этого (и проверяет signal.aborted).
