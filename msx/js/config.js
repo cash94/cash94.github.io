@@ -61,6 +61,11 @@ var AppState = {
   // Навигация / фокус
   focusIndex: 0,
   platform: 'unknown',
+  // Hisense: версия VIDAA OS («U09.50»), номер прошивки и прямой режим плеера
+  // на VIDAA 9.5+ (detectVidaaInfo)
+  vidaaOsVersion: '',
+  vidaaFirmware: '',
+  vidaaDirectPlay: false,
   lastFocusedElement: null,
   isSearch: false,
   inSearch: 'torrents',
@@ -368,6 +373,34 @@ function detectApplePlatform() {
   return null;
 }
 
+// VIDAA OS, начиная с которой <video> сам играет файл с TorrServer (MKV, HEVC,
+// многоканальный звук) — поток через сервер TorrStream там не нужен
+var VIDAA_DIRECT_PLAY_MIN = 9.5;
+
+/**
+ * Версия VIDAA OS и прошивки телевизора Hisense. Функции Hisense_* прошивка
+ * кладёт в каждую страницу сама (userjs движка браузера, system.user.js):
+ * - Hisense_GetOSVersion — «U09.50»; если служба не ответила, прошивка
+ *   отдаёт заглушку «U07.00», и такой телевизор считается старым;
+ * - Hisense_GetFirmWareVersion — номер ПО из меню телевизора.
+ * Обе — синхронный запрос к службам ТВ, поэтому спрашиваем один раз при
+ * загрузке. На старых прошивках функций может не быть — тогда всё пусто, и
+ * режим плеера выбирают вручную, как раньше.
+ */
+function detectVidaaInfo() {
+  var info = { os: '', firmware: '', version: 0 };
+  try {
+    if (typeof window.Hisense_GetOSVersion === 'function') info.os = String(window.Hisense_GetOSVersion() || '');
+  } catch (e) { }
+  try {
+    if (typeof window.Hisense_GetFirmWareVersion === 'function') info.firmware = String(window.Hisense_GetFirmWareVersion() || '');
+  } catch (e) { }
+  // «U09.50», «U9.5», «U10.00» → 9.5, 9.5, 10
+  var m = info.os.match(/(\d+)\.(\d+)/);
+  if (m) info.version = parseInt(m[1], 10) + parseFloat('0.' + m[2]);
+  return info;
+}
+
 // Карта клавиш для Vidaa OS и других платформ.
 //
 // Строится один раз. isKeyPressed() зовут по нескольку десятков раз на КАЖДОЕ
@@ -450,6 +483,18 @@ function isKeyPressed(keyName, keyCode) {
 // Определяем платформу при загрузке
 AppState.platform = detectPlatform();
 AppState.applePlatform = detectApplePlatform();
+(function () {
+  var vidaa = detectVidaaInfo();
+  AppState.vidaaOsVersion = vidaa.os;
+  AppState.vidaaFirmware = vidaa.firmware;
+  // Прямой режим (как «Полностью отключить транскодирование») на VIDAA 9.5+
+  // включает app.js (setupCheckboxes: directPlay)
+  AppState.vidaaDirectPlay = vidaa.version >= VIDAA_DIRECT_PLAY_MIN;
+  if (vidaa.os || vidaa.firmware) {
+    console.log('📺 VIDAA ' + (vidaa.os || '?') + ', прошивка ' + (vidaa.firmware || '?') +
+      (AppState.vidaaDirectPlay ? ' — прямой режим плеера' : ''));
+  }
+})();
 // Android-приложение (мост AndroidJS есть ещё до загрузки страницы) — для CSS:
 // боковой вырез там не отодвигает шапку и баннер (styles.css: html.android-app)
 if (window.AndroidJS) document.documentElement.classList.add('android-app');

@@ -38,6 +38,9 @@ var AppState = {
   hintTimeout: null,
   focusIndex: 0,
   platform: 'unknown',
+  vidaaOsVersion: '',
+  vidaaFirmware: '',
+  vidaaDirectPlay: false,
   lastFocusedElement: null,
   isSearch: false,
   inSearch: 'torrents',
@@ -235,6 +238,23 @@ function detectApplePlatform() {
   if (ua.indexOf('macintosh') !== -1 || ua.indexOf('mac os x') !== -1) return touch ? 'apple' : 'macos';
   return null;
 }
+var VIDAA_DIRECT_PLAY_MIN = 9.5;
+function detectVidaaInfo() {
+  var info = {
+    os: '',
+    firmware: '',
+    version: 0
+  };
+  try {
+    if (typeof window.Hisense_GetOSVersion === 'function') info.os = String(window.Hisense_GetOSVersion() || '');
+  } catch (e) {}
+  try {
+    if (typeof window.Hisense_GetFirmWareVersion === 'function') info.firmware = String(window.Hisense_GetFirmWareVersion() || '');
+  } catch (e) {}
+  var m = info.os.match(/(\d+)\.(\d+)/);
+  if (m) info.version = parseInt(m[1], 10) + parseFloat('0.' + m[2]);
+  return info;
+}
 var _keyMap = null;
 function getKeyMap() {
   if (_keyMap) return _keyMap;
@@ -287,6 +307,15 @@ function isKeyPressed(keyName, keyCode) {
 }
 AppState.platform = detectPlatform();
 AppState.applePlatform = detectApplePlatform();
+(function () {
+  var vidaa = detectVidaaInfo();
+  AppState.vidaaOsVersion = vidaa.os;
+  AppState.vidaaFirmware = vidaa.firmware;
+  AppState.vidaaDirectPlay = vidaa.version >= VIDAA_DIRECT_PLAY_MIN;
+  if (vidaa.os || vidaa.firmware) {
+    console.log('📺 VIDAA ' + (vidaa.os || '?') + ', прошивка ' + (vidaa.firmware || '?') + (AppState.vidaaDirectPlay ? ' — прямой режим плеера' : ''));
+  }
+})();
 if (window.AndroidJS) document.documentElement.classList.add('android-app');
 if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple') {
   document.documentElement.classList.add('apple-device');

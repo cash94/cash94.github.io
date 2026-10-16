@@ -2292,9 +2292,11 @@ function setupCheckboxes() {
   // <video> напрямую с TorrServer. Серверное транскодирование не нужно обоим,
   // и его настройки (здесь, многоканальный звук, полное отключение) скрыты
   // Apple TV, iPhone, iPad — так же: файл напрямую с TorrServer во встроенном
-  // плеере или ссылка внешнему (Infuse, VLC…), поток через сервер не нужен
+  // плеере или ссылка внешнему (Infuse, VLC…), поток через сервер не нужен.
+  // Hisense на VIDAA 9.5+ (config.js: detectVidaaInfo) — как webOS: <video>
+  // сам играет файл с TorrServer, раньше этот режим включали вручную
   var appleDevice = AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple';
-  var directPlay = AppState.platform === 'webos' || appleDevice;
+  var directPlay = AppState.platform === 'webos' || appleDevice || AppState.vidaaDirectPlay;
   var tvApp = !!window.AndroidJS || directPlay;
   var transcodingCheckbox = getEl('transcoding-off');
   if (directPlay && transcodingCheckbox) {
@@ -2363,9 +2365,9 @@ function setupCheckboxes() {
     container = transcodingCheckboxOnOff.closest('.checkbox-container');
     if (container) container.classList.add('hidden');
   }
-  // webOS (LG): видео играет аппаратный плеер телевизора прямо с TorrServer —
-  // <video> там сам открывает MKV, HEVC, многоканальный звук, без ffmpeg и
-  // серверного HLS. Apple TV, iPhone, iPad — по просьбе пользователей так же,
+  // webOS (LG) и VIDAA 9.5+ (Hisense): видео играет аппаратный плеер телевизора
+  // прямо с TorrServer — <video> там сам открывает MKV, HEVC, многоканальный
+  // звук, без ffmpeg и серверного HLS. Apple TV, iPhone, iPad — по просьбе пользователей так же,
   // как Android: напрямую, минуя обработку потока на сервере. Прямой режим
   // включаем всегда и в localStorage не пишем: переключатель скрыт выше
   if (transcodingCheckboxOnOff && directPlay) {
@@ -2608,6 +2610,13 @@ function renderDeviceInfo() {
     ['User-Agent', navigator.userAgent || '—'],
     ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + (Math.round(dpr * 100) / 100) + ')' : '')]
   ];
+  // Hisense: прошивка и VIDAA OS (config.js: detectVidaaInfo) — от версии
+  // VIDAA зависит, играет ли плеер файл напрямую
+  if (AppState.vidaaOsVersion || AppState.vidaaFirmware) {
+    rows.splice(2, 0,
+      ['Прошивка', AppState.vidaaFirmware || '—'],
+      ['VIDAA OS', (AppState.vidaaOsVersion || '—') + (AppState.vidaaDirectPlay ? ' · видео напрямую с TorrServer' : '')]);
+  }
   // webOS: как прошёл поиск субтитров у медиасервиса при последнем запуске
   // видео (player.js: webosSubsStart) — чтобы по отчёту было видно, где обрыв
   if (AppState.platform === 'webos') {
