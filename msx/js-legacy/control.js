@@ -579,6 +579,19 @@ function detailLaneStep(dir) {
   });
   return true;
 }
+function getDetailFileEntry(fi) {
+  var list = getEl('files-list');
+  var last = list && list._lastFocusedTile;
+  if (last && fi.indexOf(last) !== -1) return last;
+  var btn = getEl('detail-progress-btn');
+  var fileId = btn && btn.dataset.fileId;
+  if (fileId) {
+    for (var i = 0; i < fi.length; i++) {
+      if (fi[i].dataset.fileId === fileId && (!btn.dataset.hash || fi[i].dataset.hash === btn.dataset.hash)) return fi[i];
+    }
+  }
+  return fi[0];
+}
 function getConfigMenuItems() {
   var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'other-tab', 'device-tab'];
   var visibleItems = [];
@@ -1348,7 +1361,7 @@ var ScreenStrategies = {
             });
             return true;
           } else if (fi.length > 0) {
-            focusEl(fi[0], {
+            focusEl(getDetailFileEntry(fi), {
               direction: 'down'
             });
             return true;
@@ -1395,7 +1408,7 @@ var ScreenStrategies = {
             });
             return true;
           } else if (fi.length > 0) {
-            focusEl(fi[0], {
+            focusEl(getDetailFileEntry(fi), {
               direction: 'down'
             });
             return true;
@@ -1436,7 +1449,7 @@ var ScreenStrategies = {
         }
         if (dir === 'down') {
           if (fi.length > 0) {
-            focusEl(fi[0], {
+            focusEl(getDetailFileEntry(fi), {
               direction: 'down'
             });
             return true;
@@ -1480,7 +1493,7 @@ var ScreenStrategies = {
             return true;
           }
           if (fi.length > 0) {
-            focusEl(fi[0], {
+            focusEl(getDetailFileEntry(fi), {
               direction: 'down'
             });
             return true;
@@ -3192,6 +3205,7 @@ function focusEl(el, opts) {
   } else if (s === 'detail') {
     if (isFI) {
       container = getEl('files-list');
+      if (container) container._lastFocusedTile = el;
     } else if (isAC) {
       container = getEl('catalog-detail-actors-wrap');
       if (!container && el.closest) container = el.closest('.catalog-detail-actors-wrap');

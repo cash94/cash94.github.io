@@ -3500,6 +3500,10 @@ function focusTorrentDetailStart() {
         for (var j = 0; j < focusableElements.length; j++) {
             if (focusableElements[j].classList && focusableElements[j].classList.contains('file-item')) {
                 setFocus(j);
+                // Плитку выбрали за человека, пока кнопки нет, — это не «он
+                // здесь был»: вход в ряд сверху должен вести к «Продолжить»
+                var autoList = getEl('files-list');
+                if (autoList) autoList._lastFocusedTile = null;
                 // Кнопка «Играть» ещё не готова — запоминаем, куда встали вместо
                 // неё: придёт кнопка, а человек отсюда не уходил — фокус переедет
                 detailAutoFocusEl = focusableElements[j];
@@ -3517,6 +3521,11 @@ async function showDetail(torrent) {
     if (torrent && torrent.hash) window.lastSelectedTorrentHash = torrent.hash;
     openTorrentDetailHash = torrent && torrent.hash ? String(torrent.hash).toLowerCase() : '';
     var reuse = isTorrentDetailReusable(torrent);
+    // Плитка, на которой стояли в прошлый заход (control.js:
+    // getDetailFileEntry). С новым заходом ряд серий снова открывается на
+    // серии из «Продолжить» — она могла смениться, пока смотрели
+    var filesListEl = getEl('files-list');
+    if (filesListEl) filesListEl._lastFocusedTile = null;
     if (window.Nav && torrent) Nav.push('torrent-detail', { key: 't:' + String(torrent.hash || '').toLowerCase(), label: torrent.title || torrent.hash, torrent: torrent });
     if (typeof currentFocusIndex !== 'undefined') window.lastSelectedTorrentIndex = currentFocusIndex;
     // Рамки фокуса нового detail читают var(--focus-color) — убеждаемся, что

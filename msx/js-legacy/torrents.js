@@ -2902,6 +2902,8 @@ function focusTorrentDetailStart() {
     for (var j = 0; j < focusableElements.length; j++) {
       if (focusableElements[j].classList && focusableElements[j].classList.contains('file-item')) {
         setFocus(j);
+        var autoList = getEl('files-list');
+        if (autoList) autoList._lastFocusedTile = null;
         detailAutoFocusEl = focusableElements[j];
         return;
       }
@@ -2918,6 +2920,8 @@ function _showDetail() {
     if (torrent && torrent.hash) window.lastSelectedTorrentHash = torrent.hash;
     openTorrentDetailHash = torrent && torrent.hash ? String(torrent.hash).toLowerCase() : '';
     var reuse = isTorrentDetailReusable(torrent);
+    var filesListEl = getEl('files-list');
+    if (filesListEl) filesListEl._lastFocusedTile = null;
     if (window.Nav && torrent) Nav.push('torrent-detail', {
       key: 't:' + String(torrent.hash || '').toLowerCase(),
       label: torrent.title || torrent.hash,

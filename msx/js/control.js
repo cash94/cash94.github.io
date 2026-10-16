@@ -997,6 +997,32 @@ function detailLaneStep(dir) {
     return true;
 }
 
+/**
+ * Плитка, на которую встаём, входя в ряд серий сверху.
+ *
+ * Раньше это всегда была первая плитка, и чтобы продолжить 40-ю серию,
+ * весь ряд листали стрелкой. Теперь порядок такой:
+ *  1. плитка, с которой в этот заход в карточку уже уходили (поднялись к
+ *     актёрам и вернулись — оказываемся там же);
+ *  2. серия, которую запустит «Продолжить» (её fileId лежит на кнопке,
+ *     addProgressToDetail в torrents.js);
+ *  3. первая плитка («Играть» без прогресса).
+ * Память о плитке сбрасывает showDetail (torrents.js) на каждом открытии.
+ */
+function getDetailFileEntry(fi) {
+    var list = getEl('files-list');
+    var last = list && list._lastFocusedTile;
+    if (last && fi.indexOf(last) !== -1) return last;
+    var btn = getEl('detail-progress-btn');
+    var fileId = btn && btn.dataset.fileId;
+    if (fileId) {
+        for (var i = 0; i < fi.length; i++) {
+            if (fi[i].dataset.fileId === fileId && (!btn.dataset.hash || fi[i].dataset.hash === btn.dataset.hash)) return fi[i];
+        }
+    }
+    return fi[0];
+}
+
 function getConfigMenuItems() {
     var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'other-tab', 'device-tab'];
     var visibleItems = [];
@@ -1633,21 +1659,21 @@ var ScreenStrategies = {
                 if (dir === 'left') return focusEl(tl[Math.max(0, ti - 1)] || f, { direction: 'left' });
                 if (dir === 'right') return focusEl(tl[Math.min(tl.length - 1, ti + 1)] || f, { direction: 'right' });
                 if (dir === 'up') { if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
-                if (dir === 'down') { if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
+                if (dir === 'down') { if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; } else if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(getDetailFileEntry(fi), { direction: 'down' }); return true; } return true; }
                 return true;
             }
             if (isA && ai !== -1) {
                 if (dir === 'left') return focusEl(ac[Math.max(0, ai - 1)] || f, { direction: 'left' });
                 if (dir === 'right') return focusEl(ac[Math.min(ac.length - 1, ai + 1)] || f, { direction: 'right' });
                 if (dir === 'up') { if (tl.length > 0) { focusEl(tl[tl.length - 1], { direction: 'up' }); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } var pgb = getEl('detail-progress-btn'); if (pgb && pgb.offsetParent !== null) { focusEl(pgb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
-                if (dir === 'down') { if (rc.length > 0) { var t = ai < rc.length ? ai : rc.length - 1; focusEl(rc[t], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
+                if (dir === 'down') { if (rc.length > 0) { var t = ai < rc.length ? ai : rc.length - 1; focusEl(rc[t], { direction: 'down' }); return true; } else if (fi.length > 0) { focusEl(getDetailFileEntry(fi), { direction: 'down' }); return true; } return true; }
                 return true;
             }
             if (isR && ri !== -1) {
                 if (dir === 'left') return focusEl(rc[Math.max(0, ri - 1)] || f, { direction: 'left' });
                 if (dir === 'right') return focusEl(rc[Math.min(rc.length - 1, ri + 1)] || f, { direction: 'right' });
                 if (dir === 'up') { if (ac.length > 0) { var t = ri < ac.length ? ri : ac.length - 1; focusEl(ac[t], { direction: 'up' }); return true; } else if (tl.length > 0) { var t = ri < tl.length ? ri : tl.length - 1; focusEl(tl[t], { direction: 'up' }); return true; } else if (wb && wb.offsetParent !== null) { focusEl(wb, { direction: 'up' }); return true; } return focusEl(items[Math.max(0, idx - 1)] || f, { direction: 'up' }); }
-                if (dir === 'down') { if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; } return true; }
+                if (dir === 'down') { if (fi.length > 0) { focusEl(getDetailFileEntry(fi), { direction: 'down' }); return true; } return true; }
                 return true;
             }
             // --- Строка действий карточки: «Торренты» / «Играть» / «Подробнее» /
@@ -1680,7 +1706,7 @@ var ScreenStrategies = {
                     if (tl.length > 0) { focusEl(tl[0], { direction: 'down' }); return true; }
                     if (ac.length > 0) { focusEl(ac[0], { direction: 'down' }); return true; }
                     if (rc.length > 0) { focusEl(rc[0], { direction: 'down' }); return true; }
-                    if (fi.length > 0) { focusEl(fi[0], { direction: 'down' }); return true; }
+                    if (fi.length > 0) { focusEl(getDetailFileEntry(fi), { direction: 'down' }); return true; }
                     return true;
                 }
                 // Выше строки действий в карточке ничего нет — там и поднимаем
@@ -3755,6 +3781,8 @@ function focusEl(el, opts) {
     } else if (s === 'detail') {
         if (isFI) {
             container = getEl('files-list');
+            // Вернуться в ряд серий на эту же плитку (getDetailFileEntry)
+            if (container) container._lastFocusedTile = el;
         } else if (isAC) {
             container = getEl('catalog-detail-actors-wrap');
             if (!container && el.closest) container = el.closest('.catalog-detail-actors-wrap');
