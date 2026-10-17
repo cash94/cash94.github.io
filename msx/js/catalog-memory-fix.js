@@ -1,0 +1,234 @@
+// =====================================================
+// ИСПРАВЛЕНИЯ УТЕЧЕК ПАМЯТИ В CATALOG.JS
+// Специфичные патчи для модуля каталога
+// =====================================================
+
+(function() {
+    'use strict';
+
+    console.log('🧹 Загрузка патчей памяти для catalog.js...');
+
+    // ==================== 1. ОПТИМИЗАЦИЯ POSTER LOADING ====================
+
+    // Здесь был патч window.loadPosterBatch, ограничивавший число одновременных
+    // загрузок постеров. Удалён: он повторял catalog.js:1407 один в один, а лимит
+    // получался тот же самый — Math.min(8, MAX_POSTER_DECODES) === MAX_POSTER_DECODES === 8.
+    // Единственным его эффектом были три лишних кадра стека на каждый постер.
+    // Ограничение живёт в самом catalog.js (CATALOG_CONSTANTS.MAX_POSTER_DECODES) —
+    // менять его надо там, а не переопределением функции.
+
+    // ==================== 2. CLEANUP DETACHED DOM NODES ====================
+
+    // cleanupDetachedPosterImages() удалён.
+    //
+    // Он брал карточки через document.querySelectorAll('.catalog-card') и чистил
+    // те, у которых !card.isConnected. Но элементы, полученные живым запросом по
+    // документу, connected по определению — условие не выполнялось никогда.
+    // Функция гарантированно ничего не делала, зато каждые две минуты обходила
+    // все карточки сетки (до CATALOG_FULL_LIMIT штук) ровно тогда, когда
+    // пользователь навигирует.
+
+    // ==================== 3. OBSERVER CLEANUP ====================
+
+    // Обёртка над initPosterUnloading убрана вместе с самой функцией
+    // (см. catalog.js): её вызовы были закомментированы, наблюдатель
+    // unloadObserver не создавался никогда.
+
+    var originalInitPosterLazyLoading = window.initPosterLazyLoading;
+    if (originalInitPosterLazyLoading) {
+        window.initPosterLazyLoading = function() {
+            // Отключаем старый observer
+            if (typeof catalogState !== 'undefined' && catalogState.posterObserver) {
+                try {
+                    catalogState.posterObserver.disconnect();
+                    delete catalogState.posterObserver;
+                } catch(e) {}
+            }
+
+            originalInitPosterLazyLoading();
+        };
+    }
+
+    var originalInitRowPosterLazyLoading = window.initRowPosterLazyLoading;
+    if (originalInitRowPosterLazyLoading) {
+        window.initRowPosterLazyLoading = function() {
+            // Отключаем старый observer
+            if (typeof catalogState !== 'undefined' && catalogState.rowPosterObserver) {
+                try {
+                    catalogState.rowPosterObserver.disconnect();
+                    delete catalogState.rowPosterObserver;
+                } catch(e) {}
+            }
+
+            originalInitRowPosterLazyLoading();
+        };
+    }
+
+    // ==================== 4. CLEANUP TRAILER CACHE ====================
+
+    var TRAILER_CACHE_LIMIT = 20;
+
+    function cleanupTrailerCache() {
+        if (typeof rutubeTrailerCache === 'undefined') return;
+
+        var keys = Object.keys(rutubeTrailerCache);
+        if (keys.length > TRAILER_CACHE_LIMIT) {
+            console.log('🧹 Очистка rutubeTrailerCache: ' + keys.length + ' элементов');
+
+            // Удаляем половину старых записей
+            var toRemove = Math.floor(keys.length / 2);
+            for (var i = 0; i < toRemove; i++) {
+                delete rutubeTrailerCache[keys[i]];
+            }
+        }
+    }
+
+    // ==================== 5. DELEGATION CLEANUP ====================
+
+    var originalSetupDetailDelegation = window.setupDetailDelegation;
+    if (originalSetupDetailDelegation) {
+        window.setupDetailDelegation = function(dv) {
+            // Удаляем старый обработчик перед добавлением нового
+            if (dv && dv._detailClickHandler) {
+                dv.removeEventListener('click', dv._detailClickHandler);
+                delete dv._detailClickHandler;
+            }
+
+            originalSetupDetailDelegation(dv);
+        };
+    }
+
+    // ==================== 6. TMDB CACHE CLEANUP — БЕЗ ПАТЧА ====================
+    //
+    // Здесь стоял третий по счёту пятиминутный таймер очистки одного и того же
+    // tmdbCache: свой планировщик есть в catalog.js (startTmdbCleanup →
+    // cleanOldTmdbCache, он же делает trimToMax), и ещё раз cleanExpired звала
+    // периодическая уборка из memory-fixes.js. Оставлен только первый.
+
+    // ==================== 7. CATALOG STATE CLEANUP ====================
+
+    function cleanupCatalogState() {
+        if (typeof catalogState === 'undefined' || typeof AppState === 'undefined') return;
+
+        // 'detail' — это оверлей ПОВЕРХ живой сетки каталога. Пользователь вернётся
+        // кнопкой «Назад», а возврат сетку не перерисовывает (app.js: «если каталог
+        // уже загружен и сетка в DOM — НЕ перерендериваем»), значит отключённые здесь
+        // наблюдатели сами уже не поднимутся и постеры грузиться перестанут.
+        if (AppState.currentScreen === 'catalog' || AppState.currentScreen === 'detail') return;
+
+        // Отключаем observers
+        if (catalogState.posterObserver) {
+            catalogState.posterObserver.disconnect();
+        }
+        if (catalogState.rowPosterObserver) {
+            catalogState.rowPosterObserver.disconnect();
+        }
+        if (catalogState.loadMoreObserver) {
+            catalogState.loadMoreObserver.disconnect();
+        }
+
+        // Очищаем очереди
+        catalogState.posterLoadQueue = [];
+        catalogState.rowPosterQueue = [];
+
+        // disconnect() не обнуляет ссылку — объект остаётся truthy, поэтому
+        // ни initPosterLazyLoading(), ни updatePosterObservers() не вызовутся сами.
+        window._catalogObserversDisarmed = true;
+
+        console.log('🧹 Catalog state очищен (экран изменён)');
+    }
+
+    // ==================== 7b. ВОССТАНОВЛЕНИЕ НАБЛЮДАТЕЛЕЙ ====================
+
+    /**
+     * Поднимает IntersectionObserver'ы каталога после периодической чистки.
+     * Вызывается при возврате на экран каталога (app.js), при показе страницы
+     * и как страховка на периодическом тике. Ничего не делает, если чистки не было.
+     */
+    function rearmCatalogObservers() {
+        if (typeof catalogState === 'undefined' || typeof AppState === 'undefined') return;
+        if (!window._catalogObserversDisarmed) return;
+        if (AppState.currentScreen !== 'catalog') return;
+        window._catalogObserversDisarmed = false;
+
+        // Режим рядов
+        if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
+            // Очередь рядов была очищена, но у карточек остался posterLoaded='1',
+            // а initRowPosterLazyLoading такие карточки не наблюдает (catalog.js:2900) —
+            // сбрасываем флаг у тех, где картинка так и не появилась.
+            var rows = document.querySelectorAll('#catalog-rows .catalog-row-card');
+            for (var r = 0; r < rows.length; r++) {
+                var box = rows[r].querySelector('.row-poster-img');
+                if (box && !box.querySelector('img')) rows[r].dataset.posterLoaded = '0';
+            }
+            if (typeof window.initRowPosterLazyLoading === 'function') window.initRowPosterLazyLoading();
+            console.log('♻️ Наблюдатели рядов каталога восстановлены (' + rows.length + ' карточек)');
+            return;
+        }
+
+        // Сетка: то же самое с флагом posterRequested (catalog.js:1374)
+        var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
+        for (var i = 0; i < cards.length; i++) {
+            if (!cards[i].querySelector('img.catalog-poster-img')) cards[i].dataset.posterRequested = '0';
+        }
+        if (typeof window.initPosterLazyLoading === 'function') window.initPosterLazyLoading();
+        if (typeof window.initLoadMoreObserver === 'function') window.initLoadMoreObserver();
+        console.log('♻️ Наблюдатели каталога восстановлены (' + cards.length + ' карточек)');
+    }
+
+    window.rearmCatalogObservers = rearmCatalogObservers;
+
+    // ==================== 8. PERIODIC CLEANUP ====================
+
+    setInterval(function() {
+        cleanupTrailerCache();
+        cleanupCatalogState();
+        rearmCatalogObservers();   // страховка: вернулись в каталог мимо app.js
+    }, 120000); // каждые 2 минуты
+
+    // ==================== 9. CLEANUP ON VISIBILITY CHANGE ====================
+
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) {
+            rearmCatalogObservers();
+            return;
+        }
+        console.log('🧹 Страница скрыта, выполнение очистки...');
+        cleanupCatalogState();
+
+        // posterCache хранит только строки-URL и ограничен самим LRU
+        // (CATALOG_CONSTANTS.MAX_POSTER_CACHE), отдельно подрезать нечего:
+        // trimToMax есть у LRUTTLCache, у LRUCache его нет — прежняя ветка
+        // была no-op и только писала в лог, что «сокращает» кэш.
+    });
+
+    // ==================== 10. BACKDROP LOADING — БЕЗ ПАТЧА ====================
+    //
+    // Здесь стояла своя реализация _loadBackdropDecoded, и она перекрывала
+    // рабочую из catalog.js. Вместе с ней терялись три вещи:
+    //
+    //   1) перебор зеркал TMDB — при мёртвом зеркале фон просто не появлялся,
+    //      и карточка оставалась чёрной до смены зеркала руками;
+    //   2) поколение загрузки (detailBackdropLoad) — опоздавший кадр прошлой
+    //      карточки всплывал поверх уже открытой следующей;
+    //   3) проверка naturalWidth — decode() на части телевизоров отклоняет
+    //      живые картинки, и фон терялся на ровном месте.
+    //
+    // Полезное из патча (не грузить в оторванный от документа узел, отпускать
+    // неудачные Image) перенесено в сам _loadBackdropDecoded в catalog.js.
+    // Не возвращайте обёртку сюда.
+
+    // ==================== 11. IMAGE LOADING — БЕЗ ПАТЧА ====================
+    //
+    // Здесь тоже стояла своя реализация _loadImageDecoded поверх catalog.js.
+    // Она гасила img.src ПОСЛЕ вставки картинки в DOM (ветка decode().catch),
+    // то есть на телевизорах, где decode() отклоняет живые кадры, постер
+    // карточки оказывался пустым. Проверки naturalWidth в ней тоже не было.
+    //
+    // Очистка неудачных Image перенесена в сам _loadImageDecoded в catalog.js,
+    // туда же добавлена метка запроса — постер прошлой карточки больше не
+    // встаёт в уже открытую следующую. Не возвращайте обёртку сюда.
+
+    console.log('✅ Патчи памяти для catalog.js загружены');
+
+})();

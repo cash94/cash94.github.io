@@ -1,0 +1,55 @@
+# Пересобирает ветку gh-pages (из неё GitHub Pages раздаёт сайт) после каждого пуша в main:
+# файлы из main + releases/ и msx/cache/tmdbCache.json из текущей gh-pages (их выкладывает бот).
+# gh-pages всегда из одного коммита, поэтому история не растёт.
+name: Build gh-pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and push gh-pages
+        run: |
+          set -euo pipefail
+          G="git --git-dir=$GITHUB_WORKSPACE/.git"
+          PREV=refs/remotes/origin/gh-pages
+          $G fetch -q --depth 1 origin "+gh-pages:$PREV" || true
+
+          SITE=$(mktemp -d)
+          $G archive HEAD | tar -x -C "$SITE"
+
+          # releases и tmdbCache берём из опубликованной версии
+          if $G rev-parse -q --verify "$PREV" > /dev/null; then
+            rm -rf "$SITE/releases"
+            $G archive "$PREV" releases | tar -x -C "$SITE" || true
+            if $G cat-file -e "$PREV:msx/cache/tmdbCache.json" 2>/dev/null; then
+              mkdir -p "$SITE/msx/cache"
+              $G show "$PREV:msx/cache/tmdbCache.json" > "$SITE/msx/cache/tmdbCache.json"
+            fi
+          fi
+
+          cd "$SITE"
+          export GIT_INDEX_FILE=$(mktemp -u)
+          $G --work-tree=. add -A -f
+          TREE=$($G write-tree)
+          if [ "$TREE" = "$($G rev-parse -q --verify "$PREV^{tree}" || true)" ]; then
+            echo "Изменений нет"
+            exit 0
+          fi
+          COMMIT=$($G -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit-tree "$TREE" -m "Pages: main ${GITHUB_SHA::7}")
+          $G push -f origin "$COMMIT:refs/heads/gh-pages"
