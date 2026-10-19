@@ -824,6 +824,14 @@
         "imageUrl": "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-reports.png",
         "versions": [
             {
+                "version": "20.0.0.0",
+                "changelog": "- Add a bitrate column for Audio and Video respectively  (#106) @jcv8-dev, @crobibero\n- Use ApiKey query parameter for report export (#118) @quantumbagel, @crobibero",
+                "targetAbi": "12.2.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/reports/reports_20.0.0.0.zip",
+                "checksum": "3e9cfb43d6a69ae8824fcbcb9b2a6aa7",
+                "timestamp": "2026-10-19T22:24:31Z"
+            },
+            {
                 "version": "19.0.0.0",
                 "changelog": "- Unstable: Update to latest Jellyfin preview packages (#108) @crobibero, @claude, @jellyfin-bot\n- fix: export limiting to maximum 100 lines (#100) @Yghore\n\n### Dependency updates ###\n- Update dependency ClosedXML to 0.105.1 (#109) [@renovate[bot]](https://github.com/apps/renovate)",
                 "targetAbi": "12.0.0.0",
@@ -2376,7 +2384,17 @@
         "overview": "Scrobble to Simkl",
         "owner": "crobibero",
         "category": "General",
+        "image": "image.png",
+        "imageUrl": "https://repo.jellyfin.org/files/plugin/simkl/image.png",
         "versions": [
+            {
+                "version": "10.0.0.0",
+                "changelog": "- Add the Simkl OAuth 2 device flow and two-way watched state sync (#73) @ekleop, @crobibero",
+                "targetAbi": "12.2.0.0",
+                "sourceUrl": "https://repo.jellyfin.org/files/plugin/simkl/simkl_10.0.0.0.zip",
+                "checksum": "15a208d7fdedaea94006cbd9464cfba1",
+                "timestamp": "2026-10-19T22:39:18Z"
+            },
             {
                 "version": "9.0.0.0",
                 "changelog": "- Unstable: Update to latest Jellyfin preview packages (#64) @crobibero, @jellyfin-bot\n- Fix: typo 'compouter' in login instructions (#65) @bretthysuik\n- feat: live-scrobbling support (#61) @samip5, @claude, @crobibero\n\n### New features and improvements ###\n- Add external url provider (#39) @crobibero",
