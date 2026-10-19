@@ -2597,7 +2597,34 @@ function browserVersionName() {
   return '—';
 }
 
+/**
+ * Android-приложение: что делает удержание «Назад» — меню приложения (как было)
+ * или выход. Состояние хранит само приложение, поэтому при каждом открытии
+ * раздела читаем его заново. Кнопка «Меню приложения» — чтобы меню оставалось
+ * доступным, когда удержание занято выходом, а кнопки «Меню» на пульте нет.
+ */
+function setupAndroidAppSettings() {
+  var block = getEl('android-app-settings');
+  var bridge = window.AndroidJS;
+  if (!block || !bridge || typeof bridge.getBackHoldExit !== 'function') return;
+  block.hidden = false;
+  var box = getEl('android-back-hold-exit');
+  try { box.checked = !!bridge.getBackHoldExit(); } catch (e) { }
+  box.onchange = function () {
+    try { bridge.setBackHoldExit(box.checked); } catch (e) { }
+  };
+  var menuRow = getEl('android-app-menu-row');
+  var menuBtn = getEl('android-app-menu-btn');
+  if (menuRow && menuBtn && typeof bridge.openAppMenu === 'function') {
+    menuRow.hidden = false;
+    menuBtn.onclick = function () {
+      try { bridge.openAppMenu(); } catch (e) { }
+    };
+  }
+}
+
 function renderDeviceInfo() {
+  setupAndroidAppSettings();
   var box = getEl('device-info');
   if (!box) return;
   var dpr = window.devicePixelRatio || 1;

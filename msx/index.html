@@ -617,6 +617,17 @@
             <div class="settings-section">
               <h2>Об устройстве</h2>
               <p class="settings-lead">Пригодится, если пишете в поддержку: приложите эти сведения к вопросу.</p>
+              <!-- Только в Android-приложении (app.js: setupAndroidAppSettings, AndroidJS.*BackHoldExit).
+                   В APK без этих методов не показывается -->
+              <div class="settings-list" id="android-app-settings" hidden>
+                <div class="checkbox-container">
+                  <input type="checkbox" id="android-back-hold-exit">
+                  <span>Выход из приложения по удержанию клавиши «Назад»<small class="setting-desc">Выключено — удержание «Назад» открывает меню приложения. Включено — закрывает приложение, а меню открывается кнопкой ниже или кнопкой «Меню» на пульте</small></span>
+                </div>
+                <div class="action-row" id="android-app-menu-row" hidden>
+                  <button class="btn" id="android-app-menu-btn">Меню приложения</button>
+                </div>
+              </div>
               <div class="device-info" id="device-info"></div>
             </div>
           </div>
