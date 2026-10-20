@@ -3654,18 +3654,26 @@ function buildActorCard() {
 }
 function buildRecommendationCard() {
   var card = document.createElement('div');
-  card.className = 'catalog-recommendation-card';
+  card.className = 'catalog-recommendation-card card-modern';
   var posterBox = document.createElement('div');
-  posterBox.className = 'catalog-recommendation-poster';
+  posterBox.className = 'torrent-poster catalog-recommendation-poster';
   var img = document.createElement('img');
   img.decoding = 'async';
   img.alt = '';
   img.className = 'hidden';
   var noPoster = document.createElement('div');
-  noPoster.className = 'catalog-recommendation-no-poster hidden';
-  noPoster.textContent = ' ';
-  var rating = document.createElement('div');
-  rating.className = 'catalog-recommendation-rating hidden';
+  noPoster.className = 'no-poster hidden';
+  noPoster.textContent = 'Нет постера';
+  var year = document.createElement('div');
+  year.className = 'poster-year';
+  var bar = document.createElement('div');
+  bar.className = 'poster-bar';
+  var rating = document.createElement('span');
+  rating.className = 'rating-badge';
+  var type = document.createElement('span');
+  type.className = 'torrent-badge';
+  bar.appendChild(rating);
+  bar.appendChild(type);
   img.onload = function () {
     img.classList.remove('hidden');
     noPoster.classList.add('hidden');
@@ -3676,22 +3684,21 @@ function buildRecommendationCard() {
   };
   posterBox.appendChild(img);
   posterBox.appendChild(noPoster);
-  posterBox.appendChild(rating);
+  posterBox.appendChild(year);
+  posterBox.appendChild(bar);
   var info = document.createElement('div');
-  info.className = 'catalog-recommendation-info';
+  info.className = 'torrent-info';
   var title = document.createElement('div');
-  title.className = 'catalog-recommendation-title marquee-text';
+  title.className = 'torrent-title catalog-recommendation-title marquee-text';
   var titleText = document.createElement('span');
   title.appendChild(titleText);
-  var year = document.createElement('div');
-  year.className = 'catalog-recommendation-year hidden';
   info.appendChild(title);
-  info.appendChild(year);
   card.appendChild(posterBox);
   card.appendChild(info);
   card._img = img;
   card._placeholder = noPoster;
   card._rating = rating;
+  card._type = type;
   card._title = titleText;
   card._year = year;
   return card;
@@ -3777,20 +3784,12 @@ function renderDetailRecommendations(src, rw, mt) {
     card.dataset.mediaType = mt;
     card.dataset.title = title;
     card._title.textContent = title;
-    if (r.vote_average) {
-      card._rating.textContent = Math.round(r.vote_average * 10) / 10;
-      card._rating.classList.remove('hidden');
-    } else {
-      card._rating.textContent = '';
-      card._rating.classList.add('hidden');
-    }
-    if (r.release_date) {
-      card._year.textContent = String(r.release_date).substring(0, 4);
-      card._year.classList.remove('hidden');
-    } else {
-      card._year.textContent = '';
-      card._year.classList.add('hidden');
-    }
+    card._type.textContent = mt === 'tv' ? 'Сериал' : 'Фильм';
+    var rating = r.vote_average ? Math.round(r.vote_average * 10) / 10 : 0;
+    card._rating.textContent = rating ? rating : '';
+    card._rating.style.color = rating ? getRatingColor(rating) : '';
+    var date = r.release_date || r.first_air_date;
+    card._year.textContent = date ? String(date).substring(0, 4) : '';
     setDetailCardPoster(card, r.poster_path ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL) : '');
     card.classList.remove('hidden');
   }

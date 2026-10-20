@@ -433,13 +433,14 @@
         css.push('#back-from-detail.focused,.detail-header .back-btn.focused{' +
             'box-shadow:0 0 0 3px ' + c + '!important;background:' + rgba(c, 0.2) + '!important;}');
 
-        // Актёры и «похожие» (styles.css:3716/3721)
-        css.push('.catalog-actor-card.focused,.catalog-recommendation-card.focused{' +
+        // Актёры (styles.css:3716). «Похожие» — карточки .card-modern, их
+        // кольцо красит правило карточек сетки ниже
+        css.push('.catalog-actor-card.focused{' +
             'box-shadow:0 0 0 3px ' + c + '!important;}');
 
-        // Карточки сетки: кольцо рисует слой поверх постера (::after), на самой
-        // карточке гасим — постер уменьшен до 0.97, и кольцо вокруг карточки
-        // висело бы в стороне от него.
+        // Карточки сетки и «похожие» в карточке фильма: кольцо рисует слой
+        // поверх постера (::after), на самой карточке гасим — постер уменьшен
+        // до 0.97, и кольцо вокруг карточки висело бы в стороне от него.
         css.push('.card-modern.focused{box-shadow:none!important;}');
         css.push('.card-modern.focused .torrent-poster::after{' +
             'box-shadow:inset 0 0 0 3px ' + c + '!important;}');

@@ -1720,32 +1720,6 @@ body.detail-open {
   object-fit: cover;
 }
 
-.catalog-recommendation-no-poster {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 33.2px;
-  background: #323242;   /* был градиент */
-}
-
-.catalog-recommendation-rating {
-  position: absolute;
-  bottom: 6px;
-  right: 6px;
-  background: #000000;
-  color: #ffc107;
-  font-size: 9.21px;
-  font-weight: bold;
-  padding: 1.84px 5.53px;
-  border-radius: 8px;
-}
-
-.catalog-recommendation-info {
-  padding: 7.4px;
-}
-
 .catalog-recommendation-title {
   font-size: 10.18px;
   font-weight: 500;
@@ -1753,11 +1727,6 @@ body.detail-open {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.catalog-recommendation-year {
-  font-size: 9.21px;
-  color: #aaa;
 }
 
 #playback-overlay,
@@ -2862,25 +2831,8 @@ body.detail-open {
     height: 163.3px;
   }
 
-  .catalog-recommendation-no-poster {
-    font-size: 34.2px;
-  }
-
-  .catalog-recommendation-rating {
-    font-size: 9.49px;
-    padding: 1.9px 5.69px;
-  }
-
-  .catalog-recommendation-info {
-    padding: 7.62px;
-  }
-
   .catalog-recommendation-title {
     font-size: 10.49px;
-  }
-
-  .catalog-recommendation-year {
-    font-size: 9.49px;
   }
 
   /* Шапка поиска и панель фильтров: +10% к базовым размерам */
@@ -3172,25 +3124,8 @@ body.detail-open {
     height: 198.18px;
   }
 
-  .catalog-recommendation-no-poster {
-    font-size: 41.5px;
-  }
-
-  .catalog-recommendation-rating {
-    font-size: 11.51px;
-    padding: 2.3px 6.91px;
-  }
-
-  .catalog-recommendation-info {
-    padding: 9.25px;
-  }
-
   .catalog-recommendation-title {
     font-size: 12.73px;
-  }
-
-  .catalog-recommendation-year {
-    font-size: 11.51px;
   }
 
   /* Шапка поиска и панель фильтров: +25% к базовым размерам */
@@ -4481,30 +4416,14 @@ article {
   border-radius: 8px !important;
 }
 
-.catalog-recommendation-card:hover {
-  transform: scale(1.06);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
-}
-
 .catalog-recommendation-poster {
   background: #1a1a2e !important;
   border-radius: 8px;
   overflow: hidden;
 }
 
-.catalog-recommendation-rating {
-  color: #46d369 !important;
-  background: rgba(0, 0, 0, 0.78) !important;
-  font-weight: 700 !important;
-  border-radius: 4px !important;
-}
-
 .catalog-recommendation-title {
   font-weight: 600 !important;
-}
-
-.catalog-recommendation-year {
-  color: rgba(255, 255, 255, 0.5) !important;
 }
 
 /* ============================================================
@@ -4554,9 +4473,8 @@ article {
   border-radius: 12px;
 }
 
-.catalog-recommendation-card.focused {
-  box-shadow: 0 0 0 3px #ff8c00 !important;
-}
+/* .catalog-recommendation-card — это .card-modern: кольцо рисует слой поверх
+   постера (.card-modern.focused .torrent-poster::after), как в сетке каталога */
 
 /* ============================================================
    АДАПТИВ: планшеты / узкие экраны
@@ -7113,21 +7031,8 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     height: 144px;
   }
 
-  .catalog-recommendation-no-poster {
-    font-size: 26px;
-  }
-
-  .catalog-recommendation-info {
-    padding: 5px;
-  }
-
   .catalog-recommendation-title {
     font-size: 10px;
-  }
-
-  .catalog-recommendation-year,
-  .catalog-recommendation-rating {
-    font-size: 9px;
   }
 
   /* ===== DETAIL-VIEW: карточка торрента ===== */
@@ -7557,11 +7462,14 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   overflow: visible !important;
 }
 
+/* Карточка «похожего» — карточка сетки каталога (.card-modern в catalog.js):
+   здесь только размеры, скругление и подложка — те же, что у сетки
+   (.card-modern .torrent-poster, скелет .catalog-poster-loading) */
 #detail-view.catalog-detail-mode .catalog-recommendation-poster {
   width: 180px !important;
   height: 270px !important;
-  border-radius: 8px;
-  background: #14141c !important;
+  border-radius: 12px;
+  background: #1f1f38 !important;
   /* Без перехода: анимированная рамка — это перерисовка и коммит кадра на
      каждом шаге 0,2 с у двух элементов (уходящего и нового фокуса). На
      Chrome 66 при прокрутке ленты пультом ожидание кадра было 710–840 мс на
@@ -7570,43 +7478,18 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   transition: none;
 }
 
-#detail-view.catalog-detail-mode .catalog-recommendation-rating {
-  bottom: 8px;
-  right: 8px;
-  padding: 2px 8px;
-  font-size: 14px;
-  font-weight: 700 !important;
-  color: #46d369 !important;
-  background: rgba(0, 0, 0, 0.78) !important;
-  border-radius: 4px !important;
-}
-
-#detail-view.catalog-detail-mode .catalog-recommendation-info {
-  padding: 8px 2px 0 2px !important;
-}
-
 #detail-view.catalog-detail-mode .catalog-recommendation-title {
-  font-size: 16px !important;
+  font-size: 15px !important;
   font-weight: 600 !important;
 }
 
-#detail-view.catalog-detail-mode .catalog-recommendation-year {
-  font-size: 14px !important;
-  color: rgba(255, 255, 255, 0.5) !important;
-}
-
-/* Рамка по постеру: подпись под ним в рамку не входит, как в рядах каталога */
+/* Рамка по постеру, подпись под ним в рамку не входит — как в сетке каталога.
+   Кольцо общего правила .focused на самой карточке гасим, а рисует его
+   .card-modern.focused .torrent-poster::after: 3px поверх постера, цвет из
+   «Внешнего вида». Прежнее наружное кольцо в 5px было толще, чем везде. */
 #detail-view.catalog-detail-mode .catalog-recommendation-card.focused {
   box-shadow: none !important;
   background: transparent !important;
-}
-
-#detail-view.catalog-detail-mode .catalog-recommendation-card.focused .catalog-recommendation-poster {
-  box-shadow: 0 0 0 5px var(--focus-color, #ff8c00) !important;
-}
-
-#detail-view.catalog-detail-mode .catalog-recommendation-card.focused .catalog-recommendation-title {
-  color: #fff !important;
 }
 
 /* --- АДАПТИВ: узкие экраны (<=1024) ------------------------------------ */
@@ -7715,18 +7598,10 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     height: 186px !important;
   }
 
-  #detail-view.catalog-detail-mode .catalog-recommendation-rating {
-    font-size: 11px;
-    padding: 1px 6px;
-  }
-
   #detail-view.catalog-detail-mode .catalog-recommendation-title {
     font-size: 13px !important;
   }
 
-  #detail-view.catalog-detail-mode .catalog-recommendation-year {
-    font-size: 11px !important;
-  }
 }
 
 /* --- АДАПТИВ: 1280x720 и другие «широкие, но низкие» экраны --------------
@@ -7842,18 +7717,10 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     height: 225px !important;
   }
 
-  #detail-view.catalog-detail-mode .catalog-recommendation-rating {
-    font-size: 13px;
-    padding: 2px 7px;
-  }
-
   #detail-view.catalog-detail-mode .catalog-recommendation-title {
     font-size: 15px !important;
   }
 
-  #detail-view.catalog-detail-mode .catalog-recommendation-year {
-    font-size: 13px !important;
-  }
 }
 
 /* --- АДАПТИВ: 960x540 ---------------------------------------------------
@@ -7967,18 +7834,10 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     height: 144px !important;
   }
 
-  #detail-view.catalog-detail-mode .catalog-recommendation-rating {
-    font-size: 10px;
-    padding: 1px 5px;
-  }
-
   #detail-view.catalog-detail-mode .catalog-recommendation-title {
     font-size: 11px !important;
   }
 
-  #detail-view.catalog-detail-mode .catalog-recommendation-year {
-    font-size: 10px !important;
-  }
 }
 
 

@@ -346,7 +346,7 @@
     css.push('#detail-view .focused{box-shadow:0 0 0 3px ' + c + '!important;}');
     css.push('#catalog-watch-btn.focused,.catalog-watch-btn.focused,' + '.catalog-trailer-btn.focused,#catalog-trailer-btn.focused,' + '.detail-progress-btn.focused,#detail-progress-btn.focused,' + '#catalog-toggle-overview-btn.focused,.catalog-toggle-overview-btn.focused{' + 'box-shadow:0 0 0 3px ' + c + '!important;}');
     css.push('#back-from-detail.focused,.detail-header .back-btn.focused{' + 'box-shadow:0 0 0 3px ' + c + '!important;background:' + rgba(c, 0.2) + '!important;}');
-    css.push('.catalog-actor-card.focused,.catalog-recommendation-card.focused{' + 'box-shadow:0 0 0 3px ' + c + '!important;}');
+    css.push('.catalog-actor-card.focused{' + 'box-shadow:0 0 0 3px ' + c + '!important;}');
     css.push('.card-modern.focused{box-shadow:none!important;}');
     css.push('.card-modern.focused .torrent-poster::after{' + 'box-shadow:inset 0 0 0 3px ' + c + '!important;}');
     css.push('.catalog-row-card.focused{box-shadow:none!important;}');
