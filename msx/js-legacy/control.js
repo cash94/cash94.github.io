@@ -3037,6 +3037,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         setScrollX(con, targetLeft, smooth);
       }
     }
+    if (isRowViewport && el.classList && el.classList.contains('home-card')) return;
     var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
     var dy = pendingScrollDelta(vertEl);
     if (vertEl && isRowViewport && isFirstRowViewport(container)) {

@@ -553,8 +553,14 @@
             '<div class="home-ring-icon">▶</div>' +
             '</div>' +
             '<div id="home-hero-body">' +
+            // Логотип и название — в рамке постоянной высоты (styles.css,
+            // #home-hero-head): иначе подписи прыгали вверх-вниз на каждом шаге
+            // по ряду — у одного фильма название в строку, у другого в две, у
+            // третьего логотип
+            '<div id="home-hero-head">' +
             '<div id="home-hero-logo"><img alt=""></div>' +
             '<h1 id="home-hero-title"></h1>' +
+            '</div>' +
             '<div id="home-hero-meta"></div>' +
             '<div id="home-hero-overview"></div>' +
             // «Подробнее» тут намеренно нет: карточка открывается OK прямо с ряда

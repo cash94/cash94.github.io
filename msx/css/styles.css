@@ -6174,6 +6174,32 @@ article {
   visibility: hidden;
 }
 
+/* Рамка названия постоянной высоты. Подписи баннера прижаты к низу, и раньше
+   любая разница в высоте названия (строка или две, текст или логотип)
+   поднимала или опускала весь блок — на каждом шаге по ряду подписи прыгали.
+   Высота — под самый высокий вариант: логотип (max-height 2.6 размера) и две
+   строки названия (2 × line-height 1.1) в неё влезают. Название и логотип
+   прижаты к низу рамки: мета и описание под ними стоят на месте.
+   --hero-size — тот же, что у названия и логотипа в каждом медиазапросе;
+   отступ до меты — margin-bottom рамки, у самих названия и логотипа он
+   обнулён (два id перебивают медиазапросы с одним). */
+#home-hero-head {
+  position: relative;
+  --hero-size: 38px;
+  font-size: calc(var(--hero-size) * var(--hero-text-scale, 1));
+  height: 2.6em;
+  margin-bottom: 8px;
+}
+
+#home-hero-head #home-hero-title,
+#home-hero-head #home-hero-logo {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+}
+
 #home-hero-meta {
   margin-bottom: 8px;
   color: #d2d2d2;
@@ -6191,6 +6217,13 @@ article {
   --hero-size: 15px;
   font-size: calc(var(--hero-size) * var(--hero-text-scale, 1));
   line-height: 1.4;
+  /* Высота постоянная — ровно --hero-ov-lines строк, даже если описание
+     короче или его нет: иначе кнопка «Смотреть» под ним ездила вверх-вниз при
+     каждом шаге по ряду. Медиазапросы, меняющие line-clamp или line-height,
+     обязаны поменять и эти две переменные. */
+  --hero-ov-lh: 1.4;
+  --hero-ov-lines: 4;
+  height: calc(var(--hero-size) * var(--hero-text-scale, 1) * var(--hero-ov-lh) * var(--hero-ov-lines));
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
   display: -webkit-box;
   -webkit-line-clamp: 4;
@@ -6604,6 +6637,11 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     --hero-size: 26px;
   }
 
+  #home-hero-head {
+    --hero-size: 26px;
+    margin-bottom: 6px;
+  }
+
   #home-hero-logo {
     margin: 0 0 8px;
     --hero-size: 26px;
@@ -6783,6 +6821,11 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     --hero-size: 22px;
   }
 
+  #home-hero-head {
+    --hero-size: 22px;
+    margin-bottom: 4px;
+  }
+
   #home-hero-logo {
     margin: 0 0 6px;
     --hero-size: 22px;
@@ -6797,6 +6840,7 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
     margin-bottom: 7px;
     --hero-size: 11px;
     line-height: 1.35;
+    --hero-ov-lh: 1.35;
     -webkit-line-clamp: 4;
   }
 
@@ -8554,6 +8598,7 @@ html.apple-device {
 @media (orientation: landscape) and (max-height: 500px) {
   #home-hero-overview {
     -webkit-line-clamp: 2;
+    --hero-ov-lines: 2;
   }
 
   #home-hero-logo img {
@@ -10390,6 +10435,10 @@ html.apple-device {
     --hero-size: 28px;
   }
 
+  #home-hero-head {
+    --hero-size: 28px;
+  }
+
   #home-hero-logo {
     --hero-size: 28px;
     max-width: 75%;
@@ -10403,6 +10452,7 @@ html.apple-device {
     --hero-size: 14px;
     max-width: none;
     -webkit-line-clamp: 3;
+    --hero-ov-lines: 3;
     /* По ширине на узкой колонке раздвигало слова дырами */
     text-align: left;
   }

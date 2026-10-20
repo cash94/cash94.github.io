@@ -3506,6 +3506,15 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         }
 
         // Вертикальный скролл (для рядов — main-container)
+        // Главная по вертикали неподвижна: баннер и ряд рассчитаны ровно на
+        // высоту экрана (layoutHome), а прокрутку #main-container home.js
+        // держит в нуле (lockHomeScroll). Карточка у нижней кромки для
+        // проверки ниже всегда «не видна целиком», и на каждом шаге по ряду
+        // заводился твин вниз, который тут же откатывался — там, где раскладка
+        // вылезает за экран хоть на пару пикселей (ТВ с DPR 1.25/1.5), экран
+        // дрожал. Горизонталь выше уже отработала — больше двигать нечего.
+        if (isRowViewport && el.classList && el.classList.contains('home-card')) return;
+
         var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
         var dy = pendingScrollDelta(vertEl);        // сколько ещё дотянет твин
         // Первый ряд экрана — всегда самый верх страницы, а не «подтянуть на 50px»:
