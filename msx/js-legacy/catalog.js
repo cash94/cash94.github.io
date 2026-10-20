@@ -2019,6 +2019,9 @@ var CHUNK_HYDRATED_KEEP = 3;
 var CHUNK_FOCUS_GUARD = 1;
 var CHUNK_OBSERVER_MARGIN_PX = 600;
 var CHUNK_SCROLL_QUIET_MS = 250;
+var CHUNK_TRIM_QUIET_MS = 700;
+var CHUNK_TRIM_FORCE_EXTRA = 4;
+var CHUNK_URGENT_EXTRA_ROWS = 1;
 function readGridRowGap() {
   var grid = getCatalogGridEl();
   if (!grid || !window.getComputedStyle) return 0;
@@ -2056,6 +2059,7 @@ function resetGridChunks() {
     catalogState.chunkTrimTimer = null;
   }
   for (var i = 0; i < catalogState.chunks.length; i++) cancelHydration(catalogState.chunks[i]);
+  flushPosterRelease();
   catalogState.chunks = [];
   catalogState.chunkSize = 0;
   catalogState.chunkCols = 0;
@@ -2128,6 +2132,33 @@ function releaseCardPoster(card) {
   if (img.getAttribute('src')) img.removeAttribute('src');
   if (img.parentNode) img.parentNode.removeChild(img);
 }
+var POSTER_RELEASE_PER_TICK = 6;
+var posterReleaseQueue = [];
+var posterReleaseTimer = null;
+function queueCardPosterRelease(cards) {
+  for (var i = 0; i < cards.length; i++) posterReleaseQueue.push(cards[i]);
+  if (!posterReleaseTimer && posterReleaseQueue.length) {
+    posterReleaseTimer = setTimeout(runPosterRelease, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+  }
+}
+function runPosterRelease() {
+  posterReleaseTimer = null;
+  if (!posterReleaseQueue.length) return;
+  if (!isChunkWorkBlocked()) {
+    var n = Math.min(POSTER_RELEASE_PER_TICK, posterReleaseQueue.length);
+    for (var i = 0; i < n; i++) releaseCardPoster(posterReleaseQueue.shift());
+  }
+  if (posterReleaseQueue.length) {
+    posterReleaseTimer = setTimeout(runPosterRelease, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+  }
+}
+function flushPosterRelease() {
+  if (posterReleaseTimer) {
+    clearTimeout(posterReleaseTimer);
+    posterReleaseTimer = null;
+  }
+  while (posterReleaseQueue.length) releaseCardPoster(posterReleaseQueue.shift());
+}
 function dehydrateChunk(ch, gapHint) {
   if (!ch || ch.spacer || ch.hydrating) return false;
   var cols = typeof getColumns === 'function' && getColumns() || 0;
@@ -2150,16 +2181,19 @@ function dehydrateChunk(ch, gapHint) {
   var grid = getCatalogGridEl();
   if (!grid) return false;
   grid.insertBefore(spacer, first);
+  var removedCards = [];
   for (var i = ch.start; i < ch.end; i++) {
     var card = catalogState.cardElements[i];
     if (card) {
-      releaseCardPoster(card);
       if (card.parentNode === grid) grid.removeChild(card);
+      removedCards.push(card);
     }
     delete catalogState.cardElements[i];
   }
+  queueCardPosterRelease(removedCards);
   ch.spacer = spacer;
   ch.filled = ch.start;
+  ch.filledHi = ch.end;
   if (catalogState.chunkObserver) catalogState.chunkObserver.observe(spacer);
   return true;
 }
@@ -2179,12 +2213,12 @@ function hydrateChunk(ch, immediate) {
   var cols = typeof getColumns === 'function' && getColumns() || 5;
   var total = ch.end - ch.start;
   if (typeof ch.filled !== 'number' || ch.filled < ch.start) ch.filled = ch.start;
+  if (typeof ch.filledHi !== 'number' || ch.filledHi > ch.end || ch.filledHi < ch.filled) ch.filledHi = ch.end;
   if (immediate || total <= cols || typeof requestAnimationFrame !== 'function') {
-    insertChunkCards(ch, ch.filled, ch.end);
+    insertChunkCards(ch, ch.filled, ch.filledHi);
     finishHydration(ch);
     return true;
   }
-  if (typeof ch.filled !== 'number' || ch.filled < ch.start) ch.filled = ch.start;
   var h = typeof ch.spacerH === 'number' && ch.spacerH > 0 ? ch.spacerH : spacer.offsetHeight;
   var rowsTotal = Math.ceil(total / cols);
   var stride = ch.rowStride;
@@ -2201,7 +2235,7 @@ function hydrateChunk(ch, immediate) {
   hydrationStep(ch);
   return true;
 }
-function insertChunkCards(ch, from, to) {
+function insertChunkCards(ch, from, to, afterSpacer) {
   var grid = getCatalogGridEl();
   if (!grid || !ch.spacer || ch.spacer.parentNode !== grid) return;
   var frag = document.createDocumentFragment();
@@ -2213,7 +2247,7 @@ function insertChunkCards(ch, from, to) {
     frag.appendChild(card);
     added.push(card);
   }
-  grid.insertBefore(frag, ch.spacer);
+  grid.insertBefore(frag, afterSpacer ? ch.spacer.nextSibling : ch.spacer);
   observeNewGridCards(added);
 }
 function observeNewGridCards(cards) {
@@ -2246,10 +2280,25 @@ function hydrationStep(ch) {
     ch.spacer = null;
     return;
   }
-  var to = Math.min(ch.filled + st.cols, ch.end);
-  insertChunkCards(ch, ch.filled, to);
-  ch.filled = to;
-  if (ch.filled >= ch.end) {
+  if (isChunkWorkBlocked() && !isHydrationUrgent(ch, st.cols)) {
+    st.raf = requestAnimationFrame(function () {
+      hydrationStep(ch);
+    });
+    return;
+  }
+  var fromBottom = typeof catalogState.chunkFocusIdx === 'number' && catalogState.chunkFocusIdx >= ch.end;
+  if (fromBottom) {
+    var hi = ch.filledHi;
+    var lo = ch.start + Math.floor((hi - 1 - ch.start) / st.cols) * st.cols;
+    if (lo < ch.filled) lo = ch.filled;
+    insertChunkCards(ch, lo, hi, true);
+    ch.filledHi = lo;
+  } else {
+    var to = Math.min(ch.filled + st.cols, ch.filledHi);
+    insertChunkCards(ch, ch.filled, to);
+    ch.filled = to;
+  }
+  if (ch.filled >= ch.filledHi) {
     finishHydration(ch);
     return;
   }
@@ -2259,11 +2308,24 @@ function hydrationStep(ch) {
     hydrationStep(ch);
   });
 }
+var CHUNK_PRESS_GUARD_MS = 60;
+function isChunkWorkBlocked() {
+  if (isGridNavBusy()) return true;
+  return Date.now() - (window.navStreakAt || 0) < CHUNK_PRESS_GUARD_MS;
+}
+function isHydrationUrgent(ch, cols) {
+  var idx = catalogState.chunkFocusIdx;
+  if (typeof idx !== 'number' || isNaN(idx) || !(cols > 0)) return true;
+  var focusRow = Math.floor(idx / cols);
+  var dist;
+  if (idx < ch.start) dist = Math.floor(ch.filled / cols) - focusRow;else if (idx >= ch.end) dist = focusRow - Math.floor((ch.filledHi - 1) / cols);else return true;
+  return dist <= 1 + CHUNK_URGENT_EXTRA_ROWS;
+}
 function finishHydrationNow(ch) {
   var st = ch.hydrating;
   if (!st) return;
   if (st.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(st.raf);
-  insertChunkCards(ch, ch.filled, ch.end);
+  insertChunkCards(ch, ch.filled, ch.filledHi);
   finishHydration(ch);
 }
 function finishHydration(ch) {
@@ -2276,6 +2338,7 @@ function finishHydration(ch) {
   ch.spacer = null;
   ch.hydrating = null;
   ch.filled = ch.end;
+  ch.filledHi = ch.end;
   if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
 }
 function cancelHydration(ch) {
@@ -2342,6 +2405,17 @@ function trimGridChunks() {
     scheduleChunkTrim();
     return;
   }
+  var hydratingNow = false;
+  for (var h = 0; h < chunks.length; h++) if (chunks[h].hydrating) {
+    hydratingNow = true;
+    break;
+  }
+  var overCap = live.length > CHUNK_HYDRATED_MAX + CHUNK_TRIM_FORCE_EXTRA;
+  var sinceKey = Date.now() - (window.navStreakAt || 0);
+  if (hydratingNow || !overCap && sinceKey < CHUNK_TRIM_QUIET_MS) {
+    scheduleChunkTrim();
+    return;
+  }
   var anchors = anchorChunkIndexes();
   if (!anchors.length) return;
   live.sort(function (a, b) {
@@ -2391,6 +2465,7 @@ function ensureChunksAroundFocus(card) {
   var size = catalogState.chunkSize || getChunkSize();
   var here = Math.floor(idx / size);
   var grew = false;
+  catalogState.chunkFocusIdx = idx;
   for (var i = here - 1; i <= here + 1; i++) {
     if (i < 0 || i >= chunks.length) continue;
     var now = i === here;

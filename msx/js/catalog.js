@@ -2359,6 +2359,38 @@ var CHUNK_FOCUS_GUARD = 1;       // чанков по обе стороны от
 var CHUNK_OBSERVER_MARGIN_PX = 600;    // за сколько до вьюпорта разворачивать
 var CHUNK_SCROLL_QUIET_MS = 250;       // сколько ждать после последнего события прокрутки
 
+/* Когда трогать DOM чанков: только в паузах навигации.
+ *
+ * Замер на эмуляторе Android TV при замедлении CPU в 4 раза (6 колонок, чанк
+ * 30 карточек, 30 шагов вниз и 30 вверх): одна порция разворота — строка из
+ * шести карточек — стоила кадра в 94 мс в среднем и до 222 мс в худшем. JS в
+ * этом всего 12 мс, остальное — отрисовка новых карточек: Style 8, Layout 16,
+ * UpdateLayerTree 20, Paint 13, около 9 мс на карточку. И почти все порции
+ * приходились на кадры твина прокрутки: разворот заводит ensureChunksAroundFocus
+ * прямо из focusEl, то есть из обработчика нажатия, и следующие порции шли
+ * каждым кадром того же движения. Свёртка (20–50 мс JS) ждала «тишины», но
+ * тишиной считались 120 мс после конца твина — пауза между двумя нажатиями,
+ * и следующее нажатие приходилось ровно на неё.
+ *
+ * Поэтому:
+ *   • порция разворота ждёт кадра без движения (isGridNavBusy). Ждать дальше
+ *     нельзя, когда фокус подошёл к чанку настолько, что оставшиеся строки
+ *     иначе не успеть вставить по одной за шаг (CHUNK_URGENT_EXTRA_ROWS запаса),
+ *     — тогда порции идут как раньше, каждым кадром;
+ *   • свёртка ждёт CHUNK_TRIM_QUIET_MS после последнего нажатия и не идёт,
+ *     пока хоть один чанк разворачивается: свернуть можно и позже, это
+ *     уборка памяти, а не то, что нужно зрителю сейчас. Предел — когда живых
+ *     чанков на CHUNK_TRIM_FORCE_EXTRA больше CHUNK_HYDRATED_MAX: долгое
+ *     удержание кнопки иначе копило бы DOM без конца, а цена каждого нажатия
+ *     растёт с его размером. */
+var CHUNK_TRIM_QUIET_MS = 700;
+// Не 2: догрузка страницы (appendCatalogItems) вставляет 50 карточек живыми
+// разом, и при шести колонках живых чанков сразу становится семь. С пределом
+// MAX + 2 это само по себе включало принудительную свёртку — посреди движения,
+// через 90–150 мс после нажатия, ровно то, от чего уходили.
+var CHUNK_TRIM_FORCE_EXTRA = 4;
+var CHUNK_URGENT_EXTRA_ROWS = 1;
+
 /**
  * Вертикальный зазор между строками сетки. Читается по одному разу на свёртку
  * чанка (свёртки идут только в тишине) и запоминается на самом чанке, поэтому
@@ -2419,6 +2451,7 @@ function resetGridChunks() {
         catalogState.chunkTrimTimer = null;
     }
     for (var i = 0; i < catalogState.chunks.length; i++) cancelHydration(catalogState.chunks[i]);
+    flushPosterRelease();
     catalogState.chunks = [];
     catalogState.chunkSize = 0;
     catalogState.chunkCols = 0;
@@ -2534,6 +2567,39 @@ function releaseCardPoster(card) {
     if (img.parentNode) img.parentNode.removeChild(img);
 }
 
+/**
+ * Отложенное освобождение постеров свёрнутых карточек: по
+ * POSTER_RELEASE_PER_TICK за раз и только когда сетку не листают.
+ */
+var POSTER_RELEASE_PER_TICK = 6;
+var posterReleaseQueue = [];
+var posterReleaseTimer = null;
+
+function queueCardPosterRelease(cards) {
+    for (var i = 0; i < cards.length; i++) posterReleaseQueue.push(cards[i]);
+    if (!posterReleaseTimer && posterReleaseQueue.length) {
+        posterReleaseTimer = setTimeout(runPosterRelease, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+    }
+}
+
+function runPosterRelease() {
+    posterReleaseTimer = null;
+    if (!posterReleaseQueue.length) return;
+    if (!isChunkWorkBlocked()) {
+        var n = Math.min(POSTER_RELEASE_PER_TICK, posterReleaseQueue.length);
+        for (var i = 0; i < n; i++) releaseCardPoster(posterReleaseQueue.shift());
+    }
+    if (posterReleaseQueue.length) {
+        posterReleaseTimer = setTimeout(runPosterRelease, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+    }
+}
+
+/** Сетку выбрасывают — отпускаем всё сразу, ждать больше нечего */
+function flushPosterRelease() {
+    if (posterReleaseTimer) { clearTimeout(posterReleaseTimer); posterReleaseTimer = null; }
+    while (posterReleaseQueue.length) releaseCardPoster(posterReleaseQueue.shift());
+}
+
 /** Свернуть чанк: карточки → одна распорка той же высоты */
 /**
  * @param {number} [gapHint] зазор между строками, уже прочитанный вызывающей
@@ -2599,17 +2665,25 @@ function dehydrateChunk(ch, gapHint) {
     if (!grid) return false;
     grid.insertBefore(spacer, first);
 
+    // Постеры отпускаем не здесь, а потом, в паузах (queueCardPosterRelease):
+    // removeAttribute('src') синхронно дёргает загрузчик картинки даже у
+    // оторванной карточки, и на чанк из 30 карточек это 8–29 мс сверх самого
+    // удаления (эмулятор, CPU ×4). Карточки уже вне документа, на раскладку
+    // отложенное освобождение не влияет — кадры просто уйдут чуть позже.
+    var removedCards = [];
     for (var i = ch.start; i < ch.end; i++) {
         var card = catalogState.cardElements[i];
         if (card) {
-            releaseCardPoster(card);
             if (card.parentNode === grid) grid.removeChild(card);
+            removedCards.push(card);
         }
         delete catalogState.cardElements[i];
     }
+    queueCardPosterRelease(removedCards);
 
     ch.spacer = spacer;
-    ch.filled = ch.start;       // заполнять снова с начала
+    ch.filled = ch.start;       // заполнять снова с начала...
+    ch.filledHi = ch.end;       // ...или с конца, см. hydrationStep
     if (catalogState.chunkObserver) catalogState.chunkObserver.observe(spacer);
     return true;
 }
@@ -2621,7 +2695,8 @@ function dehydrateChunk(ch, gapHint) {
  * карточек вставлялись одной операцией, и вёрстка с отрисовкой всей пачки
  * падали в тот же кадр — по зонду это и был главный кандидат на худший кадр
  * (200мс). Работы суммарно столько же, но она размазана по кадрам, а рывок
- * определяется пиком, а не суммой.
+ * определяется пиком, а не суммой. Порции идут в кадрах без движения и со
+ * стороны, откуда подходит фокус (hydrationStep, CHUNK_TRIM_QUIET_MS).
  *
  * Ключ к тому, чтобы прокрутка не дёргалась: распорка ужимается ровно на
  * высоту вставленной строки. Общая высота сетки не меняется ни на пиксель ни
@@ -2649,18 +2724,18 @@ function hydrateChunk(ch, immediate) {
     var cols = (typeof getColumns === 'function' && getColumns()) || 5;
     var total = ch.end - ch.start;
 
-    if (typeof ch.filled !== 'number' || ch.filled < ch.start) ch.filled = ch.start;
-
-    if (immediate || total <= cols || typeof requestAnimationFrame !== 'function') {
-        insertChunkCards(ch, ch.filled, ch.end);
-        finishHydration(ch);
-        return true;
-    }
-
-    // Курсор заполнения держим на самом чанке: разворот можно прервать
+    // Курсоров заполнения два — сверху (filled) и снизу (filledHi), см.
+    // hydrationStep. Держим их на самом чанке: разворот можно прервать
     // (свернули сетку, сменили каталог), и тогда следующая попытка обязана
     // продолжить с места, а не вставить уже вставленные карточки заново.
     if (typeof ch.filled !== 'number' || ch.filled < ch.start) ch.filled = ch.start;
+    if (typeof ch.filledHi !== 'number' || ch.filledHi > ch.end || ch.filledHi < ch.filled) ch.filledHi = ch.end;
+
+    if (immediate || total <= cols || typeof requestAnimationFrame !== 'function') {
+        insertChunkCards(ch, ch.filled, ch.filledHi);
+        finishHydration(ch);
+        return true;
+    }
 
     // Высота распорки известна с момента свёртки; читаем элемент только если
     // её почему-то нет (распорка от прежнего состояния сетки)
@@ -2697,8 +2772,11 @@ function hydrateChunk(ch, immediate) {
     return true;
 }
 
-/** Вставляет карточки [from, to) перед распоркой чанка */
-function insertChunkCards(ch, from, to) {
+/**
+ * Вставляет карточки [from, to) перед распоркой чанка — или сразу после неё
+ * (afterSpacer), когда чанк заполняется снизу.
+ */
+function insertChunkCards(ch, from, to, afterSpacer) {
     var grid = getCatalogGridEl();
     if (!grid || !ch.spacer || ch.spacer.parentNode !== grid) return;
 
@@ -2711,7 +2789,9 @@ function insertChunkCards(ch, from, to) {
         frag.appendChild(card);
         added.push(card);
     }
-    grid.insertBefore(frag, ch.spacer);
+    // После распорки идут карточки, уже вставленные снизу этим же чанком, или
+    // начало следующего — новая строка встаёт перед ними
+    grid.insertBefore(frag, afterSpacer ? ch.spacer.nextSibling : ch.spacer);
 
     // Наблюдателям отдаём ровно то, что сейчас создали. Раньше это делал
     // finishHydration через updatePosterObservers + updateGridVisibilityWindow,
@@ -2757,11 +2837,38 @@ function hydrationStep(ch) {
         return;
     }
 
-    var to = Math.min(ch.filled + st.cols, ch.end);
-    insertChunkCards(ch, ch.filled, to);
-    ch.filled = to;
+    // Идёт движение — порцию не вставляем, ждём кадра без него (см.
+    // CHUNK_TRIM_QUIET_MS). Проверка дешёвая, а кадры во время движения
+    // идут всё равно, так что ожидание по rAF ничего лишнего не будит.
+    if (isChunkWorkBlocked() && !isHydrationUrgent(ch, st.cols)) {
+        st.raf = requestAnimationFrame(function () { hydrationStep(ch); });
+        return;
+    }
 
-    if (ch.filled >= ch.end) { finishHydration(ch); return; }
+    /* Заполняем со стороны, откуда подходит фокус.
+     *
+     * Раньше — всегда сверху вниз. Идя вниз, фокус и правда упирается в
+     * верхнюю строку чанка первой. А идя вверх, он подходит к НИЖНЕЙ, и та
+     * вставлялась последней: весь чанк приходилось долить до прихода фокуса,
+     * то есть по строке на каждое нажатие, прямо в кадрах движения. Снизу
+     * нужная строка встаёт первой, и остальные спокойно ждут пауз.
+     *
+     * Вставка под распорку высоту не меняет так же, как над ней: распорка
+     * ужимается на тот же шаг строки, а содержимое ниже чанка не сдвигается. */
+    var fromBottom = typeof catalogState.chunkFocusIdx === 'number' && catalogState.chunkFocusIdx >= ch.end;
+    if (fromBottom) {
+        var hi = ch.filledHi;
+        var lo = ch.start + Math.floor((hi - 1 - ch.start) / st.cols) * st.cols;
+        if (lo < ch.filled) lo = ch.filled;
+        insertChunkCards(ch, lo, hi, true);
+        ch.filledHi = lo;
+    } else {
+        var to = Math.min(ch.filled + st.cols, ch.filledHi);
+        insertChunkCards(ch, ch.filled, to);
+        ch.filled = to;
+    }
+
+    if (ch.filled >= ch.filledHi) { finishHydration(ch); return; }
 
     // Ужимаем распорку на вставленную строку. Высоту ведём в переменной, а не
     // читаем из элемента: чтение здесь означало бы принудительную раскладку на
@@ -2772,12 +2879,48 @@ function hydrationStep(ch) {
     st.raf = requestAnimationFrame(function () { hydrationStep(ch); });
 }
 
+/**
+ * Движение по сетке, при котором DOM чанков не трогаем: кнопку держат, едет
+ * твин — или нажатие было только что. Последнее нужно для первой порции: её
+ * зовёт ensureChunksAroundFocus прямо из focusEl, то есть в обработчике
+ * нажатия, и твин прокрутки к этому моменту может ещё не стартовать.
+ */
+var CHUNK_PRESS_GUARD_MS = 60;
+
+function isChunkWorkBlocked() {
+    if (isGridNavBusy()) return true;
+    return (Date.now() - (window.navStreakAt || 0)) < CHUNK_PRESS_GUARD_MS;
+}
+
+/**
+ * Ждать паузы больше нельзя: фокус в шаге-двух от ближайшей недолитой строки.
+ * Иначе недолитый остаток пришлось бы вставлять разом в finishHydrationNow,
+ * когда фокус войдёт в чанк, — а это десятки карточек в одном кадре, худший из
+ * возможных исходов. Ближайшая строка — с той стороны, откуда идёт фокус: её
+ * hydrationStep и заполняет первой.
+ *
+ * Положение фокуса берём из ensureChunksAroundFocus (catalogState.chunkFocusIdx):
+ * она и так считает его на каждое перемещение, а querySelector по сетке здесь
+ * звался бы на каждом кадре ожидания.
+ */
+function isHydrationUrgent(ch, cols) {
+    var idx = catalogState.chunkFocusIdx;
+    if (typeof idx !== 'number' || isNaN(idx) || !(cols > 0)) return true;
+    var focusRow = Math.floor(idx / cols);
+    var dist;
+    if (idx < ch.start) dist = Math.floor(ch.filled / cols) - focusRow;
+    else if (idx >= ch.end) dist = focusRow - Math.floor((ch.filledHi - 1) / cols);
+    else return true;
+    return dist <= 1 + CHUNK_URGENT_EXTRA_ROWS;
+}
+
 /** Долить остаток чанка синхронно — фокус пришёл раньше, чем мы дотекли */
 function finishHydrationNow(ch) {
     var st = ch.hydrating;
     if (!st) return;
     if (st.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(st.raf);
-    insertChunkCards(ch, ch.filled, ch.end);
+    // Середина между верхней и нижней долитыми частями — как раз на месте распорки
+    insertChunkCards(ch, ch.filled, ch.filledHi);
     finishHydration(ch);
 }
 
@@ -2799,6 +2942,7 @@ function finishHydration(ch) {
     ch.spacer = null;
     ch.hydrating = null;
     ch.filled = ch.end;         // чанк заполнен целиком
+    ch.filledHi = ch.end;
 
     // Карточки взяты под наблюдение сразу при вставке (observeNewGridCards),
     // полный обход сетки здесь больше не нужен — он и был главной работой,
@@ -2902,6 +3046,19 @@ function trimGridChunks() {
         return;
     }
 
+    // Пауза между нажатиями — ещё не тишина (см. CHUNK_TRIM_QUIET_MS): ждём,
+    // пока зритель остановится, и не сворачиваем в одном кадре с разворотом.
+    // Предел живых чанков снимает ожидание паузы, но не разворот.
+    var hydratingNow = false;
+    // По всем чанкам, а не по live: разворачиваемый ещё держит распорку
+    for (var h = 0; h < chunks.length; h++) if (chunks[h].hydrating) { hydratingNow = true; break; }
+    var overCap = live.length > CHUNK_HYDRATED_MAX + CHUNK_TRIM_FORCE_EXTRA;
+    var sinceKey = Date.now() - (window.navStreakAt || 0);
+    if (hydratingNow || (!overCap && sinceKey < CHUNK_TRIM_QUIET_MS)) {
+        scheduleChunkTrim();
+        return;
+    }
+
     var anchors = anchorChunkIndexes();
     if (!anchors.length) return;    // не от чего отсчитывать «далёкий» чанк
 
@@ -2986,6 +3143,7 @@ function ensureChunksAroundFocus(card) {
     var size = catalogState.chunkSize || getChunkSize();
     var here = Math.floor(idx / size);
     var grew = false;
+    catalogState.chunkFocusIdx = idx;   // для isHydrationUrgent
 
     for (var i = here - 1; i <= here + 1; i++) {
         if (i < 0 || i >= chunks.length) continue;
