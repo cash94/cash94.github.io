@@ -792,6 +792,10 @@
     var ring = el('home-hero-ring');
     if (ring) ring.hidden = true;
   }
+  function focusedIsHomeCard() {
+    var f = document.querySelector('.focused');
+    return !!(f && findCardPosition(f));
+  }
   function focusedIsHeroCard() {
     var f = document.querySelector('.focused');
     if (!f || !f.dataset || !findCardPosition(f)) return false;
@@ -891,7 +895,7 @@
     }
     var media = el('home-hero-media');
     if (!media) return;
-    stopHeroTrailer();
+    stopHeroTrailer(true);
     hideHeroRing();
     var video = document.createElement('video');
     video.id = 'home-hero-video';
@@ -909,7 +913,7 @@
     homeState.hero.video = video;
     var volumeStarted = false;
     function startVolumeFade() {
-      if (volumeStarted) return;
+      if (volumeStarted || homeState.hero.video !== video) return;
       volumeStarted = true;
       try {
         video.muted = false;
@@ -959,6 +963,7 @@
       hls.loadSource(hlsUrl(url));
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, function () {
+        if (homeState.hero.video !== video) return;
         video.play().catch(function () {});
       });
       homeState.hero.hls = hls;
@@ -985,7 +990,12 @@
         return;
       }
       if (isHomeVisible() && !playerBusy() && focusedIsHeroCard()) return;
-      suspendHero();
+      if (homeState.hero.timer && isHomeVisible() && !playerBusy() && focusedIsHomeCard()) {
+        stopHeroTrailer();
+        resetHeroRing();
+        return;
+      }
+      suspendHero(!isHomeVisible() || playerBusy());
     }, HOME.WATCHDOG_MS);
   }
   function stopHeroWatchdog() {
@@ -994,42 +1004,80 @@
       homeState.hero.watchdog = null;
     }
   }
-  function destroyHlsLater(hls) {
-    var run = function () {
-      try {
+  var heroTeardownQueue = [];
+  var heroTeardownJob = false;
+  function queueHeroTeardown(video, hls) {
+    if (hls) {
+      heroTeardownQueue.push(function () {
+        hls.stopLoad();
+      });
+      heroTeardownQueue.push(function () {
+        hls.detachMedia();
+      });
+      heroTeardownQueue.push(function () {
         hls.destroy();
-      } catch (e) {}
+      });
+    }
+    if (video) {
+      heroTeardownQueue.push(function () {
+        if (!video.hasAttribute('src') && !video.currentSrc) return;
+        video.removeAttribute('src');
+        video.load();
+      });
+    }
+    scheduleHeroTeardown();
+  }
+  function scheduleHeroTeardown() {
+    if (heroTeardownJob || !heroTeardownQueue.length) return;
+    heroTeardownJob = true;
+    var run = function (deadline) {
+      heroTeardownJob = false;
+      if (window.navHold && !(deadline && deadline.didTimeout)) {
+        scheduleHeroTeardown();
+        return;
+      }
+      var step = heroTeardownQueue.shift();
+      if (step) {
+        try {
+          step();
+        } catch (e) {}
+      }
+      scheduleHeroTeardown();
     };
     if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, {
       timeout: 1500
     });else setTimeout(run, 600);
   }
-  function stopHeroTrailer() {
+  function flushHeroTeardown() {
+    while (heroTeardownQueue.length) {
+      try {
+        heroTeardownQueue.shift()();
+      } catch (e) {}
+    }
+  }
+  function stopHeroTrailer(now) {
     stopHeroWatchdog();
     var hero = el('home-hero');
     if (hero) hero.classList.remove('home-hero-playing');
-    if (homeState.hero.hls) {
-      destroyHlsLater(homeState.hero.hls);
-      homeState.hero.hls = null;
-    }
+    var hls = homeState.hero.hls;
+    homeState.hero.hls = null;
     var video = homeState.hero.video || el('home-hero-video');
+    homeState.hero.video = null;
     if (video) {
       if (video._volumeTimer) {
         clearInterval(video._volumeTimer);
         video._volumeTimer = null;
       }
       try {
+        video.muted = true;
         video.pause();
-      } catch (e) {}
-      video.removeAttribute('src');
-      try {
-        video.load();
       } catch (e) {}
       if (video.parentNode) video.parentNode.removeChild(video);
     }
-    homeState.hero.video = null;
+    if (hls || video) queueHeroTeardown(video, hls);
+    if (now) flushHeroTeardown();
   }
-  function suspendHero() {
+  function suspendHero(now) {
     homeState.hero.gen++;
     if (homeState.hero.timer) {
       clearTimeout(homeState.hero.timer);
@@ -1038,7 +1086,7 @@
     homeState.hero.key = null;
     homeState.hero.pendingKey = null;
     resetHeroRing();
-    stopHeroTrailer();
+    stopHeroTrailer(now);
   }
   function rearmHeroTrailer() {
     if (!isHomeVisible() || !heroTrailersOn()) return;
@@ -1814,7 +1862,7 @@
     });
     document.addEventListener('visibilitychange', function () {
       if (document.hidden) {
-        suspendHero();
+        suspendHero(true);
         return;
       }
       if (!isHomeVisible()) return;
@@ -1824,7 +1872,7 @@
     var origStartPlayback = window.startHLSPlayback;
     if (typeof origStartPlayback === 'function') {
       window.startHLSPlayback = function () {
-        suspendHero();
+        suspendHero(true);
         return origStartPlayback.apply(this, arguments);
       };
     }
@@ -2085,7 +2133,8 @@
     var mc = el('main-container');
     if (!mc) return;
     mc.addEventListener('scroll', function () {
-      if (mc.scrollTop && isHomeFocusable()) mc.scrollTop = 0;
+      if (!window.AppState || AppState.currentScreen !== 'home') return;
+      if (isHomeFocusable() && mc.scrollTop) mc.scrollTop = 0;
     }, {
       passive: true
     });

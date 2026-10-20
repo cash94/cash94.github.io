@@ -9,6 +9,7 @@ var CATALOG_CONSTANTS = {
   MAX_POSTER_CACHE: 400,
   MAX_DETAIL_HISTORY: 50,
   POSTER_BATCH_SIZE: 15,
+  POSTER_DEFERRED_PER_FRAME: 3,
   TMDB_MAX_CACHE_SIZE: 10,
   TMDB_CLEANUP_INTERVAL_MS: 300000,
   MAX_ACTORS: 12,
@@ -31,6 +32,7 @@ var CATALOG_CONSTANTS = {
   POSTER_LOAD_TIMEOUT_MS: 12000,
   POSTER_DECODE_GRACE_MS: 1500,
   POSTER_FADE_MS: 380,
+  POSTER_FADE_QUIET_MS: 1200,
   VISIBILITY_WINDOW_ROWS: 2,
   VISIBILITY_FALLBACK_MARGIN_PX: 800,
   DETAIL_BACKDROP_TRIES: 5,
@@ -1884,7 +1886,7 @@ function createCardElement(config) {
     var showPoster = function () {
       queuePosterReveal(function () {
         if (!img.isConnected) return;
-        img.classList.add('loaded');
+        showPosterImg(img);
         var ph = poster.querySelector('.no-poster');
         if (ph) dropPosterPlaceholder(ph);
       });
@@ -2716,7 +2718,7 @@ function flushDeferredPosters() {
   pending.sort(function (a, b) {
     return a - b;
   });
-  var chunk = pending.splice(0, CATALOG_CONSTANTS.POSTER_BATCH_SIZE);
+  var chunk = pending.splice(0, CATALOG_CONSTANTS.POSTER_DEFERRED_PER_FRAME);
   var slow = [];
   for (var i = 0; i < chunk.length; i++) {
     if (!catalogState.items[chunk[i]]) continue;
@@ -2751,11 +2753,7 @@ function requestGridPoster(idx, card) {
       catalogState.posterObserver.unobserve(card);
     } catch (e) {}
   }
-  if (isGridNavBusy()) {
-    deferPosterUntilScrollEnds(idx);
-    return;
-  }
-  if (!loadPosterDirect(idx, card)) addToPosterQueue(idx);
+  deferPosterUntilScrollEnds(idx);
 }
 function preloadGridPostersAhead(card) {
   if (!card || !card.dataset || !catalogState.items.length) return;
@@ -3011,7 +3009,7 @@ function updatePosterDOM(div, rating, url) {
   function reveal() {
     queuePosterReveal(function () {
       if (!img.isConnected) return;
-      img.classList.add('loaded');
+      showPosterImg(img);
       if (placeholder) dropPosterPlaceholder(placeholder);
     });
   }
@@ -3032,6 +3030,13 @@ function updatePosterDOM(div, rating, url) {
       div.innerHTML = '<div class="no-poster">Нет постера</div>';
     }
   };
+}
+function showPosterImg(img) {
+  var quiet = Date.now() - (window.navStreakAt || 0);
+  if (window.navHold || quiet < CATALOG_CONSTANTS.POSTER_FADE_QUIET_MS) {
+    img.classList.add('poster-instant');
+  }
+  img.classList.add('loaded');
 }
 function dropPosterPlaceholder(placeholder) {
   setTimeout(function () {
@@ -5171,7 +5176,7 @@ function flushPosterRevealBatch() {
   requestAnimationFrame(function () {
     for (var i = 0; i < items.length; i++) {
       if (!items[i].img.isConnected) continue;
-      items[i].img.classList.add('loaded');
+      showPosterImg(items[i].img);
       if (items[i].ph) dropPosterPlaceholder(items[i].ph);
     }
   });

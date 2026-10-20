@@ -18,6 +18,9 @@ var CATALOG_CONSTANTS = {
     // всегда промахивался и URL постера каждый раз запрашивался у воркера.
     MAX_DETAIL_HISTORY: 50,
     POSTER_BATCH_SIZE: 15,
+    // Сколько отложенных постеров сетки отдавать в загрузку за кадр
+    // (flushDeferredPosters). Не POSTER_BATCH_SIZE: см. там.
+    POSTER_DEFERRED_PER_FRAME: 3,
     TMDB_MAX_CACHE_SIZE: 10,
     TMDB_CLEANUP_INTERVAL_MS: 300000,   // 5 минут
     MAX_ACTORS: 12,
@@ -83,6 +86,9 @@ var CATALOG_CONSTANTS = {
     // Длительность проявления постера. Держать в согласии с transition
     // у .catalog-poster-img в styles.css — по ней снимается скелет под ним.
     POSTER_FADE_MS: 380,
+    // Столько тишины после последнего шага пульта, чтобы постер проявлялся
+    // переходом, а не появлялся сразу (см. showPosterImg)
+    POSTER_FADE_QUIET_MS: 1200,
     VISIBILITY_WINDOW_ROWS: 2,          // сколько строк «запаса» держим отрисованными
     VISIBILITY_FALLBACK_MARGIN_PX: 800, // если высоту строки измерить не удалось
     // Фон детального просмотра: сколько зеркал TMDB пробуем на один путь
@@ -2089,7 +2095,7 @@ function createCardElement(config) {
         var showPoster = function () {
             queuePosterReveal(function () {
                 if (!img.isConnected) return;
-                img.classList.add('loaded');
+                showPosterImg(img);
                 var ph = poster.querySelector('.no-poster');
                 if (ph) dropPosterPlaceholder(ph);
             });
@@ -3422,15 +3428,24 @@ function deferredPostersStep() {
 
 /**
  * Отдаёт отложенное в обычный конвейер: быстрый путь вставляет картинку сразу,
- * остальное уходит в очередь. Порциями по POSTER_BATCH_SIZE за кадр — за долгую
- * прокрутку накапливается больше карточек, чем стоит вставлять в один кадр.
+ * остальное уходит в очередь. Порциями по POSTER_DEFERRED_PER_FRAME за кадр —
+ * за долгую прокрутку накапливается больше карточек, чем стоит вставлять в
+ * один кадр.
+ *
+ * Порция маленькая, потому что дорог сам СТАРТ загрузки, а не вставка узла:
+ * img.src запускает запрос (ResourceFetcher::requestResource) в микрозадаче
+ * того же кадра, и на эмуляторе Android TV это 5–7 мс на картинку. Порция в
+ * POSTER_BATCH_SIZE = 15 давала кадры по 30–50 мс ровно в паузе между
+ * нажатиями — на следующем шаге это виден рывок. По три за кадр отставание
+ * в 15 карточек уходит за пять кадров, и каждый следующий кадр заново
+ * спрашивает isGridNavBusy: зритель нажал снова — остаток ждёт.
  */
 function flushDeferredPosters() {
     var pending = catalogState.posterDeferred;
     if (!pending.length) return;
 
     pending.sort(function (a, b) { return a - b; });   // сверху вниз, как читают
-    var chunk = pending.splice(0, CATALOG_CONSTANTS.POSTER_BATCH_SIZE);
+    var chunk = pending.splice(0, CATALOG_CONSTANTS.POSTER_DEFERRED_PER_FRAME);
 
     var slow = [];
     for (var i = 0; i < chunk.length; i++) {
@@ -3479,9 +3494,12 @@ function requestGridPoster(idx, card) {
         try { catalogState.posterObserver.unobserve(card); } catch (e) { }
     }
 
-    if (isGridNavBusy()) { deferPosterUntilScrollEnds(idx); return; }
-    // Есть poster_path — вставляем сразу; в очередь только медленный путь
-    if (!loadPosterDirect(idx, card)) addToPosterQueue(idx);
+    // Всегда через отложенную очередь, даже когда навигация стоит: она отдаёт
+    // постеры по POSTER_DEFERRED_PER_FRAME за кадр. Сюда приходят пачками —
+    // наблюдатель сообщает о целой строке, preloadGridPostersAhead зовёт до
+    // полутора десятков карточек разом, — и прямая вставка запускала столько же
+    // загрузок в одной задаче (см. flushDeferredPosters). Задержка — кадр-два.
+    deferPosterUntilScrollEnds(idx);
 }
 
 /**
@@ -3858,7 +3876,7 @@ function updatePosterDOM(div, rating, url) {
     function reveal() {
         queuePosterReveal(function () {
             if (!img.isConnected) return;
-            img.classList.add('loaded');
+            showPosterImg(img);
             if (placeholder) dropPosterPlaceholder(placeholder);
         });
     }
@@ -3885,6 +3903,32 @@ function updatePosterDOM(div, rating, url) {
             div.innerHTML = '<div class="no-poster">Нет постера</div>';
         }
     };
+}
+
+/**
+ * Показать готовый постер: класс loaded снимает opacity: 0.
+ *
+ * Переходом — только если пульт молчит POSTER_FADE_QUIET_MS. Иначе постер
+ * появляется сразу (poster-instant в styles.css).
+ *
+ * Почему: в Chrome 66 переход opacity — это анимация на композиторе, и на
+ * время каждого проявления картинка поднимается в отдельный слой, а по
+ * окончании опускается обратно. Оба раза браузер перестраивает дерево слоёв
+ * (UpdateLayerTree) и перерисовывает карточку в новом слое. Проявления и так
+ * ждут паузы в навигации (pumpPosterReveals), но пауза между нажатиями короче
+ * самого перехода в 380 мс, и при листании рядов их шло по три-шесть
+ * одновременно — ровно в момент следующего шага. Замер на эмуляторе Android TV
+ * (20 шагов по рядам): кадров дольше 50 мс 73 → 35, длинных задач 36 → 13.
+ *
+ * Пока фокус движется, карточки и так едут, и плавности появления не видно;
+ * когда зритель остановился, постеры снова проявляются кроссфейдом.
+ */
+function showPosterImg(img) {
+    var quiet = Date.now() - (window.navStreakAt || 0);
+    if (window.navHold || quiet < CATALOG_CONSTANTS.POSTER_FADE_QUIET_MS) {
+        img.classList.add('poster-instant');
+    }
+    img.classList.add('loaded');
 }
 
 /**
@@ -6924,7 +6968,7 @@ function flushPosterRevealBatch() {
     requestAnimationFrame(function () {
         for (var i = 0; i < items.length; i++) {
             if (!items[i].img.isConnected) continue;
-            items[i].img.classList.add('loaded');
+            showPosterImg(items[i].img);
             if (items[i].ph) dropPosterPlaceholder(items[i].ph);
         }
     });

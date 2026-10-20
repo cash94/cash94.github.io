@@ -5318,6 +5318,14 @@ article {
     opacity: 1;
 }
 
+/* Постер, показанный посреди навигации, — без перехода: каждое проявление
+   переходом поднимало картинку в свой слой композитора и перестраивало дерево
+   слоёв прямо во время следующего шага (см. showPosterImg в catalog.js) */
+.catalog-poster-img.poster-instant,
+.row-poster-img>img.poster-instant {
+    transition: none;
+}
+
 /* contain: layout на .torrent-poster уже делает её содержащим блоком, но на
    Chrome 66 (Vidaa) свойства contain нет — там нужен явный position */
 .row-poster-img {

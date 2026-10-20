@@ -1032,6 +1032,12 @@
         if (ring) ring.hidden = true;
     }
 
+    /** Фокус на какой-нибудь карточке ряда главной */
+    function focusedIsHomeCard() {
+        var f = document.querySelector('.focused');
+        return !!(f && findCardPosition(f));
+    }
+
     /** Фокус всё ещё на той карточке, чей элемент показан в баннере */
     function focusedIsHeroCard() {
         var f = document.querySelector('.focused');
@@ -1143,7 +1149,9 @@
         var media = el('home-hero-media');
         if (!media) return;
 
-        stopHeroTrailer();
+        // Прошлый трейлер, если его разбор ещё ждёт простоя, добиваем сейчас:
+        // отсчёт кругляшка — не прокрутка, а два видео на один декодер — лишнее
+        stopHeroTrailer(true);
         hideHeroRing();
 
         var video = document.createElement('video');
@@ -1166,7 +1174,8 @@
         // Звук поднимаем с нуля: автозапуск со звуком браузер не разрешит
         var volumeStarted = false;
         function startVolumeFade() {
-            if (volumeStarted) return;
+            // pause() в stopHeroTrailer шлёт timeupdate уже снятому видео
+            if (volumeStarted || homeState.hero.video !== video) return;
             volumeStarted = true;
             try { video.muted = false; video.volume = 0; } catch (e) { }
             var vol = 0;
@@ -1218,6 +1227,9 @@
             hls.loadSource(hlsUrl(url));
             hls.attachMedia(video);
             hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                // Трейлер могли снять раньше, чем пришёл манифест: hls.js разбирают
+                // на простое (queueHeroTeardown), и до того манифест ещё может прийти
+                if (homeState.hero.video !== video) return;
                 video.play().catch(function () { });
             });
             homeState.hero.hls = hls;
@@ -1261,7 +1273,19 @@
         homeState.hero.watchdog = setInterval(function () {
             if (!homeState.hero.video) { stopHeroWatchdog(); return; }
             if (isHomeVisible() && !playerBusy() && focusedIsHeroCard()) return;
-            suspendHero();
+            // Фокус переехал на другую карточку, а её дебаунс ещё не истёк:
+            // suspendHero снял бы таймер setHeroItem вместе с pendingKey, и
+            // applyHero для новой карточки не выполнился бы — баннер так и
+            // остался бы на прошлом элементе без кругляшка. Гасим только трейлер,
+            // остальное сделает applyHero по таймеру
+            if (homeState.hero.timer && isHomeVisible() && !playerBusy() && focusedIsHomeCard()) {
+                stopHeroTrailer();
+                resetHeroRing();
+                return;
+            }
+            // Фокус просто ушёл с карточки — разбор на простой; главную закрыл
+            // плеер или оверлей — декодер нужен им, отдаём сразу
+            suspendHero(!isHomeVisible() || playerBusy());
         }, HOME.WATCHDOG_MS);
     }
 
@@ -1273,38 +1297,86 @@
     }
 
     /**
-     * hls.destroy() синхронно отцепляет MediaSource и чистит буферы — ~50 мс
-     * на ПК, в разы дольше на ТВ. Зовётся он при смене карточки, то есть ровно
-     * посреди прокрутки ряда, и замораживал её. Видео уже остановлено и убрано
-     * из разметки (stopHeroTrailer) — звука и картинки нет, так что сам разбор
-     * откладываем на простой.
+     * Разбор отыгравшего трейлера — очередь шагов, по одному на простой.
+     * Останавливают трейлер при смене карточки, то есть посреди прокрутки ряда,
+     * а дорогие тут две вещи: video.load() (освобождает декодер, на эмуляторе
+     * Android TV 10–40 мс) и hls.destroy() (отцепляет MediaSource и разбирает
+     * десяток контроллеров — 30–50 мс одной задачей). Звук и картинку
+     * stopHeroTrailer гасит сразу (pause + снятие из разметки), так что
+     * остальное ждёт простоя, причём каждый шаг — отдельной задачей. Докачку
+     * фрагмента, начатую до stopLoad, hls.js доведёт в пустой буфер — это
+     * дешевле, чем обрывать её посреди прокрутки.
+     * Пока держат стрелку (navHold), шаги не трогаем: сработают после, а
+     * timeout не даёт очереди висеть дольше полутора секунд.
      */
-    function destroyHlsLater(hls) {
-        var run = function () { try { hls.destroy(); } catch (e) { } };
+    var heroTeardownQueue = [];
+    var heroTeardownJob = false;
+
+    function queueHeroTeardown(video, hls) {
+        if (hls) {
+            // stopLoad тоже не бесплатный (обрыв загрузок, сброс трансмуксера —
+            // до 30 мс на эмуляторе), поэтому и он в очереди, а не в кадре смены.
+            // detachMedia сам снимает src и зовёт load() — декодер уходит здесь
+            heroTeardownQueue.push(function () { hls.stopLoad(); });
+            heroTeardownQueue.push(function () { hls.detachMedia(); });
+            heroTeardownQueue.push(function () { hls.destroy(); });
+        }
+        if (video) {
+            // Прямой src (без hls.js) или detachMedia не сработал — декодер
+            // держит сам элемент, освобождаем его вручную
+            heroTeardownQueue.push(function () {
+                if (!video.hasAttribute('src') && !video.currentSrc) return;
+                video.removeAttribute('src');
+                video.load();
+            });
+        }
+        scheduleHeroTeardown();
+    }
+
+    function scheduleHeroTeardown() {
+        if (heroTeardownJob || !heroTeardownQueue.length) return;
+        heroTeardownJob = true;
+        var run = function (deadline) {
+            heroTeardownJob = false;
+            if (window.navHold && !(deadline && deadline.didTimeout)) { scheduleHeroTeardown(); return; }
+            var step = heroTeardownQueue.shift();
+            if (step) { try { step(); } catch (e) { } }
+            scheduleHeroTeardown();
+        };
         if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 1500 });
         else setTimeout(run, 600);
     }
 
-    function stopHeroTrailer() {
+    /**
+     * Разобрать всё немедленно. Перед плеером и уходом в фон: декодеров на ТВ
+     * мало, и внешний плеер Android их делит с WebView, а простоя в фоне
+     * (pauseTimers) можно не дождаться вовсе. Перед новым трейлером — чтобы
+     * два видео не держали декодер одновременно.
+     */
+    function flushHeroTeardown() {
+        while (heroTeardownQueue.length) {
+            try { heroTeardownQueue.shift()(); } catch (e) { }
+        }
+    }
+
+    function stopHeroTrailer(now) {
         stopHeroWatchdog();
         var hero = el('home-hero');
         if (hero) hero.classList.remove('home-hero-playing');
-        if (homeState.hero.hls) {
-            destroyHlsLater(homeState.hero.hls);
-            homeState.hero.hls = null;
-        }
+        var hls = homeState.hero.hls;
+        homeState.hero.hls = null;
         var video = homeState.hero.video || el('home-hero-video');
+        homeState.hero.video = null;
         if (video) {
             if (video._volumeTimer) {
                 clearInterval(video._volumeTimer);
                 video._volumeTimer = null;
             }
-            try { video.pause(); } catch (e) { }
-            video.removeAttribute('src');
-            try { video.load(); } catch (e) { }
+            try { video.muted = true; video.pause(); } catch (e) { }
             if (video.parentNode) video.parentNode.removeChild(video);
         }
-        homeState.hero.video = null;
+        if (hls || video) queueHeroTeardown(video, hls);
+        if (now) flushHeroTeardown();
     }
 
     /**
@@ -1312,14 +1384,15 @@
      * разом. Ключ элемента забываем: вернёмся — setHeroItem сравнивает новый
      * ключ с pendingKey, и без сброса тот же самый элемент не завёл бы отсчёт
      * заново (баннер остался бы картинкой без кругляшка).
+     * now — разобрать видео немедленно, а не на простое (см. flushHeroTeardown).
      */
-    function suspendHero() {
+    function suspendHero(now) {
         homeState.hero.gen++;
         if (homeState.hero.timer) { clearTimeout(homeState.hero.timer); homeState.hero.timer = null; }
         homeState.hero.key = null;
         homeState.hero.pendingKey = null;
         resetHeroRing();
-        stopHeroTrailer();
+        stopHeroTrailer(now);
     }
 
     /**
@@ -2376,7 +2449,7 @@
         // 4. Экран ушёл в фон (переключили вход, свернули браузер) — звук
         //    трейлера в фоне не нужен. Вернулись — заводим отсчёт заново.
         document.addEventListener('visibilitychange', function () {
-            if (document.hidden) { suspendHero(); return; }
+            if (document.hidden) { suspendHero(true); return; }
             if (!isHomeVisible()) return;
             var f = document.querySelector('.focused');
             if (f && findCardPosition(f)) setHeroFromCard(f);
@@ -2390,7 +2463,7 @@
         var origStartPlayback = window.startHLSPlayback;
         if (typeof origStartPlayback === 'function') {
             window.startHLSPlayback = function () {
-                suspendHero();
+                suspendHero(true);
                 return origStartPlayback.apply(this, arguments);
             };
         }
@@ -2748,12 +2821,19 @@
      * может сдвинуть не только палец, но и доводка фокуса (focusEl) к карточке
      * у нижнего края. Только для активной главной — карточка фильма и другие
      * экраны прокручивают тот же #main-container.
+     *
+     * Сначала экран, потом scrollTop: чтение scrollTop посреди прокрутки — это
+     * принудительный пересчёт стилей и раскладки, а событие scroll приходит на
+     * каждом кадре твина и в каталоге, и в сетке категории. Замер на эмуляторе
+     * Android TV: в сетке так набегало ~180 мс вынужденных Layout/Recalc Style
+     * за 30 шагов — на экране, где этот обработчик ничего не делает.
      */
     function lockHomeScroll() {
         var mc = el('main-container');
         if (!mc) return;
         mc.addEventListener('scroll', function () {
-            if (mc.scrollTop && isHomeFocusable()) mc.scrollTop = 0;
+            if (!window.AppState || AppState.currentScreen !== 'home') return;
+            if (isHomeFocusable() && mc.scrollTop) mc.scrollTop = 0;
         }, { passive: true });
     }
 
