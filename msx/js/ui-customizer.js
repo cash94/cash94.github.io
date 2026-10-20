@@ -589,7 +589,10 @@
             (Math.max(ratingSize, typeSize) + 14) + 'px!important;}');
 
         // 6. Рейтинги / год
-        if (!currentSettings.showRatings) css.push('.rating-badge{display:none!important;}');
+        // У «похожих» в карточке фильма в полосе только оценка — без неё
+        // гасим полосу целиком, иначе под постером висела бы пустая плашка
+        if (!currentSettings.showRatings) css.push('.rating-badge,' +
+            '.catalog-recommendation-card .poster-bar{display:none!important;}');
         // .catalog-badge — год у карточек рядов, .poster-year — у карточек сетки
         if (!currentSettings.showYear) css.push('.catalog-badge,.card-modern .poster-year{display:none!important;}');
 

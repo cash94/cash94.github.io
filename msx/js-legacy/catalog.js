@@ -3675,10 +3675,7 @@ function buildRecommendationCard() {
   bar.className = 'poster-bar';
   var rating = document.createElement('span');
   rating.className = 'rating-badge';
-  var type = document.createElement('span');
-  type.className = 'torrent-badge';
   bar.appendChild(rating);
-  bar.appendChild(type);
   img.onload = function () {
     img.classList.remove('hidden');
     noPoster.classList.add('hidden');
@@ -3703,7 +3700,7 @@ function buildRecommendationCard() {
   card._img = img;
   card._placeholder = noPoster;
   card._rating = rating;
-  card._type = type;
+  card._bar = bar;
   card._title = titleText;
   card._year = year;
   return card;
@@ -3789,10 +3786,10 @@ function renderDetailRecommendations(src, rw, mt) {
     card.dataset.mediaType = mt;
     card.dataset.title = title;
     card._title.textContent = title;
-    card._type.textContent = mt === 'tv' ? 'Сериал' : 'Фильм';
     var rating = r.vote_average ? Math.round(r.vote_average * 10) / 10 : 0;
     card._rating.textContent = rating ? rating : '';
     card._rating.style.color = rating ? getRatingColor(rating) : '';
+    card._bar.classList.toggle('hidden', !rating);
     var date = r.release_date || r.first_air_date;
     card._year.textContent = date ? String(date).substring(0, 4) : '';
     setDetailCardPoster(card, r.poster_path ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL) : '');

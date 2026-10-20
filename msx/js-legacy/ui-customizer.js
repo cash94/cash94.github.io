@@ -400,7 +400,7 @@
     css.push(':root{--topbar-scale:' + topbarScale / 100 + ';}');
     css.push(':root{--settings-zoom:' + (1.2 * settingsScale / 100).toFixed(3) + ';}');
     css.push('.card-modern .poster-bar{height:' + (Math.max(ratingSize, typeSize) + 14) + 'px!important;}');
-    if (!currentSettings.showRatings) css.push('.rating-badge{display:none!important;}');
+    if (!currentSettings.showRatings) css.push('.rating-badge,' + '.catalog-recommendation-card .poster-bar{display:none!important;}');
     if (!currentSettings.showYear) css.push('.catalog-badge,.card-modern .poster-year{display:none!important;}');
     if (bright !== BRIGHTNESS.normal) {
       css.push('.torrent-poster img,.row-poster-img>img,img.catalog-poster-img{filter:brightness(' + bright + ')!important;}');

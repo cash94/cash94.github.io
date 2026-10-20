@@ -4722,8 +4722,8 @@ function buildActorCard() {
 
 /**
  * Пустая карточка «похожего» — та же разметка, что у карточки сетки каталога
- * (getCardTemplate): год плашкой в углу постера, оценка и тип в полосе внизу,
- * название одной строкой под постером. Оформление и кольцо фокуса даёт класс
+ * (getCardTemplate): год плашкой в углу постера, оценка в полосе внизу,
+ * название одной строкой под постером. Типа («Фильм»/«Сериал») в полосе нет. Оформление и кольцо фокуса даёт класс
  * card-modern (styles.css), цвет кольца — ui-customizer.js.
  *
  * torrent-card не ставим намеренно: это общий класс карточек торрентов и
@@ -4745,14 +4745,12 @@ function buildRecommendationCard() {
     noPoster.textContent = 'Нет постера';
     var year = document.createElement('div');
     year.className = 'poster-year';
+    // В полосе только оценка: подписи «Фильм»/«Сериал», как в сетке, здесь нет
     var bar = document.createElement('div');
     bar.className = 'poster-bar';
     var rating = document.createElement('span');
     rating.className = 'rating-badge';
-    var type = document.createElement('span');
-    type.className = 'torrent-badge';
     bar.appendChild(rating);
-    bar.appendChild(type);
     img.onload = function () { img.classList.remove('hidden'); noPoster.classList.add('hidden'); };
     img.onerror = function () { img.classList.add('hidden'); noPoster.classList.remove('hidden'); };
     posterBox.appendChild(img);
@@ -4774,7 +4772,7 @@ function buildRecommendationCard() {
     card._img = img;
     card._placeholder = noPoster;
     card._rating = rating;
-    card._type = type;
+    card._bar = bar;
     card._title = titleText;
     card._year = year;
     return card;
@@ -4905,12 +4903,13 @@ function renderDetailRecommendations(src, rw, mt) {
         card.dataset.mediaType = mt;
         card.dataset.title = title;
         card._title.textContent = title;
-        card._type.textContent = mt === 'tv' ? 'Сериал' : 'Фильм';
 
-        // Пустые плашки прячет :empty (styles.css), как в сетке каталога
+        // Пустую плашку года прячет :empty (styles.css), как в сетке каталога.
+        // Полосу без оценки гасим целиком: кроме оценки в ней ничего нет
         var rating = r.vote_average ? Math.round(r.vote_average * 10) / 10 : 0;
         card._rating.textContent = rating ? rating : '';
         card._rating.style.color = rating ? getRatingColor(rating) : '';
+        card._bar.classList.toggle('hidden', !rating);
 
         var date = r.release_date || r.first_air_date;
         card._year.textContent = date ? String(date).substring(0, 4) : '';
