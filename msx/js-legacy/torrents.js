@@ -4179,6 +4179,32 @@ function buildJacredSearchUrl(query, hints) {
   };
 }
 window.buildJacredSearchUrl = buildJacredSearchUrl;
+var JACRED_SIGN_TIMEOUT_MS = 2000;
+function signJacredSearchUrl(url, host, query) {
+  var name = String(host || '').toLowerCase().replace(/:\d+$/, '');
+  if (!/(^|\.)jac\.red$/.test(name)) return Promise.resolve(url);
+  var ctrl = null;
+  try {
+    ctrl = new AbortController();
+  } catch (e) {
+    ctrl = null;
+  }
+  var timer = setTimeout(function () {
+    if (ctrl) ctrl.abort();
+  }, JACRED_SIGN_TIMEOUT_MS);
+  return fetch('/api/search-sign?q=' + encodeURIComponent(String(query).trim()), ctrl ? {
+    signal: ctrl.signal
+  } : {}).then(function (r) {
+    return r.ok ? r.json() : null;
+  }).then(function (d) {
+    clearTimeout(timer);
+    return d && d.token ? url + '&ts=' + encodeURIComponent(d.token) : url;
+  }).catch(function () {
+    clearTimeout(timer);
+    return url;
+  });
+}
+window.signJacredSearchUrl = signJacredSearchUrl;
 function searchTorrentsLegacy(_x22) {
   return _searchTorrentsLegacy.apply(this, arguments);
 }
@@ -4202,6 +4228,7 @@ function _searchTorrentsLegacy() {
     try {
       var response;
       try {
+        searchUrl = yield signJacredSearchUrl(searchUrl, jacDefault, query);
         response = yield fetch(searchUrl, {
           signal: timeoutController.signal
         });

@@ -54,6 +54,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       try {
         var response;
         try {
+          if (typeof window.signJacredSearchUrl === 'function') {
+            searchUrl = yield window.signJacredSearchUrl(searchUrl, jacDefault, query);
+          }
           response = yield fetch(searchUrl, {
             signal: controller.signal
           });

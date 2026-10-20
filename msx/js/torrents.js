@@ -5340,6 +5340,46 @@ function buildJacredSearchUrl(query, hints) {
 }
 window.buildJacredSearchUrl = buildJacredSearchUrl;
 
+/**
+ * Адрес поиска в jac.red с подписью запроса (параметр ts) — по ней jac.red
+ * отличает TorrStream от чужих клиентов.
+ *
+ * Подпись выдаёт свой сервер (routes/search-sign.js): ключа в клиенте нет, весь
+ * JS открыто лежит на зеркале. Параметр, а не свой заголовок: заголовок
+ * вынуждает браузер перед каждым поиском спрашивать разрешения (OPTIONS), а
+ * jac.red считает это в лимит частоты, и сам поиск следом получал 429.
+ * Только для jac.red: другим Jacred подпись ни к чему.
+ *
+ * Не ответил свой сервер (старая сборка без маршрута, сеть) — ищем без
+ * подписи, как раньше: поиск важнее.
+ *
+ * @param {string} url адрес из buildJacredSearchUrl
+ * @param {string} host хост Jacred оттуда же
+ * @param {string} query строка поиска — та же, что ушла в параметр Query
+ * @returns {Promise<string>} адрес для fetch
+ */
+var JACRED_SIGN_TIMEOUT_MS = 2000;
+
+function signJacredSearchUrl(url, host, query) {
+    var name = String(host || '').toLowerCase().replace(/:\d+$/, '');
+    if (!/(^|\.)jac\.red$/.test(name)) return Promise.resolve(url);
+
+    var ctrl = null;
+    try { ctrl = new AbortController(); } catch (e) { ctrl = null; }
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, JACRED_SIGN_TIMEOUT_MS);
+    return fetch('/api/search-sign?q=' + encodeURIComponent(String(query).trim()), ctrl ? { signal: ctrl.signal } : {})
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+            clearTimeout(timer);
+            return d && d.token ? url + '&ts=' + encodeURIComponent(d.token) : url;
+        })
+        .catch(function () {
+            clearTimeout(timer);
+            return url;
+        });
+}
+window.signJacredSearchUrl = signJacredSearchUrl;
+
 async function searchTorrentsLegacy(query) {
     if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
     var target = buildJacredSearchUrl(query);
@@ -5359,6 +5399,7 @@ async function searchTorrentsLegacy(query) {
         // ничего не находил.
         var response;
         try {
+            searchUrl = await signJacredSearchUrl(searchUrl, jacDefault, query);
             response = await fetch(searchUrl, { signal: timeoutController.signal });
         } catch (netError) {
             if (timedOut) throw new JacredUnavailableError(jacDefault, 'нет ответа за ' + JACRED_TIMEOUT_MS + ' мс', true);

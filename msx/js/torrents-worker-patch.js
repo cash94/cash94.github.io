@@ -83,6 +83,11 @@
             // вовсе — поиск просто молча ничего не находил.
             var response;
             try {
+                // Подпись для jac.red (torrents.js: signJacredSearchUrl). Старая
+                // сборка torrents.js с зеркала её не знает — ищем без неё
+                if (typeof window.signJacredSearchUrl === 'function') {
+                    searchUrl = await window.signJacredSearchUrl(searchUrl, jacDefault, query);
+                }
                 response = await fetch(searchUrl, { signal: controller.signal });
             } catch (netError) {
                 if (timedOut) throw makeJacredError(jacDefault, 'нет ответа за ' + jacredTimeoutMs() + ' мс', true);
