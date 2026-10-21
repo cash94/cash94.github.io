@@ -755,7 +755,6 @@ if (window.Nav) {
 function restoreFocusAfterNavigation(returnTo, context) {
   if (returnTo === 'catalog') {
     showContentScreen('catalog', context.savedScroll);
-    if (typeof window.rearmCatalogObservers === 'function') window.rearmCatalogObservers();
     if (typeof isCatalogRowsMode === 'function' && isCatalogRowsMode()) {
       hideDetailView();
       if (typeof window.withInstantScroll === 'function') window.withInstantScroll(restoreRowFocus);else restoreRowFocus();

@@ -357,6 +357,30 @@ var rutubeTrailerState = {
   bgVideo: null
 };
 var rutubeTrailerCache = {};
+var RUTUBE_TRAILER_CACHE_TTL_MS = 30 * 60 * 1000;
+var RUTUBE_TRAILER_CACHE_MAX = 50;
+function getCachedRutubeTrailer(key) {
+  var e = rutubeTrailerCache[key];
+  if (!e || !e.url) return null;
+  if (!(Date.now() - e.at <= RUTUBE_TRAILER_CACHE_TTL_MS)) {
+    delete rutubeTrailerCache[key];
+    return null;
+  }
+  return e;
+}
+function putCachedRutubeTrailer(key, url, title) {
+  if (!rutubeTrailerCache[key]) {
+    var keys = Object.keys(rutubeTrailerCache);
+    if (keys.length >= RUTUBE_TRAILER_CACHE_MAX) delete rutubeTrailerCache[keys[0]];
+  }
+  rutubeTrailerCache[key] = {
+    url: url,
+    title: title,
+    at: Date.now()
+  };
+}
+window.getCachedRutubeTrailer = getCachedRutubeTrailer;
+window.putCachedRutubeTrailer = putCachedRutubeTrailer;
 function initCatalogDetailButtons() {
   var togBtn = getEl('catalog-toggle-overview-btn');
   if (togBtn && !togBtn._initialized) {
@@ -3968,9 +3992,10 @@ function _showCatalogDetail() {
     var trailerOriginal = src.original_title || src.original_name || '';
     var trailerDate = src.release_date || src.first_air_date || '';
     var trailerCacheKey = String(item.id || '') + '_' + mt;
-    if (rutubeTrailerCache[trailerCacheKey]) {
-      rutubeTrailerState.currentUrl = rutubeTrailerCache[trailerCacheKey].url;
-      rutubeTrailerState.currentTitle = rutubeTrailerCache[trailerCacheKey].title;
+    var cachedTrailer = getCachedRutubeTrailer(trailerCacheKey);
+    if (cachedTrailer) {
+      rutubeTrailerState.currentUrl = cachedTrailer.url;
+      rutubeTrailerState.currentTitle = cachedTrailer.title;
       showTrailerButton();
     } else {
       rutubeTrailerState.currentUrl = null;
@@ -3980,10 +4005,7 @@ function _showCatalogDetail() {
         type: mt
       }, trailerTitle, trailerOriginal, trailerDate).then(function (result) {
         if (!result || !result.url) return;
-        rutubeTrailerCache[trailerCacheKey] = {
-          url: result.url,
-          title: result.title || trailerTitle
-        };
+        putCachedRutubeTrailer(trailerCacheKey, result.url, result.title || trailerTitle);
         if (AppState.currentScreen === 'detail' && AppState.currentDetailItem && String(AppState.currentDetailItem.id) === String(item.id)) {
           rutubeTrailerState.currentUrl = result.url;
           rutubeTrailerState.currentTitle = result.title || trailerTitle;

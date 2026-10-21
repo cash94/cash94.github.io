@@ -1090,10 +1090,13 @@
         var title = itemTitle(src) !== 'Без названия' ? itemTitle(src) : itemTitle(item);
 
         // Кэш общий с детальным просмотром (rutubeTrailerCache в catalog.js):
-        // найденный здесь трейлер там сразу даёт кнопку, и наоборот
-        var shared = window.rutubeTrailerCache;
-        if (shared && shared[cacheKey] && shared[cacheKey].url) {
-            onTrailerFound(shared[cacheKey].url, gen);
+        // найденный здесь трейлер там сразу даёт кнопку, и наоборот. Читаем и
+        // пишем только через его функции: у записи там срок жизни
+        var getShared = window.getCachedRutubeTrailer;
+        var putShared = window.putCachedRutubeTrailer;
+        var shared = getShared ? getShared(cacheKey) : null;
+        if (shared) {
+            onTrailerFound(shared.url, gen);
             return;
         }
         if (typeof window.fetchRutubeTrailer !== 'function') { onTrailerMissing(gen); return; }
@@ -1108,7 +1111,7 @@
         Promise.resolve(find).then(function (res) {
             if (gen !== homeState.hero.gen) return;
             if (res && res.url) {
-                if (shared) shared[cacheKey] = { url: res.url, title: res.title || title };
+                if (putShared) putShared(cacheKey, res.url, res.title || title);
                 onTrailerFound(res.url, gen);
             } else {
                 onTrailerMissing(gen);

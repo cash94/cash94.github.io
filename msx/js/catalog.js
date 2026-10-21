@@ -408,8 +408,39 @@ var rutubeTrailerState = {
     bgVideo: null
 };
 
-// Кэш найденных трейлеров (ключ: id_mediaType)
+// Кэш найденных трейлеров (ключ: id_mediaType), общий с главной (home.js).
+//
+// У записи есть срок: в ссылке на плейлист RuTube токен, и через несколько
+// часов она перестаёт открываться (см. fetchRutubeTrailerCached) — карточка,
+// открытая повторно к вечеру, показывала кнопку трейлера, который уже не
+// играет. Заодно кэш не растёт без предела: раньше его подрезали патчи
+// memory-fixes.js / catalog-memory-fix.js, их больше нет.
 var rutubeTrailerCache = {};
+var RUTUBE_TRAILER_CACHE_TTL_MS = 30 * 60 * 1000;
+var RUTUBE_TRAILER_CACHE_MAX = 50;
+
+function getCachedRutubeTrailer(key) {
+    var e = rutubeTrailerCache[key];
+    if (!e || !e.url) return null;
+    // Запись без отметки времени тоже считаем просроченной
+    if (!(Date.now() - e.at <= RUTUBE_TRAILER_CACHE_TTL_MS)) {
+        delete rutubeTrailerCache[key];
+        return null;
+    }
+    return e;
+}
+
+function putCachedRutubeTrailer(key, url, title) {
+    if (!rutubeTrailerCache[key]) {
+        // Ключи вида «603_movie» не числовые, поэтому порядок Object.keys —
+        // порядок вставки: первый ключ — самая давняя запись
+        var keys = Object.keys(rutubeTrailerCache);
+        if (keys.length >= RUTUBE_TRAILER_CACHE_MAX) delete rutubeTrailerCache[keys[0]];
+    }
+    rutubeTrailerCache[key] = { url: url, title: title, at: Date.now() };
+}
+window.getCachedRutubeTrailer = getCachedRutubeTrailer;
+window.putCachedRutubeTrailer = putCachedRutubeTrailer;
 
 /**
  * Инициализация статичных кнопок детального просмотра.
@@ -2724,11 +2755,10 @@ function insertChunkCards(ch, from, to) {
 function observeNewGridCards(cards) {
     if (!cards || !cards.length) return;
 
-    // Наблюдателя видимости может не быть вовсе (первая сетка, или его снял
-    // cleanupCatalogState из catalog-memory-fix.js) — этот путь умеет создать
-    // его сам. Наблюдатель постеров так не умеет и без него просто молчит,
-    // ровно как молчал прежний updatePosterObservers из finishHydration:
-    // поднимает его initPosterLazyLoading / rearmCatalogObservers.
+    // Наблюдателя видимости может не быть вовсе (первая сетка) — этот путь
+    // умеет создать его сам. Наблюдатель постеров так не умеет и без него
+    // просто молчит, ровно как молчал прежний updatePosterObservers из
+    // finishHydration: поднимает его initPosterLazyLoading.
     if (!catalogState.gridVisibilityObserver) updateGridVisibilityWindow();
 
     var po = catalogState.posterObserver;
@@ -3745,9 +3775,8 @@ async function loadCatalogPoster(card, title, mt, id, index) {
     var key = id + '_' + mt;
     // Каталог закрыли, пока постер стоял в очереди. Плашку не рисуем: надпись
     // «Каталог закрыт» доезжала до человека как ошибка на всех карточках сразу,
-    // хотя это обычная гонка. Оставляем прежний placeholder — если каталог
-    // откроется снова, rearmCatalogObservers() сбросит posterRequested и
-    // карточка догрузится.
+    // хотя это обычная гонка. Оставляем прежний placeholder — каталог, если
+    // его откроют снова, соберёт сетку заново, с новыми карточками.
     if (!catalogState.currentCatalog) return;
 
     var item = catalogState.items[index];
@@ -3861,7 +3890,7 @@ function updatePosterDOM(div, rating, url) {
 
     // Само проявление ждёт паузы в навигации и своего кадра — та же очередь,
     // что у рядов. Картинку в DOM кладём сразу (её ищут проверки «постер уже
-    // есть» в initPosterLazyLoading и rearmCatalogObservers), но она прозрачна
+    // есть» в initPosterLazyLoading), но она прозрачна
     // и лежит поверх скелета, так что до показа ничего не стоит.
     //
     // Перед постановкой в очередь — img.decode() (Chromium 64+), как в
@@ -5180,20 +5209,18 @@ async function showCatalogDetail(item, index, posterUrl) {
     var trailerOriginal = src.original_title || src.original_name || '';
     var trailerDate = src.release_date || src.first_air_date || '';
     var trailerCacheKey = String(item.id || '') + '_' + mt;
-    if (rutubeTrailerCache[trailerCacheKey]) {
+    var cachedTrailer = getCachedRutubeTrailer(trailerCacheKey);
+    if (cachedTrailer) {
         // Уже искали — показываем мгновенно (важно при возврате из плеера)
-        rutubeTrailerState.currentUrl = rutubeTrailerCache[trailerCacheKey].url;
-        rutubeTrailerState.currentTitle = rutubeTrailerCache[trailerCacheKey].title;
+        rutubeTrailerState.currentUrl = cachedTrailer.url;
+        rutubeTrailerState.currentTitle = cachedTrailer.title;
         showTrailerButton();
     } else {
         rutubeTrailerState.currentUrl = null;
         rutubeTrailerState.currentTitle = null;
         fetchRutubeTrailerCached({ id: item.id, type: mt }, trailerTitle, trailerOriginal, trailerDate).then(function (result) {
             if (!result || !result.url) return;
-            rutubeTrailerCache[trailerCacheKey] = {
-                url: result.url,
-                title: result.title || trailerTitle
-            };
+            putCachedRutubeTrailer(trailerCacheKey, result.url, result.title || trailerTitle);
             // Показываем, только если пользователь всё ещё на этой карточке
             if (AppState.currentScreen === 'detail' &&
                 AppState.currentDetailItem &&
@@ -6381,8 +6408,7 @@ function loadFocusRowPoster(card) {
  * Флаг ставится в момент попадания карточки в зону видимости, ещё до самой
  * загрузки. Если очередь после этого обнулили (вход в категорию → abortCatalogRequests,
  * повторный initRowPosterLazyLoading), такая карточка остаётся с флагом, но без
- * картинки — и наблюдатель её больше не возьмёт. Тот же приём, что в
- * rearmCatalogObservers (catalog-memory-fix.js).
+ * картинки — и наблюдатель её больше не возьмёт.
  */
 function resetStrandedRowPosters() {
     var cards = document.querySelectorAll('#catalog-rows .catalog-row-card');
@@ -6450,7 +6476,7 @@ function initRowPosterLazyLoading() {
         if (cards[i].dataset.itemIndex !== undefined && cards[i].dataset.posterLoaded !== '1') {
             // Карточку берём под наблюдение заново, значит прежняя попытка
             // загрузки не в счёт (её могли обнулить вместе с очередью —
-            // см. rearmCatalogObservers в catalog-memory-fix.js).
+            // см. resetStrandedRowPosters).
             cards[i].dataset.posterStarted = '0';
             catalogState.rowPosterObserver.observe(cards[i]);
         }
