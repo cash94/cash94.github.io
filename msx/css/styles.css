@@ -10900,3 +10900,69 @@ html.apple-device {
   color: #000;
   font-weight: 700;
 }
+
+/* ==================== ЗАСТАВКА BING (js/screensaver.js) ====================
+   Выше всех слоёв приложения, включая оверлеи (100000+). Картинка — фоном
+   блока, а не <img> с object-fit: так она одинаково ложится и в Chrome 66, и
+   на Vidaa. Два слоя меняются местами через opacity — плавная смена кадра. */
+#screensaver {
+  display: none;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 200000;
+  background: #000;
+  opacity: 0;
+  transition: opacity 1.5s ease;
+  cursor: none;
+}
+
+#screensaver.screensaver-visible {
+  opacity: 1;
+}
+
+#screensaver .screensaver-layer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background-color: #000;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity 1.5s ease;
+}
+
+/* Подпись и часы — внизу, на затемнении: светлые картинки иначе съедают текст */
+#screensaver .screensaver-info {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 120px 60px 48px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0));
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+#screensaver .screensaver-caption {
+  max-width: 60%;
+  font-size: 20px;
+  line-height: 1.35;
+  opacity: 0.85;
+}
+
+#screensaver .screensaver-clock {
+  margin-left: 40px;
+  font-size: 72px;
+  font-weight: 300;
+  line-height: 1;
+}

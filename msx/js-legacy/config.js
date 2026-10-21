@@ -62,6 +62,7 @@ var AppState = {
   lastSearchFailure: null,
   dvPreferred: false,
   trailerPlay: false,
+  screensaverActive: false,
   openInRow: false,
   imageMirrors: ['tsimg.torrstream.online', 'nl.imagetmdb.com', 'mocha.stull.xyz', 'proxy.vokino.pro/image', 'nmtmdb.duckdns.org'],
   skipApiHost: 'tsskip.torrstream.online',

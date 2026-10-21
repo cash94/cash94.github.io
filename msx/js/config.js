@@ -101,6 +101,8 @@ var AppState = {
   lastSearchFailure: null,
   dvPreferred: false,
   trailerPlay: false,
+  // Заставка Bing на экране (screensaver.js)
+  screensaverActive: false,
   openInRow: false,
   // Зеркала картинок TMDB и хост API заставок. Значения по умолчанию —
   // прежние зашитые; настоящие приходят с сервера из apiproxy.json
