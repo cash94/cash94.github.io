@@ -26,9 +26,7 @@ var TorrentsWorker = function () {
   function init() {
     if (worker) return;
     try {
-      var workerPath = 'torrents-worker.js?v=' + (window.VERSION || Date.now());
-      if (location.search.indexOf('local=1') !== -1) workerPath += '&local=1';
-      worker = new Worker(new URL(workerPath, document.baseURI));
+      worker = new Worker(tsWorkerUrl('torrents-worker.js'));
     } catch (e) {
       console.error('❌ TorrentsWorker creation failed:', e);
       worker = null;

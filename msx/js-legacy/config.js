@@ -1,7 +1,62 @@
 /* Сборка для старых браузеров (Chrome 53) из js/config.js — tools/legacy-build/build.js. Руками не править. */
-var SERVER_URL = window.location.origin;
+var SERVER_URL = window.TS_SERVER || window.location.origin;
+function tsAuthToken() {
+  try {
+    return localStorage.getItem('authToken') || '';
+  } catch (e) {
+    return '';
+  }
+}
+function isTsServerUrl(url) {
+  url = String(url || '');
+  if (url.charAt(0) === '/' && url.charAt(1) !== '/') return true;
+  return url.indexOf(SERVER_URL + '/') === 0 || url === SERVER_URL;
+}
+if (window.TS_SERVER) {
+  (function () {
+    if (window.fetch) {
+      var origFetch = window.fetch;
+      window.fetch = function (input, init) {
+        var url = typeof input === 'string' ? input : input && input.url;
+        var token = tsAuthToken();
+        if (token && isTsServerUrl(url)) {
+          var opts = {},
+            k;
+          if (init) for (k in init) opts[k] = init[k];
+          var headers = new Headers(opts.headers || typeof input !== 'string' && input.headers || {});
+          if (!headers.has('Authorization')) headers.set('Authorization', 'Bearer ' + token);
+          opts.headers = headers;
+          return origFetch.call(this, input, opts);
+        }
+        return origFetch.apply(this, arguments);
+      };
+    }
+    var proto = XMLHttpRequest.prototype;
+    var origOpen = proto.open,
+      origSend = proto.send,
+      origSetHeader = proto.setRequestHeader;
+    proto.open = function (method, url) {
+      this._tsAuth = isTsServerUrl(url);
+      this._tsHasAuth = false;
+      return origOpen.apply(this, arguments);
+    };
+    proto.setRequestHeader = function (name) {
+      if (String(name).toLowerCase() === 'authorization') this._tsHasAuth = true;
+      return origSetHeader.apply(this, arguments);
+    };
+    proto.send = function () {
+      var token = this._tsAuth && !this._tsHasAuth ? tsAuthToken() : '';
+      if (token) {
+        try {
+          origSetHeader.call(this, 'Authorization', 'Bearer ' + token);
+        } catch (e) {}
+      }
+      return origSend.apply(this, arguments);
+    };
+  })();
+}
 var AppState = {
-  protocol: window.location.protocol,
+  protocol: window.TS_SERVER ? window.TS_SERVER.split('//')[0] : window.location.protocol,
   currentTorrserverUrl: '',
   currentVersion: 'TorrStream.1.0.54',
   authEnabled: false,
@@ -389,6 +444,18 @@ if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple')
 console.log('📱 Платформа: ' + AppState.platform + (AppState.applePlatform ? ' (' + AppState.applePlatform + ')' : ''));
 window.getEl = getEl;
 window.clearFocused = clearFocused;
+function tsWorkerUrl(file) {
+  var path = file + '?v=' + (window.VERSION || Date.now());
+  if (location.search.indexOf('local=1') !== -1) path += '&local=1';
+  if (!window.TS_SERVER || !window.Blob || !window.URL || !URL.createObjectURL) {
+    return new URL(path, document.baseURI).href;
+  }
+  var code = 'self.TS_SERVER = ' + JSON.stringify(SERVER_URL) + ';\n' + '(function () {\n' + '  var base = self.TS_SERVER, token = ' + JSON.stringify(tsAuthToken()) + ', origFetch = self.fetch;\n' + '  self.fetch = function (url, init) {\n' + '    if (typeof url === "string" && url.charAt(0) === "/" && url.charAt(1) !== "/") url = base + url;\n' + '    if (token && typeof url === "string" && url.indexOf(base + "/") === 0) {\n' + '      var opts = {}, k;\n' + '      if (init) for (k in init) opts[k] = init[k];\n' + '      var headers = new Headers(opts.headers || {});\n' + '      if (!headers.has("Authorization")) headers.set("Authorization", "Bearer " + token);\n' + '      opts.headers = headers;\n' + '      return origFetch.call(self, url, opts);\n' + '    }\n' + '    return origFetch.call(self, url, init);\n' + '  };\n' + '})();\n' + 'importScripts(' + JSON.stringify(SERVER_URL + '/' + path) + ');\n';
+  return URL.createObjectURL(new Blob([code], {
+    type: 'text/javascript'
+  }));
+}
+window.tsWorkerUrl = tsWorkerUrl;
 function withClientId(url) {
   var id = null;
   try {

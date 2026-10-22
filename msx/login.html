@@ -114,6 +114,11 @@
 
   function openApp() {
     message('Открываем TorrStream…');
+    // Страница из пакета Tizen (window.TS_SERVER от запускалки): переход на
+    // «/» увёл бы с неё на сервер, а там Chrome не пустит к TorrServer в
+    // домашней сети. Перезагрузка запускает запускалку, и та уже с токеном
+    // получит от сервера само приложение
+    if (window.TS_SERVER) { location.reload(); return; }
     location.replace('/' + location.search);
   }
 

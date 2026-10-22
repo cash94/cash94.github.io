@@ -42,9 +42,8 @@ var TorrentsWorker = (function () {
             // ?local=1 пробрасываем в маршрут routes/proxy.js: без него он всегда
             // тянет воркер с зеркала на GitHub, и локальные правки этого файла
             // не видно вообще ничем, даже при отладке всего остального локально.
-            var workerPath = 'torrents-worker.js?v=' + (window.VERSION || Date.now());
-            if (location.search.indexOf('local=1') !== -1) workerPath += '&local=1';
-            worker = new Worker(new URL(workerPath, document.baseURI));
+            // Адрес (или Blob у страницы из пакета Tizen) собирает config.js: tsWorkerUrl
+            worker = new Worker(tsWorkerUrl('torrents-worker.js'));
         } catch (e) {
             console.error('❌ TorrentsWorker creation failed:', e);
             worker = null;

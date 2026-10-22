@@ -8,9 +8,7 @@ var CatalogWorker = function () {
   function init() {
     if (worker) return;
     try {
-      var workerUrl = 'catalog-worker.js?v=' + (window.VERSION || Date.now());
-      if (location.search.indexOf('local=1') !== -1) workerUrl += '&local=1';
-      worker = new Worker(new URL(workerUrl, document.baseURI));
+      worker = new Worker(tsWorkerUrl('catalog-worker.js'));
     } catch (e) {
       console.error('❌ Worker creation failed:', e);
       worker = null;

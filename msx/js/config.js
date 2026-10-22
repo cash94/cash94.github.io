@@ -1,10 +1,74 @@
 // Глобальные константы и утилиты
-var SERVER_URL = window.location.origin;
+// Адрес сервера TorrStream. Обычно страница открыта с него самого. В
+// приложении для Tizen страница лежит в пакете (file://): запускалка пишет в
+// неё HTML с сервера и задаёт window.TS_SERVER и <base href> на сервер — так
+// Chrome 94+ пускает её к TorrServer в домашней сети (Private Network Access
+// не пускает туда страницу с публичного http-адреса).
+var SERVER_URL = window.TS_SERVER || window.location.origin;
+
+// ==================== ВХОД ПО ТОКЕНУ (СТРАНИЦА ИЗ ПАКЕТА) ====================
+//
+// С сервера страница входит по cookie ts_auth (services/access.js): её ставит
+// сервер, и она уходит сама — со страницы, воркеров, hls.js и <video>. У
+// страницы из пакета Tizen (window.TS_SERVER) адрес другой, и cookie с
+// SameSite=Lax на её запросы не уходит, а SameSite=None требует https. Сервер
+// понимает и Authorization: Bearer — его и добавляем ко всем запросам на
+// сервер из fetch и XMLHttpRequest (hls.js тоже). Токен — тот же authToken,
+// что пишут login.html и account.js. Воркерам его передаёт мост
+// (tsWorkerUrl ниже), <video> и <img> заголовков не умеют — на закрытые
+// пути с паролем им не попасть (трейлер встроенным HLS на старом Tizen).
+function tsAuthToken() {
+  try { return localStorage.getItem('authToken') || ''; } catch (e) { return ''; }
+}
+/** Запрос на сервер TorrStream: относительный путь или адрес с SERVER_URL */
+function isTsServerUrl(url) {
+  url = String(url || '');
+  if (url.charAt(0) === '/' && url.charAt(1) !== '/') return true;
+  return url.indexOf(SERVER_URL + '/') === 0 || url === SERVER_URL;
+}
+if (window.TS_SERVER) {
+  (function () {
+    if (window.fetch) {
+      var origFetch = window.fetch;
+      window.fetch = function (input, init) {
+        var url = typeof input === 'string' ? input : (input && input.url);
+        var token = tsAuthToken();
+        if (token && isTsServerUrl(url)) {
+          var opts = {}, k;
+          if (init) for (k in init) opts[k] = init[k];
+          var headers = new Headers(opts.headers || (typeof input !== 'string' && input.headers) || {});
+          if (!headers.has('Authorization')) headers.set('Authorization', 'Bearer ' + token);
+          opts.headers = headers;
+          return origFetch.call(this, input, opts);
+        }
+        return origFetch.apply(this, arguments);
+      };
+    }
+    var proto = XMLHttpRequest.prototype;
+    var origOpen = proto.open, origSend = proto.send, origSetHeader = proto.setRequestHeader;
+    proto.open = function (method, url) {
+      this._tsAuth = isTsServerUrl(url);
+      this._tsHasAuth = false;
+      return origOpen.apply(this, arguments);
+    };
+    proto.setRequestHeader = function (name) {
+      if (String(name).toLowerCase() === 'authorization') this._tsHasAuth = true;
+      return origSetHeader.apply(this, arguments);
+    };
+    proto.send = function () {
+      var token = this._tsAuth && !this._tsHasAuth ? tsAuthToken() : '';
+      if (token) { try { origSetHeader.call(this, 'Authorization', 'Bearer ' + token); } catch (e) { } }
+      return origSend.apply(this, arguments);
+    };
+  })();
+}
 
 // Состояние приложения
 var AppState = {
   // Настройки сервера
-  protocol: window.location.protocol,
+  // Схема для адресов на других хостах (картинки, трекеры) — как у сервера:
+  // у страницы из пакета Tizen location.protocol — «file:»
+  protocol: window.TS_SERVER ? window.TS_SERVER.split('//')[0] : window.location.protocol,
   currentTorrserverUrl: '',
   currentVersion: 'TorrStream.1.0.54',
   authEnabled: false,
@@ -599,6 +663,42 @@ console.log('📱 Платформа: ' + AppState.platform + (AppState.applePla
 window.getEl = getEl;
 window.clearFocused = clearFocused;
 
+
+/**
+ * Воркер каталога или торрентов. Обычно — файл с этого же сервера
+ * (routes/proxy.js). У страницы из пакета Tizen воркер с сервера — чужой:
+ * браузер его не запустит (или запустит молча неработающим, как на Tizen 9).
+ * Тогда воркер — из Blob: заглушка подставляет к относительным /api адрес
+ * сервера и токен входа, а сам воркер подгружает importScripts'ом с сервера.
+ */
+function tsWorkerUrl(file) {
+  var path = file + '?v=' + (window.VERSION || Date.now());
+  if (location.search.indexOf('local=1') !== -1) path += '&local=1';
+  if (!window.TS_SERVER || !window.Blob || !window.URL || !URL.createObjectURL) {
+    return new URL(path, document.baseURI).href;
+  }
+  var code =
+    'self.TS_SERVER = ' + JSON.stringify(SERVER_URL) + ';\n' +
+    '(function () {\n' +
+    '  var base = self.TS_SERVER, token = ' + JSON.stringify(tsAuthToken()) + ', origFetch = self.fetch;\n' +
+    '  self.fetch = function (url, init) {\n' +
+    '    if (typeof url === "string" && url.charAt(0) === "/" && url.charAt(1) !== "/") url = base + url;\n' +
+    '    if (token && typeof url === "string" && url.indexOf(base + "/") === 0) {\n' +
+    '      var opts = {}, k;\n' +
+    '      if (init) for (k in init) opts[k] = init[k];\n' +
+    '      var headers = new Headers(opts.headers || {});\n' +
+    '      if (!headers.has("Authorization")) headers.set("Authorization", "Bearer " + token);\n' +
+    '      opts.headers = headers;\n' +
+    '      return origFetch.call(self, url, opts);\n' +
+    '    }\n' +
+    '    return origFetch.call(self, url, init);\n' +
+    '  };\n' +
+    '})();\n' +
+    'importScripts(' + JSON.stringify(SERVER_URL + '/' + path) + ');\n';
+  return URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+}
+
+window.tsWorkerUrl = tsWorkerUrl;
 
 // ==================== clientId В ЗАПРОСАХ ====================
 //

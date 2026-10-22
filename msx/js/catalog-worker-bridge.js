@@ -17,9 +17,8 @@ var CatalogWorker = (function () {
       // ?local=1 пробрасываем в маршрут routes/proxy.js: без него он всегда
       // тянет воркер с зеркала на GitHub, и локальные правки этого файла не
       // видно вообще ничем. Так же сделано в torrents-worker-bridge.js.
-      var workerUrl = 'catalog-worker.js?v=' + (window.VERSION || Date.now());
-      if (location.search.indexOf('local=1') !== -1) workerUrl += '&local=1';
-      worker = new Worker(new URL(workerUrl, document.baseURI));
+      // Адрес (или Blob у страницы из пакета Tizen) собирает config.js: tsWorkerUrl
+      worker = new Worker(tsWorkerUrl('catalog-worker.js'));
     } catch (e) {
       console.error('❌ Worker creation failed:', e);
       worker = null;
