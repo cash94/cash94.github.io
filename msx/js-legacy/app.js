@@ -5,7 +5,6 @@ var APP_CONSTANTS = {
   DEBOUNCE_DELAY_MS: 300,
   CHECK_SERVER_TIMEOUT_MS: 500,
   FOCUS_RESTORE_DELAY_MS: 100,
-  IDLE_TIMEOUT_MS: 3000,
   TOUCH_TAP_THRESHOLD_MS: 300,
   TOUCH_MOVE_THRESHOLD_PX: 10,
   INITIAL_CHECK_DELAY_MS: 1000,
@@ -578,11 +577,7 @@ function toggleBufferVisibility() {
 window.toggleBufferVisibility = toggleBufferVisibility;
 function setupOverlayControls(overlay) {
   function showControls() {
-    overlay.classList.add('touch-active');
-    clearTimeout(overlay.timer);
-    overlay.timer = setTimeout(function () {
-      if (!overlay.matches(':hover')) overlay.classList.remove('touch-active');
-    }, APP_CONSTANTS.IDLE_TIMEOUT_MS);
+    if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();else overlay.classList.add('touch-active');
   }
   overlay.addEventListener('mousemove', function () {
     if (typeof isPlayerMouseMuted === 'function' && isPlayerMouseMuted()) return;
