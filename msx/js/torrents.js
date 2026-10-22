@@ -1420,8 +1420,111 @@ var WebOSTorrServer = (function () {
 window.WebOSTorrServer = WebOSTorrServer;
 
 /**
+ * TorrServer на телевизоре Samsung (приложение TorrStream-Tizen).
+ *
+ * Скачать и запустить TorrServer сама страница здесь не может, в отличие от
+ * webOS с root: веб-приложению Tizen запуск программ и установка пакетов
+ * закрыты (packagemanager.install — привилегия уровня платформы). TorrServer
+ * на Tizen — отдельная служба-пакет (.tpk): например, no-cover/torr-streaming
+ * (служба tv.torr.streaming.tizen запускается вместе с телевизором и
+ * поднимает официальный TorrServer-linux-arm7 на 8090). Её ставят так же,
+ * как само приложение (Apps2Samsung, Tizen Studio), а здесь — только найти:
+ * отвечает ли 127.0.0.1:8090/echo, и, если служба стоит, но молчит, —
+ * попросить систему её запустить (tizen.application.launch; есть только
+ * при доступном странице Device API, см. config.js: detectTizenApp).
+ */
+var TizenTorrServer = (function () {
+    var SERVICE_IDS = ['tv.torr.streaming.tizen'];
+    var PROBE_MS = 3000;
+    var version = '';         // ответ /echo, '' — не отвечает
+    var probing = false;
+    var probedAt = 0;
+    var starting = 0;         // когда просили систему запустить службу
+    var error = '';
+
+    function enabled() {
+        return !!AppState.tizenApp;
+    }
+
+    /** id установленной службы TorrServer или '' (без Device API — не узнать) */
+    function serviceId() {
+        if (!window.tizen || !tizen.application) return '';
+        for (var i = 0; i < SERVICE_IDS.length; i++) {
+            try { if (tizen.application.getAppInfo(SERVICE_IDS[i])) return SERVICE_IDS[i]; } catch (e) { }
+        }
+        return '';
+    }
+
+    function probe() {
+        if (probing || Date.now() - probedAt < PROBE_MS) return;
+        probing = true;
+        var x = new XMLHttpRequest(), fin = false;
+        var finish = function (v) {
+            if (fin) return;
+            fin = true; probing = false; probedAt = Date.now();
+            version = v;
+            if (v) { starting = 0; error = ''; }
+        };
+        try {
+            x.open('GET', 'http://127.0.0.1:8090/echo?_=' + Date.now(), true);
+            x.timeout = 1500;
+            x.onload = function () { finish(x.status === 200 ? String(x.responseText || '').trim().slice(0, 40) : ''); };
+            x.onerror = x.ontimeout = function () { finish(''); };
+            x.send();
+        } catch (e) { finish(''); }
+    }
+
+    function status() {
+        probe();
+        var id = serviceId();
+        var running = !!version;
+        var st = {
+            supported: running || !!id,
+            installed: running || !!id,
+            running: running,
+            own: false,
+            runningVersion: version,
+            starting: !!starting && Date.now() - starting < 20000,
+            error: error
+        };
+        if (!st.supported) {
+            st.unsupportedText = 'TorrServer на телевизоре не найден. Его ставят отдельной службой, как само приложение ' +
+                '(например, github.com/no-cover/torr-streaming — запускается вместе с телевизором), после этого он появится здесь';
+        }
+        return st;
+    }
+
+    function start() {
+        var id = serviceId();
+        if (!id) return;
+        starting = Date.now();
+        error = '';
+        probedAt = 0;
+        try {
+            tizen.application.launch(id, function () { probedAt = 0; }, function (e) {
+                starting = 0;
+                error = (e && (e.message || e.name)) || 'служба не запустилась';
+            });
+        } catch (e) {
+            starting = 0;
+            error = e.message || String(e);
+        }
+    }
+
+    // Службу ставили отдельно — останавливать и обновлять её не нам
+    function noop() { }
+
+    return {
+        enabled: enabled, status: status, start: start,
+        install: noop, stop: noop, checkUpdate: noop
+    };
+})();
+window.TizenTorrServer = TizenTorrServer;
+
+/**
  * Встроенный TorrServer — общий интерфейс для панели: Android-приложение
- * (AndroidJS.tsLocal*) или сборка webOS с TorrServer (WebOSTorrServer).
+ * (AndroidJS.tsLocal*), сборка webOS с TorrServer (WebOSTorrServer) или
+ * служба TorrServer на Samsung Tizen (TizenTorrServer — только найти и запустить).
  */
 function deviceTorrServerBridge() {
     if (window.AndroidJS && typeof AndroidJS.tsLocalStatus === 'function') {
@@ -1434,6 +1537,7 @@ function deviceTorrServerBridge() {
         };
     }
     if (WebOSTorrServer.enabled()) return WebOSTorrServer;
+    if (TizenTorrServer.enabled()) return TizenTorrServer;
     return null;
 }
 
@@ -1832,10 +1936,10 @@ async function saveClientConfig() {
  */
 function preloadDetailFile(hash, fileId) {
     if (!hash || !fileId) return;
-    // Android отдаёт ссылку своему плееру, webOS играет файл напрямую с
+    // Android отдаёт ссылку своему плееру, webOS и Tizen играют файл напрямую с
     // TorrServer — пробы ffprobe нет у обоих, и прогрев под неё только держал
     // бы раздачу работающей и тратил память TorrServer
-    if (window.AndroidJS || AppState.platform === 'webos') return;
+    if (window.AndroidJS || AppState.platform === 'webos' || AppState.tizenApp) return;
     // torrents.js грузится раньше player.js, где объявлен preloadTorrents
     if (typeof preloadTorrents !== 'function') return;
     // Таймкоды грузятся асинхронно, и за это время человек мог уйти на другую

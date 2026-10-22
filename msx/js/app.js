@@ -2290,8 +2290,10 @@ function setupCheckboxes() {
   // плеере или ссылка внешнему (Infuse, VLC…), поток через сервер не нужен.
   // Hisense на VIDAA 9.5+ (config.js: detectVidaaInfo) — как webOS: <video>
   // сам играет файл с TorrServer, раньше этот режим включали вручную
+  // Samsung Tizen в приложении TorrStream-Tizen (config.js: detectTizenApp) —
+  // как webOS: аппаратный плеер телевизора открывает файл с TorrServer сам
   var appleDevice = AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple';
-  var directPlay = AppState.platform === 'webos' || appleDevice || AppState.vidaaDirectPlay;
+  var directPlay = AppState.platform === 'webos' || AppState.tizenApp || appleDevice || AppState.vidaaDirectPlay;
   var tvApp = !!window.AndroidJS || directPlay;
   var transcodingCheckbox = getEl('transcoding-off');
   if (directPlay && transcodingCheckbox) {
@@ -2552,6 +2554,7 @@ var APPLE_PLATFORM_NAMES = { apple_tv: 'Apple TV', apple: 'iPhone / iPad', macos
 function deviceAppName() {
   if (window.AndroidJS) return 'Android-приложение TorrStream';
   if (AppState.platform === 'webos') return 'Приложение TorrStream для webOS';
+  if (AppState.tizenApp) return 'Приложение TorrStream для Tizen';
   return 'Браузер (web)';
 }
 
@@ -2657,6 +2660,15 @@ function renderDeviceInfo() {
         (d.error ? ' · ошибка: ' + d.error : '');
     }
     rows.push(['Субтитры webOS', subs]);
+  }
+  // Tizen: доступен ли этой странице Device API (выход «Назад», медиаклавиши).
+  // Открытой с сервера странице прошивка может его не дать — тогда приложение
+  // узнаётся по метке запускалки, а медиаклавиши регистрирует сама запускалка
+  if (AppState.platform === 'tizen') {
+    rows.splice(2, 0, ['Tizen', (AppState.tizenVersion || '—') + (AppState.tizenModel ? ' · ' + AppState.tizenModel : '')]);
+  }
+  if (AppState.tizenApp) {
+    rows.push(['Tizen API', window.tizen ? 'есть' : 'нет (только метка запускалки)']);
   }
   // Прямой файл (без перекодирования): что отдал <video> при последнем запуске
   // и ответил ли сервис названий дорожек (player.js: initTranscodingOffPlayback)

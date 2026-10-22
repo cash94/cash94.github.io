@@ -220,7 +220,7 @@ function detectPlatform() {
     return 'androidtv';
   } else if (typeof window.PalmSystem !== 'undefined' || typeof window.webOSSystem !== 'undefined') {
     return 'webos';
-  } else if (ua.indexOf('tizen') !== -1) {
+  } else if (ua.indexOf('tizen') !== -1 || detectTizenApp()) {
     return 'tizen';
   } else if (ua.indexOf('smart-tv') !== -1 || ua.indexOf('smarttv') !== -1) {
     return 'smarttv';
@@ -230,6 +230,52 @@ function detectPlatform() {
     return 'android';
   }
   return 'desktop';
+}
+var _tizenApp = null;
+function detectTizenApp() {
+  if (_tizenApp !== null) return _tizenApp;
+  var mark = false;
+  try {
+    if (/[?&]tsapp=tizen(?:&|$)/.test(location.search)) {
+      sessionStorage.setItem('tsApp', 'tizen');
+      if (window.history && history.replaceState) {
+        var q = location.search.replace(/([?&])tsapp=tizen(&|$)/, function (m, a, b) {
+          return b ? a : '';
+        }).replace(/[?&]$/, '');
+        history.replaceState(history.state, '', location.pathname + q + location.hash);
+      }
+    }
+    mark = sessionStorage.getItem('tsApp') === 'tizen';
+  } catch (e) {}
+  _tizenApp = typeof window.tizen !== 'undefined' || mark;
+  return _tizenApp;
+}
+function detectTizenInfo() {
+  var info = {
+    version: '',
+    model: ''
+  };
+  var m = /Tizen\s*([\d.]+)/i.exec(navigator.userAgent || '');
+  if (m) info.version = m[1];
+  if (window.tizen && tizen.systeminfo) {
+    try {
+      info.version = tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version') || info.version;
+    } catch (e) {}
+    try {
+      info.model = tizen.systeminfo.getCapability('http://tizen.org/system/model_name') || '';
+    } catch (e) {}
+  }
+  return info;
+}
+function registerTizenKeys() {
+  var input = window.tizen && tizen.tvinputdevice;
+  if (!input) return;
+  var names = ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'MediaTrackPrevious', 'MediaTrackNext', 'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue', 'Info', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+  for (var i = 0; i < names.length; i++) {
+    try {
+      input.registerKey(names[i]);
+    } catch (e) {}
+  }
 }
 function detectApplePlatform() {
   var ua = navigator.userAgent.toLowerCase();
@@ -295,6 +341,13 @@ function getKeyMap() {
     '8': [56, 104],
     '9': [57, 105]
   };
+  if (AppState.platform === 'tizen') {
+    _keyMap.LEFT = [37, 21];
+    _keyMap.UP = [38, 10011];
+    _keyMap.PLAY_PAUSE = [179, 85, 10252];
+    _keyMap.PREV = [88, 427, 10232];
+    _keyMap.NEXT = [87, 428, 10233];
+  }
   return _keyMap;
 }
 function isKeyPressed(keyName, keyCode) {
@@ -308,6 +361,16 @@ function isKeyPressed(keyName, keyCode) {
 }
 AppState.platform = detectPlatform();
 AppState.applePlatform = detectApplePlatform();
+AppState.tizenApp = detectTizenApp();
+if (AppState.tizenApp) registerTizenKeys();
+if (AppState.platform === 'tizen') {
+  (function () {
+    var tz = detectTizenInfo();
+    AppState.tizenVersion = tz.version;
+    AppState.tizenModel = tz.model;
+    console.log('📺 Tizen ' + (tz.version || '?') + (tz.model ? ', ' + tz.model : '') + (AppState.tizenApp ? ' — приложение, прямой режим плеера' : ''));
+  })();
+}
 (function () {
   var vidaa = detectVidaaInfo();
   AppState.vidaaOsVersion = vidaa.os;
@@ -366,7 +429,7 @@ function cancelBackHoldExit() {
   }
 }
 function startBackHoldExit(kc) {
-  if (AppState.platform !== 'webos' || backHoldTimer) return;
+  if (AppState.platform !== 'webos' && !AppState.tizenApp || backHoldTimer) return;
   if (window.OSK && typeof OSK.isOpen === 'function' && OSK.isOpen()) return;
   if (isTextEntryElement(document.activeElement)) return;
   backHoldKey = kc;
@@ -391,6 +454,12 @@ function exitApp() {
   var close = function () {
     if (closed) return;
     closed = true;
+    try {
+      if (window.tizen && tizen.application) {
+        tizen.application.getCurrentApplication().exit();
+        return;
+      }
+    } catch (e) {}
     try {
       window.close();
     } catch (e) {}

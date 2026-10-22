@@ -1226,6 +1226,103 @@ var WebOSTorrServer = function () {
   };
 }();
 window.WebOSTorrServer = WebOSTorrServer;
+var TizenTorrServer = function () {
+  var SERVICE_IDS = ['tv.torr.streaming.tizen'];
+  var PROBE_MS = 3000;
+  var version = '';
+  var probing = false;
+  var probedAt = 0;
+  var starting = 0;
+  var error = '';
+  function enabled() {
+    return !!AppState.tizenApp;
+  }
+  function serviceId() {
+    if (!window.tizen || !tizen.application) return '';
+    for (var i = 0; i < SERVICE_IDS.length; i++) {
+      try {
+        if (tizen.application.getAppInfo(SERVICE_IDS[i])) return SERVICE_IDS[i];
+      } catch (e) {}
+    }
+    return '';
+  }
+  function probe() {
+    if (probing || Date.now() - probedAt < PROBE_MS) return;
+    probing = true;
+    var x = new XMLHttpRequest(),
+      fin = false;
+    var finish = function (v) {
+      if (fin) return;
+      fin = true;
+      probing = false;
+      probedAt = Date.now();
+      version = v;
+      if (v) {
+        starting = 0;
+        error = '';
+      }
+    };
+    try {
+      x.open('GET', 'http://127.0.0.1:8090/echo?_=' + Date.now(), true);
+      x.timeout = 1500;
+      x.onload = function () {
+        finish(x.status === 200 ? String(x.responseText || '').trim().slice(0, 40) : '');
+      };
+      x.onerror = x.ontimeout = function () {
+        finish('');
+      };
+      x.send();
+    } catch (e) {
+      finish('');
+    }
+  }
+  function status() {
+    probe();
+    var id = serviceId();
+    var running = !!version;
+    var st = {
+      supported: running || !!id,
+      installed: running || !!id,
+      running: running,
+      own: false,
+      runningVersion: version,
+      starting: !!starting && Date.now() - starting < 20000,
+      error: error
+    };
+    if (!st.supported) {
+      st.unsupportedText = 'TorrServer на телевизоре не найден. Его ставят отдельной службой, как само приложение ' + '(например, github.com/no-cover/torr-streaming — запускается вместе с телевизором), после этого он появится здесь';
+    }
+    return st;
+  }
+  function start() {
+    var id = serviceId();
+    if (!id) return;
+    starting = Date.now();
+    error = '';
+    probedAt = 0;
+    try {
+      tizen.application.launch(id, function () {
+        probedAt = 0;
+      }, function (e) {
+        starting = 0;
+        error = e && (e.message || e.name) || 'служба не запустилась';
+      });
+    } catch (e) {
+      starting = 0;
+      error = e.message || String(e);
+    }
+  }
+  function noop() {}
+  return {
+    enabled: enabled,
+    status: status,
+    start: start,
+    install: noop,
+    stop: noop,
+    checkUpdate: noop
+  };
+}();
+window.TizenTorrServer = TizenTorrServer;
 function deviceTorrServerBridge() {
   if (window.AndroidJS && typeof AndroidJS.tsLocalStatus === 'function') {
     return {
@@ -1251,6 +1348,7 @@ function deviceTorrServerBridge() {
     };
   }
   if (WebOSTorrServer.enabled()) return WebOSTorrServer;
+  if (TizenTorrServer.enabled()) return TizenTorrServer;
   return null;
 }
 function setupDeviceTorrServerToggle() {
@@ -1608,7 +1706,7 @@ function _saveClientConfig() {
 }
 function preloadDetailFile(hash, fileId) {
   if (!hash || !fileId) return;
-  if (window.AndroidJS || AppState.platform === 'webos') return;
+  if (window.AndroidJS || AppState.platform === 'webos' || AppState.tizenApp) return;
   if (typeof preloadTorrents !== 'function') return;
   if (AppState.currentScreen !== 'detail') return;
   var openItem = AppState.currentDetailItem;

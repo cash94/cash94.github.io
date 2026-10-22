@@ -344,7 +344,7 @@ function detectPlatform() {
     // Свою переменную из ipk передать нельзя: переход её стирает. По
     // User-Agent («Web0S») не определяем: браузер телевизора — обычный браузер
     return 'webos';
-  } else if (ua.indexOf('tizen') !== -1) {
+  } else if (ua.indexOf('tizen') !== -1 || detectTizenApp()) {
     return 'tizen';
   } else if (ua.indexOf('smart-tv') !== -1 || ua.indexOf('smarttv') !== -1) {
     return 'smarttv';
@@ -355,6 +355,66 @@ function detectPlatform() {
   }
 
   return 'desktop';
+}
+
+// Приложение TorrStream для Samsung Tizen (TorrStream-Tizen, wgt) — как webOS:
+// запускалка из wgt открывает этот сервер, и дальше всё как в браузере, кроме
+// плеера (прямой режим, см. app.js: setupCheckboxes). Признаков два:
+// - window.tizen — Device API, его среда веб-приложений Tizen кладёт в
+//   страницы приложения. Есть ли он у страницы, открытой с чужого сервера
+//   после перехода, зависит от прошивки — поэтому есть и второй;
+// - метка ?tsapp=tizen, её добавляет запускалка. Помним её в sessionStorage:
+//   внутри приложения он живёт до выхода и переживает перезагрузку страницы,
+//   а браузер телевизора (обычный браузер, не приложение) метку не получит.
+// По User-Agent («Tizen») приложение от браузера Samsung не отличить.
+var _tizenApp = null;
+function detectTizenApp() {
+  if (_tizenApp !== null) return _tizenApp;
+  var mark = false;
+  try {
+    if (/[?&]tsapp=tizen(?:&|$)/.test(location.search)) {
+      sessionStorage.setItem('tsApp', 'tizen');
+      // Метку из адреса убираем: иначе она попадёт в ссылки «поделиться»
+      if (window.history && history.replaceState) {
+        var q = location.search.replace(/([?&])tsapp=tizen(&|$)/, function (m, a, b) { return b ? a : ''; }).replace(/[?&]$/, '');
+        history.replaceState(history.state, '', location.pathname + q + location.hash);
+      }
+    }
+    mark = sessionStorage.getItem('tsApp') === 'tizen';
+  } catch (e) { }
+  _tizenApp = typeof window.tizen !== 'undefined' || mark;
+  return _tizenApp;
+}
+
+// Версия Tizen и модель телевизора — для «Об устройстве». Версию Samsung пишет
+// в User-Agent и браузера, и приложений: «Mozilla/5.0 (SMART-TV; LINUX;
+// Tizen 6.0) … SamsungBrowser/… TV Safari/…». Device API (только в приложении)
+// отвечает точнее и знает модель: tizen.systeminfo.getCapability.
+// webapis.productinfo (прошивка, модель) странице с сервера недоступен: его
+// скрипт $WEBAPIS/webapis/webapis.js открывается только из самого пакета.
+function detectTizenInfo() {
+  var info = { version: '', model: '' };
+  var m = /Tizen\s*([\d.]+)/i.exec(navigator.userAgent || '');
+  if (m) info.version = m[1];
+  if (window.tizen && tizen.systeminfo) {
+    try { info.version = tizen.systeminfo.getCapability('http://tizen.org/feature/platform.version') || info.version; } catch (e) { }
+    try { info.model = tizen.systeminfo.getCapability('http://tizen.org/system/model_name') || ''; } catch (e) { }
+  }
+  return info;
+}
+
+// Медиаклавиши пульта Samsung (▶‖, ■, ⏪, ⏩, цветные) Tizen отдаёт странице,
+// только если их зарегистрировать. Запускалка регистрирует их до перехода,
+// здесь — ещё раз, если Device API доступен и этой странице.
+function registerTizenKeys() {
+  var input = window.tizen && tizen.tvinputdevice;
+  if (!input) return;
+  var names = ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind',
+    'MediaTrackPrevious', 'MediaTrackNext', 'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue', 'Info',
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+  for (var i = 0; i < names.length; i++) {
+    try { input.registerKey(names[i]); } catch (e) { }
+  }
 }
 
 /**
@@ -466,6 +526,17 @@ function getKeyMap() {
     '9': [57, 105]
   };
 
+  // Samsung Tizen: 10009 — «Назад» (Return), 19 — MediaPause. В общей карте
+  // они же стоят у LEFT и UP (коды других пультов), и в плеере «Назад»
+  // перематывал бы, а пауза — двигала фокус вверх. Добавляем ▶‖ и ⏮/⏭
+  if (AppState.platform === 'tizen') {
+    _keyMap.LEFT = [37, 21];
+    _keyMap.UP = [38, 10011];
+    _keyMap.PLAY_PAUSE = [179, 85, 10252];
+    _keyMap.PREV = [88, 427, 10232];
+    _keyMap.NEXT = [87, 428, 10233];
+  }
+
   return _keyMap;
 }
 
@@ -485,6 +556,16 @@ function isKeyPressed(keyName, keyCode) {
 // Определяем платформу при загрузке
 AppState.platform = detectPlatform();
 AppState.applePlatform = detectApplePlatform();
+AppState.tizenApp = detectTizenApp();
+if (AppState.tizenApp) registerTizenKeys();
+if (AppState.platform === 'tizen') {
+  (function () {
+    var tz = detectTizenInfo();
+    AppState.tizenVersion = tz.version;
+    AppState.tizenModel = tz.model;
+    console.log('📺 Tizen ' + (tz.version || '?') + (tz.model ? ', ' + tz.model : '') + (AppState.tizenApp ? ' — приложение, прямой режим плеера' : ''));
+  })();
+}
 (function () {
   var vidaa = detectVidaaInfo();
   AppState.vidaaOsVersion = vidaa.os;
@@ -584,7 +665,7 @@ window.addEventListener('keydown', function (e) {
   }
 }, true);
 
-// ==================== ВЫХОД ИЗ ПРИЛОЖЕНИЯ: УДЕРЖАНИЕ «НАЗАД» (webOS) ====================
+// ==================== ВЫХОД ИЗ ПРИЛОЖЕНИЯ: УДЕРЖАНИЕ «НАЗАД» (webOS, Tizen) ====================
 //
 // Своего «выхода» у приложения на webOS не было: «Назад» (disableBackHistoryAPI
 // в appinfo.json) разбирает страница, и с главной оно никуда не ведёт, а Home
@@ -593,7 +674,8 @@ window.addEventListener('keydown', function (e) {
 // отрабатывает как обычно, автоповтор и так гасится выше. Отпустили раньше —
 // ничего. Перед выходом встроенный TorrServer гасим сразу (галка «Выключать
 // TorrServer при выходе»), не дожидаясь сторожа watch.sh — тот ловит выход
-// только через 30–45 с.
+// только через 30–45 с. В приложении для Tizen — так же (выход через
+// tizen.application, см. exitApp).
 var BACK_HOLD_EXIT_MS = 1000;
 var backHoldTimer = null;
 var backHoldKey = 0;
@@ -603,7 +685,7 @@ function cancelBackHoldExit() {
 }
 
 function startBackHoldExit(kc) {
-  if (AppState.platform !== 'webos' || backHoldTimer) return;
+  if ((AppState.platform !== 'webos' && !AppState.tizenApp) || backHoldTimer) return;
   // Удержание «⌫» на встроенной клавиатуре и в поле ввода — это стирание
   if (window.OSK && typeof OSK.isOpen === 'function' && OSK.isOpen()) return;
   if (isTextEntryElement(document.activeElement)) return;
@@ -631,6 +713,11 @@ function exitApp() {
   var close = function () {
     if (closed) return;
     closed = true;
+    // Tizen: window.close() веб-приложение не закрывает, выход — через
+    // Application API (если Device API у страницы есть, см. detectTizenApp)
+    try {
+      if (window.tizen && tizen.application) { tizen.application.getCurrentApplication().exit(); return; }
+    } catch (e) { }
     try { window.close(); } catch (e) { }
   };
   // Ответа Homebrew Channel ждём не дольше 2,5 с — выход важнее

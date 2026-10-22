@@ -1784,7 +1784,7 @@ function setupCheckboxes() {
     });
   }
   var appleDevice = AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple';
-  var directPlay = AppState.platform === 'webos' || appleDevice || AppState.vidaaDirectPlay;
+  var directPlay = AppState.platform === 'webos' || AppState.tizenApp || appleDevice || AppState.vidaaDirectPlay;
   var tvApp = !!window.AndroidJS || directPlay;
   var transcodingCheckbox = getEl('transcoding-off');
   if (directPlay && transcodingCheckbox) {
@@ -2008,6 +2008,7 @@ var APPLE_PLATFORM_NAMES = {
 function deviceAppName() {
   if (window.AndroidJS) return 'Android-приложение TorrStream';
   if (AppState.platform === 'webos') return 'Приложение TorrStream для webOS';
+  if (AppState.tizenApp) return 'Приложение TorrStream для Tizen';
   return 'Браузер (web)';
 }
 function devicePlayerName() {
@@ -2071,6 +2072,12 @@ function renderDeviceInfo() {
       subs = d.bridge + ' · mediaId: ' + (d.mediaId || 'нет за ' + Math.round(d.waitedMs / 1000) + ' с') + ' · ответов: ' + d.responses + ' · sourceInfo: ' + (d.sourceInfo ? 'да' : 'нет') + (d.tracks !== null ? ' · дорожек: ' + d.tracks : '') + (d.audio !== null && d.audio !== undefined ? ' · звук: ' + d.audio : '') + (d.probe ? ' · ffprobe: ' + d.probe : '') + (d.keys ? ' · поля: ' + d.keys : '') + (d.error ? ' · ошибка: ' + d.error : '');
     }
     rows.push(['Субтитры webOS', subs]);
+  }
+  if (AppState.platform === 'tizen') {
+    rows.splice(2, 0, ['Tizen', (AppState.tizenVersion || '—') + (AppState.tizenModel ? ' · ' + AppState.tizenModel : '')]);
+  }
+  if (AppState.tizenApp) {
+    rows.push(['Tizen API', window.tizen ? 'есть' : 'нет (только метка запускалки)']);
   }
   var dp = window.directPlaybackDiag;
   if (dp && dp.file) {
