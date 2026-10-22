@@ -626,7 +626,7 @@ function wrapRutubeHls(url) {
 function trailerUsesHlsJs() {
   if (!(window.Hls && Hls.isSupported())) return false;
   if (window.LEGACY_JS && (window.PalmSystem || window.webOSSystem)) return false;
-  if (AppState.platform === 'tizen' && parseFloat(AppState.tizenVersion) < 7) return false;
+  if (AppState.tizenLegacy) return false;
   return true;
 }
 window.trailerUsesHlsJs = trailerUsesHlsJs;

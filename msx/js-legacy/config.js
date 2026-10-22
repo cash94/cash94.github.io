@@ -368,6 +368,8 @@ if (AppState.platform === 'tizen') {
     var tz = detectTizenInfo();
     AppState.tizenVersion = tz.version;
     AppState.tizenModel = tz.model;
+    AppState.tizenLegacy = parseFloat(tz.version) < 7;
+    if (AppState.tizenLegacy) document.documentElement.classList.add('tizen-legacy');
     console.log('📺 Tizen ' + (tz.version || '?') + (tz.model ? ', ' + tz.model : '') + (AppState.tizenApp ? ' — приложение, прямой режим плеера' : ''));
   })();
 }

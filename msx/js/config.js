@@ -563,6 +563,12 @@ if (AppState.platform === 'tizen') {
     var tz = detectTizenInfo();
     AppState.tizenVersion = tz.version;
     AppState.tizenModel = tz.model;
+    // Tizen до 7 (движок до Chrome 94): видео выводит аппаратный слой, и
+    // трейлер на нём играет звуком без картинки. Под классом tizen-legacy у
+    // трейлеров нет маски, плавного появления и скрытия до первого кадра
+    // (styles.css), а поток идёт без hls.js (catalog.js: trailerUsesHlsJs)
+    AppState.tizenLegacy = parseFloat(tz.version) < 7;
+    if (AppState.tizenLegacy) document.documentElement.classList.add('tizen-legacy');
     console.log('📺 Tizen ' + (tz.version || '?') + (tz.model ? ', ' + tz.model : '') + (AppState.tizenApp ? ' — приложение, прямой режим плеера' : ''));
   })();
 }
