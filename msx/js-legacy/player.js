@@ -679,6 +679,7 @@ function forceUpdateDuration(duration, origDur, offset) {
 }
 function destroyHls() {
   hidePlayerLoading();
+  if (window.TizenAVPlay) TizenAVPlay.detach();
   ServerSubs.stop();
   AppState.serverTracks = null;
   var videoPlayer = getEl('video-player');
@@ -2496,6 +2497,7 @@ function _initTranscodingOffPlayback() {
     directPlaybackDiag.subs = '';
     var videoPlayer = getEl('video-player');
     destroyHls();
+    if (window.TizenAVPlay && TizenAVPlay.enabled()) TizenAVPlay.attach(videoPlayer);
     resetNativeSubtitles();
     currentSubTracks = [];
     renderSubtitleTracks();

@@ -3694,6 +3694,50 @@ article {
   transform: translateY(-17vh);
 }
 
+/* Samsung Tizen, прямой файл через нативный AVPlay (js/tizen-avplay.js).
+   Картинку AVPlay выводит своим слоем ПОД страницей: всё, что над ним, должно
+   быть прозрачным — иначе звук есть, а видно чёрный фон плеера. Кадр сам
+   встаёт в рамку <video> («Масштаб»). <object type="application/avplayer">
+   AVPlay требует в документе — на весь экран, позади всего. */
+html.tizen-avplay,
+html.tizen-avplay body,
+html.tizen-avplay #player-screen,
+html.tizen-avplay #video-player {
+  background: transparent !important;
+}
+
+.tizen-avplay-object {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Текст субтитров AVPlay (onsubtitlechange) — как встроенные реплики:
+   белый с обводкой у нижнего края; пока видна панель управления — над ней
+   (класс cues-raised у <video>, player.js: watchCuesRaise) */
+#tizen-avplay-subs {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 7vh;
+  text-align: center;
+  color: #fff;
+  font-size: 4.4vh;
+  line-height: 1.3;
+  font-weight: 600;
+  white-space: pre-line;
+  text-shadow: 0 0 4px #000, 0 0 4px #000, 2px 2px 3px #000;
+  pointer-events: none;
+  transition: transform 0.2s ease;
+}
+
+#video-player.cues-raised ~ #tizen-avplay-subs {
+  -webkit-transform: translateY(-17vh);
+  transform: translateY(-17vh);
+}
+
 .video-object-fit-contain {
   object-fit: contain !important;
 }

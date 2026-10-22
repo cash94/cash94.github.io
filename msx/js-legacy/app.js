@@ -2010,6 +2010,7 @@ function devicePlayerName() {
   if (window.AndroidJS) return 'Внешний плеер Android';
   var apple = typeof getApplePlayer === 'function' ? getApplePlayer() : null;
   if (apple && apple.template) return 'Внешний: ' + apple.name;
+  if (AppState.transcodingFullOnOff && window.TizenAVPlay && TizenAVPlay.enabled()) return 'Встроенный (AVPlay Samsung), файл напрямую с TorrServer';
   if (AppState.transcodingFullOnOff) return 'Встроенный, файл напрямую с TorrServer';
   if (AppState.transcodingOnOff) return 'Встроенный, транскодирование TorrServer (HLS)';
   return 'Встроенный, поток через сервер TorrStream (HLS)';

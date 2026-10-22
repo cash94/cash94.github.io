@@ -901,6 +901,8 @@ function forceUpdateDuration(duration, origDur, offset) {
 
 function destroyHls() {
   hidePlayerLoading();
+  // AVPlay прошлого файла закрыть, <video> вернуть обычным (tizen-avplay.js)
+  if (window.TizenAVPlay) TizenAVPlay.detach();
   ServerSubs.stop();
   AppState.serverTracks = null;
   var videoPlayer = getEl('video-player');
@@ -2823,6 +2825,10 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   directPlaybackDiag.audio = null; directPlaybackDiag.text = null; directPlaybackDiag.kinds = ''; directPlaybackDiag.probe = ''; directPlaybackDiag.subs = '';
   var videoPlayer = getEl('video-player');
   destroyHls();   // заодно снимает слушатели прошлого прямого файла
+  // Samsung Tizen (приложение): файл играет нативный AVPlay — у <video> там нет
+  // ни аудиодорожек, ни встроенных субтитров. tizen-avplay.js подменяет
+  // свойства <video>, и всё ниже работает как обычно
+  if (window.TizenAVPlay && TizenAVPlay.enabled()) TizenAVPlay.attach(videoPlayer);
 
   // Прямой файл — без hls.js, отдаём ссылку нативному <video>
   // Субтитры — дорожки самого <video> (refreshNativeSubtitles), не ffprobe
