@@ -6126,6 +6126,34 @@ html.tizen-legacy #trailer-bg-video {
   mask-image: none !important;
 }
 
+/* Левый край трейлера там же — растворение «наоборот». Маска на самом
+   <video> аппаратному слою не указ (Tizen до 7, webOS 4 — Chrome 53,
+   html.legacy-browser): кадр обрывается резкой границей. Зато всё, что лежит
+   на странице ПОВЕРХ видео, смешивается с ним (так работает и затемнение
+   баннера). Поэтому картинку баннера поднимаем над видео и маской делаем
+   прозрачной там, где начинается кадр (--trailer-w от home.js:
+   fitTrailerBox), с переходом в те же 120px, что у маски видео. z-index: 0
+   у #home-hero-media — чтобы картинка поднялась только над видео, а
+   затемнение и подписи остались выше неё.
+   Над видео картинка лежит всегда, а прозрачной становится только с
+   home-hero-playing (пошли кадры): видео на старом Tizen видно сразу
+   (правило выше), и до первого кадра оно закрывало картинку чёрным. */
+html.tizen-legacy #home-hero-media,
+html.legacy-browser #home-hero-media {
+  z-index: 0;
+}
+
+html.tizen-legacy #home-hero-backdrop,
+html.legacy-browser #home-hero-backdrop {
+  z-index: 1;
+}
+
+html.tizen-legacy #home-hero.home-hero-playing #home-hero-backdrop,
+html.legacy-browser #home-hero.home-hero-playing #home-hero-backdrop {
+  -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - var(--trailer-w, 100%)), rgba(0, 0, 0, 0) calc(100% - var(--trailer-w, 100%) + 120px));
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - var(--trailer-w, 100%)), rgba(0, 0, 0, 0) calc(100% - var(--trailer-w, 100%) + 120px));
+}
+
 /* Затемнение (#home-hero-shade) во время трейлера — то же, что у картинки:
    подписи слева лежат на картинке баннера и читаются так же. */
 
