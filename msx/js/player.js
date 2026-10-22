@@ -2843,6 +2843,17 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
     if (AppState._loadingTimeout) { clearTimeout(AppState._loadingTimeout); AppState._loadingTimeout = null; }
     videoPlayer.removeEventListener('canplay', onCanPlay);
     hidePlayerLoading();
+    // audioTracks к loadedmetadata был пуст — пробуем ещё раз
+    // (на webOS дорожку включает webosSubsApply)
+    if (nativeAudioPref >= 0 && AppState.platform !== 'webos') {
+      var lateAudio = applyNativeAudioPref(videoPlayer);
+      if (lateAudio >= 0) {
+        var lateTracks = collectNativeAudioTracks(videoPlayer);
+        if (lateTracks.length) currentAudioTracks = lateTracks;
+        currentAudioTrack = lateAudio;
+        renderAudioTracks();
+      }
+    }
     if (initialSeek > 0) {
       try { videoPlayer.currentTime = initialSeek; } catch (e) { }
     }
@@ -2877,9 +2888,13 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
     var nativeTracks = webosAudio.mode ? [] : collectNativeAudioTracks(videoPlayer);
     if (nativeTracks.length) {
       currentAudioTracks = nativeTracks;
-      var enabled = -1;
-      for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
-        if (videoPlayer.audioTracks[i].enabled) { enabled = i; break; }
+      // Раньше бралась включённая — то есть дорожка по умолчанию, и выбор
+      // прошлой серии на каждой следующей терялся
+      var enabled = applyNativeAudioPref(videoPlayer);
+      if (enabled < 0) {
+        for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
+          if (videoPlayer.audioTracks[i].enabled) { enabled = i; break; }
+        }
       }
       currentAudioTrack = enabled >= 0 ? enabled : 0;
       renderAudioTracks();
@@ -3244,6 +3259,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     } else if (AppState.transcodingFullOnOff) {
       nativeSubState.savedPref = (metadata && metadata.savedSubTrack !== null && metadata.savedSubTrack !== undefined)
         ? metadata.savedSubTrack : -1;
+      // Дорожку передали (следующая серия, смена дорожки) или она сохранена
+      // для файла — включим её, когда <video> отдаст список
+      var directAudio = metadata && metadata.savedAudioTrack !== null && metadata.savedAudioTrack !== undefined
+        ? metadata.savedAudioTrack : (metadata && metadata.audioChosen ? metadata.audioTrack : null);
+      directAudio = parseInt(directAudio, 10);
+      nativeAudioPref = directAudio >= 0 ? directAudio : -1;
       await initTranscodingOffPlayback(initialSeek, signal, metadata && metadata.fileName);
     } else {
       await initServerProxyPlayback(metadata, initialSeek, signal);
@@ -3587,6 +3608,23 @@ function collectNativeAudioTracks(videoPlayer) {
   return tracks;
 }
 
+// Сохранённая дорожка прямого файла (выбор прошлой серии или этого файла):
+// <video> сам включает дорожку по умолчанию, поэтому её надо включить, когда
+// появится список. -1 — выбора нет
+var nativeAudioPref = -1;
+
+/** Включить сохранённую дорожку в video.audioTracks; номер включённой или -1 */
+function applyNativeAudioPref(videoPlayer) {
+  var list = videoPlayer && videoPlayer.audioTracks;
+  if (nativeAudioPref < 0 || !list || list.length === 0) return -1;
+  var index = nativeAudioPref;
+  // На webOS выбор ещё передаём конвейеру (webosSubsApply) — там и сбросим
+  if (!(AppState.platform === 'webos' && lunaAvailable())) nativeAudioPref = -1;
+  if (index >= list.length) return -1;
+  for (var i = 0; i < list.length; i++) list[i].enabled = (i === index);
+  return index;
+}
+
 async function switchAudioTrack(trackIndex) {
   if (trackIndex === currentAudioTrack) { toggleAudioPanel(); return; }
   if (AppState.transcodingFullOnOff) {
@@ -3623,6 +3661,7 @@ async function switchAudioTrack(trackIndex) {
 }
 
 function switchNativeAudioTrack(videoPlayer, index) {
+  nativeAudioPref = -1;   // выбрали руками — сохранённую больше не навязываем
   if (webosAudio.mode && webosSubs.mediaId) {
     lunaCall('selectTrack', { type: 'audio', mediaId: webosSubs.mediaId, index: index });
     // Как Lampa, дублируем выбор в audioTracks: на части прошивок срабатывает
@@ -3760,6 +3799,16 @@ function webosSubsApply(info) {
       for (var k = 0; k < at.length; k++) if (at[k].enabled) { playing = k; break; }
     }
     if (playing < 0) playing = currentAudioTrack >= 0 && currentAudioTrack < audio.length ? currentAudioTrack : 0;
+    // Сохранённую дорожку конвейер сам не включит. Как в switchNativeAudioTrack,
+    // дублируем в audioTracks: на части прошивок срабатывает только один способ
+    if (nativeAudioPref >= 0 && nativeAudioPref < audio.length) {
+      playing = nativeAudioPref;
+      nativeAudioPref = -1;
+      lunaCall('selectTrack', { type: 'audio', mediaId: webosSubs.mediaId, index: playing });
+      if (at && at.length === audio.length) {
+        for (var m = 0; m < at.length; m++) at[m].enabled = (m === playing);
+      }
+    }
     currentAudioTrack = playing;
     renderAudioTracks();
   }

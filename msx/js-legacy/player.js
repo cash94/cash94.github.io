@@ -2514,6 +2514,15 @@ function _initTranscodingOffPlayback() {
       }
       videoPlayer.removeEventListener('canplay', onCanPlay);
       hidePlayerLoading();
+      if (nativeAudioPref >= 0 && AppState.platform !== 'webos') {
+        var lateAudio = applyNativeAudioPref(videoPlayer);
+        if (lateAudio >= 0) {
+          var lateTracks = collectNativeAudioTracks(videoPlayer);
+          if (lateTracks.length) currentAudioTracks = lateTracks;
+          currentAudioTrack = lateAudio;
+          renderAudioTracks();
+        }
+      }
       if (initialSeek > 0) {
         try {
           videoPlayer.currentTime = initialSeek;
@@ -2545,11 +2554,13 @@ function _initTranscodingOffPlayback() {
       var nativeTracks = webosAudio.mode ? [] : collectNativeAudioTracks(videoPlayer);
       if (nativeTracks.length) {
         currentAudioTracks = nativeTracks;
-        var enabled = -1;
-        for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
-          if (videoPlayer.audioTracks[i].enabled) {
-            enabled = i;
-            break;
+        var enabled = applyNativeAudioPref(videoPlayer);
+        if (enabled < 0) {
+          for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
+            if (videoPlayer.audioTracks[i].enabled) {
+              enabled = i;
+              break;
+            }
           }
         }
         currentAudioTrack = enabled >= 0 ? enabled : 0;
@@ -2936,6 +2947,9 @@ function _startHLSPlayback() {
         yield initGstPlayback(metadata, initialSeek, signal);
       } else if (AppState.transcodingFullOnOff) {
         nativeSubState.savedPref = metadata && metadata.savedSubTrack !== null && metadata.savedSubTrack !== undefined ? metadata.savedSubTrack : -1;
+        var directAudio = metadata && metadata.savedAudioTrack !== null && metadata.savedAudioTrack !== undefined ? metadata.savedAudioTrack : metadata && metadata.audioChosen ? metadata.audioTrack : null;
+        directAudio = parseInt(directAudio, 10);
+        nativeAudioPref = directAudio >= 0 ? directAudio : -1;
         yield initTranscodingOffPlayback(initialSeek, signal, metadata && metadata.fileName);
       } else {
         yield initServerProxyPlayback(metadata, initialSeek, signal);
@@ -3303,6 +3317,16 @@ function collectNativeAudioTracks(videoPlayer) {
   }
   return tracks;
 }
+var nativeAudioPref = -1;
+function applyNativeAudioPref(videoPlayer) {
+  var list = videoPlayer && videoPlayer.audioTracks;
+  if (nativeAudioPref < 0 || !list || list.length === 0) return -1;
+  var index = nativeAudioPref;
+  if (!(AppState.platform === 'webos' && lunaAvailable())) nativeAudioPref = -1;
+  if (index >= list.length) return -1;
+  for (var i = 0; i < list.length; i++) list[i].enabled = i === index;
+  return index;
+}
 function switchAudioTrack(_x38) {
   return _switchAudioTrack.apply(this, arguments);
 }
@@ -3360,6 +3384,7 @@ function _switchAudioTrack() {
   return _switchAudioTrack.apply(this, arguments);
 }
 function switchNativeAudioTrack(videoPlayer, index) {
+  nativeAudioPref = -1;
   if (webosAudio.mode && webosSubs.mediaId) {
     lunaCall('selectTrack', {
       type: 'audio',
@@ -3528,6 +3553,18 @@ function webosSubsApply(info) {
       }
     }
     if (playing < 0) playing = currentAudioTrack >= 0 && currentAudioTrack < audio.length ? currentAudioTrack : 0;
+    if (nativeAudioPref >= 0 && nativeAudioPref < audio.length) {
+      playing = nativeAudioPref;
+      nativeAudioPref = -1;
+      lunaCall('selectTrack', {
+        type: 'audio',
+        mediaId: webosSubs.mediaId,
+        index: playing
+      });
+      if (at && at.length === audio.length) {
+        for (var m = 0; m < at.length; m++) at[m].enabled = m === playing;
+      }
+    }
     currentAudioTrack = playing;
     renderAudioTracks();
   }
