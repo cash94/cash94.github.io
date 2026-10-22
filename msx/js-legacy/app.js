@@ -2080,6 +2080,7 @@ function renderDeviceInfo() {
     rows.push(['Прямой файл', dp.file + ' · звук: ' + (dp.audio === null ? '—' : dp.audio) + ' · субтитры: ' + (dp.text === null ? '—' : dp.text) + (dp.kinds ? ' (' + dp.kinds + ')' : '') + (dp.probe ? ' · названия: ' + dp.probe : '')]);
     if (dp.subs) rows.push(['Выбор субтитров', dp.subs]);
   }
+  if (window.tizenAvplayDiag) rows.push(['Дорожки AVPlay', window.tizenAvplayDiag]);
   var html = '';
   for (var i = 0; i < rows.length; i++) {
     html += '<div class="device-info-row"><span class="device-info-label">' + escapeHtml(rows[i][0]) + '</span><span class="device-info-value">' + escapeHtml(String(rows[i][1])) + '</span></div>';

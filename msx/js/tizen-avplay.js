@@ -212,6 +212,13 @@ var TizenAVPlay = (function () {
             })(i, tracks[i]);
         }
         textList._set(items);
+        // Что AVPlay сообщает о дорожках — в «Об устройстве» (app.js): по нему
+        // видно, откуда у него дорожки, которых нет в файле
+        var raw = trackInfo(), parts = [];
+        for (var k = 0; k < raw.length; k++) {
+            if (raw[k].type === 'AUDIO' || raw[k].type === 'TEXT') parts.push(raw[k].type.charAt(0) + raw[k].index + ' ' + (raw[k].extra_info || ''));
+        }
+        window.tizenAvplayDiag = parts.join(' | ');
     }
 
     // ---------- субтитры на экране ----------

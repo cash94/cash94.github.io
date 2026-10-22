@@ -4050,11 +4050,17 @@ function directProbeStart() {
   if (!hash || fileId === undefined || fileId === null) return;
 
   // Сервер TorrStream этот файл уже разбирал (его база file_info, общая для
-  // всех, приходит с /api/playback/prepare) — названия сразу оттуда: Full,
-  // Forced, SDH и т. п. — это теги title внутри файла, AVPlay на Tizen и
-  // <video> их не знают. Сервис CUB тогда не нужен; нет базы — как раньше
+  // всех, приходит с /api/playback/prepare) — названия могут прийти оттуда:
+  // Full, Forced, SDH и т. п. — это теги title внутри файла, AVPlay на Tizen
+  // и <video> их не знают. Где брать сначала:
+  //  - Tizen — CUB (просьба пользователя: он разбирает тот же файл раздачи,
+  //    что играет телевизор, а база сервера бывает от чужого TorrServer),
+  //    сервер — только если CUB не ответил или ответил пусто;
+  //  - остальные — сервер, CUB тогда не нужен.
   var fromServer = serverInfoStreams(directProbe.serverInfo, hash, fileId);
-  if (fromServer.length) { done(fromServer, 'сервер'); return; }
+  var cubFirst = AppState.platform === 'tizen';
+  if (fromServer.length && !cubFirst) { done(fromServer, 'сервер'); return; }
+  var serverFallback = function () { if (fromServer.length) done(fromServer, 'сервер'); };
 
   // Сервис CUB: на webOS — запасной (после своей службы), иначе — сразу
   var cubStarted = false;
@@ -4074,18 +4080,24 @@ function directProbeStart() {
         var json = null;
         try { json = JSON.parse(event.data); } catch (e) { }
         finish();
-        if (!(json && json.streams && json.streams.length) && !directProbe.streams) directPlaybackDiag.probe = 'сервис: пустой ответ';
+        if (!(json && json.streams && json.streams.length) && !directProbe.streams) {
+          directPlaybackDiag.probe = 'сервис: пустой ответ';
+          serverFallback();
+          return;
+        }
         done(json && json.streams, 'сервис');
       };
       socket.onerror = function () {
         finish();
         if (!directProbe.streams) directPlaybackDiag.probe = 'сервис: ошибка соединения' + (location.protocol === 'https:' ? ' (страница по https)' : '');
+        serverFallback();
       };
       timer = setTimeout(function () {
         finish();
         if (!directProbe.streams) directPlaybackDiag.probe = 'сервис: нет ответа за ' + (DIRECT_PROBE_TIMEOUT_MS / 1000) + ' с';
+        serverFallback();
       }, DIRECT_PROBE_TIMEOUT_MS);
-    } catch (e) { finish(); directPlaybackDiag.probe = 'сервис: ' + e.message; }
+    } catch (e) { finish(); directPlaybackDiag.probe = 'сервис: ' + e.message; serverFallback(); }
   };
 
   if (AppState.platform !== 'webos' || !lunaAvailable()) { startCub(); return; }
@@ -4296,7 +4308,13 @@ function refreshNativeSubtitles(videoPlayer) {
   var tracks = collectNativeTextTracks(videoPlayer);
   nativeSubState.tracks = tracks;
   var probeSubs = AppState.platform !== 'webos' ? directProbeSubs() : [];
-  nativeSubState.fromProbe = probeSubs.length > tracks.length;
+  // AVPlay на Tizen (tizen-avplay.js) дорожек может насчитать больше, чем их
+  // в файле (проверено: 5 против 4 у ffprobe), и названий у его дорожек нет —
+  // тогда подписи по номеру не сходятся вовсе. Список ffprobe там главный
+  // всегда: пункты — дорожки файла, а включает пункт дорожку AVPlay того же
+  // языка по порядку (nativeTrackForItem)
+  nativeSubState.fromProbe = probeSubs.length > tracks.length ||
+    (!!AppState.tizenAvplayActive && probeSubs.length > 0);
   if (nativeSubState.fromProbe) {
     currentSubTracks = probeSubs.map(function (st, k) {
       var d = st.disposition || {};

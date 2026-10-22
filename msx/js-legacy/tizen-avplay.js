@@ -224,6 +224,12 @@ var TizenAVPlay = function () {
       })(i, tracks[i]);
     }
     textList._set(items);
+    var raw = trackInfo(),
+      parts = [];
+    for (var k = 0; k < raw.length; k++) {
+      if (raw[k].type === 'AUDIO' || raw[k].type === 'TEXT') parts.push(raw[k].type.charAt(0) + raw[k].index + ' ' + (raw[k].extra_info || ''));
+    }
+    window.tizenAvplayDiag = parts.join(' | ');
   }
   function showSubtitle(text, durationMs) {
     if (!subsBox) return;

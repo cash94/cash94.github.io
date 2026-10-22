@@ -2686,6 +2686,8 @@ function renderDeviceInfo() {
       (dp.probe ? ' · названия: ' + dp.probe : '')]);
     if (dp.subs) rows.push(['Выбор субтитров', dp.subs]);
   }
+  // Tizen: дорожки, как их видит AVPlay (js/tizen-avplay.js), — сырые extra_info
+  if (window.tizenAvplayDiag) rows.push(['Дорожки AVPlay', window.tizenAvplayDiag]);
   var html = '';
   for (var i = 0; i < rows.length; i++) {
     html += '<div class="device-info-row"><span class="device-info-label">' + escapeHtml(rows[i][0]) +

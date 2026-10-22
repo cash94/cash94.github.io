@@ -3834,10 +3834,14 @@ function directProbeStart() {
   };
   if (!hash || fileId === undefined || fileId === null) return;
   var fromServer = serverInfoStreams(directProbe.serverInfo, hash, fileId);
-  if (fromServer.length) {
+  var cubFirst = AppState.platform === 'tizen';
+  if (fromServer.length && !cubFirst) {
     done(fromServer, 'сервер');
     return;
   }
+  var serverFallback = function () {
+    if (fromServer.length) done(fromServer, 'сервер');
+  };
   var cubStarted = false;
   var startCub = function () {
     if (cubStarted || gen !== directProbe.gen || directProbe.streams || typeof WebSocket !== 'function') return;
@@ -3860,20 +3864,27 @@ function directProbeStart() {
           json = JSON.parse(event.data);
         } catch (e) {}
         finish();
-        if (!(json && json.streams && json.streams.length) && !directProbe.streams) directPlaybackDiag.probe = 'сервис: пустой ответ';
+        if (!(json && json.streams && json.streams.length) && !directProbe.streams) {
+          directPlaybackDiag.probe = 'сервис: пустой ответ';
+          serverFallback();
+          return;
+        }
         done(json && json.streams, 'сервис');
       };
       socket.onerror = function () {
         finish();
         if (!directProbe.streams) directPlaybackDiag.probe = 'сервис: ошибка соединения' + (location.protocol === 'https:' ? ' (страница по https)' : '');
+        serverFallback();
       };
       timer = setTimeout(function () {
         finish();
         if (!directProbe.streams) directPlaybackDiag.probe = 'сервис: нет ответа за ' + DIRECT_PROBE_TIMEOUT_MS / 1000 + ' с';
+        serverFallback();
       }, DIRECT_PROBE_TIMEOUT_MS);
     } catch (e) {
       finish();
       directPlaybackDiag.probe = 'сервис: ' + e.message;
+      serverFallback();
     }
   };
   if (AppState.platform !== 'webos' || !lunaAvailable()) {
@@ -4048,7 +4059,7 @@ function refreshNativeSubtitles(videoPlayer) {
   var tracks = collectNativeTextTracks(videoPlayer);
   nativeSubState.tracks = tracks;
   var probeSubs = AppState.platform !== 'webos' ? directProbeSubs() : [];
-  nativeSubState.fromProbe = probeSubs.length > tracks.length;
+  nativeSubState.fromProbe = probeSubs.length > tracks.length || !!AppState.tizenAvplayActive && probeSubs.length > 0;
   if (nativeSubState.fromProbe) {
     currentSubTracks = probeSubs.map(function (st, k) {
       var d = st.disposition || {};
