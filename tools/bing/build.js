@@ -4,12 +4,12 @@
 //
 // Bing отдаёт список (HPImageArchive) без CORS, и страница на телевизоре его
 // прочитать не может. Поэтому список раз в день собирает GitHub Actions
-// (.github/workflows/gh-pages.yml) и кладёт рядом с сайтом — страницы GitHub
-// отдаются с Access-Control-Allow-Origin: *. Сами картинки клиент грузит прямо
-// с www.bing.com: <img> и CSS-фону CORS не нужен.
+// (.github/workflows/bing.yml) и коммитит в main как msx/cache/bing.json —
+// страницы GitHub отдаются с Access-Control-Allow-Origin: *. Сами картинки
+// клиент грузит прямо с www.bing.com: <img> и CSS-фону CORS не нужен.
 //
-// Пустой ответ Bing — код выхода 1 и файл не трогаем: сборка тогда оставляет
-// прежний список из опубликованной версии сайта.
+// Пустой ответ Bing — код выхода 1 и файл не трогаем: в main остаётся
+// прежний список.
 
 'use strict';
 

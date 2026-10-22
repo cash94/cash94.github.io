@@ -1,16 +1,14 @@
 # Пересобирает ветку gh-pages (из неё GitHub Pages раздаёт сайт) после каждого пуша в main:
 # файлы из main + releases/ и msx/cache/tmdbCache.json из текущей gh-pages (их выкладывает бот).
 # gh-pages всегда из одного коммита, поэтому история не растёт.
-# Ещё раз в день — по расписанию: при каждой сборке заново собирается список картинок
-# дня Bing для заставки (msx/cache/bing.json, tools/bing/build.js).
+# Список картинок Bing для заставки (msx/cache/bing.json) лежит в main — его раз в день
+# обновляет bing.yml; собирать его здесь нельзя: numparser-bot пересобирает gh-pages из
+# main сам, и всё, чего нет в main, у него пропадает.
 name: Build gh-pages
 
 on:
   push:
     branches: [main]
-  # Картинка дня Bing меняется около 07:00 UTC — собираем чуть позже
-  schedule:
-    - cron: '20 7 * * *'
   workflow_dispatch:
 
 permissions:
@@ -43,15 +41,6 @@ jobs:
             if $G cat-file -e "$PREV:msx/cache/tmdbCache.json" 2>/dev/null; then
               mkdir -p "$SITE/msx/cache"
               $G show "$PREV:msx/cache/tmdbCache.json" > "$SITE/msx/cache/tmdbCache.json"
-            fi
-          fi
-
-          # Картинки дня Bing для заставки. Bing не ответил — остаётся прежний
-          # список из опубликованной версии: вчерашние картинки лучше пустой заставки
-          mkdir -p "$SITE/msx/cache"
-          if ! node "$GITHUB_WORKSPACE/tools/bing/build.js" "$SITE/msx/cache/bing.json"; then
-            if $G cat-file -e "$PREV:msx/cache/bing.json" 2>/dev/null; then
-              $G show "$PREV:msx/cache/bing.json" > "$SITE/msx/cache/bing.json"
             fi
           fi
 

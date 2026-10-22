@@ -27,8 +27,12 @@
     // на автоповторе пульта это десятки clearTimeout/setTimeout в секунду
     var CHECK_MS = 5000;
     var FADE_MS = 1500;
-    // Список картинок дня меняется раз в сутки
-    var LIST_TTL_MS = 3 * 60 * 60 * 1000;
+    // Список держим в IndexedDB три дня, чтобы не ходить за ним в сеть при
+    // каждом засыпании и каждом запуске. Bing меняет картинку раз в сутки,
+    // так что к концу срока в списке не хватает пары последних дней — для
+    // заставки это неважно
+    var LIST_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+    var DB_NAME = 'ScreensaverDB', DB_STORE = 'cache', DB_KEY = 'bing';
     // Зеркало не ответило — не спрашиваем на каждом тике
     var LIST_RETRY_MS = 10 * 60 * 1000;
     // Адрес зеркала тот же, что у всех скриптов в index.html, и с ?local=1
@@ -41,7 +45,7 @@
     var active = false;
     var root = null, layers = [], front = 0;
     var captionEl = null, clockEl = null;
-    var images = [], listAt = 0, listFailedAt = 0, listLoading = false;
+    var images = [], listAt = 0, listFailedAt = 0, listLoading = false, dbChecked = false;
     var index = -1, slideTimer = null, slideGen = 0;
     var swallowKeyUp = null;
     var mouseX = -1, mouseY = -1;
@@ -73,16 +77,69 @@
 
     // ==================== СПИСОК КАРТИНОК ====================
 
-    function loadList(done) {
-        if (listLoading) return;
-        listLoading = true;
+    /**
+     * База открывается на каждую операцию и сразу закрывается: операций две за
+     * сеанс-другой, а открытое соединение держало бы базу, мешая её обновлению
+     * из соседней вкладки. Нет IndexedDB (приватный режим, урезанный браузер
+     * телевизора) — cb(null), и список просто берётся из сети.
+     */
+    function withStore(mode, fn) {
+        var called = false;
+        var once = function (store) { if (!called) { called = true; fn(store); } };
+        try {
+            var req = window.indexedDB.open(DB_NAME, 1);
+            req.onupgradeneeded = function () { req.result.createObjectStore(DB_STORE); };
+            req.onerror = function () { once(null); };
+            req.onblocked = function () { once(null); };
+            req.onsuccess = function () {
+                var db = req.result;
+                try {
+                    var tx = db.transaction(DB_STORE, mode);
+                    tx.oncomplete = tx.onerror = tx.onabort = function () { db.close(); };
+                    once(tx.objectStore(DB_STORE));
+                } catch (e) {
+                    db.close();
+                    once(null);
+                }
+            };
+        } catch (e) {
+            once(null);
+        }
+    }
+
+    function readCachedList(cb) {
+        withStore('readonly', function (store) {
+            if (!store) { cb(null); return; }
+            var called = false;
+            var once = function (v) { if (!called) { called = true; cb(v); } };
+            try {
+                var r = store.get(DB_KEY);
+                r.onsuccess = function () { once(r.result || null); };
+                r.onerror = function () { once(null); };
+            } catch (e) {
+                once(null);
+            }
+        });
+    }
+
+    function saveCachedList(list, at) {
+        withStore('readwrite', function (store) {
+            if (!store) return;
+            try { store.put({ at: at, images: list }, DB_KEY); } catch (e) { }
+        });
+    }
+
+    function fetchList(done) {
         var finish = function (list) {
             listLoading = false;
             if (list && list.length) {
                 images = list;
                 listAt = Date.now();
                 listFailedAt = 0;
+                saveCachedList(list, listAt);
             } else {
+                // Просроченный список из базы, если он был, остаётся в images:
+                // старые картинки лучше, чем никакой заставки
                 listFailedAt = Date.now();
             }
             done();
@@ -96,6 +153,26 @@
         } catch (e) {
             finish(null);
         }
+    }
+
+    /** Сначала база (один раз за сеанс), в сеть — только если там пусто или срок вышел */
+    function loadList(done) {
+        if (listLoading) return;
+        listLoading = true;
+        if (dbChecked) { fetchList(done); return; }
+        readCachedList(function (rec) {
+            dbChecked = true;
+            if (rec && rec.images && rec.images.length) {
+                images = rec.images;
+                listAt = rec.at || 0;
+                if (listFresh()) {
+                    listLoading = false;
+                    done();
+                    return;
+                }
+            }
+            fetchList(done);
+        });
     }
 
     function listFresh() {
