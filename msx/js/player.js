@@ -4026,6 +4026,25 @@ var DIRECT_PROBE_TIMEOUT_MS = 15000;
 // webOS: сколько ждать свою службу ffprobe, прежде чем спросить CUB
 var DIRECT_PROBE_LUNA_WAIT_MS = 8000;
 
+// Служба ffprobe на Samsung Tizen (внутри TorrStream-Tizen.wgt), см. directProbeStart
+var TIZEN_FFPROBE_URL = 'http://127.0.0.1:8095';
+
+/**
+ * Адрес файла для своей службы ffprobe (webOS, Tizen): она читает его прямо с
+ * TorrServer. localhost — 127.0.0.1: статическому ffprobe имена не разрешить
+ * даже localhost («Failed to resolve hostname localhost» на webOS 25 со
+ * встроенным TorrServer). Basic-авторизация TorrServer — в адрес: службе
+ * заголовки не передать
+ */
+function directProbeUri(hash, fileId) {
+  var playURL = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&play=play';
+  var uri = playURL.replace(/^(https?:\/\/)localhost(?=[:\/]|$)/i, '$1127.0.0.1');
+  if (AppState.authEnabled && AppState.authLogin) {
+    uri = uri.replace(/^(https?:\/\/)/, '$1' + encodeURIComponent(AppState.authLogin) + ':' + encodeURIComponent(AppState.authPassword || '') + '@');
+  }
+  return uri;
+}
+
 /**
  * Сведения о файле с сервера (services/file-info.js) — в вид потоков ffprobe,
  * как их ждёт applyDirectProbe. Сервер подставляет «Дорожка N»/«Субтитры N»
@@ -4117,18 +4136,40 @@ function directProbeStart() {
     } catch (e) { finish(); directPlaybackDiag.probe = 'сервис: ' + e.message; serverFallback(); }
   };
 
+  // Samsung Tizen: своя служба ffprobe — .NET-часть TorrStream-Tizen.wgt с 1.1.3
+  // (гибрид, как TorrServer у no-cover; TorrStream-Tizen/ffprobe-service),
+  // стартует вместе с телевизором и отвечает на 127.0.0.1. Читает файл прямо
+  // с TorrServer, как служба webOS ниже. Нет её (отказ соединения — сразу:
+  // wgt старее 1.1.3) или молчит — CUB
+  if (AppState.tizenApp) {
+    setTimeout(startCub, DIRECT_PROBE_LUNA_WAIT_MS);
+    directPlaybackDiag.probe = 'ffprobe на ТВ: запрос…';
+    var tx = new XMLHttpRequest();
+    var localFail = function (why) {
+      if (gen !== directProbe.gen || directProbe.streams) return;
+      directPlaybackDiag.probe = 'ffprobe на ТВ: ' + why;
+      startCub();
+    };
+    try {
+      tx.open('GET', TIZEN_FFPROBE_URL + '/ffprobe?url=' + encodeURIComponent(directProbeUri(hash, fileId)), true);
+      tx.timeout = 60000;
+      tx.onload = function () {
+        var parsed = null;
+        try { parsed = JSON.parse(tx.responseText || '{}'); } catch (e) { }
+        if (parsed && parsed.streams && parsed.streams.length) { done(parsed.streams, 'ffprobe на ТВ'); return; }
+        localFail((parsed && parsed.error) || ('пустой ответ, HTTP ' + tx.status));
+      };
+      tx.onerror = function () { localFail('служба не установлена или не запущена'); };
+      tx.ontimeout = function () { localFail('нет ответа за 60 с'); };
+      tx.send();
+    } catch (e) { localFail(e.message); }
+    return;
+  }
+
   if (AppState.platform !== 'webos' || !lunaAvailable()) { startCub(); return; }
   // Своя служба молчит — не ждём бесконечно, идём в CUB
   setTimeout(startCub, DIRECT_PROBE_LUNA_WAIT_MS);
-  var playURL = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&play=play';
-  // localhost — 127.0.0.1: статическому ffprobe имена не разрешить даже
-  // localhost («Failed to resolve hostname localhost» на webOS 25 со
-  // встроенным TorrServer)
-  var uri = playURL.replace(/^(https?:\/\/)localhost(?=[:\/]|$)/i, '$1127.0.0.1');
-  // Basic-авторизация TorrServer — в адрес: службе заголовки не передать
-  if (AppState.authEnabled && AppState.authLogin) {
-    uri = uri.replace(/^(https?:\/\/)/, '$1' + encodeURIComponent(AppState.authLogin) + ':' + encodeURIComponent(AppState.authPassword || '') + '@');
-  }
+  var uri = directProbeUri(hash, fileId);
   webosSubsDiag.probe = 'запрос…';
   lunaRequest('luna://com.torrstream.app.service', 'ffprobe', { uri: uri }, function (r) {
     if (gen !== directProbe.gen) return;

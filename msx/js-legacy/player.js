@@ -3796,6 +3796,15 @@ function applyDirectProbe() {
 var DIRECT_PROBE_WS = 'ws://185.204.0.61:8080/';
 var DIRECT_PROBE_TIMEOUT_MS = 15000;
 var DIRECT_PROBE_LUNA_WAIT_MS = 8000;
+var TIZEN_FFPROBE_URL = 'http://127.0.0.1:8095';
+function directProbeUri(hash, fileId) {
+  var playURL = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&play=play';
+  var uri = playURL.replace(/^(https?:\/\/)localhost(?=[:\/]|$)/i, '$1127.0.0.1');
+  if (AppState.authEnabled && AppState.authLogin) {
+    uri = uri.replace(/^(https?:\/\/)/, '$1' + encodeURIComponent(AppState.authLogin) + ':' + encodeURIComponent(AppState.authPassword || '') + '@');
+  }
+  return uri;
+}
 function serverInfoStreams(entry, hash, fileId) {
   if (!entry || entry.hash !== hash || String(entry.fileId) !== String(fileId) || !entry.info) return [];
   var info = entry.info,
@@ -3903,16 +3912,47 @@ function directProbeStart() {
       serverFallback();
     }
   };
+  if (AppState.tizenApp) {
+    setTimeout(startCub, DIRECT_PROBE_LUNA_WAIT_MS);
+    directPlaybackDiag.probe = 'ffprobe на ТВ: запрос…';
+    var tx = new XMLHttpRequest();
+    var localFail = function (why) {
+      if (gen !== directProbe.gen || directProbe.streams) return;
+      directPlaybackDiag.probe = 'ffprobe на ТВ: ' + why;
+      startCub();
+    };
+    try {
+      tx.open('GET', TIZEN_FFPROBE_URL + '/ffprobe?url=' + encodeURIComponent(directProbeUri(hash, fileId)), true);
+      tx.timeout = 60000;
+      tx.onload = function () {
+        var parsed = null;
+        try {
+          parsed = JSON.parse(tx.responseText || '{}');
+        } catch (e) {}
+        if (parsed && parsed.streams && parsed.streams.length) {
+          done(parsed.streams, 'ffprobe на ТВ');
+          return;
+        }
+        localFail(parsed && parsed.error || 'пустой ответ, HTTP ' + tx.status);
+      };
+      tx.onerror = function () {
+        localFail('служба не установлена или не запущена');
+      };
+      tx.ontimeout = function () {
+        localFail('нет ответа за 60 с');
+      };
+      tx.send();
+    } catch (e) {
+      localFail(e.message);
+    }
+    return;
+  }
   if (AppState.platform !== 'webos' || !lunaAvailable()) {
     startCub();
     return;
   }
   setTimeout(startCub, DIRECT_PROBE_LUNA_WAIT_MS);
-  var playURL = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&play=play';
-  var uri = playURL.replace(/^(https?:\/\/)localhost(?=[:\/]|$)/i, '$1127.0.0.1');
-  if (AppState.authEnabled && AppState.authLogin) {
-    uri = uri.replace(/^(https?:\/\/)/, '$1' + encodeURIComponent(AppState.authLogin) + ':' + encodeURIComponent(AppState.authPassword || '') + '@');
-  }
+  var uri = directProbeUri(hash, fileId);
   webosSubsDiag.probe = 'запрос…';
   lunaRequest('luna://com.torrstream.app.service', 'ffprobe', {
     uri: uri

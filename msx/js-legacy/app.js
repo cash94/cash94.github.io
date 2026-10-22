@@ -2052,6 +2052,41 @@ function setupAndroidAppSettings() {
     };
   }
 }
+var tizenFfprobeStatus = '';
+function checkTizenFfprobe() {
+  if (checkTizenFfprobe.busy || typeof TIZEN_FFPROBE_URL === 'undefined') return;
+  checkTizenFfprobe.busy = true;
+  var x = new XMLHttpRequest();
+  var finish = function (text) {
+    checkTizenFfprobe.busy = false;
+    tizenFfprobeStatus = text;
+    renderDeviceInfo();
+  };
+  try {
+    x.open('GET', TIZEN_FFPROBE_URL + '/version', true);
+    x.timeout = 5000;
+    x.onload = function () {
+      var d = null;
+      try {
+        d = JSON.parse(x.responseText);
+      } catch (e) {}
+      if (!d) {
+        finish('ответ не разобран (HTTP ' + x.status + ')');
+        return;
+      }
+      finish('служба ' + (d.service || '?') + ' · ' + (d.ffprobe || 'ffprobe не запускается' + (d.error ? ': ' + d.error : '')));
+    };
+    x.onerror = function () {
+      finish('не запущена (нужен TorrStream-Tizen 1.1.3+)');
+    };
+    x.ontimeout = function () {
+      finish('не отвечает');
+    };
+    x.send();
+  } catch (e) {
+    finish('ошибка: ' + e.message);
+  }
+}
 function renderDeviceInfo() {
   setupAndroidAppSettings();
   var box = getEl('device-info');
@@ -2079,6 +2114,10 @@ function renderDeviceInfo() {
   if (dp && dp.file) {
     rows.push(['Прямой файл', dp.file + ' · звук: ' + (dp.audio === null ? '—' : dp.audio) + ' · субтитры: ' + (dp.text === null ? '—' : dp.text) + (dp.kinds ? ' (' + dp.kinds + ')' : '') + (dp.probe ? ' · названия: ' + dp.probe : '')]);
     if (dp.subs) rows.push(['Выбор субтитров', dp.subs]);
+  }
+  if (AppState.tizenApp) {
+    rows.push(['ffprobe на ТВ', tizenFfprobeStatus || 'проверка…']);
+    if (!tizenFfprobeStatus) checkTizenFfprobe();
   }
   if (window.tizenAvplayDiag) rows.push(['Дорожки AVPlay', window.tizenAvplayDiag]);
   var html = '';

@@ -2627,6 +2627,29 @@ function setupAndroidAppSettings() {
   }
 }
 
+// Служба ffprobe на Tizen отвечает на 127.0.0.1 (player.js: TIZEN_FFPROBE_URL).
+// Ответ запоминаем на сеанс и перерисовываем «Об устройстве»
+var tizenFfprobeStatus = '';
+function checkTizenFfprobe() {
+  if (checkTizenFfprobe.busy || typeof TIZEN_FFPROBE_URL === 'undefined') return;
+  checkTizenFfprobe.busy = true;
+  var x = new XMLHttpRequest();
+  var finish = function (text) { checkTizenFfprobe.busy = false; tizenFfprobeStatus = text; renderDeviceInfo(); };
+  try {
+    x.open('GET', TIZEN_FFPROBE_URL + '/version', true);
+    x.timeout = 5000;
+    x.onload = function () {
+      var d = null;
+      try { d = JSON.parse(x.responseText); } catch (e) { }
+      if (!d) { finish('ответ не разобран (HTTP ' + x.status + ')'); return; }
+      finish('служба ' + (d.service || '?') + ' · ' + (d.ffprobe || ('ffprobe не запускается' + (d.error ? ': ' + d.error : ''))));
+    };
+    x.onerror = function () { finish('не запущена (нужен TorrStream-Tizen 1.1.3+)'); };
+    x.ontimeout = function () { finish('не отвечает'); };
+    x.send();
+  } catch (e) { finish('ошибка: ' + e.message); }
+}
+
 function renderDeviceInfo() {
   setupAndroidAppSettings();
   var box = getEl('device-info');
@@ -2685,6 +2708,11 @@ function renderDeviceInfo() {
       ' · субтитры: ' + (dp.text === null ? '—' : dp.text) + (dp.kinds ? ' (' + dp.kinds + ')' : '') +
       (dp.probe ? ' · названия: ' + dp.probe : '')]);
     if (dp.subs) rows.push(['Выбор субтитров', dp.subs]);
+  }
+  // Tizen: своя служба ffprobe (внутри TorrStream-Tizen.wgt с 1.1.3) — работает ли
+  if (AppState.tizenApp) {
+    rows.push(['ffprobe на ТВ', tizenFfprobeStatus || 'проверка…']);
+    if (!tizenFfprobeStatus) checkTizenFfprobe();
   }
   // Tizen: дорожки, как их видит AVPlay (js/tizen-avplay.js), — сырые extra_info
   if (window.tizenAvplayDiag) rows.push(['Дорожки AVPlay', window.tizenAvplayDiag]);
