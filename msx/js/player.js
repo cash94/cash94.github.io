@@ -2850,7 +2850,8 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
     started = true;
     if (AppState._loadingTimeout) { clearTimeout(AppState._loadingTimeout); AppState._loadingTimeout = null; }
     videoPlayer.removeEventListener('canplay', onCanPlay);
-    hidePlayerLoading();
+    // Tizen: спиннер «Воспроизведение…» — до первых кадров (onPlaying ниже)
+    if (!AppState.tizenApp) hidePlayerLoading();
     // audioTracks к loadedmetadata был пуст — пробуем ещё раз
     // (на webOS дорожку включает webosSubsApply)
     if (nativeAudioPref >= 0 && AppState.platform !== 'webos') {
@@ -2880,6 +2881,17 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
     videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
     videoPlayer.removeEventListener('canplay', onCanPlay);
     videoPlayer.removeEventListener('error', onError);
+    videoPlayer.removeEventListener('playing', onPlaying);
+  };
+
+  // Спиннер — пока не пошли кадры. Без предзагрузки TorrServer отдаёт начало
+  // файла не сразу, а AVPlay (tizen-avplay.js) ещё и готовит файл целиком до
+  // canplay: заставка «Воспроизведение…» гасла с концом startHLSPlayback, и
+  // секунды, а то и десятки секунд был просто чёрный экран. Пока только в
+  // приложении для Tizen — у остальных спиннер гаснет, как раньше
+  var onPlaying = function () {
+    videoPlayer.removeEventListener('playing', onPlaying);
+    hidePlayerLoading();
   };
 
   var onLoadedMetadata = function () {
@@ -2932,6 +2944,7 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
   videoPlayer.addEventListener('canplay', onCanPlay);
   videoPlayer.addEventListener('error', onError);
+  if (AppState.tizenApp) videoPlayer.addEventListener('playing', onPlaying);
   // Ссылку держим, чтобы снять слушатели прошлого файла: 'error' живёт всё
   // воспроизведение, и без этого на <video> оседал ещё один на каждую серию
   AppState._directPlaybackDetach = detachDirectListeners;
@@ -2947,7 +2960,8 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   webosSubsStart(videoPlayer, staleMediaId);
   directProbeStart();
   AppState.nativeVideoPlayer = videoPlayer;
-  hidePlayerLoading();
+  if (AppState.tizenApp) showPlayerLoading('Воспроизведение...', null);
+  else hidePlayerLoading();
 }
 
 async function initServerProxyPlayback(metadata, initialSeek, signal) {

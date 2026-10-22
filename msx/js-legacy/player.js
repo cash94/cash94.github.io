@@ -2520,7 +2520,7 @@ function _initTranscodingOffPlayback() {
         AppState._loadingTimeout = null;
       }
       videoPlayer.removeEventListener('canplay', onCanPlay);
-      hidePlayerLoading();
+      if (!AppState.tizenApp) hidePlayerLoading();
       if (nativeAudioPref >= 0 && AppState.platform !== 'webos') {
         var lateAudio = applyNativeAudioPref(videoPlayer);
         if (lateAudio >= 0) {
@@ -2552,6 +2552,11 @@ function _initTranscodingOffPlayback() {
       videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
       videoPlayer.removeEventListener('canplay', onCanPlay);
       videoPlayer.removeEventListener('error', onError);
+      videoPlayer.removeEventListener('playing', onPlaying);
+    };
+    var onPlaying = function () {
+      videoPlayer.removeEventListener('playing', onPlaying);
+      hidePlayerLoading();
     };
     var onLoadedMetadata = function () {
       videoPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
@@ -2590,6 +2595,7 @@ function _initTranscodingOffPlayback() {
     videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
     videoPlayer.addEventListener('canplay', onCanPlay);
     videoPlayer.addEventListener('error', onError);
+    if (AppState.tizenApp) videoPlayer.addEventListener('playing', onPlaying);
     AppState._directPlaybackDetach = detachDirectListeners;
     AppState._loadingTimeout = setTimeout(function () {
       if (!started && !signal.aborted) startPlayback();
@@ -2600,7 +2606,7 @@ function _initTranscodingOffPlayback() {
     webosSubsStart(videoPlayer, staleMediaId);
     directProbeStart();
     AppState.nativeVideoPlayer = videoPlayer;
-    hidePlayerLoading();
+    if (AppState.tizenApp) showPlayerLoading('Воспроизведение...', null);else hidePlayerLoading();
   });
   return _initTranscodingOffPlayback.apply(this, arguments);
 }
