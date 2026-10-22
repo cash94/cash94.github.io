@@ -3869,7 +3869,10 @@ var LANG_NAMES = {
   por: 'Português', pol: 'Polski', tur: 'Türkçe', ara: 'العربية', heb: 'עברית', hin: 'हिन्दी',
   // Двухбуквенные коды — так язык textTracks называет часть телевизоров
   zh: '中文', ko: '한국어', de: 'Deutsch', fr: 'Français', es: 'Español', it: 'Italiano', pt: 'Português',
-  pl: 'Polski', tr: 'Türkçe', ar: 'العربية', he: 'עברית', iw: 'עברית', hi: 'हिन्दी', be: 'Беларуская', kk: 'Қазақша'
+  pl: 'Polski', tr: 'Türkçe', ar: 'العربية', he: 'עברית', iw: 'עברית', hi: 'हिन्दी', be: 'Беларуская', kk: 'Қазақша',
+  // Полными словами — так язык называют часть плееров телевизоров
+  russian: 'Русский', english: 'English', ukrainian: 'Українська', japanese: '日本語', korean: '한국어',
+  chinese: '中文', german: 'Deutsch', french: 'Français', spanish: 'Español', italian: 'Italiano'
 };
 var TEXT_SUB_CODECS = { subrip: 1, srt: 1, ass: 1, ssa: 1, webvtt: 1, mov_text: 1, text: 1 };
 // DTS и TrueHD телевизоры LG с 2020 года не играют и в списке звука не показывают
@@ -4295,7 +4298,20 @@ function nativeTrackForItem(index, tracks) {
   var probeSubs = directProbeSubs();
   var map = matchProbeByLanguage(tracks, probeSubs, isImageSubStream, true);
   for (var i = 0; i < map.length; i++) if (map[i] && map[i] === probeSubs[index]) return i;
+  // Ни один язык дорожек плеера не совпал с языками файла — плеер называет
+  // их по-своему или не называет (AVPlay на Tizen 5.5: субтитры перестали
+  // включаться, когда список стал из ffprobe). Тогда сопоставление по языку
+  // бессмысленно — по номеру, как было до списка из ffprobe
+  if (!langsOverlap(tracks, probeSubs)) return index < tracks.length ? index : -1;
   return -1;
+}
+
+/** Есть ли у дорожек плеера хоть один язык из языков потоков ffprobe */
+function langsOverlap(tracks, streams) {
+  var have = {};
+  for (var j = 0; j < streams.length; j++) { var l = langKey(probeLang(streams[j])); if (l) have[l] = true; }
+  for (var i = 0; i < tracks.length; i++) { var k = langKey(tracks[i].language); if (k && have[k]) return true; }
+  return false;
 }
 
 /** Субтитры файла по ответу ffprobe (directProbeStart); нет ответа — [] */

@@ -3649,7 +3649,17 @@ var LANG_NAMES = {
   iw: 'עברית',
   hi: 'हिन्दी',
   be: 'Беларуская',
-  kk: 'Қазақша'
+  kk: 'Қазақша',
+  russian: 'Русский',
+  english: 'English',
+  ukrainian: 'Українська',
+  japanese: '日本語',
+  korean: '한국어',
+  chinese: '中文',
+  german: 'Deutsch',
+  french: 'Français',
+  spanish: 'Español',
+  italian: 'Italiano'
 };
 var TEXT_SUB_CODECS = {
   subrip: 1,
@@ -4050,7 +4060,20 @@ function nativeTrackForItem(index, tracks) {
   var probeSubs = directProbeSubs();
   var map = matchProbeByLanguage(tracks, probeSubs, isImageSubStream, true);
   for (var i = 0; i < map.length; i++) if (map[i] && map[i] === probeSubs[index]) return i;
+  if (!langsOverlap(tracks, probeSubs)) return index < tracks.length ? index : -1;
   return -1;
+}
+function langsOverlap(tracks, streams) {
+  var have = {};
+  for (var j = 0; j < streams.length; j++) {
+    var l = langKey(probeLang(streams[j]));
+    if (l) have[l] = true;
+  }
+  for (var i = 0; i < tracks.length; i++) {
+    var k = langKey(tracks[i].language);
+    if (k && have[k]) return true;
+  }
+  return false;
 }
 function directProbeSubs() {
   var streams = directProbe.streams || [],
