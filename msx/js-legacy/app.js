@@ -2021,7 +2021,7 @@ function devicePlayerName() {
 }
 function browserVersionName() {
   var ua = navigator.userAgent || '';
-  var known = [['Edge', /Edg(?:e|A|iOS)?\/([\d.]+)/], ['Opera', /OPR\/([\d.]+)/], ['Яндекс Браузер', /YaBrowser\/([\d.]+)/], ['Samsung Internet', /SamsungBrowser\/([\d.]+)/], ['Firefox', /Firefox\/([\d.]+)/], ['Chrome', /(?:Chrome|CriOS)\/([\d.]+)/], ['Safari', /Version\/([\d.]+).*Safari/]];
+  var known = [['Edge', /Edg(?:e|A|iOS)?\/([\d.]+)/], ['Opera', /OPR\/([\d.]+)/], ['Яндекс Браузер', /YaBrowser\/([\d.]+)/], ['Samsung Internet', /SamsungBrowser\/([\d.]+)/], ['Firefox', /Firefox\/([\d.]+)/], ['Chrome', /(?:Chrome|CriOS)\/([\d.]+)/], ['Chrome', /\) (\d+\.[\d.]+)\/[\d.]+ TV Safari/], ['Safari', /Version\/([\d.]+).*Safari/]];
   for (var i = 0; i < known.length; i++) {
     var m = ua.match(known[i][1]);
     if (m) {

@@ -746,11 +746,15 @@ function wrapRutubeHls(url) {
  * Трейлер через hls.js (MSE) или встроенным HLS браузера. webOS 4 (Chrome 53,
  * LEGACY_JS в index.html) поток из MSE не показывает: в эмуляторе — ошибка
  * декодирования, на ТВ — звук без картинки. Тот же m3u8 в video.src играет
- * медиаконвейер webOS — с картинкой. Новые webOS и прочие — как раньше.
+ * медиаконвейер webOS — с картинкой. Samsung Tizen 5.5 (Chrome 69) — то же
+ * самое: из MSE звук есть, картинки нет, поэтому старым Tizen (до 7, движок
+ * до Chrome 94) m3u8 тоже отдаём плееру телевизора. Tizen 7+ про такое пока
+ * не сообщали — у них hls.js, как у прочих. Новые webOS и прочие — как раньше.
  */
 function trailerUsesHlsJs() {
     if (!(window.Hls && Hls.isSupported())) return false;
     if (window.LEGACY_JS && (window.PalmSystem || window.webOSSystem)) return false;
+    if (AppState.platform === 'tizen' && parseFloat(AppState.tizenVersion) < 7) return false;
     return true;
 }
 window.trailerUsesHlsJs = trailerUsesHlsJs;

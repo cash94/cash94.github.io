@@ -2582,6 +2582,8 @@ function browserVersionName() {
     ['Samsung Internet', /SamsungBrowser\/([\d.]+)/],
     ['Firefox', /Firefox\/([\d.]+)/],
     ['Chrome', /(?:Chrome|CriOS)\/([\d.]+)/],
+    // Samsung Tizen пишет версию движка без «Chrome/»: «… like Gecko) 69.0.3497.106/5.5 TV Safari/…»
+    ['Chrome', /\) (\d+\.[\d.]+)\/[\d.]+ TV Safari/],
     ['Safari', /Version\/([\d.]+).*Safari/]
   ];
   for (var i = 0; i < known.length; i++) {
