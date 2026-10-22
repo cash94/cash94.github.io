@@ -2319,6 +2319,11 @@ function _preparePlaybackMetadata() {
     var savedAudioTrack = prepared.audioTrack;
     var savedSubTrack = prepared.subtitleTrack;
     var savedTimecode = prepared.timecode || null;
+    directProbe.serverInfo = fileInfo ? {
+      hash: currentTimecodeData.hash,
+      fileId: currentTimecodeData.fileId,
+      info: fileInfo
+    } : null;
     if (fileInfo && fileInfo.audio) {
       currentAudioTracks = fileInfo.audio;
       currentAudioTrack = audioTrack !== null ? audioTrack : 0;
@@ -3595,7 +3600,8 @@ function webosSubsApply(info) {
 var directProbe = {
   gen: 0,
   streams: null,
-  count: ''
+  count: '',
+  serverInfo: null
 };
 var LANG_NAMES = {
   rus: 'Русский',
@@ -3774,6 +3780,44 @@ function applyDirectProbe() {
 var DIRECT_PROBE_WS = 'ws://185.204.0.61:8080/';
 var DIRECT_PROBE_TIMEOUT_MS = 15000;
 var DIRECT_PROBE_LUNA_WAIT_MS = 8000;
+function serverInfoStreams(entry, hash, fileId) {
+  if (!entry || entry.hash !== hash || String(entry.fileId) !== String(fileId) || !entry.info) return [];
+  var info = entry.info,
+    out = [];
+  var clean = function (v, generic) {
+    v = v || '';
+    return generic.test(v) || v === 'unknown' ? '' : v;
+  };
+  (info.audio || []).forEach(function (a) {
+    out.push({
+      codec_type: 'audio',
+      codec_name: a.codec || '',
+      channels: a.channels || null,
+      tags: {
+        language: clean(a.language, /^$/),
+        title: clean(a.title, /^Дорожка \d+$/)
+      },
+      disposition: {
+        default: a['default'] ? 1 : 0
+      }
+    });
+  });
+  (info.subtitles || []).forEach(function (t) {
+    out.push({
+      codec_type: 'subtitle',
+      codec_name: t.codec || t.format || '',
+      tags: {
+        language: clean(t.language, /^$/),
+        title: clean(t.title, /^Субтитры \d+$/)
+      },
+      disposition: {
+        default: t['default'] ? 1 : 0,
+        forced: t.forced ? 1 : 0
+      }
+    });
+  });
+  return out;
+}
 function directProbeStart() {
   directProbe.streams = null;
   directProbe.count = '';
@@ -3789,6 +3833,11 @@ function directProbeStart() {
     if (AppState.transcodingFullOnOff && nativeSubState.mode !== 'webos' && AppState.platform !== 'webos' && AppState.currentScreen === 'player') refreshNativeSubtitles(getEl('video-player'));else applyDirectProbe();
   };
   if (!hash || fileId === undefined || fileId === null) return;
+  var fromServer = serverInfoStreams(directProbe.serverInfo, hash, fileId);
+  if (fromServer.length) {
+    done(fromServer, 'сервер');
+    return;
+  }
   var cubStarted = false;
   var startCub = function () {
     if (cubStarted || gen !== directProbe.gen || directProbe.streams || typeof WebSocket !== 'function') return;

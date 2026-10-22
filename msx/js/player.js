@@ -2714,6 +2714,8 @@ async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, sig
   var savedAudioTrack = prepared.audioTrack;
   var savedSubTrack = prepared.subtitleTrack;
   var savedTimecode = prepared.timecode || null;
+  // Прямой файл берёт отсюда названия дорожек, если ffprobe не ответит (directProbeStart)
+  directProbe.serverInfo = fileInfo ? { hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, info: fileInfo } : null;
   if (fileInfo && fileInfo.audio) { currentAudioTracks = fileInfo.audio; currentAudioTrack = audioTrack !== null ? audioTrack : 0; }
   if (fileInfo && fileInfo.subtitles) currentSubTracks = fileInfo.subtitles;
   if (savedAudioTrack !== null && savedAudioTrack < currentAudioTracks.length) {
@@ -3845,7 +3847,7 @@ function webosSubsApply(info) {
 // потоки: язык, название, кодек, каналы, «по умолчанию»/«принудительные».
 // Сопоставляем по порядку (alignProbeStreams): webOS показывает не все потоки
 // файла, но порядок сохраняет.
-var directProbe = { gen: 0, streams: null, count: '' };
+var directProbe = { gen: 0, streams: null, count: '', serverInfo: null };
 var LANG_NAMES = {
   rus: 'Русский', ru: 'Русский', eng: 'English', en: 'English', ukr: 'Українська', uk: 'Українська',
   bel: 'Беларуская', kaz: 'Қазақша', jpn: '日本語', ja: '日本語', kor: '한국어', chi: '中文', zho: '中文',
@@ -4007,6 +4009,28 @@ var DIRECT_PROBE_TIMEOUT_MS = 15000;
 // webOS: сколько ждать свою службу ffprobe, прежде чем спросить CUB
 var DIRECT_PROBE_LUNA_WAIT_MS = 8000;
 
+/**
+ * Сведения о файле с сервера (services/file-info.js) — в вид потоков ffprobe,
+ * как их ждёт applyDirectProbe. Сервер подставляет «Дорожка N»/«Субтитры N»
+ * и «unknown» вместо пустых тегов — такие не считаем названием.
+ */
+function serverInfoStreams(entry, hash, fileId) {
+  if (!entry || entry.hash !== hash || String(entry.fileId) !== String(fileId) || !entry.info) return [];
+  var info = entry.info, out = [];
+  var clean = function (v, generic) { v = v || ''; return generic.test(v) || v === 'unknown' ? '' : v; };
+  (info.audio || []).forEach(function (a) {
+    out.push({ codec_type: 'audio', codec_name: a.codec || '', channels: a.channels || null,
+      tags: { language: clean(a.language, /^$/), title: clean(a.title, /^Дорожка \d+$/) },
+      disposition: { default: a['default'] ? 1 : 0 } });
+  });
+  (info.subtitles || []).forEach(function (t) {
+    out.push({ codec_type: 'subtitle', codec_name: t.codec || t.format || '',
+      tags: { language: clean(t.language, /^$/), title: clean(t.title, /^Субтитры \d+$/) },
+      disposition: { default: t['default'] ? 1 : 0, forced: t.forced ? 1 : 0 } });
+  });
+  return out;
+}
+
 function directProbeStart() {
   directProbe.streams = null;
   directProbe.count = '';
@@ -4024,6 +4048,13 @@ function directProbeStart() {
     else applyDirectProbe();
   };
   if (!hash || fileId === undefined || fileId === null) return;
+
+  // Сервер TorrStream этот файл уже разбирал (его база file_info, общая для
+  // всех, приходит с /api/playback/prepare) — названия сразу оттуда: Full,
+  // Forced, SDH и т. п. — это теги title внутри файла, AVPlay на Tizen и
+  // <video> их не знают. Сервис CUB тогда не нужен; нет базы — как раньше
+  var fromServer = serverInfoStreams(directProbe.serverInfo, hash, fileId);
+  if (fromServer.length) { done(fromServer, 'сервер'); return; }
 
   // Сервис CUB: на webOS — запасной (после своей службы), иначе — сразу
   var cubStarted = false;
