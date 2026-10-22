@@ -86,12 +86,25 @@ var TizenAVPlay = function () {
     } catch (e) {}
     return -1;
   }
+  function langName(code) {
+    code = String(code || '').replace(/^\s+|\s+$/g, '');
+    var key = code.toLowerCase();
+    if (!key || key === 'und' || key === 'unknown' || key === '(null)') return '';
+    var names = window.LANG_NAMES || {};
+    return names[key] || (code.length <= 3 ? code.toUpperCase() : code);
+  }
   function audioLabel(x) {
-    var parts = [];
-    if (x.fourCC) parts.push(String(x.fourCC).toUpperCase());
+    var tech = [];
+    if (x.fourCC) tech.push(String(x.fourCC).toUpperCase());
     var ch = parseInt(x.channels, 10);
-    if (ch) parts.push(ch === 6 ? '5.1' : ch === 8 ? '7.1' : ch === 2 ? 'стерео' : ch === 1 ? 'моно' : ch + ' кан.');
-    return parts.join(' ');
+    if (ch) tech.push(ch === 6 ? '5.1' : ch === 8 ? '7.1' : ch === 2 ? 'стерео' : ch === 1 ? 'моно' : ch + ' кан.');
+    var name = langName(x.language);
+    return [name, tech.join(' ')].filter(function (p) {
+      return p;
+    }).join(' · ');
+  }
+  function textLabel(x) {
+    return langName(x.track_lang || x.language);
   }
   function selectAudio(i) {
     var list = tracksOf('AUDIO');
@@ -194,7 +207,7 @@ var TizenAVPlay = function () {
         var item = {
           id: String(t.index),
           kind: 'subtitles',
-          label: '',
+          label: textLabel(t.extra),
           language: t.extra.track_lang || t.extra.language || '',
           cues: null,
           activeCues: null

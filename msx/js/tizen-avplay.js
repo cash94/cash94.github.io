@@ -102,14 +102,31 @@ var TizenAVPlay = (function () {
         return -1;
     }
 
-    // Подпись, пока нет названий от ffprobe (applyDirectProbe их заменит):
-    // кодек и каналы — всё, что AVPlay знает о дорожке
+    // Название языка по коду дорожки: LANG_NAMES из player.js (rus → Русский).
+    // Незнакомый короткий код — как есть заглавными, длинное — как прислал AVPlay
+    function langName(code) {
+        code = String(code || '').replace(/^\s+|\s+$/g, '');
+        var key = code.toLowerCase();
+        if (!key || key === 'und' || key === 'unknown' || key === '(null)') return '';
+        var names = window.LANG_NAMES || {};
+        return names[key] || (code.length <= 3 ? code.toUpperCase() : code);
+    }
+
+    // Подписи дорожек. ffprobe (applyDirectProbe, сервис CUB) их потом заменит
+    // названиями из файла, но отвечает он не всегда — без подписи плеер писал
+    // «Субтитры 1, 2, 3». Здесь — что знает сам AVPlay: язык, кодек, каналы
+    // «Русский · AC3 5.1»
     function audioLabel(x) {
-        var parts = [];
-        if (x.fourCC) parts.push(String(x.fourCC).toUpperCase());
+        var tech = [];
+        if (x.fourCC) tech.push(String(x.fourCC).toUpperCase());
         var ch = parseInt(x.channels, 10);
-        if (ch) parts.push(ch === 6 ? '5.1' : ch === 8 ? '7.1' : ch === 2 ? 'стерео' : ch === 1 ? 'моно' : ch + ' кан.');
-        return parts.join(' ');
+        if (ch) tech.push(ch === 6 ? '5.1' : ch === 8 ? '7.1' : ch === 2 ? 'стерео' : ch === 1 ? 'моно' : ch + ' кан.');
+        var name = langName(x.language);
+        return [name, tech.join(' ')].filter(function (p) { return p; }).join(' · ');
+    }
+
+    function textLabel(x) {
+        return langName(x.track_lang || x.language);
     }
 
     function selectAudio(i) {
@@ -181,7 +198,7 @@ var TizenAVPlay = (function () {
         var tracks = tracksOf('TEXT'), items = [];
         for (var i = 0; i < tracks.length; i++) {
             (function (i, t) {
-                var item = { id: String(t.index), kind: 'subtitles', label: '', language: t.extra.track_lang || t.extra.language || '', cues: null, activeCues: null };
+                var item = { id: String(t.index), kind: 'subtitles', label: textLabel(t.extra), language: t.extra.track_lang || t.extra.language || '', cues: null, activeCues: null };
                 Object.defineProperty(item, 'mode', {
                     get: function () { return textIndex === i ? 'showing' : 'disabled'; },
                     // applyNativeSubtitle ставит выбранной 'showing', прочим 'disabled' —
