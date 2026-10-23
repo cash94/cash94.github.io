@@ -15,6 +15,7 @@ var ANDROID_EPISODE_META_WAIT_MS = 2500;
 var MAX_PLAYBACK_RETRIES = 3;
 var PLAYER_FETCH_TIMEOUT_MS = 15000;
 var FILE_INFO_FETCH_TIMEOUT_MS = 60000;
+var DIRECT_PREPARE_TIMEOUT_MS = 4000;
 var MAX_HLS_NETWORK_RETRIES = 5;
 var timecodeSaveInterval = null;
 var currentTimecodeData = {
@@ -4360,7 +4361,8 @@ function _loadPlaybackPrepare() {
     var url = SERVER_URL + '/api/playback/prepare?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId) + (wantTimecode ? '&timecode=1' : '');
     var timedOut = false;
     try {
-      var response = yield fetchWithTimeout(url, null, FILE_INFO_FETCH_TIMEOUT_MS);
+      var needsFileInfo = !AppState.transcodingOnOff && !AppState.transcodingFullOnOff;
+      var response = yield fetchWithTimeout(url, null, needsFileInfo ? FILE_INFO_FETCH_TIMEOUT_MS : DIRECT_PREPARE_TIMEOUT_MS);
       if (response.ok) {
         var data = yield response.json();
         if (data && data.success) {

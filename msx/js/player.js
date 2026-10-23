@@ -38,6 +38,17 @@ var PLAYER_FETCH_TIMEOUT_MS = 15000;
  */
 var FILE_INFO_FETCH_TIMEOUT_MS = 60000;
 
+/**
+ * Прямой файл и gst сведения ffprobe для запуска не используют (названия
+ * дорожек у прямого файла — свои источники, directProbeStart), а сервер в
+ * /api/playback/prepare пробует TorrServer из настроек аккаунта: TorrServer
+ * на устройстве (localhost, адрес в домашней сети, «Свой TorrServer») ему
+ * недоступен, и запуск ждал таймаут пробы — 15 с и повтор. Здесь ждём
+ * недолго, дальше — таймкод и дорожки отдельными быстрыми запросами; проба
+ * на сервере идёт своим чередом и ложится в кэш к следующему запуску.
+ */
+var DIRECT_PREPARE_TIMEOUT_MS = 4000;
+
 /** Сколько раз подряд переподключаемся после сетевой ошибки HLS, прежде чем сдаться */
 var MAX_HLS_NETWORK_RETRIES = 5;
 
@@ -4649,7 +4660,8 @@ async function loadPlaybackPrepare(hash, fileId, wantTimecode) {
     '&clientId=' + encodeURIComponent(savedClientId) + (wantTimecode ? '&timecode=1' : '');
   var timedOut = false;
   try {
-    var response = await fetchWithTimeout(url, null, FILE_INFO_FETCH_TIMEOUT_MS);
+    var needsFileInfo = !AppState.transcodingOnOff && !AppState.transcodingFullOnOff;
+    var response = await fetchWithTimeout(url, null, needsFileInfo ? FILE_INFO_FETCH_TIMEOUT_MS : DIRECT_PREPARE_TIMEOUT_MS);
     if (response.ok) {
       var data = await response.json();
       if (data && data.success) {
