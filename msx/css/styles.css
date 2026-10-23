@@ -8318,6 +8318,72 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   }
 }
 
+/* --- ЭКРАН ПОИСКА: 1080p — строка и кнопки шапки в 1.5 раза ------------
+       1920x1080 (DPR 1): ×1.5 к тиру +25%. Высота от 821px — 720p-профиль
+       выше не задевает, ширина до 2048px — большие мониторы тоже.
+       960x540 (ТВ 1080p при DPR 2): ×1.5 к ТВ-профилю выше; шапка ~66px,
+       с панелью фильтров ~450 из 540px — по-прежнему без прокрутки.
+       border-radius не трогаем: рамка фокуса (.focused) рисуется с 12px. */
+@media screen and (min-width: 1400px) and (max-width: 2048px) and (min-height: 821px) {
+  .search-overlay-header {
+    padding: 20px 30px;
+  }
+
+  .search-overlay-header > * + * {
+    margin-left: 18px;
+  }
+
+  .search-input-screen {
+    padding: 20px 33px;
+    font-size: 28px;
+  }
+
+  .search-action-btn {
+    padding: 20px 42px;
+    font-size: 24px;
+  }
+
+  .filter-toggle-btn {
+    padding: 20px 33px;
+    font-size: 24px;
+  }
+
+  .close-search-btn,
+  .voice-search-btn {
+    width: 69px;
+    height: 69px;
+    font-size: 32px;
+  }
+}
+
+@media screen and (min-width: 720px) and (max-width: 1024px) and (max-height: 620px) {
+  .search-overlay-header > * + * {
+    margin-left: 12px;
+  }
+
+  .search-input-screen {
+    padding: 12px 21px;
+    font-size: 21px;
+  }
+
+  .search-action-btn {
+    padding: 12px 24px;
+    font-size: 20px;
+  }
+
+  .filter-toggle-btn {
+    padding: 12px 21px;
+    font-size: 20px;
+  }
+
+  .close-search-btn,
+  .voice-search-btn {
+    width: 51px;
+    height: 51px;
+    font-size: 24px;
+  }
+}
+
 
 /* --- ПАНЕЛИ ПЛЕЕРА И ИНДИКАТОР ПЕРЕМОТКИ: размерные тиры ----------------
        Блоки стоят ПОСЛЕ базового описания панелей (середина файла): медиазапрос
