@@ -264,19 +264,27 @@ var TizenAVPlay = function () {
       w = 1920;
       h = 1080;
     }
-    var key = x + ',' + y + ',' + w + ',' + h + (over ? 'c' : 'f');
+    var method = over ? 'PLAYER_DISPLAY_MODE_CROPPED_FULL' : laidOut && stretched(r.width / r.height) ? 'PLAYER_DISPLAY_MODE_FULL_SCREEN' : 'PLAYER_DISPLAY_MODE_LETTER_BOX';
+    var key = x + ',' + y + ',' + w + ',' + h + method;
     if (key === lastRect) return;
     lastRect = laidOut ? key : '';
     try {
       av().setDisplayRect(x, y, w, h);
     } catch (e) {}
     try {
-      av().setDisplayMethod(over ? 'PLAYER_DISPLAY_MODE_CROPPED_FULL' : 'PLAYER_DISPLAY_MODE_FULL_SCREEN');
+      av().setDisplayMethod(method);
     } catch (e) {
       try {
         av().setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX');
       } catch (e2) {}
     }
+  }
+  function stretched(boxRatio) {
+    var info = videoInfo();
+    var vw = parseInt(info.Width, 10),
+      vh = parseInt(info.Height, 10);
+    if (!vw || !vh || !boxRatio) return false;
+    return Math.abs(boxRatio / (vw / vh) - 1) > 0.02;
   }
   function rectAfterStart() {
     if (rectOnPlay || !video || !prepared) return;

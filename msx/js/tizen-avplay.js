@@ -242,8 +242,13 @@ var TizenAVPlay = (function () {
     /**
      * Кадр AVPlay — по рамке <video>: её размер и место задаёт «Масштаб»
      * (app.js: applyVideoBox, способ «рамка в пикселях», как на Vidaa). Рамка в
-     * пределах экрана — кадр растягивается в неё (FULL_SCREEN); больше экрана
+     * пределах экрана с пропорциями кадра («С полосами», «Оригинал») — кадр
+     * вписывается в неё с полосами (LETTER_BOX); пропорции другие
+     * («Растянуть») — растягивается в неё (FULL_SCREEN); больше экрана
      * («Обрезать», «Увеличить») — кадр на весь экран с обрезкой краёв.
+     * FULL_SCREEN для рамки «С полосами» было бы то же самое, но Tizen 9 рамку
+     * при старте файла может не взять — и тогда FULL_SCREEN растягивал кадр на
+     * весь экран, а LETTER_BOX (как у Lampa) и на весь экран даёт полосы.
      * Координаты AVPlay — в 1920×1080 при любом разрешении страницы.
      */
     function syncRect() {
@@ -258,12 +263,24 @@ var TizenAVPlay = (function () {
         // запоминаем: появится рамка — выставим её
         var laidOut = !!(w && h);
         if (!laidOut) { x = 0; y = 0; w = 1920; h = 1080; }
-        var key = x + ',' + y + ',' + w + ',' + h + (over ? 'c' : 'f');
+        var method = over ? 'PLAYER_DISPLAY_MODE_CROPPED_FULL'
+            : laidOut && stretched(r.width / r.height) ? 'PLAYER_DISPLAY_MODE_FULL_SCREEN'
+            : 'PLAYER_DISPLAY_MODE_LETTER_BOX';
+        var key = x + ',' + y + ',' + w + ',' + h + method;
         if (key === lastRect) return;
         lastRect = laidOut ? key : '';
         try { av().setDisplayRect(x, y, w, h); } catch (e) { }
-        try { av().setDisplayMethod(over ? 'PLAYER_DISPLAY_MODE_CROPPED_FULL' : 'PLAYER_DISPLAY_MODE_FULL_SCREEN'); }
+        try { av().setDisplayMethod(method); }
         catch (e) { try { av().setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX'); } catch (e2) { } }
+    }
+
+    // Рамка заметно другой формы, чем кадр, — значит, «Растянуть». Размер кадра
+    // неизвестен — не растягиваем: по умолчанию «С полосами»
+    function stretched(boxRatio) {
+        var info = videoInfo();
+        var vw = parseInt(info.Width, 10), vh = parseInt(info.Height, 10);
+        if (!vw || !vh || !boxRatio) return false;
+        return Math.abs(boxRatio / (vw / vh) - 1) > 0.02;
     }
 
     /**
