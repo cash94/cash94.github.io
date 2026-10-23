@@ -4655,6 +4655,24 @@ async function loadMediaPreferences(hash, fileId) {
  * @returns {Promise<{fileInfo: object|null, audioTrack: number|null, subtitleTrack: number, timecode: number|null}>}
  */
 async function loadPlaybackPrepare(hash, fileId, wantTimecode) {
+  // Samsung Tizen: названия дорожек — свои службы на телевизоре (8096, 8095),
+  // потом CUB (directProbeStart), проба сервера не нужна. А сервер TorrStream
+  // пробует TorrServer из настроек аккаунта, до TorrServer на телевизоре он не
+  // достаёт, и запуск ждал таймаут (DIRECT_PREPARE_TIMEOUT_MS). Таймкод и
+  // выбранные дорожки — сразу отдельными запросами, без пробы файла
+  if (AppState.tizenApp) {
+    var quick = await Promise.all([
+      loadMediaPreferences(hash, fileId),
+      wantTimecode ? loadTimecodeFromServer(hash, fileId) : Promise.resolve(null)
+    ]);
+    var quickPrefs = quick[0] || {};
+    return {
+      fileInfo: null,
+      audioTrack: quickPrefs.audioTrack !== undefined ? quickPrefs.audioTrack : null,
+      subtitleTrack: quickPrefs.subtitleTrack !== undefined ? quickPrefs.subtitleTrack : -1,
+      timecode: quick[1]
+    };
+  }
   var savedClientId = localStorage.getItem('clientId');
   var url = SERVER_URL + '/api/playback/prepare?hash=' + hash + '&fileId=' + fileId +
     '&clientId=' + encodeURIComponent(savedClientId) + (wantTimecode ? '&timecode=1' : '');

@@ -4357,6 +4357,16 @@ function loadPlaybackPrepare(_x44, _x45, _x46) {
 }
 function _loadPlaybackPrepare() {
   _loadPlaybackPrepare = _asyncToGenerator(function* (hash, fileId, wantTimecode) {
+    if (AppState.tizenApp) {
+      var quick = yield Promise.all([loadMediaPreferences(hash, fileId), wantTimecode ? loadTimecodeFromServer(hash, fileId) : Promise.resolve(null)]);
+      var quickPrefs = quick[0] || {};
+      return {
+        fileInfo: null,
+        audioTrack: quickPrefs.audioTrack !== undefined ? quickPrefs.audioTrack : null,
+        subtitleTrack: quickPrefs.subtitleTrack !== undefined ? quickPrefs.subtitleTrack : -1,
+        timecode: quick[1]
+      };
+    }
     var savedClientId = localStorage.getItem('clientId');
     var url = SERVER_URL + '/api/playback/prepare?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId) + (wantTimecode ? '&timecode=1' : '');
     var timedOut = false;
