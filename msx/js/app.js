@@ -2664,7 +2664,7 @@ function checkTizenService(port, missing) {
   });
 }
 
-// TorrServer на телевизоре (8090): наша служба TorrStream-TorrServer.wgt отвечает
+// TorrServer на телевизоре (8090): наша служба TorrServer-Tizen.wgt отвечает
 // на /version подробностями (движок, .NET, кэш), чужой TorrServer — только /echo
 function checkTizenTorrServer() {
   var port = 8090;
@@ -2672,7 +2672,7 @@ function checkTizenTorrServer() {
   checkTizenService['busy' + port] = true;
   var finish = function (text) { checkTizenService['busy' + port] = false; tizenServiceStatus[port] = text; renderDeviceInfo(); };
   tizenServiceGet(port, '/version', 10000, function (err, x, base) {
-    if (err) { finish(err === 'нет ответа' ? 'не отвечает за 10 с' : 'не установлен (на Tizen 5.5 — TorrStream-TorrServer.wgt)'); return; }
+    if (err) { finish(err === 'нет ответа' ? 'не отвечает за 10 с' : 'не установлен (на Tizen 5.5 — TorrServer-Tizen.wgt)'); return; }
     var d = null;
     try { d = JSON.parse(x.responseText); } catch (e) { }
     var where = ' (' + base.replace(/^http:\/\//, '') + ')';
