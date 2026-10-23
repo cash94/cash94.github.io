@@ -2103,7 +2103,7 @@ function checkTizenTorrServer() {
   };
   tizenServiceGet(port, '/version', 10000, function (err, x, base) {
     if (err) {
-      finish(err === 'нет ответа' ? 'не отвечает за 10 с' : 'не установлен (на Tizen 5.5 — TorrStream-TorrServer.wgt)');
+      finish(err === 'нет ответа' ? 'не отвечает за 10 с' : 'не установлен (на Tizen 5.5 — TorrServer-Tizen.wgt)');
       return;
     }
     var d = null;
