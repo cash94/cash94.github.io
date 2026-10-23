@@ -838,44 +838,51 @@ function updateBufferDisplay() {
   }
   bufferStats.classList.remove('hidden');
   if (subtitleElement) subtitleElement.classList.remove('hidden');
-  if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
-    var buffered = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
-    var totalDuration = AppState.originalDuration || AppState.expectedDuration || videoPlayer.duration;
-    var currentTime = videoPlayer.currentTime;
-    var absoluteCurrentTime = currentTime + AppState.seekOffset;
-    if (totalDuration && totalDuration > 0 && isFinite(totalDuration)) {
-      var absoluteBuffered = buffered + AppState.seekOffset;
-      var bufferAhead = absoluteBuffered - absoluteCurrentTime;
-      var remainingTime = totalDuration - absoluteCurrentTime;
-      if (remainingTime < 0) remainingTime = 0;
-      if (bufferAhead < 0) bufferAhead = 0;
-      currentBufferAhead = bufferAhead;
-      var bufferAheadText = bufferAhead < 60 ? Math.floor(bufferAhead) + ' сек' : (bufferAhead < 3600 ? Math.floor(bufferAhead / 60) + ' мин' : Math.floor(bufferAhead / 3600) + ' ч');
-      var remainingHours = Math.floor(remainingTime / 3600);
-      var remainingMinutes = Math.floor((remainingTime % 3600) / 60);
-      var remainingSeconds = Math.floor(remainingTime % 60);
-      var remainingText = (remainingHours > 0 ? remainingHours + ' ч ' + (remainingMinutes > 0 ? remainingMinutes + ' мин' : '') : (remainingMinutes > 0 ? remainingMinutes + ' мин ' + (remainingSeconds > 0 ? remainingSeconds + ' сек' : '') : remainingSeconds + ' сек')).trim();
-      var endTime = new Date(Date.now() + remainingTime * 1000);
-      var endTimeText = endTime.getHours().toString().padStart(2, '0') + ':' + endTime.getMinutes().toString().padStart(2, '0');
-      var torrServerHtml = '';
-      if (currentTimecodeData.hash && typeof torrentStatsCache !== 'undefined' && torrentStatsCache.preloadSize > 0) {
-        torrServerHtml = hudStat('TorrServer', formatSize(torrentStatsCache.preloaded)) +
-          hudStat('Скорость', formatSpeed(torrentStatsCache.downloadSpeed));
-        if (torrentStatsCache.activePeers > 0) {
-          torrServerHtml += hudStat('Пиры', torrentStatsCache.activePeers + ' / ' + torrentStatsCache.totalPeers) +
-            hudStat('Сиды', torrentStatsCache.connectedSeeders);
-        }
-      }
-      setHudHtml(bufferStats,
-        hudStat('Буфер', bufferAheadText, bufferLevelClass(bufferAhead)) +
-        hudStat('До конца', remainingText) +
-        hudStat('Конец в', endTimeText));
-      setHudHtml(subtitleElement, torrServerHtml);
+
+  // Статистика TorrServer от <video> не зависит. Раньше она, «До конца» и
+  // «Конец в» рисовались только при непустом videoPlayer.buffered, а на Tizen
+  // прямой файл играет AVPlay (tizen-avplay.js): сколько набрано наперёд, он
+  // не сообщает, buffered у него всегда пустой — и в HUD оставалось одно
+  // «Буфер 0 сек»
+  var torrServerHtml = '';
+  if (currentTimecodeData.hash && typeof torrentStatsCache !== 'undefined' && torrentStatsCache.preloadSize > 0) {
+    torrServerHtml = hudStat('TorrServer', formatSize(torrentStatsCache.preloaded)) +
+      hudStat('Скорость', formatSpeed(torrentStatsCache.downloadSpeed));
+    if (torrentStatsCache.activePeers > 0) {
+      torrServerHtml += hudStat('Пиры', torrentStatsCache.activePeers + ' / ' + torrentStatsCache.totalPeers) +
+        hudStat('Сиды', torrentStatsCache.connectedSeeders);
     }
-  } else {
-    setHudHtml(bufferStats, hudStat('Буфер', '0 сек', 'hud-low'));
-    setHudHtml(subtitleElement, '');
   }
+  setHudHtml(subtitleElement, torrServerHtml);
+
+  var absoluteCurrentTime = videoPlayer.currentTime + AppState.seekOffset;
+  var bufferHtml;
+  if (videoPlayer.buffered && videoPlayer.buffered.length > 0) {
+    var absoluteBuffered = videoPlayer.buffered.end(videoPlayer.buffered.length - 1) + AppState.seekOffset;
+    var bufferAhead = absoluteBuffered - absoluteCurrentTime;
+    if (bufferAhead < 0) bufferAhead = 0;
+    currentBufferAhead = bufferAhead;
+    var bufferAheadText = bufferAhead < 60 ? Math.floor(bufferAhead) + ' сек' : (bufferAhead < 3600 ? Math.floor(bufferAhead / 60) + ' мин' : Math.floor(bufferAhead / 3600) + ' ч');
+    bufferHtml = hudStat('Буфер', bufferAheadText, bufferLevelClass(bufferAhead));
+  } else if (window.TizenAVPlay && TizenAVPlay.active()) {
+    bufferHtml = '';   // AVPlay запас не отдаёт — не пишем вечный ноль
+  } else {
+    bufferHtml = hudStat('Буфер', '0 сек', 'hud-low');
+  }
+
+  var totalDuration = AppState.originalDuration || AppState.expectedDuration || videoPlayer.duration;
+  if (totalDuration && totalDuration > 0 && isFinite(totalDuration)) {
+    var remainingTime = totalDuration - absoluteCurrentTime;
+    if (remainingTime < 0) remainingTime = 0;
+    var remainingHours = Math.floor(remainingTime / 3600);
+    var remainingMinutes = Math.floor((remainingTime % 3600) / 60);
+    var remainingSeconds = Math.floor(remainingTime % 60);
+    var remainingText = (remainingHours > 0 ? remainingHours + ' ч ' + (remainingMinutes > 0 ? remainingMinutes + ' мин' : '') : (remainingMinutes > 0 ? remainingMinutes + ' мин ' + (remainingSeconds > 0 ? remainingSeconds + ' сек' : '') : remainingSeconds + ' сек')).trim();
+    var endTime = new Date(Date.now() + remainingTime * 1000);
+    var endTimeText = endTime.getHours().toString().padStart(2, '0') + ':' + endTime.getMinutes().toString().padStart(2, '0');
+    bufferHtml += hudStat('До конца', remainingText) + hudStat('Конец в', endTimeText);
+  }
+  setHudHtml(bufferStats, bufferHtml);
 }
 
 function forceUpdateDuration(duration, origDur, offset) {
