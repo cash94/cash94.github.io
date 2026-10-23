@@ -46,6 +46,7 @@ var TizenAVPlay = (function () {
     var wantPlay = false;      // play() до готовности — запустить после prepare
     var pendingSeek = null;    // currentTime до готовности (таймкод) — после prepare
     var lastRect = '';
+    var rectOnPlay = false;    // рамка кадра повторена после старта показа
 
     var OVERRIDES = ['src', 'load', 'play', 'pause', 'currentTime', 'duration', 'paused', 'ended',
         'readyState', 'seeking', 'buffered', 'error', 'videoWidth', 'videoHeight',
@@ -253,13 +254,31 @@ var TizenAVPlay = (function () {
         var over = r.left < -1 || r.top < -1 || r.right > sw + 1 || r.bottom > sh + 1;
         var x = over ? 0 : Math.round(r.left * k), y = over ? 0 : Math.round(r.top * ky);
         var w = over ? 1920 : Math.round(r.width * k), h = over ? 1080 : Math.round(r.height * ky);
-        if (!w || !h) { x = 0; y = 0; w = 1920; h = 1080; }
+        // Рамки нет (экран плеера ещё скрыт) — пока весь экран, но не
+        // запоминаем: появится рамка — выставим её
+        var laidOut = !!(w && h);
+        if (!laidOut) { x = 0; y = 0; w = 1920; h = 1080; }
         var key = x + ',' + y + ',' + w + ',' + h + (over ? 'c' : 'f');
         if (key === lastRect) return;
-        lastRect = key;
+        lastRect = laidOut ? key : '';
         try { av().setDisplayRect(x, y, w, h); } catch (e) { }
         try { av().setDisplayMethod(over ? 'PLAYER_DISPLAY_MODE_CROPPED_FULL' : 'PLAYER_DISPLAY_MODE_FULL_SCREEN'); }
         catch (e) { try { av().setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX'); } catch (e2) { } }
+    }
+
+    /**
+     * Первый кадр пошёл — рамку выставить ещё раз. Tizen 9 выставленное до
+     * play() (в open и после prepare) не держит: кадр выходит в исходном
+     * размере, как «Оригинал», пока «Масштаб» не задаст рамку заново. Заодно
+     * 'resize' — app.js (applyVideoBox) пересчитает рамку по размеру кадра:
+     * до старта getCurrentStreamInfo его может ещё не знать.
+     */
+    function rectAfterStart() {
+        if (rectOnPlay || !video || !prepared) return;
+        rectOnPlay = true;
+        fire('resize');
+        lastRect = '';
+        syncRect();
     }
 
     function videoInfo() {
@@ -277,7 +296,10 @@ var TizenAVPlay = (function () {
             onbufferingstart: function () { fire('waiting'); },
             onbufferingprogress: function () { },
             onbufferingcomplete: function () { if (state() === 'PLAYING') fire('playing'); },
-            oncurrentplaytime: function () { if (seekingTo === null) fire('timeupdate'); },
+            oncurrentplaytime: function () {
+                rectAfterStart();
+                if (seekingTo === null) fire('timeupdate');
+            },
             onstreamcompleted: function () {
                 ended = true;
                 try { av().pause(); } catch (e) { }
@@ -298,7 +320,7 @@ var TizenAVPlay = (function () {
         closePlayer();
         url = newUrl || '';
         prepared = false; ended = false; seekingTo = null; error = null;
-        tracksCache = null; pendingAudio = -1; pendingText = null; textIndex = -1; lastRect = '';
+        tracksCache = null; pendingAudio = -1; pendingText = null; textIndex = -1; lastRect = ''; rectOnPlay = false;
         wantPlay = false; pendingSeek = null;
         audioList._set([]); textList._set([]);
         if (!url) return true;
@@ -379,7 +401,7 @@ var TizenAVPlay = (function () {
         if (!video || !prepared) return;
         try {
             if (document.hidden) { if (!suspended) { av().suspend(); suspended = true; } }
-            else if (suspended) { suspended = false; av().restore(); }
+            else if (suspended) { suspended = false; av().restore(); lastRect = ''; syncRect(); }
         } catch (e) { }
     }
 

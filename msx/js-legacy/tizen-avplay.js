@@ -18,6 +18,7 @@ var TizenAVPlay = function () {
   var wantPlay = false;
   var pendingSeek = null;
   var lastRect = '';
+  var rectOnPlay = false;
   var OVERRIDES = ['src', 'load', 'play', 'pause', 'currentTime', 'duration', 'paused', 'ended', 'readyState', 'seeking', 'buffered', 'error', 'videoWidth', 'videoHeight', 'audioTracks', 'textTracks', 'removeAttribute'];
   function av() {
     return window.webapis && webapis.avplay;
@@ -256,7 +257,8 @@ var TizenAVPlay = function () {
       y = over ? 0 : Math.round(r.top * ky);
     var w = over ? 1920 : Math.round(r.width * k),
       h = over ? 1080 : Math.round(r.height * ky);
-    if (!w || !h) {
+    var laidOut = !!(w && h);
+    if (!laidOut) {
       x = 0;
       y = 0;
       w = 1920;
@@ -264,7 +266,7 @@ var TizenAVPlay = function () {
     }
     var key = x + ',' + y + ',' + w + ',' + h + (over ? 'c' : 'f');
     if (key === lastRect) return;
-    lastRect = key;
+    lastRect = laidOut ? key : '';
     try {
       av().setDisplayRect(x, y, w, h);
     } catch (e) {}
@@ -275,6 +277,13 @@ var TizenAVPlay = function () {
         av().setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX');
       } catch (e2) {}
     }
+  }
+  function rectAfterStart() {
+    if (rectOnPlay || !video || !prepared) return;
+    rectOnPlay = true;
+    fire('resize');
+    lastRect = '';
+    syncRect();
   }
   function videoInfo() {
     try {
@@ -293,6 +302,7 @@ var TizenAVPlay = function () {
         if (state() === 'PLAYING') fire('playing');
       },
       oncurrentplaytime: function () {
+        rectAfterStart();
         if (seekingTo === null) fire('timeupdate');
       },
       onstreamcompleted: function () {
@@ -329,6 +339,7 @@ var TizenAVPlay = function () {
     pendingText = null;
     textIndex = -1;
     lastRect = '';
+    rectOnPlay = false;
     wantPlay = false;
     pendingSeek = null;
     audioList._set([]);
@@ -423,6 +434,8 @@ var TizenAVPlay = function () {
       } else if (suspended) {
         suspended = false;
         av().restore();
+        lastRect = '';
+        syncRect();
       }
     } catch (e) {}
   }
