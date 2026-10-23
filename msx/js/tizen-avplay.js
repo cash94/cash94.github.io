@@ -102,6 +102,9 @@ var TizenAVPlay = (function () {
         return -1;
     }
 
+    // Tizen 5.5 присылает язык с пробелом в конце: "ru ", "en "
+    function trimLang(code) { return String(code || '').replace(/^\s+|\s+$/g, ''); }
+
     // Название языка по коду дорожки: LANG_NAMES из player.js (rus → Русский).
     // Незнакомый короткий код — как есть заглавными, длинное — как прислал AVPlay
     function langName(code) {
@@ -182,7 +185,7 @@ var TizenAVPlay = (function () {
         var tracks = tracksOf('AUDIO'), cur = currentIndex('AUDIO'), items = [];
         for (var i = 0; i < tracks.length; i++) {
             (function (i, t) {
-                var item = { id: String(t.index), kind: 'main', label: audioLabel(t.extra), language: t.extra.language || '' };
+                var item = { id: String(t.index), kind: 'main', label: audioLabel(t.extra), language: trimLang(t.extra.language) };
                 Object.defineProperty(item, 'enabled', {
                     get: function () { var c = currentIndex('AUDIO'); return c >= 0 ? c === t.index : i === 0; },
                     set: function (v) { if (v) selectAudio(i); }
@@ -198,7 +201,7 @@ var TizenAVPlay = (function () {
         var tracks = tracksOf('TEXT'), items = [];
         for (var i = 0; i < tracks.length; i++) {
             (function (i, t) {
-                var item = { id: String(t.index), kind: 'subtitles', label: textLabel(t.extra), language: t.extra.track_lang || t.extra.language || '', cues: null, activeCues: null };
+                var item = { id: String(t.index), kind: 'subtitles', label: textLabel(t.extra), language: trimLang(t.extra.track_lang || t.extra.language), cues: null, activeCues: null };
                 Object.defineProperty(item, 'mode', {
                     get: function () { return textIndex === i ? 'showing' : 'disabled'; },
                     // applyNativeSubtitle ставит выбранной 'showing', прочим 'disabled' —

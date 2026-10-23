@@ -2054,18 +2054,19 @@ function setupAndroidAppSettings() {
 }
 var tizenFfprobeStatus = '';
 function checkTizenFfprobe() {
-  if (checkTizenFfprobe.busy || typeof TIZEN_FFPROBE_URL === 'undefined') return;
+  if (checkTizenFfprobe.busy || typeof window.tizenFfprobeGet !== 'function') return;
   checkTizenFfprobe.busy = true;
-  var x = new XMLHttpRequest();
   var finish = function (text) {
     checkTizenFfprobe.busy = false;
     tizenFfprobeStatus = text;
     renderDeviceInfo();
   };
-  try {
-    x.open('GET', TIZEN_FFPROBE_URL + '/version', true);
-    x.timeout = 5000;
-    x.onload = function () {
+  tizenFfprobeGet('/version', 10000, function (err, x, base) {
+    if (err) {
+      finish(err === 'нет ответа' ? 'не отвечает за 10 с' : 'не запущена (нужен TorrStream-Tizen 1.1.3+)');
+      return;
+    }
+    (function () {
       var d = null;
       try {
         d = JSON.parse(x.responseText);
@@ -2074,18 +2075,22 @@ function checkTizenFfprobe() {
         finish('ответ не разобран (HTTP ' + x.status + ')');
         return;
       }
-      finish('служба ' + (d.service || '?') + ' · ' + (d.ffprobe || 'ffprobe не запускается' + (d.error ? ': ' + d.error : '')));
-    };
-    x.onerror = function () {
-      finish('не запущена (нужен TorrStream-Tizen 1.1.3+)');
-    };
-    x.ontimeout = function () {
-      finish('не отвечает');
-    };
-    x.send();
-  } catch (e) {
-    finish('ошибка: ' + e.message);
-  }
+      var head = 'служба ' + (d.service || '?') + ' (' + base.replace(/^http:\/\//, '') + ') · ';
+      if (d.checking) {
+        finish(head + 'проверяю ffprobe…');
+        setTimeout(function () {
+          tizenFfprobeStatus = '';
+          renderDeviceInfo();
+        }, 3000);
+        return;
+      }
+      if (d.ffprobe) {
+        finish(head + d.ffprobe + (d.exec === 'память' ? ' · запуск из памяти' + (d.fileError ? ' (файл: ' + d.fileError + ')' : '') : ''));
+      } else {
+        finish(head + 'ffprobe не запускается' + (d.error ? ': ' + d.error : '') + (d.fileError ? ' · файл: ' + d.fileError : '') + (d.memoryError ? ' · из памяти: ' + d.memoryError : ''));
+      }
+    })();
+  });
 }
 function renderDeviceInfo() {
   setupAndroidAppSettings();
@@ -2116,7 +2121,8 @@ function renderDeviceInfo() {
     if (dp.subs) rows.push(['Выбор субтитров', dp.subs]);
   }
   if (AppState.tizenApp) {
-    rows.push(['ffprobe на ТВ', tizenFfprobeStatus || 'проверка…']);
+    var lastLocal = window.directPlaybackDiag && directPlaybackDiag.local;
+    rows.push(['ffprobe на ТВ', (tizenFfprobeStatus || 'проверка…') + (lastLocal ? ' · последний файл: ' + lastLocal : '')]);
     if (!tizenFfprobeStatus) checkTizenFfprobe();
   }
   if (window.tizenAvplayDiag) rows.push(['Дорожки AVPlay', window.tizenAvplayDiag]);

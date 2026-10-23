@@ -2627,27 +2627,36 @@ function setupAndroidAppSettings() {
   }
 }
 
-// Служба ffprobe на Tizen отвечает на 127.0.0.1 (player.js: TIZEN_FFPROBE_URL).
-// Ответ запоминаем на сеанс и перерисовываем «Об устройстве»
+// Служба ffprobe на Tizen — по IP телевизора или 127.0.0.1 (player.js:
+// tizenFfprobeGet). Ответ запоминаем на сеанс и перерисовываем «Об устройстве»
 var tizenFfprobeStatus = '';
 function checkTizenFfprobe() {
-  if (checkTizenFfprobe.busy || typeof TIZEN_FFPROBE_URL === 'undefined') return;
+  if (checkTizenFfprobe.busy || typeof window.tizenFfprobeGet !== 'function') return;
   checkTizenFfprobe.busy = true;
-  var x = new XMLHttpRequest();
   var finish = function (text) { checkTizenFfprobe.busy = false; tizenFfprobeStatus = text; renderDeviceInfo(); };
-  try {
-    x.open('GET', TIZEN_FFPROBE_URL + '/version', true);
-    x.timeout = 5000;
-    x.onload = function () {
+  tizenFfprobeGet('/version', 10000, function (err, x, base) {
+    if (err) { finish(err === 'нет ответа' ? 'не отвечает за 10 с' : 'не запущена (нужен TorrStream-Tizen 1.1.3+)'); return; }
+    (function () {
       var d = null;
       try { d = JSON.parse(x.responseText); } catch (e) { }
       if (!d) { finish('ответ не разобран (HTTP ' + x.status + ')'); return; }
-      finish('служба ' + (d.service || '?') + ' · ' + (d.ffprobe || ('ffprobe не запускается' + (d.error ? ': ' + d.error : ''))));
-    };
-    x.onerror = function () { finish('не запущена (нужен TorrStream-Tizen 1.1.3+)'); };
-    x.ontimeout = function () { finish('не отвечает'); };
-    x.send();
-  } catch (e) { finish('ошибка: ' + e.message); }
+      var head = 'служба ' + (d.service || '?') + ' (' + base.replace(/^http:\/\//, '') + ') · ';
+      // Служба проверяет ffprobe в фоне при старте — спросим ещё раз через 3 с
+      if (d.checking) {
+        finish(head + 'проверяю ffprobe…');
+        setTimeout(function () { tizenFfprobeStatus = ''; renderDeviceInfo(); }, 3000);
+        return;
+      }
+      // exec — каким способом служба запускает ffprobe: «файл» или «память»
+      // (memfd: Tizen 5.5 не даёт запустить файл из каталога приложения)
+      if (d.ffprobe) {
+        finish(head + d.ffprobe + (d.exec === 'память' ? ' · запуск из памяти' + (d.fileError ? ' (файл: ' + d.fileError + ')' : '') : ''));
+      } else {
+        finish(head + 'ffprobe не запускается' + (d.error ? ': ' + d.error : '') +
+          (d.fileError ? ' · файл: ' + d.fileError : '') + (d.memoryError ? ' · из памяти: ' + d.memoryError : ''));
+      }
+    })();
+  });
 }
 
 function renderDeviceInfo() {
@@ -2711,7 +2720,10 @@ function renderDeviceInfo() {
   }
   // Tizen: своя служба ffprobe (внутри TorrStream-Tizen.wgt с 1.1.3) — работает ли
   if (AppState.tizenApp) {
-    rows.push(['ffprobe на ТВ', tizenFfprobeStatus || 'проверка…']);
+    // Итог службы по последнему файлу (player.js: directProbeStart) — даже если
+    // названия первым прислал CUB
+    var lastLocal = window.directPlaybackDiag && directPlaybackDiag.local;
+    rows.push(['ffprobe на ТВ', (tizenFfprobeStatus || 'проверка…') + (lastLocal ? ' · последний файл: ' + lastLocal : '')]);
     if (!tizenFfprobeStatus) checkTizenFfprobe();
   }
   // Tizen: дорожки, как их видит AVPlay (js/tizen-avplay.js), — сырые extra_info

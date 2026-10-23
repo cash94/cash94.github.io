@@ -86,6 +86,9 @@ var TizenAVPlay = function () {
     } catch (e) {}
     return -1;
   }
+  function trimLang(code) {
+    return String(code || '').replace(/^\s+|\s+$/g, '');
+  }
   function langName(code) {
     code = String(code || '').replace(/^\s+|\s+$/g, '');
     var key = code.toLowerCase();
@@ -182,7 +185,7 @@ var TizenAVPlay = function () {
           id: String(t.index),
           kind: 'main',
           label: audioLabel(t.extra),
-          language: t.extra.language || ''
+          language: trimLang(t.extra.language)
         };
         Object.defineProperty(item, 'enabled', {
           get: function () {
@@ -208,7 +211,7 @@ var TizenAVPlay = function () {
           id: String(t.index),
           kind: 'subtitles',
           label: textLabel(t.extra),
-          language: t.extra.track_lang || t.extra.language || '',
+          language: trimLang(t.extra.track_lang || t.extra.language),
           cues: null,
           activeCues: null
         };

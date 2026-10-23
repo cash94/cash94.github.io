@@ -2475,7 +2475,8 @@ var directPlaybackDiag = {
   text: null,
   kinds: '',
   probe: '',
-  subs: ''
+  subs: '',
+  local: ''
 };
 window.directPlaybackDiag = directPlaybackDiag;
 function updateDirectTrackDiag(videoPlayer) {
@@ -3676,7 +3677,7 @@ var HIDDEN_AUDIO_CODECS = {
   mlp: 1
 };
 function langKey(l) {
-  l = String(l || '').toLowerCase();
+  l = String(l || '').toLowerCase().replace(/^\s+|\s+$/g, '');
   if (!l || l === 'und' || l === 'unknown' || l === '(null)') return '';
   return LANG_NAMES[l] || l;
 }
@@ -3796,7 +3797,65 @@ function applyDirectProbe() {
 var DIRECT_PROBE_WS = 'ws://185.204.0.61:8080/';
 var DIRECT_PROBE_TIMEOUT_MS = 15000;
 var DIRECT_PROBE_LUNA_WAIT_MS = 8000;
-var TIZEN_FFPROBE_URL = 'http://127.0.0.1:8095';
+var TIZEN_FFPROBE_PORT = 8095;
+var TIZEN_FFPROBE_WAIT_MS = 20000;
+var tizenFfprobeBase = null;
+var tizenOwnIp = '';
+function detectTizenIp() {
+  if (tizenOwnIp) return tizenOwnIp;
+  try {
+    if (window.webapis && webapis.network && typeof webapis.network.getIp === 'function') tizenOwnIp = webapis.network.getIp() || '';
+  } catch (e) {}
+  return tizenOwnIp;
+}
+if (window.AppState && AppState.tizenApp && window.tizen && tizen.systeminfo) {
+  ['ETHERNET_NETWORK', 'WIFI_NETWORK'].forEach(function (prop) {
+    try {
+      tizen.systeminfo.getPropertyValue(prop, function (n) {
+        if (!tizenOwnIp && n && n.ipAddress && n.ipAddress !== '0.0.0.0') tizenOwnIp = n.ipAddress;
+      }, function () {});
+    } catch (e) {}
+  });
+}
+function tizenFfprobeBases() {
+  if (tizenFfprobeBase) return [tizenFfprobeBase];
+  var list = [],
+    ip = detectTizenIp();
+  if (ip) list.push('http://' + ip + ':' + TIZEN_FFPROBE_PORT);
+  list.push('http://127.0.0.1:' + TIZEN_FFPROBE_PORT);
+  return list;
+}
+function tizenFfprobeGet(path, timeoutMs, cb) {
+  var bases = tizenFfprobeBases(),
+    i = 0;
+  var next = function (lastErr) {
+    if (i >= bases.length) {
+      cb(lastErr || 'служба не установлена или не запущена', null, null);
+      return;
+    }
+    var base = bases[i++],
+      x = new XMLHttpRequest();
+    try {
+      x.open('GET', base + path, true);
+      x.timeout = timeoutMs;
+      x.onload = function () {
+        tizenFfprobeBase = base;
+        cb(null, x, base);
+      };
+      x.onerror = function () {
+        next('служба не установлена или не запущена');
+      };
+      x.ontimeout = function () {
+        cb('нет ответа', null, base);
+      };
+      x.send();
+    } catch (e) {
+      next(e.message);
+    }
+  };
+  next(null);
+}
+window.tizenFfprobeGet = tizenFfprobeGet;
 function directProbeUri(hash, fileId) {
   var playURL = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&play=play';
   var uri = playURL.replace(/^(https?:\/\/)localhost(?=[:\/]|$)/i, '$1127.0.0.1');
@@ -3913,38 +3972,35 @@ function directProbeStart() {
     }
   };
   if (AppState.tizenApp) {
-    setTimeout(startCub, DIRECT_PROBE_LUNA_WAIT_MS);
+    setTimeout(startCub, TIZEN_FFPROBE_WAIT_MS);
     directPlaybackDiag.probe = 'ffprobe на ТВ: запрос…';
-    var tx = new XMLHttpRequest();
+    directPlaybackDiag.local = 'запрос…';
+    var asked = Date.now();
+    var localNote = function (text) {
+      if (gen === directProbe.gen) directPlaybackDiag.local = text + ' за ' + Math.round((Date.now() - asked) / 100) / 10 + ' с';
+    };
     var localFail = function (why) {
+      localNote('ошибка: ' + why);
       if (gen !== directProbe.gen || directProbe.streams) return;
       directPlaybackDiag.probe = 'ffprobe на ТВ: ' + why;
       startCub();
     };
-    try {
-      tx.open('GET', TIZEN_FFPROBE_URL + '/ffprobe?url=' + encodeURIComponent(directProbeUri(hash, fileId)), true);
-      tx.timeout = 60000;
-      tx.onload = function () {
-        var parsed = null;
-        try {
-          parsed = JSON.parse(tx.responseText || '{}');
-        } catch (e) {}
-        if (parsed && parsed.streams && parsed.streams.length) {
-          done(parsed.streams, 'ffprobe на ТВ');
-          return;
-        }
-        localFail(parsed && parsed.error || 'пустой ответ, HTTP ' + tx.status);
-      };
-      tx.onerror = function () {
-        localFail('служба не установлена или не запущена');
-      };
-      tx.ontimeout = function () {
-        localFail('нет ответа за 60 с');
-      };
-      tx.send();
-    } catch (e) {
-      localFail(e.message);
-    }
+    tizenFfprobeGet('/ffprobe?url=' + encodeURIComponent(directProbeUri(hash, fileId)), 70000, function (err, tx, base) {
+      if (err) {
+        localFail(err);
+        return;
+      }
+      var parsed = null;
+      try {
+        parsed = JSON.parse(tx.responseText || '{}');
+      } catch (e) {}
+      if (parsed && parsed.streams && parsed.streams.length) {
+        localNote('потоков: ' + parsed.streams.length + ' (' + base.replace(/^http:\/\//, '') + ')');
+        done(parsed.streams, 'ffprobe на ТВ');
+        return;
+      }
+      localFail(parsed && parsed.error || 'пустой ответ, HTTP ' + tx.status);
+    });
     return;
   }
   if (AppState.platform !== 'webos' || !lunaAvailable()) {
