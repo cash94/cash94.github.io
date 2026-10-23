@@ -1428,15 +1428,23 @@ window.WebOSTorrServer = WebOSTorrServer;
  * на Tizen — отдельная служба-пакет (.tpk): например, no-cover/torr-streaming
  * (служба tv.torr.streaming.tizen запускается вместе с телевизором и
  * поднимает официальный TorrServer-linux-arm7 на 8090). Её ставят так же,
- * как само приложение (Apps2Samsung, Tizen Studio), а здесь — только найти:
- * отвечает ли 127.0.0.1:8090/echo, и, если служба стоит, но молчит, —
- * попросить систему её запустить (tizen.application.launch; есть только
- * при доступном странице Device API, см. config.js: detectTizenApp).
+ * как само приложение (Apps2Samsung, Tizen Studio). На Tizen 5.5 служба не
+ * может запустить ни одной программы, и официальный TorrServer там не работает —
+ * для него свой пакет TorrStream-TorrServer.wgt (репозиторий TorrStream-Tizen,
+ * служба online.torrstream.torrserver: TorrServer на C# с тем же API на 8090).
+ * Здесь — только найти: отвечает ли :8090/echo по IP телевизора или
+ * 127.0.0.1 (player.js: tizenServiceGet — до localhost страница на ТВ не
+ * всегда достаёт), и, если служба стоит, но молчит, — попросить систему её
+ * запустить (tizen.application.launch; есть только при доступном странице
+ * Device API, см. config.js: detectTizenApp). Адрес, по которому TorrServer
+ * ответил, — url(): его и подставляет «TorrServer на этом устройстве».
  */
 var TizenTorrServer = (function () {
-    var SERVICE_IDS = ['tv.torr.streaming.tizen'];
+    var SERVICE_IDS = ['online.torrstream.torrserver', 'tv.torr.streaming.tizen'];
+    var PORT = 8090;
     var PROBE_MS = 3000;
     var version = '';         // ответ /echo, '' — не отвечает
+    var base = '';            // адрес, по которому ответил
     var probing = false;
     var probedAt = 0;
     var starting = 0;         // когда просили систему запустить службу
@@ -1465,13 +1473,30 @@ var TizenTorrServer = (function () {
             version = v;
             if (v) { starting = 0; error = ''; }
         };
+        if (typeof window.tizenServiceGet === 'function') {
+            tizenServiceGet(PORT, '/echo?_=' + Date.now(), 1500, function (err, xhr, at) {
+                if (!err && xhr && xhr.status === 200) base = at;
+                finish(!err && xhr && xhr.status === 200 ? String(xhr.responseText || '').trim().slice(0, 60) : '');
+            });
+            return;
+        }
         try {
-            x.open('GET', 'http://127.0.0.1:8090/echo?_=' + Date.now(), true);
+            x.open('GET', 'http://127.0.0.1:' + PORT + '/echo?_=' + Date.now(), true);
             x.timeout = 1500;
-            x.onload = function () { finish(x.status === 200 ? String(x.responseText || '').trim().slice(0, 40) : ''); };
+            x.onload = function () {
+                if (x.status === 200) base = 'http://127.0.0.1:' + PORT;
+                finish(x.status === 200 ? String(x.responseText || '').trim().slice(0, 60) : '');
+            };
             x.onerror = x.ontimeout = function () { finish(''); };
             x.send();
         } catch (e) { finish(''); }
+    }
+
+    /** Адрес TorrServer на телевизоре: где ответил, иначе по IP телевизора */
+    function url() {
+        if (base) return base;
+        var ip = typeof window.detectTizenIp === 'function' ? detectTizenIp() : '';
+        return ip ? 'http://' + ip + ':' + PORT : '';
     }
 
     function status() {
@@ -1488,8 +1513,9 @@ var TizenTorrServer = (function () {
             error: error
         };
         if (!st.supported) {
-            st.unsupportedText = 'TorrServer на телевизоре не найден. Его ставят отдельной службой, как само приложение ' +
-                '(например, github.com/no-cover/torr-streaming — запускается вместе с телевизором), после этого он появится здесь';
+            st.unsupportedText = 'TorrServer на телевизоре не найден. Его ставят отдельной службой, как само приложение: ' +
+                'на Tizen 5.5 — TorrStream-TorrServer.wgt (github.com/cash94/TorrStream-Tizen, релизы), на Tizen 6 и новее — ' +
+                'он же или github.com/no-cover/torr-streaming. Обе запускаются вместе с телевизором, после установки TorrServer появится здесь';
         }
         return st;
     }
@@ -1515,7 +1541,7 @@ var TizenTorrServer = (function () {
     function noop() { }
 
     return {
-        enabled: enabled, status: status, start: start,
+        enabled: enabled, status: status, start: start, url: url,
         install: noop, stop: noop, checkUpdate: noop
     };
 })();

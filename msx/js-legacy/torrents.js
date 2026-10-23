@@ -1227,9 +1227,11 @@ var WebOSTorrServer = function () {
 }();
 window.WebOSTorrServer = WebOSTorrServer;
 var TizenTorrServer = function () {
-  var SERVICE_IDS = ['tv.torr.streaming.tizen'];
+  var SERVICE_IDS = ['online.torrstream.torrserver', 'tv.torr.streaming.tizen'];
+  var PORT = 8090;
   var PROBE_MS = 3000;
   var version = '';
+  var base = '';
   var probing = false;
   var probedAt = 0;
   var starting = 0;
@@ -1262,11 +1264,19 @@ var TizenTorrServer = function () {
         error = '';
       }
     };
+    if (typeof window.tizenServiceGet === 'function') {
+      tizenServiceGet(PORT, '/echo?_=' + Date.now(), 1500, function (err, xhr, at) {
+        if (!err && xhr && xhr.status === 200) base = at;
+        finish(!err && xhr && xhr.status === 200 ? String(xhr.responseText || '').trim().slice(0, 60) : '');
+      });
+      return;
+    }
     try {
-      x.open('GET', 'http://127.0.0.1:8090/echo?_=' + Date.now(), true);
+      x.open('GET', 'http://127.0.0.1:' + PORT + '/echo?_=' + Date.now(), true);
       x.timeout = 1500;
       x.onload = function () {
-        finish(x.status === 200 ? String(x.responseText || '').trim().slice(0, 40) : '');
+        if (x.status === 200) base = 'http://127.0.0.1:' + PORT;
+        finish(x.status === 200 ? String(x.responseText || '').trim().slice(0, 60) : '');
       };
       x.onerror = x.ontimeout = function () {
         finish('');
@@ -1275,6 +1285,11 @@ var TizenTorrServer = function () {
     } catch (e) {
       finish('');
     }
+  }
+  function url() {
+    if (base) return base;
+    var ip = typeof window.detectTizenIp === 'function' ? detectTizenIp() : '';
+    return ip ? 'http://' + ip + ':' + PORT : '';
   }
   function status() {
     probe();
@@ -1290,7 +1305,7 @@ var TizenTorrServer = function () {
       error: error
     };
     if (!st.supported) {
-      st.unsupportedText = 'TorrServer на телевизоре не найден. Его ставят отдельной службой, как само приложение ' + '(например, github.com/no-cover/torr-streaming — запускается вместе с телевизором), после этого он появится здесь';
+      st.unsupportedText = 'TorrServer на телевизоре не найден. Его ставят отдельной службой, как само приложение: ' + 'на Tizen 5.5 — TorrStream-TorrServer.wgt (github.com/cash94/TorrStream-Tizen, релизы), на Tizen 6 и новее — ' + 'он же или github.com/no-cover/torr-streaming. Обе запускаются вместе с телевизором, после установки TorrServer появится здесь';
     }
     return st;
   }
@@ -1317,6 +1332,7 @@ var TizenTorrServer = function () {
     enabled: enabled,
     status: status,
     start: start,
+    url: url,
     install: noop,
     stop: noop,
     checkUpdate: noop

@@ -2092,6 +2092,34 @@ function checkTizenService(port, missing) {
     })();
   });
 }
+function checkTizenTorrServer() {
+  var port = 8090;
+  if (checkTizenService['busy' + port] || typeof window.tizenServiceGet !== 'function') return;
+  checkTizenService['busy' + port] = true;
+  var finish = function (text) {
+    checkTizenService['busy' + port] = false;
+    tizenServiceStatus[port] = text;
+    renderDeviceInfo();
+  };
+  tizenServiceGet(port, '/version', 10000, function (err, x, base) {
+    if (err) {
+      finish(err === 'нет ответа' ? 'не отвечает за 10 с' : 'не установлен (на Tizen 5.5 — TorrStream-TorrServer.wgt)');
+      return;
+    }
+    var d = null;
+    try {
+      d = JSON.parse(x.responseText);
+    } catch (e) {}
+    var where = ' (' + base.replace(/^http:\/\//, '') + ')';
+    if (d && d.name === 'TorrStream TorrServer') {
+      finish('служба ' + d.service + where + ' · ' + d.engine + ' · ' + d.runtime + ' · кэш ' + d.cache_mb + ' МБ, занято ' + d.memory_mb + ' МБ · торрентов ' + d.torrents + ', открыто ' + d.active + (d.evict ? '' : ' · вытеснение кусков не работает') + (d.error ? ' · ошибка: ' + d.error : ''));
+      return;
+    }
+    tizenServiceGet(port, '/echo', 5000, function (err2, x2) {
+      finish(!err2 && x2 && x2.status === 200 ? 'TorrServer ' + String(x2.responseText || '').trim().slice(0, 60) + where : 'порт 8090 занят, но это не TorrServer');
+    });
+  });
+}
 function renderDeviceInfo() {
   setupAndroidAppSettings();
   var box = getEl('device-info');
@@ -2126,6 +2154,8 @@ function renderDeviceInfo() {
     var lastLocal = window.directPlaybackDiag && directPlaybackDiag.local;
     rows.push(['Дорожки на ТВ', (tizenServiceStatus[tracksPort] || 'проверка…') + (lastLocal ? ' · последний файл: ' + lastLocal : '')]);
     rows.push(['ffprobe на ТВ', tizenServiceStatus[ffprobePort] || 'проверка…']);
+    rows.push(['TorrServer на ТВ', tizenServiceStatus[8090] || 'проверка…']);
+    if (!tizenServiceStatus[8090]) checkTizenTorrServer();
     if (!tizenServiceStatus[tracksPort]) checkTizenService(tracksPort, 'не запущена (нужен TorrStream-Tizen 1.1.4+)');
     if (!tizenServiceStatus[ffprobePort]) checkTizenService(ffprobePort, 'не установлена (TorrStream-ffprobe.wgt, Tizen 6+)');
   }
