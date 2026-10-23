@@ -255,10 +255,25 @@
         }, SLIDE_MS);
     }
 
+    // Системная клавиатура ТВ (Tizen) рисуется поверх страницы, и заставка
+    // оказывалась под ней. Снимаем нативный фокус с поля — клавиатура уходит;
+    // фокус пульта (.focused) остаётся на поле, ОК после пробуждения откроет
+    // её снова. Встроенную (osk.js) закрываем без отправки, введённое остаётся.
+    function hideKeyboards() {
+        try {
+            var a = document.activeElement;
+            if (typeof window.isTextEntryElement === 'function' && window.isTextEntryElement(a)) a.blur();
+        } catch (e) { }
+        try {
+            if (window.OSK && OSK.isOpen()) OSK.close(false);
+        } catch (e) { }
+    }
+
     function start() {
         if (active) return;
         active = true;
         if (window.AppState) AppState.screensaverActive = true;
+        hideKeyboards();
         build();
 
         // Отсчёт трейлера баннера главной ещё не кончился — гасим его, иначе

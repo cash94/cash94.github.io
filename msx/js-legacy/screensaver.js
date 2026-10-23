@@ -241,10 +241,20 @@
       showNext();
     }, SLIDE_MS);
   }
+  function hideKeyboards() {
+    try {
+      var a = document.activeElement;
+      if (typeof window.isTextEntryElement === 'function' && window.isTextEntryElement(a)) a.blur();
+    } catch (e) {}
+    try {
+      if (window.OSK && OSK.isOpen()) OSK.close(false);
+    } catch (e) {}
+  }
   function start() {
     if (active) return;
     active = true;
     if (window.AppState) AppState.screensaverActive = true;
+    hideKeyboards();
     build();
     var home = window.HomeScreen;
     heroSuspended = false;
