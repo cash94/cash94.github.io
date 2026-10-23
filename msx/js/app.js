@@ -2688,6 +2688,13 @@ function checkTizenTorrServer() {
   });
 }
 
+// Окно с системной клавиатурой (config.js: kbdViewportInfo) — ужимает ли она
+// окно и до скольких. Пусто, пока клавиатура окно не уменьшала.
+function deviceKeyboardViewport() {
+  var k = window.kbdViewportInfo && window.kbdViewportInfo.keyboard;
+  return k ? ' · с клавиатурой ' + k.w + '×' + k.h : '';
+}
+
 function renderDeviceInfo() {
   setupAndroidAppSettings();
   var box = getEl('device-info');
@@ -2700,7 +2707,7 @@ function renderDeviceInfo() {
     ['Версия', AppState.currentVersion || '—'],
     ['Браузер', browserVersionName()],
     ['User-Agent', navigator.userAgent || '—'],
-    ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + (Math.round(dpr * 100) / 100) + ')' : '')]
+    ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + (Math.round(dpr * 100) / 100) + ')' : '') + deviceKeyboardViewport()]
   ];
   // Hisense: прошивка и VIDAA OS (config.js: detectVidaaInfo) — от версии
   // VIDAA зависит, играет ли плеер файл напрямую

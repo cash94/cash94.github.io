@@ -2120,12 +2120,16 @@ function checkTizenTorrServer() {
     });
   });
 }
+function deviceKeyboardViewport() {
+  var k = window.kbdViewportInfo && window.kbdViewportInfo.keyboard;
+  return k ? ' · с клавиатурой ' + k.w + '×' + k.h : '';
+}
 function renderDeviceInfo() {
   setupAndroidAppSettings();
   var box = getEl('device-info');
   if (!box) return;
   var dpr = window.devicePixelRatio || 1;
-  var rows = [['Приложение', deviceAppName()], ['Платформа', APPLE_PLATFORM_NAMES[AppState.applePlatform] || PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'], ['Плеер', devicePlayerName()], ['Версия', AppState.currentVersion || '—'], ['Браузер', browserVersionName()], ['User-Agent', navigator.userAgent || '—'], ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + Math.round(dpr * 100) / 100 + ')' : '')]];
+  var rows = [['Приложение', deviceAppName()], ['Платформа', APPLE_PLATFORM_NAMES[AppState.applePlatform] || PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'], ['Плеер', devicePlayerName()], ['Версия', AppState.currentVersion || '—'], ['Браузер', browserVersionName()], ['User-Agent', navigator.userAgent || '—'], ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + Math.round(dpr * 100) / 100 + ')' : '') + deviceKeyboardViewport()]];
   if (AppState.vidaaOsVersion || AppState.vidaaFirmware) {
     rows.splice(2, 0, ['Прошивка', AppState.vidaaFirmware || '—'], ['VIDAA OS', (AppState.vidaaOsVersion || '—') + (AppState.vidaaDirectPlay ? ' · видео напрямую с TorrServer' : '')]);
   }

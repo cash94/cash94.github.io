@@ -8384,6 +8384,95 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   }
 }
 
+/* --- ЭКРАН ПОИСКА: открыта системная клавиатура ТВ ----------------------
+       Tizen на время набора ужимает окно, и @media выше переключались на
+       профиль меньшего экрана. Класс kbd-1080 / kbd-540 на <html> ставит
+       js/config.js по размеру окна ДО клавиатуры — шапка остаётся в его
+       размерах, без @media. html.класс перебивает правила из @media по
+       специфичности, а не порядком. Сбросы раскладки — на случай, если окно
+       сузилось до телефонного профиля (max-width: 768px: перенос строки). */
+html.kbd-1080 .search-overlay-header,
+html.kbd-540 .search-overlay-header {
+  flex-wrap: nowrap;
+}
+
+html.kbd-1080 .search-overlay-header > *,
+html.kbd-540 .search-overlay-header > * {
+  margin-top: 0;
+}
+
+html.kbd-1080 .search-input-screen,
+html.kbd-540 .search-input-screen {
+  flex: 1;
+}
+
+html.kbd-1080 .filter-toggle-btn,
+html.kbd-1080 .search-action-btn,
+html.kbd-540 .filter-toggle-btn,
+html.kbd-540 .search-action-btn {
+  flex: none;
+}
+
+html.kbd-1080 .search-overlay-header {
+  padding: 20px 30px;
+}
+
+html.kbd-1080 .search-overlay-header > * + * {
+  margin-left: 18px;
+}
+
+html.kbd-1080 .search-input-screen {
+  padding: 20px 33px;
+  font-size: 28px;
+}
+
+html.kbd-1080 .search-action-btn {
+  padding: 20px 42px;
+  font-size: 24px;
+}
+
+html.kbd-1080 .filter-toggle-btn {
+  padding: 20px 33px;
+  font-size: 24px;
+}
+
+html.kbd-1080 .close-search-btn,
+html.kbd-1080 .voice-search-btn {
+  width: 69px;
+  height: 69px;
+  font-size: 32px;
+}
+
+html.kbd-540 .search-overlay-header {
+  padding: 10px 14px;
+}
+
+html.kbd-540 .search-overlay-header > * + * {
+  margin-left: 12px;
+}
+
+html.kbd-540 .search-input-screen {
+  padding: 12px 21px;
+  font-size: 21px;
+}
+
+html.kbd-540 .search-action-btn {
+  padding: 12px 24px;
+  font-size: 20px;
+}
+
+html.kbd-540 .filter-toggle-btn {
+  padding: 12px 21px;
+  font-size: 20px;
+}
+
+html.kbd-540 .close-search-btn,
+html.kbd-540 .voice-search-btn {
+  width: 51px;
+  height: 51px;
+  font-size: 24px;
+}
+
 
 /* --- ПАНЕЛИ ПЛЕЕРА И ИНДИКАТОР ПЕРЕМОТКИ: размерные тиры ----------------
        Блоки стоят ПОСЛЕ базового описания панелей (середина файла): медиазапрос

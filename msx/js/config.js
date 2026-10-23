@@ -875,3 +875,74 @@ window.exitApp = exitApp;
     last = cur;
   });
 })();
+
+// ==================== СИСТЕМНАЯ КЛАВИАТУРА ТВ — ШАПКА ПОИСКА НЕ МЕЛЬЧАЕТ ====================
+//
+// На Tizen родная клавиатура не ложится поверх страницы, а ужимает окно
+// браузера. Размеры шапки поиска выбирают @media по высоте/ширине окна, и
+// телевизор 1920x1080 на время набора попадал в профиль 720p (max-height:
+// 820px) — строка и кнопки становились мелкими как раз тогда, когда в них
+// печатают.
+//
+// Поэтому помним размер окна без клавиатуры (stable). Окно стало меньше, пока
+// нативный фокус в текстовом поле, — это клавиатура: на <html> ставим класс
+// kbd-<профиль> по stable (kbd-1080 — 1920x1080, kbd-540 — 960x540, ТВ 1080p
+// при DPR 2), и css/styles.css держит шапку поиска в размерах этого профиля.
+// Окно вернулось — класс снимаем. Обычное изменение размера окна без фокуса в
+// поле (монитор, поворот) просто обновляет stable.
+//
+// Размеры до и во время набора — в «Об устройстве» → «Экран»
+// (window.kbdViewportInfo): видно, ужимает ли клавиатура окно и до скольких.
+(function () {
+  var root = document.documentElement;
+  var SHRINK_PX = 60;   // мельче — дрожание окна, а не клавиатура
+  function size() { return { w: window.innerWidth, h: window.innerHeight }; }
+  function profile(s) {
+    if (s.w >= 1400 && s.w <= 2048 && s.h >= 821) return '1080';
+    if (s.w >= 720 && s.w <= 1024 && s.h <= 620) return '540';
+    return '';
+  }
+  var stable = size();
+  var open = false;
+  var cls = '';
+  var blurTimer = null;
+  var info = window.kbdViewportInfo = { stable: stable, keyboard: null };
+
+  function setState(isOpen) {
+    var next = isOpen && profile(stable) ? 'kbd-' + profile(stable) : '';
+    if (next !== cls) {
+      if (cls) root.classList.remove(cls);
+      if (next) root.classList.add(next);
+      cls = next;
+    }
+    open = isOpen;
+  }
+
+  function check() {
+    var cur = size();
+    var shrunk = cur.h < stable.h - SHRINK_PX || cur.w < stable.w - SHRINK_PX;
+    // Фокус уже ушёл, а клавиатура ещё уезжает — держим, пока окно не вернётся
+    if (shrunk && (open || isTextEntryElement(document.activeElement))) {
+      info.keyboard = cur;
+      setState(true);
+    } else {
+      setState(false);
+      stable = info.stable = cur;
+    }
+  }
+
+  window.addEventListener('resize', check);
+  document.addEventListener('focusin', check);
+  // Поле потеряло фокус, а окно так и не вернулось (клавиатуру закрыли без
+  // resize или окно действительно изменили) — через 1,5 с считаем новый размер
+  // обычным
+  document.addEventListener('focusout', function () {
+    if (blurTimer) clearTimeout(blurTimer);
+    blurTimer = setTimeout(function () {
+      blurTimer = null;
+      if (!open || isTextEntryElement(document.activeElement)) return;
+      setState(false);
+      stable = info.stable = size();
+    }, 1500);
+  });
+})();

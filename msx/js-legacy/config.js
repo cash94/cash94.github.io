@@ -577,3 +577,57 @@ window.exitApp = exitApp;
     last = cur;
   });
 })();
+(function () {
+  var root = document.documentElement;
+  var SHRINK_PX = 60;
+  function size() {
+    return {
+      w: window.innerWidth,
+      h: window.innerHeight
+    };
+  }
+  function profile(s) {
+    if (s.w >= 1400 && s.w <= 2048 && s.h >= 821) return '1080';
+    if (s.w >= 720 && s.w <= 1024 && s.h <= 620) return '540';
+    return '';
+  }
+  var stable = size();
+  var open = false;
+  var cls = '';
+  var blurTimer = null;
+  var info = window.kbdViewportInfo = {
+    stable: stable,
+    keyboard: null
+  };
+  function setState(isOpen) {
+    var next = isOpen && profile(stable) ? 'kbd-' + profile(stable) : '';
+    if (next !== cls) {
+      if (cls) root.classList.remove(cls);
+      if (next) root.classList.add(next);
+      cls = next;
+    }
+    open = isOpen;
+  }
+  function check() {
+    var cur = size();
+    var shrunk = cur.h < stable.h - SHRINK_PX || cur.w < stable.w - SHRINK_PX;
+    if (shrunk && (open || isTextEntryElement(document.activeElement))) {
+      info.keyboard = cur;
+      setState(true);
+    } else {
+      setState(false);
+      stable = info.stable = cur;
+    }
+  }
+  window.addEventListener('resize', check);
+  document.addEventListener('focusin', check);
+  document.addEventListener('focusout', function () {
+    if (blurTimer) clearTimeout(blurTimer);
+    blurTimer = setTimeout(function () {
+      blurTimer = null;
+      if (!open || isTextEntryElement(document.activeElement)) return;
+      setState(false);
+      stable = info.stable = size();
+    }, 1500);
+  });
+})();
