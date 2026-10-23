@@ -76,7 +76,9 @@ var AppState = {
   clientId: null,
   userlogin: '',
   userpassword: '',
-  addToDbEnabled: false,
+  // «Добавлять торренты в базу» и «Предзагрузка» включены по умолчанию —
+  // выключает пользователь сам (в localStorage тогда 'false')
+  addToDbEnabled: true,
   multiChannelEnabled: false,
 
   // Данные торрентов
@@ -94,8 +96,8 @@ var AppState = {
   autoSkipIntro: false,
   // Настройка «Предзагрузка» (TorrServer): перед стартом плеера набрать буфер
   // в окне со статистикой раздачи (torrserverstats.js, runPlaybackPreload).
-  // Из localStorage.
-  preloadBeforePlay: false,
+  // Из localStorage; по умолчанию включена.
+  preloadBeforePlay: true,
   // Настройка «Использовать встроенную клавиатуру» (Прочее): на текстовых
   // полях вместо системной открывается своя экранная клавиатура (js/osk.js).
   // Из localStorage.

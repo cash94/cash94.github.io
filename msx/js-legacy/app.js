@@ -80,7 +80,7 @@ function showContentScreen(screen, restoreScrollTop) {
 }
 window.showContentScreen = showContentScreen;
 var hideClockEnabled = false;
-var addToDbEnabled = false;
+var addToDbEnabled = true;
 var transcodingOnOff = false;
 var multiChannelEnabled = false;
 var dvPreferred = false;
@@ -1753,7 +1753,7 @@ function setupCheckboxes() {
   }
   var addToDbCheckbox = getEl('add-to-db');
   if (addToDbCheckbox) {
-    var savedAddToDb = localStorage.getItem('addToDbEnabled') === 'true';
+    var savedAddToDb = localStorage.getItem('addToDbEnabled') !== 'false';
     addToDbEnabled = savedAddToDb;
     addToDbCheckbox.checked = savedAddToDb;
     if (typeof AppState !== 'undefined') {
@@ -1770,7 +1770,7 @@ function setupCheckboxes() {
   }
   var preloadCheckbox = getEl('preload-before-play');
   if (preloadCheckbox) {
-    AppState.preloadBeforePlay = localStorage.getItem('preloadBeforePlay') === 'true';
+    AppState.preloadBeforePlay = localStorage.getItem('preloadBeforePlay') !== 'false';
     preloadCheckbox.checked = AppState.preloadBeforePlay;
     preloadCheckbox.addEventListener('change', function (e) {
       AppState.preloadBeforePlay = e.target.checked;
@@ -2052,18 +2052,18 @@ function setupAndroidAppSettings() {
     };
   }
 }
-var tizenFfprobeStatus = '';
-function checkTizenFfprobe() {
-  if (checkTizenFfprobe.busy || typeof window.tizenFfprobeGet !== 'function') return;
-  checkTizenFfprobe.busy = true;
+var tizenServiceStatus = {};
+function checkTizenService(port, missing) {
+  if (checkTizenService['busy' + port] || typeof window.tizenServiceGet !== 'function') return;
+  checkTizenService['busy' + port] = true;
   var finish = function (text) {
-    checkTizenFfprobe.busy = false;
-    tizenFfprobeStatus = text;
+    checkTizenService['busy' + port] = false;
+    tizenServiceStatus[port] = text;
     renderDeviceInfo();
   };
-  tizenFfprobeGet('/version', 10000, function (err, x, base) {
+  tizenServiceGet(port, '/version', 10000, function (err, x, base) {
     if (err) {
-      finish(err === 'нет ответа' ? 'не отвечает за 10 с' : 'не запущена (нужен TorrStream-Tizen 1.1.3+)');
+      finish(err === 'нет ответа' ? 'не отвечает за 10 с' : missing);
       return;
     }
     (function () {
@@ -2079,13 +2079,13 @@ function checkTizenFfprobe() {
       if (d.checking) {
         finish(head + 'проверяю ffprobe…');
         setTimeout(function () {
-          tizenFfprobeStatus = '';
+          tizenServiceStatus[port] = '';
           renderDeviceInfo();
         }, 3000);
         return;
       }
       if (d.ffprobe) {
-        finish(head + d.ffprobe + (d.exec === 'память' ? ' · запуск из памяти' + (d.fileError ? ' (файл: ' + d.fileError + ')' : '') : ''));
+        finish(head + d.ffprobe + (d.exec === 'память' ? ' · запуск из памяти' + (d.fileError ? ' (файл: ' + d.fileError + ')' : '') : '') + (d.exec === 'разбор' && d.note ? ' (' + d.note + ')' : ''));
       } else {
         finish(head + 'ffprobe не запускается' + (d.error ? ': ' + d.error : '') + (d.fileError ? ' · файл: ' + d.fileError : '') + (d.memoryError ? ' · из памяти: ' + d.memoryError : ''));
       }
@@ -2121,9 +2121,13 @@ function renderDeviceInfo() {
     if (dp.subs) rows.push(['Выбор субтитров', dp.subs]);
   }
   if (AppState.tizenApp) {
+    var tracksPort = window.TIZEN_TRACKS_PORT || 8096,
+      ffprobePort = window.TIZEN_FFPROBE_PORT || 8095;
     var lastLocal = window.directPlaybackDiag && directPlaybackDiag.local;
-    rows.push(['ffprobe на ТВ', (tizenFfprobeStatus || 'проверка…') + (lastLocal ? ' · последний файл: ' + lastLocal : '')]);
-    if (!tizenFfprobeStatus) checkTizenFfprobe();
+    rows.push(['Дорожки на ТВ', (tizenServiceStatus[tracksPort] || 'проверка…') + (lastLocal ? ' · последний файл: ' + lastLocal : '')]);
+    rows.push(['ffprobe на ТВ', tizenServiceStatus[ffprobePort] || 'проверка…']);
+    if (!tizenServiceStatus[tracksPort]) checkTizenService(tracksPort, 'не запущена (нужен TorrStream-Tizen 1.1.4+)');
+    if (!tizenServiceStatus[ffprobePort]) checkTizenService(ffprobePort, 'не установлена (TorrStream-ffprobe.wgt, Tizen 6+)');
   }
   if (window.tizenAvplayDiag) rows.push(['Дорожки AVPlay', window.tizenAvplayDiag]);
   var html = '';

@@ -3799,9 +3799,10 @@ function applyDirectProbe() {
 var DIRECT_PROBE_WS = 'ws://185.204.0.61:8080/';
 var DIRECT_PROBE_TIMEOUT_MS = 15000;
 var DIRECT_PROBE_LUNA_WAIT_MS = 8000;
+var TIZEN_TRACKS_PORT = 8096;
 var TIZEN_FFPROBE_PORT = 8095;
 var TIZEN_FFPROBE_WAIT_MS = 20000;
-var tizenFfprobeBase = null;
+var tizenServiceBase = {};
 var tizenOwnIp = '';
 function detectTizenIp() {
   if (tizenOwnIp) return tizenOwnIp;
@@ -3819,16 +3820,16 @@ if (window.AppState && AppState.tizenApp && window.tizen && tizen.systeminfo) {
     } catch (e) {}
   });
 }
-function tizenFfprobeBases() {
-  if (tizenFfprobeBase) return [tizenFfprobeBase];
+function tizenServiceBases(port) {
+  if (tizenServiceBase[port]) return [tizenServiceBase[port]];
   var list = [],
     ip = detectTizenIp();
-  if (ip) list.push('http://' + ip + ':' + TIZEN_FFPROBE_PORT);
-  list.push('http://127.0.0.1:' + TIZEN_FFPROBE_PORT);
+  if (ip) list.push('http://' + ip + ':' + port);
+  list.push('http://127.0.0.1:' + port);
   return list;
 }
-function tizenFfprobeGet(path, timeoutMs, cb) {
-  var bases = tizenFfprobeBases(),
+function tizenServiceGet(port, path, timeoutMs, cb) {
+  var bases = tizenServiceBases(port),
     i = 0;
   var next = function (lastErr) {
     if (i >= bases.length) {
@@ -3841,7 +3842,7 @@ function tizenFfprobeGet(path, timeoutMs, cb) {
       x.open('GET', base + path, true);
       x.timeout = timeoutMs;
       x.onload = function () {
-        tizenFfprobeBase = base;
+        tizenServiceBase[port] = base;
         cb(null, x, base);
       };
       x.onerror = function () {
@@ -3857,7 +3858,9 @@ function tizenFfprobeGet(path, timeoutMs, cb) {
   };
   next(null);
 }
-window.tizenFfprobeGet = tizenFfprobeGet;
+window.tizenServiceGet = tizenServiceGet;
+window.TIZEN_TRACKS_PORT = TIZEN_TRACKS_PORT;
+window.TIZEN_FFPROBE_PORT = TIZEN_FFPROBE_PORT;
 function directProbeUri(hash, fileId) {
   var playURL = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&play=play';
   var uri = playURL.replace(/^(https?:\/\/)localhost(?=[:\/]|$)/i, '$1127.0.0.1');
@@ -3975,33 +3978,38 @@ function directProbeStart() {
   };
   if (AppState.tizenApp) {
     setTimeout(startCub, TIZEN_FFPROBE_WAIT_MS);
-    directPlaybackDiag.probe = 'ffprobe на ТВ: запрос…';
+    directPlaybackDiag.probe = 'на ТВ: запрос…';
     directPlaybackDiag.local = 'запрос…';
     var asked = Date.now();
+    var probePath = '/ffprobe?url=' + encodeURIComponent(directProbeUri(hash, fileId));
+    var localWhy = [];
     var localNote = function (text) {
       if (gen === directProbe.gen) directPlaybackDiag.local = text + ' за ' + Math.round((Date.now() - asked) / 100) / 10 + ' с';
     };
-    var localFail = function (why) {
-      localNote('ошибка: ' + why);
-      if (gen !== directProbe.gen || directProbe.streams) return;
-      directPlaybackDiag.probe = 'ffprobe на ТВ: ' + why;
-      startCub();
+    var askService = function (port, label, next) {
+      tizenServiceGet(port, probePath, 70000, function (err, tx, base) {
+        var parsed = null;
+        if (!err) {
+          try {
+            parsed = JSON.parse(tx.responseText || '{}');
+          } catch (e) {}
+        }
+        if (parsed && parsed.streams && parsed.streams.length) {
+          localNote(label + ': потоков ' + parsed.streams.length + ' (' + base.replace(/^http:\/\//, '') + ')');
+          done(parsed.streams, label);
+          return;
+        }
+        localWhy.push(label + ': ' + (err || parsed && parsed.error || 'пустой ответ, HTTP ' + tx.status));
+        next();
+      });
     };
-    tizenFfprobeGet('/ffprobe?url=' + encodeURIComponent(directProbeUri(hash, fileId)), 70000, function (err, tx, base) {
-      if (err) {
-        localFail(err);
-        return;
-      }
-      var parsed = null;
-      try {
-        parsed = JSON.parse(tx.responseText || '{}');
-      } catch (e) {}
-      if (parsed && parsed.streams && parsed.streams.length) {
-        localNote('потоков: ' + parsed.streams.length + ' (' + base.replace(/^http:\/\//, '') + ')');
-        done(parsed.streams, 'ffprobe на ТВ');
-        return;
-      }
-      localFail(parsed && parsed.error || 'пустой ответ, HTTP ' + tx.status);
+    askService(TIZEN_TRACKS_PORT, 'MKV/MP4 на ТВ', function () {
+      askService(TIZEN_FFPROBE_PORT, 'ffprobe на ТВ', function () {
+        localNote('ошибка: ' + localWhy.join('; '));
+        if (gen !== directProbe.gen || directProbe.streams) return;
+        directPlaybackDiag.probe = localWhy.join('; ');
+        startCub();
+      });
     });
     return;
   }

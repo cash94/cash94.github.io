@@ -4038,9 +4038,13 @@ var DIRECT_PROBE_LUNA_WAIT_MS = 8000;
 // Страница TorrStream на телевизоре до localhost не достаёт — как и до TorrServer
 // на самом ТВ, если указать его как localhost, — а по IP телевизора достаёт.
 // Поэтому сначала IP телевизора, потом 127.0.0.1; сработавший адрес помним
+// Службы на Tizen: 8096 — разбор заголовка MKV/MP4 на C# (служба
+// online.torrstream.tracks внутри TorrStream-Tizen.wgt, работает и на 5.5);
+// 8095 — ffprobe (отдельный TorrStream-ffprobe.wgt, Tizen 6+)
+var TIZEN_TRACKS_PORT = 8096;
 var TIZEN_FFPROBE_PORT = 8095;
 var TIZEN_FFPROBE_WAIT_MS = 20000;
-var tizenFfprobeBase = null;
+var tizenServiceBase = {};   // порт → адрес, по которому служба ответила
 var tizenOwnIp = '';
 
 /** IP телевизора: webapis.network (сразу) или tizen.systeminfo (ниже, асинхронно) */
@@ -4061,27 +4065,27 @@ if (window.AppState && AppState.tizenApp && window.tizen && tizen.systeminfo) {
   });
 }
 
-function tizenFfprobeBases() {
-  if (tizenFfprobeBase) return [tizenFfprobeBase];
+function tizenServiceBases(port) {
+  if (tizenServiceBase[port]) return [tizenServiceBase[port]];
   var list = [], ip = detectTizenIp();
-  if (ip) list.push('http://' + ip + ':' + TIZEN_FFPROBE_PORT);
-  list.push('http://127.0.0.1:' + TIZEN_FFPROBE_PORT);
+  if (ip) list.push('http://' + ip + ':' + port);
+  list.push('http://127.0.0.1:' + port);
   return list;
 }
 
 /**
- * GET к службе ffprobe: по очереди её адреса (IP телевизора, 127.0.0.1); нет
- * соединения — следующий. cb(ошибка, xhr, адрес). Ответ пришёл — адрес помним
+ * GET к службе на телевизоре: по очереди её адреса (IP телевизора, 127.0.0.1);
+ * нет соединения — следующий. cb(ошибка, xhr, адрес). Ответ пришёл — адрес помним
  */
-function tizenFfprobeGet(path, timeoutMs, cb) {
-  var bases = tizenFfprobeBases(), i = 0;
+function tizenServiceGet(port, path, timeoutMs, cb) {
+  var bases = tizenServiceBases(port), i = 0;
   var next = function (lastErr) {
     if (i >= bases.length) { cb(lastErr || 'служба не установлена или не запущена', null, null); return; }
     var base = bases[i++], x = new XMLHttpRequest();
     try {
       x.open('GET', base + path, true);
       x.timeout = timeoutMs;
-      x.onload = function () { tizenFfprobeBase = base; cb(null, x, base); };
+      x.onload = function () { tizenServiceBase[port] = base; cb(null, x, base); };
       x.onerror = function () { next('служба не установлена или не запущена'); };
       x.ontimeout = function () { cb('нет ответа', null, base); };
       x.send();
@@ -4089,7 +4093,9 @@ function tizenFfprobeGet(path, timeoutMs, cb) {
   };
   next(null);
 }
-window.tizenFfprobeGet = tizenFfprobeGet;
+window.tizenServiceGet = tizenServiceGet;
+window.TIZEN_TRACKS_PORT = TIZEN_TRACKS_PORT;
+window.TIZEN_FFPROBE_PORT = TIZEN_FFPROBE_PORT;
 
 /**
  * Адрес файла для своей службы ffprobe (webOS, Tizen): она читает его прямо с
@@ -4198,40 +4204,47 @@ function directProbeStart() {
     } catch (e) { finish(); directPlaybackDiag.probe = 'сервис: ' + e.message; serverFallback(); }
   };
 
-  // Samsung Tizen: своя служба ffprobe — .NET-часть TorrStream-Tizen.wgt с 1.1.3
-  // (гибрид, как TorrServer у no-cover; TorrStream-Tizen/ffprobe-service),
-  // стартует вместе с телевизором и отвечает на 127.0.0.1. Читает файл прямо
-  // с TorrServer, как служба webOS ниже. Нет её (отказ соединения — сразу:
-  // wgt старее 1.1.3) или молчит — CUB
+  // Samsung Tizen: свои службы на телевизоре, читают файл прямо с TorrServer.
+  // По очереди: 1) разбор заголовка MKV/MP4 на C# (8096, служба внутри
+  // TorrStream-Tizen.wgt — работает и на Tizen 5.5, где ffprobe запускать
+  // нельзя); 2) ffprobe (8095, отдельный TorrStream-ffprobe.wgt, Tizen 6+) —
+  // для прочих контейнеров; 3) CUB. Нет службы — отказ соединения сразу
   if (AppState.tizenApp) {
-    // ffprobe через TorrServer без предзагрузки читает начало файла не сразу —
-    // даём службе 20 с, потом параллельно CUB (кто первый — того и названия)
+    // TorrServer без предзагрузки отдаёт начало файла не сразу — даём службам
+    // 20 с, потом параллельно CUB (кто первый — того и названия)
     setTimeout(startCub, TIZEN_FFPROBE_WAIT_MS);
-    directPlaybackDiag.probe = 'ffprobe на ТВ: запрос…';
+    directPlaybackDiag.probe = 'на ТВ: запрос…';
     directPlaybackDiag.local = 'запрос…';
     var asked = Date.now();
-    // Итог службы — отдельно (local): CUB мог ответить первым, а ответ службы
-    // всё равно нужен в «Об устройстве» (app.js, строка «ffprobe на ТВ»)
+    var probePath = '/ffprobe?url=' + encodeURIComponent(directProbeUri(hash, fileId));
+    var localWhy = [];
+    // Итог служб — отдельно (local): CUB мог ответить первым, а ответ служб
+    // всё равно нужен в «Об устройстве» (app.js, строка «Дорожки на ТВ»)
     var localNote = function (text) {
       if (gen === directProbe.gen) directPlaybackDiag.local = text + ' за ' + Math.round((Date.now() - asked) / 100) / 10 + ' с';
     };
-    var localFail = function (why) {
-      localNote('ошибка: ' + why);
-      if (gen !== directProbe.gen || directProbe.streams) return;
-      directPlaybackDiag.probe = 'ffprobe на ТВ: ' + why;
-      startCub();
+    // Одна служба: ответила потоками — готово, иначе причина и следующая
+    var askService = function (port, label, next) {
+      // служба ждёт TorrServer до 60 с
+      tizenServiceGet(port, probePath, 70000, function (err, tx, base) {
+        var parsed = null;
+        if (!err) { try { parsed = JSON.parse(tx.responseText || '{}'); } catch (e) { } }
+        if (parsed && parsed.streams && parsed.streams.length) {
+          localNote(label + ': потоков ' + parsed.streams.length + ' (' + base.replace(/^http:\/\//, '') + ')');
+          done(parsed.streams, label);
+          return;
+        }
+        localWhy.push(label + ': ' + (err || (parsed && parsed.error) || ('пустой ответ, HTTP ' + tx.status)));
+        next();
+      });
     };
-    // ffprobe в службе ждёт до 60 с
-    tizenFfprobeGet('/ffprobe?url=' + encodeURIComponent(directProbeUri(hash, fileId)), 70000, function (err, tx, base) {
-      if (err) { localFail(err); return; }
-      var parsed = null;
-      try { parsed = JSON.parse(tx.responseText || '{}'); } catch (e) { }
-      if (parsed && parsed.streams && parsed.streams.length) {
-        localNote('потоков: ' + parsed.streams.length + ' (' + base.replace(/^http:\/\//, '') + ')');
-        done(parsed.streams, 'ffprobe на ТВ');
-        return;
-      }
-      localFail((parsed && parsed.error) || ('пустой ответ, HTTP ' + tx.status));
+    askService(TIZEN_TRACKS_PORT, 'MKV/MP4 на ТВ', function () {
+      askService(TIZEN_FFPROBE_PORT, 'ffprobe на ТВ', function () {
+        localNote('ошибка: ' + localWhy.join('; '));
+        if (gen !== directProbe.gen || directProbe.streams) return;
+        directPlaybackDiag.probe = localWhy.join('; ');
+        startCub();
+      });
     });
     return;
   }
