@@ -104,6 +104,15 @@
         return _legacyDocWrite.call(document, String(html).replace(/\/msx\/js\/([\w.-]+\.js)/g, '/msx/js-legacy/$1'));
       };
       document.write('<script src="https://cash94.github.io/msx/js-legacy/legacy-polyfills.js?v=' + VERSION + '"><\/script>');
+    } else if (typeof AbortController === 'undefined' || (function () {
+      // Синтаксис новый, а API старые: Tizen 5.0 (Chrome 63) разбирает {...x}
+      // и получает обычный js/, но AbortController там нет (Chrome 66) —
+      // «AbortController is not defined» на TorrServer и замере скорости.
+      // До Chrome 72 fetch к тому же не шлёт cookie ts_auth. Модули остаются
+      // из js/, подключаем только заглушки: каждая ставится, лишь если своего нет.
+      try { return new Request('').credentials === 'omit'; } catch (e) { return false; }
+    })()) {
+      document.write('<script src="https://cash94.github.io/msx/js-legacy/legacy-polyfills.js?v=' + VERSION + '"><\/script>');
     }
 
     document.write('<link rel="stylesheet" href="https://cash94.github.io/msx/css/uicons-regular-rounded.css?v=' + VERSION + '">');
