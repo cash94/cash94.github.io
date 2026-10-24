@@ -26,6 +26,7 @@
         topbarScale: 100,            // шрифт шапки (разделы, лупа, часы), % от базового
         topbarStyle: 'text',         // text | icons — пункты шапки подписями или иконками
         settingsScale: 100,          // размер экрана «Настройки», % от базового
+        searchScale: 100,            // список результатов поиска по трекерам, % от базового
         catalogColumns: 'auto',      // auto | 3..8  (auto = число колонок считается из cardSize)
         // Размеры подписей карточки — в пикселях, ползунками (см. SLIDERS).
         // Прежний пресет fontSize (small/medium/large) остался только для
@@ -109,6 +110,14 @@
         settingsScale: {
             min: 80, max: 160, step: 5, def: 100,
             fmt: function (v) { return v + '%'; }
+        },
+        // Список результатов поиска по трекерам: вся карточка раздачи — шрифты,
+        // отступы, чипы. ×1.5 на 1080p одним оказалось крупно, другим без него
+        // мелко — пусть выбирают сами, от ×1.0 до ×2.0 шагом 0.1. Хранится в
+        // процентах, как остальные множители: шаг 10 без дробной погрешности.
+        searchScale: {
+            min: 100, max: 200, step: 10, def: 100,
+            fmt: function (v) { return '×' + (v / 100).toFixed(1); }
         }
     };
 
@@ -271,6 +280,7 @@
         s.topbarScale = clampStep(s.topbarScale, SLIDERS.topbarScale);
         s.topbarStyle = s.topbarStyle === 'icons' ? 'icons' : 'text';
         s.settingsScale = clampStep(s.settingsScale, SLIDERS.settingsScale);
+        s.searchScale = clampStep(s.searchScale, SLIDERS.searchScale);
         s.focusColor = normalizeColor(s.focusColor);
 
         s.showRatings = !!s.showRatings;
@@ -506,6 +516,7 @@
         var detailTextScale = clampStep(currentSettings.detailTextScale, SLIDERS.detailTextScale);
         var topbarScale = clampStep(currentSettings.topbarScale, SLIDERS.topbarScale);
         var settingsScale = clampStep(currentSettings.settingsScale, SLIDERS.settingsScale);
+        var searchScale = clampStep(currentSettings.searchScale, SLIDERS.searchScale);
         var radius = RADII[currentSettings.borderRadius] || RADII.medium;
         var density = DENSITIES[currentSettings.density] || DENSITIES.comfortable;
         var bright = BRIGHTNESS[currentSettings.posterBrightness] || BRIGHTNESS.normal;
@@ -583,6 +594,9 @@
         // Экран «Настройки» (zoom на #config-screen) и панель «Внешний вид»:
         // базовые 1.2 × ползунок
         css.push(':root{--settings-zoom:' + (1.2 * settingsScale / 100).toFixed(3) + ';}');
+        // Список результатов поиска по трекерам: шрифты и отступы карточек
+        // раздач в styles.css умножаются на эту переменную
+        css.push(':root{--search-scale:' + (searchScale / 100) + ';}');
 
         // Полоса на постере растёт вместе с тем, что в ней лежит
         css.push('.card-modern .poster-bar{height:' +
@@ -986,6 +1000,11 @@
             '<div class="ui-customizer-group"><h3>Текст описания</h3>' +
             '<div class="ui-customizer-hint">Размер шрифта описания на экране фильма. Кнопки, постеры и остальное не меняются.</div>' +
             sliderRow('detailTextScale', SLIDERS.detailTextScale.min + '%', SLIDERS.detailTextScale.max + '%') +
+            '</div>' +
+
+            '<div class="ui-customizer-group"><h3>Результаты поиска</h3>' +
+            '<div class="ui-customizer-hint">Размер списка раздач в поиске по трекерам: название, трекер, размер, сиды, озвучки и отступы между ними.</div>' +
+            sliderRow('searchScale', SLIDERS.searchScale.fmt(SLIDERS.searchScale.min), SLIDERS.searchScale.fmt(SLIDERS.searchScale.max)) +
             '</div>' +
 
             '<div class="ui-customizer-group"><h3>Количество колонок</h3>' +

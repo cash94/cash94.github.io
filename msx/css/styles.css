@@ -525,12 +525,21 @@ textarea {
 
    Отступы внутри карточки заданы margin'ами, а не gap: на Smart TV
    (Chrome 66) flex-gap не работает, и на каждый gap пришлось бы держать
-   парное правило в css/flex-gap-fallback.css. Здесь их не нужно. */
+   парное правило в css/flex-gap-fallback.css. Здесь их не нужно.
+
+   Шрифты, отступы и скругления чипов списка (здесь и в медиазапросах ниже)
+   умножаются на --search-scale: ползунок «Результаты поиска» во «Внешнем
+   виде» (ui-customizer.js), 1–2. Меняется вся карточка, а не только текст —
+   иначе крупные буквы лезли бы из прежних чипов. zoom не годится: Chrome 66
+   отдаёт прямоугольники под zoom без увеличения, и доводка фокуса в
+   прокрутке списка промахивалась бы. Скругление самой карточки не растёт:
+   рамка фокуса (.focused) рисуется с 12px. Новый размер здесь — тоже
+   через calc(... * var(--search-scale, 1)). */
 
 .filter-stats {
-  padding: 4px 6px 14px 6px;
+  padding: calc(4px * var(--search-scale, 1)) calc(6px * var(--search-scale, 1)) calc(14px * var(--search-scale, 1)) calc(6px * var(--search-scale, 1));
   color: #7e8798;
-  font-size: 13px;
+  font-size: calc(13px * var(--search-scale, 1));
   letter-spacing: 0.02em;
 }
 
@@ -542,7 +551,7 @@ textarea {
 .search-results-list {
   flex: 1;
   overflow-y: auto;
-  padding: 14px 20px 32px 20px;
+  padding: calc(14px * var(--search-scale, 1)) calc(20px * var(--search-scale, 1)) calc(32px * var(--search-scale, 1)) calc(20px * var(--search-scale, 1));
 }
 
 /* Прокручиваемый список — контекст наложения. Иначе Chrome 66 выносит каждую
@@ -565,8 +574,8 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px 12px 18px;
-  margin-bottom: 8px;
+  padding: calc(12px * var(--search-scale, 1)) calc(16px * var(--search-scale, 1)) calc(12px * var(--search-scale, 1)) calc(18px * var(--search-scale, 1));
+  margin-bottom: calc(8px * var(--search-scale, 1));
   /* 12px, а не крупнее: .focused ниже по файлу ставит свой border-radius: 12px,
      и при другом значении рамка фокуса не совпала бы с углами карточки */
   border-radius: 12px;
@@ -588,14 +597,14 @@ textarea {
   /* Без min-width: 0 длинное имя раздачи распирает flex-элемент
      и уносит содержимое карточки за правый край списка */
   min-width: 0;
-  margin-right: 16px;
+  margin-right: calc(16px * var(--search-scale, 1));
 }
 
 .search-result-title {
-  font-size: 16px;
+  font-size: calc(16px * var(--search-scale, 1));
   font-weight: 600;
   color: #fff;
-  margin-bottom: 8px;
+  margin-bottom: calc(8px * var(--search-scale, 1));
   line-height: 1.3;
 }
 
@@ -603,19 +612,19 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--search-scale, 1));
   color: #98a1b0;
   /* Гасим нижний отступ последней строки чипов */
-  margin-bottom: -5px;
+  margin-bottom: calc(-5px * var(--search-scale, 1));
 }
 
 .search-result-meta-item {
   display: flex;
   align-items: center;
-  margin-right: 5px;
-  margin-bottom: 5px;
-  padding: 3px 9px;
-  border-radius: 8px;
+  margin-right: calc(5px * var(--search-scale, 1));
+  margin-bottom: calc(5px * var(--search-scale, 1));
+  padding: calc(3px * var(--search-scale, 1)) calc(9px * var(--search-scale, 1));
+  border-radius: calc(8px * var(--search-scale, 1));
   background: rgba(255, 255, 255, 0.05);
   line-height: 1.35;
   white-space: nowrap;
@@ -662,18 +671,18 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  margin-top: 7px;
-  margin-bottom: 2px;
-  font-size: 12.5px;
+  margin-top: calc(7px * var(--search-scale, 1));
+  margin-bottom: calc(2px * var(--search-scale, 1));
+  font-size: calc(12.5px * var(--search-scale, 1));
 }
 
 .search-result-media {
   display: flex;
   align-items: center;
-  margin-right: 5px;
-  margin-bottom: 5px;
-  padding: 3px 9px;
-  border-radius: 8px;
+  margin-right: calc(5px * var(--search-scale, 1));
+  margin-bottom: calc(5px * var(--search-scale, 1));
+  padding: calc(3px * var(--search-scale, 1)) calc(9px * var(--search-scale, 1));
+  border-radius: calc(8px * var(--search-scale, 1));
   line-height: 1.35;
   white-space: nowrap;
   color: #cfd6e2;
@@ -726,18 +735,18 @@ textarea {
 .search-result-voices {
   display: flex;
   flex-wrap: wrap;
-  margin-top: 8px;
-  margin-bottom: -4px;
+  margin-top: calc(8px * var(--search-scale, 1));
+  margin-bottom: calc(-4px * var(--search-scale, 1));
 }
 
 .search-result-voice {
-  margin-right: 4px;
-  margin-bottom: 4px;
-  padding: 2px 9px;
-  border-radius: 20px;
+  margin-right: calc(4px * var(--search-scale, 1));
+  margin-bottom: calc(4px * var(--search-scale, 1));
+  padding: calc(2px * var(--search-scale, 1)) calc(9px * var(--search-scale, 1));
+  border-radius: calc(20px * var(--search-scale, 1));
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.07);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--search-scale, 1));
   color: #98a1b0;
 }
 
@@ -756,12 +765,12 @@ textarea {
 
 .search-result-empty {
   text-align: center;
-  padding: 56px 20px;
+  padding: calc(56px * var(--search-scale, 1)) calc(20px * var(--search-scale, 1));
   color: #8b93a3;
-  font-size: 16px;
+  font-size: calc(16px * var(--search-scale, 1));
   background: rgba(255, 255, 255, 0.03);
-  border-radius: 16px;
-  margin: 16px 0;
+  border-radius: calc(16px * var(--search-scale, 1));
+  margin: calc(16px * var(--search-scale, 1)) 0;
 }
 
 /* Элемент списка вне окна прокрутки (оконная видимость, js/torrents.js).
@@ -2895,49 +2904,49 @@ body.detail-open {
 
   /* Размеры списка результатов: +10% к базовым */
   .filter-stats {
-    padding: 4px 6px 15px 6px;
-    font-size: 14px;
+    padding: calc(4px * var(--search-scale, 1)) calc(6px * var(--search-scale, 1)) calc(15px * var(--search-scale, 1)) calc(6px * var(--search-scale, 1));
+    font-size: calc(14px * var(--search-scale, 1));
   }
 
   .search-results-list {
-    padding: 16px 24px 36px 24px;
+    padding: calc(16px * var(--search-scale, 1)) calc(24px * var(--search-scale, 1)) calc(36px * var(--search-scale, 1)) calc(24px * var(--search-scale, 1));
   }
 
   .search-result-item {
-    padding: 13px 18px 13px 22px;
-    margin-bottom: 9px;
+    padding: calc(13px * var(--search-scale, 1)) calc(18px * var(--search-scale, 1)) calc(13px * var(--search-scale, 1)) calc(22px * var(--search-scale, 1));
+    margin-bottom: calc(9px * var(--search-scale, 1));
   }
 
   .search-result-info {
-    margin-right: 18px;
+    margin-right: calc(18px * var(--search-scale, 1));
   }
 
   .search-result-title {
-    font-size: 17.5px;
-    margin-bottom: 9px;
+    font-size: calc(17.5px * var(--search-scale, 1));
+    margin-bottom: calc(9px * var(--search-scale, 1));
   }
 
   .search-result-meta {
-    font-size: 13.5px;
-    margin-bottom: -6px;
+    font-size: calc(13.5px * var(--search-scale, 1));
+    margin-bottom: calc(-6px * var(--search-scale, 1));
   }
 
   .search-result-meta-item {
-    margin-right: 6px;
-    margin-bottom: 6px;
-    padding: 3px 10px;
+    margin-right: calc(6px * var(--search-scale, 1));
+    margin-bottom: calc(6px * var(--search-scale, 1));
+    padding: calc(3px * var(--search-scale, 1)) calc(10px * var(--search-scale, 1));
   }
 
   .search-result-voices {
-    margin-top: 9px;
-    margin-bottom: -5px;
+    margin-top: calc(9px * var(--search-scale, 1));
+    margin-bottom: calc(-5px * var(--search-scale, 1));
   }
 
   .search-result-voice {
-    margin-right: 5px;
-    margin-bottom: 5px;
-    padding: 2px 10px;
-    font-size: 12.5px;
+    margin-right: calc(5px * var(--search-scale, 1));
+    margin-bottom: calc(5px * var(--search-scale, 1));
+    padding: calc(2px * var(--search-scale, 1)) calc(10px * var(--search-scale, 1));
+    font-size: calc(12.5px * var(--search-scale, 1));
   }
 
   .search-result-play {
@@ -2947,8 +2956,8 @@ body.detail-open {
   }
 
   .search-result-empty {
-    padding: 62px 22px;
-    font-size: 17px;
+    padding: calc(62px * var(--search-scale, 1)) calc(22px * var(--search-scale, 1));
+    font-size: calc(17px * var(--search-scale, 1));
   }
 }
 
@@ -3188,50 +3197,50 @@ body.detail-open {
 
   /* Размеры списка результатов: +25% к базовым */
   .filter-stats {
-    padding: 6px 8px 18px 8px;
-    font-size: 15.5px;
+    padding: calc(6px * var(--search-scale, 1)) calc(8px * var(--search-scale, 1)) calc(18px * var(--search-scale, 1)) calc(8px * var(--search-scale, 1));
+    font-size: calc(15.5px * var(--search-scale, 1));
   }
 
   .search-results-list {
-    padding: 18px 28px 40px 28px;
+    padding: calc(18px * var(--search-scale, 1)) calc(28px * var(--search-scale, 1)) calc(40px * var(--search-scale, 1)) calc(28px * var(--search-scale, 1));
   }
 
   .search-result-item {
-    padding: 15px 20px 15px 26px;
-    margin-bottom: 10px;
+    padding: calc(15px * var(--search-scale, 1)) calc(20px * var(--search-scale, 1)) calc(15px * var(--search-scale, 1)) calc(26px * var(--search-scale, 1));
+    margin-bottom: calc(10px * var(--search-scale, 1));
   }
 
   .search-result-info {
-    margin-right: 20px;
+    margin-right: calc(20px * var(--search-scale, 1));
   }
 
   .search-result-title {
-    font-size: 20px;
-    margin-bottom: 10px;
+    font-size: calc(20px * var(--search-scale, 1));
+    margin-bottom: calc(10px * var(--search-scale, 1));
   }
 
   .search-result-meta {
-    font-size: 15px;
-    margin-bottom: -7px;
+    font-size: calc(15px * var(--search-scale, 1));
+    margin-bottom: calc(-7px * var(--search-scale, 1));
   }
 
   .search-result-meta-item {
-    margin-right: 7px;
-    margin-bottom: 7px;
-    padding: 4px 12px;
-    border-radius: 9px;
+    margin-right: calc(7px * var(--search-scale, 1));
+    margin-bottom: calc(7px * var(--search-scale, 1));
+    padding: calc(4px * var(--search-scale, 1)) calc(12px * var(--search-scale, 1));
+    border-radius: calc(9px * var(--search-scale, 1));
   }
 
   .search-result-voices {
-    margin-top: 11px;
-    margin-bottom: -6px;
+    margin-top: calc(11px * var(--search-scale, 1));
+    margin-bottom: calc(-6px * var(--search-scale, 1));
   }
 
   .search-result-voice {
-    margin-right: 6px;
-    margin-bottom: 6px;
-    padding: 3px 12px;
-    font-size: 14px;
+    margin-right: calc(6px * var(--search-scale, 1));
+    margin-bottom: calc(6px * var(--search-scale, 1));
+    padding: calc(3px * var(--search-scale, 1)) calc(12px * var(--search-scale, 1));
+    font-size: calc(14px * var(--search-scale, 1));
   }
 
   .search-result-play {
@@ -3241,8 +3250,8 @@ body.detail-open {
   }
 
   .search-result-empty {
-    padding: 72px 26px;
-    font-size: 19px;
+    padding: calc(72px * var(--search-scale, 1)) calc(26px * var(--search-scale, 1));
+    font-size: calc(19px * var(--search-scale, 1));
   }
 }
 
@@ -8123,50 +8132,50 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   }
 
   .search-results-list {
-    padding: 10px 14px 24px 14px;
+    padding: calc(10px * var(--search-scale, 1)) calc(14px * var(--search-scale, 1)) calc(24px * var(--search-scale, 1)) calc(14px * var(--search-scale, 1));
   }
 
   .filter-stats {
-    padding: 2px 4px 10px 4px;
-    font-size: 12px;
+    padding: calc(2px * var(--search-scale, 1)) calc(4px * var(--search-scale, 1)) calc(10px * var(--search-scale, 1)) calc(4px * var(--search-scale, 1));
+    font-size: calc(12px * var(--search-scale, 1));
   }
 
   .search-result-item {
-    padding: 9px 12px 9px 16px;
-    margin-bottom: 6px;
+    padding: calc(9px * var(--search-scale, 1)) calc(12px * var(--search-scale, 1)) calc(9px * var(--search-scale, 1)) calc(16px * var(--search-scale, 1));
+    margin-bottom: calc(6px * var(--search-scale, 1));
   }
 
   .search-result-title {
-    font-size: 14px;
-    margin-bottom: 6px;
+    font-size: calc(14px * var(--search-scale, 1));
+    margin-bottom: calc(6px * var(--search-scale, 1));
   }
 
   .search-result-meta {
-    font-size: 11.5px;
-    margin-bottom: -4px;
+    font-size: calc(11.5px * var(--search-scale, 1));
+    margin-bottom: calc(-4px * var(--search-scale, 1));
   }
 
   .search-result-meta-item {
-    margin-right: 4px;
-    margin-bottom: 4px;
-    padding: 2px 8px;
+    margin-right: calc(4px * var(--search-scale, 1));
+    margin-bottom: calc(4px * var(--search-scale, 1));
+    padding: calc(2px * var(--search-scale, 1)) calc(8px * var(--search-scale, 1));
   }
 
   .search-result-voices {
-    margin-top: 6px;
-    margin-bottom: -3px;
+    margin-top: calc(6px * var(--search-scale, 1));
+    margin-bottom: calc(-3px * var(--search-scale, 1));
   }
 
   .search-result-voice {
-    margin-right: 3px;
-    margin-bottom: 3px;
-    padding: 1px 8px;
-    font-size: 11px;
+    margin-right: calc(3px * var(--search-scale, 1));
+    margin-bottom: calc(3px * var(--search-scale, 1));
+    padding: calc(1px * var(--search-scale, 1)) calc(8px * var(--search-scale, 1));
+    font-size: calc(11px * var(--search-scale, 1));
   }
 
   .search-result-empty {
-    padding: 36px 16px;
-    font-size: 14px;
+    padding: calc(36px * var(--search-scale, 1)) calc(16px * var(--search-scale, 1));
+    font-size: calc(14px * var(--search-scale, 1));
   }
 
   .filter-panel {
@@ -8263,19 +8272,19 @@ html.topbar-icons #home-topbar .home-nav-btn.active::after {
   }
 
   .search-results-list {
-    padding: 12px 18px 28px 18px;
+    padding: calc(12px * var(--search-scale, 1)) calc(18px * var(--search-scale, 1)) calc(28px * var(--search-scale, 1)) calc(18px * var(--search-scale, 1));
   }
 
   .search-result-item {
-    padding: 11px 16px 11px 20px;
+    padding: calc(11px * var(--search-scale, 1)) calc(16px * var(--search-scale, 1)) calc(11px * var(--search-scale, 1)) calc(20px * var(--search-scale, 1));
   }
 
   .search-result-title {
-    font-size: 15px;
+    font-size: calc(15px * var(--search-scale, 1));
   }
 
   .search-result-meta {
-    font-size: 12.5px;
+    font-size: calc(12.5px * var(--search-scale, 1));
   }
 
   .filter-panel {
