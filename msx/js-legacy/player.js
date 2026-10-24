@@ -1313,7 +1313,7 @@ function extractVideoFiles(files) {
       videoFiles.push(files[i]);
     }
   }
-  return videoFiles;
+  return typeof window.sortEpisodeFiles === 'function' ? window.sortEpisodeFiles(videoFiles) : videoFiles;
 }
 function resolveTorrentWithFiles(_x9, _x0, _x1) {
   return _resolveTorrentWithFiles.apply(this, arguments);

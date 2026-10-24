@@ -411,10 +411,10 @@ function getTorrentFiles(torrent) {
 
 function getVideoFilesFromTorrent(torrent) {
     var files = getTorrentFiles(torrent);
-    return files.filter(f => {
+    return sortEpisodeFiles(files.filter(f => {
         var name = (f.path || '').toLowerCase();
         return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => name.includes(ext));
-    });
+    }));
 }
 
 function inferSearchResultIsSeries(searchResult, torrent) {
@@ -2771,6 +2771,47 @@ function parseEpisodeRef(fileName) {
 }
 
 /**
+ * utils.CompareStrings из TorrServer: true — a раньше b. Числа сравниваются
+ * как числа: «Серия 2» раньше «Серия 10».
+ */
+function torrServerLess(a, b) {
+    a = String(a || ''); b = String(b || '');
+    var isDigit = function (c) { return c >= '0' && c <= '9'; };
+    var p = 0;
+    while (p < a.length && p < b.length && a.charAt(p) === b.charAt(p)) p++;
+    // Число, на котором кончается общее начало, — целиком («1» и «10»)
+    while (p > 0 && isDigit(a.charAt(p - 1))) p--;
+    var ra = a.slice(p), rb = b.slice(p);
+    var na = ra.match(/^[0-9]+/), nb = rb.match(/^[0-9]+/);
+    if (na && nb) {
+        var da = parseInt(na[0], 10), db = parseInt(nb[0], 10);
+        return da === db ? ra < rb : da < db;
+    }
+    if (na) return true;
+    if (nb) return false;
+    return ra < rb;
+}
+
+/**
+ * Видеофайлы раздачи в порядке TorrServer: по пути, числа как числа
+ * (server/torr/torrent.go). TorrServer так и отдаёт file_stats, а TorrServer
+ * на Tizen до 1.0.10 и другие серверы — в порядке .torrent, где серии бывают
+ * по размеру (2, 10, 3, 1…): список в плеере шёл так же, и «следующая серия»
+ * прыгала по нему. Исходный массив не меняется.
+ */
+function sortEpisodeFiles(files) {
+    if (!files) return [];
+    var items = files.map(function (f, i) { return { f: f, i: i, path: String(f.path || f.name || '') }; });
+    items.sort(function (x, y) {
+        if (torrServerLess(x.path, y.path)) return -1;
+        if (torrServerLess(y.path, x.path)) return 1;
+        return x.i - y.i;
+    });
+    return items.map(function (it) { return it.f; });
+}
+window.sortEpisodeFiles = sortEpisodeFiles;
+
+/**
  * Сопоставить видеофайлы раздачи с сериями TMDB.
  * Сначала по номеру из имени файла, иначе — по порядку: i-й файл = i-я серия
  * по всем сезонам раздачи подряд (как раньше раскладывались кадры).
@@ -3801,10 +3842,10 @@ async function showDetail(torrent) {
             showFilesListMessage('📁 Нет файлов', 'files-list-msg-compact');
         } else {
             // === РЕНДЕР ФАЙЛОВ СРАЗУ (не ждём прогресс) ===
-            var videoFiles = files.filter(f => {
+            var videoFiles = sortEpisodeFiles(files.filter(f => {
                 var n = f.path.split('/').pop().toLowerCase();
                 return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext));
-            });
+            }));
             var addedItems = renderFileItems(videoFiles, torrent.hash, torrent.title);
             // Карточка этой раздачи собрана — повторный вход её переиспользует
             // (isTorrentDetailReusable)
@@ -4807,10 +4848,14 @@ function getVideoFilesForProgress(files) {
         if (['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(function (ext) {
             return name.indexOf(ext) !== -1;
         })) {
-            file._progressIndex = i;
             videoFiles.push(file);
         }
     }
+    // Номер — в списке серий (как в плеере и на плитках), по нему «Продолжить»
+    // берёт следующую серию. Раньше это был номер среди всех файлов раздачи:
+    // .srt/.nfo перед видео сдвигали его, а порядок был как в .torrent
+    videoFiles = sortEpisodeFiles(videoFiles);
+    for (var k = 0; k < videoFiles.length; k++) videoFiles[k]._progressIndex = k;
     return videoFiles;
 }
 

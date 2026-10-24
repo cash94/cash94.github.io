@@ -1485,7 +1485,8 @@ function extractVideoFiles(files) {
       videoFiles.push(files[i]);
     }
   }
-  return videoFiles;
+  // В порядке серий, а не как в .torrent (torrents.js: sortEpisodeFiles)
+  return typeof window.sortEpisodeFiles === 'function' ? window.sortEpisodeFiles(videoFiles) : videoFiles;
 }
 
 async function resolveTorrentWithFiles(hash, maxAttempts, delayMs) {

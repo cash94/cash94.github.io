@@ -369,10 +369,10 @@ function getTorrentFiles(torrent) {
 }
 function getVideoFilesFromTorrent(torrent) {
   var files = getTorrentFiles(torrent);
-  return files.filter(f => {
+  return sortEpisodeFiles(files.filter(f => {
     var name = (f.path || '').toLowerCase();
     return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => name.includes(ext));
-  });
+  }));
 }
 function inferSearchResultIsSeries(searchResult, torrent) {
   if (searchResult && searchResult.types && Array.isArray(searchResult.types) && searchResult.types.includes('tv')) return true;
@@ -2368,6 +2368,47 @@ function parseEpisodeRef(fileName) {
   };
   return null;
 }
+function torrServerLess(a, b) {
+  a = String(a || '');
+  b = String(b || '');
+  var isDigit = function (c) {
+    return c >= '0' && c <= '9';
+  };
+  var p = 0;
+  while (p < a.length && p < b.length && a.charAt(p) === b.charAt(p)) p++;
+  while (p > 0 && isDigit(a.charAt(p - 1))) p--;
+  var ra = a.slice(p),
+    rb = b.slice(p);
+  var na = ra.match(/^[0-9]+/),
+    nb = rb.match(/^[0-9]+/);
+  if (na && nb) {
+    var da = parseInt(na[0], 10),
+      db = parseInt(nb[0], 10);
+    return da === db ? ra < rb : da < db;
+  }
+  if (na) return true;
+  if (nb) return false;
+  return ra < rb;
+}
+function sortEpisodeFiles(files) {
+  if (!files) return [];
+  var items = files.map(function (f, i) {
+    return {
+      f: f,
+      i: i,
+      path: String(f.path || f.name || '')
+    };
+  });
+  items.sort(function (x, y) {
+    if (torrServerLess(x.path, y.path)) return -1;
+    if (torrServerLess(y.path, x.path)) return 1;
+    return x.i - y.i;
+  });
+  return items.map(function (it) {
+    return it.f;
+  });
+}
+window.sortEpisodeFiles = sortEpisodeFiles;
 function buildEpisodeMetaByFile(files, seasonNumbers, allSeasonEpisodes) {
   var byFileId = {};
   if (!files || !files.length || !allSeasonEpisodes) return byFileId;
@@ -3150,10 +3191,10 @@ function _showDetail() {
       if (files.length === 0) {
         showFilesListMessage('📁 Нет файлов', 'files-list-msg-compact');
       } else {
-        var videoFiles = files.filter(f => {
+        var videoFiles = sortEpisodeFiles(files.filter(f => {
           var n = f.path.split('/').pop().toLowerCase();
           return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext));
-        });
+        }));
         var addedItems = renderFileItems(videoFiles, torrent.hash, torrent.title);
         if (detailViewDiv) detailViewDiv.dataset.torrentHash = String(torrent.hash || '');
         if (filesList) {
@@ -3868,10 +3909,11 @@ function getVideoFilesForProgress(files) {
     if (['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(function (ext) {
       return name.indexOf(ext) !== -1;
     })) {
-      file._progressIndex = i;
       videoFiles.push(file);
     }
   }
+  videoFiles = sortEpisodeFiles(videoFiles);
+  for (var k = 0; k < videoFiles.length; k++) videoFiles[k]._progressIndex = k;
   return videoFiles;
 }
 function isNewerWatchEntry(entry, current) {
