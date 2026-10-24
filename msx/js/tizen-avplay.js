@@ -42,6 +42,11 @@ var TizenAVPlay = (function () {
     var pendingAudio = -1;     // выбор до prepare — применяем после
     var pendingText = null;    // номер дорожки субтитров (-1 — выключить) до prepare
     var textIndex = -1;        // номер выбранной дорожки субтитров в нашем списке
+    var wantAudio = -1;        // index AVPlay выбранной дорожки звука; -1 — не выбирали
+    var wantText = -1;         // index AVPlay включённых субтитров; -1 — выключены
+    var trackChecks = 0;       // сколько ещё раз сверить дорожки (enforceTracks)
+    var trackCheckAt = 0;      // не раньше этого времени (мс)
+    var trackChecksTotal = 0;  // сколько сверок с начала файла — для диагностики
     var suspended = false;
     var wantPlay = false;      // play() до готовности — запустить после prepare
     var pendingSeek = null;    // currentTime до готовности (таймкод) — после prepare
@@ -137,7 +142,9 @@ var TizenAVPlay = (function () {
         var list = tracksOf('AUDIO');
         if (!prepared) { pendingAudio = i; return; }
         if (!list[i]) return;
-        try { av().setSelectTrack('AUDIO', list[i].index); } catch (e) { console.warn('AVPlay: звук не переключился', e && e.message); }
+        wantAudio = list[i].index;
+        try { av().setSelectTrack('AUDIO', wantAudio); } catch (e) { console.warn('AVPlay: звук не переключился', e && e.message); }
+        checkTracksLater();
     }
 
     function selectText(i) {
@@ -145,15 +152,72 @@ var TizenAVPlay = (function () {
         textIndex = i;
         showSubtitle('', 0);
         if (i < 0) {
+            wantText = -1;
             try { av().setSilentSubtitle(true); } catch (e) { }
             return;
         }
         var list = tracksOf('TEXT');
         if (!list[i]) return;
+        wantText = list[i].index;
         try {
-            av().setSelectTrack('TEXT', list[i].index);
+            av().setSelectTrack('TEXT', wantText);
             av().setSilentSubtitle(false);
         } catch (e) { console.warn('AVPlay: субтитры не включились', e && e.message); }
+        checkTracksLater();
+    }
+
+    // Сохранённые звук и субтитры player.js включает на loadedmetadata — это
+    // ещё до play() и до перемотки на таймкод, AVPlay в состоянии READY. Такой
+    // выбор он принимает без ошибки, но играть начинает с дорожек по
+    // умолчанию: звук первый, а субтитры включены (setSilentSubtitle держится)
+    // — тоже первые. Lampa выбирает дорожки, когда файл уже играет. Поэтому
+    // выбор запоминаем и, когда файл пошёл (oncurrentplaytime) и после каждой
+    // перемотки, сверяем с getCurrentStreamInfo и при расхождении включаем
+    // заново. Раз в секунду, не больше TRACK_CHECKS раз: звук на переключении
+    // запинается, и бесконечно дёргать его нельзя.
+    var TRACK_CHECKS = 4;
+    var TRACK_CHECK_MS = 1000;
+
+    function checkTracksLater() {
+        if (wantAudio < 0 && wantText < 0) return;
+        trackChecks = TRACK_CHECKS;
+        // Сразу после setSelectTrack getCurrentStreamInfo может ещё отдавать
+        // прежнюю дорожку — первая сверка через секунду
+        trackCheckAt = Date.now() + TRACK_CHECK_MS;
+    }
+
+    function enforceTracks() {
+        if (trackChecks <= 0 || seekingTo !== null) return;
+        var s = state();
+        if (s !== 'PLAYING' && s !== 'PAUSED') return;
+        var now = Date.now();
+        if (now < trackCheckAt) return;
+        trackCheckAt = now + TRACK_CHECK_MS;
+        var first = trackChecks === TRACK_CHECKS;
+        trackChecks--;
+        trackChecksTotal++;
+        var settled = true, diag = [];
+        if (wantAudio >= 0) {
+            var a = currentIndex('AUDIO');
+            diag.push('звук ' + wantAudio + '/' + (a >= 0 ? a : '?'));
+            // -1 — AVPlay не сказал, что играет: сверить нечем, включаем один раз
+            if (a !== wantAudio && (a >= 0 || first)) {
+                try { av().setSelectTrack('AUDIO', wantAudio); } catch (e) { }
+            }
+            if (a >= 0 && a !== wantAudio) settled = false;
+        }
+        if (wantText >= 0) {
+            var t = currentIndex('TEXT');
+            diag.push('субтитры ' + wantText + '/' + (t >= 0 ? t : '?'));
+            if (t !== wantText && (t >= 0 || first)) {
+                try { av().setSelectTrack('TEXT', wantText); av().setSilentSubtitle(false); } catch (e) { }
+            }
+            if (t >= 0 && t !== wantText) settled = false;
+        }
+        // «Об устройстве» (app.js): выбранная / игравшая на сверке дорожка
+        window.tizenAvplayTrackDiag = 'сверка ' + trackChecksTotal + ': ' + diag.join(', ') +
+            (settled ? '' : ' → включаем заново');
+        if (settled) trackChecks = 0;
     }
 
     // Список «как у <video>»: length, [i], addEventListener — его читают
@@ -315,6 +379,7 @@ var TizenAVPlay = (function () {
             onbufferingcomplete: function () { if (state() === 'PLAYING') fire('playing'); },
             oncurrentplaytime: function () {
                 rectAfterStart();
+                enforceTracks();
                 if (seekingTo === null) fire('timeupdate');
             },
             onstreamcompleted: function () {
@@ -338,6 +403,8 @@ var TizenAVPlay = (function () {
         url = newUrl || '';
         prepared = false; ended = false; seekingTo = null; error = null;
         tracksCache = null; pendingAudio = -1; pendingText = null; textIndex = -1; lastRect = ''; rectOnPlay = false;
+        wantAudio = -1; wantText = -1; trackChecks = 0; trackCheckAt = 0; trackChecksTotal = 0;
+        window.tizenAvplayTrackDiag = '';
         wantPlay = false; pendingSeek = null;
         audioList._set([]); textList._set([]);
         if (!url) return true;
@@ -483,7 +550,8 @@ var TizenAVPlay = (function () {
                 seekingTo = t;
                 ended = false;
                 fire('seeking');
-                var done = function () { seekingTo = null; fire('seeked'); fire('timeupdate'); };
+                // Перемотка на части прошивок возвращает дорожки по умолчанию
+                var done = function () { seekingTo = null; checkTracksLater(); fire('seeked'); fire('timeupdate'); };
                 try { av().seekTo(Math.round(t * 1000), done, done); } catch (e) { done(); }
             }
         });
