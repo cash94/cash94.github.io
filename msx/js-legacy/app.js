@@ -1871,6 +1871,7 @@ function setupCheckboxes() {
   }
   setupCheckboxWithStorage('auto-switch-episodes', 'autoSwitchEpisodes', 'autoSwitchEpisodes');
   setupApplePlayerChoice();
+  setupSubtitleSizeSetting();
   if (window.AndroidJS) {
     var choosePlayerContainer = getEl('choose-player-container');
     if (choosePlayerContainer) choosePlayerContainer.hidden = false;
@@ -1948,6 +1949,55 @@ function setupApplePlayerChoice() {
   });
   label();
   if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+}
+function setupSubtitleSizeSetting() {
+  var row = getEl('subtitle-size-container');
+  var btn = getEl('subtitle-size-btn');
+  var sizes = window.SUBTITLE_SIZES;
+  if (!row || !btn) return;
+  if (window.AndroidJS || !sizes || typeof window.setSubtitleSize !== 'function') {
+    row.hidden = true;
+    return;
+  }
+  function label() {
+    btn.textContent = 'Размер субтитров: ' + sizes[window.getSubtitleSize()].label;
+  }
+  window.updateSubtitleSizeSetting = label;
+  var select = document.createElement('select');
+  sizes.forEach(function (s, i) {
+    var o = document.createElement('option');
+    o.value = String(i);
+    o.textContent = s.label;
+    select.appendChild(o);
+  });
+  select.addEventListener('change', function () {
+    window.setSubtitleSize(select.value);
+    showToast('Размер субтитров: ' + sizes[window.getSubtitleSize()].label);
+    setTimeout(function () {
+      if (typeof focusEl === 'function') focusEl(btn);
+    }, 0);
+  });
+  btn.addEventListener('click', function () {
+    if (typeof ensureCustomFilterMenu !== 'function' || typeof renderCustomFilterMenu !== 'function') return;
+    var index = window.getSubtitleSize();
+    var options = sizes.map(function (s, i) {
+      return {
+        value: String(i),
+        label: s.label
+      };
+    });
+    select.value = String(index);
+    customFilterMenuState = {
+      selectEl: select,
+      title: 'Размер субтитров',
+      options: options,
+      index: index,
+      value: select.value
+    };
+    ensureCustomFilterMenu().classList.remove('hidden');
+    renderCustomFilterMenu();
+  });
+  label();
 }
 function setupExternalPlayerCheckbox() {
   var externalPlayerCheckbox = getEl('out-player');

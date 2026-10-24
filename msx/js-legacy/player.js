@@ -1701,15 +1701,76 @@ function setupTracksButton() {
   });
   setupPlayerPanelsOutsideClick();
 }
+var SUBTITLE_SIZES = [{
+  label: 'Очень мелкие',
+  scale: 0.7
+}, {
+  label: 'Мелкие',
+  scale: 0.85
+}, {
+  label: 'Обычные',
+  scale: 1
+}, {
+  label: 'Крупные',
+  scale: 1.3
+}, {
+  label: 'Очень крупные',
+  scale: 1.6
+}];
+var SUBTITLE_SIZE_DEFAULT = 2;
+var AVPLAY_SUBS_VH = 4.4;
+window.SUBTITLE_SIZES = SUBTITLE_SIZES;
+function getSubtitleSize() {
+  var v = NaN;
+  try {
+    v = parseInt(localStorage.getItem('subtitleSize'), 10);
+  } catch (e) {}
+  return v >= 0 && v < SUBTITLE_SIZES.length ? v : SUBTITLE_SIZE_DEFAULT;
+}
+window.getSubtitleSize = getSubtitleSize;
+function webosSubtitleFontSize(mediaId) {
+  if (!mediaId) return;
+  lunaRequest('luna://com.webos.media', 'setSubtitleFontSize', {
+    mediaId: mediaId,
+    fontSize: getSubtitleSize()
+  }, null, null, true);
+}
+function applySubtitleSize() {
+  var scale = SUBTITLE_SIZES[getSubtitleSize()].scale;
+  var style = getEl('subtitle-size-style');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'subtitle-size-style';
+    document.head.appendChild(style);
+  }
+  style.textContent = scale === 1 ? '' : '#video-player::cue{font-size:' + Math.round(scale * 100) + '%;}' + '#tizen-avplay-subs{font-size:' + (AVPLAY_SUBS_VH * scale).toFixed(2) + 'vh;}';
+  if (webosSubs.enabled && webosSubs.mediaId) webosSubtitleFontSize(webosSubs.mediaId);
+}
+function setSubtitleSize(level) {
+  level = parseInt(level, 10);
+  if (!(level >= 0 && level < SUBTITLE_SIZES.length)) return;
+  try {
+    localStorage.setItem('subtitleSize', String(level));
+  } catch (e) {}
+  applySubtitleSize();
+  updatePlayerSettingsMenu();
+  if (typeof window.updateSubtitleSizeSetting === 'function') window.updateSubtitleSizeSetting();
+}
+window.setSubtitleSize = setSubtitleSize;
 function updatePlayerSettingsMenu() {
   var clock = getEl('psetting-clock'),
     buffer = getEl('psetting-buffer');
   var clockShown = typeof hideClockEnabled === 'undefined' || !hideClockEnabled;
   if (clock) clock.classList.toggle('is-on', clockShown);
   if (buffer) buffer.classList.toggle('is-on', !AppState.bufferHidden);
+  var subSize = getEl('psetting-subsize-value');
+  if (subSize) subSize.textContent = SUBTITLE_SIZES[getSubtitleSize()].label;
 }
 window.updatePlayerSettingsMenu = updatePlayerSettingsMenu;
 function setupPlayerSettingsButton() {
+  applySubtitleSize();
+  var subSizeItem = getEl('psetting-subsize');
+  if (subSizeItem && window.AndroidJS) subSizeItem.style.display = 'none';
   var btn = getEl('player-settings-btn');
   var panel = getEl('player-settings-panel');
   if (!btn || !panel) return;
@@ -1724,6 +1785,8 @@ function setupPlayerSettingsButton() {
       setClockHidden(item.classList.contains('is-on'));
     } else if (item && item.id === 'psetting-buffer' && typeof toggleBufferVisibility === 'function') {
       toggleBufferVisibility();
+    } else if (item && item.id === 'psetting-subsize') {
+      setSubtitleSize((getSubtitleSize() + 1) % SUBTITLE_SIZES.length);
     }
     updatePlayerSettingsMenu();
     resetMouseIdleTimer();
@@ -3542,6 +3605,7 @@ function webosSetSubtitle(index) {
         mediaId: mediaId,
         index: index
       });
+      webosSubtitleFontSize(mediaId);
     }, 500);
   }
 }

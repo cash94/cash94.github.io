@@ -2406,6 +2406,9 @@ function setupCheckboxes() {
   // Устройства Apple — выбор внешнего плеера (Infuse, VLC, плееры tvOS…)
   setupApplePlayerChoice();
 
+  // Размер субтитров — для всех, кроме Android
+  setupSubtitleSizeSetting();
+
   if (window.AndroidJS) {
     // 7. Плеер по умолчанию — только в Android-приложении,
     // т.к. воспроизведение там всегда идёт через внешний плеер (AndroidJS.openPlayer).
@@ -2492,6 +2495,52 @@ function setupApplePlayerChoice() {
 
   label();
   if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+}
+
+/**
+ * «Размер субтитров» в разделе «Плеер». Список — то же меню выбора, что у
+ * плеера Apple выше (customFilterMenuState); размеры и применение — в
+ * player.js (SUBTITLE_SIZES, setSubtitleSize), там же пункт в шестерёнке плеера.
+ * Android: субтитры рисует нативный плеер приложения — строку прячем.
+ */
+function setupSubtitleSizeSetting() {
+  var row = getEl('subtitle-size-container');
+  var btn = getEl('subtitle-size-btn');
+  var sizes = window.SUBTITLE_SIZES;
+  if (!row || !btn) return;
+  if (window.AndroidJS || !sizes || typeof window.setSubtitleSize !== 'function') { row.hidden = true; return; }
+
+  function label() {
+    btn.textContent = 'Размер субтитров: ' + sizes[window.getSubtitleSize()].label;
+  }
+  // Пункт шестерёнки плеера меняет тот же размер — подпись обновит он
+  window.updateSubtitleSizeSetting = label;
+
+  var select = document.createElement('select');
+  sizes.forEach(function (s, i) {
+    var o = document.createElement('option');
+    o.value = String(i);
+    o.textContent = s.label;
+    select.appendChild(o);
+  });
+  select.addEventListener('change', function () {
+    window.setSubtitleSize(select.value);
+    showToast('Размер субтитров: ' + sizes[window.getSubtitleSize()].label);
+    // Меню после выбора ставит фокус на select — возвращаем его на кнопку
+    setTimeout(function () { if (typeof focusEl === 'function') focusEl(btn); }, 0);
+  });
+
+  btn.addEventListener('click', function () {
+    if (typeof ensureCustomFilterMenu !== 'function' || typeof renderCustomFilterMenu !== 'function') return;
+    var index = window.getSubtitleSize();
+    var options = sizes.map(function (s, i) { return { value: String(i), label: s.label }; });
+    select.value = String(index);
+    customFilterMenuState = { selectEl: select, title: 'Размер субтитров', options: options, index: index, value: select.value };
+    ensureCustomFilterMenu().classList.remove('hidden');
+    renderCustomFilterMenu();
+  });
+
+  label();
 }
 
 function setupExternalPlayerCheckbox() {
