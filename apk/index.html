@@ -9,7 +9,7 @@
   код Downloader, а ссылки на APK она берёт сама — TorrStream из последнего
   релиза cash94/TorrStream-Android (GitHub API), TorrStream Server — из последнего
   релиза cash94/TorrStream-AndroidServer, MonoServer — из последнего релиза
-  cash94/TorrServer-Tizen (постоянные имена, releases/latest/download).
+  cash94/MonoServer (постоянные имена, releases/latest/download).
   Поэтому код создаётся один раз и не устаревает.
 
   ES5 и никаких внешних файлов: встроенный браузер Downloader на старых
@@ -85,9 +85,9 @@
   <div class="card">
     <h2>MonoServer</h2>
     <p>TorrServer на C# для TorrStream, Lampa и других клиентов. Порт 8099 — не мешает обычному TorrServer.</p>
-    <a class="btn" id="mono-v7" href="https://github.com/cash94/TorrServer-Tizen/releases/latest/download/MonoServer-Android-armeabi-v7a.apk">
+    <a class="btn" id="mono-v7" href="https://github.com/cash94/MonoServer/releases/latest/download/MonoServer-Android-armeabi-v7a.apk">
       32-битные устройства<small>armeabi-v7a</small></a>
-    <a class="btn" id="mono-v8" href="https://github.com/cash94/TorrServer-Tizen/releases/latest/download/MonoServer-Android-arm64-v8a.apk">
+    <a class="btn" id="mono-v8" href="https://github.com/cash94/MonoServer/releases/latest/download/MonoServer-Android-arm64-v8a.apk">
       64-битные устройства<small>arm64-v8a</small></a>
     <div class="meta" id="mono-meta"></div>
   </div>
@@ -166,7 +166,7 @@
   });
 
   // MonoServer: то же — постоянные имена, отсюда только версия и размер
-  getJson('https://api.github.com/repos/cash94/TorrServer-Tizen/releases/latest', function (rel) {
+  getJson('https://api.github.com/repos/cash94/MonoServer/releases/latest', function (rel) {
     if (!rel) return;
     var a = findAsset(rel.assets, /^MonoServer-Android-armeabi-v7a\.apk$/);
     setText('mono-meta', 'Версия ' + (rel.tag_name || '').replace(/^v/, '') +

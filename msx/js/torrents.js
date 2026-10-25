@@ -1430,7 +1430,7 @@ window.WebOSTorrServer = WebOSTorrServer;
  * поднимает официальный TorrServer-linux-arm7 на 8090). Её ставят так же,
  * как само приложение (Apps2Samsung, Tizen Studio). На Tizen 5.5 служба не
  * может запустить ни одной программы, и официальный TorrServer там не работает —
- * для него свой пакет MonoServer-Tizen.wgt (до 1.0.18 — TorrServer-Tizen.wgt; репозиторий cash94/TorrServer-Tizen,
+ * для него свой пакет MonoServer-Tizen.wgt (до 1.0.18 — TorrServer-Tizen.wgt; репозиторий cash94/MonoServer,
  * служба online.torrstream.torrserver: TorrServer на C# с тем же API на 8090).
  * Здесь — только найти: отвечает ли :8090/echo по IP телевизора или
  * 127.0.0.1 (player.js: tizenServiceGet — до localhost страница на ТВ не
@@ -1514,7 +1514,7 @@ var TizenTorrServer = (function () {
         };
         if (!st.supported) {
             st.unsupportedText = 'TorrServer на телевизоре не найден. Его ставят отдельной службой, как само приложение: ' +
-                'на Tizen 5.5 — MonoServer-Tizen.wgt (github.com/cash94/TorrServer-Tizen, релизы), на Tizen 6 и новее — ' +
+                'на Tizen 5.5 — MonoServer-Tizen.wgt (github.com/cash94/MonoServer, релизы), на Tizen 6 и новее — ' +
                 'он же или github.com/no-cover/torr-streaming. Обе запускаются вместе с телевизором, после установки TorrServer появится здесь';
         }
         return st;
