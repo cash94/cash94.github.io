@@ -8,7 +8,8 @@
   Страница для Downloader by AFTVnews (и любого браузера на ТВ): на неё ведёт
   код Downloader, а ссылки на APK она берёт сама — TorrStream из последнего
   релиза cash94/TorrStream-Android (GitHub API), TorrStream Server — из последнего
-  релиза cash94/TorrStream-AndroidServer (постоянные имена, releases/latest/download).
+  релиза cash94/TorrStream-AndroidServer, MonoServer — из последнего релиза
+  cash94/TorrServer-Tizen (постоянные имена, releases/latest/download).
   Поэтому код создаётся один раз и не устаревает.
 
   ES5 и никаких внешних файлов: встроенный браузер Downloader на старых
@@ -80,6 +81,16 @@
       64-битные устройства<small>arm64-v8a</small></a>
     <div class="meta" id="srv-meta"></div>
   </div>
+
+  <div class="card">
+    <h2>MonoServer</h2>
+    <p>TorrServer на C# для TorrStream, Lampa и других клиентов. Порт 8099 — не мешает обычному TorrServer.</p>
+    <a class="btn" id="mono-v7" href="https://github.com/cash94/TorrServer-Tizen/releases/latest/download/MonoServer-Android-armeabi-v7a.apk">
+      32-битные устройства<small>armeabi-v7a</small></a>
+    <a class="btn" id="mono-v8" href="https://github.com/cash94/TorrServer-Tizen/releases/latest/download/MonoServer-Android-arm64-v8a.apk">
+      64-битные устройства<small>arm64-v8a</small></a>
+    <div class="meta" id="mono-meta"></div>
+  </div>
 </div>
 
 <p class="help"><b>Не устанавливается?</b> Разрешите Downloader устанавливать приложения:
@@ -107,6 +118,7 @@
   }
   var first = mark(is64 ? 'app-v8' : 'app-v7');
   mark(is64 ? 'srv-v8' : 'srv-v7');
+  mark(is64 ? 'mono-v8' : 'mono-v7');
   // Фокус сразу на рекомендуемой кнопке — пульту не нужно её искать
   if (first && first.focus) setTimeout(function () { first.focus(); }, 50);
 
@@ -150,6 +162,14 @@
     if (!rel) return;
     var a = findAsset(rel.assets, /^TorrStream-AndroidServer-armeabi-v7a\.apk$/);
     setText('srv-meta', 'Версия ' + (rel.tag_name || '').replace(/^v/, '') +
+      (a ? ' · ' + mb(a.size) : '') + (rel.published_at ? ' · ' + date(rel.published_at) : ''));
+  });
+
+  // MonoServer: то же — постоянные имена, отсюда только версия и размер
+  getJson('https://api.github.com/repos/cash94/TorrServer-Tizen/releases/latest', function (rel) {
+    if (!rel) return;
+    var a = findAsset(rel.assets, /^MonoServer-Android-armeabi-v7a\.apk$/);
+    setText('mono-meta', 'Версия ' + (rel.tag_name || '').replace(/^v/, '') +
       (a ? ' · ' + mb(a.size) : '') + (rel.published_at ? ' · ' + date(rel.published_at) : ''));
   });
 })();
