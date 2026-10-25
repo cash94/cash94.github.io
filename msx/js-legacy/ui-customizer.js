@@ -617,6 +617,10 @@
     autoSave();
   }
   var SLIDER_APPLY_MS = 250;
+  var SLIDER_SLOW_APPLY_MS = 50;
+  var SLIDER_IDLE_MS = 350;
+  var sliderApplyCost = 0;
+  var sliderHoldStart = 0;
   var SLIDER_STALE_KEY_MS = 150;
   var sliderApplyPending = false;
   var sliderApplyTimer = null;
@@ -624,6 +628,11 @@
   var sliderNudgedAt = 0;
   function scheduleSliderApply() {
     sliderApplyPending = true;
+    if (sliderApplyCost > SLIDER_SLOW_APPLY_MS) {
+      if (sliderApplyTimer) clearTimeout(sliderApplyTimer);
+      sliderApplyTimer = setTimeout(flushSliderApply, SLIDER_IDLE_MS);
+      return;
+    }
     if (sliderApplyTimer) return;
     var wait = Math.max(0, SLIDER_APPLY_MS - (Date.now() - sliderAppliedAt));
     sliderApplyTimer = setTimeout(flushSliderApply, wait);
@@ -635,9 +644,25 @@
     }
     if (!sliderApplyPending) return;
     sliderApplyPending = false;
+    var started = Date.now();
     applySettings();
     autoSave();
     sliderAppliedAt = Date.now();
+    sliderApplyCost = sliderAppliedAt - started;
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(function () {
+          var withPaint = Date.now() - started;
+          if (withPaint > sliderApplyCost) sliderApplyCost = withPaint;
+        });
+      });
+    }
+  }
+  function holdStep(cfg, heldMs) {
+    var steps = (cfg.max - cfg.min) / cfg.step;
+    if (steps <= 30 || heldMs < 600) return 1;
+    if (heldMs < 1500) return Math.max(1, Math.round(steps / 50));
+    return Math.max(1, Math.round(steps / 20));
   }
   function isStaleKey(e) {
     if (!e || !e.timeStamp || typeof performance === 'undefined' || !performance.now) return false;
@@ -651,9 +676,14 @@
     if (!cfg) return;
     var now = Date.now();
     var held = now - sliderNudgedAt < 500;
+    if (!held) sliderHoldStart = now;
     sliderNudgedAt = now;
-    if (held && isStaleKey(e)) return;
-    setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * cfg.step, true);
+    if (held && isStaleKey(e)) {
+      if (sliderApplyPending && sliderApplyCost > SLIDER_SLOW_APPLY_MS) scheduleSliderApply();
+      return;
+    }
+    var step = cfg.step * holdStep(cfg, now - sliderHoldStart);
+    setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * step, true);
   }
   function valueFromPointer(el, clientX) {
     var cfg = sliderConfig(el);

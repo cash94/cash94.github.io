@@ -1125,8 +1125,21 @@
     // интервала повторов пульта, и когда он шёл на каждое нажатие, нажатия
     // копились в очереди — пока держишь, ползунок стоял, а после отпускания
     // ещё долго ехал сам. Теперь стрелка двигает только ползунок, а применяем не
-    // чаще SLIDER_APPLY_MS и сразу по отпусканию (keyup → flushSliderApply).
+    // чаще SLIDER_APPLY_MS.
+    //
+    // На слабом ТВ (Tizen 5, Chrome 69) и этого мало: одно применение там
+    // длится сотни миллисекунд, повторы пульта за это время устаревают и
+    // отбрасываются (isStaleKey), и ползунок «Масштаб детального просмотра»
+    // (100 шагов) из конца в конец ехал 40 секунд. Поэтому применение меряем
+    // (sliderApplyCost, вместе с отрисовкой следующего кадра), и если оно
+    // дольше SLIDER_SLOW_APPLY_MS, пока стрелку держат, не применяем вовсе —
+    // только через SLIDER_IDLE_MS после последнего нажатия. Плюс у длинных
+    // ползунков шаг растёт, пока стрелку держат (holdStep).
     var SLIDER_APPLY_MS = 250;
+    var SLIDER_SLOW_APPLY_MS = 50;
+    var SLIDER_IDLE_MS = 350;
+    var sliderApplyCost = 0;    // мс последнего применения с отрисовкой
+    var sliderHoldStart = 0;    // начало текущего удержания стрелки
     // Нажатие, пролежавшее в очереди дольше этого, пока стрелку держат, —
     // устаревший повтор: пульт уже отпустили или он ушёл дальше
     var SLIDER_STALE_KEY_MS = 150;
@@ -1137,6 +1150,12 @@
 
     function scheduleSliderApply() {
         sliderApplyPending = true;
+        if (sliderApplyCost > SLIDER_SLOW_APPLY_MS) {
+            // Медленное устройство: ждём паузы в нажатиях
+            if (sliderApplyTimer) clearTimeout(sliderApplyTimer);
+            sliderApplyTimer = setTimeout(flushSliderApply, SLIDER_IDLE_MS);
+            return;
+        }
         if (sliderApplyTimer) return;
         var wait = Math.max(0, SLIDER_APPLY_MS - (Date.now() - sliderAppliedAt));
         sliderApplyTimer = setTimeout(flushSliderApply, wait);
@@ -1146,10 +1165,34 @@
         if (sliderApplyTimer) { clearTimeout(sliderApplyTimer); sliderApplyTimer = null; }
         if (!sliderApplyPending) return;
         sliderApplyPending = false;
+        var started = Date.now();
         applySettings();
         autoSave();
         // Отсчёт — от конца применения: на медленном ТВ оно само длится долго
         sliderAppliedAt = Date.now();
+        sliderApplyCost = sliderAppliedAt - started;
+        // Пересчёт стилей и раскладки после новой CSS браузер делает уже после
+        // нашего кода — досчитываем до следующего кадра
+        if (typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(function () {
+                window.requestAnimationFrame(function () {
+                    var withPaint = Date.now() - started;
+                    if (withPaint > sliderApplyCost) sliderApplyCost = withPaint;
+                });
+            });
+        }
+    }
+
+    /**
+     * Шаг ползунка с пульта, пока стрелку держат: у длинных (больше 30 шагов —
+     * масштабы, размер карточек) первые 0,6 с по одному шагу, чтобы точно
+     * попасть в значение, потом всё быстрее — из конца в конец за пару секунд
+     */
+    function holdStep(cfg, heldMs) {
+        var steps = (cfg.max - cfg.min) / cfg.step;
+        if (steps <= 30 || heldMs < 600) return 1;
+        if (heldMs < 1500) return Math.max(1, Math.round(steps / 50));
+        return Math.max(1, Math.round(steps / 20));
     }
 
     function isStaleKey(e) {
@@ -1176,9 +1219,16 @@
         // Только посреди удержания: одиночное нажатие, пришедшее с задержкой
         // (страница была занята), не теряем
         var held = now - sliderNudgedAt < 500;
+        if (!held) sliderHoldStart = now;
         sliderNudgedAt = now;
-        if (held && isStaleKey(e)) return;
-        setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * cfg.step, true);
+        if (held && isStaleKey(e)) {
+            // Шаг пропускаем, но стрелку всё ещё держат — медленное применение
+            // откладываем дальше, иначе оно сработало бы посреди удержания
+            if (sliderApplyPending && sliderApplyCost > SLIDER_SLOW_APPLY_MS) scheduleSliderApply();
+            return;
+        }
+        var step = cfg.step * holdStep(cfg, now - sliderHoldStart);
+        setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * step, true);
     }
 
     function valueFromPointer(el, clientX) {
