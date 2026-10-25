@@ -25,6 +25,7 @@ var TizenAVPlay = function () {
   var lastRect = '';
   var rectOnPlay = false;
   var rectRedo = 0;
+  var roiSet = false;
   var rectRedoAt = 0;
   var OVERRIDES = ['src', 'load', 'play', 'pause', 'currentTime', 'duration', 'paused', 'ended', 'readyState', 'seeking', 'buffered', 'error', 'videoWidth', 'videoHeight', 'audioTracks', 'textTracks', 'removeAttribute'];
   function av() {
@@ -324,11 +325,15 @@ var TizenAVPlay = function () {
       sh = window.innerHeight || 1080;
     var k = 1920 / sw,
       ky = 1080 / sh;
-    var over = r.left < -1 || r.top < -1 || r.right > sw + 1 || r.bottom > sh + 1;
-    var x = over ? 0 : Math.round(r.left * k),
-      y = over ? 0 : Math.round(r.top * ky);
-    var w = over ? 1920 : Math.round(r.width * k),
-      h = over ? 1080 : Math.round(r.height * ky);
+    var over = r.width > 0 && r.height > 0 && (r.left < -1 || r.top < -1 || r.right > sw + 1 || r.bottom > sh + 1);
+    if (over) {
+      cropRect(r, sw, sh, k, ky);
+      return;
+    }
+    var x = Math.round(r.left * k),
+      y = Math.round(r.top * ky);
+    var w = Math.round(r.width * k),
+      h = Math.round(r.height * ky);
     var laidOut = !!(w && h);
     if (!laidOut) {
       x = 0;
@@ -336,10 +341,16 @@ var TizenAVPlay = function () {
       w = 1920;
       h = 1080;
     }
-    var method = over ? 'PLAYER_DISPLAY_MODE_CROPPED_FULL' : laidOut && stretched(r.width / r.height) ? 'PLAYER_DISPLAY_MODE_FULL_SCREEN' : 'PLAYER_DISPLAY_MODE_LETTER_BOX';
+    var method = laidOut && stretched(r.width / r.height) ? 'PLAYER_DISPLAY_MODE_FULL_SCREEN' : 'PLAYER_DISPLAY_MODE_LETTER_BOX';
     var key = x + ',' + y + ',' + w + ',' + h + method;
     if (key === lastRect) return;
     lastRect = laidOut ? key : '';
+    if (roiSet) {
+      try {
+        av().setVideoRoi(0, 0, 1, 1);
+      } catch (e) {}
+      roiSet = false;
+    }
     try {
       av().setDisplayRect(x, y, w, h);
     } catch (e) {}
@@ -350,6 +361,50 @@ var TizenAVPlay = function () {
         av().setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX');
       } catch (e2) {}
     }
+  }
+  function cropRect(r, sw, sh, k, ky) {
+    var vl = Math.max(0, r.left),
+      vt = Math.max(0, r.top);
+    var vr = Math.min(sw, r.right),
+      vb = Math.min(sh, r.bottom);
+    var rx = (vl - r.left) / r.width,
+      ry = (vt - r.top) / r.height;
+    var rw = (vr - vl) / r.width,
+      rh = (vb - vt) / r.height;
+    var x = Math.round(vl * k),
+      y = Math.round(vt * ky);
+    var w = Math.round((vr - vl) * k),
+      h = Math.round((vb - vt) * ky);
+    var key = 'roi ' + x + ',' + y + ',' + w + ',' + h + ' ' + rx.toFixed(4) + ',' + ry.toFixed(4) + ',' + rw.toFixed(4) + ',' + rh.toFixed(4);
+    if (key === lastRect) return;
+    lastRect = key;
+    var ok = typeof av().setVideoRoi === 'function';
+    if (ok) {
+      try {
+        av().setVideoRoi(rx, ry, rw, rh);
+        roiSet = true;
+      } catch (e) {
+        ok = false;
+        console.warn('AVPlay: setVideoRoi не сработал', e && e.message);
+      }
+    }
+    window.tizenAvplayRoi = ok ? 'есть' : 'нет';
+    if (!ok) {
+      try {
+        av().setDisplayRect(0, 0, 1920, 1080);
+      } catch (e) {}
+      try {
+        av().setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX');
+      } catch (e) {}
+      if (typeof window.showToast === 'function') window.showToast('Обрезка и увеличение кадра на этом телевизоре недоступны');
+      return;
+    }
+    try {
+      av().setDisplayRect(x, y, w, h);
+    } catch (e) {}
+    try {
+      av().setDisplayMethod('PLAYER_DISPLAY_MODE_FULL_SCREEN');
+    } catch (e) {}
   }
   function stretched(boxRatio) {
     var info = videoInfo();
@@ -429,6 +484,7 @@ var TizenAVPlay = function () {
     trackChecksTotal = 0;
     rectRedo = 0;
     rectRedoAt = 0;
+    roiSet = false;
     window.tizenAvplayTrackDiag = '';
     wantPlay = false;
     pendingSeek = null;

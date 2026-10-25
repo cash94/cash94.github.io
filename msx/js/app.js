@@ -2820,6 +2820,8 @@ function renderDeviceInfo() {
   if (window.tizenAvplayDiag) rows.push(['Дорожки AVPlay', window.tizenAvplayDiag]);
   // Выбранная / игравшая дорожка на последней сверке (tizen-avplay.js: enforceTracks)
   if (window.tizenAvplayTrackDiag) rows.push(['Выбор дорожек AVPlay', window.tizenAvplayTrackDiag]);
+  // Есть ли у AVPlay setVideoRoi — без него «Обрезка» и «Увеличить» как «С полосами»
+  if (window.tizenAvplayRoi) rows.push(['Обрезка кадра AVPlay', window.tizenAvplayRoi]);
   var html = '';
   for (var i = 0; i < rows.length; i++) {
     html += '<div class="device-info-row"><span class="device-info-label">' + escapeHtml(rows[i][0]) +

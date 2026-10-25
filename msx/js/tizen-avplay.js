@@ -53,6 +53,7 @@ var TizenAVPlay = (function () {
     var lastRect = '';
     var rectOnPlay = false;    // рамка кадра повторена после старта показа
     var rectRedo = 0;          // сколько раз ещё выставить рамку после смены дорожки
+    var roiSet = false;        // кадр обрезан setVideoRoi («Обрезка», «Увеличить»)
     var rectRedoAt = 0;        // не раньше этого времени (мс)
 
     var OVERRIDES = ['src', 'load', 'play', 'pause', 'currentTime', 'duration', 'paused', 'ended',
@@ -338,7 +339,7 @@ var TizenAVPlay = (function () {
      * пределах экрана с пропорциями кадра («С полосами», «Оригинал») — кадр
      * вписывается в неё с полосами (LETTER_BOX); пропорции другие
      * («Растянуть») — растягивается в неё (FULL_SCREEN); больше экрана
-     * («Обрезать», «Увеличить») — кадр на весь экран с обрезкой краёв.
+     * («Обрезка», «Увеличить») — см. cropRect.
      * FULL_SCREEN для рамки «С полосами» было бы то же самое, но Tizen 9 рамку
      * при старте файла может не взять — и тогда FULL_SCREEN растягивал кадр на
      * весь экран, а LETTER_BOX (как у Lampa) и на весь экран даёт полосы.
@@ -349,22 +350,63 @@ var TizenAVPlay = (function () {
         var r = video.getBoundingClientRect();
         var sw = window.innerWidth || 1920, sh = window.innerHeight || 1080;
         var k = 1920 / sw, ky = 1080 / sh;
-        var over = r.left < -1 || r.top < -1 || r.right > sw + 1 || r.bottom > sh + 1;
-        var x = over ? 0 : Math.round(r.left * k), y = over ? 0 : Math.round(r.top * ky);
-        var w = over ? 1920 : Math.round(r.width * k), h = over ? 1080 : Math.round(r.height * ky);
+        var over = r.width > 0 && r.height > 0 &&
+            (r.left < -1 || r.top < -1 || r.right > sw + 1 || r.bottom > sh + 1);
+        if (over) { cropRect(r, sw, sh, k, ky); return; }
+        var x = Math.round(r.left * k), y = Math.round(r.top * ky);
+        var w = Math.round(r.width * k), h = Math.round(r.height * ky);
         // Рамки нет (экран плеера ещё скрыт) — пока весь экран, но не
         // запоминаем: появится рамка — выставим её
         var laidOut = !!(w && h);
         if (!laidOut) { x = 0; y = 0; w = 1920; h = 1080; }
-        var method = over ? 'PLAYER_DISPLAY_MODE_CROPPED_FULL'
-            : laidOut && stretched(r.width / r.height) ? 'PLAYER_DISPLAY_MODE_FULL_SCREEN'
+        var method = laidOut && stretched(r.width / r.height) ? 'PLAYER_DISPLAY_MODE_FULL_SCREEN'
             : 'PLAYER_DISPLAY_MODE_LETTER_BOX';
         var key = x + ',' + y + ',' + w + ',' + h + method;
         if (key === lastRect) return;
         lastRect = laidOut ? key : '';
+        // Прошлый режим обрезал кадр — показываем его снова целиком
+        if (roiSet) { try { av().setVideoRoi(0, 0, 1, 1); } catch (e) { } roiSet = false; }
         try { av().setDisplayRect(x, y, w, h); } catch (e) { }
         try { av().setDisplayMethod(method); }
         catch (e) { try { av().setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX'); } catch (e2) { } }
+    }
+
+    /**
+     * «Обрезка» и «Увеличить»: рамка <video> больше экрана, видна только её
+     * часть. Вывести кадр больше экрана AVPlay не даёт — setDisplayRect только
+     * в пределах 1920×1080 (unsigned), а способа вывода «с обрезкой» у
+     * setDisplayMethod нет: их три — LETTER_BOX, FULL_SCREEN, AUTO_ASPECT_RATIO.
+     * Раньше здесь просили PLAYER_DISPLAY_MODE_CROPPED_FULL, такого значения
+     * нет, и откат на LETTER_BOX давал те же «С полосами». Поэтому обрезаем сам
+     * кадр: setVideoRoi — какую часть кадра показывать (доли 0–1), и она
+     * растягивается на видимую часть рамки (FULL_SCREEN; пропорции у них одни
+     * и те же, искажения нет). setVideoRoi есть не на всех телевизорах — нет
+     * его, остаются «С полосами» и подсказка, почему.
+     */
+    function cropRect(r, sw, sh, k, ky) {
+        var vl = Math.max(0, r.left), vt = Math.max(0, r.top);
+        var vr = Math.min(sw, r.right), vb = Math.min(sh, r.bottom);
+        var rx = (vl - r.left) / r.width, ry = (vt - r.top) / r.height;
+        var rw = (vr - vl) / r.width, rh = (vb - vt) / r.height;
+        var x = Math.round(vl * k), y = Math.round(vt * ky);
+        var w = Math.round((vr - vl) * k), h = Math.round((vb - vt) * ky);
+        var key = 'roi ' + x + ',' + y + ',' + w + ',' + h + ' ' + rx.toFixed(4) + ',' + ry.toFixed(4) + ',' + rw.toFixed(4) + ',' + rh.toFixed(4);
+        if (key === lastRect) return;
+        lastRect = key;
+        var ok = typeof av().setVideoRoi === 'function';
+        if (ok) {
+            try { av().setVideoRoi(rx, ry, rw, rh); roiSet = true; }
+            catch (e) { ok = false; console.warn('AVPlay: setVideoRoi не сработал', e && e.message); }
+        }
+        window.tizenAvplayRoi = ok ? 'есть' : 'нет';
+        if (!ok) {
+            try { av().setDisplayRect(0, 0, 1920, 1080); } catch (e) { }
+            try { av().setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX'); } catch (e) { }
+            if (typeof window.showToast === 'function') window.showToast('Обрезка и увеличение кадра на этом телевизоре недоступны');
+            return;
+        }
+        try { av().setDisplayRect(x, y, w, h); } catch (e) { }
+        try { av().setDisplayMethod('PLAYER_DISPLAY_MODE_FULL_SCREEN'); } catch (e) { }
     }
 
     // Рамка заметно другой формы, чем кадр, — значит, «Растянуть». Размер кадра
@@ -434,7 +476,7 @@ var TizenAVPlay = (function () {
         prepared = false; ended = false; seekingTo = null; error = null;
         tracksCache = null; pendingAudio = -1; pendingText = null; textIndex = -1; lastRect = ''; rectOnPlay = false;
         wantAudio = -1; wantText = -1; trackChecks = 0; trackCheckAt = 0; trackChecksTotal = 0;
-        rectRedo = 0; rectRedoAt = 0;
+        rectRedo = 0; rectRedoAt = 0; roiSet = false;
         window.tizenAvplayTrackDiag = '';
         wantPlay = false; pendingSeek = null;
         audioList._set([]); textList._set([]);

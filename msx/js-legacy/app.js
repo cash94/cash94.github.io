@@ -2215,6 +2215,7 @@ function renderDeviceInfo() {
   }
   if (window.tizenAvplayDiag) rows.push(['Дорожки AVPlay', window.tizenAvplayDiag]);
   if (window.tizenAvplayTrackDiag) rows.push(['Выбор дорожек AVPlay', window.tizenAvplayTrackDiag]);
+  if (window.tizenAvplayRoi) rows.push(['Обрезка кадра AVPlay', window.tizenAvplayRoi]);
   var html = '';
   for (var i = 0; i < rows.length; i++) {
     html += '<div class="device-info-row"><span class="device-info-label">' + escapeHtml(rows[i][0]) + '</span><span class="device-info-value">' + escapeHtml(String(rows[i][1])) + '</span></div>';
