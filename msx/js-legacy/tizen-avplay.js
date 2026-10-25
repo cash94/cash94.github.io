@@ -24,6 +24,8 @@ var TizenAVPlay = function () {
   var pendingSeek = null;
   var lastRect = '';
   var rectOnPlay = false;
+  var rectRedo = 0;
+  var rectRedoAt = 0;
   var OVERRIDES = ['src', 'load', 'play', 'pause', 'currentTime', 'duration', 'paused', 'ended', 'readyState', 'seeking', 'buffered', 'error', 'videoWidth', 'videoHeight', 'audioTracks', 'textTracks', 'removeAttribute'];
   function av() {
     return window.webapis && webapis.avplay;
@@ -115,6 +117,23 @@ var TizenAVPlay = function () {
   function textLabel(x) {
     return langName(x.track_lang || x.language);
   }
+  function selectTrack(type, index) {
+    av().setSelectTrack(type, index);
+    var s = state();
+    if (s === 'PLAYING' || s === 'PAUSED') {
+      rectRedo = 3;
+      rectRedoAt = Date.now() + 300;
+    }
+  }
+  function redoRect() {
+    if (rectRedo <= 0) return;
+    var now = Date.now();
+    if (now < rectRedoAt) return;
+    rectRedo--;
+    rectRedoAt = now + 1000;
+    lastRect = '';
+    syncRect();
+  }
   function selectAudio(i) {
     var list = tracksOf('AUDIO');
     if (!prepared) {
@@ -124,7 +143,7 @@ var TizenAVPlay = function () {
     if (!list[i]) return;
     wantAudio = list[i].index;
     try {
-      av().setSelectTrack('AUDIO', wantAudio);
+      selectTrack('AUDIO', wantAudio);
     } catch (e) {
       console.warn('AVPlay: звук не переключился', e && e.message);
     }
@@ -148,7 +167,7 @@ var TizenAVPlay = function () {
     if (!list[i]) return;
     wantText = list[i].index;
     try {
-      av().setSelectTrack('TEXT', wantText);
+      selectTrack('TEXT', wantText);
       av().setSilentSubtitle(false);
     } catch (e) {
       console.warn('AVPlay: субтитры не включились', e && e.message);
@@ -179,7 +198,7 @@ var TizenAVPlay = function () {
       diag.push('звук ' + wantAudio + '/' + (a >= 0 ? a : '?'));
       if (a !== wantAudio && (a >= 0 || first)) {
         try {
-          av().setSelectTrack('AUDIO', wantAudio);
+          selectTrack('AUDIO', wantAudio);
         } catch (e) {}
       }
       if (a >= 0 && a !== wantAudio) settled = false;
@@ -189,7 +208,7 @@ var TizenAVPlay = function () {
       diag.push('субтитры ' + wantText + '/' + (t >= 0 ? t : '?'));
       if (t !== wantText && (t >= 0 || first)) {
         try {
-          av().setSelectTrack('TEXT', wantText);
+          selectTrack('TEXT', wantText);
           av().setSilentSubtitle(false);
         } catch (e) {}
       }
@@ -365,6 +384,7 @@ var TizenAVPlay = function () {
       oncurrentplaytime: function () {
         rectAfterStart();
         enforceTracks();
+        redoRect();
         if (seekingTo === null) fire('timeupdate');
       },
       onstreamcompleted: function () {
@@ -407,6 +427,8 @@ var TizenAVPlay = function () {
     trackChecks = 0;
     trackCheckAt = 0;
     trackChecksTotal = 0;
+    rectRedo = 0;
+    rectRedoAt = 0;
     window.tizenAvplayTrackDiag = '';
     wantPlay = false;
     pendingSeek = null;
