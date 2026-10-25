@@ -1305,7 +1305,7 @@ var TizenTorrServer = function () {
       error: error
     };
     if (!st.supported) {
-      st.unsupportedText = 'TorrServer на телевизоре не найден. Его ставят отдельной службой, как само приложение: ' + 'на Tizen 5.5 — TorrServer-Tizen.wgt (github.com/cash94/TorrServer-Tizen, релизы), на Tizen 6 и новее — ' + 'он же или github.com/no-cover/torr-streaming. Обе запускаются вместе с телевизором, после установки TorrServer появится здесь';
+      st.unsupportedText = 'TorrServer на телевизоре не найден. Его ставят отдельной службой, как само приложение: ' + 'на Tizen 5.5 — MonoServer-Tizen.wgt (github.com/cash94/TorrServer-Tizen, релизы), на Tizen 6 и новее — ' + 'он же или github.com/no-cover/torr-streaming. Обе запускаются вместе с телевизором, после установки TorrServer появится здесь';
     }
     return st;
   }

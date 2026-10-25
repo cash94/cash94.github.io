@@ -2153,7 +2153,7 @@ function checkTizenTorrServer() {
   };
   tizenServiceGet(port, '/version', 10000, function (err, x, base) {
     if (err) {
-      finish(err === 'нет ответа' ? 'не отвечает за 10 с' : 'не установлен (на Tizen 5.5 — TorrServer-Tizen.wgt)');
+      finish(err === 'нет ответа' ? 'не отвечает за 10 с' : 'не установлен (на Tizen 5.5 — MonoServer-Tizen.wgt)');
       return;
     }
     var d = null;
@@ -2161,7 +2161,7 @@ function checkTizenTorrServer() {
       d = JSON.parse(x.responseText);
     } catch (e) {}
     var where = ' (' + base.replace(/^http:\/\//, '') + ')';
-    if (d && d.name === 'TorrStream TorrServer') {
+    if (d && (d.name === 'MonoServer' || d.name === 'TorrStream TorrServer')) {
       finish('служба ' + d.service + where + ' · ' + d.engine + ' · ' + d.runtime + ' · кэш ' + d.cache_mb + ' МБ, занято ' + d.memory_mb + ' МБ · торрентов ' + d.torrents + ', открыто ' + d.active + (d.evict ? '' : ' · вытеснение кусков не работает') + (d.error ? ' · ошибка: ' + d.error : ''));
       return;
     }
