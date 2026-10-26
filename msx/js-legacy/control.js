@@ -2467,6 +2467,11 @@ function setupKeyboardHandlers() {
         showPlayerControls('play-pause-btn');
         return;
       }
+      if (isKeyPressed('DOWN', k) && !cv) {
+        e.preventDefault();
+        showPlayerControls('seek-slider');
+        return;
+      }
       if (isKeyPressed('OK', k)) {
         e.preventDefault();
         var f = document.querySelector('.focused');

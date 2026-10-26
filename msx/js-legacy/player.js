@@ -142,7 +142,20 @@ function createSkipButton() {
 var AUTO_SKIP_INTRO_SEC = 5;
 var autoSkipTimer = null;
 var autoSkipLeft = 0;
+function hasNextEpisode() {
+  return currentEpisodeFiles.length > 0 && currentEpisodeIndex !== undefined && currentEpisodeIndex + 1 < currentEpisodeFiles.length;
+}
+function shouldAutoSkip(type) {
+  if (!AppState.autoSkipIntro) return false;
+  return type === 'intro' || type === 'credits' && hasNextEpisode();
+}
+function skipButtonText(type) {
+  return type === 'intro' ? '⏩ Пропустить вступление' : '⏩ Пропустить титры';
+}
 function autoSkipLabel() {
+  if (currentSkipInfo && currentSkipInfo.type === 'credits') {
+    return '⏭ Следующая серия через ' + autoSkipLeft + ' · ОК — смотреть титры';
+  }
   return '⏩ Пропуск заставки через ' + autoSkipLeft + ' · ОК — смотреть';
 }
 function startAutoSkipCountdown() {
@@ -159,7 +172,7 @@ function startAutoSkipCountdown() {
     autoSkipLeft--;
     if (autoSkipLeft <= 0) {
       stopAutoSkipCountdown();
-      console.log('⏩ Автопропуск заставки');
+      console.log('⏩ Автопропуск:', currentSkipInfo.type === 'intro' ? 'заставка' : 'титры');
       performSkip();
       return;
     }
@@ -172,10 +185,28 @@ function stopAutoSkipCountdown() {
     autoSkipTimer = null;
   }
 }
+function syncAutoSkipCountdown() {
+  if (!skipButtonActive || !currentSkipInfo) return;
+  var want = shouldAutoSkip(currentSkipInfo.type);
+  if (want && !autoSkipTimer) {
+    if (skipButtonTimeout) {
+      clearTimeout(skipButtonTimeout);
+      skipButtonTimeout = null;
+    }
+    startAutoSkipCountdown();
+  } else if (!want && autoSkipTimer) {
+    stopAutoSkipCountdown();
+    if (skipButton) skipButton.innerHTML = skipButtonText(currentSkipInfo.type);
+    skipButtonTimeout = setTimeout(function () {
+      hideSkipButton();
+    }, 10000);
+  }
+}
+window.syncAutoSkipCountdown = syncAutoSkipCountdown;
 window.executeSkip = function () {
   if (!skipButtonActive || !currentSkipInfo) return false;
   if (autoSkipTimer) {
-    console.log('⏩ Автопропуск заставки отменён');
+    console.log('⏩ Автопропуск отменён:', currentSkipInfo.type === 'intro' ? 'заставка' : 'титры');
     hideSkipButton();
     return true;
   }
@@ -207,8 +238,7 @@ function showSkipButton(type, startMs, endMs) {
     skipButtonTimeout = null;
   }
   skipButton.classList.remove('filled');
-  var buttonText = type === 'intro' ? '⏩ Пропустить вступление' : '⏩ Пропустить титры';
-  skipButton.innerHTML = buttonText;
+  skipButton.innerHTML = skipButtonText(type);
   skipButton.classList.remove('hidden');
   skipButton.classList.add('visible');
   skipButton.style.display = 'flex';
@@ -220,7 +250,7 @@ function showSkipButton(type, startMs, endMs) {
   currentSkipRangeKey = rangeKey;
   skipButtonActive = true;
   if (typeof window.focusEl === 'function') window.focusEl(skipButton);
-  if (type === 'intro' && AppState.autoSkipIntro) {
+  if (shouldAutoSkip(type)) {
     startAutoSkipCountdown();
   } else {
     skipButtonTimeout = setTimeout(function () {
@@ -1763,6 +1793,8 @@ function updatePlayerSettingsMenu() {
   var clockShown = typeof hideClockEnabled === 'undefined' || !hideClockEnabled;
   if (clock) clock.classList.toggle('is-on', clockShown);
   if (buffer) buffer.classList.toggle('is-on', !AppState.bufferHidden);
+  var autoSkip = getEl('psetting-autoskip');
+  if (autoSkip) autoSkip.classList.toggle('is-on', !!AppState.autoSkipIntro);
   var subSize = getEl('psetting-subsize-value');
   if (subSize) subSize.textContent = SUBTITLE_SIZES[getSubtitleSize()].label;
 }
@@ -1771,6 +1803,8 @@ function setupPlayerSettingsButton() {
   applySubtitleSize();
   var subSizeItem = getEl('psetting-subsize');
   if (subSizeItem && window.AndroidJS) subSizeItem.style.display = 'none';
+  var autoSkipItem = getEl('psetting-autoskip');
+  if (autoSkipItem && window.AndroidJS) autoSkipItem.style.display = 'none';
   var btn = getEl('player-settings-btn');
   var panel = getEl('player-settings-panel');
   if (!btn || !panel) return;
@@ -1785,6 +1819,8 @@ function setupPlayerSettingsButton() {
       setClockHidden(item.classList.contains('is-on'));
     } else if (item && item.id === 'psetting-buffer' && typeof toggleBufferVisibility === 'function') {
       toggleBufferVisibility();
+    } else if (item && item.id === 'psetting-autoskip' && typeof setAutoSkip === 'function') {
+      setAutoSkip(!AppState.autoSkipIntro);
     } else if (item && item.id === 'psetting-subsize') {
       setSubtitleSize((getSubtitleSize() + 1) % SUBTITLE_SIZES.length);
     }

@@ -2197,7 +2197,7 @@ function setupCheckboxes() {
   setupExternalPlayerCheckbox();
   var container = '';
 
-  // Автопропуск заставки. В Android-приложении плеер внешний и кнопки
+  // Автопропуск заставки и титров. В Android-приложении плеер внешний и кнопки
   // пропуска там нет — настройку прячем, как и соседние плеерные.
   var autoSkipCheckbox = getEl('auto-skip-intro');
   if (autoSkipCheckbox) {
@@ -2208,9 +2208,7 @@ function setupCheckboxes() {
     AppState.autoSkipIntro = localStorage.getItem('autoSkipIntro') === 'true';
     autoSkipCheckbox.checked = AppState.autoSkipIntro;
     autoSkipCheckbox.addEventListener('change', function (e) {
-      AppState.autoSkipIntro = e.target.checked;
-      localStorage.setItem('autoSkipIntro', AppState.autoSkipIntro);
-      console.log('⏩ Автопропуск заставки:', AppState.autoSkipIntro ? 'включён' : 'выключен');
+      setAutoSkip(e.target.checked);
     });
   }
 
@@ -2580,6 +2578,17 @@ function setClockHidden(hidden) {
   setupClockVisibility();
 }
 window.setClockHidden = setClockHidden;
+
+/** Автопропуск заставки и титров: галка в разделе «Плеер» и пункт в шестерёнке */
+function setAutoSkip(on) {
+  AppState.autoSkipIntro = !!on;
+  try { localStorage.setItem('autoSkipIntro', AppState.autoSkipIntro); } catch (e) { }
+  var cb = getEl('auto-skip-intro');
+  if (cb) cb.checked = AppState.autoSkipIntro;
+  if (typeof window.syncAutoSkipCountdown === 'function') window.syncAutoSkipCountdown();
+  console.log('⏩ Автопропуск заставки и титров:', AppState.autoSkipIntro ? 'включён' : 'выключен');
+}
+window.setAutoSkip = setAutoSkip;
 
 function setupClockVisibility() {
   var clockDisplay = getEl('clock-display');

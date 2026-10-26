@@ -261,21 +261,40 @@ function createSkipButton() {
 }
 
 /**
- * Автопропуск заставки (настройка «Автопропуск заставки», AppState.autoSkipIntro).
+ * Автопропуск заставки и титров (настройка «Автопропуск заставки и титров»,
+ * AppState.autoSkipIntro — имя и ключ localStorage прежние, с тех пор как она
+ * пропускала одну заставку). Переключается в разделе «Плеер» и в шестерёнке.
  *
  * Вместо «нажми, чтобы пропустить» кнопка отсчитывает AUTO_SKIP_INTRO_SEC и
- * пропускает сама, а нажатие на неё — наоборот, отменяет: заставку хотят
- * посмотреть. Пока видео на паузе, отсчёт стоит — иначе, поставив на паузу
- * в начале заставки, человек возвращался бы уже после неё.
+ * пропускает сама, а нажатие на неё — наоборот, отменяет: заставку или титры
+ * хотят посмотреть. Пока видео на паузе, отсчёт стоит — иначе, поставив на
+ * паузу в начале заставки, человек возвращался бы уже после неё.
  *
- * Титры сами не пропускаем: там пропуск — это переход на следующую серию, и
- * делать его без спроса значит обрывать сцену после титров.
+ * Пропуск титров — это переход на следующую серию, поэтому сам он идёт, только
+ * если она есть. В фильме и последней серии — обычная кнопка.
  */
 var AUTO_SKIP_INTRO_SEC = 5;
 var autoSkipTimer = null;
 var autoSkipLeft = 0;
 
+function hasNextEpisode() {
+  return currentEpisodeFiles.length > 0 && currentEpisodeIndex !== undefined &&
+    currentEpisodeIndex + 1 < currentEpisodeFiles.length;
+}
+
+function shouldAutoSkip(type) {
+  if (!AppState.autoSkipIntro) return false;
+  return type === 'intro' || (type === 'credits' && hasNextEpisode());
+}
+
+function skipButtonText(type) {
+  return type === 'intro' ? '⏩ Пропустить вступление' : '⏩ Пропустить титры';
+}
+
 function autoSkipLabel() {
+  if (currentSkipInfo && currentSkipInfo.type === 'credits') {
+    return '⏭ Следующая серия через ' + autoSkipLeft + ' · ОК — смотреть титры';
+  }
   return '⏩ Пропуск заставки через ' + autoSkipLeft + ' · ОК — смотреть';
 }
 
@@ -290,7 +309,7 @@ function startAutoSkipCountdown() {
     autoSkipLeft--;
     if (autoSkipLeft <= 0) {
       stopAutoSkipCountdown();
-      console.log('⏩ Автопропуск заставки');
+      console.log('⏩ Автопропуск:', currentSkipInfo.type === 'intro' ? 'заставка' : 'титры');
       performSkip();
       return;
     }
@@ -302,11 +321,29 @@ function stopAutoSkipCountdown() {
   if (autoSkipTimer) { clearInterval(autoSkipTimer); autoSkipTimer = null; }
 }
 
+/**
+ * Настройку переключили, пока кнопка пропуска на экране (шестерёнка плеера):
+ * включили — заводим отсчёт, выключили — кнопка снова обычная, на 10 секунд
+ */
+function syncAutoSkipCountdown() {
+  if (!skipButtonActive || !currentSkipInfo) return;
+  var want = shouldAutoSkip(currentSkipInfo.type);
+  if (want && !autoSkipTimer) {
+    if (skipButtonTimeout) { clearTimeout(skipButtonTimeout); skipButtonTimeout = null; }
+    startAutoSkipCountdown();
+  } else if (!want && autoSkipTimer) {
+    stopAutoSkipCountdown();
+    if (skipButton) skipButton.innerHTML = skipButtonText(currentSkipInfo.type);
+    skipButtonTimeout = setTimeout(function () { hideSkipButton(); }, 10000);
+  }
+}
+window.syncAutoSkipCountdown = syncAutoSkipCountdown;
+
 window.executeSkip = function () {
   if (!skipButtonActive || !currentSkipInfo) return false;
   // Идёт автоотсчёт — нажатие значит «не пропускай»
   if (autoSkipTimer) {
-    console.log('⏩ Автопропуск заставки отменён');
+    console.log('⏩ Автопропуск отменён:', currentSkipInfo.type === 'intro' ? 'заставка' : 'титры');
     hideSkipButton();
     return true;
   }
@@ -343,8 +380,7 @@ function showSkipButton(type, startMs, endMs) {
     skipButtonTimeout = null;
   }
   skipButton.classList.remove('filled');
-  var buttonText = type === 'intro' ? '⏩ Пропустить вступление' : '⏩ Пропустить титры';
-  skipButton.innerHTML = buttonText;
+  skipButton.innerHTML = skipButtonText(type);
   skipButton.classList.remove('hidden');
   skipButton.classList.add('visible');
   skipButton.style.display = 'flex';
@@ -353,7 +389,7 @@ function showSkipButton(type, startMs, endMs) {
   skipButtonActive = true;
   if (typeof window.focusEl === 'function') window.focusEl(skipButton);
 
-  if (type === 'intro' && AppState.autoSkipIntro) {
+  if (shouldAutoSkip(type)) {
     // Своё время жизни у кнопки в этом режиме — отсчёт. Десятисекундного
     // автоскрытия нет: на паузе отсчёт стоит, и кнопка должна его дождаться.
     startAutoSkipCountdown();
@@ -1960,6 +1996,8 @@ function updatePlayerSettingsMenu() {
   var clockShown = typeof hideClockEnabled === 'undefined' || !hideClockEnabled;
   if (clock) clock.classList.toggle('is-on', clockShown);
   if (buffer) buffer.classList.toggle('is-on', !AppState.bufferHidden);
+  var autoSkip = getEl('psetting-autoskip');
+  if (autoSkip) autoSkip.classList.toggle('is-on', !!AppState.autoSkipIntro);
   var subSize = getEl('psetting-subsize-value');
   if (subSize) subSize.textContent = SUBTITLE_SIZES[getSubtitleSize()].label;
 }
@@ -1970,6 +2008,9 @@ function setupPlayerSettingsButton() {
   // Android: субтитры рисует нативный плеер приложения
   var subSizeItem = getEl('psetting-subsize');
   if (subSizeItem && window.AndroidJS) subSizeItem.style.display = 'none';
+  // ...и кнопки пропуска там тоже нет
+  var autoSkipItem = getEl('psetting-autoskip');
+  if (autoSkipItem && window.AndroidJS) autoSkipItem.style.display = 'none';
   var btn = getEl('player-settings-btn');
   var panel = getEl('player-settings-panel');
   if (!btn || !panel) return;
@@ -1985,6 +2026,8 @@ function setupPlayerSettingsButton() {
       setClockHidden(item.classList.contains('is-on'));
     } else if (item && item.id === 'psetting-buffer' && typeof toggleBufferVisibility === 'function') {
       toggleBufferVisibility();
+    } else if (item && item.id === 'psetting-autoskip' && typeof setAutoSkip === 'function') {
+      setAutoSkip(!AppState.autoSkipIntro);
     } else if (item && item.id === 'psetting-subsize') {
       // ОК — следующий размер, после самого крупного — снова самый мелкий
       setSubtitleSize((getSubtitleSize() + 1) % SUBTITLE_SIZES.length);

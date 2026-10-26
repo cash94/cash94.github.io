@@ -616,7 +616,7 @@
                 </div>
                 <div class="checkbox-container">
                   <input type="checkbox" id="auto-skip-intro">
-                  <span>Автопропуск заставки<small class="setting-desc">Через 5 секунд; ОК на кнопке — смотреть заставку</small></span>
+                  <span>Автопропуск заставки и титров<small class="setting-desc">Через 5 секунд; титры — переходом на следующую серию, если она есть. ОК на кнопке — смотреть</small></span>
                 </div>
                 <div class="checkbox-container">
                   <input type="checkbox" id="transcoding-on-off">
@@ -1205,7 +1205,8 @@
     </div>
 
     <!-- Шестерёнка: часы (та же настройка, что «Скрыть часы» в разделе «Плеер»),
-         строка буфера и размер субтитров (тот же, что в разделе «Плеер»;
+         строка буфера, автопропуск (тот же, что в разделе «Плеер»; app.js:
+         setAutoSkip) и размер субтитров (тот же, что в разделе «Плеер»;
          ОК — следующий размер, player.js: setSubtitleSize) -->
     <div id="player-settings-panel" class="player-menu-panel hidden">
       <div class="player-menu-header">
@@ -1226,6 +1227,14 @@
           <div class="player-menu-info">
             <div class="player-menu-title">Буфер</div>
             <div class="player-menu-value">Запас буфера и статистика загрузки</div>
+          </div>
+          <div class="player-menu-switch"></div>
+        </div>
+        <div class="player-menu-item" id="psetting-autoskip">
+          <div class="player-menu-icon"><svg class="hud-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 5 8 7-8 7z"/><path d="m13 5 8 7-8 7z"/></svg></div>
+          <div class="player-menu-info">
+            <div class="player-menu-title">Автопропуск</div>
+            <div class="player-menu-value">Заставка и титры, если есть следующая серия</div>
           </div>
           <div class="player-menu-switch"></div>
         </div>

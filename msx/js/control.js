@@ -2657,6 +2657,9 @@ function setupKeyboardHandlers() {
         if (AppState.currentScreen === 'player') {
             var vp = getEl('video-player'), cc = getEl('controls-container'), cv = !cc.classList.contains('idle-hidden');
             if (isKeyPressed('UP', k) && !cv) { e.preventDefault(); showPlayerControls('play-pause-btn'); return; }
+            // Вниз при скрытой панели — сразу на ползунок перемотки: дальше
+            // влево/вправо перематывают без лишнего шага с кнопки паузы
+            if (isKeyPressed('DOWN', k) && !cv) { e.preventDefault(); showPlayerControls('seek-slider'); return; }
             if (isKeyPressed('OK', k)) {
                 e.preventDefault(); var f = document.querySelector('.focused'); if (!cv) { showPlayerControls('play-pause-btn'); return; } if (f) {
                     var done = false;
