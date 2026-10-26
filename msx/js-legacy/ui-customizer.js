@@ -618,17 +618,21 @@
   }
   var SLIDER_APPLY_MS = 250;
   var SLIDER_SLOW_APPLY_MS = 50;
-  var SLIDER_IDLE_MS = 350;
-  var sliderApplyCost = 0;
+  var SLIDER_IDLE_MS = 500;
+  var sliderApplyCost = -1;
   var sliderHoldStart = 0;
+  var SLIDER_REPEAT_GAP_MS = 250;
   var SLIDER_STALE_KEY_MS = 150;
   var sliderApplyPending = false;
   var sliderApplyTimer = null;
   var sliderAppliedAt = 0;
   var sliderNudgedAt = 0;
+  function sliderApplySlow() {
+    return sliderApplyCost < 0 || sliderApplyCost > SLIDER_SLOW_APPLY_MS;
+  }
   function scheduleSliderApply() {
     sliderApplyPending = true;
-    if (sliderApplyCost > SLIDER_SLOW_APPLY_MS) {
+    if (sliderApplySlow()) {
       if (sliderApplyTimer) clearTimeout(sliderApplyTimer);
       sliderApplyTimer = setTimeout(flushSliderApply, SLIDER_IDLE_MS);
       return;
@@ -676,12 +680,10 @@
     if (!cfg) return;
     var now = Date.now();
     var held = now - sliderNudgedAt < 500;
-    if (!held) sliderHoldStart = now;
+    if (now - sliderNudgedAt >= SLIDER_REPEAT_GAP_MS) sliderHoldStart = now;
     sliderNudgedAt = now;
-    if (held && isStaleKey(e)) {
-      if (sliderApplyPending && sliderApplyCost > SLIDER_SLOW_APPLY_MS) scheduleSliderApply();
-      return;
-    }
+    if (sliderApplyPending && sliderApplySlow()) scheduleSliderApply();
+    if (held && isStaleKey(e)) return;
     var step = cfg.step * holdStep(cfg, now - sliderHoldStart);
     setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * step, true);
   }
@@ -1241,7 +1243,7 @@
     }
   }, true);
   window.addEventListener('keyup', function () {
-    if (sliderApplyPending) flushSliderApply();
+    if (sliderApplyPending && !sliderApplySlow()) flushSliderApply();
   }, true);
   function init() {
     applySettings();

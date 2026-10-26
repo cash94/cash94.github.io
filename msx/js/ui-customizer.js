@@ -1135,11 +1135,19 @@
     // дольше SLIDER_SLOW_APPLY_MS, пока стрелку держат, не применяем вовсе —
     // только через SLIDER_IDLE_MS после последнего нажатия. Плюс у длинных
     // ползунков шаг растёт, пока стрелку держат (holdStep).
+    //
+    // keyup тут не признак отпускания: пульт Tizen шлёт пару keydown/keyup на
+    // каждый тик автоповтора (как и в control.js: endNavHold). Когда keyup
+    // применял сразу, медленное применение шло на каждом тике, и на Tizen 5
+    // ползунок двигался раз в секунду, а удержание не работало вовсе. Поэтому
+    // на медленном устройстве (и пока не меряли — первое же применение может
+    // оказаться секундным) ждём только тишины, keyup ничего не ускоряет.
     var SLIDER_APPLY_MS = 250;
     var SLIDER_SLOW_APPLY_MS = 50;
-    var SLIDER_IDLE_MS = 350;
-    var sliderApplyCost = 0;    // мс последнего применения с отрисовкой
+    var SLIDER_IDLE_MS = 500;
+    var sliderApplyCost = -1;   // мс последнего применения с отрисовкой; -1 — ещё не меряли
     var sliderHoldStart = 0;    // начало текущего удержания стрелки
+    var SLIDER_REPEAT_GAP_MS = 250;
     // Нажатие, пролежавшее в очереди дольше этого, пока стрелку держат, —
     // устаревший повтор: пульт уже отпустили или он ушёл дальше
     var SLIDER_STALE_KEY_MS = 150;
@@ -1148,9 +1156,13 @@
     var sliderAppliedAt = 0;
     var sliderNudgedAt = 0;
 
+    function sliderApplySlow() {
+        return sliderApplyCost < 0 || sliderApplyCost > SLIDER_SLOW_APPLY_MS;
+    }
+
     function scheduleSliderApply() {
         sliderApplyPending = true;
-        if (sliderApplyCost > SLIDER_SLOW_APPLY_MS) {
+        if (sliderApplySlow()) {
             // Медленное устройство: ждём паузы в нажатиях
             if (sliderApplyTimer) clearTimeout(sliderApplyTimer);
             sliderApplyTimer = setTimeout(flushSliderApply, SLIDER_IDLE_MS);
@@ -1219,14 +1231,15 @@
         // Только посреди удержания: одиночное нажатие, пришедшее с задержкой
         // (страница была занята), не теряем
         var held = now - sliderNudgedAt < 500;
-        if (!held) sliderHoldStart = now;
+        // Ускорение (holdStep) — только от автоповтора: его тики идут чаще
+        // SLIDER_REPEAT_GAP_MS, а частые отдельные нажатия — по шагу на нажатие
+        if (now - sliderNudgedAt >= SLIDER_REPEAT_GAP_MS) sliderHoldStart = now;
         sliderNudgedAt = now;
-        if (held && isStaleKey(e)) {
-            // Шаг пропускаем, но стрелку всё ещё держат — медленное применение
-            // откладываем дальше, иначе оно сработало бы посреди удержания
-            if (sliderApplyPending && sliderApplyCost > SLIDER_SLOW_APPLY_MS) scheduleSliderApply();
-            return;
-        }
+        // Стрелку всё ещё держат — медленное применение откладываем дальше, иначе
+        // оно сработало бы посреди удержания: и когда шаг пропускаем, и когда
+        // ползунок упёрся в край и значение больше не меняется
+        if (sliderApplyPending && sliderApplySlow()) scheduleSliderApply();
+        if (held && isStaleKey(e)) return;
         var step = cfg.step * holdStep(cfg, now - sliderHoldStart);
         setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * step, true);
     }
@@ -1910,9 +1923,10 @@
         }
     }, true);
 
-    // Стрелку на ползунке отпустили — применяем сразу, не дожидаясь таймера
+    // Стрелку на ползунке отпустили — применяем сразу, не дожидаясь таймера.
+    // Только там, где применение дешёвое: см. комментарий к SLIDER_APPLY_MS
     window.addEventListener('keyup', function () {
-        if (sliderApplyPending) flushSliderApply();
+        if (sliderApplyPending && !sliderApplySlow()) flushSliderApply();
     }, true);
 
     // ==================== ИНИЦИАЛИЗАЦИЯ ====================
