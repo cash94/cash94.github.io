@@ -586,21 +586,21 @@
   function sliderConfig(el) {
     return el && el.dataset ? SLIDERS[el.dataset.setting] : null;
   }
+  function updateSlider(el) {
+    var cfg = sliderConfig(el);
+    if (!cfg) return;
+    var v = clampStep(currentSettings[el.dataset.setting], cfg);
+    var pct = (v - cfg.min) / (cfg.max - cfg.min) * 100;
+    var fill = el.querySelector('.ui-slider-fill');
+    var thumb = el.querySelector('.ui-slider-thumb');
+    var val = el.querySelector('.ui-slider-val');
+    if (fill) fill.style.width = pct + '%';
+    if (thumb) thumb.style.left = pct + '%';
+    if (val) val.textContent = cfg.fmt(v);
+  }
   function updateSliders() {
     var list = document.querySelectorAll('#ui-customizer-panel .ui-slider');
-    for (var i = 0; i < list.length; i++) {
-      var el = list[i];
-      var cfg = sliderConfig(el);
-      if (!cfg) continue;
-      var v = clampStep(currentSettings[el.dataset.setting], cfg);
-      var pct = (v - cfg.min) / (cfg.max - cfg.min) * 100;
-      var fill = el.querySelector('.ui-slider-fill');
-      var thumb = el.querySelector('.ui-slider-thumb');
-      var val = el.querySelector('.ui-slider-val');
-      if (fill) fill.style.width = pct + '%';
-      if (thumb) thumb.style.left = pct + '%';
-      if (val) val.textContent = cfg.fmt(v);
-    }
+    for (var i = 0; i < list.length; i++) updateSlider(list[i]);
   }
   function setSliderValue(el, value, deferred) {
     var cfg = sliderConfig(el);
@@ -608,7 +608,7 @@
     var v = clampStep(value, cfg);
     if (currentSettings[el.dataset.setting] === v) return;
     currentSettings[el.dataset.setting] = v;
-    updateSliders();
+    updateSlider(el);
     if (deferred) {
       scheduleSliderApply();
       return;
@@ -616,30 +616,16 @@
     applySettings();
     autoSave();
   }
-  var SLIDER_APPLY_MS = 250;
-  var SLIDER_SLOW_APPLY_MS = 50;
-  var SLIDER_IDLE_MS = 500;
-  var sliderApplyCost = -1;
-  var sliderHoldStart = 0;
+  var SLIDER_IDLE_MS = 450;
   var SLIDER_REPEAT_GAP_MS = 250;
-  var SLIDER_STALE_KEY_MS = 150;
+  var sliderHoldStart = 0;
   var sliderApplyPending = false;
   var sliderApplyTimer = null;
-  var sliderAppliedAt = 0;
   var sliderNudgedAt = 0;
-  function sliderApplySlow() {
-    return sliderApplyCost < 0 || sliderApplyCost > SLIDER_SLOW_APPLY_MS;
-  }
   function scheduleSliderApply() {
     sliderApplyPending = true;
-    if (sliderApplySlow()) {
-      if (sliderApplyTimer) clearTimeout(sliderApplyTimer);
-      sliderApplyTimer = setTimeout(flushSliderApply, SLIDER_IDLE_MS);
-      return;
-    }
-    if (sliderApplyTimer) return;
-    var wait = Math.max(0, SLIDER_APPLY_MS - (Date.now() - sliderAppliedAt));
-    sliderApplyTimer = setTimeout(flushSliderApply, wait);
+    if (sliderApplyTimer) clearTimeout(sliderApplyTimer);
+    sliderApplyTimer = setTimeout(flushSliderApply, SLIDER_IDLE_MS);
   }
   function flushSliderApply() {
     if (sliderApplyTimer) {
@@ -648,19 +634,8 @@
     }
     if (!sliderApplyPending) return;
     sliderApplyPending = false;
-    var started = Date.now();
     applySettings();
     autoSave();
-    sliderAppliedAt = Date.now();
-    sliderApplyCost = sliderAppliedAt - started;
-    if (typeof window.requestAnimationFrame === 'function') {
-      window.requestAnimationFrame(function () {
-        window.requestAnimationFrame(function () {
-          var withPaint = Date.now() - started;
-          if (withPaint > sliderApplyCost) sliderApplyCost = withPaint;
-        });
-      });
-    }
   }
   function holdStep(cfg, heldMs) {
     var steps = (cfg.max - cfg.min) / cfg.step;
@@ -668,27 +643,16 @@
     if (heldMs < 1500) return Math.max(1, Math.round(steps / 50));
     return Math.max(1, Math.round(steps / 20));
   }
-  var keyLagBase = null;
-  var KEY_LAG_JUMP_MS = 5000;
-  function keyLag(e) {
-    if (!e || !e.timeStamp || typeof performance === 'undefined' || !performance.now) return 0;
-    var delta = performance.now() - e.timeStamp;
-    if (keyLagBase === null || delta < keyLagBase || delta - keyLagBase > KEY_LAG_JUMP_MS) keyLagBase = delta;
-    return delta - keyLagBase;
-  }
   function autoSave() {
     if (!isOpen()) saveSettings();
   }
-  function nudgeSlider(el, direction, e) {
+  function nudgeSlider(el, direction) {
     var cfg = sliderConfig(el);
     if (!cfg) return;
     var now = Date.now();
-    var lag = keyLag(e);
-    var held = now - sliderNudgedAt < 500;
     if (now - sliderNudgedAt >= SLIDER_REPEAT_GAP_MS) sliderHoldStart = now;
     sliderNudgedAt = now;
-    if (sliderApplyPending && sliderApplySlow()) scheduleSliderApply();
-    if (held && lag > SLIDER_STALE_KEY_MS) return;
+    if (sliderApplyPending) scheduleSliderApply();
     var step = cfg.step * holdStep(cfg, now - sliderHoldStart);
     setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * step, true);
   }
@@ -1201,7 +1165,7 @@
         e.preventDefault();
         e.stopImmediatePropagation();
         if (focusedEl && focusedEl.classList.contains('ui-slider') && (dir === 'left' || dir === 'right')) {
-          nudgeSlider(focusedEl, dir === 'right' ? 1 : -1, e);
+          nudgeSlider(focusedEl, dir === 'right' ? 1 : -1);
         } else {
           flushSliderApply();
           moveFocus(dir);
@@ -1229,7 +1193,7 @@
         e.preventDefault();
         e.stopImmediatePropagation();
         if (focusedEl && focusedEl.classList.contains('ui-slider') && (edir === 'left' || edir === 'right')) {
-          nudgeSlider(focusedEl, edir === 'right' ? 1 : -1, e);
+          nudgeSlider(focusedEl, edir === 'right' ? 1 : -1);
         } else {
           flushSliderApply();
           moveFocus(edir);
@@ -1246,9 +1210,6 @@
         openCustomizer();
       }
     }
-  }, true);
-  window.addEventListener('keyup', function () {
-    if (sliderApplyPending && !sliderApplySlow()) flushSliderApply();
   }, true);
   function init() {
     applySettings();

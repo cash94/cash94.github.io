@@ -1085,23 +1085,24 @@
         return el && el.dataset ? SLIDERS[el.dataset.setting] : null;
     }
 
+    function updateSlider(el) {
+        var cfg = sliderConfig(el);
+        if (!cfg) return;
+
+        var v = clampStep(currentSettings[el.dataset.setting], cfg);
+        var pct = (v - cfg.min) / (cfg.max - cfg.min) * 100;
+
+        var fill = el.querySelector('.ui-slider-fill');
+        var thumb = el.querySelector('.ui-slider-thumb');
+        var val = el.querySelector('.ui-slider-val');
+        if (fill) fill.style.width = pct + '%';
+        if (thumb) thumb.style.left = pct + '%';
+        if (val) val.textContent = cfg.fmt(v);
+    }
+
     function updateSliders() {
         var list = document.querySelectorAll('#ui-customizer-panel .ui-slider');
-        for (var i = 0; i < list.length; i++) {
-            var el = list[i];
-            var cfg = sliderConfig(el);
-            if (!cfg) continue;
-
-            var v = clampStep(currentSettings[el.dataset.setting], cfg);
-            var pct = (v - cfg.min) / (cfg.max - cfg.min) * 100;
-
-            var fill = el.querySelector('.ui-slider-fill');
-            var thumb = el.querySelector('.ui-slider-thumb');
-            var val = el.querySelector('.ui-slider-val');
-            if (fill) fill.style.width = pct + '%';
-            if (thumb) thumb.style.left = pct + '%';
-            if (val) val.textContent = cfg.fmt(v);
-        }
+        for (var i = 0; i < list.length; i++) updateSlider(list[i]);
     }
 
     /**
@@ -1114,7 +1115,9 @@
         var v = clampStep(value, cfg);
         if (currentSettings[el.dataset.setting] === v) return;
         currentSettings[el.dataset.setting] = v;
-        updateSliders();
+        // Двигается один ползунок — остальные (их больше десятка) не трогаем:
+        // на телевизоре шаг с пульта должен быть дешёвым
+        updateSlider(el);
         if (deferred) { scheduleSliderApply(); return; }
         applySettings();   // живой предпросмотр
         autoSave();
@@ -1122,77 +1125,44 @@
 
     // Стрелку на ползунке держат. applySettings тяжёлый (пересборка CSS, замер
     // карточек, перекладка главной и нарезки каталога): на телевизоре он дольше
-    // интервала повторов пульта, и когда он шёл на каждое нажатие, нажатия
-    // копились в очереди — пока держишь, ползунок стоял, а после отпускания
-    // ещё долго ехал сам. Теперь стрелка двигает только ползунок, а применяем не
-    // чаще SLIDER_APPLY_MS.
+    // интервала повторов пульта. Поэтому стрелка двигает только сам ползунок, а
+    // применяем и сохраняем один раз — через SLIDER_IDLE_MS после последнего
+    // нажатия. Плюс у длинных ползунков шаг растёт, пока стрелку держат
+    // (holdStep).
     //
-    // На слабом ТВ (Tizen 5, Chrome 69) и этого мало: одно применение там
-    // длится сотни миллисекунд, повторы пульта за это время устаревают и
-    // отбрасываются (keyLag), и ползунок «Масштаб детального просмотра»
-    // (100 шагов) из конца в конец ехал 40 секунд. Поэтому применение меряем
-    // (sliderApplyCost, вместе с отрисовкой следующего кадра), и если оно
-    // дольше SLIDER_SLOW_APPLY_MS, пока стрелку держат, не применяем вовсе —
-    // только через SLIDER_IDLE_MS после последнего нажатия. Плюс у длинных
-    // ползунков шаг растёт, пока стрелку держат (holdStep).
-    //
-    // keyup тут не признак отпускания: пульт Tizen шлёт пару keydown/keyup на
-    // каждый тик автоповтора (как и в control.js: endNavHold). Когда keyup
-    // применял сразу, медленное применение шло на каждом тике, и на Tizen 5
-    // ползунок двигался раз в секунду, а удержание не работало вовсе. Поэтому
-    // на медленном устройстве (и пока не меряли — первое же применение может
-    // оказаться секундным) ждём только тишины, keyup ничего не ускоряет.
-    var SLIDER_APPLY_MS = 250;
-    var SLIDER_SLOW_APPLY_MS = 50;
-    var SLIDER_IDLE_MS = 500;
-    var sliderApplyCost = -1;   // мс последнего применения с отрисовкой; -1 — ещё не меряли
-    var sliderHoldStart = 0;    // начало текущего удержания стрелки
+    // Не по keyup и не по замерам — на Tizen 5.5 (Chrome 69) обман обоих:
+    //  - пульт шлёт пару keydown/keyup на каждый тик автоповтора (как и в
+    //    control.js: endNavHold), и применение «по отпусканию» шло на каждом шаге;
+    //  - стоимость применения, мерянная двумя requestAnimationFrame, выходила
+    //    заниженной: накопившиеся нажатия Chrome раздаёт в начале кадра, раньше
+    //    второго rAF, и решение «устройство быстрое — применяй сразу» принималось
+    //    по недомеренной цифре. Удержание работало ровно один раз, до первого
+    //    замера, а потом снова «шаг, пауза, шаг»;
+    //  - timeStamp событий пульта идёт от других часов, и отброс «устаревших»
+    //    повторов по нему выкидывал каждое нажатие посреди серии.
+    // Отбрасывать устаревшие повторы теперь и незачем: пока стрелку держат,
+    // страница ничем не занята, и очередь нажатий не копится.
+    var SLIDER_IDLE_MS = 450;
+    // Ускорение (holdStep) — только от автоповтора: его тики идут чаще этого,
+    // а частые отдельные нажатия — по шагу на нажатие
     var SLIDER_REPEAT_GAP_MS = 250;
-    // Нажатие, пролежавшее в очереди дольше этого, пока стрелку держат, —
-    // устаревший повтор: пульт уже отпустили или он ушёл дальше
-    var SLIDER_STALE_KEY_MS = 150;
+    var sliderHoldStart = 0;    // начало текущего удержания стрелки
     var sliderApplyPending = false;
     var sliderApplyTimer = null;
-    var sliderAppliedAt = 0;
     var sliderNudgedAt = 0;
-
-    function sliderApplySlow() {
-        return sliderApplyCost < 0 || sliderApplyCost > SLIDER_SLOW_APPLY_MS;
-    }
 
     function scheduleSliderApply() {
         sliderApplyPending = true;
-        if (sliderApplySlow()) {
-            // Медленное устройство: ждём паузы в нажатиях
-            if (sliderApplyTimer) clearTimeout(sliderApplyTimer);
-            sliderApplyTimer = setTimeout(flushSliderApply, SLIDER_IDLE_MS);
-            return;
-        }
-        if (sliderApplyTimer) return;
-        var wait = Math.max(0, SLIDER_APPLY_MS - (Date.now() - sliderAppliedAt));
-        sliderApplyTimer = setTimeout(flushSliderApply, wait);
+        if (sliderApplyTimer) clearTimeout(sliderApplyTimer);
+        sliderApplyTimer = setTimeout(flushSliderApply, SLIDER_IDLE_MS);
     }
 
     function flushSliderApply() {
         if (sliderApplyTimer) { clearTimeout(sliderApplyTimer); sliderApplyTimer = null; }
         if (!sliderApplyPending) return;
         sliderApplyPending = false;
-        var started = Date.now();
         applySettings();
         autoSave();
-        // Отсчёт — от конца применения: на медленном ТВ оно само длится долго
-        sliderAppliedAt = Date.now();
-        sliderApplyCost = sliderAppliedAt - started;
-        // Пересчёт стилей и раскладки после новой CSS браузер делает уже после
-        // нашего кода — досчитываем до следующего кадра
-        if (typeof window.requestAnimationFrame === 'function') {
-            window.requestAnimationFrame(function () {
-                window.requestAnimationFrame(function () {
-                    var withPaint = Date.now() - started;
-                    if (withPaint > sliderApplyCost) sliderApplyCost = withPaint;
-                });
-            });
-        }
     }
 
     /**
@@ -1207,23 +1177,6 @@
         return Math.max(1, Math.round(steps / 20));
     }
 
-    // Сколько нажатие пролежало в очереди. Не performance.now() - timeStamp
-    // напрямую: у событий пульта на Tizen timeStamp идёт от других часов, и
-    // разница там всегда огромная — каждое нажатие посреди серии считалось
-    // устаревшим и отбрасывалось, ползунок двигался только «нажал, подождал,
-    // нажал». Поэтому считаем от самой маленькой разницы, что видели (её даёт
-    // нажатие, обработанное сразу): постоянный сдвиг часов вычитается.
-    var keyLagBase = null;
-    // Задержка больше этого — не очередь, а скачок часов: начинаем отсчёт заново
-    var KEY_LAG_JUMP_MS = 5000;
-
-    function keyLag(e) {
-        if (!e || !e.timeStamp || typeof performance === 'undefined' || !performance.now) return 0;
-        var delta = performance.now() - e.timeStamp;
-        if (keyLagBase === null || delta < keyLagBase || delta - keyLagBase > KEY_LAG_JUMP_MS) keyLagBase = delta;
-        return delta - keyLagBase;
-    }
-
     /**
      * В разделе настроек (встроенная панель) изменения сохраняются сразу —
      * как и все прочие настройки. Во всплывающем окне — как раньше, по
@@ -1233,25 +1186,16 @@
         if (!isOpen()) saveSettings();
     }
 
-    /** Шаг ползунка с пульта; e — keydown, по нему отбрасываются устаревшие повторы */
-    function nudgeSlider(el, direction, e) {
+    /** Шаг ползунка с пульта */
+    function nudgeSlider(el, direction) {
         var cfg = sliderConfig(el);
         if (!cfg) return;
         var now = Date.now();
-        // Только посреди удержания: одиночное нажатие, пришедшее с задержкой
-        // (страница была занята), не теряем
-        // База keyLag — по каждому нажатию, а не только посреди удержания
-        var lag = keyLag(e);
-        var held = now - sliderNudgedAt < 500;
-        // Ускорение (holdStep) — только от автоповтора: его тики идут чаще
-        // SLIDER_REPEAT_GAP_MS, а частые отдельные нажатия — по шагу на нажатие
         if (now - sliderNudgedAt >= SLIDER_REPEAT_GAP_MS) sliderHoldStart = now;
         sliderNudgedAt = now;
-        // Стрелку всё ещё держат — медленное применение откладываем дальше, иначе
-        // оно сработало бы посреди удержания: и когда шаг пропускаем, и когда
-        // ползунок упёрся в край и значение больше не меняется
-        if (sliderApplyPending && sliderApplySlow()) scheduleSliderApply();
-        if (held && lag > SLIDER_STALE_KEY_MS) return;
+        // Применение — после последнего нажатия, в том числе когда ползунок
+        // упёрся в край и значение больше не меняется
+        if (sliderApplyPending) scheduleSliderApply();
         var step = cfg.step * holdStep(cfg, now - sliderHoldStart);
         setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * step, true);
     }
@@ -1886,7 +1830,7 @@
                 e.preventDefault(); e.stopImmediatePropagation();
                 // На ползунке влево/вправо меняет значение, вверх/вниз уходит с него
                 if (focusedEl && focusedEl.classList.contains('ui-slider') && (dir === 'left' || dir === 'right')) {
-                    nudgeSlider(focusedEl, dir === 'right' ? 1 : -1, e);
+                    nudgeSlider(focusedEl, dir === 'right' ? 1 : -1);
                 } else {
                     flushSliderApply();
                     moveFocus(dir);
@@ -1913,7 +1857,7 @@
             if (edir) {
                 e.preventDefault(); e.stopImmediatePropagation();
                 if (focusedEl && focusedEl.classList.contains('ui-slider') && (edir === 'left' || edir === 'right')) {
-                    nudgeSlider(focusedEl, edir === 'right' ? 1 : -1, e);
+                    nudgeSlider(focusedEl, edir === 'right' ? 1 : -1);
                 } else {
                     flushSliderApply();
                     // Из панели в меню настроек — только «Назад», не влево: кто
@@ -1933,12 +1877,6 @@
                 openCustomizer();
             }
         }
-    }, true);
-
-    // Стрелку на ползунке отпустили — применяем сразу, не дожидаясь таймера.
-    // Только там, где применение дешёвое: см. комментарий к SLIDER_APPLY_MS
-    window.addEventListener('keyup', function () {
-        if (sliderApplyPending && !sliderApplySlow()) flushSliderApply();
     }, true);
 
     // ==================== ИНИЦИАЛИЗАЦИЯ ====================
