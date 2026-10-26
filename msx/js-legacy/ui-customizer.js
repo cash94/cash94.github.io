@@ -668,9 +668,13 @@
     if (heldMs < 1500) return Math.max(1, Math.round(steps / 50));
     return Math.max(1, Math.round(steps / 20));
   }
-  function isStaleKey(e) {
-    if (!e || !e.timeStamp || typeof performance === 'undefined' || !performance.now) return false;
-    return performance.now() - e.timeStamp > SLIDER_STALE_KEY_MS;
+  var keyLagBase = null;
+  var KEY_LAG_JUMP_MS = 5000;
+  function keyLag(e) {
+    if (!e || !e.timeStamp || typeof performance === 'undefined' || !performance.now) return 0;
+    var delta = performance.now() - e.timeStamp;
+    if (keyLagBase === null || delta < keyLagBase || delta - keyLagBase > KEY_LAG_JUMP_MS) keyLagBase = delta;
+    return delta - keyLagBase;
   }
   function autoSave() {
     if (!isOpen()) saveSettings();
@@ -679,11 +683,12 @@
     var cfg = sliderConfig(el);
     if (!cfg) return;
     var now = Date.now();
+    var lag = keyLag(e);
     var held = now - sliderNudgedAt < 500;
     if (now - sliderNudgedAt >= SLIDER_REPEAT_GAP_MS) sliderHoldStart = now;
     sliderNudgedAt = now;
     if (sliderApplyPending && sliderApplySlow()) scheduleSliderApply();
-    if (held && isStaleKey(e)) return;
+    if (held && lag > SLIDER_STALE_KEY_MS) return;
     var step = cfg.step * holdStep(cfg, now - sliderHoldStart);
     setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * step, true);
   }

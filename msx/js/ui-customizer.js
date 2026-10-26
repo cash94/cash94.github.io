@@ -1129,7 +1129,7 @@
     //
     // На слабом ТВ (Tizen 5, Chrome 69) и этого мало: одно применение там
     // длится сотни миллисекунд, повторы пульта за это время устаревают и
-    // отбрасываются (isStaleKey), и ползунок «Масштаб детального просмотра»
+    // отбрасываются (keyLag), и ползунок «Масштаб детального просмотра»
     // (100 шагов) из конца в конец ехал 40 секунд. Поэтому применение меряем
     // (sliderApplyCost, вместе с отрисовкой следующего кадра), и если оно
     // дольше SLIDER_SLOW_APPLY_MS, пока стрелку держат, не применяем вовсе —
@@ -1207,11 +1207,21 @@
         return Math.max(1, Math.round(steps / 20));
     }
 
-    function isStaleKey(e) {
-        if (!e || !e.timeStamp || typeof performance === 'undefined' || !performance.now) return false;
-        // Старые WebView ставят timeStamp от эпохи — тогда разница отрицательна
-        // и нажатие не считается устаревшим
-        return performance.now() - e.timeStamp > SLIDER_STALE_KEY_MS;
+    // Сколько нажатие пролежало в очереди. Не performance.now() - timeStamp
+    // напрямую: у событий пульта на Tizen timeStamp идёт от других часов, и
+    // разница там всегда огромная — каждое нажатие посреди серии считалось
+    // устаревшим и отбрасывалось, ползунок двигался только «нажал, подождал,
+    // нажал». Поэтому считаем от самой маленькой разницы, что видели (её даёт
+    // нажатие, обработанное сразу): постоянный сдвиг часов вычитается.
+    var keyLagBase = null;
+    // Задержка больше этого — не очередь, а скачок часов: начинаем отсчёт заново
+    var KEY_LAG_JUMP_MS = 5000;
+
+    function keyLag(e) {
+        if (!e || !e.timeStamp || typeof performance === 'undefined' || !performance.now) return 0;
+        var delta = performance.now() - e.timeStamp;
+        if (keyLagBase === null || delta < keyLagBase || delta - keyLagBase > KEY_LAG_JUMP_MS) keyLagBase = delta;
+        return delta - keyLagBase;
     }
 
     /**
@@ -1230,6 +1240,8 @@
         var now = Date.now();
         // Только посреди удержания: одиночное нажатие, пришедшее с задержкой
         // (страница была занята), не теряем
+        // База keyLag — по каждому нажатию, а не только посреди удержания
+        var lag = keyLag(e);
         var held = now - sliderNudgedAt < 500;
         // Ускорение (holdStep) — только от автоповтора: его тики идут чаще
         // SLIDER_REPEAT_GAP_MS, а частые отдельные нажатия — по шагу на нажатие
@@ -1239,7 +1251,7 @@
         // оно сработало бы посреди удержания: и когда шаг пропускаем, и когда
         // ползунок упёрся в край и значение больше не меняется
         if (sliderApplyPending && sliderApplySlow()) scheduleSliderApply();
-        if (held && isStaleKey(e)) return;
+        if (held && lag > SLIDER_STALE_KEY_MS) return;
         var step = cfg.step * holdStep(cfg, now - sliderHoldStart);
         setSliderValue(el, clampStep(currentSettings[el.dataset.setting], cfg) + direction * step, true);
     }
