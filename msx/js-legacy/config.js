@@ -61,6 +61,7 @@ var AppState = {
   currentVersion: 'TorrStream.1.0.54',
   authEnabled: false,
   serverOnline: false,
+  monoServer: null,
   clientId: null,
   userlogin: '',
   userpassword: '',

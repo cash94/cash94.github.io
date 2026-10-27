@@ -2105,6 +2105,83 @@ async function addProgressToDetail(torrent, preloadedFiles) {
  */
 var TORRSERVER_PROBE_TIMEOUT_MS = 8000;
 
+/**
+ * MonoServer ли за адресом TorrServer, и что он умеет: ответ GET /api/info
+ * ({name:'MonoServer', version, features, user}) или null — обычный TorrServer.
+ * /api/info спрашиваем, только если /echo назвал MonoServer («MatriX.136
+ * (MonoServer 1.0.26)») или прислал заголовок X-MonoServer: у TorrServer
+ * такого адреса нет, и лишний 404 на каждую проверку ни к чему.
+ */
+async function detectMonoServer(baseUrl, headers, echoResponse) {
+    var hint = '';
+    try { hint = echoResponse.headers.get('X-MonoServer') || ''; } catch (e) { }
+    if (!hint) {
+        try { hint = /MonoServer/.test(await echoResponse.text()) ? 'echo' : ''; } catch (e) { }
+    }
+    if (!hint) return null;
+    var probe = new AbortController();
+    var timer = setTimeout(function () { probe.abort(); }, 4000);
+    try {
+        var r = await fetch(baseUrl + '/api/info', { method: 'GET', headers: headers, signal: probe.signal });
+        if (!r.ok) return null;
+        var info = await r.json();
+        return info && info.name === 'MonoServer' ? info : null;
+    } catch (e) {
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/** MonoServer хранит у торрента tmdb_id и seasons — название не разбираем и не кодируем */
+function monoServerTorrentMeta() {
+    var info = AppState.monoServer;
+    return !!(info && info.features && info.features.indexOf('torrent_meta') !== -1);
+}
+window.monoServerTorrentMeta = monoServerTorrentMeta;
+
+// Метка в названии торрента, добавленного из TorrStream в MonoServer: её видно
+// в других клиентах и в веб-интерфейсе сервера, а TorrStream её снимает
+var MONOSERVER_TITLE_TAG = '[TorrStream]';
+
+/**
+ * Список с сервера — к виду, который читает весь фронтенд: у MonoServer
+ * tmdb_id → tmdbId (его первым смотрят карточка, плеер, предзагрузка),
+ * seasons остаются массивом; метку [TorrStream] из названия убираем.
+ * У TorrServer этих полей нет — для него id и сезоны и дальше берутся
+ * из названия («[603] Матрица [сезон 1-3]»).
+ */
+function normalizeServerTorrents(list) {
+    if (!Array.isArray(list)) return [];
+    for (var i = 0; i < list.length; i++) {
+        var t = list[i];
+        if (!t) continue;
+        if (t.tmdb_id && !t.tmdbId) t.tmdbId = String(t.tmdb_id);
+        // id TMDB без типа не найти: category у таких торрентов — тип, который
+        // TorrStream сам прислал при добавлении (movie / tv)
+        if (t.tmdb_id && !t.media_type && (t.category === 'tv' || t.category === 'movie')) t.media_type = t.category;
+        if (!Array.isArray(t.seasons)) delete t.seasons;
+        var title = String(t.title || '');
+        if (title.indexOf(MONOSERVER_TITLE_TAG) === 0) t.title = title.slice(MONOSERVER_TITLE_TAG.length).trim();
+    }
+    return list;
+}
+
+/**
+ * Сезоны раздачи: у MonoServer — поле seasons, у TorrServer (и у старых
+ * торрентов MonoServer без полей) — из названия. parse — свой разборщик
+ * названия, если обычного extractSeasonsFromTitle мало
+ */
+function getTorrentSeasons(torrent, parse) {
+    if (torrent && Array.isArray(torrent.seasons) && torrent.seasons.length) {
+        return torrent.seasons.filter(function (n) { return typeof n === 'number' && n >= 0; })
+            .sort(function (a, b) { return a - b; });
+    }
+    var title = String((torrent && torrent.title) || '');
+    return parse ? parse(title) : extractSeasonsFromTitle(title);
+}
+window.getTorrentSeasons = getTorrentSeasons;
+
 async function checkServer(shouldLoadTorrents = true) {
     var urlInput = getEl('torrserver-url');
     var statusIndicator = getEl('status-indicator');
@@ -2142,6 +2219,8 @@ async function checkServer(shouldLoadTorrents = true) {
             //if (text.includes('MatriX.')) {
                 statusIndicator.className = 'status-indicator status-online'; statusText.textContent = 'Сервер доступен ✓';
                 AppState.currentTorrserverUrl = testUrl; AppState.serverOnline = true;
+                // До loadTorrents: список и добавление торрентов зависят от того, MonoServer ли это
+                AppState.monoServer = await detectMonoServer(testUrl, headers, response);
                 if (authCheckbox && authCheckbox.checked) { AppState.authEnabled = true; AppState.authLogin = authLogin ? authLogin.value.trim() : ''; AppState.authPassword = authPassword ? authPassword.value : ''; }
                 else AppState.authEnabled = false;
                 await saveClientConfig();
@@ -2152,7 +2231,7 @@ async function checkServer(shouldLoadTorrents = true) {
         throw new Error('Сервер не отвечает');
     } catch (error) {
         console.error('Ошибка проверки сервера:', error);
-        statusIndicator.className = 'status-indicator status-offline'; statusText.textContent = 'Сервер недоступен ✗'; AppState.serverOnline = false; return false;
+        statusIndicator.className = 'status-indicator status-offline'; statusText.textContent = 'Сервер недоступен ✗'; AppState.serverOnline = false; AppState.monoServer = null; return false;
     }
 }
 
@@ -2204,7 +2283,7 @@ async function loadTorrents(silent = false) {
 
         var data = await response.json();
 
-        AppState.torrents = Array.isArray(data) ? data : [];
+        AppState.torrents = normalizeServerTorrents(data);
 
         // Список был успешно загружен
         AppState.torrentsLoaded = true;
@@ -2319,7 +2398,7 @@ async function syncTorrentsList() {
         var response = await torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'list' }) });
         if (!response.ok) return false;
         var data = await response.json();
-        var list = Array.isArray(data) ? data : [];
+        var list = normalizeServerTorrents(data);
         if (torrentsSignature(list) === torrentsSignature(AppState.torrents || [])) return false;
 
         AppState.torrents = list;
@@ -2915,7 +2994,8 @@ function ensureTorrentEpisodeMeta(torrent, videoFiles) {
     var mediaType = torrent.media_type || (known && known.mediaType) || null;
     if (!tmdbId || mediaType === 'movie') return Promise.resolve(false);
 
-    var seasons = extractSeasonsFromTitle(torrent.title || '');
+    // MonoServer — поле seasons, TorrServer — из названия
+    var seasons = getTorrentSeasons(torrent);
     if (!seasons.length) {
         for (var i = 0; i < videoFiles.length; i++) {
             var ref = parseEpisodeRef(videoFiles[i].path);
@@ -3779,12 +3859,14 @@ async function showDetail(torrent) {
         filesCount: 0,
         filesBytes: 0,
         torrentTitle: torrent.title || '',
-        // Сезоны раздачи (название / имена файлов) и серии этих сезонов из TMDB
-        // «Сезон: 1-8», «Сезоны 1-8» (так пишет rutracker) шаблоны
-        // extractSeasonsFromTitle не узнают — приводим к «сезон 1-8»
-        torrentSeasons: extractSeasonsFromTitle(String(torrent.title || '')
-            .replace(/сезон[ыа]?\s*:?\s*/gi, 'сезон ')
-            .replace(/seasons?\s*:?\s*/gi, 'season ')),
+        // Сезоны раздачи (поле seasons MonoServer / название / имена файлов) и
+        // серии этих сезонов из TMDB. «Сезон: 1-8», «Сезоны 1-8» (так пишет
+        // rutracker) шаблоны extractSeasonsFromTitle не узнают — приводим к «сезон 1-8»
+        torrentSeasons: getTorrentSeasons(torrent, function (title) {
+            return extractSeasonsFromTitle(title
+                .replace(/сезон[ыа]?\s*:?\s*/gi, 'сезон ')
+                .replace(/seasons?\s*:?\s*/gi, 'season '));
+        }),
         seasonEpisodes: {}
     };
     ensureDetailMetaRow();
@@ -4172,9 +4254,11 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
         .replace(/\[сезон[^\]]*\]/gi, '')
         .trim();
 
-    var seasonNumbers = extractSeasonsFromTitleLocal(cleanTitle);
+    // MonoServer прислал сезоны полем — название не разбираем (это для TorrServer)
+    var fieldSeasons = Array.isArray(torrent.seasons) && torrent.seasons.length > 0;
+    var seasonNumbers = fieldSeasons ? getTorrentSeasons(torrent) : extractSeasonsFromTitleLocal(cleanTitle);
 
-    if (seasonNumbers.length > 0) {
+    if (!fieldSeasons && seasonNumbers.length > 0) {
         cleanTitle = cleanTitleFromSeasonsLocal(cleanTitle);
     }
 
@@ -6141,12 +6225,20 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
         (searchResult && (searchResult.name || searchResult.title)) ||
         'Без названия';
     AppState.mediaType = mediaType;
-    var torrname = (tmdbId ? '[' + tmdbId + '] ' : '') + baseName;
-
-    if (mediaType === 'tv' && seasons.length > 0) {
-        torrname += ' [сезон ' +
-            (seasons.length > 1 ? seasons[0] + '-' + seasons[seasons.length - 1] : seasons[0]) +
-            ']';
+    // MonoServer хранит id TMDB и сезоны полями — в названии только метка, что
+    // торрент из TorrStream. TorrServer полей не знает: id и сезоны — в названии
+    // («[603] Матрица [сезон 1-3]»), их потом оттуда и разбирают
+    var mono = monoServerTorrentMeta();
+    var torrname;
+    if (mono) {
+        torrname = MONOSERVER_TITLE_TAG + ' ' + baseName;
+    } else {
+        torrname = (tmdbId ? '[' + tmdbId + '] ' : '') + baseName;
+        if (mediaType === 'tv' && seasons.length > 0) {
+            torrname += ' [сезон ' +
+                (seasons.length > 1 ? seasons[0] + '-' + seasons[seasons.length - 1] : seasons[0]) +
+                ']';
+        }
     }
 
     var requestBody = {
@@ -6159,6 +6251,11 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
         // TorrServer держит торрент только до перезапуска
         save_to_db: options.saveToDb === true ? true : AppState.addToDbEnabled
     };
+    if (mono) {
+        if (tmdbId) requestBody.tmdb_id = parseInt(tmdbId, 10) || tmdbId;
+        // Все сезоны раздачи, а не диапазон: «1, 3, 5» в название не влезали
+        if (mediaType === 'tv' && seasons.length > 0) requestBody.seasons = seasons;
+    }
 
     if (poster) {
         // ★★★ ВАЖНО: заменяем image.tmdb.org на прокси перед отправкой ★★★
@@ -6181,7 +6278,8 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
                 id: tmdbId,
                 mediaType: mediaType,
                 poster: requestBody.poster, // Используем уже заменённый URL
-                title: torrname
+                // Без метки [TorrStream] — так же, как название придёт в списке
+                title: mono ? baseName : torrname
             });
         }
 
@@ -6235,7 +6333,7 @@ async function refreshTorrentsList() {
         var response = await torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'list' }) });
         if (response.ok) {
             var data = await response.json();
-            AppState.torrents = Array.isArray(data) ? data : [];
+            AppState.torrents = normalizeServerTorrents(data);
             if (!window.AndroidJS || !AppState.transcodingFullOnOff || !AppState.isCatalogSearch || AppState.isCatalogSerials) renderTorrents();
             if (!window.AndroidJS && !AppState.transcodingFullOnOff && !AppState.playFromHash && AppState.currentScreen === 'torrents') {
                 setTimeout(function () {

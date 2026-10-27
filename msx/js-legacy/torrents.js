@@ -1767,7 +1767,7 @@ function _addProgressToDetail() {
             if (detailView) detailView.style.pointerEvents = 'auto';
           });
         });
-        return function (_x33) {
+        return function (_x36) {
           return _ref3.apply(this, arguments);
         };
       }());
@@ -1836,6 +1836,73 @@ function _addProgressToDetail() {
   return _addProgressToDetail.apply(this, arguments);
 }
 var TORRSERVER_PROBE_TIMEOUT_MS = 8000;
+function detectMonoServer(_x5, _x6, _x7) {
+  return _detectMonoServer.apply(this, arguments);
+}
+function _detectMonoServer() {
+  _detectMonoServer = _asyncToGenerator(function* (baseUrl, headers, echoResponse) {
+    var hint = '';
+    try {
+      hint = echoResponse.headers.get('X-MonoServer') || '';
+    } catch (e) {}
+    if (!hint) {
+      try {
+        hint = /MonoServer/.test(yield echoResponse.text()) ? 'echo' : '';
+      } catch (e) {}
+    }
+    if (!hint) return null;
+    var probe = new AbortController();
+    var timer = setTimeout(function () {
+      probe.abort();
+    }, 4000);
+    try {
+      var r = yield fetch(baseUrl + '/api/info', {
+        method: 'GET',
+        headers: headers,
+        signal: probe.signal
+      });
+      if (!r.ok) return null;
+      var info = yield r.json();
+      return info && info.name === 'MonoServer' ? info : null;
+    } catch (e) {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+  return _detectMonoServer.apply(this, arguments);
+}
+function monoServerTorrentMeta() {
+  var info = AppState.monoServer;
+  return !!(info && info.features && info.features.indexOf('torrent_meta') !== -1);
+}
+window.monoServerTorrentMeta = monoServerTorrentMeta;
+var MONOSERVER_TITLE_TAG = '[TorrStream]';
+function normalizeServerTorrents(list) {
+  if (!Array.isArray(list)) return [];
+  for (var i = 0; i < list.length; i++) {
+    var t = list[i];
+    if (!t) continue;
+    if (t.tmdb_id && !t.tmdbId) t.tmdbId = String(t.tmdb_id);
+    if (t.tmdb_id && !t.media_type && (t.category === 'tv' || t.category === 'movie')) t.media_type = t.category;
+    if (!Array.isArray(t.seasons)) delete t.seasons;
+    var title = String(t.title || '');
+    if (title.indexOf(MONOSERVER_TITLE_TAG) === 0) t.title = title.slice(MONOSERVER_TITLE_TAG.length).trim();
+  }
+  return list;
+}
+function getTorrentSeasons(torrent, parse) {
+  if (torrent && Array.isArray(torrent.seasons) && torrent.seasons.length) {
+    return torrent.seasons.filter(function (n) {
+      return typeof n === 'number' && n >= 0;
+    }).sort(function (a, b) {
+      return a - b;
+    });
+  }
+  var title = String(torrent && torrent.title || '');
+  return parse ? parse(title) : extractSeasonsFromTitle(title);
+}
+window.getTorrentSeasons = getTorrentSeasons;
 function checkServer() {
   return _checkServer.apply(this, arguments);
 }
@@ -1886,6 +1953,7 @@ function _checkServer() {
         statusText.textContent = 'Сервер доступен ✓';
         AppState.currentTorrserverUrl = testUrl;
         AppState.serverOnline = true;
+        AppState.monoServer = yield detectMonoServer(testUrl, headers, response);
         if (authCheckbox && authCheckbox.checked) {
           AppState.authEnabled = true;
           AppState.authLogin = authLogin ? authLogin.value.trim() : '';
@@ -1901,6 +1969,7 @@ function _checkServer() {
       statusIndicator.className = 'status-indicator status-offline';
       statusText.textContent = 'Сервер недоступен ✗';
       AppState.serverOnline = false;
+      AppState.monoServer = null;
       return false;
     }
   });
@@ -1948,7 +2017,7 @@ function _loadTorrents() {
         throw new Error('Ошибка загрузки: HTTP ' + response.status);
       }
       var data = yield response.json();
-      AppState.torrents = Array.isArray(data) ? data : [];
+      AppState.torrents = normalizeServerTorrents(data);
       AppState.torrentsLoaded = true;
       var homeActive = !!(window.HomeScreen && window.HomeScreen.isActive());
       var configScreen = getEl('config-screen');
@@ -2024,7 +2093,7 @@ function _syncTorrentsList() {
       });
       if (!response.ok) return false;
       var data = yield response.json();
-      var list = Array.isArray(data) ? data : [];
+      var list = normalizeServerTorrents(data);
       if (torrentsSignature(list) === torrentsSignature(AppState.torrents || [])) return false;
       AppState.torrents = list;
       renderTorrents();
@@ -2179,7 +2248,7 @@ function hideCatalogDetailExtra() {
   });
 }
 window.hideCatalogDetailExtra = hideCatalogDetailExtra;
-function getTmdbDetailsWithCache(_x5, _x6) {
+function getTmdbDetailsWithCache(_x8, _x9) {
   return _getTmdbDetailsWithCache.apply(this, arguments);
 }
 function _getTmdbDetailsWithCache() {
@@ -2313,7 +2382,7 @@ function cleanTitleFromSeasons(title, seasons) {
   return title.replace(/\[сезон[^\]]*\]/gi, '').replace(/\[season[^\]]*\]/gi, '').replace(/сезон\s*[\d\s,–-]+/gi, '').replace(/season\s*[\d\s,–-]+/gi, '').replace(/\bS\d+\b/gi, '').replace(/\s+/g, ' ').trim();
 }
 var seasonCache = new LruCache(200, 24 * 60 * 60 * 1000);
-function loadSeasonStills(_x7, _x8) {
+function loadSeasonStills(_x0, _x1) {
   return _loadSeasonStills.apply(this, arguments);
 }
 function _loadSeasonStills() {
@@ -2485,7 +2554,7 @@ function ensureTorrentEpisodeMeta(torrent, videoFiles) {
   }
   var mediaType = torrent.media_type || known && known.mediaType || null;
   if (!tmdbId || mediaType === 'movie') return Promise.resolve(false);
-  var seasons = extractSeasonsFromTitle(torrent.title || '');
+  var seasons = getTorrentSeasons(torrent);
   if (!seasons.length) {
     for (var i = 0; i < videoFiles.length; i++) {
       var ref = parseEpisodeRef(videoFiles[i].path);
@@ -2547,7 +2616,7 @@ function updateDetailOverviewForFocus(el) {
   if (!seriesOverview) sub.style.display = 'none';
 }
 window.updateDetailOverviewForFocus = updateDetailOverviewForFocus;
-function loadMovieStill(_x9) {
+function loadMovieStill(_x10) {
   return _loadMovieStill.apply(this, arguments);
 }
 function _loadMovieStill() {
@@ -2583,7 +2652,7 @@ function clearTorrentFilesCache(hash) {
 function clearAllTorrentFilesCache() {
   torrentFilesCache.clear();
 }
-function getTorrentFilesWithCache(_x0) {
+function getTorrentFilesWithCache(_x11) {
   return _getTorrentFilesWithCache.apply(this, arguments);
 }
 function _getTorrentFilesWithCache() {
@@ -3069,7 +3138,7 @@ function focusTorrentDetailStart() {
   setFocus(0);
 }
 var detailAutoFocusEl = null;
-function showDetail(_x1) {
+function showDetail(_x12) {
   return _showDetail.apply(this, arguments);
 }
 function _showDetail() {
@@ -3140,7 +3209,9 @@ function _showDetail() {
       filesCount: 0,
       filesBytes: 0,
       torrentTitle: torrent.title || '',
-      torrentSeasons: extractSeasonsFromTitle(String(torrent.title || '').replace(/сезон[ыа]?\s*:?\s*/gi, 'сезон ').replace(/seasons?\s*:?\s*/gi, 'season ')),
+      torrentSeasons: getTorrentSeasons(torrent, function (title) {
+        return extractSeasonsFromTitle(title.replace(/сезон[ыа]?\s*:?\s*/gi, 'сезон ').replace(/seasons?\s*:?\s*/gi, 'season '));
+      }),
       seasonEpisodes: {}
     };
     ensureDetailMetaRow();
@@ -3264,7 +3335,7 @@ function _showDetail() {
   });
   return _showDetail.apply(this, arguments);
 }
-function loadAllTmdbDataForTorrent(_x10, _x11) {
+function loadAllTmdbDataForTorrent(_x13, _x14) {
   return _loadAllTmdbDataForTorrent.apply(this, arguments);
 }
 function _loadAllTmdbDataForTorrent() {
@@ -3421,8 +3492,9 @@ function _loadAllTmdbDataForTorrent() {
       }
     }
     cleanTitle = cleanTitle.replace(/\[\d+\]/g, '').replace(/\[(tv|movie|сериал|фильм)\]/gi, '').replace(/\[сезон[^\]]*\]/gi, '').trim();
-    var seasonNumbers = extractSeasonsFromTitleLocal(cleanTitle);
-    if (seasonNumbers.length > 0) {
+    var fieldSeasons = Array.isArray(torrent.seasons) && torrent.seasons.length > 0;
+    var seasonNumbers = fieldSeasons ? getTorrentSeasons(torrent) : extractSeasonsFromTitleLocal(cleanTitle);
+    if (!fieldSeasons && seasonNumbers.length > 0) {
       cleanTitle = cleanTitleFromSeasonsLocal(cleanTitle);
     }
     if (seasonNumbers.length === 0) {
@@ -3679,7 +3751,7 @@ function setupFilePlayButtonDelegation() {
         if (detailView) detailView.style.pointerEvents = 'auto';
       });
     });
-    return function (_x12) {
+    return function (_x15) {
       return _ref.apply(this, arguments);
     };
   }());
@@ -3842,7 +3914,7 @@ function addFileItem(file, hash, name, episodeIndex) {
   while (used < list._pool.length && !list._pool[used].classList.contains('hidden')) used++;
   return fillFileItem(acquireFileItem(list, used), file, hash, name, episodeIndex);
 }
-function loadStillsAndUpdateFiles(_x13, _x14, _x15, _x16) {
+function loadStillsAndUpdateFiles(_x16, _x17, _x18, _x19) {
   return _loadStillsAndUpdateFiles.apply(this, arguments);
 }
 function _loadStillsAndUpdateFiles() {
@@ -3987,7 +4059,7 @@ function getTorrentProgressBatch(hash, files) {
     throw error;
   });
 }
-function loadProgressForTorrent(_x17, _x18) {
+function loadProgressForTorrent(_x20, _x21) {
   return _loadProgressForTorrent.apply(this, arguments);
 }
 function _loadProgressForTorrent() {
@@ -4010,7 +4082,7 @@ function _loadProgressForTorrent() {
   });
   return _loadProgressForTorrent.apply(this, arguments);
 }
-function loadProgressForFileItems(_x19, _x20) {
+function loadProgressForFileItems(_x22, _x23) {
   return _loadProgressForFileItems.apply(this, arguments);
 }
 function _loadProgressForFileItems() {
@@ -4285,7 +4357,7 @@ function showJacredUnavailableBanner(error) {
   return true;
 }
 window.showJacredUnavailableBanner = showJacredUnavailableBanner;
-function searchTorrents(_x21) {
+function searchTorrents(_x24) {
   return _searchTorrents.apply(this, arguments);
 }
 function _searchTorrents() {
@@ -4361,7 +4433,7 @@ function signJacredSearchUrl(url, host, query) {
   });
 }
 window.signJacredSearchUrl = signJacredSearchUrl;
-function searchTorrentsLegacy(_x22) {
+function searchTorrentsLegacy(_x25) {
   return _searchTorrentsLegacy.apply(this, arguments);
 }
 function _searchTorrentsLegacy() {
@@ -4849,7 +4921,7 @@ function resetFilters() {
   });
   applyFiltersAndSort();
 }
-function dropTorrentToServer(_x23) {
+function dropTorrentToServer(_x26) {
   return _dropTorrentToServer.apply(this, arguments);
 }
 function _dropTorrentToServer() {
@@ -4913,7 +4985,7 @@ function markTorrentStopped(hash) {
     playing.parentNode.replaceChild(size, playing);
   }
 }
-function addTorrentToServer(_x24, _x25, _x26) {
+function addTorrentToServer(_x27, _x28, _x29) {
   return _addTorrentToServer.apply(this, arguments);
 }
 function _addTorrentToServer() {
@@ -4936,9 +5008,15 @@ function _addTorrentToServer() {
     }
     var baseName = ctx.item && (ctx.item.title || ctx.item.name) || searchResult && (searchResult.name || searchResult.title) || 'Без названия';
     AppState.mediaType = mediaType;
-    var torrname = (tmdbId ? '[' + tmdbId + '] ' : '') + baseName;
-    if (mediaType === 'tv' && seasons.length > 0) {
-      torrname += ' [сезон ' + (seasons.length > 1 ? seasons[0] + '-' + seasons[seasons.length - 1] : seasons[0]) + ']';
+    var mono = monoServerTorrentMeta();
+    var torrname;
+    if (mono) {
+      torrname = MONOSERVER_TITLE_TAG + ' ' + baseName;
+    } else {
+      torrname = (tmdbId ? '[' + tmdbId + '] ' : '') + baseName;
+      if (mediaType === 'tv' && seasons.length > 0) {
+        torrname += ' [сезон ' + (seasons.length > 1 ? seasons[0] + '-' + seasons[seasons.length - 1] : seasons[0]) + ']';
+      }
     }
     var requestBody = {
       action: 'add',
@@ -4947,6 +5025,10 @@ function _addTorrentToServer() {
       category: mediaType,
       save_to_db: options.saveToDb === true ? true : AppState.addToDbEnabled
     };
+    if (mono) {
+      if (tmdbId) requestBody.tmdb_id = parseInt(tmdbId, 10) || tmdbId;
+      if (mediaType === 'tv' && seasons.length > 0) requestBody.seasons = seasons;
+    }
     if (poster) {
       requestBody.poster = replaceTmdbWithProxy(poster);
     }
@@ -4964,7 +5046,7 @@ function _addTorrentToServer() {
           id: tmdbId,
           mediaType: mediaType,
           poster: requestBody.poster,
-          title: torrname
+          title: mono ? baseName : torrname
         });
       }
       if (window.AndroidJS && !AppState.isCatalogSerials || AppState.transcodingFullOnOff && !AppState.isCatalogSerials) {
@@ -5026,7 +5108,7 @@ function _refreshTorrentsList() {
       });
       if (response.ok) {
         var data = yield response.json();
-        AppState.torrents = Array.isArray(data) ? data : [];
+        AppState.torrents = normalizeServerTorrents(data);
         if (!window.AndroidJS || !AppState.transcodingFullOnOff || !AppState.isCatalogSearch || AppState.isCatalogSerials) renderTorrents();
         if (!window.AndroidJS && !AppState.transcodingFullOnOff && !AppState.playFromHash && AppState.currentScreen === 'torrents') {
           setTimeout(function () {
@@ -5091,7 +5173,7 @@ function _ensureTorrserverOnline() {
   return _ensureTorrserverOnline.apply(this, arguments);
 }
 window.ensureTorrserverOnline = ensureTorrserverOnline;
-function playFromHash(_x27, _x28) {
+function playFromHash(_x30, _x31) {
   return _playFromHash.apply(this, arguments);
 }
 function _playFromHash() {
@@ -5554,7 +5636,7 @@ function getCurrentSearchMode() {
   if (modeSelect) currentSearchMode = modeSelect.value;
   return currentSearchMode;
 }
-function searchTMDB(_x29) {
+function searchTMDB(_x32) {
   return _searchTMDB.apply(this, arguments);
 }
 function _searchTMDB() {
@@ -5608,7 +5690,7 @@ function _searchTMDB() {
   });
   return _searchTMDB.apply(this, arguments);
 }
-function searchTMDBLegacy(_x30, _x31) {
+function searchTMDBLegacy(_x33, _x34) {
   return _searchTMDBLegacy.apply(this, arguments);
 }
 function _searchTMDBLegacy() {
@@ -5782,7 +5864,7 @@ function renderFilteredGlobalResults(results) {
     }
   };
 }
-function showGlobalSearchDetail(_x32) {
+function showGlobalSearchDetail(_x35) {
   return _showGlobalSearchDetail.apply(this, arguments);
 }
 function _showGlobalSearchDetail() {

@@ -73,6 +73,10 @@ var AppState = {
   currentVersion: 'TorrStream.1.0.54',
   authEnabled: false,
   serverOnline: false,
+  // Ответ /api/info, если торрент-сервер — MonoServer (checkServer в torrents.js),
+  // иначе null. С features 'torrent_meta' id TMDB и сезоны торрента приходят
+  // полями tmdb_id и seasons — название разбирать не нужно (это для TorrServer)
+  monoServer: null,
   clientId: null,
   userlogin: '',
   userpassword: '',

@@ -708,8 +708,12 @@ function workerLoadAllTmdbData(torrent) {
         }
     }
 
-    // ★ FIX: Извлекаем сезоны ИЗ ОРИГИНАЛЬНОГО заголовка ДО очистки
-    var seasonNumbers = extractSeasonsFromTitle(cleanTitle);
+    // MonoServer присылает сезоны полем seasons — тогда название не разбираем
+    // (разбор — для TorrServer). ★ FIX: иначе сезоны — из ОРИГИНАЛЬНОГО заголовка ДО очистки
+    var fieldSeasons = Array.isArray(torrent.seasons) && torrent.seasons.length > 0;
+    var seasonNumbers = fieldSeasons
+        ? torrent.seasons.filter(function (n) { return typeof n === 'number' && n >= 0; }).sort(function (a, b) { return a - b; })
+        : extractSeasonsFromTitle(cleanTitle);
 
     // Теперь очищаем заголовок
     cleanTitle = cleanTitle
@@ -717,7 +721,7 @@ function workerLoadAllTmdbData(torrent) {
         .replace(/\[сезон[^\]]*\]/gi, '')
         .trim();
 
-    if (seasonNumbers.length > 0) {
+    if (!fieldSeasons && seasonNumbers.length > 0) {
         cleanTitle = cleanTitleFromSeasons(cleanTitle, seasonNumbers);
     }
 
