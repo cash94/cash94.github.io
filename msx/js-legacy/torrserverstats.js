@@ -205,6 +205,7 @@ function getPreloadPanel() {
   root.setAttribute('role', 'dialog');
   root.setAttribute('aria-live', 'polite');
   root.innerHTML = '<img class="preload-backdrop hidden" alt="">' + '<div class="preload-shade"></div>' + '<div class="preload-mark"><div class="preload-mark-bg"></div><div class="preload-mark-fill"></div></div>' + '<div class="preload-status">' + '<span class="preload-peers hidden"><svg class="preload-peers-icon" viewBox="0 0 24 24" aria-hidden="true">' + '<path d="M12 3v12m0 0 5-5m-5 5-5-5M5 19h14"></path></svg><span class="preload-peers-value"></span></span>' + '<span class="preload-sep preload-sep-peers hidden"></span>' + '<span class="preload-speed hidden"></span>' + '<span class="preload-sep preload-sep-speed hidden"></span>' + '<span class="preload-percent">0%</span>' + '</div>' + '<div class="preload-hint">' + '<button type="button" class="preload-btn" data-action="cancel"><span class="preload-key">←</span>Отменить</button>' + '<button type="button" class="preload-btn" data-action="play"><span class="preload-key">ОК</span>Смотреть сейчас</button>' + '</div>';
+  var webs = buildPreloadSpiders(root);
   document.body.appendChild(root);
   root.addEventListener('click', function (e) {
     var btn = e.target.closest ? e.target.closest('.preload-btn') : null;
@@ -221,9 +222,67 @@ function getPreloadPanel() {
     sepPeers: root.querySelector('.preload-sep-peers'),
     speed: root.querySelector('.preload-speed'),
     sepSpeed: root.querySelector('.preload-sep-speed'),
-    percent: root.querySelector('.preload-percent')
+    percent: root.querySelector('.preload-percent'),
+    webs: webs
   };
   return preloadPanelEls;
+}
+var PRELOAD_SPIDER_SPOTS = [[0.05, 56, 0], [0.14, 38, 0.18], [0.24, 48, 0.08], [0.35, 26, 0.26], [0.65, 22, 0.12], [0.76, 44, 0.22], [0.86, 34, 0.04], [0.95, 60, 0.15]];
+var PRELOAD_SPIDER_H = 5;
+function buildPreloadSpiders(root) {
+  if (typeof isSeasonActive !== 'function' || !isSeasonActive('halloween')) return null;
+  var layer = document.createElement('div');
+  layer.className = 'preload-webs';
+  var list = [];
+  for (var i = 0; i < PRELOAD_SPIDER_SPOTS.length; i++) {
+    var spot = PRELOAD_SPIDER_SPOTS[i];
+    var web = document.createElement('div');
+    web.className = 'preload-web';
+    web.style.left = spot[0] * 100 + '%';
+    var thread = document.createElement('div');
+    thread.className = 'preload-thread';
+    thread.style.height = spot[1] + 'vh';
+    var spider = document.createElement('div');
+    spider.className = 'preload-spider';
+    var img = document.createElement('div');
+    img.className = 'preload-spider-img';
+    img.style.webkitAnimationDelay = img.style.animationDelay = -i * 0.45 + 's';
+    spider.appendChild(img);
+    web.appendChild(thread);
+    web.appendChild(spider);
+    layer.appendChild(web);
+    list.push({
+      thread: thread,
+      spider: spider,
+      len: spot[1],
+      lag: spot[2]
+    });
+  }
+  root.insertBefore(layer, root.querySelector('.preload-mark'));
+  return {
+    layer: layer,
+    list: list
+  };
+}
+function setPreloadSpiders(fraction, instant) {
+  var webs = preloadPanelEls && preloadPanelEls.webs;
+  if (!webs) return;
+  if (instant) webs.layer.classList.add('preload-webs-instant');
+  for (var i = 0; i < webs.list.length; i++) {
+    var w = webs.list[i];
+    var k = Math.max(0, Math.min(1, (fraction - w.lag) / (1 - w.lag)));
+    var y = -PRELOAD_SPIDER_H + k * (w.len + PRELOAD_SPIDER_H);
+    var ts = 'scaleY(' + (Math.max(0, y + 0.6) / w.len).toFixed(4) + ')';
+    w.thread.style.webkitTransform = ts;
+    w.thread.style.transform = ts;
+    var t = 'translateY(' + y.toFixed(2) + 'vh)';
+    w.spider.style.webkitTransform = t;
+    w.spider.style.transform = t;
+  }
+  if (instant) {
+    void webs.layer.offsetWidth;
+    webs.layer.classList.remove('preload-webs-instant');
+  }
 }
 function formatPreloadMb(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1);
@@ -326,6 +385,7 @@ function renderPlaybackPreload(state) {
   var progress = loaded * 100 / PRELOAD_TARGET_BYTES;
   els.fill.style.width = progress.toFixed(1) + '%';
   els.percent.textContent = Math.round(progress) + '%';
+  setPreloadSpiders(progress / 100);
   var showPeers = !!stats;
   els.peers.classList.toggle('hidden', !showPeers);
   els.sepPeers.classList.toggle('hidden', !showPeers);
@@ -394,6 +454,7 @@ function holdPreloadScreen() {
   var els = getPreloadPanel();
   els.fill.style.width = '100%';
   els.percent.textContent = '100%';
+  setPreloadSpiders(1);
   els.root.classList.add('preload-holding');
   var video = document.getElementById('video-player');
   var onPlaying = function () {
@@ -426,6 +487,7 @@ function holdPreloadUntilHidden() {
   var els = getPreloadPanel();
   els.fill.style.width = '100%';
   els.percent.textContent = '100%';
+  setPreloadSpiders(1);
   els.root.classList.add('preload-holding');
   if (preloadHold) releasePreloadScreen(true);
   var onHide = function (e) {
@@ -513,6 +575,7 @@ function runPlaybackPreload(hash, fileId, title) {
     releasePreloadScreen(true);
     setPreloadMedia(state, title);
     els.fill.style.transition = 'none';
+    setPreloadSpiders(0, true);
     renderPlaybackPreload(state);
     void els.fill.offsetWidth;
     els.fill.style.transition = '';
