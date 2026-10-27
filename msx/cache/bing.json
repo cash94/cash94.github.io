@@ -1,6 +1,12 @@
 {
  "images": [
   {
+   "url": "https://www.bing.com/th?id=OHR.PondCypress_ROW1830221412_1920x1080.jpg",
+   "title": "A grove of pond cypress trees with autumn foliage, Georgia, United States",
+   "copyright": "© Chris Moore/Getty Images",
+   "date": "20261027"
+  },
+  {
    "url": "https://www.bing.com/th?id=OHR.SitovoWaterfall_ROW1586593105_1920x1080.jpg",
    "title": "Autumn waterfalls near Sitovo, Plovdiv Province, Bulgaria",
    "copyright": "© Nadya85/Getty Images",
@@ -83,12 +89,6 @@
    "title": "Plitvice Lakes National Park, Croatia",
    "copyright": "© Jan Wlodarczyk/Alamy",
    "date": "20261013"
-  },
-  {
-   "url": "https://www.bing.com/th?id=OHR.MumblesSwansea2026_ROW0047867144_1920x1080.jpg",
-   "title": "Mumbles Pier, Swansea, Wales",
-   "copyright": "© Helen Hotson/Shutterstock",
-   "date": "20261012"
   }
  ]
 }
