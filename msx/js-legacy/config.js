@@ -442,6 +442,27 @@ if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple')
   document.documentElement.classList.add('apple-device');
 }
 console.log('📱 Платформа: ' + AppState.platform + (AppState.applePlatform ? ' (' + AppState.applePlatform + ')' : ''));
+var SEASONS = {
+  halloween: {
+    from: [10, 24],
+    to: [11, 2]
+  }
+};
+function isSeasonActive(name) {
+  var s = SEASONS[name];
+  if (!s) return false;
+  var d = new Date();
+  var md = (d.getMonth() + 1) * 100 + d.getDate();
+  var from = s.from[0] * 100 + s.from[1];
+  var to = s.to[0] * 100 + s.to[1];
+  return from <= to ? md >= from && md <= to : md >= from || md <= to;
+}
+window.isSeasonActive = isSeasonActive;
+for (var seasonName in SEASONS) {
+  if (SEASONS.hasOwnProperty(seasonName) && isSeasonActive(seasonName)) {
+    document.documentElement.classList.add('season-' + seasonName);
+  }
+}
 window.getEl = getEl;
 window.clearFocused = clearFocused;
 function tsWorkerUrl(file) {

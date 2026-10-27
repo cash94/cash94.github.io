@@ -205,6 +205,17 @@ var CATALOG_CONFIG = {
     favorites: { name: 'Избранное', url: null, mediaType: 'favorites', isFavorites: true }
 };
 
+// Сезонная категория (SEASONS в config.js) встаёт первым рядом и только в
+// сезон. Каталог целиком — модуль halloween-collection, формат как у /api/rus.
+// Объект пересобирается, потому что порядок ключей — это порядок рядов.
+if (isSeasonActive('halloween')) {
+    CATALOG_CONFIG = (function (base) {
+        var cfg = { halloween: { name: 'Хэллоуин', url: SERVER_URL + '/api/halloween', mediaType: 'movie' } };
+        for (var k in base) if (base.hasOwnProperty(k)) cfg[k] = base[k];
+        return cfg;
+    })(CATALOG_CONFIG);
+}
+
 // Сколько всего элементов в категории — для карточки «Показать все» в ряду.
 // Живёт дольше перестройки рядов: устаревшее число лучше пустого места.
 window.catalogRowTotals = window.catalogRowTotals || {};

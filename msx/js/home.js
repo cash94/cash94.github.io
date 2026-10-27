@@ -132,6 +132,10 @@
     // Порядок рядов сверху вниз. key для подборок TMDB — это preset эндпоинта.
     var HOME_ROWS = [
         { key: 'history', name: 'Продолжить просмотр', source: 'history' },
+        // Сезонная подборка (SEASONS в config.js): вне окна ряда нет вовсе.
+        // Отдаёт её модуль halloween-collection — url вместо source: 'tmdb',
+        // формат ответа тот же. Модуль не установлен — 404, ряд пустой и не рисуется.
+        { key: 'halloween', name: 'Хэллоуин', url: '/api/halloween/collection', season: 'halloween' },
         { key: 'trending_week', name: 'В тренде на этой неделе', source: 'tmdb' },
         { key: 'pop_streaming', name: 'Что популярно · Онлайн', source: 'tmdb' },
         { key: 'pop_ontv', name: 'Что популярно · По ТВ', source: 'tmdb' },
@@ -493,10 +497,11 @@
                 (Date.now() - (rec.ts || 0)) < HOME.TTL_MS;
             if (fresh) return rec.items;
 
-            // Подборки Кинопоиска отдаёт модуль-расширение, всё остальное —
-            // routes/tmdb.js. Формат ответа у них одинаковый, поэтому дальше
-            // ветвиться уже незачем.
-            var url = cfg.source === 'kinopoisk'
+            // Подборки Кинопоиска и сезонные отдают модули-расширения, всё
+            // остальное — routes/tmdb.js. Формат ответа у них одинаковый,
+            // поэтому дальше ветвиться уже незачем.
+            var url = cfg.url ? serverUrl() + cfg.url
+                : cfg.source === 'kinopoisk'
                 ? serverUrl() + '/api/kinopoisk/collection?preset=' + encodeURIComponent(cfg.key)
                 : serverUrl() + '/api/tmdb/collection?preset=' + encodeURIComponent(cfg.key);
 
@@ -2192,7 +2197,9 @@
         var container = el('home-rows');
         if (!container) return Promise.resolve(false);
 
-        var cfgs = HOME_ROWS;
+        var cfgs = HOME_ROWS.filter(function (cfg) {
+            return !cfg.season || isSeasonActive(cfg.season);
+        });
         var results = new Array(cfgs.length);
         var nextToLoad = 0, nextToRender = 0;
         var activeLoads = 0, completedLoads = 0, renderedRows = 0;

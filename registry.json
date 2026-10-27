@@ -27,6 +27,13 @@
       "description": "Заставки и титры: tsskip + запасной источник api.introdb.app",
       "url": "https://cash94.github.io/torrstream-modules/skip-intro/module.js",
       "sha256": "d51e6ec94058554a84558a5b402ee6ef5fdf5455e35c902feda61cda8752943a"
+    },
+    "halloween-collection": {
+      "name": "halloween-collection",
+      "version": "1.0.0",
+      "description": "Сезонная подборка «Хэллоуин» по ключевому слову TMDB: ряд главной (20 фильмов) и категория каталога (все фильмы и сериалы). Показ — только в сезон, решает фронт.",
+      "url": "https://cash94.github.io/torrstream-modules/halloween-collection/module.js",
+      "sha256": "92521fc3cbd964bdc9f584a991b89fddaa5754ed1cc96d6d42445338669c1305"
     }
   }
 }

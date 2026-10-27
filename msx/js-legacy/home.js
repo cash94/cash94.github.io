@@ -43,6 +43,11 @@
     name: 'Продолжить просмотр',
     source: 'history'
   }, {
+    key: 'halloween',
+    name: 'Хэллоуин',
+    url: '/api/halloween/collection',
+    season: 'halloween'
+  }, {
     key: 'trending_week',
     name: 'В тренде на этой неделе',
     source: 'tmdb'
@@ -390,7 +395,7 @@
     return dbGet(cfg.key).then(function (rec) {
       var fresh = rec && rec.items && rec.items.length && rec.v === ITEMS_SCHEMA_VERSION && Date.now() - (rec.ts || 0) < HOME.TTL_MS;
       if (fresh) return rec.items;
-      var url = cfg.source === 'kinopoisk' ? serverUrl() + '/api/kinopoisk/collection?preset=' + encodeURIComponent(cfg.key) : serverUrl() + '/api/tmdb/collection?preset=' + encodeURIComponent(cfg.key);
+      var url = cfg.url ? serverUrl() + cfg.url : cfg.source === 'kinopoisk' ? serverUrl() + '/api/kinopoisk/collection?preset=' + encodeURIComponent(cfg.key) : serverUrl() + '/api/tmdb/collection?preset=' + encodeURIComponent(cfg.key);
       return homeFetch(url).then(function (data) {
         if (data && data.success && data.items && data.items.length) {
           dbPut(cfg.key, data.items);
@@ -1651,7 +1656,9 @@
   function loadHomeRows() {
     var container = el('home-rows');
     if (!container) return Promise.resolve(false);
-    var cfgs = HOME_ROWS;
+    var cfgs = HOME_ROWS.filter(function (cfg) {
+      return !cfg.season || isSeasonActive(cfg.season);
+    });
     var results = new Array(cfgs.length);
     var nextToLoad = 0,
       nextToRender = 0;

@@ -662,6 +662,35 @@ if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple')
   document.documentElement.classList.add('apple-device');
 }
 console.log('📱 Платформа: ' + AppState.platform + (AppState.applePlatform ? ' (' + AppState.applePlatform + ')' : ''));
+
+// Сезонные подборки и украшения. Окно — [месяц, день] по часам устройства,
+// обе границы включительно, повторяется каждый год; from позже to — окно
+// через Новый год. Ряды главной и категории каталога с полем season видны
+// только внутри окна (home.js, catalog.js), украшения вешаются на класс
+// season-<имя> у <html> (styles.css).
+var SEASONS = {
+  // Ряд главной и категория каталога — модуль halloween-collection;
+  // паутина на часах и паук на заголовке шапки
+  halloween: { from: [10, 24], to: [11, 2] }
+};
+
+function isSeasonActive(name) {
+  var s = SEASONS[name];
+  if (!s) return false;
+  var d = new Date();
+  var md = (d.getMonth() + 1) * 100 + d.getDate();
+  var from = s.from[0] * 100 + s.from[1];
+  var to = s.to[0] * 100 + s.to[1];
+  return from <= to ? (md >= from && md <= to) : (md >= from || md <= to);
+}
+window.isSeasonActive = isSeasonActive;
+
+for (var seasonName in SEASONS) {
+  if (SEASONS.hasOwnProperty(seasonName) && isSeasonActive(seasonName)) {
+    document.documentElement.classList.add('season-' + seasonName);
+  }
+}
+
 window.getEl = getEl;
 window.clearFocused = clearFocused;
 

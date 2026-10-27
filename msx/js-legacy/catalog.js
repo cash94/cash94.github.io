@@ -174,6 +174,19 @@ var CATALOG_CONFIG = {
     isFavorites: true
   }
 };
+if (isSeasonActive('halloween')) {
+  CATALOG_CONFIG = function (base) {
+    var cfg = {
+      halloween: {
+        name: 'Хэллоуин',
+        url: SERVER_URL + '/api/halloween',
+        mediaType: 'movie'
+      }
+    };
+    for (var k in base) if (base.hasOwnProperty(k)) cfg[k] = base[k];
+    return cfg;
+  }(CATALOG_CONFIG);
+}
 window.catalogRowTotals = window.catalogRowTotals || {};
 var TMDB_GENRES = {
   movie: {
