@@ -26,6 +26,8 @@
     LOGO_SIZE: 'w500',
     LOGO_NEAR: 2,
     LOGO_PRELOAD_MAX: 2,
+    LOADER_POSTERS_MAX_MS: 6000,
+    LOADER_POLL_MS: 100,
     TRAILER_DELAY_MS: 5000,
     RING_LEN: 119.4,
     RING_TICK_MS: 250,
@@ -235,6 +237,39 @@
     }
     var l = el('module-loader');
     if (l) l.style.display = 'none';
+  }
+  function dismissLoaderWhenReady() {
+    if (!moduleLoaderUp()) return;
+    var started = Date.now();
+    (function check() {
+      if (!moduleLoaderUp()) return;
+      if (!isHomeVisible() || visiblePostersReady() && heroBackdropReady() || Date.now() - started >= HOME.LOADER_POSTERS_MAX_MS) {
+        dismissModuleLoader();
+        rearmHeroTrailer();
+        return;
+      }
+      setTimeout(check, HOME.LOADER_POLL_MS);
+    })();
+  }
+  function visiblePostersReady() {
+    var cards = homeState.rows[homeState.activeRow];
+    if (!cards || !cards.length) return false;
+    var w = window.innerWidth;
+    var seen = 0;
+    for (var i = 0; i < cards.length; i++) {
+      var r = cards[i].getBoundingClientRect();
+      if (!r.width) return false;
+      if (r.left >= w) break;
+      seen++;
+      var d = cards[i].dataset;
+      if (d.posterLoaded !== '1' || d.posterPending === '1') return false;
+    }
+    return seen > 0;
+  }
+  function heroBackdropReady() {
+    var box = el('home-hero-backdrop');
+    if (!box || !homeState.hero.key && !homeState.hero.pendingKey) return true;
+    return backdropFailed || !box.classList.contains('home-hero-empty');
   }
   function homeFetch(url) {
     return new Promise(function (resolve) {
@@ -1674,18 +1709,22 @@
     homeState.data = {};
     homeState.activated = false;
     resetPosterQueue();
+    if (moduleLoaderUp() && typeof window.holdModuleLoader === 'function') {
+      window.holdModuleLoader();
+    }
     container.innerHTML = '<div class="catalog-rows-loading">' + '<div class="loading-spinner" style="margin:0 auto 20px"></div>' + '<div style="font-size:16px;color:#aaa">Загрузка подборок...</div></div>';
     invalidateFocus();
     return new Promise(function (resolve) {
       function finish(value) {
         if (finished) return;
         finished = true;
+        if (!homeState.activated) dismissModuleLoader();
         resolve(value);
       }
       function activate() {
         if (homeState.activated) return;
         homeState.activated = true;
-        dismissModuleLoader();
+        dismissLoaderWhenReady();
         requestAnimationFrame(function () {
           if (!isHomeFocusable()) {
             loadRowPosters(homeState.activeRow);

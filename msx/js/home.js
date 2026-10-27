@@ -94,6 +94,11 @@
         // эмуляторе ТВ: +25–30 мс к каждому «вниз» против версии без логотипов.
         LOGO_NEAR: 2,
         LOGO_PRELOAD_MAX: 2,
+        // Заглушка загрузчика ждёт постеры первого ряда и картинку баннера,
+        // но не дольше этого после появления ряда: медленное зеркало не должно
+        // держать пользователя перед заставкой. Опрос готовности — с этим шагом
+        LOADER_POSTERS_MAX_MS: 6000,
+        LOADER_POLL_MS: 100,
         // Столько заполняется кругляшок; заполнился — включаем трейлер
         TRAILER_DELAY_MS: 5000,
         // Длина окружности кругляшка: 2πr при r = 19 (см. viewBox 0 0 44 44)
@@ -356,6 +361,60 @@
         }
         var l = el('module-loader');
         if (l) l.style.display = 'none';
+    }
+
+    /**
+     * Первый ряд на экране — но заглушку снимаем, только когда главная
+     * дорисована: постеры видимых карточек готовы (загрузились или упали —
+     * «Нет постера» тоже готовый вид) и баннер с картинкой. Иначе после
+     * заставки секунду-другую видны пустые рамки. Не дольше
+     * LOADER_POSTERS_MAX_MS. Опрос, а не событие: постеры идут через очередь
+     * и setRowPosterImg с перебором зеркал, общего «готово» у них нет; проверка
+     * — десяток карточек раз в 100 мс.
+     */
+    function dismissLoaderWhenReady() {
+        if (!moduleLoaderUp()) return;
+        var started = Date.now();
+        (function check() {
+            if (!moduleLoaderUp()) return;
+            if (!isHomeVisible() || (visiblePostersReady() && heroBackdropReady()) ||
+                Date.now() - started >= HOME.LOADER_POSTERS_MAX_MS) {
+                dismissModuleLoader();
+                // Под заглушкой отсчёт трейлера не заводится (startTrailerCountdown),
+                // а фокус на первую карточку встал раньше — заводим его теперь
+                rearmHeroTrailer();
+                return;
+            }
+            setTimeout(check, HOME.LOADER_POLL_MS);
+        })();
+    }
+
+    /** Карточки показанного ряда, попадающие в экран: постер вставлен или не нашёлся */
+    function visiblePostersReady() {
+        var cards = homeState.rows[homeState.activeRow];
+        if (!cards || !cards.length) return false;
+        var w = window.innerWidth;
+        var seen = 0;
+        for (var i = 0; i < cards.length; i++) {
+            var r = cards[i].getBoundingClientRect();
+            if (!r.width) return false;             // ряд ещё не разложен
+            if (r.left >= w) break;                 // дальше — за правым краем
+            seen++;
+            var d = cards[i].dataset;
+            if (d.posterLoaded !== '1' || d.posterPending === '1') return false;
+        }
+        return seen > 0;
+    }
+
+    /**
+     * Картинка баннера на месте, или зеркала её не отдали — ждать нечего.
+     * Баннер ещё не выбрал фильм (фокус не на карточке: на старте экран
+     * может числиться за торрентами) — тоже не ждём: ему нечего грузить
+     */
+    function heroBackdropReady() {
+        var box = el('home-hero-backdrop');
+        if (!box || (!homeState.hero.key && !homeState.hero.pendingKey)) return true;
+        return backdropFailed || !box.classList.contains('home-hero-empty');
     }
 
     function homeFetch(url) {
@@ -2213,6 +2272,11 @@
         homeState.data = {};
         homeState.activated = false;
         resetPosterQueue();
+        // Заглушка ещё на экране (первый запуск) — window.load её не снимет:
+        // он приходит раньше постеров, их грузим мы. Снимет dismissLoaderWhenReady
+        if (moduleLoaderUp() && typeof window.holdModuleLoader === 'function') {
+            window.holdModuleLoader();
+        }
 
         container.innerHTML = '<div class="catalog-rows-loading">' +
             '<div class="loading-spinner" style="margin:0 auto 20px"></div>' +
@@ -2223,14 +2287,18 @@
             function finish(value) {
                 if (finished) return;
                 finished = true;
+                // Ни одного ряда так и не показали (главную покинули, рядов
+                // нет) — заглушку, которую мы держали, отпускаем сразу
+                if (!homeState.activated) dismissModuleLoader();
                 resolve(value);
             }
 
             function activate() {
                 if (homeState.activated) return;
                 homeState.activated = true;
-                // Первый ряд на экране — заглушку загрузчика держать больше не за чем
-                dismissModuleLoader();
+                // Первый ряд на экране — заглушка уходит, как только догрузятся
+                // его постеры и баннер (их запрашивают следом, ниже)
+                dismissLoaderWhenReady();
                 requestAnimationFrame(function () {
                     if (!isHomeFocusable()) { loadRowPosters(homeState.activeRow); return; }
                     if (typeof updateFocusableElements === 'function') updateFocusableElements();

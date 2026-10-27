@@ -663,31 +663,29 @@ if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple')
 }
 console.log('📱 Платформа: ' + AppState.platform + (AppState.applePlatform ? ' (' + AppState.applePlatform + ')' : ''));
 
-// Сезонные подборки и украшения. Окно — [месяц, день] по часам устройства,
-// обе границы включительно, повторяется каждый год; from позже to — окно
-// через Новый год. Ряды главной и категории каталога с полем season видны
-// только внутри окна (home.js, catalog.js), украшения вешаются на класс
-// season-<имя> у <html> (styles.css).
-var SEASONS = {
-  // Ряд главной и категория каталога — модуль halloween-collection;
-  // паутина на часах и паук на заголовке шапки
-  halloween: { from: [10, 24], to: [11, 2] }
-};
-
-function isSeasonActive(name) {
-  var s = SEASONS[name];
-  if (!s) return false;
-  var d = new Date();
-  var md = (d.getMonth() + 1) * 100 + d.getDate();
-  var from = s.from[0] * 100 + s.from[1];
-  var to = s.to[0] * 100 + s.to[1];
-  return from <= to ? (md >= from && md <= to) : (md >= from || md <= to);
-}
-window.isSeasonActive = isSeasonActive;
-
-for (var seasonName in SEASONS) {
-  if (SEASONS.hasOwnProperty(seasonName) && isSeasonActive(seasonName)) {
-    document.documentElement.classList.add('season-' + seasonName);
+// Сезонные подборки: window.SEASONS и isSeasonActive задаёт index.html в
+// <head> — его класс season-<имя> нужен заглушке загрузчика на первом кадре.
+// Здесь только запасная копия для старого index.html из пакета сервера (он
+// отдаётся, когда зеркало недоступно): без неё home.js и catalog.js упали
+// бы на вызове. Присваиванием, а не объявлением function — объявление
+// всплыло бы и перетёрло функцию из index.html.
+if (typeof window.isSeasonActive !== 'function') {
+  window.SEASONS = {
+    halloween: { from: [10, 24], to: [11, 2] }
+  };
+  window.isSeasonActive = function (name) {
+    var s = window.SEASONS[name];
+    if (!s) return false;
+    var d = new Date();
+    var md = (d.getMonth() + 1) * 100 + d.getDate();
+    var from = s.from[0] * 100 + s.from[1];
+    var to = s.to[0] * 100 + s.to[1];
+    return from <= to ? (md >= from && md <= to) : (md >= from || md <= to);
+  };
+  for (var seasonName in window.SEASONS) {
+    if (window.SEASONS.hasOwnProperty(seasonName) && window.isSeasonActive(seasonName)) {
+      document.documentElement.classList.add('season-' + seasonName);
+    }
   }
 }
 
