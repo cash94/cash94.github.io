@@ -81,6 +81,8 @@ var PAUSE_THRESHOLD = 60000; // 1 минута
 // Для отмены воспроизведения
 var currentPlaybackController = null;
 var skipData = [];
+// Для какой серии skipData: «tmdbId_сезон_серия» (fetchSkipData)
+var skipDataKey = '';
 
 // Переменные для кнопки пропуска
 var skipButton = null;
@@ -1623,12 +1625,16 @@ async function loadEpisodesInfo(hash, currentFileId) {
           if (!changed || currentTorrentHash !== hash) return;
           renderEpisodesList();
           refreshEpisodePlayerTitle();
+          // Серии сопоставлены с TMDB — сезон и номер могли уточниться
+          // (раздача из нескольких сезонов без S01E05 в именах файлов)
+          var playing = currentEpisodeFiles[currentEpisodeIndex];
+          if (AppState.isSerials && playing) fetchSkipData(torrent, playing.id, true);
         });
       }
       // Сведения уже были (detail открывали) — заголовок на старте ставился
       // до появления списка серий и остался именем файла
       refreshEpisodePlayerTitle();
-      if (AppState.isSerials) fetchSkipData(AppState.currentTMDB, AppState.currentSeason, currentFileId);
+      if (AppState.isSerials) fetchSkipData(torrent, videoFiles[currentEpisodeIndex].id);
       var episodesBtn = getEl('episodes-btn');
       if (episodesBtn) episodesBtn.style.display = videoFiles.length > 1 ? 'flex' : 'none';
       updateEpisodeButtons();
@@ -1654,17 +1660,94 @@ async function loadEpisodesInfo(hash, currentFileId) {
  * переключением и ответом tsskip проходит около секунды, и обнулённые заранее
  * счётчики успели бы показать кнопку по диапазонам предыдущей серии.
  */
-async function fetchSkipData(tmdbId, season, episode) {
+async function fetchSkipData(torrent, fileId, onlyIfChanged) {
+  var target = resolveSkipTarget(torrent, fileId);
+  var key = target ? target.tmdbId + '_' + target.season + '_' + target.episode : '';
+  // Повторный вызов для той же серии не сбрасывает счётчики — кнопка не
+  // всплывёт второй раз посреди заставки
+  if (onlyIfChanged && key === skipDataKey) return skipData;
+  skipDataKey = key;
   skipIntro = 0;
   skipCredits = 0;
-  var url = getSkipApiBase() + '/v2/media?tmdb_id=' + tmdbId + '&season=' + season + '&episode=' + episode;
+  // Без id, сезона или серии сервер отвечает «tmdb_id, season и episode
+  // обязательны» — не спрашиваем
+  if (!target) { skipData = { error: true }; return skipData; }
+  var url = getSkipApiBase() + '/v2/media?tmdb_id=' + target.tmdbId + '&season=' + target.season + '&episode=' + target.episode;
   try {
     var response = await fetch(url);
     var data = await response.json();
+    // Пока ждали, переключили серию — её данные уже запрошены
+    if (key !== skipDataKey) return skipData;
     if (data.error) { skipData = { error: true }; }
     else { skipData = data; skipData.error = false; }
     return skipData;
-  } catch (error) { skipData = { error: true }; return skipData; }
+  } catch (error) {
+    if (key === skipDataKey) skipData = { error: true };
+    return skipData;
+  }
+}
+
+/** id TMDB раздачи: поле (MonoServer), knownTorrentMeta, «[603]» в названии (TorrServer) */
+function getTorrentTmdbId(torrent) {
+  if (!torrent) return null;
+  if (torrent.tmdbId || torrent.tmdb_id) return String(torrent.tmdbId || torrent.tmdb_id);
+  var hash = torrent.hash ? String(torrent.hash).toLowerCase() : '';
+  var known = hash && typeof knownTorrentMeta !== 'undefined' ? knownTorrentMeta.get(hash) : null;
+  if (known && known.id) return String(known.id);
+  var m = String(torrent.title || '').match(/\[(\d+)\]/);
+  return m ? m[1] : null;
+}
+
+/** Торрент из загруженного списка по hash или null */
+function findLoadedTorrent(hash) {
+  if (!hash || !Array.isArray(AppState.torrents)) return null;
+  var h = String(hash).toLowerCase();
+  for (var i = 0; i < AppState.torrents.length; i++) {
+    var t = AppState.torrents[i];
+    if (t && t.hash && String(t.hash).toLowerCase() === h) return t;
+  }
+  return null;
+}
+
+/** Единственный сезон раздачи или null (сезонов несколько или не знаем) */
+function getTorrentSingleSeason(torrent) {
+  if (!torrent || typeof window.getTorrentSeasons !== 'function') return null;
+  var seasons = window.getTorrentSeasons(torrent);
+  return seasons.length === 1 ? seasons[0] : null;
+}
+
+/**
+ * id TMDB, сезон и серия файла для запроса заставок или null.
+ * Раньше брались AppState.currentTMDB/currentSeason, а их detail ставит только
+ * для раздачи из одного сезона: у MonoServer сезоны приходят полем, обычно
+ * все сразу, — и запрос уходил с пустыми tmdb_id и season. Номером серии
+ * шёл id файла в TorrServer, а не номер серии.
+ * Порядок: сведения о серии (сопоставлены с TMDB), имя файла (S01E05),
+ * единственный сезон раздачи и порядковый номер файла.
+ */
+function resolveSkipTarget(torrent, fileId) {
+  var tmdbId = getTorrentTmdbId(torrent) || AppState.currentTMDB || null;
+  if (!tmdbId) return null;
+  var season = null, episode = null;
+  var hash = torrent && torrent.hash ? torrent.hash : currentTorrentHash;
+  var meta = (hash && typeof window.getTorrentEpisodeMeta === 'function') ? window.getTorrentEpisodeMeta(hash, fileId) : null;
+  if (meta && meta.season !== undefined && meta.season !== null && meta.episode) {
+    season = meta.season; episode = meta.episode;
+  } else {
+    var idx = -1;
+    for (var i = 0; i < currentEpisodeFiles.length; i++) {
+      if (String(currentEpisodeFiles[i].id) === String(fileId)) { idx = i; break; }
+    }
+    var file = idx !== -1 ? currentEpisodeFiles[idx] : null;
+    var ref = (file && typeof parseEpisodeRef === 'function') ? parseEpisodeRef(file.path || file.name) : null;
+    season = ref && ref.season !== null ? ref.season : getTorrentSingleSeason(torrent);
+    // Сезон из detail — только той же раздачи, а не оставшийся от прошлой
+    if (season === null && AppState.currentSeason && String(AppState.currentTMDB) === String(tmdbId)) season = AppState.currentSeason;
+    episode = ref ? ref.episode : (idx !== -1 ? idx + 1 : null);
+  }
+  tmdbId = parseInt(tmdbId, 10); season = parseInt(season, 10); episode = parseInt(episode, 10);
+  if (!(tmdbId > 0) || !(season >= 0) || !(episode > 0)) return null;
+  return { tmdbId: tmdbId, season: season, episode: episode };
 }
 
 function renderEpisodesList() {
@@ -2472,6 +2555,7 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
     currentTimecodeData.hash = torrentHash; currentTimecodeData.fileId = fileId; currentTimecodeData.timecode = seekTime;
     var playURL = AppState.currentTorrserverUrl + "/stream?link=" + torrentHash + "&index=" + fileId + "&play=play";
     var item = AppState.currentDetailItem;
+    var skipTorrent = findLoadedTorrent(torrentHash) || item;
     var playerData = {
       url: playURL, title: title || 'Видео', iptv: false, timecode: seekTime,
       // Для встроенного плеера — без номера серии, он допишет его сам
@@ -2480,8 +2564,10 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       // каждую серию (номер эпизода он берёт из index= в ссылке файла). Адрес
       // передаём отсюда, чтобы смена хоста не требовала пересборки приложения.
       skip_api: getSkipApiBase() + '/v2/media',
-      tmdb_id: AppState.currentTMDB || null,
-      season: AppState.currentSeason || null,
+      // id и сезон — с самой раздачи (у MonoServer они полями, сезонов бывает
+      // несколько — тогда сезон из detail, если он есть)
+      tmdb_id: getTorrentTmdbId(skipTorrent) || AppState.currentTMDB || null,
+      season: getTorrentSingleSeason(skipTorrent) || AppState.currentSeason || null,
       // Периодическое сохранение таймкода прямо из встроенного плеера. Веб-плеер
       // шлёт его раз в 10 секунд (startTimecodeSaving), а из нативного таймкод
       // приходил только при выходе — через updatePlayerTimeline. Если приложение

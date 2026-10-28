@@ -39,6 +39,7 @@ var pauseStartTime = null;
 var PAUSE_THRESHOLD = 60000;
 var currentPlaybackController = null;
 var skipData = [];
+var skipDataKey = '';
 var skipButton = null;
 var skipButtonTimeout = null;
 var currentSkipData = null;
@@ -1463,10 +1464,12 @@ function _loadEpisodesInfo() {
             if (!changed || currentTorrentHash !== hash) return;
             renderEpisodesList();
             refreshEpisodePlayerTitle();
+            var playing = currentEpisodeFiles[currentEpisodeIndex];
+            if (AppState.isSerials && playing) fetchSkipData(torrent, playing.id, true);
           });
         }
         refreshEpisodePlayerTitle();
-        if (AppState.isSerials) fetchSkipData(AppState.currentTMDB, AppState.currentSeason, currentFileId);
+        if (AppState.isSerials) fetchSkipData(torrent, videoFiles[currentEpisodeIndex].id);
         var episodesBtn = getEl('episodes-btn');
         if (episodesBtn) episodesBtn.style.display = videoFiles.length > 1 ? 'flex' : 'none';
         updateEpisodeButtons();
@@ -1487,13 +1490,24 @@ function fetchSkipData(_x12, _x13, _x14) {
   return _fetchSkipData.apply(this, arguments);
 }
 function _fetchSkipData() {
-  _fetchSkipData = _asyncToGenerator(function* (tmdbId, season, episode) {
+  _fetchSkipData = _asyncToGenerator(function* (torrent, fileId, onlyIfChanged) {
+    var target = resolveSkipTarget(torrent, fileId);
+    var key = target ? target.tmdbId + '_' + target.season + '_' + target.episode : '';
+    if (onlyIfChanged && key === skipDataKey) return skipData;
+    skipDataKey = key;
     skipIntro = 0;
     skipCredits = 0;
-    var url = getSkipApiBase() + '/v2/media?tmdb_id=' + tmdbId + '&season=' + season + '&episode=' + episode;
+    if (!target) {
+      skipData = {
+        error: true
+      };
+      return skipData;
+    }
+    var url = getSkipApiBase() + '/v2/media?tmdb_id=' + target.tmdbId + '&season=' + target.season + '&episode=' + target.episode;
     try {
       var response = yield fetch(url);
       var data = yield response.json();
+      if (key !== skipDataKey) return skipData;
       if (data.error) {
         skipData = {
           error: true
@@ -1504,13 +1518,70 @@ function _fetchSkipData() {
       }
       return skipData;
     } catch (error) {
-      skipData = {
+      if (key === skipDataKey) skipData = {
         error: true
       };
       return skipData;
     }
   });
   return _fetchSkipData.apply(this, arguments);
+}
+function getTorrentTmdbId(torrent) {
+  if (!torrent) return null;
+  if (torrent.tmdbId || torrent.tmdb_id) return String(torrent.tmdbId || torrent.tmdb_id);
+  var hash = torrent.hash ? String(torrent.hash).toLowerCase() : '';
+  var known = hash && typeof knownTorrentMeta !== 'undefined' ? knownTorrentMeta.get(hash) : null;
+  if (known && known.id) return String(known.id);
+  var m = String(torrent.title || '').match(/\[(\d+)\]/);
+  return m ? m[1] : null;
+}
+function findLoadedTorrent(hash) {
+  if (!hash || !Array.isArray(AppState.torrents)) return null;
+  var h = String(hash).toLowerCase();
+  for (var i = 0; i < AppState.torrents.length; i++) {
+    var t = AppState.torrents[i];
+    if (t && t.hash && String(t.hash).toLowerCase() === h) return t;
+  }
+  return null;
+}
+function getTorrentSingleSeason(torrent) {
+  if (!torrent || typeof window.getTorrentSeasons !== 'function') return null;
+  var seasons = window.getTorrentSeasons(torrent);
+  return seasons.length === 1 ? seasons[0] : null;
+}
+function resolveSkipTarget(torrent, fileId) {
+  var tmdbId = getTorrentTmdbId(torrent) || AppState.currentTMDB || null;
+  if (!tmdbId) return null;
+  var season = null,
+    episode = null;
+  var hash = torrent && torrent.hash ? torrent.hash : currentTorrentHash;
+  var meta = hash && typeof window.getTorrentEpisodeMeta === 'function' ? window.getTorrentEpisodeMeta(hash, fileId) : null;
+  if (meta && meta.season !== undefined && meta.season !== null && meta.episode) {
+    season = meta.season;
+    episode = meta.episode;
+  } else {
+    var idx = -1;
+    for (var i = 0; i < currentEpisodeFiles.length; i++) {
+      if (String(currentEpisodeFiles[i].id) === String(fileId)) {
+        idx = i;
+        break;
+      }
+    }
+    var file = idx !== -1 ? currentEpisodeFiles[idx] : null;
+    var ref = file && typeof parseEpisodeRef === 'function' ? parseEpisodeRef(file.path || file.name) : null;
+    season = ref && ref.season !== null ? ref.season : getTorrentSingleSeason(torrent);
+    if (season === null && AppState.currentSeason && String(AppState.currentTMDB) === String(tmdbId)) season = AppState.currentSeason;
+    episode = ref ? ref.episode : idx !== -1 ? idx + 1 : null;
+  }
+  tmdbId = parseInt(tmdbId, 10);
+  season = parseInt(season, 10);
+  episode = parseInt(episode, 10);
+  if (!(tmdbId > 0) || !(season >= 0) || !(episode > 0)) return null;
+  return {
+    tmdbId: tmdbId,
+    season: season,
+    episode: episode
+  };
 }
 function renderEpisodesList() {
   var episodesList = getEl('episodes-list');
@@ -2124,6 +2195,7 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
     currentTimecodeData.timecode = seekTime;
     var playURL = AppState.currentTorrserverUrl + "/stream?link=" + torrentHash + "&index=" + fileId + "&play=play";
     var item = AppState.currentDetailItem;
+    var skipTorrent = findLoadedTorrent(torrentHash) || item;
     var playerData = {
       url: playURL,
       title: title || 'Видео',
@@ -2131,8 +2203,8 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       timecode: seekTime,
       title_base: buildBasePlayerTitle(),
       skip_api: getSkipApiBase() + '/v2/media',
-      tmdb_id: AppState.currentTMDB || null,
-      season: AppState.currentSeason || null,
+      tmdb_id: getTorrentTmdbId(skipTorrent) || AppState.currentTMDB || null,
+      season: getTorrentSingleSeason(skipTorrent) || AppState.currentSeason || null,
       timecode_api: SERVER_URL + '/api/timecode/save',
       client_id: localStorage.getItem('clientId') || null,
       timeline: {
