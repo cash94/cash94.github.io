@@ -1,6 +1,12 @@
 {
  "images": [
   {
+   "url": "https://www.bing.com/th?id=OHR.AveburyStones_ROW2156116179_1920x1080.jpg",
+   "title": "Standing stones at Avebury in Wiltshire, England",
+   "copyright": "© George W Johnson/Getty Images",
+   "date": "20261029"
+  },
+  {
    "url": "https://www.bing.com/th?id=OHR.KuneticeCastle_ROW1907560324_1920x1080.jpg",
    "title": "Kunětická hora Castle, Bohemia, Czechia",
    "copyright": "© Marek Saroch/Alamy",
@@ -83,12 +89,6 @@
    "title": "Horseshoe Falls illuminated at night in Niagara Falls, Ontario, Canada",
    "copyright": "© Jianmei Wang/Getty Images",
    "date": "20261015"
-  },
-  {
-   "url": "https://www.bing.com/th?id=OHR.AmmoniteFossils_ROW1149504413_1920x1080.jpg",
-   "title": "Ammonite fossils from the Jurassic Period",
-   "copyright": "© J Nemchinova/Getty Images",
-   "date": "20261014"
   }
  ]
 }
