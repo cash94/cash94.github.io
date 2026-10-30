@@ -920,6 +920,9 @@ var Animations = (function () {
      * это уже не является — иначе постеры ждали бы его вечно.
      */
     function isScrollTweening(container) {
+        // Ряд в опыте с transform (isTxScroller в control.js): там
+        // движение — CSS-переход, твина нет, срок перехода стоит на вьюпорте
+        if (container && container._txTrack) return Date.now() < (container._txUntil || 0);
         var i = scrollTweenIndex(container);
         return i !== -1 && Date.now() < scrollTweens[i].endAt;
     }

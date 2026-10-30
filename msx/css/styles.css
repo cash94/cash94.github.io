@@ -4748,6 +4748,20 @@ html.tizen-avplay #video-player {
   display: none;
 }
 
+/* Опыт ?rowtx=1 (AppState.homeRowTransform, только Главная): ряд снова
+   двигает transform трека, но переходом CSS на композиторе (setScrollX в
+   control.js), и слой у трека постоянный. Прошлая попытка спотыкалась ровно о
+   слой, который появлялся и пропадал на каждое нажатие. В каталог не
+   переносить — там это дороже, см. createCatalogRow в catalog.js. */
+.catalog-row-viewport.row-tx {
+  overflow: hidden;
+}
+
+.catalog-row-viewport.row-tx > .catalog-row-track {
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+}
+
 .catalog-row-track {
   display: flex;
   gap: 18px;

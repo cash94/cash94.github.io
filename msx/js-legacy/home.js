@@ -1238,6 +1238,10 @@
     viewport.className = 'catalog-row-viewport';
     var track = document.createElement('div');
     track.className = 'catalog-row-track';
+    if (window.AppState && AppState.homeRowTransform) {
+      viewport.className += ' row-tx';
+      viewport._txTrack = track;
+    }
     homeState.data[cfg.key] = items;
     var cards = [];
     for (var i = 0; i < items.length; i++) {

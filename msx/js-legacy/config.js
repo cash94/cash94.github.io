@@ -55,6 +55,15 @@ if (window.TS_SERVER) {
     };
   })();
 }
+function readHomeRowTransformFlag() {
+  var m = /[?&]rowtx=([01])(?:&|$)/.exec(location.search);
+  try {
+    if (m) localStorage.setItem('ts_home_row_tx', m[1]);
+    return localStorage.getItem('ts_home_row_tx') === '1';
+  } catch (e) {
+    return !!m && m[1] === '1';
+  }
+}
 var AppState = {
   protocol: window.TS_SERVER ? window.TS_SERVER.split('//')[0] : window.location.protocol,
   currentTorrserverUrl: '',
@@ -101,6 +110,7 @@ var AppState = {
   isSearch: false,
   inSearch: 'torrents',
   restoringFocus: false,
+  homeRowTransform: readHomeRowTransformFlag(),
   syncCodeScreen: false,
   syncCode: null,
   syncCodeTimer: null,

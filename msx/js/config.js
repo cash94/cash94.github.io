@@ -64,6 +64,21 @@ if (window.TS_SERVER) {
 }
 
 // Состояние приложения
+/**
+ * Флаг опыта AppState.homeRowTransform. ?rowtx=1 включает, ?rowtx=0 выключает,
+ * и выбор запоминается: на телевизоре хватает одного захода с параметром (или
+ * записи ts_home_row_tx в localStorage через DevTools).
+ */
+function readHomeRowTransformFlag() {
+  var m = /[?&]rowtx=([01])(?:&|$)/.exec(location.search);
+  try {
+    if (m) localStorage.setItem('ts_home_row_tx', m[1]);
+    return localStorage.getItem('ts_home_row_tx') === '1';
+  } catch (e) {
+    return !!m && m[1] === '1';
+  }
+}
+
 var AppState = {
   // Настройки сервера
   // Схема для адресов на других хостах (картинки, трекеры) — как у сервера:
@@ -140,6 +155,9 @@ var AppState = {
   isSearch: false,
   inSearch: 'torrents',
   restoringFocus: false,
+  // Опыт: ряд Главной двигается transform'ом трека на композиторе, а не
+  // твином scrollLeft (isTxScroller в control.js)
+  homeRowTransform: readHomeRowTransformFlag(),
 
   //Синхронизация
   syncCodeScreen: false,

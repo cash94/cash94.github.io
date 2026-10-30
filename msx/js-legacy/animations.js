@@ -499,6 +499,7 @@ var Animations = function () {
     if (i !== -1) scrollTweens.splice(i, 1);
   }
   function isScrollTweening(container) {
+    if (container && container._txTrack) return Date.now() < (container._txUntil || 0);
     var i = scrollTweenIndex(container);
     return i !== -1 && Date.now() < scrollTweens[i].endAt;
   }

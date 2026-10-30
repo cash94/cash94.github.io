@@ -3032,15 +3032,85 @@ function scrollAnimDurationX(duration) {
  * рывки и задержки, которых у вертикальной прокрутки нет. Нативный скроллер
  * рисует только окно вьюпорта и умеет сдвигать уже нарисованное.
  *
+ * Исключение — опыт на ряду Главной (AppState.homeRowTransform, см. ниже
+ * isTxScroller).
+ *
  * @param {Element} container контейнер прокрутки
  */
 function getScrollX(container) {
-    return container ? container.scrollLeft : 0;
+    if (!container) return 0;
+    if (isTxScroller(container)) return txCurrentX(container);
+    return container.scrollLeft;
 }
 
 function getMaxScrollX(container) {
     if (!container) return 0;
+    // У окна-обрезки scrollWidth зависит от сдвига трека (сдвинутое влево в
+    // прокручиваемую область не входит), поэтому меряем сам трек: у него
+    // width: max-content, и transform на offsetWidth не влияет
+    if (isTxScroller(container)) {
+        return Math.max(0, container._txTrack.offsetWidth - container.clientWidth);
+    }
     return Math.max(0, container.scrollWidth - container.clientWidth);
+}
+
+/*
+ * Опыт: ряд Главной двигается не твином scrollLeft, а CSS-переходом transform
+ * у трека (home.js при включённом AppState.homeRowTransform вешает на вьюпорт
+ * класс row-tx и ссылку _txTrack). Твин scrollLeft пишет позицию из
+ * requestAnimationFrame, то есть из основного потока, и стоит, пока тот занят
+ * вставкой постеров или сменой фокуса. Переход transform ведёт композитор —
+ * ряд едет, даже когда основной поток занят.
+ *
+ * От прошлой попытки с transform (комментарий выше) отличие в слое: трек
+ * держит will-change: transform постоянно, а не на время движения. Ряд
+ * растрируется один раз, дальше композитор только сдвигает готовую текстуру. На
+ * Главной на экране один ряд, остальные display:none — и слой один.
+ *
+ * Почему только Главная: пока идёт переход, Chrome 66 на каждом основном кадре
+ * пересчитывает стиль трека и делает UpdateLayerTree, а его цена растёт с
+ * числом PaintLayer во всём документе (у карточек contain: paint). На Главной
+ * их мало — невидимые ряды display:none. В каталоге 17 рядов по ~20 карточек,
+ * и там transform вышел дороже твина scrollLeft (см. createCatalogRow).
+ *
+ * Состояние на вьюпорте: _txX — позиция покоя (цель последнего сдвига),
+ * _txUntil — срок идущего перехода по стенным часам, как endAt у твина.
+ */
+function isTxScroller(container) {
+    return !!(container && container._txTrack);
+}
+
+/** Позиция, которая рисуется сейчас, в координатах scrollLeft */
+function txCurrentX(container) {
+    var rest = container._txX || 0;
+    if (Date.now() >= (container._txUntil || 0)) return rest;
+    // Посреди перехода берём промежуточную позицию: getBoundingClientRect
+    // карточек отдаёт её же, и расчёт цели в scrollToElementIfNeeded сходится
+    // только с ней
+    var t = window.getComputedStyle(container._txTrack).transform || '';
+    var m = /^matrix(3d)?\(([^)]+)\)/.exec(t);
+    if (!m) return rest;
+    var v = parseFloat(m[2].split(',')[m[1] ? 12 : 4]);
+    return isNaN(v) ? rest : -v;
+}
+
+/**
+ * Сдвинуть трек на left. duration в секундах; 0 — сразу. Новый сдвиг посреди
+ * перехода браузер продолжает с текущей промежуточной позиции, а не с начала.
+ */
+function txApply(container, left, duration) {
+    var track = container._txTrack;
+    // Дробный сдвиг слоя размывает текст и рамки карточек
+    left = Math.round(left);
+    if (duration > 0) {
+        track.style.transition = 'transform ' + duration + 's linear';
+        container._txUntil = Date.now() + Math.round(duration * 1000) + 50;
+    } else {
+        track.style.transition = 'none';
+        container._txUntil = 0;
+    }
+    container._txX = left;
+    track.style.transform = 'translate3d(' + (-left) + 'px,0,0)';
 }
 
 /** Смещение без анимации (колесо мыши, драг пальцем) */
@@ -3048,6 +3118,11 @@ function setScrollXImmediate(container, left) {
     if (!container) return;
     clearPendingScroll(container, '_navPendX');
     // Жест перебивает твин навигации, иначе тот продолжит тянуть к своей цели
+    if (isTxScroller(container)) {
+        // scrollLeft браузер обрезает по краям сам, transform — нет
+        txApply(container, Math.max(0, Math.min(getMaxScrollX(container), left)), 0);
+        return;
+    }
     if (typeof Animations !== 'undefined' && Animations.stopScrollTween) {
         Animations.stopScrollTween(container);
     }
@@ -3069,7 +3144,7 @@ function setScrollX(container, left, smooth, duration) {
 
     // Считаем от позиции ПОКОЯ: посреди твина текущий scrollLeft — это середина
     // пути, и расстояние (а с ним и длительность) вышло бы заниженным
-    var rest = container.scrollLeft + pendingScrollDeltaX(container);
+    var rest = getScrollX(container) + pendingScrollDeltaX(container);
 
     // Срок шага прогоняем через тот же режим прокрутки, что и саму скорость:
     // при 'fast' он вдвое короче, при 'none' обнуляется, и поправка отключается
@@ -3093,6 +3168,10 @@ function setScrollX(container, left, smooth, duration) {
         markNavStep(duration);
     } else {
         clearPendingScroll(container, '_navPendX');
+    }
+    if (isTxScroller(container)) {
+        txApply(container, left, animated ? duration : 0);
+        return;
     }
     applyScroll(container, { scrollLeft: left }, smooth, duration, SCROLL_SMOOTH.ease);
 }

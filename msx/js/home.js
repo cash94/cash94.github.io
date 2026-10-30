@@ -1677,12 +1677,19 @@
 
         // Карусель: вьюпорт прокручивается нативно по scrollLeft, трек — просто
         // флекс-лента. Позицию читают/пишут getScrollX/setScrollX (control.js).
+        // В опыте AppState.homeRowTransform вьюпорт — окно-обрезка, а ряд
+        // двигает transform трека (isTxScroller в control.js). Только здесь:
+        // в каталоге тот же приём дороже, см. createCatalogRow в catalog.js.
         var carousel = document.createElement('div');
         carousel.className = 'catalog-row-carousel';
         var viewport = document.createElement('div');
         viewport.className = 'catalog-row-viewport';
         var track = document.createElement('div');
         track.className = 'catalog-row-track';
+        if (window.AppState && AppState.homeRowTransform) {
+            viewport.className += ' row-tx';
+            viewport._txTrack = track;
+        }
 
         homeState.data[cfg.key] = items;
 

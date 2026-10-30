@@ -6131,6 +6131,15 @@ function createCatalogRow(key, items) {
     // Карусель: вьюпорт прокручивается нативно по scrollLeft, трек — просто
     // флекс-лента с отступами. Позицию читают/пишут getScrollX / setScrollX
     // (control.js).
+    //
+    // Опыт с transform трека (AppState.homeRowTransform, isTxScroller в
+    // control.js) сюда намеренно не распространён. Пока идёт CSS-переход
+    // transform, Chrome 66 на каждом кадре делает UpdateLayerTree, и его цена
+    // растёт с числом PaintLayer во всём документе: у карточек contain: paint,
+    // а в каталоге 17 рядов по ~20 карточек, и скрытые visibility: hidden в
+    // счёт входят. На эмуляторе ТВ это вышло на ~10% CPU основного потока
+    // ДОРОЖЕ твина scrollLeft. На Главной невидимые ряды display: none, и там
+    // transform выигрывает.
     var carousel = document.createElement('div');
     carousel.className = 'catalog-row-carousel';
     var viewport = document.createElement('div');

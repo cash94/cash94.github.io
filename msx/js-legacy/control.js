@@ -2821,15 +2821,49 @@ function scrollAnimDurationX(duration) {
   return duration;
 }
 function getScrollX(container) {
-  return container ? container.scrollLeft : 0;
+  if (!container) return 0;
+  if (isTxScroller(container)) return txCurrentX(container);
+  return container.scrollLeft;
 }
 function getMaxScrollX(container) {
   if (!container) return 0;
+  if (isTxScroller(container)) {
+    return Math.max(0, container._txTrack.offsetWidth - container.clientWidth);
+  }
   return Math.max(0, container.scrollWidth - container.clientWidth);
+}
+function isTxScroller(container) {
+  return !!(container && container._txTrack);
+}
+function txCurrentX(container) {
+  var rest = container._txX || 0;
+  if (Date.now() >= (container._txUntil || 0)) return rest;
+  var t = window.getComputedStyle(container._txTrack).transform || '';
+  var m = /^matrix(3d)?\(([^)]+)\)/.exec(t);
+  if (!m) return rest;
+  var v = parseFloat(m[2].split(',')[m[1] ? 12 : 4]);
+  return isNaN(v) ? rest : -v;
+}
+function txApply(container, left, duration) {
+  var track = container._txTrack;
+  left = Math.round(left);
+  if (duration > 0) {
+    track.style.transition = 'transform ' + duration + 's linear';
+    container._txUntil = Date.now() + Math.round(duration * 1000) + 50;
+  } else {
+    track.style.transition = 'none';
+    container._txUntil = 0;
+  }
+  container._txX = left;
+  track.style.transform = 'translate3d(' + -left + 'px,0,0)';
 }
 function setScrollXImmediate(container, left) {
   if (!container) return;
   clearPendingScroll(container, '_navPendX');
+  if (isTxScroller(container)) {
+    txApply(container, Math.max(0, Math.min(getMaxScrollX(container), left)), 0);
+    return;
+  }
   if (typeof Animations !== 'undefined' && Animations.stopScrollTween) {
     Animations.stopScrollTween(container);
   }
@@ -2838,7 +2872,7 @@ function setScrollXImmediate(container, left) {
 function setScrollX(container, left, smooth, duration) {
   if (!container) return;
   left = Math.max(0, Math.min(getMaxScrollX(container), left));
-  var rest = container.scrollLeft + pendingScrollDeltaX(container);
+  var rest = getScrollX(container) + pendingScrollDeltaX(container);
   duration = typeof duration === 'number' ? scrollAnimDurationX(duration) : navStepScrollDuration(speedDuration(left - rest, scrollAnimSpeedX(SCROLL_SMOOTH.speedX)), scrollAnimDurationX(NAV_STEP_BASE_MS / 1000));
   var animated = smooth && !_instantScrollDepth && duration > 0;
   if (animated && Math.abs(rest - left) < 2) return;
@@ -2847,6 +2881,10 @@ function setScrollX(container, left, smooth, duration) {
     markNavStep(duration);
   } else {
     clearPendingScroll(container, '_navPendX');
+  }
+  if (isTxScroller(container)) {
+    txApply(container, left, animated ? duration : 0);
+    return;
   }
   applyScroll(container, {
     scrollLeft: left
