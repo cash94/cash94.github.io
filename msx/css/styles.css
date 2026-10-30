@@ -11333,6 +11333,29 @@ html.apple-device {
   opacity: 1;
 }
 
+/* Пелена в плеере на паузе — перед заставкой. Ниже заставки, но выше HUD и
+   оверлеев плеера. Гаснет медленно, уходит быстро: по нажатию под ней сразу
+   появляется HUD. С AVPlay на Tizen кадр лежит слоем под страницей —
+   полупрозрачный чёрный блок затемняет и его. */
+#player-dim {
+  display: none;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 190000;
+  background: #000;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  cursor: none;
+}
+
+#player-dim.player-dim-visible {
+  opacity: 0.85;
+  transition: opacity 2s ease;
+}
+
 #screensaver .screensaver-layer {
   position: absolute;
   top: 0;

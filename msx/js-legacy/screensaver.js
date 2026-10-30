@@ -3,9 +3,12 @@
   'use strict';
 
   var IDLE_MS = 2 * 60 * 1000;
+  var PLAYER_DIM_MS = 10 * 1000;
+  var PLAYER_IDLE_MS = 60 * 1000;
   var SLIDE_MS = 30 * 1000;
-  var CHECK_MS = 5000;
+  var CHECK_MS = 1000;
   var FADE_MS = 1500;
+  var DIM_OUT_MS = 300;
   var LIST_TTL_MS = 3 * 24 * 60 * 60 * 1000;
   var DB_NAME = 'ScreensaverDB',
     DB_STORE = 'cache',
@@ -31,7 +34,11 @@
   var swallowKeyUp = null;
   var mouseX = -1,
     mouseY = -1;
+  var swallowClickUntil = 0;
   var heroSuspended = false;
+  var pausedSince = 0;
+  var dimEl = null,
+    dimmed = false;
   function anyVideoPlaying() {
     var vids = document.getElementsByTagName('video');
     for (var i = 0; i < vids.length; i++) {
@@ -40,11 +47,23 @@
     }
     return false;
   }
+  function playerPaused() {
+    var st = window.AppState;
+    if (!st || st.currentScreen !== 'player' || st.isYoutubePlayback || st.isSeeking) return false;
+    var v = document.getElementById('video-player');
+    if (!v || !v.paused || v.readyState < 2) return false;
+    var po = document.getElementById('player-overlay');
+    if (po && po.classList.contains('loading')) return false;
+    var pb = document.getElementById('playback-overlay');
+    if (pb && pb.classList.contains('active')) return false;
+    return true;
+  }
   function canStart() {
     if (document.hidden) return false;
     var st = window.AppState;
     if (!st) return false;
-    if (st.currentScreen === 'player' || st.isYoutubePlayback) return false;
+    if (st.currentScreen === 'player') return playerPaused();
+    if (st.isYoutubePlayback) return false;
     if (st.trailerPlay) return false;
     if (anyVideoPlaying()) return false;
     var loader = document.getElementById('module-loader');
@@ -175,6 +194,10 @@
   function listFresh() {
     return images.length && Date.now() - listAt < LIST_TTL_MS;
   }
+  function attachToHost(el) {
+    var host = typeof window.getOverlayHost === 'function' ? window.getOverlayHost() : document.body;
+    if (el.parentNode !== host) host.appendChild(el);
+  }
   function build() {
     if (root) return;
     root = document.createElement('div');
@@ -262,6 +285,7 @@
       home.stopTrailer();
       heroSuspended = true;
     }
+    attachToHost(root);
     root.style.display = 'block';
     requestAnimationFrame(function () {
       if (active) root.classList.add('screensaver-visible');
@@ -290,12 +314,47 @@
       if (home && typeof home.rearmTrailer === 'function') home.rearmTrailer();
     }
   }
+  function dim() {
+    if (dimmed) return;
+    dimmed = true;
+    if (!dimEl) {
+      dimEl = document.createElement('div');
+      dimEl.id = 'player-dim';
+    }
+    attachToHost(dimEl);
+    dimEl.style.display = 'block';
+    requestAnimationFrame(function () {
+      if (dimmed) dimEl.classList.add('player-dim-visible');
+    });
+  }
+  function undim() {
+    if (!dimmed) return;
+    dimmed = false;
+    dimEl.classList.remove('player-dim-visible');
+    setTimeout(function () {
+      if (!dimmed) dimEl.style.display = 'none';
+    }, DIM_OUT_MS);
+  }
+  function showPlayerHud() {
+    if (typeof window.showPlayerControls === 'function') window.showPlayerControls();else if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+  }
+  function idleReached() {
+    if (pausedSince) return Date.now() - Math.max(lastActivity, pausedSince) >= PLAYER_IDLE_MS;
+    return Date.now() - lastActivity >= IDLE_MS;
+  }
   function tick() {
+    if (playerPaused()) {
+      if (!pausedSince) pausedSince = Date.now();
+      if (!dimmed && Date.now() - Math.max(lastActivity, pausedSince) >= PLAYER_DIM_MS) dim();
+    } else {
+      pausedSince = 0;
+      undim();
+    }
     if (active) {
       if (!canStart()) stop();else updateClock();
       return;
     }
-    if (Date.now() - lastActivity < IDLE_MS) return;
+    if (!idleReached()) return;
     if (!canStart()) return;
     if (listFresh()) {
       start();
@@ -306,13 +365,16 @@
       return;
     }
     loadList(function () {
-      if (!active && images.length && canStart() && Date.now() - lastActivity >= IDLE_MS) start();
+      if (!active && images.length && canStart() && idleReached()) start();
     });
   }
   function wake(e) {
     lastActivity = Date.now();
-    if (!active) return false;
+    if (!active && !dimmed) return false;
+    var inPlayer = !!(window.AppState && AppState.currentScreen === 'player');
     stop();
+    undim();
+    if (inPlayer) showPlayerHud();
     if (e) {
       if (e.cancelable) e.preventDefault();
       e.stopImmediatePropagation();
@@ -331,13 +393,16 @@
     }
   }, true);
   var pointerWake = function (e) {
-    wake(e);
+    if (wake(e)) swallowClickUntil = Date.now() + 1000;
   };
   window.addEventListener('mousedown', pointerWake, true);
   window.addEventListener('touchstart', pointerWake, true);
-  window.addEventListener('wheel', pointerWake, true);
+  window.addEventListener('wheel', function (e) {
+    wake(e);
+  }, true);
   window.addEventListener('click', function (e) {
-    if (root && root.style.display === 'block' && !active) {
+    if (Date.now() < swallowClickUntil) {
+      swallowClickUntil = 0;
       e.preventDefault();
       e.stopImmediatePropagation();
     }
@@ -356,8 +421,12 @@
     isActive: function () {
       return active;
     },
+    isDimmed: function () {
+      return dimmed;
+    },
     show: function () {
       lastActivity = 0;
+      if (pausedSince) pausedSince = 1;
       tick();
     },
     hide: function () {

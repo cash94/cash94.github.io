@@ -9,9 +9,16 @@
 // страницы GitHub отдаются с Access-Control-Allow-Origin: *. Сами картинки
 // грузятся прямо с www.bing.com. Список не пришёл — заставки просто нет.
 //
-// Не включается, пока что-то играет: экран плеера (даже на паузе), трейлер в
-// карточке фильма и вообще любое <video>, которое идёт, — в том числе трейлер
-// в баннере главной (так решил владелец: баннер тоже считается трейлером).
+// Не включается, пока что-то играет: трейлер в карточке фильма и вообще любое
+// <video>, которое идёт, — в том числе трейлер в баннере главной (так решил
+// владелец: баннер тоже считается трейлером).
+//
+// В плеере — только на паузе, и раньше: через PLAYER_DIM_MS паузы без нажатий
+// картинка гаснет (#player-dim — чёрная пелена поверх кадра), через
+// PLAYER_IDLE_MS выходит заставка. Это одинаково работает с обычным <video> и
+// с AVPlay на Tizen: tizen-avplay.js подменяет paused у #video-player, а кадр
+// AVPlay рисуется слоем ПОД страницей, так что пелена его тоже затемняет.
+// Любое нажатие убирает и заставку, и пелену и показывает HUD плеера.
 //
 // Грузится СРАЗУ после config.js — раньше всех, кто слушает клавиатуру на
 // window в фазе захвата (osk.js, ui-customizer.js, torrserverstats.js). Только
@@ -22,11 +29,19 @@
     'use strict';
 
     var IDLE_MS = 2 * 60 * 1000;
+    // Плеер на паузе: сначала гаснет картинка, потом выходит заставка. Отсчёт —
+    // от начала паузы или последнего нажатия, что позже
+    var PLAYER_DIM_MS = 10 * 1000;
+    var PLAYER_IDLE_MS = 60 * 1000;
     var SLIDE_MS = 30 * 1000;
     // Простой проверяем опросом, а не перезапуском таймера на каждое нажатие:
-    // на автоповторе пульта это десятки clearTimeout/setTimeout в секунду
-    var CHECK_MS = 5000;
+    // на автоповторе пульта это десятки clearTimeout/setTimeout в секунду.
+    // Раз в секунду — ради пелены в плеере: 10 с при опросе раз в 5 с
+    // превращались бы в 10–15. Вне плеера тик — одно сравнение времени
+    var CHECK_MS = 1000;
     var FADE_MS = 1500;
+    // Пелена уходит быстро: под ней сразу должен появиться HUD
+    var DIM_OUT_MS = 300;
     // Список держим в IndexedDB три дня, чтобы не ходить за ним в сеть при
     // каждом засыпании и каждом запуске. Bing меняет картинку раз в сутки,
     // так что к концу срока в списке не хватает пары последних дней — для
@@ -49,7 +64,10 @@
     var index = -1, slideTimer = null, slideGen = 0;
     var swallowKeyUp = null;
     var mouseX = -1, mouseY = -1;
+    var swallowClickUntil = 0;
     var heroSuspended = false;
+    var pausedSince = 0;           // с какого момента плеер стоит на паузе; 0 — не стоит
+    var dimEl = null, dimmed = false;
 
     // ==================== ЧТО МОЖЕТ ПОМЕШАТЬ ====================
 
@@ -62,11 +80,29 @@
         return false;
     }
 
+    /**
+     * Плеер стоит на паузе, и это пауза человека: не загрузка потока, не
+     * перемотка и не переход на серию (там <video> тоже paused, но смотреть
+     * на экран сейчас будут).
+     */
+    function playerPaused() {
+        var st = window.AppState;
+        if (!st || st.currentScreen !== 'player' || st.isYoutubePlayback || st.isSeeking) return false;
+        var v = document.getElementById('video-player');
+        if (!v || !v.paused || v.readyState < 2) return false;
+        var po = document.getElementById('player-overlay');
+        if (po && po.classList.contains('loading')) return false;
+        var pb = document.getElementById('playback-overlay');
+        if (pb && pb.classList.contains('active')) return false;
+        return true;
+    }
+
     function canStart() {
         if (document.hidden) return false;
         var st = window.AppState;
         if (!st) return false;
-        if (st.currentScreen === 'player' || st.isYoutubePlayback) return false;
+        if (st.currentScreen === 'player') return playerPaused();
+        if (st.isYoutubePlayback) return false;
         if (st.trailerPlay) return false;          // трейлер в карточке, даже пока грузится
         if (anyVideoPlaying()) return false;
         // Под заглушкой загрузки интерфейс ещё не готов
@@ -181,6 +217,18 @@
 
     // ==================== РАЗМЕТКА ====================
 
+    /**
+     * Куда вешать заставку и пелену. Обычно в <body>, но если на весь экран
+     * развернулся не документ, а #player-screen или <video>, браузер рисует
+     * только его потомков (player.js: getOverlayHost). Смотрим при каждом
+     * показе: элементы создаются лениво, переноса по fullscreenchange они не
+     * застают.
+     */
+    function attachToHost(el) {
+        var host = typeof window.getOverlayHost === 'function' ? window.getOverlayHost() : document.body;
+        if (el.parentNode !== host) host.appendChild(el);
+    }
+
     function build() {
         if (root) return;
         root = document.createElement('div');
@@ -290,6 +338,7 @@
         // Первая картинка — с того же места, на котором остановились в прошлый
         // раз: при каждом засыпании начинать с сегодняшней значило бы видеть
         // одну и ту же
+        attachToHost(root);
         root.style.display = 'block';
         // Кадр на display, затем — проявление: иначе переход не состоится
         requestAnimationFrame(function () {
@@ -318,16 +367,62 @@
         }
     }
 
+    // ==================== ПЕЛЕНА В ПЛЕЕРЕ ====================
+
+    function dim() {
+        if (dimmed) return;
+        dimmed = true;
+        if (!dimEl) {
+            dimEl = document.createElement('div');
+            dimEl.id = 'player-dim';
+        }
+        attachToHost(dimEl);
+        dimEl.style.display = 'block';
+        requestAnimationFrame(function () {
+            if (dimmed) dimEl.classList.add('player-dim-visible');
+        });
+    }
+
+    function undim() {
+        if (!dimmed) return;
+        dimmed = false;
+        dimEl.classList.remove('player-dim-visible');
+        setTimeout(function () {
+            if (!dimmed) dimEl.style.display = 'none';
+        }, DIM_OUT_MS);
+    }
+
+    /** HUD плеера с фокусом на воспроизведении — ОК следом снимет паузу */
+    function showPlayerHud() {
+        if (typeof window.showPlayerControls === 'function') window.showPlayerControls();
+        else if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+    }
+
     // ==================== ПРОСТОЙ ====================
 
+    function idleReached() {
+        if (pausedSince) return Date.now() - Math.max(lastActivity, pausedSince) >= PLAYER_IDLE_MS;
+        return Date.now() - lastActivity >= IDLE_MS;
+    }
+
     function tick() {
+        // Пауза в плеере: отмечаем начало, пелену — через PLAYER_DIM_MS.
+        // Заиграло (в том числе мимо пульта — с телефона) или ушли с плеера —
+        // пелену снимаем; HUD при этом не показываем, нажатия не было
+        if (playerPaused()) {
+            if (!pausedSince) pausedSince = Date.now();
+            if (!dimmed && Date.now() - Math.max(lastActivity, pausedSince) >= PLAYER_DIM_MS) dim();
+        } else {
+            pausedSince = 0;
+            undim();
+        }
         if (active) {
             // Что-то заиграло мимо пульта (трейлер, плеер с телефона) — уходим
             if (!canStart()) stop();
             else updateClock();
             return;
         }
-        if (Date.now() - lastActivity < IDLE_MS) return;
+        if (!idleReached()) return;
         if (!canStart()) return;
         if (listFresh()) { start(); return; }
         if (listFailedAt && Date.now() - listFailedAt < LIST_RETRY_MS) {
@@ -336,7 +431,7 @@
             return;
         }
         loadList(function () {
-            if (!active && images.length && canStart() && Date.now() - lastActivity >= IDLE_MS) start();
+            if (!active && images.length && canStart() && idleReached()) start();
         });
     }
 
@@ -344,8 +439,11 @@
 
     function wake(e) {
         lastActivity = Date.now();
-        if (!active) return false;
+        if (!active && !dimmed) return false;
+        var inPlayer = !!(window.AppState && AppState.currentScreen === 'player');
         stop();
+        undim();
+        if (inPlayer) showPlayerHud();
         if (e) {
             if (e.cancelable) e.preventDefault();
             e.stopImmediatePropagation();
@@ -368,13 +466,17 @@
         }
     }, true);
 
-    var pointerWake = function (e) { wake(e); };
+    // Клик, следующий за разбудившим mousedown/тапом, тоже не должен ничего
+    // нажать: в плеере он поставил бы видео на воспроизведение
+    var pointerWake = function (e) {
+        if (wake(e)) swallowClickUntil = Date.now() + 1000;
+    };
     window.addEventListener('mousedown', pointerWake, true);
     window.addEventListener('touchstart', pointerWake, true);
-    window.addEventListener('wheel', pointerWake, true);
-    // Клик, следующий за разбудившим mousedown, тоже не должен ничего нажать
+    window.addEventListener('wheel', function (e) { wake(e); }, true);
     window.addEventListener('click', function (e) {
-        if (root && root.style.display === 'block' && !active) {
+        if (Date.now() < swallowClickUntil) {
+            swallowClickUntil = 0;
             e.preventDefault();
             e.stopImmediatePropagation();
         }
@@ -396,8 +498,9 @@
 
     window.Screensaver = {
         isActive: function () { return active; },
+        isDimmed: function () { return dimmed; },
         // Для отладки и проверки: показать немедленно / убрать
-        show: function () { lastActivity = 0; tick(); },
+        show: function () { lastActivity = 0; if (pausedSince) pausedSince = 1; tick(); },
         hide: function () { wake(null); }
     };
 })();
